@@ -26,9 +26,21 @@ function lineageConsequences(changes: ProgramReviewChange[]) {
 function hasTrainingTotalChange(review: ProgramReview) {
   return (
     review.summary.weeklySetsBefore !== review.summary.weeklySetsAfter ||
-    JSON.stringify(review.summary.muscleSetsBefore) !==
-      JSON.stringify(review.summary.muscleSetsAfter)
+    changedMuscles(review).length > 0
   );
+}
+
+function changedMuscles(review: ProgramReview) {
+  return Object.keys({
+    ...review.summary.muscleSetsBefore,
+    ...review.summary.muscleSetsAfter,
+  })
+    .filter(
+      (muscle) =>
+        (review.summary.muscleSetsBefore[muscle] ?? 0) !==
+        (review.summary.muscleSetsAfter[muscle] ?? 0),
+    )
+    .sort();
 }
 
 function reviewRecord(value: unknown) {
@@ -185,7 +197,11 @@ function groupFindings(findings: ProgramPreflightFinding[]) {
       });
     }
   }
-  return [...groups.values()];
+  return [...groups.values()].sort(
+    (left, right) =>
+      Number(right.severity === "blocking") -
+      Number(left.severity === "blocking"),
+  );
 }
 
 function countLabel(count: number, singular: string, plural = `${singular}s`) {
@@ -598,47 +614,31 @@ export function ReviewDialog({ editor, currentReview, canReview }: { editor: Pro
                     )}
                   </CardContent>
                 </Card>
-                {hasTrainingTotalChange(currentReview) && <Card>
-                  <CardHeader>
-                    <CardTitle>
-                      <h2 className="text-lg font-semibold">
-                        Training summary
-                      </h2>
-                    </CardTitle>
-                    <CardDescription>
-                      How the weekly plan changes.
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <dl className="grid gap-3 text-sm sm:grid-cols-2">
-                      <div>
-                        <dt className="text-muted-foreground">
-                          Weekly work sets
-                        </dt>
-                        <dd className="font-medium">
-                          {currentReview.summary.weeklySetsBefore} →{" "}
-                          {currentReview.summary.weeklySetsAfter}
-                        </dd>
-                      </div>
-                    </dl>
-                    <div className="mt-4">
-                      <h3 className="font-medium">Muscle emphasis</h3>
-                      {Object.keys({
-                        ...currentReview.summary.muscleSetsBefore,
-                        ...currentReview.summary.muscleSetsAfter,
-                      }).length === 0 ? (
-                        <p className="mt-1 text-sm text-muted-foreground">
-                          No muscle-emphasis data is available for these
-                          exercises.
-                        </p>
-                      ) : (
-                        <dl className="mt-2 grid gap-2 text-sm sm:grid-cols-2">
-                          {Object.keys({
-                            ...currentReview.summary.muscleSetsBefore,
-                            ...currentReview.summary.muscleSetsAfter,
-                          })
-                            .sort()
-                            .map((muscle) => (
+                {hasTrainingTotalChange(currentReview) && (
+                  <details className="rounded-xl border bg-card p-4">
+                    <summary className="min-h-11 cursor-pointer font-medium">
+                      How your weekly plan changes
+                    </summary>
+                    <div className="mt-3">
+                      {currentReview.summary.weeklySetsBefore !==
+                        currentReview.summary.weeklySetsAfter && (
+                        <dl className="grid gap-3 text-sm sm:grid-cols-2">
+                          <div>
+                            <dt className="text-muted-foreground">
+                              Weekly work sets
+                            </dt>
+                            <dd className="font-medium">
+                              {currentReview.summary.weeklySetsBefore} →{" "}
+                              {currentReview.summary.weeklySetsAfter}
+                            </dd>
+                          </div>
+                        </dl>
+                      )}
+                      {changedMuscles(currentReview).length > 0 && (
+                        <div>
+                          <h3 className="font-medium">Muscle emphasis</h3>
+                          <dl className="mt-2 grid gap-2 text-sm sm:grid-cols-2">
+                            {changedMuscles(currentReview).map((muscle) => (
                               <div
                                 key={muscle}
                                 className="rounded-lg border p-2"
@@ -656,11 +656,12 @@ export function ReviewDialog({ editor, currentReview, canReview }: { editor: Pro
                                 </dd>
                               </div>
                             ))}
-                        </dl>
+                          </dl>
+                        </div>
                       )}
                     </div>
-                  </CardContent>
-                </Card>}
+                  </details>
+                )}
                 {currentReview.recommendationConsequences.length > 0 && (
                   <Card>
                     <CardHeader>
@@ -691,28 +692,18 @@ export function ReviewDialog({ editor, currentReview, canReview }: { editor: Pro
                   </Card>
                 )}
                 {lineageConsequences(currentReview.changes).length > 0 && (
-                  <Card>
-                    <CardHeader>
-                      <CardTitle>
-                        <h2 className="text-lg font-semibold">
-                          What happens to exercise history
-                        </h2>
-                      </CardTitle>
-                      <CardDescription>
-                        What happens to earlier workout evidence for each edited
-                        exercise.
-                      </CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                      <ul className="list-disc space-y-2 pl-5 text-sm">
-                        {lineageConsequences(currentReview.changes).map(
-                          (consequence) => (
-                            <li key={consequence}>{consequence}</li>
-                          ),
-                        )}
-                      </ul>
-                    </CardContent>
-                  </Card>
+                  <details className="rounded-xl border bg-card p-4">
+                    <summary className="min-h-11 cursor-pointer font-medium">
+                      What happens to exercise history
+                    </summary>
+                    <ul className="mt-3 list-disc space-y-2 pl-5 text-sm">
+                      {lineageConsequences(currentReview.changes).map(
+                        (consequence) => (
+                          <li key={consequence}>{consequence}</li>
+                        ),
+                      )}
+                    </ul>
+                  </details>
                 )}
                 <div className="flex flex-col gap-2 rounded-xl border bg-card p-4 sm:flex-row sm:items-center sm:justify-between">
                   <p className="text-sm text-muted-foreground">
