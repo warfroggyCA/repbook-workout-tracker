@@ -4,14 +4,19 @@ import {
   waitForHydratedServerAction,
 } from "../helpers/react-readiness";
 import {
-  isCorrelatedWebKitRscPrefetchCancellation,
   isExpectedWebKitRscLinkCancellation,
-  observeNextRscPrefetches,
 } from "../helpers/webkit-rsc-prefetch-errors";
 
-// The app shell prefetches these exact bottom-tab links. WebKit can cancel
-// either RSC request when the dismissal refresh replaces the Coach tree.
-const expectedDismissalPrefetchPaths = new Set(["/today", "/program"]);
+// The visited Settings, Today, and Coach trees prefetch these exact app links.
+// WebKit can cancel any of their RSC requests when dismissal refreshes Coach.
+const expectedDismissalPrefetchPaths = new Set([
+  "/today",
+  "/history",
+  "/coach",
+  "/program",
+  "/settings",
+  "/simulation",
+]);
 const holdReason =
   "Barbell Bench Press is on hold because a 4/10 pain flag was saved in the last 14 days. It comes off hold 14 days after the latest 3/10 or higher flag. A workout with no pain entry doesn't shorten that time.";
 const holdExplanation =
@@ -56,7 +61,6 @@ test("explains the automatic pain hold without offering a Program change", async
   page,
 }) => {
   const browserErrors: string[] = [];
-  const nextRscPrefetches = observeNextRscPrefetches(page, browserName);
   page.on("pageerror", (error) => browserErrors.push(error.message));
   page.on("console", (message) => {
     if (
@@ -127,15 +131,9 @@ test("explains the automatic pain hold without offering a Program change", async
     ).toHaveCount(1);
   }
 
-  await nextRscPrefetches.settle();
   expect(
     browserErrors.filter(
       (message) =>
-        !isCorrelatedWebKitRscPrefetchCancellation(
-          message,
-          browserName,
-          nextRscPrefetches.observedUrls,
-        ) &&
         !isExpectedWebKitRscLinkCancellation(
           message,
           browserName,
