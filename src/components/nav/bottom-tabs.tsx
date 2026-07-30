@@ -49,6 +49,13 @@ export function navigationItemIsActive(
     (pathname === href || pathname.startsWith(`${href}/`));
 }
 
+export function navigationItemShouldPrefetch(
+  pathname: string | null,
+  href: string,
+) {
+  return pathname !== href;
+}
+
 export function BottomTabs({
   userName,
   userEmail,
@@ -122,6 +129,11 @@ export function BottomTabs({
               <Link
                 key={href}
                 href={href}
+                prefetch={
+                  navigationItemShouldPrefetch(activePathname, href)
+                    ? null
+                    : false
+                }
                 aria-label={label}
                 aria-current={active ? "page" : undefined}
                 className={cn(
@@ -190,6 +202,11 @@ export function BottomTabs({
               <Link
                 key={href}
                 href={href}
+                prefetch={
+                  navigationItemShouldPrefetch(activePathname, href)
+                    ? null
+                    : false
+                }
                 aria-label={label}
                 aria-current={active ? "page" : undefined}
                 className={cn(
