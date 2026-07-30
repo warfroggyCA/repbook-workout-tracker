@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   BottomTabs,
   navigationItemIsActive,
+  navigationItemShouldPrefetch,
 } from "@/components/nav/bottom-tabs";
 
 vi.mock("next/navigation", () => ({
@@ -29,5 +30,13 @@ describe("BottomTabs hydration", () => {
     expect(navigationItemIsActive("/history/session-id", "/history")).toBe(true);
     expect(navigationItemIsActive("/programming", "/program")).toBe(false);
     expect(navigationItemIsActive(null, "/today")).toBe(false);
+  });
+
+  it("prefetches destinations but not the exact page already open", () => {
+    expect(navigationItemShouldPrefetch("/coach", "/coach")).toBe(false);
+    expect(
+      navigationItemShouldPrefetch("/history/session-id", "/history"),
+    ).toBe(true);
+    expect(navigationItemShouldPrefetch(null, "/today")).toBe(true);
   });
 });

@@ -7,15 +7,23 @@ import {
   isExpectedWebKitRscLinkCancellation,
 } from "../helpers/webkit-rsc-prefetch-errors";
 
-// The visited Settings, Today, and Coach trees prefetch these exact app links.
-// WebKit can cancel any of their RSC requests when dismissal refreshes Coach.
-const expectedDismissalPrefetchPaths = new Set([
+// The setup visits Today, Settings, and Coach. Validate that phase separately
+// so its legitimate link prefetches cannot be confused with dismissal refresh.
+const expectedSetupPrefetchPaths = new Set([
   "/today",
   "/history",
   "/coach",
   "/program",
   "/settings",
   "/simulation",
+]);
+// Coach and Simulation are deliberately absent during dismissal. The active
+// Coach link does not prefetch, so a Coach cancellation is the real refresh.
+const expectedDismissalPrefetchPaths = new Set([
+  "/today",
+  "/history",
+  "/program",
+  "/settings",
 ]);
 const holdReason =
   "Barbell Bench Press is on hold because a 4/10 pain flag was saved in the last 14 days. It comes off hold 14 days after the latest 3/10 or higher flag. A workout with no pain entry doesn't shorten that time.";
@@ -95,6 +103,18 @@ test("explains the automatic pain hold without offering a Program change", async
   await expect(
     hold.getByRole("button", { name: "Reject", exact: true }),
   ).toHaveCount(0);
+  await page.waitForLoadState("networkidle");
+  expect(
+    browserErrors.filter(
+      (message) =>
+        !isExpectedWebKitRscLinkCancellation(
+          message,
+          browserName,
+          expectedSetupPrefetchPaths,
+        ),
+    ),
+  ).toEqual([]);
+  browserErrors.length = 0;
 
   const dismiss = hold.getByRole("button", {
     name: "Dismiss notice",
