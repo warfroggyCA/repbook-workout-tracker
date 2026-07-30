@@ -1,0 +1,952 @@
+"use client";
+
+import { ArrowDown, ArrowUp, Check, CircleAlert, LoaderCircle, Trash2 } from "lucide-react";
+import { memo } from "react";
+import { ExercisePicker } from "@/components/exercises/exercise-picker";
+import { ExerciseFamilyIcon } from "@/components/exercises/exercise-family-icon";
+import { ProgramDayTabs } from "@/components/program/program-day-tabs";
+import { RestTimeControl } from "@/components/program/rest-time-control";
+import { DayWarmupEditor } from "@/components/program/editor/warmup-editor";
+import { SlotEditor } from "@/components/program/editor/slot-editor";
+import { SupersetControls } from "@/components/program/editor/superset-controls";
+import { Field } from "@/components/program/editor/editor-ui";
+import type { ProgramEditorController } from "@/components/program/editor/use-program-editor-controller";
+import { Button } from "@/components/ui/button";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { moveItem, moveProgramGroupMember, moveProgramSlotUnit, replaceProgramExercise, resizeProgramSlotSets } from "@/lib/program-editor-client";
+import { programDocumentV3Schema, type ProgramDocumentDayV3 } from "@/lib/program-document";
+import { formatRestTime } from "@/lib/rest-time";
+import { cn } from "@/lib/utils";
+
+function numberFromInput(value: string, fallback: number) { const parsed = Number(value); return Number.isFinite(parsed) ? parsed : fallback; }
+function optionalText(value: string) { return value.trim() ? value : null; }
+function displayLabel(value: string) { return value.replaceAll("_", " ").replace(/\b\w/g, (character) => character.toUpperCase()); }
+
+export const DayEditor = memo(function DayEditor({ editor, canReview = false }: { editor: ProgramEditorController; canReview?: boolean }) {
+  const { document, revision, router, library, updateDocument, activeDayId, setActiveDayId, dayHeadingRefs, updateDay, addDay, addExercise, pairingDayId, setPairingDayId, pairingSlotIds, setPairingSlotIds, expandedSlotId, setExpandedSlotId, slotHeadingRefs, exerciseById, moveSlotToDay, requestReview, reviewing } = editor;
+  if (!document) return null;
+  const documentValidation = programDocumentV3Schema.safeParse(document);
+  return (
+    <>
+            <Card>
+              <CardHeader>
+                <CardTitle>
+                  <h2 className="text-lg font-semibold">Program details</h2>
+                </CardTitle>
+                <CardDescription>
+                  Name the plan shown on Today and Program.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <Field id="program-name" label="Program name">
+                  <Input
+                    id="program-name"
+                    className="h-11"
+                    value={document.name}
+                    onChange={(event) =>
+                      updateDocument((current) => ({
+                        ...current,
+                        name: event.target.value,
+                      }))
+                    }
+                    aria-invalid={!document.name.trim()}
+                  />
+                </Field>
+              </CardContent>
+            </Card>
+
+            <ProgramDayTabs days={document.days} activeId={activeDayId ?? document.days[0].lineageId} pathname="/program/edit" label="Edit Program days" onSelect={setActiveDayId} />
+
+            {document.days.map((day, dayIndex) => activeDayId === day.lineageId ? (
+              <Card key={day.lineageId}>
+                <CardHeader className="border-b">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                    <div>
+                      <p className="text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">
+                        Day {dayIndex + 1}
+                      </p>
+                      <h2
+                        ref={(node) => {
+                          if (node)
+                            dayHeadingRefs.current.set(day.lineageId, node);
+                          else dayHeadingRefs.current.delete(day.lineageId);
+                        }}
+                        tabIndex={-1}
+                        className="mt-1 text-lg font-semibold outline-none"
+                      >
+                        {day.name || "Unnamed day"}
+                      </h2>
+                    </div>
+                    <div
+                      className="flex flex-wrap gap-2"
+                      aria-label={`Reorder or remove ${day.name || `day ${dayIndex + 1}`}`}
+                    >
+                      <Button
+                        type="button"
+                        size="icon-lg"
+                        variant="outline"
+                        aria-label={`Move ${day.name || "day"} up`}
+                        disabled={dayIndex === 0}
+                        onClick={() =>
+                          updateDocument((current) => ({
+                            ...current,
+                            days: moveItem(
+                              current.days,
+                              dayIndex,
+                              dayIndex - 1,
+                            ),
+                          }))
+                        }
+                      >
+                        <ArrowUp />
+                      </Button>
+                      <Button
+                        type="button"
+                        size="icon-lg"
+                        variant="outline"
+                        aria-label={`Move ${day.name || "day"} down`}
+                        disabled={dayIndex === document.days.length - 1}
+                        onClick={() =>
+                          updateDocument((current) => ({
+                            ...current,
+                            days: moveItem(
+                              current.days,
+                              dayIndex,
+                              dayIndex + 1,
+                            ),
+                          }))
+                        }
+                      >
+                        <ArrowDown />
+                      </Button>
+                      <Button
+                        type="button"
+                        size="icon-lg"
+                        variant="destructive"
+                        aria-label={`Remove ${day.name || "day"}`}
+                        disabled={document.days.length === 1}
+                        onClick={() => {
+                          const focusLineage =
+                            document.days[Math.max(0, dayIndex - 1)]?.lineageId;
+                          updateDocument((current) => ({
+                            ...current,
+                            days: current.days.filter(
+                              (_, index) => index !== dayIndex,
+                            ),
+                          }));
+                          if (focusLineage) {
+                            setActiveDayId(focusLineage);
+                            router.push(`/program/edit?day=${focusLineage}`, { scroll: false });
+                          }
+                          requestAnimationFrame(
+                            () =>
+                              focusLineage &&
+                              dayHeadingRefs.current.get(focusLineage)?.focus(),
+                          );
+                        }}
+                      >
+                        <Trash2 />
+                      </Button>
+                    </div>
+                  </div>
+                </CardHeader>
+                <CardContent className="space-y-5">
+                  <div className="grid gap-3 lg:grid-cols-2">
+                    <Field id={`day-${day.lineageId}-name`} label="Day name">
+                      <Input
+                        id={`day-${day.lineageId}-name`}
+                        className="h-11"
+                        value={day.name}
+                        aria-invalid={!day.name.trim()}
+                        onChange={(event) =>
+                          updateDay(dayIndex, (current) => ({
+                            ...current,
+                            name: event.target.value,
+                          }))
+                        }
+                      />
+                    </Field>
+                    <Field id={`day-${day.lineageId}-notes`} label="Day notes">
+                      <Textarea
+                        id={`day-${day.lineageId}-notes`}
+                        value={day.notes ?? ""}
+                        onChange={(event) =>
+                          updateDay(dayIndex, (current) => ({
+                            ...current,
+                            notes: optionalText(event.target.value),
+                          }))
+                        }
+                      />
+                    </Field>
+                  </div>
+
+                  <fieldset className="rounded-lg border bg-muted/20 p-3">
+                    <legend className="px-1 font-medium">Day intent</legend>
+                    <p className="mb-3 text-xs leading-5 text-muted-foreground">
+                      Review the purpose, recognizable identity, useful duration,
+                      fatigue tolerance, and ordering bounds before publication.
+                    </p>
+                    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                      <Field id={`day-${day.lineageId}-primary-outcome`} label="Primary outcome">
+                        <select
+                          id={`day-${day.lineageId}-primary-outcome`}
+                          className="h-10 w-full rounded-lg border border-input bg-background px-3 text-sm"
+                          value={day.intent.primaryOutcome}
+                          onChange={(event) =>
+                            updateDay(dayIndex, (current) => ({
+                              ...current,
+                              intent: {
+                                ...current.intent,
+                                primaryOutcome: event.target
+                                    .value as ProgramDocumentDayV3["intent"]["primaryOutcome"],
+                                secondaryOutcomes:
+                                  current.intent.secondaryOutcomes.filter(
+                                    (value) => value !== event.target.value,
+                                  ),
+                              },
+                            }))
+                          }
+                        >
+                          <option value="strength">Strength</option>
+                          <option value="hypertrophy">Hypertrophy</option>
+                          <option value="skill">Skill</option>
+                          <option value="conditioning">Conditioning</option>
+                          <option value="work_capacity">Work capacity</option>
+                          <option value="recovery">Recovery</option>
+                        </select>
+                      </Field>
+                      <Field id={`day-${day.lineageId}-identity`} label="Recognizable identity">
+                        <select
+                          id={`day-${day.lineageId}-identity`}
+                          className="h-10 w-full rounded-lg border border-input bg-background px-3 text-sm"
+                          value={day.intent.identity.kind}
+                          onChange={(event) =>
+                            updateDay(dayIndex, (current) => ({
+                              ...current,
+                              intent: {
+                                ...current.intent,
+                                identity: {
+                                  ...current.intent.identity,
+                                  kind: event.target
+                                    .value as ProgramDocumentDayV3["intent"]["identity"]["kind"],
+                                  anchorSlotLineageIds:
+                                    event.target.value === "anchor_slots"
+                                      ? current.intent.identity.anchorSlotLineageIds
+                                          .length
+                                        ? current.intent.identity.anchorSlotLineageIds
+                                        : [current.exercises[0].lineageId]
+                                      : current.intent.identity.anchorSlotLineageIds,
+                                },
+                              },
+                            }))
+                          }
+                        >
+                          <option value="anchor_slots">Anchor exercises</option>
+                          <option value="movement_balance">Movement balance</option>
+                          <option value="muscle_emphasis">Muscle emphasis</option>
+                          <option value="skill_practice">Skill practice</option>
+                          <option value="conditioning_focus">Conditioning focus</option>
+                          <option value="recovery_session">Recovery session</option>
+                        </select>
+                      </Field>
+                      <Field id={`day-${day.lineageId}-target-min`} label="Target duration minimum">
+                        <Input
+                          id={`day-${day.lineageId}-target-min`}
+                          type="number"
+                          min={5}
+                          max={600}
+                          inputMode="numeric"
+                          value={day.intent.targetDuration.minMinutes}
+                          onChange={(event) => {
+                            const value = Math.max(5, Math.min(600, Math.trunc(numberFromInput(event.target.value, day.intent.targetDuration.minMinutes))));
+                            updateDay(dayIndex, (current) => ({
+                              ...current,
+                              intent: {
+                                ...current.intent,
+                                targetDuration: {
+                                  minMinutes: value,
+                                  maxMinutes: Math.max(value, current.intent.targetDuration.maxMinutes),
+                                },
+                              },
+                            }));
+                          }}
+                        />
+                      </Field>
+                      <Field id={`day-${day.lineageId}-target-max`} label="Target duration maximum">
+                        <Input
+                          id={`day-${day.lineageId}-target-max`}
+                          type="number"
+                          min={5}
+                          max={600}
+                          inputMode="numeric"
+                          value={day.intent.targetDuration.maxMinutes}
+                          onChange={(event) => {
+                            const value = Math.max(day.intent.targetDuration.minMinutes, Math.min(600, Math.trunc(numberFromInput(event.target.value, day.intent.targetDuration.maxMinutes))));
+                            updateDay(dayIndex, (current) => ({
+                              ...current,
+                              intent: {
+                                ...current.intent,
+                                targetDuration: { ...current.intent.targetDuration, maxMinutes: value },
+                                minimumUsefulDurationMinutes: Math.min(value, current.intent.minimumUsefulDurationMinutes),
+                              },
+                            }));
+                          }}
+                        />
+                      </Field>
+                      <Field id={`day-${day.lineageId}-minimum-useful`} label="Minimum useful duration">
+                        <Input
+                          id={`day-${day.lineageId}-minimum-useful`}
+                          type="number"
+                          min={5}
+                          max={day.intent.targetDuration.maxMinutes}
+                          inputMode="numeric"
+                          value={day.intent.minimumUsefulDurationMinutes}
+                          onChange={(event) =>
+                            updateDay(dayIndex, (current) => ({
+                              ...current,
+                              intent: {
+                                ...current.intent,
+                                minimumUsefulDurationMinutes: Math.max(5, Math.min(current.intent.targetDuration.maxMinutes, Math.trunc(numberFromInput(event.target.value, current.intent.minimumUsefulDurationMinutes)))),
+                              },
+                            }))
+                          }
+                        />
+                      </Field>
+                      <Field id={`day-${day.lineageId}-fatigue`} label="Fatigue tolerance">
+                        <select
+                          id={`day-${day.lineageId}-fatigue`}
+                          className="h-10 w-full rounded-lg border border-input bg-background px-3 text-sm"
+                          value={day.intent.fatigueTolerance}
+                          onChange={(event) =>
+                            updateDay(dayIndex, (current) => ({
+                              ...current,
+                              intent: {
+                                ...current.intent,
+                                fatigueTolerance: event.target
+                                    .value as ProgramDocumentDayV3["intent"]["fatigueTolerance"],
+                              },
+                            }))
+                          }
+                        >
+                          <option value="low">Low</option>
+                          <option value="normal">Normal</option>
+                          <option value="high">High</option>
+                        </select>
+                      </Field>
+                      <Field id={`day-${day.lineageId}-ordering`} label="Ordering policy">
+                        <select
+                          id={`day-${day.lineageId}-ordering`}
+                          className="h-10 w-full rounded-lg border border-input bg-background px-3 text-sm"
+                          value={day.intent.orderingPolicy}
+                          onChange={(event) =>
+                            updateDay(dayIndex, (current) => ({
+                              ...current,
+                              intent: {
+                                ...current.intent,
+                                orderingPolicy: event.target
+                                    .value as ProgramDocumentDayV3["intent"]["orderingPolicy"],
+                              },
+                            }))
+                          }
+                        >
+                          <option value="preserve">Preserve order</option>
+                          <option value="anchors_first">Anchors first</option>
+                          <option value="flexible">Flexible</option>
+                        </select>
+                      </Field>
+                      <Field id={`day-${day.lineageId}-pairing`} label="Pairing policy">
+                        <select
+                          id={`day-${day.lineageId}-pairing`}
+                          className="h-10 w-full rounded-lg border border-input bg-background px-3 text-sm"
+                          value={day.intent.pairingPolicy}
+                          onChange={(event) =>
+                            updateDay(dayIndex, (current) => ({
+                              ...current,
+                              intent: {
+                                ...current.intent,
+                                pairingPolicy: event.target
+                                    .value as ProgramDocumentDayV3["intent"]["pairingPolicy"],
+                              },
+                            }))
+                          }
+                        >
+                          <option value="preserve">Preserve current pairings</option>
+                          <option value="allow_compatible">Allow compatible pairings</option>
+                          <option value="avoid_new">Avoid new pairings</option>
+                        </select>
+                      </Field>
+                    </div>
+                    <div className="mt-3 grid gap-3 lg:grid-cols-2">
+                      <fieldset className="rounded-lg border bg-background p-3">
+                        <legend className="px-1 text-sm font-medium">
+                          Secondary outcomes (optional)
+                        </legend>
+                        <div className="mt-2 flex flex-wrap gap-3 text-sm">
+                          {(["strength", "hypertrophy", "skill", "conditioning", "work_capacity", "recovery"] as const)
+                            .filter((outcome) => outcome !== day.intent.primaryOutcome)
+                            .map((outcome) => (
+                              <label key={outcome} className="flex min-h-11 items-center gap-2">
+                                <input
+                                  type="checkbox"
+                                  checked={day.intent.secondaryOutcomes.includes(outcome)}
+                                  onChange={(event) =>
+                                    updateDay(dayIndex, (current) => ({
+                                      ...current,
+                                      intent: {
+                                        ...current.intent,
+                                        secondaryOutcomes: event.target.checked
+                                          ? [...current.intent.secondaryOutcomes, outcome].slice(0, 3)
+                                          : current.intent.secondaryOutcomes.filter((value) => value !== outcome),
+                                      },
+                                    }))
+                                  }
+                                />
+                                {displayLabel(outcome)}
+                              </label>
+                            ))}
+                        </div>
+                      </fieldset>
+                      {day.intent.identity.kind === "anchor_slots" && (
+                        <fieldset className="rounded-lg border bg-background p-3">
+                          <legend className="px-1 text-sm font-medium">
+                            Identity anchor exercises
+                          </legend>
+                          <div className="mt-2 space-y-1 text-sm">
+                            {day.exercises.map((slot) => (
+                              <label key={slot.lineageId} className="flex min-h-11 items-center gap-2">
+                                <input
+                                  type="checkbox"
+                                  checked={day.intent.identity.anchorSlotLineageIds.includes(slot.lineageId)}
+                                  onChange={(event) =>
+                                    updateDay(dayIndex, (current) => ({
+                                      ...current,
+                                      intent: {
+                                        ...current.intent,
+                                        identity: {
+                                          ...current.intent.identity,
+                                          anchorSlotLineageIds: event.target.checked
+                                            ? [...current.intent.identity.anchorSlotLineageIds, slot.lineageId]
+                                            : current.intent.identity.anchorSlotLineageIds.filter((value) => value !== slot.lineageId),
+                                        },
+                                      },
+                                    }))
+                                  }
+                                />
+                                {exerciseById.get(slot.exerciseId)?.name ?? "Exercise"}
+                              </label>
+                            ))}
+                          </div>
+                        </fieldset>
+                      )}
+                    </div>
+                    <div className="mt-3 grid gap-3 lg:grid-cols-2">
+                      <Field id={`day-${day.lineageId}-intent-note`} label="Intent note (optional)">
+                        <Textarea
+                          id={`day-${day.lineageId}-intent-note`}
+                          value={day.intent.note ?? ""}
+                          onChange={(event) =>
+                            updateDay(dayIndex, (current) => ({
+                              ...current,
+                              intent: { ...current.intent, note: optionalText(event.target.value) },
+                            }))
+                          }
+                        />
+                      </Field>
+                      <Field id={`day-${day.lineageId}-duration-override-note`} label="Duration override (optional)">
+                        <Textarea
+                          id={`day-${day.lineageId}-duration-override-note`}
+                          value={day.intent.durationOverride?.note ?? ""}
+                          placeholder="Explain why this day consistently needs a different range"
+                          onChange={(event) => {
+                            const note = optionalText(event.target.value);
+                            updateDay(dayIndex, (current) => ({
+                              ...current,
+                              intent: {
+                                ...current.intent,
+                                durationOverride: note
+                                  ? {
+                                      minMinutes: current.intent.durationOverride?.minMinutes ?? current.intent.targetDuration.minMinutes,
+                                      maxMinutes: current.intent.durationOverride?.maxMinutes ?? current.intent.targetDuration.maxMinutes,
+                                      note,
+                                    }
+                                  : null,
+                              },
+                            }));
+                          }}
+                        />
+                        {day.intent.durationOverride && (
+                          <div className="mt-2 grid grid-cols-2 gap-2">
+                            <Input
+                              aria-label="Duration override minimum minutes"
+                              type="number"
+                              min={5}
+                              max={600}
+                              inputMode="numeric"
+                              value={day.intent.durationOverride.minMinutes}
+                              onChange={(event) =>
+                                updateDay(dayIndex, (current) => ({
+                                  ...current,
+                                  intent: {
+                                    ...current.intent,
+                                    durationOverride: current.intent.durationOverride
+                                      ? {
+                                          ...current.intent.durationOverride,
+                                          minMinutes: Math.max(5, Math.min(current.intent.durationOverride.maxMinutes, Math.trunc(numberFromInput(event.target.value, current.intent.durationOverride.minMinutes)))),
+                                        }
+                                      : null,
+                                  },
+                                }))
+                              }
+                            />
+                            <Input
+                              aria-label="Duration override maximum minutes"
+                              type="number"
+                              min={5}
+                              max={600}
+                              inputMode="numeric"
+                              value={day.intent.durationOverride.maxMinutes}
+                              onChange={(event) =>
+                                updateDay(dayIndex, (current) => ({
+                                  ...current,
+                                  intent: {
+                                    ...current.intent,
+                                    durationOverride: current.intent.durationOverride
+                                      ? {
+                                          ...current.intent.durationOverride,
+                                          maxMinutes: Math.max(current.intent.durationOverride.minMinutes, Math.min(600, Math.trunc(numberFromInput(event.target.value, current.intent.durationOverride.maxMinutes)))),
+                                        }
+                                      : null,
+                                  },
+                                }))
+                              }
+                            />
+                          </div>
+                        )}
+                      </Field>
+                    </div>
+                  </fieldset>
+
+                  <DayWarmupEditor
+                    day={day}
+                    days={document.days}
+                    onChange={(value) =>
+                      updateDay(dayIndex, (current) => ({
+                        ...current,
+                        warmupNotes: value,
+                      }))
+                    }
+                    onItemsChange={(warmupItems) =>
+                      updateDay(dayIndex, (current) => ({
+                        ...current,
+                        warmupItems,
+                      }))
+                    }
+                    onApply={(targetIds, value, warmupItems) =>
+                      updateDocument((current) => ({
+                        ...current,
+                        days: current.days.map((candidate) =>
+                          targetIds.includes(candidate.lineageId)
+                            ? {
+                                ...candidate,
+                                warmupNotes: value,
+                                warmupItems: candidate.lineageId === day.lineageId
+                                  ? warmupItems
+                                  : warmupItems.map((item) => ({
+                                      ...item,
+                                      key: crypto.randomUUID(),
+                                    })),
+                              }
+                            : candidate,
+                        ),
+                      }))
+                    }
+                  />
+
+                  <div className="space-y-3">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div>
+                        <h3 className="font-semibold">Exercises</h3>
+                        <p className="text-xs text-muted-foreground">
+                          Listed in the order you will perform them.
+                        </p>
+                      </div>
+                      <SupersetControls
+                        day={day}
+                        dayIndex={dayIndex}
+                        pairingDayId={pairingDayId}
+                        pairingSlotIds={pairingSlotIds}
+                        setPairingDayId={setPairingDayId}
+                        setPairingSlotIds={setPairingSlotIds}
+                        updateDay={updateDay}
+                      />
+                    </div>
+                  </div>
+
+                  <section
+                    className="space-y-3"
+                    aria-label={`${day.name} exercises`}
+                  >
+                    {day.exercises.map((slot, slotIndex) => {
+                      const pairing = slot.supersetKey
+                        ? day.supersets.find(
+                            (group) => group.key === slot.supersetKey,
+                          )
+                        : null;
+                      const pairingMembers = pairing
+                        ? day.exercises.filter(
+                            (candidate) =>
+                              candidate.supersetKey === pairing.key,
+                          )
+                        : [];
+                      const pairingPosition = pairingMembers.findIndex(
+                        (candidate) => candidate.lineageId === slot.lineageId,
+                      );
+                      const pairingLabel =
+                        pairingMembers.length === 2
+                          ? "Superset"
+                          : `${pairingMembers.length}-exercise group`;
+                      const pairingNames = pairingMembers.map(
+                        (candidate) =>
+                          exerciseById.get(candidate.exerciseId)?.name ??
+                          "Unavailable exercise",
+                      );
+                      return (
+                      <div
+                        key={slot.lineageId}
+                        className={cn(
+                          "space-y-2",
+                          pairing && "border-l-4 border-violet-500 bg-violet-50/60 px-3 py-2 dark:bg-violet-950/20",
+                          pairing && pairingPosition === 0 && "rounded-t-xl pt-3",
+                          pairing && pairingPosition === pairingMembers.length - 1 && "rounded-b-xl pb-3",
+                        )}
+                      >
+                        {pairing && pairingPosition === 0 && (
+                          <details className="rounded-lg border border-violet-300/70 bg-background/70 p-3">
+                            <summary className="min-h-11 cursor-pointer font-medium">
+                              {pairingLabel}: {pairingNames.join(" + ")}
+                              <span className="mt-1 block text-sm font-normal text-muted-foreground">
+                                Perform these in order for {pairing.plannedRounds ?? "unequal"} rounds, with {formatRestTime(pairing.restBetweenMembersSec)} between members and {formatRestTime(pairing.restBetweenRoundsSec)} after each round.
+                              </span>
+                            </summary>
+                            {pairing.structureStatus === "legacy_unequal" && (
+                              <Alert variant="destructive" className="mt-3">
+                                <CircleAlert />
+                                <AlertTitle>This older group cannot be published yet</AlertTitle>
+                                <AlertDescription>
+                                  Its members have different set counts. Choose one round count for every member to make the sequence unambiguous.
+                                  <Button
+                                    type="button"
+                                    variant="outline"
+                                    className="mt-3 min-h-11"
+                                    onClick={() => {
+                                      const plannedRounds = pairingMembers[0]?.sets ?? 1;
+                                      updateDay(dayIndex, (current) => ({
+                                        ...current,
+                                        supersets: current.supersets.map((group) =>
+                                          group.key === pairing.key
+                                            ? { ...group, structureStatus: "canonical", plannedRounds }
+                                            : group,
+                                        ),
+                                        exercises: current.exercises.map((member) =>
+                                          member.supersetKey === pairing.key
+                                            ? {
+                                                ...resizeProgramSlotSets(member, plannedRounds),
+                                              }
+                                            : member,
+                                        ),
+                                      }));
+                                    }}
+                                  >
+                                    Use {pairingMembers[0]?.sets ?? 1} rounds for every member
+                                  </Button>
+                                </AlertDescription>
+                              </Alert>
+                            )}
+                            <div className="mt-3 space-y-2">
+                              <p className="text-sm font-medium">Member order</p>
+                              {pairingMembers.map((member, memberIndex) => (
+                                <div key={member.lineageId} className="flex min-h-11 items-center gap-2 rounded-lg border px-3 py-2">
+                                  <span className="min-w-0 flex-1 truncate text-sm">
+                                    {memberIndex + 1}. {exerciseById.get(member.exerciseId)?.name ?? "Unavailable exercise"}
+                                  </span>
+                                  <Button type="button" size="icon" variant="outline" className="size-11" aria-label={`Move group member ${memberIndex + 1} up`} disabled={memberIndex === 0} onClick={() => updateDay(dayIndex, (current) => moveProgramGroupMember(current, pairing.key, member.lineageId, -1))}><ArrowUp /></Button>
+                                  <Button type="button" size="icon" variant="outline" className="size-11" aria-label={`Move group member ${memberIndex + 1} down`} disabled={memberIndex === pairingMembers.length - 1} onClick={() => updateDay(dayIndex, (current) => moveProgramGroupMember(current, pairing.key, member.lineageId, 1))}><ArrowDown /></Button>
+                                </div>
+                              ))}
+                            </div>
+                            <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                              <RestTimeControl
+                                id={`superset-${pairing.key}-member-rest`}
+                                label="Rest between members"
+                                value={pairing.restBetweenMembersSec}
+                                onChange={(restBetweenMembersSec) =>
+                                  updateDay(dayIndex, (current) => ({
+                                    ...current,
+                                    supersets: current.supersets.map((item) =>
+                                      item.key === pairing.key
+                                        ? { ...item, restBetweenMembersSec }
+                                        : item,
+                                    ),
+                                  }))
+                                }
+                              />
+                              <div className="w-full max-w-sm">
+                                <RestTimeControl
+                                  id={`superset-${pairing.key}-rest`}
+                                  label="Rest after each round"
+                                  value={pairing.restAfterRoundSec}
+                                  onChange={(restAfterRoundSec) =>
+                                      updateDay(dayIndex, (current) => ({
+                                        ...current,
+                                        supersets: current.supersets.map(
+                                          (item) =>
+                                            item.key === pairing.key
+                                              ? {
+                                                  ...item,
+                                                  restBetweenRoundsSec: restAfterRoundSec,
+                                                  restAfterRoundSec,
+                                                }
+                                              : item,
+                                        ),
+                                      }))
+                                  }
+                                />
+                              </div>
+                            </div>
+                            <div className="mt-3 flex flex-wrap gap-3">
+                              <Button
+                                type="button"
+                                variant="destructive"
+                                className="min-h-11"
+                                onClick={() =>
+                                  updateDay(dayIndex, (current) => ({
+                                    ...current,
+                                    supersets: current.supersets.filter(
+                                      (item) => item.key !== pairing.key,
+                                    ),
+                                    exercises: current.exercises.map(
+                                      (candidate) =>
+                                        candidate.supersetKey === pairing.key
+                                          ? {
+                                              ...candidate,
+                                              supersetKey: null,
+                                              groupMemberOrderIdx: null,
+                                            }
+                                          : candidate,
+                                    ),
+                                  }))
+                                }
+                              >
+                                <Trash2 /> Remove pairing
+                              </Button>
+                            </div>
+                          </details>
+                        )}
+                        {pairingDayId === day.lineageId &&
+                          slot.supersetKey == null && (
+                            <label className="flex min-h-11 cursor-pointer items-center gap-3 rounded-lg border border-primary/30 bg-primary/5 px-3 py-2 font-medium">
+                              <input
+                                type="checkbox"
+                                className="size-5 accent-primary"
+                                checked={pairingSlotIds.includes(slot.lineageId)}
+                                onChange={(event) =>
+                                  setPairingSlotIds((current) =>
+                                    event.target.checked
+                                      ? [...current, slot.lineageId]
+                                      : current.filter(
+                                          (lineageId) =>
+                                            lineageId !== slot.lineageId,
+                                        ),
+                                  )
+                                }
+                              />
+                              Select {exerciseById.get(slot.exerciseId)?.name ?? "exercise"}
+                            </label>
+                          )}
+                        <button
+                          type="button"
+                          className="flex min-h-16 w-full items-center gap-3 rounded-xl border bg-background p-3 text-left hover:bg-muted/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                          aria-expanded={expandedSlotId === slot.lineageId}
+                          aria-controls={`editor-${slot.lineageId}`}
+                          onClick={() =>
+                            setExpandedSlotId((current) =>
+                              current === slot.lineageId ? null : slot.lineageId,
+                            )
+                          }
+                        >
+                          <ExerciseFamilyIcon
+                            family={exerciseById.get(slot.exerciseId)?.family ?? null}
+                            exerciseName={exerciseById.get(slot.exerciseId)?.name ?? "Exercise"}
+                            movementPattern={exerciseById.get(slot.exerciseId)?.movementPattern ?? "conditioning"}
+                          />
+                          <span className="min-w-0 flex-1">
+                            <span className="block truncate font-semibold">
+                              {exerciseById.get(slot.exerciseId)?.name ?? "Unavailable exercise"}
+                            </span>
+                            <span className="block text-xs text-muted-foreground">Exercise {slotIndex + 1}</span>
+                            <span className="mt-1 block text-sm text-muted-foreground">
+                              {slot.sets} sets · {slot.repMin}–{slot.repMax} reps · {formatRestTime(slot.restSec)} · {displayLabel(slot.progressionRuleId)}
+                            </span>
+                          </span>
+                          <span className="text-sm font-medium text-primary">
+                            {expandedSlotId === slot.lineageId ? "Close" : "Edit"}
+                          </span>
+                        </button>
+                        {expandedSlotId === slot.lineageId && <div id={`editor-${slot.lineageId}`}>
+                        <SlotEditor
+                        day={day}
+                        dayIndex={dayIndex}
+                        slot={slot}
+                        slotIndex={slotIndex}
+                        days={document.days}
+                        library={library}
+                        exercise={exerciseById.get(slot.exerciseId)}
+                        onChange={(next) =>
+                          updateDay(dayIndex, (current) => {
+                            const group = next.supersetKey
+                              ? current.supersets.find((item) => item.key === next.supersetKey)
+                              : null;
+                            const setsChanged = next.sets !== current.exercises[slotIndex]?.sets;
+                            return {
+                              ...current,
+                              supersets: group && setsChanged
+                                ? current.supersets.map((item) =>
+                                    item.key === group.key
+                                      ? {
+                                          ...item,
+                                          structureStatus: "canonical",
+                                          plannedRounds: next.sets,
+                                        }
+                                      : item,
+                                  )
+                                : current.supersets,
+                              exercises: current.exercises.map((item, index) => {
+                                if (index === slotIndex) return next;
+                                if (group && setsChanged && item.supersetKey === group.key) {
+                                  return resizeProgramSlotSets(item, next.sets);
+                                }
+                                return item;
+                              }),
+                            };
+                          })
+                        }
+                        onRemove={() => {
+                          updateDay(dayIndex, (current) => ({
+                            ...current,
+                            exercises: current.exercises.filter(
+                              (_, index) => index !== slotIndex,
+                            ),
+                          }));
+                          requestAnimationFrame(() =>
+                            dayHeadingRefs.current.get(day.lineageId)?.focus(),
+                          );
+                        }}
+                        onMove={(direction) =>
+                          updateDay(dayIndex, (current) => ({
+                            ...current,
+                            exercises: moveProgramSlotUnit(
+                              current.exercises,
+                              slot.lineageId,
+                              direction,
+                            ),
+                          }))
+                        }
+                        onMoveToDay={(target) =>
+                          moveSlotToDay(dayIndex, slotIndex, target)
+                        }
+                        onReplace={(exerciseId) =>
+                          updateDay(dayIndex, (current) => ({
+                            ...current,
+                            exercises: current.exercises.map((item, index) =>
+                              index === slotIndex
+                                ? replaceProgramExercise(
+                                    item,
+                                    exerciseId,
+                                    crypto.randomUUID(),
+                                  )
+                                : item,
+                            ),
+                          }))
+                        }
+                        onHeadingRef={(node) => {
+                          if (node)
+                            slotHeadingRefs.current.set(slot.lineageId, node);
+                          else slotHeadingRefs.current.delete(slot.lineageId);
+                        }}
+                        />
+                        </div>}
+                      </div>
+                      );
+                    })}
+                  </section>
+                  <div className="max-w-sm">
+                    <ExercisePicker
+                      items={library}
+                      largeTouchTargets
+                      onSelect={(item) => addExercise(dayIndex, item.id)}
+                      triggerLabel="Add exercise"
+                      title={`Add exercise to ${day.name}`}
+                    />
+                  </div>
+                </CardContent>
+              </Card>
+            ) : null)}
+
+            <Card className="border-dashed">
+              <CardHeader>
+                <CardTitle>
+                  <h2 className="font-semibold">Add a training day</h2>
+                </CardTitle>
+                <CardDescription>
+                  Choose its first exercise so the new day is valid and
+                  autosaves immediately.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="max-w-sm">
+                <ExercisePicker
+                  items={library}
+                  largeTouchTargets
+                  triggerLabel="Choose first exercise"
+                  title="Choose the first exercise for a new day"
+                  onSelect={(item) => addDay(item.id)}
+                />
+              </CardContent>
+            </Card>
+
+            {!documentValidation.success && (
+              <Alert variant="destructive">
+                <CircleAlert />
+                <AlertTitle>Finish the required fields</AlertTitle>
+                <AlertDescription>
+                  {documentValidation.error.issues
+                    .map((issue) => issue.message)
+                    .slice(0, 5)
+                    .join(" ")}
+                </AlertDescription>
+              </Alert>
+            )}
+            <div className="flex flex-col gap-3 rounded-xl border bg-muted/30 p-4 sm:flex-row sm:items-center sm:justify-between">
+              <p className="text-sm text-muted-foreground">
+                Review uses saved revision {revision} and is invalidated by any
+                later edit.
+              </p>
+              <Button
+                type="button"
+                className="min-h-11"
+                disabled={!canReview || reviewing}
+                onClick={() => void requestReview()}
+              >
+                {reviewing ? (
+                  <LoaderCircle className="animate-spin motion-reduce:animate-none" />
+                ) : (
+                  <Check />
+                )}{" "}
+                Review changes
+              </Button>
+            </div>
+    </>
+  );
+});

@@ -1,0 +1,221 @@
+name: Production readiness
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production-readiness-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  postgres-integration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_DB: workout_tracker_test
+          POSTGRES_USER: workout_tracker_test
+          POSTGRES_PASSWORD: local-test-only
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U workout_tracker_test -d workout_tracker_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      TEST_DATABASE_URL: postgresql://workout_tracker_test:local-test-only@127.0.0.1:5432/workout_tracker_test
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Use Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run true parallel PostgreSQL integration tests
+        run: npm run test:integration:postgres
+
+  verify:
+    runs-on: ubuntu-latest
+    container:
+      # Playwright 1.61.1 Noble image, pinned to its reviewed multi-architecture manifest.
+      image: mcr.microsoft.com/playwright@sha256:5b8f294aff9041b7191c34a4bab3ac270157a28774d4b0660e9743297b697e48
+      options: --user 1001
+    timeout-minutes: 60
+    env:
+      PLAYWRIGHT_BROWSERS_PATH: /ms-playwright
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Use Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Replay migrations from zero
+        run: npm run db:verify
+
+      - name: Rehearse upgrade from the current production schema
+        run: npm run db:verify-production-upgrade
+
+      - name: Reject skipped or focused tests
+        run: npm run test:selection
+
+      - name: Validate current documentation links
+        run: npm run docs:check
+
+      - name: Run unit, database, race, failure, and coverage checks
+        run: npm run test:coverage
+
+      - name: Type check
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Build production application
+        run: npm run build
+
+      - name: Recheck generated route types
+        run: npm run typecheck
+
+      - name: Review production dependencies
+        run: npm run audit:check
+
+      - name: Verify exact Playwright browser image
+        run: |
+          version="$(node -p "require('@playwright/test/package.json').version")"
+          test "${version}" = "1.61.1"
+          node -e 'const fs = require("fs"); const { chromium, firefox, webkit } = require("playwright"); for (const [name, browser] of Object.entries({ chromium, firefox, webkit })) { const executable = browser.executablePath(); fs.accessSync(executable, fs.constants.X_OK); console.log(`${name}: ${executable}`); }'
+          npx playwright install --list
+
+      - name: Run signed-in browser smoke tests
+        id: browser-smoke
+        continue-on-error: true
+        run: npm run test:e2e
+
+      - name: Run complete History management browser matrix
+        id: browser-history
+        continue-on-error: true
+        run: npm run test:e2e:history-calendar
+
+      - name: Run focused History workspace browser matrix
+        id: browser-history-workspace
+        continue-on-error: true
+        run: npm run test:e2e:history-workspace
+
+      - name: Run complete Program editor browser lifecycle
+        id: browser-program-lifecycle
+        continue-on-error: true
+        run: npm run test:e2e:program-editor
+
+      - name: Run Program editor cross-browser accessibility checks
+        id: browser-program-cross-browser
+        continue-on-error: true
+        run: npm run test:e2e:program-editor-cross-browser
+
+      - name: Verify Program draft review recovery on desktop and mobile
+        id: browser-program-review-recovery
+        continue-on-error: true
+        run: npm run test:e2e:program-editor-review-recovery
+
+      - name: Verify the Program editor disabled rollout state
+        id: browser-program-disabled
+        continue-on-error: true
+        run: npm run test:e2e:program-editor-disabled
+
+      - name: Verify production browser-security headers
+        id: browser-security-headers
+        continue-on-error: true
+        run: npm run test:e2e:production-headers
+
+      - name: Verify failed-set recovery remains reachable
+        id: browser-failed-set-recovery
+        continue-on-error: true
+        run: npx playwright test -c playwright.failed-set-recovery.config.ts
+
+      - name: Verify plate-loaded machine setup and live guidance
+        id: browser-plate-machine-guidance
+        continue-on-error: true
+        run: npx playwright test -c playwright.plate-machine-guidance.config.ts
+
+      - name: Verify unrestricted replacement and mobile keyboard safety
+        id: browser-replacement-mobile
+        continue-on-error: true
+        run: npx playwright test -c playwright.replacement-mobile.config.ts
+
+      - name: Verify superset presentation and equipment preparation
+        id: browser-superset-prep
+        continue-on-error: true
+        run: npm run test:e2e:superset-prep
+
+      - name: Verify active-workout exercise addition
+        id: browser-active-workout-add-exercise
+        continue-on-error: true
+        run: npm run test:e2e:active-workout-add-exercise
+
+      - name: Require every browser suite
+        if: ${{ always() }}
+        env:
+          BROWSER_SMOKE: ${{ steps.browser-smoke.outcome }}
+          BROWSER_HISTORY: ${{ steps.browser-history.outcome }}
+          BROWSER_HISTORY_WORKSPACE: ${{ steps.browser-history-workspace.outcome }}
+          BROWSER_PROGRAM_LIFECYCLE: ${{ steps.browser-program-lifecycle.outcome }}
+          BROWSER_PROGRAM_CROSS_BROWSER: ${{ steps.browser-program-cross-browser.outcome }}
+          BROWSER_PROGRAM_REVIEW_RECOVERY: ${{ steps.browser-program-review-recovery.outcome }}
+          BROWSER_PROGRAM_DISABLED: ${{ steps.browser-program-disabled.outcome }}
+          BROWSER_SECURITY_HEADERS: ${{ steps.browser-security-headers.outcome }}
+          BROWSER_FAILED_SET_RECOVERY: ${{ steps.browser-failed-set-recovery.outcome }}
+          BROWSER_PLATE_MACHINE_GUIDANCE: ${{ steps.browser-plate-machine-guidance.outcome }}
+          BROWSER_REPLACEMENT_MOBILE: ${{ steps.browser-replacement-mobile.outcome }}
+          BROWSER_SUPERSET_PREP: ${{ steps.browser-superset-prep.outcome }}
+          BROWSER_ACTIVE_WORKOUT_ADD_EXERCISE: ${{ steps.browser-active-workout-add-exercise.outcome }}
+        run: |
+          failed=0
+          for result in \
+            "signed-in smoke:${BROWSER_SMOKE}" \
+            "History management:${BROWSER_HISTORY}" \
+            "History workspace:${BROWSER_HISTORY_WORKSPACE}" \
+            "Program lifecycle:${BROWSER_PROGRAM_LIFECYCLE}" \
+            "Program cross-browser:${BROWSER_PROGRAM_CROSS_BROWSER}" \
+            "Program review recovery:${BROWSER_PROGRAM_REVIEW_RECOVERY}" \
+            "Program disabled:${BROWSER_PROGRAM_DISABLED}" \
+            "security headers:${BROWSER_SECURITY_HEADERS}" \
+            "failed-set recovery:${BROWSER_FAILED_SET_RECOVERY}" \
+            "plate-machine guidance:${BROWSER_PLATE_MACHINE_GUIDANCE}" \
+            "replacement mobile keyboard:${BROWSER_REPLACEMENT_MOBILE}" \
+            "superset equipment preparation:${BROWSER_SUPERSET_PREP}" \
+            "active-workout exercise addition:${BROWSER_ACTIVE_WORKOUT_ADD_EXERCISE}"
+          do
+            name="${result%%:*}"
+            outcome="${result#*:}"
+            if [ "${outcome}" != "success" ]; then
+              echo "::error::${name} browser suite finished with ${outcome}."
+              failed=1
+            fi
+          done
+          exit "${failed}"

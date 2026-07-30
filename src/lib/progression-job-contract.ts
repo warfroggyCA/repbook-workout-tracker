@@ -1,0 +1,1 @@
+export const PROGRESSION_JOB_MAX_ATTEMPTS = 5;

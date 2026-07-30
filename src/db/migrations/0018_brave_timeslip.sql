@@ -1,0 +1,1 @@
+ALTER TABLE "session_exercises" ADD CONSTRAINT "session_exercises_substituted_for_exercise_id_exercises_id_fk" FOREIGN KEY ("substituted_for_exercise_id") REFERENCES "public"."exercises"("id") ON DELETE restrict ON UPDATE no action;

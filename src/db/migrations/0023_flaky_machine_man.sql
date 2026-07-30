@@ -1,0 +1,2 @@
+ALTER TABLE "recommendations" DROP CONSTRAINT "recommendations_load_unit_check";--> statement-breakpoint
+ALTER TABLE "recommendations" ADD CONSTRAINT "recommendations_load_unit_check" CHECK ("recommendations"."payload"->>'kind' <> 'load_change' OR COALESCE("recommendations"."payload"->>'loadUnit' IN ('lb', 'kg'), false));

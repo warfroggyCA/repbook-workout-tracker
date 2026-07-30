@@ -1,0 +1,6 @@
+CREATE INDEX "fatigue_logs_active_user_created_idx" ON "fatigue_logs" USING btree ("user_id","created_at") WHERE "fatigue_logs"."archived_at" IS NULL;--> statement-breakpoint
+CREATE INDEX "pain_logs_active_session_idx" ON "pain_logs" USING btree ("session_id") WHERE "pain_logs"."archived_at" IS NULL AND "pain_logs"."session_id" IS NOT NULL;--> statement-breakpoint
+CREATE INDEX "session_exercises_slot_session_idx" ON "session_exercises" USING btree ("planned_from_template_exercise_id","session_id") WHERE "session_exercises"."planned_from_template_exercise_id" IS NOT NULL;--> statement-breakpoint
+CREATE INDEX "workout_sessions_active_history_idx" ON "workout_sessions" USING btree ("user_id","local_date","started_at") WHERE "workout_sessions"."archived_at" IS NULL AND "workout_sessions"."status" IN ('completed', 'abandoned');--> statement-breakpoint
+CREATE INDEX "health_activities_active_user_started_idx" ON "health_activities" USING btree ("user_id","started_at") WHERE "health_activities"."archived_at" IS NULL;--> statement-breakpoint
+CREATE INDEX "recommendations_active_slot_state_idx" ON "recommendations" USING btree ("user_id","source_template_exercise_id","decided_at") WHERE "recommendations"."archived_at" IS NULL AND "recommendations"."source_template_exercise_id" IS NOT NULL;

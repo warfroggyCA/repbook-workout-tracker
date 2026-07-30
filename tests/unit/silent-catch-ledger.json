@@ -1,0 +1,14 @@
+{
+  "src/services/activities.ts": [
+    "Intl throws for an invalid timezone; the Zod refinement intentionally converts that into a validation failure."
+  ],
+  "src/services/coaching.ts": [
+    "Malformed legacy coaching JSON is treated as an unreadable optional review instead of failing the surrounding History read."
+  ],
+  "src/services/export.ts": [
+    "Malformed stored assistant JSON exports with empty structured answer columns while preserving the durable raw row fields."
+  ],
+  "src/services/live-coaching.ts": [
+    "Malformed completed-answer JSON yields no structured answer while the durable message remains available for status display."
+  ]
+}

@@ -1,0 +1,107 @@
+import "server-only";
+
+import { sql } from "drizzle-orm";
+import type { Db } from "@/db";
+import { resultRows } from "@/db/result";
+import type { ProgramDocument } from "@/lib/program-document";
+import type { ProgramPreflightContext } from "@/lib/program-preflight";
+import { getLibraryWithAvailability } from "@/services/routine-import";
+import { MAX_ANALYTICS_WORKOUT_DURATION_MINUTES } from "@/lib/workout-duration-quality";
+
+export async function loadProgramPreflightContext(
+  db: Db,
+  userId: string,
+  document: ProgramDocument,
+): Promise<ProgramPreflightContext> {
+  const dayLineages = document.days.map((day) => day.lineageId);
+  const exerciseIds = [...new Set(document.days.flatMap((day) => day.exercises.map((slot) => slot.exerciseId)))];
+  const [library, durationResult, painResult] = await Promise.all([
+    getLibraryWithAvailability(db, userId),
+    db.execute(sql`
+      WITH eligible AS (
+        SELECT template.lineage_id,
+               EXTRACT(EPOCH FROM (session.finished_at - session.started_at)) / 60.0 AS minutes,
+               row_number() OVER (
+                 PARTITION BY template.lineage_id
+                 ORDER BY session.finished_at DESC, session.id DESC
+               ) AS recency
+        FROM workout_sessions session
+        JOIN workout_templates template ON template.id = session.template_id
+        JOIN program_versions version ON version.id = template.program_version_id
+        JOIN programs program ON program.id = version.program_id
+        WHERE session.user_id = ${userId}::uuid
+          AND program.user_id = ${userId}::uuid
+          AND session.status = 'completed'
+          AND session.archived_at IS NULL
+          AND NOT session.exclude_duration_from_analytics
+          AND session.finished_at IS NOT NULL
+          AND session.finished_at > session.started_at
+          AND EXTRACT(EPOCH FROM (session.finished_at - session.started_at)) / 60.0 <=
+            ${MAX_ANALYTICS_WORKOUT_DURATION_MINUTES}
+          AND template.lineage_id IN (${sql.join(dayLineages.map((id) => sql`${id}::uuid`), sql`, `)})
+      )
+      SELECT lineage_id, minutes
+      FROM eligible
+      WHERE recency <= 8
+      ORDER BY lineage_id, recency DESC
+    `),
+    db.execute(sql`
+      SELECT exercise_id, count(*)::int AS evidence_count
+      FROM pain_logs
+      WHERE user_id = ${userId}::uuid
+        AND archived_at IS NULL
+        AND exercise_id IS NOT NULL
+        AND exercise_id IN (${sql.join(exerciseIds.map((id) => sql`${id}::uuid`), sql`, `)})
+        AND created_at >= now() - interval '14 days'
+      GROUP BY exercise_id
+    `),
+  ]);
+
+  const libraryById = new Map(library.map((exercise) => [exercise.id, exercise]));
+  const unavailableSlotLineageIds = new Set<string>();
+  const avoidedSlotLineageIds = new Set<string>();
+  const cautiousSlotLineageIds = new Set<string>();
+  const painByExercise = new Map(
+    resultRows(painResult).map((row) => [String(row.exercise_id), Number(row.evidence_count)]),
+  );
+  const painEvidenceBySlot: Record<string, number> = {};
+
+  for (const day of document.days) {
+    for (const slot of day.exercises) {
+      const exercise = libraryById.get(slot.exerciseId);
+      if (!exercise) {
+        unavailableSlotLineageIds.add(slot.lineageId);
+      } else if (!exercise.available) {
+        if (exercise.unavailableReason === "blocked by current constraints") {
+          avoidedSlotLineageIds.add(slot.lineageId);
+        } else {
+          unavailableSlotLineageIds.add(slot.lineageId);
+        }
+      }
+      if ((exercise?.cautionBodyParts.length ?? 0) > 0) {
+        cautiousSlotLineageIds.add(slot.lineageId);
+      }
+      const painCount = painByExercise.get(slot.exerciseId) ?? 0;
+      if (painCount > 0) painEvidenceBySlot[slot.lineageId] = painCount;
+    }
+  }
+
+  const comparableDurationsByDay: Record<string, number[]> = {};
+  for (const row of resultRows(durationResult)) {
+    const lineageId = String(row.lineage_id);
+    const minutes = Number(row.minutes);
+    if (!Number.isFinite(minutes)) continue;
+    (comparableDurationsByDay[lineageId] ??= []).push(minutes);
+  }
+
+  return {
+    comparableDurationsByDay,
+    unavailableSlotLineageIds,
+    avoidedSlotLineageIds,
+    cautiousSlotLineageIds,
+    painEvidenceBySlot,
+    equipmentEvidenceCount: library.length,
+    constraintEvidenceCount:
+      avoidedSlotLineageIds.size + cautiousSlotLineageIds.size,
+  };
+}

@@ -1,0 +1,56 @@
+{
+  "schemaVersion": 4,
+  "measuredAt": "2026-07-13",
+  "productionReadOnlyBaseline": {
+    "dashboard": { "queries": 1, "durationMs": 321.1, "bytes": 761 },
+    "historyAll": { "queries": 2, "durationMs": 376.4, "bytes": 71095 },
+    "calendarAll": { "queries": 2, "durationMs": 110.2, "bytes": 45922 }
+  },
+  "phase1RegressionBudgets": {
+    "largeHistoryFixture": { "sessions": 250, "sets": 1000, "maxDurationMs": 10000 },
+    "browserWorkoutFlow": { "maxDurationMs": 30000 },
+    "coverage": { "statements": 50, "branches": 50, "functions": 60, "lines": 52 }
+  },
+  "finalBudgets": {
+    "dashboard": {
+      "maxQueries": 1,
+      "maxReturnedRows": 1,
+      "maxWeeks": 8,
+      "maxRecentPRs": 3
+    },
+    "todayData": { "maxQueries": 6 },
+    "todayPage": { "maxQueries": 9 },
+    "historyPage": {
+      "maxQueries": 4,
+      "maxRecentSessions": 12,
+      "maxWeeklyPoints": 12
+    },
+    "calendarVisibleRange": { "maxQueries": 1, "maxDays": 366 },
+    "progressionBatch": {
+      "maxReadQueries": 11,
+      "maxHistoricalExposuresPerSlot": 4
+    },
+    "hevyMaximumAccepted": {
+      "rows": 25000,
+      "maxDurationMs": 5000,
+      "maxHeapGrowthBytes": 134217728
+    },
+    "snapshotLifecycle": {
+      "maxRecentAutomatic": 50,
+      "dailyCoverageDays": 30,
+      "weeklyCoverageDays": 90,
+      "failedAutomaticDays": 7,
+      "staleCreatingHours": 2,
+      "orphanGraceDays": 7,
+      "maxDeletesPerRun": 100
+    },
+    "largeHistoryFixture": {
+      "sessions": 2500,
+      "sets": 7500,
+      "maxDurationMs": 10000,
+      "maxHeapGrowthBytes": 33554432,
+      "maxPayloadGrowthRatioFrom10xHistory": 2
+    },
+    "browserWorkoutFlow": { "maxDurationMs": 15000 }
+  }
+}

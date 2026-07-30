@@ -1,0 +1,2 @@
+ALTER TABLE "completed_sets" ALTER COLUMN "weight" SET DATA TYPE double precision;--> statement-breakpoint
+CREATE UNIQUE INDEX "history_import_batches_confirmed_hash_uq" ON "history_import_batches" USING btree ("user_id","file_hash") WHERE "history_import_batches"."status" = 'confirmed';

@@ -1,0 +1,33 @@
+import { renderToStaticMarkup } from "react-dom/server";
+import { describe, expect, it, vi } from "vitest";
+import {
+  BottomTabs,
+  navigationItemIsActive,
+} from "@/components/nav/bottom-tabs";
+
+vi.mock("next/navigation", () => ({
+  usePathname: () => "/today",
+}));
+
+describe("BottomTabs hydration", () => {
+  it("renders a stable inactive server fallback even when the browser pathname is already active", () => {
+    const html = renderToStaticMarkup(
+      <BottomTabs
+        userName="Demo Owner"
+        userEmail="owner@example.com"
+        collapsed={false}
+        onCollapseToggle={() => undefined}
+      />,
+    );
+
+    expect(html).not.toContain('aria-current="page"');
+    expect(html).not.toContain("absolute top-0 h-0.5 w-8");
+  });
+
+  it("preserves exact and nested active navigation behavior after hydration", () => {
+    expect(navigationItemIsActive("/today", "/today")).toBe(true);
+    expect(navigationItemIsActive("/history/session-id", "/history")).toBe(true);
+    expect(navigationItemIsActive("/programming", "/program")).toBe(false);
+    expect(navigationItemIsActive(null, "/today")).toBe(false);
+  });
+});

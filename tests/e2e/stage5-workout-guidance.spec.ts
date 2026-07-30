@@ -1,0 +1,529 @@
+import { expect, test, type Locator, type Page } from "@playwright/test";
+import { mkdir, writeFile } from "node:fs/promises";
+import { resolve } from "node:path";
+import {
+  installNextDevelopmentRefreshControl,
+  waitForEquipmentSelectionsToSettle,
+  waitForHydratedReactHandler,
+  waitForHydratedServerAction,
+} from "../helpers/react-readiness";
+
+const runId =
+  process.env.STAGE5_RUN_ID ?? "remediation-2026-07-22-stage5-r16";
+const evidenceDirectory = resolve("output/playwright", runId, "evidence");
+const captureEvidence = process.env.STAGE5_CAPTURE_EVIDENCE === "1";
+
+test.describe.configure({ mode: "serial" });
+
+test.beforeAll(async () => {
+  if (captureEvidence) await mkdir(evidenceDirectory, { recursive: true });
+});
+
+async function screenshot(page: Page, name: string) {
+  if (!captureEvidence) return;
+  await page.screenshot({
+    path: resolve(evidenceDirectory, name),
+    fullPage: false,
+  });
+}
+
+async function locatorScreenshot(locator: Locator, name: string) {
+  if (!captureEvidence) return;
+  await locator.screenshot({ path: resolve(evidenceDirectory, name) });
+}
+
+async function signIn(page: Page) {
+  await installNextDevelopmentRefreshControl(page);
+  await page.goto("/sign-in");
+  await page.waitForLoadState("networkidle");
+  await page
+    .getByPlaceholder("allowlisted email")
+    .fill("owner@example.com");
+  const login = page.getByRole("button", { name: "Dev login", exact: true });
+  await waitForHydratedServerAction(login);
+  await login.click();
+  await expect(page).toHaveURL(/\/today$/);
+}
+
+async function startProgramDay(
+  page: Page,
+  dayName: string,
+  settleEquipment = true,
+) {
+  const primaryHeading = page.getByRole("heading", {
+    name: dayName,
+    exact: true,
+  });
+  if ((await primaryHeading.count()) > 0) {
+    const start = page.getByRole("button", {
+      name: "Train as planned",
+      exact: true,
+    });
+    await waitForHydratedServerAction(start);
+    await start.click();
+  } else {
+    const alternatives = page.getByTestId("alternate-program-days");
+    await alternatives.locator("summary").click();
+    const start = alternatives.getByRole("button", {
+      name: new RegExp(dayName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")),
+    });
+    await waitForHydratedServerAction(start);
+    await start.click();
+  }
+  await expect(page).toHaveURL(/\/session\/[0-9a-f-]+$/);
+  await expect(
+    page.getByRole("heading", { name: dayName, exact: true }),
+  ).toBeVisible();
+  if (settleEquipment) {
+    await waitForEquipmentSelectionsToSettle(page);
+  }
+}
+
+async function skipCurrentSet(dock: Locator) {
+  const page = dock.page();
+  const progress = page.getByRole("region", {
+    name: "Workout progress and upcoming work",
+  });
+  const before = await progress.textContent();
+  const currentCard = page.getByTestId("current-exercise-card");
+  const skipSet = currentCard.getByRole("button", {
+    name: "Skip set",
+    exact: true,
+  });
+  if ((await skipSet.count()) === 0) {
+    await dock.locator("button").first().click();
+  }
+  await currentCard
+    .getByRole("button", { name: "Skip set", exact: true })
+    .click();
+  const dialog = page.getByRole("dialog", { name: /^Skip set / });
+  await dialog.getByLabel("Reason").selectOption("time");
+  await dialog.getByRole("button", { name: "Skip item", exact: true }).click();
+  await expect(dialog).toHaveCount(0);
+  await expect
+    .poll(async () => await progress.textContent())
+    .not.toBe(before);
+}
+
+async function expectNoHorizontalOverflow(page: Page) {
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          document.documentElement.scrollWidth -
+          document.documentElement.clientWidth,
+      ),
+    )
+    .toBeLessThanOrEqual(1);
+}
+
+function isExpectedOptimizedRequestCancellation(failure: string) {
+  if (!failure.endsWith(" — net::ERR_ABORTED")) return false;
+  return (
+    /^POST http:\/\/[^/]+\/(?:sign-in|today|session\/[0-9a-f-]+) — /.test(
+      failure,
+    ) ||
+    (/^GET http:\/\/[^/]+\//.test(failure) && failure.includes("_rsc="))
+  );
+}
+
+async function waitForSetSkippedNoticesToSettle(page: Page) {
+  await expect(page.getByText("Set skipped", { exact: true })).toHaveCount(0, {
+    timeout: 15_000,
+  });
+}
+
+async function discardWorkout(page: Page) {
+  await page.getByRole("button", { name: "Finish", exact: true }).click();
+  const finish = page.getByRole("dialog", { name: "Finish workout" });
+  await finish
+    .getByRole("button", { name: "Discard workout", exact: true })
+    .click();
+  const confirmation = page.getByRole("dialog", { name: /^Discard .+\?$/ });
+  await confirmation
+    .getByRole("button", { name: "Confirm discard", exact: true })
+    .click();
+  await expect(page).toHaveURL(/\/today$/);
+}
+
+test("keeps Stage 5 guidance truthful, persistent, and usable on narrow mobile screens", async ({
+  page,
+}) => {
+  const browserErrors: string[] = [];
+  const requestFailures: string[] = [];
+  const httpErrors: string[] = [];
+  page.on("pageerror", (error) => browserErrors.push(error.message));
+  page.on("console", (message) => {
+    if (
+      message.type() === "error" &&
+      !message.text().startsWith("Failed to load resource:")
+    ) {
+      browserErrors.push(message.text());
+    }
+  });
+  page.on("requestfailed", (request) => {
+    requestFailures.push(
+      `${request.method()} ${request.url()} — ${request.failure()?.errorText ?? "failed"}`,
+    );
+  });
+  page.on("response", (response) => {
+    if (response.status() >= 400) {
+      httpErrors.push(
+        `${response.status()} ${response.request().method()} ${response.url()}`,
+      );
+    }
+  });
+
+  await signIn(page);
+  await page.goto("/settings");
+  const visualOnly = page.getByRole("radio", {
+    name: /Visual only/,
+  });
+  await expect(visualOnly).toHaveAttribute("aria-checked", "true");
+  await page
+    .getByRole("button", { name: "Test selected cue", exact: true })
+    .click();
+  await expect(
+    page.getByText(
+      "Visual ready cues only. No sound or vibration is requested.",
+      { exact: true },
+    ),
+  ).toBeVisible();
+  await page.getByRole("radio", { name: /Extra large/ }).click();
+  await expect(
+    page.getByText("Saved to your profile.", { exact: true }),
+  ).toBeVisible();
+
+  await page.setViewportSize({ width: 440, height: 956 });
+  await page.goto("/today");
+  await startProgramDay(page, "Day B — Hinge");
+
+  const dock = page.getByTestId("current-exercise-card");
+  const statusBar = page.getByRole("complementary", { name: "Workout status" });
+  const guidance = page.getByRole("region", {
+    name: "Workout progress and upcoming work",
+  });
+  await expect(guidance).toContainText("0/14");
+  await expect(statusBar).toContainText("Romanian Deadlift");
+  await expect(statusBar).toContainText("Set 1 of 3");
+  await expect(guidance).toContainText("Next: Romanian Deadlift, set 2");
+
+  let releaseSave!: () => void;
+  const saveMayFinish = new Promise<void>((resolve) => {
+    releaseSave = resolve;
+  });
+  let saveStarted = false;
+  await page.route("**/session/**", async (route) => {
+    const postData = route.request().postData() ?? "";
+    if (
+      !saveStarted &&
+      route.request().method() === "POST" &&
+      route.request().headers()["next-action"] &&
+      postData.includes('"setNo"')
+    ) {
+      saveStarted = true;
+      await saveMayFinish;
+    }
+    await route.continue();
+  });
+  const firstLogSet = dock.getByRole("button", {
+    name: "Log set",
+    exact: true,
+  });
+  await waitForHydratedReactHandler(firstLogSet);
+  await firstLogSet.click();
+  await expect.poll(() => saveStarted).toBe(true);
+  await expect(
+    statusBar.getByText(/Saving/, { exact: false }),
+  ).toBeVisible();
+  await expect(guidance).toContainText("0/14");
+  releaseSave();
+  await expect(guidance).toContainText("1/14");
+  await expect(statusBar).toContainText("Resting");
+  await page.unrouteAll({ behavior: "wait" });
+  await expect
+    .poll(() =>
+      statusBar.evaluate((element) => ({
+        overflow: element.scrollWidth - element.clientWidth,
+        offset: element.scrollLeft,
+      })),
+    )
+    .toEqual({ overflow: 0, offset: 0 });
+  await expect
+    .poll(() =>
+      statusBar.evaluate((element) => {
+        const box = element.getBoundingClientRect();
+        return {
+          left: Math.round(box.left),
+          rightGap: Math.round(window.innerWidth - box.right),
+        };
+      }),
+    )
+    .toEqual({ left: 0, rightGap: 0 });
+  await expectNoHorizontalOverflow(page);
+  await expect.poll(() => page.evaluate(() => window.scrollX)).toBe(0);
+  await screenshot(page, "01-save-acknowledgement-starts-progress-and-rest.png");
+
+  const rest = statusBar.getByLabel("Rest timer");
+  await expect(rest).toBeVisible();
+  const decreaseRest = rest.getByRole("button", { name: "Decrease rest by 15 seconds", exact: true });
+  for (let index = 0; index < 8; index += 1) await decreaseRest.click();
+  await page.reload({ waitUntil: "domcontentloaded" });
+  const reloadedDock = page.getByRole("complementary", { name: "Workout status" });
+  await expect(reloadedDock.getByLabel("Rest timer")).toBeVisible();
+  await expect(reloadedDock).toContainText("Ready", {
+    timeout: 40_000,
+  });
+  await expect(
+    reloadedDock.getByRole("button", {
+      name: "Dismiss rest timer",
+      exact: true,
+    }),
+  ).toBeVisible();
+  await page.reload({ waitUntil: "domcontentloaded" });
+  const persistentDock = page.getByRole("complementary", { name: "Workout status" });
+  await expect(persistentDock).toContainText("Ready");
+
+  await page.setViewportSize({ width: 320, height: 700 });
+  await expectNoHorizontalOverflow(page);
+  await expect(
+    persistentDock.getByRole("button", {
+      name: "Dismiss rest timer",
+      exact: true,
+    }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("region", { name: "Workout progress and upcoming work" })
+      .getByText(/Next: Romanian Deadlift, set 3/),
+  ).toBeVisible();
+  const collapsedMetrics = await persistentDock.evaluate((element) => {
+    const navigation = document.querySelector("nav.fixed");
+    const primary = Array.from(element.querySelectorAll("button")).filter(
+      (button) =>
+        button.textContent?.trim() === "Dismiss rest timer" ||
+        button.textContent?.trim() === "Finish",
+    );
+    return {
+      dockBottom: element.getBoundingClientRect().bottom,
+      navigationTop:
+        navigation?.getBoundingClientRect().top ?? Number.POSITIVE_INFINITY,
+      primary: primary.map((button) => {
+        const box = button.getBoundingClientRect();
+        return {
+          label: button.textContent?.trim() ?? "",
+          width: box.width,
+          height: box.height,
+          bottom: box.bottom,
+        };
+      }),
+    };
+  });
+  expect(collapsedMetrics.dockBottom).toBeLessThanOrEqual(
+    collapsedMetrics.navigationTop + 1,
+  );
+  expect(collapsedMetrics.primary).toHaveLength(2);
+  expect(collapsedMetrics.primary.every((item) => item.width >= 44)).toBe(true);
+  expect(collapsedMetrics.primary.every((item) => item.height >= 44)).toBe(true);
+  expect(
+    collapsedMetrics.primary.every(
+      (item) => item.bottom <= collapsedMetrics.navigationTop + 1,
+    ),
+  ).toBe(true);
+  await screenshot(page, "02-ready-state-collapsed-320-extra-large.png");
+
+  await persistentDock
+    .getByRole("button", { name: "Dismiss rest timer", exact: true })
+    .click();
+  await skipCurrentSet(persistentDock);
+  await expect(
+    page.getByRole("region", {
+      name: "Workout progress and upcoming work",
+    }),
+  ).toContainText("1/14");
+  await expect(
+    page.getByRole("region", {
+      name: "Workout progress and upcoming work",
+    }),
+  ).toContainText("1 skipped");
+
+  // Move through the remaining early Day B ledger without inventing performed
+  // work. The actual upcoming occurrence then owns the EZ-curl preparation cue.
+  for (let index = 0; index < 9; index += 1) {
+    await skipCurrentSet(persistentDock);
+  }
+  const prepareNext = page.getByRole("region", {
+    name: "Workout progress and upcoming work",
+  });
+  await expect(prepareNext).toContainText("EZ curl bar (18 lb)");
+  await expect(prepareNext).toContainText("18 lb");
+  await expect(prepareNext).toContainText("Not loadable — nearest lower 38 lb");
+  await expect(prepareNext).toContainText("upper 43 lb");
+  await waitForSetSkippedNoticesToSettle(page);
+  await prepareNext.scrollIntoViewIfNeeded();
+  await screenshot(page, "03-upcoming-ez-curl-preparation-is-18lb.png");
+
+  await skipCurrentSet(persistentDock);
+  await expect(page.getByTestId("current-exercise-card").getByRole("heading", { level: 2 })).toHaveText(
+    "EZ-Bar Curl",
+  );
+  await page.getByTestId("current-exercise-card")
+    .getByRole("button", { name: "View alternatives", exact: true }).click();
+  const alternatives = page.getByRole("dialog", {
+    name: "Use an alternative for this workout",
+  });
+  await alternatives
+    .getByRole("button", { name: "Discomfort", exact: true })
+    .click();
+  await alternatives
+    .getByRole("button", { name: "Browse alternatives", exact: true })
+    .click();
+  const picker = page.getByRole("dialog", {
+    name: "Alternatives to EZ-Bar Curl",
+  });
+  if (
+    (await picker.getByRole("button", { name: /View details for/ }).count()) ===
+    0
+  ) {
+    const family = picker
+      .getByRole("button", { name: /\d+ variants?$/ })
+      .first();
+    await family.evaluate((element) =>
+      element.scrollIntoView({ block: "center" }),
+    );
+    await family.click({ timeout: 10_000 });
+  }
+  const details = picker
+    .getByRole("button", { name: /View details for/ })
+    .first();
+  await details.evaluate((element) =>
+    element.scrollIntoView({ block: "center" }),
+  );
+  await details.click({ timeout: 10_000 });
+  const useAlternative = picker.getByRole("button", {
+    name: "Use for this workout",
+    exact: true,
+  });
+  await useAlternative.evaluate((element) =>
+    element.scrollIntoView({ block: "center" }),
+  );
+  await useAlternative.click({ timeout: 10_000 });
+  const postSwapGuidance = page.getByRole("region", {
+    name: "Workout progress and upcoming work",
+  });
+  await expect(postSwapGuidance).not.toContainText(/Per side:/);
+  await expect(postSwapGuidance).not.toContainText("EZ curl bar (18 lb)");
+  await expect(alternatives).toHaveCount(0);
+  await waitForSetSkippedNoticesToSettle(page);
+  const substitutedPreparation = postSwapGuidance;
+  await expect(substitutedPreparation).toContainText("Dumbbells");
+  await expect(substitutedPreparation).not.toContainText(/EZ curl bar|Per side|Empty bar/);
+  await locatorScreenshot(
+    substitutedPreparation,
+    "04-substitution-suppresses-stale-precision.png",
+  );
+
+  await discardWorkout(page);
+  await page.setViewportSize({ width: 440, height: 956 });
+  let releaseEquipment!: () => void;
+  const equipmentMayFinish = new Promise<void>((resolve) => {
+    releaseEquipment = resolve;
+  });
+  let equipmentSelectionStarted = false;
+  await page.route("**/session/**", async (route) => {
+    const postData = route.request().postData() ?? "";
+    if (
+      !equipmentSelectionStarted &&
+      route.request().method() === "POST" &&
+      route.request().headers()["next-action"] &&
+      postData.includes('"operation":"select"')
+    ) {
+      equipmentSelectionStarted = true;
+      await equipmentMayFinish;
+    }
+    await route.continue();
+  });
+  await startProgramDay(page, "Day A — Squat", false);
+  const groupDock = page.getByTestId("current-exercise-card");
+  await expect.poll(() => equipmentSelectionStarted).toBe(true);
+  await expect(
+    groupDock.getByRole("button", { name: "Skip set", exact: true }),
+  ).toBeDisabled();
+  releaseEquipment();
+  await expect(
+    groupDock.getByRole("button", { name: "Skip set", exact: true }),
+  ).toBeEnabled();
+  await page.unrouteAll({ behavior: "wait" });
+  for (let index = 0; index < 9; index += 1) await skipCurrentSet(groupDock);
+  const groupGuidance = page.getByRole("region", {
+    name: "Workout progress and upcoming work",
+  });
+  await expect(groupGuidance).toContainText(
+    /Next: Superset, round 1, member 2 of 2: Pallof Press, set 1/,
+  );
+  await expect(page.getByRole("complementary", { name: "Workout status" })).toContainText("Dumbbell Lateral Raise");
+  await expect(groupGuidance).toContainText("0/13");
+  await expect(groupGuidance).toContainText("9 skipped");
+  await expect(
+    page.getByRole("button", { name: "Open unsaved workout changes" }),
+  ).toHaveCount(0);
+  await page.reload({ waitUntil: "domcontentloaded" });
+  const durableGroupGuidance = page.getByRole("region", {
+    name: "Workout progress and upcoming work",
+  });
+  await expect(durableGroupGuidance).toContainText("9 skipped");
+  await expect(durableGroupGuidance).toContainText(
+    /Next: Superset, round 1, member 2 of 2: Pallof Press, set 1/,
+  );
+  await expect(page.getByRole("complementary", { name: "Workout status" })).toContainText("Dumbbell Lateral Raise");
+  await expect(
+    page.getByRole("button", { name: "Open unsaved workout changes" }),
+  ).toHaveCount(0);
+  await expectNoHorizontalOverflow(page);
+  await waitForSetSkippedNoticesToSettle(page);
+  await screenshot(page, "05-group-round-and-member-wording.png");
+
+  const evidence = {
+    runId,
+    automatedScope: [
+      "440x956 Toronto mobile calibration",
+      "320x700 extra-large text and collapsed fixed controls",
+      "performed progress waits for save acknowledgement",
+      "skips do not increment performed progress",
+      "durable timer reload, elapsed return, and persistent Dismiss rest timer",
+      "current, up-next, group round, and member wording",
+      "18 lb EZ-curl preparation using the owned plate pool",
+      "stale exact setup suppression after substitution",
+      "equipment acknowledgement blocks stale workout-item changes",
+      "skipped-item state remains durable after reload with no save queue",
+    ],
+    realDeviceOnly: [
+      "locked-screen behavior",
+      "silent-mode and hardware-volume routing",
+      "Bluetooth/headphone routing",
+      "physical vibration perception",
+      "competing audio interruption",
+      "device rotation behavior",
+    ],
+  };
+  if (captureEvidence) {
+    await writeFile(
+      resolve(evidenceDirectory, "scope-and-real-device-boundary.json"),
+      `${JSON.stringify(evidence, null, 2)}\n`,
+      { flag: "wx" },
+    );
+  }
+
+  expect(
+    browserErrors.filter((message) => message !== "NEXT_REDIRECT"),
+  ).toEqual([]);
+  expect(
+    requestFailures.filter(
+      (failure) => !isExpectedOptimizedRequestCancellation(failure),
+    ),
+  ).toEqual([]);
+  expect(
+    httpErrors.filter(
+      (failure) => !/^404 GET http:\/\/[^/]+\/api\/program\/draft$/.test(failure),
+    ),
+  ).toEqual([]);
+});

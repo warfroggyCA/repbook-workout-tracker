@@ -1,0 +1,2 @@
+ALTER TABLE "user_profiles" ADD COLUMN "font_size" text DEFAULT 'default' NOT NULL;--> statement-breakpoint
+ALTER TABLE "user_profiles" ADD CONSTRAINT "user_profiles_font_size_valid" CHECK ("user_profiles"."font_size" in ('compact', 'default', 'large', 'extra-large'));

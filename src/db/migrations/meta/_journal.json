@@ -1,0 +1,496 @@
+{
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1783551718378,
+      "tag": "0000_serious_ulik",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1783598601545,
+      "tag": "0001_acoustic_malice",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1783616439184,
+      "tag": "0002_bent_thena",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1783694249997,
+      "tag": "0003_slim_slapstick",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1783695242740,
+      "tag": "0004_thin_colossus",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1783698805035,
+      "tag": "0005_past_machine_man",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1783719477003,
+      "tag": "0006_brave_king_cobra",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1783738674007,
+      "tag": "0007_oval_puma",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1783741111654,
+      "tag": "0008_wakeful_kingpin",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1783743415495,
+      "tag": "0009_aromatic_susan_delgado",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1783744447722,
+      "tag": "0010_wide_falcon",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1783772689149,
+      "tag": "0011_aromatic_korath",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1783793804340,
+      "tag": "0012_snapshot_restore",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1783818997964,
+      "tag": "0013_recovery_health",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1783820817661,
+      "tag": "0014_useful_mercury",
+      "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "7",
+      "when": 1783826948621,
+      "tag": "0015_live_coach_foundation",
+      "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1783869897714,
+      "tag": "0016_trusted_exercise_media",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1783901097545,
+      "tag": "0017_far_wolf_cub",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1783901261106,
+      "tag": "0018_brave_timeslip",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1783965730781,
+      "tag": "0019_expand_load_units_calendar_identity",
+      "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1783965742262,
+      "tag": "0020_backfill_load_units_calendar_identity",
+      "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1783965812985,
+      "tag": "0021_contract_load_units_calendar_identity",
+      "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1783966662025,
+      "tag": "0022_magical_norman_osborn",
+      "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1783966674745,
+      "tag": "0023_flaky_machine_man",
+      "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1783967048237,
+      "tag": "0024_adorable_the_professor",
+      "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1783969828783,
+      "tag": "0025_expand_workout_lifecycle_outbox",
+      "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1783969835287,
+      "tag": "0026_workout_lifecycle_repair_preview",
+      "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "7",
+      "when": 1783969867648,
+      "tag": "0027_contract_workout_lifecycle_invariants",
+      "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "7",
+      "when": 1783970639989,
+      "tag": "0028_restore_progression_jobs",
+      "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1783971495740,
+      "tag": "0029_contract_progression_job_state",
+      "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "7",
+      "when": 1783972216594,
+      "tag": "0030_recommendation_decision_repair_preview",
+      "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1783972230000,
+      "tag": "0031_contract_recommendation_decisions",
+      "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1783973549477,
+      "tag": "0032_quick_log_result_identity",
+      "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1783975608862,
+      "tag": "0033_performance_query_indexes",
+      "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1783976725229,
+      "tag": "0034_expand_ai_privacy_controls",
+      "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "7",
+      "when": 1783976752347,
+      "tag": "0035_ai_privacy_repair_preview",
+      "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1783976752348,
+      "tag": "0036_contract_ai_privacy_controls",
+      "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "7",
+      "when": 1783979204807,
+      "tag": "0037_expand_snapshot_lifecycle",
+      "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "7",
+      "when": 1783979204808,
+      "tag": "0038_snapshot_lifecycle_repair_preview",
+      "breakpoints": true
+    },
+    {
+      "idx": 39,
+      "version": "7",
+      "when": 1783979204809,
+      "tag": "0039_contract_snapshot_lifecycle",
+      "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1783983210880,
+      "tag": "0040_privacy_safe_restore_race_check",
+      "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "7",
+      "when": 1783995347865,
+      "tag": "0041_spicy_captain_flint",
+      "breakpoints": true
+    },
+    {
+      "idx": 42,
+      "version": "7",
+      "when": 1783995854044,
+      "tag": "0042_eminent_king_cobra",
+      "breakpoints": true
+    },
+    {
+      "idx": 43,
+      "version": "7",
+      "when": 1784051898694,
+      "tag": "0043_versioned_program_editor_expand",
+      "breakpoints": true
+    },
+    {
+      "idx": 44,
+      "version": "7",
+      "when": 1784051908204,
+      "tag": "0044_versioned_program_editor_preview",
+      "breakpoints": true
+    },
+    {
+      "idx": 45,
+      "version": "7",
+      "when": 1784051908772,
+      "tag": "0045_versioned_program_editor_contract",
+      "breakpoints": true
+    },
+    {
+      "idx": 46,
+      "version": "7",
+      "when": 1784053677994,
+      "tag": "0046_program_editor_metadata_alignment",
+      "breakpoints": true
+    },
+    {
+      "idx": 47,
+      "version": "7",
+      "when": 1784055458577,
+      "tag": "0047_program_editor_metadata_contract",
+      "breakpoints": true
+    },
+    {
+      "idx": 48,
+      "version": "7",
+      "when": 1784080814186,
+      "tag": "0048_numeric_load_precision",
+      "breakpoints": true
+    },
+    {
+      "idx": 49,
+      "version": "7",
+      "when": 1784180814186,
+      "tag": "0049_plate_quantity",
+      "breakpoints": true
+    },
+    {
+      "idx": 50,
+      "version": "7",
+      "when": 1784231938146,
+      "tag": "0050_routine_build_usage_override",
+      "breakpoints": true
+    },
+    {
+      "idx": 51,
+      "version": "7",
+      "when": 1784243760202,
+      "tag": "0051_day_warmup_snapshot",
+      "breakpoints": true
+    },
+    {
+      "idx": 52,
+      "version": "7",
+      "when": 1784342798952,
+      "tag": "0052_phase2_training_intent_preflight",
+      "breakpoints": true
+    },
+    {
+      "idx": 53,
+      "version": "7",
+      "when": 1784348266586,
+      "tag": "0053_session_compiler_proposals",
+      "breakpoints": true
+    },
+    {
+      "idx": 54,
+      "version": "7",
+      "when": 1784674252642,
+      "tag": "0054_durable_workout_occurrences",
+      "breakpoints": true
+    },
+    {
+      "idx": 55,
+      "version": "7",
+      "when": 1784674979673,
+      "tag": "0055_structured_warmup_snapshots",
+      "breakpoints": true
+    },
+    {
+      "idx": 56,
+      "version": "7",
+      "when": 1784680000000,
+      "tag": "0056_permanent_delete_occurrence_contract",
+      "breakpoints": true
+    },
+    {
+      "idx": 57,
+      "version": "7",
+      "when": 1784681000000,
+      "tag": "0057_conservative_occurrence_backfill",
+      "breakpoints": true
+    },
+    {
+      "idx": 58,
+      "version": "7",
+      "when": 1784682000000,
+      "tag": "0058_immutable_workout_occurrence_evidence",
+      "breakpoints": true
+    },
+    {
+      "idx": 59,
+      "version": "7",
+      "when": 1784683000000,
+      "tag": "0059_resolved_occurrence_notes",
+      "breakpoints": true
+    },
+    {
+      "idx": 60,
+      "version": "7",
+      "when": 1784684000000,
+      "tag": "0060_equipment_load_profiles",
+      "breakpoints": true
+    },
+    {
+      "idx": 61,
+      "version": "7",
+      "when": 1784685000000,
+      "tag": "0061_exact_execution_requirements",
+      "breakpoints": true
+    },
+    {
+      "idx": 62,
+      "version": "7",
+      "when": 1784686000000,
+      "tag": "0062_session_equipment_snapshots",
+      "breakpoints": true
+    },
+    {
+      "idx": 63,
+      "version": "7",
+      "when": 1784687000000,
+      "tag": "0063_equipment_truth_backfill_bridge",
+      "breakpoints": true
+    },
+    {
+      "idx": 64,
+      "version": "7",
+      "when": 1784688000000,
+      "tag": "0064_equipment_recovery_contract",
+      "breakpoints": true
+    },
+    {
+      "idx": 65,
+      "version": "7",
+      "when": 1784689000000,
+      "tag": "0065_reviewed_equipment_requirement_activation",
+      "breakpoints": true
+    },
+    {
+      "idx": 66,
+      "version": "7",
+      "when": 1784770000000,
+      "tag": "0066_contextual_notes",
+      "breakpoints": true
+    },
+    {
+      "idx": 67,
+      "version": "7",
+      "when": 1785030000000,
+      "tag": "0067_history_management_contract",
+      "breakpoints": true
+    },
+    {
+      "idx": 68,
+      "version": "7",
+      "when": 1785345730716,
+      "tag": "0068_performed_semantics_expand",
+      "breakpoints": true
+    },
+    {
+      "idx": 69,
+      "version": "7",
+      "when": 1785384000000,
+      "tag": "0069_bodyweight_bulgarian_split_squat",
+      "breakpoints": true
+    }
+  ]
+}

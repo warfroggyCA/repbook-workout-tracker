@@ -1,0 +1,2 @@
+ALTER TABLE "progression_jobs" ADD CONSTRAINT "progression_jobs_processing_lease_check" CHECK (("progression_jobs"."status" = 'processing') = ("progression_jobs"."lease_token" IS NOT NULL));--> statement-breakpoint
+ALTER TABLE "progression_jobs" ADD CONSTRAINT "progression_jobs_completion_check" CHECK (("progression_jobs"."status" = 'completed') = ("progression_jobs"."completed_at" IS NOT NULL));

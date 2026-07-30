@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX "exercises_family_variant_idx" ON "exercises" USING btree ("family_id","variant_key");
