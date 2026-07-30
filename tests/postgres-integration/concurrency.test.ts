@@ -1207,7 +1207,7 @@ describe.sequential("real PostgreSQL parallel invariants", () => {
     );
   });
 
-  it("publishes exactly the warm-up disclosed by the review", async () => {
+  it("publishes and snapshots exactly the plain-text warm-up disclosed by the review", async () => {
     const fixture = await createProgramFixture("warm-up review contract");
     const state = await getOrCreateProgramDraft(db, fixture.userId);
     if (!state) throw new Error("Program draft fixture missing.");
@@ -1252,6 +1252,7 @@ describe.sequential("real PostgreSQL parallel invariants", () => {
     if (!published.ok) throw new Error(published.reason);
     const [publishedDay] = await db
       .select({
+        id: workoutTemplates.id,
         warmupNotes: workoutTemplates.warmupNotes,
         warmupItems: workoutTemplates.warmupItems,
       })
@@ -1259,11 +1260,24 @@ describe.sequential("real PostgreSQL parallel invariants", () => {
       .where(eq(workoutTemplates.programVersionId, published.programVersionId));
     expect(publishedDay).toMatchObject({
       warmupNotes: "Two minutes easy\nShoulder circles\nTwo ramp-up sets",
-      warmupItems: [
-        expect.objectContaining({ label: "Two minutes easy" }),
-        expect.objectContaining({ label: "Shoulder circles" }),
-        expect.objectContaining({ label: "Two ramp-up sets" }),
-      ],
+      warmupItems: [],
+    });
+    const started = await startWorkoutSession(
+      db,
+      fixture.userId,
+      publishedDay.id,
+      45,
+    );
+    const [startedWorkout] = await db
+      .select({
+        warmupNotes: workoutSessions.dayWarmupNotes,
+        warmupItems: workoutSessions.dayWarmupItems,
+      })
+      .from(workoutSessions)
+      .where(eq(workoutSessions.id, started.sessionId));
+    expect(startedWorkout).toMatchObject({
+      warmupNotes: "Two minutes easy\nShoulder circles\nTwo ramp-up sets",
+      warmupItems: [],
     });
     const [originalDay] = await db
       .select({
