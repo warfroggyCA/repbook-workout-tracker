@@ -1,4 +1,4 @@
-import { and, eq, inArray, isNull } from "drizzle-orm";
+import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 import type { Db } from "@/db";
 import {
   completedSets,
@@ -16,6 +16,7 @@ import {
 import { classifySetMetricContainment } from "@/lib/set-metric-semantics";
 import { loadExercisePainHold } from "@/services/pain-hold";
 import type { PainHoldClassification } from "@/engine/progression/pain-hold";
+import { canonicalJson } from "@/services/snapshot-crypto";
 
 type RecommendationEvidenceCandidate = {
   payload: RecommendationPayload;
@@ -23,6 +24,11 @@ type RecommendationEvidenceCandidate = {
   exerciseId: string | null;
   sourceSlotLineageId: string | null;
   ruleId?: string | null;
+};
+
+export type PainRecommendationReconciliationDependencies = {
+  /** Test-only boundary for proving concurrent correction/restore behavior. */
+  checkpoint?: (boundary: string) => void | Promise<void>;
 };
 
 async function loadPainRecommendationLiveState(
@@ -190,6 +196,7 @@ export async function recommendationEvidenceEligibleForAction(
 export async function reconcilePendingPainRecommendations(
   db: Db,
   userId: string,
+  dependencies: PainRecommendationReconciliationDependencies = {},
 ): Promise<number> {
   const pending = await db.query.recommendations.findMany({
     where: and(
@@ -209,39 +216,81 @@ export async function reconcilePendingPainRecommendations(
       ),
     })),
   );
-  const refreshed = reviewed.filter(({ recommendation, painHold }) => {
-    const expectedRule =
+  await dependencies.checkpoint?.("pain-recommendations-reviewed");
+  const refreshes = reviewed.flatMap(({ recommendation, painHold }) => {
+    const expectedRule: "pain_freeze" | "pain_substitute" | null =
       painHold?.state === "hold"
         ? "pain_freeze"
         : painHold?.state === "substitution_review"
           ? "pain_substitute"
           : null;
-    return expectedRule != null && recommendation.ruleId !== expectedRule;
-  });
-  for (const { recommendation, painHold } of refreshed) {
-    if (!painHold?.explanation) continue;
-    const expectedRule =
-      painHold.state === "hold" ? "pain_freeze" : "pain_substitute";
+    if (expectedRule == null || !painHold?.explanation) return [];
+    const explanation = painHold.explanation;
     const templateExerciseId =
       recommendation.payload.kind === "deload"
         ? recommendation.sourceTemplateExerciseId
         : recommendation.payload.templateExerciseId;
-    if (!templateExerciseId) continue;
-    await db
+    if (!templateExerciseId) return [];
+    const payload: RecommendationPayload =
+      expectedRule === "pain_substitute" &&
+      recommendation.ruleId === expectedRule &&
+      recommendation.payload.kind === "substitution"
+        ? recommendation.payload
+        : {
+            kind: "hold",
+            templateExerciseId,
+            reason: explanation,
+          };
+    const priorSignals = recommendation.evidence.signals as {
+      suggestedExercise?: unknown;
+      alternatives?: unknown;
+    };
+    const substitutionDisplaySignals =
+      payload.kind === "substitution"
+        ? {
+            ...(typeof priorSignals.suggestedExercise === "string"
+              ? { suggestedExercise: priorSignals.suggestedExercise }
+              : {}),
+            ...(Array.isArray(priorSignals.alternatives) &&
+            priorSignals.alternatives.every(
+              (alternative) => typeof alternative === "string",
+            )
+              ? { alternatives: priorSignals.alternatives }
+              : {}),
+          }
+        : {};
+    const evidence: RecommendationEvidence = {
+      signals: {
+        ...painHold.signals,
+        ...substitutionDisplaySignals,
+      },
+      sessionIds: painHold.sessionIds,
+      painLogIds: painHold.evidenceIds,
+    };
+    const changed =
+      recommendation.ruleId !== expectedRule ||
+      recommendation.reason !== explanation ||
+      canonicalJson(recommendation.payload) !== canonicalJson(payload) ||
+      canonicalJson(recommendation.evidence) !== canonicalJson(evidence);
+    return changed
+      ? [{ recommendation, expectedRule, explanation, payload, evidence }]
+      : [];
+  });
+  let refreshedCount = 0;
+  for (const {
+    recommendation,
+    expectedRule,
+    explanation,
+    payload,
+    evidence,
+  } of refreshes) {
+    const updated = await db
       .update(recommendations)
       .set({
         ruleId: expectedRule,
-        payload: {
-          kind: "hold",
-          templateExerciseId,
-          reason: painHold.explanation,
-        },
-        reason: painHold.explanation,
-        evidence: {
-          signals: painHold.signals,
-          sessionIds: painHold.sessionIds,
-          painLogIds: painHold.evidenceIds,
-        },
+        payload,
+        reason: explanation,
+        evidence,
         reconciledAt: new Date(),
         reconciliationReason:
           "Live pain evidence changed, so this automatic status was refreshed without changing the Program.",
@@ -251,33 +300,46 @@ export async function reconcilePendingPainRecommendations(
           eq(recommendations.userId, userId),
           eq(recommendations.id, recommendation.id),
           eq(recommendations.status, "pending"),
+          isNull(recommendations.archivedAt),
+          sql`${recommendations.ruleId} IS NOT DISTINCT FROM ${recommendation.ruleId}`,
+          eq(recommendations.reason, recommendation.reason),
+          sql`${recommendations.payload} = ${JSON.stringify(recommendation.payload)}::jsonb`,
+          sql`${recommendations.evidence} = ${JSON.stringify(recommendation.evidence)}::jsonb`,
         ),
-      );
+      )
+      .returning({ id: recommendations.id });
+    refreshedCount += updated.length;
   }
 
   const stale = reviewed.filter(
     ({ painHold }) =>
       painHold == null || painHold.state === "clear",
   );
-  if (stale.length === 0) return refreshed.length;
-  const expired = await db
-    .update(recommendations)
-    .set({
-      status: "expired",
-      reconciledAt: new Date(),
-      reconciliationReason:
-        "The pain evidence window or exact Program exercise changed, so this older status expired.",
-    })
-    .where(
-      and(
-        eq(recommendations.userId, userId),
-        eq(recommendations.status, "pending"),
-        inArray(
-          recommendations.id,
-          stale.map(({ recommendation }) => recommendation.id),
+  if (stale.length === 0) return refreshedCount;
+  let expiredCount = 0;
+  for (const { recommendation } of stale) {
+    const expired = await db
+      .update(recommendations)
+      .set({
+        status: "expired",
+        reconciledAt: new Date(),
+        reconciliationReason:
+          "The pain evidence window or exact Program exercise changed, so this older status expired.",
+      })
+      .where(
+        and(
+          eq(recommendations.userId, userId),
+          eq(recommendations.id, recommendation.id),
+          eq(recommendations.status, "pending"),
+          isNull(recommendations.archivedAt),
+          sql`${recommendations.ruleId} IS NOT DISTINCT FROM ${recommendation.ruleId}`,
+          eq(recommendations.reason, recommendation.reason),
+          sql`${recommendations.payload} = ${JSON.stringify(recommendation.payload)}::jsonb`,
+          sql`${recommendations.evidence} = ${JSON.stringify(recommendation.evidence)}::jsonb`,
         ),
-      ),
-    )
-    .returning({ id: recommendations.id });
-  return refreshed.length + expired.length;
+      )
+      .returning({ id: recommendations.id });
+    expiredCount += expired.length;
+  }
+  return refreshedCount + expiredCount;
 }

@@ -7,6 +7,7 @@ vi.mock("next/navigation", () => ({
 
 vi.mock("@/app/actions/recommendations", () => ({
   approveRecommendation: vi.fn(),
+  dismissRecommendationNotice: vi.fn(),
   rejectRecommendation: vi.fn(),
 }));
 

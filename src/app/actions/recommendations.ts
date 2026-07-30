@@ -6,6 +6,7 @@ import { getDb } from "@/db";
 import { getCurrentUser } from "@/lib/user";
 import {
   approveRecommendationDecision,
+  dismissAutomaticHoldNotice,
   rejectRecommendationDecision,
 } from "@/services/recommendation-decisions";
 import { publishRecommendationProgramVersion } from "@/services/program-publication";
@@ -60,6 +61,23 @@ export async function rejectRecommendation(input: z.infer<typeof rejectSchema>) 
   const user = await getCurrentUser();
   const db = await getDb();
   const result = await rejectRecommendationDecision(db, user.id, parsed);
+  if (!result.ok) return result;
+  revalidatePath("/coach");
+  revalidatePath("/today");
+  return result;
+}
+
+const dismissNoticeSchema = z.object({
+  recommendationId: z.string().uuid(),
+});
+
+export async function dismissRecommendationNotice(
+  input: z.infer<typeof dismissNoticeSchema>
+) {
+  const parsed = dismissNoticeSchema.parse(input);
+  const user = await getCurrentUser();
+  const db = await getDb();
+  const result = await dismissAutomaticHoldNotice(db, user.id, parsed);
   if (!result.ok) return result;
   revalidatePath("/coach");
   revalidatePath("/today");

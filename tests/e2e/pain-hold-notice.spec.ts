@@ -5,11 +5,13 @@ import {
 } from "../helpers/react-readiness";
 import {
   isCorrelatedWebKitRscPrefetchCancellation,
+  isExpectedWebKitRscLinkCancellation,
   observeNextRscPrefetches,
 } from "../helpers/webkit-rsc-prefetch-errors";
 
+const expectedDismissalPrefetchPaths = new Set(["/today"]);
 const holdReason =
-  "A 4/10 pain flag for Barbell Bench Press is keeping the load from going up. The app will check again once there hasn’t been another 3/10-or-higher flag for this exercise for 14 days. A workout with no pain entry doesn’t shorten the wait.";
+  "Barbell Bench Press is on hold because a 4/10 pain flag was saved in the last 14 days. It comes off hold 14 days after the latest 3/10 or higher flag. A workout with no pain entry doesn't shorten that time.";
 const holdExplanation =
   "This notice doesn't change your Program. The current load stays in place until the evidence window above clears.";
 
@@ -76,7 +78,7 @@ test("explains the automatic pain hold without offering a Program change", async
   await expect(hold.getByText(holdReason, { exact: true })).toBeVisible();
   await expect(hold.getByText(holdExplanation, { exact: true })).toBeVisible();
   await expect(hold.getByText("Highest recorded pain flag")).toBeVisible();
-  await expect(hold.getByText("4/10", { exact: true })).toBeVisible();
+  await expect(hold.getByText("4", { exact: true })).toBeVisible();
   await expect(
     hold.getByText("Evidence window", { exact: true }),
   ).toBeVisible();
@@ -116,6 +118,11 @@ test("explains the automatic pain hold without offering a Program change", async
     await waitForHydratedReactHandler(dismiss);
     await dismiss.click();
     await expect(hold).toHaveCount(0);
+    await expect(
+      page
+        .getByRole("region", { name: "Recent decisions" })
+        .getByText("Dismissed", { exact: true }),
+    ).toHaveCount(1);
   }
 
   await nextRscPrefetches.settle();
@@ -126,6 +133,11 @@ test("explains the automatic pain hold without offering a Program change", async
           message,
           browserName,
           nextRscPrefetches.observedUrls,
+        ) &&
+        !isExpectedWebKitRscLinkCancellation(
+          message,
+          browserName,
+          expectedDismissalPrefetchPaths,
         ),
     ),
   ).toEqual([]);

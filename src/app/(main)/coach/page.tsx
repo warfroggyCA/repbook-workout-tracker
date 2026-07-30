@@ -31,6 +31,7 @@ import {
   reviewDecisionStatus,
   summarizeRecommendationChange,
 } from "@/services/review-decisions";
+import { AUTOMATIC_HOLD_NOTICE_DISMISSED_REASON } from "@/services/recommendation-decisions";
 import { getHistoryReport } from "@/services/history-report";
 import { getActivityReport } from "@/services/activity-report";
 import { getWorkoutTestDataCount } from "@/services/workout-test-data";
@@ -231,14 +232,15 @@ export default async function CoachPage() {
             Recent decisions
           </h2>
           <p className="text-xs text-muted-foreground">
-            Accepted, edited, rejected, expired, and undone records stay
-            distinct.
+            Accepted, edited, rejected, dismissed, expired, and undone records
+            stay distinct.
           </p>
         </div>
         {review.recent.length === 0 ? (
           <p className="rounded-xl border border-dashed p-4 text-sm text-muted-foreground">
             No decision history yet. This list begins after you accept, edit, or
-            reject a proposal, or when a proposal expires.
+            reject a proposal, dismiss an automatic notice, or when a proposal
+            expires.
           </p>
         ) : (
           <ol className="flex flex-col gap-2" aria-label="Recent decisions">
@@ -264,6 +266,14 @@ export default async function CoachPage() {
                 recommendation.decisions[0]?.reason ??
                 recommendation.reconciliationReason ??
                 recommendation.reason;
+              const dismissedAutomaticHold =
+                recommendation.payload.kind === "hold" &&
+                recommendation.status === "expired" &&
+                recommendation.reconciliationReason ===
+                  AUTOMATIC_HOLD_NOTICE_DISMISSED_REASON;
+              const displayStatus = dismissedAutomaticHold
+                ? "Dismissed"
+                : status;
               return (
                 <li
                   key={recommendation.id}
@@ -286,12 +296,14 @@ export default async function CoachPage() {
                     <div className="flex shrink-0 flex-col items-end gap-1">
                       <Badge
                         variant={
-                          status === "Rejected" || status === "Expired"
+                          displayStatus === "Rejected" ||
+                          displayStatus === "Expired" ||
+                          displayStatus === "Dismissed"
                             ? "outline"
                             : "secondary"
                         }
                       >
-                        {status}
+                        {displayStatus}
                       </Badge>
                       <span className="text-xs text-muted-foreground">
                         {formatRelativeDay(

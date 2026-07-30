@@ -51,6 +51,11 @@ Contradictory or out-of-order evidence is classified deterministically from its
 retained time, severity, stable identity, and provenance. Corrections, archive
 restore, snapshot restore, and version restore use the same classifier. The
 hold explains itself to the user but never changes the Program automatically.
+Its pending notice refreshes in place whenever the current rule, explanation,
+evidence, sessions, severity, or release time changes. Dismiss hides only that
+displayed notice and records a separate audit event; it is not a rejection,
+does not snooze a later notice, and changes no Program. If the raw evidence
+still qualifies during a later evaluation, Review can show a fresh notice.
 
 ## Ownership map
 

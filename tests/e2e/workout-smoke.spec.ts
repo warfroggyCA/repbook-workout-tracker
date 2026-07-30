@@ -671,7 +671,7 @@ async function verifyReviewAndDecisions({
   await expect(benchHold.getByText("Load held", { exact: true })).toBeVisible();
   await expect(
     benchHold.getByText(
-      "A workout with no pain entry doesn’t shorten the wait.",
+      "A workout with no pain entry doesn't shorten that time.",
       { exact: false }
     )
   ).toBeVisible();
@@ -906,6 +906,9 @@ async function verifyReviewAndDecisions({
       exact: true,
     })
   ).toHaveCount(0);
+  await expect(
+    recentRegion.getByText("Dismissed", { exact: true })
+  ).toHaveCount(1);
 
   const increaseSquat = squatDecision.getByRole("button", {
     name: "Increase load",
@@ -925,7 +928,10 @@ async function verifyReviewAndDecisions({
     })
   ).toBeVisible();
   await expect(recentRegion.getByText("Edited", { exact: true })).toBeVisible();
-  await expect(recentRegion.getByText("Rejected", { exact: true })).toHaveCount(2);
+  await expect(recentRegion.getByText("Rejected", { exact: true })).toHaveCount(1);
+  await expect(
+    recentRegion.getByText("Dismissed", { exact: true })
+  ).toHaveCount(1);
 
   await page.goto("/settings");
   const defaultSize = page.getByRole("radio", { name: /Default 115%/ });
