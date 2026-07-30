@@ -1111,7 +1111,7 @@ test("shows honest empty Review and decisions states", async ({ page }) => {
   ).toBeVisible();
   await expect(
     page.getByText(
-      "No decision history yet. This list begins after you accept, edit, or reject a proposal, or when a proposal expires.",
+      "No decision history yet. This list begins after you accept, edit, or reject a proposal, dismiss an automatic notice, or when a proposal expires.",
       { exact: true },
     ),
   ).toBeVisible();
