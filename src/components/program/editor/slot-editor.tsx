@@ -229,7 +229,7 @@ export const SlotEditor = memo(function SlotEditor({
             <option value="kg">Kilograms (kg)</option>
           </select>
         </Field>
-        <Field id={`${prefix}-rule`} label="Progression rule">
+        <Field id={`${prefix}-rule`} label="How weight should increase">
           <select
             id={`${prefix}-rule`}
             className="h-10 w-full rounded-lg border border-input bg-background px-3 text-sm"
@@ -238,8 +238,8 @@ export const SlotEditor = memo(function SlotEditor({
               onChange({ ...slot, progressionRuleId: event.target.value })
             }
           >
-            <option value="double_progression">Double progression</option>
-            <option value="hold">Hold targets</option>
+            <option value="double_progression">Build reps, then suggest more weight</option>
+            <option value="hold">Keep these targets</option>
           </select>
           <p className="text-xs leading-5 text-muted-foreground">
             {slot.progressionRuleId === "double_progression"
@@ -249,14 +249,21 @@ export const SlotEditor = memo(function SlotEditor({
         </Field>
       </div>
 
-      <fieldset className="mt-4 rounded-lg border bg-muted/20 p-3">
-        <legend className="px-1 font-medium">Training intent</legend>
-        <p className="mb-3 text-xs leading-5 text-muted-foreground">
-          Structured meaning used by review and Preflight. Notes are optional
-          and do not replace these choices.
+      <details className="mt-4 rounded-lg border bg-muted/20 p-3">
+        <summary className="min-h-11 cursor-pointer font-medium">
+          Advanced session options
+          <span className="mt-1 block text-xs font-normal leading-5 text-muted-foreground">
+            Priority, minimum sets, and protected order matter only when you ask
+            Repbook to build a shorter session. Your Program never changes on
+            its own.
+          </span>
+        </summary>
+        <p className="mb-3 mt-3 text-xs leading-5 text-muted-foreground">
+          Repbook stores the remaining choices for planning context. It does
+          not currently substitute or omit an exercise from these settings.
         </p>
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          <Field id={`${prefix}-intent-role`} label="Role">
+          <Field id={`${prefix}-intent-role`} label="Training role (saved context)">
             <select
               id={`${prefix}-intent-role`}
               className="h-10 w-full rounded-lg border border-input bg-background px-3 text-sm"
@@ -280,7 +287,7 @@ export const SlotEditor = memo(function SlotEditor({
               <option value="recovery">Recovery</option>
             </select>
           </Field>
-          <Field id={`${prefix}-intent-priority`} label="Priority">
+          <Field id={`${prefix}-intent-priority`} label="Keep in shorter sessions">
             <select
               id={`${prefix}-intent-priority`}
               className="h-10 w-full rounded-lg border border-input bg-background px-3 text-sm"
@@ -336,7 +343,7 @@ export const SlotEditor = memo(function SlotEditor({
               }}
             />
           </Field>
-          <Field id={`${prefix}-intent-ideal-dose`} label="Ideal sets">
+          <Field id={`${prefix}-intent-ideal-dose`} label="Preferred sets (saved context)">
             <Input
               id={`${prefix}-intent-ideal-dose`}
               type="number"
@@ -371,7 +378,7 @@ export const SlotEditor = memo(function SlotEditor({
           </Field>
           <Field
             id={`${prefix}-intent-substitution`}
-            label="Substitution policy"
+            label="Replacement preference (saved for later)"
           >
             <select
               id={`${prefix}-intent-substitution`}
@@ -396,7 +403,7 @@ export const SlotEditor = memo(function SlotEditor({
               <option value="no_substitution">No substitution</option>
             </select>
           </Field>
-          <Field id={`${prefix}-intent-omission`} label="Omission policy">
+          <Field id={`${prefix}-intent-omission`} label="Omission preference (saved for later)">
             <select
               id={`${prefix}-intent-omission`}
               className="h-10 w-full rounded-lg border border-input bg-background px-3 text-sm"
@@ -428,7 +435,7 @@ export const SlotEditor = memo(function SlotEditor({
                 })
               }
             />
-            Protect order
+            Keep this exercise in place
           </label>
           <label className="flex min-h-11 items-center gap-2 rounded-lg border bg-background px-3 text-sm">
             <input
@@ -444,11 +451,11 @@ export const SlotEditor = memo(function SlotEditor({
                 })
               }
             />
-            Later calibration eligible
+            Saved for later fine-tuning
           </label>
         </div>
         <div className="mt-3">
-          <Field id={`${prefix}-intent-note`} label="Intent note (optional)">
+          <Field id={`${prefix}-intent-note`} label="Planning note (optional)">
             <Textarea
               id={`${prefix}-intent-note`}
               value={slot.intent.note ?? ""}
@@ -464,7 +471,7 @@ export const SlotEditor = memo(function SlotEditor({
             />
           </Field>
         </div>
-      </fieldset>
+      </details>
 
       {canMoveDay && (
         <div className="mt-3 max-w-sm">
@@ -525,7 +532,7 @@ export const SlotEditor = memo(function SlotEditor({
           selectedId={slot.exerciseId}
           triggerLabel="Replace exercise"
           title="Replace this exercise"
-          description="Replacing an exercise starts a new progression lineage. Earlier workouts remain unchanged."
+          description="The replacement starts fresh progress tracking. Earlier workouts remain unchanged."
           confirmLabel="Replace exercise"
           onSelect={(item) => onReplace(item.id)}
         />

@@ -154,10 +154,10 @@ test("keeps new Stage 3 controls usable at the saved iPhone calibration", async 
   await expectSaved(page);
   await page.getByRole("tab", { name: "Review", exact: true }).click();
   await page
-    .getByRole("button", { name: /Create semantic review|Review changes/ })
+    .getByRole("button", { name: /Compare with current Program|Review changes/ })
     .first()
     .click();
-  await expect(page.getByRole("heading", { name: "What will change" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Changes you made" })).toBeVisible();
   await page
     .getByRole("button", { name: "Activate new version", exact: true })
     .click();

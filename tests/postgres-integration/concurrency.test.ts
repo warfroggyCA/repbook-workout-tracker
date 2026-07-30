@@ -5,6 +5,7 @@ import { migrate } from "drizzle-orm/node-postgres/migrator";
 import { and, eq, sql } from "drizzle-orm";
 import * as schema from "@/db/schema";
 import { resultRows } from "@/db/result";
+import { updateProgramDayWarmupOverview } from "@/lib/program-editor-client";
 import {
   completedSets,
   coachingInsights,
@@ -1204,6 +1205,77 @@ describe.sequential("real PostgreSQL parallel invariants", () => {
     expect([firstDocument.name, secondDocument.name]).toContain(
       (stored.document as { name: string }).name
     );
+  });
+
+  it("publishes exactly the warm-up disclosed by the review", async () => {
+    const fixture = await createProgramFixture("warm-up review contract");
+    const state = await getOrCreateProgramDraft(db, fixture.userId);
+    if (!state) throw new Error("Program draft fixture missing.");
+    const document = structuredClone(state.draft.document);
+    document.days[0] = updateProgramDayWarmupOverview(
+      document.days[0],
+      "Two minutes easy\nShoulder circles\nTwo ramp-up sets",
+    );
+
+    const saved = await saveProgramDraft(db, fixture.userId, {
+      draftId: state.draft.id,
+      expectedRevision: state.draft.revision,
+      mutationId: crypto.randomUUID(),
+      document,
+    });
+    if (saved.status !== "saved") {
+      throw new Error(`Warm-up draft did not save: ${saved.status}`);
+    }
+    const review = await reviewProgramDraft(
+      db,
+      fixture.userId,
+      state.draft.id,
+      saved.revision,
+    );
+    expect(review).toMatchObject({
+      status: "publishable",
+      changes: [expect.objectContaining({ kind: "warmup" })],
+      summary: {
+        weeklySetsBefore: 1,
+        weeklySetsAfter: 1,
+      },
+    });
+    if (!review || review.status !== "publishable") {
+      throw new Error("Warm-up review missing.");
+    }
+
+    const published = await publishProgramDraft(db, fixture.userId, {
+      draftId: state.draft.id,
+      expectedRevision: saved.revision,
+      reviewHash: review.hash,
+    });
+    if (!published.ok) throw new Error(published.reason);
+    const [publishedDay] = await db
+      .select({
+        warmupNotes: workoutTemplates.warmupNotes,
+        warmupItems: workoutTemplates.warmupItems,
+      })
+      .from(workoutTemplates)
+      .where(eq(workoutTemplates.programVersionId, published.programVersionId));
+    expect(publishedDay).toMatchObject({
+      warmupNotes: "Two minutes easy\nShoulder circles\nTwo ramp-up sets",
+      warmupItems: [
+        expect.objectContaining({ label: "Two minutes easy" }),
+        expect.objectContaining({ label: "Shoulder circles" }),
+        expect.objectContaining({ label: "Two ramp-up sets" }),
+      ],
+    });
+    const [originalDay] = await db
+      .select({
+        warmupNotes: workoutTemplates.warmupNotes,
+        warmupItems: workoutTemplates.warmupItems,
+      })
+      .from(workoutTemplates)
+      .where(eq(workoutTemplates.programVersionId, fixture.versionId));
+    expect(originalDay).toMatchObject({
+      warmupNotes: null,
+      warmupItems: [],
+    });
   });
 
   it("converges concurrent stale-base draft opens on one fenced revision", async () => {

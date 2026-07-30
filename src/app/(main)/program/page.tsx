@@ -111,25 +111,27 @@ export default async function ProgramPage(props: PageProps<"/program">) {
               aria-labelledby="program-preflight-heading"
             >
               <h2 id="program-preflight-heading" className="font-semibold">
-                Program Preflight evidence
+                Program checks
               </h2>
               {preflightStatus?.availability === "legacy" ? (
                 <p className="mt-2 text-sm text-muted-foreground">
-                  This historical Program version predates structured intent, so
-                  no publication-time Preflight exists. Open a draft to review
-                  intent and run Preflight before publishing.
+                  This older Program version predates the current checks. Open a
+                  draft to review its saved planning details before activating a
+                  new version.
                 </p>
               ) : preflightStatus?.availability === "unavailable" ? (
                 <p className="mt-2 text-sm text-muted-foreground">
-                  Publication-time Preflight evidence is unavailable for this
-                  version. Current evidence is kept separate and does not
-                  rewrite the immutable version.
+                  The checks saved when this version was activated are
+                  unavailable. Current evidence stays separate and does not
+                  rewrite this version.
                 </p>
               ) : preflightStatus?.availability === "available" &&
                 preflightStatus.publication ? (
                 <div className="mt-3 grid gap-3 lg:grid-cols-2">
                   <div className="rounded-xl border p-3">
-                    <h3 className="text-sm font-medium">At publication</h3>
+                    <h3 className="text-sm font-medium">
+                      When this version was activated
+                    </h3>
                     {preflightStatus.publication.durations
                       .filter(
                         (duration) =>
@@ -139,7 +141,7 @@ export default async function ProgramPage(props: PageProps<"/program">) {
                         <p key={duration.dayLineageId} className="mt-2 text-sm">
                           {duration.minMinutes}–{duration.maxMinutes} min ·{" "}
                           {duration.basis.replaceAll("_", " ")} ·{" "}
-                          {duration.evidenceCount} comparable session
+                          {duration.evidenceCount} matching workout
                           {duration.evidenceCount === 1 ? "" : "s"}
                         </p>
                       ))}
@@ -155,7 +157,7 @@ export default async function ProgramPage(props: PageProps<"/program">) {
                       (finding) => finding.dayLineageId === selected.lineageId,
                     ).length === 0 ? (
                       <p className="mt-2 text-sm text-muted-foreground">
-                        No findings were recorded for this day at publication.
+                        No problem or warning was found for this day.
                       </p>
                     ) : (
                       <ul className="mt-2 space-y-2 text-sm">
@@ -175,8 +177,8 @@ export default async function ProgramPage(props: PageProps<"/program">) {
                               <li key={finding.id}>
                                 <span className="font-medium">
                                   {finding.severity === "blocking"
-                                    ? "Blocking execution problem"
-                                    : "Training warning"}
+                                    ? "Needs fixing before activation"
+                                    : "Worth checking"}
                                   {slotName ? ` · ${slotName}` : ""}
                                 </span>
                                 <span className="block text-muted-foreground">
@@ -190,13 +192,13 @@ export default async function ProgramPage(props: PageProps<"/program">) {
                   </div>
                   <div className="rounded-xl border p-3">
                     <h3 className="text-sm font-medium">
-                      Later environment drift
+                      What has changed since activation
                     </h3>
                     <p className="mt-2 text-xs text-muted-foreground">
                       Checked{" "}
                       {new Date(preflightStatus.current.checkedAt).toLocaleString()}
-                      . This current check is separate from the immutable
-                      publication record.
+                      . This current check stays separate from the saved
+                      activation record.
                     </p>
                     {preflightStatus.addedFindings.filter(
                       (finding) => finding.dayLineageId === selected.lineageId,
@@ -208,7 +210,7 @@ export default async function ProgramPage(props: PageProps<"/program">) {
                       selected.lineageId,
                     ) ? (
                       <p className="mt-2 text-sm text-muted-foreground">
-                        No evidence drift is currently visible for this day.
+                        No relevant change is currently visible for this day.
                       </p>
                     ) : (
                       <ul className="mt-2 space-y-2 text-sm">
@@ -216,8 +218,8 @@ export default async function ProgramPage(props: PageProps<"/program">) {
                           selected.lineageId,
                         ) && (
                           <li>
-                            The explainable duration evidence or range changed
-                            after publication.
+                            The estimated time range or the workout history
+                            behind it changed after activation.
                           </li>
                         )}
                         {preflightStatus.addedFindings
@@ -235,7 +237,9 @@ export default async function ProgramPage(props: PageProps<"/program">) {
                             return (
                               <li key={`added:${finding.id}`}>
                                 <span className="font-medium">
-                                  New {finding.severity}
+                                  {finding.severity === "blocking"
+                                    ? "New problem"
+                                    : "New warning"}
                                   {slotName ? ` · ${slotName}` : ""}:
                                 </span>{" "}
                                 {finding.reason}{" "}
@@ -273,7 +277,7 @@ export default async function ProgramPage(props: PageProps<"/program">) {
                 </div>
               ) : (
                 <p className="mt-2 text-sm text-muted-foreground">
-                  No Preflight evidence has been recorded for this Program
+                  No saved check results are available for this Program
                   version yet.
                 </p>
               )}

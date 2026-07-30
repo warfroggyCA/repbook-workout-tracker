@@ -1,4 +1,7 @@
-import type { ProgramDayIntent } from "@/lib/program-document";
+import type {
+  ProgramDayIntent,
+  ProgramDayWarmupItem,
+} from "@/lib/program-document";
 import { formatWarmupSetLine, type WarmupSetDisplayInput } from "@/lib/warmup";
 
 export type ProgramPresentationSource = {
@@ -10,6 +13,7 @@ export type ProgramPresentationSource = {
     name: string;
     notes: string | null;
     warmupNotes: string | null;
+    warmupItems?: ProgramDayWarmupItem[];
     orderIdx: number;
     // Already present on the loaded template row, so carrying it costs no
     // additional query. Null on days saved before day intent existed.
@@ -102,11 +106,18 @@ export function deriveProgramDayWarmupLines(
     warmupNotes: string | null;
     warmupSets: WarmupSetDisplayInput[];
   }>,
+  dayWarmupItems: ProgramDayWarmupItem[] = [],
 ): string[] {
   const lines: string[] = [];
   const seen = new Set<string>();
-  for (const line of dayWarmupNotes?.split(/\r?\n/) ?? []) {
-    addUniqueLine(lines, seen, line);
+  if (dayWarmupItems.length > 0) {
+    for (const item of dayWarmupItems) {
+      addUniqueLine(lines, seen, formatWarmupSetLine(item));
+    }
+  } else {
+    for (const line of dayWarmupNotes?.split(/\r?\n/) ?? []) {
+      addUniqueLine(lines, seen, line);
+    }
   }
   slots.forEach((slot, index) => {
     if (slot.warmupNotes) {
@@ -159,6 +170,7 @@ export function projectProgramPresentation(
             warmupNotes: slot.warmupNotes,
             warmupSets: slot.warmupSets,
           })),
+          day.warmupItems ?? [],
         ),
         slots: slots.map((slot) => {
           const group = slot.supersetGroupId

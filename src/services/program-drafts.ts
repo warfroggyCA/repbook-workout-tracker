@@ -12,12 +12,11 @@ import {
   recommendations,
 } from "@/db/schema";
 import {
-  convertLegacyProgramGuidance,
   normalizeStoredProgramDocumentLoads,
+  prepareProgramDocumentForEditing,
   projectIntentProgramDocumentV2,
   programDocumentV3Schema,
   storedProgramDocumentSchema,
-  suggestProgramIntentDraft,
   upgradeStoredProgramDocumentToV3,
   type ProgramDocumentV3,
 } from "@/lib/program-document";
@@ -282,16 +281,10 @@ export async function getOrCreateProgramDraft(db: Db, userId: string, attempt = 
         })
       : [];
     const exerciseNames = new Map(exerciseRows.map((exercise) => [exercise.id, exercise.name]));
-    const intentDocument = sourceDocument.schemaVersion === "1"
-      ? suggestProgramIntentDraft(sourceDocument)
-      : sourceDocument;
-    const guidanceDocument = intentDocument.schemaVersion === "3"
-      ? intentDocument
-      : convertLegacyProgramGuidance(
-          intentDocument,
-          (exerciseId) => exerciseNames.get(exerciseId) ?? "Exercise",
-        ).document;
-    const document = upgradeStoredProgramDocumentToV3(guidanceDocument);
+    const document = prepareProgramDocumentForEditing(
+      sourceDocument,
+      (exerciseId) => exerciseNames.get(exerciseId) ?? "Exercise",
+    );
     const draftId = randomUUID();
     await db.execute(sql`
       INSERT INTO program_drafts (
@@ -571,6 +564,14 @@ export async function reviewProgramDraft(
       name: exercise.name,
       primaryMuscles: exercise.primaryMuscles,
     }])),
+    editingBaseline: draft.restoredFromVersionId
+      ? undefined
+      : prepareProgramDocumentForEditing(
+          base,
+          (exerciseId) =>
+            exerciseRows.find((exercise) => exercise.id === exerciseId)?.name ??
+            "Exercise",
+        ),
     preflightContext: await loadProgramPreflightContext(
       db,
       userId,

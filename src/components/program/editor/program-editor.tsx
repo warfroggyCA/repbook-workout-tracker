@@ -248,8 +248,8 @@ export function ProgramEditor({
             <AlertTitle>Fresh review required</AlertTitle>
             <AlertDescription>
               {draft.reviewState.reason} The durable draft and Program version
-              history are unchanged; create a new semantic review before
-              activation.
+              history are unchanged; compare the draft with the current Program
+              again before activation.
             </AlertDescription>
           </Alert>
         )}

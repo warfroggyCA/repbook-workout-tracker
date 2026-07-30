@@ -220,7 +220,7 @@ export function compileSession(rawInput: SessionCompilerInput): SessionCompilerO
   }));
   const blockers = dayFindings.filter((finding) => finding.severity === "blocking");
   if (blockers.length > 0) {
-    return unable(input, `Program Preflight has ${blockers.length} blocking execution problem${blockers.length === 1 ? "" : "s"} for this day. Resolve and publish reviewed intent before compiling.`, warnings);
+    return unable(input, `Program checks found ${blockers.length} blocking problem${blockers.length === 1 ? "" : "s"} for this day. Resolve the affected Program details and activate a reviewed version before building a shorter session.`, warnings);
   }
   if (input.confirmedConstraintSlotLineageIds.length > 0 || input.busyEquipmentSlotLineageIds.length > 0) {
     return unable(input, "A confirmed session constraint or temporary equipment conflict affects planned work. This first compiler has no reviewed occurrence-level alternative list, so it will not guess a substitution or omit the work silently.", warnings);

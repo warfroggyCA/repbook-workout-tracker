@@ -691,6 +691,26 @@ export function suggestProgramIntentDraft(
   });
 }
 
+/**
+ * Builds the current editor shape from an immutable stored Program version.
+ * This is the single authority for automatic, draft-only schema and guidance
+ * preparation. It never mutates or republishes the supplied version.
+ */
+export function prepareProgramDocumentForEditing(
+  stored: StoredProgramDocument,
+  exerciseName: (exerciseId: string) => string = () => "Exercise",
+): ProgramDocumentV3 {
+  if (stored.schemaVersion === "3") return structuredClone(stored);
+  const intentDocument = stored.schemaVersion === "1"
+    ? suggestProgramIntentDraft(stored)
+    : stored;
+  const guidanceDocument = convertLegacyProgramGuidance(
+    intentDocument,
+    exerciseName,
+  ).document;
+  return upgradeStoredProgramDocumentToV3(guidanceDocument);
+}
+
 export function isIntentBearingProgramDocument(
   document: StoredProgramDocument,
 ): document is ProgramDocument | ProgramDocumentV3 {

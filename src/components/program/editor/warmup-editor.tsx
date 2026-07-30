@@ -68,7 +68,9 @@ export function DayWarmupEditor({
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h3 className="font-semibold">Warm-up</h3>
-          <p className="text-xs text-muted-foreground">Build the ordered warm-up you will check off during this workout day.</p>
+          <p className="text-xs text-muted-foreground">
+            Write the instructions you want to see when this workout begins.
+          </p>
         </div>
         <div className="flex flex-wrap gap-2">
           <Button type="button" variant="outline" onClick={() => setCopyOpen(true)} disabled={!hasWarmup || days.length < 2}>Copy to days</Button>
@@ -77,7 +79,11 @@ export function DayWarmupEditor({
         </div>
       </div>
 
-      <Field id={`day-${day.lineageId}-warmup-overview`} label="Warm-up overview (optional)">
+      <Field
+        id={`day-${day.lineageId}-warmup-overview`}
+        label="Warm-up instructions (optional)"
+        hint="Plain text is enough. Separate check-off steps are available below if you want them."
+      >
         <Textarea
           id={`day-${day.lineageId}-warmup-overview`}
           className="min-h-20 bg-background"
@@ -87,7 +93,14 @@ export function DayWarmupEditor({
         />
       </Field>
 
-      <div className="mt-4 space-y-3">
+      <details className="mt-4 rounded-lg border bg-background p-3">
+        <summary className="min-h-11 cursor-pointer font-medium">
+          Optional check-off steps
+          <span className="mt-1 block text-xs font-normal leading-5 text-muted-foreground">
+            Add separate boxes only when they are useful during the workout.
+          </span>
+        </summary>
+        <div className="mt-3 space-y-3">
         {day.warmupItems.map((item, index) => (
           <article key={item.key} className="rounded-lg border bg-background p-3">
             <div className="flex items-center justify-between gap-3">
@@ -144,7 +157,8 @@ export function DayWarmupEditor({
         >
           <Plus /> Add warm-up step
         </Button>
-      </div>
+        </div>
+      </details>
 
       <Dialog open={copyOpen} onOpenChange={setCopyOpen}>
         <DialogContent>

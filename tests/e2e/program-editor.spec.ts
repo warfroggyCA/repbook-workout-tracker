@@ -84,10 +84,11 @@ test("autosaves, resolves tab conflicts, publishes v2, and restores v1 as v3", a
   await signIn(page);
   await page.goto("/program/edit");
   await expect(page.getByRole("heading", { name: /^Edit / })).toBeVisible();
-  await expect(page.getByRole("group", { name: "Day intent" }).first()).toBeVisible();
-  await expect(
-    page.getByRole("group", { name: "Training intent" }).first(),
-  ).toBeVisible();
+  const dayAdvanced = page
+    .locator("details")
+    .filter({ hasText: "Advanced session options" })
+    .first();
+  await expect(dayAdvanced).not.toHaveAttribute("open", "");
   await expectSaved(page);
   await page.screenshot({
     path: "output/playwright/phase2-evidence/before-legacy-program-editor.png",
@@ -140,6 +141,8 @@ test("autosaves, resolves tab conflicts, publishes v2, and restores v1 as v3", a
     .click();
   await expectSaved(conflicted);
   await second.close();
+  await page.reload();
+  await expectSaved(page);
 
   await context.setOffline(true);
   await page
@@ -162,42 +165,54 @@ test("autosaves, resolves tab conflicts, publishes v2, and restores v1 as v3", a
     "Versioned Strength Plan",
   );
 
+  await dayAdvanced.locator("summary").click();
   await page.getByLabel("Day name").first().fill("Foundation Day");
-  await page.getByLabel("Primary outcome").selectOption("hypertrophy");
-  await page.getByLabel("Fatigue tolerance").selectOption("low");
-  await page.getByLabel("Target duration minimum").fill("0");
-  await expect(page.getByLabel("Target duration minimum")).toHaveValue("5");
-  await page.getByLabel("Target duration maximum").fill("999");
-  await expect(page.getByLabel("Target duration maximum")).toHaveValue("600");
-  await page.getByLabel("Minimum useful duration").fill("999");
-  await expect(page.getByLabel("Minimum useful duration")).toHaveValue("600");
-  await page.getByLabel("Target duration minimum").fill("40");
-  await page.getByLabel("Target duration maximum").fill("60");
-  await page.getByLabel("Minimum useful duration").fill("30");
+  await page.getByLabel("Main goal").selectOption("hypertrophy");
+  await page
+    .getByLabel("Fatigue preference (saved context)")
+    .selectOption("low");
+  await page.getByLabel("Usual time — minimum").fill("0");
+  await expect(page.getByLabel("Usual time — minimum")).toHaveValue("5");
+  await page.getByLabel("Usual time — maximum").fill("999");
+  await expect(page.getByLabel("Usual time — maximum")).toHaveValue("600");
+  await page.getByLabel("Shortest useful session").fill("999");
+  await expect(page.getByLabel("Shortest useful session")).toHaveValue("600");
+  await page.getByLabel("Usual time — minimum").fill("40");
+  await page.getByLabel("Usual time — maximum").fill("60");
+  await page.getByLabel("Shortest useful session").fill("30");
   await page
     .getByLabel("Day notes")
     .first()
     .fill("Main strength and technique work.");
-  await page.getByRole("textbox", { name: "Warm-up overview (optional)" }).fill(
+  await page.getByRole("textbox", { name: "Warm-up instructions (optional)" }).fill(
     "Five minutes easy cardio, shoulder circles, then two gradual ramp-up sets.",
   );
   const firstExercise = page.locator("article[aria-labelledby]").first();
   await firstExercise.getByLabel("Work sets").fill("4");
+  const slotAdvanced = firstExercise
+    .locator("details")
+    .filter({ hasText: "Advanced session options" });
+  await expect(slotAdvanced).not.toHaveAttribute("open", "");
+  await slotAdvanced.locator("summary").click();
   await firstExercise.getByLabel("Minimum useful sets").fill("99");
   await expect(firstExercise.getByLabel("Minimum useful sets")).toHaveValue("4");
-  await firstExercise.getByLabel("Ideal sets").fill("0");
-  await expect(firstExercise.getByLabel("Ideal sets")).toHaveValue("4");
+  await firstExercise.getByLabel("Preferred sets (saved context)").fill("0");
+  await expect(firstExercise.getByLabel("Preferred sets (saved context)")).toHaveValue("4");
   await firstExercise.getByLabel("Minimum useful sets").fill("2");
-  await firstExercise.getByLabel("Ideal sets").fill("5");
+  await firstExercise.getByLabel("Preferred sets (saved context)").fill("5");
   await firstExercise.getByLabel("Minimum reps").fill("6");
   await firstExercise.getByLabel("Maximum reps").fill("10");
   await firstExercise.getByLabel("Minutes").selectOption("2");
   await firstExercise.getByLabel("Seconds").selectOption("0");
   await firstExercise.getByLabel("Target load").fill("80");
   await firstExercise.getByLabel("Load unit").selectOption("kg");
-  await firstExercise.getByLabel("Progression rule").selectOption("hold");
-  await firstExercise.getByLabel("Substitution policy").selectOption("exact_only");
-  await firstExercise.getByLabel("Omission policy").selectOption("never");
+  await firstExercise.getByLabel("How weight should increase").selectOption("hold");
+  await firstExercise
+    .getByLabel("Replacement preference (saved for later)")
+    .selectOption("exact_only");
+  await firstExercise
+    .getByLabel("Omission preference (saved for later)")
+    .selectOption("never");
   await firstExercise
     .getByLabel("Exercise notes")
     .fill("Pause briefly and keep the brace steady.");
@@ -206,12 +221,14 @@ test("autosaves, resolves tab conflicts, publishes v2, and restores v1 as v3", a
   await expect(firstExercise.getByText("Work-set cues", { exact: true })).toHaveCount(0);
   await expectSaved(page);
   await page.reload();
-  await expect(page.getByLabel("Primary outcome")).toHaveValue("hypertrophy");
-  await expect(page.getByLabel("Target duration minimum")).toHaveValue("40");
-  await expect(page.getByLabel("Target duration maximum")).toHaveValue("60");
-  await expect(page.getByLabel("Minimum useful duration")).toHaveValue("30");
+  await dayAdvanced.locator("summary").click();
+  await expect(page.getByLabel("Main goal")).toHaveValue("hypertrophy");
+  await expect(page.getByLabel("Usual time — minimum")).toHaveValue("40");
+  await expect(page.getByLabel("Usual time — maximum")).toHaveValue("60");
+  await expect(page.getByLabel("Shortest useful session")).toHaveValue("30");
+  await slotAdvanced.locator("summary").click();
   await expect(firstExercise.getByLabel("Minimum useful sets")).toHaveValue("2");
-  await expect(firstExercise.getByLabel("Ideal sets")).toHaveValue("5");
+  await expect(firstExercise.getByLabel("Preferred sets (saved context)")).toHaveValue("5");
 
   await page
     .getByRole("button", { name: "Group exercises", exact: true })
@@ -259,16 +276,20 @@ test("autosaves, resolves tab conflicts, publishes v2, and restores v1 as v3", a
 
   await page.getByRole("tab", { name: "Review", exact: true }).click();
   await page
-    .getByRole("button", { name: /Create semantic review|Review changes/ })
+    .getByRole("button", { name: /Compare with current Program|Review changes/ })
     .first()
     .click();
   await expect(
-    page.getByRole("heading", { name: "What will change" }),
+    page.getByRole("heading", { name: "Changes you made" }),
   ).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Program Preflight" })).toBeVisible();
-  await expect(page.getByText(/planned fallback|comparable history|sparse history/i).first()).toBeVisible();
-  await expect(page.getByText(/count is not a confidence score/i).first()).toBeVisible();
-  await expect(page.getByText(/meaningful changes? in revision/)).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Checks before activating" })).toBeVisible();
+  await expect(page.getByText(/Matching past workouts:/).first()).toBeVisible();
+  await expect(
+    page.getByText(/does not make the warning more or less certain/i).first(),
+  ).toBeVisible();
+  await expect(
+    page.getByText(/changes? compared with the current Program/i),
+  ).toBeVisible();
   await page
     .getByRole("button", { name: "Activate new version", exact: true })
     .click();
@@ -278,9 +299,15 @@ test("autosaves, resolves tab conflicts, publishes v2, and restores v1 as v3", a
   await expect(page.getByText(/Version 2 is now current/)).toBeVisible();
 
   await page.goto("/program");
-  await expect(page.getByRole("heading", { name: "Program Preflight evidence" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "At publication" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Later environment drift" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Program checks" })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "When this version was activated" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("heading", {
+      name: "What has changed since activation",
+    }),
+  ).toBeVisible();
   await page.screenshot({
     path: "output/playwright/phase2-evidence/after-published-intent-preflight.png",
     fullPage: true,
@@ -387,11 +414,11 @@ test("autosaves, resolves tab conflicts, publishes v2, and restores v1 as v3", a
 
   await page.getByRole("tab", { name: "Review", exact: true }).click();
   await page
-    .getByRole("button", { name: /Create semantic review|Review changes/ })
+    .getByRole("button", { name: /Compare with current Program|Review changes/ })
     .first()
     .click();
   await expect(
-    page.getByRole("heading", { name: "What will change" }),
+    page.getByRole("heading", { name: "Changes you made" }),
   ).toBeVisible();
   await page
     .getByRole("button", { name: "Activate new version", exact: true })
@@ -404,6 +431,61 @@ test("autosaves, resolves tab conflicts, publishes v2, and restores v1 as v3", a
   ).toBeVisible();
 
   expect(errors).toEqual([]);
+});
+
+test("a warm-up-only edit produces one clear review and stays reversible", async ({
+  page,
+}) => {
+  await signIn(page);
+  await page.goto("/program/edit");
+  await expectSaved(page);
+
+  const advancedOptions = page
+    .locator("details")
+    .filter({ hasText: "Advanced session options" });
+  expect(await advancedOptions.count()).toBeGreaterThan(0);
+  await expect(advancedOptions.first()).not.toHaveAttribute("open", "");
+  await expect(
+    page.getByText("Later calibration eligible", { exact: true }),
+  ).toHaveCount(0);
+
+  await page
+    .getByRole("textbox", { name: "Warm-up instructions (optional)" })
+    .fill(
+      "Two minutes easy\nEight smooth push-ups\nTwo gradual ramp-up sets",
+    );
+  await expectSaved(page);
+
+  await page.getByRole("tab", { name: "Review", exact: true }).click();
+  await page
+    .getByRole("button", {
+      name: "Compare with current Program",
+      exact: true,
+    })
+    .click();
+  await expect(
+    page.getByRole("heading", { name: "Changes you made", exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByText("1 change compared with the current Program.", {
+      exact: true,
+    }),
+  ).toBeVisible();
+  await expect(page.getByText(/.* warm-up changed\./)).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Training summary" }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: "Activate new version", exact: true }),
+  ).toBeEnabled();
+
+  await page.getByRole("tab", { name: "Edit", exact: true }).click();
+  await page.getByRole("button", { name: "Discard draft", exact: true }).click();
+  await page
+    .getByRole("dialog")
+    .getByRole("button", { name: "Discard draft", exact: true })
+    .click();
+  await expect(page).toHaveURL(/\/program$/);
 });
 
 test("full replacement creates a reviewable Program proposal without auto-publishing", async ({
@@ -456,11 +538,11 @@ test("full replacement creates a reviewable Program proposal without auto-publis
 
   await page.getByRole("tab", { name: "Review", exact: true }).click();
   await page
-    .getByRole("button", { name: /Create semantic review|Review changes/ })
+    .getByRole("button", { name: /Compare with current Program|Review changes/ })
     .first()
     .click();
   await expect(
-    page.getByRole("heading", { name: "What will change" }),
+    page.getByRole("heading", { name: "Changes you made" }),
   ).toBeVisible();
   await expect(
     page.getByRole("button", { name: "Activate new version", exact: true }),
@@ -489,7 +571,7 @@ test("day tabs and day warm-up copy controls remain keyboard and omission safe",
   await expect(page).toHaveURL(new RegExp(`day=${encodeURIComponent((await dayTabs.nth(1).getAttribute("href"))!.split("day=")[1])}`));
 
   await dayTabs.first().click();
-  const warmup = page.getByRole("textbox", { name: "Warm-up overview (optional)" });
+  const warmup = page.getByRole("textbox", { name: "Warm-up instructions (optional)" });
   await warmup.fill("Five minutes easy, then two ramp-up sets.");
   await expectSaved(page);
   await page.getByRole("button", { name: "Copy to days", exact: true }).click();
@@ -542,8 +624,8 @@ test("builds, reviews, and explicitly accepts one deterministic session proposal
   await page.goto("/program/edit");
   await expectSaved(page);
   await page.getByRole("tab", { name: "Review", exact: true }).click();
-  await page.getByRole("button", { name: /Create semantic review|Review changes/ }).first().click();
-  await expect(page.getByRole("heading", { name: "What will change" })).toBeVisible();
+  await page.getByRole("button", { name: /Compare with current Program|Review changes/ }).first().click();
+  await expect(page.getByRole("heading", { name: "Changes you made" })).toBeVisible();
   await page.getByRole("button", { name: "Activate new version", exact: true }).click();
   await expect(page.getByText(/is now current/)).toBeVisible();
   await page.goto("/program");

@@ -117,10 +117,10 @@ test("opens the preserved draft and expires a pre-Phase-2 review on desktop and 
   ).toBeVisible();
   await page.getByRole("tab", { name: "Review", exact: true }).click();
   await page
-    .getByRole("button", { name: "Create semantic review", exact: true })
+    .getByRole("button", { name: "Compare with current Program", exact: true })
     .click();
   await expect(
-    page.getByRole("heading", { name: "What will change", exact: true }),
+    page.getByRole("heading", { name: "Changes you made", exact: true }),
   ).toBeVisible();
   await expect(
     page.getByText("Fresh review required", { exact: true }),

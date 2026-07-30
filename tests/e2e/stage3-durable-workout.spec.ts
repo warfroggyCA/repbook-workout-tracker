@@ -131,10 +131,10 @@ test("publishes and preserves durable warm-up and grouped workout outcomes", asy
 
   await page.getByRole("tab", { name: "Review", exact: true }).click();
   await page
-    .getByRole("button", { name: /Create semantic review|Review changes/ })
+    .getByRole("button", { name: /Compare with current Program|Review changes/ })
     .first()
     .click();
-  await expect(page.getByRole("heading", { name: "What will change" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Changes you made" })).toBeVisible();
   await page
     .getByRole("button", { name: "Activate new version", exact: true })
     .click();

@@ -24,6 +24,7 @@ import {
   setWarmupLoadPercent,
   setWarmupLoadText,
   setWarmupNumericLoad,
+  updateProgramDayWarmupOverview,
   updateProgramDocumentDay,
 } from "@/lib/program-editor-client";
 import {
@@ -283,6 +284,44 @@ describe("Program editor client rules", () => {
     });
   });
 
+  it("syncs only an untouched generated warm-up step with its overview", () => {
+    const day = document().days[0];
+    const generated = {
+      ...day,
+      warmupNotes: "Five minutes easy",
+      warmupItems: [{
+        key: day.lineageId,
+        label: "Five minutes easy",
+        reps: null,
+        load: null,
+        loadUnit: null,
+        loadPercent: null,
+        loadText: null,
+        notes: null,
+      }],
+    };
+    expect(
+      updateProgramDayWarmupOverview(generated, "Two minutes easy"),
+    ).toMatchObject({
+      warmupNotes: "Two minutes easy",
+      warmupItems: [{ label: "Two minutes easy" }],
+    });
+
+    const authored = {
+      ...generated,
+      warmupItems: [{
+        ...generated.warmupItems[0],
+        label: "Shoulder circles",
+      }],
+    };
+    expect(
+      updateProgramDayWarmupOverview(authored, "Two minutes easy"),
+    ).toMatchObject({
+      warmupNotes: "Two minutes easy",
+      warmupItems: [{ label: "Shoulder circles" }],
+    });
+  });
+
   it("accepts only bounded, owner-and-draft-scoped valid local recovery data", () => {
     const recovery = {
       schemaVersion: "3",
@@ -375,6 +414,7 @@ describe("Program editor client rules", () => {
           after: { sets: 4 },
         },
       ],
+      programUpdates: [],
       blockingErrors: [],
       cautions: [],
       preflight: null,
@@ -451,7 +491,7 @@ describe("Program editor client rules", () => {
       warmupSets: [{ label: "Primer", reps: 8, loadText: "Light band" }],
     });
     expect(formatted).toContain("work sets: 4");
-    expect(formatted).toContain("progression rule: Hold targets");
+    expect(formatted).toContain("how weight should increase: Keep these targets");
     expect(formatted).toContain("1 min 30 sec");
     expect(formatted).not.toContain("[object Object]");
     expect(formatted).not.toContain('{"');
