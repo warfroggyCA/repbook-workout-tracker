@@ -216,10 +216,11 @@ describe("Program editor split presentation panels", () => {
       <ReviewDialog editor={editor} currentReview={review} canReview />
     );
 
-    expect(html).toContain("Training summary");
+    expect(html).toContain("How your weekly plan changes");
     expect(html).toContain("Confirm the lower weekly set count.");
     expect(html).toContain("What happens to exercise history");
     expect(html).toContain("earlier progression remains in workout history");
+    expect(html).not.toMatch(/<details[^>]*\sopen(?:=|>)/);
   });
 
   it("shows the real blocked-review reason without exposing an activation path", () => {
@@ -494,6 +495,11 @@ describe("Program editor split presentation panels", () => {
     expect(html).toContain("Show 8 affected exercises");
     expect(html).toContain("3 workout days may run longer than planned");
     expect(html).toContain("Show 3 affected days");
+    expect(
+      html.indexOf("8 exercises don&#x27;t match your saved equipment"),
+    ).toBeLessThan(
+      html.indexOf("3 workout days may run longer than planned"),
+    );
     expect(html).not.toContain("Matching past workouts");
     expect(html).not.toContain("does not make the warning");
     expect(html).not.toContain("load percent");
