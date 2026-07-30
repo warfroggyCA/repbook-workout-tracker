@@ -26,8 +26,8 @@ test("enforces reviewed browser protections across the optimized app", async ({
   expect(headers["x-content-type-options"]).toBe("nosniff");
   expect(headers["referrer-policy"]).toBe("no-referrer");
   expect(headers["permissions-policy"]).toContain("microphone=(self)");
-  await expect(page).toHaveTitle("Sign in · Continuity");
-  await expect(page.getByText("Continuity", { exact: true })).toBeVisible();
+  await expect(page).toHaveTitle("Sign in · Repbook");
+  await expect(page.getByText("Repbook", { exact: true })).toBeVisible();
   await expect(
     page.getByText("Private training record", { exact: true })
   ).toBeVisible();
@@ -49,8 +49,8 @@ test("enforces reviewed browser protections across the optimized app", async ({
     icons: Array<{ src: string; sizes: string }>;
   };
   expect(manifest).toMatchObject({
-    name: "Continuity",
-    short_name: "Continuity",
+    name: "Repbook Workout Tracker",
+    short_name: "Repbook",
     description:
       "A private training record that keeps Program intent, performed work, recorded evidence, and reviewed change connected.",
     background_color: "#f7f8fb",

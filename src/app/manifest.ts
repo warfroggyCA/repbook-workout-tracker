@@ -1,13 +1,13 @@
 import type { MetadataRoute } from "next";
 import {
   PRODUCT_DESCRIPTION,
-  PRODUCT_NAME,
+  PRODUCT_FORMAL_NAME,
   PRODUCT_SHORT_NAME,
 } from "@/lib/product-identity";
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: PRODUCT_NAME,
+    name: PRODUCT_FORMAL_NAME,
     short_name: PRODUCT_SHORT_NAME,
     description: PRODUCT_DESCRIPTION,
     start_url: "/today",

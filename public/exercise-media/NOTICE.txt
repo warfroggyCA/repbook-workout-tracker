@@ -1,4 +1,4 @@
-Workout Tracker exercise reference media notices
+Repbook Workout Tracker exercise reference media notices
 
 The exercise interface intentionally contains training information only. This
 file accompanies the redistributed media files and preserves required credit.

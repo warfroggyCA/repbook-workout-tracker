@@ -1,5 +1,6 @@
-export const PRODUCT_NAME = "Continuity";
-export const PRODUCT_SHORT_NAME = "Continuity";
+export const PRODUCT_NAME = "Repbook";
+export const PRODUCT_SHORT_NAME = "Repbook";
+export const PRODUCT_FORMAL_NAME = "Repbook Workout Tracker";
 export const PRODUCT_DESCRIPTOR = "Private training record";
 export const PRODUCT_PROMISE = "Plan. Train. Review.";
 export const PRODUCT_TENETS = "Intent · evidence · continuity";

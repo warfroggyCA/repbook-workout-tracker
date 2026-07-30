@@ -36,7 +36,7 @@ export function SetupSidebar({
 
   return (
     <aside className="fixed inset-y-0 left-0 z-40 hidden w-64 flex-col border-r bg-sidebar px-4 py-5 lg:flex">
-      <ProductHomeLink href="/setup" label="Continuity setup home" />
+      <ProductHomeLink href="/setup" label="Repbook setup home" />
 
       <div className="mt-8 border-l-2 border-primary/50 px-3 py-1">
         <p className="text-[0.625rem] font-medium uppercase tracking-[0.12em] text-muted-foreground">

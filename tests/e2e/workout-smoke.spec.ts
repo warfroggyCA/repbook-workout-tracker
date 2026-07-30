@@ -3259,11 +3259,11 @@ test("supports 145% app sizing throughout the narrow mobile navigation", async (
     .toBeCloseTo(23.2, 4);
 
   const walkthrough = [
-    { label: "Today", path: "/today", heading: "Today", title: "Today · Continuity" },
-    { label: "History", path: "/history", heading: "History", title: "History · Continuity" },
-    { label: "Review", path: "/coach", heading: "Review and decisions", title: "Review and decisions · Continuity" },
-    { label: "Program", path: "/program", heading: null, title: "Program · Continuity" },
-    { label: "Settings", path: "/settings", heading: "Settings", title: "Settings · Continuity" },
+    { label: "Today", path: "/today", heading: "Today", title: "Today · Repbook" },
+    { label: "History", path: "/history", heading: "History", title: "History · Repbook" },
+    { label: "Review", path: "/coach", heading: "Review and decisions", title: "Review and decisions · Repbook" },
+    { label: "Program", path: "/program", heading: null, title: "Program · Repbook" },
+    { label: "Settings", path: "/settings", heading: "Settings", title: "Settings · Repbook" },
   ] as const;
 
   for (const step of walkthrough) {
@@ -3360,7 +3360,7 @@ test("supports 145% app sizing throughout the narrow mobile navigation", async (
   const desktopNavigation = page.getByRole("navigation", {
     name: "Main navigation",
   });
-  await expect(page.getByRole("link", { name: "Continuity home" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Repbook home" })).toBeVisible();
   await expect(page.getByText("Plan. Train. Review.", { exact: true })).toBeVisible();
   await expect(
     desktopNavigation.getByText("Recorded evidence", { exact: true })
@@ -3470,14 +3470,14 @@ test("supports 145% app sizing throughout the narrow mobile navigation", async (
   await expect(collapse).toBeFocused();
   await collapse.press("Enter");
   await expect(page.getByRole("button", { name: "Expand sidebar" })).toBeVisible();
-  await expect(page.getByRole("link", { name: "Continuity home" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Repbook home" })).toBeVisible();
   await page.reload();
   await expect(page.getByRole("button", { name: "Expand sidebar" })).toBeVisible();
 
   expect(browserErrors).toEqual([]);
 });
 
-test("keeps first-time setup inside the same Continuity shell direction", async ({
+test("keeps first-time setup inside the same Repbook shell direction", async ({
   page,
 }) => {
   const browserErrors: string[] = [];
@@ -3488,9 +3488,9 @@ test("keeps first-time setup inside the same Continuity shell direction", async 
 
   await page.setViewportSize({ width: 1280, height: 800 });
   await signIn(page, "second.e2e@example.com", /\/setup\/profile$/);
-  await expect(page).toHaveTitle("Set up your training record · Continuity");
+  await expect(page).toHaveTitle("Set up your training record · Repbook");
   await expect(
-    page.getByRole("link", { name: "Continuity setup home" })
+    page.getByRole("link", { name: "Repbook setup home" })
   ).toBeVisible();
   await expect(page.getByText("Record setup", { exact: true })).toBeVisible();
   await expect(

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   PRODUCT_DESCRIPTION,
   PRODUCT_DESCRIPTOR,
+  PRODUCT_FORMAL_NAME,
   PRODUCT_NAME,
   PRODUCT_NAVIGATION,
   PRODUCT_PROMISE,
@@ -14,12 +15,14 @@ describe("product identity", () => {
     expect({
       name: PRODUCT_NAME,
       shortName: PRODUCT_SHORT_NAME,
+      formalName: PRODUCT_FORMAL_NAME,
       descriptor: PRODUCT_DESCRIPTOR,
       promise: PRODUCT_PROMISE,
       tenets: PRODUCT_TENETS,
     }).toEqual({
-      name: "Continuity",
-      shortName: "Continuity",
+      name: "Repbook",
+      shortName: "Repbook",
+      formalName: "Repbook Workout Tracker",
       descriptor: "Private training record",
       promise: "Plan. Train. Review.",
       tenets: "Intent · evidence · continuity",

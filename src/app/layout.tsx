@@ -4,6 +4,7 @@ import { connection } from "next/server";
 import {
   PRODUCT_DESCRIPTION,
   PRODUCT_DESCRIPTOR,
+  PRODUCT_FORMAL_NAME,
   PRODUCT_NAME,
 } from "@/lib/product-identity";
 import "./globals.css";
@@ -19,7 +20,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  applicationName: PRODUCT_NAME,
+  applicationName: PRODUCT_FORMAL_NAME,
   title: {
     default: `${PRODUCT_NAME} · ${PRODUCT_DESCRIPTOR}`,
     template: `%s · ${PRODUCT_NAME}`,

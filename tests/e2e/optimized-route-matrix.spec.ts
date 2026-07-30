@@ -33,29 +33,29 @@ test("renders every optimized page family under its request nonce", async ({
   });
 
   const staticRoutes = [
-    ["/", "Today · Continuity"],
-    ["/today", "Today · Continuity"],
-    ["/history", "History · Continuity"],
-    ["/coach", "Review and decisions · Continuity"],
-    ["/program", "Program · Continuity"],
-    ["/program/edit", "Program · Continuity"],
-    ["/program/import", "Program · Continuity"],
-    ["/settings", "Settings · Continuity"],
-    ["/settings/audit", "Settings · Continuity"],
-    ["/settings/equipment", "Settings · Continuity"],
-    ["/settings/setup", "Settings · Continuity"],
-    ["/settings/setup/profile", "Settings · Continuity"],
-    ["/settings/setup/equipment", "Settings · Continuity"],
-    ["/settings/setup/constraints", "Settings · Continuity"],
-    ["/settings/setup/coaching", "Settings · Continuity"],
-    ["/settings/setup/program", "Settings · Continuity"],
-    ["/export", "Export · Continuity"],
-    ["/archive", "Archive · Continuity"],
-    ["/recovery", "Recovery · Continuity"],
-    ["/recovery/semantic-consequences", "Recovery · Continuity"],
-    ["/recovery/versions", "Recovery · Continuity"],
-    ["/activity/new", "Activity record · Continuity"],
-    ["/setup", "Settings · Continuity"],
+    ["/", "Today · Repbook"],
+    ["/today", "Today · Repbook"],
+    ["/history", "History · Repbook"],
+    ["/coach", "Review and decisions · Repbook"],
+    ["/program", "Program · Repbook"],
+    ["/program/edit", "Program · Repbook"],
+    ["/program/import", "Program · Repbook"],
+    ["/settings", "Settings · Repbook"],
+    ["/settings/audit", "Settings · Repbook"],
+    ["/settings/equipment", "Settings · Repbook"],
+    ["/settings/setup", "Settings · Repbook"],
+    ["/settings/setup/profile", "Settings · Repbook"],
+    ["/settings/setup/equipment", "Settings · Repbook"],
+    ["/settings/setup/constraints", "Settings · Repbook"],
+    ["/settings/setup/coaching", "Settings · Repbook"],
+    ["/settings/setup/program", "Settings · Repbook"],
+    ["/export", "Export · Repbook"],
+    ["/archive", "Archive · Repbook"],
+    ["/recovery", "Recovery · Repbook"],
+    ["/recovery/semantic-consequences", "Recovery · Repbook"],
+    ["/recovery/versions", "Recovery · Repbook"],
+    ["/activity/new", "Activity record · Repbook"],
+    ["/setup", "Settings · Repbook"],
   ] as const;
   for (const [route, title] of staticRoutes) {
     await visitRenderedDocument(page, route);
@@ -95,7 +95,7 @@ test("renders every optimized page family under its request nonce", async ({
     .getAttribute("href");
   expect(historyHref, "The seeded workout detail route was missing.").toBeTruthy();
   await visitRenderedDocument(page, historyHref!);
-  await expect(page).toHaveTitle("History · Continuity");
+  await expect(page).toHaveTitle("History · Repbook");
 
   await visitRenderedDocument(page, "/today");
   const sessionHref = await page
@@ -104,17 +104,17 @@ test("renders every optimized page family under its request nonce", async ({
     .getAttribute("href");
   expect(sessionHref, "The seeded active-session route was missing.").toBeTruthy();
   await visitRenderedDocument(page, sessionHref!);
-  await expect(page).toHaveTitle("Active workout · Continuity");
+  await expect(page).toHaveTitle("Active workout · Repbook");
 
   await visitRenderedDocument(page, `/activity/${OPTIMIZED_ROUTE_ACTIVITY_ID}`);
-  await expect(page).toHaveTitle("Activity record · Continuity");
+  await expect(page).toHaveTitle("Activity record · Repbook");
   const editHref = await page
     .locator('a[href^="/activity/"][href*="/edit"]')
     .first()
     .getAttribute("href");
   expect(editHref, "The seeded activity edit route was missing.").toBeTruthy();
   await visitRenderedDocument(page, editHref!);
-  await expect(page).toHaveTitle("Activity record · Continuity");
+  await expect(page).toHaveTitle("Activity record · Repbook");
 
   await visitRenderedDocument(page, "/archive");
   const deleteHref = await page
@@ -126,7 +126,7 @@ test("renders every optimized page family under its request nonce", async ({
     "The seeded permanent-delete preview route was missing."
   ).toBeTruthy();
   await visitRenderedDocument(page, deleteHref!);
-  await expect(page).toHaveTitle("Archive · Continuity");
+  await expect(page).toHaveTitle("Archive · Repbook");
   const reauthRoute = `${deleteHref}/reauth`;
   const reauthResponse = await page.request.get(reauthRoute, {
     maxRedirects: 0,
@@ -183,7 +183,7 @@ test("renders every optimized page family under its request nonce", async ({
     .getAttribute("href");
   expect(restoreHref, "The seeded snapshot restore route was missing.").toBeTruthy();
   await visitRenderedDocument(page, restoreHref!);
-  await expect(page).toHaveTitle("Recovery · Continuity");
+  await expect(page).toHaveTitle("Recovery · Repbook");
   await expect(
     page.getByText("Another snapshot operation is still running", {
       exact: true,
@@ -201,8 +201,8 @@ test("renders every optimized page family under its request nonce", async ({
     icons: Array<{ src: string; sizes: string }>;
   };
   expect(manifest).toMatchObject({
-    name: "Continuity",
-    short_name: "Continuity",
+    name: "Repbook Workout Tracker",
+    short_name: "Repbook",
     description:
       "A private training record that keeps Program intent, performed work, recorded evidence, and reviewed change connected.",
     display: "standalone",
