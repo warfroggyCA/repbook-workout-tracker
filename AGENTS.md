@@ -1,8 +1,8 @@
-# Workout Tracker engineering instructions
+# Repbook Workout Tracker engineering instructions
 
 ## Product boundary
 
-Workout Tracker is a single-user workout logger with optional AI assistance.
+Repbook Workout Tracker is a single-user workout logger with optional AI assistance.
 The tracker must remain fully usable without an AI call. Program changes,
 recommendations, and review proposals are distinct concepts; only an explicit
 user decision may change the Program.

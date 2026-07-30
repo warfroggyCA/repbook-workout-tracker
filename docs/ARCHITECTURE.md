@@ -1,6 +1,6 @@
 # Architecture and data contracts
 
-Workout Tracker is a Next.js App Router application. Server actions and route
+Repbook Workout Tracker is a Next.js App Router application. Server actions and route
 handlers own authenticated mutations; services own domain behavior; Drizzle
 schema and additive SQL migrations own persistence; React components own
 presentation; Vitest and Playwright cover pure, database, recovery, and browser

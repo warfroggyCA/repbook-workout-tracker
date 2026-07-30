@@ -352,7 +352,7 @@ export default async function SessionDetailPage(
                 session.source === "history_manual"
                   ? "Entered after the workout"
                   : session.source === "tracker"
-                    ? "Recorded in Workout Tracker"
+                    ? "Recorded in Repbook"
                     : `Imported from ${session.source === "hevy" ? "Hevy" : session.source}`
               }
               programLinkLabel={

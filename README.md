@@ -1,6 +1,6 @@
-# Workout Tracker
+# Repbook Workout Tracker
 
-Workout Tracker is a single-user, tracker-first workout application with an
+Repbook Workout Tracker is a single-user, tracker-first workout application with an
 optional, approval-gated coaching layer. Logging a workout never requires an AI
 provider, and no automatic recommendation changes the user’s Program.
 
