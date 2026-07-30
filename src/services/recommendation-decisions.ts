@@ -14,6 +14,7 @@ import {
   type RecommendationPayload,
 } from "@/db/schema";
 import { recommendationEvidenceEligibleForAction } from "@/services/recommendation-evidence-eligibility";
+import { loadExercisePainHold } from "@/services/pain-hold";
 
 export type RecommendationCheckpoint = (boundary: string) => void | Promise<void>;
 
@@ -207,6 +208,22 @@ export async function approveRecommendationDecision(
       reason:
         "This load recommendation no longer has comparable completed-set evidence and cannot be applied.",
     };
+  }
+  if (
+    payload.kind === "load_change" &&
+    (payload.fromLoad == null || payload.toLoad > payload.fromLoad) &&
+    recommendation.exerciseId
+  ) {
+    const painHold = await loadExercisePainHold(db, {
+      userId,
+      exerciseId: recommendation.exerciseId,
+    });
+    if (painHold.blocksProgression) {
+      return {
+        ok: false,
+        reason: painHold.explanation!,
+      };
+    }
   }
 
   if (!dependencies.publishProgramVersion) {

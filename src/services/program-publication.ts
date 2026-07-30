@@ -441,13 +441,22 @@ async function publishDocumentAtomically(
           AND (${recommendation?.expectedPayload.kind === "load_change" ? recommendation.expectedPayload.fromLoad : null}::double precision IS NULL
                OR ${recommendation?.appliedPayload.kind === "load_change" ? recommendation.appliedPayload.toLoad : 0}::double precision > ${recommendation?.expectedPayload.kind === "load_change" ? recommendation.expectedPayload.fromLoad : null}::double precision)
           AND EXISTS (
-            SELECT 1 FROM pain_logs pain
-            JOIN exercises pain_exercise ON pain_exercise.id = pain.exercise_id
+            SELECT 1
+            FROM pain_logs pain
+            JOIN workout_sessions pain_session ON pain_session.id = pain.session_id
             WHERE pain.user_id = ${userId}::uuid
+              AND pain_session.user_id = ${userId}::uuid
+              AND pain_session.status = 'completed'
+              AND pain_session.archived_at IS NULL
               AND pain.archived_at IS NULL
-              AND pain.created_at >= now() - make_interval(days => ${cfg.painWindowDays})
-              AND pain.severity >= ${cfg.painFreezeThreshold}
-              AND pain_exercise.movement_pattern = current_exercise.movement_pattern
+              AND pain.exercise_id = current_exercise.id
+              AND pain.created_at > statement_timestamp() - make_interval(days => ${cfg.painWindowDays})
+              AND pain.created_at <= statement_timestamp()
+            GROUP BY pain.exercise_id
+            HAVING max(pain.severity) >= ${cfg.painFreezeThreshold}
+              OR count(DISTINCT CASE
+                   WHEN pain.severity > 0 THEN pain.session_id
+                 END) >= ${cfg.painRepeatCount}
           )
         )
       FOR UPDATE OF recommendation
@@ -574,6 +583,25 @@ async function publishDocumentAtomically(
         AND recommendation.id IS DISTINCT FROM ${recommendation?.recommendationId ?? null}::uuid
         AND (recommendation.payload->>'kind' = 'deload' OR old_slot.id IS NOT NULL)
       FOR UPDATE OF recommendation
+    ), active_pain_state AS MATERIALIZED (
+      SELECT pending.id,
+             max(pain.severity) >= ${cfg.painFreezeThreshold}
+               OR count(DISTINCT CASE WHEN pain.severity > 0 THEN pain.session_id END) >= ${cfg.painRepeatCount}
+               AS blocks_progression,
+             max(pain.severity) >= ${cfg.painSubstituteThreshold}
+               OR count(DISTINCT CASE WHEN pain.severity > 0 THEN pain.session_id END) >= ${cfg.painRepeatCount}
+               AS needs_substitution_review
+      FROM pending
+      JOIN pain_logs pain ON pain.exercise_id = pending.old_exercise_id
+      JOIN workout_sessions pain_session ON pain_session.id = pain.session_id
+      WHERE pain.user_id = ${userId}::uuid
+        AND pain_session.user_id = ${userId}::uuid
+        AND pain_session.status = 'completed'
+        AND pain_session.archived_at IS NULL
+        AND pain.archived_at IS NULL
+        AND pain.created_at > statement_timestamp() - make_interval(days => ${cfg.painWindowDays})
+        AND pain.created_at <= statement_timestamp()
+      GROUP BY pending.id
     ), reconciliation_plan AS MATERIALIZED (
       SELECT pending.*,
         CASE
@@ -607,13 +635,39 @@ async function publishDocumentAtomically(
           WHEN payload->>'kind' = 'substitution'
             THEN new_exercise_id = old_exercise_id
              AND payload->>'fromExerciseId' = old_exercise_id::text
+             AND (
+               rule_id IS DISTINCT FROM 'pain_substitute'
+               OR EXISTS (
+                 SELECT 1
+                 FROM active_pain_state pain_state
+                 WHERE pain_state.id = pending.id
+                   AND pain_state.needs_substitution_review
+               )
+             )
           WHEN payload->>'kind' = 'rep_target_change'
             THEN new_rep_max = old_rep_max
              AND (payload->>'fromRepMax')::integer = old_rep_max
           WHEN payload->>'kind' = 'set_count_change'
             THEN new_sets = old_sets
              AND (payload->>'fromSets')::integer = old_sets
-          WHEN payload->>'kind' = 'hold' THEN true
+          WHEN payload->>'kind' = 'hold'
+            THEN new_exercise_id = old_exercise_id
+             AND EXISTS (
+               SELECT 1
+               FROM active_pain_state pain_state
+               WHERE pain_state.id = pending.id
+                 AND (
+                   (
+                     rule_id = 'pain_freeze'
+                     AND pain_state.blocks_progression
+                     AND NOT pain_state.needs_substitution_review
+                   )
+                   OR (
+                     rule_id = 'pain_substitute'
+                     AND pain_state.needs_substitution_review
+                   )
+                 )
+             )
           ELSE false
         END AS carry,
         CASE

@@ -42,6 +42,7 @@ npm run test:integration:postgres
 
 ```bash
 npm run test:e2e
+npm run test:e2e:pain-hold
 npm run test:e2e:history-calendar
 npm run test:e2e:history-workspace
 npm run test:e2e:program-editor

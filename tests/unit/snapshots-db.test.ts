@@ -14,6 +14,7 @@ import {
   exercises,
   healthActivities,
   importEvents,
+  painLogs,
   programs,
   programDrafts,
   progressionJobInputSessions,
@@ -677,6 +678,20 @@ describe("verified off-database snapshots", () => {
         clientKey: crypto.randomUUID(),
       })
       .returning({ id: completedSets.id });
+    const painRecordedAt = new Date("2026-07-01T14:05:30.000Z");
+    const [pain] = await db
+      .insert(painLogs)
+      .values({
+        userId,
+        sessionId,
+        exerciseId,
+        completedSetId: setId,
+        bodyPart: "knee",
+        severity: 4,
+        source: "set_flag",
+        createdAt: painRecordedAt,
+      })
+      .returning({ id: painLogs.id });
     const linkedNote = await createContextualNote(db, userId, {
       clientKey: crypto.randomUUID(),
       body: "Exact performed-result observation",
@@ -731,6 +746,15 @@ describe("verified off-database snapshots", () => {
     expect(() => validateSnapshotPayload(crossedContextualLink, userId)).toThrow(
       /crosses workout attachment boundaries/i,
     );
+    const missingPainSet = structuredClone(canonical);
+    const painRow = (
+      missingPainSet.tables.pain_logs as Array<Record<string, unknown>>
+    ).find((row) => row.id === pain.id);
+    if (!painRow) throw new Error("Snapshot pain fixture is missing.");
+    painRow.completed_set_id = crypto.randomUUID();
+    expect(() => validateSnapshotPayload(missingPainSet, userId)).toThrow(
+      /pain_logs has a broken completed_sets reference/i,
+    );
     const missingPerformedLink = structuredClone(canonical);
     const missingLinkOccurrence = (
       missingPerformedLink.tables.session_occurrences as Array<Record<string, unknown>>
@@ -760,6 +784,13 @@ describe("verified off-database snapshots", () => {
     if (!created.ok) throw new Error(created.reason);
 
     await db.update(completedSets).set({ reps: 4 }).where(eq(completedSets.id, setId));
+    await db
+      .update(painLogs)
+      .set({
+        severity: 1,
+        createdAt: new Date("2026-07-20T14:05:30.000Z"),
+      })
+      .where(eq(painLogs.id, pain.id));
 
     const preview = await getSnapshotRestorePreview(
       db,
@@ -808,6 +839,16 @@ describe("verified off-database snapshots", () => {
       reps: 0,
       equipmentSnapshotId: equipmentSnapshot.id,
       loadEntryMeaning: "total_system",
+    });
+    expect(
+      await db.query.painLogs.findFirst({ where: eq(painLogs.id, pain.id) })
+    ).toMatchObject({
+      sessionId,
+      exerciseId,
+      completedSetId: setId,
+      severity: 4,
+      source: "set_flag",
+      createdAt: painRecordedAt,
     });
     expect(
       await db.query.sessionEquipmentSnapshots.findFirst({

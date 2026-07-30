@@ -40,6 +40,7 @@ export function RecommendationCard({
   const [error, setError] = useState<string | null>(null);
 
   const isLoadChange = rec.kind === "load_change";
+  const isHold = rec.kind === "hold";
   const edited = isLoadChange && editedLoad !== rec.toLoad;
 
   function decide(action: "approve" | "reject") {
@@ -74,7 +75,7 @@ export function RecommendationCard({
       <div className="mb-1 flex flex-wrap items-start justify-between gap-2">
         <div>
           <p className="text-xs font-medium uppercase tracking-wide text-primary">
-            Decision required
+            {isHold ? "Automatic status" : "Decision required"}
           </p>
           <h3 id={titleId} className="font-medium">
             {rec.exerciseName ?? "Program"}
@@ -84,8 +85,14 @@ export function RecommendationCard({
           variant="outline"
           className="h-auto min-h-5 max-w-full whitespace-normal break-words text-left"
         >
-          {rec.source === "rule" ? "Deterministic rule" : "AI proposal"} ·{" "}
-          {rec.ruleId?.replaceAll("_", " ") ?? rec.kind}
+          {isHold ? (
+            "Load held"
+          ) : (
+            <>
+              {rec.source === "rule" ? "Deterministic rule" : "AI proposal"} ·{" "}
+              {rec.ruleId?.replaceAll("_", " ") ?? rec.kind}
+            </>
+          )}
         </Badge>
       </div>
 
@@ -105,13 +112,22 @@ export function RecommendationCard({
 
       <p className="mt-1 text-sm text-muted-foreground">{rec.reason}</p>
 
+      {isHold && (
+        <p className="mt-2 text-sm">
+          This notice doesn&apos;t change your Program. The current load stays
+          in place until the evidence window above clears.
+        </p>
+      )}
+
       {rec.alternatives.length > 0 && (
         <p className="mt-1 text-xs text-muted-foreground">
           Other options: {rec.alternatives.join(", ")}
         </p>
       )}
 
-      <div className="mt-3 grid gap-2 sm:grid-cols-2">
+      <div
+        className={`mt-3 grid gap-2 ${isHold ? "" : "sm:grid-cols-2"}`}
+      >
         <div className="rounded-lg bg-muted/55 p-3">
           <h4 className="flex items-center gap-1.5 text-xs font-medium">
             <ListChecks className="size-3.5 text-primary" /> Evidence on record
@@ -134,16 +150,18 @@ export function RecommendationCard({
             </p>
           )}
         </div>
-        <div className="rounded-lg bg-muted/55 p-3">
-          <h4 className="flex items-center gap-1.5 text-xs font-medium">
-            <Gauge className="size-3.5 text-primary" /> Confidence
-          </h4>
-          <p className="mt-2 text-sm font-medium">Not scored</p>
-          <p className="mt-1 text-xs text-muted-foreground">
-            This decision record contains no confidence score. Use the named
-            source, rule, and evidence instead of an invented percentage.
-          </p>
-        </div>
+        {!isHold && (
+          <div className="rounded-lg bg-muted/55 p-3">
+            <h4 className="flex items-center gap-1.5 text-xs font-medium">
+              <Gauge className="size-3.5 text-primary" /> Confidence
+            </h4>
+            <p className="mt-2 text-sm font-medium">Not scored</p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              This decision record contains no confidence score. Use the named
+              source, rule, and evidence instead of an invented percentage.
+            </p>
+          </div>
+        )}
       </div>
 
       {isLoadChange && (
@@ -187,21 +205,27 @@ export function RecommendationCard({
         </p>
       )}
 
-      <div className="mt-3 grid grid-cols-1 gap-2 min-[22rem]:grid-cols-2">
-        <Button
-          className="min-h-10 w-full"
-          disabled={pending}
-          onClick={() => decide("approve")}
-        >
-          {edited ? "Approve edited" : "Approve"}
-        </Button>
+      <div
+        className={`mt-3 grid grid-cols-1 gap-2 ${
+          isHold ? "" : "min-[22rem]:grid-cols-2"
+        }`}
+      >
+        {!isHold && (
+          <Button
+            className="min-h-10 w-full"
+            disabled={pending}
+            onClick={() => decide("approve")}
+          >
+            {edited ? "Approve edited" : "Approve"}
+          </Button>
+        )}
         <Button
           variant="outline"
           className="min-h-10 w-full"
           disabled={pending}
           onClick={() => decide("reject")}
         >
-          Reject
+          {isHold ? "Dismiss notice" : "Reject"}
         </Button>
       </div>
     </section>

@@ -3,9 +3,11 @@ import {
   and,
   desc,
   eq,
+  gt,
   gte,
   inArray,
   isNull,
+  lte,
   or,
   sql,
 } from "drizzle-orm";
@@ -50,6 +52,7 @@ import { audit } from "./audit";
 import { convertWeight } from "@/lib/units";
 import { PROGRESSION_JOB_MAX_ATTEMPTS } from "@/lib/progression-job-contract";
 import { eligibleTotalSystemLoadSql } from "@/lib/set-metric-semantics-sql";
+import { reconcilePendingPainRecommendations } from "@/services/recommendation-evidence-eligibility";
 
 type LoadSteppers = {
   nextLoadUp: (current: number) => number | null;
@@ -295,7 +298,7 @@ export function steppersForLoadType(
 /**
  * Runs the deterministic rule engine over a just-completed session and files
  * pending Recommendations (plan §7). Never mutates prescriptions. Pain holds
- * are recorded in the audit trail rather than spamming recommendation cards.
+ * remain visible as non-actionable Review status while their evidence applies.
  */
 export async function evaluateSessionProgression(
   db: Db,
@@ -368,11 +371,15 @@ export async function evaluateSessionProgression(
     return mapping ? [{ exercise, mapping }] : [];
   });
   if (!eligibleExercises.length) return;
+  await reconcilePendingPainRecommendations(db, userId);
   const slotIds = eligibleExercises.map(
     ({ mapping }) => mapping.current_slot_id
   );
   const lineageIds = [
     ...new Set(eligibleExercises.map(({ mapping }) => mapping.lineage_id)),
+  ];
+  const painExerciseIds = [
+    ...new Set(eligibleExercises.map(({ exercise }) => exercise.exercise.id)),
   ];
   const movementPatterns = [
     ...new Set(
@@ -385,8 +392,9 @@ export async function evaluateSessionProgression(
     slotIds.map((id) => sql`${id}::uuid`),
     sql`, `
   );
+  const painWindowEnd = new Date();
   const painWindowStart = new Date(
-    Date.now() - cfg.painWindowDays * 24 * 60 * 60 * 1000
+    painWindowEnd.getTime() - cfg.painWindowDays * 24 * 60 * 60 * 1000
   );
   const snoozeStart = new Date(
     Date.now() - cfg.rejectionSnoozeDays * 24 * 60 * 60 * 1000
@@ -411,20 +419,31 @@ export async function evaluateSessionProgression(
     db.query.userProfiles.findFirst({ where: eq(userProfiles.userId, userId) }),
     db
       .select({
+        id: painLogs.id,
         severity: painLogs.severity,
         createdAt: painLogs.createdAt,
         bodyPart: painLogs.bodyPart,
-        movementPattern: exercises.movementPattern,
+        exerciseId: painLogs.exerciseId,
+        sessionId: painLogs.sessionId,
       })
       .from(painLogs)
-      .leftJoin(exercises, eq(painLogs.exerciseId, exercises.id))
+      .innerJoin(
+        workoutSessions,
+        eq(painLogs.sessionId, workoutSessions.id),
+      )
       .where(
         and(
           eq(painLogs.userId, userId),
+          eq(workoutSessions.userId, userId),
+          eq(workoutSessions.status, "completed"),
+          isNull(workoutSessions.archivedAt),
           isNull(painLogs.archivedAt),
-          gte(painLogs.createdAt, painWindowStart)
+          inArray(painLogs.exerciseId, painExerciseIds),
+          gt(painLogs.createdAt, painWindowStart),
+          lte(painLogs.createdAt, painWindowEnd)
         )
-      ),
+      )
+      .orderBy(desc(painLogs.createdAt), desc(painLogs.id)),
     db.query.exercisePrescriptions.findMany({
       where: and(
         inArray(exercisePrescriptions.templateExerciseId, slotIds),
@@ -601,8 +620,14 @@ export async function evaluateSessionProgression(
     const exposures = exposuresBySlot.get(slotKey) ?? [];
 
     const recentPain: PainEvent[] = recentPainRows
-      .filter((p) => p.movementPattern === se.exercise.movementPattern)
-      .map((p) => ({ severity: p.severity, date: p.createdAt, bodyPart: p.bodyPart }));
+      .filter((pain) => pain.exerciseId === se.exercise.id)
+      .map((pain) => ({
+        id: pain.id,
+        sessionId: pain.sessionId!,
+        severity: pain.severity,
+        date: pain.createdAt,
+        bodyPart: pain.bodyPart,
+      }));
 
     const steppers = steppersForLoadType(se.exercise.loadType, plateConfigs, incrementals);
     const decision = evaluateSlot({
@@ -630,19 +655,17 @@ export async function evaluateSessionProgression(
     });
     if (!decision) continue;
 
-    // Pain freeze: enforced silently (no increase emitted); audit it once.
-    if (
-      decision.ruleId === "pain_freeze" ||
-      (decision.ruleId === "pain_substitute" &&
-        coachingPrefs?.substitutionSuggestions === false)
-    ) {
+    // Suppressed substitution suggestions remain visible in the audit trail,
+    // but a load hold is shown in Review so its evidence and release rule are
+    // understandable without changing the Program.
+    const substitutionSuggestionSuppressed =
+      decision.ruleId === "pain_substitute" &&
+      coachingPrefs?.substitutionSuggestions === false;
+    if (substitutionSuggestionSuppressed) {
       await audit(db, {
         userId,
         actorType: "rule",
-        action:
-          decision.ruleId === "pain_substitute"
-            ? "progression.substitution_suppressed"
-            : "progression.pain_freeze",
+        action: "progression.substitution_suppressed",
         entityType: "exercise_prescription",
         entityId: prescription.id,
         summary: `${se.exercise.name}: ${decision.reason}`,
@@ -651,7 +674,6 @@ export async function evaluateSessionProgression(
           ? `progression:${progressionJobId}:${lineageId}:suppressed`
           : undefined,
       });
-      continue;
     }
 
     // Dedupe: an identical pending rec, or a recently twice-rejected rule,
@@ -688,7 +710,20 @@ export async function evaluateSessionProgression(
         toLoad: decision.toLoad,
         loadUnit: profile.unit,
       };
+    } else if (decision.kind === "hold") {
+      payload = {
+        kind: "hold",
+        templateExerciseId: slotKey,
+        reason: decision.reason,
+      };
     } else if (decision.kind === "substitution_needed") {
+      if (substitutionSuggestionSuppressed) {
+        payload = {
+          kind: "hold",
+          templateExerciseId: slotKey,
+          reason: decision.reason,
+        };
+      } else {
       // Deterministic candidate pick: equipment- and constraint-legal, same
       // pattern, different loading style preferred (gentler variant).
       const legal = alternatives.filter(
@@ -705,15 +740,23 @@ export async function evaluateSessionProgression(
         return gentler(a) - gentler(b) || a.name.localeCompare(b.name);
       });
       const pick = legal[0];
-      if (!pick) continue;
-      payload = {
-        kind: "substitution",
-        templateExerciseId: slotKey,
-        fromExerciseId: se.exercise.id,
-        toExerciseId: pick.id,
-      };
-      decision.evidence.signals.suggestedExercise = pick.name;
-      decision.evidence.signals.alternatives = legal.slice(1, 5).map((c) => c.name);
+      if (pick) {
+        payload = {
+          kind: "substitution",
+          templateExerciseId: slotKey,
+          fromExerciseId: se.exercise.id,
+          toExerciseId: pick.id,
+        };
+        decision.evidence.signals.suggestedExercise = pick.name;
+        decision.evidence.signals.alternatives = legal.slice(1, 5).map((c) => c.name);
+      } else {
+        payload = {
+          kind: "hold",
+          templateExerciseId: slotKey,
+          reason: decision.reason,
+        };
+      }
+      }
     }
     if (!payload) continue;
 
@@ -730,6 +773,7 @@ export async function evaluateSessionProgression(
         signals: decision.evidence.signals,
         sessionIds: decision.evidence.sessionIds,
         setIds: decision.evidence.setIds,
+        painLogIds: decision.evidence.painLogIds,
       },
       sessionId,
       exerciseName: se.exercise.name,

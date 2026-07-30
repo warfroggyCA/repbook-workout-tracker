@@ -18,3 +18,9 @@ than rewriting or publishing it. Public-bootstrap changes are limited to:
 Application source, schema, migrations, and runtime tests otherwise come from
 the mapped private commit. Future public changes are reviewed normally through
 protected pull requests.
+
+The public `fix/pain-hold-truth` change maps the application and test changes
+from private source commit
+`f308ead8c8ef27430707c5aa5651b97808ccfab6`. Private release-record and
+field-observation documents from that commit are not copied into the public
+history.

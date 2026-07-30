@@ -1,6 +1,6 @@
 import "server-only";
 
-import { and, count, eq, gte, inArray, isNull } from "drizzle-orm";
+import { and, count, eq, gt, gte, inArray, isNull, lte } from "drizzle-orm";
 import type { Db } from "@/db";
 import {
   constraints as constraintsTable,
@@ -11,6 +11,7 @@ import {
   plateInventory,
   supersetGroups,
   userProfiles,
+  workoutSessions,
   workoutTemplateExercises,
 } from "@/db/schema";
 import type { EquipmentRequirement, InventoryItem } from "@/engine/equipment-filter";
@@ -396,12 +397,25 @@ export async function loadWorkoutSimulationSource(
         ? db.select({
             exerciseId: painLogs.exerciseId,
             evidenceCount: count(painLogs.id),
-          }).from(painLogs).where(and(
-            eq(painLogs.userId, userId),
-            isNull(painLogs.archivedAt),
-            inArray(painLogs.exerciseId, libraryIds),
-            gte(painLogs.createdAt, painWindowStart),
-          )).groupBy(painLogs.exerciseId)
+          }).from(painLogs)
+            .innerJoin(
+              workoutSessions,
+              eq(painLogs.sessionId, workoutSessions.id),
+            )
+            .where(and(
+              eq(painLogs.userId, userId),
+              eq(workoutSessions.userId, userId),
+              eq(workoutSessions.status, "completed"),
+              isNull(workoutSessions.archivedAt),
+              isNull(painLogs.archivedAt),
+              // Zero is retained raw evidence, but it is not a pain report
+              // and cannot stand in for a pain-free session.
+              gte(painLogs.severity, 1),
+              inArray(painLogs.exerciseId, libraryIds),
+              gt(painLogs.createdAt, painWindowStart),
+              lte(painLogs.createdAt, now),
+            ))
+            .groupBy(painLogs.exerciseId)
         : Promise.resolve([]),
     ]);
   if (!profile) throw new Error("The simulation owner profile is unavailable.");

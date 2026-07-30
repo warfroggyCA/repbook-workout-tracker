@@ -349,6 +349,7 @@ export function ExerciseCard({
   );
   const [appendingSet, setAppendingSet] = useState(false);
   const appendRequestRef = useRef<string | null>(null);
+  const appendFocusRequestRef = useRef<string | null>(null);
   const [skipSetOccurrence, setSkipSetOccurrence] =
     useState<SessionOccurrenceData | null>(null);
   const [note, setNote] = useState(exercise.notes ?? "");
@@ -362,6 +363,37 @@ export function ExerciseCard({
     tapsRef.current = 0;
     focusChangesRef.current = 0;
   }, [activeOccurrence?.id]);
+
+  useEffect(() => {
+    const requestedOccurrenceId = appendFocusRequestRef.current;
+    if (
+      requestedOccurrenceId == null ||
+      appendedOccurrence?.id !== requestedOccurrenceId ||
+      editingSetId != null
+    ) {
+      return;
+    }
+    let focusFrame = 0;
+    const scrollFrame = requestAnimationFrame(() => {
+      document
+        .getElementById(`added-set-entry-${exercise.id}`)
+        ?.scrollIntoView({ behavior: "smooth", block: "center" });
+      focusFrame = requestAnimationFrame(() => {
+        document
+          .querySelector<HTMLElement>(
+            `#added-set-entry-${exercise.id} input`,
+          )
+          ?.focus({ preventScroll: true });
+        if (appendFocusRequestRef.current === requestedOccurrenceId) {
+          appendFocusRequestRef.current = null;
+        }
+      });
+    });
+    return () => {
+      cancelAnimationFrame(scrollFrame);
+      cancelAnimationFrame(focusFrame);
+    };
+  }, [appendedOccurrence?.id, editingSetId, exercise.id]);
 
   const isSkipped = exercise.modificationType === "skipped";
   const targetText =
@@ -468,10 +500,14 @@ export function ExerciseCard({
     }
     const occurrenceId = createClientUuid();
     appendRequestRef.current = occurrenceId;
+    appendFocusRequestRef.current = occurrenceId;
     setAppendingSet(true);
     try {
       const appended = await onAppendSet(occurrenceId, appendSetNo);
-      if (!appended) return;
+      if (!appended) {
+        appendFocusRequestRef.current = null;
+        return;
+      }
       const plannedWeight =
         appended.plannedLoad != null && appended.plannedLoadUnit != null
           ? convertWeight(
@@ -491,18 +527,6 @@ export function ExerciseCard({
         note: "",
       });
       setEditingSetId(null);
-      requestAnimationFrame(() => {
-        document
-          .getElementById(`added-set-entry-${exercise.id}`)
-          ?.scrollIntoView({ behavior: "smooth", block: "center" });
-        requestAnimationFrame(() => {
-          document
-            .querySelector<HTMLElement>(
-              `#added-set-entry-${exercise.id} input`,
-            )
-            ?.focus();
-        });
-      });
     } finally {
       appendRequestRef.current = null;
       setAppendingSet(false);

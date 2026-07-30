@@ -3,20 +3,69 @@ import type { Db } from "@/db";
 import {
   completedSets,
   exercises,
+  programs,
+  recommendations,
   sessionExercises,
   sessionOccurrences,
   workoutSessions,
+  workoutTemplateExercises,
+  workoutTemplates,
   type RecommendationEvidence,
   type RecommendationPayload,
 } from "@/db/schema";
 import { classifySetMetricContainment } from "@/lib/set-metric-semantics";
+import { loadExercisePainHold } from "@/services/pain-hold";
+import type { PainHoldClassification } from "@/engine/progression/pain-hold";
 
 type RecommendationEvidenceCandidate = {
   payload: RecommendationPayload;
   evidence: RecommendationEvidence;
   exerciseId: string | null;
   sourceSlotLineageId: string | null;
+  ruleId?: string | null;
 };
+
+async function loadPainRecommendationLiveState(
+  db: Db,
+  userId: string,
+  recommendation: RecommendationEvidenceCandidate,
+): Promise<PainHoldClassification | null> {
+  if (!recommendation.exerciseId || !recommendation.sourceSlotLineageId) {
+    return null;
+  }
+  const [currentSlot] = await db
+    .select({ exerciseId: workoutTemplateExercises.exerciseId })
+    .from(programs)
+    .innerJoin(
+      workoutTemplates,
+      eq(workoutTemplates.programVersionId, programs.currentVersionId),
+    )
+    .innerJoin(
+      workoutTemplateExercises,
+      eq(
+        workoutTemplateExercises.workoutTemplateId,
+        workoutTemplates.id,
+      ),
+    )
+    .where(
+      and(
+        eq(programs.userId, userId),
+        eq(programs.status, "active"),
+        isNull(programs.archivedAt),
+        eq(
+          workoutTemplateExercises.lineageId,
+          recommendation.sourceSlotLineageId,
+        ),
+      ),
+    )
+    .limit(1);
+  if (currentSlot?.exerciseId !== recommendation.exerciseId) return null;
+
+  return loadExercisePainHold(db, {
+    userId,
+    exerciseId: recommendation.exerciseId,
+  });
+}
 
 export async function filterRecommendationsEligibleForAction<
   T extends RecommendationEvidenceCandidate,
@@ -46,6 +95,20 @@ export async function recommendationEvidenceEligibleForAction(
   userId: string,
   recommendation: RecommendationEvidenceCandidate,
 ): Promise<boolean> {
+  if (
+    recommendation.ruleId === "pain_freeze" ||
+    recommendation.ruleId === "pain_substitute"
+  ) {
+    const painHold = await loadPainRecommendationLiveState(
+      db,
+      userId,
+      recommendation,
+    );
+    if (!painHold) return false;
+    return recommendation.ruleId === "pain_freeze"
+      ? painHold.state === "hold"
+      : painHold.state === "substitution_review";
+  }
   if (recommendation.payload.kind !== "load_change") return true;
   if (!recommendation.exerciseId || !recommendation.sourceSlotLineageId) {
     return false;
@@ -122,4 +185,99 @@ export async function recommendationEvidenceEligibleForAction(
         excludeFromAnalytics: set.excludeFromAnalytics,
       }).automaticProgressionEligible,
   );
+}
+
+export async function reconcilePendingPainRecommendations(
+  db: Db,
+  userId: string,
+): Promise<number> {
+  const pending = await db.query.recommendations.findMany({
+    where: and(
+      eq(recommendations.userId, userId),
+      eq(recommendations.status, "pending"),
+      isNull(recommendations.archivedAt),
+      inArray(recommendations.ruleId, ["pain_freeze", "pain_substitute"]),
+    ),
+  });
+  const reviewed = await Promise.all(
+    pending.map(async (recommendation) => ({
+      recommendation,
+      painHold: await loadPainRecommendationLiveState(
+        db,
+        userId,
+        recommendation,
+      ),
+    })),
+  );
+  const refreshed = reviewed.filter(({ recommendation, painHold }) => {
+    const expectedRule =
+      painHold?.state === "hold"
+        ? "pain_freeze"
+        : painHold?.state === "substitution_review"
+          ? "pain_substitute"
+          : null;
+    return expectedRule != null && recommendation.ruleId !== expectedRule;
+  });
+  for (const { recommendation, painHold } of refreshed) {
+    if (!painHold?.explanation) continue;
+    const expectedRule =
+      painHold.state === "hold" ? "pain_freeze" : "pain_substitute";
+    const templateExerciseId =
+      recommendation.payload.kind === "deload"
+        ? recommendation.sourceTemplateExerciseId
+        : recommendation.payload.templateExerciseId;
+    if (!templateExerciseId) continue;
+    await db
+      .update(recommendations)
+      .set({
+        ruleId: expectedRule,
+        payload: {
+          kind: "hold",
+          templateExerciseId,
+          reason: painHold.explanation,
+        },
+        reason: painHold.explanation,
+        evidence: {
+          signals: painHold.signals,
+          sessionIds: painHold.sessionIds,
+          painLogIds: painHold.evidenceIds,
+        },
+        reconciledAt: new Date(),
+        reconciliationReason:
+          "Live pain evidence changed, so this automatic status was refreshed without changing the Program.",
+      })
+      .where(
+        and(
+          eq(recommendations.userId, userId),
+          eq(recommendations.id, recommendation.id),
+          eq(recommendations.status, "pending"),
+        ),
+      );
+  }
+
+  const stale = reviewed.filter(
+    ({ painHold }) =>
+      painHold == null || painHold.state === "clear",
+  );
+  if (stale.length === 0) return refreshed.length;
+  const expired = await db
+    .update(recommendations)
+    .set({
+      status: "expired",
+      reconciledAt: new Date(),
+      reconciliationReason:
+        "The pain evidence window or exact Program exercise changed, so this older status expired.",
+    })
+    .where(
+      and(
+        eq(recommendations.userId, userId),
+        eq(recommendations.status, "pending"),
+        inArray(
+          recommendations.id,
+          stale.map(({ recommendation }) => recommendation.id),
+        ),
+      ),
+    )
+    .returning({ id: recommendations.id });
+  return refreshed.length + expired.length;
 }

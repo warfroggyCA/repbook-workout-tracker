@@ -10,6 +10,7 @@ import {
   coachingInsights,
   exerciseEquipmentRequirements,
   exercises,
+  painLogs,
   programDrafts,
   programs,
   programVersions,
@@ -35,7 +36,10 @@ import {
   saveProgramDraft,
 } from "@/services/program-drafts";
 import { hashProgramDocument } from "@/services/program-document-hash";
-import { publishProgramDraft } from "@/services/program-publication";
+import {
+  publishProgramDraft,
+  publishRecommendationProgramVersion,
+} from "@/services/program-publication";
 import { evaluateSessionProgression } from "@/services/progression";
 import {
   claimProgressionJob,
@@ -1293,6 +1297,54 @@ describe.sequential("real PostgreSQL parallel invariants", () => {
           : null,
       }),
     ]);
+  });
+
+  it("atomically blocks repeated mild pain across distinct completed workouts", async () => {
+    const fixture = await createProgramFixture("pain publication gate");
+    const slot = await currentProgramSlot(fixture);
+    const recommendation = await insertLoadRecommendation(
+      fixture,
+      slot,
+      100,
+      105
+    );
+    for (const daysAgo of [5, 3, 1]) {
+      const startedAt = new Date(Date.now() - daysAgo * 24 * 60 * 60 * 1000);
+      const [session] = await db
+        .insert(workoutSessions)
+        .values({
+          userId: fixture.userId,
+          status: "completed",
+          startedAt,
+          finishedAt: new Date(startedAt.getTime() + 45 * 60_000),
+          timezone: "UTC",
+          localDate: startedAt.toISOString().slice(0, 10),
+        })
+        .returning({ id: workoutSessions.id });
+      await db.insert(painLogs).values({
+        userId: fixture.userId,
+        sessionId: session.id,
+        exerciseId: fixture.exerciseId,
+        bodyPart: "knee",
+        severity: daysAgo === 3 ? 2 : 1,
+        source: "set_flag",
+      });
+    }
+
+    await expect(
+      publishRecommendationProgramVersion(db, fixture.userId, {
+        recommendationId: recommendation.id,
+        expectedPayload: recommendation.payload,
+        appliedPayload: recommendation.payload,
+        decision: "approve",
+      })
+    ).resolves.toEqual({ ok: false, reason: "invalid" });
+    expect(
+      await db
+        .select({ currentVersionId: programs.currentVersionId })
+        .from(programs)
+        .where(eq(programs.id, fixture.programId))
+    ).toEqual([{ currentVersionId: fixture.versionId }]);
   });
 
   it("reconciles float32 load targets with exact durable outcomes", async () => {

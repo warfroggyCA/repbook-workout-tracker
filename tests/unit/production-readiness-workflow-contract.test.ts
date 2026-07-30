@@ -47,6 +47,7 @@ describe("production readiness workflow contract", () => {
       (step) => step.name === "Validate current documentation links",
     );
     const history = steps.find((step) => step.id === "browser-history");
+    const painHold = steps.find((step) => step.id === "browser-pain-hold");
     const programReviewRecovery = steps.find(
       (step) => step.id === "browser-program-review-recovery",
     );
@@ -56,14 +57,21 @@ describe("production readiness workflow contract", () => {
 
     expect(documentation?.run).toBe("npm run docs:check");
     expect(history?.run).toBe("npm run test:e2e:history-calendar");
+    expect(painHold?.run).toBe("npm run test:e2e:pain-hold");
     expect(programReviewRecovery?.run).toBe(
       "npm run test:e2e:program-editor-review-recovery",
     );
     expect(browserGate?.env?.BROWSER_HISTORY).toBe(
       "${{ steps.browser-history.outcome }}",
     );
+    expect(browserGate?.env?.BROWSER_PAIN_HOLD).toBe(
+      "${{ steps.browser-pain-hold.outcome }}",
+    );
     expect(browserGate?.run).toContain(
       '"History management:${BROWSER_HISTORY}"',
+    );
+    expect(browserGate?.run).toContain(
+      '"pain-hold notice:${BROWSER_PAIN_HOLD}"',
     );
     expect(browserGate?.env?.BROWSER_PROGRAM_REVIEW_RECOVERY).toBe(
       "${{ steps.browser-program-review-recovery.outcome }}",

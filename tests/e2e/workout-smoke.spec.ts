@@ -652,15 +652,38 @@ async function verifyReviewAndDecisions({
   await expect(pendingRegion.getByText("2 pending", { exact: true })).toBeVisible();
   await expect(
     pendingRegion.getByText("Decision required", { exact: true })
-  ).toHaveCount(2);
+  ).toHaveCount(1);
+  await expect(
+    pendingRegion.getByText("Automatic status", { exact: true })
+  ).toHaveCount(1);
   await expect(
     pendingRegion.getByRole("heading", { name: "Evidence on record", exact: true })
   ).toHaveCount(2);
   await expect(
     pendingRegion.getByRole("heading", { name: "Confidence", exact: true })
-  ).toHaveCount(2);
-  await expect(pendingRegion.getByText("Not scored", { exact: true })).toHaveCount(2);
+  ).toHaveCount(1);
+  await expect(pendingRegion.getByText("Not scored", { exact: true })).toHaveCount(1);
   await expect(pendingRegion.getByText("Linked completed workouts")).toHaveCount(2);
+  const benchHold = pendingRegion
+    .locator("section")
+    .filter({ hasText: "Barbell Bench Press" })
+    .first();
+  await expect(benchHold.getByText("Load held", { exact: true })).toBeVisible();
+  await expect(
+    benchHold.getByText(
+      "A workout with no pain entry doesn’t shorten the wait.",
+      { exact: false }
+    )
+  ).toBeVisible();
+  await expect(
+    benchHold.getByRole("button", { name: "Dismiss notice", exact: true })
+  ).toBeVisible();
+  await expect(
+    benchHold.getByRole("button", { name: "Approve", exact: true })
+  ).toHaveCount(0);
+  await expect(
+    benchHold.getByRole("button", { name: "Reject", exact: true })
+  ).toHaveCount(0);
   const squatDecisionEvidence = pendingRegion
     .locator("section")
     .filter({ hasText: "Barbell Back Squat" })
@@ -871,12 +894,12 @@ async function verifyReviewAndDecisions({
     .locator("section")
     .filter({ hasText: "Barbell Bench Press" })
     .first();
-  const rejectBench = benchDecision.getByRole("button", {
-    name: "Reject",
+  const dismissBenchHold = benchDecision.getByRole("button", {
+    name: "Dismiss notice",
     exact: true,
   });
-  await waitForReactHandler(rejectBench);
-  await rejectBench.click();
+  await waitForReactHandler(dismissBenchHold);
+  await dismissBenchHold.click();
   await expect(
     pendingRegion.getByRole("heading", {
       name: "Barbell Bench Press",

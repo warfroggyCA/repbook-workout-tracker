@@ -30,6 +30,7 @@ import {
   type RecommendationCheckpoint,
 } from "@/services/recommendation-decisions";
 import { publishRecommendationProgramVersion } from "@/services/program-publication";
+import { getReviewDecisionData } from "@/services/review-decisions";
 import {
   createMigratedTestDatabase,
   createStartBarrier,
@@ -227,6 +228,41 @@ describe("recommendation decisions publish immutable Program versions", () => {
       sessionIds: [session.id],
       setIds: [set.id],
     });
+  }
+
+  async function createPainObservation(input: {
+    exerciseId?: string;
+    severity: number;
+    daysAgo?: number;
+  }) {
+    const startedAt = new Date(
+      Date.now() - (input.daysAgo ?? 0) * 24 * 60 * 60 * 1000
+    );
+    const [session] = await database.db
+      .insert(workoutSessions)
+      .values({
+        userId,
+        templateName: "Pain evidence",
+        status: "completed",
+        startedAt,
+        finishedAt: new Date(startedAt.getTime() + 45 * 60_000),
+        timezone: "UTC",
+        localDate: startedAt.toISOString().slice(0, 10),
+      })
+      .returning({ id: workoutSessions.id });
+    const [pain] = await database.db
+      .insert(painLogs)
+      .values({
+        userId,
+        sessionId: session.id,
+        exerciseId: input.exerciseId ?? currentExerciseId,
+        bodyPart: "knee",
+        severity: input.severity,
+        source: "set_flag",
+        createdAt: startedAt,
+      })
+      .returning({ id: painLogs.id });
+    return { sessionId: session.id, painId: pain.id };
   }
 
   async function createSubstitutionRecommendation(targetId = targetExerciseId) {
@@ -489,21 +525,203 @@ describe("recommendation decisions publish immutable Program versions", () => {
     });
   });
 
-  it("rejects a stale load baseline and a recent same-pattern pain increase", async () => {
+  it("rejects a stale load baseline and explains a recent exact-exercise pain hold", async () => {
     const staleId = await createLoadRecommendation({ fromLoad: 90 });
     await expect(approve(staleId)).resolves.toMatchObject({ ok: false });
 
     const painId = await createLoadRecommendation();
-    await database.db.insert(painLogs).values({
-      userId,
-      exerciseId: currentExerciseId,
-      bodyPart: "knee",
-      severity: 3,
-      source: "set_flag",
+    await createPainObservation({ severity: 3 });
+    await expect(approve(painId)).resolves.toMatchObject({
+      ok: false,
+      reason: expect.stringContaining(
+        "comes off hold 14 days after the latest 3/10 or higher flag"
+      ),
     });
-    await expect(approve(painId)).resolves.toMatchObject({ ok: false });
     expect(await database.db.select().from(userDecisions)).toHaveLength(0);
     expect((await currentState()).prescription.targetLoad).toBe(100);
+  });
+
+  it("blocks repeated mild exact-exercise flags but not another exercise with the same pattern", async () => {
+    const otherExerciseRecommendation = await createLoadRecommendation();
+    await createPainObservation({
+      exerciseId: targetExerciseId,
+      severity: 5,
+    });
+    await expect(approve(otherExerciseRecommendation)).resolves.toEqual({
+      ok: true,
+    });
+
+    const repeatedRecommendation = await createLoadRecommendation();
+    await createPainObservation({ severity: 1, daysAgo: 4 });
+    await createPainObservation({ severity: 2, daysAgo: 2 });
+    await createPainObservation({ severity: 1, daysAgo: 1 });
+    await expect(approve(repeatedRecommendation)).resolves.toMatchObject({
+      ok: false,
+      reason: expect.stringContaining(
+        "pain was flagged in 3 workouts in the last 14 days"
+      ),
+    });
+  });
+
+  it("keeps the atomic pain gate when evidence arrives after the approval read", async () => {
+    const recommendationId = await createLoadRecommendation();
+    let inserted = false;
+    const attempt = () =>
+      approve(recommendationId, {
+        checkpoint: async (boundary) => {
+          if (boundary === "recommendation-ready" && !inserted) {
+            inserted = true;
+            await createPainObservation({ severity: 4 });
+          }
+        },
+      });
+
+    await expect(attempt()).resolves.toMatchObject({ ok: false });
+    await expect(attempt()).resolves.toMatchObject({
+      ok: false,
+      reason: expect.stringContaining(
+        "comes off hold 14 days after the latest 3/10 or higher flag"
+      ),
+    });
+    expect((await currentState()).prescription.targetLoad).toBe(100);
+    expect(await database.db.select().from(userDecisions)).toHaveLength(0);
+  });
+
+  it("expires a pending hold when its recording window clears", async () => {
+    const { slot } = await currentState();
+    const { painId, sessionId } = await createPainObservation({
+      severity: 4,
+      daysAgo: 15,
+    });
+    const [hold] = await database.db
+      .insert(recommendations)
+      .values({
+        userId,
+        source: "rule",
+        status: "pending",
+        ruleId: "pain_freeze",
+        exerciseId: currentExerciseId,
+        sourceTemplateExerciseId: slot.id,
+        sourceSlotLineageId: slot.lineageId,
+        payload: {
+          kind: "hold",
+          templateExerciseId: slot.id,
+          reason: "Pain hold fixture",
+        },
+        reason: "Pain hold fixture",
+        evidence: {
+          signals: { windowDays: 14 },
+          painLogIds: [painId],
+          sessionIds: [sessionId],
+        },
+      })
+      .returning({ id: recommendations.id });
+
+    expect((await getReviewDecisionData(database.db, userId)).pending).toEqual([]);
+    expect(
+      await database.db.query.recommendations.findFirst({
+        where: eq(recommendations.id, hold.id),
+      })
+    ).toMatchObject({
+      status: "expired",
+      reconciliationReason:
+        "The pain evidence window or exact Program exercise changed, so this older status expired.",
+    });
+  });
+
+  it("expires an exact-exercise hold when a reviewed substitution changes the slot", async () => {
+    const { slot } = await currentState();
+    const { painId, sessionId } = await createPainObservation({ severity: 4 });
+    const [hold] = await database.db
+      .insert(recommendations)
+      .values({
+        userId,
+        source: "rule",
+        status: "pending",
+        ruleId: "pain_freeze",
+        exerciseId: currentExerciseId,
+        sourceTemplateExerciseId: slot.id,
+        sourceSlotLineageId: slot.lineageId,
+        payload: {
+          kind: "hold",
+          templateExerciseId: slot.id,
+          reason: "Pain hold fixture",
+        },
+        reason: "Pain hold fixture",
+        evidence: {
+          signals: { windowDays: 14 },
+          painLogIds: [painId],
+          sessionIds: [sessionId],
+        },
+      })
+      .returning({ id: recommendations.id });
+    const substitution = await createSubstitutionRecommendation();
+
+    await expect(approve(substitution)).resolves.toEqual({ ok: true });
+    expect((await currentState()).slot.exerciseId).toBe(targetExerciseId);
+    expect(
+      await database.db.query.recommendations.findFirst({
+        where: eq(recommendations.id, hold.id),
+      })
+    ).toMatchObject({
+      status: "expired",
+      reconciliationReason:
+        "The source exercise was removed from the new Program version.",
+    });
+  });
+
+  it("refreshes an alternative-review notice when live evidence downgrades to an ordinary hold", async () => {
+    const { slot } = await currentState();
+    const { painId, sessionId } = await createPainObservation({
+      severity: 4,
+      daysAgo: 1,
+    });
+    const [hold] = await database.db
+      .insert(recommendations)
+      .values({
+        userId,
+        source: "rule",
+        status: "pending",
+        ruleId: "pain_substitute",
+        exerciseId: currentExerciseId,
+        sourceTemplateExerciseId: slot.id,
+        sourceSlotLineageId: slot.lineageId,
+        payload: {
+          kind: "hold",
+          templateExerciseId: slot.id,
+          reason: "Alternative review hold fixture",
+        },
+        reason: "Alternative review hold fixture",
+        evidence: {
+          signals: { highSeverityReview: true, windowDays: 14 },
+          painLogIds: [painId],
+          sessionIds: [sessionId],
+        },
+      })
+      .returning({ id: recommendations.id });
+    const review = await getReviewDecisionData(database.db, userId);
+    expect(
+      await database.db.query.recommendations.findFirst({
+        where: eq(recommendations.id, hold.id),
+      })
+    ).toMatchObject({
+      status: "pending",
+      ruleId: "pain_freeze",
+      payload: {
+        kind: "hold",
+        templateExerciseId: slot.id,
+      },
+      reconciliationReason:
+        "Live pain evidence changed, so this automatic status was refreshed without changing the Program.",
+    });
+    expect(review.pending).toEqual([
+      expect.objectContaining({
+        id: hold.id,
+        ruleId: "pain_freeze",
+        payload: expect.objectContaining({ kind: "hold" }),
+        reason: expect.stringContaining("comes off hold 14 days"),
+      }),
+    ]);
   });
 
   it("rejects invalid edits and blocks detaching a pending source from its lineage", async () => {

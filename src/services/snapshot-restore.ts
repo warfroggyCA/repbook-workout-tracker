@@ -1970,6 +1970,7 @@ export function validateSnapshotPayload(
   );
   requireOptionalReferences(payload, "pain_logs", "session_id", "workout_sessions");
   requireOptionalReferences(payload, "pain_logs", "exercise_id", "exercises");
+  requireOptionalReferences(payload, "pain_logs", "completed_set_id", "completed_sets");
   requireOptionalReferences(payload, "fatigue_logs", "session_id", "workout_sessions");
   requireOptionalReferences(
     payload,

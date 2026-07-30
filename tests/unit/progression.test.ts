@@ -140,6 +140,8 @@ describe("double progression", () => {
 
 describe("pain hard-stops (safety proofs)", () => {
   const painEvent = (severity: number, daysAgo = 2) => ({
+    id: `pain-${severity}-${daysAgo}`,
+    sessionId: `pain-session-${daysAgo}`,
     severity,
     date: new Date(Date.now() - daysAgo * 24 * 60 * 60 * 1000),
     bodyPart: "shoulder",
@@ -161,7 +163,7 @@ describe("pain hard-stops (safety proofs)", () => {
       recentPain: [painEvent(5)],
     });
     expect(decision?.ruleId).toBe("pain_substitute");
-    expect(decision?.reason).toContain("professional");
+    expect(decision?.reason).toContain("alternative review");
   });
 
   it("3 repeated reports escalate even when each is mild", () => {
@@ -225,10 +227,16 @@ describe("apply-time validation (plan §14 re-check)", () => {
     const check = validateLoadIncrease({
       fromLoad: 95,
       toLoad: 100,
-      recentPain: [{ severity: 4, date: new Date(), bodyPart: "shoulder" }],
+      recentPain: [{
+        id: "apply-pain",
+        sessionId: "apply-session",
+        severity: 4,
+        date: new Date(),
+        bodyPart: "shoulder",
+      }],
     });
     expect(check.ok).toBe(false);
-    if (!check.ok) expect(check.reason).toContain("frozen");
+    if (!check.ok) expect(check.reason).toContain("comes off hold 14 days");
   });
 
   it("blocks edited loads that exceed the 10% cap", () => {
@@ -240,7 +248,13 @@ describe("apply-time validation (plan §14 re-check)", () => {
     const check = validateLoadIncrease({
       fromLoad: 95,
       toLoad: 85,
-      recentPain: [{ severity: 4, date: new Date(), bodyPart: "shoulder" }],
+      recentPain: [{
+        id: "deload-pain",
+        sessionId: "deload-session",
+        severity: 4,
+        date: new Date(),
+        bodyPart: "shoulder",
+      }],
     });
     expect(check.ok).toBe(true);
   });

@@ -3,6 +3,7 @@
  * Pure; used by the approve action and unit-tested directly.
  */
 import { progressionConfig as cfg } from "./config";
+import { classifyPainHold } from "./pain-hold";
 import type { PainEvent } from "./rules";
 
 export type ApplyCheck =
@@ -15,13 +16,22 @@ export function validateLoadIncrease(input: {
   recentPain: PainEvent[];
 }): ApplyCheck {
   const { fromLoad, toLoad, recentPain } = input;
-  const worstPain = recentPain.reduce((m, p) => Math.max(m, p.severity), 0);
   const isIncrease = fromLoad == null || toLoad > fromLoad;
+  const painHold = classifyPainHold({
+    exerciseName: "This exercise",
+    now: new Date(),
+    evidence: recentPain.map((pain) => ({
+      id: pain.id,
+      sessionId: pain.sessionId,
+      severity: pain.severity,
+      createdAt: pain.date,
+    })),
+  });
 
-  if (isIncrease && worstPain >= cfg.painFreezeThreshold) {
+  if (isIncrease && painHold.blocksProgression) {
     return {
       ok: false,
-      reason: `Pain (${worstPain}/10) was reported on this movement pattern in the last ${cfg.painWindowDays} days — load increases are frozen until two pain-free sessions.`,
+      reason: painHold.explanation!,
     };
   }
   if (isIncrease && fromLoad != null && toLoad > fromLoad * (1 + cfg.maxLoadJumpPct)) {
