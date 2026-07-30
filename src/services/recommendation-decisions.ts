@@ -41,6 +41,19 @@ export type RecommendationDecisionDependencies = {
   failureAt?: string;
 };
 
+export const AUTOMATIC_HOLD_NOTICE_DISMISSED_REASON =
+  "You dismissed this notice. The recorded pain flags still count, and your Program wasn’t changed.";
+
+function isAutomaticHoldNotice(
+  recommendation: Awaited<ReturnType<typeof getOwnedRecommendation>>
+) {
+  return (
+    recommendation?.source === "rule" &&
+    ["pain_freeze", "pain_substitute"].includes(recommendation.ruleId ?? "") &&
+    recommendation.payload?.kind === "hold"
+  );
+}
+
 const storedLoadSchema = z
   .number()
   .finite()
@@ -350,4 +363,104 @@ export async function rejectRecommendationDecision(
           ? `This recommendation was already ${decision.decision === "reject" ? "rejected with a different reason" : "approved"}.`
           : "This recommendation is no longer pending.",
       };
+}
+
+export async function dismissAutomaticHoldNotice(
+  db: Db,
+  userId: string,
+  input: { recommendationId: string },
+  dependencies: RecommendationDecisionDependencies = {}
+): Promise<{ ok: true } | { ok: false; reason: string }> {
+  const checkpoint = dependencies.checkpoint ?? (() => undefined);
+  const recommendation = await getOwnedRecommendation(
+    db,
+    userId,
+    input.recommendationId
+  );
+  if (!recommendation) return { ok: false, reason: "Notice not found." };
+  if (!isAutomaticHoldNotice(recommendation)) {
+    return {
+      ok: false,
+      reason: "Only an automatic hold notice can be dismissed.",
+    };
+  }
+  if (recommendation.status !== "pending") {
+    return recommendation.status === "expired" &&
+      recommendation.reconciliationReason ===
+        AUTOMATIC_HOLD_NOTICE_DISMISSED_REASON
+      ? { ok: true }
+      : { ok: false, reason: "This notice is no longer pending." };
+  }
+
+  await checkpoint("hold-notice-ready");
+  const query = sql`
+    WITH claimed AS (
+      UPDATE recommendations recommendation
+      SET status = 'expired',
+          decided_at = NULL,
+          reconciled_at = statement_timestamp(),
+          reconciliation_reason = ${AUTOMATIC_HOLD_NOTICE_DISMISSED_REASON}
+      WHERE recommendation.id = ${recommendation.id}::uuid
+        AND recommendation.user_id = ${userId}::uuid
+        AND recommendation.status = 'pending'
+        AND recommendation.archived_at IS NULL
+        AND recommendation.source = 'rule'
+        AND recommendation.rule_id IS NOT DISTINCT FROM ${recommendation.ruleId}
+        AND recommendation.payload->>'kind' = 'hold'
+        AND recommendation.reason = ${recommendation.reason}
+        AND recommendation.payload = ${JSON.stringify(recommendation.payload)}::jsonb
+        AND recommendation.evidence = ${JSON.stringify(recommendation.evidence)}::jsonb
+      RETURNING recommendation.id
+    ), recorded_audit AS (
+      INSERT INTO audit_logs (
+        user_id, actor_type, action, entity_type, entity_id, summary,
+        cause_ref, idempotency_key
+      )
+      SELECT
+        CASE
+          WHEN ${dependencies.failureAt ?? null}::text IS NULL
+          THEN ${userId}::uuid
+          ELSE NULL::uuid
+        END,
+        'user',
+        'recommendation.notice_dismiss',
+        'recommendation',
+        claimed.id::text,
+        'Dismissed automatic pain hold notice',
+        jsonb_build_object('recommendationId', claimed.id),
+        'recommendation:' || claimed.id::text || ':notice-dismiss'
+      FROM claimed
+      RETURNING id
+    )
+    SELECT claimed.id
+    FROM claimed
+    WHERE EXISTS (SELECT 1 FROM recorded_audit)
+  `;
+  const applied = resultRows(await db.execute(query)).length === 1;
+  if (applied) {
+    await checkpoint("hold-notice-dismissed");
+    return { ok: true };
+  }
+
+  const latest = await getOwnedRecommendation(db, userId, recommendation.id);
+  if (
+    latest?.status === "expired" &&
+    latest.reconciliationReason ===
+      AUTOMATIC_HOLD_NOTICE_DISMISSED_REASON
+  ) {
+    return { ok: true };
+  }
+  if (latest?.status === "pending" && isAutomaticHoldNotice(latest)) {
+    return {
+      ok: false,
+      reason:
+        "This notice changed while you were dismissing it. Review the current notice and try again.",
+    };
+  }
+  return latest?.status === "pending"
+    ? {
+        ok: false,
+        reason: "Only an automatic hold notice can be dismissed.",
+      }
+    : { ok: false, reason: "This notice is no longer pending." };
 }

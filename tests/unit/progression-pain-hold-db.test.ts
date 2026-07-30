@@ -13,6 +13,7 @@ import {
 } from "@/db/schema";
 import { activateProgramAtomically } from "@/services/program-activation";
 import { evaluateSessionProgression } from "@/services/progression";
+import { reconcilePendingPainRecommendations } from "@/services/recommendation-evidence-eligibility";
 import {
   createMigratedTestDatabase,
   type TestDatabase,
@@ -43,6 +44,15 @@ describe("progression pain hold integration", () => {
         loadType: "barbell",
       })
       .returning({ id: exercises.id });
+    const [alternative] = await database.db
+      .insert(exercises)
+      .values({
+        name: "Pain hold bodyweight alternative",
+        movementPattern: "horizontal_push",
+        primaryMuscles: ["chest"],
+        loadType: "bodyweight",
+      })
+      .returning({ id: exercises.id, name: exercises.name });
     const activated = await activateProgramAtomically(database.db, {
       userId: user.id,
       loadUnit: "lb",
@@ -72,7 +82,7 @@ describe("progression pain hold integration", () => {
     const [slot] = await database.db.query.workoutTemplateExercises.findMany({
       where: (table, { eq }) => eq(table.workoutTemplateId, template.id),
     });
-    const startedAt = new Date();
+    const startedAt = new Date(Date.now() - 2 * 24 * 60 * 60_000);
     const [session] = await database.db
       .insert(workoutSessions)
       .values({
@@ -143,8 +153,9 @@ describe("progression pain hold integration", () => {
         exerciseId: exercise.id,
         completedSetId: set.id,
         bodyPart: "shoulder",
-        severity: 4,
+        severity: 3,
         source: "set_flag",
+        createdAt: new Date(startedAt.getTime() + 45 * 60_000),
       })
       .returning({ id: painLogs.id });
 
@@ -175,6 +186,202 @@ describe("progression pain hold integration", () => {
 
     const [firstHold] = await database.db.select().from(recommendations);
     await database.db
+      .update(painLogs)
+      .set({ archivedAt: new Date() })
+      .where(eq(painLogs.id, pain.id));
+    let concurrentlyRestoredPainId: string | null = null;
+    await expect(
+      reconcilePendingPainRecommendations(database.db, user.id, {
+        checkpoint: async (boundary) => {
+          if (boundary !== "pain-recommendations-reviewed") return;
+          const [restoredPain] = await database.db
+            .insert(painLogs)
+            .values({
+              userId: user.id,
+              sessionId: session.id,
+              exerciseId: exercise.id,
+              completedSetId: set.id,
+              bodyPart: "shoulder",
+              severity: 4,
+              source: "set_flag",
+              createdAt: new Date(),
+            })
+            .returning({ id: painLogs.id });
+          concurrentlyRestoredPainId = restoredPain.id;
+          await reconcilePendingPainRecommendations(database.db, user.id);
+        },
+      }),
+    ).resolves.toBe(0);
+    expect(
+      await database.db.query.recommendations.findFirst({
+        where: (table, { eq }) => eq(table.id, firstHold.id),
+      }),
+    ).toMatchObject({
+      status: "pending",
+      reason: expect.stringContaining("a 4/10 pain flag"),
+      evidence: expect.objectContaining({
+        painLogIds: [concurrentlyRestoredPainId],
+      }),
+    });
+    await database.db
+      .update(painLogs)
+      .set({ archivedAt: new Date() })
+      .where(eq(painLogs.id, concurrentlyRestoredPainId!));
+    await database.db
+      .update(painLogs)
+      .set({ archivedAt: null })
+      .where(eq(painLogs.id, pain.id));
+    await reconcilePendingPainRecommendations(database.db, user.id);
+
+    await database.db
+      .update(recommendations)
+      .set({
+        payload: {
+          kind: "load_change",
+          templateExerciseId: slot.id,
+          fromLoad: 100,
+          toLoad: 105,
+          loadUnit: "lb",
+        },
+      })
+      .where(eq(recommendations.id, firstHold.id));
+    const secondStartedAt = new Date(Date.now() - 60 * 60_000);
+    const [secondSession] = await database.db
+      .insert(workoutSessions)
+      .values({
+        userId: user.id,
+        templateId: template.id,
+        sourceProgramId: activated.programId,
+        sourceProgramVersionId: activated.programVersionId,
+        sourceDayLineageId: template.lineageId,
+        status: "completed",
+        startedAt: secondStartedAt,
+        finishedAt: new Date(secondStartedAt.getTime() + 45 * 60_000),
+        timezone: "UTC",
+        localDate: secondStartedAt.toISOString().slice(0, 10),
+      })
+      .returning({ id: workoutSessions.id });
+    await database.db.insert(sessionExercises).values({
+      sessionId: secondSession.id,
+      exerciseId: exercise.id,
+      plannedFromTemplateExerciseId: slot.id,
+      sourceSlotLineageId: slot.lineageId,
+      targetSets: 1,
+      targetRepsMin: 6,
+      targetRepsMax: 8,
+      targetLoad: 100,
+      targetLoadUnit: "lb",
+    });
+    const secondPainAt = new Date(secondStartedAt.getTime() + 30 * 60_000);
+    const [secondPain] = await database.db
+      .insert(painLogs)
+      .values({
+        userId: user.id,
+        sessionId: secondSession.id,
+        exerciseId: exercise.id,
+        bodyPart: "shoulder",
+        severity: 4,
+        source: "session_note",
+        createdAt: secondPainAt,
+      })
+      .returning({ id: painLogs.id });
+
+    await evaluateSessionProgression(database.db, user.id, secondSession.id, {
+      aggressiveness: "aggressive",
+      deloadSuggestions: true,
+      substitutionSuggestions: true,
+      weeklyReview: true,
+    });
+
+    expect(await database.db.select().from(recommendations)).toEqual([
+      expect.objectContaining({
+        id: firstHold.id,
+        ruleId: "pain_freeze",
+        payload: expect.objectContaining({
+          kind: "hold",
+          templateExerciseId: slot.id,
+        }),
+        reason: expect.stringContaining("a 4/10 pain flag"),
+        evidence: expect.objectContaining({
+          painLogIds: [secondPain.id, pain.id],
+          sessionIds: [secondSession.id, session.id],
+          signals: expect.objectContaining({
+            releaseAt: new Date(
+              secondPainAt.getTime() + 14 * 24 * 60 * 60_000,
+            ).toISOString(),
+          }),
+        }),
+      }),
+    ]);
+    const refreshedHold =
+      await database.db.query.recommendations.findFirst({
+        where: (table, { eq }) => eq(table.id, firstHold.id),
+      });
+    expect(refreshedHold?.reconciledAt).not.toBeNull();
+    expect(
+      await reconcilePendingPainRecommendations(database.db, user.id),
+    ).toBe(0);
+
+    await evaluateSessionProgression(database.db, user.id, secondSession.id, {
+      aggressiveness: "aggressive",
+      deloadSuggestions: true,
+      substitutionSuggestions: true,
+      weeklyReview: true,
+    });
+    expect(
+      await database.db.query.recommendations.findFirst({
+        where: (table, { eq }) => eq(table.id, firstHold.id),
+      }),
+    ).toMatchObject({
+      reconciledAt: refreshedHold?.reconciledAt,
+      evidence: refreshedHold?.evidence,
+    });
+
+    await database.db
+      .update(painLogs)
+      .set({ archivedAt: new Date() })
+      .where(eq(painLogs.id, secondPain.id));
+    await evaluateSessionProgression(database.db, user.id, session.id, {
+      aggressiveness: "aggressive",
+      deloadSuggestions: true,
+      substitutionSuggestions: true,
+      weeklyReview: true,
+    });
+    expect(
+      await database.db.query.recommendations.findFirst({
+        where: (table, { eq }) => eq(table.id, firstHold.id),
+      }),
+    ).toMatchObject({
+      reason: expect.stringContaining("a 3/10 pain flag"),
+      evidence: expect.objectContaining({
+        painLogIds: [pain.id],
+        sessionIds: [session.id],
+      }),
+    });
+
+    await database.db
+      .update(painLogs)
+      .set({ archivedAt: null })
+      .where(eq(painLogs.id, secondPain.id));
+    await evaluateSessionProgression(database.db, user.id, secondSession.id, {
+      aggressiveness: "aggressive",
+      deloadSuggestions: true,
+      substitutionSuggestions: true,
+      weeklyReview: true,
+    });
+    expect(
+      await database.db.query.recommendations.findFirst({
+        where: (table, { eq }) => eq(table.id, firstHold.id),
+      }),
+    ).toMatchObject({
+      reason: expect.stringContaining("a 4/10 pain flag"),
+      evidence: expect.objectContaining({
+        painLogIds: [secondPain.id, pain.id],
+        sessionIds: [secondSession.id, session.id],
+      }),
+    });
+
+    await database.db
       .update(recommendations)
       .set({ archivedAt: new Date() })
       .where(eq(recommendations.id, firstHold.id));
@@ -188,17 +395,56 @@ describe("progression pain hold integration", () => {
       substitutionSuggestions: true,
       weeklyReview: true,
     });
-    expect(
+    const substitute =
       await database.db.query.recommendations.findFirst({
         where: (table, { and, eq, isNull }) =>
           and(
             eq(table.ruleId, "pain_substitute"),
             isNull(table.archivedAt),
           ),
-      })
-    ).toMatchObject({
-      payload: expect.objectContaining({ kind: "hold" }),
+      });
+    expect(substitute).toMatchObject({
+      payload: {
+        kind: "substitution",
+        templateExerciseId: slot.id,
+        fromExerciseId: exercise.id,
+        toExerciseId: alternative.id,
+      },
       reason: expect.stringContaining("needs an alternative review"),
+      evidence: expect.objectContaining({
+        signals: expect.objectContaining({
+          suggestedExercise: alternative.name,
+          alternatives: [],
+        }),
+      }),
+    });
+
+    const [followupPain] = await database.db
+      .insert(painLogs)
+      .values({
+        userId: user.id,
+        sessionId: secondSession.id,
+        exerciseId: exercise.id,
+        bodyPart: "shoulder",
+        severity: 4,
+        source: "session_note",
+        createdAt: new Date(Date.now() - 5 * 60_000),
+      })
+      .returning({ id: painLogs.id });
+    await reconcilePendingPainRecommendations(database.db, user.id);
+    expect(
+      await database.db.query.recommendations.findFirst({
+        where: (table, { eq }) => eq(table.id, substitute!.id),
+      }),
+    ).toMatchObject({
+      payload: substitute?.payload,
+      evidence: expect.objectContaining({
+        painLogIds: [pain.id, followupPain.id, secondPain.id],
+        signals: expect.objectContaining({
+          suggestedExercise: alternative.name,
+          alternatives: [],
+        }),
+      }),
     });
   });
 });

@@ -4,6 +4,7 @@ import { useId, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
   approveRecommendation,
+  dismissRecommendationNotice,
   rejectRecommendation,
 } from "@/app/actions/recommendations";
 import { Button } from "@/components/ui/button";
@@ -43,7 +44,7 @@ export function RecommendationCard({
   const isHold = rec.kind === "hold";
   const edited = isLoadChange && editedLoad !== rec.toLoad;
 
-  function decide(action: "approve" | "reject") {
+  function decide(action: "approve" | "reject" | "dismiss") {
     setError(null);
     startTransition(async () => {
       if (action === "approve") {
@@ -56,9 +57,18 @@ export function RecommendationCard({
           setError(result.reason);
           return;
         }
-      } else {
+      } else if (action === "reject") {
         const result = await rejectRecommendation({ recommendationId: rec.id });
         if (!result.ok) {
+          setError(result.reason);
+          return;
+        }
+      } else {
+        const result = await dismissRecommendationNotice({
+          recommendationId: rec.id,
+        });
+        if (!result.ok) {
+          router.refresh();
           setError(result.reason);
           return;
         }
@@ -223,7 +233,7 @@ export function RecommendationCard({
           variant="outline"
           className="min-h-10 w-full"
           disabled={pending}
-          onClick={() => decide("reject")}
+          onClick={() => decide(isHold ? "dismiss" : "reject")}
         >
           {isHold ? "Dismiss notice" : "Reject"}
         </Button>

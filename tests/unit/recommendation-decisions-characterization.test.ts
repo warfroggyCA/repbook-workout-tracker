@@ -26,10 +26,12 @@ import {
 import { activateProgramAtomically } from "@/services/program-activation";
 import {
   approveRecommendationDecision,
+  dismissAutomaticHoldNotice,
   rejectRecommendationDecision,
   type RecommendationCheckpoint,
 } from "@/services/recommendation-decisions";
 import { publishRecommendationProgramVersion } from "@/services/program-publication";
+import { evaluateSessionProgression } from "@/services/progression";
 import { getReviewDecisionData } from "@/services/review-decisions";
 import {
   createMigratedTestDatabase,
@@ -126,7 +128,7 @@ describe("recommendation decisions publish immutable Program versions", () => {
       ),
     });
     if (!prescription) throw new Error("Current target missing.");
-    return { program, slot, prescription };
+    return { program, template, slot, prescription };
   }
 
   async function createRecommendation(
@@ -136,12 +138,16 @@ describe("recommendation decisions publish immutable Program versions", () => {
       sessionIds?: string[];
       setIds?: string[];
     } = { signals: {} },
+    options: {
+      source?: "rule" | "ai";
+      ruleId?: string;
+    } = {},
   ) {
     const { slot } = await currentState();
     const [recommendation] = await database.db.insert(recommendations).values({
       userId,
-      source: "rule",
-      ruleId: "double_progression",
+      source: options.source ?? "rule",
+      ruleId: options.ruleId ?? "double_progression",
       exerciseId: slot.exerciseId,
       sourceTemplateExerciseId: slot.id,
       sourceSlotLineageId: slot.lineageId,
@@ -157,11 +163,15 @@ describe("recommendation decisions publish immutable Program versions", () => {
     toLoad?: number;
     loadUnit?: LoadUnit;
   } = {}) {
-    const { slot, prescription } = await currentState();
+    const { program, template, slot, prescription } = await currentState();
     const [session] = await database.db
       .insert(workoutSessions)
       .values({
         userId,
+        templateId: template.id,
+        sourceProgramId: program.id,
+        sourceProgramVersionId: program.currentVersionId,
+        sourceDayLineageId: template.lineageId,
         templateName: "Recommendation evidence",
         status: "completed",
         startedAt: new Date("2025-12-31T12:00:00.000Z"),
@@ -273,6 +283,20 @@ describe("recommendation decisions publish immutable Program versions", () => {
       fromExerciseId: slot.exerciseId,
       toExerciseId: targetId,
     });
+  }
+
+  async function createHoldRecommendation() {
+    const { slot } = await currentState();
+    return createRecommendation(
+      {
+        kind: "hold",
+        templateExerciseId: slot.id,
+        reason:
+          "A recent pain flag is keeping the load from going up until the evidence window clears.",
+      },
+      { signals: {} },
+      { ruleId: "pain_freeze" }
+    );
   }
 
   async function approve(
@@ -393,6 +417,264 @@ describe("recommendation decisions publish immutable Program versions", () => {
     expect(await database.db.select().from(programVersions).where(
       eq(programVersions.programId, programId)
     )).toHaveLength(1);
+  });
+
+  it("dismisses an automatic hold without recording a rejection or snoozing later notices", async () => {
+    const firstNoticeId = await createHoldRecommendation();
+    const ready = createStartBarrier(6);
+    const results = await runSimultaneously(6, () =>
+      dismissAutomaticHoldNotice(
+        database.db,
+        userId,
+        { recommendationId: firstNoticeId },
+        {
+          checkpoint: async (boundary) => {
+            if (boundary === "hold-notice-ready") await ready();
+          },
+        }
+      )
+    );
+    expect(results).toEqual(Array.from({ length: 6 }, () => ({ ok: true })));
+    await expect(
+      dismissAutomaticHoldNotice(database.db, userId, {
+        recommendationId: firstNoticeId,
+      })
+    ).resolves.toEqual({ ok: true });
+
+    expect(
+      await database.db.query.recommendations.findFirst({
+        where: eq(recommendations.id, firstNoticeId),
+      })
+    ).toMatchObject({
+      status: "expired",
+      decidedAt: null,
+      reconciliationReason:
+        "You dismissed this notice. The recorded pain flags still count, and your Program wasn’t changed.",
+    });
+    expect(await database.db.select().from(userDecisions)).toHaveLength(0);
+    expect(
+      await database.db
+        .select()
+        .from(auditLogs)
+        .where(eq(auditLogs.action, "recommendation.notice_dismiss"))
+    ).toHaveLength(1);
+
+    const laterNoticeId = await createHoldRecommendation();
+    expect(
+      await database.db.query.recommendations.findFirst({
+        where: eq(recommendations.id, laterNoticeId),
+      })
+    ).toMatchObject({ status: "pending" });
+    expect(
+      await database.db
+        .select()
+        .from(recommendations)
+        .where(eq(recommendations.status, "rejected"))
+    ).toHaveLength(0);
+    expect((await currentState()).prescription.targetLoad).toBe(100);
+  });
+
+  it("refuses to dismiss a Program proposal as an informational notice", async () => {
+    const recommendationId = await createLoadRecommendation();
+
+    await expect(
+      dismissAutomaticHoldNotice(database.db, userId, { recommendationId })
+    ).resolves.toEqual({
+      ok: false,
+      reason: "Only an automatic hold notice can be dismissed.",
+    });
+    expect(
+      await database.db.query.recommendations.findFirst({
+        where: eq(recommendations.id, recommendationId),
+      })
+    ).toMatchObject({ status: "pending" });
+  });
+
+  it("keeps dismissal owner-scoped and limited to pending automatic pain holds", async () => {
+    const recommendationId = await createHoldRecommendation();
+
+    await expect(
+      dismissAutomaticHoldNotice(database.db, crypto.randomUUID(), {
+        recommendationId,
+      })
+    ).resolves.toEqual({ ok: false, reason: "Notice not found." });
+    await database.db
+      .update(recommendations)
+      .set({ ruleId: "double_progression" })
+      .where(eq(recommendations.id, recommendationId));
+    await expect(
+      dismissAutomaticHoldNotice(database.db, userId, { recommendationId })
+    ).resolves.toEqual({
+      ok: false,
+      reason: "Only an automatic hold notice can be dismissed.",
+    });
+    expect(
+      await database.db.query.recommendations.findFirst({
+        where: eq(recommendations.id, recommendationId),
+      })
+    ).toMatchObject({ status: "pending" });
+  });
+
+  it("rechecks the automatic pain-hold identity in the atomic dismissal", async () => {
+    const recommendationId = await createHoldRecommendation();
+
+    await expect(
+      dismissAutomaticHoldNotice(
+        database.db,
+        userId,
+        { recommendationId },
+        {
+          checkpoint: async (boundary) => {
+            if (boundary !== "hold-notice-ready") return;
+            await database.db
+              .update(recommendations)
+              .set({ ruleId: "double_progression" })
+              .where(eq(recommendations.id, recommendationId));
+          },
+        }
+      )
+    ).resolves.toEqual({
+      ok: false,
+      reason: "Only an automatic hold notice can be dismissed.",
+    });
+    expect(
+      await database.db.query.recommendations.findFirst({
+        where: eq(recommendations.id, recommendationId),
+      })
+    ).toMatchObject({
+      status: "pending",
+      ruleId: "double_progression",
+      reconciledAt: null,
+    });
+    expect(
+      await database.db
+        .select()
+        .from(auditLogs)
+        .where(eq(auditLogs.action, "recommendation.notice_dismiss"))
+    ).toHaveLength(0);
+  });
+
+  it("keeps a concurrently refreshed pain notice pending for review", async () => {
+    const recommendationId = await createHoldRecommendation();
+    const refreshedReason =
+      "A newer 4/10 pain flag is keeping the load held until its evidence window clears.";
+
+    await expect(
+      dismissAutomaticHoldNotice(
+        database.db,
+        userId,
+        { recommendationId },
+        {
+          checkpoint: async (boundary) => {
+            if (boundary !== "hold-notice-ready") return;
+            await database.db
+              .update(recommendations)
+              .set({ reason: refreshedReason })
+              .where(eq(recommendations.id, recommendationId));
+          },
+        }
+      )
+    ).resolves.toEqual({
+      ok: false,
+      reason:
+        "This notice changed while you were dismissing it. Review the current notice and try again.",
+    });
+    expect(
+      await database.db.query.recommendations.findFirst({
+        where: eq(recommendations.id, recommendationId),
+      })
+    ).toMatchObject({
+      status: "pending",
+      reason: refreshedReason,
+      reconciledAt: null,
+    });
+    expect(
+      await database.db
+        .select()
+        .from(auditLogs)
+        .where(eq(auditLogs.action, "recommendation.notice_dismiss"))
+    ).toHaveLength(0);
+  });
+
+  it("lets a later progression evaluation surface the same active hold again", async () => {
+    await createLoadRecommendation();
+    const evidenceSession = await database.db.query.workoutSessions.findFirst({
+      where: and(
+        eq(workoutSessions.userId, userId),
+        eq(workoutSessions.templateName, "Recommendation evidence")
+      ),
+    });
+    if (!evidenceSession) throw new Error("Evidence session missing.");
+    await createPainObservation({
+      exerciseId: currentExerciseId,
+      severity: 4,
+    });
+
+    const preferences = {
+      aggressiveness: "aggressive" as const,
+      deloadSuggestions: true,
+      substitutionSuggestions: true,
+      weeklyReview: true,
+    };
+    await evaluateSessionProgression(
+      database.db,
+      userId,
+      evidenceSession.id,
+      preferences
+    );
+    const firstHold = await database.db.query.recommendations.findFirst({
+      where: and(
+        eq(recommendations.userId, userId),
+        eq(recommendations.ruleId, "pain_freeze"),
+        eq(recommendations.status, "pending")
+      ),
+    });
+    if (!firstHold) throw new Error("First pain hold missing.");
+    await dismissAutomaticHoldNotice(database.db, userId, {
+      recommendationId: firstHold.id,
+    });
+
+    await evaluateSessionProgression(
+      database.db,
+      userId,
+      evidenceSession.id,
+      preferences
+    );
+    const holds = await database.db.query.recommendations.findMany({
+      where: and(
+        eq(recommendations.userId, userId),
+        eq(recommendations.ruleId, "pain_freeze")
+      ),
+    });
+    expect(holds).toHaveLength(2);
+    expect(holds.map((hold) => hold.status).sort()).toEqual([
+      "expired",
+      "pending",
+    ]);
+    expect(await database.db.select().from(userDecisions)).toHaveLength(0);
+  });
+
+  it("rolls back a hold dismissal when its audit cannot be recorded", async () => {
+    const recommendationId = await createHoldRecommendation();
+
+    await expect(
+      dismissAutomaticHoldNotice(
+        database.db,
+        userId,
+        { recommendationId },
+        { failureAt: "before-audit" }
+      )
+    ).rejects.toThrow();
+    expect(
+      await database.db.query.recommendations.findFirst({
+        where: eq(recommendations.id, recommendationId),
+      })
+    ).toMatchObject({
+      status: "pending",
+      reconciledAt: null,
+      reconciliationReason: null,
+    });
+    expect(await database.db.select().from(userDecisions)).toHaveLength(0);
   });
 
   it("rolls back a rejected decision when its statement is forced to fail", async () => {
