@@ -9,7 +9,9 @@ import {
   observeNextRscPrefetches,
 } from "../helpers/webkit-rsc-prefetch-errors";
 
-const expectedDismissalPrefetchPaths = new Set(["/today"]);
+// The app shell prefetches these exact bottom-tab links. WebKit can cancel
+// either RSC request when the dismissal refresh replaces the Coach tree.
+const expectedDismissalPrefetchPaths = new Set(["/today", "/program"]);
 const holdReason =
   "Barbell Bench Press is on hold because a 4/10 pain flag was saved in the last 14 days. It comes off hold 14 days after the latest 3/10 or higher flag. A workout with no pain entry doesn't shorten that time.";
 const holdExplanation =
