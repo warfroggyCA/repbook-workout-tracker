@@ -282,11 +282,18 @@ test("autosaves, resolves tab conflicts, publishes v2, and restores v1 as v3", a
   await expect(
     page.getByRole("heading", { name: "Changes you made" }),
   ).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Checks before activating" })).toBeVisible();
-  await expect(page.getByText(/Matching past workouts:/).first()).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Before you activate" })).toBeVisible();
   await expect(
-    page.getByText(/does not make the warning more or less certain/i).first(),
+    page
+      .locator("details")
+      .filter({ hasText: /Show \d+ affected (?:exercise|exercises|day|days|item|items)/ })
+      .first()
+      .locator("summary"),
   ).toBeVisible();
+  await expect(page.getByText(/Matching past workouts:/)).toHaveCount(0);
+  await expect(
+    page.getByText(/does not make the warning more or less certain/i),
+  ).toHaveCount(0);
   await expect(
     page.getByText(/changes? compared with the current Program/i),
   ).toBeVisible();
@@ -471,7 +478,7 @@ test("a warm-up-only edit produces one clear review and stays reversible", async
       exact: true,
     }),
   ).toBeVisible();
-  await expect(page.getByText(/.* warm-up changed\./)).toBeVisible();
+  await expect(page.getByText(/.* warm-up added \(3 lines\)\./)).toBeVisible();
   await expect(
     page.getByRole("heading", { name: "Training summary" }),
   ).toHaveCount(0);
