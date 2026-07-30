@@ -255,7 +255,7 @@ describe("Program editor split presentation panels", () => {
       <ReviewDialog editor={editor} currentReview={review} canReview />
     );
 
-    expect(html).toContain("Activation is blocked");
+    expect(html).toContain("Activation is paused");
     expect(html).toContain(
       "The selected equipment cannot execute this exercise.",
     );
@@ -321,12 +321,184 @@ describe("Program editor split presentation panels", () => {
     expect(html).toContain("Changes you made");
     expect(html).toContain("1 change compared with the current Program.");
     expect(html).toContain("Synthetic Day warm-up changed.");
-    expect(html).toContain("Older Program update");
-    expect(html).toContain("See exact before and after");
+    expect(html).toContain("Repbook prepared older saved details");
+    expect(html).toContain("See the warm-up text");
     expect(html).not.toContain("Training summary");
     expect(html).not.toContain("Program Preflight");
     expect(html).not.toContain("None");
     expect(html).not.toContain("10000000-0000-4000-8000-000000000001");
+  });
+
+  it("keeps a two-change review concise while grouping repeated activation checks", () => {
+    const dayIds = [
+      "10000000-0000-4000-8000-000000000001",
+      "10000000-0000-4000-8000-000000000002",
+      "10000000-0000-4000-8000-000000000003",
+    ];
+    const slotIds = Array.from(
+      { length: 8 },
+      (_, index) =>
+        `20000000-0000-4000-8000-${String(index + 1).padStart(12, "0")}`,
+    );
+    const exerciseIds = Array.from(
+      { length: 8 },
+      (_, index) =>
+        `30000000-0000-4000-8000-${String(index + 1).padStart(12, "0")}`,
+    );
+    const equipmentReason =
+      "The exercise cannot be executed with the currently reviewed equipment inventory.";
+    const durations = dayIds.map((dayLineageId, index) => ({
+      dayLineageId,
+      minMinutes: 20 + index * 5,
+      maxMinutes: 40 + index * 5,
+      basis: "planned_fallback" as const,
+      evidenceCount: 0,
+      explanation: "No comparable completed sessions.",
+    }));
+    const durationFindings = dayIds.map((dayLineageId, index) => ({
+      id: `duration-overrun:${dayLineageId}`,
+      severity: "warning" as const,
+      code: "duration_target_overrun",
+      reason: `The explainable ${20 + index * 5}–${40 + index * 5} minute range extends beyond the reviewed ${20 + index * 5}–${30 + index * 5} minute target.`,
+      dayLineageId,
+      slotLineageId: null,
+      evidenceCount: 0,
+      editPath: `days.${dayLineageId}.intent.targetDuration`,
+    }));
+    const equipmentFindings = slotIds.map((slotLineageId, index) => ({
+      id: `equipment:${slotLineageId}`,
+      severity: "blocking" as const,
+      code: "equipment_unavailable",
+      reason: equipmentReason,
+      dayLineageId: dayIds[index % dayIds.length],
+      slotLineageId,
+      evidenceCount: 1,
+      editPath: `slots.${slotLineageId}.intent`,
+    }));
+    const warmupStep = (label: string, index: number) => ({
+      key: `40000000-0000-4000-8000-${String(index + 1).padStart(12, "0")}`,
+      label,
+      reps: null,
+      load: null,
+      loadUnit: null,
+      loadPercent: null,
+      loadText: null,
+      notes: null,
+    });
+    const beforeWarmup = Array.from(
+      { length: 8 },
+      (_, index) => `Warm-up step ${index + 1}`,
+    );
+    const afterWarmup = beforeWarmup.slice(0, 5);
+    const review: ProgramReview = {
+      status: "blocked",
+      hash: null,
+      reviewedRevision: 5,
+      preflight: {
+        algorithmVersion: "phase2-rule-range-v1",
+        checkedAt: "2026-07-30T20:00:00.000Z",
+        durations,
+        findings: [...durationFindings, ...equipmentFindings],
+        environment: {
+          equipmentEvidenceCount: 1,
+          constraintEvidenceCount: 0,
+          painEvidenceCount: 0,
+        },
+      },
+      changes: [
+        {
+          kind: "warmup",
+          path: `days.${dayIds[0]}.warmup`,
+          label: "Day 1 — Upper-body strength warm-up",
+          before: {
+            overview: beforeWarmup.join("\n"),
+            steps: beforeWarmup.map(warmupStep),
+          },
+          after: {
+            overview: afterWarmup.join("\n"),
+            steps: afterWarmup.map(warmupStep),
+          },
+        },
+        {
+          kind: "replace",
+          path: `slots.${slotIds[0]}.exerciseId`,
+          label:
+            "Replace Barbell Overhead Press with Single-Leg Bodyweight Calf Raise",
+          before: "Barbell Overhead Press",
+          after: "Single-Leg Bodyweight Calf Raise",
+        },
+      ],
+      programUpdates: [],
+      blockingErrors: equipmentFindings.map((finding) => finding.reason),
+      cautions: durationFindings.map((finding) => finding.reason),
+      recommendationRevision: 0,
+      recommendationConsequences: [],
+      summary: {
+        weeklySetsBefore: 24,
+        weeklySetsAfter: 24,
+        durationBefore: durations,
+        durationAfter: durations,
+        muscleSetsBefore: {},
+        muscleSetsAfter: {},
+      },
+    };
+    const days = dayIds.map((lineageId, dayIndex) => ({
+      lineageId,
+      name: `Day ${dayIndex + 1}`,
+      intent: {
+        targetDuration: {
+          minMinutes: 20 + dayIndex * 5,
+          maxMinutes: 30 + dayIndex * 5,
+        },
+      },
+      exercises: slotIds
+        .map((slotLineageId, slotIndex) => ({
+          lineageId: slotLineageId,
+          exerciseId: exerciseIds[slotIndex],
+        }))
+        .filter((_, slotIndex) => slotIndex % dayIds.length === dayIndex),
+    }));
+    const editor = {
+      reviewing: false,
+      requestReview: vi.fn(),
+      publishing: false,
+      publish: vi.fn(),
+      document: { days },
+      exerciseById: new Map(
+        exerciseIds.map((exerciseId, index) => [
+          exerciseId,
+          { name: `Exercise ${index + 1}` },
+        ]),
+      ),
+      router: { push: vi.fn() },
+      setActiveTab: vi.fn(),
+      setActiveDayId: vi.fn(),
+      setExpandedSlotId: vi.fn(),
+      dayHeadingRefs: { current: new Map() },
+      slotHeadingRefs: { current: new Map() },
+    } as unknown as ProgramEditorController;
+
+    const html = renderToStaticMarkup(
+      <ReviewDialog editor={editor} currentReview={review} canReview />,
+    );
+
+    expect(html).toContain("2 changes compared with the current Program.");
+    expect(html).toContain(
+      "Day 1 — Upper-body strength warm-up shortened from 8 lines to 5 lines.",
+    );
+    expect(html).toContain(
+      "Replace Barbell Overhead Press with Single-Leg Bodyweight Calf Raise.",
+    );
+    expect(html).toContain("Fix the red items below before you activate.");
+    expect(html).toContain("8 exercises don&#x27;t match your saved equipment");
+    expect(html).toContain("Show 8 affected exercises");
+    expect(html).toContain("3 workout days may run longer than planned");
+    expect(html).toContain("Show 3 affected days");
+    expect(html).not.toContain("Matching past workouts");
+    expect(html).not.toContain("does not make the warning");
+    expect(html).not.toContain("load percent");
+    expect(html).not.toContain("Not set");
+    expect(html.match(new RegExp(equipmentReason, "g"))).toBeNull();
   });
 
   it("renders immutable history with current, comparison, export, and restore affordances", () => {
