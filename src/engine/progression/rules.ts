@@ -4,6 +4,7 @@
  * turns decisions into pending Recommendations — never direct plan changes.
  */
 import { progressionConfig as cfg } from "./config";
+import { classifyPainHold } from "./pain-hold";
 
 export type ExposureSet = {
   id: string;
@@ -25,7 +26,13 @@ export type SlotPrescription = {
   targetLoad: number | null;
 };
 
-export type PainEvent = { severity: number; date: Date; bodyPart: string };
+export type PainEvent = {
+  id: string;
+  sessionId: string | null;
+  severity: number | null;
+  date: Date;
+  bodyPart: string;
+};
 
 export type RuleDecision = {
   ruleId:
@@ -40,6 +47,7 @@ export type RuleDecision = {
     signals: Record<string, unknown>;
     sessionIds?: string[];
     setIds?: string[];
+    painLogIds?: string[];
   };
 };
 
@@ -76,7 +84,7 @@ export type EvaluateSlotInput = {
   prescription: SlotPrescription;
   /** Most recent first, including today's. Working sets only. */
   exposures: Exposure[];
-  /** Pain events for this exercise's movement pattern within the window. */
+  /** Active pain observations for this exact exercise. */
   recentPain: PainEvent[];
   /** Next achievable load above current (plate math / dumbbell increments). */
   nextLoadUp: (current: number) => number | null;
@@ -89,47 +97,39 @@ export type EvaluateSlotInput = {
 export function evaluateSlot(input: EvaluateSlotInput): RuleDecision | null {
   const { prescription: rx, exposures, recentPain } = input;
 
-  // --- Hard stop: pain rules run first and veto everything else (plan §7) ---
-  const worstPain = recentPain.reduce(
-    (max, p) => Math.max(max, p.severity),
-    0
-  );
-  if (
-    worstPain >= cfg.painSubstituteThreshold ||
-    recentPain.length >= cfg.painRepeatCount
-  ) {
+  // Pain is a recording-time evidence window. A missing entry is never
+  // interpreted as a pain-free workout or as early release evidence.
+  const painHold = classifyPainHold({
+    exerciseName: input.exerciseName,
+    now: new Date(),
+    evidence: recentPain.map((pain) => ({
+      id: pain.id,
+      sessionId: pain.sessionId,
+      severity: pain.severity,
+      createdAt: pain.date,
+    })),
+  });
+  if (painHold.state === "substitution_review") {
     return {
       ruleId: "pain_substitute",
       kind: "substitution_needed",
-      reason:
-        `You've reported ${recentPain[0]?.bodyPart ?? "joint"} pain ` +
-        `(worst ${worstPain}/10, ${recentPain.length} report${recentPain.length > 1 ? "s" : ""} in ${cfg.painWindowDays} days) ` +
-        `around ${input.exerciseName}. Progression is paused — consider an alternative that keeps the movement pattern with less stress. ` +
-        (worstPain >= cfg.painSubstituteThreshold
-          ? "Pain at this level is worth a professional opinion if it persists."
-          : ""),
+      reason: painHold.explanation!,
       evidence: {
-        signals: {
-          worstPainSeverity: worstPain,
-          painReports: recentPain.length,
-          windowDays: cfg.painWindowDays,
-        },
+        signals: painHold.signals,
+        sessionIds: painHold.sessionIds,
+        painLogIds: painHold.evidenceIds,
       },
     };
   }
-  if (worstPain >= cfg.painFreezeThreshold) {
+  if (painHold.state === "hold") {
     return {
       ruleId: "pain_freeze",
       kind: "hold",
-      reason:
-        `Pain (${worstPain}/10) was flagged around ${input.exerciseName} recently. ` +
-        `Loads hold until you get two pain-free sessions on this pattern.`,
+      reason: painHold.explanation!,
       evidence: {
-        signals: {
-          worstPainSeverity: worstPain,
-          painReports: recentPain.length,
-          windowDays: cfg.painWindowDays,
-        },
+        signals: painHold.signals,
+        sessionIds: painHold.sessionIds,
+        painLogIds: painHold.evidenceIds,
       },
     };
   }

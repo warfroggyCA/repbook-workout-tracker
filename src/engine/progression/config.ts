@@ -12,11 +12,11 @@ export const progressionConfig = {
   /** Fallback increment when no plate/dumbbell data constrains the step. */
   defaultIncrement: 5,
 
-  /** Pain at/above this severity freezes progression for the pattern. */
+  /** Pain at/above this severity freezes progression for the exact exercise. */
   painFreezeThreshold: 3,
   /** Pain at/above this severity triggers a substitution suggestion. */
   painSubstituteThreshold: 5,
-  /** Repeated pain reports in the window also trigger substitution. */
+  /** Distinct workouts with positive pain reports that trigger review. */
   painRepeatCount: 3,
   /** Days of pain history considered. */
   painWindowDays: 14,

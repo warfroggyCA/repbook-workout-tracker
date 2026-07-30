@@ -46,14 +46,20 @@ export async function loadProgramPreflightContext(
       ORDER BY lineage_id, recency DESC
     `),
     db.execute(sql`
-      SELECT exercise_id, count(*)::int AS evidence_count
-      FROM pain_logs
-      WHERE user_id = ${userId}::uuid
-        AND archived_at IS NULL
-        AND exercise_id IS NOT NULL
-        AND exercise_id IN (${sql.join(exerciseIds.map((id) => sql`${id}::uuid`), sql`, `)})
-        AND created_at >= now() - interval '14 days'
-      GROUP BY exercise_id
+      SELECT pain.exercise_id, count(*)::int AS evidence_count
+      FROM pain_logs pain
+      JOIN workout_sessions session ON session.id = pain.session_id
+      WHERE pain.user_id = ${userId}::uuid
+        AND session.user_id = ${userId}::uuid
+        AND session.status = 'completed'
+        AND session.archived_at IS NULL
+        AND pain.archived_at IS NULL
+        AND pain.severity > 0
+        AND pain.exercise_id IS NOT NULL
+        AND pain.exercise_id IN (${sql.join(exerciseIds.map((id) => sql`${id}::uuid`), sql`, `)})
+        AND pain.created_at > statement_timestamp() - interval '14 days'
+        AND pain.created_at <= statement_timestamp()
+      GROUP BY pain.exercise_id
     `),
   ]);
 

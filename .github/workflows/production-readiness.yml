@@ -118,6 +118,11 @@ jobs:
         continue-on-error: true
         run: npm run test:e2e
 
+      - name: Verify pain-hold notice on desktop Chromium and mobile WebKit
+        id: browser-pain-hold
+        continue-on-error: true
+        run: npm run test:e2e:pain-hold
+
       - name: Run complete History management browser matrix
         id: browser-history
         continue-on-error: true
@@ -182,6 +187,7 @@ jobs:
         if: ${{ always() }}
         env:
           BROWSER_SMOKE: ${{ steps.browser-smoke.outcome }}
+          BROWSER_PAIN_HOLD: ${{ steps.browser-pain-hold.outcome }}
           BROWSER_HISTORY: ${{ steps.browser-history.outcome }}
           BROWSER_HISTORY_WORKSPACE: ${{ steps.browser-history-workspace.outcome }}
           BROWSER_PROGRAM_LIFECYCLE: ${{ steps.browser-program-lifecycle.outcome }}
@@ -198,6 +204,7 @@ jobs:
           failed=0
           for result in \
             "signed-in smoke:${BROWSER_SMOKE}" \
+            "pain-hold notice:${BROWSER_PAIN_HOLD}" \
             "History management:${BROWSER_HISTORY}" \
             "History workspace:${BROWSER_HISTORY_WORKSPACE}" \
             "Program lifecycle:${BROWSER_PROGRAM_LIFECYCLE}" \

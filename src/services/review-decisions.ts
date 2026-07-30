@@ -23,7 +23,10 @@ import {
 } from "@/db/schema";
 import { convertWeight, loadsEqual } from "@/lib/units";
 import { classifySetMetricContainment } from "@/lib/set-metric-semantics";
-import { recommendationEvidenceEligibleForAction } from "@/services/recommendation-evidence-eligibility";
+import {
+  recommendationEvidenceEligibleForAction,
+  reconcilePendingPainRecommendations,
+} from "@/services/recommendation-evidence-eligibility";
 
 export type ReviewEvidenceItem = {
   label: string;
@@ -66,8 +69,17 @@ const signalLabels: Record<string, string> = {
   cleanExposures: "Clean completed workouts",
   hardMissExposures: "Repeated hard-miss workouts",
   worstPainSeverity: "Highest recorded pain flag",
+  worstSeverity: "Highest recorded pain flag",
   painReports: "Recorded pain flags",
+  positiveReports: "Recorded pain flags",
+  holdReports: "Flags at 3/10 or higher",
+  linkedSessions: "Workouts with a pain flag",
   windowDays: "Evidence window",
+  releaseAt: "Hold checks again",
+  highSeverityReview: "Higher-severity review",
+  repeatedSessionReview: "Repeated-workout review",
+  triggerEvidenceId: "Triggering pain flag",
+  triggerSessionId: "Triggering workout",
   fromLoad: "Previous target",
   toLoad: "Suggested target",
 };
@@ -75,6 +87,12 @@ const signalLabels: Record<string, string> = {
 const separatelyPresentedSignals = new Set([
   "alternatives",
   "suggestedExercise",
+  "positiveReports",
+  "linkedSessions",
+  "triggerEvidenceId",
+  "triggerSessionId",
+  "highSeverityReview",
+  "repeatedSessionReview",
 ]);
 
 function plural(count: number, singular: string, pluralForm = `${singular}s`) {
@@ -98,6 +116,16 @@ function signalValue(
   }
   if (key === "windowDays" && typeof value === "number") {
     return plural(value, "day");
+  }
+  if (key === "releaseAt" && typeof value === "string") {
+    const releaseAt = new Date(value);
+    if (!Number.isNaN(releaseAt.getTime())) {
+      return releaseAt.toLocaleDateString(undefined, {
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+      });
+    }
   }
   if (
     (key === "fromLoad" || key === "toLoad") &&
@@ -269,6 +297,7 @@ function completedSetMatchesPayload(
 }
 
 export async function getReviewDecisionData(db: Db, userId: string) {
+  await reconcilePendingPainRecommendations(db, userId);
   const [pendingRows, recentRows, acceptedRows] = await Promise.all([
     db.query.recommendations.findMany({
       where: and(

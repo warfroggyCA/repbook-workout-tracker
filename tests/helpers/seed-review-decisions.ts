@@ -565,12 +565,19 @@ async function main() {
         payload: {
           kind: "hold" as const,
           templateExerciseId: benchSlot.id,
-          reason: "Review the shoulder pain flag before progressing.",
+          reason:
+            "A 4/10 pain flag for Barbell Bench Press is keeping the load from going up.",
         },
         reason:
-          "A 4/10 shoulder pain flag was recorded after bench work. Hold the target until you review it.",
+          "A 4/10 pain flag for Barbell Bench Press is keeping the load from going up. The app will check again once there hasn’t been another 3/10-or-higher flag for this exercise for 14 days. A workout with no pain entry doesn’t shorten the wait.",
         evidence: {
-          signals: { worstPainSeverity: 4, painReports: 1, windowDays: 14 },
+          signals: {
+            worstPainSeverity: 4,
+            painReports: 1,
+            qualifyingPainReports: 1,
+            painSessionCount: 1,
+            windowDays: 14,
+          },
           sessionIds: [sessionRecords[1].id],
           painLogIds: [pain.id],
           setIds: sessionRecords[1].benchSetIds,

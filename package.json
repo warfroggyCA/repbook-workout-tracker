@@ -12,6 +12,7 @@
     "test:coverage": "vitest run --coverage",
     "test:selection": "node scripts/check-test-selection.mjs",
     "test:e2e": "playwright test",
+    "test:e2e:pain-hold": "playwright test --config=playwright.pain-hold-notice.config.ts",
     "test:e2e:phase0": "playwright test --config=playwright.phase0.config.ts",
     "test:e2e:phase1": "playwright test --config=playwright.phase1.config.ts",
     "test:e2e:live-workout-iphone": "playwright test --config=playwright.live-workout-iphone.config.ts",

@@ -8,6 +8,7 @@ import {
   programVersions,
   userProfiles,
   users,
+  workoutSessions,
   workoutTemplateExercises,
   workoutTemplates,
 } from "@/db/schema";
@@ -438,9 +439,31 @@ describe("workout simulation source snapshot", () => {
     await addActiveProgram(owner.id, "Requested owner Program");
     await addActiveProgram(otherOwner.id, "Other owner private Program");
     const evidenceTime = new Date("2026-07-21T12:00:00.000Z");
+    const [ownerPainSession, otherPainSession] = await db
+      .insert(workoutSessions)
+      .values([
+        {
+          userId: owner.id,
+          status: "completed",
+          startedAt: evidenceTime,
+          finishedAt: new Date("2026-07-21T13:00:00.000Z"),
+          timezone: "UTC",
+          localDate: "2026-07-21",
+        },
+        {
+          userId: otherOwner.id,
+          status: "completed",
+          startedAt: evidenceTime,
+          finishedAt: new Date("2026-07-21T13:00:00.000Z"),
+          timezone: "UTC",
+          localDate: "2026-07-21",
+        },
+      ])
+      .returning({ id: workoutSessions.id });
     await db.insert(painLogs).values([
       {
         userId: owner.id,
+        sessionId: ownerPainSession.id,
         exerciseId: alternative.id,
         bodyPart: "elbow",
         severity: 2,
@@ -448,6 +471,7 @@ describe("workout simulation source snapshot", () => {
       },
       {
         userId: otherOwner.id,
+        sessionId: otherPainSession.id,
         exerciseId: alternative.id,
         bodyPart: "elbow",
         severity: 5,

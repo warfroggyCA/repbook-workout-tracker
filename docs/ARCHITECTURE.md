@@ -34,6 +34,24 @@ must not silently reinterpret an older record. Restores and corrections must
 recompute or invalidate derived recommendations instead of reviving stale
 conclusions.
 
+## Pain safety hold
+
+Progression uses one shared pain-hold classifier for an exact stable exercise.
+Raw positive pain observations from completed, unarchived workouts contribute
+to recurrence. An observation of 3/10 or higher holds a load increase until 14
+days have passed without another 3/10-or-higher observation for that exercise.
+An observation of 5/10 or higher, or positive observations across at least
+three completed sessions inside the 14-day window, requests an alternative
+instead. A recurrence-only alternative review clears when fewer than three
+linked sessions with positive observations remain inside that window.
+
+A missing pain entry and an explicit zero are preserved as different facts.
+Neither is invented as a pain-free session and neither shortens the wait.
+Contradictory or out-of-order evidence is classified deterministically from its
+retained time, severity, stable identity, and provenance. Corrections, archive
+restore, snapshot restore, and version restore use the same classifier. The
+hold explains itself to the user but never changes the Program automatically.
+
 ## Ownership map
 
 - `src/db/schema/` and `src/db/migrations/`: durable schema and additive history
