@@ -694,6 +694,66 @@ export function setWarmupLoadText<T extends WarmupSet>(
       }) as T;
 }
 
+function overviewWarmupLabels(value: string | null) {
+  return (value?.split(/\r?\n/) ?? [])
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .flatMap((line) => {
+      const chunks: string[] = [];
+      for (let index = 0; index < line.length; index += 120) {
+        chunks.push(line.slice(index, index + 120));
+      }
+      return chunks;
+    });
+}
+
+function hasGeneratedOverviewWarmupItems(
+  day: ProgramDocumentDayV3,
+) {
+  const first = day.warmupItems[0];
+  if (!first || first.key !== day.lineageId || !day.warmupNotes) return false;
+  const hasOnlyPlainItems = day.warmupItems.every((item) =>
+    item.reps == null &&
+    item.load == null &&
+    item.loadUnit == null &&
+    item.loadPercent == null &&
+    item.loadText == null &&
+    item.notes == null
+  );
+  if (!hasOnlyPlainItems) return false;
+  const projectedLabels = overviewWarmupLabels(day.warmupNotes);
+  return (
+    (day.warmupItems.length === 1 &&
+      first.label === day.warmupNotes.slice(0, 120)) ||
+    day.warmupItems.map((item) => item.label).join("\n") ===
+      projectedLabels.join("\n")
+  );
+}
+
+/**
+ * Keeps only the exact schema-upgrade compatibility item linked to its source
+ * overview. Independently authored structured steps are never rewritten.
+ */
+export function updateProgramDayWarmupOverview(
+  day: ProgramDocumentDayV3,
+  warmupNotes: string | null,
+): ProgramDocumentDayV3 {
+  const generated = day.warmupItems[0];
+  return {
+    ...day,
+    warmupNotes,
+    warmupItems: generated && hasGeneratedOverviewWarmupItems(day)
+      ? overviewWarmupLabels(warmupNotes).map((label, index) => ({
+          ...(day.warmupItems[index] ?? generated),
+          key:
+            day.warmupItems[index]?.key ??
+            (index === 0 ? day.lineageId : crypto.randomUUID()),
+          label,
+        }))
+      : day.warmupItems,
+  };
+}
+
 export function localProgramDraftKey(ownerId: string, draftId: string) {
   return `${PROGRAM_DRAFT_LOCAL_PREFIX}:${ownerId}:${draftId}`;
 }
@@ -819,7 +879,7 @@ const FIELD_LABELS: Record<string, string> = {
   repMax: "maximum reps",
   targetLoad: "target load",
   targetLoadUnit: "load unit",
-  progressionRuleId: "progression rule",
+  progressionRuleId: "how weight should increase",
   restSec: "rest",
   restAfterRoundSec: "round rest",
   notes: "notes",
@@ -827,6 +887,10 @@ const FIELD_LABELS: Record<string, string> = {
   warmupSets: "warm-up sets",
   setNotes: "work-set cues",
   supersets: "supersets",
+  exerciseGroup: "exercise group",
+  overview: "instructions",
+  steps: "check-off steps",
+  groupMemberOrderIdx: "position inside the group",
   name: "name",
 };
 
@@ -844,19 +908,35 @@ export function formatProgramReviewValue(
   value: unknown,
   field?: string,
 ): string {
+  if (field === "groupMemberOrderIdx") {
+    return value == null ? "Not set" : String(Number(value) + 1);
+  }
   if (field === "supersetKey") {
     return value ? "Linked to a superset" : "Not in a superset";
   }
   if (field === "progressionRuleId") {
-    if (value === "double_progression") return "Double progression";
-    if (value === "hold") return "Hold targets";
+    if (value === "double_progression") return "Build reps, then suggest more weight";
+    if (value === "hold") return "Keep these targets";
   }
-  if (field === "restSec" || field === "restAfterRoundSec") {
-    return value == null ? "None" : formatRestTime(Number(value));
+  if (field && /(?:^|_)(?:id|ids)$/i.test(field.replace(/([a-z])([A-Z])/g, "$1_$2"))) {
+    if (Array.isArray(value)) {
+      return value.length === 0
+        ? "No saved exercise references"
+        : `${value.length} saved exercise reference${value.length === 1 ? "" : "s"}`;
+    }
+    return value ? "Saved reference" : "Not set";
   }
-  if (value == null || value === "") return "None";
+  if (
+    field === "restSec" ||
+    field === "restAfterRoundSec" ||
+    field === "restBetweenMembersSec" ||
+    field === "restBetweenRoundsSec"
+  ) {
+    return value == null ? "Not set" : formatRestTime(Number(value));
+  }
+  if (value == null || value === "") return "Not set";
   if (Array.isArray(value)) {
-    if (value.length === 0) return "None";
+    if (value.length === 0) return "None saved";
     return value
       .map((item, index) => `${index + 1}. ${formatProgramReviewValue(item)}`)
       .join("; ");
@@ -871,7 +951,59 @@ export function formatProgramReviewValue(
       .join("; ");
   }
   if (typeof value === "boolean") return value ? "Yes" : "No";
-  return String(value);
+  return typeof value === "string" ? value.replaceAll("_", " ") : String(value);
+}
+
+function reviewRecord(value: unknown) {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+export function describeProgramReviewChange(
+  change: ProgramReviewChange,
+): string {
+  if (change.kind === "add" || change.kind === "remove" || change.kind === "replace") {
+    return `${change.label}.`;
+  }
+  if (change.kind === "rename") {
+    return `${change.label}: ${formatProgramReviewValue(change.before)} → ${formatProgramReviewValue(change.after)}.`;
+  }
+  if (change.kind === "reorder") {
+    return `${change.label}: moved from ${formatProgramReviewValue(change.before)} to ${formatProgramReviewValue(change.after)}.`;
+  }
+  if (change.kind === "targets") {
+    const before = reviewRecord(change.before);
+    const after = reviewRecord(change.after);
+    if (before && after) {
+      const parts: string[] = [];
+      if (before.sets !== after.sets) {
+        parts.push(`${before.sets} → ${after.sets} work sets`);
+      }
+      if (before.repMin !== after.repMin || before.repMax !== after.repMax) {
+        parts.push(
+          `${before.repMin}–${before.repMax} → ${after.repMin}–${after.repMax} reps`,
+        );
+      }
+      if (
+        before.targetLoad !== after.targetLoad ||
+        before.targetLoadUnit !== after.targetLoadUnit
+      ) {
+        const load = (record: Record<string, unknown>) =>
+          record.targetLoad == null
+            ? "no target load"
+            : `${record.targetLoad} ${record.targetLoadUnit}`;
+        parts.push(`${load(before)} → ${load(after)}`);
+      }
+      if (before.progressionRuleId !== after.progressionRuleId) {
+        parts.push(
+          `${formatProgramReviewValue(before.progressionRuleId, "progressionRuleId")} → ${formatProgramReviewValue(after.progressionRuleId, "progressionRuleId")}`,
+        );
+      }
+      if (parts.length > 0) return `${change.label}: ${parts.join("; ")}.`;
+    }
+  }
+  return `${change.label} changed.`;
 }
 
 export function parseLocalProgramDraft(

@@ -80,6 +80,37 @@ describe("saved Program presentation", () => {
     ]);
   });
 
+  it("shows structured warm-up steps instead of a stale overview", () => {
+    expect(
+      deriveProgramDayWarmupLines(
+        "Old overview that no longer controls the workout",
+        [],
+        [
+          {
+            key: "10000000-0000-4000-8000-000000000001",
+            label: "Two minutes easy",
+            reps: null,
+            load: null,
+            loadUnit: null,
+            loadPercent: null,
+            loadText: null,
+            notes: null,
+          },
+          {
+            key: "10000000-0000-4000-8000-000000000002",
+            label: "Two smooth ramp-up sets",
+            reps: null,
+            load: null,
+            loadUnit: null,
+            loadPercent: null,
+            loadText: null,
+            notes: null,
+          },
+        ],
+      ),
+    ).toEqual(["Two minutes easy", "Two smooth ramp-up sets"]);
+  });
+
   it("projects every day and batched superset without mutating its source", () => {
     const source: ProgramPresentationSource = {
       program: { id: "program", name: "Fixture" },

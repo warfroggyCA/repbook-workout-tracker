@@ -21,6 +21,25 @@ These concepts must never be collapsed:
 - Coach or Review proposals and decisions
 - independent activity context
 
+## Program editing and activation review
+
+The editor prepares an editable current-schema draft from the immutable active
+Program. Automatic preparation of an older Program is disclosed separately
+from deliberate user changes; it is never counted as something the user chose
+to edit. Activation still requires an exact saved-revision review and creates a
+new immutable Program version.
+
+Warm-up instructions and optional structured check-off steps are both reviewed.
+When an older Program has only the generated compatibility step derived from
+its instructions, editing those instructions keeps that generated step in
+sync. Independently authored structured steps remain independent. Workout
+creation and the saved Program presentation use structured steps when they
+exist, so the reviewed content is the content shown during the workout.
+
+Every change to weekly work-set totals must be explained by a visible add,
+remove, replacement, or target change. If the review cannot account for a set
+total, activation fails closed.
+
 ## Persisted evidence
 
 Completed workouts, session exercises, sets, pain observations, local dates,

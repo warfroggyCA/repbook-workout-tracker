@@ -124,7 +124,7 @@ export function HistoryPanel({ editor }: { editor: ProgramEditorController }) {
                                 <span>Linked to reviewed import evidence</span>
                               )}
                               {entry.reviewHash && (
-                                <span>Semantic review verified</span>
+                                <span>Activation review verified</span>
                               )}
                             </div>
                           </div>

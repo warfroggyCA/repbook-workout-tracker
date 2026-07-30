@@ -16,7 +16,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { moveItem, moveProgramGroupMember, moveProgramSlotUnit, replaceProgramExercise, resizeProgramSlotSets } from "@/lib/program-editor-client";
+import { moveItem, moveProgramGroupMember, moveProgramSlotUnit, replaceProgramExercise, resizeProgramSlotSets, updateProgramDayWarmupOverview } from "@/lib/program-editor-client";
 import { programDocumentV3Schema, type ProgramDocumentDayV3 } from "@/lib/program-document";
 import { formatRestTime } from "@/lib/rest-time";
 import { cn } from "@/lib/utils";
@@ -183,14 +183,22 @@ export const DayEditor = memo(function DayEditor({ editor, canReview = false }: 
                     </Field>
                   </div>
 
-                  <fieldset className="rounded-lg border bg-muted/20 p-3">
-                    <legend className="px-1 font-medium">Day intent</legend>
-                    <p className="mb-3 text-xs leading-5 text-muted-foreground">
-                      Review the purpose, recognizable identity, useful duration,
-                      fatigue tolerance, and ordering bounds before publication.
+                  <details className="rounded-lg border bg-muted/20 p-3">
+                    <summary className="min-h-11 cursor-pointer font-medium">
+                      Advanced session options
+                      <span className="mt-1 block text-xs font-normal leading-5 text-muted-foreground">
+                        Used only when you ask Repbook to build a shorter session.
+                        These settings never change your Program automatically.
+                      </span>
+                    </summary>
+                    <p className="mb-3 mt-3 text-xs leading-5 text-muted-foreground">
+                      Session length affects shorter-session proposals today.
+                      Repbook stores the other planning details, but it does not
+                      currently rearrange, pair, omit, or replace exercises from
+                      these choices.
                     </p>
                     <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                      <Field id={`day-${day.lineageId}-primary-outcome`} label="Primary outcome">
+                      <Field id={`day-${day.lineageId}-primary-outcome`} label="Main goal">
                         <select
                           id={`day-${day.lineageId}-primary-outcome`}
                           className="h-10 w-full rounded-lg border border-input bg-background px-3 text-sm"
@@ -218,7 +226,7 @@ export const DayEditor = memo(function DayEditor({ editor, canReview = false }: 
                           <option value="recovery">Recovery</option>
                         </select>
                       </Field>
-                      <Field id={`day-${day.lineageId}-identity`} label="Recognizable identity">
+                      <Field id={`day-${day.lineageId}-identity`} label="What makes this day recognizable">
                         <select
                           id={`day-${day.lineageId}-identity`}
                           className="h-10 w-full rounded-lg border border-input bg-background px-3 text-sm"
@@ -252,7 +260,7 @@ export const DayEditor = memo(function DayEditor({ editor, canReview = false }: 
                           <option value="recovery_session">Recovery session</option>
                         </select>
                       </Field>
-                      <Field id={`day-${day.lineageId}-target-min`} label="Target duration minimum">
+                      <Field id={`day-${day.lineageId}-target-min`} label="Usual time — minimum">
                         <Input
                           id={`day-${day.lineageId}-target-min`}
                           type="number"
@@ -275,7 +283,7 @@ export const DayEditor = memo(function DayEditor({ editor, canReview = false }: 
                           }}
                         />
                       </Field>
-                      <Field id={`day-${day.lineageId}-target-max`} label="Target duration maximum">
+                      <Field id={`day-${day.lineageId}-target-max`} label="Usual time — maximum">
                         <Input
                           id={`day-${day.lineageId}-target-max`}
                           type="number"
@@ -296,7 +304,7 @@ export const DayEditor = memo(function DayEditor({ editor, canReview = false }: 
                           }}
                         />
                       </Field>
-                      <Field id={`day-${day.lineageId}-minimum-useful`} label="Minimum useful duration">
+                      <Field id={`day-${day.lineageId}-minimum-useful`} label="Shortest useful session">
                         <Input
                           id={`day-${day.lineageId}-minimum-useful`}
                           type="number"
@@ -315,7 +323,7 @@ export const DayEditor = memo(function DayEditor({ editor, canReview = false }: 
                           }
                         />
                       </Field>
-                      <Field id={`day-${day.lineageId}-fatigue`} label="Fatigue tolerance">
+                      <Field id={`day-${day.lineageId}-fatigue`} label="Fatigue preference (saved context)">
                         <select
                           id={`day-${day.lineageId}-fatigue`}
                           className="h-10 w-full rounded-lg border border-input bg-background px-3 text-sm"
@@ -336,7 +344,7 @@ export const DayEditor = memo(function DayEditor({ editor, canReview = false }: 
                           <option value="high">High</option>
                         </select>
                       </Field>
-                      <Field id={`day-${day.lineageId}-ordering`} label="Ordering policy">
+                      <Field id={`day-${day.lineageId}-ordering`} label="Order preference (order is preserved)">
                         <select
                           id={`day-${day.lineageId}-ordering`}
                           className="h-10 w-full rounded-lg border border-input bg-background px-3 text-sm"
@@ -357,7 +365,7 @@ export const DayEditor = memo(function DayEditor({ editor, canReview = false }: 
                           <option value="flexible">Flexible</option>
                         </select>
                       </Field>
-                      <Field id={`day-${day.lineageId}-pairing`} label="Pairing policy">
+                      <Field id={`day-${day.lineageId}-pairing`} label="Pairing preference (pairings are preserved)">
                         <select
                           id={`day-${day.lineageId}-pairing`}
                           className="h-10 w-full rounded-lg border border-input bg-background px-3 text-sm"
@@ -382,7 +390,7 @@ export const DayEditor = memo(function DayEditor({ editor, canReview = false }: 
                     <div className="mt-3 grid gap-3 lg:grid-cols-2">
                       <fieldset className="rounded-lg border bg-background p-3">
                         <legend className="px-1 text-sm font-medium">
-                          Secondary outcomes (optional)
+                          Other goals (saved for later)
                         </legend>
                         <div className="mt-2 flex flex-wrap gap-3 text-sm">
                           {(["strength", "hypertrophy", "skill", "conditioning", "work_capacity", "recovery"] as const)
@@ -412,7 +420,7 @@ export const DayEditor = memo(function DayEditor({ editor, canReview = false }: 
                       {day.intent.identity.kind === "anchor_slots" && (
                         <fieldset className="rounded-lg border bg-background p-3">
                           <legend className="px-1 text-sm font-medium">
-                            Identity anchor exercises
+                            Exercises that define this day (saved for later)
                           </legend>
                           <div className="mt-2 space-y-1 text-sm">
                             {day.exercises.map((slot) => (
@@ -443,7 +451,7 @@ export const DayEditor = memo(function DayEditor({ editor, canReview = false }: 
                       )}
                     </div>
                     <div className="mt-3 grid gap-3 lg:grid-cols-2">
-                      <Field id={`day-${day.lineageId}-intent-note`} label="Intent note (optional)">
+                      <Field id={`day-${day.lineageId}-intent-note`} label="Planning note (optional)">
                         <Textarea
                           id={`day-${day.lineageId}-intent-note`}
                           value={day.intent.note ?? ""}
@@ -455,7 +463,7 @@ export const DayEditor = memo(function DayEditor({ editor, canReview = false }: 
                           }
                         />
                       </Field>
-                      <Field id={`day-${day.lineageId}-duration-override-note`} label="Duration override (optional)">
+                      <Field id={`day-${day.lineageId}-duration-override-note`} label="Different time range (optional)">
                         <Textarea
                           id={`day-${day.lineageId}-duration-override-note`}
                           value={day.intent.durationOverride?.note ?? ""}
@@ -527,16 +535,15 @@ export const DayEditor = memo(function DayEditor({ editor, canReview = false }: 
                         )}
                       </Field>
                     </div>
-                  </fieldset>
+                  </details>
 
                   <DayWarmupEditor
                     day={day}
                     days={document.days}
                     onChange={(value) =>
-                      updateDay(dayIndex, (current) => ({
-                        ...current,
-                        warmupNotes: value,
-                      }))
+                      updateDay(dayIndex, (current) =>
+                        updateProgramDayWarmupOverview(current, value)
+                      )
                     }
                     onItemsChange={(warmupItems) =>
                       updateDay(dayIndex, (current) => ({
@@ -834,12 +841,34 @@ export const DayEditor = memo(function DayEditor({ editor, canReview = false }: 
                           })
                         }
                         onRemove={() => {
-                          updateDay(dayIndex, (current) => ({
-                            ...current,
-                            exercises: current.exercises.filter(
+                          updateDay(dayIndex, (current) => {
+                            const exercises = current.exercises.filter(
                               (_, index) => index !== slotIndex,
-                            ),
-                          }));
+                            );
+                            const retainedAnchors =
+                              current.intent.identity.anchorSlotLineageIds.filter(
+                                (lineageId) =>
+                                  exercises.some(
+                                    (exercise) =>
+                                      exercise.lineageId === lineageId,
+                                  ),
+                              );
+                            return {
+                              ...current,
+                              exercises,
+                              intent: {
+                                ...current.intent,
+                                identity: {
+                                  ...current.intent.identity,
+                                  anchorSlotLineageIds:
+                                    current.intent.identity.kind === "anchor_slots" &&
+                                    retainedAnchors.length === 0
+                                      ? [exercises[0].lineageId]
+                                      : retainedAnchors,
+                                },
+                              },
+                            };
+                          });
                           requestAnimationFrame(() =>
                             dayHeadingRefs.current.get(day.lineageId)?.focus(),
                           );
@@ -858,18 +887,32 @@ export const DayEditor = memo(function DayEditor({ editor, canReview = false }: 
                           moveSlotToDay(dayIndex, slotIndex, target)
                         }
                         onReplace={(exerciseId) =>
-                          updateDay(dayIndex, (current) => ({
-                            ...current,
-                            exercises: current.exercises.map((item, index) =>
-                              index === slotIndex
-                                ? replaceProgramExercise(
-                                    item,
-                                    exerciseId,
-                                    crypto.randomUUID(),
-                                  )
-                                : item,
-                            ),
-                          }))
+                          updateDay(dayIndex, (current) => {
+                            const replacement = replaceProgramExercise(
+                              current.exercises[slotIndex],
+                              exerciseId,
+                              crypto.randomUUID(),
+                            );
+                            return {
+                              ...current,
+                              exercises: current.exercises.map((item, index) =>
+                                index === slotIndex ? replacement : item,
+                              ),
+                              intent: {
+                                ...current.intent,
+                                identity: {
+                                  ...current.intent.identity,
+                                  anchorSlotLineageIds:
+                                    current.intent.identity.anchorSlotLineageIds.map(
+                                      (lineageId) =>
+                                        lineageId === slot.lineageId
+                                          ? replacement.lineageId
+                                          : lineageId,
+                                    ),
+                                },
+                              },
+                            };
+                          })
                         }
                         onHeadingRef={(node) => {
                           if (node)

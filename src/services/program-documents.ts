@@ -37,6 +37,12 @@ export type ProgramReviewContext = {
   recommendationRevision?: number;
   recommendationConsequences?: ProgramReview["recommendationConsequences"];
   exercises?: Record<string, { name: string; primaryMuscles: string[] }>;
+  /**
+   * The automatic draft-only preparation of the immutable base version.
+   * When present, ordinary user changes are compared from this shape while
+   * the base-to-prepared differences remain separately disclosed.
+   */
+  editingBaseline?: StoredProgramDocument;
   preflightContext?: ProgramPreflightContext;
   basePublicationPreflight?: ProgramPreflightResult | null;
   nextPublicationPreflight?: ProgramPreflightResult | null;
@@ -279,15 +285,146 @@ function comparableTargets(slot: StoredProgramDocument["days"][number]["exercise
   };
 }
 
-function comparableDetails(slot: StoredProgramDocument["days"][number]["exercises"][number]) {
+function comparableDetails(
+  slot: StoredProgramDocument["days"][number]["exercises"][number],
+  day: StoredProgramDocument["days"][number],
+) {
+  const groupIndex = slot.supersetKey
+    ? day.supersets.findIndex((group) => group.key === slot.supersetKey)
+    : -1;
+  const group = groupIndex >= 0 ? day.supersets[groupIndex] : null;
   return {
     restSec: slot.restSec,
-    supersetKey: slot.supersetKey,
+    exerciseGroup: slot.supersetKey
+      ? {
+          name: group?.name ?? "Unknown saved group",
+          number: groupIndex >= 0 ? groupIndex + 1 : null,
+        }
+      : null,
+    groupMemberOrderIdx:
+      "groupMemberOrderIdx" in slot ? slot.groupMemberOrderIdx : null,
     notes: slot.notes,
     warmupNotes: slot.warmupNotes,
     warmupSets: slot.warmupSets,
     setNotes: slot.setNotes,
   };
+}
+
+function comparableAddedSlot(
+  slot: StoredProgramDocument["days"][number]["exercises"][number],
+  exerciseName: (exerciseId: string) => string,
+  day: StoredProgramDocument["days"][number],
+) {
+  return {
+    exercise: exerciseName(slot.exerciseId),
+    targets: comparableTargets(slot),
+    details: comparableDetails(slot, day),
+    advancedSessionOptions: "intent" in slot ? slot.intent : null,
+  };
+}
+
+function comparableDaySnapshot(
+  day: StoredProgramDocument["days"][number],
+  exerciseName: (exerciseId: string) => string,
+) {
+  return {
+    name: day.name,
+    notes: day.notes,
+    warmup: {
+      overview: day.warmupNotes,
+      steps: "warmupItems" in day ? day.warmupItems : [],
+    },
+    exerciseGroups: day.supersets,
+    advancedSessionOptions: "intent" in day ? day.intent : null,
+    exercises: day.exercises.map((slot) =>
+      comparableAddedSlot(slot, exerciseName, day)
+    ),
+  };
+}
+
+function hasCompleteSetChangeAccounting(
+  base: StoredProgramDocument,
+  next: StoredProgramDocument,
+  changes: ProgramReviewChange[],
+) {
+  const paths = new Set(changes.map((change) => change.path));
+  const baseDays = new Map(base.days.map((day) => [day.lineageId, day]));
+  const nextDays = new Map(next.days.map((day) => [day.lineageId, day]));
+  const baseSlots = new Map(base.days.flatMap((day) =>
+    day.exercises.map((slot, slotIndex) => [
+      slot.lineageId,
+      { slot, slotIndex, day },
+    ] as const),
+  ));
+  const nextSlots = new Map(next.days.flatMap((day) =>
+    day.exercises.map((slot, slotIndex) => [
+      slot.lineageId,
+      { slot, slotIndex, day },
+    ] as const),
+  ));
+  const replacements = new Set<string>();
+
+  for (const [dayLineageId, day] of baseDays) {
+    const currentDay = nextDays.get(dayLineageId);
+    if (!currentDay) {
+      if (!paths.has(`days.${dayLineageId}`)) return false;
+      continue;
+    }
+    const removedSlots = day.exercises.filter(
+      (slot) => !nextSlots.has(slot.lineageId),
+    );
+    const addedSlots = currentDay.exercises.filter(
+      (slot) => !baseSlots.has(slot.lineageId),
+    );
+    for (const [slotIndex, slot] of day.exercises.entries()) {
+      const current = nextSlots.get(slot.lineageId);
+      if (current) {
+        if (
+          slot.sets !== current.slot.sets &&
+          !paths.has(`slots.${slot.lineageId}.targets`)
+        ) {
+          return false;
+        }
+        continue;
+      }
+      const positionalReplacement = currentDay.exercises[slotIndex];
+      const replacement =
+        positionalReplacement && !baseSlots.has(positionalReplacement.lineageId)
+          ? positionalReplacement
+          : removedSlots.length === 1 && addedSlots.length === 1
+            ? addedSlots[0]
+            : null;
+      if (replacement && !baseSlots.has(replacement.lineageId)) {
+        replacements.add(replacement.lineageId);
+        if (!paths.has(`slots.${slot.lineageId}.exerciseId`)) return false;
+        if (
+          slot.sets !== replacement.sets &&
+          !paths.has(`slots.${slot.lineageId}.targets`)
+        ) {
+          return false;
+        }
+        continue;
+      }
+      if (!paths.has(`slots.${slot.lineageId}`)) return false;
+    }
+  }
+
+  for (const [dayLineageId, day] of nextDays) {
+    if (!baseDays.has(dayLineageId)) {
+      if (!paths.has(`days.${dayLineageId}`)) return false;
+      continue;
+    }
+    for (const slot of day.exercises) {
+      if (
+        !baseSlots.has(slot.lineageId) &&
+        !replacements.has(slot.lineageId) &&
+        !paths.has(`slots.${slot.lineageId}`)
+      ) {
+        return false;
+      }
+    }
+  }
+  return true;
 }
 
 export function reviewProgramDocuments(
@@ -319,6 +456,7 @@ export function reviewProgramDocuments(
       hash: null,
       reviewedRevision: revision,
       changes: [],
+      programUpdates: [],
       blockingErrors,
       cautions: [],
       preflight: null,
@@ -328,6 +466,25 @@ export function reviewProgramDocuments(
     };
   }
   const next = nextResult.data;
+  const editingBaselineResult = context.editingBaseline
+    ? legacyProgramDocumentSchema
+        .or(programDocumentSchema)
+        .or(programDocumentV3Schema)
+        .safeParse(context.editingBaseline)
+    : null;
+  if (editingBaselineResult && !editingBaselineResult.success) {
+    throw editingBaselineResult.error;
+  }
+  const comparisonBase = editingBaselineResult?.data ?? base;
+  const programUpdates = editingBaselineResult
+    ? reviewProgramDocuments(base, editingBaselineResult.data, revision, {
+        ...context,
+        editingBaseline: undefined,
+        preflightContext: undefined,
+        basePublicationPreflight: undefined,
+        nextPublicationPreflight: undefined,
+      }).changes
+    : [];
   const changes: ProgramReviewChange[] = [];
   const cautions: string[] = [];
   if (base.programId !== next.programId || base.baseVersionId !== next.baseVersionId) {
@@ -336,6 +493,7 @@ export function reviewProgramDocuments(
       hash: null,
       reviewedRevision: revision,
       changes: [],
+      programUpdates,
       blockingErrors: ["The draft no longer belongs to its original Program version."],
       cautions: [],
       preflight: null,
@@ -344,12 +502,12 @@ export function reviewProgramDocuments(
       summary: emptySummary(),
     };
   }
-  if (base.name !== next.name) {
-    changes.push({ kind: "rename", path: "name", label: "Program name", before: base.name, after: next.name });
+  if (comparisonBase.name !== next.name) {
+    changes.push({ kind: "rename", path: "name", label: "Program name", before: comparisonBase.name, after: next.name });
   }
-  const baseDays = new Map(base.days.map((day, index) => [day.lineageId, { day, index }]));
+  const baseDays = new Map(comparisonBase.days.map((day, index) => [day.lineageId, { day, index }]));
   const nextDays = new Map(next.days.map((day, index) => [day.lineageId, { day, index }]));
-  const baseSlotLocations = new Map(base.days.flatMap((day, dayIndex) =>
+  const baseSlotLocations = new Map(comparisonBase.days.flatMap((day, dayIndex) =>
     day.exercises.map((slot, slotIndex) => [slot.lineageId, { slot, slotIndex, day, dayIndex }] as const)
   ));
   const nextSlotLocations = new Map(next.days.flatMap((day, dayIndex) =>
@@ -359,7 +517,14 @@ export function reviewProgramDocuments(
   for (const [lineageId, { day, index }] of baseDays) {
     const current = nextDays.get(lineageId);
     if (!current) {
-      changes.push({ kind: "remove", path: `days.${lineageId}`, label: `Remove ${day.name}`, before: day.name, after: null });
+      const removedSets = day.exercises.reduce((sum, slot) => sum + slot.sets, 0);
+      changes.push({
+        kind: "remove",
+        path: `days.${lineageId}`,
+        label: `Remove ${day.name} (${removedSets} work sets)`,
+        before: comparableDaySnapshot(day, exerciseName),
+        after: null,
+      });
       continue;
     }
     if (day.name !== current.day.name) {
@@ -368,8 +533,40 @@ export function reviewProgramDocuments(
     if (index !== current.index) {
       changes.push({ kind: "reorder", path: `days.${lineageId}`, label: current.day.name, before: index + 1, after: current.index + 1 });
     }
-    if (day.notes !== current.day.notes || day.warmupNotes !== current.day.warmupNotes || canonicalJson(day.supersets) !== canonicalJson(current.day.supersets)) {
-      changes.push({ kind: "details", path: `days.${lineageId}.details`, label: `${current.day.name} details`, before: { notes: day.notes, warmupNotes: day.warmupNotes, supersets: day.supersets }, after: { notes: current.day.notes, warmupNotes: current.day.warmupNotes, supersets: current.day.supersets } });
+    if (day.notes !== current.day.notes) {
+      changes.push({
+        kind: "notes",
+        path: `days.${lineageId}.notes`,
+        label: `${current.day.name} notes`,
+        before: day.notes,
+        after: current.day.notes,
+      });
+    }
+    const previousWarmup = {
+      overview: day.warmupNotes,
+      steps: "warmupItems" in day ? day.warmupItems : [],
+    };
+    const currentWarmup = {
+      overview: current.day.warmupNotes,
+      steps: "warmupItems" in current.day ? current.day.warmupItems : [],
+    };
+    if (canonicalJson(previousWarmup) !== canonicalJson(currentWarmup)) {
+      changes.push({
+        kind: "warmup",
+        path: `days.${lineageId}.warmup`,
+        label: `${current.day.name} warm-up`,
+        before: previousWarmup,
+        after: currentWarmup,
+      });
+    }
+    if (canonicalJson(day.supersets) !== canonicalJson(current.day.supersets)) {
+      changes.push({
+        kind: "grouping",
+        path: `days.${lineageId}.groups`,
+        label: `${current.day.name} exercise groups`,
+        before: day.supersets,
+        after: current.day.supersets,
+      });
     }
     const previousDayIntent = "intent" in day ? day.intent : null;
     const currentDayIntent = "intent" in current.day ? current.day.intent : null;
@@ -377,13 +574,19 @@ export function reviewProgramDocuments(
       changes.push({
         kind: "intent",
         path: `days.${lineageId}.intent`,
-        label: `${current.day.name} training intent`,
+        label: `${current.day.name} advanced session options`,
         before: previousDayIntent ?? "Not recorded in this historical version",
         after: currentDayIntent ?? "Not recorded in this historical version",
       });
     }
     const baseSlots = new Map(day.exercises.map((slot, slotIndex) => [slot.lineageId, { slot, slotIndex }]));
     const nextSlots = new Map(current.day.exercises.map((slot, slotIndex) => [slot.lineageId, { slot, slotIndex }]));
+    const removedSlots = day.exercises.filter(
+      (slot) => !nextSlotLocations.has(slot.lineageId),
+    );
+    const addedSlots = current.day.exercises.filter(
+      (slot) => !baseSlotLocations.has(slot.lineageId),
+    );
     for (const [slotLineage, previous] of baseSlots) {
       const currentSlot = nextSlots.get(slotLineage);
       if (!currentSlot) {
@@ -393,18 +596,70 @@ export function reviewProgramDocuments(
           if (canonicalJson(comparableTargets(previous.slot)) !== canonicalJson(comparableTargets(moved.slot))) {
             changes.push({ kind: "targets", path: `slots.${slotLineage}.targets`, label: `${exerciseName(moved.slot.exerciseId)} targets`, before: comparableTargets(previous.slot), after: comparableTargets(moved.slot) });
           }
-          if (canonicalJson(comparableDetails(previous.slot)) !== canonicalJson(comparableDetails(moved.slot))) {
-            changes.push({ kind: "details", path: `slots.${slotLineage}.details`, label: `${exerciseName(moved.slot.exerciseId)} details`, before: comparableDetails(previous.slot), after: comparableDetails(moved.slot) });
+          if (canonicalJson(comparableDetails(previous.slot, day)) !== canonicalJson(comparableDetails(moved.slot, moved.day))) {
+            changes.push({ kind: "details", path: `slots.${slotLineage}.details`, label: `${exerciseName(moved.slot.exerciseId)} details`, before: comparableDetails(previous.slot, day), after: comparableDetails(moved.slot, moved.day) });
+          }
+          const previousSlotIntent = "intent" in previous.slot ? previous.slot.intent : null;
+          const movedSlotIntent = "intent" in moved.slot ? moved.slot.intent : null;
+          if (canonicalJson(previousSlotIntent) !== canonicalJson(movedSlotIntent)) {
+            changes.push({
+              kind: "intent",
+              path: `slots.${slotLineage}.intent`,
+              label: `${exerciseName(moved.slot.exerciseId)} advanced session options`,
+              before: previousSlotIntent ?? "Not recorded in this historical version",
+              after: movedSlotIntent ?? "Not recorded in this historical version",
+            });
           }
           continue;
         }
-        const replacement = current.day.exercises[previous.slotIndex];
-        if (replacement && !baseSlotLocations.has(replacement.lineageId)) {
+        const positionalReplacement = current.day.exercises[previous.slotIndex];
+        const replacement =
+          positionalReplacement &&
+          !baseSlotLocations.has(positionalReplacement.lineageId) &&
+          !handledAddedSlots.has(positionalReplacement.lineageId)
+            ? positionalReplacement
+            : removedSlots.length === 1 && addedSlots.length === 1
+              ? addedSlots[0]
+              : null;
+        if (
+          replacement &&
+          !baseSlotLocations.has(replacement.lineageId) &&
+          !handledAddedSlots.has(replacement.lineageId)
+        ) {
           handledAddedSlots.add(replacement.lineageId);
           changes.push({ kind: "replace", path: `slots.${slotLineage}.exerciseId`, label: `Replace ${exerciseName(previous.slot.exerciseId)} with ${exerciseName(replacement.exerciseId)}`, before: exerciseName(previous.slot.exerciseId), after: exerciseName(replacement.exerciseId) });
+          const replacementIndex = current.day.exercises.findIndex(
+            (slot) => slot.lineageId === replacement.lineageId,
+          );
+          if (previous.slotIndex !== replacementIndex) {
+            changes.push({
+              kind: "reorder",
+              path: `slots.${slotLineage}.order`,
+              label: `${exerciseName(replacement.exerciseId)} order`,
+              before: previous.slotIndex + 1,
+              after: replacementIndex + 1,
+            });
+          }
+          if (canonicalJson(comparableTargets(previous.slot)) !== canonicalJson(comparableTargets(replacement))) {
+            changes.push({ kind: "targets", path: `slots.${slotLineage}.targets`, label: `${exerciseName(replacement.exerciseId)} targets`, before: comparableTargets(previous.slot), after: comparableTargets(replacement) });
+          }
+          if (canonicalJson(comparableDetails(previous.slot, day)) !== canonicalJson(comparableDetails(replacement, current.day))) {
+            changes.push({ kind: "details", path: `slots.${slotLineage}.details`, label: `${exerciseName(replacement.exerciseId)} details`, before: comparableDetails(previous.slot, day), after: comparableDetails(replacement, current.day) });
+          }
+          const previousSlotIntent = "intent" in previous.slot ? previous.slot.intent : null;
+          const replacementIntent = "intent" in replacement ? replacement.intent : null;
+          if (canonicalJson(previousSlotIntent) !== canonicalJson(replacementIntent)) {
+            changes.push({
+              kind: "intent",
+              path: `slots.${slotLineage}.intent`,
+              label: `${exerciseName(replacement.exerciseId)} advanced session options`,
+              before: previousSlotIntent ?? "Not recorded in this historical version",
+              after: replacementIntent ?? "Not recorded in this historical version",
+            });
+          }
           continue;
         }
-        changes.push({ kind: "remove", path: `slots.${slotLineage}`, label: `Remove ${exerciseName(previous.slot.exerciseId)}`, before: exerciseName(previous.slot.exerciseId), after: null });
+        changes.push({ kind: "remove", path: `slots.${slotLineage}`, label: `Remove ${exerciseName(previous.slot.exerciseId)} (${previous.slot.sets} work sets)`, before: exerciseName(previous.slot.exerciseId), after: null });
         continue;
       }
       if (previous.slot.exerciseId !== currentSlot.slot.exerciseId) {
@@ -416,8 +671,8 @@ export function reviewProgramDocuments(
       if (canonicalJson(comparableTargets(previous.slot)) !== canonicalJson(comparableTargets(currentSlot.slot))) {
         changes.push({ kind: "targets", path: `slots.${slotLineage}.targets`, label: `${exerciseName(currentSlot.slot.exerciseId)} targets`, before: comparableTargets(previous.slot), after: comparableTargets(currentSlot.slot) });
       }
-      if (canonicalJson(comparableDetails(previous.slot)) !== canonicalJson(comparableDetails(currentSlot.slot))) {
-        changes.push({ kind: "details", path: `slots.${slotLineage}.details`, label: `${exerciseName(currentSlot.slot.exerciseId)} details`, before: comparableDetails(previous.slot), after: comparableDetails(currentSlot.slot) });
+      if (canonicalJson(comparableDetails(previous.slot, day)) !== canonicalJson(comparableDetails(currentSlot.slot, current.day))) {
+        changes.push({ kind: "details", path: `slots.${slotLineage}.details`, label: `${exerciseName(currentSlot.slot.exerciseId)} details`, before: comparableDetails(previous.slot, day), after: comparableDetails(currentSlot.slot, current.day) });
       }
       const previousSlotIntent = "intent" in previous.slot ? previous.slot.intent : null;
       const currentSlotIntent = "intent" in currentSlot.slot ? currentSlot.slot.intent : null;
@@ -425,7 +680,7 @@ export function reviewProgramDocuments(
         changes.push({
           kind: "intent",
           path: `slots.${slotLineage}.intent`,
-          label: `${exerciseName(currentSlot.slot.exerciseId)} training intent`,
+          label: `${exerciseName(currentSlot.slot.exerciseId)} advanced session options`,
           before: previousSlotIntent ?? "Not recorded in this historical version",
           after: currentSlotIntent ?? "Not recorded in this historical version",
         });
@@ -433,13 +688,26 @@ export function reviewProgramDocuments(
     }
     for (const [slotLineage, added] of nextSlots) {
       if (!baseSlotLocations.has(slotLineage) && !handledAddedSlots.has(slotLineage)) {
-        changes.push({ kind: "add", path: `slots.${slotLineage}`, label: `Add ${exerciseName(added.slot.exerciseId)}`, before: null, after: exerciseName(added.slot.exerciseId) });
+        changes.push({
+          kind: "add",
+          path: `slots.${slotLineage}`,
+          label: `Add ${exerciseName(added.slot.exerciseId)} (${added.slot.sets} work sets)`,
+          before: null,
+          after: comparableAddedSlot(added.slot, exerciseName, current.day),
+        });
       }
     }
   }
   for (const [lineageId, { day }] of nextDays) {
     if (!baseDays.has(lineageId)) {
-      changes.push({ kind: "add", path: `days.${lineageId}`, label: `Add ${day.name}`, before: null, after: day.name });
+      const addedSets = day.exercises.reduce((sum, slot) => sum + slot.sets, 0);
+      changes.push({
+        kind: "add",
+        path: `days.${lineageId}`,
+        label: `Add ${day.name} (${addedSets} work sets)`,
+        before: null,
+        after: comparableDaySnapshot(day, exerciseName),
+      });
     }
   }
   const equipmentCodes = new Set([
@@ -500,15 +768,22 @@ export function reviewProgramDocuments(
     muscleSetsBefore: beforeSummary.muscleSets,
     muscleSetsAfter: afterSummary.muscleSets,
   };
-  const blockingErrors =
-    preflight?.findings
+  const blockingErrors = [
+    ...(preflight?.findings
       .filter((finding) => finding.severity === "blocking")
-      .map((finding) => finding.reason) ?? [];
+      .map((finding) => finding.reason) ?? []),
+    ...(!hasCompleteSetChangeAccounting(comparisonBase, next, changes)
+      ? [
+          "Repbook could not fully explain every work-set total change. Return to editing, save, and compare again before activating.",
+        ]
+      : []),
+  ];
   const hash = sha256Hex(Buffer.from(canonicalJson({
     baseVersionId: base.baseVersionId,
     revision,
     documentHash,
     changes,
+    programUpdates,
     recommendationRevision,
     recommendationConsequences,
     summary,
@@ -517,6 +792,7 @@ export function reviewProgramDocuments(
   const shared = {
     reviewedRevision: revision,
     changes,
+    programUpdates,
     cautions: [...new Set([...cautions, ...(preflight?.findings.filter((finding) => finding.severity === "warning").map((finding) => finding.reason) ?? [])])],
     preflight,
     recommendationRevision,

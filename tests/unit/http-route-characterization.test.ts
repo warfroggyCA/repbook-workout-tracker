@@ -337,6 +337,7 @@ describe("HTTP production perimeter", () => {
       hash,
       reviewedRevision: 4,
       changes: [],
+      programUpdates: [],
       blockingErrors,
       cautions: [],
       preflight: null,

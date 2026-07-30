@@ -40,6 +40,17 @@ test("opens and operates the keyboard-accessible Program editor", async ({
   await page.getByRole("button", { name: "Edit program", exact: true }).click();
   await expect(page.getByRole("heading", { name: /^Edit / })).toBeVisible();
   await expect(page.getByRole("status")).toContainText("All changes saved");
+  const advancedOptions = page
+    .locator("details")
+    .filter({ hasText: "Advanced session options" });
+  expect(await advancedOptions.count()).toBeGreaterThan(0);
+  await expect(advancedOptions.first()).not.toHaveAttribute("open", "");
+  await expect(
+    page.getByText("Later calibration eligible", { exact: true }),
+  ).toHaveCount(0);
+  await expect(page.getByText("Program Preflight", { exact: true })).toHaveCount(
+    0,
+  );
 
   const editTab = page.getByRole("tab", { name: "Edit", exact: true });
   await editTab.focus();
@@ -50,7 +61,9 @@ test("opens and operates the keyboard-accessible Program editor", async ({
   await page.keyboard.press("Enter");
   await expect(reviewTab).toHaveAttribute("aria-selected", "true");
   await expect(
-    page.getByRole("heading", { name: "Review before activation" }),
+    page.getByRole("heading", {
+      name: /Review before activation|Changes you made/,
+    }),
   ).toBeVisible();
   await page.keyboard.press("ArrowRight");
   const versionsTab = page.getByRole("tab", { name: "Versions", exact: true });
@@ -103,9 +116,12 @@ test("opens and operates the keyboard-accessible Program editor", async ({
   if (await compilerEntry.count() === 0) {
     await page.goto("/program/edit");
     await expect(page.getByRole("status")).toContainText("All changes saved");
+    const programName = page.getByLabel("Program name");
+    await programName.fill(`${await programName.inputValue()} — reviewed`);
+    await expect(page.getByRole("status")).toContainText("All changes saved");
     await page.getByRole("tab", { name: "Review", exact: true }).click();
-    await page.getByRole("button", { name: /Create semantic review|Review changes/ }).first().click();
-    await expect(page.getByRole("heading", { name: "What will change" })).toBeVisible();
+    await page.getByRole("button", { name: /Compare with current Program|Review changes/ }).first().click();
+    await expect(page.getByRole("heading", { name: "Changes you made" })).toBeVisible();
     await page.getByRole("button", { name: "Activate new version", exact: true }).click();
     await expect(page.getByText(/is now current/)).toBeVisible();
     await page.getByRole("link", { name: "View active Program", exact: true }).click();

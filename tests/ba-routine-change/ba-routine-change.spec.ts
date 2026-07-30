@@ -276,14 +276,24 @@ test("traces the exact BA routine change through proposal, publication, Today, a
     .locator('button[aria-controls^="editor-"]')
     .filter({ hasText: "Cable Face Pull" });
   await facePullEditorRow.click();
+  const facePullEditor = page
+    .locator("article[aria-labelledby]")
+    .filter({ hasText: "Cable Face Pull" });
+  await facePullEditor
+    .locator("details")
+    .filter({ hasText: "Advanced session options" })
+    .locator("summary")
+    .click();
   await expect(page.getByLabel("Work sets", { exact: true })).toHaveValue("2");
   await expect(page.getByLabel("Minimum reps", { exact: true })).toHaveValue("15");
   await expect(page.getByLabel("Maximum reps", { exact: true })).toHaveValue("20");
   await expect(page.getByLabel("Minimum useful sets", { exact: true })).toHaveValue("1");
-  await expect(page.getByLabel("Ideal sets", { exact: true })).toHaveValue("2");
-  await expect(page.getByLabel("Omission policy", { exact: true })).toHaveValue(
-    "if_minimum_met",
-  );
+  await expect(
+    page.getByLabel("Preferred sets (saved context)", { exact: true }),
+  ).toHaveValue("2");
+  await expect(
+    page.getByLabel("Omission preference (saved for later)", { exact: true }),
+  ).toHaveValue("if_minimum_met");
   await expect(page.getByLabel("Exercise notes", { exact: true })).toHaveValue(
     OPTIONAL_FACE_PULL_NOTE,
   );
@@ -313,17 +323,17 @@ test("traces the exact BA routine change through proposal, publication, Today, a
 
   await page.getByRole("tab", { name: "Review", exact: true }).click();
   await page
-    .getByRole("button", { name: /Create semantic review|Review changes/ })
+    .getByRole("button", { name: /Compare with current Program|Review changes/ })
     .first()
     .click();
-  await expect(page.getByRole("heading", { name: "What will change", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Changes you made", exact: true })).toBeVisible();
   const reviewScreenshot = testInfo.outputPath("03-publication-review.png");
   await page.screenshot({ path: reviewScreenshot, fullPage: true });
   await checkpoint({
     id: "QA-02-RC-PUBLICATION-REVIEW",
-    action: "Create the semantic review before activation.",
+    action: "Compare the draft with the current Program before activation.",
     expected: "The publication review clearly presents what will change.",
-    observed: "The What will change review was visible before activation.",
+    observed: "The Changes you made review was visible before activation.",
     screenshot: reviewScreenshot,
   });
   await page.getByRole("button", { name: "Activate new version", exact: true }).click();

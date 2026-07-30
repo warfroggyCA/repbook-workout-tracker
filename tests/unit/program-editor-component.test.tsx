@@ -89,6 +89,9 @@ describe("Program editor split presentation panels", () => {
     expect(html).toContain("Loading method");
     expect(html).toContain("Move warm-up step 1 up");
     expect(html).toContain("Remove warm-up step 1");
+    expect(html).toContain("Warm-up instructions (optional)");
+    expect(html).toContain("Optional check-off steps");
+    expect(html).not.toMatch(/<details[^>]*\sopen(?:=|>)/);
   });
 
   it("shows group timing, member order, and an explicit unequal-group repair", () => {
@@ -167,9 +170,15 @@ describe("Program editor split presentation panels", () => {
     expect(html).toContain("Rest between members");
     expect(html).toContain("Rest after each round");
     expect(html).toContain("Move group member 2 up");
+    expect(html).toContain("Advanced session options");
+    expect(html).not.toContain("Identify anchor exercises");
+    expect(html).not.toContain("Later calibration eligible");
+    expect(html).not.toContain("Pairing policy");
+    expect(html).not.toContain("Secondary outcomes");
+    expect(html).not.toMatch(/<details[^>]*\sopen(?:=|>)/);
   });
 
-  it("renders the semantic review summary, cautions, and progression consequences", () => {
+  it("renders the activation review summary, cautions, and history consequences", () => {
     const review: ProgramReview = {
       status: "publishable",
       hash: "a".repeat(64),
@@ -183,6 +192,7 @@ describe("Program editor split presentation panels", () => {
         before: "Barbell Squat",
         after: null,
       }],
+      programUpdates: [],
       blockingErrors: [],
       cautions: ["Confirm the lower weekly set count."],
       recommendationRevision: 0,
@@ -208,7 +218,7 @@ describe("Program editor split presentation panels", () => {
 
     expect(html).toContain("Training summary");
     expect(html).toContain("Confirm the lower weekly set count.");
-    expect(html).toContain("Progression continuity");
+    expect(html).toContain("What happens to exercise history");
     expect(html).toContain("earlier progression remains in workout history");
   });
 
@@ -219,6 +229,7 @@ describe("Program editor split presentation panels", () => {
       reviewedRevision: 4,
       preflight: null,
       changes: [],
+      programUpdates: [],
       blockingErrors: ["The selected equipment cannot execute this exercise."],
       cautions: [],
       recommendationRevision: 0,
@@ -250,6 +261,72 @@ describe("Program editor split presentation panels", () => {
     );
     expect(html).toMatch(/<button[^>]*disabled[^>]*>[\s\S]*Activate new version/);
     expect(html).not.toContain("The review response is incomplete");
+  });
+
+  it("separates one plain-language edit from an older Program update", () => {
+    const review: ProgramReview = {
+      status: "publishable",
+      hash: "d".repeat(64),
+      reviewedRevision: 2,
+      preflight: null,
+      changes: [{
+        kind: "warmup",
+        path: "days.10000000-0000-4000-8000-000000000001.warmup",
+        label: "Synthetic Day warm-up",
+        before: {
+          overview: "Five minutes easy",
+          items: [{
+            key: "10000000-0000-4000-8000-000000000001",
+            label: "Five minutes easy",
+          }],
+        },
+        after: {
+          overview: "Two minutes easy",
+          items: [{
+            key: "10000000-0000-4000-8000-000000000001",
+            label: "Two minutes easy",
+          }],
+        },
+      }],
+      programUpdates: [{
+        kind: "intent",
+        path: "days.10000000-0000-4000-8000-000000000001.intent",
+        label: "Synthetic Day advanced session options",
+        before: null,
+        after: { primaryOutcome: "strength" },
+      }],
+      blockingErrors: [],
+      cautions: [],
+      recommendationRevision: 0,
+      recommendationConsequences: [],
+      summary: {
+        weeklySetsBefore: 3,
+        weeklySetsAfter: 3,
+        durationBefore: [],
+        durationAfter: [],
+        muscleSetsBefore: {},
+        muscleSetsAfter: {},
+      },
+    };
+    const editor = {
+      reviewing: false,
+      requestReview: vi.fn(),
+      publishing: false,
+      publish: vi.fn(),
+    } as unknown as ProgramEditorController;
+    const html = renderToStaticMarkup(
+      <ReviewDialog editor={editor} currentReview={review} canReview />,
+    );
+
+    expect(html).toContain("Changes you made");
+    expect(html).toContain("1 change compared with the current Program.");
+    expect(html).toContain("Synthetic Day warm-up changed.");
+    expect(html).toContain("Older Program update");
+    expect(html).toContain("See exact before and after");
+    expect(html).not.toContain("Training summary");
+    expect(html).not.toContain("Program Preflight");
+    expect(html).not.toContain("None");
+    expect(html).not.toContain("10000000-0000-4000-8000-000000000001");
   });
 
   it("renders immutable history with current, comparison, export, and restore affordances", () => {

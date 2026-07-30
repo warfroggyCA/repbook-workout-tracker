@@ -49,6 +49,7 @@ export async function getActiveProgramPresentation(
       name: template.name,
       notes: template.notes,
       warmupNotes: template.warmupNotes,
+      warmupItems: template.warmupItems,
       orderIdx: template.orderIdx,
       intent: template.intent,
       slots: slots.map(({ slot, exercise, prescription }) => ({

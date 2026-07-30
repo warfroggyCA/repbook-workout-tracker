@@ -34,6 +34,8 @@ import {
   hashLegacyProgramDocument,
   hashProgramDocument,
 } from "@/services/program-document-hash";
+import { updateProgramDayWarmupOverview } from "@/lib/program-editor-client";
+import { startWorkoutSession } from "@/services/session-lifecycle";
 import { captureUserSnapshot } from "@/services/snapshot-capture";
 import { evaluateApplicationIntegrity } from "@/services/recovery-health";
 import {
@@ -733,6 +735,91 @@ describe("versioned Program editor persistence", () => {
     const preserved = await database.db.query.workoutTemplateExercises.findFirst({ where: eq(workoutTemplateExercises.id, originalSlot.id) });
     expect(preserved).toMatchObject({ warmupNotes: "Band pull-aparts", setNotes: ["Pause", null, "Leave one rep"] });
     expect(preserved?.warmupSets).toHaveLength(1);
+  });
+
+  it("publishes exactly the reviewed warm-up and snapshots it into a new workout", async () => {
+    const originalProgram = await database.db.query.programs.findFirst({
+      where: eq(programs.userId, userId),
+    });
+    if (!originalProgram?.currentVersionId) throw new Error("Program missing");
+    const originalDay = await database.db.query.workoutTemplates.findFirst({
+      where: eq(workoutTemplates.programVersionId, originalProgram.currentVersionId),
+    });
+    if (!originalDay) throw new Error("Original day missing");
+
+    const state = await getOrCreateProgramDraft(database.db, userId);
+    if (!state) throw new Error("Draft missing");
+    const document = structuredClone(state.draft.document);
+    document.days[0] = updateProgramDayWarmupOverview(
+      document.days[0],
+      "Two minutes easy\nShoulder circles\nTwo ramp-up sets",
+    );
+    const saved = await saveProgramDraft(database.db, userId, {
+      draftId: state.draft.id,
+      expectedRevision: state.draft.revision,
+      mutationId: crypto.randomUUID(),
+      document,
+    });
+    if (saved.status !== "saved") throw new Error("Warm-up draft did not save");
+    const review = await reviewProgramDraft(
+      database.db,
+      userId,
+      state.draft.id,
+      saved.revision,
+    );
+    expect(review).toMatchObject({
+      status: "publishable",
+      changes: [expect.objectContaining({ kind: "warmup" })],
+      programUpdates: expect.arrayContaining([
+        expect.objectContaining({ kind: "intent" }),
+      ]),
+      summary: { weeklySetsBefore: 3, weeklySetsAfter: 3 },
+    });
+    if (!review || review.status !== "publishable") {
+      throw new Error("Warm-up review missing");
+    }
+
+    const published = await publishProgramDraft(database.db, userId, {
+      draftId: state.draft.id,
+      expectedRevision: saved.revision,
+      reviewHash: review.hash,
+    });
+    if (!published.ok) throw new Error(published.reason);
+    const publishedDay = await database.db.query.workoutTemplates.findFirst({
+      where: eq(workoutTemplates.programVersionId, published.programVersionId),
+    });
+    expect(publishedDay).toMatchObject({
+      warmupNotes: "Two minutes easy\nShoulder circles\nTwo ramp-up sets",
+      warmupItems: [
+        expect.objectContaining({ key: originalDay.lineageId, label: "Two minutes easy" }),
+        expect.objectContaining({ label: "Shoulder circles" }),
+        expect.objectContaining({ label: "Two ramp-up sets" }),
+      ],
+    });
+    expect(await database.db.query.workoutTemplates.findFirst({
+      where: eq(workoutTemplates.id, originalDay.id),
+    })).toMatchObject({
+      warmupNotes: null,
+      warmupItems: [],
+    });
+    if (!publishedDay) throw new Error("Published day missing");
+
+    const started = await startWorkoutSession(
+      database.db,
+      userId,
+      publishedDay.id,
+    );
+    expect(await database.db.query.workoutSessions.findFirst({
+      where: eq(workoutSessions.id, started.sessionId),
+    })).toMatchObject({
+      dayWarmupNotes: "Two minutes easy\nShoulder circles\nTwo ramp-up sets",
+      dayWarmupItems: [
+        expect.objectContaining({ key: originalDay.lineageId, label: "Two minutes easy" }),
+        expect.objectContaining({ label: "Shoulder circles" }),
+        expect.objectContaining({ label: "Two ramp-up sets" }),
+      ],
+      sourceProgramVersionId: published.programVersionId,
+    });
   });
 
   it("normalizes a pre-migration draft before review and preserves its revision", async () => {

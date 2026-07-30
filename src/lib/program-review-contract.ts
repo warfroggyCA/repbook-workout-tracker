@@ -15,6 +15,7 @@ const reviewChangeSchema = z.object({
 const reviewFieldsSchema = z.object({
   reviewedRevision: z.number().int().min(0),
   changes: z.array(reviewChangeSchema),
+  programUpdates: z.array(reviewChangeSchema).default([]),
   cautions: z.array(z.string()),
   preflight: programPreflightResultSchema.nullable(),
   recommendationRevision: z.number().int().min(0),

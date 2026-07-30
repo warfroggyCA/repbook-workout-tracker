@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import type { ProgramEditorController } from "@/components/program/editor/use-program-editor-controller";
-import { formatProgramReviewValue, type ProgramReview, type ProgramReviewChange } from "@/lib/program-editor-client";
+import { describeProgramReviewChange, formatProgramReviewValue, type ProgramReview, type ProgramReviewChange } from "@/lib/program-editor-client";
 import { cn } from "@/lib/utils";
 
 function displayLabel(value: string) { return value.replaceAll("_", " ").replace(/\b\w/g, (character) => character.toUpperCase()); }
@@ -18,9 +18,16 @@ function lineageConsequences(changes: ProgramReviewChange[]) {
     if (change.kind === "replace") consequences.set(slotPath, change.label + ". Earlier progression remains with the retired exercise slot; the replacement starts fresh.");
     else if (change.kind === "remove") consequences.set(slotPath, change.label + ". Its earlier progression remains in workout history and is not reused.");
     else if (change.kind === "add") consequences.set(slotPath, change.label + ". This new exercise slot starts its own progression history.");
-    else if (!consequences.has(slotPath)) consequences.set(slotPath, change.label + ". This exercise keeps its progression history because its identity is unchanged.");
   }
   return [...consequences.values()];
+}
+
+function hasTrainingTotalChange(review: ProgramReview) {
+  return (
+    review.summary.weeklySetsBefore !== review.summary.weeklySetsAfter ||
+    JSON.stringify(review.summary.muscleSetsBefore) !==
+      JSON.stringify(review.summary.muscleSetsAfter)
+  );
 }
 export function ReviewDialog({ editor, currentReview, canReview }: { editor: ProgramEditorController; currentReview: ProgramReview | null; canReview: boolean }) {
   const {
@@ -64,12 +71,90 @@ export function ReviewDialog({ editor, currentReview, canReview }: { editor: Pro
                     ) : (
                       <RefreshCw />
                     )}{" "}
-                    Create semantic review
+                    Compare with current Program
                   </Button>
                 </CardContent>
               </Card>
             ) : (
               <>
+                <Card>
+                  <CardHeader>
+                    <CardTitle>
+                      <h2 className="text-lg font-semibold">
+                        Changes you made
+                      </h2>
+                    </CardTitle>
+                    <CardDescription>
+                      {currentReview.changes.length === 0
+                        ? "This draft does not contain a deliberate Program change yet."
+                        : `${currentReview.changes.length} change${currentReview.changes.length === 1 ? "" : "s"} compared with the current Program.`}
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    {currentReview.changes.length === 0 ? (
+                      <p className="text-sm text-muted-foreground">
+                        Return to editing or discard the draft. Repbook will not
+                        activate an older-Program update by itself.
+                      </p>
+                    ) : (
+                      <ol className="space-y-2">
+                        {currentReview.changes.map((change, index) => (
+                          <li
+                            key={`${change.path}-${index}`}
+                            className="rounded-lg border p-3"
+                          >
+                            <p className="font-medium">
+                              {describeProgramReviewChange(change)}
+                            </p>
+                            <details className="mt-2">
+                              <summary className="min-h-10 cursor-pointer text-sm text-muted-foreground">
+                                See exact before and after
+                              </summary>
+                              <dl className="mt-2 grid gap-2 text-sm sm:grid-cols-2">
+                                <div>
+                                  <dt className="font-medium text-muted-foreground">
+                                    Before
+                                  </dt>
+                                  <dd className="mt-1 break-words">
+                                    {formatProgramReviewValue(change.before)}
+                                  </dd>
+                                </div>
+                                <div>
+                                  <dt className="font-medium text-muted-foreground">
+                                    After
+                                  </dt>
+                                  <dd className="mt-1 break-words">
+                                    {formatProgramReviewValue(change.after)}
+                                  </dd>
+                                </div>
+                              </dl>
+                            </details>
+                          </li>
+                        ))}
+                      </ol>
+                    )}
+                    {currentReview.programUpdates.length > 0 && (
+                      <details className="rounded-lg border bg-muted/20 p-3">
+                        <summary className="min-h-11 cursor-pointer font-medium">
+                          Older Program update
+                          <span className="mt-1 block text-sm font-normal leading-5 text-muted-foreground">
+                            Repbook prepared older saved details for the current
+                            editor. This is separate from what you changed and
+                            does not alter the active Program unless you activate
+                            this draft.
+                          </span>
+                        </summary>
+                        <ul className="mt-3 space-y-2 text-sm">
+                          {currentReview.programUpdates.map((change, index) => (
+                            <li key={`${change.path}-${index}`}>
+                              {describeProgramReviewChange(change)}
+                            </li>
+                          ))}
+                        </ul>
+                      </details>
+                    )}
+                  </CardContent>
+                </Card>
                 {currentReview.blockingErrors.length > 0 && (
                   <Alert variant="destructive">
                     <CircleAlert />
@@ -100,26 +185,26 @@ export function ReviewDialog({ editor, currentReview, canReview }: { editor: Pro
                   <CardHeader>
                     <CardTitle>
                       <h2 className="text-lg font-semibold">
-                        Program Preflight
+                        Checks before activating
                       </h2>
                     </CardTitle>
                     <CardDescription>
-                      Blocking execution problems prevent publication. Training
-                      warnings remain reviewable evidence, not automatic
-                      rejection.
+                      Repbook checks whether this Program can be started as
+                      written with the saved equipment and constraints. Warnings
+                      never change the Program on their own.
                     </CardDescription>
                   </CardHeader>
                   <CardContent className="space-y-3">
                     {!currentReview.preflight ? (
                       <p className="text-sm text-muted-foreground">
-                        Preflight is unavailable for this historical document
+                        These checks are unavailable for this older Program
                         version.
                       </p>
                     ) : currentReview.preflight.findings.length === 0 ? (
                       <p className="text-sm">
-                        No blocking execution problem or cautious training
-                        warning was found. Sparse or missing evidence can still
-                        limit the duration basis shown below.
+                        No problem or warning was found. If Repbook has little or
+                        no matching workout history, its time estimate may be
+                        less specific.
                       </p>
                     ) : (
                       currentReview.preflight.findings.map((finding) => {
@@ -153,15 +238,16 @@ export function ReviewDialog({ editor, currentReview, canReview }: { editor: Pro
                               <div>
                                 <p className="font-medium">
                                   {finding.severity === "blocking"
-                                    ? "Blocking execution problem"
-                                    : "Training warning"}{` · ${dayName}${slotName ? ` · ${slotName}` : ""}`}
+                                    ? "Needs fixing before activation"
+                                    : "Worth checking"}{` · ${dayName}${slotName ? ` · ${slotName}` : ""}`}
                                 </p>
                                 <p className="mt-1 text-sm text-muted-foreground">
                                   {finding.reason}
                                 </p>
                                 <p className="mt-1 text-xs text-muted-foreground">
-                                  Evidence records: {finding.evidenceCount}.
-                                  This count is not a confidence score.
+                                  Matching past workouts: {finding.evidenceCount}.
+                                  This number does not make the warning more or
+                                  less certain.
                                 </p>
                               </div>
                               <Button
@@ -201,7 +287,7 @@ export function ReviewDialog({ editor, currentReview, canReview }: { editor: Pro
                     )}
                   </CardContent>
                 </Card>
-                <Card>
+                {hasTrainingTotalChange(currentReview) && <Card>
                   <CardHeader>
                     <CardTitle>
                       <h2 className="text-lg font-semibold">
@@ -221,34 +307,6 @@ export function ReviewDialog({ editor, currentReview, canReview }: { editor: Pro
                         <dd className="font-medium">
                           {currentReview.summary.weeklySetsBefore} →{" "}
                           {currentReview.summary.weeklySetsAfter}
-                        </dd>
-                      </div>
-                      <div>
-                        <dt className="text-muted-foreground">
-                          Explainable day duration ranges
-                        </dt>
-                        <dd className="mt-1 space-y-1 font-medium">
-                          {currentReview.summary.durationAfter.map(
-                            (duration) => {
-                              const dayName =
-                                programDocument?.days.find(
-                                  (day) =>
-                                    day.lineageId === duration.dayLineageId,
-                                )?.name ?? "Program day";
-                              return (
-                                <span
-                                  className="block"
-                                  key={duration.dayLineageId}
-                                >
-                                  {dayName}: {duration.minMinutes}–
-                                  {duration.maxMinutes} minutes ·{" "}
-                                  {duration.evidenceCount === 0
-                                    ? "planned fallback"
-                                    : `${duration.evidenceCount} comparable session${duration.evidenceCount === 1 ? "" : "s"}`}
-                                </span>
-                              );
-                            },
-                          )}
                         </dd>
                       </div>
                     </dl>
@@ -291,7 +349,7 @@ export function ReviewDialog({ editor, currentReview, canReview }: { editor: Pro
                       )}
                     </div>
                   </CardContent>
-                </Card>
+                </Card>}
                 {currentReview.recommendationConsequences.length > 0 && (
                   <Card>
                     <CardHeader>
@@ -326,7 +384,7 @@ export function ReviewDialog({ editor, currentReview, canReview }: { editor: Pro
                     <CardHeader>
                       <CardTitle>
                         <h2 className="text-lg font-semibold">
-                          Progression continuity
+                          What happens to exercise history
                         </h2>
                       </CardTitle>
                       <CardDescription>
@@ -345,61 +403,6 @@ export function ReviewDialog({ editor, currentReview, canReview }: { editor: Pro
                     </CardContent>
                   </Card>
                 )}
-                <Card>
-                  <CardHeader>
-                    <CardTitle>
-                      <h2 className="text-lg font-semibold">
-                        What will change
-                      </h2>
-                    </CardTitle>
-                    <CardDescription>
-                      {currentReview.changes.length} meaningful change
-                      {currentReview.changes.length === 1 ? "" : "s"} in
-                      revision {currentReview.reviewedRevision}.
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    {currentReview.changes.length === 0 ? (
-                      <p className="text-sm text-muted-foreground">
-                        No meaningful changes were found.
-                      </p>
-                    ) : (
-                      <ol className="space-y-3">
-                        {currentReview.changes.map((change, index) => (
-                          <li
-                            key={`${change.path}-${index}`}
-                            className="rounded-lg border p-3"
-                          >
-                            <div className="flex flex-wrap items-center gap-2">
-                              <Badge variant="outline">
-                                {change.kind.replaceAll("_", " ")}
-                              </Badge>
-                              <h3 className="font-medium">{change.label}</h3>
-                            </div>
-                            <dl className="mt-2 grid gap-2 text-sm sm:grid-cols-2">
-                              <div>
-                                <dt className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                                  Before
-                                </dt>
-                                <dd className="mt-1 break-words">
-                                  {formatProgramReviewValue(change.before)}
-                                </dd>
-                              </div>
-                              <div>
-                                <dt className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                                  After
-                                </dt>
-                                <dd className="mt-1 break-words">
-                                  {formatProgramReviewValue(change.after)}
-                                </dd>
-                              </div>
-                            </dl>
-                          </li>
-                        ))}
-                      </ol>
-                    )}
-                  </CardContent>
-                </Card>
                 <div className="flex flex-col gap-2 rounded-xl border bg-card p-4 sm:flex-row sm:items-center sm:justify-between">
                   <p className="text-sm text-muted-foreground">
                     Activation creates a new immutable version. It never
