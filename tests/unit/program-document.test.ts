@@ -191,12 +191,10 @@ describe("Program document v3 durable workout structure", () => {
 
     expect(firstUpgrade).toEqual(secondUpgrade);
     expect(source).toEqual(before);
-    expect(firstUpgrade.days[0].warmupItems).toEqual([
-      expect.objectContaining({
-        key: source.days[0].lineageId,
-        label: "Shoulder circles and band pull-aparts",
-      }),
-    ]);
+    expect(firstUpgrade.days[0].warmupItems).toEqual([]);
+    expect(firstUpgrade.days[0].warmupNotes).toBe(
+      "Shoulder circles and band pull-aparts",
+    );
     expect(firstUpgrade.days[0].supersets[0]).toMatchObject({
       structureStatus: "canonical",
       plannedRounds: 3,
@@ -207,6 +205,40 @@ describe("Program document v3 durable workout structure", () => {
       firstUpgrade.days[0].exercises.map((slot) => slot.groupMemberOrderIdx),
     ).toEqual([0, 1, 2]);
     expect(storedProgramDocumentSchema.parse(firstUpgrade)).toEqual(firstUpgrade);
+  });
+
+  it("keeps a complete long legacy warm-up and removes only its generated prefix item", () => {
+    const source = programDocumentSchema.parse(documentWithWarmup({}));
+    const fullWarmup = [
+      "Elliptical two minutes easy, then use smooth arm circles and scapular push-ups without rushing the setup.",
+      "Bench ramp-up: empty bar for ten, then three progressively heavier preparation sets before work begins.",
+    ].join("\n");
+    expect(fullWarmup.length).toBeGreaterThan(120);
+    source.days[0].warmupNotes = fullWarmup;
+
+    const upgraded = upgradeStoredProgramDocumentToV3(source);
+    expect(upgraded.days[0]).toMatchObject({
+      warmupNotes: fullWarmup,
+      warmupItems: [],
+    });
+
+    const previouslyGenerated = structuredClone(upgraded);
+    previouslyGenerated.days[0].warmupItems = [{
+      key: previouslyGenerated.days[0].lineageId,
+      label: fullWarmup.slice(0, 120),
+      reps: null,
+      load: null,
+      loadUnit: null,
+      loadPercent: null,
+      loadText: null,
+      notes: null,
+    }];
+    const normalized = upgradeStoredProgramDocumentToV3(previouslyGenerated);
+    expect(normalized.days[0]).toMatchObject({
+      warmupNotes: fullWarmup,
+      warmupItems: [],
+    });
+    expect(previouslyGenerated.days[0].warmupItems).toHaveLength(1);
   });
 
   it("rejects invalid canonical rounds and preserves unequal legacy groups honestly", () => {

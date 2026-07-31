@@ -9,6 +9,7 @@ import { historyRevisionLockSql } from "@/services/history-revision-lock";
 import { canonicalJson, sha256Hex } from "@/services/snapshot-crypto";
 import { workoutReplacementUnavailableReason } from "@/lib/exercise-replacements";
 import { getExerciseDiscoveryLibrary } from "@/services/exercise-discovery";
+import { effectiveProgramDayWarmupItemsSql } from "@/services/program-warmup-compatibility";
 
 export type RetrospectiveWorkoutDependencies = {
   now?: () => Date;
@@ -193,7 +194,13 @@ export async function createRetrospectiveWorkout(
         template.lineage_id AS day_lineage_id,
         template.name,
         template.warmup_notes,
-        template.warmup_items
+        template.warmup_items,
+        ${effectiveProgramDayWarmupItemsSql({
+          lineageId: sql`template.lineage_id`,
+          fallbackItemKey: sql`template.lineage_id`,
+          warmupNotes: sql`template.warmup_notes`,
+          warmupItems: sql`template.warmup_items`,
+        })} AS effective_warmup_items
       FROM programs program
       JOIN program_versions version ON version.program_id = program.id
       JOIN workout_templates template ON template.program_version_id = version.id
@@ -441,7 +448,7 @@ export async function createRetrospectiveWorkout(
         CASE WHEN ${link == null} THEN 'Retrospective workout'
              ELSE owned_program.name END,
         owned_program.warmup_notes,
-        coalesce(owned_program.warmup_items, '[]'::jsonb),
+        coalesce(owned_program.effective_warmup_items, '[]'::jsonb),
         'history_manual',
         ${parsed.requestId},
         0,
@@ -648,7 +655,9 @@ export async function createRetrospectiveWorkout(
         item.ordinality::integer - 1 AS kind_ordinal,
         item.ordinality::integer - 1 AS sequence_idx
       FROM owned_program
-      CROSS JOIN LATERAL jsonb_array_elements(owned_program.warmup_items)
+      CROSS JOIN LATERAL jsonb_array_elements(
+        owned_program.effective_warmup_items
+      )
         WITH ORDINALITY AS item(value, ordinality)
       WHERE EXISTS (SELECT 1 FROM inserted_session)
     ), exercise_warmup_source AS MATERIALIZED (

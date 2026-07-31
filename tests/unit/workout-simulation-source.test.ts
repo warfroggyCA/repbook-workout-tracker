@@ -188,6 +188,77 @@ describe("workout simulation source snapshot", () => {
       .toContain("2 recent pain entries apply to this exercise.");
   });
 
+  it("derives every round for a legacy group with unequal member set counts", () => {
+    const candidate = input();
+    const day = candidate.program.days[0]!;
+    const first = day.slots[0]!;
+    const group = {
+      id: "legacy-pair",
+      name: "Legacy pair",
+      restAfterRoundSec: 75,
+      memberNames: ["EZ-Bar Curl", "Dumbbell Curl"],
+    };
+    day.slots = [
+      {
+        ...first,
+        id: "slot-1",
+        orderIdx: 0,
+        supersetGroupId: group.id,
+        superset: group,
+        prescription: { ...first.prescription!, sets: 3 },
+      },
+      {
+        ...first,
+        id: "slot-2",
+        lineageId: "slot-lineage-2",
+        exercise: {
+          id: "db-curl",
+          name: "Dumbbell Curl",
+          family: "curl",
+          movementPattern: "isolation",
+        },
+        orderIdx: 1,
+        supersetGroupId: group.id,
+        superset: group,
+        prescription: { ...first.prescription!, sets: 4 },
+      },
+    ];
+    candidate.slotSupplementsById = {
+      "slot-1": { groupMemberOrderIdx: 0, setNotes: [] },
+      "slot-2": { groupMemberOrderIdx: 1, setNotes: [] },
+    };
+    candidate.groupSupplementsById = {
+      [group.id]: {
+        orderIdx: 0,
+        plannedRounds: null,
+        restBetweenMembersSec: 15,
+      },
+    };
+
+    const snapshot = buildSimulationSourceSnapshot(candidate);
+    expect(snapshot.days[0]!.groups).toEqual([
+      expect.objectContaining({
+        id: group.id,
+        plannedRounds: 4,
+        restBetweenMembersSec: 15,
+        restBetweenRoundsSec: 75,
+      }),
+    ]);
+    expect(snapshot.days[0]!.exercises.map((item) => item.sets)).toEqual([3, 4]);
+  });
+
+  it("preserves a valid long legacy warm-up across bounded simulation steps", () => {
+    const candidate = input();
+    const longWarmup = `${"A".repeat(499)}${" ".repeat(502)}${"B".repeat(700)}`;
+    candidate.program.days[0]!.warmupLines = [longWarmup];
+
+    const warmups = buildSimulationSourceSnapshot(candidate).days[0]!.warmups;
+
+    expect(warmups).toHaveLength(Math.ceil(longWarmup.length / 500));
+    expect(warmups.every((warmup) => warmup.label.length <= 500)).toBe(true);
+    expect(warmups.map((warmup) => warmup.label).join("")).toBe(longWarmup);
+  });
+
   it("distinguishes avoid, cautious, and threshold-only constraints on the 0–10 pain scale", () => {
     const constrained = input();
     constrained.constraints = [

@@ -110,6 +110,45 @@ describe("workout simulation local model", () => {
     expect(workspace.activeWorkout?.occurrences[0].outcome).toBe("completed");
   });
 
+  it("runs every prescribed set in a legacy unequal group and skips exhausted members", () => {
+    const createId = ids();
+    const uneven = source();
+    const day = uneven.days[0]!;
+    day.groups[0]!.plannedRounds = 4;
+    day.exercises = day.exercises.filter(
+      (item) => item.id !== "triceps-slot",
+    );
+    day.exercises.find((item) => item.id === "rear-slot")!.sets = 3;
+    day.exercises.find((item) => item.id === "curl-slot")!.sets = 4;
+
+    const workspace = startSimulationWorkout(
+      createSimulationWorkspace(uneven, {
+        createId,
+        nowISO: "2026-07-22T12:01:00.000Z",
+      }),
+      0,
+      { createId, nowISO: "2026-07-22T12:02:00.000Z" },
+    );
+    const grouped = workspace.activeWorkout!.occurrences.filter(
+      (item) => item.groupId === "tri",
+    );
+    expect(grouped.map((item) => [
+      item.groupRound,
+      item.groupMemberOrderIdx,
+    ])).toEqual([
+      [1, 0], [1, 1],
+      [2, 0], [2, 1],
+      [3, 0], [3, 1],
+      [4, 1],
+    ]);
+    expect(grouped.map((item) => item.restAfterSec)).toEqual([
+      15, 60,
+      15, 60,
+      15, 60,
+      0,
+    ]);
+  });
+
   it("supports local workout decisions, rest, feedback, finish, and the next consecutive day", () => {
     const createId = ids();
     let workspace = createSimulationWorkspace(source(), { createId, nowISO: "2026-07-22T12:01:00.000Z" });

@@ -111,6 +111,32 @@ describe("saved Program presentation", () => {
     ).toEqual(["Two minutes easy", "Two smooth ramp-up sets"]);
   });
 
+  it("shows the full legacy overview instead of its generated 120-character prefix", () => {
+    const lineageId = "10000000-0000-4000-8000-000000000001";
+    const overview = [
+      "Elliptical two minutes easy, then complete arm circles and scapular push-ups with a comfortable range of motion.",
+      "Bench ramp-up: empty bar for ten, then three progressively heavier preparation sets.",
+    ].join("\n");
+    expect(overview.length).toBeGreaterThan(120);
+    expect(
+      deriveProgramDayWarmupLines(
+        overview,
+        [],
+        [{
+          key: lineageId,
+          label: overview.slice(0, 120),
+          reps: null,
+          load: null,
+          loadUnit: null,
+          loadPercent: null,
+          loadText: null,
+          notes: null,
+        }],
+        lineageId,
+      ),
+    ).toEqual(overview.split("\n"));
+  });
+
   it("projects every day and batched superset without mutating its source", () => {
     const source: ProgramPresentationSource = {
       program: { id: "program", name: "Fixture" },

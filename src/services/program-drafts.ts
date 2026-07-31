@@ -374,7 +374,9 @@ export async function saveProgramDraft(
       errors: parsed.error.issues.map((issue) => `${issue.path.join(".") || "Program"}: ${issue.message}`),
     };
   }
-  const document = normalizeStoredProgramDocumentLoads(parsed.data) as ProgramDocumentV3;
+  const document = normalizeStoredProgramDocumentLoads(
+    upgradeStoredProgramDocumentToV3(parsed.data),
+  ) as ProgramDocumentV3;
   if (!(await validateExerciseOwnership(db, userId, document))) {
     return { status: "invalid", errors: ["One or more exercises are no longer available."] };
   }
@@ -456,7 +458,9 @@ export async function reviewProgramDraft(
     return reviewProgramDocuments(base, draft.document, draft.revision);
   }
   const legacyContentHash = hashLegacyProgramDocument(parsedNext.data);
-  const next = normalizeStoredProgramDocumentLoads(parsedNext.data) as ProgramDocumentV3;
+  const next = normalizeStoredProgramDocumentLoads(
+    upgradeStoredProgramDocumentToV3(parsedNext.data),
+  ) as ProgramDocumentV3;
   const canonicalContentHash = hashProgramDocument(next);
   if (
     draft.contentHash !== legacyContentHash &&

@@ -1,6 +1,7 @@
-import type {
-  ProgramDayIntent,
-  ProgramDayWarmupItem,
+import {
+  hasGeneratedOverviewWarmupItems,
+  type ProgramDayIntent,
+  type ProgramDayWarmupItem,
 } from "@/lib/program-document";
 import { formatWarmupSetLine, type WarmupSetDisplayInput } from "@/lib/warmup";
 
@@ -107,11 +108,21 @@ export function deriveProgramDayWarmupLines(
     warmupSets: WarmupSetDisplayInput[];
   }>,
   dayWarmupItems: ProgramDayWarmupItem[] = [],
+  dayLineageId?: string,
 ): string[] {
   const lines: string[] = [];
   const seen = new Set<string>();
-  if (dayWarmupItems.length > 0) {
-    for (const item of dayWarmupItems) {
+  const effectiveWarmupItems =
+    dayLineageId &&
+    hasGeneratedOverviewWarmupItems({
+      lineageId: dayLineageId,
+      warmupNotes: dayWarmupNotes,
+      warmupItems: dayWarmupItems,
+    })
+      ? []
+      : dayWarmupItems;
+  if (effectiveWarmupItems.length > 0) {
+    for (const item of effectiveWarmupItems) {
       addUniqueLine(lines, seen, formatWarmupSetLine(item));
     }
   } else {
@@ -171,6 +182,7 @@ export function projectProgramPresentation(
             warmupSets: slot.warmupSets,
           })),
           day.warmupItems ?? [],
+          day.lineageId,
         ),
         slots: slots.map((slot) => {
           const group = slot.supersetGroupId

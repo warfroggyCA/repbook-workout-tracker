@@ -496,6 +496,50 @@ export type ProgramDocumentSuperset = z.infer<typeof programSupersetSchema>;
 export type ProgramDayIntent = z.infer<typeof programDayIntentSchema>;
 export type ProgramSlotIntent = z.infer<typeof programSlotIntentSchema>;
 
+export function overviewWarmupLabels(value: string | null): string[] {
+  return (value?.split(/\r?\n/) ?? [])
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .flatMap((line) => {
+      const chunks: string[] = [];
+      for (let index = 0; index < line.length; index += 120) {
+        chunks.push(line.slice(index, index + 120));
+      }
+      return chunks;
+    });
+}
+
+/**
+ * Identifies the draft-only compatibility steps created from a legacy
+ * free-text overview. Authored structured steps use independent identities
+ * and are never treated as generated overview projections.
+ */
+export function hasGeneratedOverviewWarmupItems(
+  day: Pick<
+    ProgramDocumentDayV3,
+    "lineageId" | "warmupNotes" | "warmupItems"
+  >,
+): boolean {
+  const first = day.warmupItems[0];
+  if (!first || first.key !== day.lineageId || !day.warmupNotes) return false;
+  const hasOnlyPlainItems = day.warmupItems.every((item) =>
+    item.reps == null &&
+    item.load == null &&
+    item.loadUnit == null &&
+    item.loadPercent == null &&
+    item.loadText == null &&
+    item.notes == null
+  );
+  if (!hasOnlyPlainItems) return false;
+  const projectedLabels = overviewWarmupLabels(day.warmupNotes);
+  return (
+    (day.warmupItems.length === 1 &&
+      first.label === day.warmupNotes.slice(0, 120)) ||
+    day.warmupItems.map((item) => item.label).join("\n") ===
+      projectedLabels.join("\n")
+  );
+}
+
 export function createSuggestedSlotIntent(
   sets: number,
   index: number,
@@ -700,7 +744,9 @@ export function prepareProgramDocumentForEditing(
   stored: StoredProgramDocument,
   exerciseName: (exerciseId: string) => string = () => "Exercise",
 ): ProgramDocumentV3 {
-  if (stored.schemaVersion === "3") return structuredClone(stored);
+  if (stored.schemaVersion === "3") {
+    return upgradeStoredProgramDocumentToV3(stored);
+  }
   const intentDocument = stored.schemaVersion === "1"
     ? suggestProgramIntentDraft(stored)
     : stored;
@@ -747,7 +793,17 @@ export function projectIntentProgramDocumentV2(
 export function upgradeStoredProgramDocumentToV3(
   stored: StoredProgramDocument,
 ): ProgramDocumentV3 {
-  if (stored.schemaVersion === "3") return structuredClone(stored);
+  if (stored.schemaVersion === "3") {
+    return programDocumentV3Schema.parse({
+      ...structuredClone(stored),
+      days: stored.days.map((day) => ({
+        ...day,
+        warmupItems: hasGeneratedOverviewWarmupItems(day)
+          ? []
+          : day.warmupItems,
+      })),
+    });
+  }
   const intentDocument = stored.schemaVersion === "1"
     ? suggestProgramIntentDraft(stored)
     : stored;
@@ -769,18 +825,10 @@ export function upgradeStoredProgramDocumentToV3(
       }
       return {
         ...day,
-        warmupItems: day.warmupNotes
-          ? [{
-              key: day.lineageId,
-              label: day.warmupNotes.slice(0, 120),
-              reps: null,
-              load: null,
-              loadUnit: null,
-              loadPercent: null,
-              loadText: null,
-              notes: null,
-            }]
-          : [],
+        // Legacy warm-ups remain free text. Empty structured steps make every
+        // current consumer use the complete overview instead of a 120-character
+        // compatibility projection.
+        warmupItems: [],
         supersets: day.supersets.map((group) => {
           const members = membersByGroup.get(group.key) ?? [];
           const setCounts = new Set(members.map((slot) => slot.sets));

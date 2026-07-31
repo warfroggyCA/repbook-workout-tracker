@@ -37,15 +37,17 @@ or become part of the new immutable version.
 
 An older exercise group with unequal member set counts stays explicitly marked
 as legacy when another Program edit is activated. Repbook preserves its saved
-sets, order, and rest instead of inventing a round count; the editor offers an
-optional conversion to matching rounds.
+sets, order, and rest instead of writing an invented round count back into the
+Program; execution and simulation run through the largest saved set count and
+skip each member after its own sets are complete. The editor offers an optional
+conversion to matching rounds.
 
 Warm-up instructions and optional structured check-off steps are both reviewed.
-When an older Program has only the generated compatibility step derived from
-its instructions, editing those instructions keeps that generated step in
-sync. Independently authored structured steps remain independent. Workout
-creation and the saved Program presentation use structured steps when they
-exist, so the reviewed content is the content shown during the workout.
+Older free-text instructions stay free text and remain complete; a historical
+generated prefix item never overrides the full overview. Independently authored
+structured steps remain independent. Workout creation and the saved Program
+presentation use authored structured steps when they exist, so the reviewed
+content is the content shown during the workout.
 
 Every change to weekly work-set totals must be accounted for internally by an
 add, removal, replacement, or target change. If the review cannot account for a
