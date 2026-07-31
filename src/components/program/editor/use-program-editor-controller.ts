@@ -64,7 +64,7 @@ export function useProgramEditorController({ ownerId, library, initialDayId }: {
     null,
   );
   const dayHeadingRefs = useRef(new Map<string, HTMLHeadingElement>());
-  const slotHeadingRefs = useRef(new Map<string, HTMLHeadingElement>());
+  const slotHeadingRefs = useRef(new Map<string, HTMLButtonElement>());
   const inspectionHeadingRef = useRef<HTMLHeadingElement>(null);
   const restoreMutationRef = useRef(new Map<string, string>());
   const handleBaseVersionChange = useCallback(() => {

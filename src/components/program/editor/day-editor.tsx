@@ -774,6 +774,11 @@ export const DayEditor = memo(function DayEditor({ editor, canReview = false }: 
                             </label>
                           )}
                         <button
+                          ref={(node) => {
+                            if (node)
+                              slotHeadingRefs.current.set(slot.lineageId, node);
+                            else slotHeadingRefs.current.delete(slot.lineageId);
+                          }}
                           type="button"
                           className="flex min-h-16 w-full items-center gap-3 rounded-xl border bg-background p-3 text-left hover:bg-muted/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                           aria-expanded={expandedSlotId === slot.lineageId}
@@ -790,7 +795,10 @@ export const DayEditor = memo(function DayEditor({ editor, canReview = false }: 
                             movementPattern={exerciseById.get(slot.exerciseId)?.movementPattern ?? "conditioning"}
                           />
                           <span className="min-w-0 flex-1">
-                            <span className="block truncate font-semibold">
+                            <span
+                              id={`editor-${slot.lineageId}-label`}
+                              className="block truncate font-semibold"
+                            >
                               {exerciseById.get(slot.exerciseId)?.name ?? "Unavailable exercise"}
                             </span>
                             <span className="block text-xs text-muted-foreground">Exercise {slotIndex + 1}</span>
@@ -914,11 +922,7 @@ export const DayEditor = memo(function DayEditor({ editor, canReview = false }: 
                             };
                           })
                         }
-                        onHeadingRef={(node) => {
-                          if (node)
-                            slotHeadingRefs.current.set(slot.lineageId, node);
-                          else slotHeadingRefs.current.delete(slot.lineageId);
-                        }}
+                        labelledBy={`editor-${slot.lineageId}-label`}
                         />
                         </div>}
                       </div>

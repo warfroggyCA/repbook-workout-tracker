@@ -3,7 +3,6 @@
 import { ArrowDown, ArrowUp, Trash2 } from "lucide-react";
 import { memo } from "react";
 import { ExercisePicker } from "@/components/exercises/exercise-picker";
-import { ExerciseFamilyIcon } from "@/components/exercises/exercise-family-icon";
 import { RestTimeControl } from "@/components/program/rest-time-control";
 import { Field } from "@/components/program/editor/editor-ui";
 import { LegacyWarmupEditor } from "@/components/program/editor/legacy-warmup-editor";
@@ -31,7 +30,7 @@ export const SlotEditor = memo(function SlotEditor({
   onMove,
   onMoveToDay,
   onReplace,
-  onHeadingRef,
+  labelledBy,
 }: {
   day: ProgramDocumentDayV3;
   dayIndex: number;
@@ -45,7 +44,7 @@ export const SlotEditor = memo(function SlotEditor({
   onMove: (direction: -1 | 1) => void;
   onMoveToDay: (targetDay: number) => void;
   onReplace: (exerciseId: string) => void;
-  onHeadingRef: (node: HTMLHeadingElement | null) => void;
+  labelledBy: string;
 }) {
   const prefix = `day-${day.lineageId}-slot-${slot.lineageId}`;
   const canMoveDay = false;
@@ -53,87 +52,72 @@ export const SlotEditor = memo(function SlotEditor({
   return (
     <article
       className="rounded-xl border bg-background p-3 sm:p-4"
-      aria-labelledby={`${prefix}-title`}
+      aria-labelledby={labelledBy}
     >
-      <header className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-        <div className="flex min-w-0 items-center gap-3">
-          <ExerciseFamilyIcon
-            family={exercise?.family ?? null}
-            exerciseName={exercise?.name ?? "Exercise"}
-            movementPattern={exercise?.movementPattern ?? "conditioning"}
-          />
-          <div className="min-w-0">
-            <h3
-              ref={onHeadingRef}
-              id={`${prefix}-title`}
-              tabIndex={-1}
-              className="font-semibold outline-none"
-            >
-              {exercise?.name ?? "Unavailable exercise"}
-            </h3>
-            <p className="text-xs text-muted-foreground">
-              Exercise {slotIndex + 1}
-            </p>
-          </div>
-        </div>
-        <div
-          className="flex flex-wrap gap-2"
-          aria-label={`Reorder or remove ${exercise?.name ?? "exercise"}`}
+      <div
+        className="mb-3 flex flex-wrap justify-end gap-2"
+        aria-label={`Reorder or remove ${exercise?.name ?? "exercise"}`}
+      >
+        <Button
+          type="button"
+          size="icon-lg"
+          className="size-11"
+          variant="outline"
+          aria-label={`Move ${exercise?.name ?? "exercise"} up`}
+          disabled={slotIndex === 0}
+          onClick={() => onMove(-1)}
         >
-          <Button
-            type="button"
-            size="icon-lg"
-            className="size-11"
-            variant="outline"
-            aria-label={`Move ${exercise?.name ?? "exercise"} up`}
-            disabled={slotIndex === 0}
-            onClick={() => onMove(-1)}
-          >
-            <ArrowUp />
-          </Button>
-          <Button
-            type="button"
-            size="icon-lg"
-            className="size-11"
-            variant="outline"
-            aria-label={`Move ${exercise?.name ?? "exercise"} down`}
-            disabled={slotIndex === day.exercises.length - 1}
-            onClick={() => onMove(1)}
-          >
-            <ArrowDown />
-          </Button>
-          <Button
-            type="button"
-            size="icon-lg"
-            className="size-11"
-            variant="destructive"
-            aria-label={`Remove ${exercise?.name ?? "exercise"}`}
-            disabled={day.exercises.length === 1}
-            onClick={onRemove}
-          >
-            <Trash2 />
-          </Button>
-        </div>
-      </header>
+          <ArrowUp />
+        </Button>
+        <Button
+          type="button"
+          size="icon-lg"
+          className="size-11"
+          variant="outline"
+          aria-label={`Move ${exercise?.name ?? "exercise"} down`}
+          disabled={slotIndex === day.exercises.length - 1}
+          onClick={() => onMove(1)}
+        >
+          <ArrowDown />
+        </Button>
+        <Button
+          type="button"
+          size="icon-lg"
+          className="size-11"
+          variant="destructive"
+          aria-label={`Remove ${exercise?.name ?? "exercise"}`}
+          disabled={day.exercises.length === 1}
+          onClick={onRemove}
+        >
+          <Trash2 />
+        </Button>
+      </div>
 
-      <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <Field id={`${prefix}-sets`} label="Work sets">
           <Input
+            key={`${slot.lineageId}-${slot.sets}`}
             id={`${prefix}-sets`}
-            type="number"
-            min={1}
-            max={20}
+            type="text"
             inputMode="numeric"
-            value={slot.sets}
-            onChange={(event) => {
+            pattern="[0-9]*"
+            defaultValue={slot.sets}
+            onBlur={(event) => {
+              if (!event.currentTarget.value.trim()) {
+                event.currentTarget.value = String(slot.sets);
+                return;
+              }
               const sets = Math.min(
                 20,
                 Math.max(
                   1,
-                  Math.trunc(numberFromInput(event.target.value, slot.sets)),
+                  Math.trunc(numberFromInput(event.currentTarget.value, slot.sets)),
                 ),
               );
-              onChange(resizeProgramSlotSets(slot, sets));
+              event.currentTarget.value = String(sets);
+              if (sets !== slot.sets) {
+                onChange(resizeProgramSlotSets(slot, sets));
+              }
             }}
           />
         </Field>
