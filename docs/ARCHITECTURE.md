@@ -24,10 +24,12 @@ These concepts must never be collapsed:
 ## Program editing and activation review
 
 The editor prepares an editable current-schema draft from the immutable active
-Program. Automatic preparation of an older Program is disclosed separately
+Program. Automatic preparation of an older Program remains separate internally
 from deliberate user changes; it is never counted as something the user chose
-to edit. Activation still requires an exact saved-revision review and creates a
-new immutable Program version.
+to edit. The normal review screen presents the safety result and any issues that
+need attention instead of a field-by-field comparison. Activation still
+requires an exact saved-revision review and creates a new immutable Program
+version.
 
 Warm-up instructions and optional structured check-off steps are both reviewed.
 When an older Program has only the generated compatibility step derived from
@@ -36,9 +38,9 @@ sync. Independently authored structured steps remain independent. Workout
 creation and the saved Program presentation use structured steps when they
 exist, so the reviewed content is the content shown during the workout.
 
-Every change to weekly work-set totals must be explained by a visible add,
-remove, replacement, or target change. If the review cannot account for a set
-total, activation fails closed.
+Every change to weekly work-set totals must be accounted for internally by an
+add, removal, replacement, or target change. If the review cannot account for a
+set total, activation fails closed.
 
 ## Persisted evidence
 

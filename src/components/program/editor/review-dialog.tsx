@@ -6,166 +6,9 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import type { ProgramEditorController } from "@/components/program/editor/use-program-editor-controller";
-import { describeProgramReviewChange, formatProgramReviewValue, type ProgramReview, type ProgramReviewChange } from "@/lib/program-editor-client";
+import type { ProgramReview } from "@/lib/program-editor-client";
 import type { ProgramPreflightFinding } from "@/lib/program-preflight";
 import { cn } from "@/lib/utils";
-
-function displayLabel(value: string) { return value.replaceAll("_", " ").replace(/\b\w/g, (character) => character.toUpperCase()); }
-function lineageConsequences(changes: ProgramReviewChange[]) {
-  const consequences = new Map<string, string>();
-  for (const change of changes) {
-    if (!change.path.startsWith("slots.")) continue;
-    const slotPath = change.path.split(".").slice(0, 2).join(".");
-    if (change.kind === "replace") consequences.set(slotPath, change.label + ". Earlier progression remains with the retired exercise slot; the replacement starts fresh.");
-    else if (change.kind === "remove") consequences.set(slotPath, change.label + ". Its earlier progression remains in workout history and is not reused.");
-    else if (change.kind === "add") consequences.set(slotPath, change.label + ". This new exercise slot starts its own progression history.");
-  }
-  return [...consequences.values()];
-}
-
-function hasTrainingTotalChange(review: ProgramReview) {
-  return (
-    review.summary.weeklySetsBefore !== review.summary.weeklySetsAfter ||
-    changedMuscles(review).length > 0
-  );
-}
-
-function changedMuscles(review: ProgramReview) {
-  return Object.keys({
-    ...review.summary.muscleSetsBefore,
-    ...review.summary.muscleSetsAfter,
-  })
-    .filter(
-      (muscle) =>
-        (review.summary.muscleSetsBefore[muscle] ?? 0) !==
-        (review.summary.muscleSetsAfter[muscle] ?? 0),
-    )
-    .sort();
-}
-
-function reviewRecord(value: unknown) {
-  return value && typeof value === "object" && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : null;
-}
-
-function warmupOverview(value: unknown) {
-  const record = reviewRecord(value);
-  return typeof record?.overview === "string" && record.overview.trim()
-    ? record.overview.trim()
-    : null;
-}
-
-function warmupSteps(value: unknown) {
-  const record = reviewRecord(value);
-  const valueSteps = Array.isArray(record?.steps)
-    ? record.steps
-    : Array.isArray(record?.items)
-      ? record.items
-      : [];
-  return valueSteps
-    .map((item) => reviewRecord(item))
-    .filter((item): item is Record<string, unknown> => item !== null);
-}
-
-function warmupStepLabels(value: unknown) {
-  return warmupSteps(value)
-    .map((item) => (typeof item.label === "string" ? item.label.trim() : ""))
-    .filter(Boolean);
-}
-
-function overviewLines(value: unknown) {
-  return (warmupOverview(value)?.split(/\r?\n/) ?? [])
-    .map((line) => line.trim())
-    .filter(Boolean);
-}
-
-function warmupStepCount(value: unknown) {
-  const steps = warmupStepLabels(value);
-  return steps.length || overviewLines(value).length;
-}
-
-function describeVisibleChange(change: ProgramReviewChange) {
-  if (change.kind !== "warmup") return describeProgramReviewChange(change);
-  const beforeLines = overviewLines(change.before).length;
-  const afterLines = overviewLines(change.after).length;
-  if (beforeLines === 0 && afterLines > 0) {
-    return `${change.label} added (${countLabel(afterLines, "line")}).`;
-  }
-  if (beforeLines > 0 && afterLines === 0) {
-    return `${change.label} cleared.`;
-  }
-  if (beforeLines > 0 && afterLines > 0 && beforeLines !== afterLines) {
-    const direction = afterLines < beforeLines ? "shortened" : "expanded";
-    return `${change.label} ${direction} from ${countLabel(beforeLines, "line")} to ${countLabel(afterLines, "line")}.`;
-  }
-  const beforeSteps = warmupStepCount(change.before);
-  const afterSteps = warmupStepCount(change.after);
-  if (beforeSteps !== afterSteps) {
-    return `${change.label}: ${beforeSteps} → ${afterSteps} check-off steps.`;
-  }
-  return `${change.label} changed.`;
-}
-
-function isMirroredWarmup(value: unknown) {
-  const steps = warmupStepLabels(value);
-  const lines = overviewLines(value);
-  return (
-    steps.length > 0 &&
-    steps.length === lines.length &&
-    steps.every((step, index) => step === lines[index])
-  );
-}
-
-function formatWarmupStep(item: Record<string, unknown>) {
-  const parts = [
-    typeof item.label === "string" ? item.label.trim() : "",
-    typeof item.reps === "number" ? `${item.reps} reps` : "",
-    typeof item.load === "number"
-      ? `${item.load} ${typeof item.loadUnit === "string" ? item.loadUnit : ""}`.trim()
-      : "",
-    typeof item.loadPercent === "number"
-      ? `${item.loadPercent}% of work weight`
-      : "",
-    typeof item.loadText === "string" ? item.loadText.trim() : "",
-    typeof item.notes === "string" ? item.notes.trim() : "",
-  ].filter(Boolean);
-  return parts.join(" · ");
-}
-
-function ReviewChangeValue({
-  change,
-  value,
-}: {
-  change: ProgramReviewChange;
-  value: unknown;
-}) {
-  if (change.kind !== "warmup") {
-    return <>{formatProgramReviewValue(value)}</>;
-  }
-  const overview = warmupOverview(value);
-  const steps = warmupSteps(value);
-  const showSeparateSteps = steps.length > 0 && !isMirroredWarmup(value);
-  return (
-    <div className="space-y-2">
-      <p className="whitespace-pre-line">
-        {overview ?? "No warm-up instructions"}
-      </p>
-      {showSeparateSteps && (
-        <div>
-          <p className="font-medium text-muted-foreground">Check-off steps</p>
-          <ol className="mt-1 list-decimal space-y-1 pl-5">
-            {steps.map((item, index) => (
-              <li key={typeof item.key === "string" ? item.key : index}>
-                {formatWarmupStep(item)}
-              </li>
-            ))}
-          </ol>
-        </div>
-      )}
-    </div>
-  );
-}
 
 type FindingGroup = {
   code: string;
@@ -308,12 +151,12 @@ export function ReviewDialog({ editor, currentReview, canReview }: { editor: Pro
                 <CardHeader>
                   <CardTitle>
                     <h2 className="text-lg font-semibold">
-                      Review before activation
+                      Check before activating
                     </h2>
                   </CardTitle>
                   <CardDescription>
-                    Save every change, then ask the server to compare this exact
-                    revision with the current Program.
+                    Repbook checks the saved Program, your equipment, and its
+                    safety rules. Nothing changes until you activate it.
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
@@ -328,7 +171,7 @@ export function ReviewDialog({ editor, currentReview, canReview }: { editor: Pro
                     ) : (
                       <RefreshCw />
                     )}{" "}
-                    Compare with current Program
+                    Check Program
                   </Button>
                 </CardContent>
               </Card>
@@ -338,89 +181,21 @@ export function ReviewDialog({ editor, currentReview, canReview }: { editor: Pro
                   <CardHeader>
                     <CardTitle>
                       <h2 className="text-lg font-semibold">
-                        Changes you made
+                        {currentReview.changes.length === 0
+                          ? "No Program changes yet"
+                          : currentReview.status === "publishable"
+                            ? "Ready to activate"
+                            : "Needs attention before activation"}
                       </h2>
                     </CardTitle>
                     <CardDescription>
                       {currentReview.changes.length === 0
-                        ? "This draft does not contain a deliberate Program change yet."
-                        : `${currentReview.changes.length} change${currentReview.changes.length === 1 ? "" : "s"} compared with the current Program.`}
+                        ? "Make a change in Edit before activating a new version."
+                        : currentReview.status === "publishable"
+                          ? "Your changes are saved and Repbook found nothing that blocks activation."
+                          : "Your changes are saved. Fix the items below before activating."}
                     </CardDescription>
                   </CardHeader>
-                  <CardContent className="space-y-3">
-                    {currentReview.changes.length === 0 ? (
-                      <p className="text-sm text-muted-foreground">
-                        Return to editing or discard the draft. Repbook will not
-                        activate an older-Program update by itself.
-                      </p>
-                    ) : (
-                      <ol className="space-y-2">
-                        {currentReview.changes.map((change, index) => (
-                          <li
-                            key={`${change.path}-${index}`}
-                            className="rounded-lg border p-3"
-                          >
-                            <p className="font-medium">
-                              {describeVisibleChange(change)}
-                            </p>
-                            {!["add", "remove", "replace"].includes(
-                              change.kind,
-                            ) && (
-                              <details className="mt-2">
-                                <summary className="min-h-10 cursor-pointer text-sm text-muted-foreground">
-                                  {change.kind === "warmup"
-                                    ? "See the warm-up text"
-                                    : "See before and after"}
-                                </summary>
-                                <dl className="mt-2 grid gap-3 text-sm sm:grid-cols-2">
-                                  <div>
-                                    <dt className="font-medium text-muted-foreground">
-                                      Before
-                                    </dt>
-                                    <dd className="mt-1 break-words">
-                                      <ReviewChangeValue
-                                        change={change}
-                                        value={change.before}
-                                      />
-                                    </dd>
-                                  </div>
-                                  <div>
-                                    <dt className="font-medium text-muted-foreground">
-                                      After
-                                    </dt>
-                                    <dd className="mt-1 break-words">
-                                      <ReviewChangeValue
-                                        change={change}
-                                        value={change.after}
-                                      />
-                                    </dd>
-                                  </div>
-                                </dl>
-                              </details>
-                            )}
-                          </li>
-                        ))}
-                      </ol>
-                    )}
-                    {currentReview.programUpdates.length > 0 && (
-                      <details className="rounded-lg border bg-muted/20 p-3">
-                        <summary className="min-h-11 cursor-pointer font-medium">
-                          Repbook prepared older saved details
-                        </summary>
-                        <p className="mt-2 text-sm text-muted-foreground">
-                          These are separate from your changes. Nothing becomes
-                          active until you activate this draft.
-                        </p>
-                        <ul className="mt-3 space-y-2 text-sm">
-                          {currentReview.programUpdates.map((change, index) => (
-                            <li key={`${change.path}-${index}`}>
-                              {describeProgramReviewChange(change)}
-                            </li>
-                          ))}
-                        </ul>
-                      </details>
-                    )}
-                  </CardContent>
                 </Card>
                 {currentReview.blockingErrors.length > 0 && (
                   <Alert variant="destructive">
@@ -614,54 +389,6 @@ export function ReviewDialog({ editor, currentReview, canReview }: { editor: Pro
                     )}
                   </CardContent>
                 </Card>
-                {hasTrainingTotalChange(currentReview) && (
-                  <details className="rounded-xl border bg-card p-4">
-                    <summary className="min-h-11 cursor-pointer font-medium">
-                      How your weekly plan changes
-                    </summary>
-                    <div className="mt-3">
-                      {currentReview.summary.weeklySetsBefore !==
-                        currentReview.summary.weeklySetsAfter && (
-                        <dl className="grid gap-3 text-sm sm:grid-cols-2">
-                          <div>
-                            <dt className="text-muted-foreground">
-                              Weekly work sets
-                            </dt>
-                            <dd className="font-medium">
-                              {currentReview.summary.weeklySetsBefore} →{" "}
-                              {currentReview.summary.weeklySetsAfter}
-                            </dd>
-                          </div>
-                        </dl>
-                      )}
-                      {changedMuscles(currentReview).length > 0 && (
-                        <div>
-                          <h3 className="font-medium">Muscle emphasis</h3>
-                          <dl className="mt-2 grid gap-2 text-sm sm:grid-cols-2">
-                            {changedMuscles(currentReview).map((muscle) => (
-                              <div
-                                key={muscle}
-                                className="rounded-lg border p-2"
-                              >
-                                <dt>{displayLabel(muscle)}</dt>
-                                <dd className="font-medium">
-                                  {currentReview.summary.muscleSetsBefore[
-                                    muscle
-                                  ] ?? 0}{" "}
-                                  →{" "}
-                                  {currentReview.summary.muscleSetsAfter[
-                                    muscle
-                                  ] ?? 0}{" "}
-                                  sets
-                                </dd>
-                              </div>
-                            ))}
-                          </dl>
-                        </div>
-                      )}
-                    </div>
-                  </details>
-                )}
                 {currentReview.recommendationConsequences.length > 0 && (
                   <Card>
                     <CardHeader>
@@ -690,20 +417,6 @@ export function ReviewDialog({ editor, currentReview, canReview }: { editor: Pro
                       </ul>
                     </CardContent>
                   </Card>
-                )}
-                {lineageConsequences(currentReview.changes).length > 0 && (
-                  <details className="rounded-xl border bg-card p-4">
-                    <summary className="min-h-11 cursor-pointer font-medium">
-                      What happens to exercise history
-                    </summary>
-                    <ul className="mt-3 list-disc space-y-2 pl-5 text-sm">
-                      {lineageConsequences(currentReview.changes).map(
-                        (consequence) => (
-                          <li key={consequence}>{consequence}</li>
-                        ),
-                      )}
-                    </ul>
-                  </details>
                 )}
                 <div className="flex flex-col gap-2 rounded-xl border bg-card p-4 sm:flex-row sm:items-center sm:justify-between">
                   <p className="text-sm text-muted-foreground">

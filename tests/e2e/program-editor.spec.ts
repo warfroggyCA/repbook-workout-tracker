@@ -356,11 +356,11 @@ test("autosaves, resolves tab conflicts, publishes v2, and restores v1 as v3", a
 
   await page.getByRole("tab", { name: "Review", exact: true }).click();
   await page
-    .getByRole("button", { name: /Compare with current Program|Review changes/ })
+    .getByRole("button", { name: "Check Program", exact: true })
     .first()
     .click();
   await expect(
-    page.getByRole("heading", { name: "Changes you made" }),
+    page.getByRole("heading", { name: "Ready to activate" }),
   ).toBeVisible();
   await expect(page.getByRole("heading", { name: "Before you activate" })).toBeVisible();
   await expect(
@@ -376,7 +376,7 @@ test("autosaves, resolves tab conflicts, publishes v2, and restores v1 as v3", a
   ).toHaveCount(0);
   await expect(
     page.getByText(/changes? compared with the current Program/i),
-  ).toBeVisible();
+  ).toHaveCount(0);
   await page
     .getByRole("button", { name: "Activate new version", exact: true })
     .click();
@@ -501,11 +501,11 @@ test("autosaves, resolves tab conflicts, publishes v2, and restores v1 as v3", a
 
   await page.getByRole("tab", { name: "Review", exact: true }).click();
   await page
-    .getByRole("button", { name: /Compare with current Program|Review changes/ })
+    .getByRole("button", { name: "Check Program", exact: true })
     .first()
     .click();
   await expect(
-    page.getByRole("heading", { name: "Changes you made" }),
+    page.getByRole("heading", { name: "Ready to activate" }),
   ).toBeVisible();
   await page
     .getByRole("button", { name: "Activate new version", exact: true })
@@ -546,19 +546,17 @@ test("a warm-up-only edit produces one clear review and stays reversible", async
   await page.getByRole("tab", { name: "Review", exact: true }).click();
   await page
     .getByRole("button", {
-      name: "Compare with current Program",
+      name: "Check Program",
       exact: true,
     })
     .click();
   await expect(
-    page.getByRole("heading", { name: "Changes you made", exact: true }),
+    page.getByRole("heading", { name: "Ready to activate", exact: true }),
   ).toBeVisible();
   await expect(
-    page.getByText("1 change compared with the current Program.", {
-      exact: true,
-    }),
-  ).toBeVisible();
-  await expect(page.getByText(/.* warm-up added \(3 lines\)\./)).toBeVisible();
+    page.getByText(/change compared with the current Program/i),
+  ).toHaveCount(0);
+  await expect(page.getByText(/warm-up added/i)).toHaveCount(0);
   await expect(
     page.getByRole("heading", { name: "Training summary" }),
   ).toHaveCount(0);
@@ -625,11 +623,11 @@ test("full replacement creates a reviewable Program proposal without auto-publis
 
   await page.getByRole("tab", { name: "Review", exact: true }).click();
   await page
-    .getByRole("button", { name: /Compare with current Program|Review changes/ })
+    .getByRole("button", { name: "Check Program", exact: true })
     .first()
     .click();
   await expect(
-    page.getByRole("heading", { name: "Changes you made" }),
+    page.getByRole("heading", { name: "Ready to activate" }),
   ).toBeVisible();
   await expect(
     page.getByRole("button", { name: "Activate new version", exact: true }),
@@ -711,8 +709,8 @@ test("builds, reviews, and explicitly accepts one deterministic session proposal
   await page.goto("/program/edit");
   await expectSaved(page);
   await page.getByRole("tab", { name: "Review", exact: true }).click();
-  await page.getByRole("button", { name: /Compare with current Program|Review changes/ }).first().click();
-  await expect(page.getByRole("heading", { name: "Changes you made" })).toBeVisible();
+  await page.getByRole("button", { name: "Check Program", exact: true }).first().click();
+  await expect(page.getByRole("heading", { name: "Ready to activate" })).toBeVisible();
   await page.getByRole("button", { name: "Activate new version", exact: true }).click();
   await expect(page.getByText(/is now current/)).toBeVisible();
   await page.goto("/program");
