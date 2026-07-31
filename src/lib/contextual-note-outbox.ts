@@ -102,6 +102,7 @@ const QUARANTINE_REASONS: StoredQuarantinedEntry["reason"][] = [
 let cachedOwnerId: string | undefined;
 let cachedRaw: string | null | undefined;
 let cachedSnapshot: ContextualNoteOutboxSnapshot | undefined;
+const serverSnapshots = new Map<string, ContextualNoteOutboxSnapshot>();
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value != null && typeof value === "object" && !Array.isArray(value);
@@ -782,7 +783,11 @@ export function getContextualNoteOutboxSnapshot(ownerId: string) {
 }
 
 export function getContextualNoteOutboxServerSnapshot(ownerId: string) {
-  return emptySnapshot(ownerId);
+  const existing = serverSnapshots.get(ownerId);
+  if (existing) return existing;
+  const snapshot = emptySnapshot(ownerId);
+  serverSnapshots.set(ownerId, snapshot);
+  return snapshot;
 }
 
 export function subscribeToContextualNoteOutbox(ownerId: string, onStoreChange: () => void) {
