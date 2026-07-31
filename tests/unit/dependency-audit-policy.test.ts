@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   evaluateFullTreeAudit,
+  validateAuditReport,
   validateAuditPolicy,
 } from "../../scripts/lib/dependency-audit-policy.mjs";
 
@@ -47,6 +48,34 @@ function report(versionNode = reviewedNode) {
 }
 
 describe("dependency audit policy", () => {
+  it("rejects registry error JSON instead of treating it as a clean audit", () => {
+    expect(() =>
+      validateAuditReport({
+        message: "The audit endpoint returned an error",
+        error: { code: "E503" },
+      })
+    ).toThrow(/did not return a version 2 audit report/);
+  });
+
+  it("accepts the expected version 2 audit-report shape", () => {
+    const emptyCounts = {
+      info: 0,
+      low: 0,
+      moderate: 0,
+      high: 0,
+      critical: 0,
+      total: 0,
+    };
+
+    expect(
+      validateAuditReport({
+        auditReportVersion: 2,
+        vulnerabilities: {},
+        metadata: { vulnerabilities: emptyCounts },
+      })
+    ).toMatchObject({ auditReportVersion: 2, vulnerabilities: {} });
+  });
+
   it("accepts only the exact reviewed development-tool nodes", () => {
     const exactPolicy = policy({
       reviewedNodes: {
