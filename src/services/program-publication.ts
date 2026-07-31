@@ -335,7 +335,6 @@ async function publishDocumentAtomically(
         AND draft.review_hash = ${input.reviewHash}
         AND COALESCE((draft.review_summary->>'recommendationRevision')::int, -1) = program.recommendation_revision
         AND draft.content_hash = ${documentHash}
-        AND draft.document = ${JSON.stringify(document)}::jsonb
       FOR UPDATE
     ), target_recommendation AS MATERIALIZED (
       SELECT recommendation.id

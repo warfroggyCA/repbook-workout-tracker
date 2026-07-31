@@ -62,6 +62,7 @@ import {
 } from "@/services/session-lifecycle";
 import { createRetrospectiveWorkout } from "@/services/retrospective-workouts";
 import { getHistoryReport } from "@/services/history-report";
+import { getCurrentProgramDocument } from "@/services/program-documents";
 import { createStartBarrier } from "../helpers/database";
 import { createTotalSystemTestSnapshot } from "../helpers/set-semantics";
 
@@ -1294,6 +1295,57 @@ describe.sequential("real PostgreSQL parallel invariants", () => {
       warmupNotes: null,
       warmupItems: [],
     });
+  });
+
+  it("publishes a reviewed cross-version draft with harmless legacy JSON fields", async () => {
+    const fixture = await createProgramFixture("cross-version publication");
+    const draft = await prepareReviewedDraft(fixture, "prepared");
+    const [stored] = await db
+      .select({
+        document: programDrafts.document,
+        contentHash: programDrafts.contentHash,
+      })
+      .from(programDrafts)
+      .where(eq(programDrafts.id, draft.draftId));
+
+    await db
+      .update(programDrafts)
+      .set({
+        document: {
+          ...(stored.document as Record<string, unknown>),
+          legacyPreparedDetails: {
+            sourceSchemaVersion: 1,
+            preparedForEditor: true,
+          },
+        } as never,
+      })
+      .where(eq(programDrafts.id, draft.draftId));
+
+    const published = await publishReviewedDraft(draft, fixture.userId);
+    expect(published).toMatchObject({
+      ok: true,
+      versionNo: 2,
+    });
+    expect(
+      await db
+        .select({
+          status: programDrafts.status,
+          contentHash: programDrafts.contentHash,
+        })
+        .from(programDrafts)
+        .where(eq(programDrafts.id, draft.draftId)),
+    ).toEqual([
+      {
+        status: "published",
+        contentHash: stored.contentHash,
+      },
+    ]);
+    const currentDocument = await getCurrentProgramDocument(db, fixture.userId);
+    expect(currentDocument).toMatchObject({
+      schemaVersion: "3",
+      name: expect.stringContaining("prepared"),
+    });
+    expect(currentDocument).not.toHaveProperty("legacyPreparedDetails");
   });
 
   it("converges concurrent stale-base draft opens on one fenced revision", async () => {
