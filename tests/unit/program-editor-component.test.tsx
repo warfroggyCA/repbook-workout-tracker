@@ -178,7 +178,7 @@ describe("Program editor split presentation panels", () => {
     expect(html).not.toMatch(/<details[^>]*\sopen(?:=|>)/);
   });
 
-  it("renders the activation review summary, cautions, and history consequences", () => {
+  it("keeps the activation result concise while preserving cautions", () => {
     const review: ProgramReview = {
       status: "publishable",
       hash: "a".repeat(64),
@@ -216,10 +216,14 @@ describe("Program editor split presentation panels", () => {
       <ReviewDialog editor={editor} currentReview={review} canReview />
     );
 
-    expect(html).toContain("How your weekly plan changes");
+    expect(html).toContain("Ready to activate");
+    expect(html).toContain(
+      "Your changes are saved and Repbook found nothing that blocks activation.",
+    );
     expect(html).toContain("Confirm the lower weekly set count.");
-    expect(html).toContain("What happens to exercise history");
-    expect(html).toContain("earlier progression remains in workout history");
+    expect(html).not.toContain("How your weekly plan changes");
+    expect(html).not.toContain("What happens to exercise history");
+    expect(html).not.toContain("Remove Barbell Squat");
     expect(html).not.toMatch(/<details[^>]*\sopen(?:=|>)/);
   });
 
@@ -264,7 +268,7 @@ describe("Program editor split presentation panels", () => {
     expect(html).not.toContain("The review response is incomplete");
   });
 
-  it("separates one plain-language edit from an older Program update", () => {
+  it("hides internal edit and older-Program comparisons after a successful check", () => {
     const review: ProgramReview = {
       status: "publishable",
       hash: "d".repeat(64),
@@ -319,11 +323,17 @@ describe("Program editor split presentation panels", () => {
       <ReviewDialog editor={editor} currentReview={review} canReview />,
     );
 
-    expect(html).toContain("Changes you made");
-    expect(html).toContain("1 change compared with the current Program.");
-    expect(html).toContain("Synthetic Day warm-up changed.");
-    expect(html).toContain("Repbook prepared older saved details");
-    expect(html).toContain("See the warm-up text");
+    expect(html).toContain("Ready to activate");
+    expect(html).toContain(
+      "Your changes are saved and Repbook found nothing that blocks activation.",
+    );
+    expect(html).not.toContain("Changes you made");
+    expect(html).not.toContain("compared with the current Program");
+    expect(html).not.toContain("Synthetic Day warm-up");
+    expect(html).not.toContain("Repbook prepared older saved details");
+    expect(html).not.toContain("See the warm-up text");
+    expect(html).not.toContain("Five minutes easy");
+    expect(html).not.toContain("Two minutes easy");
     expect(html).not.toContain("Training summary");
     expect(html).not.toContain("Program Preflight");
     expect(html).not.toContain("None");
@@ -483,12 +493,13 @@ describe("Program editor split presentation panels", () => {
       <ReviewDialog editor={editor} currentReview={review} canReview />,
     );
 
-    expect(html).toContain("2 changes compared with the current Program.");
-    expect(html).toContain(
-      "Day 1 — Upper-body strength warm-up shortened from 8 lines to 5 lines.",
+    expect(html).toContain("Needs attention before activation");
+    expect(html).not.toContain("changes compared with the current Program");
+    expect(html).not.toContain(
+      "Day 1 — Upper-body strength warm-up shortened",
     );
-    expect(html).toContain(
-      "Replace Barbell Overhead Press with Single-Leg Bodyweight Calf Raise.",
+    expect(html).not.toContain(
+      "Replace Barbell Overhead Press with Single-Leg Bodyweight Calf Raise",
     );
     expect(html).toContain("Fix the red items below before you activate.");
     expect(html).toContain("8 exercises don&#x27;t match your saved equipment");

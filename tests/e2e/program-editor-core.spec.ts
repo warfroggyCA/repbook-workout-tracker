@@ -62,7 +62,7 @@ test("opens and operates the keyboard-accessible Program editor", async ({
   await expect(reviewTab).toHaveAttribute("aria-selected", "true");
   await expect(
     page.getByRole("heading", {
-      name: /Review before activation|Changes you made/,
+      name: /Check before activating|Ready to activate|No Program changes yet/,
     }),
   ).toBeVisible();
   await page.keyboard.press("ArrowRight");
@@ -120,8 +120,8 @@ test("opens and operates the keyboard-accessible Program editor", async ({
     await programName.fill(`${await programName.inputValue()} — reviewed`);
     await expect(page.getByRole("status")).toContainText("All changes saved");
     await page.getByRole("tab", { name: "Review", exact: true }).click();
-    await page.getByRole("button", { name: /Compare with current Program|Review changes/ }).first().click();
-    await expect(page.getByRole("heading", { name: "Changes you made" })).toBeVisible();
+    await page.getByRole("button", { name: "Check Program", exact: true }).first().click();
+    await expect(page.getByRole("heading", { name: "Ready to activate" })).toBeVisible();
     await page.getByRole("button", { name: "Activate new version", exact: true }).click();
     await expect(page.getByText(/is now current/)).toBeVisible();
     await page.getByRole("link", { name: "View active Program", exact: true }).click();
