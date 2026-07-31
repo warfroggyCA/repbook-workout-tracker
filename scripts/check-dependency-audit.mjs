@@ -3,6 +3,7 @@ import { spawnSync } from "node:child_process";
 import {
   evaluateFullTreeAudit,
   summarizeVulnerability,
+  validateAuditReport,
   validateAuditPolicy,
 } from "./lib/dependency-audit-policy.mjs";
 
@@ -25,7 +26,7 @@ function runAudit(args) {
   if (!audit.stdout.trim()) {
     throw new Error(audit.stderr.trim() || "npm audit returned no JSON output.");
   }
-  return JSON.parse(audit.stdout);
+  return validateAuditReport(JSON.parse(audit.stdout));
 }
 
 const productionReport = runAudit(["--omit=dev", "--audit-level=moderate"]);

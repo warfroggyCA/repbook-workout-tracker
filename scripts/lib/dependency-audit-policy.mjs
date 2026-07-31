@@ -10,6 +10,35 @@ function assert(condition, message) {
   if (!condition) throw new Error(message);
 }
 
+function isRecord(value) {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+export function validateAuditReport(report) {
+  assert(
+    isRecord(report) && report.auditReportVersion === 2,
+    "npm audit did not return a version 2 audit report."
+  );
+  assert(
+    isRecord(report.vulnerabilities),
+    "npm audit report is missing its vulnerabilities inventory."
+  );
+  assert(
+    isRecord(report.metadata) && isRecord(report.metadata.vulnerabilities),
+    "npm audit report is missing its vulnerability totals."
+  );
+
+  const counts = report.metadata.vulnerabilities;
+  for (const severity of [...severityRank.keys(), "total"]) {
+    assert(
+      Number.isInteger(counts[severity]) && counts[severity] >= 0,
+      `npm audit report has an invalid ${severity} vulnerability total.`
+    );
+  }
+
+  return report;
+}
+
 export function validateAuditPolicy(policy, lockfilePackages, today) {
   assert(policy.schemaVersion === 2, "Dependency-audit policy must use schema version 2.");
   assert(Array.isArray(policy.exceptions), "Dependency-audit policy exceptions must be an array.");
