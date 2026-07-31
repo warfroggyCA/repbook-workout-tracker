@@ -150,6 +150,17 @@ test("publishes and preserves durable warm-up and grouped workout outcomes", asy
 
   const warmup = page.locator("#workout-warmup");
   const warmupRow = warmup.locator("li").filter({ hasText: "Activation ramp" });
+  const workoutGuidance = page.getByRole("region", {
+    name: "Workout progress and upcoming work",
+  });
+  const workoutStatus = page.getByRole("complementary", { name: "Workout status" });
+  await expect(workoutGuidance).toContainText("Now: Activation ramp");
+  await expect(workoutGuidance).toContainText(
+    "Next: Romanian Deadlift, set 1",
+  );
+  await expect(workoutStatus).toContainText("Activation ramp");
+  await expect(workoutStatus).toContainText("Warm-up");
+  await expect(workoutStatus).not.toContainText("Romanian Deadlift");
   await expect(warmupRow).toContainText("8 reps · 45 lb");
   await expect(warmupRow).toContainText(
     "Plan: Move smoothly and brace before every rep.",
@@ -211,6 +222,9 @@ test("publishes and preserves durable warm-up and grouped workout outcomes", asy
     .getByLabel("Optional note")
     .fill("Briefly skipped to prove recovery controls.");
   await warmupSkip.getByRole("button", { name: "Skip item", exact: true }).click();
+  const completedWarmup = page.locator("details#workout-warmup");
+  await expect(completedWarmup).not.toHaveAttribute("open", "");
+  await completedWarmup.locator("summary").click();
   await expect(reloadedWarmupRow).toContainText("skipped");
   await expect(reloadedWarmupRow).toContainText(
     "Note: Briefly skipped to prove recovery controls.",
@@ -218,12 +232,21 @@ test("publishes and preserves durable warm-up and grouped workout outcomes", asy
   await reloadedWarmupRow.getByRole("button", { name: "Restore", exact: true }).click();
   await expect(reloadedWarmupRow.getByRole("checkbox", { name: "Mark Activation ramp complete", exact: true })).toBeVisible();
   await reloadedWarmupRow.getByRole("checkbox", { name: "Mark Activation ramp complete", exact: true }).click();
-  await expect(reloadedWarmupRow).toContainText("completed");
+  await expect(page.locator("details#workout-warmup")).not.toHaveAttribute(
+    "open",
+    "",
+  );
+  await expect(page.locator("#workout-warmup")).toContainText(
+    "Warm-up complete",
+  );
+  await expect(workoutGuidance).toContainText(
+    "Now: Romanian Deadlift, set 1",
+  );
+  await expect(workoutStatus).toContainText("Romanian Deadlift");
   await screenshot(page, "03-warmup-restored-and-completed.png");
   await waitForEquipmentSelectionsToSettle(page);
 
   const nextSet = page.getByTestId("current-exercise-card");
-  const workoutStatus = page.getByRole("complementary", { name: "Workout status" });
   await expect(nextSet.getByRole("heading", { level: 2 })).toHaveText("Romanian Deadlift");
   await nextSet.getByRole("button", { name: "Log set", exact: true }).click();
   await expect(nextSet.getByRole("heading", { level: 2 })).toHaveText("Barbell Overhead Press");

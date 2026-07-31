@@ -206,6 +206,7 @@ test("keeps Stage 5 guidance truthful, persistent, and usable on narrow mobile s
   await expect(guidance).toContainText("0/14");
   await expect(statusBar).toContainText("Romanian Deadlift");
   await expect(statusBar).toContainText("Set 1 of 3");
+  await expect(guidance).toContainText("Now: Romanian Deadlift, set 1");
   await expect(guidance).toContainText("Next: Romanian Deadlift, set 2");
 
   let releaseSave!: () => void;
@@ -237,8 +238,12 @@ test("keeps Stage 5 guidance truthful, persistent, and usable on narrow mobile s
     statusBar.getByText(/Saving/, { exact: false }),
   ).toBeVisible();
   await expect(guidance).toContainText("0/14");
+  await expect(guidance).toContainText("Now: Romanian Deadlift, set 1");
+  await expect(guidance).toContainText("Next: Romanian Deadlift, set 2");
   releaseSave();
   await expect(guidance).toContainText("1/14");
+  await expect(guidance).toContainText("Now: Romanian Deadlift, set 2");
+  await expect(guidance).toContainText("Next: Romanian Deadlift, set 3");
   await expect(statusBar).toContainText("Resting");
   await page.unrouteAll({ behavior: "wait" });
   await expect
@@ -291,6 +296,10 @@ test("keeps Stage 5 guidance truthful, persistent, and usable on narrow mobile s
       name: "Dismiss rest timer",
       exact: true,
     }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("region", { name: "Workout progress and upcoming work" })
+      .getByText(/Now: Romanian Deadlift, set 2/),
   ).toBeVisible();
   await expect(
     page.getByRole("region", { name: "Workout progress and upcoming work" })
@@ -460,6 +469,9 @@ test("keeps Stage 5 guidance truthful, persistent, and usable on narrow mobile s
   await expect(groupGuidance).toContainText(
     /Next: Superset, round 1, member 2 of 2: Pallof Press, set 1/,
   );
+  await expect(groupGuidance).toContainText(
+    /Now: Superset, round 1, member 1 of 2: Dumbbell Lateral Raise, set 1/,
+  );
   await expect(page.getByRole("complementary", { name: "Workout status" })).toContainText("Dumbbell Lateral Raise");
   await expect(groupGuidance).toContainText("0/13");
   await expect(groupGuidance).toContainText("9 skipped");
@@ -473,6 +485,9 @@ test("keeps Stage 5 guidance truthful, persistent, and usable on narrow mobile s
   await expect(durableGroupGuidance).toContainText("9 skipped");
   await expect(durableGroupGuidance).toContainText(
     /Next: Superset, round 1, member 2 of 2: Pallof Press, set 1/,
+  );
+  await expect(durableGroupGuidance).toContainText(
+    /Now: Superset, round 1, member 1 of 2: Dumbbell Lateral Raise, set 1/,
   );
   await expect(page.getByRole("complementary", { name: "Workout status" })).toContainText("Dumbbell Lateral Raise");
   await expect(

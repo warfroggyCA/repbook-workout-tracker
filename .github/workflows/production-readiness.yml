@@ -173,6 +173,18 @@ jobs:
         continue-on-error: true
         run: npx playwright test -c playwright.replacement-mobile.config.ts
 
+      - name: Verify current action and warm-up transition
+        id: browser-current-action
+        continue-on-error: true
+        run: npm run test:e2e:current-action
+
+      - name: Verify compact rest timer and acknowledged action changes
+        id: browser-compact-timer
+        continue-on-error: true
+        env:
+          STAGE5_RUN_ID: remediation-2026-07-31-stage5-r${{ github.run_attempt }}
+        run: npx playwright test --config=playwright.stage5.config.ts
+
       - name: Verify superset presentation and equipment preparation
         id: browser-superset-prep
         continue-on-error: true
@@ -198,6 +210,8 @@ jobs:
           BROWSER_FAILED_SET_RECOVERY: ${{ steps.browser-failed-set-recovery.outcome }}
           BROWSER_PLATE_MACHINE_GUIDANCE: ${{ steps.browser-plate-machine-guidance.outcome }}
           BROWSER_REPLACEMENT_MOBILE: ${{ steps.browser-replacement-mobile.outcome }}
+          BROWSER_CURRENT_ACTION: ${{ steps.browser-current-action.outcome }}
+          BROWSER_COMPACT_TIMER: ${{ steps.browser-compact-timer.outcome }}
           BROWSER_SUPERSET_PREP: ${{ steps.browser-superset-prep.outcome }}
           BROWSER_ACTIVE_WORKOUT_ADD_EXERCISE: ${{ steps.browser-active-workout-add-exercise.outcome }}
         run: |
@@ -215,6 +229,8 @@ jobs:
             "failed-set recovery:${BROWSER_FAILED_SET_RECOVERY}" \
             "plate-machine guidance:${BROWSER_PLATE_MACHINE_GUIDANCE}" \
             "replacement mobile keyboard:${BROWSER_REPLACEMENT_MOBILE}" \
+            "current action and warm-up transition:${BROWSER_CURRENT_ACTION}" \
+            "compact timer and acknowledged action changes:${BROWSER_COMPACT_TIMER}" \
             "superset equipment preparation:${BROWSER_SUPERSET_PREP}" \
             "active-workout exercise addition:${BROWSER_ACTIVE_WORKOUT_ADD_EXERCISE}"
           do

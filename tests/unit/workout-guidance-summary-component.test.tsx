@@ -5,9 +5,24 @@ import type { SessionGuidanceProjection } from "@/lib/session-guidance";
 
 const guidance = {
   totals: { performed: 3, planned: 14, skipped: 0 },
-  current: null,
+  current: {
+    sessionExerciseId: "exercise-1",
+    occurrenceId: "set-1",
+    kind: "working_set",
+    actualExerciseName: "Single-Arm Supported Dumbbell Romanian Deadlift",
+    planned: { setNumber: 1 },
+    position: {
+      kind: "set",
+      number: 1,
+      label: "Set 1",
+      lowercaseLabel: "set 1",
+    },
+    group: null,
+  },
   upNext: {
     sessionExerciseId: "exercise-1",
+    occurrenceId: "set-2",
+    kind: "working_set",
     actualExerciseName: "Single-Arm Supported Dumbbell Romanian Deadlift",
     planned: { setNumber: 2 },
     position: {
@@ -18,6 +33,8 @@ const guidance = {
     },
     group: null,
   },
+  currentAction: null,
+  nextAction: null,
   currentEquipment: { status: "none" },
   upcomingEquipment: {
     status: "broad_only",
@@ -28,6 +45,8 @@ const guidance = {
   },
   activeGroup: null,
 } as unknown as SessionGuidanceProjection;
+guidance.currentAction = guidance.current;
+guidance.nextAction = guidance.upNext;
 
 describe("WorkoutGuidanceSummary", () => {
   it("allows the compact next-work identity to wrap instead of truncating it", () => {
@@ -36,10 +55,18 @@ describe("WorkoutGuidanceSummary", () => {
     );
 
     expect(html).toContain(
+      "Now:</span> Single-Arm Supported Dumbbell Romanian Deadlift, set 1",
+    );
+    expect(html).toContain(
+      "Next:</span> Single-Arm Supported Dumbbell Romanian Deadlift, set 2",
+    );
+    expect(html).toContain(
       "Single-Arm Supported Dumbbell Romanian Deadlift, set 2",
     );
     expect(html).toContain("min-w-0 break-words leading-snug");
     expect(html).toContain("Long Resistance Band With Door Anchor");
+    expect(html).toContain("Prepare:</span>");
+    expect(html).not.toContain("Use now:</span>");
     expect(html).toContain("break-words text-xs text-muted-foreground");
     expect(html).not.toContain("truncate");
   });
@@ -67,6 +94,24 @@ describe("WorkoutGuidanceSummary", () => {
               lowercaseLabel: "extra set 1",
             },
           },
+          nextAction: {
+            ...guidance.upNext!,
+            planned: {
+              setNumber: 4,
+              repsMin: null,
+              repsMax: null,
+              load: null,
+              loadUnit: null,
+              loadPercent: null,
+              loadText: null,
+            },
+            position: {
+              kind: "extra",
+              number: 1,
+              label: "Extra set 1",
+              lowercaseLabel: "extra set 1",
+            },
+          },
         }}
         compact
       />,
@@ -76,5 +121,31 @@ describe("WorkoutGuidanceSummary", () => {
       "Single-Arm Supported Dumbbell Romanian Deadlift, extra set 1",
     );
     expect(html).not.toContain(", set 4");
+  });
+
+  it("leads with a pending warm-up and labels the first working set as next", () => {
+    const html = renderToStaticMarkup(
+      <WorkoutGuidanceSummary
+        guidance={{
+          ...guidance,
+          currentAction: {
+            kind: "day_warmup",
+            occurrenceId: "warmup-1",
+            sessionExerciseId: null,
+            sequenceIdx: 0,
+            label: "Elliptical 2 min easy",
+            exerciseName: null,
+          },
+          nextAction: guidance.current,
+        }}
+        compact
+      />,
+    );
+
+    expect(html).toContain("Now:</span> Elliptical 2 min easy");
+    expect(html).toContain(
+      "Next:</span> Single-Arm Supported Dumbbell Romanian Deadlift, set 1",
+    );
+    expect(html).not.toContain("Prepare:");
   });
 });

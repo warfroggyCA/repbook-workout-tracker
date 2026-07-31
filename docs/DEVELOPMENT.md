@@ -52,10 +52,14 @@ npm run test:e2e:history-calendar
 npm run test:e2e:history-workspace
 npm run test:e2e:program-editor
 npm run test:e2e:program-editor-cross-browser
+npm run test:e2e:current-action
+npm run test:e2e:superset-prep
 ```
 
 Run the smallest affected browser suite first, then the complete protected
-workflow for a merge candidate. All browser fixtures must remain synthetic.
+workflow for a merge candidate. The Stage 5 timer suite requires an unused
+`STAGE5_RUN_ID` matching its documented format. All browser fixtures must
+remain synthetic.
 
 ## Pull requests
 

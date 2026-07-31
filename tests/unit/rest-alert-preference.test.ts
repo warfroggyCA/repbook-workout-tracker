@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   DEFAULT_REST_ALERT_PREFERENCE,
+  REST_COMPLETION_TONE_PATTERN,
   parseRestAlertPreference,
   planRestCueTransition,
   requestedRestCueChannels,
@@ -65,6 +66,22 @@ describe("rest alert preference", () => {
       preference: "sound",
       foreground: true,
     }).milestonesToAttempt).toEqual([]);
+  });
+
+  it("uses five short, separated tones for the completion cue", () => {
+    expect(REST_COMPLETION_TONE_PATTERN).toHaveLength(5);
+    expect(REST_COMPLETION_TONE_PATTERN.map((tone) => tone.delaySec)).toEqual([
+      0,
+      0.2,
+      0.4,
+      0.6,
+      0.8,
+    ]);
+    expect(
+      REST_COMPLETION_TONE_PATTERN.every(
+        (tone) => tone.durationSec > 0 && tone.durationSec <= 0.2,
+      ),
+    ).toBe(true);
   });
 
   it("consumes missed background milestones without replaying them on return", () => {
