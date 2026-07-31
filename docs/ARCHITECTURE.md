@@ -31,6 +31,10 @@ need attention instead of a field-by-field comparison. Activation still
 requires an exact saved-revision review and creates a new immutable Program
 version.
 
+Cross-version drafts are schema-validated and fenced by their saved revision
+and canonical content hash. Harmless legacy JSON fields do not block activation
+or become part of the new immutable version.
+
 Warm-up instructions and optional structured check-off steps are both reviewed.
 When an older Program has only the generated compatibility step derived from
 its instructions, editing those instructions keeps that generated step in

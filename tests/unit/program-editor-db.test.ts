@@ -38,6 +38,7 @@ import { updateProgramDayWarmupOverview } from "@/lib/program-editor-client";
 import { startWorkoutSession } from "@/services/session-lifecycle";
 import { captureUserSnapshot } from "@/services/snapshot-capture";
 import { evaluateApplicationIntegrity } from "@/services/recovery-health";
+import { getCurrentProgramDocument } from "@/services/program-documents";
 import {
   upgradeSnapshotPayload,
   validateSnapshotPayload,
@@ -714,6 +715,77 @@ describe("versioned Program editor persistence", () => {
         reviewState: { status: "expired" },
       },
     });
+  });
+
+  it("publishes a reviewed cross-version draft with harmless legacy JSON fields", async () => {
+    const edited = await reviewedEditedDraft(25, "Cross-version Program");
+    const stored = await database.db.query.programDrafts.findFirst({
+      where: eq(programDrafts.id, edited.draftId),
+    });
+    if (!stored) throw new Error("Reviewed draft missing");
+
+    await database.db
+      .update(programDrafts)
+      .set({
+        document: {
+          ...(stored.document as Record<string, unknown>),
+          legacyPreparedDetails: {
+            sourceSchemaVersion: 1,
+            preparedForEditor: true,
+          },
+        } as never,
+      })
+      .where(eq(programDrafts.id, edited.draftId));
+
+    const published = await publishProgramDraft(database.db, userId, {
+      draftId: edited.draftId,
+      expectedRevision: edited.revision,
+      reviewHash: edited.review.hash,
+    });
+
+    expect(published).toMatchObject({ ok: true, versionNo: 2 });
+    expect(await database.db.query.programDrafts.findFirst({
+      where: eq(programDrafts.id, edited.draftId),
+    })).toMatchObject({
+      status: "published",
+      revision: edited.revision,
+      contentHash: hashProgramDocument(edited.document),
+    });
+    const currentDocument = await getCurrentProgramDocument(database.db, userId);
+    expect(currentDocument).toMatchObject({
+      schemaVersion: "3",
+      name: "Cross-version Program",
+      days: edited.document.days,
+    });
+    expect(currentDocument).not.toHaveProperty("legacyPreparedDetails");
+  });
+
+  it("rejects a reviewed draft whose known content changed without a matching hash", async () => {
+    const edited = await reviewedEditedDraft(25, "Reviewed Program");
+    const stored = await database.db.query.programDrafts.findFirst({
+      where: eq(programDrafts.id, edited.draftId),
+    });
+    if (!stored) throw new Error("Reviewed draft missing");
+
+    await database.db
+      .update(programDrafts)
+      .set({
+        document: {
+          ...(stored.document as Record<string, unknown>),
+          name: "Unhashed Program change",
+        } as never,
+      })
+      .where(eq(programDrafts.id, edited.draftId));
+
+    expect(await publishProgramDraft(database.db, userId, {
+      draftId: edited.draftId,
+      expectedRevision: edited.revision,
+      reviewHash: edited.review.hash,
+    })).toEqual({ ok: false, reason: "invalid" });
+    expect(await getCurrentProgramDocument(database.db, userId)).toMatchObject({
+      name: "Original Program",
+    });
+    expect(await database.db.query.programVersions.findMany()).toHaveLength(1);
   });
 
   it("converts legacy exercise guidance only in a new editable version", async () => {
