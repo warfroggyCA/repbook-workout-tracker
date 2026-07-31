@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  type ReactNode,
   useCallback,
   useEffect,
   useMemo,
@@ -111,6 +112,7 @@ import {
 import {
   planRestCueTransition,
   readRestAlertPreference,
+  REST_COMPLETION_TONE_PATTERN,
   requestedRestCueChannels,
   restCueOutcome,
   type RestAlertPreference,
@@ -119,6 +121,7 @@ import {
   projectSessionGuidance,
   sessionNonPerformedOutcomeParts,
   sessionEquipmentSetupMatchesExercise,
+  type SessionGuidanceFocusAction,
 } from "@/lib/session-guidance";
 import { workingSetDisplayPosition } from "@/lib/session-occurrences";
 import {
@@ -140,6 +143,61 @@ function useElapsed(startedAtISO: string): string {
   return `${minutes} min`;
 }
 
+function WarmupPanel({
+  completed,
+  skipped,
+  planned,
+  remaining,
+  children,
+}: {
+  completed: number;
+  skipped: number;
+  planned: number;
+  remaining: number;
+  children: ReactNode;
+}) {
+  const resolved = planned > 0 && remaining === 0;
+  if (resolved) {
+    return (
+      <details
+        id="workout-warmup"
+        className="scroll-mt-4 rounded-xl border border-violet-300/60 bg-violet-50/60 dark:bg-violet-950/20"
+      >
+        <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 rounded-xl px-4 py-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
+          <span className="font-semibold">
+            {skipped > 0 ? "Warm-up finished" : "Warm-up complete"}
+          </span>
+          <span className="text-xs text-muted-foreground">
+            {completed} completed
+            {skipped > 0 ? ` · ${skipped} skipped` : ""} · Show details
+          </span>
+        </summary>
+        <div className="border-t px-4 pb-4">{children}</div>
+      </details>
+    );
+  }
+
+  return (
+    <section
+      id="workout-warmup"
+      className="scroll-mt-4 rounded-xl border border-violet-300/60 bg-violet-50/60 p-4 dark:bg-violet-950/20"
+    >
+      <h2 className="font-semibold">Warm-up</h2>
+      {children}
+    </section>
+  );
+}
+
+function actionTargetId(action: SessionGuidanceFocusAction | null) {
+  if (!action) return "finish-workout";
+  if (action.kind !== "working_set" || !action.sessionExerciseId) {
+    return `warmup-occurrence-${action.occurrenceId}`;
+  }
+  const prefix =
+    action.position.kind === "extra" ? "added-set-entry" : "set-entry";
+  return `${prefix}-${action.sessionExerciseId}`;
+}
+
 export function SessionRunner(props: SessionRunnerProps) {
   const elapsed = useElapsed(props.startedAtISO);
   const [exercises, setExercises] = useState<SessionExerciseData[]>(
@@ -157,6 +215,7 @@ export function SessionRunner(props: SessionRunnerProps) {
     );
     return firstOpen?.id ?? null;
   });
+  const previousCurrentActionIdRef = useRef<string | null>(null);
   const [timer, setTimer] = useState<DurableRestTimer | null>(null);
   const [restTimerHydrated, setRestTimerHydrated] = useState(false);
   const [restNow, setRestNow] = useState(() => Date.now());
@@ -345,6 +404,53 @@ export function SessionRunner(props: SessionRunnerProps) {
       shownExercises,
     ],
   );
+  useEffect(() => {
+    const nextAction = guidance.currentAction;
+    const nextActionId = nextAction?.occurrenceId ?? null;
+    const previousActionId = previousCurrentActionIdRef.current;
+    previousCurrentActionIdRef.current = nextActionId;
+    if (previousActionId == null || previousActionId === nextActionId) return;
+
+    const previousOccurrence = occurrences.find(
+      (occurrence) => occurrence.id === previousActionId,
+    );
+    const restoredEarlierAction =
+      previousOccurrence != null &&
+      nextAction != null &&
+      nextAction.sequenceIdx < previousOccurrence.sequenceIdx;
+    if (
+      !previousOccurrence ||
+      (previousOccurrence.outcome === "pending" && !restoredEarlierAction)
+    ) return;
+
+    const targetId = actionTargetId(nextAction);
+    let focusFrame = 0;
+    let scrollFrame = 0;
+    const revealCurrentAction = () => {
+      if (pendingSetAcknowledgementAnchorRef.current != null) {
+        scrollFrame = window.requestAnimationFrame(revealCurrentAction);
+        return;
+      }
+      if (nextAction?.kind === "working_set" && nextAction.sessionExerciseId) {
+        setExpandedId(nextAction.sessionExerciseId);
+      }
+      focusFrame = window.requestAnimationFrame(() => {
+        const target = document.getElementById(targetId);
+        target?.scrollIntoView({ behavior: "smooth", block: "center" });
+        const focusTarget = target?.matches("[tabindex]")
+          ? target
+          : target?.querySelector<HTMLElement>("button, [href], input");
+        if (focusTarget instanceof HTMLElement) {
+          focusTarget.focus({ preventScroll: true });
+        }
+      });
+    };
+    scrollFrame = window.requestAnimationFrame(revealCurrentAction);
+    return () => {
+      window.cancelAnimationFrame(scrollFrame);
+      window.cancelAnimationFrame(focusFrame);
+    };
+  }, [guidance.currentAction, occurrences]);
   const groupContextByExerciseId = useMemo(
     () =>
       Object.fromEntries(
@@ -899,8 +1005,14 @@ export function SessionRunner(props: SessionRunnerProps) {
         try {
           const startsAt = context.currentTime;
           if (milestone === "complete") {
-            playTone(context, 880, startsAt, 0.28);
-            playTone(context, 1175, startsAt + 0.16, 0.42);
+            for (const tone of REST_COMPLETION_TONE_PATTERN) {
+              playTone(
+                context,
+                tone.frequencyHz,
+                startsAt + tone.delaySec,
+                tone.durationSec,
+              );
+            }
           } else {
             playTone(
               context,
@@ -1220,10 +1332,15 @@ export function SessionRunner(props: SessionRunnerProps) {
         (occurrence) => occurrence.id === guidance.current?.occurrenceId,
       ) ?? null
     : null;
-  const currentExercise = currentOccurrence?.sessionExerciseId
+  const currentActionOccurrence = guidance.currentAction
+    ? occurrences.find(
+        (occurrence) => occurrence.id === guidance.currentAction?.occurrenceId,
+      ) ?? null
+    : null;
+  const currentActionExercise = currentActionOccurrence?.sessionExerciseId
     ? shownExercises.find(
         (exercise) =>
-          exercise.id === currentOccurrence.sessionExerciseId &&
+          exercise.id === currentActionOccurrence.sessionExerciseId &&
           exercise.modificationType !== "skipped",
       ) ?? null
     : null;
@@ -1265,9 +1382,7 @@ export function SessionRunner(props: SessionRunnerProps) {
     });
   }
   const contextualNoteScope: ContextualNoteScopeValue = (() => {
-    const currentOccurrence = guidance.current
-      ? occurrences.find((candidate) => candidate.id === guidance.current?.occurrenceId) ?? null
-      : null;
+    const currentOccurrence = currentActionOccurrence;
     const restOccurrence = timer
       ? resolveRestTimerSourceOccurrence(timer, occurrences)
       : null;
@@ -1398,27 +1513,31 @@ export function SessionRunner(props: SessionRunnerProps) {
         <WorkoutGuidanceSummary guidance={guidance} compact />
       </div>
 
-      <section id="workout-warmup" className="scroll-mt-4 rounded-xl border border-violet-300/60 bg-violet-50/60 p-4 dark:bg-violet-950/20">
-          <h2 className="font-semibold">Warm-up</h2>
-          {props.dayWarmupNotes ? (
-            <>
-              <p className="mt-1 text-xs font-medium text-violet-800 dark:text-violet-200">
-                Saved with this workout when it began
-              </p>
-              <p className="mt-1 whitespace-pre-line text-sm leading-6 text-muted-foreground">
-                {props.dayWarmupNotes}
-              </p>
-            </>
-          ) : shouldShowMissingWarmupMessage({
-            dayWarmupNotes: props.dayWarmupNotes,
-            hasStructuredWarmup,
-          }) ? (
-            <p className="mt-1 text-sm leading-6 text-muted-foreground">
-              No day warm-up guidance was saved with this workout. A checkable warm-up sequence is not available yet.
+      <WarmupPanel
+        completed={guidance.warmups.completed}
+        skipped={guidance.warmups.skipped}
+        planned={guidance.warmups.planned}
+        remaining={guidance.warmups.remaining}
+      >
+        {props.dayWarmupNotes ? (
+          <>
+            <p className="mt-1 text-xs font-medium text-violet-800 dark:text-violet-200">
+              Saved with this workout when it began
             </p>
-          ) : null}
-          {hasStructuredWarmup && (
-            <ul className="mt-3 space-y-2">
+            <p className="mt-1 whitespace-pre-line text-sm leading-6 text-muted-foreground">
+              {props.dayWarmupNotes}
+            </p>
+          </>
+        ) : shouldShowMissingWarmupMessage({
+          dayWarmupNotes: props.dayWarmupNotes,
+          hasStructuredWarmup,
+        }) ? (
+          <p className="mt-1 text-sm leading-6 text-muted-foreground">
+            No day warm-up guidance was saved with this workout. A checkable warm-up sequence is not available yet.
+          </p>
+        ) : null}
+        {hasStructuredWarmup && (
+          <ul className="mt-3 space-y-2">
               {occurrences
                 .filter((occurrence) => occurrence.kind !== "working_set")
                 .map((occurrence) => {
@@ -1438,7 +1557,14 @@ export function SessionRunner(props: SessionRunnerProps) {
                   return (
                     <li
                       key={occurrence.id}
-                      className="flex flex-wrap items-center justify-between gap-2 rounded-lg border bg-background/80 px-3 py-2 text-sm"
+                      id={`warmup-occurrence-${occurrence.id}`}
+                      tabIndex={-1}
+                      aria-current={
+                        guidance.currentAction?.occurrenceId === occurrence.id
+                          ? "step"
+                          : undefined
+                      }
+                      className="scroll-mt-40 flex flex-wrap items-center justify-between gap-2 rounded-lg border bg-background/80 px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                     >
                       <div>
                         <p className="font-medium">
@@ -1587,9 +1713,9 @@ export function SessionRunner(props: SessionRunnerProps) {
                     </li>
                   );
                 })}
-            </ul>
-          )}
-        </section>
+          </ul>
+        )}
+      </WarmupPanel>
 
       <div className="flex flex-col gap-3">
         {shownExercises.map((exercise) => (
@@ -1664,7 +1790,29 @@ export function SessionRunner(props: SessionRunnerProps) {
             )}
             occurrenceRuntimeSaveStates={occurrenceRuntimeSaveStates}
             acknowledgedOccurrenceIds={acknowledgedOccurrenceIds}
-            isCurrentExercise={currentOccurrence?.sessionExerciseId === exercise.id}
+            isCurrentExercise={
+              guidance.currentAction?.kind === "working_set" &&
+              currentOccurrence?.sessionExerciseId === exercise.id
+            }
+            warmupResolved={
+              occurrences.some(
+                (occurrence) =>
+                  occurrence.kind === "exercise_warmup" &&
+                  occurrence.sessionExerciseId === exercise.id,
+              ) &&
+              occurrences.every(
+                (occurrence) =>
+                  occurrence.kind !== "exercise_warmup" ||
+                  occurrence.sessionExerciseId !== exercise.id ||
+                  occurrence.outcome !== "pending",
+              )
+            }
+            warmupSkipped={occurrences.some(
+              (occurrence) =>
+                occurrence.kind === "exercise_warmup" &&
+                occurrence.sessionExerciseId === exercise.id &&
+                occurrence.outcome === "skipped",
+            )}
             groupContext={groupContextByExerciseId[exercise.id] ?? null}
             occurrenceChangesBlocked={
               sessionEquipmentEntries.some(
@@ -1924,17 +2072,22 @@ export function SessionRunner(props: SessionRunnerProps) {
       />
       {restTimerHydrated && (
         <WorkoutStatusBar
-          exercise={currentExercise}
-          occurrence={currentOccurrence}
-          position={guidance.current?.position ?? null}
+          action={guidance.currentAction}
+          exercise={currentActionExercise}
           timer={timer}
           restRemainingSec={restRemainingSec}
           onShowCurrent={() => {
-            if (!currentExercise) return;
-            setExpandedId(currentExercise.id);
+            const currentAction = guidance.currentAction;
+            if (!currentAction) return;
+            if (
+              currentAction.kind === "working_set" &&
+              currentAction.sessionExerciseId
+            ) {
+              setExpandedId(currentAction.sessionExerciseId);
+            }
             requestAnimationFrame(() => {
               document
-                .getElementById(`set-entry-${currentExercise.id}`)
+                .getElementById(actionTargetId(currentAction))
                 ?.scrollIntoView({ behavior: "smooth", block: "center" });
             });
           }}

@@ -1,16 +1,10 @@
 import { memo } from "react";
 import type {
   EquipmentPreparationCue,
-  SessionGuidanceAction,
   SessionGuidanceProjection,
 } from "@/lib/session-guidance";
+import { formatSessionGuidanceAction } from "@/lib/session-guidance";
 import { cn } from "@/lib/utils";
-
-export function formatGuidanceActionLabel(action: SessionGuidanceAction) {
-  const setLabel = action.position.lowercaseLabel;
-  if (!action.group) return `${action.actualExerciseName}, ${setLabel}`;
-  return `${action.group.name}, round ${action.group.round}, member ${action.group.member} of ${action.group.memberCount}: ${action.actualExerciseName}, ${setLabel}`;
-}
 
 function equipmentDetails(cue: EquipmentPreparationCue) {
   return [cue.equipmentLabel, cue.attachmentLabel, cue.guidance]
@@ -39,11 +33,27 @@ export const WorkoutGuidanceSummary = memo(function WorkoutGuidanceSummary({
     guidance.currentEquipment.message === guidance.upcomingEquipment.message;
 
   if (compact) {
-    const prepCue = guidance.upNext && !upcomingDuplicatesCurrent
-      ? [equipment, guidance.upcomingEquipment.message].filter(Boolean).join(" · ")
-      : guidance.current && guidance.currentEquipment.status !== "none"
-        ? [currentEquipment, guidance.currentEquipment.message].filter(Boolean).join(" · ")
-        : null;
+    const nextIsCurrentWorkingSet =
+      guidance.nextAction?.kind === "working_set" &&
+      guidance.nextAction.occurrenceId === guidance.current?.occurrenceId;
+    const nextIsUpcomingWorkingSet =
+      guidance.nextAction?.kind === "working_set" &&
+      guidance.nextAction.occurrenceId === guidance.upNext?.occurrenceId &&
+      !upcomingDuplicatesCurrent;
+    const prepCue = nextIsCurrentWorkingSet &&
+      guidance.currentEquipment.status !== "none"
+      ? [currentEquipment, guidance.currentEquipment.message].filter(Boolean).join(" · ")
+      : nextIsUpcomingWorkingSet
+        ? [equipment, guidance.upcomingEquipment.message].filter(Boolean).join(" · ")
+        : guidance.currentAction?.kind === "working_set" &&
+            guidance.current && guidance.currentEquipment.status !== "none"
+          ? [currentEquipment, guidance.currentEquipment.message].filter(Boolean).join(" · ")
+          : null;
+    const prepLabel = nextIsCurrentWorkingSet
+      ? "After warm-up"
+      : nextIsUpcomingWorkingSet
+        ? "Prepare"
+        : "Use now";
     return (
       <section
         aria-label="Workout progress and upcoming work"
@@ -55,15 +65,22 @@ export const WorkoutGuidanceSummary = memo(function WorkoutGuidanceSummary({
             {guidance.totals.skipped > 0 ? ` · ${guidance.totals.skipped} skipped` : ""}
           </span>
           <p className="min-w-0 break-words leading-snug">
-            <span className="font-medium">Next:</span>{" "}
-            {guidance.upNext
-              ? formatGuidanceActionLabel(guidance.upNext)
-              : "No further planned set"}
+            <span className="font-medium">Now:</span>{" "}
+            {guidance.currentAction
+              ? formatSessionGuidanceAction(guidance.currentAction)
+              : "Workout complete"}
           </p>
         </div>
+        {guidance.nextAction && (
+          <p className="break-words text-xs text-muted-foreground">
+            <span className="font-medium text-foreground">Next:</span>{" "}
+            {formatSessionGuidanceAction(guidance.nextAction)}
+          </p>
+        )}
         {prepCue && (
           <p className="break-words text-xs text-muted-foreground">
-            <span className="font-medium text-foreground">Prepare:</span> {prepCue}
+            <span className="font-medium text-foreground">{prepLabel}:</span>{" "}
+            {prepCue}
           </p>
         )}
         {guidance.activeGroup && (
@@ -128,16 +145,20 @@ export const WorkoutGuidanceSummary = memo(function WorkoutGuidanceSummary({
           ? ` · ${guidance.totals.legacyUnknown} legacy outcome unknown`
           : ""}
       </p>
-      {!compact && guidance.current && (
+      {!compact && guidance.currentAction && (
         <p className="break-words text-sm">
-          <span className="font-medium">Current:</span> {formatGuidanceActionLabel(guidance.current)}
+          <span className="font-medium">Now:</span>{" "}
+          {formatSessionGuidanceAction(guidance.currentAction)}
         </p>
       )}
       <p className="break-words text-sm">
-        <span className="font-medium">Up next:</span>{" "}
-        {guidance.upNext ? formatGuidanceActionLabel(guidance.upNext) : "No further planned set"}
+        <span className="font-medium">Next:</span>{" "}
+        {guidance.nextAction
+          ? formatSessionGuidanceAction(guidance.nextAction)
+          : "No further planned work"}
       </p>
-      {guidance.current && guidance.currentEquipment.status !== "none" && (
+      {guidance.currentAction?.kind === "working_set" &&
+        guidance.current && guidance.currentEquipment.status !== "none" && (
         <div className="min-w-0 rounded-md border bg-background/70 px-2.5 py-2 text-xs">
           <p className="font-medium">Use now</p>
           {currentEquipment && <p className="break-words">{currentEquipment}</p>}
@@ -146,7 +167,9 @@ export const WorkoutGuidanceSummary = memo(function WorkoutGuidanceSummary({
           </p>
         </div>
       )}
-      {guidance.upNext && !upcomingDuplicatesCurrent && (
+      {guidance.nextAction?.kind === "working_set" &&
+        guidance.upNext?.occurrenceId === guidance.nextAction.occurrenceId &&
+        !upcomingDuplicatesCurrent && (
         <div className="min-w-0 rounded-md border border-dashed bg-background/70 px-2.5 py-2 text-xs">
           <p className="font-medium">Prepare next</p>
           {equipment && <p className="break-words">{equipment}</p>}

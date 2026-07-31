@@ -7,6 +7,7 @@ import type {
   SessionOccurrenceData,
 } from "@/components/session/types";
 import {
+  formatSessionGuidanceAction,
   projectEquipmentPreparationCue,
   projectSessionGuidance,
   sessionNonPerformedOutcomeParts,
@@ -129,6 +130,27 @@ function setup(
 }
 
 const noGroups: SessionExerciseGroupData[] = [];
+
+describe("session action labels", () => {
+  it("keeps general warm-ups independent and gives exercise ramp-ups quiet context", () => {
+    expect(formatSessionGuidanceAction({
+      kind: "day_warmup",
+      occurrenceId: "general",
+      sessionExerciseId: null,
+      sequenceIdx: 0,
+      label: "Elliptical 2 min easy",
+      exerciseName: null,
+    })).toBe("Elliptical 2 min easy");
+    expect(formatSessionGuidanceAction({
+      kind: "exercise_warmup",
+      occurrenceId: "bench-ramp",
+      sessionExerciseId: "bench",
+      sequenceIdx: 1,
+      label: "Empty bar ×10",
+      exerciseName: "Barbell Bench Press",
+    })).toBe("Barbell Bench Press warm-up: Empty bar ×10");
+  });
+});
 
 describe("GUIDE-02 session guidance truth", () => {
   it("counts only completed occurrences with a retained linked result as performed", () => {
@@ -538,23 +560,110 @@ describe("GUIDE-02 session guidance truth", () => {
 
     expect(projection.current?.sessionExerciseId).toBe(second.id);
     expect(projection.upNext?.sessionExerciseId).toBe(first.id);
+    expect(projection.currentAction?.occurrenceId).toBe("second-set");
+    expect(projection.nextAction?.occurrenceId).toBe("first-set");
     expect(projection.totals.remainingAfterCurrent).toBe(2);
   });
 
-  it("tracks warm-ups separately from working-set progress", () => {
-    const item = exercise("one");
+  it("makes pending warm-ups current before working sets without counting them as performed work", () => {
+    const item = exercise("one", { name: "Barbell Bench Press" });
     const projection = projectSessionGuidance({
       exercises: [item],
       exerciseGroups: noGroups,
       equipmentSetups: {},
       occurrences: [
         occurrence("work", item.id, 2),
-        occurrence("warm-complete", item.id, 0, { kind: "exercise_warmup", outcome: "completed" }),
-        occurrence("warm-skip", null, 1, { kind: "day_warmup", outcome: "skipped" }),
+        occurrence("warm-current", null, 0, {
+          kind: "day_warmup",
+          label: "Elliptical 2 min easy",
+        }),
+        occurrence("warm-complete", item.id, 1, {
+          kind: "exercise_warmup",
+          label: "Empty bar ×10",
+          outcome: "completed",
+        }),
+        occurrence("warm-skip", null, 3, {
+          kind: "day_warmup",
+          outcome: "skipped",
+        }),
       ],
     });
-    expect(projection.warmups).toEqual({ planned: 2, completed: 1, skipped: 1, remaining: 0 });
+    expect(projection.warmups).toEqual({
+      planned: 3,
+      completed: 1,
+      skipped: 1,
+      remaining: 1,
+    });
     expect(projection.totals.planned).toBe(1);
+    expect(projection.current?.occurrenceId).toBe("work");
+    expect(projection.currentAction).toMatchObject({
+      kind: "day_warmup",
+      occurrenceId: "warm-current",
+      label: "Elliptical 2 min easy",
+    });
+    expect(projection.nextAction).toMatchObject({
+      kind: "working_set",
+      occurrenceId: "work",
+    });
+    expect(projection.exercises[0]?.status).toBe("not_started");
+    expect(projection.activeGroup).toBeNull();
+
+    const afterWarmup = projectSessionGuidance({
+      exercises: [item],
+      exerciseGroups: noGroups,
+      equipmentSetups: {},
+      occurrences: [
+        occurrence("warm-current", null, 0, {
+          kind: "day_warmup",
+          label: "Elliptical 2 min easy",
+          outcome: "completed",
+        }),
+        occurrence("warm-complete", item.id, 1, {
+          kind: "exercise_warmup",
+          label: "Empty bar ×10",
+          outcome: "completed",
+        }),
+        occurrence("work", item.id, 2),
+        occurrence("warm-skip", null, 3, {
+          kind: "day_warmup",
+          outcome: "skipped",
+        }),
+      ],
+    });
+    expect(afterWarmup.currentAction).toMatchObject({
+      kind: "working_set",
+      occurrenceId: "work",
+    });
+    expect(afterWarmup.exercises[0]?.status).toBe("current");
+  });
+
+  it("keeps the following warm-up next until the current warm-up is acknowledged", () => {
+    const item = exercise("one", { name: "Barbell Bench Press" });
+    const projection = projectSessionGuidance({
+      exercises: [item],
+      exerciseGroups: noGroups,
+      equipmentSetups: {},
+      occurrences: [
+        occurrence("warm-one", null, 0, {
+          kind: "day_warmup",
+          label: "Elliptical 2 min easy",
+        }),
+        occurrence("warm-two", item.id, 1, {
+          kind: "exercise_warmup",
+          label: "Empty bar ×10",
+        }),
+        occurrence("work", item.id, 2),
+      ],
+    });
+
+    expect(projection.currentAction).toMatchObject({
+      kind: "day_warmup",
+      occurrenceId: "warm-one",
+    });
+    expect(projection.nextAction).toMatchObject({
+      kind: "exercise_warmup",
+      occurrenceId: "warm-two",
+    });
   });
 });
 

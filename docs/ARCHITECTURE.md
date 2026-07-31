@@ -66,6 +66,21 @@ must not silently reinterpret an older record. Restores and corrections must
 recompute or invalidate derived recommendations instead of reviving stale
 conclusions.
 
+## Active-workout orientation
+
+The active workout derives both **Now** and **Next** from the same ordered
+occurrence ledger used to save results. A pending warm-up remains the current
+action until its completion or skip is durably acknowledged; a saving or failed
+request does not advance the display. After acknowledgement, the next grouped
+exercise opens and receives focus. Restoring an earlier action makes that action
+current again. Completed warm-up details collapse without discarding their
+notes, outcomes, or restore controls.
+
+Rest alerts remain device-local. The ready state is compact and visually
+distinct, while sound and vibration reporting is limited to whether an alert
+was requested, blocked, or unavailable; the application never claims that a
+person heard or felt it.
+
 ## Pain safety hold
 
 Progression uses one shared pain-hold classifier for an exact stable exercise.

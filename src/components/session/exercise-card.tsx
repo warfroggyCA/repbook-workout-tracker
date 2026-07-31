@@ -155,6 +155,8 @@ type Props = {
   occurrenceRuntimeSaveStates?: Record<string, "saving" | "retrying">;
   acknowledgedOccurrenceIds?: string[];
   isCurrentExercise?: boolean;
+  warmupResolved?: boolean;
+  warmupSkipped?: boolean;
   groupContext?: {
     name: string;
     memberOrder: number;
@@ -207,6 +209,8 @@ export function ExerciseCard({
   occurrenceRuntimeSaveStates = {},
   acknowledgedOccurrenceIds = [],
   isCurrentExercise = false,
+  warmupResolved = false,
+  warmupSkipped = false,
   groupContext = null,
   occurrenceChangesBlocked = false,
   onPrepareRestCue = () => undefined,
@@ -639,6 +643,20 @@ export function ExerciseCard({
   const hasWarmup =
     exercise.modificationType !== "substituted" &&
     (!!exercise.warmupNotes?.trim() || exercise.warmupSets.length > 0);
+  const warmupGuidance = hasWarmup ? (
+    <>
+      {exercise.warmupNotes && (
+        <p className="mt-1 text-muted-foreground">{exercise.warmupNotes}</p>
+      )}
+      {exercise.warmupSets.length > 0 && (
+        <ul className="mt-2 flex flex-col gap-1 text-muted-foreground">
+          {exercise.warmupSets.map((set, i) => (
+            <li key={`${set.label}-${i}`}>{formatWarmupSetLine(set)}</li>
+          ))}
+        </ul>
+      )}
+    </>
+  ) : null;
 
   function plannedNote(index: number): string | null {
     if (exercise.modificationType === "substituted") return null;
@@ -766,22 +784,23 @@ export function ExerciseCard({
               </p>
             </div>
           )}
-          {hasWarmup && (
-            <div className="rounded-md border bg-muted/30 px-3 py-2 text-xs">
-              <p className="font-medium text-foreground">Warm-up</p>
-              {exercise.warmupNotes && (
-                <p className="mt-1 text-muted-foreground">{exercise.warmupNotes}</p>
-              )}
-              {exercise.warmupSets.length > 0 && (
-                <ul className="mt-2 flex flex-col gap-1 text-muted-foreground">
-                  {exercise.warmupSets.map((set, i) => (
-                    <li key={`${set.label}-${i}`}>
-                      {formatWarmupSetLine(set)}
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
+          {warmupGuidance && (
+            warmupResolved ? (
+              <details className="rounded-md border bg-muted/30 text-xs">
+                <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-2 px-3 py-2 font-medium text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
+                  <span>
+                    {warmupSkipped ? "Warm-up finished" : "Warm-up complete"}
+                  </span>
+                  <span className="text-muted-foreground">Show details</span>
+                </summary>
+                <div className="border-t px-3 pb-2">{warmupGuidance}</div>
+              </details>
+            ) : (
+              <div className="rounded-md border bg-muted/30 px-3 py-2 text-xs">
+                <p className="font-medium text-foreground">Warm-up</p>
+                {warmupGuidance}
+              </div>
+            )
           )}
 
           {/* Logged sets */}

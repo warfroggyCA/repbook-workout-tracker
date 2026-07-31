@@ -251,6 +251,72 @@ test("presents immutable superset order, truthful progress, and next-member equi
   await expect(restoredGroup).toContainText("Prepare for Pallof Press");
   await expectNoHorizontalOverflow(page);
 
+  const currentCard = page.getByTestId("current-exercise-card");
+  await expect(currentCard.getByRole("heading", { level: 2 })).toHaveText(
+    "Dumbbell Lateral Raise",
+  );
+  let releaseGroupSkip!: () => void;
+  const groupSkipMayFinish = new Promise<void>((resolve) => {
+    releaseGroupSkip = resolve;
+  });
+  let groupSkipStarted = false;
+  await page.route("**/session/**", async (route) => {
+    const postData = route.request().postData() ?? "";
+    if (
+      !groupSkipStarted &&
+      route.request().method() === "POST" &&
+      route.request().headers()["next-action"] &&
+      postData.includes('"operation":"skip"')
+    ) {
+      groupSkipStarted = true;
+      await groupSkipMayFinish;
+    }
+    await route.continue();
+  });
+  await currentCard
+    .getByRole("button", { name: "Skip set", exact: true })
+    .click();
+  const groupSkip = page.getByRole("dialog", { name: /^Skip set / });
+  await groupSkip.getByLabel("Reason").selectOption("time");
+  await groupSkip
+    .getByRole("button", { name: "Skip item", exact: true })
+    .click();
+  await expect(groupSkip).toHaveCount(0);
+  await expect.poll(() => groupSkipStarted).toBe(true);
+  await expect(currentCard.getByRole("heading", { level: 2 })).toHaveText(
+    "Dumbbell Lateral Raise",
+  );
+  await expect(restoredGroup).toContainText(
+    "Current member: 1 of 2 · Dumbbell Lateral Raise",
+  );
+  releaseGroupSkip();
+  await expect(currentCard.getByRole("heading", { level: 2 })).toHaveText(
+    "Pallof Press",
+  );
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          document.activeElement?.closest(
+            '[data-testid="current-exercise-card"]',
+          ) != null,
+      ),
+    )
+    .toBe(true);
+  await expect(restoredGroup).toContainText(
+    "Current member: 2 of 2 · Pallof Press",
+  );
+  const advancedGuidance = page.getByRole("region", {
+    name: "Workout progress and upcoming work",
+  });
+  await expect(advancedGuidance).toContainText(
+    /Now: Superset, round 1, member 2 of 2: Pallof Press, set 1/,
+  );
+  await expect(advancedGuidance).toContainText(
+    /Next: Superset, round 2, member 1 of 2: Dumbbell Lateral Raise, set 2/,
+  );
+  await page.unrouteAll({ behavior: "wait" });
+
   await discardWorkout(page);
   await nextRscPrefetches.settle();
   expect(

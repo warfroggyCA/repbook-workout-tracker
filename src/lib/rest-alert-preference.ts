@@ -23,6 +23,14 @@ export type RestAlertPreference =
   (typeof REST_ALERT_PREFERENCE_OPTIONS)[number]["value"];
 export const DEFAULT_REST_ALERT_PREFERENCE: RestAlertPreference = "visual_only";
 
+export const REST_COMPLETION_TONE_PATTERN = [
+  { delaySec: 0, frequencyHz: 880, durationSec: 0.14 },
+  { delaySec: 0.2, frequencyHz: 880, durationSec: 0.14 },
+  { delaySec: 0.4, frequencyHz: 880, durationSec: 0.14 },
+  { delaySec: 0.6, frequencyHz: 1175, durationSec: 0.14 },
+  { delaySec: 0.8, frequencyHz: 1175, durationSec: 0.2 },
+] as const;
+
 export type RestAlertPreferenceStorage = Pick<
   Storage,
   "getItem" | "setItem" | "removeItem"

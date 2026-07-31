@@ -101,6 +101,7 @@ describe("ExerciseCard", () => {
           status: "current",
         }}
         expanded
+        warmupResolved
         onToggle={() => undefined}
         plateConfigs={{
           barbell: {
@@ -137,6 +138,9 @@ describe("ExerciseCard", () => {
     );
     expect(html).toContain("0/3 performed · 2 saving");
     expect(html).toContain(formatWarmupSetLine(warmupSet));
+    expect(html).toContain("Warm-up complete");
+    expect(html).toContain("Show details");
+    expect(html).toContain("<details");
     expect(html).toContain("Waiting for save acknowledgement");
     expect(html).not.toContain("Use the Next set dock");
     expect(html).toContain("Workout actions");
