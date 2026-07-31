@@ -144,11 +144,39 @@ describe("dependency audit policy", () => {
 
     expect(evaluateFullTreeAudit(report("node_modules/unreviewed"), exceptions)).toEqual({
       unexpected: [report("node_modules/unreviewed").vulnerabilities["example-vulnerable"]],
-      staleExceptions: [exceptions[0]],
+      staleExceptions: [],
     });
     expect(evaluateFullTreeAudit({ vulnerabilities: {} }, exceptions)).toEqual({
       unexpected: [],
       staleExceptions: [exceptions[0]],
+    });
+  });
+
+  it("accepts a partial transitive graph while the direct advisory remains", () => {
+    const exactPolicy = policy({
+      reviewedNodes: {
+        [reviewedNode]: "1.2.3",
+        "node_modules/example-tool": "4.5.6",
+      },
+    });
+    const exceptions = validateAuditPolicy(
+      exactPolicy,
+      {
+        [reviewedNode]: { version: "1.2.3" },
+        "node_modules/example-tool": { version: "4.5.6" },
+      },
+      "2026-07-31"
+    );
+    const fullReport = report();
+    const directOnly = {
+      vulnerabilities: {
+        "example-vulnerable": fullReport.vulnerabilities["example-vulnerable"],
+      },
+    };
+
+    expect(evaluateFullTreeAudit(directOnly, exceptions)).toEqual({
+      unexpected: [],
+      staleExceptions: [],
     });
   });
 
@@ -169,7 +197,7 @@ describe("dependency audit policy", () => {
 
     expect(evaluateFullTreeAudit(multipleAdvisories, exceptions)).toEqual({
       unexpected: [multipleAdvisories.vulnerabilities["example-vulnerable"]],
-      staleExceptions: [exceptions[0]],
+      staleExceptions: [],
     });
   });
 });
