@@ -247,14 +247,6 @@ async function publishDocumentAtomically(
     return { ok: false, reason: "invalid" };
   }
   const document = parsed.data;
-  if (
-    document.schemaVersion === "3" &&
-    document.days.some((day) =>
-      day.supersets.some((group) => group.structureStatus !== "canonical"),
-    )
-  ) {
-    return { ok: false, reason: "invalid" };
-  }
   const versionId = randomUUID();
   const decisionId = randomUUID();
   const adaptationId = randomUUID();

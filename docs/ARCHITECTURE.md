@@ -35,6 +35,11 @@ Cross-version drafts are schema-validated and fenced by their saved revision
 and canonical content hash. Harmless legacy JSON fields do not block activation
 or become part of the new immutable version.
 
+An older exercise group with unequal member set counts stays explicitly marked
+as legacy when another Program edit is activated. Repbook preserves its saved
+sets, order, and rest instead of inventing a round count; the editor offers an
+optional conversion to matching rounds.
+
 Warm-up instructions and optional structured check-off steps are both reviewed.
 When an older Program has only the generated compatibility step derived from
 its instructions, editing those instructions keeps that generated step in

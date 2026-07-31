@@ -20,12 +20,14 @@ import {
   programEditorResponseJson,
   programEditorSafeFilePart,
   replaceProgramExercise,
+  resizeProgramSlotSets,
   resizeSetNotes,
   setWarmupLoadPercent,
   setWarmupLoadText,
   setWarmupNumericLoad,
   updateProgramDayWarmupOverview,
   updateProgramDocumentDay,
+  updateProgramSlotInDay,
 } from "@/lib/program-editor-client";
 import {
   createSuggestedDayIntent,
@@ -252,6 +254,33 @@ describe("Program editor client rules", () => {
       reordered.exercises[0].lineageId,
     ]);
     expect(moved.exercises.map((slot) => slot.groupMemberOrderIdx)).toEqual([0, 1]);
+  });
+
+  it("changes only the selected member of an older unequal group", () => {
+    const source = document().days[0];
+    const unequal = normalizeDaySupersets({
+      ...source,
+      exercises: [
+        source.exercises[0],
+        resizeProgramSlotSets(source.exercises[1], 4),
+      ],
+    });
+    expect(unequal.supersets[0]).toMatchObject({
+      structureStatus: "legacy_unequal",
+      plannedRounds: null,
+    });
+    const unchangedMember = structuredClone(unequal.exercises[1]);
+    const editedMember = resizeProgramSlotSets(unequal.exercises[0], 2);
+    const updated = normalizeDaySupersets(
+      updateProgramSlotInDay(unequal, 0, editedMember),
+    );
+
+    expect(updated.exercises.map((slot) => slot.sets)).toEqual([2, 4]);
+    expect(updated.exercises[1]).toEqual(unchangedMember);
+    expect(updated.supersets[0]).toMatchObject({
+      structureStatus: "legacy_unequal",
+      plannedRounds: null,
+    });
   });
 
   it("keeps warm-up load modes mutually exclusive", () => {

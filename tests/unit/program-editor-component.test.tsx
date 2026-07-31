@@ -165,7 +165,8 @@ describe("Program editor split presentation panels", () => {
     } as unknown as ProgramEditorController;
 
     const html = renderToStaticMarkup(<DayEditor editor={editor} />);
-    expect(html).toContain("This older group cannot be published yet");
+    expect(html).toContain("Older group with different set counts");
+    expect(html).toContain("Repbook will keep each exercise");
     expect(html).toContain("Use 3 rounds for every member");
     expect(html).toContain("Rest between members");
     expect(html).toContain("Rest after each round");
