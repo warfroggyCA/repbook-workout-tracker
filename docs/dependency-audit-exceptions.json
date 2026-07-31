@@ -3,51 +3,6 @@
   "exceptions": [
     {
       "scope": "development",
-      "advisory": "https://github.com/advisories/GHSA-mh99-v99m-4gvg",
-      "packages": [
-        "@eslint-community/eslint-utils",
-        "@eslint/config-array",
-        "@eslint/eslintrc",
-        "@typescript-eslint/eslint-plugin",
-        "@typescript-eslint/parser",
-        "@typescript-eslint/type-utils",
-        "@typescript-eslint/utils",
-        "brace-expansion",
-        "eslint",
-        "eslint-config-next",
-        "eslint-import-resolver-typescript",
-        "eslint-plugin-import",
-        "eslint-plugin-jsx-a11y",
-        "eslint-plugin-react",
-        "eslint-plugin-react-hooks",
-        "minimatch",
-        "typescript-eslint"
-      ],
-      "maximumSeverity": "high",
-      "expiresOn": "2026-10-31",
-      "reason": "The locked brace-expansion 1.x backport contains the advisory's length and stack-depth fix, but the registry advisory currently recognizes only the 5.x patch. These packages are lint-only and receive no user input.",
-      "reviewedNodes": {
-        "node_modules/@eslint-community/eslint-utils": "4.9.1",
-        "node_modules/@eslint/config-array": "0.21.2",
-        "node_modules/@eslint/eslintrc": "3.3.5",
-        "node_modules/@typescript-eslint/eslint-plugin": "8.63.0",
-        "node_modules/@typescript-eslint/parser": "8.63.0",
-        "node_modules/@typescript-eslint/type-utils": "8.63.0",
-        "node_modules/@typescript-eslint/utils": "8.63.0",
-        "node_modules/brace-expansion": "1.1.18",
-        "node_modules/eslint": "9.39.4",
-        "node_modules/eslint-config-next": "16.2.11",
-        "node_modules/eslint-import-resolver-typescript": "3.10.1",
-        "node_modules/eslint-plugin-import": "2.32.0",
-        "node_modules/eslint-plugin-jsx-a11y": "6.10.2",
-        "node_modules/eslint-plugin-react": "7.37.5",
-        "node_modules/eslint-plugin-react-hooks": "7.1.1",
-        "node_modules/minimatch": "3.1.5",
-        "node_modules/typescript-eslint": "8.63.0"
-      }
-    },
-    {
-      "scope": "development",
       "advisory": "https://github.com/advisories/GHSA-67mh-4wv8-2f99",
       "packages": [
         "@esbuild-kit/core-utils",
