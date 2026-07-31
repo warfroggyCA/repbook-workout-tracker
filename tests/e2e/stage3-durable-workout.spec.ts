@@ -92,6 +92,10 @@ test("publishes and preserves durable warm-up and grouped workout outcomes", asy
   await page.getByRole("tab", { name: /Day 2.*Hinge/ }).click();
   await expect(page.getByRole("heading", { name: "Day B — Hinge" })).toBeVisible();
 
+  await page
+    .locator("summary")
+    .filter({ hasText: "Optional check-off steps" })
+    .click();
   await page.getByRole("button", { name: "Add warm-up step", exact: true }).click();
   const warmupStep = page.locator("article").filter({
     has: page.getByRole("heading", { name: "Step 1", exact: true }),

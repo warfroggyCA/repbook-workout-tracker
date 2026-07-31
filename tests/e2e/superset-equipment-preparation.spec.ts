@@ -255,6 +255,15 @@ test("presents immutable superset order, truthful progress, and next-member equi
   await expect(currentCard.getByRole("heading", { level: 2 })).toHaveText(
     "Dumbbell Lateral Raise",
   );
+  await page
+    .getByRole("complementary", { name: "Workout status" })
+    .locator("button")
+    .first()
+    .click();
+  await expect(page).toHaveURL(/#set-entry-/);
+  await expect(
+    currentCard.getByRole("button", { name: "Skip set", exact: true }),
+  ).toBeVisible();
   let releaseGroupSkip!: () => void;
   const groupSkipMayFinish = new Promise<void>((resolve) => {
     releaseGroupSkip = resolve;

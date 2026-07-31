@@ -389,21 +389,14 @@ test("keeps Stage 5 guidance truthful, persistent, and usable on narrow mobile s
   const picker = page.getByRole("dialog", {
     name: "Alternatives to EZ-Bar Curl",
   });
-  if (
-    (await picker.getByRole("button", { name: /View details for/ }).count()) ===
-    0
-  ) {
-    const family = picker
-      .getByRole("button", { name: /\d+ variants?$/ })
-      .first();
-    await family.evaluate((element) =>
-      element.scrollIntoView({ block: "center" }),
-    );
-    await family.click({ timeout: 10_000 });
-  }
+  await picker
+    .getByLabel("Search exercise library")
+    .fill("Dumbbell Curl");
   const details = picker
-    .getByRole("button", { name: /View details for/ })
-    .first();
+    .getByRole("button", {
+      name: "View details for Dumbbell Curl",
+      exact: true,
+    });
   await details.evaluate((element) =>
     element.scrollIntoView({ block: "center" }),
   );
