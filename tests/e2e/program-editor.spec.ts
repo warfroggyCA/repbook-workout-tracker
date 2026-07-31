@@ -93,6 +93,26 @@ test("keeps one exercise identity and supports normal set and picker editing", a
   await workSets.press("Tab");
   await expect(workSets).toHaveValue(originalSets);
 
+  await workSets.click();
+  await workSets.press("Backspace");
+  await expect(workSets).toHaveValue("");
+  await workSets.press("Tab");
+  await expect(workSets).toHaveValue(originalSets);
+
+  const changedSets = originalSets === "5" ? "6" : "5";
+  await workSets.fill(changedSets);
+  await workSets.press("Tab");
+  await expect(workSets).toHaveValue(changedSets);
+
+  await workSets.fill("99");
+  await workSets.press("Tab");
+  await expect(workSets).toHaveValue("20");
+
+  await workSets.fill(originalSets);
+  await workSets.press("Tab");
+  await expect(workSets).toHaveValue(originalSets);
+  await expectSaved(page);
+
   await editor
     .getByRole("button", { name: "Replace exercise", exact: true })
     .click();
@@ -106,6 +126,21 @@ test("keeps one exercise identity and supports normal set and picker editing", a
   ).toBeVisible();
   await expect(picker.getByText("Bird Dog", { exact: true })).toHaveCount(1);
   await expect(picker.getByText("1 variant", { exact: true })).toHaveCount(0);
+
+  await picker.getByRole("button", { name: "Clear exercise search" }).click();
+  const benchPressFamily = picker.getByRole("button", {
+    name: /^Bench Press \d+ variants$/,
+  });
+  await expect(benchPressFamily).toHaveAttribute("aria-expanded", "false");
+  await benchPressFamily.click();
+  await expect(benchPressFamily).toHaveAttribute("aria-expanded", "true");
+  await expect(
+    picker.getByRole("button", {
+      name: "View details for Barbell Bench Press",
+      exact: true,
+    }),
+  ).toBeVisible();
+
   await page.screenshot({
     path: testInfo.outputPath("program-editor-ipad-polish.png"),
     fullPage: true,
