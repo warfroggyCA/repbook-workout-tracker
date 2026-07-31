@@ -7,6 +7,7 @@ import {
   confirmedContextualNoteDictation,
   discardContextualNoteQuarantinedEntry,
   enqueueContextualNoteOutboxEntry,
+  getContextualNoteOutboxServerSnapshot,
   hashContextualNotePayload,
   markContextualNoteOutboxNeedsAttention,
   markContextualNoteOutboxSyncing,
@@ -69,6 +70,22 @@ function input(index = 1): NewContextualNoteOutboxEntry {
 
 describe("contextual note outbox", () => {
   afterEach(() => vi.unstubAllGlobals());
+
+  it("keeps the empty server snapshot stable and owner-scoped for hydration", () => {
+    const first = getContextualNoteOutboxServerSnapshot(OWNER_ID);
+    const second = getContextualNoteOutboxServerSnapshot(OWNER_ID);
+    const otherOwner = getContextualNoteOutboxServerSnapshot(OTHER_OWNER_ID);
+
+    expect(second).toBe(first);
+    expect(first).toEqual({
+      ownerId: OWNER_ID,
+      entries: [],
+      quarantined: [],
+      error: null,
+    });
+    expect(otherOwner).not.toBe(first);
+    expect(otherOwner.ownerId).toBe(OTHER_OWNER_ID);
+  });
 
   it("stores a versioned owner-scoped envelope with a stable identity and payload hash", () => {
     const storage = new MemoryStorage();
