@@ -27,6 +27,11 @@ npm run docs:check
 npm run audit:check
 ```
 
+`audit:check` requires a clean production dependency audit and also reviews the
+complete development-tool tree. Any temporary development-only exception is
+bound to exact lockfile nodes, carries a written reason and expiry date, and
+cannot exempt a production dependency finding.
+
 ## Persisted-data checks
 
 ```bash
