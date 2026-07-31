@@ -67,6 +67,51 @@ async function assertNoHorizontalOverflow(page: Page) {
   ).toBeLessThanOrEqual(result.clientWidth + 1);
 }
 
+test("keeps one exercise identity and supports normal set and picker editing", async ({
+  page,
+}, testInfo) => {
+  await page.setViewportSize({ width: 1180, height: 820 });
+  await signIn(page);
+  await page.goto("/program/edit");
+  await expectSaved(page);
+
+  const editor = page.locator("article[aria-labelledby]").first();
+  const labelId = await editor.getAttribute("aria-labelledby");
+  expect(labelId).toBeTruthy();
+  const exerciseName = await page.locator(`#${labelId}`).textContent();
+  expect(exerciseName).toBeTruthy();
+  await expect(
+    editor.locator("../..").getByText(exerciseName ?? "", { exact: true }),
+  ).toHaveCount(1);
+
+  const workSets = editor.getByLabel("Work sets");
+  const originalSets = await workSets.inputValue();
+  await workSets.click();
+  await workSets.press("Backspace");
+  await expect(workSets).toHaveValue("");
+  await workSets.pressSequentially(originalSets);
+  await workSets.press("Tab");
+  await expect(workSets).toHaveValue(originalSets);
+
+  await editor
+    .getByRole("button", { name: "Replace exercise", exact: true })
+    .click();
+  const picker = page.getByRole("dialog", {
+    name: "Replace this exercise",
+    exact: true,
+  });
+  await picker.getByLabel("Search exercise library").fill("Bird Dog");
+  await expect(
+    picker.getByRole("button", { name: "View details for Bird Dog" }),
+  ).toBeVisible();
+  await expect(picker.getByText("Bird Dog", { exact: true })).toHaveCount(1);
+  await expect(picker.getByText("1 variant", { exact: true })).toHaveCount(0);
+  await page.screenshot({
+    path: testInfo.outputPath("program-editor-ipad-polish.png"),
+    fullPage: true,
+  });
+});
+
 test("autosaves, resolves tab conflicts, publishes v2, and restores v1 as v3", async ({
   page,
   context,

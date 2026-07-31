@@ -110,6 +110,83 @@ function FilterGroup({ title, children }: { title: string; children: React.React
   );
 }
 
+function ExerciseVariantButton({
+  item,
+  selectedId,
+  allowed,
+  allowUnavailableSelection,
+  disabledReason,
+  annotation,
+  registerButton,
+  onInspect,
+}: {
+  item: ExerciseDiscoveryItem;
+  selectedId: string | null;
+  allowed: Set<string> | null;
+  allowUnavailableSelection: boolean;
+  disabledReason?: string;
+  annotation?: ExerciseAlternativeAnnotation;
+  registerButton: (id: string, node: HTMLButtonElement | null) => void;
+  onInspect: (item: ExerciseDiscoveryItem) => void;
+}) {
+  const permitted = !allowed || allowed.has(item.id);
+  const selection = exercisePickerSelectionState({
+    available: allowUnavailableSelection || item.available,
+    permitted,
+    unavailableReason: item.unavailableReason,
+    disabledReason,
+  });
+  const disabled = !selection.selectable;
+
+  return (
+    <button
+      ref={(node) => registerButton(item.id, node)}
+      type="button"
+      aria-label={`View details for ${item.name}`}
+      className={cn(
+        "flex min-h-14 w-full items-center gap-3 px-3 py-2 text-left",
+        disabled
+          ? "bg-muted/20 text-muted-foreground opacity-65 hover:bg-muted/40"
+          : "hover:bg-primary/5 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-inset focus-visible:ring-ring/50",
+        selectedId === item.id && "bg-primary/10"
+      )}
+      onClick={() => onInspect(item)}
+    >
+      <ExerciseFamilyIcon
+        media={item.media}
+        family={item.family}
+        exerciseName={item.name}
+        movementPattern={item.movementPattern}
+      />
+      <span className="min-w-0 flex-1">
+        <span className="block font-medium text-foreground">
+          {item.name}
+        </span>
+        <span className="block text-xs">
+          {item.equipment.map(label).join(" · ") || "No equipment"}
+          {item.primaryMuscles.length > 0
+            ? ` · ${item.primaryMuscles.map(label).join(", ")}`
+            : ""}
+        </span>
+        {annotation && (
+          <span className="mt-0.5 block text-xs font-medium text-primary">
+            {annotation.label}
+          </span>
+        )}
+      </span>
+      {disabled ? (
+        <span className="max-w-32 shrink-0 text-right text-xs">
+          {selection.reason}
+        </span>
+      ) : selectedId === item.id ? (
+        <Badge>Selected</Badge>
+      ) : (
+        <ChevronRight className="size-4 shrink-0 text-muted-foreground" />
+      )}
+    </button>
+  );
+}
+
 function ExerciseDetail({
   item,
   available,
@@ -444,6 +521,14 @@ export function ExercisePicker({
     });
   }
 
+  function registerVariantButton(
+    id: string,
+    node: HTMLButtonElement | null,
+  ) {
+    if (node) variantButtons.current.set(id, node);
+    else variantButtons.current.delete(id);
+  }
+
   useEffect(() => {
     if (!open) return;
     const update = () => {
@@ -703,6 +788,28 @@ export function ExercisePicker({
                         (allowUnavailableSelection || item.available) &&
                         (!allowed || allowed.has(item.id))
                     ).length;
+                    const onlyVariant = family.variants.length === 1
+                      ? family.variants[0]
+                      : null;
+                    if (onlyVariant) {
+                      return (
+                        <div
+                          key={family.key}
+                          className="overflow-hidden rounded-xl border bg-card"
+                        >
+                          <ExerciseVariantButton
+                            item={onlyVariant}
+                            selectedId={selectedId}
+                            allowed={allowed}
+                            allowUnavailableSelection={allowUnavailableSelection}
+                            disabledReason={disabledReasons[onlyVariant.id]}
+                            annotation={itemAnnotations[onlyVariant.id]}
+                            registerButton={registerVariantButton}
+                            onInspect={inspect}
+                          />
+                        </div>
+                      );
+                    }
                     return (
                       <section
                         key={family.key}
@@ -746,69 +853,19 @@ export function ExercisePicker({
                         </button>
                         {isExpanded && (
                           <div className="divide-y border-t">
-                            {family.variants.map((item) => {
-                              const permitted = !allowed || allowed.has(item.id);
-                              const selection = exercisePickerSelectionState({
-                                available:
-                                  allowUnavailableSelection || item.available,
-                                permitted,
-                                unavailableReason: item.unavailableReason,
-                                disabledReason: disabledReasons[item.id],
-                              });
-                              const disabled = !selection.selectable;
-                              const reason = selection.reason;
-                              return (
-                                <button
-                                  key={item.id}
-                                  ref={(node) => {
-                                    if (node) variantButtons.current.set(item.id, node);
-                                    else variantButtons.current.delete(item.id);
-                                  }}
-                                  type="button"
-                                  aria-label={`View details for ${item.name}`}
-                                  className={cn(
-                                    "flex min-h-14 w-full items-center gap-3 px-3 py-2 text-left",
-                                    disabled
-                                      ? "bg-muted/20 text-muted-foreground opacity-65 hover:bg-muted/40"
-                                      : "hover:bg-primary/5 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-inset focus-visible:ring-ring/50",
-                                    selectedId === item.id && "bg-primary/10"
-                                  )}
-                                  onClick={() => inspect(item)}
-                                >
-                                  <ExerciseFamilyIcon
-                                    media={item.media}
-                                    family={item.family}
-                                    exerciseName={item.name}
-                                    movementPattern={item.movementPattern}
-                                  />
-                                  <span className="min-w-0 flex-1">
-                                    <span className="block font-medium text-foreground">
-                                      {item.name}
-                                    </span>
-                                    <span className="block text-xs">
-                                      {item.equipment.map(label).join(" · ") || "No equipment"}
-                                      {item.primaryMuscles.length > 0
-                                        ? ` · ${item.primaryMuscles.map(label).join(", ")}`
-                                        : ""}
-                                    </span>
-                                    {itemAnnotations[item.id] && (
-                                      <span className="mt-0.5 block text-xs font-medium text-primary">
-                                        {itemAnnotations[item.id].label}
-                                      </span>
-                                    )}
-                                  </span>
-                                  {disabled ? (
-                                    <span className="max-w-32 shrink-0 text-right text-xs">
-                                      {reason}
-                                    </span>
-                                  ) : selectedId === item.id ? (
-                                    <Badge>Selected</Badge>
-                                  ) : (
-                                    <ChevronRight className="size-4 shrink-0 text-muted-foreground" />
-                                  )}
-                                </button>
-                              );
-                            })}
+                            {family.variants.map((item) => (
+                              <ExerciseVariantButton
+                                key={item.id}
+                                item={item}
+                                selectedId={selectedId}
+                                allowed={allowed}
+                                allowUnavailableSelection={allowUnavailableSelection}
+                                disabledReason={disabledReasons[item.id]}
+                                annotation={itemAnnotations[item.id]}
+                                registerButton={registerVariantButton}
+                                onInspect={inspect}
+                              />
+                            ))}
                           </div>
                         )}
                       </section>
