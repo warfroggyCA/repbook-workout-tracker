@@ -16,7 +16,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { moveItem, moveProgramGroupMember, moveProgramSlotUnit, replaceProgramExercise, resizeProgramSlotSets, updateProgramDayWarmupOverview } from "@/lib/program-editor-client";
+import { moveItem, moveProgramGroupMember, moveProgramSlotUnit, replaceProgramExercise, resizeProgramSlotSets, updateProgramDayWarmupOverview, updateProgramSlotInDay } from "@/lib/program-editor-client";
 import { programDocumentV3Schema, type ProgramDocumentDayV3 } from "@/lib/program-document";
 import { formatRestTime } from "@/lib/rest-time";
 import { cn } from "@/lib/utils";
@@ -639,11 +639,11 @@ export const DayEditor = memo(function DayEditor({ editor, canReview = false }: 
                               </span>
                             </summary>
                             {pairing.structureStatus === "legacy_unequal" && (
-                              <Alert variant="destructive" className="mt-3">
+                              <Alert className="mt-3">
                                 <CircleAlert />
-                                <AlertTitle>This older group cannot be published yet</AlertTitle>
+                                <AlertTitle>Older group with different set counts</AlertTitle>
                                 <AlertDescription>
-                                  Its members have different set counts. Choose one round count for every member to make the sequence unambiguous.
+                                  Repbook will keep each exercise&apos;s saved sets and run them in order. If you want matching rounds instead, you can make every member use the same count.
                                   <Button
                                     type="button"
                                     variant="outline"
@@ -820,33 +820,9 @@ export const DayEditor = memo(function DayEditor({ editor, canReview = false }: 
                         library={library}
                         exercise={exerciseById.get(slot.exerciseId)}
                         onChange={(next) =>
-                          updateDay(dayIndex, (current) => {
-                            const group = next.supersetKey
-                              ? current.supersets.find((item) => item.key === next.supersetKey)
-                              : null;
-                            const setsChanged = next.sets !== current.exercises[slotIndex]?.sets;
-                            return {
-                              ...current,
-                              supersets: group && setsChanged
-                                ? current.supersets.map((item) =>
-                                    item.key === group.key
-                                      ? {
-                                          ...item,
-                                          structureStatus: "canonical",
-                                          plannedRounds: next.sets,
-                                        }
-                                      : item,
-                                  )
-                                : current.supersets,
-                              exercises: current.exercises.map((item, index) => {
-                                if (index === slotIndex) return next;
-                                if (group && setsChanged && item.supersetKey === group.key) {
-                                  return resizeProgramSlotSets(item, next.sets);
-                                }
-                                return item;
-                              }),
-                            };
-                          })
+                          updateDay(dayIndex, (current) =>
+                            updateProgramSlotInDay(current, slotIndex, next),
+                          )
                         }
                         onRemove={() => {
                           updateDay(dayIndex, (current) => {

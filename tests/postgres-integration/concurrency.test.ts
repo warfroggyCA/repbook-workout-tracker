@@ -1348,6 +1348,105 @@ describe.sequential("real PostgreSQL parallel invariants", () => {
     expect(currentDocument).not.toHaveProperty("legacyPreparedDetails");
   });
 
+  it("publishes an older unequal group without changing its saved member sets", async () => {
+    const fixture = await createProgramFixture("unequal group publication");
+    const state = await getOrCreateProgramDraft(db, fixture.userId);
+    if (!state) throw new Error("Program draft fixture missing.");
+    const document = structuredClone(state.draft.document);
+    const day = document.days[0];
+    const first = day.exercises[0];
+    const groupKey = crypto.randomUUID();
+    const secondLineageId = crypto.randomUUID();
+    document.name = "Preserved unequal group";
+    day.supersets = [{
+      key: groupKey,
+      name: "Older unequal pair",
+      structureStatus: "legacy_unequal",
+      plannedRounds: null,
+      restBetweenMembersSec: 15,
+      restBetweenRoundsSec: 90,
+      restAfterRoundSec: 90,
+    }];
+    day.exercises = [
+      {
+        ...first,
+        supersetKey: groupKey,
+        groupMemberOrderIdx: 0,
+      },
+      {
+        ...structuredClone(first),
+        lineageId: secondLineageId,
+        sets: 4,
+        supersetKey: groupKey,
+        groupMemberOrderIdx: 1,
+        setNotes: [null, null, null, null],
+        intent: {
+          ...structuredClone(first.intent),
+          idealDose: { unit: "sets", value: 4 },
+        },
+      },
+    ];
+    const saved = await saveProgramDraft(db, fixture.userId, {
+      draftId: state.draft.id,
+      expectedRevision: state.draft.revision,
+      mutationId: crypto.randomUUID(),
+      document,
+    });
+    if (saved.status !== "saved") {
+      throw new Error(`Program draft fixture did not save: ${saved.status}`);
+    }
+    const review = await reviewProgramDraft(
+      db,
+      fixture.userId,
+      state.draft.id,
+      saved.revision,
+    );
+    expect(review).toMatchObject({
+      status: "publishable",
+      blockingErrors: [],
+    });
+    if (!review || review.status !== "publishable") {
+      throw new Error("Program draft fixture did not review.");
+    }
+
+    expect(await publishProgramDraft(db, fixture.userId, {
+      draftId: state.draft.id,
+      expectedRevision: saved.revision,
+      reviewHash: review.hash,
+    })).toMatchObject({
+      ok: true,
+      versionNo: 2,
+    });
+    expect(await getCurrentProgramDocument(db, fixture.userId)).toMatchObject({
+      schemaVersion: "3",
+      name: "Preserved unequal group",
+      days: [{
+        supersets: [{
+          key: groupKey,
+          structureStatus: "legacy_unequal",
+          plannedRounds: null,
+          restBetweenMembersSec: 15,
+          restBetweenRoundsSec: 90,
+          restAfterRoundSec: 90,
+        }],
+        exercises: [
+          {
+            lineageId: first.lineageId,
+            sets: first.sets,
+            supersetKey: groupKey,
+            groupMemberOrderIdx: 0,
+          },
+          {
+            lineageId: secondLineageId,
+            sets: 4,
+            supersetKey: groupKey,
+            groupMemberOrderIdx: 1,
+          },
+        ],
+      }],
+    });
+  });
+
   it("converges concurrent stale-base draft opens on one fenced revision", async () => {
     const fixture = await createProgramFixture("stale base reconciliation");
     const versionTwoDraft = await prepareReviewedDraft(fixture, "version two");

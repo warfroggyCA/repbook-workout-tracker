@@ -618,6 +618,40 @@ export function resizeProgramSlotSets(
   };
 }
 
+export function updateProgramSlotInDay(
+  day: ProgramDocumentDayV3,
+  slotIndex: number,
+  next: ProgramDocumentSlotV3,
+): ProgramDocumentDayV3 {
+  const previous = day.exercises[slotIndex];
+  const group = next.supersetKey
+    ? day.supersets.find((item) => item.key === next.supersetKey)
+    : null;
+  const synchronizeRounds =
+    group?.structureStatus === "canonical" &&
+    next.sets !== previous?.sets;
+  return {
+    ...day,
+    supersets: synchronizeRounds
+      ? day.supersets.map((item) =>
+          item.key === group.key
+            ? { ...item, plannedRounds: next.sets }
+            : item,
+        )
+      : day.supersets,
+    exercises: day.exercises.map((item, index) => {
+      if (index === slotIndex) return next;
+      if (
+        synchronizeRounds &&
+        item.supersetKey === group.key
+      ) {
+        return resizeProgramSlotSets(item, next.sets);
+      }
+      return item;
+    }),
+  };
+}
+
 export function addSupersetGroup(
   day: ProgramDocumentDayV3,
   group: ProgramDocumentDayV3["supersets"][number],

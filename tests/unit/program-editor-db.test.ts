@@ -788,6 +788,101 @@ describe("versioned Program editor persistence", () => {
     expect(await database.db.query.programVersions.findMany()).toHaveLength(1);
   });
 
+  it("publishes an older unequal group without changing its saved member sets", async () => {
+    const state = await getOrCreateProgramDraft(database.db, userId);
+    if (!state) throw new Error("Draft missing");
+    const document = structuredClone(state.draft.document);
+    const day = document.days[0];
+    const first = day.exercises[0];
+    const groupKey = crypto.randomUUID();
+    const secondLineageId = crypto.randomUUID();
+    document.name = "Preserved unequal group";
+    day.supersets = [{
+      key: groupKey,
+      name: "Older unequal pair",
+      structureStatus: "legacy_unequal",
+      plannedRounds: null,
+      restBetweenMembersSec: 15,
+      restBetweenRoundsSec: 90,
+      restAfterRoundSec: 90,
+    }];
+    day.exercises = [
+      {
+        ...first,
+        supersetKey: groupKey,
+        groupMemberOrderIdx: 0,
+      },
+      {
+        ...structuredClone(first),
+        lineageId: secondLineageId,
+        sets: 4,
+        supersetKey: groupKey,
+        groupMemberOrderIdx: 1,
+        setNotes: [null, null, null, null],
+        intent: {
+          ...structuredClone(first.intent),
+          idealDose: { unit: "sets", value: 4 },
+        },
+      },
+    ];
+    const saved = await saveProgramDraft(database.db, userId, {
+      draftId: state.draft.id,
+      expectedRevision: state.draft.revision,
+      mutationId: crypto.randomUUID(),
+      document,
+    });
+    if (saved.status !== "saved") throw new Error("Draft did not save");
+    const review = await reviewProgramDraft(
+      database.db,
+      userId,
+      state.draft.id,
+      saved.revision,
+    );
+    expect(review).toMatchObject({
+      status: "publishable",
+      blockingErrors: [],
+    });
+    if (!review || review.status !== "publishable") {
+      throw new Error("Review missing");
+    }
+
+    const published = await publishProgramDraft(database.db, userId, {
+      draftId: state.draft.id,
+      expectedRevision: saved.revision,
+      reviewHash: review.hash,
+    });
+    expect(published).toMatchObject({ ok: true, versionNo: 2 });
+    const currentDocument = await getCurrentProgramDocument(database.db, userId);
+    expect(currentDocument).toMatchObject({
+      schemaVersion: "3",
+      name: "Preserved unequal group",
+      days: [{
+        supersets: [{
+          key: groupKey,
+          structureStatus: "legacy_unequal",
+          plannedRounds: null,
+          restBetweenMembersSec: 15,
+          restBetweenRoundsSec: 90,
+          restAfterRoundSec: 90,
+        }],
+        exercises: [
+          {
+            lineageId: first.lineageId,
+            sets: first.sets,
+            supersetKey: groupKey,
+            groupMemberOrderIdx: 0,
+          },
+          {
+            lineageId: secondLineageId,
+            sets: 4,
+            supersetKey: groupKey,
+            groupMemberOrderIdx: 1,
+          },
+        ],
+      }],
+    });
+  });
+
   it("converts legacy exercise guidance only in a new editable version", async () => {
     const originalSlot = await database.db.query.workoutTemplateExercises.findFirst();
     if (!originalSlot) throw new Error("Slot missing");
