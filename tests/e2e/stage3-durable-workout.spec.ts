@@ -160,7 +160,7 @@ test("publishes and preserves durable warm-up and grouped workout outcomes", asy
   const workoutStatus = page.getByRole("complementary", { name: "Workout status" });
   await expect(workoutGuidance).toContainText("Now: Activation ramp");
   await expect(workoutGuidance).toContainText(
-    "Next: Romanian Deadlift, set 1",
+    "Next: Superset 1, round 1, member 1 of 3: Romanian Deadlift, set 1",
   );
   await expect(workoutStatus).toContainText("Activation ramp");
   await expect(workoutStatus).toContainText("Warm-up");
@@ -244,7 +244,7 @@ test("publishes and preserves durable warm-up and grouped workout outcomes", asy
     "Warm-up complete",
   );
   await expect(workoutGuidance).toContainText(
-    "Now: Romanian Deadlift, set 1",
+    "Now: Superset 1, round 1, member 1 of 3: Romanian Deadlift, set 1",
   );
   await expect(workoutStatus).toContainText("Romanian Deadlift");
   await screenshot(page, "03-warmup-restored-and-completed.png");

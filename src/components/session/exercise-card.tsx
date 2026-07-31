@@ -379,14 +379,13 @@ export function ExerciseCard({
     }
     let focusFrame = 0;
     const scrollFrame = requestAnimationFrame(() => {
+      const targetId = `added-set-entry-${exercise.id}-${requestedOccurrenceId}`;
       document
-        .getElementById(`added-set-entry-${exercise.id}`)
+        .getElementById(targetId)
         ?.scrollIntoView({ behavior: "smooth", block: "center" });
       focusFrame = requestAnimationFrame(() => {
         document
-          .querySelector<HTMLElement>(
-            `#added-set-entry-${exercise.id} input`,
-          )
+          .querySelector<HTMLElement>(`#${targetId} input`)
           ?.focus({ preventScroll: true });
         if (appendFocusRequestRef.current === requestedOccurrenceId) {
           appendFocusRequestRef.current = null;
@@ -1002,7 +1001,7 @@ export function ExerciseCard({
                 return (
                   <div
                     key={appendedOccurrence.id}
-                    id={`added-set-entry-${exercise.id}`}
+                    id={`added-set-entry-${exercise.id}-${appendedOccurrence.id}`}
                     data-testid="added-set-entry"
                     className="scroll-mt-24 rounded-md border-2 border-foreground/60 bg-background p-2"
                   >
@@ -1071,7 +1070,7 @@ export function ExerciseCard({
                   return (
                     <div
                       key={`active-${i}`}
-                      id={`set-entry-${exercise.id}`}
+                      id={`set-entry-${exercise.id}-${activeOccurrence.id}`}
                       data-testid="current-set-entry"
                       className="scroll-mt-24 rounded-md border border-primary/40 p-2"
                     >

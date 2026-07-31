@@ -314,7 +314,9 @@ describe("ExerciseCard", () => {
       />
     );
 
-    expect(html).toContain(`id="set-entry-${current.id}"`);
+    expect(html).toContain(
+      `id="set-entry-${current.id}-00000000-0000-4000-8000-000000000003"`,
+    );
     expect(html).toContain("Total load");
     expect(html).toContain("Per side: 25 lb");
     expect(html).toContain("Enter exact RPE instead");
@@ -407,7 +409,9 @@ describe("ExerciseCard", () => {
     );
 
     expect(html).toContain("Set 3 of 3");
-    expect(html).toContain(`id="set-entry-${afterSkippedSecond.id}"`);
+    expect(html).toContain(
+      `id="set-entry-${afterSkippedSecond.id}-00000000-0000-4000-8000-000000000004"`,
+    );
     expect(html).toContain("Set 2");
   });
 
@@ -500,7 +504,9 @@ describe("ExerciseCard", () => {
         occurrenceRuntimeSaveStates={{ [mutation.clientKey]: "saving" }}
       />,
     );
-    expect(saving).toContain(`id="set-entry-${current.id}"`);
+    expect(saving).toContain(
+      `id="set-entry-${current.id}-${occurrence.id}"`,
+    );
     expect(saving).toContain("Skip · Saving");
     expect(saving).toContain("Discard unsaved change");
 
