@@ -102,28 +102,24 @@ function coveringExceptions(vulnerability, exceptions) {
 
 export function evaluateFullTreeAudit(report, exceptions) {
   const unexpected = [];
-  const usedExceptions = new Set();
-  const observedNodes = new Map(exceptions.map((entry) => [entry.advisory, new Set()]));
+  const observedAdvisories = new Set();
 
   for (const vulnerability of Object.values(report.vulnerabilities ?? {})) {
+    for (const cause of vulnerability.via ?? []) {
+      if (cause !== null && typeof cause === "object" && typeof cause.url === "string") {
+        observedAdvisories.add(cause.url);
+      }
+    }
+
     const matches = coveringExceptions(vulnerability, exceptions);
     if (matches.length === 0) {
       unexpected.push(vulnerability);
-      continue;
-    }
-
-    for (const exception of matches) {
-      usedExceptions.add(exception.advisory);
-      const nodes = observedNodes.get(exception.advisory);
-      for (const node of vulnerability.nodes) nodes.add(node);
     }
   }
 
-  const staleExceptions = exceptions.filter((entry) => {
-    if (!usedExceptions.has(entry.advisory)) return true;
-    const nodes = observedNodes.get(entry.advisory);
-    return Object.keys(entry.reviewedNodes).some((node) => !nodes.has(node));
-  });
+  const staleExceptions = exceptions.filter(
+    (entry) => !observedAdvisories.has(entry.advisory)
+  );
 
   return { unexpected, staleExceptions };
 }
