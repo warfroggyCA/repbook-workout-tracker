@@ -140,6 +140,10 @@ test("keeps new Stage 3 controls usable at the saved iPhone calibration", async 
   await page.goto("/program/edit");
   await expectSaved(page);
   await page.getByRole("tab", { name: "Day 2", exact: true }).click();
+  await page
+    .locator("summary")
+    .filter({ hasText: "Optional check-off steps" })
+    .click();
   await page.getByRole("button", { name: "Add warm-up step", exact: true }).click();
   const editorStep = page.locator("article").filter({
     has: page.getByRole("heading", { name: "Step 1", exact: true }),

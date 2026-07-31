@@ -1805,10 +1805,19 @@ test("keeps every active-workout route reachable with one scroll surface", async
       .getByRole("button", { name: "Skip item", exact: true })
       .click();
     await expect(skipDialog).toHaveCount(0);
-    await expect(
-      plannedCard.getByText("skipped", { exact: true }),
-    ).toHaveCount(setNo);
+    if (setNo < 3) {
+      await expect(
+        plannedCard.getByText("skipped", { exact: true }),
+      ).toHaveCount(setNo);
+    }
   }
+  await expect(
+    page.getByTestId("current-exercise-card").getByRole("heading", { level: 2 }),
+  ).not.toHaveText(plannedExerciseName);
+  await plannedCard.locator(":scope > button").click();
+  await expect(
+    plannedCard.getByText("skipped", { exact: true }),
+  ).toHaveCount(3);
   const addSet = plannedCard.getByRole("button", {
     name: "Add extra set",
     exact: true,

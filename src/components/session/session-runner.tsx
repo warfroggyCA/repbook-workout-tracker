@@ -2079,15 +2079,21 @@ export function SessionRunner(props: SessionRunnerProps) {
           onShowCurrent={() => {
             const currentAction = guidance.currentAction;
             if (!currentAction) return;
+            const targetId = actionTargetId(currentAction);
             if (
               currentAction.kind === "working_set" &&
               currentAction.sessionExerciseId
             ) {
               setExpandedId(currentAction.sessionExerciseId);
             }
+            window.history.replaceState(
+              window.history.state,
+              "",
+              `${window.location.pathname}${window.location.search}#${targetId}`,
+            );
             requestAnimationFrame(() => {
               document
-                .getElementById(actionTargetId(currentAction))
+                .getElementById(targetId)
                 ?.scrollIntoView({ behavior: "smooth", block: "center" });
             });
           }}
