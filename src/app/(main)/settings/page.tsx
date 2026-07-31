@@ -24,6 +24,8 @@ import { isSettingsManagementEnabled } from "@/lib/settings-management-feature";
 import { EquipmentSaveNotice } from "@/components/settings/equipment-save-notice";
 import { Button } from "@/components/ui/button";
 import { Pencil, ClipboardList } from "lucide-react";
+import { PRODUCT_NAME } from "@/lib/product-identity";
+import { PRODUCT_VERSION } from "@/lib/product-version";
 
 export default async function SettingsPage(props: PageProps<"/settings">) {
   const searchParams = await props.searchParams;
@@ -202,6 +204,10 @@ export default async function SettingsPage(props: PageProps<"/settings">) {
       </section>
 
       <SignOutControl ownerId={user.id} />
+
+      <p className="text-center text-xs text-muted-foreground">
+        {PRODUCT_NAME} v{PRODUCT_VERSION}
+      </p>
     </main>
   );
 }

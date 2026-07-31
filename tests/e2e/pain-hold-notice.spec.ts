@@ -42,6 +42,9 @@ async function signInAtExtraLargeText(page: Page) {
   await expect(page).toHaveURL(/\/today$/);
 
   await page.goto("/settings");
+  await expect(
+    page.getByText("Repbook v1.1.0", { exact: true }),
+  ).toBeVisible();
   const extraLarge = page.getByRole("radio", { name: /Extra large 145%/ });
   if ((await extraLarge.getAttribute("aria-checked")) !== "true") {
     await waitForHydratedReactHandler(extraLarge);

@@ -62,6 +62,11 @@ test("renders every optimized page family under its request nonce", async ({
     await expect(page, `${route} did not expose its route meaning`).toHaveTitle(
       title
     );
+    if (route === "/settings") {
+      await expect(
+        page.getByText("Repbook v1.1.0", { exact: true }),
+      ).toBeVisible();
+    }
   }
 
   // First-time setup steps are redirect-only for this completed account:
