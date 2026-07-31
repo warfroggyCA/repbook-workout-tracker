@@ -113,11 +113,10 @@ describe("Program review trust contract", () => {
       weeklySetsBefore: 3,
       weeklySetsAfter: 3,
     });
-    expect(next.days[0].warmupItems).toEqual([
-      expect.objectContaining({ key: ids.day, label: "Two minutes easy" }),
-      expect.objectContaining({ label: "Shoulder circles" }),
-      expect.objectContaining({ label: "Two ramp-up sets" }),
-    ]);
+    expect(next.days[0]).toMatchObject({
+      warmupNotes: "Two minutes easy\nShoulder circles\nTwo ramp-up sets",
+      warmupItems: [],
+    });
   });
 
   it("reviews a structured warm-up-only edit instead of calling it identical", () => {
@@ -125,6 +124,16 @@ describe("Program review trust contract", () => {
       legacyProgram(),
       () => "Synthetic Press",
     );
+    base.days[0].warmupItems = [{
+      key: ids.replacementDay,
+      label: "Five minutes easy",
+      reps: null,
+      load: null,
+      loadUnit: null,
+      loadPercent: null,
+      loadText: null,
+      notes: null,
+    }];
     const next = structuredClone(base);
     next.days[0].warmupItems[0].label = "Two minutes easy";
 

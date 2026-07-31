@@ -24,6 +24,7 @@ import {
   type EquipmentPresentationPlate,
 } from "@/lib/session-equipment-presentation";
 import {
+  SIMULATION_LABEL_MAX_LENGTH,
   simulationSourceSnapshotSchema,
   type SimulationSourceSnapshot,
 } from "@/lib/workout-simulation";
@@ -98,6 +99,18 @@ function assertBound(label: string, count: number, maximum: number) {
 
 function sortedUnique(values: string[]) {
   return [...new Set(values)].sort((left, right) => left.localeCompare(right));
+}
+
+function splitSimulationLabel(value: string): string[] {
+  const chunks: string[] = [];
+  for (
+    let offset = 0;
+    offset < value.length;
+    offset += SIMULATION_LABEL_MAX_LENGTH
+  ) {
+    chunks.push(value.slice(offset, offset + SIMULATION_LABEL_MAX_LENGTH));
+  }
+  return chunks;
 }
 
 function inventoryFor(items: SourceEquipmentItem[]): InventoryItem[] {
@@ -320,11 +333,19 @@ export function buildSimulationSourceSnapshot(
         const presentation = day.slots.find((slot) => slot.superset?.id === groupId)?.superset;
         const supplement = input.groupSupplementsById[groupId];
         if (!presentation || !supplement) throw new Error(`Program group ${groupId} is incomplete.`);
+        const memberSets = exercises
+          .filter((exercise) => exercise.groupId === groupId)
+          .map((exercise) => exercise.sets);
+        if (memberSets.length === 0) {
+          throw new Error(`Program group ${groupId} has no simulation members.`);
+        }
+        const plannedRounds = supplement.plannedRounds ??
+          Math.max(...memberSets);
         return {
           id: groupId,
           name: presentation.name,
           orderIdx: supplement.orderIdx,
-          plannedRounds: supplement.plannedRounds ?? 1,
+          plannedRounds,
           restBetweenMembersSec: supplement.restBetweenMembersSec ?? 0,
           restBetweenRoundsSec: presentation.restAfterRoundSec,
         };
@@ -333,12 +354,14 @@ export function buildSimulationSourceSnapshot(
         id: day.id,
         name: day.name,
         orderIdx: day.orderIdx,
-        warmups: day.warmupLines.map((line, index) => ({
-          id: `${day.id}:warmup:${index}`,
-          label: line,
-          orderIdx: index,
-          note: null,
-        })),
+        warmups: day.warmupLines
+          .flatMap(splitSimulationLabel)
+          .map((label, index) => ({
+            id: `${day.id}:warmup:${index}`,
+            label,
+            orderIdx: index,
+            note: null,
+          })),
         groups,
         exercises,
       };

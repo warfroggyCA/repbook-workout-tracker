@@ -4,7 +4,9 @@ import type { RoutineDraft } from "@/app/actions/setup";
 import {
   createSuggestedDayIntent,
   createSuggestedSlotIntent,
+  hasGeneratedOverviewWarmupItems,
   legacyProgramDocumentSchema,
+  overviewWarmupLabels,
   programDocumentV3Schema,
   projectIntentProgramDocumentV2,
   storedProgramDocumentSchema,
@@ -726,42 +728,6 @@ export function setWarmupLoadText<T extends WarmupSet>(
         loadPercent: null,
         loadText,
       }) as T;
-}
-
-function overviewWarmupLabels(value: string | null) {
-  return (value?.split(/\r?\n/) ?? [])
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .flatMap((line) => {
-      const chunks: string[] = [];
-      for (let index = 0; index < line.length; index += 120) {
-        chunks.push(line.slice(index, index + 120));
-      }
-      return chunks;
-    });
-}
-
-function hasGeneratedOverviewWarmupItems(
-  day: ProgramDocumentDayV3,
-) {
-  const first = day.warmupItems[0];
-  if (!first || first.key !== day.lineageId || !day.warmupNotes) return false;
-  const hasOnlyPlainItems = day.warmupItems.every((item) =>
-    item.reps == null &&
-    item.load == null &&
-    item.loadUnit == null &&
-    item.loadPercent == null &&
-    item.loadText == null &&
-    item.notes == null
-  );
-  if (!hasOnlyPlainItems) return false;
-  const projectedLabels = overviewWarmupLabels(day.warmupNotes);
-  return (
-    (day.warmupItems.length === 1 &&
-      first.label === day.warmupNotes.slice(0, 120)) ||
-    day.warmupItems.map((item) => item.label).join("\n") ===
-      projectedLabels.join("\n")
-  );
 }
 
 /**

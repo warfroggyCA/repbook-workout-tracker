@@ -20,6 +20,7 @@ import {
   type AddWorkoutExerciseInput,
 } from "@/lib/add-workout-exercise";
 import { getExerciseDiscoveryLibrary } from "@/services/exercise-discovery";
+import { effectiveProgramDayWarmupItemsSql } from "@/services/program-warmup-compatibility";
 import { workoutReplacementUnavailableReason } from "@/lib/exercise-replacements";
 
 export type LifecycleCheckpoint = (boundary: string) => void | Promise<void>;
@@ -1024,21 +1025,12 @@ export async function startWorkoutSession(
              program.id AS source_program_id,
              version.id AS source_program_version_id,
              wt.lineage_id AS source_day_lineage_id,
-             CASE
-               WHEN jsonb_array_length(wt.warmup_items) > 0 THEN wt.warmup_items
-               WHEN nullif(btrim(wt.warmup_notes), '') IS NOT NULL THEN
-                 jsonb_build_array(jsonb_build_object(
-                   'key', wt.id::text,
-                   'label', wt.warmup_notes,
-                   'reps', NULL,
-                   'load', NULL,
-                   'loadUnit', NULL,
-                   'loadPercent', NULL,
-                   'loadText', NULL,
-                   'notes', NULL
-                 ))
-               ELSE '[]'::jsonb
-             END AS effective_warmup_items,
+             ${effectiveProgramDayWarmupItemsSql({
+               lineageId: sql`wt.lineage_id`,
+               fallbackItemKey: sql`wt.id`,
+               warmupNotes: sql`wt.warmup_notes`,
+               warmupItems: sql`wt.warmup_items`,
+             })} AS effective_warmup_items,
              profile.timezone AS profile_timezone
       FROM workout_templates wt
       JOIN program_versions version ON version.id = wt.program_version_id

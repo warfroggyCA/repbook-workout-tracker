@@ -484,9 +484,7 @@ describe("versioned Program editor persistence", () => {
 
     const reopened = await getOrCreateProgramDraft(database.db, userId);
     expect(reopened?.draft.document.schemaVersion).toBe("3");
-    expect(reopened?.draft.document.days[0].warmupItems).toEqual(
-      expect.arrayContaining([expect.objectContaining({ key: expect.any(String) })]),
-    );
+    expect(reopened?.draft.document.days[0].warmupItems).toEqual([]);
 
     await expect(database.db.update(workoutTemplates).set({ name: "Mutated" }).where(
       eq(workoutTemplates.programVersionId, originalVersionId)
@@ -890,18 +888,75 @@ describe("versioned Program editor persistence", () => {
     if (!state) throw new Error("Draft missing");
     expect(state.draft.document.days[0].warmupNotes).toContain("Band pull-aparts");
     expect(state.draft.document).toMatchObject({ schemaVersion: "3" });
-    expect(state.draft.document.days[0].warmupItems).toEqual([
-      expect.objectContaining({
-        key: state.draft.document.days[0].lineageId,
-        label: expect.stringContaining("Band pull-aparts"),
-      }),
-    ]);
+    expect(state.draft.document.days[0].warmupItems).toEqual([]);
     expect(state.draft.document.days[0].exercises[0]).toMatchObject({ warmupNotes: null, warmupSets: [], setNotes: [null, null, null] });
     expect(state.draft.document.days[0].exercises[0].notes).toContain("Set 1: Pause");
 
     const preserved = await database.db.query.workoutTemplateExercises.findFirst({ where: eq(workoutTemplateExercises.id, originalSlot.id) });
     expect(preserved).toMatchObject({ warmupNotes: "Band pull-aparts", setNotes: ["Pause", null, "Leave one rep"] });
     expect(preserved?.warmupSets).toHaveLength(1);
+  });
+
+  it("preserves a long free-text warm-up through publication and workout start", async () => {
+    const legacyWarmup = [
+      "Elliptical two minutes easy, then complete arm circles and scapular push-ups with a comfortable range of motion.",
+      "Bench ramp-up: empty bar for ten, then three progressively heavier preparation sets before work begins.",
+    ].join("\n");
+    expect(legacyWarmup.length).toBeGreaterThan(120);
+
+    const state = await getOrCreateProgramDraft(database.db, userId);
+    if (!state) throw new Error("Draft missing");
+    expect(state.draft.document.days[0].warmupItems).toEqual([]);
+    const document = structuredClone(state.draft.document);
+    document.name = "Unrelated name edit";
+    document.days[0].warmupNotes = legacyWarmup;
+    const saved = await saveProgramDraft(database.db, userId, {
+      draftId: state.draft.id,
+      expectedRevision: state.draft.revision,
+      mutationId: crypto.randomUUID(),
+      document,
+    });
+    if (saved.status !== "saved") throw new Error("Draft did not save");
+    const review = await reviewProgramDraft(
+      database.db,
+      userId,
+      state.draft.id,
+      saved.revision,
+    );
+    if (!review || review.status !== "publishable") {
+      throw new Error("Review missing");
+    }
+    const published = await publishProgramDraft(database.db, userId, {
+      draftId: state.draft.id,
+      expectedRevision: saved.revision,
+      reviewHash: review.hash,
+    });
+    if (!published.ok) throw new Error(published.reason);
+    const publishedDay = await database.db.query.workoutTemplates.findFirst({
+      where: eq(
+        workoutTemplates.programVersionId,
+        published.programVersionId,
+      ),
+    });
+    expect(publishedDay).toMatchObject({
+      warmupNotes: expect.stringContaining(legacyWarmup),
+      warmupItems: [],
+    });
+    if (!publishedDay) throw new Error("Published day missing");
+    const started = await startWorkoutSession(
+      database.db,
+      userId,
+      publishedDay.id,
+    );
+    const session = await database.db.query.workoutSessions.findFirst({
+      where: eq(workoutSessions.id, started.sessionId),
+    });
+    expect(session?.dayWarmupNotes).toContain(legacyWarmup);
+    expect(session?.dayWarmupItems).toEqual([
+      expect.objectContaining({
+        label: expect.stringContaining(legacyWarmup),
+      }),
+    ]);
   });
 
   it("publishes exactly the reviewed warm-up and snapshots it into a new workout", async () => {
@@ -957,11 +1012,7 @@ describe("versioned Program editor persistence", () => {
     });
     expect(publishedDay).toMatchObject({
       warmupNotes: "Two minutes easy\nShoulder circles\nTwo ramp-up sets",
-      warmupItems: [
-        expect.objectContaining({ key: originalDay.lineageId, label: "Two minutes easy" }),
-        expect.objectContaining({ label: "Shoulder circles" }),
-        expect.objectContaining({ label: "Two ramp-up sets" }),
-      ],
+      warmupItems: [],
     });
     expect(await database.db.query.workoutTemplates.findFirst({
       where: eq(workoutTemplates.id, originalDay.id),
@@ -981,9 +1032,9 @@ describe("versioned Program editor persistence", () => {
     })).toMatchObject({
       dayWarmupNotes: "Two minutes easy\nShoulder circles\nTwo ramp-up sets",
       dayWarmupItems: [
-        expect.objectContaining({ key: originalDay.lineageId, label: "Two minutes easy" }),
-        expect.objectContaining({ label: "Shoulder circles" }),
-        expect.objectContaining({ label: "Two ramp-up sets" }),
+        expect.objectContaining({
+          label: "Two minutes easy\nShoulder circles\nTwo ramp-up sets",
+        }),
       ],
       sourceProgramVersionId: published.programVersionId,
     });

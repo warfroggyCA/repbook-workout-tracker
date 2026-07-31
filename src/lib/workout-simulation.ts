@@ -7,16 +7,23 @@ export const SIMULATION_MAX_OCCURRENCES = 2_000;
 export const SIMULATION_MAX_SETS = 1_000;
 export const SIMULATION_MAX_FEEDBACK = 100;
 export const SIMULATION_NOTE_MAX_LENGTH = 500;
+export const SIMULATION_LABEL_MAX_LENGTH = 500;
 
 const loadUnitSchema = z.enum(["lb", "kg"]);
 const isoSchema = z.string().datetime({ offset: true });
-const nonEmpty = z.string().trim().min(1).max(500);
+const nonEmpty = z.string().trim().min(1).max(SIMULATION_LABEL_MAX_LENGTH);
+const boundedWarmupLabel = z
+  .string()
+  .min(1)
+  .max(SIMULATION_LABEL_MAX_LENGTH);
 const sourceId = z.string().min(1).max(200);
 const simulationIdSchema = z.string().regex(/^sim_(workspace|workout|exercise|occurrence|set|feedback)_[A-Za-z0-9_-]+$/).max(240);
 
 const warmupSchema = z.object({
   id: sourceId,
-  label: nonEmpty,
+  // A lossless chunk of one non-empty source line can be whitespace-only when
+  // a long run crosses the fixed-size boundary.
+  label: boundedWarmupLabel,
   orderIdx: z.number().int().min(0).max(2_000),
   note: z.string().max(SIMULATION_NOTE_MAX_LENGTH).nullable(),
 });
