@@ -103,7 +103,7 @@ jobs:
       - name: Recheck generated route types
         run: npm run typecheck
 
-      - name: Review production dependencies
+      - name: Review production and development dependencies
         run: npm run audit:check
 
       - name: Verify exact Playwright browser image
