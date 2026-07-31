@@ -195,7 +195,7 @@ function actionTargetId(action: SessionGuidanceFocusAction | null) {
   }
   const prefix =
     action.position.kind === "extra" ? "added-set-entry" : "set-entry";
-  return `${prefix}-${action.sessionExerciseId}`;
+  return `${prefix}-${action.sessionExerciseId}-${action.occurrenceId}`;
 }
 
 export function SessionRunner(props: SessionRunnerProps) {
@@ -353,23 +353,30 @@ export function SessionRunner(props: SessionRunnerProps) {
   }, [exercises, runtimeSaveStates, sessionEntries]);
   useEffect(() => {
     const revealLinkedExercise = () => {
-      const prefix = "#exercise-";
-      if (!window.location.hash.startsWith(prefix)) return;
-      const exerciseId = decodeURIComponent(
-        window.location.hash.slice(prefix.length),
-      );
-      if (!shownExercises.some((exercise) => exercise.id === exerciseId)) return;
-      setExpandedId(exerciseId);
+      const targetId = decodeURIComponent(window.location.hash.slice(1));
+      const linkedExercise = shownExercises.find((exercise) => {
+        if (targetId === `exercise-${exercise.id}`) return true;
+        return occurrences.some(
+          (occurrence) =>
+            occurrence.sessionExerciseId === exercise.id &&
+            (targetId ===
+              `set-entry-${exercise.id}-${occurrence.id}` ||
+              targetId ===
+                `added-set-entry-${exercise.id}-${occurrence.id}`),
+        );
+      });
+      if (!linkedExercise) return;
+      setExpandedId(linkedExercise.id);
       requestAnimationFrame(() => {
         document
-          .getElementById(`exercise-${exerciseId}`)
+          .getElementById(targetId)
           ?.scrollIntoView({ block: "start" });
       });
     };
     revealLinkedExercise();
     window.addEventListener("hashchange", revealLinkedExercise);
     return () => window.removeEventListener("hashchange", revealLinkedExercise);
-  }, [shownExercises]);
+  }, [occurrences, shownExercises]);
   const safeEquipmentSetups = useMemo(
     () =>
       Object.fromEntries(
@@ -404,26 +411,31 @@ export function SessionRunner(props: SessionRunnerProps) {
       shownExercises,
     ],
   );
+  const currentActionId = guidance.currentAction?.occurrenceId ?? null;
+  const currentActionKind = guidance.currentAction?.kind ?? null;
+  const currentActionSequenceIdx = guidance.currentAction?.sequenceIdx ?? null;
+  const currentActionSessionExerciseId =
+    guidance.currentAction?.kind === "working_set"
+      ? guidance.currentAction.sessionExerciseId
+      : null;
+  const currentActionTargetId = actionTargetId(guidance.currentAction);
   useEffect(() => {
-    const nextAction = guidance.currentAction;
-    const nextActionId = nextAction?.occurrenceId ?? null;
     const previousActionId = previousCurrentActionIdRef.current;
-    previousCurrentActionIdRef.current = nextActionId;
-    if (previousActionId == null || previousActionId === nextActionId) return;
+    previousCurrentActionIdRef.current = currentActionId;
+    if (previousActionId == null || previousActionId === currentActionId) return;
 
     const previousOccurrence = occurrences.find(
       (occurrence) => occurrence.id === previousActionId,
     );
     const restoredEarlierAction =
       previousOccurrence != null &&
-      nextAction != null &&
-      nextAction.sequenceIdx < previousOccurrence.sequenceIdx;
+      currentActionSequenceIdx != null &&
+      currentActionSequenceIdx < previousOccurrence.sequenceIdx;
     if (
       !previousOccurrence ||
       (previousOccurrence.outcome === "pending" && !restoredEarlierAction)
     ) return;
 
-    const targetId = actionTargetId(nextAction);
     let focusFrame = 0;
     let scrollFrame = 0;
     const revealCurrentAction = () => {
@@ -431,11 +443,16 @@ export function SessionRunner(props: SessionRunnerProps) {
         scrollFrame = window.requestAnimationFrame(revealCurrentAction);
         return;
       }
-      if (nextAction?.kind === "working_set" && nextAction.sessionExerciseId) {
-        setExpandedId(nextAction.sessionExerciseId);
+      window.history.replaceState(
+        window.history.state,
+        "",
+        `${window.location.pathname}${window.location.search}#${currentActionTargetId}`,
+      );
+      if (currentActionKind === "working_set" && currentActionSessionExerciseId) {
+        setExpandedId(currentActionSessionExerciseId);
       }
       focusFrame = window.requestAnimationFrame(() => {
-        const target = document.getElementById(targetId);
+        const target = document.getElementById(currentActionTargetId);
         target?.scrollIntoView({ behavior: "smooth", block: "center" });
         const focusTarget = target?.matches("[tabindex]")
           ? target
@@ -450,7 +467,14 @@ export function SessionRunner(props: SessionRunnerProps) {
       window.cancelAnimationFrame(scrollFrame);
       window.cancelAnimationFrame(focusFrame);
     };
-  }, [guidance.currentAction, occurrences]);
+  }, [
+    currentActionId,
+    currentActionKind,
+    currentActionSequenceIdx,
+    currentActionSessionExerciseId,
+    currentActionTargetId,
+    occurrences,
+  ]);
   const groupContextByExerciseId = useMemo(
     () =>
       Object.fromEntries(

@@ -261,6 +261,9 @@ test("presents immutable superset order, truthful progress, and next-member equi
     .first()
     .click();
   await expect(page).toHaveURL(/#set-entry-/);
+  const currentActionUrl = page.url();
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await expect(page).toHaveURL(currentActionUrl);
   await expect(
     currentCard.getByRole("button", { name: "Skip set", exact: true }),
   ).toBeVisible();
