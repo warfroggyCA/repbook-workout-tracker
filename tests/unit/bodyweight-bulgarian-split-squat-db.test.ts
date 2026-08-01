@@ -21,7 +21,7 @@ import {
   restoreRecordVersion,
   updateSessionExerciseWithVersion,
 } from "@/services/record-versions";
-import { logWorkoutSet } from "@/services/session-lifecycle";
+import { logWorkoutSet } from "../helpers/log-workout-set";
 import {
   createTestDatabaseAtMigration,
   type TestDatabase,

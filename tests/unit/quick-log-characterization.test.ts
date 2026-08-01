@@ -426,17 +426,17 @@ describe("quick-log all-or-nothing application", () => {
       {
         metric: "duration",
         set: { weight: null, weightUnit: null, reps: 30, rpeHint: null },
-        expected: "activity or compatible duration flow",
+        expected: "needs an explicit duration",
       },
       {
         metric: "distance_duration",
         set: { weight: 50, weightUnit: "lb", reps: 20, rpeHint: null },
-        expected: "activity or compatible duration flow",
+        expected: "current distance-set shape cannot represent truthfully",
       },
       {
         metric: "activity",
         set: { weight: null, weightUnit: null, reps: 1, rpeHint: null },
-        expected: "activity or compatible duration flow",
+        expected: "activity flow",
       },
       {
         metric: "reps",

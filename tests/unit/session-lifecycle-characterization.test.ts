@@ -33,11 +33,11 @@ import {
   completeWorkoutSession,
   findOwnedActiveWorkout,
   IncompleteWorkoutCreationError,
-  logWorkoutSet,
   mutateWorkoutOccurrence,
   StaleWorkoutTemplateError,
   startWorkoutSession,
 } from "@/services/session-lifecycle";
+import { logWorkoutSet } from "../helpers/log-workout-set";
 import { updateSessionExerciseWithVersion } from "@/services/record-versions";
 import { buildSetsCsv } from "@/services/export";
 import { buildTrainingDigest, renderCoachingBrief } from "@/services/digest";
@@ -2001,7 +2001,7 @@ describe("workout lifecycle ownership and atomicity invariants", () => {
     ).resolves.toEqual({
       outcome: "unsupported_set_shape",
       metricType: "duration",
-      reason: "unsupported_metric",
+      reason: "duration_requires_time",
     });
     await expect(
       logWorkoutSet(database.db, userId, {

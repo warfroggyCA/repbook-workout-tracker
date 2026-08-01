@@ -12,9 +12,9 @@ import {
 } from "@/db/schema";
 import {
   completeWorkoutSession,
-  logWorkoutSet,
   startWorkoutSession,
 } from "@/services/session-lifecycle";
+import { logWorkoutSet } from "./log-workout-set";
 import { loadEquipmentLoadProfiles } from "@/services/equipment-load-profiles";
 import { mutateSessionEquipmentSelection } from "@/services/session-equipment-selection";
 

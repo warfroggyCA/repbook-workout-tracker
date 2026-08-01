@@ -43,9 +43,12 @@ export type SessionGuidanceAction = {
     exerciseId: string;
     setId: string;
     setNumber: number;
-    reps: number;
+    reps: number | null;
     load: number | null;
     loadUnit: "lb" | "kg" | null;
+    metricType: LoggedSet["metricType"];
+    distanceKm: number | null;
+    durationSeconds: number | null;
     rpe: number | null;
   } | null;
   restAfterSec: number;
@@ -506,6 +509,9 @@ export function projectSessionGuidance(input: Input): SessionGuidanceProjection 
               reps: retained.set.reps,
               load: retained.set.weight,
               loadUnit: retained.set.weightUnit,
+              metricType: retained.set.metricType,
+              distanceKm: retained.set.distanceKm ?? null,
+              durationSeconds: retained.set.durationSeconds ?? null,
               rpe: retained.set.rpe,
             }
           : null,

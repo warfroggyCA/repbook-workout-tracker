@@ -13,8 +13,10 @@ export type LoggedSet = {
   setNo: number;
   weight: number | null;
   weightUnit: LoadUnit | null;
-  reps: number;
+  reps: number | null;
   metricType?: PerformedMetricType;
+  distanceKm?: number | null;
+  durationSeconds?: number | null;
   rpe: number | null;
   note: string | null;
   saveState?: "pending" | "saving" | "retrying" | "failed" | "saved";

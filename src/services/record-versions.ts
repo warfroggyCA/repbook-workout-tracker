@@ -355,8 +355,7 @@ export async function updateSetWithVersion(
       FROM candidate
       WHERE (candidate.next_weight IS NULL) = (candidate.next_weight_unit IS NULL)
         AND (
-          ${correction}::boolean
-          OR NOT ${changesMeasurements}::boolean
+          NOT ${changesMeasurements}::boolean
           OR CASE candidate.metric_type::text
             WHEN 'weight_reps' THEN
               candidate.next_weight IS NOT NULL
@@ -370,6 +369,18 @@ export async function updateSetWithVersion(
               candidate.next_weight IS NOT NULL
               AND candidate.next_weight_unit IS NOT NULL
               AND candidate.next_reps IS NOT NULL
+            WHEN 'duration' THEN
+              candidate.next_weight IS NULL
+              AND candidate.next_weight_unit IS NULL
+              AND candidate.next_reps IS NULL
+            WHEN 'distance_duration' THEN
+              candidate.next_weight IS NULL
+              AND candidate.next_weight_unit IS NULL
+              AND candidate.next_reps IS NULL
+            WHEN 'activity' THEN
+              candidate.next_weight IS NULL
+              AND candidate.next_weight_unit IS NULL
+              AND candidate.next_reps IS NULL
             ELSE false
           END
         )
@@ -484,7 +495,6 @@ export async function updateSetWithVersion(
       (existing.id IS NOT NULL) AS replayed,
       (
         current.id IS NOT NULL
-        AND NOT ${correction}::boolean
         AND ${changesMeasurements}::boolean
         AND next_state.id IS NULL
       ) AS shape_rejected,

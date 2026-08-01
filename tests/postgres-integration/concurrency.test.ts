@@ -56,10 +56,10 @@ import {
   addWorkoutExercise,
   appendWorkoutSetOccurrence,
   completeWorkoutSession,
-  logWorkoutSet,
   startWorkoutSession,
   StaleWorkoutTemplateError,
 } from "@/services/session-lifecycle";
+import { logWorkoutSet } from "../helpers/log-workout-set";
 import { createRetrospectiveWorkout } from "@/services/retrospective-workouts";
 import { getHistoryReport } from "@/services/history-report";
 import { getCurrentProgramDocument } from "@/services/program-documents";

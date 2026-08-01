@@ -27,16 +27,21 @@ npm run docs:check
 npm run audit:check
 ```
 
-The test-only Repbook v2 semantic foundation has a focused gate:
+The Repbook v2 semantic foundation and current T01 activation package have
+focused gates:
 
 ```bash
 npx vitest run tests/unit/v2-semantic-contract.test.ts
+npx vitest run tests/unit/v2-t01-recording-truth-db.test.ts tests/unit/v2-t01-recording-truth-portability.test.ts tests/unit/v2-t01-recording-truth-restore.test.ts tests/unit/v2-t01-recording-truth-adversarial.test.ts
+npx playwright test tests/e2e/v2-t01-recording-truth.spec.ts
 ```
 
-It validates all synthetic F01-F17 scenarios and every required verification-
-matrix cell. Passing it proves contract consistency only; future package tests
-must activate each mapped database, browser, portability, recovery, and
-adversarial claim before product behavior is considered implemented.
+The semantic test validates all synthetic F01-F17 scenarios and every required
+verification-matrix cell; by itself it proves contract consistency only. The
+T01 tests activate the mapped database, browser, portability, recovery, and
+adversarial claims for truthful performed measurement. Every later package must
+activate its own reserved evidence before its product behavior is considered
+implemented.
 
 `audit:check` requires a clean production dependency audit and also reviews the
 complete development-tool tree. Any temporary development-only exception is

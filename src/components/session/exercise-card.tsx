@@ -85,7 +85,12 @@ import {
   isAppendedExtraSetOccurrence,
   workingSetDisplayPosition,
 } from "@/lib/session-occurrences";
-import { resolveFutureSetWriterMetricType } from "@/lib/set-metric-semantics";
+import {
+  buildPerformedSetMeasurement,
+  isSupportedSetWriterSemanticDefinition,
+  resolveFutureSetWriterMetricType,
+  type PerformedMetricType,
+} from "@/lib/set-metric-semantics";
 import { createClientUuid } from "@/lib/client-uuid";
 import type { OccurrenceMutationOutboxEntry } from "@/lib/occurrence-mutation-outbox";
 
@@ -103,6 +108,16 @@ function formatLoggedSet(
   fallbackMetricType: SessionExerciseData["metricType"],
 ) {
   const metricType = set.metricType ?? fallbackMetricType ?? "weight_reps";
+  if (metricType === "duration" && set.durationSeconds != null) {
+    return formatPerformedDuration(set.durationSeconds);
+  }
+  if (metricType === "distance_duration" && set.distanceKm != null) {
+    const duration = set.durationSeconds == null
+      ? ""
+      : ` · ${formatPerformedDuration(set.durationSeconds)}`;
+    return `${set.distanceKm} km${duration}`;
+  }
+  if (set.reps == null) return "No numeric result";
   const repetitions = `${set.reps} rep${set.reps === 1 ? "" : "s"}`;
   if (
     metricType === "assisted_reps" &&
@@ -116,6 +131,14 @@ function formatLoggedSet(
     : repetitions;
 }
 
+function formatPerformedDuration(durationSeconds: number) {
+  const minutes = Math.floor(durationSeconds / 60);
+  const seconds = durationSeconds % 60;
+  return minutes > 0
+    ? `${minutes}:${String(seconds).padStart(2, "0")}`
+    : `${seconds} sec`;
+}
+
 const ALTERNATIVE_REASON_LABELS: Record<ExerciseAlternativeReason, string> = {
   variety: "Variety",
   equipment_busy: "Equipment busy",
@@ -126,7 +149,9 @@ const ALTERNATIVE_REASON_LABELS: Record<ExerciseAlternativeReason, string> = {
 type SetDraft = {
   weight: number | null;
   weightUnit: LoadUnit | null;
-  reps: number;
+  reps: number | null;
+  distanceKm: number | null;
+  durationSeconds: number | null;
   rpe: number | null;
   note: string;
 };
@@ -241,11 +266,15 @@ export function ExerciseCard({
     : usesTotalBarLoad
       ? "Total load"
       : undefined;
-  const recordsNumericLoad =
-    exercise.metricType === "assisted_reps" ||
-    (exercise.loadType !== "bodyweight" && exercise.loadType !== "band");
   const performedMetricType = resolveFutureSetWriterMetricType({
     metricType: exercise.metricType ?? "weight_reps",
+    loadSemantics: exercise.loadSemantics,
+  });
+  const recordsNumericLoad =
+    performedMetricType === "weight_reps" ||
+    performedMetricType === "assisted_reps";
+  const metricSupported = isSupportedSetWriterSemanticDefinition({
+    metricType: performedMetricType,
     loadSemantics: exercise.loadSemantics,
   });
 
@@ -300,7 +329,11 @@ export function ExerciseCard({
         ? convertWeight(exercise.targetLoad, exercise.targetLoadUnit, unit)
         : null;
   const defaultReps =
-    prefillFrom?.reps ?? exercise.targetRepsMax ?? exercise.targetRepsMin ?? 8;
+    performedMetricType === "weight_reps" ||
+      performedMetricType === "reps" ||
+      performedMetricType === "assisted_reps"
+      ? prefillFrom?.reps ?? exercise.targetRepsMax ?? exercise.targetRepsMin ?? 8
+      : null;
   const appendedWeight =
     appendedOccurrence?.plannedLoad != null &&
     appendedOccurrence.plannedLoadUnit != null
@@ -328,11 +361,13 @@ export function ExerciseCard({
     : null;
 
   const [draft, setDraft] = useState<SetDraft>({
-    weight: requestedSet?.weight ?? defaultWeight,
-    weightUnit:
-      requestedSet?.weightUnit ??
-      (defaultWeight == null ? null : unit),
+    weight: recordsNumericLoad ? requestedSet?.weight ?? defaultWeight : null,
+    weightUnit: recordsNumericLoad
+      ? requestedSet?.weightUnit ?? (defaultWeight == null ? null : unit)
+      : null,
     reps: requestedSet?.reps ?? defaultReps,
+    distanceKm: requestedSet?.distanceKm ?? null,
+    durationSeconds: requestedSet?.durationSeconds ?? null,
     rpe: requestedSet?.rpe ?? null,
     note:
       requestedSet?.note ??
@@ -341,10 +376,14 @@ export function ExerciseCard({
         : defaultSetNote),
   });
   const [appendedDraft, setAppendedDraft] = useState<SetDraft>({
-    weight: appendedWeight ?? defaultWeight,
-    weightUnit:
-      appendedWeight == null && defaultWeight == null ? null : unit,
+    weight: recordsNumericLoad ? appendedWeight ?? defaultWeight : null,
+    weightUnit: recordsNumericLoad &&
+        (appendedWeight != null || defaultWeight != null)
+      ? unit
+      : null,
     reps: appendedReps ?? defaultReps,
+    distanceKm: null,
+    durationSeconds: null,
     rpe: null,
     note: "",
   });
@@ -435,6 +474,27 @@ export function ExerciseCard({
     if (exercise.sets.some((set) => set.saveState != null && set.saveState !== "saved")) {
       return;
     }
+    if (!metricSupported) {
+      toast.error(
+        "This exercise needs a performed measurement shape that Repbook cannot record truthfully yet.",
+      );
+      return;
+    }
+    const performed = buildPerformedSetMeasurement({
+      metricType: performedMetricType,
+      loadSemantics: exercise.loadSemantics,
+      weight: submittedDraft.weight,
+      weightUnit: submittedDraft.weight == null
+        ? null
+        : (submittedDraft.weightUnit ?? unit),
+      reps: submittedDraft.reps,
+      distanceKm: submittedDraft.distanceKm,
+      durationSeconds: submittedDraft.durationSeconds,
+    });
+    if (!performed.ok) {
+      toast.error(performed.message);
+      return;
+    }
     if (occurrence && occurrence.restAfterSec > 0) onPrepareRestCue();
     let clientKey: string;
     try {
@@ -451,10 +511,7 @@ export function ExerciseCard({
       id: `optimistic-${clientKey}`,
       clientKey,
       setNo,
-      weight: submittedDraft.weight,
-      weightUnit: submittedDraft.weight == null ? null : unit,
-      reps: submittedDraft.reps,
-      metricType: performedMetricType,
+      ...performed.measurement,
       rpe: submittedDraft.rpe,
       note: cleanNote,
       saveState: "pending",
@@ -482,6 +539,15 @@ export function ExerciseCard({
     });
     const resetSubmittedDraft = (current: SetDraft): SetDraft => ({
       ...current,
+      distanceKm:
+        performed.measurement.metricType === "distance_duration"
+          ? null
+          : current.distanceKm,
+      durationSeconds:
+        performed.measurement.metricType === "duration" ||
+          performed.measurement.metricType === "distance_duration"
+          ? null
+          : current.durationSeconds,
       rpe: null,
       note: exercise.setNotes[setNo] ?? "",
     });
@@ -526,6 +592,8 @@ export function ExerciseCard({
           appended.plannedRepsMax ??
           appended.plannedRepsMin ??
           defaultReps,
+        distanceKm: null,
+        durationSeconds: null,
         rpe: null,
         note: "",
       });
@@ -537,6 +605,11 @@ export function ExerciseCard({
   }
 
   function handleUpdate(set: LoggedSet) {
+    const correctedReps = draft.reps;
+    if (correctedReps == null) {
+      toast.error("Timed and distance result correction arrives in T02.");
+      return;
+    }
     const cleanNote = draft.note.trim() || null;
     const previousSets = exercise.sets;
     onPatch({
@@ -547,7 +620,7 @@ export function ExerciseCard({
               weight: draft.weight,
               weightUnit:
                 draft.weight == null ? null : requireLoadUnit(set.weightUnit),
-              reps: draft.reps,
+              reps: correctedReps,
               rpe: draft.rpe,
               note: cleanNote,
             }
@@ -563,7 +636,7 @@ export function ExerciseCard({
           weight: draft.weight,
           weightUnit:
             draft.weight == null ? null : requireLoadUnit(set.weightUnit),
-          reps: draft.reps,
+          reps: correctedReps,
           rpe: draft.rpe,
           note: cleanNote,
         });
@@ -838,7 +911,7 @@ export function ExerciseCard({
                     <button
                       type="button"
                       className="w-full text-left disabled:cursor-default"
-                      disabled={awaitingSave}
+                      disabled={awaitingSave || set.reps == null}
                       onClick={() => {
                         onEditSetOpenChange(exercise.id, true);
                         setEditingSetId(set.id);
@@ -846,6 +919,8 @@ export function ExerciseCard({
                           weight: set.weight,
                           weightUnit: set.weightUnit,
                           reps: set.reps,
+                          distanceKm: set.distanceKm ?? null,
+                          durationSeconds: set.durationSeconds ?? null,
                           rpe: set.rpe,
                           note: set.note ?? noteForSet ?? "",
                         });
@@ -918,6 +993,8 @@ export function ExerciseCard({
                 return (
                   <div key={set.id} className="rounded-md border p-2">
                     <SetEntry
+                      metricType={set.metricType ?? performedMetricType}
+                      supported={metricSupported}
                       draft={draft}
                       setDraft={setDraft}
                       stepWeight={stepWeight}
@@ -1012,14 +1089,13 @@ export function ExerciseCard({
                       ).label} · Added to this workout
                     </p>
                     <SetEntry
+                      metricType={performedMetricType}
+                      supported={metricSupported}
                       draft={appendedDraft}
                       setDraft={setAppendedDraft}
                       stepWeight={stepWeight}
                       unit={unit}
-                      hasWeight={
-                        exercise.loadType !== "bodyweight" &&
-                        exercise.loadType !== "band"
-                      }
+                      hasWeight={recordsNumericLoad}
                       weightLabel={liveWeightLabel}
                       plateConfig={plateConfig}
                       machineLoadConfig={machineLoadConfig}
@@ -1031,6 +1107,7 @@ export function ExerciseCard({
                         }
                         disabled={
                           pending ||
+                          !metricSupported ||
                           Boolean(unconfirmedSet) ||
                           Boolean(occurrenceMutation)
                         }
@@ -1078,6 +1155,8 @@ export function ExerciseCard({
                         Set {i + 1} of {exercise.targetSets ?? "open"}
                       </p>
                       <SetEntry
+                        metricType={performedMetricType}
+                        supported={metricSupported}
                         draft={draft}
                         setDraft={setDraft}
                         stepWeight={stepWeight}
@@ -1090,7 +1169,9 @@ export function ExerciseCard({
                       <div className="mt-2 grid grid-cols-[1fr_auto] gap-2">
                         <Button
                           onClick={() => handleLog()}
-                          disabled={pending || Boolean(occurrenceMutation)}
+                          disabled={
+                            pending || !metricSupported || Boolean(occurrenceMutation)
+                          }
                         >
                           <Check className="size-4" /> Log set
                         </Button>
@@ -1603,6 +1684,8 @@ export function ExerciseCard({
 }
 
 function SetEntry({
+  metricType,
+  supported,
   draft,
   setDraft,
   stepWeight,
@@ -1612,6 +1695,8 @@ function SetEntry({
   plateConfig,
   machineLoadConfig,
 }: {
+  metricType: PerformedMetricType;
+  supported: boolean;
   draft: SetDraft;
   setDraft: React.Dispatch<React.SetStateAction<SetDraft>>;
   stepWeight: (current: number | null, dir: 1 | -1) => number | null;
@@ -1622,6 +1707,8 @@ function SetEntry({
   machineLoadConfig?: MachineLoadConfig | null;
 }) {
   const weightInputId = useId();
+  const distanceInputId = useId();
+  const durationInputId = useId();
   const exactRpeId = useId();
   const [exactOpen, setExactOpen] = useState(
     draft.rpe != null && !RPE_CHIPS.some((chip) => chip.value === draft.rpe),
@@ -1637,6 +1724,18 @@ function SetEntry({
   const selectedEffort = EFFORT_CHOICES.find(
     (choice) => choice.legacyRpe === draft.rpe,
   );
+  if (!supported) {
+    return (
+      <p role="alert" className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-950 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-100">
+        Repbook cannot yet represent every applicable performed value for this
+        exercise, so it will not save a partial or misleading set.
+      </p>
+    );
+  }
+  const recordsRepetitions =
+    metricType === "weight_reps" ||
+    metricType === "reps" ||
+    metricType === "assisted_reps";
   return (
     <div className="flex flex-col gap-2">
       <div className="flex flex-wrap items-end gap-2">
@@ -1696,11 +1795,15 @@ function SetEntry({
             </div>
           </div>
         )}
+        {recordsRepetitions && (
         <div className="flex min-w-[10.5rem] flex-1 items-center gap-1">
           <Button
             variant="outline"
             size="icon"
-            onClick={() => setDraft((d) => ({ ...d, reps: Math.max(0, d.reps - 1) }))}
+            onClick={() => setDraft((d) => ({
+              ...d,
+              reps: Math.max(0, (d.reps ?? 0) - 1),
+            }))}
             aria-label="Decrease reps"
           >
             <Minus className="size-4" />
@@ -1710,9 +1813,12 @@ function SetEntry({
               aria-label="Reps"
               inputMode="numeric"
               className="pr-10 text-center text-base font-medium"
-              value={draft.reps}
+              value={draft.reps ?? ""}
               onChange={(e) =>
-                setDraft((d) => ({ ...d, reps: Number(e.target.value) || 0 }))
+                setDraft((d) => ({
+                  ...d,
+                  reps: e.target.value === "" ? null : Number(e.target.value),
+                }))
               }
             />
             <span className="pointer-events-none absolute inset-y-0 right-2 flex items-center text-xs text-muted-foreground">
@@ -1722,12 +1828,64 @@ function SetEntry({
           <Button
             variant="outline"
             size="icon"
-            onClick={() => setDraft((d) => ({ ...d, reps: d.reps + 1 }))}
+            onClick={() => setDraft((d) => ({
+              ...d,
+              reps: (d.reps ?? 0) + 1,
+            }))}
             aria-label="Increase reps"
           >
             <Plus className="size-4" />
           </Button>
         </div>
+        )}
+        {metricType === "distance_duration" && (
+          <div className="flex min-w-[10.5rem] flex-1 flex-col gap-1">
+            <label htmlFor={distanceInputId} className="text-xs font-medium">
+              Distance
+            </label>
+            <div className="relative">
+              <Input
+                id={distanceInputId}
+                aria-label="Distance in kilometres"
+                inputMode="decimal"
+                className="pr-10 text-center text-base font-medium"
+                value={draft.distanceKm ?? ""}
+                onChange={(event) => setDraft((current) => ({
+                  ...current,
+                  distanceKm:
+                    event.target.value === "" ? null : Number(event.target.value),
+                }))}
+              />
+              <span className="pointer-events-none absolute inset-y-0 right-2 flex items-center text-xs text-muted-foreground">
+                km
+              </span>
+            </div>
+          </div>
+        )}
+        {(metricType === "duration" || metricType === "distance_duration") && (
+          <div className="flex min-w-[10.5rem] flex-1 flex-col gap-1">
+            <label htmlFor={durationInputId} className="text-xs font-medium">
+              Duration {metricType === "distance_duration" ? "(optional)" : ""}
+            </label>
+            <div className="relative">
+              <Input
+                id={durationInputId}
+                aria-label="Duration in seconds"
+                inputMode="numeric"
+                className="pr-10 text-center text-base font-medium"
+                value={draft.durationSeconds ?? ""}
+                onChange={(event) => setDraft((current) => ({
+                  ...current,
+                  durationSeconds:
+                    event.target.value === "" ? null : Number(event.target.value),
+                }))}
+              />
+              <span className="pointer-events-none absolute inset-y-0 right-2 flex items-center text-xs text-muted-foreground">
+                sec
+              </span>
+            </div>
+          </div>
+        )}
       </div>
       <p className="text-sm text-muted-foreground">
         Effort shortcuts are broad categories. Each shows the numeric RPE saved;
@@ -2191,7 +2349,7 @@ function ReplacementDrawer({
               itemWarnings={options.warnings}
               triggerLabel="Search exercise catalog"
               title="Replace exercise"
-              description="Search the authorized catalog without similarity ranking. Strength and repetition exercises are supported. Duration, distance, and activity tracking remain unavailable here."
+              description="Search the authorized catalog without similarity ranking. Repbook supports repetitions, assistance, duration, and distance when the full performed measurement can be retained; activity-only observations stay in Activity."
               confirmLabel="Replace in this workout"
               largeTouchTargets
               onSelect={async (candidate) => {

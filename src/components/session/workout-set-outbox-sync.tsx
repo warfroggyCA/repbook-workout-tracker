@@ -17,6 +17,7 @@ import {
   Trash2,
 } from "lucide-react";
 import { logSet, setSessionEquipmentSelection } from "@/app/actions/sessions";
+import type { LogSetInput } from "@/lib/session-action-validation";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import {
@@ -83,6 +84,57 @@ function formatRetainedEffort(rpe: number | null) {
 
 function formatRetainedWorkout(entry: WorkoutSetOutboxEntry) {
   return entry.workoutName ?? `Workout ${entry.sessionId.slice(0, 8)}`;
+}
+
+function formatRetainedMeasurement(entry: WorkoutSetOutboxEntry) {
+  if (entry.metricType === "duration") {
+    return `${entry.durationSeconds} sec`;
+  }
+  if (entry.metricType === "distance_duration") {
+    return entry.durationSeconds == null
+      ? `${entry.distanceKm} km`
+      : `${entry.distanceKm} km · ${entry.durationSeconds} sec`;
+  }
+  const repetitions = `${entry.reps} reps`;
+  if (entry.metricType === "assisted_reps") {
+    return `Assistance: ${entry.weight} ${entry.weightUnit} · ${repetitions}`;
+  }
+  return entry.weight == null
+    ? repetitions
+    : `${entry.weight} ${entry.weightUnit} × ${repetitions}`;
+}
+
+function serverSetCommand(entry: WorkoutSetOutboxEntry): LogSetInput {
+  const common = {
+    sessionExerciseId: entry.sessionExerciseId,
+    performedExerciseId: entry.performedExerciseId,
+    performedSemanticsVersion: entry.performedSemanticsVersion,
+    performedLoadType: entry.performedLoadType,
+    performedLoadSemantics: entry.performedLoadSemantics,
+    setNo: entry.setNo,
+    rpe: entry.rpe,
+    note: entry.note,
+    clientKey: entry.clientKey,
+    equipmentSnapshotId: entry.equipmentSnapshotId,
+    loadEntryMeaning: entry.loadEntryMeaning,
+    observedCompletedAtISO: entry.observedCompletedAtISO,
+  };
+  switch (entry.metricType) {
+    case "weight_reps":
+    case "reps":
+    case "assisted_reps":
+    case "duration":
+    case "distance_duration":
+      return {
+        ...common,
+        metricType: entry.metricType,
+        weight: entry.weight,
+        weightUnit: entry.weightUnit,
+        reps: entry.reps,
+        distanceKm: entry.distanceKm,
+        durationSeconds: entry.durationSeconds,
+      } as LogSetInput;
+  }
 }
 
 export async function syncNextEntry(
@@ -183,19 +235,7 @@ export async function syncNextEntry(
         retrying: entry.attemptCount > 0 || entry.lastAttemptAtISO != null,
       });
       try {
-        const result = await logSet({
-          sessionExerciseId: entry.sessionExerciseId,
-          setNo: entry.setNo,
-          weight: entry.weight,
-          weightUnit: entry.weightUnit,
-          reps: entry.reps,
-          rpe: entry.rpe,
-          note: entry.note,
-          clientKey: entry.clientKey,
-          equipmentSnapshotId: entry.equipmentSnapshotId,
-          loadEntryMeaning: entry.loadEntryMeaning,
-          observedCompletedAtISO: entry.observedCompletedAtISO,
-        });
+        const result = await logSet(serverSetCommand(entry));
         if (result.outcome !== "saved") {
           const reason =
             result.outcome === "workout_not_active"
@@ -212,16 +252,28 @@ export async function syncNextEntry(
                     ? "The equipment changed while this set was waiting. Check the set and try again."
                   : result.outcome === "invalid_observed_completion"
                     ? "This set's time falls outside the workout. Check it and try again."
+                  : result.outcome === "performed_evidence_conflict"
+                    ? result.reason === "exercise_changed"
+                      ? "The performed exercise changed while this set was waiting. Refresh and review it before trying again."
+                      : result.reason === "metric_changed"
+                        ? "How this exercise is measured changed while the set was waiting. Refresh and review it before trying again."
+                        : "The performed exercise meaning changed while this set was waiting. Refresh and review it before trying again."
                   : result.outcome === "unsupported_set_shape"
                     ? result.reason === "unsupported_metric"
-                      ? "This exercise is tracked by time or distance. Use that workout entry instead."
+                      ? "This observation belongs in the independent activity flow, not a workout set."
                       : result.reason === "metric_semantics_conflict"
-                        ? "We can't tell how assistance should be recorded for this exercise. Check the exercise and try again."
+                        ? "Repbook cannot represent every applicable value for this exercise yet. Nothing partial was saved."
                       : result.reason === "assisted_reps_requires_numeric_assistance"
                         ? "Enter the amount of assistance, or add it as a note instead."
-                        : result.reason === "reps_cannot_include_load"
+                      : result.reason === "reps_cannot_include_load"
                           ? "This version tracks reps only. Remove the weight or choose the weighted version."
-                          : "Enter a weight for this set, or choose the bodyweight version."
+                          : result.reason === "duration_requires_time"
+                            ? "Enter the performed duration for this set."
+                            : result.reason === "distance_duration_requires_distance"
+                              ? "Enter the performed distance for this set."
+                              : result.reason === "measurement_shape_conflict"
+                                ? "These performed values contradict the exercise measurement. Review the set and try again."
+                                : "Enter a weight for this set, or choose the bodyweight version."
                   : result.outcome === "not_found"
                     ? "We couldn't find this exercise in the workout."
                     : "We couldn't save these set details. Check them and try again.";
@@ -801,10 +853,7 @@ export function WorkoutSetOutboxTray({
                     </span>
                   </div>
                   <p className="mt-2 text-sm">
-                    {entry.weight != null && entry.weightUnit != null
-                      ? `${entry.weight} ${entry.weightUnit} × `
-                      : ""}
-                    {entry.reps} reps
+                    {formatRetainedMeasurement(entry)}
                     {formatRetainedEffort(entry.rpe)}
                   </p>
                   {entry.lastError && (

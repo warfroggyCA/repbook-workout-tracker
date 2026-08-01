@@ -44,6 +44,11 @@ import { ContextualNoteScope } from "@/components/contextual-notes/contextual-no
 import { AddWorkoutExercise } from "./add-workout-exercise";
 import { openContextualNoteComposer, type ContextualNoteScopeValue } from "@/lib/contextual-note-ui";
 import { createClientUuid } from "@/lib/client-uuid";
+import {
+  buildPerformedSetMeasurement,
+  resolveFutureSetWriterMetricType,
+  type PerformedLoadSemantics,
+} from "@/lib/set-metric-semantics";
 import type {
   SessionRunnerProps,
   SessionExerciseData,
@@ -826,6 +831,22 @@ export function SessionRunner(props: SessionRunnerProps) {
     restAfterSec = exercise.restSec,
   ) {
     if (!set.clientKey) return false;
+    const performed = buildPerformedSetMeasurement({
+      metricType: set.metricType ?? resolveFutureSetWriterMetricType({
+        metricType: exercise.metricType ?? "weight_reps",
+        loadSemantics: exercise.loadSemantics,
+      }),
+      loadSemantics: exercise.loadSemantics,
+      weight: set.weight,
+      weightUnit: set.weightUnit,
+      reps: set.reps,
+      distanceKm: set.distanceKm ?? null,
+      durationSeconds: set.durationSeconds ?? null,
+    });
+    if (!performed.ok) {
+      toast.error(performed.message);
+      return false;
+    }
     const setup = props.equipmentSetups[exercise.id];
     if (setup && !sessionEquipmentSetupMatchesExercise(exercise, setup)) {
       toast.error(
@@ -842,17 +863,19 @@ export function SessionRunner(props: SessionRunnerProps) {
       setup?.options.find((option) =>
         option.equipmentItemId === pendingEquipmentSelection.equipmentItemId &&
         option.attachmentItemId === pendingEquipmentSelection.attachmentItemId) ?? null;
-    const decision = resolveSetLoggingEquipment({
-      hasSetup: setup != null,
-      hasSnapshot: setup?.currentSnapshotId != null,
-      hasPendingSelection: pendingEquipmentSelection != null,
-      optionCount: setup?.options.length ?? 0,
-      effectiveLoadMeaning: setup
-        ? (pendingEquipmentOption?.loadEntryMeaning ??
-            equipmentLoadMeanings[exercise.id] ??
-            setup.loadEntryMeaning) ?? null
-        : "legacy_unknown",
-    });
+    const decision = performed.measurement.weight == null
+      ? ({ status: "log_displayed_unknown" } as const)
+      : resolveSetLoggingEquipment({
+          hasSetup: setup != null,
+          hasSnapshot: setup?.currentSnapshotId != null,
+          hasPendingSelection: pendingEquipmentSelection != null,
+          optionCount: setup?.options.length ?? 0,
+          effectiveLoadMeaning: setup
+            ? (pendingEquipmentOption?.loadEntryMeaning ??
+                equipmentLoadMeanings[exercise.id] ??
+                setup.loadEntryMeaning) ?? null
+            : "legacy_unknown",
+        });
     if (decision.status === "choose_setup") {
       toast.error("Choose the physical equipment setup before logging this set.");
       return false;
@@ -864,19 +887,24 @@ export function SessionRunner(props: SessionRunnerProps) {
     // A resolvable setup carries its snapshot/selection; an unresolvable one
     // records the displayed load honestly with no snapshot so the workout is
     // never trapped by missing equipment information.
-    const useSnapshot = decision.status === "log_with_snapshot";
+    const useSnapshot =
+      decision.status === "log_with_snapshot" &&
+      performed.measurement.weight != null;
     const observedCompletedAtISO = new Date().toISOString();
     const queued = await enqueueWorkoutSet({
       clientKey: set.clientKey,
       ownerId: props.ownerId,
       sessionId: props.sessionId,
       sessionExerciseId: exercise.id,
+      performedExerciseId: exercise.exerciseId,
+      performedSemanticsVersion: 1,
+      performedLoadType: exercise.loadType,
+      performedLoadSemantics:
+        exercise.loadSemantics as PerformedLoadSemantics,
       workoutName: props.templateName,
       exerciseName: exercise.name,
       setNo: set.setNo,
-      weight: set.weight,
-      weightUnit: set.weightUnit,
-      reps: set.reps,
+      ...performed.measurement,
       rpe: set.rpe,
       note: set.note,
       equipmentSnapshotId: useSnapshot ? setup?.currentSnapshotId ?? null : null,
@@ -1777,7 +1805,7 @@ export function SessionRunner(props: SessionRunnerProps) {
             </p>
           ) : null}
           <ExerciseCard
-            key={`${exercise.id}:${
+            key={`${exercise.id}:${exercise.exerciseId}:${exercise.metricType}:${exercise.loadType}:${exercise.loadSemantics}:${
               editSetRequest?.exerciseId === exercise.id
                 ? editSetRequest.token
                 : 0

@@ -20,9 +20,9 @@ import {
 import { activateProgramAtomically } from "@/services/program-activation";
 import {
   completeWorkoutSession,
-  logWorkoutSet,
   startWorkoutSession,
 } from "@/services/session-lifecycle";
+import { logWorkoutSet } from "./log-workout-set";
 import {
   BA_ROUTINE_CHANGE_BASELINE,
   BA_ROUTINE_CHANGE_SEMANTIC_DIGEST,

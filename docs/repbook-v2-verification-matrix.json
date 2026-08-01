@@ -5,8 +5,12 @@
   "repositoryRole": "public application source",
   "exactBaseCommit": "2c9ab1b9478502f1d08956a6c44dfb0850c8f168",
   "fixtureCatalogue": "tests/fixtures/v2/semantic-scenarios.json",
-  "currentPackage": "P02",
+  "currentPackage": "T01",
+  "currentPackageBaseCommit": "e700a7c04d0f14146e13924efe4fd3f04aad0c96",
   "productBehaviorImplementedByP02": false,
+  "implementedProductPackages": [
+    "T01"
+  ],
   "legend": {
     "R": "required primary proof",
     "C": "required consistency or round-trip proof",
@@ -57,39 +61,39 @@
       "proves": "must pass in the same package that implements this product meaning"
     },
     "T01-databaseService": {
-      "status": "future_activation",
+      "status": "current",
       "implementingPackage": "T01",
       "testPath": "tests/unit/v2-t01-recording-truth-db.test.ts",
       "command": "npx vitest run tests/unit/v2-t01-recording-truth-db.test.ts",
-      "proves": "must pass in the same package that implements this product meaning"
+      "proves": "five supported performed-measurement shapes retain exact measurement, unit, identity, provenance, and replay meaning without mutating prescription"
     },
     "T01-browser": {
-      "status": "future_activation",
+      "status": "current",
       "implementingPackage": "T01",
       "testPath": "tests/e2e/v2-t01-recording-truth.spec.ts",
       "command": "npx playwright test tests/e2e/v2-t01-recording-truth.spec.ts",
-      "proves": "must pass in the same package that implements this product meaning"
+      "proves": "duration and distance are entered, acknowledged, reloaded, and displayed without invented repetitions or load"
     },
     "T01-exportImport": {
-      "status": "future_activation",
+      "status": "current",
       "implementingPackage": "T01",
       "testPath": "tests/unit/v2-t01-recording-truth-portability.test.ts",
       "command": "npx vitest run tests/unit/v2-t01-recording-truth-portability.test.ts",
-      "proves": "must pass in the same package that implements this product meaning"
+      "proves": "History reporting, CSV, and canonical JSON preserve supported shapes, performed substitution identity, and explicit unknown legacy evidence"
     },
     "T01-restoreRollback": {
-      "status": "future_activation",
+      "status": "current",
       "implementingPackage": "T01",
       "testPath": "tests/unit/v2-t01-recording-truth-restore.test.ts",
       "command": "npx vitest run tests/unit/v2-t01-recording-truth-restore.test.ts",
-      "proves": "must pass in the same package that implements this product meaning"
+      "proves": "encrypted snapshot restore retains raw performed facts, recomputes projections, and does not invent missing legacy semantics"
     },
     "T01-adversarialPrivacy": {
-      "status": "future_activation",
+      "status": "current",
       "implementingPackage": "T01",
       "testPath": "tests/unit/v2-t01-recording-truth-adversarial.test.ts",
       "command": "npx vitest run tests/unit/v2-t01-recording-truth-adversarial.test.ts",
-      "proves": "must pass in the same package that implements this product meaning"
+      "proves": "contradictory, malformed, stale, unsupported, and retained older offline writes fail closed before evidence mutation"
     },
     "T02-databaseService": {
       "status": "future_activation",
@@ -1666,9 +1670,11 @@
   ],
   "gateRules": [
     "Every R and C cell resolves to one or more F01-F17 fixtures.",
-    "Current P02 proof is a pure semantic oracle and does not claim released product behavior.",
+    "P02 remains a pure semantic oracle and does not itself claim released product behavior.",
+    "T01 current status means its mapped implementation and activation evidence travel together; it does not imply release or deployment.",
     "Every future cell names one exact activation test path, command, and implementing package.",
     "A consequential package owns its required persistence, UI, portability, recovery, and adversarial activation evidence rather than deferring those obligations to a later audit.",
-    "No production owner data, production access, feature route, schema, migration, or deployment is part of P02."
+    "No production owner data, production access, feature route, schema, migration, or deployment is part of P02.",
+    "No production owner data, production access, schema migration, or deployment is part of T01."
   ]
 }

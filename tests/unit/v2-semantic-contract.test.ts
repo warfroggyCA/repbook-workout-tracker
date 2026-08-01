@@ -33,7 +33,9 @@ type Matrix = {
   contractVersion: string;
   exactBaseCommit: string;
   currentPackage: string;
+  currentPackageBaseCommit: string;
   productBehaviorImplementedByP02: boolean;
+  implementedProductPackages: string[];
   columns: string[];
   verifications: Record<string, Verification>;
   concerns: Array<{ concernId: string; cells: Record<string, Cell> }>;
@@ -117,8 +119,10 @@ describe("Repbook v2 ratified semantic contract", () => {
       schemaVersion: 1,
       contractVersion: V2_CONTRACT_VERSION,
       exactBaseCommit: "2c9ab1b9478502f1d08956a6c44dfb0850c8f168",
-      currentPackage: "P02",
+      currentPackage: "T01",
+      currentPackageBaseCommit: "e700a7c04d0f14146e13924efe4fd3f04aad0c96",
       productBehaviorImplementedByP02: false,
+      implementedProductPackages: ["T01"],
     });
     expect(matrix.columns).toEqual(columns);
     expect(matrix.concerns.map((concern) => concern.concernId)).toEqual(
@@ -153,11 +157,15 @@ describe("Repbook v2 ratified semantic contract", () => {
         expect(verification.command).toContain(verification.testPath);
         expect(verification.proves).not.toMatch(/\b(?:later|todo|tbd)\b/i);
         if (verification.status === "current") {
-          expect(verification.implementingPackage).toBe("P02");
+          expect(["P02", ...matrix.implementedProductPackages]).toContain(
+            verification.implementingPackage,
+          );
           expect(existsSync(resolve(root, verification.testPath))).toBe(true);
         } else {
           expect(verification.status).toBe("future_activation");
-          expect(verification.implementingPackage).not.toBe("P02");
+          expect(["P02", ...matrix.implementedProductPackages]).not.toContain(
+            verification.implementingPackage,
+          );
         }
       }
     }
