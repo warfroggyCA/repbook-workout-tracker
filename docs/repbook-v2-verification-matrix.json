@@ -33,301 +33,462 @@
       "implementingPackage": "T06",
       "testPath": "tests/unit/v2-t06-preview-start-db.test.ts",
       "command": "npx vitest run tests/unit/v2-t06-preview-start-db.test.ts",
-      "proves": "must pass when the named package implements this product layer"
+      "proves": "must pass in the same package that implements this product meaning"
     },
     "T06-browser": {
       "status": "future_activation",
       "implementingPackage": "T06",
       "testPath": "tests/e2e/v2-t06-preview-start.spec.ts",
       "command": "npx playwright test tests/e2e/v2-t06-preview-start.spec.ts",
-      "proves": "must pass when the named package implements this product layer"
+      "proves": "must pass in the same package that implements this product meaning"
     },
-    "A01-exportImport": {
+    "T06-exportImport": {
       "status": "future_activation",
-      "implementingPackage": "A01",
-      "testPath": "tests/unit/v2-a01-analysis-package-portability.test.ts",
-      "command": "npx vitest run tests/unit/v2-a01-analysis-package-portability.test.ts",
-      "proves": "must pass when the named package implements this product layer"
+      "implementingPackage": "T06",
+      "testPath": "tests/unit/v2-t06-preview-start-portability.test.ts",
+      "command": "npx vitest run tests/unit/v2-t06-preview-start-portability.test.ts",
+      "proves": "must pass in the same package that implements this product meaning"
     },
-    "R01-restoreRollback": {
+    "T06-restoreRollback": {
       "status": "future_activation",
-      "implementingPackage": "R01",
-      "testPath": "tests/unit/v2-r01-lifecycle-audit-restore.test.ts",
-      "command": "npx vitest run tests/unit/v2-r01-lifecycle-audit-restore.test.ts",
-      "proves": "must pass when the named package implements this product layer"
+      "implementingPackage": "T06",
+      "testPath": "tests/unit/v2-t06-preview-start-restore.test.ts",
+      "command": "npx vitest run tests/unit/v2-t06-preview-start-restore.test.ts",
+      "proves": "must pass in the same package that implements this product meaning"
     },
     "T01-databaseService": {
       "status": "future_activation",
       "implementingPackage": "T01",
       "testPath": "tests/unit/v2-t01-recording-truth-db.test.ts",
       "command": "npx vitest run tests/unit/v2-t01-recording-truth-db.test.ts",
-      "proves": "must pass when the named package implements this product layer"
+      "proves": "must pass in the same package that implements this product meaning"
     },
     "T01-browser": {
       "status": "future_activation",
       "implementingPackage": "T01",
       "testPath": "tests/e2e/v2-t01-recording-truth.spec.ts",
       "command": "npx playwright test tests/e2e/v2-t01-recording-truth.spec.ts",
-      "proves": "must pass when the named package implements this product layer"
+      "proves": "must pass in the same package that implements this product meaning"
+    },
+    "T01-exportImport": {
+      "status": "future_activation",
+      "implementingPackage": "T01",
+      "testPath": "tests/unit/v2-t01-recording-truth-portability.test.ts",
+      "command": "npx vitest run tests/unit/v2-t01-recording-truth-portability.test.ts",
+      "proves": "must pass in the same package that implements this product meaning"
+    },
+    "T01-restoreRollback": {
+      "status": "future_activation",
+      "implementingPackage": "T01",
+      "testPath": "tests/unit/v2-t01-recording-truth-restore.test.ts",
+      "command": "npx vitest run tests/unit/v2-t01-recording-truth-restore.test.ts",
+      "proves": "must pass in the same package that implements this product meaning"
     },
     "T01-adversarialPrivacy": {
       "status": "future_activation",
       "implementingPackage": "T01",
       "testPath": "tests/unit/v2-t01-recording-truth-adversarial.test.ts",
       "command": "npx vitest run tests/unit/v2-t01-recording-truth-adversarial.test.ts",
-      "proves": "must pass when the named package implements this product layer"
+      "proves": "must pass in the same package that implements this product meaning"
     },
     "T02-databaseService": {
       "status": "future_activation",
       "implementingPackage": "T02",
       "testPath": "tests/unit/v2-t02-acknowledgement-correction-db.test.ts",
       "command": "npx vitest run tests/unit/v2-t02-acknowledgement-correction-db.test.ts",
-      "proves": "must pass when the named package implements this product layer"
+      "proves": "must pass in the same package that implements this product meaning"
     },
     "T02-browser": {
       "status": "future_activation",
       "implementingPackage": "T02",
       "testPath": "tests/e2e/v2-t02-acknowledgement-correction.spec.ts",
       "command": "npx playwright test tests/e2e/v2-t02-acknowledgement-correction.spec.ts",
-      "proves": "must pass when the named package implements this product layer"
+      "proves": "must pass in the same package that implements this product meaning"
+    },
+    "T02-exportImport": {
+      "status": "future_activation",
+      "implementingPackage": "T02",
+      "testPath": "tests/unit/v2-t02-acknowledgement-correction-portability.test.ts",
+      "command": "npx vitest run tests/unit/v2-t02-acknowledgement-correction-portability.test.ts",
+      "proves": "must pass in the same package that implements this product meaning"
+    },
+    "T02-restoreRollback": {
+      "status": "future_activation",
+      "implementingPackage": "T02",
+      "testPath": "tests/unit/v2-t02-acknowledgement-correction-restore.test.ts",
+      "command": "npx vitest run tests/unit/v2-t02-acknowledgement-correction-restore.test.ts",
+      "proves": "must pass in the same package that implements this product meaning"
     },
     "T02-adversarialPrivacy": {
       "status": "future_activation",
       "implementingPackage": "T02",
       "testPath": "tests/unit/v2-t02-acknowledgement-correction-adversarial.test.ts",
       "command": "npx vitest run tests/unit/v2-t02-acknowledgement-correction-adversarial.test.ts",
-      "proves": "must pass when the named package implements this product layer"
+      "proves": "must pass in the same package that implements this product meaning"
     },
     "T03-databaseService": {
       "status": "future_activation",
       "implementingPackage": "T03",
       "testPath": "tests/unit/v2-t03-planned-order-db.test.ts",
       "command": "npx vitest run tests/unit/v2-t03-planned-order-db.test.ts",
-      "proves": "must pass when the named package implements this product layer"
+      "proves": "must pass in the same package that implements this product meaning"
     },
     "T03-browser": {
       "status": "future_activation",
       "implementingPackage": "T03",
       "testPath": "tests/e2e/v2-t03-planned-order.spec.ts",
       "command": "npx playwright test tests/e2e/v2-t03-planned-order.spec.ts",
-      "proves": "must pass when the named package implements this product layer"
+      "proves": "must pass in the same package that implements this product meaning"
+    },
+    "T03-exportImport": {
+      "status": "future_activation",
+      "implementingPackage": "T03",
+      "testPath": "tests/unit/v2-t03-planned-order-portability.test.ts",
+      "command": "npx vitest run tests/unit/v2-t03-planned-order-portability.test.ts",
+      "proves": "must pass in the same package that implements this product meaning"
+    },
+    "T03-restoreRollback": {
+      "status": "future_activation",
+      "implementingPackage": "T03",
+      "testPath": "tests/unit/v2-t03-planned-order-restore.test.ts",
+      "command": "npx vitest run tests/unit/v2-t03-planned-order-restore.test.ts",
+      "proves": "must pass in the same package that implements this product meaning"
     },
     "T04-databaseService": {
       "status": "future_activation",
       "implementingPackage": "T04",
       "testPath": "tests/unit/v2-t04-warmup-occurrences-db.test.ts",
       "command": "npx vitest run tests/unit/v2-t04-warmup-occurrences-db.test.ts",
-      "proves": "must pass when the named package implements this product layer"
+      "proves": "must pass in the same package that implements this product meaning"
     },
     "T04-browser": {
       "status": "future_activation",
       "implementingPackage": "T04",
       "testPath": "tests/e2e/v2-t04-warmup-occurrences.spec.ts",
       "command": "npx playwright test tests/e2e/v2-t04-warmup-occurrences.spec.ts",
-      "proves": "must pass when the named package implements this product layer"
+      "proves": "must pass in the same package that implements this product meaning"
+    },
+    "T04-exportImport": {
+      "status": "future_activation",
+      "implementingPackage": "T04",
+      "testPath": "tests/unit/v2-t04-warmup-occurrences-portability.test.ts",
+      "command": "npx vitest run tests/unit/v2-t04-warmup-occurrences-portability.test.ts",
+      "proves": "must pass in the same package that implements this product meaning"
+    },
+    "T04-restoreRollback": {
+      "status": "future_activation",
+      "implementingPackage": "T04",
+      "testPath": "tests/unit/v2-t04-warmup-occurrences-restore.test.ts",
+      "command": "npx vitest run tests/unit/v2-t04-warmup-occurrences-restore.test.ts",
+      "proves": "must pass in the same package that implements this product meaning"
     },
     "T05-databaseService": {
       "status": "future_activation",
       "implementingPackage": "T05",
       "testPath": "tests/unit/v2-t05-execution-semantics-db.test.ts",
       "command": "npx vitest run tests/unit/v2-t05-execution-semantics-db.test.ts",
-      "proves": "must pass when the named package implements this product layer"
+      "proves": "must pass in the same package that implements this product meaning"
     },
     "T05-browser": {
       "status": "future_activation",
       "implementingPackage": "T05",
       "testPath": "tests/e2e/v2-t05-execution-semantics.spec.ts",
       "command": "npx playwright test tests/e2e/v2-t05-execution-semantics.spec.ts",
-      "proves": "must pass when the named package implements this product layer"
+      "proves": "must pass in the same package that implements this product meaning"
+    },
+    "T05-exportImport": {
+      "status": "future_activation",
+      "implementingPackage": "T05",
+      "testPath": "tests/unit/v2-t05-execution-semantics-portability.test.ts",
+      "command": "npx vitest run tests/unit/v2-t05-execution-semantics-portability.test.ts",
+      "proves": "must pass in the same package that implements this product meaning"
+    },
+    "T05-restoreRollback": {
+      "status": "future_activation",
+      "implementingPackage": "T05",
+      "testPath": "tests/unit/v2-t05-execution-semantics-restore.test.ts",
+      "command": "npx vitest run tests/unit/v2-t05-execution-semantics-restore.test.ts",
+      "proves": "must pass in the same package that implements this product meaning"
     },
     "H03-databaseService": {
       "status": "future_activation",
       "implementingPackage": "H03",
       "testPath": "tests/unit/v2-h03-evidence-identity-db.test.ts",
       "command": "npx vitest run tests/unit/v2-h03-evidence-identity-db.test.ts",
-      "proves": "must pass when the named package implements this product layer"
+      "proves": "must pass in the same package that implements this product meaning"
     },
     "H03-browser": {
       "status": "future_activation",
       "implementingPackage": "H03",
       "testPath": "tests/e2e/v2-h03-evidence-identity.spec.ts",
       "command": "npx playwright test tests/e2e/v2-h03-evidence-identity.spec.ts",
-      "proves": "must pass when the named package implements this product layer"
+      "proves": "must pass in the same package that implements this product meaning"
+    },
+    "H03-exportImport": {
+      "status": "future_activation",
+      "implementingPackage": "H03",
+      "testPath": "tests/unit/v2-h03-evidence-identity-portability.test.ts",
+      "command": "npx vitest run tests/unit/v2-h03-evidence-identity-portability.test.ts",
+      "proves": "must pass in the same package that implements this product meaning"
+    },
+    "H03-restoreRollback": {
+      "status": "future_activation",
+      "implementingPackage": "H03",
+      "testPath": "tests/unit/v2-h03-evidence-identity-restore.test.ts",
+      "command": "npx vitest run tests/unit/v2-h03-evidence-identity-restore.test.ts",
+      "proves": "must pass in the same package that implements this product meaning"
     },
     "H03-adversarialPrivacy": {
       "status": "future_activation",
       "implementingPackage": "H03",
       "testPath": "tests/unit/v2-h03-evidence-identity-adversarial.test.ts",
       "command": "npx vitest run tests/unit/v2-h03-evidence-identity-adversarial.test.ts",
-      "proves": "must pass when the named package implements this product layer"
+      "proves": "must pass in the same package that implements this product meaning"
     },
     "H02-databaseService": {
       "status": "future_activation",
       "implementingPackage": "H02",
       "testPath": "tests/unit/v2-h02-cadence-targets-time-db.test.ts",
       "command": "npx vitest run tests/unit/v2-h02-cadence-targets-time-db.test.ts",
-      "proves": "must pass when the named package implements this product layer"
+      "proves": "must pass in the same package that implements this product meaning"
     },
     "H02-browser": {
       "status": "future_activation",
       "implementingPackage": "H02",
       "testPath": "tests/e2e/v2-h02-cadence-targets-time.spec.ts",
       "command": "npx playwright test tests/e2e/v2-h02-cadence-targets-time.spec.ts",
-      "proves": "must pass when the named package implements this product layer"
+      "proves": "must pass in the same package that implements this product meaning"
+    },
+    "H02-exportImport": {
+      "status": "future_activation",
+      "implementingPackage": "H02",
+      "testPath": "tests/unit/v2-h02-cadence-targets-time-portability.test.ts",
+      "command": "npx vitest run tests/unit/v2-h02-cadence-targets-time-portability.test.ts",
+      "proves": "must pass in the same package that implements this product meaning"
+    },
+    "H02-restoreRollback": {
+      "status": "future_activation",
+      "implementingPackage": "H02",
+      "testPath": "tests/unit/v2-h02-cadence-targets-time-restore.test.ts",
+      "command": "npx vitest run tests/unit/v2-h02-cadence-targets-time-restore.test.ts",
+      "proves": "must pass in the same package that implements this product meaning"
     },
     "H02-adversarialPrivacy": {
       "status": "future_activation",
       "implementingPackage": "H02",
       "testPath": "tests/unit/v2-h02-cadence-targets-time-adversarial.test.ts",
       "command": "npx vitest run tests/unit/v2-h02-cadence-targets-time-adversarial.test.ts",
-      "proves": "must pass when the named package implements this product layer"
+      "proves": "must pass in the same package that implements this product meaning"
     },
     "H05-databaseService": {
       "status": "future_activation",
       "implementingPackage": "H05",
       "testPath": "tests/unit/v2-h05-evidence-review-db.test.ts",
       "command": "npx vitest run tests/unit/v2-h05-evidence-review-db.test.ts",
-      "proves": "must pass when the named package implements this product layer"
+      "proves": "must pass in the same package that implements this product meaning"
     },
     "H05-browser": {
       "status": "future_activation",
       "implementingPackage": "H05",
       "testPath": "tests/e2e/v2-h05-evidence-review.spec.ts",
       "command": "npx playwright test tests/e2e/v2-h05-evidence-review.spec.ts",
-      "proves": "must pass when the named package implements this product layer"
+      "proves": "must pass in the same package that implements this product meaning"
+    },
+    "H05-exportImport": {
+      "status": "future_activation",
+      "implementingPackage": "H05",
+      "testPath": "tests/unit/v2-h05-evidence-review-portability.test.ts",
+      "command": "npx vitest run tests/unit/v2-h05-evidence-review-portability.test.ts",
+      "proves": "must pass in the same package that implements this product meaning"
+    },
+    "H05-restoreRollback": {
+      "status": "future_activation",
+      "implementingPackage": "H05",
+      "testPath": "tests/unit/v2-h05-evidence-review-restore.test.ts",
+      "command": "npx vitest run tests/unit/v2-h05-evidence-review-restore.test.ts",
+      "proves": "must pass in the same package that implements this product meaning"
     },
     "H05-adversarialPrivacy": {
       "status": "future_activation",
       "implementingPackage": "H05",
       "testPath": "tests/unit/v2-h05-evidence-review-adversarial.test.ts",
       "command": "npx vitest run tests/unit/v2-h05-evidence-review-adversarial.test.ts",
-      "proves": "must pass when the named package implements this product layer"
+      "proves": "must pass in the same package that implements this product meaning"
     },
     "A05-databaseService": {
       "status": "future_activation",
       "implementingPackage": "A05",
       "testPath": "tests/unit/v2-a05-review-bridge-db.test.ts",
       "command": "npx vitest run tests/unit/v2-a05-review-bridge-db.test.ts",
-      "proves": "must pass when the named package implements this product layer"
+      "proves": "must pass in the same package that implements this product meaning"
     },
     "A05-browser": {
       "status": "future_activation",
       "implementingPackage": "A05",
       "testPath": "tests/e2e/v2-a05-review-bridge.spec.ts",
       "command": "npx playwright test tests/e2e/v2-a05-review-bridge.spec.ts",
-      "proves": "must pass when the named package implements this product layer"
+      "proves": "must pass in the same package that implements this product meaning"
     },
     "A05-exportImport": {
       "status": "future_activation",
       "implementingPackage": "A05",
       "testPath": "tests/unit/v2-a05-review-bridge-portability.test.ts",
       "command": "npx vitest run tests/unit/v2-a05-review-bridge-portability.test.ts",
-      "proves": "must pass when the named package implements this product layer"
+      "proves": "must pass in the same package that implements this product meaning"
+    },
+    "A05-restoreRollback": {
+      "status": "future_activation",
+      "implementingPackage": "A05",
+      "testPath": "tests/unit/v2-a05-review-bridge-restore.test.ts",
+      "command": "npx vitest run tests/unit/v2-a05-review-bridge-restore.test.ts",
+      "proves": "must pass in the same package that implements this product meaning"
     },
     "A05-adversarialPrivacy": {
       "status": "future_activation",
       "implementingPackage": "A05",
       "testPath": "tests/unit/v2-a05-review-bridge-adversarial.test.ts",
       "command": "npx vitest run tests/unit/v2-a05-review-bridge-adversarial.test.ts",
-      "proves": "must pass when the named package implements this product layer"
+      "proves": "must pass in the same package that implements this product meaning"
     },
     "U02-databaseService": {
       "status": "future_activation",
       "implementingPackage": "U02",
       "testPath": "tests/unit/v2-u02-exception-context-db.test.ts",
       "command": "npx vitest run tests/unit/v2-u02-exception-context-db.test.ts",
-      "proves": "must pass when the named package implements this product layer"
+      "proves": "must pass in the same package that implements this product meaning"
     },
     "U02-browser": {
       "status": "future_activation",
       "implementingPackage": "U02",
       "testPath": "tests/e2e/v2-u02-exception-context.spec.ts",
       "command": "npx playwright test tests/e2e/v2-u02-exception-context.spec.ts",
-      "proves": "must pass when the named package implements this product layer"
+      "proves": "must pass in the same package that implements this product meaning"
+    },
+    "U02-exportImport": {
+      "status": "future_activation",
+      "implementingPackage": "U02",
+      "testPath": "tests/unit/v2-u02-exception-context-portability.test.ts",
+      "command": "npx vitest run tests/unit/v2-u02-exception-context-portability.test.ts",
+      "proves": "must pass in the same package that implements this product meaning"
+    },
+    "U02-restoreRollback": {
+      "status": "future_activation",
+      "implementingPackage": "U02",
+      "testPath": "tests/unit/v2-u02-exception-context-restore.test.ts",
+      "command": "npx vitest run tests/unit/v2-u02-exception-context-restore.test.ts",
+      "proves": "must pass in the same package that implements this product meaning"
     },
     "U02-adversarialPrivacy": {
       "status": "future_activation",
       "implementingPackage": "U02",
       "testPath": "tests/unit/v2-u02-exception-context-adversarial.test.ts",
       "command": "npx vitest run tests/unit/v2-u02-exception-context-adversarial.test.ts",
-      "proves": "must pass when the named package implements this product layer"
+      "proves": "must pass in the same package that implements this product meaning"
     },
     "R01-databaseService": {
       "status": "future_activation",
       "implementingPackage": "R01",
       "testPath": "tests/unit/v2-r01-lifecycle-audit-db.test.ts",
       "command": "npx vitest run tests/unit/v2-r01-lifecycle-audit-db.test.ts",
-      "proves": "must pass when the named package implements this product layer"
+      "proves": "must pass in the same package that implements this product meaning"
     },
     "R01-browser": {
       "status": "future_activation",
       "implementingPackage": "R01",
       "testPath": "tests/e2e/v2-r01-lifecycle-audit.spec.ts",
       "command": "npx playwright test tests/e2e/v2-r01-lifecycle-audit.spec.ts",
-      "proves": "must pass when the named package implements this product layer"
+      "proves": "must pass in the same package that implements this product meaning"
+    },
+    "R01-exportImport": {
+      "status": "future_activation",
+      "implementingPackage": "R01",
+      "testPath": "tests/unit/v2-r01-lifecycle-audit-portability.test.ts",
+      "command": "npx vitest run tests/unit/v2-r01-lifecycle-audit-portability.test.ts",
+      "proves": "must pass in the same package that implements this product meaning"
+    },
+    "R01-restoreRollback": {
+      "status": "future_activation",
+      "implementingPackage": "R01",
+      "testPath": "tests/unit/v2-r01-lifecycle-audit-restore.test.ts",
+      "command": "npx vitest run tests/unit/v2-r01-lifecycle-audit-restore.test.ts",
+      "proves": "must pass in the same package that implements this product meaning"
     },
     "R01-adversarialPrivacy": {
       "status": "future_activation",
       "implementingPackage": "R01",
       "testPath": "tests/unit/v2-r01-lifecycle-audit-adversarial.test.ts",
       "command": "npx vitest run tests/unit/v2-r01-lifecycle-audit-adversarial.test.ts",
-      "proves": "must pass when the named package implements this product layer"
+      "proves": "must pass in the same package that implements this product meaning"
     },
     "A04-databaseService": {
       "status": "future_activation",
       "implementingPackage": "A04",
       "testPath": "tests/unit/v2-a04-ai-import-validation-db.test.ts",
       "command": "npx vitest run tests/unit/v2-a04-ai-import-validation-db.test.ts",
-      "proves": "must pass when the named package implements this product layer"
+      "proves": "must pass in the same package that implements this product meaning"
     },
     "A04-browser": {
       "status": "future_activation",
       "implementingPackage": "A04",
       "testPath": "tests/e2e/v2-a04-ai-import-validation.spec.ts",
       "command": "npx playwright test tests/e2e/v2-a04-ai-import-validation.spec.ts",
-      "proves": "must pass when the named package implements this product layer"
+      "proves": "must pass in the same package that implements this product meaning"
     },
     "A04-exportImport": {
       "status": "future_activation",
       "implementingPackage": "A04",
       "testPath": "tests/unit/v2-a04-ai-import-validation-portability.test.ts",
       "command": "npx vitest run tests/unit/v2-a04-ai-import-validation-portability.test.ts",
-      "proves": "must pass when the named package implements this product layer"
+      "proves": "must pass in the same package that implements this product meaning"
+    },
+    "A04-restoreRollback": {
+      "status": "future_activation",
+      "implementingPackage": "A04",
+      "testPath": "tests/unit/v2-a04-ai-import-validation-restore.test.ts",
+      "command": "npx vitest run tests/unit/v2-a04-ai-import-validation-restore.test.ts",
+      "proves": "must pass in the same package that implements this product meaning"
     },
     "A04-adversarialPrivacy": {
       "status": "future_activation",
       "implementingPackage": "A04",
       "testPath": "tests/unit/v2-a04-ai-import-validation-adversarial.test.ts",
       "command": "npx vitest run tests/unit/v2-a04-ai-import-validation-adversarial.test.ts",
-      "proves": "must pass when the named package implements this product layer"
+      "proves": "must pass in the same package that implements this product meaning"
     },
     "D02-databaseService": {
       "status": "future_activation",
       "implementingPackage": "D02",
       "testPath": "tests/unit/v2-d02-support-bundle-db.test.ts",
       "command": "npx vitest run tests/unit/v2-d02-support-bundle-db.test.ts",
-      "proves": "must pass when the named package implements this product layer"
+      "proves": "must pass in the same package that implements this product meaning"
     },
     "D02-browser": {
       "status": "future_activation",
       "implementingPackage": "D02",
       "testPath": "tests/e2e/v2-d02-support-bundle.spec.ts",
       "command": "npx playwright test tests/e2e/v2-d02-support-bundle.spec.ts",
-      "proves": "must pass when the named package implements this product layer"
+      "proves": "must pass in the same package that implements this product meaning"
     },
     "D02-exportImport": {
       "status": "future_activation",
       "implementingPackage": "D02",
       "testPath": "tests/unit/v2-d02-support-bundle-portability.test.ts",
       "command": "npx vitest run tests/unit/v2-d02-support-bundle-portability.test.ts",
-      "proves": "must pass when the named package implements this product layer"
+      "proves": "must pass in the same package that implements this product meaning"
+    },
+    "D02-restoreRollback": {
+      "status": "future_activation",
+      "implementingPackage": "D02",
+      "testPath": "tests/unit/v2-d02-support-bundle-restore.test.ts",
+      "command": "npx vitest run tests/unit/v2-d02-support-bundle-restore.test.ts",
+      "proves": "must pass in the same package that implements this product meaning"
     },
     "D02-adversarialPrivacy": {
       "status": "future_activation",
       "implementingPackage": "D02",
       "testPath": "tests/unit/v2-d02-support-bundle-adversarial.test.ts",
       "command": "npx vitest run tests/unit/v2-d02-support-bundle-adversarial.test.ts",
-      "proves": "must pass when the named package implements this product layer"
+      "proves": "must pass in the same package that implements this product meaning"
     }
   },
   "concerns": [
@@ -361,14 +522,14 @@
           "fixtures": [
             "F11"
           ],
-          "verificationId": "A01-exportImport"
+          "verificationId": "T06-exportImport"
         },
         "restoreRollback": {
           "level": "C",
           "fixtures": [
             "F11"
           ],
-          "verificationId": "R01-restoreRollback"
+          "verificationId": "T06-restoreRollback"
         },
         "adversarialPrivacy": {
           "level": "—"
@@ -413,7 +574,7 @@
             "F02",
             "F08"
           ],
-          "verificationId": "A01-exportImport"
+          "verificationId": "T01-exportImport"
         },
         "restoreRollback": {
           "level": "C",
@@ -422,7 +583,7 @@
             "F02",
             "F08"
           ],
-          "verificationId": "R01-restoreRollback"
+          "verificationId": "T01-restoreRollback"
         },
         "adversarialPrivacy": {
           "level": "C",
@@ -469,7 +630,7 @@
             "F01",
             "F17"
           ],
-          "verificationId": "A01-exportImport"
+          "verificationId": "T02-exportImport"
         },
         "restoreRollback": {
           "level": "R",
@@ -477,7 +638,7 @@
             "F01",
             "F17"
           ],
-          "verificationId": "R01-restoreRollback"
+          "verificationId": "T02-restoreRollback"
         },
         "adversarialPrivacy": {
           "level": "C",
@@ -530,7 +691,7 @@
             "F05",
             "F17"
           ],
-          "verificationId": "R01-restoreRollback"
+          "verificationId": "T02-restoreRollback"
         },
         "adversarialPrivacy": {
           "level": "C",
@@ -573,14 +734,14 @@
           "fixtures": [
             "F03"
           ],
-          "verificationId": "A01-exportImport"
+          "verificationId": "T03-exportImport"
         },
         "restoreRollback": {
           "level": "C",
           "fixtures": [
             "F03"
           ],
-          "verificationId": "R01-restoreRollback"
+          "verificationId": "T03-restoreRollback"
         },
         "adversarialPrivacy": {
           "level": "—"
@@ -617,14 +778,14 @@
           "fixtures": [
             "F04"
           ],
-          "verificationId": "A01-exportImport"
+          "verificationId": "T04-exportImport"
         },
         "restoreRollback": {
           "level": "C",
           "fixtures": [
             "F04"
           ],
-          "verificationId": "R01-restoreRollback"
+          "verificationId": "T04-restoreRollback"
         },
         "adversarialPrivacy": {
           "level": "—"
@@ -665,7 +826,7 @@
             "F03",
             "F04"
           ],
-          "verificationId": "A01-exportImport"
+          "verificationId": "T05-exportImport"
         },
         "restoreRollback": {
           "level": "C",
@@ -673,7 +834,7 @@
             "F03",
             "F04"
           ],
-          "verificationId": "R01-restoreRollback"
+          "verificationId": "T05-restoreRollback"
         },
         "adversarialPrivacy": {
           "level": "—"
@@ -718,7 +879,7 @@
             "F14",
             "F17"
           ],
-          "verificationId": "A01-exportImport"
+          "verificationId": "T02-exportImport"
         },
         "restoreRollback": {
           "level": "R",
@@ -727,7 +888,7 @@
             "F14",
             "F17"
           ],
-          "verificationId": "R01-restoreRollback"
+          "verificationId": "T02-restoreRollback"
         },
         "adversarialPrivacy": {
           "level": "C",
@@ -778,7 +939,7 @@
             "F07",
             "F15"
           ],
-          "verificationId": "A01-exportImport"
+          "verificationId": "H03-exportImport"
         },
         "restoreRollback": {
           "level": "R",
@@ -787,7 +948,7 @@
             "F07",
             "F15"
           ],
-          "verificationId": "R01-restoreRollback"
+          "verificationId": "H03-restoreRollback"
         },
         "adversarialPrivacy": {
           "level": "C",
@@ -838,7 +999,7 @@
             "F02",
             "F09"
           ],
-          "verificationId": "A01-exportImport"
+          "verificationId": "T01-exportImport"
         },
         "restoreRollback": {
           "level": "C",
@@ -847,7 +1008,7 @@
             "F02",
             "F09"
           ],
-          "verificationId": "R01-restoreRollback"
+          "verificationId": "T01-restoreRollback"
         },
         "adversarialPrivacy": {
           "level": "C",
@@ -890,14 +1051,14 @@
           "fixtures": [
             "F10"
           ],
-          "verificationId": "A01-exportImport"
+          "verificationId": "H02-exportImport"
         },
         "restoreRollback": {
           "level": "R",
           "fixtures": [
             "F10"
           ],
-          "verificationId": "R01-restoreRollback"
+          "verificationId": "H02-restoreRollback"
         },
         "adversarialPrivacy": {
           "level": "C",
@@ -946,7 +1107,7 @@
             "F08",
             "F13"
           ],
-          "verificationId": "A01-exportImport"
+          "verificationId": "H03-exportImport"
         },
         "restoreRollback": {
           "level": "R",
@@ -955,7 +1116,7 @@
             "F08",
             "F13"
           ],
-          "verificationId": "R01-restoreRollback"
+          "verificationId": "H03-restoreRollback"
         },
         "adversarialPrivacy": {
           "level": "C",
@@ -1006,7 +1167,7 @@
             "F08",
             "F17"
           ],
-          "verificationId": "A01-exportImport"
+          "verificationId": "H03-exportImport"
         },
         "restoreRollback": {
           "level": "C",
@@ -1015,7 +1176,7 @@
             "F08",
             "F17"
           ],
-          "verificationId": "R01-restoreRollback"
+          "verificationId": "H03-restoreRollback"
         },
         "adversarialPrivacy": {
           "level": "C",
@@ -1066,7 +1227,7 @@
             "F14",
             "F17"
           ],
-          "verificationId": "A01-exportImport"
+          "verificationId": "H05-exportImport"
         },
         "restoreRollback": {
           "level": "R",
@@ -1075,7 +1236,7 @@
             "F14",
             "F17"
           ],
-          "verificationId": "R01-restoreRollback"
+          "verificationId": "H05-restoreRollback"
         },
         "adversarialPrivacy": {
           "level": "C",
@@ -1135,7 +1296,7 @@
             "F12",
             "F13"
           ],
-          "verificationId": "R01-restoreRollback"
+          "verificationId": "A05-restoreRollback"
         },
         "adversarialPrivacy": {
           "level": "R",
@@ -1182,7 +1343,7 @@
             "F01",
             "F16"
           ],
-          "verificationId": "A01-exportImport"
+          "verificationId": "U02-exportImport"
         },
         "restoreRollback": {
           "level": "C",
@@ -1190,7 +1351,7 @@
             "F01",
             "F16"
           ],
-          "verificationId": "R01-restoreRollback"
+          "verificationId": "U02-restoreRollback"
         },
         "adversarialPrivacy": {
           "level": "C",
@@ -1244,7 +1405,7 @@
             "F15",
             "F16"
           ],
-          "verificationId": "A01-exportImport"
+          "verificationId": "R01-exportImport"
         },
         "restoreRollback": {
           "level": "R",
@@ -1310,7 +1471,7 @@
             "F13",
             "F15"
           ],
-          "verificationId": "R01-restoreRollback"
+          "verificationId": "A04-restoreRollback"
         },
         "adversarialPrivacy": {
           "level": "R",
@@ -1359,7 +1520,7 @@
           "fixtures": [
             "F16"
           ],
-          "verificationId": "R01-restoreRollback"
+          "verificationId": "D02-restoreRollback"
         },
         "adversarialPrivacy": {
           "level": "R",
@@ -1428,7 +1589,7 @@
             "F16",
             "F17"
           ],
-          "verificationId": "A01-exportImport"
+          "verificationId": "R01-exportImport"
         },
         "restoreRollback": {
           "level": "R",
@@ -1507,6 +1668,7 @@
     "Every R and C cell resolves to one or more F01-F17 fixtures.",
     "Current P02 proof is a pure semantic oracle and does not claim released product behavior.",
     "Every future cell names one exact activation test path, command, and implementing package.",
+    "A consequential package owns its required persistence, UI, portability, recovery, and adversarial activation evidence rather than deferring those obligations to a later audit.",
     "No production owner data, production access, feature route, schema, migration, or deployment is part of P02."
   ]
 }
