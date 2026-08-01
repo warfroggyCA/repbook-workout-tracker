@@ -46,7 +46,9 @@ async function expectSaved(page: Page) {
 function isExpectedOptimizedRequestCancellation(failure: string) {
   if (!failure.endsWith(" — net::ERR_ABORTED")) return false;
   return (
-    /^POST http:\/\/[^/]+\/(?:sign-in|today|session\/[0-9a-f-]+) — /.test(failure) ||
+    /^POST http:\/\/[^/]+\/(?:sign-in|today|session\/[0-9a-f-]+)(?:\?[^ ]*)? — /.test(
+      failure,
+    ) ||
     /^(?:GET|POST) http:\/\/[^/]+\/api\/program\/draft — /.test(failure) ||
     (/^GET http:\/\/[^/]+\//.test(failure) && failure.includes("_rsc="))
   );

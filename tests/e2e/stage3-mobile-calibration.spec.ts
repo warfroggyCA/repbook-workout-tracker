@@ -61,7 +61,7 @@ function boxBottom(box: { y: number; height: number } | null) {
 function isExpectedFrameworkCancellation(failure: string) {
   if (!failure.endsWith(" — net::ERR_ABORTED")) return false;
   return (
-    /^POST http:\/\/[^/]+\/(?:sign-in|settings|today|session\/[0-9a-f-]+) — /.test(
+    /^POST http:\/\/[^/]+\/(?:sign-in|settings|today|session\/[0-9a-f-]+)(?:\?[^ ]*)? — /.test(
       failure,
     ) ||
     /^GET http:\/\/[^/]+\/api\/program\/draft — /.test(failure) ||
