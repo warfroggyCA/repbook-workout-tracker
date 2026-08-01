@@ -68,6 +68,15 @@ conclusions.
 
 ## Active-workout orientation
 
+Today keeps choosing a Program day separate from starting a workout. The
+expected next day retains the direct **Train as planned** action. Choosing a
+different current Program day opens a URL-backed preview of its planned
+exercises; opening, reloading, leaving, returning, or following an invalid or
+stale preview link creates no session. Only the preview's separate **Start
+workout** action enters the authenticated, owner-scoped session lifecycle.
+Neither path rewrites the Program, and the existing one-active-workout and
+replay-safe start protections remain authoritative.
+
 The active workout derives both **Now** and **Next** from the same ordered
 occurrence ledger used to save results. A pending warm-up remains the current
 action until its completion or skip is durably acknowledged; a saving or failed

@@ -492,6 +492,12 @@ async function verifyDecisiveToday({
   await expect(reopenedDayC).toBeVisible();
   workoutMayBeActive = true;
   await reopenedDayC.click();
+  const startReopenedDayC = page.getByRole("button", {
+    name: "Start workout",
+    exact: true,
+  });
+  await waitForHydratedServerAction(startReopenedDayC);
+  await startReopenedDayC.click();
   await expect(page).toHaveURL(/\/session\/[0-9a-f-]+$/);
   await expect(
     page.getByRole("heading", { name: "Day C — Bench", exact: true })

@@ -64,9 +64,11 @@ async function startProgramDay(
   } else {
     const alternatives = page.getByTestId("alternate-program-days");
     await alternatives.locator("summary").click();
-    const start = alternatives.getByRole("button", {
+    const preview = alternatives.getByRole("button", {
       name: new RegExp(dayName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")),
     });
+    await preview.click();
+    const start = page.getByRole("button", { name: "Start workout", exact: true });
     await waitForHydratedServerAction(start);
     await start.click();
   }
