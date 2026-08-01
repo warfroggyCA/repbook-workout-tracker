@@ -2484,10 +2484,19 @@ test("reviews and imports a complete Hevy CSV workout into History", async ({
     exact: true,
   });
   await waitForReactHandler(reviewFile);
+  // The import completion route opens the owner's current calendar month.
+  // Keep this synthetic workout in that month so the test does not expire at
+  // a calendar rollover while retaining a deterministic performed time.
+  const importDate = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/Toronto",
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  }).format(new Date());
   const csv = [
     "title,start_time,end_time,description,exercise_title,superset_id,exercise_notes,set_index,set_type,weight_lbs,reps,distance_km,duration_seconds,rpe",
-    '"E2E Hevy Workout","Jul 12, 2026, 6:00 PM","Jul 12, 2026, 7:00 PM","Browser-imported session","Barbell Bench Press","","Controlled rep",0,"normal",135,8,"","",8',
-    '"E2E Hevy Workout","Jul 12, 2026, 6:00 PM","Jul 12, 2026, 7:00 PM","Browser-imported session","Barbell Bench Press","","Controlled rep",1,"normal",145,6,"","",9',
+    `"E2E Hevy Workout","${importDate}, 12:00 AM","${importDate}, 12:30 AM","Browser-imported session","Barbell Bench Press","","Controlled rep",0,"normal",135,8,"","",8`,
+    `"E2E Hevy Workout","${importDate}, 12:00 AM","${importDate}, 12:30 AM","Browser-imported session","Barbell Bench Press","","Controlled rep",1,"normal",145,6,"","",9`,
   ].join("\n");
   await page.getByLabel("Hevy CSV export").setInputFiles({
     name: "hevy-e2e.csv",
