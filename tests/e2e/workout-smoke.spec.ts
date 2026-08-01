@@ -2487,12 +2487,20 @@ test("reviews and imports a complete Hevy CSV workout into History", async ({
   // The import completion route opens the owner's current calendar month.
   // Keep this synthetic workout in that month so the test does not expire at
   // a calendar rollover while retaining a deterministic performed time.
+  const now = new Date();
   const importDate = new Intl.DateTimeFormat("en-US", {
     timeZone: "America/Toronto",
     month: "short",
     day: "numeric",
     year: "numeric",
-  }).format(new Date());
+  }).format(now);
+  const calendarDateLabel = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/Toronto",
+    weekday: "long",
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+  }).format(now);
   const csv = [
     "title,start_time,end_time,description,exercise_title,superset_id,exercise_notes,set_index,set_type,weight_lbs,reps,distance_km,duration_seconds,rpe",
     `"E2E Hevy Workout","${importDate}, 12:00 AM","${importDate}, 12:30 AM","Browser-imported session","Barbell Bench Press","","Controlled rep",0,"normal",135,8,"","",8`,
@@ -2524,9 +2532,11 @@ test("reviews and imports a complete Hevy CSV workout into History", async ({
   const directImportedWorkout = page.getByRole("link", {
     name: /Open E2E Hevy Workout/,
   });
-  const importDayChooser = page
-    .getByRole("button", { name: /Choose from \d+ records/ })
-    .filter({ hasText: "E2E Hevy Workout" });
+  const importDayChooser = page.getByRole("button", {
+    name: new RegExp(
+      `^${calendarDateLabel}: Choose from \\d+ records$`,
+    ),
+  });
   await expect
     .poll(
       async () =>
