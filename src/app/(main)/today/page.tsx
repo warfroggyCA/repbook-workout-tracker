@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import {
   AlertCircle,
+  ArrowLeft,
   CheckCircle2,
   ChevronDown,
   ChevronRight,
@@ -131,7 +132,12 @@ function occurrencePrescription(
 export default async function TodayPage({
   searchParams,
 }: {
-  searchParams: Promise<{ program?: string; start?: string; compiler?: string }>;
+  searchParams: Promise<{
+    program?: string;
+    start?: string;
+    compiler?: string;
+    preview?: string;
+  }>;
 }) {
   const query = await searchParams;
   const user = await getCurrentUser();
@@ -142,7 +148,15 @@ export default async function TodayPage({
   if (!today) redirect("/setup");
 
   const next = today.nextTemplate!;
-  const lastDone = today.lastDoneByTemplateId[next.template.id];
+  const previewTemplate = query.preview
+    ? (today.allTemplates.find(
+        ({ template }) => template.id === query.preview,
+      ) ?? null)
+    : null;
+  const isAlternatePreview =
+    previewTemplate != null && previewTemplate.template.id !== next.template.id;
+  const selectedTemplate = isAlternatePreview ? previewTemplate : next;
+  const lastDone = today.lastDoneByTemplateId[selectedTemplate.template.id];
   const gap = today.daysSinceLastSession;
   const alternateTemplates = today.allTemplates.filter(
     (template) => template.template.id !== next.template.id
@@ -172,6 +186,17 @@ export default async function TodayPage({
           <AlertTitle>A workout is already active</AlertTitle>
           <AlertDescription>
             The reviewed proposal was not started. Resume or finish the active workout first.
+          </AlertDescription>
+        </Alert>
+      )}
+
+      {query.preview && !previewTemplate && (
+        <Alert>
+          <AlertCircle className="size-4" />
+          <AlertTitle>That Program day is no longer available</AlertTitle>
+          <AlertDescription>
+            Your current Program is shown below. Choose another day again if
+            you still want a different workout.
           </AlertDescription>
         </Alert>
       )}
@@ -283,13 +308,20 @@ export default async function TodayPage({
             >
               <CardHeader className="gap-1">
                 <p className="text-xs font-medium uppercase tracking-[0.12em] text-primary">
-                  Next in your Program
+                  {isAlternatePreview
+                    ? "Workout preview"
+                    : "Next in your Program"}
                 </p>
                 <h2 className="text-xl font-semibold leading-tight sm:text-2xl">
-                  {next.template.name}
+                  {selectedTemplate.template.name}
                 </h2>
               </CardHeader>
               <CardContent className="flex flex-col gap-3">
+                {isAlternatePreview && (
+                  <p className="text-sm text-muted-foreground">
+                    Nothing starts until you choose Start workout.
+                  </p>
+                )}
                 {gap != null && gap >= 7 && (
                   <p className="rounded-lg bg-muted px-3 py-2.5 text-sm text-muted-foreground">
                     {gap} days since your last workout. Start around 10% lighter
@@ -297,32 +329,50 @@ export default async function TodayPage({
                   </p>
                 )}
                 <WorkoutStartForm
-                  templateId={next.template.id}
+                  templateId={selectedTemplate.template.id}
                   fallbackTimezone={user.profile.timezone}
-                  retryLabel={next.template.name}
+                  retryLabel={selectedTemplate.template.name}
                   buttonClassName="h-auto min-h-12 w-full whitespace-normal py-3 text-center text-base leading-tight"
                 >
-                  <Play className="size-4" /> Train as planned
+                  <Play className="size-4" />
+                  {isAlternatePreview ? "Start workout" : "Train as planned"}
                 </WorkoutStartForm>
+                {isAlternatePreview && (
+                  <Button
+                    render={<Link href="/today" />}
+                    nativeButton={false}
+                    variant="outline"
+                    className="min-h-11 w-full"
+                  >
+                    <ArrowLeft className="size-4" /> Back to today&apos;s plan
+                  </Button>
+                )}
                 <ProgramDecisionStatus count={pendingRecs.length} />
                 <div
                   data-testid="today-supporting-context"
                   className="space-y-1"
                 >
                   <CardDescription>
-                    {today.programName} · {next.slots.length} exercises
+                    {today.programName} · {selectedTemplate.slots.length}{" "}
+                    exercises
                   </CardDescription>
-                  <p className="text-xs leading-relaxed">
-                    <span className="font-medium">Why this day:</span>{" "}
-                    {whyThisProgramDay(today)}
-                  </p>
+                  {!isAlternatePreview && (
+                    <p className="text-xs leading-relaxed">
+                      <span className="font-medium">Why this day:</span>{" "}
+                      {whyThisProgramDay(today)}
+                    </p>
+                  )}
                 </div>
                 <details
+                  open={isAlternatePreview}
                   data-testid="planned-exercise-preview"
                   className="border-t pt-2"
                 >
                   <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 rounded-lg px-1 text-sm font-medium outline-none focus-visible:ring-3 focus-visible:ring-ring/50">
-                    Preview planned exercises ({next.slots.length})
+                    {isAlternatePreview
+                      ? "Planned exercises"
+                      : "Preview planned exercises"}{" "}
+                    ({selectedTemplate.slots.length})
                     <ChevronDown className="size-4 shrink-0 text-muted-foreground" />
                   </summary>
                   {lastDone && (
@@ -332,37 +382,39 @@ export default async function TodayPage({
                     </p>
                   )}
                   <ul className="mt-1 flex flex-col divide-y">
-                    {next.slots.map(({ slot, exercise, prescription }) => (
-                      <li
-                        key={slot.id}
-                        className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-x-3 gap-y-1 py-3 sm:flex"
-                      >
-                        <ExerciseFamilyIcon
-                          family={exercise.family}
-                          exerciseName={exercise.name}
-                          movementPattern={exercise.movementPattern}
-                          className="size-11 rounded-full bg-muted/65 text-muted-foreground"
-                        />
-                        <span className="min-w-0 flex-1 truncate font-medium">
-                          {exercise.name}
-                        </span>
-                        {prescription && (
-                          <span className="col-start-2 text-sm tabular-nums text-muted-foreground sm:ml-auto sm:shrink-0">
-                            {prescription.sets} × {prescription.repRangeMin}–
-                            {prescription.repRangeMax}
-                            {prescription.targetLoad != null
-                              ? ` · ${prescription.targetLoad} ${prescription.targetLoadUnit}`
-                              : ""}
+                    {selectedTemplate.slots.map(
+                      ({ slot, exercise, prescription }) => (
+                        <li
+                          key={slot.id}
+                          className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-x-3 gap-y-1 py-3 sm:flex"
+                        >
+                          <ExerciseFamilyIcon
+                            family={exercise.family}
+                            exerciseName={exercise.name}
+                            movementPattern={exercise.movementPattern}
+                            className="size-11 rounded-full bg-muted/65 text-muted-foreground"
+                          />
+                          <span className="min-w-0 flex-1 truncate font-medium">
+                            {exercise.name}
                           </span>
-                        )}
-                      </li>
-                    ))}
+                          {prescription && (
+                            <span className="col-start-2 text-sm tabular-nums text-muted-foreground sm:ml-auto sm:shrink-0">
+                              {prescription.sets} × {prescription.repRangeMin}–
+                              {prescription.repRangeMax}
+                              {prescription.targetLoad != null
+                                ? ` · ${prescription.targetLoad} ${prescription.targetLoadUnit}`
+                                : ""}
+                            </span>
+                          )}
+                        </li>
+                      ),
+                    )}
                   </ul>
                 </details>
               </CardContent>
             </Card>
 
-            {alternateTemplates.length > 0 && (
+            {!isAlternatePreview && alternateTemplates.length > 0 && (
               <details
                 data-testid="alternate-program-days"
                 className="rounded-2xl border bg-card shadow-[var(--shadow-soft)]"
@@ -378,13 +430,19 @@ export default async function TodayPage({
                 </summary>
                 <div className="grid gap-2 border-t p-3 sm:grid-cols-2">
                   {alternateTemplates.map((template) => (
-                    <WorkoutStartForm
+                    <Button
                       key={template.template.id}
-                      templateId={template.template.id}
-                      fallbackTimezone={user.profile.timezone}
-                      retryLabel={template.template.name}
+                      render={
+                        <Link
+                          href={{
+                            pathname: "/today",
+                            query: { preview: template.template.id },
+                          }}
+                        />
+                      }
+                      nativeButton={false}
                       variant="outline"
-                      buttonClassName="h-auto min-h-12 w-full justify-between bg-card px-3 py-2 text-left"
+                      className="h-auto min-h-12 w-full justify-between bg-card px-3 py-2 text-left"
                     >
                       <span className="min-w-0">
                         <span className="block truncate">
@@ -400,7 +458,7 @@ export default async function TodayPage({
                         </span>
                       </span>
                       <ChevronRight className="size-4" />
-                    </WorkoutStartForm>
+                    </Button>
                   ))}
                 </div>
               </details>

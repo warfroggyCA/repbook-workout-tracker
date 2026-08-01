@@ -46,7 +46,8 @@ async function signIn(page: Page) {
 async function startWorkout(page: Page) {
   const alternateDays = page.getByTestId("alternate-program-days");
   await alternateDays.locator("summary").click();
-  const start = alternateDays.getByRole("button", { name: /Day A — Squat/ });
+  await alternateDays.getByRole("button", { name: /Day A — Squat/ }).click();
+  const start = page.getByRole("button", { name: "Start workout", exact: true });
   await waitForHydratedServerAction(start);
   await start.click();
   await expect(page).toHaveURL(/\/session\/[0-9a-f-]+$/);

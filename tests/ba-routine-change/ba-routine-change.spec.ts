@@ -411,8 +411,10 @@ test("traces the exact BA routine change through proposal, publication, Today, a
     } else {
       await page.getByTestId("alternate-program-days").locator("summary").click();
       const alternate = page.getByRole("button", { name: new RegExp(`^Day ${dayIndex + 1}`) });
-      await waitForHydratedServerAction(alternate);
       await alternate.click();
+      const start = page.getByRole("button", { name: "Start workout", exact: true });
+      await waitForHydratedServerAction(start);
+      await start.click();
     }
     await expect(page).toHaveURL(/\/session\/[0-9a-f-]+$/);
     await expect(page.getByRole("heading", { level: 1, name: `Day ${dayIndex + 1}`, exact: true })).toBeVisible();

@@ -220,8 +220,13 @@ test("classifies all sixteen prior workout observations", async ({
 
     const alternateDays = page.getByTestId("alternate-program-days");
     await alternateDays.locator("summary").click();
-    const startDayB = alternateDays.getByRole("button", {
+    const previewDayB = alternateDays.getByRole("button", {
       name: /Day B — Hinge and recovery/,
+    });
+    await previewDayB.click();
+    const startDayB = page.getByRole("button", {
+      name: "Start workout",
+      exact: true,
     });
     await waitForHydratedServerAction(startDayB);
     await startDayB.click();

@@ -50,7 +50,12 @@ async function startAlternate(page: Page, dayName: string) {
   await page.goto("/today");
   const alternatives = page.getByTestId("alternate-program-days");
   await alternatives.locator("summary").click();
-  const button = alternatives.getByRole("button", { name: dayName });
+  const preview = alternatives.getByRole("button", {
+    name: new RegExp(dayName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")),
+  });
+  await preview.click();
+  await expect(page).toHaveURL(/\/today\?preview=[0-9a-f-]+$/);
+  const button = page.getByRole("button", { name: "Start workout", exact: true });
   await waitForHydratedServerAction(button);
   await button.click();
   await expect(page).toHaveURL(/\/session\/[0-9a-f-]+$/);
@@ -88,6 +93,74 @@ async function clearInjectedFailure(button: Locator) {
     element.closest("form")?.querySelector('input[name="phase0StartFailure"]')?.remove();
   });
 }
+
+test("previews another Program day without starting it", async ({ page }) => {
+  await signIn(page);
+
+  const alternateDay = PRODUCTION_WORKOUT_START_PROGRAM.days[1].name;
+  const alternatives = page.getByTestId("alternate-program-days");
+  await alternatives.locator("summary").click();
+  await alternatives.getByText(alternateDay, { exact: true }).click();
+
+  await expect(page).toHaveURL(/\/today\?preview=[0-9a-f-]+$/);
+  await expect(
+    page.getByRole("heading", { level: 2, name: alternateDay, exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByText("Nothing starts until you choose Start workout.", {
+      exact: true,
+    }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Start workout", exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Resume workout", exact: true }),
+  ).toHaveCount(0);
+
+  await page.reload();
+  await expect(page).toHaveURL(/\/today\?preview=[0-9a-f-]+$/);
+  await expect(
+    page.getByRole("button", { name: "Resume workout", exact: true }),
+  ).toHaveCount(0);
+
+  await page.goto("/today?preview=00000000-0000-4000-8000-000000000000");
+  await expect(
+    page.getByRole("alert").filter({
+      hasText: "That Program day is no longer available",
+    }),
+  ).toContainText("Your current Program is shown below.");
+  await expect(
+    page.getByRole("button", { name: "Train as planned", exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Resume workout", exact: true }),
+  ).toHaveCount(0);
+
+  await page.goBack();
+  await page
+    .getByRole("button", { name: "Back to today's plan", exact: true })
+    .click();
+  await expect(page).toHaveURL(/\/today$/);
+  await expect(
+    page.getByRole("button", { name: "Train as planned", exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Resume workout", exact: true }),
+  ).toHaveCount(0);
+
+  const reopenedAlternatives = page.getByTestId("alternate-program-days");
+  await reopenedAlternatives.locator("summary").click();
+  await reopenedAlternatives.getByText(alternateDay, { exact: true }).click();
+  const start = page.getByRole("button", { name: "Start workout", exact: true });
+  await waitForHydratedServerAction(start);
+  await start.click();
+  await expect(page).toHaveURL(/\/session\/[0-9a-f-]+$/);
+  await expect(
+    page.getByRole("heading", { level: 1, name: alternateDay, exact: true }),
+  ).toBeVisible();
+  await discardActive(page);
+});
 
 test("starts every Program day and recovers truthfully from creation and render failures", async ({
   page,
@@ -134,13 +207,23 @@ test("starts every Program day and recovers truthfully from creation and render 
   for (const candidate of [page, secondPage]) {
     const alternatives = candidate.getByTestId("alternate-program-days");
     await alternatives.locator("summary").click();
+    const preview = alternatives.getByRole("button", {
+      name: new RegExp(
+        PRODUCTION_WORKOUT_START_PROGRAM.days[1].name.replace(
+          /[.*+?^${}()|[\]\\]/g,
+          "\\$&",
+        ),
+      ),
+    });
+    await preview.click();
+    await expect(candidate).toHaveURL(/\/today\?preview=[0-9a-f-]+$/);
     await waitForHydratedServerAction(
-      alternatives.getByRole("button", { name: PRODUCTION_WORKOUT_START_PROGRAM.days[1].name }),
+      candidate.getByRole("button", { name: "Start workout", exact: true }),
     );
   }
   const submitRenderedDay = (targetPage: Page) =>
     targetPage
-      .getByRole("button", { name: PRODUCTION_WORKOUT_START_PROGRAM.days[1].name })
+      .getByRole("button", { name: "Start workout", exact: true })
       .evaluate((button) => {
         const form = button.closest("form");
         if (!(form instanceof HTMLFormElement)) {
@@ -218,19 +301,27 @@ test("starts every Program day and recovers truthfully from creation and render 
   currentStep = "incomplete-creation-recovery";
   const alternatives = page.getByTestId("alternate-program-days");
   await alternatives.locator("summary").click();
-  const dayC = alternatives.getByRole("button", {
-    name: PRODUCTION_WORKOUT_START_PROGRAM.days[2].name,
+  const dayCPreview = alternatives.getByRole("button", {
+    name: new RegExp(
+      PRODUCTION_WORKOUT_START_PROGRAM.days[2].name.replace(
+        /[.*+?^${}()|[\]\\]/g,
+        "\\$&",
+      ),
+    ),
   });
+  await dayCPreview.click();
+  const dayC = page.getByRole("button", { name: "Start workout", exact: true });
   await injectFailure(dayC, "incomplete");
   await dayC.click();
-  await expect(page).toHaveURL(/\/today$/);
-  await expect(alternatives).toHaveAttribute("open", "");
-  await expect(alternatives.getByText(/nothing was kept/i)).toBeVisible();
+  await expect(page).toHaveURL(/\/today\?preview=[0-9a-f-]+$/);
+  await expect(
+    page.getByTestId("today-decision").getByText(/nothing was kept/i),
+  ).toBeVisible();
   await page.screenshot({
     path: testInfo.outputPath("incomplete-creation-inline-retry.png"),
     fullPage: true,
   });
-  const retry = alternatives.getByRole("button", {
+  const retry = page.getByTestId("today-decision").getByRole("button", {
     name: `Try again — ${PRODUCTION_WORKOUT_START_PROGRAM.days[2].name}`,
     exact: true,
   });

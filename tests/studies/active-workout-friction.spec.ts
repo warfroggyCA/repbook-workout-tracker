@@ -137,15 +137,18 @@ async function signIn(page: Page) {
 async function startWorkout(page: Page) {
   await page.goto("/today");
   if (/\/sign-in$/.test(page.url())) await signIn(page);
-  const dayA = page.getByRole("button", { name: /Day A — Squat/ }).first();
-  if (!(await dayA.isVisible())) {
+  if ((await page.getByRole("heading", { name: /Day A — Squat/ }).count()) === 0) {
     const alternateDays = page.getByTestId("alternate-program-days");
     if ((await alternateDays.count()) === 1) {
       await alternateDays.locator("summary").click();
+      await alternateDays.getByRole("button", { name: /Day A — Squat/ }).click();
     }
   }
-  if (await dayA.isVisible()) await dayA.click();
-  else await page.getByRole("button", { name: "Train as planned", exact: true }).click();
+  const start = page.getByRole("button", {
+    name: /^(?:Train as planned|Start workout)$/,
+  });
+  await waitForHydratedServerAction(start);
+  await start.click();
   await expect(page).toHaveURL(/\/session\/[0-9a-f-]+$/);
   await expect(page.locator('[id^="exercise-"]').first()).toBeVisible();
 }
