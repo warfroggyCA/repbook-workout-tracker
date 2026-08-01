@@ -33,6 +33,7 @@ const requiredDocuments = [
   "docs/DEVELOPMENT.md",
   "docs/SECURITY_AND_PRIVACY.md",
   "docs/PROVENANCE.md",
+  "docs/repbook-v2-verification-matrix.json",
 ];
 const forbiddenPaths = [
   ".claude",
