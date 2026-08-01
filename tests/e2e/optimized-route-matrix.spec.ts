@@ -1,10 +1,13 @@
 import { expect, test } from "@playwright/test";
+import packageMetadata from "../../package.json";
 import {
   installLocalAuthSession,
   policyNonce,
   visitRenderedDocument,
 } from "../helpers/browser-security";
 import { OPTIMIZED_ROUTE_ACTIVITY_ID } from "../helpers/optimized-route-fixture-values";
+
+const productVersionLabel = `Repbook v${packageMetadata.version}`;
 
 test("renders every optimized page family under its request nonce", async ({
   page,
@@ -64,7 +67,7 @@ test("renders every optimized page family under its request nonce", async ({
     );
     if (route === "/settings") {
       await expect(
-        page.getByText("Repbook v1.1.0", { exact: true }),
+        page.getByText(productVersionLabel, { exact: true }),
       ).toBeVisible();
     }
   }

@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import packageMetadata from "../../package.json";
 import {
   waitForHydratedReactHandler,
   waitForHydratedServerAction,
@@ -29,6 +30,7 @@ const holdReason =
   "Barbell Bench Press is on hold because a 4/10 pain flag was saved in the last 14 days. It comes off hold 14 days after the latest 3/10 or higher flag. A workout with no pain entry doesn't shorten that time.";
 const holdExplanation =
   "This notice doesn't change your Program. The current load stays in place until the evidence window above clears.";
+const productVersionLabel = `Repbook v${packageMetadata.version}`;
 
 async function signInAtExtraLargeText(page: Page) {
   await page.goto("/sign-in");
@@ -43,7 +45,7 @@ async function signInAtExtraLargeText(page: Page) {
 
   await page.goto("/settings");
   await expect(
-    page.getByText("Repbook v1.1.0", { exact: true }),
+    page.getByText(productVersionLabel, { exact: true }),
   ).toBeVisible();
   const extraLarge = page.getByRole("radio", { name: /Extra large 145%/ });
   if ((await extraLarge.getAttribute("aria-checked")) !== "true") {
