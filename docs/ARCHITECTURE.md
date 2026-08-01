@@ -139,3 +139,13 @@ The private operations repository owns real release chronology, production
 maintenance scheduling, response metadata, retained recovery checkpoints, and
 any evidence derived from real workouts. Public code must not depend on those
 private records to build or test.
+
+## Repbook v2 verification foundation
+
+The ratified v2 semantic contract is represented here by synthetic fixtures at
+`tests/fixtures/v2/semantic-scenarios.json`, a pure test-only oracle, and the
+machine-readable matrix at `docs/repbook-v2-verification-matrix.json`. These
+artifacts define expected meaning and exact future activation-test ownership;
+they do not claim that v2 product behavior is already implemented. A future
+package may change runtime or persistence only after its mapped activation
+tests exist and the earlier package gates have passed.
