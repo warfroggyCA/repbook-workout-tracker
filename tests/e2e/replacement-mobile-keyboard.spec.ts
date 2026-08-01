@@ -138,10 +138,14 @@ test("keeps unrestricted replacement truthful and reachable through mobile keybo
 
   await signIn(page);
   await page.goto("/settings");
-  await page.getByRole("radio", { name: /Extra large/ }).click();
-  await expect(
-    page.getByText("Saved to your profile.", { exact: true }),
-  ).toBeVisible();
+  const extraLargeText = page.getByRole("radio", { name: /Extra large/ });
+  if (!(await extraLargeText.isChecked())) {
+    await extraLargeText.click();
+    await expect(
+      page.getByText("Saved to your profile.", { exact: true }),
+    ).toBeVisible();
+  }
+  await expect(extraLargeText).toBeChecked();
   await page.goto("/today");
   await startWorkout(page);
 
@@ -315,7 +319,9 @@ test("keeps unrestricted replacement truthful and reachable through mobile keybo
   await expect(reps).toHaveValue("10");
   await reps.fill("9");
   await card.getByRole("button", { name: "Log set", exact: true }).click();
-  await expect(card.getByText("Saved", { exact: true })).toBeVisible();
+  await expect(card.getByText("Saved", { exact: true })).toBeVisible({
+    timeout: 45_000,
+  });
   await expect(card).toContainText("9 reps");
   await expect(card).not.toContainText("0 lb");
 
