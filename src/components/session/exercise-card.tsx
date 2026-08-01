@@ -88,6 +88,7 @@ import {
 import {
   buildPerformedSetMeasurement,
   isSupportedSetWriterSemanticDefinition,
+  PERFORMED_METRIC_TYPES,
   resolveFutureSetWriterMetricType,
   type PerformedMetricType,
 } from "@/lib/set-metric-semantics";
@@ -137,6 +138,14 @@ function formatPerformedDuration(durationSeconds: number) {
   return minutes > 0
     ? `${minutes}:${String(seconds).padStart(2, "0")}`
     : `${seconds} sec`;
+}
+
+function performedMetricTypeForLivePatch(
+  metricType: string,
+): PerformedMetricType | null {
+  return PERFORMED_METRIC_TYPES.includes(metricType as PerformedMetricType)
+    ? (metricType as PerformedMetricType)
+    : null;
 }
 
 const ALTERNATIVE_REASON_LABELS: Record<ExerciseAlternativeReason, string> = {
@@ -1375,12 +1384,23 @@ export function ExerciseCard({
                         onAdjustIntentChange(open ? "swap" : null)
                       }
                       onDone={(candidate, reason) => {
+                        const metricType = performedMetricTypeForLivePatch(
+                          candidate.metricType,
+                        );
+                        if (!metricType) {
+                          toast.error(
+                            "This exercise measurement is not supported in the live workout.",
+                          );
+                          router.refresh();
+                          return;
+                        }
                         onAdjustIntentChange(null);
                         onPatch({
                           exerciseId: candidate.id,
                           name: candidate.name,
                           family: candidate.family,
                           loadType: candidate.loadType,
+                          metricType,
                           loadSemantics: candidate.loadSemantics,
                           movementPattern: candidate.movementPattern,
                           cautionBodyParts: candidate.cautionBodyParts,
@@ -1431,11 +1451,22 @@ export function ExerciseCard({
                         onAdjustIntentChange(open ? "replace" : null)
                       }
                       onReconcile={(candidate, state, plannedExerciseName) => {
+                        const metricType = performedMetricTypeForLivePatch(
+                          candidate.metricType,
+                        );
+                        if (!metricType) {
+                          toast.error(
+                            "This exercise measurement is not supported in the live workout.",
+                          );
+                          router.refresh();
+                          return;
+                        }
                         onPatch({
                           exerciseId: candidate.id,
                           name: candidate.name,
                           family: candidate.family,
                           loadType: candidate.loadType,
+                          metricType,
                           loadSemantics: candidate.loadSemantics,
                           movementPattern: candidate.movementPattern,
                           cautionBodyParts: candidate.cautionBodyParts,
@@ -1478,12 +1509,23 @@ export function ExerciseCard({
                         router.refresh();
                       }}
                       onDone={(candidate, reason) => {
+                        const metricType = performedMetricTypeForLivePatch(
+                          candidate.metricType,
+                        );
+                        if (!metricType) {
+                          toast.error(
+                            "This exercise measurement is not supported in the live workout.",
+                          );
+                          router.refresh();
+                          return;
+                        }
                         onAdjustIntentChange(null);
                         onPatch({
                           exerciseId: candidate.id,
                           name: candidate.name,
                           family: candidate.family,
                           loadType: candidate.loadType,
+                          metricType,
                           loadSemantics: candidate.loadSemantics,
                           movementPattern: candidate.movementPattern,
                           cautionBodyParts: candidate.cautionBodyParts,
@@ -1529,11 +1571,22 @@ export function ExerciseCard({
                             toast.error(restored.message);
                             return;
                           }
+                          const metricType = performedMetricTypeForLivePatch(
+                            restored.exercise.metricType,
+                          );
+                          if (!metricType) {
+                            toast.error(
+                              "This exercise measurement is not supported in the live workout.",
+                            );
+                            router.refresh();
+                            return;
+                          }
                           onPatch({
                             exerciseId: restored.exercise.id,
                             name: restored.exercise.name,
                             family: restored.exercise.family,
                             loadType: restored.exercise.loadType,
+                            metricType,
                             loadSemantics: restored.exercise.loadSemantics,
                             movementPattern: restored.exercise.movementPattern,
                             cautionBodyParts: restored.exercise.cautionBodyParts,

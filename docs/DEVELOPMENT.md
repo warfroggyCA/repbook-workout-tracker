@@ -33,7 +33,7 @@ focused gates:
 ```bash
 npx vitest run tests/unit/v2-semantic-contract.test.ts
 npx vitest run tests/unit/v2-t01-recording-truth-db.test.ts tests/unit/v2-t01-recording-truth-portability.test.ts tests/unit/v2-t01-recording-truth-restore.test.ts tests/unit/v2-t01-recording-truth-adversarial.test.ts
-npx playwright test tests/e2e/v2-t01-recording-truth.spec.ts
+npm run test:e2e:v2-t01
 ```
 
 The semantic test validates all synthetic F01-F17 scenarios and every required

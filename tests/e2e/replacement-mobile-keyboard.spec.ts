@@ -243,10 +243,22 @@ test("keeps unrestricted replacement truthful and reachable through mobile keybo
     .getByRole("button", { name: "All exercises", exact: true })
     .click();
   await inspectSearchResult(picker, "Jump Rope");
-  await expect(picker).toContainText("This variant cannot be selected here.");
-  await expect(picker).toContainText(
-    "This workout runner does not yet support this exercise type truthfully.",
-  );
+  await expect(picker.getByText("Reps", { exact: true })).toBeVisible();
+  await expect(
+    picker.getByRole("button", {
+      name: "Replace in this workout",
+      exact: true,
+    }),
+  ).toBeVisible();
+  await expect(
+    picker.getByText("This variant cannot be selected here.", { exact: true }),
+  ).toHaveCount(0);
+  await expect(
+    picker.getByText(
+      "This workout runner does not yet support this exercise type truthfully.",
+      { exact: true },
+    ),
+  ).toHaveCount(0);
   await picker.getByRole("button", { name: "Back", exact: true }).click();
 
   await inspectSearchResult(picker, "Cable Face Pull");
@@ -300,7 +312,8 @@ test("keeps unrestricted replacement truthful and reachable through mobile keybo
   await expect(card).toContainText("Reason: Variety");
   await expect(card).not.toContainText("Last time:");
   await expect(weight).toHaveCount(0);
-  await expect(reps).toHaveValue("9");
+  await expect(reps).toHaveValue("10");
+  await reps.fill("9");
   await card.getByRole("button", { name: "Log set", exact: true }).click();
   await expect(card.getByText("Saved", { exact: true })).toBeVisible();
   await expect(card).toContainText("9 reps");

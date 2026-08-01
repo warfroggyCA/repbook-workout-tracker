@@ -71,8 +71,8 @@
       "status": "current",
       "implementingPackage": "T01",
       "testPath": "tests/e2e/v2-t01-recording-truth.spec.ts",
-      "command": "npx playwright test tests/e2e/v2-t01-recording-truth.spec.ts",
-      "proves": "duration and distance are entered, acknowledged, reloaded, and displayed without invented repetitions or load"
+      "command": "npx playwright test --config=playwright.v2-t01.config.ts tests/e2e/v2-t01-recording-truth.spec.ts",
+      "proves": "desktop Chromium and mobile WebKit enter, acknowledge, reload, and display duration and distance without invented repetitions or load in a dedicated fresh browser fixture"
     },
     "T01-exportImport": {
       "status": "current",

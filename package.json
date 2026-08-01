@@ -24,6 +24,7 @@
     "test:e2e:current-action": "playwright test --config=playwright.stage3.config.ts && playwright test --config=playwright.stage3-mobile.config.ts",
     "test:e2e:superset-prep": "playwright test --config=playwright.superset-prep.config.ts",
     "test:e2e:active-workout-add-exercise": "playwright test --config=playwright.active-workout-add-exercise.config.ts",
+    "test:e2e:v2-t01": "playwright test --config=playwright.v2-t01.config.ts",
     "study:physical-device-server": "E2E_HOSTNAME=0.0.0.0 E2E_PORT=3128 node scripts/run-e2e-server.mjs --production",
     "test:e2e:ba:chrome": "env BA_BROWSER=chromium playwright test --config=playwright.ba-workout.config.ts",
     "test:e2e:ba:webkit": "env BA_BROWSER=webkit playwright test --config=playwright.ba-workout.config.ts",
