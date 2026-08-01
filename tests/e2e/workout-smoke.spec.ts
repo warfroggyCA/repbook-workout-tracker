@@ -1829,6 +1829,7 @@ test("keeps every active-workout route reachable with one scroll surface", async
     exact: true,
   });
   await expect(addSet).toBeEnabled();
+  await waitForReactHandler(addSet);
   await addSet.focus();
   await expect(addSet).toBeFocused();
   await addSet.evaluate((button) => {

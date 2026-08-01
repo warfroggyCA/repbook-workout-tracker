@@ -319,15 +319,30 @@ test("keeps unrestricted replacement truthful and reachable through mobile keybo
   await expect(reps).toHaveValue("10");
   await reps.fill("9");
   await card.getByRole("button", { name: "Log set", exact: true }).click();
-  await expect(card.getByText("Saved", { exact: true })).toBeVisible({
-    timeout: 45_000,
-  });
   await expect(card).toContainText("9 reps");
   await expect(card).not.toContainText("0 lb");
+
+  await expect
+    .poll(
+      () =>
+        page.evaluate(() => {
+          const raw = localStorage.getItem(
+            "workout-tracker:workout-set-outbox:v1",
+          );
+          if (!raw) return 0;
+          const parsed = JSON.parse(raw) as { entries?: unknown[] };
+          return parsed.entries?.length ?? 0;
+        }),
+      { timeout: 45_000 },
+    )
+    .toBe(0);
 
   await page.reload();
   await expect(page.getByTestId("current-exercise-card")).toContainText(
     "Bodyweight Bulgarian Split Squat",
+  );
+  await expect(page.getByTestId("current-exercise-card")).toContainText(
+    "9 reps",
   );
   await expect(page.getByTestId("current-exercise-card")).not.toContainText(
     "Last time:",

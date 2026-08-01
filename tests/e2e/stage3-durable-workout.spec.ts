@@ -204,23 +204,25 @@ test("publishes and preserves durable warm-up and grouped workout outcomes", asy
   await context.setOffline(false);
   intentionallyOffline = false;
   await page.reload({ waitUntil: "domcontentloaded" });
+  await expect
+    .poll(
+      () =>
+        page.evaluate(
+          () =>
+            localStorage.getItem(
+              "workout-tracker:occurrence-mutation-outbox:v1",
+            ) ?? "",
+        ),
+      { timeout: 45_000 },
+    )
+    .not.toContain("Offline warm-up note survives reconnect.");
+  await page.reload({ waitUntil: "domcontentloaded" });
   const reloadedWarmupRow = page
     .locator("#workout-warmup li")
     .filter({ hasText: "Activation ramp" });
   await expect(reloadedWarmupRow).toContainText(
     "Note: Offline warm-up note survives reconnect.",
   );
-  await expect
-    .poll(() =>
-      page.evaluate(
-        () =>
-          localStorage.getItem(
-            "workout-tracker:occurrence-mutation-outbox:v1",
-          ) ?? "",
-      ),
-    )
-    .not.toContain("Offline warm-up note survives reconnect.");
-
   await reloadedWarmupRow.getByRole("button", { name: "Skip", exact: true }).click();
   const warmupSkip = page.getByRole("dialog", { name: "Skip Activation ramp?" });
   await warmupSkip.getByLabel("Reason").selectOption("fatigue");
