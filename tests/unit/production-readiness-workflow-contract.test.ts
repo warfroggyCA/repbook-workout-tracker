@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { describe, expect, it } from "vitest";
+import playwrightConfig from "../../playwright.config";
 
 const require = createRequire(import.meta.url);
 const { load } = require("js-yaml") as {
@@ -90,6 +91,15 @@ describe("production readiness workflow contract", () => {
     );
     expect(browserGate?.run).toContain(
       '"T02 acknowledgement and correction:${BROWSER_V2_T02}"',
+    );
+  });
+
+  it("keeps dedicated v2 browser gates out of the stateful smoke journey", () => {
+    expect(playwrightConfig.testIgnore).toEqual(
+      expect.arrayContaining([
+        "v2-t01-recording-truth.spec.ts",
+        "v2-t02-acknowledgement-correction.spec.ts",
+      ]),
     );
   });
 });
