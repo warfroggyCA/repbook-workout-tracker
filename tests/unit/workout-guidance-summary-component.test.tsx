@@ -63,7 +63,12 @@ describe("WorkoutGuidanceSummary", () => {
     expect(html).toContain(
       "Single-Arm Supported Dumbbell Romanian Deadlift, set 2",
     );
-    expect(html).toContain("min-w-0 break-words leading-snug");
+    expect(html).toContain(
+      "flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1 text-sm",
+    );
+    expect(html).toContain(
+      "min-w-0 flex-1 basis-48 break-words leading-snug",
+    );
     expect(html).toContain("Long Resistance Band With Door Anchor");
     expect(html).toContain("Prepare:</span>");
     expect(html).not.toContain("Use now:</span>");
