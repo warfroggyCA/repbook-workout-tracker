@@ -19,6 +19,7 @@ export type LoggedSet = {
   durationSeconds?: number | null;
   rpe: number | null;
   note: string | null;
+  correctionCount?: number;
   saveState?: "pending" | "saving" | "retrying" | "failed" | "saved";
   lastError?: string | null;
 };
@@ -138,6 +139,7 @@ export type SessionExerciseGroupData = {
 export type SessionRunnerProps = {
   ownerId: string;
   sessionId: string;
+  historyRevision: number;
   templateName: string;
   dayWarmupNotes: string | null;
   occurrences: SessionOccurrenceData[];

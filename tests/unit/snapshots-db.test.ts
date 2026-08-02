@@ -65,6 +65,7 @@ import {
 } from "@/services/snapshot-restore";
 import { evaluateApplicationIntegrity } from "@/services/recovery-health";
 import { createContextualNote, editContextualNote } from "@/services/contextual-notes";
+import { updateSetWithVersion } from "@/services/record-versions";
 
 describe("verified off-database snapshots", () => {
   let client: PGlite;
@@ -1881,6 +1882,18 @@ describe("verified off-database snapshots", () => {
   });
 
   it("restores full and history scopes from both current and previous canonical formats", async () => {
+    await db.insert(sessionOccurrences).values({
+      sessionId,
+      sessionExerciseId,
+      kind: "working_set",
+      origin: "imported",
+      sequenceIdx: 0,
+      kindOrdinal: 0,
+      plannedExerciseId: exerciseId,
+      outcome: "completed",
+      completedSetId: setId,
+      resolvedAt: new Date("2026-07-01T15:00:00.000Z"),
+    });
     const source = await captureUserSnapshot(
       db,
       userId,
@@ -1977,10 +1990,53 @@ describe("verified off-database snapshots", () => {
           verifiedAt: new Date("2026-07-13T12:01:00.000Z"),
         });
 
-        await db
-          .update(completedSets)
-          .set({ weight: 999 })
-          .where(eq(completedSets.id, setId));
+        const [currentSet, currentSession] = await Promise.all([
+          db.query.completedSets.findFirst({
+            where: eq(completedSets.id, setId),
+          }),
+          db.query.workoutSessions.findFirst({
+            where: eq(workoutSessions.id, sessionId),
+          }),
+        ]);
+        if (!currentSet || !currentSession) {
+          throw new Error("Cross-version restore fixture disappeared.");
+        }
+        const correction = await updateSetWithVersion(
+          db,
+          userId,
+          setId,
+          {
+            weight: 999,
+            weightUnit: currentSet.weightUnit,
+            reps: currentSet.reps,
+            distanceKm: currentSet.distanceKm,
+            durationSeconds: currentSet.durationSeconds,
+            rpe: currentSet.rpe,
+            note: currentSet.note,
+          },
+          "set.completed_correction",
+          {
+            expected: {
+              weight: currentSet.weight,
+              weightUnit: currentSet.weightUnit,
+              reps: currentSet.reps,
+              distanceKm: currentSet.distanceKm,
+              durationSeconds: currentSet.durationSeconds,
+              rpe: currentSet.rpe,
+              note: currentSet.note,
+            },
+            expectedHistoryRevision: currentSession.historyRevision,
+            clientMutationId: crypto.randomUUID(),
+            correctionEvidence: {
+              category: "measurement_entry",
+              reasonNote: "Synthetic cross-version restore divergence",
+              source: "workout_history",
+            },
+          },
+        );
+        if (!correction.ok) {
+          throw new Error(`Could not prepare restore divergence: ${correction.reason}`);
+        }
         await db
           .update(healthActivities)
           .set({ title: "Changed before cross-version restore" })

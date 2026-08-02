@@ -208,6 +208,9 @@ export function SessionRunner(props: SessionRunnerProps) {
   const [exercises, setExercises] = useState<SessionExerciseData[]>(
     props.exercises
   );
+  const [historyRevision, setHistoryRevision] = useState(
+    props.historyRevision,
+  );
   const [occurrences, setOccurrences] = useState<SessionOccurrenceData[]>(
     props.occurrences,
   );
@@ -235,11 +238,6 @@ export function SessionRunner(props: SessionRunnerProps) {
   const [adjustment, setAdjustment] = useState<{
     exerciseId: string;
     intent: ExerciseAdjustmentIntent;
-  } | null>(null);
-  const [editSetRequest, setEditSetRequest] = useState<{
-    exerciseId: string;
-    setId: string;
-    token: number;
   } | null>(null);
   const [occurrenceAction, setOccurrenceAction] = useState<{
     occurrenceId: string;
@@ -643,9 +641,12 @@ export function SessionRunner(props: SessionRunnerProps) {
             weight: detail.entry.weight,
             weightUnit: detail.entry.weightUnit,
             reps: detail.entry.reps,
-            metricType: exercise.metricType,
+            distanceKm: detail.entry.distanceKm,
+            durationSeconds: detail.entry.durationSeconds,
+            metricType: detail.entry.metricType,
             rpe: detail.entry.rpe,
             note: detail.entry.note,
+            correctionCount: 0,
             saveState: "saved",
           };
           const withoutClientCopy = exercise.sets.filter(
@@ -1017,13 +1018,6 @@ export function SessionRunner(props: SessionRunnerProps) {
     setCoachExerciseId(sessionExerciseId);
     setCoachOpen(true);
   }
-
-  const handleEditSetOpenChange = useCallback(
-    (_exerciseId: string, open: boolean) => {
-      if (!open) setEditSetRequest(null);
-    },
-    [setEditSetRequest]
-  );
 
   const skipRest = useCallback(() => {
     if (!timer) return;
@@ -1799,12 +1793,9 @@ export function SessionRunner(props: SessionRunnerProps) {
             </p>
           ) : null}
           <ExerciseCard
-            key={`${exercise.id}:${exercise.exerciseId}:${exercise.metricType}:${exercise.loadType}:${exercise.loadSemantics}:${
-              editSetRequest?.exerciseId === exercise.id
-                ? editSetRequest.token
-                : 0
-            }`}
+            key={`${exercise.id}:${exercise.exerciseId}:${exercise.metricType}:${exercise.loadType}:${exercise.loadSemantics}`}
             exercise={exercise}
+            historyRevision={historyRevision}
             progress={
               guidance.exercises.find(
                 (item) => item.sessionExerciseId === exercise.id,
@@ -1933,6 +1924,7 @@ export function SessionRunner(props: SessionRunnerProps) {
             onDiscardOccurrenceMutation={discardOccurrenceEntry}
             onRetrySet={retrySet}
             onDiscardSet={discardSet}
+            onHistoryRevisionChange={setHistoryRevision}
             onOpenCoach={() => openCoach(exercise.id)}
             onSkipComplete={() => advanceAfterExercise(exercise.id)}
             adjustIntent={
@@ -1943,12 +1935,6 @@ export function SessionRunner(props: SessionRunnerProps) {
             onAdjustIntentChange={(intent) =>
               setAdjustment(intent ? { exerciseId: exercise.id, intent } : null)
             }
-            editSetRequest={
-              editSetRequest?.exerciseId === exercise.id
-                ? { setId: editSetRequest.setId, token: editSetRequest.token }
-                : null
-            }
-            onEditSetOpenChange={handleEditSetOpenChange}
           />
           </div>
         ))}

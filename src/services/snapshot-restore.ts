@@ -33,7 +33,9 @@ import { sessionCompilerInputSchema, sessionCompilerOutputSchema } from "@/lib/s
 import {
   assertCanonicalSnapshotTableCoverage,
   DIRECT_USER_OWNED_CAPTURE_TABLES,
+  FULL_RESTORE_MERGE_TABLES,
   FULL_RESTORE_TARGET_TABLES,
+  HISTORY_RESTORE_MERGE_TABLES,
   HISTORY_RESTORE_TARGET_TABLES,
   RECOVERY_MANIFEST_BY_TABLE,
 } from "@/services/recovery-manifest";
@@ -2060,7 +2062,9 @@ function targetRows(
   scope: SnapshotRestoreScope
 ): RestoreRows {
   const tableNames =
-    scope === "full" ? FULL_RESTORE_TARGET_TABLES : HISTORY_RESTORE_TARGET_TABLES;
+    scope === "full"
+      ? [...FULL_RESTORE_TARGET_TABLES, ...FULL_RESTORE_MERGE_TABLES]
+      : [...HISTORY_RESTORE_TARGET_TABLES, ...HISTORY_RESTORE_MERGE_TABLES];
   const result: RestoreRows = {};
   const customExerciseIds = new Set(
     rows(payload, "exercises")
@@ -2072,6 +2076,9 @@ function targetRows(
       .filter((row) => scope === "full" || row.session_id != null)
       .map((row) => String(row.id))
   );
+  const snapshotCompletedSetIds = new Set(
+    rows(payload, "completed_sets").map((row) => String(row.id)),
+  );
   for (const table of tableNames) {
     const tableRows = rows(payload, table);
     if (table === "contextual_notes" && scope === "history") {
@@ -2082,6 +2089,17 @@ function targetRows(
       );
     } else if (table === "exercises") {
       result[table] = tableRows.filter((row) => row.user_id === userId);
+    } else if (table === "record_versions") {
+      // T02 activates merge semantics only for performed-set version chains.
+      // Other version types keep the established preserve-at-destination
+      // behavior until their own restore packages define a bridge transition.
+      result[table] = tableRows.filter(
+        (row) =>
+          row.user_id === userId &&
+          row.entity_type === "completed_set" &&
+          (scope === "full" ||
+            snapshotCompletedSetIds.has(String(row.entity_id))),
+      );
     } else if (
       table === "exercise_aliases" ||
       table === "exercise_sources" ||
@@ -2188,6 +2206,11 @@ function compareRows(current: SnapshotRow[], target: SnapshotRow[]) {
   return { added, updated, removed, unchanged };
 }
 
+function compareMergedRows(current: SnapshotRow[], target: SnapshotRow[]) {
+  const compared = compareRows(current, target);
+  return { ...compared, removed: 0 };
+}
+
 function buildPlan(
   currentPayload: CanonicalSnapshotPayload,
   sourcePayload: CanonicalSnapshotPayload,
@@ -2197,13 +2220,18 @@ function buildPlan(
   const expectedCurrent = targetRows(currentPayload, userId, scope);
   const desired = targetRows(sourcePayload, userId, scope);
   const dependencies = dependencyRows(sourcePayload, userId, scope);
-  const tables = Object.keys(desired).map((table) => ({
-    table,
-    label: RECOVERY_MANIFEST_BY_TABLE[table]?.label ?? table,
-    current: expectedCurrent[table].length,
-    snapshot: desired[table].length,
-    ...compareRows(expectedCurrent[table], desired[table]),
-  }));
+  const tables = Object.keys(desired).map((table) => {
+    const restoreMode = RECOVERY_MANIFEST_BY_TABLE[table]?.restore[scope];
+    return {
+      table,
+      label: RECOVERY_MANIFEST_BY_TABLE[table]?.label ?? table,
+      current: expectedCurrent[table].length,
+      snapshot: desired[table].length,
+      ...(restoreMode === "merge"
+        ? compareMergedRows(expectedCurrent[table], desired[table])
+        : compareRows(expectedCurrent[table], desired[table])),
+    };
+  });
   const totals = tables.reduce(
     (sum, table) => ({
       added: sum.added + table.added,

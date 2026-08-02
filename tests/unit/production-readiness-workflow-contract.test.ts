@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { describe, expect, it } from "vitest";
+import playwrightConfig from "../../playwright.config";
 
 const require = createRequire(import.meta.url);
 const { load } = require("js-yaml") as {
@@ -51,6 +52,9 @@ describe("production readiness workflow contract", () => {
     const programReviewRecovery = steps.find(
       (step) => step.id === "browser-program-review-recovery",
     );
+    const t02AcknowledgementCorrection = steps.find(
+      (step) => step.id === "browser-v2-t02",
+    );
     const browserGate = steps.find(
       (step) => step.name === "Require every browser suite",
     );
@@ -60,6 +64,9 @@ describe("production readiness workflow contract", () => {
     expect(painHold?.run).toBe("npm run test:e2e:pain-hold");
     expect(programReviewRecovery?.run).toBe(
       "npm run test:e2e:program-editor-review-recovery",
+    );
+    expect(t02AcknowledgementCorrection?.run).toBe(
+      "npm run test:e2e:v2-t02",
     );
     expect(browserGate?.env?.BROWSER_HISTORY).toBe(
       "${{ steps.browser-history.outcome }}",
@@ -78,6 +85,21 @@ describe("production readiness workflow contract", () => {
     );
     expect(browserGate?.run).toContain(
       '"Program review recovery:${BROWSER_PROGRAM_REVIEW_RECOVERY}"',
+    );
+    expect(browserGate?.env?.BROWSER_V2_T02).toBe(
+      "${{ steps.browser-v2-t02.outcome }}",
+    );
+    expect(browserGate?.run).toContain(
+      '"T02 acknowledgement and correction:${BROWSER_V2_T02}"',
+    );
+  });
+
+  it("keeps dedicated v2 browser gates out of the stateful smoke journey", () => {
+    expect(playwrightConfig.testIgnore).toEqual(
+      expect.arrayContaining([
+        "v2-t01-recording-truth.spec.ts",
+        "v2-t02-acknowledgement-correction.spec.ts",
+      ]),
     );
   });
 });

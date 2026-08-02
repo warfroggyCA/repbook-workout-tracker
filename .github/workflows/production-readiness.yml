@@ -200,6 +200,11 @@ jobs:
         continue-on-error: true
         run: npm run test:e2e:v2-t01
 
+      - name: Verify T02 acknowledgement and correction on desktop and mobile
+        id: browser-v2-t02
+        continue-on-error: true
+        run: npm run test:e2e:v2-t02
+
       - name: Require every browser suite
         if: ${{ always() }}
         env:
@@ -220,6 +225,7 @@ jobs:
           BROWSER_SUPERSET_PREP: ${{ steps.browser-superset-prep.outcome }}
           BROWSER_ACTIVE_WORKOUT_ADD_EXERCISE: ${{ steps.browser-active-workout-add-exercise.outcome }}
           BROWSER_V2_T01: ${{ steps.browser-v2-t01.outcome }}
+          BROWSER_V2_T02: ${{ steps.browser-v2-t02.outcome }}
         run: |
           failed=0
           for result in \
@@ -239,7 +245,8 @@ jobs:
             "compact timer and acknowledged action changes:${BROWSER_COMPACT_TIMER}" \
             "superset equipment preparation:${BROWSER_SUPERSET_PREP}" \
             "active-workout exercise addition:${BROWSER_ACTIVE_WORKOUT_ADD_EXERCISE}" \
-            "T01 performed measurement:${BROWSER_V2_T01}"
+            "T01 performed measurement:${BROWSER_V2_T01}" \
+            "T02 acknowledgement and correction:${BROWSER_V2_T02}"
           do
             name="${result%%:*}"
             outcome="${result#*:}"

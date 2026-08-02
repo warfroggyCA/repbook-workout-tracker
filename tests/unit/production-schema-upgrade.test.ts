@@ -20,7 +20,7 @@ import {
 } from "../helpers/database";
 
 const PRODUCTION_MIGRATION = "0018_brave_timeslip";
-const LATEST_MIGRATION = "0069_bodyweight_bulgarian_split_squat";
+const LATEST_MIGRATION = "0070_snapshot_correction_lineage";
 
 const previewBoundaries = [
   {
@@ -235,7 +235,7 @@ describe("current production schema upgrade", () => {
     }]);
   }, 60_000);
 
-  it("matches a fresh final schema exactly and includes the local contracts through 0067", async () => {
+  it("matches a fresh final schema exactly through the T02 correction-lineage contract", async () => {
     const fresh = await createMigratedTestDatabase();
     const productionShaped = await createTestDatabaseAtMigration(
       PRODUCTION_MIGRATION

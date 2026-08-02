@@ -1,4 +1,4 @@
-export const RECOVERY_MANIFEST_VERSION = 9 as const;
+export const RECOVERY_MANIFEST_VERSION = 10 as const;
 
 export type RecoveryOwnership =
   | "direct_user"
@@ -16,6 +16,7 @@ export type RecoveryRestoreMode =
   | "replace"
   | "dependency"
   | "mixed_dependency_and_replace"
+  | "merge"
   | "preserve";
 
 export type RecoveryManifestEntry = {
@@ -49,6 +50,9 @@ function entry(
 ): RecoveryManifestEntry {
   const order = (mode: RecoveryRestoreMode) => {
     if (mode === "preserve") return "preserve destination row";
+    if (mode === "merge") {
+      return "merge immutable source rows, reject contradictory identity reuse, and preserve destination-only rows";
+    }
     if (mode === "dependency") return "reconcile before dependent owned rows";
     if (mode === "mixed_dependency_and_replace") {
       return "reconcile global dependencies, then replace owned rows; delete owned children first";
@@ -139,7 +143,7 @@ export const RECOVERY_TABLE_MANIFEST = [
   entry("archive_operations", "Archive actions", "direct_user", "archive_operations.user_id", ["users"], "canonical", "replace", "dependency", "root archive ledger", cascade, durable, ["owner", "archive membership"]),
   entry("permanent_delete_grants", "Permanent-delete grants", "security_ephemeral", "permanent_delete_grants.user_id", ["users", "archive_operations"], "excluded_security", "preserve", "preserve", preserve, "consumed or short expiry", "security_short_lived", ["owner", "expiry", "single use"]),
   entry("archive_operation_records", "Archive membership", "direct_user", "archive_operation_records.user_id", ["users", "archive_operations"], "canonical", "replace", "preserve", "membership ledger", cascade, durable, ["owner", "operation reference", "unique member"]),
-  entry("record_versions", "Version history", "operational_user", "record_versions.user_id", ["users"], "canonical", "preserve", "preserve", preserve, "deleted with its reviewed entity only through protected permanent deletion; otherwise cascades with account", durable, ["owner", "version chain"]),
+  entry("record_versions", "Version history", "operational_user", "record_versions.user_id", ["users"], "canonical", "merge", "merge", preserve, "T02 merges performed-set chains; other version types remain preserved at the destination until their own bridge contract; deletion otherwise follows the reviewed entity or account", durable, ["owner", "immutable identity", "version chain", "performed-set snapshot lineage merge"]),
   entry("data_snapshots", "Snapshot metadata", "operational_user", "data_snapshots.user_id", ["users", "archive_operations"], "canonical", "preserve", "preserve", preserve, "object and metadata lifecycle together", "snapshot_lifecycle_policy", ["owner", "verification metadata", "record counts", "deletion tombstone"]),
   entry("recovery_runs", "Recovery runs", "operational_user", "recovery_runs.user_id", ["users"], "canonical", "preserve", "preserve", preserve, "cascade with account", "durable_recovery_evidence", ["owner", "status", "time order"]),
   entry("integrity_findings", "Integrity findings", "operational_user", "integrity_findings.user_id", ["users", "recovery_runs"], "canonical", "preserve", "preserve", preserve, "cascade with recovery run", "durable_recovery_evidence", ["owner", "recovery run reference", "severity"]),
@@ -172,6 +176,14 @@ export const FULL_RESTORE_TARGET_TABLES = RECOVERY_TABLE_MANIFEST
 
 export const HISTORY_RESTORE_TARGET_TABLES = RECOVERY_TABLE_MANIFEST
   .filter((item) => item.restore.history === "replace")
+  .map((item) => item.table);
+
+export const FULL_RESTORE_MERGE_TABLES = RECOVERY_TABLE_MANIFEST
+  .filter((item) => item.restore.full === "merge")
+  .map((item) => item.table);
+
+export const HISTORY_RESTORE_MERGE_TABLES = RECOVERY_TABLE_MANIFEST
+  .filter((item) => item.restore.history === "merge")
   .map((item) => item.table);
 
 export function assertCanonicalSnapshotTableCoverage(

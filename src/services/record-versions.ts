@@ -10,6 +10,12 @@ import {
   eligiblePrescriptionOutcomeSql,
   restoredTargetMetSql,
 } from "@/lib/set-metric-semantics-sql";
+import {
+  SET_CORRECTION_EVIDENCE_KEY,
+  SET_CORRECTION_EVIDENCE_SCHEMA_VERSION,
+  SET_CORRECTION_WRITER_VERSION,
+  type SetCorrectionCategory,
+} from "@/lib/set-correction";
 import type { NormalizedActivity } from "@/services/activities";
 import { historyRevisionLockSql } from "@/services/history-revision-lock";
 import { restoreWorkoutTimingVersion } from "@/services/workout-timing-corrections";
@@ -31,13 +37,21 @@ export const VERSIONED_ENTITY_TYPES = [
 export type VersionedEntityType = (typeof VERSIONED_ENTITY_TYPES)[number];
 
 export type VersionedEditResult =
-  | { ok: true; id: string; changed: boolean; versionId: string | null }
+  | {
+      ok: true;
+      id: string;
+      changed: boolean;
+      versionId: string | null;
+      historyRevision?: number;
+    }
   | { ok: false; reason: string };
 
 export type SetVersionUpdate = {
   weight?: number | null;
   weightUnit?: LoadUnit | null;
   reps?: number | null;
+  distanceKm?: number | null;
+  durationSeconds?: number | null;
   rpe?: number | null;
   note?: string | null;
 };
@@ -46,8 +60,20 @@ export type SetVersionExpected = {
   weight: number | null;
   weightUnit: LoadUnit | null;
   reps: number | null;
+  distanceKm: number | null;
+  durationSeconds: number | null;
   rpe: number | null;
   note: string | null;
+};
+
+export type SetCorrectionAction =
+  | "set.active_correction"
+  | "set.completed_correction";
+
+export type SetCorrectionRequestEvidence = {
+  category: SetCorrectionCategory;
+  reasonNote: string | null;
+  source: "active_workout" | "workout_history";
 };
 
 export type SessionExerciseVersionUpdate = {
@@ -207,33 +233,70 @@ export async function updateSetWithVersion(
   userId: string,
   setId: string,
   values: SetVersionUpdate,
-  action: "set.update" | "set.retry_update" | "set.completed_correction" = "set.update",
+  action:
+    | "set.update"
+    | "set.retry_update"
+    | SetCorrectionAction = "set.update",
   options: {
     activeOnly?: boolean;
     expected?: SetVersionExpected;
     expectedHistoryRevision?: number;
     clientMutationId?: string;
+    correctionEvidence?: SetCorrectionRequestEvidence;
   } = {}
 ): Promise<VersionedEditResult> {
-  const correction = action === "set.completed_correction";
+  const correction =
+    action === "set.active_correction" ||
+    action === "set.completed_correction";
   const correctionOptions = options;
   if (
     correction &&
     (correctionOptions.expectedHistoryRevision == null ||
-      !correctionOptions.clientMutationId)
+      !correctionOptions.clientMutationId ||
+      !correctionOptions.expected ||
+      !correctionOptions.correctionEvidence)
   ) {
     throw new Error(
-      "Completed-set corrections require a stable mutation identity and expected workout revision.",
+      "Set corrections require reviewed evidence, a stable mutation identity, and the expected workout revision.",
     );
+  }
+  if (
+    action === "set.active_correction" &&
+    correctionOptions.correctionEvidence?.source !== "active_workout"
+  ) {
+    throw new Error("An active-set correction needs active-workout provenance.");
+  }
+  if (
+    action === "set.completed_correction" &&
+    correctionOptions.correctionEvidence?.source !== "workout_history"
+  ) {
+    throw new Error("A historical set correction needs workout-history provenance.");
   }
   const versionId = correctionOptions.clientMutationId ?? randomUUID();
   const progressionJobId = randomUUID();
   const hasWeight = Object.hasOwn(values, "weight");
   const hasWeightUnit = Object.hasOwn(values, "weightUnit");
   const hasReps = Object.hasOwn(values, "reps");
+  const hasDistanceKm = Object.hasOwn(values, "distanceKm");
+  const hasDurationSeconds = Object.hasOwn(values, "durationSeconds");
   const hasRpe = Object.hasOwn(values, "rpe");
   const hasNote = Object.hasOwn(values, "note");
-  const changesMeasurements = hasWeight || hasWeightUnit || hasReps;
+  const changesMeasurements =
+    hasWeight || hasWeightUnit || hasReps || hasDistanceKm || hasDurationSeconds;
+  if (
+    correction &&
+    !(
+      hasWeight &&
+      hasWeightUnit &&
+      hasReps &&
+      hasDistanceKm &&
+      hasDurationSeconds &&
+      hasRpe &&
+      hasNote
+    )
+  ) {
+    throw new Error("Set corrections must review the complete performed assertion.");
+  }
   const candidateSemantics = {
     recordedMetricType: sql`candidate.metric_type`,
     performedSemanticsVersion: sql`candidate.performed_semantics_version`,
@@ -268,7 +331,23 @@ export async function updateSetWithVersion(
         exercise.load_type AS exercise_load_type,
         exercise.load_semantics AS exercise_load_semantics,
         ws.id AS workout_session_id,
-        ws.history_revision
+        ws.status AS workout_status,
+        ws.history_revision,
+        ws.timezone AS workout_timezone,
+        ws.local_date AS workout_local_date,
+        COALESCE((
+          SELECT max(
+            CASE
+              WHEN version.after_data #>> ARRAY[${SET_CORRECTION_EVIDENCE_KEY}::text, 'resultLedgerRevision'] ~ '^[0-9]+$'
+                THEN (version.after_data #>> ARRAY[${SET_CORRECTION_EVIDENCE_KEY}::text, 'resultLedgerRevision'])::integer
+              ELSE NULL
+            END
+          )
+          FROM record_versions version
+          WHERE version.user_id = ${userId}::uuid
+            AND version.entity_type = 'completed_set'
+            AND version.entity_id = cs.id
+        ), 0) AS correction_ledger_revision
       FROM completed_sets cs
       CROSS JOIN history_revision_lock
       JOIN session_exercises se ON se.id = cs.session_exercise_id
@@ -278,29 +357,54 @@ export async function updateSetWithVersion(
         AND ws.user_id = ${userId}::uuid
         AND cs.archived_at IS NULL
         AND ws.archived_at IS NULL
+        AND (
+          NOT ${correction}::boolean
+          OR EXISTS (
+            SELECT 1
+            FROM session_occurrences occurrence
+            WHERE occurrence.completed_set_id = cs.id
+              AND occurrence.session_id = ws.id
+              AND occurrence.session_exercise_id = cs.session_exercise_id
+              AND occurrence.kind = 'working_set'
+              AND occurrence.outcome = 'completed'
+          )
+        )
         AND NOT EXISTS (SELECT 1 FROM existing_version)
         -- Generic/retry edits are an active-workout capability. Every edit to
         -- a completed parent must enter through the reviewed correction
         -- contract below so it cannot bypass the parent revision fence.
         AND (
-          (${correction}::boolean AND ws.status = 'completed')
+          (${action === "set.active_correction"}::boolean AND ws.status = 'in_progress')
+          OR (
+            ${action === "set.completed_correction"}::boolean
+            AND ws.status IN ('completed', 'abandoned')
+          )
           OR (NOT ${correction}::boolean AND ws.status = 'in_progress')
         )
         AND (NOT ${options.activeOnly ?? false}::boolean OR ws.status = 'in_progress')
         AND (
           NOT ${correction}::boolean
           OR (
-            ws.status = 'completed'
-            AND ws.history_revision = ${correctionOptions.expectedHistoryRevision ?? null}::integer
+            ws.history_revision = ${correctionOptions.expectedHistoryRevision ?? null}::integer
           )
         )
         AND (
           NOT ${options.expected != null}::boolean
-          OR ROW(cs.weight, cs.weight_unit, cs.reps, cs.rpe, cs.note)
+          OR ROW(
+            cs.weight,
+            cs.weight_unit,
+            cs.reps,
+            cs.distance_km,
+            cs.duration_seconds,
+            cs.rpe,
+            cs.note
+          )
             IS NOT DISTINCT FROM ROW(
               ${options.expected?.weight ?? null}::double precision,
               ${options.expected?.weightUnit ?? null}::unit,
               ${options.expected?.reps ?? null}::integer,
+              ${options.expected?.distanceKm ?? null}::real,
+              ${options.expected?.durationSeconds ?? null}::integer,
               ${options.expected?.rpe ?? null}::real,
               ${options.expected?.note ?? null}::text
             )
@@ -316,6 +420,8 @@ export async function updateSetWithVersion(
           ELSE current.weight_unit
         END AS next_weight_unit,
         CASE WHEN ${hasReps}::boolean THEN ${values.reps ?? null}::integer ELSE current.reps END AS next_reps,
+        CASE WHEN ${hasDistanceKm}::boolean THEN ${values.distanceKm ?? null}::real ELSE current.distance_km END AS next_distance_km,
+        CASE WHEN ${hasDurationSeconds}::boolean THEN ${values.durationSeconds ?? null}::integer ELSE current.duration_seconds END AS next_duration_seconds,
         CASE WHEN ${hasRpe}::boolean THEN ${values.rpe ?? null}::real ELSE current.rpe END AS next_rpe,
         CASE WHEN ${hasNote}::boolean THEN ${values.note ?? null}::text ELSE current.note END AS next_note
       FROM current_record current
@@ -361,71 +467,97 @@ export async function updateSetWithVersion(
               candidate.next_weight IS NOT NULL
               AND candidate.next_weight_unit IS NOT NULL
               AND candidate.next_reps IS NOT NULL
+              AND candidate.next_distance_km IS NULL
+              AND candidate.next_duration_seconds IS NULL
             WHEN 'reps' THEN
               candidate.next_weight IS NULL
               AND candidate.next_weight_unit IS NULL
               AND candidate.next_reps IS NOT NULL
+              AND candidate.next_distance_km IS NULL
+              AND candidate.next_duration_seconds IS NULL
             WHEN 'assisted_reps' THEN
               candidate.next_weight IS NOT NULL
               AND candidate.next_weight_unit IS NOT NULL
               AND candidate.next_reps IS NOT NULL
+              AND candidate.next_distance_km IS NULL
+              AND candidate.next_duration_seconds IS NULL
             WHEN 'duration' THEN
               candidate.next_weight IS NULL
               AND candidate.next_weight_unit IS NULL
               AND candidate.next_reps IS NULL
+              AND candidate.next_distance_km IS NULL
+              AND candidate.next_duration_seconds IS NOT NULL
             WHEN 'distance_duration' THEN
               candidate.next_weight IS NULL
               AND candidate.next_weight_unit IS NULL
               AND candidate.next_reps IS NULL
-            WHEN 'activity' THEN
-              candidate.next_weight IS NULL
-              AND candidate.next_weight_unit IS NULL
-              AND candidate.next_reps IS NULL
+              AND candidate.next_distance_km IS NOT NULL
             ELSE false
           END
         )
+        AND (candidate.next_weight IS NULL OR candidate.next_weight BETWEEN 0 AND 2000)
+        AND (candidate.next_reps IS NULL OR candidate.next_reps BETWEEN 0 AND 100)
+        AND (candidate.next_distance_km IS NULL OR candidate.next_distance_km BETWEEN 0 AND 10000)
+        AND (candidate.next_duration_seconds IS NULL OR candidate.next_duration_seconds BETWEEN 0 AND 604800)
     ), updated AS (
       UPDATE completed_sets cs
       SET weight = next.next_weight,
           weight_unit = next.next_weight_unit,
           reps = next.next_reps,
+          distance_km = next.next_distance_km,
+          duration_seconds = next.next_duration_seconds,
           rpe = next.next_rpe,
           note = next.next_note,
           target_met = next.next_target_met
       FROM next_state next
       WHERE cs.id = next.id
-        AND ROW(next.weight, next.weight_unit, next.reps, next.rpe, next.note, next.target_met)
-          IS DISTINCT FROM
-          ROW(next.next_weight, next.next_weight_unit, next.next_reps, next.next_rpe, next.next_note, next.next_target_met)
-      RETURNING cs.*
-    ), versioned AS (
-      INSERT INTO record_versions (
-        id, user_id, entity_type, entity_id, action,
-        before_data, after_data, changed_fields
-      )
-      SELECT
-        ${versionId}::uuid,
-        ${userId}::uuid,
-        'completed_set',
-        current.id,
-        ${action},
-        current.before_data,
-        to_jsonb(updated),
-        ARRAY(
-          SELECT old_value.key
-          FROM jsonb_each(current.before_data) old_value
-          JOIN jsonb_each(to_jsonb(updated)) new_value USING (key)
-          WHERE old_value.value IS DISTINCT FROM new_value.value
-          ORDER BY old_value.key
+        AND (
+          NOT ${correction}::boolean
+          OR ROW(
+            next.weight,
+            next.weight_unit,
+            next.reps,
+            next.distance_km,
+            next.duration_seconds,
+            next.rpe,
+            next.note
+          ) IS DISTINCT FROM ROW(
+            next.next_weight,
+            next.next_weight_unit,
+            next.next_reps,
+            next.next_distance_km,
+            next.next_duration_seconds,
+            next.next_rpe,
+            next.next_note
+          )
         )
-      FROM current_record current
-      JOIN updated ON updated.id = current.id
-      RETURNING id, changed_fields
+        AND ROW(
+          next.weight,
+          next.weight_unit,
+          next.reps,
+          next.distance_km,
+          next.duration_seconds,
+          next.rpe,
+          next.note,
+          next.target_met
+        )
+          IS DISTINCT FROM
+          ROW(
+            next.next_weight,
+            next.next_weight_unit,
+            next.next_reps,
+            next.next_distance_km,
+            next.next_duration_seconds,
+            next.next_rpe,
+            next.next_note,
+            next.next_target_met
+          )
+      RETURNING cs.*
     ), revised_session AS (
       UPDATE workout_sessions session
       SET history_revision = session.history_revision + 1
       FROM current_record current
-      JOIN versioned ON TRUE
+      JOIN updated ON updated.id = current.id
       WHERE ${correction}::boolean
         AND session.id = current.workout_session_id
         AND session.history_revision = current.history_revision
@@ -439,6 +571,7 @@ export async function updateSetWithVersion(
       FROM current_record current
       JOIN revised_session revised ON revised.id = current.workout_session_id
       WHERE recommendation.user_id = ${userId}::uuid
+        AND current.workout_status = 'completed'
         AND recommendation.status = 'pending'
         AND recommendation.archived_at IS NULL
         AND current.source_slot_lineage_id IS NOT NULL
@@ -457,9 +590,67 @@ export async function updateSetWithVersion(
         profile.coaching_prefs,
         statement_timestamp()
       FROM revised_session revised
+      JOIN current_record current
+        ON current.workout_session_id = revised.id
+       AND current.workout_status = 'completed'
       JOIN user_profiles profile ON profile.user_id = revised.user_id
       ON CONFLICT (session_id, source_session_revision) DO NOTHING
       RETURNING id
+    ), versioned AS (
+      INSERT INTO record_versions (
+        id, user_id, entity_type, entity_id, action,
+        before_data, after_data, changed_fields
+      )
+      SELECT
+        ${versionId}::uuid,
+        ${userId}::uuid,
+        'completed_set',
+        current.id,
+        ${action},
+        current.before_data,
+        CASE
+          WHEN ${correction}::boolean THEN
+            to_jsonb(updated) || jsonb_build_object(
+              ${SET_CORRECTION_EVIDENCE_KEY}::text,
+              jsonb_build_object(
+                'schemaVersion', ${SET_CORRECTION_EVIDENCE_SCHEMA_VERSION}::integer,
+                'writerVersion', ${SET_CORRECTION_WRITER_VERSION}::text,
+                'category', ${correctionOptions.correctionEvidence?.category ?? null}::text,
+                'reasonNote', ${correctionOptions.correctionEvidence?.reasonNote ?? null}::text,
+                'actorType', 'owner',
+                'source', ${correctionOptions.correctionEvidence?.source ?? null}::text,
+                'decidedAt', statement_timestamp(),
+                'decisionTimezone', current.workout_timezone,
+                'decisionLocalDate', timezone(current.workout_timezone, statement_timestamp())::date,
+                'sourceHistoryRevision', current.history_revision,
+                'resultHistoryRevision', revised.history_revision,
+                'sourceLedgerRevision', current.correction_ledger_revision,
+                'resultLedgerRevision', current.correction_ledger_revision + 1,
+                'dependentConclusions', CASE current.workout_status
+                  WHEN 'in_progress' THEN 'not_created_while_active'
+                  WHEN 'completed' THEN 'recompute_queued'
+                  ELSE 'abandoned_session_excluded'
+                END,
+                'expiredRecommendationCount', (SELECT count(*) FROM reconciled_recommendations),
+                'progressionJobId', (SELECT id FROM queued_progression),
+                'restoredFromVersionId', NULL,
+                'restoredFromSnapshotId', NULL
+              )
+            )
+          ELSE to_jsonb(updated)
+        END,
+        ARRAY(
+          SELECT old_value.key
+          FROM jsonb_each(current.before_data) old_value
+          JOIN jsonb_each(to_jsonb(updated)) new_value USING (key)
+          WHERE old_value.value IS DISTINCT FROM new_value.value
+          ORDER BY old_value.key
+        )
+      FROM current_record current
+      JOIN updated ON updated.id = current.id
+      LEFT JOIN revised_session revised
+        ON revised.id = current.workout_session_id
+      RETURNING id, changed_fields, after_data
     ), audited AS (
       INSERT INTO audit_logs (
         user_id, actor_type, action, entity_type, entity_id, summary, cause_ref
@@ -479,6 +670,11 @@ export async function updateSetWithVersion(
             THEN (SELECT history_revision FROM revised_session)
             ELSE NULL
           END,
+          'correctionCategory',
+          CASE WHEN ${correction}::boolean
+            THEN ${correctionOptions.correctionEvidence?.category ?? null}::text
+            ELSE NULL
+          END,
           'progressionJobId',
           CASE WHEN ${correction}::boolean
             THEN (SELECT id FROM queued_progression)
@@ -493,6 +689,10 @@ export async function updateSetWithVersion(
       (updated.id IS NOT NULL) AS changed,
       coalesce(versioned.id, existing.id) AS version_id,
       (existing.id IS NOT NULL) AS replayed,
+      coalesce(
+        (versioned.after_data #>> ARRAY[${SET_CORRECTION_EVIDENCE_KEY}::text, 'resultHistoryRevision'])::integer,
+        (existing.after_data #>> ARRAY[${SET_CORRECTION_EVIDENCE_KEY}::text, 'resultHistoryRevision'])::integer
+      ) AS result_history_revision,
       (
         current.id IS NOT NULL
         AND ${changesMeasurements}::boolean
@@ -509,14 +709,40 @@ export async function updateSetWithVersion(
             (existing.after_data->>'weight')::double precision,
             (existing.after_data->>'weight_unit')::unit,
             (existing.after_data->>'reps')::integer,
+            (existing.after_data->>'distance_km')::real,
+            (existing.after_data->>'duration_seconds')::integer,
             (existing.after_data->>'rpe')::real,
-            existing.after_data->>'note'
+            existing.after_data->>'note',
+            existing.after_data #>> ARRAY[${SET_CORRECTION_EVIDENCE_KEY}::text, 'category'],
+            existing.after_data #>> ARRAY[${SET_CORRECTION_EVIDENCE_KEY}::text, 'reasonNote'],
+            existing.after_data #>> ARRAY[${SET_CORRECTION_EVIDENCE_KEY}::text, 'source'],
+            (existing.after_data #>> ARRAY[${SET_CORRECTION_EVIDENCE_KEY}::text, 'sourceHistoryRevision'])::integer,
+            (existing.before_data->>'weight')::double precision,
+            (existing.before_data->>'weight_unit')::unit,
+            (existing.before_data->>'reps')::integer,
+            (existing.before_data->>'distance_km')::real,
+            (existing.before_data->>'duration_seconds')::integer,
+            (existing.before_data->>'rpe')::real,
+            existing.before_data->>'note'
           ) IS NOT DISTINCT FROM ROW(
             ${hasWeight ? values.weight ?? null : null}::double precision,
             ${hasWeightUnit ? values.weightUnit ?? null : null}::unit,
             ${hasReps ? values.reps ?? null : null}::integer,
+            ${hasDistanceKm ? values.distanceKm ?? null : null}::real,
+            ${hasDurationSeconds ? values.durationSeconds ?? null : null}::integer,
             ${hasRpe ? values.rpe ?? null : null}::real,
-            ${hasNote ? values.note ?? null : null}::text
+            ${hasNote ? values.note ?? null : null}::text,
+            ${correctionOptions.correctionEvidence?.category ?? null}::text,
+            ${correctionOptions.correctionEvidence?.reasonNote ?? null}::text,
+            ${correctionOptions.correctionEvidence?.source ?? null}::text,
+            ${correctionOptions.expectedHistoryRevision ?? null}::integer,
+            ${options.expected?.weight ?? null}::double precision,
+            ${options.expected?.weightUnit ?? null}::unit,
+            ${options.expected?.reps ?? null}::integer,
+            ${options.expected?.distanceKm ?? null}::real,
+            ${options.expected?.durationSeconds ?? null}::integer,
+            ${options.expected?.rpe ?? null}::real,
+            ${options.expected?.note ?? null}::text
           )
         )
       ) AS replay_conflict
@@ -538,7 +764,7 @@ export async function updateSetWithVersion(
     return {
       ok: false,
       reason:
-        "That edit does not match this set's recorded metric. Keep a numeric load and reps for weighted or assisted work, or remove the load for repetitions-only work.",
+        "That edit does not match this set's recorded metric or performed measurement shape. Reload the workout and review the applicable fields.",
     };
   }
   if (row?.replayed) {
@@ -547,6 +773,15 @@ export async function updateSetWithVersion(
       id: String(row.id),
       changed: false,
       versionId: String(row.version_id),
+      ...(row.result_history_revision == null
+        ? {}
+        : { historyRevision: Number(row.result_history_revision) }),
+    };
+  }
+  if (correction && row?.id && !row.changed) {
+    return {
+      ok: false,
+      reason: "A correction must change at least one saved value.",
     };
   }
   if (!row?.id) {
@@ -558,12 +793,17 @@ export async function updateSetWithVersion(
           : "Set not found.",
     };
   }
-  return editResult(
-    [row].filter(Boolean),
-    options.expected || correction
-      ? "This set changed after the correction form opened. Reload the workout and review the latest values before trying again."
-      : "Set not found.",
-  );
+  const result = editResult(
+      [row].filter(Boolean),
+      options.expected || correction
+        ? "This set changed after the correction form opened. Reload the workout and review the latest values before trying again."
+        : "Set not found.",
+    );
+  if (!result.ok || row.result_history_revision == null) return result;
+  return {
+    ...result,
+    historyRevision: Number(row.result_history_revision),
+  };
 }
 
 export async function updateSessionExerciseWithVersion(
@@ -1079,7 +1319,17 @@ async function restoreSetVersion(
     clientMutationId?: string;
   } = {},
 ): Promise<VersionedEditResult> {
-  const rollbackVersionId = options.clientMutationId ?? randomUUID();
+  if (
+    options.clientMutationId == null ||
+    options.expectedHistoryRevision == null
+  ) {
+    return {
+      ok: false,
+      reason:
+        "Set restore requires a stable mutation identity and the current workout revision.",
+    };
+  }
+  const rollbackVersionId = options.clientMutationId;
   const progressionJobId = randomUUID();
   const restoredSemantics = {
     recordedMetricType: sql`candidate.metric_type`,
@@ -1120,6 +1370,21 @@ async function restoreSetVersion(
         ws.id AS workout_session_id,
         ws.status AS workout_status,
         ws.history_revision,
+        ws.timezone AS workout_timezone,
+        ws.local_date AS workout_local_date,
+        COALESCE((
+          SELECT max(
+            CASE
+              WHEN ledger.after_data #>> ARRAY[${SET_CORRECTION_EVIDENCE_KEY}::text, 'resultLedgerRevision'] ~ '^[0-9]+$'
+                THEN (ledger.after_data #>> ARRAY[${SET_CORRECTION_EVIDENCE_KEY}::text, 'resultLedgerRevision'])::integer
+              ELSE NULL
+            END
+          )
+          FROM record_versions ledger
+          WHERE ledger.user_id = ${userId}::uuid
+            AND ledger.entity_type = 'completed_set'
+            AND ledger.entity_id = cs.id
+        ), 0) AS correction_ledger_revision,
         se.source_slot_lineage_id,
         se.target_reps_min,
         se.target_load,
@@ -1150,6 +1415,8 @@ async function restoreSetVersion(
         (version.before_data->>'weight')::double precision AS next_weight,
         (version.before_data->>'weight_unit')::unit AS next_weight_unit,
         (version.before_data->>'reps')::integer AS next_reps,
+        (version.before_data->>'distance_km')::real AS next_distance_km,
+        (version.before_data->>'duration_seconds')::integer AS next_duration_seconds,
         (version.before_data->>'rpe')::real AS next_rpe,
         version.before_data->>'note' AS next_note
       FROM current_record current
@@ -1164,6 +1431,8 @@ async function restoreSetVersion(
       SET weight = next.next_weight,
           weight_unit = next.next_weight_unit,
           reps = next.next_reps,
+          distance_km = next.next_distance_km,
+          duration_seconds = next.next_duration_seconds,
           rpe = next.next_rpe,
           note = next.next_note,
           target_met = next.next_target_met
@@ -1173,48 +1442,33 @@ async function restoreSetVersion(
           (next.next_weight IS NULL AND next.next_weight_unit IS NULL)
           OR (next.next_weight IS NOT NULL AND next.next_weight_unit IS NOT NULL)
         )
-        AND ROW(next.weight, next.weight_unit, next.reps, next.rpe, next.note, next.target_met)
+        AND ROW(
+          next.weight,
+          next.weight_unit,
+          next.reps,
+          next.distance_km,
+          next.duration_seconds,
+          next.rpe,
+          next.note,
+          next.target_met
+        )
           IS DISTINCT FROM ROW(
             next.next_weight,
             next.next_weight_unit,
             next.next_reps,
+            next.next_distance_km,
+            next.next_duration_seconds,
             next.next_rpe,
             next.next_note,
             next.next_target_met
           )
       RETURNING cs.*
-    ), versioned AS (
-      INSERT INTO record_versions (
-        id, user_id, entity_type, entity_id, action,
-        before_data, after_data, changed_fields, source_version_id
-      )
-      SELECT
-        ${rollbackVersionId}::uuid,
-        ${userId}::uuid,
-        'completed_set',
-        current.id,
-        'set.version_restore',
-        current.before_data,
-        to_jsonb(restored),
-        ARRAY(
-          SELECT old_value.key
-          FROM jsonb_each(current.before_data) old_value
-          JOIN jsonb_each(to_jsonb(restored)) new_value USING (key)
-          WHERE old_value.value IS DISTINCT FROM new_value.value
-          ORDER BY old_value.key
-        ),
-        selected.id
-      FROM selected_version selected
-      JOIN current_record current ON current.id = selected.entity_id
-      JOIN restored ON restored.id = current.id
-      RETURNING id, changed_fields
     ), revised_session AS (
       UPDATE workout_sessions session
       SET history_revision = session.history_revision + 1
       FROM current_record current
-      JOIN versioned ON TRUE
-      WHERE current.workout_status = 'completed'
-        AND session.id = current.workout_session_id
+      JOIN restored ON restored.id = current.id
+      WHERE session.id = current.workout_session_id
         AND session.history_revision = current.history_revision
       RETURNING session.id, session.user_id, session.history_revision
     ), reconciled_recommendations AS (
@@ -1226,6 +1480,7 @@ async function restoreSetVersion(
       FROM current_record current
       JOIN revised_session revised ON revised.id = current.workout_session_id
       WHERE recommendation.user_id = ${userId}::uuid
+        AND current.workout_status = 'completed'
         AND recommendation.status = 'pending'
         AND recommendation.archived_at IS NULL
         AND current.source_slot_lineage_id IS NOT NULL
@@ -1244,9 +1499,65 @@ async function restoreSetVersion(
         profile.coaching_prefs,
         statement_timestamp()
       FROM revised_session revised
+      JOIN current_record current
+        ON current.workout_session_id = revised.id
+       AND current.workout_status = 'completed'
       JOIN user_profiles profile ON profile.user_id = revised.user_id
       ON CONFLICT (session_id, source_session_revision) DO NOTHING
       RETURNING id
+    ), versioned AS (
+      INSERT INTO record_versions (
+        id, user_id, entity_type, entity_id, action,
+        before_data, after_data, changed_fields, source_version_id
+      )
+      SELECT
+        ${rollbackVersionId}::uuid,
+        ${userId}::uuid,
+        'completed_set',
+        current.id,
+        'set.version_restore',
+        current.before_data,
+        to_jsonb(restored) || jsonb_build_object(
+          ${SET_CORRECTION_EVIDENCE_KEY}::text,
+          jsonb_build_object(
+            'schemaVersion', ${SET_CORRECTION_EVIDENCE_SCHEMA_VERSION}::integer,
+            'writerVersion', ${SET_CORRECTION_WRITER_VERSION}::text,
+            'category', 'restore_prior_version',
+            'reasonNote', NULL,
+            'actorType', 'owner',
+            'source', 'record_version_restore',
+            'decidedAt', statement_timestamp(),
+            'decisionTimezone', current.workout_timezone,
+            'decisionLocalDate', timezone(current.workout_timezone, statement_timestamp())::date,
+            'sourceHistoryRevision', current.history_revision,
+            'resultHistoryRevision', revised.history_revision,
+            'sourceLedgerRevision', current.correction_ledger_revision,
+            'resultLedgerRevision', current.correction_ledger_revision + 1,
+            'dependentConclusions', CASE current.workout_status
+              WHEN 'in_progress' THEN 'not_created_while_active'
+              WHEN 'completed' THEN 'recompute_queued'
+              ELSE 'abandoned_session_excluded'
+            END,
+            'expiredRecommendationCount', (SELECT count(*) FROM reconciled_recommendations),
+            'progressionJobId', (SELECT id FROM queued_progression),
+            'restoredFromVersionId', selected.id,
+            'restoredFromSnapshotId', NULL
+          )
+        ),
+        ARRAY(
+          SELECT old_value.key
+          FROM jsonb_each(current.before_data) old_value
+          JOIN jsonb_each(to_jsonb(restored)) new_value USING (key)
+          WHERE old_value.value IS DISTINCT FROM new_value.value
+          ORDER BY old_value.key
+        ),
+        selected.id
+      FROM selected_version selected
+      JOIN current_record current ON current.id = selected.entity_id
+      JOIN restored ON restored.id = current.id
+      JOIN revised_session revised
+        ON revised.id = current.workout_session_id
+      RETURNING id, changed_fields, after_data
     ), audited AS (
       INSERT INTO audit_logs (
         user_id, actor_type, action, entity_type, entity_id, summary, cause_ref
@@ -1273,6 +1584,10 @@ async function restoreSetVersion(
       selected.entity_id AS id,
       (restored.id IS NOT NULL) AS changed,
       coalesce(versioned.id, existing.id) AS version_id,
+      coalesce(
+        (versioned.after_data #>> ARRAY[${SET_CORRECTION_EVIDENCE_KEY}::text, 'resultHistoryRevision'])::integer,
+        (existing.after_data #>> ARRAY[${SET_CORRECTION_EVIDENCE_KEY}::text, 'resultHistoryRevision'])::integer
+      ) AS result_history_revision,
       (
         EXISTS (SELECT 1 FROM current_record)
         OR existing.id IS NOT NULL
@@ -1307,6 +1622,9 @@ async function restoreSetVersion(
       id: String(row.id),
       changed: false,
       versionId: String(row.version_id),
+      ...(row.result_history_revision == null
+        ? {}
+        : { historyRevision: Number(row.result_history_revision) }),
     };
   }
   if (!row.record_found) {
@@ -1323,6 +1641,9 @@ async function restoreSetVersion(
     id: String(row.id),
     changed: true,
     versionId: String(row.version_id),
+    ...(row.result_history_revision == null
+      ? {}
+      : { historyRevision: Number(row.result_history_revision) }),
   };
 }
 

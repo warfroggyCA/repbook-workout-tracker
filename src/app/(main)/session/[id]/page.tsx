@@ -13,6 +13,7 @@ import {
   exerciseExecutionRequirements,
   constraints as constraintsTable,
   exercises as exercisesTable,
+  recordVersions,
 } from "@/db/schema";
 import { getCurrentUser } from "@/lib/user";
 import { getLastPerformances } from "@/services/today";
@@ -183,6 +184,30 @@ async function renderSessionPage(
           })
         : Promise.resolve([]),
     ]);
+  const visibleSetIds = session.exercises.flatMap((exercise) =>
+    exercise.sets.filter((set) => !set.isWarmup).map((set) => set.id),
+  );
+  const setCorrectionVersions = visibleSetIds.length > 0
+    ? await db.query.recordVersions.findMany({
+        where: and(
+          eq(recordVersions.userId, user.id),
+          eq(recordVersions.entityType, "completed_set"),
+          inArray(recordVersions.entityId, visibleSetIds),
+        ),
+        columns: { entityId: true, action: true },
+      })
+    : [];
+  const correctionCountBySetId = new Map<string, number>();
+  for (const version of setCorrectionVersions) {
+    if (
+      version.action !== "set.active_correction" &&
+      version.action !== "set.completed_correction"
+    ) continue;
+    correctionCountBySetId.set(
+      version.entityId,
+      (correctionCountBySetId.get(version.entityId) ?? 0) + 1,
+    );
+  }
   const plannedExerciseNames = new Map(
     plannedExercises.map((exercise) => [exercise.id, exercise.name])
   );
@@ -317,6 +342,7 @@ async function renderSessionPage(
           durationSeconds: s.durationSeconds,
           rpe: s.rpe,
           note: s.note,
+          correctionCount: correctionCountBySetId.get(s.id) ?? 0,
         })),
       last: se.modificationType !== "substituted" && last
         ? { dateISO: last.date.toISOString(), sets: last.sets }
@@ -327,6 +353,7 @@ async function renderSessionPage(
   const runnerProps: SessionRunnerProps = {
     ownerId: user.id,
     sessionId: session.id,
+    historyRevision: session.historyRevision,
     templateName: session.templateName ?? "Workout",
     dayWarmupNotes: session.dayWarmupNotes,
     occurrences: session.occurrences.map((occurrence, index, all) => {

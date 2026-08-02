@@ -144,7 +144,10 @@ export default async function SessionDetailPage(
   ]);
   const correctionsBySetId = new Map<string, typeof setVersions>();
   for (const version of setVersions) {
-    if (version.action !== "set.completed_correction") continue;
+    if (
+      version.action !== "set.active_correction" &&
+      version.action !== "set.completed_correction"
+    ) continue;
     const current = correctionsBySetId.get(version.entityId) ?? [];
     current.push(version);
     correctionsBySetId.set(version.entityId, current);
@@ -686,16 +689,26 @@ export default async function SessionDetailPage(
                               ? `${correctionsBySetId.get(s.id)?.length} saved correction${correctionsBySetId.get(s.id)?.length === 1 ? "" : "s"} · original retained in revision history`
                               : "No saved corrections"}
                           </span>
-                          <CompletedSetCorrection
-                            setId={s.id}
-                            setNo={s.setNo}
-                            weight={s.weight}
-                            weightUnit={s.weightUnit}
-                            reps={s.reps}
-                            rpe={s.rpe}
-                            note={s.note}
-                            historyRevision={session.historyRevision}
-                          />
+                          {s.metricType === "activity" ? (
+                            <span className="text-xs text-muted-foreground">
+                              This legacy measurement shape cannot be corrected here.
+                            </span>
+                          ) : (
+                            <CompletedSetCorrection
+                              setId={s.id}
+                              setNo={s.setNo}
+                              weight={s.weight}
+                              weightUnit={s.weightUnit}
+                              reps={s.reps}
+                              distanceKm={s.distanceKm}
+                              durationSeconds={s.durationSeconds}
+                              metricType={s.metricType}
+                              rpe={s.rpe}
+                              note={s.note}
+                              historyRevision={session.historyRevision}
+                              source="workout_history"
+                            />
+                          )}
                         </div>
                         <p className="mt-1 text-xs text-muted-foreground">
                           Load meaning: {loadMeaning}

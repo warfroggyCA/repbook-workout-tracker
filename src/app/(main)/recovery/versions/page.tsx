@@ -21,6 +21,10 @@ import { RestoreVersionButton } from "@/components/recovery/restore-version-butt
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
+  readSetCorrectionEvidence,
+  SET_CORRECTION_CATEGORY_LABELS,
+} from "@/lib/set-correction";
+import {
   Card,
   CardContent,
   CardDescription,
@@ -206,6 +210,7 @@ function recordLabel(
 
 function actionLabel(action: string) {
   if (action === "set.retry_update") return "Offline retry correction";
+  if (action === "set.active_correction") return "Reviewed active-workout correction";
   if (action === "set.completed_correction") return "Reviewed completed-set correction";
   if (action === "workout_session.timing_correction") {
     return "Reviewed workout timing correction";
@@ -346,6 +351,7 @@ export default async function EditHistoryPage(
           const visibleFields = version.changedFields.filter(
             (field) => !HIDDEN_TECHNICAL_FIELDS.has(field)
           );
+          const correctionEvidence = readSetCorrectionEvidence(after);
           return (
             <Card key={version.id}>
               <CardHeader className="gap-2">
@@ -365,6 +371,28 @@ export default async function EditHistoryPage(
                 </div>
               </CardHeader>
               <CardContent className="flex flex-col gap-3">
+                {correctionEvidence && (
+                  <div className="rounded-lg border bg-muted/30 p-3 text-sm">
+                    <p className="font-medium">Correction evidence</p>
+                    <p className="mt-1 text-muted-foreground">
+                      {correctionEvidence.category === "restore_prior_version"
+                        ? "Restored an earlier retained version"
+                        : correctionEvidence.category === "restore_snapshot"
+                          ? "Restored the reviewed snapshot state"
+                          : SET_CORRECTION_CATEGORY_LABELS[
+                              correctionEvidence.category
+                            ]}
+                      {correctionEvidence.reasonNote
+                        ? ` · ${correctionEvidence.reasonNote}`
+                        : ""}
+                    </p>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Workout revision {correctionEvidence.sourceHistoryRevision}
+                      {" → "}
+                      {correctionEvidence.resultHistoryRevision} · {correctionEvidence.decisionLocalDate} in {correctionEvidence.decisionTimezone}
+                    </p>
+                  </div>
+                )}
                 <div className="flex flex-wrap gap-1.5">
                   {visibleFields.map((field) => (
                     <Badge key={field} variant="secondary">{fieldLabel(version.entityType, field)}</Badge>
