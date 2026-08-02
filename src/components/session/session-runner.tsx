@@ -847,13 +847,7 @@ export function SessionRunner(props: SessionRunnerProps) {
       toast.error(performed.message);
       return false;
     }
-    const setup = props.equipmentSetups[exercise.id];
-    if (setup && !sessionEquipmentSetupMatchesExercise(exercise, setup)) {
-      toast.error(
-        "Equipment guidance is updating for this exercise. Wait for the current setup before logging.",
-      );
-      return false;
-    }
+    const setup = safeEquipmentSetups[exercise.id];
     const pendingEquipmentSelection = equipmentSelectionOutbox.entries
       .filter((entry) =>
         entry.ownerId === props.ownerId && entry.sessionId === props.sessionId &&
