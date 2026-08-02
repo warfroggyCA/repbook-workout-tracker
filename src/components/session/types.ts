@@ -125,7 +125,6 @@ export type SessionOccurrenceData = {
   revision: number;
   resolvedAt: string | null;
   completedSetId: string | null;
-  restAfterSec: number;
 };
 
 export type SessionExerciseGroupData = {

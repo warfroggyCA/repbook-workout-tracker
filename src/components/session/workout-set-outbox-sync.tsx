@@ -287,7 +287,7 @@ export async function syncNextEntry(
         }
         let restPersisted = true;
         if (entry.restAfterSec !== undefined) {
-          if (entry.restAfterSec > 0) {
+          if (entry.restAfterSec != null && entry.restAfterSec > 0) {
             const nextRest = createRestTimer({
               ownerId: entry.ownerId,
               sessionId: entry.sessionId,

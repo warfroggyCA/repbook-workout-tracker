@@ -151,7 +151,8 @@ recovery, and adversarial proofs for truthful performed measurement. T02
 activates those proof classes for acknowledgement, retry, and reviewed
 correction. T03 activates database, browser, portability, and recovery proofs
 for planned order and extra-set truth. T04 activates the same required proof
-classes for warm-up occurrence truth; later packages remain future work.
+classes for warm-up occurrence truth. T05 activates them for current, next,
+group, and rest truth; later packages remain future work.
 
 ## T01 performed-measurement contract
 
@@ -255,3 +256,28 @@ or skipped acknowledgements and resolves only pending actions. CSV, Review,
 encrypted snapshot restore, and device-outbox discard preserve the same stable
 identity and do not synthesize warm-up facts. T04 performs no historical batch
 repair.
+
+## T05 current, next, group, and rest contract
+
+The immutable occurrence ledger is the only source for canonical current and
+next work. Pending occurrences retain their authored sequence across warm-ups,
+working sets, extras, skips, retries, and corrections; expanding or collapsing
+an exercise card cannot reorder them. A saving, retrying, or failed set remains
+current until the server acknowledges its exact command. Once no pending
+occurrence remains, the session is ready to finish but is not completed until
+the owner explicitly chooses Finish workout.
+
+Rest is a first-class, device-durable focused action created only after the
+exact source occurrence and completed set are acknowledged. Its source identity
+survives reload and background return, while the next ledger occurrence remains
+visible as next work. Saved occurrence evidence classifies positive rest as
+straight-set, between-member, or between-round rest. Zero means explicitly no
+rest, null means unknown rest, and an absent field on a retained legacy command
+means that command must not replace or clear an existing timer. A positive,
+zero, or null rest decision changes the device timer only after acknowledgement.
+
+Group, member, and round progress is derived from the same occurrence outcomes,
+not from a second execution state. Fully performed work is resolved; a fully
+settled mix containing skips, abandonment, or limited evidence is
+resolved-with-changes. T05 adds no historical rewrite or migration and does not
+reinterpret unsupported legacy evidence.

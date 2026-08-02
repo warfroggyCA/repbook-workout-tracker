@@ -202,7 +202,7 @@ test("presents immutable superset order, truthful progress, and next-member equi
   await expect(group).toContainText("Round 1 of 2");
   await expect(group).toContainText("0 of 4 performed");
   await expect(group).toContainText(
-    "No planned rest is saved after the current set.",
+    "No rest is planned after the current set.",
   );
   await expect(group).toContainText("Prepare for Pallof Press");
   await expect(group).toContainText("Preparation is guidance only");

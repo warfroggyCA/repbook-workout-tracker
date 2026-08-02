@@ -27,8 +27,8 @@ npm run docs:check
 npm run audit:check
 ```
 
-The Repbook v2 semantic foundation and current T01/T02/T03/T04 activation packages have
-focused gates:
+The Repbook v2 semantic foundation and current T01/T02/T03/T04/T05 activation
+packages have focused gates:
 
 ```bash
 npx vitest run tests/unit/v2-semantic-contract.test.ts
@@ -40,6 +40,8 @@ npx vitest run tests/unit/v2-t03-planned-order-db.test.ts tests/unit/v2-t03-plan
 npm run test:e2e:v2-t03
 npx vitest run tests/unit/v2-t04-warmup-occurrences-db.test.ts tests/unit/v2-t04-warmup-occurrences-portability.test.ts tests/unit/v2-t04-warmup-occurrences-restore.test.ts
 npm run test:e2e:v2-t04
+npx vitest run tests/unit/v2-t05-execution-semantics-db.test.ts tests/unit/v2-t05-execution-semantics-portability.test.ts tests/unit/v2-t05-execution-semantics-restore.test.ts
+npm run test:e2e:v2-t05
 ```
 
 The semantic test validates all synthetic F01-F17 scenarios and every required
@@ -51,8 +53,11 @@ correction-lineage restore. T03 activates planned-order, extra-before/after-plan
 group ordering, History/Review/export, and recovery evidence. T04 activates
 one-action-per-authored-warm-up truth, reversible acknowledgements, aggregate
 exercise-decision safety, portability, recovery, and desktop/mobile browser
-evidence. Every later package must activate its own reserved evidence before
-its product behavior is considered implemented.
+evidence. T05 activates acknowledgement-ordered current/next guidance,
+source-bound durable rest, group/member/round mixed-resolution state,
+ready-to-finish without implicit completion, portability, recovery, and
+desktop/mobile browser evidence. Every later package must activate its own
+reserved evidence before its product behavior is considered implemented.
 
 `audit:check` requires a clean production dependency audit and also reviews the
 complete development-tool tree. Any temporary development-only exception is

@@ -107,6 +107,34 @@ describe("workout set device queue", () => {
     });
   });
 
+  it("keeps missing, explicitly unknown, and zero rest as distinct durable commands", () => {
+    const storage = new MemoryStorage();
+    const legacyMissing = setInput(1);
+    expect(enqueueWorkoutSetOutboxEntry(storage, legacyMissing)).toMatchObject({
+      ok: true,
+    });
+    expect(
+      enqueueWorkoutSetOutboxEntry(storage, {
+        ...legacyMissing,
+        restAfterSec: null,
+      }),
+    ).toMatchObject({ ok: false, reason: expect.stringContaining("different") });
+
+    const explicitlyUnknown = setInput(2);
+    expect(
+      enqueueWorkoutSetOutboxEntry(storage, {
+        ...explicitlyUnknown,
+        restAfterSec: null,
+      }),
+    ).toMatchObject({ ok: true });
+    expect(
+      enqueueWorkoutSetOutboxEntry(storage, {
+        ...explicitlyUnknown,
+        restAfterSec: 0,
+      }),
+    ).toMatchObject({ ok: false, reason: expect.stringContaining("different") });
+  });
+
   it("rejects identity drift and a second queued identity for the same set number", () => {
     const storage = new MemoryStorage();
     const input = setInput(1);

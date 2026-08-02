@@ -89,9 +89,12 @@ test("keeps a set pending until acknowledgement, then reviews and retains a corr
   await expect(plank.getByRole("button", { name: "Correct set" })).toHaveCount(0);
   await expect(plank).toContainText("1/1 workout-only performed");
   const plankDisclosure = plank.getByRole("button", { name: /RKC Plank/ });
-  await expect(plankDisclosure).toHaveAttribute("aria-expanded", "false");
-  await plankDisclosure.click();
   await expect(plankDisclosure).toHaveAttribute("aria-expanded", "true");
+  const guidance = page.getByRole("region", {
+    name: "Workout progress and upcoming work",
+  });
+  await expect(guidance).toContainText("Now: Rest after RKC Plank, set 1");
+  await expect(guidance).toContainText("Next: Barbell Back Squat, set 1");
   await expect(plank).toContainText("Acknowledged by Repbook");
   await expect(plank.getByText("45 sec", { exact: true })).toBeVisible();
   await expect(plank.getByRole("button", { name: "Correct set" })).toBeVisible();

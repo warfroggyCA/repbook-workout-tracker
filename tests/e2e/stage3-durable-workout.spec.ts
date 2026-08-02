@@ -261,7 +261,9 @@ test("publishes and preserves durable warm-up and grouped workout outcomes", asy
   await expect(workoutStatus.getByLabel("Rest timer")).toContainText(/0:1[0-5]/);
   await screenshot(page, "04-triset-next-action-and-member-rest.png");
   await workoutStatus.getByRole("button", { name: "Skip rest", exact: true }).click();
-  await workoutStatus.locator("button").first().click();
+  await workoutStatus
+    .getByRole("button", { name: "Dismiss rest timer", exact: true })
+    .click();
 
   await nextSet.getByRole("button", { name: "Skip set", exact: true }).click();
   const workingSkip = page.getByRole("dialog", {

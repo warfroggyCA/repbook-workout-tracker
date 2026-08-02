@@ -33,7 +33,6 @@ const occurrence: SessionOccurrenceData = {
   revision: 0,
   resolvedAt: null,
   completedSetId: null,
-  restAfterSec: 30,
 };
 
 describe("occurrence mutation controls", () => {

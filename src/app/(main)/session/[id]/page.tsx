@@ -366,20 +366,7 @@ async function renderSessionPage(
     historyRevision: session.historyRevision,
     templateName: session.templateName ?? "Workout",
     dayWarmupNotes: session.dayWarmupNotes,
-    occurrences: actionableOccurrences.map((occurrence, index, all) => {
-      const group = occurrence.groupSnapshotId
-        ? session.exerciseGroups.find(
-            (candidate) => candidate.id === occurrence.groupSnapshotId,
-          )
-        : null;
-      const next = all[index + 1];
-      const restAfterSec = group
-        ? next?.groupSnapshotId !== group.id
-          ? 0
-          : next.groupRound === occurrence.groupRound
-            ? group.restBetweenMembersSec ?? 0
-            : group.restBetweenRoundsSec ?? 0
-        : occurrence.plannedRestSec ?? 0;
+    occurrences: actionableOccurrences.map((occurrence) => {
       return {
         id: occurrence.id,
         sessionExerciseId: occurrence.sessionExerciseId,
@@ -406,7 +393,6 @@ async function renderSessionPage(
         revision: occurrence.revision,
         resolvedAt: occurrence.resolvedAt?.toISOString() ?? null,
         completedSetId: occurrence.completedSetId,
-        restAfterSec,
       };
     }),
     exerciseGroups: session.exerciseGroups.map((group) => ({

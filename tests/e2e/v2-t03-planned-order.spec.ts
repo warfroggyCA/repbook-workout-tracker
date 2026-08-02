@@ -60,6 +60,12 @@ test("keeps planned work authoritative around extra-before-plan and grouped work
   await page.reload({ waitUntil: "networkidle" });
   await expect(first).toContainText("Extra set 1");
   await expect(first.getByTestId("current-set-entry")).toContainText("Set 1");
+  const status = page.getByRole("complementary", { name: "Workout status" });
+  const skipRest = status.getByRole("button", { name: "Skip rest", exact: true });
+  if ((await skipRest.count()) > 0) await skipRest.click();
+  await status
+    .getByRole("button", { name: "Dismiss rest timer", exact: true })
+    .click();
 
   for (let index = 0; index < 9; index += 1) {
     await skipCurrentSet(page);
