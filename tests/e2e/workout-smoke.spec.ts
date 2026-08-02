@@ -460,7 +460,7 @@ async function verifyDecisiveToday({
   // dialog offers an explicit destructive escape instead of a dead disabled
   // button, and never renders the raw private value.
   await expect(discardDialog).toContainText(
-    "Unreadable set copies are still retained on this device",
+    "1 unreadable set copy is retained.",
   );
   await expect(
     discardDialog.getByRole("button", {

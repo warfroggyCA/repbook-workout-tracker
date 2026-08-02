@@ -210,6 +210,11 @@ jobs:
         continue-on-error: true
         run: npm run test:e2e:v2-t03
 
+      - name: Verify T04 warm-up occurrence truth on desktop and mobile
+        id: browser-v2-t04
+        continue-on-error: true
+        run: npm run test:e2e:v2-t04
+
       - name: Require every browser suite
         if: ${{ always() }}
         env:
@@ -232,6 +237,7 @@ jobs:
           BROWSER_V2_T01: ${{ steps.browser-v2-t01.outcome }}
           BROWSER_V2_T02: ${{ steps.browser-v2-t02.outcome }}
           BROWSER_V2_T03: ${{ steps.browser-v2-t03.outcome }}
+          BROWSER_V2_T04: ${{ steps.browser-v2-t04.outcome }}
         run: |
           failed=0
           for result in \
@@ -253,7 +259,8 @@ jobs:
             "active-workout exercise addition:${BROWSER_ACTIVE_WORKOUT_ADD_EXERCISE}" \
             "T01 performed measurement:${BROWSER_V2_T01}" \
             "T02 acknowledgement and correction:${BROWSER_V2_T02}" \
-            "T03 planned order and extra-set truth:${BROWSER_V2_T03}"
+            "T03 planned order and extra-set truth:${BROWSER_V2_T03}" \
+            "T04 warm-up occurrence truth:${BROWSER_V2_T04}"
           do
             name="${result%%:*}"
             outcome="${result#*:}"

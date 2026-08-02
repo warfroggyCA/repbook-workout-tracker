@@ -24,6 +24,7 @@ export default defineConfig({
     "v2-t01-recording-truth.spec.ts",
     "v2-t02-acknowledgement-correction.spec.ts",
     "v2-t03-planned-order.spec.ts",
+    "v2-t04-warmup-occurrences.spec.ts",
   ],
   outputDir: "./output/playwright/test-results",
   fullyParallel: false,

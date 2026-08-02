@@ -1343,12 +1343,16 @@ describe.sequential("real PostgreSQL parallel invariants", () => {
       .where(eq(workoutSessions.id, started.sessionId));
     expect(startedWorkout).toMatchObject({
       warmupNotes: "Two minutes easy\nShoulder circles\nTwo ramp-up sets",
-      warmupItems: [
-        expect.objectContaining({
-          label: "Two minutes easy\nShoulder circles\nTwo ramp-up sets",
-        }),
-      ],
+      warmupItems: [],
     });
+    expect(await db
+      .select({ id: sessionOccurrences.id })
+      .from(sessionOccurrences)
+      .where(and(
+        eq(sessionOccurrences.sessionId, started.sessionId),
+        eq(sessionOccurrences.kind, "day_warmup"),
+      )))
+      .toEqual([]);
     const [originalDay] = await db
       .select({
         warmupNotes: workoutTemplates.warmupNotes,

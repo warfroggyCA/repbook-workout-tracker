@@ -833,10 +833,18 @@ export async function updateSessionExerciseWithVersion(
   const versionId = options.versionId ?? randomUUID();
   const occurrenceMutationClientKey = randomUUID();
   const changesOccurrenceState =
-    action === "session_exercise.skip" || action === "session_exercise.unskip";
-  const occurrenceOperation = action === "session_exercise.skip" ? "skip" : "restore";
+    action === "session_exercise.skip" ||
+    action === "session_exercise.unskip" ||
+    action === "session_exercise.substitute";
+  const occurrenceOperation = action === "session_exercise.skip"
+    ? "skip"
+    : action === "session_exercise.substitute"
+      ? "skip"
+      : "restore";
   const occurrenceReason = action === "session_exercise.skip"
     ? `exercise:${values.skipReason ?? "other"}`
+    : action === "session_exercise.substitute"
+      ? `exercise:substituted:${versionId}`
     : null;
   const occurrencePayloadHash = createHash("sha256")
     .update(JSON.stringify({
@@ -1017,22 +1025,27 @@ export async function updateSessionExerciseWithVersion(
         AND occurrence.session_exercise_id = updated.id
         AND occurrence.session_id = updated.session_id
         AND occurrence.outcome = 'pending'
+        AND occurrence.kind <> 'exercise_warmup'
         AND occurrence.equipment_snapshot_id IS NOT NULL
       RETURNING occurrence.id
     ), updated_occurrences AS (
       UPDATE session_occurrences occurrence
       SET outcome = CASE
             WHEN ${action === "session_exercise.skip"}::boolean THEN 'skipped'
+            WHEN ${action === "session_exercise.substitute"}::boolean THEN 'skipped'
             ELSE 'pending'
           END,
           outcome_reason = ${occurrenceReason},
-          outcome_note = CASE
-            WHEN ${action === "session_exercise.unskip"}::boolean THEN NULL
-            ELSE occurrence.outcome_note
+          equipment_snapshot_id = CASE
+            WHEN ${action === "session_exercise.substitute"}::boolean
+              THEN NULL
+            ELSE occurrence.equipment_snapshot_id
           END,
           revision = occurrence.revision + 1,
           resolved_at = CASE
-            WHEN ${action === "session_exercise.skip"}::boolean THEN now()
+            WHEN ${action === "session_exercise.skip"}::boolean
+              OR ${action === "session_exercise.substitute"}::boolean
+              THEN now()
             ELSE NULL
           END,
           completed_set_id = NULL
@@ -1045,6 +1058,12 @@ export async function updateSessionExerciseWithVersion(
             ${action === "session_exercise.unskip"}::boolean
             AND occurrence.outcome = 'skipped'
             AND occurrence.outcome_reason LIKE 'exercise:%'
+            AND occurrence.outcome_reason NOT LIKE 'exercise:substituted:%'
+          )
+          OR (
+            ${action === "session_exercise.substitute"}::boolean
+            AND occurrence.kind = 'exercise_warmup'
+            AND occurrence.outcome = 'pending'
           )
         )
       RETURNING occurrence.id, occurrence.revision - 1 AS expected_revision,
@@ -1718,6 +1737,15 @@ async function restoreSessionExerciseVersion(
   } = {}
 ): Promise<VersionedEditResult> {
   const rollbackVersionId = options.clientMutationId ?? randomUUID();
+  const occurrenceMutationClientKey = randomUUID();
+  const occurrencePayloadHash = createHash("sha256")
+    .update(JSON.stringify({
+      operation: "restore",
+      reason: null,
+      source: "exercise_version_restore",
+      sourceVersionId: versionId,
+    }))
+    .digest("hex");
   const query = sql`
     WITH selected_version AS MATERIALIZED (
       SELECT *
@@ -1870,6 +1898,33 @@ async function restoreSessionExerciseVersion(
         AND occurrence.outcome = 'pending'
         AND occurrence.equipment_snapshot_id IS NOT NULL
       RETURNING occurrence.id
+    ), restored_substitution_warmups AS (
+      UPDATE session_occurrences occurrence
+      SET outcome = 'pending',
+          outcome_reason = NULL,
+          revision = occurrence.revision + 1,
+          resolved_at = NULL,
+          completed_set_id = NULL
+      FROM selected_version version
+      JOIN restored ON restored.id = version.entity_id
+      WHERE version.action = 'session_exercise.substitute'
+        AND occurrence.session_exercise_id = restored.id
+        AND occurrence.session_id = restored.session_id
+        AND occurrence.kind = 'exercise_warmup'
+        AND occurrence.outcome = 'skipped'
+        AND occurrence.outcome_reason = 'exercise:substituted:' || version.id::text
+      RETURNING occurrence.id, occurrence.revision - 1 AS expected_revision,
+                occurrence.revision AS resulting_revision
+    ), restored_substitution_warmup_receipts AS (
+      INSERT INTO session_occurrence_mutations (
+        occurrence_id, client_key, operation, canonical_payload_hash,
+        expected_revision, resulting_revision, result_code
+      )
+      SELECT occurrence.id, ${occurrenceMutationClientKey}::uuid,
+             'restore', ${occurrencePayloadHash}, occurrence.expected_revision,
+             occurrence.resulting_revision, 'applied'
+      FROM restored_substitution_warmups occurrence
+      RETURNING id
     ), versioned AS (
       INSERT INTO record_versions (
         id, user_id, entity_type, entity_id, action,

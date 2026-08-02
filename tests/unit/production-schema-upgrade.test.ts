@@ -11,6 +11,8 @@ import {
 } from "@/db/schema";
 import { buildJsonBackup } from "@/services/export";
 import { evaluateApplicationIntegrity } from "@/services/recovery-health";
+import { mutateWorkoutOccurrence } from "@/services/session-lifecycle";
+import { actionableActiveSessionOccurrences } from "@/lib/warmup-occurrence-compatibility";
 import {
   createMigratedTestDatabase,
   createTestDatabaseAtMigration,
@@ -20,7 +22,7 @@ import {
 } from "../helpers/database";
 
 const PRODUCTION_MIGRATION = "0018_brave_timeslip";
-const LATEST_MIGRATION = "0070_snapshot_correction_lineage";
+const LATEST_MIGRATION = "0071_warmup_occurrence_reversal";
 
 const previewBoundaries = [
   {
@@ -103,12 +105,13 @@ describe("current production schema upgrade", () => {
          '2026-07-21T14:00:00Z', NULL, 'America/Toronto', '2026-07-21');
       INSERT INTO session_exercises (
         id, session_id, exercise_id, order_idx, superset_key,
-        target_sets, target_reps_min, target_reps_max
+        target_sets, target_reps_min, target_reps_max, warmup_notes, warmup_sets
       ) VALUES
-        ('${completedExerciseIds[0]}', '${completedSessionId}', '${exerciseIds[0]}', 0, 'legacy-tri', 2, 8, 10),
-        ('${completedExerciseIds[1]}', '${completedSessionId}', '${exerciseIds[1]}', 1, 'legacy-tri', 2, 8, 10),
-        ('${completedExerciseIds[2]}', '${completedSessionId}', '${exerciseIds[2]}', 2, 'legacy-tri', 2, 8, 10),
-        ('${activeExerciseId}', '${activeSessionId}', '${exerciseIds[0]}', 0, NULL, 2, 5, 5);
+        ('${completedExerciseIds[0]}', '${completedSessionId}', '${exerciseIds[0]}', 0, 'legacy-tri', 2, 8, 10, NULL, '[]'),
+        ('${completedExerciseIds[1]}', '${completedSessionId}', '${exerciseIds[1]}', 1, 'legacy-tri', 2, 8, 10, NULL, '[]'),
+        ('${completedExerciseIds[2]}', '${completedSessionId}', '${exerciseIds[2]}', 2, 'legacy-tri', 2, 8, 10, NULL, '[]'),
+        ('${activeExerciseId}', '${activeSessionId}', '${exerciseIds[0]}', 0, NULL, 2, 5, 5,
+         'Prepare the press', '[{"label":"Empty bar","reps":5,"load":null,"loadUnit":null,"loadPercent":null,"loadText":"empty bar","notes":null}]');
       INSERT INTO completed_sets (
         id, session_exercise_id, set_no, weight, weight_unit, reps
       ) VALUES ('${zeroRepSetId}', '${completedExerciseIds[0]}', 1, 100, 'lb', 0);
@@ -155,9 +158,51 @@ describe("current production schema upgrade", () => {
     `, [activeSessionId]);
     expect(active.rows).toEqual([
       { kind: "day_warmup", outcome: "pending" },
+      { kind: "exercise_warmup", outcome: "pending" },
+      { kind: "exercise_warmup", outcome: "pending" },
       { kind: "working_set", outcome: "pending" },
       { kind: "working_set", outcome: "pending" },
     ]);
+    const upgradedActiveSession = await database.db.query.workoutSessions.findFirst({
+      where: (session, { eq: equal }) => equal(session.id, activeSessionId),
+      with: {
+        occurrences: { orderBy: sessionOccurrences.sequenceIdx },
+        exercises: { orderBy: sessionExercises.orderIdx },
+      },
+    });
+    if (!upgradedActiveSession) throw new Error("Active upgrade fixture missing.");
+    const actionable = actionableActiveSessionOccurrences({
+      sessionId: upgradedActiveSession.id,
+      templateId: upgradedActiveSession.templateId,
+      sourceDayLineageId: upgradedActiveSession.sourceDayLineageId,
+      dayWarmupNotes: upgradedActiveSession.dayWarmupNotes,
+      dayWarmupItems: upgradedActiveSession.dayWarmupItems,
+      exercises: upgradedActiveSession.exercises,
+      occurrences: upgradedActiveSession.occurrences,
+    });
+    expect(actionable.map((occurrence) => occurrence.kind)).toEqual([
+      "exercise_warmup",
+      "working_set",
+      "working_set",
+    ]);
+    const projectedOverviews = upgradedActiveSession.occurrences.filter(
+      (occurrence) =>
+        occurrence.kind === "day_warmup" ||
+        (occurrence.kind === "exercise_warmup" &&
+          occurrence.label === "Prepare the press"),
+    );
+    expect(projectedOverviews).toHaveLength(2);
+    for (const projectedOverview of projectedOverviews) {
+      await expect(mutateWorkoutOccurrence(database.db, userId, {
+        occurrenceId: projectedOverview.id,
+        clientKey: crypto.randomUUID(),
+        expectedRevision: projectedOverview.revision,
+        operation: "complete",
+      })).resolves.toEqual({ outcome: "conflict" });
+      expect(await database.db.query.sessionOccurrences.findFirst({
+        where: eq(sessionOccurrences.id, projectedOverview.id),
+      })).toMatchObject({ outcome: "pending", revision: 0 });
+    }
   }, 60_000);
 
   it("normalizes redundant legacy warm-up load descriptions during the occurrence backfill", async () => {

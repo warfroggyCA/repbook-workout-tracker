@@ -21,6 +21,13 @@ import {
   removeWorkoutSet,
   subscribeToWorkoutSetOutbox,
 } from "@/lib/workout-set-outbox";
+import {
+  discardUnreadableOccurrenceMutationOutbox,
+  getOccurrenceMutationOutboxServerSnapshot,
+  getOccurrenceMutationOutboxSnapshot,
+  removeOccurrenceMutation,
+  subscribeToOccurrenceMutationOutbox,
+} from "@/lib/occurrence-mutation-outbox";
 
 export function ActiveWorkoutDiscard({
   sessionId,
@@ -45,7 +52,21 @@ export function ActiveWorkoutDiscard({
   );
   const retainedSets = retainedEntries.length;
   const quarantinedCopies = outbox.quarantined.length;
-  const deviceCopiesRemain = retainedSets > 0 || quarantinedCopies > 0;
+  const occurrenceOutbox = useSyncExternalStore(
+    subscribeToOccurrenceMutationOutbox,
+    getOccurrenceMutationOutboxSnapshot,
+    getOccurrenceMutationOutboxServerSnapshot,
+  );
+  const retainedOccurrenceEntries = occurrenceOutbox.entries.filter(
+    (entry) => entry.sessionId === sessionId,
+  );
+  const retainedOccurrenceChanges = retainedOccurrenceEntries.length;
+  const unreadableOccurrenceChanges = occurrenceOutbox.error != null;
+  const deviceCopiesRemain =
+    retainedSets > 0 ||
+    quarantinedCopies > 0 ||
+    retainedOccurrenceChanges > 0 ||
+    unreadableOccurrenceChanges;
 
   async function abandonNow() {
     await onBeforeDiscard?.();
@@ -63,6 +84,12 @@ export function ActiveWorkoutDiscard({
     }
     for (const copy of outbox.quarantined) {
       await discardQuarantinedWorkoutSet(copy.quarantineKey, copy.raw);
+    }
+    for (const entry of retainedOccurrenceEntries) {
+      await removeOccurrenceMutation(entry.clientKey);
+    }
+    if (unreadableOccurrenceChanges) {
+      discardUnreadableOccurrenceMutationOutbox();
     }
     await abandonNow();
   }
@@ -94,13 +121,15 @@ export function ActiveWorkoutDiscard({
             role="alert"
             className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm text-amber-900 dark:text-amber-200"
           >
-            {retainedSets > 0
-              ? `${retainedSets} logged set ${retainedSets === 1 ? "copy is" : "copies are"} still waiting to sync from this device`
-              : "Unreadable set copies are still retained on this device"}
-            {retainedSets > 0 && quarantinedCopies > 0
-              ? `, plus ${quarantinedCopies} unreadable ${quarantinedCopies === 1 ? "copy" : "copies"}`
-              : ""}
-            . If you can, resume the workout to retry syncing them first.
+            {retainedSets > 0 &&
+              `${retainedSets} logged set ${retainedSets === 1 ? "copy is" : "copies are"} still waiting to sync. `}
+            {quarantinedCopies > 0 &&
+              `${quarantinedCopies} unreadable set ${quarantinedCopies === 1 ? "copy is" : "copies are"} retained. `}
+            {retainedOccurrenceChanges > 0 &&
+              `${retainedOccurrenceChanges} warm-up or workout-item ${retainedOccurrenceChanges === 1 ? "change is" : "changes are"} still waiting to sync. `}
+            {unreadableOccurrenceChanges &&
+              "Unreadable workout-item changes are retained on this device. "}
+            If you can, resume the workout to retry syncing them first.
             Otherwise you can discard those device copies and abandon anyway —
             the copies will be permanently removed and will not appear in
             history.

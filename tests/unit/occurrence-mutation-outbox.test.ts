@@ -106,6 +106,31 @@ describe("occurrence mutation device queue", () => {
     });
   });
 
+  it("rejects operation fields that the authoritative mutation cannot accept", () => {
+    const storage = new MemoryStorage();
+    expect(enqueueOccurrenceMutationOutboxEntry(storage, mutation(1, {
+      operation: "complete",
+      reason: "time",
+    }))).toMatchObject({ ok: false });
+    expect(enqueueOccurrenceMutationOutboxEntry(storage, mutation(2, {
+      operation: "restore",
+      reason: null,
+      note: "A restore cannot write a note",
+    }))).toMatchObject({ ok: false });
+    expect(enqueueOccurrenceMutationOutboxEntry(storage, mutation(3, {
+      operation: "note",
+      reason: "pain",
+    }))).toMatchObject({ ok: false });
+    expect(enqueueOccurrenceMutationOutboxEntry(storage, mutation(4, {
+      operation: "skip",
+      reason: "",
+    }))).toMatchObject({ ok: false });
+    expect(readOccurrenceMutationOutbox(storage)).toEqual({
+      entries: [],
+      error: null,
+    });
+  });
+
   it("replays skip then restore in order for one occurrence", () => {
     const storage = new MemoryStorage();
     const skip = mutation(1);

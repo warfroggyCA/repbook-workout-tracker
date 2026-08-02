@@ -674,6 +674,9 @@ export async function substituteExercise(input: {
       targetLoadUnit: null,
       // Exercise-specific plan cues do not carry to a different movement.
       notes: null,
+      warmupNotes: null,
+      warmupSets: [],
+      setNotes: [],
     },
     "session_exercise.substitute",
     { activeOnly: true }
@@ -839,6 +842,8 @@ export async function undoExerciseSubstitution(sessionExerciseId: string) {
     targetLoad: current.targetLoad,
     targetLoadUnit: current.targetLoadUnit,
     notes: current.notes,
+    warmupNotes: current.warmupNotes,
+    warmupSets: current.warmupSets,
     setNotes: current.setNotes,
   };
 }

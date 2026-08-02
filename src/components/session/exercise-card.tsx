@@ -41,7 +41,6 @@ import {
 } from "@/components/ui/drawer";
 import { cn } from "@/lib/utils";
 import { formatRestTime } from "@/lib/rest-time";
-import { formatWarmupSetLine } from "@/lib/warmup";
 import {
   EXERCISE_NOTE_MAX_LENGTH,
   SET_NOTE_MAX_LENGTH,
@@ -191,7 +190,6 @@ type Props = {
   acknowledgedOccurrenceIds?: string[];
   isCurrentExercise?: boolean;
   warmupResolved?: boolean;
-  warmupSkipped?: boolean;
   groupContext?: {
     name: string;
     memberOrder: number;
@@ -245,7 +243,6 @@ export function ExerciseCard({
   acknowledgedOccurrenceIds = [],
   isCurrentExercise = false,
   warmupResolved = false,
-  warmupSkipped = false,
   groupContext = null,
   occurrenceChangesBlocked = false,
   onPrepareRestCue = () => undefined,
@@ -631,22 +628,13 @@ export function ExerciseCard({
     activeOccurrence?.sessionExerciseId === exercise.id &&
     activeOccurrence.kind === "working_set" &&
     activeOccurrence.kindOrdinal === nextSetIdx;
-  const hasWarmup =
+  const hasWarmupGuidance =
     exercise.modificationType !== "substituted" &&
-    (!!exercise.warmupNotes?.trim() || exercise.warmupSets.length > 0);
-  const warmupGuidance = hasWarmup ? (
-    <>
-      {exercise.warmupNotes && (
-        <p className="mt-1 text-muted-foreground">{exercise.warmupNotes}</p>
-      )}
-      {exercise.warmupSets.length > 0 && (
-        <ul className="mt-2 flex flex-col gap-1 text-muted-foreground">
-          {exercise.warmupSets.map((set, i) => (
-            <li key={`${set.label}-${i}`}>{formatWarmupSetLine(set)}</li>
-          ))}
-        </ul>
-      )}
-    </>
+    !!exercise.warmupNotes?.trim();
+  const warmupGuidance = hasWarmupGuidance ? (
+    <p className="mt-1 whitespace-pre-line text-muted-foreground">
+      {exercise.warmupNotes}
+    </p>
   ) : null;
 
   function plannedNote(index: number): string | null {
@@ -784,16 +772,16 @@ export function ExerciseCard({
             warmupResolved ? (
               <details className="rounded-md border bg-muted/30 text-xs">
                 <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-2 px-3 py-2 font-medium text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
-                  <span>
-                    {warmupSkipped ? "Warm-up finished" : "Warm-up complete"}
-                  </span>
+                  <span>Warm-up guidance · reference</span>
                   <span className="text-muted-foreground">Show details</span>
                 </summary>
                 <div className="border-t px-3 pb-2">{warmupGuidance}</div>
               </details>
             ) : (
               <div className="rounded-md border bg-muted/30 px-3 py-2 text-xs">
-                <p className="font-medium text-foreground">Warm-up</p>
+                <p className="font-medium text-foreground">
+                  Warm-up guidance · not a check-off item
+                </p>
                 {warmupGuidance}
               </div>
             )
@@ -1524,6 +1512,8 @@ export function ExerciseCard({
                             targetLoad: restored.targetLoad,
                             targetLoadUnit: restored.targetLoadUnit,
                             notes: restored.notes,
+                            warmupNotes: restored.warmupNotes,
+                            warmupSets: restored.warmupSets,
                             setNotes: restored.setNotes,
                             media: restored.exercise.media ?? null,
                           });

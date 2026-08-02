@@ -1,6 +1,5 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
-import { formatWarmupSetLine } from "@/lib/warmup";
 import { formatCompactPlateLoadGuidance } from "@/lib/exercise-card";
 
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
@@ -84,7 +83,7 @@ const exercise: SessionExerciseData = {
 };
 
 describe("ExerciseCard", () => {
-  it("renders total-load, shared warm-up, save-state, and note-cap presentation", () => {
+  it("renders total-load, reference guidance, save-state, and note-cap presentation", () => {
     const html = renderToStaticMarkup(
       <ExerciseCard
         exercise={exercise}
@@ -142,8 +141,9 @@ describe("ExerciseCard", () => {
       `id="logged-set-${exercise.id}-2"`,
     );
     expect(html).toContain("0/3 planned performed · 2 saving");
-    expect(html).toContain(formatWarmupSetLine(warmupSet));
-    expect(html).toContain("Warm-up complete");
+    expect(html).not.toContain("Ramp 1 · 45 lb · 5 reps");
+    expect(html).toContain("Warm-up guidance · reference");
+    expect(html).toContain("Move smoothly");
     expect(html).toContain("Show details");
     expect(html).toContain("<details");
     expect(html).toContain("Waiting for save acknowledgement");

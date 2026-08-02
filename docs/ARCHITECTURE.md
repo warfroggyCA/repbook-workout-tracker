@@ -43,11 +43,11 @@ skip each member after its own sets are complete. The editor offers an optional
 conversion to matching rounds.
 
 Warm-up instructions and optional structured check-off steps are both reviewed.
-Older free-text instructions stay free text and remain complete; a historical
-generated prefix item never overrides the full overview. Independently authored
-structured steps remain independent. Workout creation and the saved Program
-presentation use authored structured steps when they exist, so the reviewed
-content is the content shown during the workout.
+Older free-text instructions stay free text and remain complete; historical
+generated overview projections never become check-off actions or override the
+full overview. Independently authored structured steps remain independent.
+Workout creation and the saved Program presentation use only authored
+structured steps as actions, so one retained action produces one occurrence.
 
 Every change to weekly work-set totals must be accounted for internally by an
 add, removal, replacement, or target change. If the review cannot account for a
@@ -150,7 +150,8 @@ remains contract-only. T01 activates its database, browser, portability,
 recovery, and adversarial proofs for truthful performed measurement. T02
 activates those proof classes for acknowledgement, retry, and reviewed
 correction. T03 activates database, browser, portability, and recovery proofs
-for planned order and extra-set truth; later packages remain future work.
+for planned order and extra-set truth. T04 activates the same required proof
+classes for warm-up occurrence truth; later packages remain future work.
 
 ## T01 performed-measurement contract
 
@@ -223,3 +224,34 @@ its measurement semantics permit, but it is excluded from planned-target and
 adherence claims. New writes, corrections, Review, History, exports, and
 snapshot restore all enforce that boundary. Existing history is interpreted
 through retained occurrence origin; T03 performs no batch rewrite.
+
+## T04 warm-up occurrence contract
+
+Free-text day and exercise warm-up overviews are reference guidance. Only an
+authored structured warm-up item creates a checkable occurrence, and normal,
+compiled, and retrospective workout producers use the same boundary. The
+active workout and History show the structured action once; they do not repeat
+the same item inside exercise guidance. Existing overview projections remain
+readable but are not silently converted into performed or skipped evidence.
+Known pending projections retained by the conservative legacy backfill are
+excluded from active controls and rejected at the mutation boundary without
+rewriting the stored row; independently authored structured actions remain
+actionable.
+
+Each warm-up occurrence keeps its immutable session, planned-exercise,
+prescription, order, and equipment identity. Note, complete, skip, and restore
+are revision-fenced, replay-safe mutations with immutable receipts. A user may
+undo a completed or skipped warm-up while retaining its independent note. The
+additive `0071_warmup_occurrence_reversal` migration permits that narrow
+completed-to-pending correction for warm-ups only; completed working-set
+evidence remains immutable.
+
+Whole-exercise skip and substitution remain aggregate decisions. They resolve
+only applicable pending warm-ups with an explicit aggregate reason, ordinary
+un-skip cannot revive substitution-specific actions, and only undoing the
+exact substitution may restore those actions. An action cannot become pending
+under a skipped or different performed exercise. Abandonment retains completed
+or skipped acknowledgements and resolves only pending actions. CSV, Review,
+encrypted snapshot restore, and device-outbox discard preserve the same stable
+identity and do not synthesize warm-up facts. T04 performs no historical batch
+repair.

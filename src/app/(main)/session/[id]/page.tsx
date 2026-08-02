@@ -33,6 +33,7 @@ import { isPhase0StartDisposableAcceptanceRuntime } from "@/lib/acceptance-runti
 import { logServerEvent } from "@/lib/server-log";
 import { safeErrorName } from "@/lib/safe-error-name";
 import { Button } from "@/components/ui/button";
+import { actionableActiveSessionOccurrences } from "@/lib/warmup-occurrence-compatibility";
 
 function ConfirmedSessionLoadRecovery({ sessionId }: { sessionId: string }) {
   return (
@@ -211,6 +212,15 @@ async function renderSessionPage(
   const plannedExerciseNames = new Map(
     plannedExercises.map((exercise) => [exercise.id, exercise.name])
   );
+  const actionableOccurrences = actionableActiveSessionOccurrences({
+    sessionId: session.id,
+    templateId: session.templateId,
+    sourceDayLineageId: session.sourceDayLineageId,
+    dayWarmupNotes: session.dayWarmupNotes,
+    dayWarmupItems: session.dayWarmupItems,
+    exercises: session.exercises,
+    occurrences: session.occurrences,
+  });
 
   const exactByExercise = new Map(
     exactRequirements.map((requirement) => [requirement.exerciseId, requirement]),
@@ -356,7 +366,7 @@ async function renderSessionPage(
     historyRevision: session.historyRevision,
     templateName: session.templateName ?? "Workout",
     dayWarmupNotes: session.dayWarmupNotes,
-    occurrences: session.occurrences.map((occurrence, index, all) => {
+    occurrences: actionableOccurrences.map((occurrence, index, all) => {
       const group = occurrence.groupSnapshotId
         ? session.exerciseGroups.find(
             (candidate) => candidate.id === occurrence.groupSnapshotId,

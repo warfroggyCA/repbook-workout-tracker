@@ -169,7 +169,9 @@ export function exitRequiresDeviceCopyAcknowledgement(
   return (
     queues.unsyncedSetCount > 0 ||
     queues.quarantinedSetCount > 0 ||
-    queues.setHasError
+    queues.setHasError ||
+    queues.unsyncedOccurrenceCount > 0 ||
+    queues.occurrenceHasError
   );
 }
 

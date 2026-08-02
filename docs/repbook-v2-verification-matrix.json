@@ -5,13 +5,14 @@
   "repositoryRole": "public application source",
   "exactBaseCommit": "2c9ab1b9478502f1d08956a6c44dfb0850c8f168",
   "fixtureCatalogue": "tests/fixtures/v2/semantic-scenarios.json",
-  "currentPackage": "T03",
-  "currentPackageBaseCommit": "ea3ff34ef74717bb759bb5b6deb0f0b518ddf29b",
+  "currentPackage": "T04",
+  "currentPackageBaseCommit": "1d2018c65b3a2fd7331ed26604bd8986d9aada3f",
   "productBehaviorImplementedByP02": false,
   "implementedProductPackages": [
     "T01",
     "T02",
-    "T03"
+    "T03",
+    "T04"
   ],
   "legend": {
     "R": "required primary proof",
@@ -161,32 +162,32 @@
       "proves": "encrypted history restore retains planned and extra occurrence identity, immutable order, and the extra marker while recomputing unsupported or non-planned target outcomes to unknown"
     },
     "T04-databaseService": {
-      "status": "future_activation",
+      "status": "current",
       "implementingPackage": "T04",
       "testPath": "tests/unit/v2-t04-warmup-occurrences-db.test.ts",
       "command": "npx vitest run tests/unit/v2-t04-warmup-occurrences-db.test.ts",
-      "proves": "must pass in the same package that implements this product meaning"
+      "proves": "normal, compiled, and retrospective producers create exactly one occurrence per authored structured day or exercise warm-up action; reference overview prose is not a check-off; stable occurrence mutations retain notes, exact retry receipts, equipment identity, reversible completion or skip state, aggregate exercise decisions, and abandonment evidence"
     },
     "T04-browser": {
-      "status": "future_activation",
+      "status": "current",
       "implementingPackage": "T04",
       "testPath": "tests/e2e/v2-t04-warmup-occurrences.spec.ts",
-      "command": "npx playwright test tests/e2e/v2-t04-warmup-occurrences.spec.ts",
-      "proves": "must pass in the same package that implements this product meaning"
+      "command": "npx playwright test --config=playwright.v2-t04.config.ts tests/e2e/v2-t04-warmup-occurrences.spec.ts",
+      "proves": "desktop Chromium and narrow mobile WebKit at extra-large text show one check-off control per structured action, keep overview guidance reference-only, preserve note and reversible completion or skip state across reload, retain 44-pixel controls without horizontal overflow, and require explicit removal of an unsynced occurrence copy before abandon"
     },
     "T04-exportImport": {
-      "status": "future_activation",
+      "status": "current",
       "implementingPackage": "T04",
       "testPath": "tests/unit/v2-t04-warmup-occurrences-portability.test.ts",
       "command": "npx vitest run tests/unit/v2-t04-warmup-occurrences-portability.test.ts",
-      "proves": "must pass in the same package that implements this product meaning"
+      "proves": "CSV and the deterministic Review digest carry each warm-up action exactly once with its stable kind, label, outcome, reason, note, and prescription evidence while excluding overview prose from action evidence"
     },
     "T04-restoreRollback": {
-      "status": "future_activation",
+      "status": "current",
       "implementingPackage": "T04",
       "testPath": "tests/unit/v2-t04-warmup-occurrences-restore.test.ts",
       "command": "npx vitest run tests/unit/v2-t04-warmup-occurrences-restore.test.ts",
-      "proves": "must pass in the same package that implements this product meaning"
+      "proves": "encrypted history restore preserves exact warm-up occurrence IDs, immutable prescription identity, outcomes, reasons, notes, equipment snapshots, revisions, and mutation receipts without synthesizing or duplicating actions"
     },
     "T05-databaseService": {
       "status": "future_activation",
