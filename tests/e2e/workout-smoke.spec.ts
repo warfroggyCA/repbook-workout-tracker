@@ -1509,6 +1509,7 @@ test("answers all five History questions without mixing independent activity int
 });
 
 test("signs in and completes a durable workout flow", async ({ page }) => {
+  test.setTimeout(120_000);
   const browserErrors: string[] = [];
   page.on("console", (message) => {
     if (message.type() === "error") browserErrors.push(message.text());
@@ -1564,7 +1565,10 @@ test("signs in and completes a durable workout flow", async ({ page }) => {
   await expect(workoutStatus).toContainText("Resting");
   await expect(workoutStatus.getByText(/next set ready/i)).toHaveCount(0);
   await page.unrouteAll({ behavior: "wait" });
-  const loggedSet = firstExercise.getByRole("button", { name: /Set 1/ });
+  const loggedSet = firstExercise
+    .locator('[id^="logged-set-"]')
+    .filter({ hasText: "Set 1" })
+    .first();
   await expect(loggedSet).toContainText("95 lb");
   await expect(loggedSet).toContainText("RPE 8.5");
   await expect
@@ -1584,15 +1588,27 @@ test("signs in and completes a durable workout flow", async ({ page }) => {
   await expect(
     nextSet.getByRole("button", { name: "Log set", exact: true })
   ).toBeEnabled();
-  await loggedSet.click();
-  await expect(
-    firstExercise.getByRole("button", { name: "Update", exact: true })
-  ).toBeVisible();
-  await firstExercise.locator('input[inputmode="decimal"]').first().fill("100");
-  await firstExercise.getByRole("button", { name: "Update", exact: true }).click();
-  await expect(firstExercise.getByRole("button", { name: /Set 1/ })).toContainText(
-    "100 lb"
-  );
+  await firstExercise
+    .getByRole("button", { name: "Correct set", exact: true })
+    .first()
+    .click();
+  const activeCorrection = page.getByRole("dialog", {
+    name: "Correct acknowledged set 1",
+  });
+  await activeCorrection.getByLabel("Load", { exact: true }).fill("100");
+  await activeCorrection
+    .getByLabel("Why are you correcting this?")
+    .selectOption("measurement_entry");
+  await activeCorrection
+    .getByRole("button", { name: "Review correction", exact: true })
+    .click();
+  await activeCorrection.getByRole("checkbox").check();
+  await activeCorrection
+    .getByRole("button", { name: "Save reviewed correction", exact: true })
+    .click();
+  await expect(page.getByText("Set correction acknowledged")).toBeVisible();
+  await page.reload({ waitUntil: "networkidle" });
+  await expect(loggedSet).toContainText("100 lb");
   await page.getByRole("button", { name: "Friction log", exact: true }).click();
   const frictionLog = page.getByRole("dialog", {
     name: "Active-workout friction log",
@@ -1616,18 +1632,23 @@ test("signs in and completes a durable workout flow", async ({ page }) => {
   await expect(page.getByText("Phase 1 browser verification")).toBeVisible();
   await expect(page.getByText(/100 lb × 8/)).toBeVisible();
   await page.getByRole("button", { name: "Correct set", exact: true }).first().click();
-  const correction = page.getByRole("dialog", { name: "Correct completed set 1" });
-  await expect(correction).toContainText("The original values remain in revision history.");
+  const correction = page.getByRole("dialog", { name: "Correct saved set 1" });
+  await expect(correction).toContainText(
+    "The original assertion remains in Edit history.",
+  );
   await correction.getByLabel("Reps", { exact: true }).fill("9");
   await correction.getByLabel("Set note", { exact: true }).fill("Reviewed after the workout.");
+  await correction
+    .getByLabel("Why are you correcting this?")
+    .selectOption("measurement_entry");
   await correction.getByRole("button", { name: "Review correction", exact: true }).click();
   await expect(correction).toContainText("Original");
   await expect(correction).toContainText("Corrected");
   await correction.getByRole("checkbox").check();
   await correction.getByRole("button", { name: "Save reviewed correction", exact: true }).click();
-  await expect(page.getByText("Completed set corrected with revision evidence")).toBeVisible();
+  await expect(page.getByText("Set correction acknowledged")).toBeVisible();
   await expect(page.getByText(/100 lb × 9/)).toBeVisible();
-  await expect(page.getByText(/1 saved correction · original retained in revision history/)).toBeVisible();
+  await expect(page.getByText(/2 saved corrections · original retained in revision history/)).toBeVisible();
   await expect(page.getByText("Reviewed after the workout.")).toBeVisible();
   expect(browserErrors).toEqual([]);
 });
@@ -2666,15 +2687,24 @@ test("keeps an offline set visible and waits for acknowledgement before the next
   await expect.poll(() => actionRequests).toBe(1);
 
   await page.reload();
-  const savedSet = firstExercise.getByRole("button", { name: /Set 1 95/ });
+  const savedSet = firstExercise
+    .locator('[id^="logged-set-"]')
+    .filter({ hasText: "Set 1" })
+    .first();
   await expect(savedSet).toBeVisible();
-  await savedSet.click();
-  await expect(firstExercise.getByPlaceholder("Set note…")).toHaveValue(
-    offlineSetNote
-  );
+  await expect(savedSet).toContainText("95 lb");
   await firstExercise
-    .getByRole("button", { name: "Cancel", exact: true })
+    .getByRole("button", { name: "Correct set", exact: true })
+    .first()
     .click();
+  const savedCorrection = page.getByRole("dialog", {
+    name: "Correct acknowledged set 1",
+  });
+  await expect(
+    savedCorrection.getByRole("textbox", { name: "Set note", exact: true }),
+  ).toHaveValue(offlineSetNote);
+  await page.keyboard.press("Escape");
+  await expect(savedCorrection).toHaveCount(0);
 
   const finishWorkout = page.getByRole("button", {
     name: "Finish",
