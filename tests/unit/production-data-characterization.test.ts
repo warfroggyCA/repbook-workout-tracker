@@ -21,7 +21,7 @@ import {
 import { getDashboardStats } from "@/services/dashboard";
 import { buildTrainingDigest } from "@/services/digest";
 import { getLastPerformances } from "@/services/today";
-import { logWorkoutSet } from "@/services/session-lifecycle";
+import { logWorkoutSet } from "../helpers/log-workout-set";
 import { activateProgramAtomically } from "@/services/program-activation";
 import {
   createMigratedTestDatabase,

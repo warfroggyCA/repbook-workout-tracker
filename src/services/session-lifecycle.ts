@@ -22,6 +22,13 @@ import {
 import { getExerciseDiscoveryLibrary } from "@/services/exercise-discovery";
 import { effectiveProgramDayWarmupItemsSql } from "@/services/program-warmup-compatibility";
 import { workoutReplacementUnavailableReason } from "@/lib/exercise-replacements";
+import {
+  buildPerformedSetMeasurement,
+  PERFORMED_LOAD_SEMANTICS,
+  type PerformedMetricType,
+  type PerformedLoadSemantics,
+  type PerformedSetMeasurement,
+} from "@/lib/set-metric-semantics";
 
 export type LifecycleCheckpoint = (boundary: string) => void | Promise<void>;
 
@@ -137,10 +144,12 @@ export async function cleanupIncompleteWorkoutCreation(
 
 export type LogWorkoutSetInput = {
   sessionExerciseId: string;
+  /** Exact performed exercise identity observed when the command was created. */
+  performedExerciseId: string;
+  performedSemanticsVersion: 1;
+  performedLoadType: string;
+  performedLoadSemantics: PerformedLoadSemantics;
   setNo: number;
-  weight: number | null;
-  weightUnit: LoadUnit | null;
-  reps: number;
   rpe?: number | null;
   isWarmup?: boolean;
   note?: string | null;
@@ -151,7 +160,7 @@ export type LogWorkoutSetInput = {
   loadEntryMeaning?: EquipmentLoadEntryMeaning;
   /** Stable device observation; null denotes legacy/unknown timing evidence. */
   observedCompletedAtISO?: string | null;
-};
+} & PerformedSetMeasurement;
 
 export type EquipmentLoadEntryMeaning =
   | "total_system"
@@ -177,9 +186,19 @@ export type LogWorkoutSetResult =
       reason:
         | "unsupported_metric"
         | "metric_semantics_conflict"
+        | "measurement_shape_conflict"
         | "weight_reps_requires_load"
         | "reps_cannot_include_load"
-        | "assisted_reps_requires_numeric_assistance";
+        | "assisted_reps_requires_numeric_assistance"
+        | "duration_requires_time"
+        | "distance_duration_requires_distance";
+    }
+  | {
+      outcome: "performed_evidence_conflict";
+      reason:
+        | "exercise_changed"
+        | "metric_changed"
+        | "semantics_changed";
     }
   | { outcome: "equipment_selection_required" }
   | { outcome: "equipment_selection_conflict" }
@@ -1445,6 +1464,23 @@ export async function logWorkoutSet(
   input: LogWorkoutSetInput,
   dependencies: SessionLifecycleDependencies = {}
 ): Promise<LogWorkoutSetResult> {
+  if (
+    input.performedSemanticsVersion !== 1 ||
+    !PERFORMED_LOAD_SEMANTICS.includes(input.performedLoadSemantics) ||
+    typeof input.performedLoadType !== "string" ||
+    input.performedLoadType.trim().length === 0 ||
+    input.performedLoadType.length > 50
+  ) {
+    return { outcome: "performed_evidence_conflict", reason: "semantics_changed" };
+  }
+  const measurement = buildPerformedSetMeasurement(input);
+  if (!measurement.ok) {
+    return {
+      outcome: "unsupported_set_shape",
+      metricType: input.metricType as PerformedMetricType,
+      reason: measurement.reason,
+    };
+  }
   const initial = await logWorkoutSetAttempt(
     db,
     userId,
@@ -1497,10 +1533,17 @@ async function logWorkoutSetAttempt(
   const mutationHash = createHash("sha256")
     .update(JSON.stringify({
       operation: "complete",
+      performedExerciseId: input.performedExerciseId,
+      performedSemanticsVersion: input.performedSemanticsVersion,
+      performedLoadType: input.performedLoadType,
+      performedLoadSemantics: input.performedLoadSemantics,
+      metricType: input.metricType,
       setNo: input.setNo,
       weight: input.weight,
       weightUnit: input.weightUnit,
       reps: input.reps,
+      distanceKm: input.distanceKm,
+      durationSeconds: input.durationSeconds,
       rpe: input.rpe ?? null,
       isWarmup: input.isWarmup ?? false,
       note: input.note ?? null,
@@ -1528,6 +1571,20 @@ async function logWorkoutSetAttempt(
              END AS performed_metric_type,
              exercise.load_type AS performed_load_type,
              exercise.load_semantics AS performed_load_semantics,
+             se.exercise_id = ${input.performedExerciseId}::uuid
+               AS performed_exercise_matches,
+             (CASE
+               WHEN exercise.metric_type::text = 'weight_reps'
+                 AND exercise.load_semantics::text = 'resistance_band'
+                 THEN 'reps'::metric_type
+               ELSE exercise.metric_type
+             END) = ${input.metricType}::metric_type
+               AS performed_metric_matches,
+             exercise.load_type = ${input.performedLoadType}
+               AND exercise.load_semantics =
+                 ${input.performedLoadSemantics}::load_semantics
+               AND ${input.performedSemanticsVersion}::integer = 1
+               AS performed_semantics_match,
              CASE
                WHEN (
                  (exercise.load_semantics::text = 'assistance')
@@ -1538,16 +1595,47 @@ async function logWorkoutSetAttempt(
                  AND exercise.load_semantics::text = 'resistance_band'
                  THEN ${input.weight}::double precision IS NULL
                    AND ${input.weightUnit}::unit IS NULL
-               ELSE CASE exercise.metric_type::text
+                   AND ${input.reps}::integer IS NOT NULL
+                   AND ${input.distanceKm}::real IS NULL
+                   AND ${input.durationSeconds}::integer IS NULL
+               WHEN exercise.metric_type::text IN ('duration', 'distance_duration')
+                 AND exercise.load_semantics::text NOT IN ('none', 'bodyweight')
+                 THEN false
+               ELSE CASE (CASE
+                 WHEN exercise.metric_type::text = 'weight_reps'
+                   AND exercise.load_semantics::text = 'resistance_band'
+                   THEN 'reps'
+                 ELSE exercise.metric_type::text
+               END)
                WHEN 'weight_reps' THEN
                  ${input.weight}::double precision IS NOT NULL
                  AND ${input.weightUnit}::unit IS NOT NULL
+                 AND ${input.reps}::integer IS NOT NULL
+                 AND ${input.distanceKm}::real IS NULL
+                 AND ${input.durationSeconds}::integer IS NULL
                WHEN 'reps' THEN
                  ${input.weight}::double precision IS NULL
                  AND ${input.weightUnit}::unit IS NULL
+                 AND ${input.reps}::integer IS NOT NULL
+                 AND ${input.distanceKm}::real IS NULL
+                 AND ${input.durationSeconds}::integer IS NULL
                WHEN 'assisted_reps' THEN
                  ${input.weight}::double precision IS NOT NULL
                  AND ${input.weightUnit}::unit IS NOT NULL
+                 AND ${input.reps}::integer IS NOT NULL
+                 AND ${input.distanceKm}::real IS NULL
+                 AND ${input.durationSeconds}::integer IS NULL
+               WHEN 'duration' THEN
+                 ${input.weight}::double precision IS NULL
+                 AND ${input.weightUnit}::unit IS NULL
+                 AND ${input.reps}::integer IS NULL
+                 AND ${input.distanceKm}::real IS NULL
+                 AND ${input.durationSeconds}::integer IS NOT NULL
+               WHEN 'distance_duration' THEN
+                 ${input.weight}::double precision IS NULL
+                 AND ${input.weightUnit}::unit IS NULL
+                 AND ${input.reps}::integer IS NULL
+                 AND ${input.distanceKm}::real IS NOT NULL
                ELSE false
                END
              END AS writer_shape_supported,
@@ -1692,6 +1780,9 @@ async function logWorkoutSetAttempt(
       FROM owned
       WHERE owned.equipment_source_current
       AND owned.observed_completion_valid
+      AND owned.performed_exercise_matches
+      AND owned.performed_metric_matches
+      AND owned.performed_semantics_match
       AND owned.writer_shape_supported
       AND CASE
         WHEN owned.evidence_required AND ${input.weight}::double precision IS NOT NULL THEN
@@ -1762,7 +1853,8 @@ async function logWorkoutSetAttempt(
     ), saved AS (
       INSERT INTO completed_sets (
         id, session_exercise_id, set_no, weight, weight_unit, reps, rpe,
-        is_warmup, metric_type, target_met, note, client_key, equipment_snapshot_id,
+        distance_km, duration_seconds, is_warmup, metric_type, target_met,
+        note, client_key, equipment_snapshot_id,
         load_entry_meaning, performed_semantics_version, performed_load_type,
         performed_load_semantics, observed_completed_at,
         observed_completion_provenance, observed_completion_quality
@@ -1775,10 +1867,14 @@ async function logWorkoutSetAttempt(
         ${input.weightUnit}::unit,
         ${input.reps},
         ${input.rpe ?? null},
+        ${input.distanceKm},
+        ${input.durationSeconds},
         ${input.isWarmup ?? false},
         owned.performed_metric_type,
         CASE
           WHEN ${input.isWarmup ?? false}::boolean THEN NULL
+          WHEN owned.performed_metric_type::text IN ('duration', 'distance_duration')
+            THEN NULL
           WHEN owned.performed_metric_type::text = 'assisted_reps' THEN NULL
           WHEN owned.performed_metric_type::text = 'reps'
             AND owned.modification_type = 'as_planned' THEN
@@ -1818,8 +1914,8 @@ async function logWorkoutSetAttempt(
         CASE WHEN owned.evidence_required AND ${input.weight}::double precision IS NOT NULL
           THEN ${loadEntryMeaning} ELSE 'legacy_unknown' END,
         1,
-        owned.performed_load_type,
-        owned.performed_load_semantics,
+        ${input.performedLoadType},
+        ${input.performedLoadSemantics}::load_semantics,
         ${observedCompletedAtISO}::timestamptz,
         CASE WHEN ${observedCompletedAtISO}::timestamptz IS NULL
           THEN 'unknown' ELSE 'live_client' END,
@@ -1842,12 +1938,17 @@ async function logWorkoutSetAttempt(
           completed_sets.weight,
           completed_sets.weight_unit,
           completed_sets.reps,
+          completed_sets.distance_km,
+          completed_sets.duration_seconds,
           completed_sets.rpe,
           completed_sets.is_warmup,
           completed_sets.metric_type,
           completed_sets.note,
           completed_sets.equipment_snapshot_id,
           completed_sets.load_entry_meaning
+          , completed_sets.performed_semantics_version
+          , completed_sets.performed_load_type
+          , completed_sets.performed_load_semantics
           , completed_sets.observed_completed_at
           , completed_sets.observed_completion_provenance
           , completed_sets.observed_completion_quality
@@ -1856,12 +1957,17 @@ async function logWorkoutSetAttempt(
           excluded.weight,
           excluded.weight_unit,
           excluded.reps,
+          excluded.distance_km,
+          excluded.duration_seconds,
           excluded.rpe,
           excluded.is_warmup,
           excluded.metric_type,
           excluded.note,
           excluded.equipment_snapshot_id,
           excluded.load_entry_meaning
+          , excluded.performed_semantics_version
+          , excluded.performed_load_type
+          , excluded.performed_load_semantics
           , excluded.observed_completed_at
           , excluded.observed_completion_provenance
           , excluded.observed_completion_quality
@@ -1934,6 +2040,12 @@ async function logWorkoutSetAttempt(
         WHEN EXISTS (SELECT 1 FROM resolved_occurrence) THEN 'saved'
         WHEN EXISTS (
           SELECT 1 FROM owned
+          WHERE NOT performed_exercise_matches
+             OR NOT performed_metric_matches
+             OR NOT performed_semantics_match
+        ) THEN 'performed_evidence_conflict'
+        WHEN EXISTS (
+          SELECT 1 FROM owned
           WHERE NOT writer_shape_supported
         ) THEN 'unsupported_set_shape'
         WHEN EXISTS (
@@ -1967,15 +2079,37 @@ async function logWorkoutSetAttempt(
       END AS outcome,
       (SELECT performed_metric_type::text FROM owned LIMIT 1) AS performed_metric_type,
       (SELECT CASE
+        WHEN NOT performed_exercise_matches THEN 'exercise_changed'
+        WHEN NOT performed_metric_matches THEN 'metric_changed'
+        ELSE 'semantics_changed'
+      END FROM owned
+      WHERE NOT performed_exercise_matches
+         OR NOT performed_metric_matches
+         OR NOT performed_semantics_match
+      LIMIT 1) AS performed_evidence_reason,
+      (SELECT CASE
         WHEN (
           (performed_load_semantics::text = 'assistance')
           IS DISTINCT FROM
           (performed_metric_type::text = 'assisted_reps')
         ) THEN 'metric_semantics_conflict'
+        WHEN performed_metric_type::text IN ('duration', 'distance_duration')
+          AND performed_load_semantics::text NOT IN ('none', 'bodyweight')
+          THEN 'metric_semantics_conflict'
         ELSE CASE performed_metric_type::text
           WHEN 'assisted_reps' THEN 'assisted_reps_requires_numeric_assistance'
           WHEN 'reps' THEN 'reps_cannot_include_load'
           WHEN 'weight_reps' THEN 'weight_reps_requires_load'
+          WHEN 'duration' THEN CASE
+            WHEN ${input.durationSeconds}::integer IS NULL
+              THEN 'duration_requires_time'
+            ELSE 'measurement_shape_conflict'
+          END
+          WHEN 'distance_duration' THEN CASE
+            WHEN ${input.distanceKm}::real IS NULL
+              THEN 'distance_duration_requires_distance'
+            ELSE 'measurement_shape_conflict'
+          END
           ELSE 'unsupported_metric'
         END
       END FROM owned WHERE NOT writer_shape_supported LIMIT 1) AS unsupported_reason
@@ -2001,7 +2135,8 @@ async function logWorkoutSetAttempt(
   if (
     row.outcome === "set_number_conflict" ||
     row.outcome === "equipment_selection_required" ||
-    row.outcome === "equipment_selection_conflict"
+    row.outcome === "equipment_selection_conflict" ||
+    row.outcome === "performed_evidence_conflict"
   ) {
     const replay = resultRows(await db.execute(sql`
       SELECT
@@ -2012,12 +2147,17 @@ async function logWorkoutSetAttempt(
           completed_set.weight,
           completed_set.weight_unit,
           completed_set.reps,
+          completed_set.distance_km,
+          completed_set.duration_seconds,
           completed_set.rpe,
           completed_set.is_warmup,
           completed_set.metric_type,
           completed_set.note,
           completed_set.equipment_snapshot_id,
           completed_set.load_entry_meaning
+          , completed_set.performed_semantics_version
+          , completed_set.performed_load_type
+          , completed_set.performed_load_semantics
           , completed_set.observed_completed_at
           , completed_set.observed_completion_provenance
           , completed_set.observed_completion_quality
@@ -2026,17 +2166,17 @@ async function logWorkoutSetAttempt(
           ${input.weight}::double precision,
           ${input.weightUnit}::unit,
           ${input.reps}::integer,
+          ${input.distanceKm}::real,
+          ${input.durationSeconds}::integer,
           ${input.rpe ?? null}::real,
           false,
-          CASE
-            WHEN exercise_definition.metric_type::text = 'weight_reps'
-              AND exercise_definition.load_semantics::text = 'resistance_band'
-              THEN 'reps'::metric_type
-            ELSE exercise_definition.metric_type
-          END,
+          ${input.metricType}::metric_type,
           ${input.note ?? null}::text,
           ${equipmentSnapshotId}::uuid,
           ${loadEntryMeaning}::text
+          , ${input.performedSemanticsVersion}::integer
+          , ${input.performedLoadType}::text
+          , ${input.performedLoadSemantics}::load_semantics
           , ${observedCompletedAtISO}::timestamptz
           , CASE WHEN ${observedCompletedAtISO}::timestamptz IS NULL
               THEN 'unknown' ELSE 'live_client' END
@@ -2052,10 +2192,9 @@ async function logWorkoutSetAttempt(
        AND occurrence.kind_ordinal = ${input.setNo - 1}
       JOIN session_exercises exercise
         ON exercise.id = completed_set.session_exercise_id
-      JOIN exercises exercise_definition
-        ON exercise_definition.id = exercise.exercise_id
       JOIN workout_sessions session ON session.id = exercise.session_id
       WHERE completed_set.session_exercise_id = ${input.sessionExerciseId}::uuid
+        AND exercise.exercise_id = ${input.performedExerciseId}::uuid
         AND completed_set.client_key = ${input.clientKey}
         AND completed_set.archived_at IS NULL
         AND session.user_id = ${userId}::uuid
@@ -2076,18 +2215,30 @@ async function logWorkoutSetAttempt(
     if (row.outcome === "equipment_selection_conflict") {
       return { outcome: "equipment_selection_conflict" };
     }
-    return { outcome: "set_number_conflict" };
+    if (row.outcome === "set_number_conflict") {
+      return { outcome: "set_number_conflict" };
+    }
   }
   if (
     row.outcome === "workout_not_active" ||
     row.outcome === "retry_identity_conflict" ||
     row.outcome === "unsupported_set_shape" ||
+    row.outcome === "performed_evidence_conflict" ||
     row.outcome === "equipment_selection_required" ||
     row.outcome === "equipment_selection_conflict" ||
     row.outcome === "invalid_observed_completion" ||
     row.outcome === "set_order_conflict" ||
     row.outcome === "not_found"
   ) {
+    if (row.outcome === "performed_evidence_conflict") {
+      return {
+        outcome: "performed_evidence_conflict",
+        reason: String(row.performed_evidence_reason) as Extract<
+          LogWorkoutSetResult,
+          { outcome: "performed_evidence_conflict" }
+        >["reason"],
+      };
+    }
     if (row.outcome === "unsupported_set_shape") {
       return {
         outcome: "unsupported_set_shape",

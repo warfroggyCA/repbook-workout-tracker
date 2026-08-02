@@ -45,18 +45,28 @@ class MemoryStorage implements WorkoutSetOutboxStorage {
   }
 }
 
-function entry(): NewWorkoutSetOutboxEntry {
+function entry(): Extract<
+  NewWorkoutSetOutboxEntry,
+  { metricType: "weight_reps" }
+> {
   return {
     clientKey: "10000000-0000-4000-8000-000000000001",
     ownerId: "20000000-0000-4000-8000-000000000001",
     sessionId: "30000000-0000-4000-8000-000000000001",
     sessionExerciseId: "40000000-0000-4000-8000-000000000001",
+    performedExerciseId: "50000000-0000-4000-8000-000000000001",
+    performedSemanticsVersion: 1,
+    performedLoadType: "barbell",
+    performedLoadSemantics: "total",
     workoutName: "Day 3",
     exerciseName: "Bench Press",
     setNo: 1,
+    metricType: "weight_reps",
     weight: 100,
     weightUnit: "lb",
     reps: 8,
+    distanceKm: null,
+    durationSeconds: null,
     rpe: 8,
     note: null,
     equipmentSnapshotId: null,

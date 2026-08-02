@@ -21,9 +21,9 @@ import {
 } from "@/db/schema";
 import {
   completeWorkoutSession,
-  logWorkoutSet,
   startWorkoutSession,
 } from "@/services/session-lifecycle";
+import { logWorkoutSet } from "../helpers/log-workout-set";
 import {
   claimProgressionJob,
   drainProgressionJobs,

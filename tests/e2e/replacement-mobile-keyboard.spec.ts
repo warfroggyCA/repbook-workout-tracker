@@ -138,10 +138,14 @@ test("keeps unrestricted replacement truthful and reachable through mobile keybo
 
   await signIn(page);
   await page.goto("/settings");
-  await page.getByRole("radio", { name: /Extra large/ }).click();
-  await expect(
-    page.getByText("Saved to your profile.", { exact: true }),
-  ).toBeVisible();
+  const extraLargeText = page.getByRole("radio", { name: /Extra large/ });
+  if (!(await extraLargeText.isChecked())) {
+    await extraLargeText.click();
+    await expect(
+      page.getByText("Saved to your profile.", { exact: true }),
+    ).toBeVisible();
+  }
+  await expect(extraLargeText).toBeChecked();
   await page.goto("/today");
   await startWorkout(page);
 
@@ -243,10 +247,22 @@ test("keeps unrestricted replacement truthful and reachable through mobile keybo
     .getByRole("button", { name: "All exercises", exact: true })
     .click();
   await inspectSearchResult(picker, "Jump Rope");
-  await expect(picker).toContainText("This variant cannot be selected here.");
-  await expect(picker).toContainText(
-    "This workout runner does not yet support this exercise type truthfully.",
-  );
+  await expect(picker.getByText("Reps", { exact: true })).toBeVisible();
+  await expect(
+    picker.getByRole("button", {
+      name: "Replace in this workout",
+      exact: true,
+    }),
+  ).toBeVisible();
+  await expect(
+    picker.getByText("This variant cannot be selected here.", { exact: true }),
+  ).toHaveCount(0);
+  await expect(
+    picker.getByText(
+      "This workout runner does not yet support this exercise type truthfully.",
+      { exact: true },
+    ),
+  ).toHaveCount(0);
   await picker.getByRole("button", { name: "Back", exact: true }).click();
 
   await inspectSearchResult(picker, "Cable Face Pull");
@@ -300,15 +316,36 @@ test("keeps unrestricted replacement truthful and reachable through mobile keybo
   await expect(card).toContainText("Reason: Variety");
   await expect(card).not.toContainText("Last time:");
   await expect(weight).toHaveCount(0);
+  await expect(reps).toHaveValue("10");
+  const logSet = card.getByRole("button", { name: "Log set", exact: true });
+  await waitForHydratedReactHandler(logSet);
+  await reps.fill("9");
   await expect(reps).toHaveValue("9");
-  await card.getByRole("button", { name: "Log set", exact: true }).click();
-  await expect(card.getByText("Saved", { exact: true })).toBeVisible();
+  await logSet.click();
   await expect(card).toContainText("9 reps");
   await expect(card).not.toContainText("0 lb");
+
+  await expect
+    .poll(
+      () =>
+        page.evaluate(() => {
+          const raw = localStorage.getItem(
+            "workout-tracker:workout-set-outbox:v1",
+          );
+          if (!raw) return 0;
+          const parsed = JSON.parse(raw) as { entries?: unknown[] };
+          return parsed.entries?.length ?? 0;
+        }),
+      { timeout: 45_000 },
+    )
+    .toBe(0);
 
   await page.reload();
   await expect(page.getByTestId("current-exercise-card")).toContainText(
     "Bodyweight Bulgarian Split Squat",
+  );
+  await expect(page.getByTestId("current-exercise-card")).toContainText(
+    "9 reps",
   );
   await expect(page.getByTestId("current-exercise-card")).not.toContainText(
     "Last time:",

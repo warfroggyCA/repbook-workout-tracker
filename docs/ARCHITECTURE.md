@@ -145,7 +145,33 @@ private records to build or test.
 The ratified v2 semantic contract is represented here by synthetic fixtures at
 `tests/fixtures/v2/semantic-scenarios.json`, a pure test-only oracle, and the
 machine-readable matrix at `docs/repbook-v2-verification-matrix.json`. These
-artifacts define expected meaning and exact future activation-test ownership;
-they do not claim that v2 product behavior is already implemented. A future
-package may change runtime or persistence only after its mapped activation
-tests exist and the earlier package gates have passed.
+artifacts define expected meaning and exact activation-test ownership. P02
+remains contract-only. T01 activates its database, browser, portability,
+recovery, and adversarial proofs for truthful performed measurement; later
+packages remain future work.
+
+## T01 performed-measurement contract
+
+An acknowledged set retains a performed-time semantic snapshot rather than
+depending on a mutable current exercise definition. The supported shapes are
+loaded repetitions, unloaded repetitions, assisted repetitions, duration, and
+distance with optional duration. Each shape accepts only its applicable fields:
+inapplicable measurement fields remain null, recorded load retains its exact
+unit, and assistance keeps its explicit assistance direction. Activity-only
+observations and combined loaded timed or distance work fail closed until a
+later contract supports their complete meaning.
+
+The write also retains the performed occurrence and canonical exercise
+identities, including a workout-only substitution, observed-time provenance,
+and the independent prescribed fields already attached to the set. An exact
+retry may acknowledge the original saved result even after catalogue metadata
+changes; reuse of the retry identity with different evidence is rejected.
+Older queued command envelopes are quarantined because they do not carry the
+full T01 evidence contract.
+
+T01 does not reinterpret completed legacy rows whose performed-time semantics
+are absent. Exports and encrypted restore preserve that uncertainty, and
+restore recomputes or invalidates projections from retained facts. Correction,
+acknowledgement UX beyond the existing success path, and history repair remain
+owned by later packages. Existing correction endpoints fail closed rather than
+reshape a duration or distance observation into repetitions and load.

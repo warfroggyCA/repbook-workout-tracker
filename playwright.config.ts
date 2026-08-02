@@ -21,6 +21,7 @@ export default defineConfig({
     "replacement-mobile-keyboard.spec.ts",
     "superset-equipment-preparation.spec.ts",
     "active-workout-add-exercise.spec.ts",
+    "v2-t01-recording-truth.spec.ts",
   ],
   outputDir: "./output/playwright/test-results",
   fullyParallel: false,

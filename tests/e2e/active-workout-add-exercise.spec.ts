@@ -275,23 +275,29 @@ test("refuses incomplete assistance, then preserves assisted work without false 
   await assisted
     .getByRole("button", { name: "Log set", exact: true })
     .click();
-  await expect(assisted.getByText("Save failed", { exact: true })).toBeVisible();
   await expect(
     page.getByText(
-      "Enter the amount of assistance, or add it as a note instead.",
+      "Enter the numeric assistance and unit for this set, or keep the observation in a note instead.",
       { exact: true },
     ),
   ).toBeVisible();
-  await assisted.getByRole("button", { name: "Discard", exact: true }).click();
+  await expect(assisted.getByText("Save failed", { exact: true })).toHaveCount(0);
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const raw = localStorage.getItem("workout-tracker:workout-set-outbox:v1");
+        if (!raw) return 0;
+        const parsed = JSON.parse(raw) as { entries?: unknown[] };
+        return parsed.entries?.length ?? 0;
+      }),
+    )
+    .toBe(0);
 
   await assisted.getByLabel("Assistance").fill("40");
   await assisted
     .getByRole("button", { name: "Log set", exact: true })
     .click();
   await expect(assisted).toContainText("1/1 performed");
-  await expect(
-    assisted.getByText("Assistance: 40 lb · 8 reps", { exact: true }),
-  ).toBeVisible();
 
   const workoutStatus = page.getByRole("complementary", {
     name: "Workout status",

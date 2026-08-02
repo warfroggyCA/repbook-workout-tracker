@@ -176,25 +176,53 @@ describe("performed-set semantic containment", () => {
         reps: 8,
       }),
     ).toMatchObject({ ok: false, reason: "metric_semantics_conflict" });
+    expect(
+      validateSetWriterShape({
+        metricType: "weight_reps",
+        weight: 100,
+        weightUnit: "lb",
+        reps: null,
+      }),
+    ).toMatchObject({ ok: false, reason: "measurement_shape_conflict" });
 
-    for (const metricType of [
-      "duration",
-      "distance_duration",
-      "activity",
-    ] as const) {
-      const refusal = validateSetWriterShape({
-        metricType,
+    expect(
+      validateSetWriterShape({
+        metricType: "duration",
         weight: null,
         weightUnit: null,
         reps: 8,
-      });
-      expect(refusal).toMatchObject({
+        durationSeconds: null,
+      }),
+    ).toMatchObject({
+      ok: false,
+      reason: "duration_requires_time",
+    });
+    expect(
+      validateSetWriterShape({
+        metricType: "distance_duration",
+        weight: null,
+        weightUnit: null,
+        reps: 8,
+        distanceKm: null,
+        durationSeconds: null,
+      }),
+    ).toMatchObject({
+      ok: false,
+      reason: "distance_duration_requires_distance",
+    });
+
+    const activityRefusal = validateSetWriterShape({
+      metricType: "activity",
+      weight: null,
+      weightUnit: null,
+      reps: 8,
+    });
+    expect(activityRefusal).toMatchObject({
         ok: false,
         reason: "unsupported_metric",
-      });
-      if (refusal.ok) throw new Error("Expected a refusal");
-      expect(refusal.message).toContain("activity or compatible duration");
-    }
+    });
+    if (activityRefusal.ok) throw new Error("Expected a refusal");
+    expect(activityRefusal.message).toContain("activity flow");
   });
 
   it("separates measurement, direction, outcome, comparability, eligibility, and provenance", () => {

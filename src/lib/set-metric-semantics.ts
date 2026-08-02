@@ -11,14 +11,103 @@ export const PERFORMED_METRIC_TYPES = [
 
 export type PerformedMetricType = (typeof PERFORMED_METRIC_TYPES)[number];
 
+export const PERFORMED_LOAD_SEMANTICS = [
+  "total",
+  "per_implement",
+  "bodyweight",
+  "added_weight",
+  "assistance",
+  "machine_stack",
+  "resistance_band",
+  "none",
+] as const;
+
+export type PerformedLoadSemantics =
+  (typeof PERFORMED_LOAD_SEMANTICS)[number];
+
 export const SUPPORTED_SET_WRITER_METRICS = [
   "weight_reps",
   "reps",
   "assisted_reps",
+  "duration",
+  "distance_duration",
 ] as const;
 
 export type SupportedSetWriterMetric =
   (typeof SUPPORTED_SET_WRITER_METRICS)[number];
+
+export function isSupportedSetWriterSemanticDefinition(input: {
+  metricType: PerformedMetricType;
+  loadSemantics?: string | null;
+}) {
+  if (!SUPPORTED_SET_WRITER_METRICS.includes(
+    input.metricType as SupportedSetWriterMetric,
+  )) return false;
+  if (
+    input.loadSemantics != null &&
+    !PERFORMED_LOAD_SEMANTICS.includes(
+      input.loadSemantics as PerformedLoadSemantics,
+    )
+  ) return false;
+  if (
+    (input.loadSemantics === "assistance") !==
+    (input.metricType === "assisted_reps")
+  ) return false;
+  return !(
+    (input.metricType === "duration" ||
+      input.metricType === "distance_duration") &&
+    input.loadSemantics !== "none" &&
+    input.loadSemantics !== "bodyweight"
+  );
+}
+
+/**
+ * The exact mutually-exclusive numeric shapes accepted by the live workout
+ * writer. `activity` remains an imported/independent-activity fact and is not
+ * a set command. Every branch carries explicit nulls so device storage and
+ * replay compare the complete observation rather than filling omitted fields.
+ */
+export type PerformedSetMeasurement =
+  | {
+      metricType: "weight_reps";
+      weight: number;
+      weightUnit: LoadUnit;
+      reps: number;
+      distanceKm: null;
+      durationSeconds: null;
+    }
+  | {
+      metricType: "reps";
+      weight: null;
+      weightUnit: null;
+      reps: number;
+      distanceKm: null;
+      durationSeconds: null;
+    }
+  | {
+      metricType: "assisted_reps";
+      weight: number;
+      weightUnit: LoadUnit;
+      reps: number;
+      distanceKm: null;
+      durationSeconds: null;
+    }
+  | {
+      metricType: "duration";
+      weight: null;
+      weightUnit: null;
+      reps: null;
+      distanceKm: null;
+      durationSeconds: number;
+    }
+  | {
+      metricType: "distance_duration";
+      weight: null;
+      weightUnit: null;
+      reps: null;
+      distanceKm: number;
+      durationSeconds: number | null;
+    };
 
 export type SetLoadEntryMeaning =
   | "total_system"
@@ -47,9 +136,12 @@ export type SetMetricExclusionReason =
 export type SetWriteRefusalReason =
   | "unsupported_metric"
   | "metric_semantics_conflict"
+  | "measurement_shape_conflict"
   | "weight_reps_requires_load"
   | "reps_cannot_include_load"
-  | "assisted_reps_requires_numeric_assistance";
+  | "assisted_reps_requires_numeric_assistance"
+  | "duration_requires_time"
+  | "distance_duration_requires_distance";
 
 /**
  * Resolves the metric that a new set can truthfully persist from the current
@@ -414,6 +506,8 @@ export function validateSetWriterShape(input: {
   weight: number | null;
   weightUnit: LoadUnit | null;
   reps: number | null;
+  distanceKm?: number | null;
+  durationSeconds?: number | null;
 }): { ok: true; metricType: SupportedSetWriterMetric } | {
   ok: false;
   reason: SetWriteRefusalReason;
@@ -431,46 +525,211 @@ export function validateSetWriterShape(input: {
         "This exercise has an inconsistent assistance measurement definition. Review the exercise definition before recording a set.",
     };
   }
-  if (
-    input.metricType === "duration" ||
-    input.metricType === "distance_duration" ||
-    input.metricType === "activity"
-  ) {
+  if (input.metricType === "activity") {
     return {
       ok: false,
       reason: "unsupported_metric",
       message:
-        "This exercise uses time, distance, or activity measurements. Record it with the activity or compatible duration flow instead.",
+        "Independent activity observations are recorded through the activity flow, not as workout sets.",
+    };
+  }
+  const distanceKm = input.distanceKm ?? null;
+  const durationSeconds = input.durationSeconds ?? null;
+  const hasStrengthMeasurement =
+    input.weight != null || input.weightUnit != null || input.reps != null;
+  if (input.metricType === "duration") {
+    if (
+      input.loadSemantics != null &&
+      input.loadSemantics !== "none" &&
+      input.loadSemantics !== "bodyweight"
+    ) {
+      return {
+        ok: false,
+        reason: "metric_semantics_conflict",
+        message:
+          "This timed exercise also requires a performed load that the current timed-set shape cannot represent truthfully.",
+      };
+    }
+    return !hasStrengthMeasurement &&
+      distanceKm == null &&
+      durationSeconds != null
+      ? { ok: true, metricType: "duration" }
+      : {
+          ok: false,
+          reason:
+            durationSeconds == null
+              ? "duration_requires_time"
+              : "measurement_shape_conflict",
+          message:
+            "A timed set needs an explicit duration and cannot carry repetitions, distance, or load.",
+        };
+  }
+  if (input.metricType === "distance_duration") {
+    if (
+      input.loadSemantics != null &&
+      input.loadSemantics !== "none" &&
+      input.loadSemantics !== "bodyweight"
+    ) {
+      return {
+        ok: false,
+        reason: "metric_semantics_conflict",
+        message:
+          "This distance exercise also requires a performed load that the current distance-set shape cannot represent truthfully.",
+      };
+    }
+    return !hasStrengthMeasurement && distanceKm != null
+      ? { ok: true, metricType: "distance_duration" }
+      : {
+          ok: false,
+          reason:
+            distanceKm == null
+              ? "distance_duration_requires_distance"
+              : "measurement_shape_conflict",
+          message:
+            "A distance set needs an explicit distance and may include duration, but cannot carry repetitions or load.",
+        };
+  }
+  if (distanceKm != null || durationSeconds != null) {
+    return {
+      ok: false,
+      reason: "measurement_shape_conflict",
+      message:
+        "A repetitions-based set cannot also carry time or distance values.",
     };
   }
   if (input.metricType === "reps") {
-    return input.weight == null && input.weightUnit == null
+    return input.reps != null && input.weight == null && input.weightUnit == null
       ? { ok: true, metricType: "reps" }
       : {
           ok: false,
-          reason: "reps_cannot_include_load",
+          reason: input.reps == null
+            ? "measurement_shape_conflict"
+            : "reps_cannot_include_load",
           message:
-            "This exercise records repetitions without a load. Remove the load or choose the correct weighted exercise variant.",
+            input.reps == null
+              ? "A repetitions-based set needs an explicit repetition count."
+              : "This exercise records repetitions without a load. Remove the load or choose the correct weighted exercise variant.",
         };
   }
   if (input.metricType === "assisted_reps") {
-    return input.weight != null && input.weightUnit != null
+    return input.reps != null && input.weight != null && input.weightUnit != null
       ? { ok: true, metricType: "assisted_reps" }
       : {
           ok: false,
-          reason: "assisted_reps_requires_numeric_assistance",
+          reason: input.reps == null
+            ? "measurement_shape_conflict"
+            : "assisted_reps_requires_numeric_assistance",
           message:
-            "Enter the numeric assistance and unit for this set, or keep the observation in a note instead.",
+            input.reps == null
+              ? "An assisted set needs an explicit repetition count."
+              : "Enter the numeric assistance and unit for this set, or keep the observation in a note instead.",
         };
   }
-  return input.weight != null && input.weightUnit != null
+  return input.reps != null && input.weight != null && input.weightUnit != null
     ? { ok: true, metricType: "weight_reps" }
     : {
         ok: false,
-        reason: "weight_reps_requires_load",
+        reason: input.reps == null
+          ? "measurement_shape_conflict"
+          : "weight_reps_requires_load",
         message:
-          "This exercise requires a numeric load and unit. Enter the load or choose the correct repetitions-only variant.",
+          input.reps == null
+            ? "A loaded set needs an explicit repetition count."
+            : "This exercise requires a numeric load and unit. Enter the load or choose the correct repetitions-only variant.",
       };
+}
+
+export function buildPerformedSetMeasurement(input: {
+  metricType: PerformedMetricType;
+  loadSemantics?: string | null;
+  weight: number | null;
+  weightUnit: LoadUnit | null;
+  reps: number | null;
+  distanceKm: number | null;
+  durationSeconds: number | null;
+}):
+  | { ok: true; measurement: PerformedSetMeasurement }
+  | { ok: false; reason: SetWriteRefusalReason; message: string } {
+  if (!SUPPORTED_SET_WRITER_METRICS.includes(
+    input.metricType as SupportedSetWriterMetric,
+  )) {
+    return {
+      ok: false,
+      reason: "unsupported_metric",
+      message: "This performed measurement is not supported by the workout set writer.",
+    };
+  }
+  const shape = validateSetWriterShape(input);
+  if (!shape.ok) return shape;
+  const finite = [input.weight, input.distanceKm, input.durationSeconds]
+    .every((value) => value == null || Number.isFinite(value));
+  const repetitionsValid = input.reps == null ||
+    (Number.isInteger(input.reps) && input.reps >= 0 && input.reps <= 100);
+  const weightValid = input.weight == null ||
+    (input.weight >= 0 && input.weight <= 2000);
+  const distanceValid = input.distanceKm == null ||
+    (input.distanceKm >= 0 && input.distanceKm <= 10_000);
+  const durationValid = input.durationSeconds == null ||
+    (Number.isInteger(input.durationSeconds) &&
+      input.durationSeconds >= 0 && input.durationSeconds <= 604_800);
+  if (!finite || !repetitionsValid || !weightValid || !distanceValid || !durationValid) {
+    return {
+      ok: false,
+      reason: "measurement_shape_conflict",
+      message: "Enter a valid performed value for this set.",
+    };
+  }
+  switch (shape.metricType) {
+    case "weight_reps":
+    case "assisted_reps":
+      return {
+        ok: true,
+        measurement: {
+          metricType: shape.metricType,
+          weight: input.weight!,
+          weightUnit: input.weightUnit!,
+          reps: input.reps!,
+          distanceKm: null,
+          durationSeconds: null,
+        },
+      };
+    case "reps":
+      return {
+        ok: true,
+        measurement: {
+          metricType: "reps",
+          weight: null,
+          weightUnit: null,
+          reps: input.reps!,
+          distanceKm: null,
+          durationSeconds: null,
+        },
+      };
+    case "duration":
+      return {
+        ok: true,
+        measurement: {
+          metricType: "duration",
+          weight: null,
+          weightUnit: null,
+          reps: null,
+          distanceKm: null,
+          durationSeconds: input.durationSeconds!,
+        },
+      };
+    case "distance_duration":
+      return {
+        ok: true,
+        measurement: {
+          metricType: "distance_duration",
+          weight: null,
+          weightUnit: null,
+          reps: null,
+          distanceKm: input.distanceKm!,
+          durationSeconds: input.durationSeconds,
+        },
+      };
+  }
 }
 
 export type PrescriptionOutcome = "below" | "at" | "above" | "unknown";

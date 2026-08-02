@@ -195,6 +195,11 @@ jobs:
         continue-on-error: true
         run: npm run test:e2e:active-workout-add-exercise
 
+      - name: Verify T01 performed measurement on desktop and mobile
+        id: browser-v2-t01
+        continue-on-error: true
+        run: npm run test:e2e:v2-t01
+
       - name: Require every browser suite
         if: ${{ always() }}
         env:
@@ -214,6 +219,7 @@ jobs:
           BROWSER_COMPACT_TIMER: ${{ steps.browser-compact-timer.outcome }}
           BROWSER_SUPERSET_PREP: ${{ steps.browser-superset-prep.outcome }}
           BROWSER_ACTIVE_WORKOUT_ADD_EXERCISE: ${{ steps.browser-active-workout-add-exercise.outcome }}
+          BROWSER_V2_T01: ${{ steps.browser-v2-t01.outcome }}
         run: |
           failed=0
           for result in \
@@ -232,7 +238,8 @@ jobs:
             "current action and warm-up transition:${BROWSER_CURRENT_ACTION}" \
             "compact timer and acknowledged action changes:${BROWSER_COMPACT_TIMER}" \
             "superset equipment preparation:${BROWSER_SUPERSET_PREP}" \
-            "active-workout exercise addition:${BROWSER_ACTIVE_WORKOUT_ADD_EXERCISE}"
+            "active-workout exercise addition:${BROWSER_ACTIVE_WORKOUT_ADD_EXERCISE}" \
+            "T01 performed measurement:${BROWSER_V2_T01}"
           do
             name="${result%%:*}"
             outcome="${result#*:}"

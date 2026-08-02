@@ -304,7 +304,7 @@ async function renderSessionPage(
         flags.get(se.exercise.movementPattern)?.bodyParts ?? [],
       media: mediaByExercise.get(se.exercise.id) ?? null,
       sets: se.sets
-        .filter((s): s is typeof s & { reps: number } => !s.isWarmup && s.reps != null)
+        .filter((s) => !s.isWarmup)
         .map((s) => ({
           id: s.id,
           clientKey: s.clientKey,
@@ -313,6 +313,8 @@ async function renderSessionPage(
           weightUnit: s.weightUnit,
           reps: s.reps,
           metricType: s.metricType,
+          distanceKm: s.distanceKm,
+          durationSeconds: s.durationSeconds,
           rpe: s.rpe,
           note: s.note,
         })),
