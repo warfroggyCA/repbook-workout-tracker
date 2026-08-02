@@ -200,7 +200,7 @@ test("adds a reviewed workout-only exercise without editing the Program", async 
   await page.reload({ waitUntil: "domcontentloaded" });
   const restoredAddedCard = page.getByRole("region", { name: "Push-Up" });
   await expect(restoredAddedCard).toContainText("Workout only");
-  await expect(restoredAddedCard).toContainText("1/2 performed");
+  await expect(restoredAddedCard).toContainText("1/2 workout-only performed");
   await discardWorkout(page);
 
   await prefetches.settle();
@@ -297,7 +297,7 @@ test("refuses incomplete assistance, then preserves assisted work without false 
   await assisted
     .getByRole("button", { name: "Log set", exact: true })
     .click();
-  await expect(assisted).toContainText("1/1 performed");
+  await expect(assisted).toContainText("1/1 workout-only performed");
 
   const workoutStatus = page.getByRole("complementary", {
     name: "Workout status",

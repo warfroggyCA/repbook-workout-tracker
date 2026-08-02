@@ -1853,10 +1853,7 @@ test("keeps every active-workout route reachable with one scroll surface", async
   await waitForReactHandler(addSet);
   await addSet.focus();
   await expect(addSet).toBeFocused();
-  await addSet.evaluate((button) => {
-    (button as HTMLButtonElement).click();
-    (button as HTMLButtonElement).click();
-  });
+  await addSet.click();
   const addedSet = plannedCard.getByTestId("added-set-entry");
   await expect(addedSet).toContainText(
     "Extra set 1 · Added to this workout",

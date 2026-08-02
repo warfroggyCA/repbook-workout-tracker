@@ -96,7 +96,22 @@ async function skipCurrentSet(dock: Locator) {
     await dock.locator("button").first().click();
   }
   await waitForScrollToSettle(page);
-  await skipSet.scrollIntoViewIfNeeded();
+  await skipSet.evaluate((element) => {
+    element.scrollIntoView({ block: "center" });
+  });
+  await waitForScrollToSettle(page);
+  await expect
+    .poll(() =>
+      skipSet.evaluate((element) => {
+        const box = element.getBoundingClientRect();
+        const hit = document.elementFromPoint(
+          box.left + box.width / 2,
+          box.top + box.height / 2,
+        );
+        return hit === element || (hit != null && element.contains(hit));
+      }),
+    )
+    .toBe(true);
   await skipSet.click();
   const dialog = page.getByRole("dialog", { name: /^Skip set / });
   await dialog.getByLabel("Reason").selectOption("time");

@@ -59,15 +59,15 @@ export const WorkoutGuidanceSummary = memo(function WorkoutGuidanceSummary({
         aria-label="Workout progress and upcoming work"
         className="min-w-0 rounded-lg border bg-background/95 px-3 py-2 shadow-sm"
       >
-        <div className="flex min-w-0 items-baseline gap-2 text-sm">
-          <span className="shrink-0 font-semibold tabular-nums">
+        <div className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1 text-sm">
+          <span className="min-w-0 max-w-full font-semibold tabular-nums">
             {guidance.totals.plannedPerformed}/{guidance.totals.planned} planned
             {guidance.totals.extraPerformed > 0
               ? ` · ${guidance.totals.extraPerformed} extra`
               : ""}
             {guidance.totals.skipped > 0 ? ` · ${guidance.totals.skipped} skipped` : ""}
           </span>
-          <p className="min-w-0 break-words leading-snug">
+          <p className="min-w-0 flex-1 basis-48 break-words leading-snug">
             <span className="font-medium">Now:</span>{" "}
             {guidance.currentAction
               ? formatSessionGuidanceAction(guidance.currentAction)
@@ -92,9 +92,7 @@ export const WorkoutGuidanceSummary = memo(function WorkoutGuidanceSummary({
             onClick={(event) => {
               event.preventDefault();
               const target = document.getElementById("active-workout-group");
-              const stickySummary = event.currentTarget
-                .closest("section")
-                ?.parentElement;
+              const stickySummary = event.currentTarget.closest("section");
               target?.scrollIntoView({ block: "start" });
               window.requestAnimationFrame(() => {
                 if (!target) return;
@@ -106,7 +104,7 @@ export const WorkoutGuidanceSummary = memo(function WorkoutGuidanceSummary({
                 if (Math.abs(correction) > 1) {
                   window.scrollBy({ top: correction });
                 }
-                target.focus();
+                target.focus({ preventScroll: true });
               });
             }}
             className="mt-1 inline-flex min-h-11 items-center rounded-md px-1 text-xs font-semibold underline underline-offset-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
