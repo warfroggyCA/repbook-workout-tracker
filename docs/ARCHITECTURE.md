@@ -147,8 +147,9 @@ The ratified v2 semantic contract is represented here by synthetic fixtures at
 machine-readable matrix at `docs/repbook-v2-verification-matrix.json`. These
 artifacts define expected meaning and exact activation-test ownership. P02
 remains contract-only. T01 activates its database, browser, portability,
-recovery, and adversarial proofs for truthful performed measurement; later
-packages remain future work.
+recovery, and adversarial proofs for truthful performed measurement. T02
+activates those proof classes for acknowledgement, retry, and reviewed
+correction; later packages remain future work.
 
 ## T01 performed-measurement contract
 
@@ -171,7 +172,31 @@ full T01 evidence contract.
 
 T01 does not reinterpret completed legacy rows whose performed-time semantics
 are absent. Exports and encrypted restore preserve that uncertainty, and
-restore recomputes or invalidates projections from retained facts. Correction,
-acknowledgement UX beyond the existing success path, and history repair remain
-owned by later packages. Existing correction endpoints fail closed rather than
-reshape a duration or distance observation into repetitions and load.
+restore recomputes or invalidates projections from retained facts. Historical
+batch repair remains blocked.
+
+## T02 acknowledgement and correction contract
+
+A set is still pending while its write is saving, retrying, or failed. Only a
+server acknowledgement advances workout guidance or exposes correction. The
+client keeps a stable command identity across retry, the service accepts an
+identical replay without duplicating evidence, and reuse of that identity with
+different evidence fails closed. Older outbox formats are quarantined for
+explicit recovery instead of being guessed into the current contract.
+
+Correction is a reviewed superseding assertion, never an edit in place. The
+owner reviews the exact original and replacement values, selects a reason, and
+confirms the decision. The service fences the write by owner, workout state,
+occurrence identity, complete expected assertion, and workout history revision.
+It retains before/after data, decision provenance, a monotonic correction-ledger
+revision, and the effective history revision. Active corrections do not trigger
+progression; completed corrections expire stale proposals and queue evaluation
+against the new revision; abandoned evidence remains excluded.
+
+Record-version restore is itself a new correction transition. Recovery manifest
+10 merges immutable source correction versions with destination-only history,
+rejects reused version identities with conflicting content, and appends a
+snapshot-restore transition whenever an existing performed set changes. It does
+not erase intervening evidence or imply a historical batch repair. CSV presents
+the current effective assertion; canonical JSON and encrypted snapshots retain
+the original, superseding assertions, and their evidence chain.

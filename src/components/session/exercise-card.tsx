@@ -4,7 +4,6 @@ import { useEffect, useId, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import {
-  updateSet,
   archiveSet,
   skipExercise,
   unskipExercise,
@@ -52,7 +51,7 @@ import {
 } from "@/lib/exercise-card";
 import type { ExerciseDiscoveryItem } from "@/lib/exercise-discovery";
 import type { ExerciseAlternativeReason } from "@/lib/exercise-alternatives";
-import { convertWeight, requireLoadUnit, type LoadUnit } from "@/lib/units";
+import { convertWeight, type LoadUnit } from "@/lib/units";
 import {
   Check,
   ChevronDown,
@@ -94,6 +93,7 @@ import {
 } from "@/lib/set-metric-semantics";
 import { createClientUuid } from "@/lib/client-uuid";
 import type { OccurrenceMutationOutboxEntry } from "@/lib/occurrence-mutation-outbox";
+import { CompletedSetCorrection } from "@/components/history/completed-set-correction";
 
 const RPE_CHIPS = EFFORT_CHOICES.map((choice) => ({
   label: choice.label,
@@ -167,6 +167,7 @@ type SetDraft = {
 
 type Props = {
   exercise: SessionExerciseData;
+  historyRevision: number;
   progress: ExerciseProgressProjection;
   expanded: boolean;
   onToggle: () => void;
@@ -210,12 +211,11 @@ type Props = {
   ) => void;
   onRetrySet: (clientKey: string) => Promise<void>;
   onDiscardSet: (clientKey: string) => Promise<void>;
+  onHistoryRevisionChange?: (historyRevision: number) => void;
   onOpenCoach: () => void;
   onSkipComplete: () => void;
   adjustIntent: ExerciseAdjustmentIntent | null;
   onAdjustIntentChange: (intent: ExerciseAdjustmentIntent | null) => void;
-  editSetRequest: { setId: string; token: number } | null;
-  onEditSetOpenChange: (exerciseId: string, open: boolean) => void;
 };
 
 type ReplacementOptions = Extract<
@@ -227,6 +227,7 @@ export type ExerciseAdjustmentIntent = "note" | "swap" | "replace" | "skip";
 
 export function ExerciseCard({
   exercise,
+  historyRevision,
   progress,
   expanded,
   onToggle,
@@ -253,12 +254,11 @@ export function ExerciseCard({
   onDiscardOccurrenceMutation = () => undefined,
   onRetrySet,
   onDiscardSet,
+  onHistoryRevisionChange = () => undefined,
   onOpenCoach,
   onSkipComplete,
   adjustIntent,
   onAdjustIntentChange,
-  editSetRequest,
-  onEditSetOpenChange,
 }: Props) {
   const router = useRouter();
   const plateConfig = plateConfigs[exercise.id];
@@ -361,28 +361,16 @@ export function ExerciseCard({
       ? ""
       : (exercise.setNotes[nextSetIdx] ?? "");
 
-  const requestedSet = editSetRequest
-    ? exercise.sets.find(
-        (candidate) =>
-          candidate.id === editSetRequest.setId &&
-          (candidate.saveState == null || candidate.saveState === "saved")
-      ) ?? null
-    : null;
-
   const [draft, setDraft] = useState<SetDraft>({
-    weight: recordsNumericLoad ? requestedSet?.weight ?? defaultWeight : null,
+    weight: recordsNumericLoad ? defaultWeight : null,
     weightUnit: recordsNumericLoad
-      ? requestedSet?.weightUnit ?? (defaultWeight == null ? null : unit)
+      ? defaultWeight == null ? null : unit
       : null,
-    reps: requestedSet?.reps ?? defaultReps,
-    distanceKm: requestedSet?.distanceKm ?? null,
-    durationSeconds: requestedSet?.durationSeconds ?? null,
-    rpe: requestedSet?.rpe ?? null,
-    note:
-      requestedSet?.note ??
-      (requestedSet
-        ? exercise.setNotes[Math.max(0, requestedSet.setNo - 1)] ?? ""
-        : defaultSetNote),
+    reps: defaultReps,
+    distanceKm: null,
+    durationSeconds: null,
+    rpe: null,
+    note: defaultSetNote,
   });
   const [appendedDraft, setAppendedDraft] = useState<SetDraft>({
     weight: recordsNumericLoad ? appendedWeight ?? defaultWeight : null,
@@ -396,9 +384,6 @@ export function ExerciseCard({
     rpe: null,
     note: "",
   });
-  const [editingSetId, setEditingSetId] = useState<string | null>(
-    requestedSet?.id ?? null
-  );
   const [appendingSet, setAppendingSet] = useState(false);
   const appendRequestRef = useRef<string | null>(null);
   const appendFocusRequestRef = useRef<string | null>(null);
@@ -420,8 +405,7 @@ export function ExerciseCard({
     const requestedOccurrenceId = appendFocusRequestRef.current;
     if (
       requestedOccurrenceId == null ||
-      appendedOccurrence?.id !== requestedOccurrenceId ||
-      editingSetId != null
+      appendedOccurrence?.id !== requestedOccurrenceId
     ) {
       return;
     }
@@ -444,7 +428,7 @@ export function ExerciseCard({
       cancelAnimationFrame(scrollFrame);
       cancelAnimationFrame(focusFrame);
     };
-  }, [appendedOccurrence?.id, editingSetId, exercise.id]);
+  }, [appendedOccurrence?.id, exercise.id]);
 
   const isSkipped = exercise.modificationType === "skipped";
   const targetText =
@@ -606,79 +590,15 @@ export function ExerciseCard({
         rpe: null,
         note: "",
       });
-      setEditingSetId(null);
     } finally {
       appendRequestRef.current = null;
       setAppendingSet(false);
     }
   }
 
-  function handleUpdate(set: LoggedSet) {
-    const correctedReps = draft.reps;
-    if (correctedReps == null) {
-      toast.error("Timed and distance result correction arrives in T02.");
-      return;
-    }
-    const cleanNote = draft.note.trim() || null;
-    const previousSets = exercise.sets;
-    onPatch({
-      sets: exercise.sets.map((s) =>
-        s.id === set.id
-          ? {
-              ...s,
-              weight: draft.weight,
-              weightUnit:
-                draft.weight == null ? null : requireLoadUnit(set.weightUnit),
-              reps: correctedReps,
-              rpe: draft.rpe,
-              note: cleanNote,
-            }
-          : s
-      ),
-    });
-    setEditingSetId(null);
-    onEditSetOpenChange(exercise.id, false);
-    startTransition(async () => {
-      try {
-        const result = await updateSet({
-          setId: set.id,
-          weight: draft.weight,
-          weightUnit:
-            draft.weight == null ? null : requireLoadUnit(set.weightUnit),
-          reps: correctedReps,
-          rpe: draft.rpe,
-          note: cleanNote,
-        });
-        if (!result.ok) {
-          onPatch({ sets: previousSets });
-          toast.error(result.message);
-          return;
-        }
-        {
-          const measurement = readActiveWorkoutMeasurements().find(
-            (record) =>
-              (set.clientKey != null && record.clientKey === set.clientKey) ||
-              record.setId === set.id
-          );
-          if (measurement) {
-            patchActiveWorkoutMeasurement(measurement.clientKey, {
-              corrections: measurement.corrections + 1,
-            });
-          }
-        }
-        toast.success("Set saved");
-      } catch {
-        onPatch({ sets: previousSets });
-        toast.error("The set update was not saved.");
-      }
-    });
-  }
-
   function handleDelete(set: LoggedSet) {
     const previousSets = exercise.sets;
     onPatch({ sets: exercise.sets.filter((s) => s.id !== set.id) });
-    setEditingSetId(null);
-    onEditSetOpenChange(exercise.id, false);
     startTransition(async () => {
       try {
         const result = await archiveSet(set.id);
@@ -767,6 +687,8 @@ export function ExerciseCard({
       <button
         type="button"
         onClick={onToggle}
+        aria-expanded={expanded}
+        aria-controls={`session-exercise-details-${exercise.id}`}
         className="flex w-full items-center justify-between gap-2 p-3 text-left"
       >
         <ExerciseFamilyIcon
@@ -829,7 +751,10 @@ export function ExerciseCard({
       </button>
 
       {expanded && !isSkipped && (
-        <div className="flex flex-col gap-3 border-t p-3">
+        <div
+          id={`session-exercise-details-${exercise.id}`}
+          className="flex flex-col gap-3 border-t p-3"
+        >
           {exercise.modificationType === "added" && (
             <p className="rounded-md border border-primary/25 bg-primary/5 px-3 py-2 text-sm">
               Added during this workout. It has no Program slot or progression
@@ -908,7 +833,7 @@ export function ExerciseCard({
                       workingOccurrences,
                     );
               const noteForSet = plannedNote(i);
-              if (set && editingSetId !== set.id) {
+              if (set) {
                 const awaitingSave =
                   set.saveState != null && set.saveState !== "saved";
                 return (
@@ -917,24 +842,7 @@ export function ExerciseCard({
                     id={`logged-set-${exercise.id}-${set.setNo}`}
                     className="rounded-md bg-primary/5 px-3 py-2 text-sm"
                   >
-                    <button
-                      type="button"
-                      className="w-full text-left disabled:cursor-default"
-                      disabled={awaitingSave || set.reps == null}
-                      onClick={() => {
-                        onEditSetOpenChange(exercise.id, true);
-                        setEditingSetId(set.id);
-                        setDraft({
-                          weight: set.weight,
-                          weightUnit: set.weightUnit,
-                          reps: set.reps,
-                          distanceKm: set.distanceKm ?? null,
-                          durationSeconds: set.durationSeconds ?? null,
-                          rpe: set.rpe,
-                          note: set.note ?? noteForSet ?? "",
-                        });
-                      }}
-                    >
+                    <div>
                       <div className="flex items-center justify-between gap-3">
                         <span className="text-muted-foreground">
                           {rowPosition?.label ?? `Set ${i + 1}`}
@@ -951,7 +859,7 @@ export function ExerciseCard({
                       {set.note && (
                         <p className="mt-1 text-xs text-muted-foreground">{set.note}</p>
                       )}
-                    </button>
+                    </div>
                     {set.saveState && (
                       <div className="mt-2 flex flex-wrap items-center justify-between gap-2 border-t pt-2 text-xs">
                         <span
@@ -995,52 +903,81 @@ export function ExerciseCard({
                         )}
                       </div>
                     )}
-                  </div>
-                );
-              }
-              if (set && editingSetId === set.id) {
-                return (
-                  <div key={set.id} className="rounded-md border p-2">
-                    <SetEntry
-                      metricType={set.metricType ?? performedMetricType}
-                      supported={metricSupported}
-                      draft={draft}
-                      setDraft={setDraft}
-                      stepWeight={stepWeight}
-                      unit={set.weightUnit ?? "unit missing"}
-                      hasWeight={recordsNumericLoad}
-                      weightLabel={
-                        (set.metricType ?? exercise.metricType) === "assisted_reps"
-                          ? "Assistance"
-                          : usesTotalBarLoad
-                            ? "Total weight"
-                            : undefined
-                      }
-                    />
-                    <div className="mt-2 flex gap-2">
-                      <Button size="sm" className="flex-1" onClick={() => handleUpdate(set)}>
-                        Update
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => {
-                          setEditingSetId(null);
-                          onEditSetOpenChange(exercise.id, false);
-                        }}
-                      >
-                        Cancel
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        className="text-destructive"
-                        onClick={() => handleDelete(set)}
-                        aria-label="Archive set"
-                      >
-                        <Archive className="size-4" />
-                      </Button>
-                    </div>
+                    {!awaitingSave && (
+                      <div className="mt-2 flex flex-wrap items-center justify-between gap-2 border-t pt-2">
+                        <span className="text-xs text-muted-foreground">
+                          {(set.correctionCount ?? 0) > 0
+                            ? `${set.correctionCount} saved correction${
+                                set.correctionCount === 1 ? "" : "s"
+                              } · original retained in Edit history`
+                            : "Acknowledged by Repbook"}
+                        </span>
+                        <div className="flex flex-wrap gap-2">
+                          {(set.metricType ?? performedMetricType) === "activity" ? (
+                            <span className="self-center text-xs text-muted-foreground">
+                              Correction unavailable for this legacy shape
+                            </span>
+                          ) : (
+                            <CompletedSetCorrection
+                              setId={set.id}
+                              setNo={set.setNo}
+                              weight={set.weight}
+                              weightUnit={set.weightUnit}
+                              reps={set.reps}
+                              distanceKm={set.distanceKm ?? null}
+                              durationSeconds={set.durationSeconds ?? null}
+                              metricType={set.metricType ?? performedMetricType}
+                              rpe={set.rpe}
+                              note={set.note}
+                              historyRevision={historyRevision}
+                              source="active_workout"
+                              onAcknowledged={(result) => {
+                                onPatch({
+                                  sets: exercise.sets.map((candidate) =>
+                                    candidate.id === set.id
+                                      ? {
+                                          ...candidate,
+                                          ...result.values,
+                                          correctionCount:
+                                            (candidate.correctionCount ?? 0) + 1,
+                                        }
+                                      : candidate,
+                                  ),
+                                });
+                                onHistoryRevisionChange(
+                                  result.historyRevision,
+                                );
+                                const measurement =
+                                  readActiveWorkoutMeasurements().find(
+                                    (record) =>
+                                      (set.clientKey != null &&
+                                        record.clientKey === set.clientKey) ||
+                                      record.setId === set.id,
+                                  );
+                                if (measurement) {
+                                  patchActiveWorkoutMeasurement(
+                                    measurement.clientKey,
+                                    {
+                                      corrections:
+                                        measurement.corrections + 1,
+                                    },
+                                  );
+                                }
+                              }}
+                            />
+                          )}
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="text-destructive"
+                            onClick={() => handleDelete(set)}
+                            aria-label="Archive set"
+                          >
+                            <Archive className="size-4" />
+                          </Button>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 );
               }
@@ -1080,10 +1017,7 @@ export function ExerciseCard({
                   </div>
                 );
               }
-              if (
-                appendedOccurrence?.kindOrdinal === i &&
-                editingSetId == null
-              ) {
+              if (appendedOccurrence?.kindOrdinal === i) {
                 return (
                   <div
                     key={appendedOccurrence.id}
@@ -1151,7 +1085,7 @@ export function ExerciseCard({
                   </div>
                 );
               }
-              if (i === nextSetIdx && editingSetId == null) {
+              if (i === nextSetIdx) {
                 if (isCurrentPlannedSet && !unconfirmedSet) {
                   return (
                     <div

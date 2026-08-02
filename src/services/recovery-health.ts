@@ -796,7 +796,15 @@ export async function evaluateApplicationIntegrity(
           )
       ) chain
       WHERE chain.previous_id IS NOT NULL
-        AND chain.before_data IS DISTINCT FROM chain.previous_after_data
+        AND CASE
+          WHEN chain.entity_type = 'completed_set'
+            THEN chain.before_data - 'repbook_correction'
+          ELSE chain.before_data
+        END IS DISTINCT FROM CASE
+          WHEN chain.entity_type = 'completed_set'
+            THEN chain.previous_after_data - 'repbook_correction'
+          ELSE chain.previous_after_data
+        END
 
       UNION ALL
       SELECT 'progression_job.failed', 'error', 'progression_job', job.id::text,

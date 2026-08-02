@@ -5,7 +5,7 @@ import { formatCompactPlateLoadGuidance } from "@/lib/exercise-card";
 
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
 vi.mock("@/app/actions/sessions", () => ({
-  updateSet: vi.fn(),
+  correctAcknowledgedSet: vi.fn(),
   archiveSet: vi.fn(),
   skipExercise: vi.fn(),
   unskipExercise: vi.fn(),
@@ -88,6 +88,7 @@ describe("ExerciseCard", () => {
     const html = renderToStaticMarkup(
       <ExerciseCard
         exercise={exercise}
+        historyRevision={0}
         progress={{
           sessionExerciseId: exercise.id,
           exerciseName: exercise.name,
@@ -120,8 +121,6 @@ describe("ExerciseCard", () => {
         onOpenCoach={() => undefined}
         adjustIntent={null}
         onAdjustIntentChange={() => undefined}
-        editSetRequest={null}
-        onEditSetOpenChange={() => undefined}
       />
     );
 
@@ -177,6 +176,7 @@ describe("ExerciseCard", () => {
     const html = renderToStaticMarkup(
       <ExerciseCard
         exercise={assistedExercise}
+        historyRevision={0}
         progress={{
           sessionExerciseId: assistedExercise.id,
           exerciseName: assistedExercise.name,
@@ -233,8 +233,6 @@ describe("ExerciseCard", () => {
         onOpenCoach={() => undefined}
         adjustIntent={null}
         onAdjustIntentChange={() => undefined}
-        editSetRequest={null}
-        onEditSetOpenChange={() => undefined}
       />,
     );
     expect(html).toContain("Assistance: 80 lb · 8 reps");
@@ -247,6 +245,7 @@ describe("ExerciseCard", () => {
     const html = renderToStaticMarkup(
       <ExerciseCard
         exercise={current}
+        historyRevision={0}
         progress={{
           sessionExerciseId: current.id,
           exerciseName: current.name,
@@ -309,8 +308,6 @@ describe("ExerciseCard", () => {
         onOpenCoach={() => undefined}
         adjustIntent={null}
         onAdjustIntentChange={() => undefined}
-        editSetRequest={null}
-        onEditSetOpenChange={() => undefined}
       />
     );
 
@@ -348,6 +345,7 @@ describe("ExerciseCard", () => {
     const html = renderToStaticMarkup(
       <ExerciseCard
         exercise={afterSkippedSecond}
+        historyRevision={0}
         progress={{
           sessionExerciseId: afterSkippedSecond.id,
           exerciseName: afterSkippedSecond.name,
@@ -403,8 +401,6 @@ describe("ExerciseCard", () => {
         onOpenCoach={() => undefined}
         adjustIntent={null}
         onAdjustIntentChange={() => undefined}
-        editSetRequest={null}
-        onEditSetOpenChange={() => undefined}
       />
     );
 
@@ -464,6 +460,7 @@ describe("ExerciseCard", () => {
     } satisfies OccurrenceMutationOutboxEntry;
     const common = {
       exercise: current,
+      historyRevision: 0,
       progress: {
         sessionExerciseId: current.id,
         exerciseName: current.name,
@@ -491,8 +488,6 @@ describe("ExerciseCard", () => {
       onOpenCoach: () => undefined,
       adjustIntent: null,
       onAdjustIntentChange: () => undefined,
-      editSetRequest: null,
-      onEditSetOpenChange: () => undefined,
     };
 
     const saving = renderToStaticMarkup(
@@ -563,6 +558,7 @@ describe("ExerciseCard", () => {
     const html = renderToStaticMarkup(
       <ExerciseCard
         exercise={current}
+        historyRevision={0}
         progress={{
           sessionExerciseId: current.id,
           exerciseName: current.name,
@@ -589,8 +585,6 @@ describe("ExerciseCard", () => {
         onOpenCoach={() => undefined}
         adjustIntent={null}
         onAdjustIntentChange={() => undefined}
-        editSetRequest={null}
-        onEditSetOpenChange={() => undefined}
       />,
     );
 

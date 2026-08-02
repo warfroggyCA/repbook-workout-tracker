@@ -2121,18 +2121,33 @@ describe.sequential("real PostgreSQL parallel invariants", () => {
       db,
       fixture.userId,
       set.id,
-      { reps: (set.reps ?? 0) + 1 },
+      {
+        weight: set.weight,
+        weightUnit: set.weightUnit,
+        reps: (set.reps ?? 0) + 1,
+        distanceKm: null,
+        durationSeconds: null,
+        rpe: set.rpe,
+        note: set.note,
+      },
       "set.completed_correction",
       {
         expected: {
           weight: set.weight,
           weightUnit: set.weightUnit,
           reps: set.reps,
+          distanceKm: null,
+          durationSeconds: null,
           rpe: set.rpe,
           note: set.note,
         },
         expectedHistoryRevision: 0,
         clientMutationId: crypto.randomUUID(),
+        correctionEvidence: {
+          category: "measurement_entry",
+          reasonNote: null,
+          source: "workout_history",
+        },
       },
     );
     releaseClaim();

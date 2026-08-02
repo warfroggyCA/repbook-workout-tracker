@@ -5,11 +5,12 @@
   "repositoryRole": "public application source",
   "exactBaseCommit": "2c9ab1b9478502f1d08956a6c44dfb0850c8f168",
   "fixtureCatalogue": "tests/fixtures/v2/semantic-scenarios.json",
-  "currentPackage": "T01",
-  "currentPackageBaseCommit": "e700a7c04d0f14146e13924efe4fd3f04aad0c96",
+  "currentPackage": "T02",
+  "currentPackageBaseCommit": "948e6227976fa2b2dc76f562d1935c7f309d46b6",
   "productBehaviorImplementedByP02": false,
   "implementedProductPackages": [
-    "T01"
+    "T01",
+    "T02"
   ],
   "legend": {
     "R": "required primary proof",
@@ -96,39 +97,39 @@
       "proves": "contradictory, malformed, stale, unsupported, and retained older offline writes fail closed before evidence mutation"
     },
     "T02-databaseService": {
-      "status": "future_activation",
+      "status": "current",
       "implementingPackage": "T02",
       "testPath": "tests/unit/v2-t02-acknowledgement-correction-db.test.ts",
       "command": "npx vitest run tests/unit/v2-t02-acknowledgement-correction-db.test.ts",
-      "proves": "must pass in the same package that implements this product meaning"
+      "proves": "duplicate or lost acknowledgements retain one performed fact, while reviewed active, completed, and abandoned corrections use exact assertions, stable mutation identity, complete shape validation, revisions, and retained before/after evidence"
     },
     "T02-browser": {
-      "status": "future_activation",
+      "status": "current",
       "implementingPackage": "T02",
       "testPath": "tests/e2e/v2-t02-acknowledgement-correction.spec.ts",
-      "command": "npx playwright test tests/e2e/v2-t02-acknowledgement-correction.spec.ts",
-      "proves": "must pass in the same package that implements this product meaning"
+      "command": "npx playwright test --config=playwright.v2-t02.config.ts tests/e2e/v2-t02-acknowledgement-correction.spec.ts",
+      "proves": "desktop Chromium and mobile WebKit keep delayed sets pending until acknowledgement, expose correction only afterward, require review, retain the corrected value across reload, show correction evidence, and quarantine unreadable older outbox commands"
     },
     "T02-exportImport": {
-      "status": "future_activation",
+      "status": "current",
       "implementingPackage": "T02",
       "testPath": "tests/unit/v2-t02-acknowledgement-correction-portability.test.ts",
       "command": "npx vitest run tests/unit/v2-t02-acknowledgement-correction-portability.test.ts",
-      "proves": "must pass in the same package that implements this product meaning"
+      "proves": "CSV uses the current effective assertion while canonical JSON preserves original and corrected values, correction reason, provenance, and ordered revision evidence"
     },
     "T02-restoreRollback": {
-      "status": "future_activation",
+      "status": "current",
       "implementingPackage": "T02",
       "testPath": "tests/unit/v2-t02-acknowledgement-correction-restore.test.ts",
       "command": "npx vitest run tests/unit/v2-t02-acknowledgement-correction-restore.test.ts",
-      "proves": "must pass in the same package that implements this product meaning"
+      "proves": "record-version restore creates a new superseding transition, and encrypted snapshot restore merges immutable correction lineage, preserves destination-only evidence, and appends a restore transition when the effective performed fact changes"
     },
     "T02-adversarialPrivacy": {
-      "status": "future_activation",
+      "status": "current",
       "implementingPackage": "T02",
       "testPath": "tests/unit/v2-t02-acknowledgement-correction-adversarial.test.ts",
       "command": "npx vitest run tests/unit/v2-t02-acknowledgement-correction-adversarial.test.ts",
-      "proves": "must pass in the same package that implements this product meaning"
+      "proves": "stale revisions, cross-owner requests, unlinked rows, mutation-identity collisions, malformed correction evidence, and unsupported queued formats fail closed without rewriting facts; legacy unknown meaning stays explicitly unknown"
     },
     "T03-databaseService": {
       "status": "future_activation",

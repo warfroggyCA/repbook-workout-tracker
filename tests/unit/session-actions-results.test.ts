@@ -55,7 +55,7 @@ vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 vi.mock("next/navigation", () => ({ redirect: vi.fn() }));
 vi.mock("next/server", () => ({ after: vi.fn() }));
 
-import { correctCompletedSet, skipExercise, updateSet } from "@/app/actions/sessions";
+import { correctAcknowledgedSet, skipExercise } from "@/app/actions/sessions";
 
 describe("session action named results", () => {
   let database: TestDatabase;
@@ -164,19 +164,34 @@ describe("session action named results", () => {
       .returning({ id: completedSets.id });
     activeSetId = activeSet.id;
     completedSetId = completedSet.id;
-    await database.db.insert(sessionOccurrences).values({
-      sessionId: completedSession.id,
-      sessionExerciseId: completedExerciseId,
-      kind: "working_set",
-      origin: "planned",
-      sequenceIdx: 0,
-      kindOrdinal: 0,
-      plannedExerciseId: exercise.id,
-      outcome: "completed",
-      revision: 1,
-      resolvedAt: new Date("2026-07-17T12:15:00.000Z"),
-      completedSetId,
-    });
+    await database.db.insert(sessionOccurrences).values([
+      {
+        sessionId: activeSession.id,
+        sessionExerciseId: activeExerciseId,
+        kind: "working_set",
+        origin: "planned",
+        sequenceIdx: 0,
+        kindOrdinal: 0,
+        plannedExerciseId: exercise.id,
+        outcome: "completed",
+        revision: 1,
+        resolvedAt: new Date("2026-07-18T12:15:00.000Z"),
+        completedSetId: activeSetId,
+      },
+      {
+        sessionId: completedSession.id,
+        sessionExerciseId: completedExerciseId,
+        kind: "working_set",
+        origin: "planned",
+        sequenceIdx: 0,
+        kindOrdinal: 0,
+        plannedExerciseId: exercise.id,
+        outcome: "completed",
+        revision: 1,
+        resolvedAt: new Date("2026-07-17T12:15:00.000Z"),
+        completedSetId,
+      },
+    ]);
   }, 30_000);
 
   afterEach(async () => {
@@ -207,19 +222,37 @@ describe("session action named results", () => {
     ).resolves.toMatchObject({ ok: false, code: "not_active" });
   });
 
-  it("returns a stale active-only rejection without throwing", async () => {
-    await expect(
-      updateSet({ setId: completedSetId, reps: 9 })
-    ).resolves.toMatchObject({
-      ok: false,
-      code: "update_rejected",
-    });
-  });
-
-  it("preserves the successful service result shape", async () => {
-    await expect(updateSet({ setId: activeSetId, reps: 10 })).resolves.toMatchObject({
+  it("corrects an acknowledged active-workout set only after review", async () => {
+    await expect(correctAcknowledgedSet({
+      setId: activeSetId,
+      values: {
+        weight: 40,
+        weightUnit: "lb",
+        reps: 10,
+        distanceKm: null,
+        durationSeconds: null,
+        rpe: null,
+        note: null,
+      },
+      expected: {
+        weight: 40,
+        weightUnit: "lb",
+        reps: 8,
+        distanceKm: null,
+        durationSeconds: null,
+        rpe: null,
+        note: null,
+      },
+      expectedHistoryRevision: 0,
+      clientMutationId: crypto.randomUUID(),
+      category: "measurement_entry",
+      reasonNote: null,
+      source: "active_workout",
+      reviewed: true,
+    })).resolves.toMatchObject({
       ok: true,
       changed: true,
+      historyRevision: 1,
     });
     const [saved] = await database.db
       .select({ reps: completedSets.reps })
@@ -233,19 +266,28 @@ describe("session action named results", () => {
       weight: 45,
       weightUnit: "lb" as const,
       reps: 8,
+      distanceKm: null,
+      durationSeconds: null,
       rpe: null,
       note: null,
     };
-    await expect(correctCompletedSet({
+    await expect(correctAcknowledgedSet({
       setId: completedSetId,
-      weight: 47.5,
-      weightUnit: "lb",
-      reps: 9,
-      rpe: 8.5,
-      note: "Reviewed after the workout",
+      values: {
+        weight: 47.5,
+        weightUnit: "lb",
+        reps: 9,
+        distanceKm: null,
+        durationSeconds: null,
+        rpe: 8.5,
+        note: "Reviewed after the workout",
+      },
       expected,
       expectedHistoryRevision: 0,
       clientMutationId: crypto.randomUUID(),
+      category: "measurement_entry",
+      reasonNote: "Checked the training log",
+      source: "workout_history",
       reviewed: true,
     })).resolves.toMatchObject({ ok: true, changed: true });
 
@@ -303,16 +345,23 @@ describe("session action named results", () => {
       count: 1,
     });
 
-    await expect(correctCompletedSet({
+    await expect(correctAcknowledgedSet({
       setId: completedSetId,
-      weight: 50,
-      weightUnit: "lb",
-      reps: 10,
-      rpe: 9,
-      note: null,
+      values: {
+        weight: 50,
+        weightUnit: "lb",
+        reps: 10,
+        distanceKm: null,
+        durationSeconds: null,
+        rpe: 9,
+        note: null,
+      },
       expected,
       expectedHistoryRevision: 0,
       clientMutationId: crypto.randomUUID(),
+      category: "measurement_entry",
+      reasonNote: null,
+      source: "workout_history",
       reviewed: true,
     })).resolves.toMatchObject({
       ok: false,
@@ -321,25 +370,34 @@ describe("session action named results", () => {
     expect(await database.db.query.recordVersions.findMany()).toHaveLength(1);
   });
 
-  it("rejects the completed correction workflow for an active workout", async () => {
-    await expect(correctCompletedSet({
+  it("rejects a stale correction surface when the workout phase changed", async () => {
+    await expect(correctAcknowledgedSet({
       setId: activeSetId,
-      weight: 40,
-      weightUnit: "lb",
-      reps: 9,
-      rpe: null,
-      note: null,
+      values: {
+        weight: 40,
+        weightUnit: "lb",
+        reps: 9,
+        distanceKm: null,
+        durationSeconds: null,
+        rpe: null,
+        note: null,
+      },
       expected: {
         weight: 40,
         weightUnit: "lb",
         reps: 8,
+        distanceKm: null,
+        durationSeconds: null,
         rpe: null,
         note: null,
       },
       expectedHistoryRevision: 0,
       clientMutationId: crypto.randomUUID(),
+      category: "measurement_entry",
+      reasonNote: null,
+      source: "workout_history",
       reviewed: true,
-    })).resolves.toMatchObject({ ok: false, code: "set_not_found" });
+    })).resolves.toMatchObject({ ok: false, code: "correction_stale_context" });
     expect(await database.db.query.recordVersions.findMany()).toHaveLength(0);
   });
 });
