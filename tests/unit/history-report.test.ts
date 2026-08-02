@@ -13,7 +13,7 @@ function session(
   overrides: Partial<HistorySessionInput> & Pick<HistorySessionInput, "id">
 ): HistorySessionInput {
   const { id, startedAt = new Date("2026-03-10T12:00:00.000Z"), ...rest } = overrides;
-  return {
+  const built: HistorySessionInput = {
     id,
     templateName: "Day A",
     status: "completed",
@@ -22,12 +22,32 @@ function session(
     localDate: startedAt.toISOString().slice(0, 10),
     finishedAt: new Date("2026-03-10T13:00:00.000Z"),
     exercises: [],
+    occurrences: [],
     painLogs: [],
     ...rest,
   };
+  if (overrides.occurrences == null) {
+    built.occurrences = built.exercises.flatMap((exercise) =>
+      exercise.sets
+        .filter((set) => !set.isWarmup)
+        .map((set) => ({
+          kind: "working_set" as const,
+          origin: "planned" as const,
+          outcome: "completed" as const,
+          completedSetId: set.id,
+        })),
+    );
+  }
+  return built;
 }
 
-function benchExercise(sets: HistorySessionInput["exercises"][number]["sets"]) {
+function benchExercise(
+  sets: Array<
+    Omit<HistorySessionInput["exercises"][number]["sets"][number], "id"> & {
+      id?: string;
+    }
+  >,
+) {
   return {
     modificationType: "as_planned" as const,
     skipReason: null,
@@ -39,8 +59,9 @@ function benchExercise(sets: HistorySessionInput["exercises"][number]["sets"]) {
       loadSemantics: "total",
       primaryMuscles: ["chest", "triceps"],
     },
-    sets: sets.map((set) => ({
+    sets: sets.map((set, index) => ({
       ...set,
+      id: set.id ?? `bench-set-${index + 1}`,
       metricType: set.metricType ?? "weight_reps",
       loadEntryMeaning: set.loadEntryMeaning ?? "total_system",
     })),
@@ -336,6 +357,7 @@ describe("summarizeHistory", () => {
               },
               sets: [
                 {
+                  id: "assisted-set",
                   weight: 150,
                   weightUnit: "lb",
                   reps: 10,
@@ -359,6 +381,7 @@ describe("summarizeHistory", () => {
               },
               sets: [
                 {
+                  id: "plank-set",
                   weight: null,
                   reps: 999,
                   metricType: "duration",
@@ -382,6 +405,7 @@ describe("summarizeHistory", () => {
               },
               sets: [
                 {
+                  id: "band-row-set",
                   weight: null,
                   reps: 20,
                   metricType: "reps",
@@ -454,6 +478,7 @@ describe("summarizeHistory", () => {
       },
       sets: [
         {
+          id: `assisted-set-${weight}`,
           weight,
           weightUnit: "lb" as const,
           loadEntryMeaning: "displayed_stack" as const,

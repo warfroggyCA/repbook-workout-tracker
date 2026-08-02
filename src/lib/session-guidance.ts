@@ -7,7 +7,9 @@ import type {
 } from "@/components/session/types";
 import {
   type WorkingSetDisplayPosition,
+  type WorkingSetSemanticRole,
   workingSetDisplayPosition,
+  workingSetSemanticRole,
 } from "@/lib/session-occurrences";
 
 export type WorkingOccurrenceTruth =
@@ -24,6 +26,7 @@ export type SessionGuidanceAction = {
   sessionExerciseId: string;
   sequenceIdx: number;
   truth: WorkingOccurrenceTruth;
+  role: WorkingSetSemanticRole;
   actualExerciseId: string;
   actualExerciseName: string;
   plannedExerciseId: string | null;
@@ -78,7 +81,13 @@ export type ExerciseProgressProjection = {
   sessionExerciseId: string;
   exerciseName: string;
   planned: number;
+  total: number;
+  extra: number;
+  workoutOnly: number;
   performed: number;
+  plannedPerformed: number;
+  extraPerformed: number;
+  workoutOnlyPerformed: number;
   skipped: number;
   abandoned: number;
   pending: number;
@@ -122,8 +131,14 @@ export type GroupProgressProjection = {
   }>;
   rounds: Array<{
     round: number;
+    total: number;
     planned: number;
+    extra: number;
+    workoutOnly: number;
     performed: number;
+    plannedPerformed: number;
+    extraPerformed: number;
+    workoutOnlyPerformed: number;
     skipped: number;
     abandoned: number;
     pending: number;
@@ -177,7 +192,13 @@ export type EquipmentPreparationCue = {
 export type SessionGuidanceProjection = {
   totals: {
     planned: number;
+    total: number;
+    extra: number;
+    workoutOnly: number;
     performed: number;
+    plannedPerformed: number;
+    extraPerformed: number;
+    workoutOnlyPerformed: number;
     skipped: number;
     abandoned: number;
     pending: number;
@@ -260,8 +281,20 @@ function occurrenceTruth(
 
 function countTruth(actions: SessionGuidanceAction[]) {
   return {
-    planned: actions.length,
+    total: actions.length,
+    planned: actions.filter((action) => action.role === "planned").length,
+    extra: actions.filter((action) => action.role === "extra").length,
+    workoutOnly: actions.filter((action) => action.role === "workout_only").length,
     performed: actions.filter((action) => action.truth === "performed").length,
+    plannedPerformed: actions.filter(
+      (action) => action.role === "planned" && action.truth === "performed",
+    ).length,
+    extraPerformed: actions.filter(
+      (action) => action.role === "extra" && action.truth === "performed",
+    ).length,
+    workoutOnlyPerformed: actions.filter(
+      (action) => action.role === "workout_only" && action.truth === "performed",
+    ).length,
     skipped: actions.filter((action) => action.truth === "skipped").length,
     abandoned: actions.filter((action) => action.truth === "abandoned").length,
     pending: actions.filter((action) => action.truth === "pending").length,
@@ -277,16 +310,16 @@ function progressStatus(
 ): GroupProgressProjection["status"] {
   const resolved = counts.performed + counts.skipped + counts.abandoned +
     counts.legacyUnknown + counts.completedWithoutResult;
-  if (counts.planned > 0 && counts.performed === counts.planned) {
+  if (counts.total > 0 && counts.performed === counts.total) {
     return "performed";
   }
-  if (counts.planned > 0 && counts.skipped === counts.planned) {
+  if (counts.total > 0 && counts.skipped === counts.total) {
     return "skipped";
   }
-  if (counts.planned > 0 && counts.abandoned === counts.planned) {
+  if (counts.total > 0 && counts.abandoned === counts.total) {
     return "abandoned";
   }
-  if (counts.pending === counts.planned) return "not_started";
+  if (counts.pending === counts.total) return "not_started";
   if (counts.pending > 0 && resolved > 0) return "in_progress";
   return "partial";
 }
@@ -486,6 +519,7 @@ export function projectSessionGuidance(input: Input): SessionGuidanceProjection 
         sessionExerciseId: occurrence.sessionExerciseId,
         sequenceIdx: occurrence.sequenceIdx,
         truth,
+        role: workingSetSemanticRole(occurrence),
         actualExerciseId: exercise.exerciseId,
         actualExerciseName: exercise.name,
         plannedExerciseId: occurrence.plannedExerciseId,
@@ -590,9 +624,9 @@ export function projectSessionGuidance(input: Input): SessionGuidanceProjection 
       currentAction?.kind === "working_set" &&
       currentAction.sessionExerciseId === exercise.id
     ) status = "current";
-    else if (counts.planned > 0 && counts.performed === counts.planned) status = "performed";
-    else if (counts.planned > 0 && counts.skipped === counts.planned) status = "skipped";
-    else if (counts.pending === counts.planned) status = "not_started";
+    else if (counts.total > 0 && counts.performed === counts.total) status = "performed";
+    else if (counts.total > 0 && counts.skipped === counts.total) status = "skipped";
+    else if (counts.pending === counts.total) status = "not_started";
     else if (counts.pending > 0 && resolved > 0) status = "in_progress";
     else status = "partial";
     return {

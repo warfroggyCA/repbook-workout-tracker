@@ -27,7 +27,7 @@ npm run docs:check
 npm run audit:check
 ```
 
-The Repbook v2 semantic foundation and current T01/T02 activation packages have
+The Repbook v2 semantic foundation and current T01/T02/T03 activation packages have
 focused gates:
 
 ```bash
@@ -36,6 +36,8 @@ npx vitest run tests/unit/v2-t01-recording-truth-db.test.ts tests/unit/v2-t01-re
 npm run test:e2e:v2-t01
 npx vitest run tests/unit/v2-t02-acknowledgement-correction-db.test.ts tests/unit/v2-t02-acknowledgement-correction-portability.test.ts tests/unit/v2-t02-acknowledgement-correction-restore.test.ts tests/unit/v2-t02-acknowledgement-correction-adversarial.test.ts
 npm run test:e2e:v2-t02
+npx vitest run tests/unit/v2-t03-planned-order-db.test.ts tests/unit/v2-t03-planned-order-portability.test.ts tests/unit/v2-t03-planned-order-restore.test.ts
+npm run test:e2e:v2-t03
 ```
 
 The semantic test validates all synthetic F01-F17 scenarios and every required
@@ -43,7 +45,8 @@ verification-matrix cell; by itself it proves contract consistency only. The
 T01 tests activate the mapped database, browser, portability, recovery, and
 adversarial claims for truthful performed measurement. T02 activates the same
 evidence classes for acknowledgement, retry, and reviewed correction, including
-correction-lineage restore. Every later package must activate its own reserved
+correction-lineage restore. T03 activates planned-order, extra-before/after-plan,
+group ordering, History/Review/export, and recovery evidence. Every later package must activate its own reserved
 evidence before its product behavior is considered implemented.
 
 `audit:check` requires a clean production dependency audit and also reviews the

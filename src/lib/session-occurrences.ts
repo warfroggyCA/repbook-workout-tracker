@@ -36,6 +36,13 @@ export type WorkingSetDisplayPosition = {
   lowercaseLabel: string;
 };
 
+export type WorkingSetSemanticRole =
+  | "planned"
+  | "extra"
+  | "workout_only"
+  | "imported"
+  | "legacy";
+
 export function isAppendedExtraSetOccurrence(
   occurrence: WorkingSetLabelOccurrence,
 ) {
@@ -44,6 +51,20 @@ export function isAppendedExtraSetOccurrence(
     occurrence.origin === "ad_hoc" &&
     occurrence.plannedNote === ADDED_WORKOUT_SET_NOTE
   );
+}
+
+/**
+ * Names the durable role of working-set evidence without changing its stored
+ * origin or immutable execution ordinal.
+ */
+export function workingSetSemanticRole(
+  occurrence: WorkingSetLabelOccurrence,
+): WorkingSetSemanticRole {
+  if (occurrence.origin === "planned") return "planned";
+  if (isAppendedExtraSetOccurrence(occurrence)) return "extra";
+  if (occurrence.origin === "ad_hoc") return "workout_only";
+  if (occurrence.origin === "imported") return "imported";
+  return "legacy";
 }
 
 /**

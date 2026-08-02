@@ -55,6 +55,9 @@ describe("production readiness workflow contract", () => {
     const t02AcknowledgementCorrection = steps.find(
       (step) => step.id === "browser-v2-t02",
     );
+    const t03PlannedOrder = steps.find(
+      (step) => step.id === "browser-v2-t03",
+    );
     const browserGate = steps.find(
       (step) => step.name === "Require every browser suite",
     );
@@ -68,6 +71,7 @@ describe("production readiness workflow contract", () => {
     expect(t02AcknowledgementCorrection?.run).toBe(
       "npm run test:e2e:v2-t02",
     );
+    expect(t03PlannedOrder?.run).toBe("npm run test:e2e:v2-t03");
     expect(browserGate?.env?.BROWSER_HISTORY).toBe(
       "${{ steps.browser-history.outcome }}",
     );
@@ -92,6 +96,12 @@ describe("production readiness workflow contract", () => {
     expect(browserGate?.run).toContain(
       '"T02 acknowledgement and correction:${BROWSER_V2_T02}"',
     );
+    expect(browserGate?.env?.BROWSER_V2_T03).toBe(
+      "${{ steps.browser-v2-t03.outcome }}",
+    );
+    expect(browserGate?.run).toContain(
+      '"T03 planned order and extra-set truth:${BROWSER_V2_T03}"',
+    );
   });
 
   it("keeps dedicated v2 browser gates out of the stateful smoke journey", () => {
@@ -99,6 +109,7 @@ describe("production readiness workflow contract", () => {
       expect.arrayContaining([
         "v2-t01-recording-truth.spec.ts",
         "v2-t02-acknowledgement-correction.spec.ts",
+        "v2-t03-planned-order.spec.ts",
       ]),
     );
   });

@@ -149,7 +149,8 @@ artifacts define expected meaning and exact activation-test ownership. P02
 remains contract-only. T01 activates its database, browser, portability,
 recovery, and adversarial proofs for truthful performed measurement. T02
 activates those proof classes for acknowledgement, retry, and reviewed
-correction; later packages remain future work.
+correction. T03 activates database, browser, portability, and recovery proofs
+for planned order and extra-set truth; later packages remain future work.
 
 ## T01 performed-measurement contract
 
@@ -200,3 +201,25 @@ snapshot-restore transition whenever an existing performed set changes. It does
 not erase intervening evidence or imply a historical batch repair. CSV presents
 the current effective assertion; canonical JSON and encrypted snapshots retain
 the original, superseding assertions, and their evidence chain.
+
+## T03 planned-order and extra-set contract
+
+Planned working occurrences keep their immutable sequence and ordinal. A later
+planned set for the same exercise, group member, or group round cannot be
+completed or skipped while its earlier planned predecessor is pending.
+Unrelated ungrouped exercise work remains independently actionable.
+An explicit whole-exercise skip may resolve that exercise's remaining
+occurrences atomically, but it fails closed when doing so would cross a pending
+group predecessor belonging to another exercise.
+
+An owner may add and perform an extra before or after planned work. The extra is
+appended as a distinct ad-hoc occurrence, labelled only among extra siblings,
+and never renumbers or displaces the planned current action. Workout-only
+exercise sets remain a separate ad-hoc role rather than being relabelled as
+extras.
+
+Extra work remains valid performed evidence for volume and progression where
+its measurement semantics permit, but it is excluded from planned-target and
+adherence claims. New writes, corrections, Review, History, exports, and
+snapshot restore all enforce that boundary. Existing history is interpreted
+through retained occurrence origin; T03 performs no batch rewrite.

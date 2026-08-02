@@ -32,6 +32,10 @@ import {
   classifySetMetricContainment,
   setMetricExclusionLabel,
 } from "@/lib/set-metric-semantics";
+import {
+  workingSetDisplayPosition,
+  workingSetSemanticRole,
+} from "@/lib/session-occurrences";
 
 /**
  * Deterministic training digest (plan §13 contract 12, §16). All numbers are
@@ -212,6 +216,19 @@ export async function buildTrainingDigest(
         .map((occurrence) => occurrence.completedSetId as string)
     )
   );
+  const completedPlannedWorkingSetIds = new Set(
+    completed.flatMap((session) =>
+      session.occurrences
+        .filter(
+          (occurrence) =>
+            occurrence.kind === "working_set" &&
+            occurrence.origin === "planned" &&
+            occurrence.outcome === "completed" &&
+            occurrence.completedSetId != null,
+        )
+        .map((occurrence) => occurrence.completedSetId as string),
+    ),
+  );
 
   // Per-exercise top-set trend across the range
   const trendMap = new Map<
@@ -295,7 +312,7 @@ export async function buildTrainingDigest(
       sessionExercise.sets.filter((set) => {
         if (
           sessionExercise.modificationType !== "as_planned" ||
-          !completedWorkingSetIds.has(set.id) ||
+          !completedPlannedWorkingSetIds.has(set.id) ||
           set.isWarmup ||
           set.targetMet == null
         ) {
@@ -484,9 +501,17 @@ export async function buildTrainingDigest(
                 (set) => set.id === occurrence.completedSetId,
               ),
             );
+          const displayPosition = occurrence.kind === "working_set"
+            ? workingSetDisplayPosition(occurrence, s.occurrences)
+            : null;
           return {
             sequence: occurrence.sequenceIdx,
             kind: occurrence.kind,
+            origin: occurrence.origin,
+            role: occurrence.kind === "working_set"
+              ? workingSetSemanticRole(occurrence)
+              : occurrence.origin,
+            displayLabel: displayPosition?.label ?? null,
             label: occurrence.label,
             exercise:
               occurrence.plannedExercise?.name ??
@@ -729,13 +754,16 @@ export function renderCoachingBrief(digest: TrainingDigest): string {
       );
     }
     if (s.occurrences.length) {
-      lines.push("- Planned occurrence outcomes:");
+      lines.push("- Occurrence outcomes:");
       for (const occurrence of s.occurrences) {
         const identity = occurrence.kind === "day_warmup"
           ? occurrence.label ?? "Day warm-up"
           : occurrence.kind === "exercise_warmup"
             ? `${occurrence.exercise ?? "Exercise"} warm-up${occurrence.label ? ` — ${occurrence.label}` : ""}`
-            : `${occurrence.exercise ?? "Exercise"} working set`;
+            : `${occurrence.exercise ?? "Exercise"} ${occurrence.displayLabel ?? "working set"}`;
+        const role = occurrence.kind === "working_set"
+          ? `; ${occurrence.role.replaceAll("_", " ")}`
+          : `; ${occurrence.origin.replaceAll("_", " ")}`;
         const group = occurrence.group
           ? `; ${occurrence.group.name ?? "group"} round ${occurrence.group.round ?? "?"}, member ${(occurrence.group.memberOrder ?? 0) + 1}`
           : "";
@@ -745,7 +773,7 @@ export function renderCoachingBrief(digest: TrainingDigest): string {
             : "completed result is archived or unavailable"
           : occurrence.outcome.replaceAll("_", " ");
         lines.push(
-          `  - ${occurrence.sequence + 1}. ${identity}: ${result}${occurrence.reason ? `; reason ${occurrence.reason.replaceAll("_", " ")}` : ""}${occurrence.note ? `; note "${occurrence.note}"` : ""}${group}`,
+          `  - ${occurrence.sequence + 1}. ${identity}: ${result}${role}${occurrence.reason ? `; reason ${occurrence.reason.replaceAll("_", " ")}` : ""}${occurrence.note ? `; note "${occurrence.note}"` : ""}${group}`,
         );
       }
     }

@@ -463,7 +463,7 @@ describe("workout lifecycle ownership and atomicity invariants", () => {
       new Date("2026-07-22T00:00:00.000Z"),
     );
     const brief = renderCoachingBrief(digest);
-    expect(brief).toContain("Planned occurrence outcomes");
+    expect(brief).toContain("Occurrence outcomes");
     expect(brief).toContain("Five minutes easy, then ramp up: abandoned");
     expect(brief).toContain("completed with a retained performed result");
   });
@@ -1137,23 +1137,6 @@ describe("workout lifecycle ownership and atomicity invariants", () => {
     expect(preceding).toBeDefined();
 
     const occurrenceId = crypto.randomUUID();
-    await expect(
-      appendWorkoutSetOccurrence(database.db, userId, {
-        sessionExerciseId: exercise.id,
-        occurrenceId,
-        expectedSetNo: 4,
-      }),
-    ).resolves.toEqual({ outcome: "stale" });
-    for (const setNo of [1, 2, 3]) {
-      await expect(logWorkoutSet(database.db, userId, {
-        sessionExerciseId: exercise.id,
-        setNo,
-        weight: 100,
-        weightUnit: "lb",
-        reps: 8,
-        clientKey: `resolve-before-append-${setNo}`,
-      })).resolves.toMatchObject({ outcome: "saved" });
-    }
     const appended = await appendWorkoutSetOccurrence(database.db, userId, {
       sessionExerciseId: exercise.id,
       occurrenceId,
@@ -1166,14 +1149,24 @@ describe("workout lifecycle ownership and atomicity invariants", () => {
         sessionExerciseId: exercise.id,
         kindOrdinal: 3,
         plannedExerciseId: exerciseId,
-        plannedRepsMin: 8,
-        plannedRepsMax: 8,
+        plannedRepsMin: preceding?.plannedRepsMin,
+        plannedRepsMax: preceding?.plannedRepsMax,
         plannedLoad: preceding?.plannedLoad,
         plannedLoadUnit: preceding?.plannedLoadUnit,
         plannedRestSec: preceding?.plannedRestSec,
         plannedNote: "Added during this workout",
       },
     });
+    for (const setNo of [1, 2, 3]) {
+      await expect(logWorkoutSet(database.db, userId, {
+        sessionExerciseId: exercise.id,
+        setNo,
+        weight: 100,
+        weightUnit: "lb",
+        reps: 8,
+        clientKey: `resolve-before-append-${setNo}`,
+      })).resolves.toMatchObject({ outcome: "saved" });
+    }
     await expect(
       appendWorkoutSetOccurrence(database.db, userId, {
         sessionExerciseId: exercise.id,

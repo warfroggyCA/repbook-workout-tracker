@@ -100,13 +100,32 @@ export function reconcileSnapshotCompletedSetOutcomes(
   const sessionExercises = new Map(
     rows(payload, "session_exercises").map((row) => [String(row.id), row]),
   );
+  const completedOccurrences = new Map<string, SnapshotRow[]>();
+  const occurrenceRows = payload.tables.session_occurrences === undefined
+    ? []
+    : rows(payload, "session_occurrences");
+  for (const occurrence of occurrenceRows) {
+    if (
+      occurrence.kind !== "working_set" ||
+      occurrence.outcome !== "completed" ||
+      typeof occurrence.completed_set_id !== "string"
+    ) {
+      continue;
+    }
+    const linked = completedOccurrences.get(occurrence.completed_set_id) ?? [];
+    linked.push(occurrence);
+    completedOccurrences.set(occurrence.completed_set_id, linked);
+  }
   for (const completed of rows(payload, "completed_sets")) {
     const sessionExercise = sessionExercises.get(
       String(completed.session_exercise_id),
     );
     const metricType = completed.metric_type;
+    const linkedOccurrences = completedOccurrences.get(String(completed.id)) ?? [];
     if (
       !sessionExercise ||
+      linkedOccurrences.length !== 1 ||
+      linkedOccurrences[0]?.origin !== "planned" ||
       typeof metricType !== "string" ||
       !PERFORMED_METRIC_TYPES.includes(metricType as PerformedMetricType)
     ) {

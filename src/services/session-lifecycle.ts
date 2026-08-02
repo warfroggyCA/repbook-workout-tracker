@@ -787,6 +787,8 @@ export async function appendWorkoutSetOccurrence(
           WHERE unresolved.session_exercise_id = position.id
             AND unresolved.kind = 'working_set'
             AND unresolved.outcome = 'pending'
+            AND unresolved.origin = 'ad_hoc'
+            AND unresolved.planned_note = ${ADDED_WORKOUT_SET_NOTE}
         )
       ON CONFLICT DO NOTHING
       RETURNING *
@@ -939,6 +941,39 @@ export async function mutateWorkoutOccurrence(
         AND NOT EXISTS (SELECT 1 FROM existing_receipt)
         AND occurrence.revision = ${input.expectedRevision}
         AND occurrence.outcome <> 'legacy_unrecorded'
+        AND (
+          ${input.operation} <> 'skip'
+          OR occurrence.kind <> 'working_set'
+          OR (
+            NOT EXISTS (
+              SELECT 1
+              FROM session_occurrences earlier
+              WHERE earlier.session_exercise_id = occurrence.session_exercise_id
+                AND earlier.kind = 'working_set'
+                AND earlier.kind_ordinal < occurrence.kind_ordinal
+                AND earlier.outcome = 'pending'
+                AND (
+                  NOT (
+                    occurrence.origin = 'ad_hoc'
+                    AND occurrence.planned_note = ${ADDED_WORKOUT_SET_NOTE}
+                  )
+                  OR (
+                    earlier.origin = 'ad_hoc'
+                    AND earlier.planned_note = ${ADDED_WORKOUT_SET_NOTE}
+                  )
+                )
+            )
+            AND NOT EXISTS (
+              SELECT 1
+              FROM session_occurrences earlier
+              WHERE occurrence.group_snapshot_id IS NOT NULL
+                AND earlier.group_snapshot_id = occurrence.group_snapshot_id
+                AND earlier.kind = 'working_set'
+                AND earlier.sequence_idx < occurrence.sequence_idx
+                AND earlier.outcome = 'pending'
+            )
+          )
+        )
         AND (
           (${input.operation} = 'complete'
             AND occurrence.kind IN ('day_warmup', 'exercise_warmup')
@@ -1825,6 +1860,25 @@ async function logWorkoutSetAttempt(
             AND earlier.kind = 'working_set'
             AND earlier.kind_ordinal < occurrence.kind_ordinal
             AND earlier.outcome = 'pending'
+            AND (
+              NOT (
+                occurrence.origin = 'ad_hoc'
+                AND occurrence.planned_note = ${ADDED_WORKOUT_SET_NOTE}
+              )
+              OR (
+                earlier.origin = 'ad_hoc'
+                AND earlier.planned_note = ${ADDED_WORKOUT_SET_NOTE}
+              )
+            )
+        )
+        AND NOT EXISTS (
+          SELECT 1
+          FROM session_occurrences earlier
+          WHERE occurrence.group_snapshot_id IS NOT NULL
+            AND earlier.group_snapshot_id = occurrence.group_snapshot_id
+            AND earlier.kind = 'working_set'
+            AND earlier.sequence_idx < occurrence.sequence_idx
+            AND earlier.outcome = 'pending'
         )
     ), eligible_ad_hoc AS MATERIALIZED (
       SELECT
@@ -1873,6 +1927,7 @@ async function logWorkoutSetAttempt(
         owned.performed_metric_type,
         CASE
           WHEN ${input.isWarmup ?? false}::boolean THEN NULL
+          WHEN occurrence.origin <> 'planned' THEN NULL
           WHEN owned.performed_metric_type::text IN ('duration', 'distance_duration')
             THEN NULL
           WHEN owned.performed_metric_type::text = 'assisted_reps' THEN NULL
@@ -1923,10 +1978,10 @@ async function logWorkoutSetAttempt(
           THEN 'unknown' ELSE 'trustworthy' END
       FROM selected_setup owned
       JOIN (
-        SELECT occurrence.session_exercise_id
+        SELECT occurrence.session_exercise_id, occurrence.origin
         FROM eligible_owned_occurrence occurrence
         UNION ALL
-        SELECT eligible.id
+        SELECT eligible.id, 'ad_hoc'::text
         FROM eligible_ad_hoc eligible
       ) occurrence ON occurrence.session_exercise_id = owned.id
       ON CONFLICT (session_exercise_id, client_key)

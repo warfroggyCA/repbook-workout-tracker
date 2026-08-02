@@ -61,7 +61,10 @@ export const WorkoutGuidanceSummary = memo(function WorkoutGuidanceSummary({
       >
         <div className="flex min-w-0 items-baseline gap-2 text-sm">
           <span className="shrink-0 font-semibold tabular-nums">
-            {guidance.totals.performed}/{guidance.totals.planned}
+            {guidance.totals.plannedPerformed}/{guidance.totals.planned} planned
+            {guidance.totals.extraPerformed > 0
+              ? ` · ${guidance.totals.extraPerformed} extra`
+              : ""}
             {guidance.totals.skipped > 0 ? ` · ${guidance.totals.skipped} skipped` : ""}
           </span>
           <p className="min-w-0 break-words leading-snug">
@@ -127,11 +130,17 @@ export const WorkoutGuidanceSummary = memo(function WorkoutGuidanceSummary({
           Workout progress
         </p>
         <p className="text-sm font-semibold tabular-nums">
-          {guidance.totals.performed} of {guidance.totals.planned} performed
+          {guidance.totals.plannedPerformed} of {guidance.totals.planned} planned performed
         </p>
       </div>
       <p className="break-words text-xs text-muted-foreground">
         {guidance.totals.pending} remaining
+        {guidance.totals.extraPerformed > 0
+          ? ` · ${guidance.totals.extraPerformed} extra performed`
+          : ""}
+        {guidance.totals.workoutOnlyPerformed > 0
+          ? ` · ${guidance.totals.workoutOnlyPerformed} workout-only performed`
+          : ""}
         {guidance.totals.skipped > 0
           ? ` · ${guidance.totals.skipped} skipped`
           : ""}

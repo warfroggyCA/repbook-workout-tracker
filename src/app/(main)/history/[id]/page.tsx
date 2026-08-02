@@ -186,6 +186,18 @@ export default async function SessionDetailPage(
       )
       .map((occurrence) => occurrence.completedSetId as string),
   );
+  const performedPlannedWorkingSetIds = new Set(
+    session.occurrences
+      .filter(
+        (occurrence) =>
+          occurrence.kind === "working_set" &&
+          occurrence.origin === "planned" &&
+          occurrence.outcome === "completed" &&
+          occurrence.completedSetId != null &&
+          activeSetIds.has(occurrence.completedSetId),
+      )
+      .map((occurrence) => occurrence.completedSetId as string),
+  );
   const performedSetsBySessionExerciseId = new Map(
     session.exercises.map((exercise) => [
       exercise.id,
@@ -217,6 +229,7 @@ export default async function SessionDetailPage(
   const targetableSets = performedSetEvidence.filter(
     ({ set, sessionExercise, semantics }) =>
       sessionExercise.modificationType === "as_planned" &&
+      performedPlannedWorkingSetIds.has(set.id) &&
       semantics.prescriptionOutcomeEligible &&
       set.targetMet != null,
   );
@@ -631,12 +644,13 @@ export default async function SessionDetailPage(
                       reps: s.reps,
                       excludeFromAnalytics: s.excludeFromAnalytics,
                     });
-                    const targetOutcomeVisible =
-                      se.modificationType === "as_planned" &&
-                      semantics.prescriptionOutcomeEligible;
                     const occurrence = session.occurrences.find(
                       (candidate) => candidate.completedSetId === s.id,
                     );
+                    const targetOutcomeVisible =
+                      occurrence?.origin === "planned" &&
+                      se.modificationType === "as_planned" &&
+                      semantics.prescriptionOutcomeEligible;
                     const setPosition =
                       occurrence?.kind === "working_set"
                         ? workingSetDisplayPosition(

@@ -187,6 +187,14 @@ describe("unit, calendar, and backup production findings", () => {
         localDate: "2025-12-31",
         finishedAt: new Date("2026-01-01T02:00:00.000Z"),
         excludeDurationFromAnalytics: false,
+        occurrences: [
+          {
+            kind: "working_set",
+            origin: "planned",
+            outcome: "completed",
+            completedSetId: stored.id,
+          },
+        ],
         exercises: [
           {
             modificationType: "as_planned",
@@ -197,6 +205,7 @@ describe("unit, calendar, and backup production findings", () => {
             },
             sets: [
               {
+                id: stored.id,
                 weight: stored.weight,
                 weightUnit: stored.weightUnit,
                 reps: stored.reps,
@@ -230,6 +239,7 @@ describe("unit, calendar, and backup production findings", () => {
         localDate: "2025-12-31",
         finishedAt: new Date("2026-01-01T02:00:00.000Z"),
         excludeDurationFromAnalytics: false,
+        occurrences: [],
         exercises: [],
         painLogs: [],
       },

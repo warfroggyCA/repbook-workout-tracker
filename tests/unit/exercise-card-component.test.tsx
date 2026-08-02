@@ -92,8 +92,14 @@ describe("ExerciseCard", () => {
         progress={{
           sessionExerciseId: exercise.id,
           exerciseName: exercise.name,
+          total: 3,
           planned: 3,
+          extra: 0,
+          workoutOnly: 0,
           performed: 0,
+          plannedPerformed: 0,
+          extraPerformed: 0,
+          workoutOnlyPerformed: 0,
           skipped: 0,
           abandoned: 0,
           pending: 3,
@@ -135,7 +141,7 @@ describe("ExerciseCard", () => {
     expect(html).toContain(
       `id="logged-set-${exercise.id}-2"`,
     );
-    expect(html).toContain("0/3 performed · 2 saving");
+    expect(html).toContain("0/3 planned performed · 2 saving");
     expect(html).toContain(formatWarmupSetLine(warmupSet));
     expect(html).toContain("Warm-up complete");
     expect(html).toContain("Show details");
@@ -180,8 +186,14 @@ describe("ExerciseCard", () => {
         progress={{
           sessionExerciseId: assistedExercise.id,
           exerciseName: assistedExercise.name,
+          total: 2,
           planned: 2,
+          extra: 0,
+          workoutOnly: 0,
           performed: 1,
+          plannedPerformed: 1,
+          extraPerformed: 0,
+          workoutOnlyPerformed: 0,
           skipped: 0,
           abandoned: 0,
           pending: 1,
@@ -249,8 +261,14 @@ describe("ExerciseCard", () => {
         progress={{
           sessionExerciseId: current.id,
           exerciseName: current.name,
+          total: 3,
           planned: 3,
+          extra: 0,
+          workoutOnly: 0,
           performed: 0,
+          plannedPerformed: 0,
+          extraPerformed: 0,
+          workoutOnlyPerformed: 0,
           skipped: 0,
           abandoned: 0,
           pending: 3,
@@ -331,7 +349,7 @@ describe("ExerciseCard", () => {
     expect(html).toContain("Skip set");
     expect(html).toContain("Add extra set");
     expect(html).toContain(
-      "Finish or skip the sets above before adding an extra.",
+      "Adds ad-hoc work without changing the planned set order.",
     );
   });
 
@@ -349,8 +367,14 @@ describe("ExerciseCard", () => {
         progress={{
           sessionExerciseId: afterSkippedSecond.id,
           exerciseName: afterSkippedSecond.name,
+          total: 3,
           planned: 3,
+          extra: 0,
+          workoutOnly: 0,
           performed: 1,
+          plannedPerformed: 1,
+          extraPerformed: 0,
+          workoutOnlyPerformed: 0,
           skipped: 1,
           abandoned: 0,
           pending: 1,
@@ -464,8 +488,14 @@ describe("ExerciseCard", () => {
       progress: {
         sessionExerciseId: current.id,
         exerciseName: current.name,
+        total: 3,
         planned: 3,
+        extra: 0,
+        workoutOnly: 0,
         performed: 0,
+        plannedPerformed: 0,
+        extraPerformed: 0,
+        workoutOnlyPerformed: 0,
         skipped: 0,
         abandoned: 0,
         pending: 3,
@@ -562,8 +592,14 @@ describe("ExerciseCard", () => {
         progress={{
           sessionExerciseId: current.id,
           exerciseName: current.name,
+          total: 4,
           planned: 4,
+          extra: 0,
+          workoutOnly: 0,
           performed: 0,
+          plannedPerformed: 0,
+          extraPerformed: 0,
+          workoutOnlyPerformed: 0,
           skipped: 0,
           abandoned: 0,
           pending: 4,
@@ -591,7 +627,7 @@ describe("ExerciseCard", () => {
     expect(html).not.toContain("Added to this workout");
     expect(html).toContain("Add extra set");
     expect(html).toContain(
-      "Finish or skip the sets above before adding an extra.",
+      "Adds ad-hoc work without changing the planned set order.",
     );
   });
 });

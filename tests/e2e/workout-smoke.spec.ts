@@ -1686,9 +1686,9 @@ test("keeps every active-workout route reachable with one scroll surface", async
     exact: true,
   });
   await expect(addExtraSet).toBeVisible();
-  await expect(addExtraSet).toBeDisabled();
+  await expect(addExtraSet).toBeEnabled();
   await expect(currentCard).toContainText(
-    "Finish or skip the sets above before adding an extra.",
+    "Adds ad-hoc work without changing the planned set order.",
   );
   await expect(currentCard.getByRole("button", { name: "Skip set", exact: true })).toBeVisible();
   await expect(currentCard.getByRole("button", { name: "Ask Coach", exact: true })).toBeVisible();

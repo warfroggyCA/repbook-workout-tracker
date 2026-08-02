@@ -766,6 +766,9 @@ export function SessionRunner(props: SessionRunnerProps) {
 
   const totalPlanned = guidance.totals.planned;
   const totalPerformed = guidance.totals.performed;
+  const plannedPerformed = guidance.totals.plannedPerformed;
+  const extraPerformed = guidance.totals.extraPerformed;
+  const workoutOnlyPerformed = guidance.totals.workoutOnlyPerformed;
   const pendingWorking = guidance.totals.pending;
   const nonPerformedSummary = sessionNonPerformedOutcomeParts(
     guidance.totals,
@@ -1541,7 +1544,11 @@ export function SessionRunner(props: SessionRunnerProps) {
         <div>
           <h1 className="text-lg font-semibold">{props.templateName}</h1>
           <p className="text-xs text-muted-foreground">
-            {elapsed} · {totalPerformed}/{totalPlanned || "?"} performed
+            {elapsed} · {plannedPerformed}/{totalPlanned || "?"} planned
+            {extraPerformed > 0 ? ` · ${extraPerformed} extra` : ""}
+            {workoutOnlyPerformed > 0
+              ? ` · ${workoutOnlyPerformed} workout-only`
+              : ""}
           </p>
         </div>
         <div className="flex items-center gap-1">
@@ -1974,7 +1981,13 @@ export function SessionRunner(props: SessionRunnerProps) {
           <DrawerHeader>
             <DrawerTitle>Finish workout</DrawerTitle>
             <DrawerDescription>
-              {totalPerformed} of {totalPlanned} planned sets done in {elapsed}.
+              {plannedPerformed} of {totalPlanned} planned sets done in {elapsed}.
+              {extraPerformed > 0
+                ? ` ${extraPerformed} extra set${extraPerformed === 1 ? "" : "s"} performed.`
+                : ""}
+              {workoutOnlyPerformed > 0
+                ? ` ${workoutOnlyPerformed} workout-only set${workoutOnlyPerformed === 1 ? "" : "s"} performed.`
+                : ""}
             </DrawerDescription>
           </DrawerHeader>
           <div className="flex flex-col gap-4 px-4">
