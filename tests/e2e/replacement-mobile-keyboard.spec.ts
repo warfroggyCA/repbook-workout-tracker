@@ -317,8 +317,11 @@ test("keeps unrestricted replacement truthful and reachable through mobile keybo
   await expect(card).not.toContainText("Last time:");
   await expect(weight).toHaveCount(0);
   await expect(reps).toHaveValue("10");
+  const logSet = card.getByRole("button", { name: "Log set", exact: true });
+  await waitForHydratedReactHandler(logSet);
   await reps.fill("9");
-  await card.getByRole("button", { name: "Log set", exact: true }).click();
+  await expect(reps).toHaveValue("9");
+  await logSet.click();
   await expect(card).toContainText("9 reps");
   await expect(card).not.toContainText("0 lb");
 
