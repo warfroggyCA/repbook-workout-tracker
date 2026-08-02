@@ -193,14 +193,27 @@ function WarmupPanel({
   );
 }
 
-function actionTargetId(action: SessionGuidanceFocusAction | null) {
+function actionTargetId(action: SessionGuidanceFocusAction | null): string {
   if (!action) return "finish-workout";
+  if (action.kind === "rest") return "workout-rest-status";
   if (action.kind !== "working_set" || !action.sessionExerciseId) {
     return `warmup-occurrence-${action.occurrenceId}`;
   }
   const prefix =
     action.position.kind === "extra" ? "added-set-entry" : "set-entry";
   return `${prefix}-${action.sessionExerciseId}-${action.occurrenceId}`;
+}
+
+function actionIdentity(action: SessionGuidanceFocusAction | null) {
+  if (!action) return null;
+  return action.kind === "rest" ? action.actionId : action.occurrenceId;
+}
+
+function actionOccurrenceId(action: SessionGuidanceFocusAction | null) {
+  if (!action) return null;
+  return action.kind === "rest"
+    ? action.source?.occurrenceId ?? action.actionId
+    : action.occurrenceId;
 }
 
 export function SessionRunner(props: SessionRunnerProps) {
@@ -404,23 +417,26 @@ export function SessionRunner(props: SessionRunnerProps) {
         exercises: shownExercises,
         exerciseGroups: props.exerciseGroups,
         equipmentSetups: safeEquipmentSetups,
-        selectedSessionExerciseId: expandedId,
+        restTimer: restTimerHydrated ? timer : null,
       }),
     [
-      expandedId,
       occurrences,
       props.exerciseGroups,
+      restTimerHydrated,
       safeEquipmentSetups,
       shownExercises,
+      timer,
     ],
   );
-  const currentActionId = guidance.currentAction?.occurrenceId ?? null;
+  const currentActionId = actionIdentity(guidance.currentAction);
   const currentActionKind = guidance.currentAction?.kind ?? null;
   const currentActionSequenceIdx = guidance.currentAction?.sequenceIdx ?? null;
   const currentActionSessionExerciseId =
     guidance.currentAction?.kind === "working_set"
       ? guidance.currentAction.sessionExerciseId
-      : null;
+      : guidance.currentAction?.kind === "rest"
+        ? guidance.current?.sessionExerciseId ?? null
+        : null;
   const currentActionTargetId = actionTargetId(guidance.currentAction);
   useEffect(() => {
     const previousActionId = previousCurrentActionIdRef.current;
@@ -435,8 +451,8 @@ export function SessionRunner(props: SessionRunnerProps) {
       currentActionSequenceIdx != null &&
       currentActionSequenceIdx < previousOccurrence.sequenceIdx;
     if (
-      !previousOccurrence ||
-      (previousOccurrence.outcome === "pending" && !restoredEarlierAction)
+      previousOccurrence?.outcome === "pending" &&
+      !restoredEarlierAction
     ) return;
 
     let focusFrame = 0;
@@ -451,7 +467,7 @@ export function SessionRunner(props: SessionRunnerProps) {
         "",
         `${window.location.pathname}${window.location.search}#${currentActionTargetId}`,
       );
-      if (currentActionKind === "working_set" && currentActionSessionExerciseId) {
+      if (currentActionSessionExerciseId) {
         setExpandedId(currentActionSessionExerciseId);
       }
       focusFrame = window.requestAnimationFrame(() => {
@@ -846,7 +862,7 @@ export function SessionRunner(props: SessionRunnerProps) {
   async function queueSet(
     exercise: SessionExerciseData,
     set: LoggedSet,
-    restAfterSec = exercise.restSec,
+    restAfterSec: number | null | undefined = exercise.restSec,
   ) {
     if (!set.clientKey) return false;
     const performed = buildPerformedSetMeasurement({
@@ -903,6 +919,7 @@ export function SessionRunner(props: SessionRunnerProps) {
       decision.status === "log_with_snapshot" &&
       performed.measurement.weight != null;
     const observedCompletedAtISO = new Date().toISOString();
+    if (restAfterSec != null && restAfterSec > 0) primeRestCue();
     const queued = await enqueueWorkoutSet({
       clientKey: set.clientKey,
       ownerId: props.ownerId,
@@ -1365,7 +1382,6 @@ export function SessionRunner(props: SessionRunnerProps) {
         revision: 0,
         resolvedAt: null,
         completedSetId: null,
-        restAfterSec: result.occurrence.plannedRestSec,
       };
       setOccurrences((current) =>
         current.some((occurrence) => occurrence.id === appended.id)
@@ -1389,9 +1405,10 @@ export function SessionRunner(props: SessionRunnerProps) {
         (occurrence) => occurrence.id === guidance.current?.occurrenceId,
       ) ?? null
     : null;
-  const currentActionOccurrence = guidance.currentAction
+  const currentActionOccurrenceId = actionOccurrenceId(guidance.currentAction);
+  const currentActionOccurrence = currentActionOccurrenceId
     ? occurrences.find(
-        (occurrence) => occurrence.id === guidance.currentAction?.occurrenceId,
+        (occurrence) => occurrence.id === currentActionOccurrenceId,
       ) ?? null
     : null;
   const currentActionExercise = currentActionOccurrence?.sessionExerciseId
@@ -1655,7 +1672,7 @@ export function SessionRunner(props: SessionRunnerProps) {
                       id={`warmup-occurrence-${occurrence.id}`}
                       tabIndex={-1}
                       aria-current={
-                        guidance.currentAction?.occurrenceId === occurrence.id
+                        actionOccurrenceId(guidance.currentAction) === occurrence.id
                           ? "step"
                           : undefined
                       }
@@ -1910,7 +1927,6 @@ export function SessionRunner(props: SessionRunnerProps) {
             occurrenceRuntimeSaveStates={occurrenceRuntimeSaveStates}
             acknowledgedOccurrenceIds={acknowledgedOccurrenceIds}
             isCurrentExercise={
-              guidance.currentAction?.kind === "working_set" &&
               currentOccurrence?.sessionExerciseId === exercise.id
             }
             warmupResolved={
@@ -1935,7 +1951,6 @@ export function SessionRunner(props: SessionRunnerProps) {
                 return occurrence ? equipmentConfirmationBlocks(occurrence) : false;
               })()
             }
-            onPrepareRestCue={primeRestCue}
             onPatch={(patch) => {
               patchExercise(exercise.id, patch);
               const exerciseIdentityChanged = Object.hasOwn(
@@ -2018,7 +2033,11 @@ export function SessionRunner(props: SessionRunnerProps) {
               queueSet(
                 exercise,
                 set,
-                occurrence?.restAfterSec ?? exercise.restSec,
+                occurrence
+                  ? guidance.actions.find(
+                      (action) => action.occurrenceId === occurrence.id,
+                    )?.restAfter.seconds ?? null
+                  : exercise.restSec,
               )
             }
             onAppendSet={(occurrenceId, expectedSetNo) =>
@@ -2237,11 +2256,11 @@ export function SessionRunner(props: SessionRunnerProps) {
             const currentAction = guidance.currentAction;
             if (!currentAction) return;
             const targetId = actionTargetId(currentAction);
-            if (
-              currentAction.kind === "working_set" &&
-              currentAction.sessionExerciseId
-            ) {
-              setExpandedId(currentAction.sessionExerciseId);
+            const occurrenceAction = currentAction.kind === "rest"
+              ? currentAction.source
+              : currentAction;
+            if (occurrenceAction?.kind === "working_set") {
+              setExpandedId(occurrenceAction.sessionExerciseId);
             }
             window.history.replaceState(
               window.history.state,

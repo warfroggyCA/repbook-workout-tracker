@@ -208,7 +208,6 @@ describe("inline occurrence handoff", () => {
     revision: 0,
     resolvedAt: null,
     completedSetId: null,
-    restAfterSec: 0,
   });
 
   it("reveals the next exact working member and ignores warm-up controls", () => {

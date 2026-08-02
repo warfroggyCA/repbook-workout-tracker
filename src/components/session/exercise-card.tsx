@@ -196,7 +196,6 @@ type Props = {
     memberCount: number;
   } | null;
   occurrenceChangesBlocked?: boolean;
-  onPrepareRestCue?: () => void;
   onSkipSet?: (
     input: { reason: string | null; note: string | null },
     occurrence?: SessionOccurrenceData | null,
@@ -245,7 +244,6 @@ export function ExerciseCard({
   warmupResolved = false,
   groupContext = null,
   occurrenceChangesBlocked = false,
-  onPrepareRestCue = () => undefined,
   onSkipSet = async () => false,
   onRetryOccurrenceMutation = () => undefined,
   onDiscardOccurrenceMutation = () => undefined,
@@ -476,7 +474,6 @@ export function ExerciseCard({
       toast.error(performed.message);
       return;
     }
-    if (occurrence && occurrence.restAfterSec > 0) onPrepareRestCue();
     let clientKey: string;
     try {
       clientKey = createClientUuid();

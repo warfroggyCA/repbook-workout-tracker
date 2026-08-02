@@ -54,7 +54,39 @@ export function WorkoutGroupContext({
   const roundLabel = group.plannedRounds != null
     ? `Round ${group.currentRound} of ${group.plannedRounds}`
     : `Recorded round ${group.currentRound}`;
-  const upcomingDetails = equipmentDetails(guidance.upcomingEquipment);
+  const preparationCue = group.activeRest
+    ? guidance.currentEquipment
+    : guidance.upcomingEquipment;
+  const preparationMemberName = group.activeRest
+    ? group.currentMemberName
+    : group.upNextMemberName;
+  const upcomingDetails = equipmentDetails(preparationCue);
+  const activeRestLabel = group.activeRest?.restKind === "between_members"
+    ? "Member rest"
+    : group.activeRest?.restKind === "between_rounds"
+      ? "Round rest"
+      : group.activeRest
+        ? "Rest timer"
+        : null;
+  const plannedRestLabel = group.restAfterCurrent.kind === "between_members"
+    ? "Member rest after this set"
+    : group.restAfterCurrent.kind === "between_rounds"
+      ? "Round rest after this set"
+      : "Rest after this set";
+  const completionLabel = group.completion === "resolved"
+    ? "all occurrences performed"
+    : group.completion === "resolved_with_changes"
+      ? "all occurrences resolved with recorded changes"
+      : group.completion === "in_progress"
+        ? "in progress"
+        : "not started";
+  const roundCompletionLabel = currentRound?.completion === "resolved"
+    ? "round performed"
+    : currentRound?.completion === "resolved_with_changes"
+      ? "round resolved with recorded changes"
+      : currentRound?.completion === "in_progress"
+        ? "round in progress"
+        : "round not started";
 
   return (
     <section
@@ -82,7 +114,9 @@ export function WorkoutGroupContext({
       </div>
 
       <p className="mt-2 text-sm">
-        <span className="font-semibold">Current member:</span>{" "}
+        <span className="font-semibold">
+          {group.activeRest ? "Next member:" : "Current member:"}
+        </span>{" "}
         {group.currentMemberOrder} of {group.memberCount} ·{" "}
         {group.currentMemberName}
       </p>
@@ -94,17 +128,21 @@ export function WorkoutGroupContext({
         </p>
       )}
       <p className="mt-1 text-xs text-muted-foreground">
-        Group progress: {progressText(group.totals)}
+        Group progress: {progressText(group.totals)} · {completionLabel}
       </p>
       {currentRound && (
         <p className="text-xs text-muted-foreground">
-          {roundLabel}: {progressText(currentRound)}
+          {roundLabel}: {progressText(currentRound)} · {roundCompletionLabel}
         </p>
       )}
       <p className="text-xs text-muted-foreground">
-        {group.restAfterCurrentSec > 0
-          ? `${formatRestTime(group.restAfterCurrentSec)} saved after the current set.`
-          : "No planned rest is saved after the current set."}
+        {group.activeRest && activeRestLabel
+          ? `${activeRestLabel}${group.activeRest.phase === "ready" ? " complete" : group.activeRest.phase === "skipped" ? " skipped" : " in progress"}.`
+          : group.restAfterCurrent.seconds == null
+            ? "Rest after the current set is not recorded."
+            : group.restAfterCurrent.seconds > 0
+              ? `${plannedRestLabel}: ${formatRestTime(group.restAfterCurrent.seconds)}.`
+              : "No rest is planned after the current set."}
       </p>
       {group.hasLaterResolvedWork && (
         <p className="mt-1 rounded-md border border-amber-500/40 bg-amber-50/80 px-2 py-1.5 text-xs text-amber-950 dark:bg-amber-950/25 dark:text-amber-100">
@@ -146,19 +184,19 @@ export function WorkoutGroupContext({
         })}
       </ol>
 
-      {group.upNextMemberName && guidance.upcomingEquipment.status !== "none" && (
+      {preparationMemberName && preparationCue.status !== "none" && (
         <div className="mt-3 rounded-lg border border-dashed bg-background/85 px-3 py-2 text-sm">
           <p className="font-semibold">
-            Prepare for {group.upNextMemberName}
+            Prepare for {preparationMemberName}
           </p>
           <p className="text-xs font-medium">
-            {equipmentStatusLabel(guidance.upcomingEquipment.status)}
+            {equipmentStatusLabel(preparationCue.status)}
           </p>
           {upcomingDetails && (
             <p className="break-words text-xs">{upcomingDetails}</p>
           )}
           <p className="break-words text-xs text-muted-foreground">
-            {guidance.upcomingEquipment.message}
+            {preparationCue.message}
           </p>
           <p className="mt-1 text-xs text-muted-foreground">
             Preparation is guidance only. It does not select equipment or

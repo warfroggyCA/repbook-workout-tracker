@@ -50,7 +50,9 @@ export const WorkoutGuidanceSummary = memo(function WorkoutGuidanceSummary({
           ? [currentEquipment, guidance.currentEquipment.message].filter(Boolean).join(" · ")
           : null;
     const prepLabel = nextIsCurrentWorkingSet
-      ? "After warm-up"
+      ? guidance.currentAction?.kind === "rest"
+        ? "After rest"
+        : "After warm-up"
       : nextIsUpcomingWorkingSet
         ? "Prepare"
         : "Use now";
@@ -71,7 +73,9 @@ export const WorkoutGuidanceSummary = memo(function WorkoutGuidanceSummary({
             <span className="font-medium">Now:</span>{" "}
             {guidance.currentAction
               ? formatSessionGuidanceAction(guidance.currentAction)
-              : "Workout complete"}
+              : guidance.completion.evidenceLimited
+                ? "Actions resolved · evidence needs review"
+                : "All actions resolved"}
           </p>
         </div>
         {guidance.nextAction && (
@@ -159,11 +163,19 @@ export const WorkoutGuidanceSummary = memo(function WorkoutGuidanceSummary({
           {formatSessionGuidanceAction(guidance.currentAction)}
         </p>
       )}
+      {!compact && !guidance.currentAction && (
+        <p className="break-words text-sm">
+          <span className="font-medium">Now:</span>{" "}
+          {guidance.completion.evidenceLimited
+            ? "Actions resolved · evidence needs review"
+            : "All actions resolved"}
+        </p>
+      )}
       <p className="break-words text-sm">
         <span className="font-medium">Next:</span>{" "}
         {guidance.nextAction
           ? formatSessionGuidanceAction(guidance.nextAction)
-          : "No further planned work"}
+          : "No further unresolved work"}
       </p>
       {guidance.currentAction?.kind === "working_set" &&
         guidance.current && guidance.currentEquipment.status !== "none" && (
@@ -176,13 +188,29 @@ export const WorkoutGuidanceSummary = memo(function WorkoutGuidanceSummary({
         </div>
       )}
       {guidance.nextAction?.kind === "working_set" &&
-        guidance.upNext?.occurrenceId === guidance.nextAction.occurrenceId &&
-        !upcomingDuplicatesCurrent && (
+        (guidance.current?.occurrenceId === guidance.nextAction.occurrenceId ||
+          guidance.upNext?.occurrenceId === guidance.nextAction.occurrenceId) &&
+        !(
+          guidance.upNext?.occurrenceId === guidance.nextAction.occurrenceId &&
+          upcomingDuplicatesCurrent
+        ) && (
         <div className="min-w-0 rounded-md border border-dashed bg-background/70 px-2.5 py-2 text-xs">
-          <p className="font-medium">Prepare next</p>
-          {equipment && <p className="break-words">{equipment}</p>}
+          <p className="font-medium">
+            {guidance.currentAction?.kind === "rest" ? "After rest" : "Prepare next"}
+          </p>
+          {(guidance.current?.occurrenceId === guidance.nextAction.occurrenceId
+            ? currentEquipment
+            : equipment) && (
+            <p className="break-words">
+              {guidance.current?.occurrenceId === guidance.nextAction.occurrenceId
+                ? currentEquipment
+                : equipment}
+            </p>
+          )}
           <p className="break-words text-muted-foreground">
-            {guidance.upcomingEquipment.message}
+            {guidance.current?.occurrenceId === guidance.nextAction.occurrenceId
+              ? guidance.currentEquipment.message
+              : guidance.upcomingEquipment.message}
           </p>
         </div>
       )}

@@ -232,12 +232,10 @@ describe("ExerciseCard", () => {
           revision: 0,
           resolvedAt: null,
           completedSetId: null,
-          restAfterSec: 90,
         }}
         isCurrentExercise
         onPatch={() => undefined}
         onQueueSet={async () => true}
-        onPrepareRestCue={() => undefined}
         onSkipSet={async () => true}
         onRetrySet={async () => undefined}
         onDiscardSet={async () => undefined}
@@ -313,12 +311,10 @@ describe("ExerciseCard", () => {
           revision: 0,
           resolvedAt: null,
           completedSetId: null,
-          restAfterSec: 90,
         }}
         isCurrentExercise
         onPatch={() => undefined}
         onQueueSet={async () => true}
-        onPrepareRestCue={() => undefined}
         onSkipSet={async () => true}
         onRetrySet={async () => undefined}
         onDiscardSet={async () => undefined}
@@ -413,7 +409,6 @@ describe("ExerciseCard", () => {
           revision: 0,
           resolvedAt: null,
           completedSetId: null,
-          restAfterSec: 90,
         }}
         isCurrentExercise
         onPatch={() => undefined}
@@ -463,7 +458,6 @@ describe("ExerciseCard", () => {
       revision: 0,
       resolvedAt: null,
       completedSetId: null,
-      restAfterSec: 90,
     } satisfies SessionOccurrenceData;
     const mutation = {
       clientKey: "00000000-0000-4000-8000-000000000022",
@@ -583,7 +577,6 @@ describe("ExerciseCard", () => {
       revision: 0,
       resolvedAt: null,
       completedSetId: null,
-      restAfterSec: 90,
     };
     const html = renderToStaticMarkup(
       <ExerciseCard

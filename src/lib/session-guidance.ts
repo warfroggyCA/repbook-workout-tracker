@@ -11,6 +11,7 @@ import {
   workingSetDisplayPosition,
   workingSetSemanticRole,
 } from "@/lib/session-occurrences";
+import type { DurableRestTimer } from "@/lib/rest-timer";
 
 export type WorkingOccurrenceTruth =
   | "performed"
@@ -54,7 +55,7 @@ export type SessionGuidanceAction = {
     durationSeconds: number | null;
     rpe: number | null;
   } | null;
-  restAfterSec: number;
+  restAfter: SessionRestAfter;
   group: {
     id: string;
     name: string;
@@ -62,6 +63,18 @@ export type SessionGuidanceAction = {
     member: number;
     memberCount: number;
   } | null;
+};
+
+export type SessionRestKind =
+  | "straight_set"
+  | "between_members"
+  | "between_rounds"
+  | "none"
+  | "unknown";
+
+export type SessionRestAfter = {
+  kind: SessionRestKind;
+  seconds: number | null;
 };
 
 export type SessionWarmupGuidanceAction = {
@@ -73,9 +86,29 @@ export type SessionWarmupGuidanceAction = {
   exerciseName: string | null;
 };
 
-export type SessionGuidanceFocusAction =
+export type SessionRestGuidanceAction = {
+  kind: "rest";
+  actionId: string;
+  sequenceIdx: number;
+  phase: "running" | "ready" | "skipped";
+  restKind: Exclude<SessionRestKind, "none">;
+  totalSec: number;
+  source: SessionGuidanceAction | null;
+};
+
+export type SessionOccurrenceGuidanceAction =
   | SessionGuidanceAction
   | SessionWarmupGuidanceAction;
+
+export type SessionGuidanceFocusAction =
+  | SessionOccurrenceGuidanceAction
+  | SessionRestGuidanceAction;
+
+export type OccurrenceCompletionState =
+  | "not_started"
+  | "in_progress"
+  | "resolved"
+  | "resolved_with_changes";
 
 export type ExerciseProgressProjection = {
   sessionExerciseId: string;
@@ -114,6 +147,7 @@ export type GroupProgressProjection = {
     | "skipped"
     | "abandoned"
     | "partial";
+  completion: OccurrenceCompletionState;
   members: Array<{
     sessionExerciseId: string;
     order: number;
@@ -128,6 +162,7 @@ export type GroupProgressProjection = {
       | "skipped"
       | "abandoned"
       | "partial";
+    completion: OccurrenceCompletionState;
   }>;
   rounds: Array<{
     round: number;
@@ -151,6 +186,7 @@ export type GroupProgressProjection = {
       | "skipped"
       | "abandoned"
       | "partial";
+    completion: OccurrenceCompletionState;
   }>;
 };
 
@@ -164,10 +200,12 @@ export type ActiveGroupProjection = {
   currentMemberName: string;
   upNextMemberOrder: number | null;
   upNextMemberName: string | null;
-  restAfterCurrentSec: number;
+  restAfterCurrent: SessionRestAfter;
+  activeRest: SessionRestGuidanceAction | null;
   hasLaterResolvedWork: boolean;
   totals: GroupProgressProjection["totals"];
   status: GroupProgressProjection["status"];
+  completion: GroupProgressProjection["completion"];
   members: GroupProgressProjection["members"];
   rounds: GroupProgressProjection["rounds"];
 };
@@ -190,6 +228,12 @@ export type EquipmentPreparationCue = {
 };
 
 export type SessionGuidanceProjection = {
+  completion: {
+    state: "in_progress" | "ready_to_finish";
+    pendingOccurrences: number;
+    limitedEvidenceOccurrences: number;
+    evidenceLimited: boolean;
+  };
   totals: {
     planned: number;
     total: number;
@@ -243,6 +287,22 @@ export function sessionNonPerformedOutcomeParts(
 export function formatSessionGuidanceAction(
   action: SessionGuidanceFocusAction,
 ) {
+  if (action.kind === "rest") {
+    const restLabel = action.restKind === "between_members"
+      ? "Member rest"
+      : action.restKind === "between_rounds"
+        ? "Round rest"
+        : action.restKind === "straight_set"
+          ? "Rest"
+          : "Rest timer";
+    const phase = action.phase === "running"
+      ? ""
+      : action.phase === "ready"
+        ? " complete"
+        : " skipped";
+    if (!action.source) return `${restLabel}${phase}`;
+    return `${restLabel}${phase} after ${action.source.actualExerciseName}, ${action.source.position.lowercaseLabel}`;
+  }
   if (action.kind === "working_set") {
     const setLabel = action.position.lowercaseLabel;
     if (!action.group) return `${action.actualExerciseName}, ${setLabel}`;
@@ -259,7 +319,7 @@ type Input = {
   exercises: SessionExerciseData[];
   exerciseGroups: SessionExerciseGroupData[];
   equipmentSetups: Record<string, SessionEquipmentSetup>;
-  selectedSessionExerciseId?: string | null;
+  restTimer?: DurableRestTimer | null;
 };
 
 function isRetainedSet(set: LoggedSet) {
@@ -322,6 +382,102 @@ function progressStatus(
   if (counts.pending === counts.total) return "not_started";
   if (counts.pending > 0 && resolved > 0) return "in_progress";
   return "partial";
+}
+
+function completionState(
+  counts: ReturnType<typeof countTruth>,
+): OccurrenceCompletionState {
+  if (counts.total === 0 || counts.pending === counts.total) return "not_started";
+  if (counts.pending > 0) return "in_progress";
+  return counts.performed === counts.total
+    ? "resolved"
+    : "resolved_with_changes";
+}
+
+function projectRestAfterOccurrence(
+  occurrence: SessionOccurrenceData,
+  occurrences: SessionOccurrenceData[],
+): SessionRestAfter {
+  const seconds = occurrence.plannedRestSec;
+  if (seconds == null) return { kind: "unknown", seconds: null };
+  if (seconds === 0) return { kind: "none", seconds: 0 };
+  if (occurrence.groupSnapshotId == null) {
+    return { kind: "straight_set", seconds };
+  }
+  if (
+    occurrence.groupRound == null ||
+    occurrence.groupMemberOrderIdx == null
+  ) {
+    return { kind: "unknown", seconds };
+  }
+  const nextInGroup = occurrences
+    .filter(
+      (candidate) =>
+        candidate.kind === "working_set" &&
+        candidate.groupSnapshotId === occurrence.groupSnapshotId &&
+        candidate.sequenceIdx > occurrence.sequenceIdx,
+    )
+    .sort((left, right) => left.sequenceIdx - right.sequenceIdx)[0];
+  if (!nextInGroup || nextInGroup.groupRound == null) {
+    return { kind: "unknown", seconds };
+  }
+  return {
+    kind: nextInGroup.groupRound === occurrence.groupRound
+      ? "between_members"
+      : "between_rounds",
+    seconds,
+  };
+}
+
+function actionHasUnacknowledgedSet(
+  action: SessionOccurrenceGuidanceAction | null,
+  exerciseById: Map<string, SessionExerciseData>,
+) {
+  if (action?.kind !== "working_set") return false;
+  return exerciseById.get(action.sessionExerciseId)?.sets.some(
+    (set) =>
+      set.setNo === action.planned.setNumber &&
+      set.saveState != null &&
+      set.saveState !== "saved",
+  ) ?? false;
+}
+
+function projectRestGuidance(
+  timer: DurableRestTimer | null | undefined,
+  actions: SessionGuidanceAction[],
+  occurrences: SessionOccurrenceData[],
+): SessionRestGuidanceAction | null {
+  if (!timer || timer.phase === "continued") return null;
+  const sourceOccurrence = timer.sourceOccurrenceId == null ||
+      timer.sourceSessionExerciseId == null ||
+      timer.sourceCompletedSetId == null
+    ? null
+    : occurrences.find(
+        (occurrence) =>
+          occurrence.id === timer.sourceOccurrenceId &&
+          occurrence.kind === "working_set" &&
+          occurrence.sessionExerciseId === timer.sourceSessionExerciseId &&
+          occurrence.completedSetId === timer.sourceCompletedSetId,
+      ) ?? null;
+  const source = sourceOccurrence
+    ? actions.find(
+        (action) =>
+          action.occurrenceId === sourceOccurrence.id &&
+          action.truth === "performed",
+      ) ?? null
+    : null;
+  const restKind = source?.restAfter.kind === "none" || !source
+    ? "unknown"
+    : source.restAfter.kind;
+  return {
+    kind: "rest",
+    actionId: `rest:${timer.generationId}`,
+    sequenceIdx: source?.sequenceIdx ?? -1,
+    phase: timer.phase,
+    restKind,
+    totalSec: timer.totalSec,
+    source,
+  };
 }
 
 function broadEquipmentLabel(loadType: string): string | null {
@@ -549,7 +705,7 @@ export function projectSessionGuidance(input: Input): SessionGuidanceProjection 
               rpe: retained.set.rpe,
             }
           : null,
-        restAfterSec: occurrence.restAfterSec,
+        restAfter: projectRestAfterOccurrence(occurrence, input.occurrences),
         group: occurrence.groupSnapshotId && occurrence.groupRound != null &&
           occurrence.groupMemberOrderIdx != null
           ? {
@@ -564,18 +720,8 @@ export function projectSessionGuidance(input: Input): SessionGuidanceProjection 
     });
 
   const pending = actions.filter((action) => action.truth === "pending");
-  const canonicalCurrent = pending[0] ?? null;
-  const selectedCurrent = canonicalCurrent?.group == null && input.selectedSessionExerciseId
-    ? pending.find(
-        (action) =>
-          action.group == null &&
-          action.sessionExerciseId === input.selectedSessionExerciseId,
-      ) ?? canonicalCurrent
-    : canonicalCurrent;
-  const current = selectedCurrent;
-  const upNext = current
-    ? pending.find((action) => action.occurrenceId !== current.occurrenceId) ?? null
-    : null;
+  const current = pending[0] ?? null;
+  const upNext = pending[1] ?? null;
   const pendingWarmups = input.occurrences
     .filter(
       (
@@ -598,18 +744,33 @@ export function projectSessionGuidance(input: Input): SessionGuidanceProjection 
         exerciseName: exercise?.name ?? null,
       };
     });
-  const pendingActions: SessionGuidanceFocusAction[] = [
+  const pendingActions: SessionOccurrenceGuidanceAction[] = [
     ...pendingWarmups,
     ...pending,
   ].sort((left, right) => left.sequenceIdx - right.sequenceIdx);
   const canonicalAction = pendingActions[0] ?? null;
-  const currentAction =
+  const occurrenceCurrentAction =
     canonicalAction?.kind !== "working_set" ? canonicalAction : current;
-  const nextAction = currentAction
+  const occurrenceNextAction = occurrenceCurrentAction
     ? pendingActions.find(
-        (action) => action.occurrenceId !== currentAction.occurrenceId,
+        (action) => action.occurrenceId !== occurrenceCurrentAction.occurrenceId,
       ) ?? null
     : null;
+  const activeRest = projectRestGuidance(
+    input.restTimer,
+    actions,
+    input.occurrences,
+  );
+  const acknowledgementPending = actionHasUnacknowledgedSet(
+    occurrenceCurrentAction,
+    exerciseById,
+  );
+  const currentAction: SessionGuidanceFocusAction | null =
+    activeRest && !acknowledgementPending ? activeRest : occurrenceCurrentAction;
+  const nextAction: SessionOccurrenceGuidanceAction | null =
+    activeRest && !acknowledgementPending
+    ? occurrenceCurrentAction
+    : occurrenceNextAction;
   const totals = countTruth(actions);
 
   const exerciseProgress = input.exercises.map((exercise): ExerciseProgressProjection => {
@@ -621,8 +782,8 @@ export function projectSessionGuidance(input: Input): SessionGuidanceProjection 
       counts.legacyUnknown + counts.completedWithoutResult;
     let status: ExerciseProgressProjection["status"];
     if (
-      currentAction?.kind === "working_set" &&
-      currentAction.sessionExerciseId === exercise.id
+      occurrenceCurrentAction?.kind === "working_set" &&
+      occurrenceCurrentAction.sessionExerciseId === exercise.id
     ) status = "current";
     else if (counts.total > 0 && counts.performed === counts.total) status = "performed";
     else if (counts.total > 0 && counts.skipped === counts.total) status = "skipped";
@@ -652,6 +813,7 @@ export function projectSessionGuidance(input: Input): SessionGuidanceProjection 
         plannedRounds: group.plannedRounds,
         totals,
         status: progressStatus(totals),
+        completion: completionState(totals),
         members: memberNumbers.flatMap((memberOrder) => {
           const memberActions = groupActions.filter(
             (action) => action.group?.member === memberOrder,
@@ -667,6 +829,7 @@ export function projectSessionGuidance(input: Input): SessionGuidanceProjection 
             substituted: first.substituted,
             totals: memberTotals,
             status: progressStatus(memberTotals),
+            completion: completionState(memberTotals),
           }];
         }),
         rounds: roundNumbers.map((round) => {
@@ -677,17 +840,18 @@ export function projectSessionGuidance(input: Input): SessionGuidanceProjection 
             round,
             ...counts,
             status: progressStatus(counts),
+            completion: completionState(counts),
           };
         }),
       };
     });
   const activeGroupProgress =
-    currentAction?.kind === "working_set" && current?.group
+    occurrenceCurrentAction?.kind === "working_set" && current?.group
       ? groups.find((group) => group.groupId === current.group?.id) ?? null
       : null;
   const activeGroup =
-    currentAction?.kind === "working_set" &&
-    currentAction.occurrenceId === current?.occurrenceId &&
+    occurrenceCurrentAction?.kind === "working_set" &&
+    occurrenceCurrentAction.occurrenceId === current?.occurrenceId &&
     current?.group && activeGroupProgress
     ? {
         groupId: activeGroupProgress.groupId,
@@ -701,7 +865,9 @@ export function projectSessionGuidance(input: Input): SessionGuidanceProjection 
           upNext?.group?.id === current.group.id ? upNext.group.member : null,
         upNextMemberName:
           upNext?.group?.id === current.group.id ? upNext.actualExerciseName : null,
-        restAfterCurrentSec: current.restAfterSec,
+        restAfterCurrent: current.restAfter,
+        activeRest:
+          activeRest?.source?.group?.id === current.group.id ? activeRest : null,
         hasLaterResolvedWork: actions.some(
           (action) =>
             action.group?.id === current.group?.id &&
@@ -710,6 +876,7 @@ export function projectSessionGuidance(input: Input): SessionGuidanceProjection 
         ),
         totals: activeGroupProgress.totals,
         status: activeGroupProgress.status,
+        completion: activeGroupProgress.completion,
         members: activeGroupProgress.members,
         rounds: activeGroupProgress.rounds,
       }
@@ -722,7 +889,22 @@ export function projectSessionGuidance(input: Input): SessionGuidanceProjection 
     ? exerciseById.get(current.sessionExerciseId) ?? null
     : null;
   const upcomingExercise = upNext ? exerciseById.get(upNext.sessionExerciseId) ?? null : null;
+  const pendingOccurrences = input.occurrences.filter(
+    (occurrence) => occurrence.outcome === "pending",
+  ).length;
+  const limitedEvidenceOccurrences =
+    input.occurrences.filter(
+      (occurrence) => occurrence.outcome === "legacy_unrecorded",
+    ).length + totals.completedWithoutResult;
   return {
+    completion: {
+      state: pendingOccurrences > 0
+        ? "in_progress"
+        : "ready_to_finish",
+      pendingOccurrences,
+      limitedEvidenceOccurrences,
+      evidenceLimited: limitedEvidenceOccurrences > 0,
+    },
     totals: {
       ...totals,
       remainingAfterCurrent: Math.max(0, totals.pending - (current ? 1 : 0)),

@@ -5,14 +5,15 @@
   "repositoryRole": "public application source",
   "exactBaseCommit": "2c9ab1b9478502f1d08956a6c44dfb0850c8f168",
   "fixtureCatalogue": "tests/fixtures/v2/semantic-scenarios.json",
-  "currentPackage": "T04",
-  "currentPackageBaseCommit": "1d2018c65b3a2fd7331ed26604bd8986d9aada3f",
+  "currentPackage": "T05",
+  "currentPackageBaseCommit": "fe4a1460e9de8bbc7be3a3ef6bd88818418d0a04",
   "productBehaviorImplementedByP02": false,
   "implementedProductPackages": [
     "T01",
     "T02",
     "T03",
-    "T04"
+    "T04",
+    "T05"
   ],
   "legend": {
     "R": "required primary proof",
@@ -190,32 +191,32 @@
       "proves": "encrypted history restore preserves exact warm-up occurrence IDs, immutable prescription identity, outcomes, reasons, notes, equipment snapshots, revisions, and mutation receipts without synthesizing or duplicating actions"
     },
     "T05-databaseService": {
-      "status": "future_activation",
+      "status": "current",
       "implementingPackage": "T05",
       "testPath": "tests/unit/v2-t05-execution-semantics-db.test.ts",
       "command": "npx vitest run tests/unit/v2-t05-execution-semantics-db.test.ts",
-      "proves": "must pass in the same package that implements this product meaning"
+      "proves": "the acknowledged occurrence ledger enforces group member and round order, retry identity, exact nullable rest, skip outcomes, mixed group completion, and ready-to-finish state without a second persisted execution state"
     },
     "T05-browser": {
-      "status": "future_activation",
+      "status": "current",
       "implementingPackage": "T05",
       "testPath": "tests/e2e/v2-t05-execution-semantics.spec.ts",
-      "command": "npx playwright test tests/e2e/v2-t05-execution-semantics.spec.ts",
-      "proves": "must pass in the same package that implements this product meaning"
+      "command": "npx playwright test --config=playwright.v2-t05.config.ts tests/e2e/v2-t05-execution-semantics.spec.ts",
+      "proves": "desktop Chromium and narrow mobile WebKit keep ledger-order Now and Next independent from card expansion, retain the current set through failure and retry, bind round rest to its acknowledged source through background return, reload, skip, and resume, preserve extra work, and require explicit Finish after all actions resolve"
     },
     "T05-exportImport": {
-      "status": "future_activation",
+      "status": "current",
       "implementingPackage": "T05",
       "testPath": "tests/unit/v2-t05-execution-semantics-portability.test.ts",
       "command": "npx vitest run tests/unit/v2-t05-execution-semantics-portability.test.ts",
-      "proves": "must pass in the same package that implements this product meaning"
+      "proves": "CSV and the deterministic Review digest preserve exact occurrence order, outcomes, group coordinates, and nullable saved rest from which current, next, group, and rest meaning can be reproduced"
     },
     "T05-restoreRollback": {
-      "status": "future_activation",
+      "status": "current",
       "implementingPackage": "T05",
       "testPath": "tests/unit/v2-t05-execution-semantics-restore.test.ts",
       "command": "npx vitest run tests/unit/v2-t05-execution-semantics-restore.test.ts",
-      "proves": "must pass in the same package that implements this product meaning"
+      "proves": "encrypted history restore preserves exact occurrence identities, order, group coordinates, outcomes, nullable rest facts, resolved-with-changes completion, and ready-to-finish projection while immutable plan evidence rejects rewriting"
     },
     "H03-databaseService": {
       "status": "future_activation",

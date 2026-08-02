@@ -60,7 +60,7 @@ type WorkoutSetOutboxCommand = {
   /** Pending local selection that must be acknowledged before this set. */
   equipmentSelectionClientKey?: string | null;
   /** Rest guidance starts only after this exact set is acknowledged. */
-  restAfterSec?: number;
+  restAfterSec?: number | null;
   loadEntryMeaning: WorkoutSetLoadEntryMeaning;
   /**
    * Device-observed completion time frozen with the durable command. Older
@@ -446,7 +446,7 @@ function isWorkoutSetOutboxEntry(value: unknown): value is WorkoutSetOutboxEntry
       value.equipmentSelectionClientKey === null ||
       (typeof value.equipmentSelectionClientKey === "string" &&
         UUID_PATTERN.test(value.equipmentSelectionClientKey))) &&
-    (value.restAfterSec === undefined ||
+    (value.restAfterSec === undefined || value.restAfterSec === null ||
       (Number.isInteger(value.restAfterSec) &&
         Number(value.restAfterSec) >= 0 && Number(value.restAfterSec) <= 1800)) &&
     isWorkoutSetLoadEntryMeaning(value.loadEntryMeaning) &&
@@ -619,7 +619,7 @@ function sameSet(
     && entry.equipmentSnapshotId === input.equipmentSnapshotId
     && (entry.equipmentSelectionClientKey ?? null) ===
       (input.equipmentSelectionClientKey ?? null)
-    && (entry.restAfterSec ?? null) === (input.restAfterSec ?? null)
+    && entry.restAfterSec === input.restAfterSec
     && entry.loadEntryMeaning === input.loadEntryMeaning
     && entry.observedCompletedAtISO === (input.observedCompletedAtISO ?? null)
   );

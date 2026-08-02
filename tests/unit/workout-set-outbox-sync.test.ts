@@ -285,6 +285,42 @@ describe("workout set outbox sync classification", () => {
     expect(readRestTimer(storage, identity).timer).toBeNull();
   });
 
+  it("clears a prior timer for explicitly unknown rest without claiming zero", async () => {
+    storage.values.clear();
+    const identity = { ownerId: entry().ownerId, sessionId: entry().sessionId };
+    await writeRestTimer(storage, createRestTimer({ ...identity, now: 1_000, seconds: 90 })!);
+    enqueueWorkoutSetOutboxEntry(storage, { ...entry(), restAfterSec: null });
+    actionMocks.logSet.mockResolvedValueOnce({
+      outcome: "saved",
+      setId: savedSetId,
+      occurrenceId: savedOccurrenceId,
+    });
+
+    await syncNextEntry(entry().ownerId);
+
+    expect(readRestTimer(storage, identity).timer).toBeNull();
+  });
+
+  it("leaves a prior timer untouched for a retained legacy command with no rest field", async () => {
+    storage.values.clear();
+    const identity = { ownerId: entry().ownerId, sessionId: entry().sessionId };
+    const prior = createRestTimer({ ...identity, now: 1_000, seconds: 90 })!;
+    await writeRestTimer(storage, prior);
+    enqueueWorkoutSetOutboxEntry(storage, entry());
+    actionMocks.logSet.mockResolvedValueOnce({
+      outcome: "saved",
+      setId: savedSetId,
+      occurrenceId: savedOccurrenceId,
+    });
+
+    await syncNextEntry(entry().ownerId);
+
+    expect(readRestTimer(storage, identity).timer).toMatchObject({
+      generationId: prior.generationId,
+      totalSec: 90,
+    });
+  });
+
   it("parks a thrown failure after the automatic retry cap", async () => {
     for (let attempt = 1; attempt < WORKOUT_SET_OUTBOX_MAX_AUTO_ATTEMPTS; attempt += 1) {
       markWorkoutSetTransientFailure(

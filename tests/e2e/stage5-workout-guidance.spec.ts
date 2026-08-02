@@ -280,8 +280,10 @@ test("keeps Stage 5 guidance truthful, persistent, and usable on narrow mobile s
   await expect(guidance).toContainText("Next: Romanian Deadlift, set 2");
   releaseSave();
   await expect(guidance).toContainText("1/14");
-  await expect(guidance).toContainText("Now: Romanian Deadlift, set 2");
-  await expect(guidance).toContainText("Next: Romanian Deadlift, set 3");
+  await expect(guidance).toContainText(
+    "Now: Rest after Romanian Deadlift, set 1",
+  );
+  await expect(guidance).toContainText("Next: Romanian Deadlift, set 2");
   await expect(statusBar).toContainText("Resting");
   await page.unrouteAll({ behavior: "wait" });
   await expect
@@ -337,11 +339,11 @@ test("keeps Stage 5 guidance truthful, persistent, and usable on narrow mobile s
   ).toBeVisible();
   await expect(
     page.getByRole("region", { name: "Workout progress and upcoming work" })
-      .getByText(/Now: Romanian Deadlift, set 2/),
+      .getByText(/Now: Rest complete after Romanian Deadlift, set 1/),
   ).toBeVisible();
   await expect(
     page.getByRole("region", { name: "Workout progress and upcoming work" })
-      .getByText(/Next: Romanian Deadlift, set 3/),
+      .getByText(/Next: Romanian Deadlift, set 2/),
   ).toBeVisible();
   const collapsedMetrics = await persistentDock.evaluate((element) => {
     const navigation = document.querySelector("nav.fixed");

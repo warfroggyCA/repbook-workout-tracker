@@ -100,7 +100,6 @@ function occurrence(
     revision: 0,
     resolvedAt: null,
     completedSetId: null,
-    restAfterSec: 60,
     ...patch,
   };
 }
@@ -308,7 +307,7 @@ describe("GUIDE-02 session guidance truth", () => {
     });
   });
 
-  it("keeps a durable added set current for its selected exercise before moving on", () => {
+  it("keeps a durable added set in ledger order instead of redefining Now", () => {
     const first = exercise("first", {
       targetSets: 4,
       sets: [
@@ -322,7 +321,6 @@ describe("GUIDE-02 session guidance truth", () => {
       exercises: [first, second],
       exerciseGroups: noGroups,
       equipmentSetups: {},
-      selectedSessionExerciseId: first.id,
       occurrences: [
         occurrence("first-1-occurrence", first.id, 0, {
           kindOrdinal: 0,
@@ -351,6 +349,10 @@ describe("GUIDE-02 session guidance truth", () => {
     });
 
     expect(projection.current).toMatchObject({
+      occurrenceId: "second-1-occurrence",
+      sessionExerciseId: second.id,
+    });
+    expect(projection.upNext).toMatchObject({
       occurrenceId: "first-added-occurrence",
       sessionExerciseId: first.id,
       position: {
@@ -360,10 +362,6 @@ describe("GUIDE-02 session guidance truth", () => {
         lowercaseLabel: "extra set 1",
       },
       planned: { setNumber: 4 },
-    });
-    expect(projection.upNext).toMatchObject({
-      occurrenceId: "second-1-occurrence",
-      sessionExerciseId: second.id,
     });
   });
 
@@ -466,7 +464,6 @@ describe("GUIDE-02 session guidance truth", () => {
       exerciseGroups: [group],
       equipmentSetups: {},
       occurrences,
-      selectedSessionExerciseId: members[0].id,
     });
 
     expect(projection.current).toMatchObject({
@@ -489,7 +486,7 @@ describe("GUIDE-02 session guidance truth", () => {
       currentMemberName: "Fly",
       upNextMemberOrder: 1,
       upNextMemberName: "Press",
-      restAfterCurrentSec: 60,
+      restAfterCurrent: { kind: "between_rounds", seconds: 60 },
       hasLaterResolvedWork: false,
       members: [
         expect.objectContaining({ order: 1, exerciseName: "Press" }),
@@ -603,7 +600,7 @@ describe("GUIDE-02 session guidance truth", () => {
     });
   });
 
-  it("supports deliberate ungrouped selection while keeping the earliest other unresolved work next", () => {
+  it("keeps ledger-order Now and Next independent from presentation selection", () => {
     const first = exercise("first", { orderIdx: 0 });
     const second = exercise("second", { orderIdx: 1 });
     const third = exercise("third", { orderIdx: 2 });
@@ -616,13 +613,12 @@ describe("GUIDE-02 session guidance truth", () => {
         occurrence("second-set", second.id, 1),
         occurrence("third-set", third.id, 2),
       ],
-      selectedSessionExerciseId: second.id,
     });
 
-    expect(projection.current?.sessionExerciseId).toBe(second.id);
-    expect(projection.upNext?.sessionExerciseId).toBe(first.id);
-    expect(projection.currentAction?.occurrenceId).toBe("second-set");
-    expect(projection.nextAction?.occurrenceId).toBe("first-set");
+    expect(projection.current?.sessionExerciseId).toBe(first.id);
+    expect(projection.upNext?.sessionExerciseId).toBe(second.id);
+    expect(projection.currentAction).toMatchObject({ occurrenceId: "first-set" });
+    expect(projection.nextAction).toMatchObject({ occurrenceId: "second-set" });
     expect(projection.totals.remainingAfterCurrent).toBe(2);
   });
 
@@ -724,6 +720,185 @@ describe("GUIDE-02 session guidance truth", () => {
     expect(projection.nextAction).toMatchObject({
       kind: "exercise_warmup",
       occurrenceId: "warm-two",
+    });
+  });
+});
+
+describe("V2 T05 execution semantics", () => {
+  it("projects nullable straight-set rest without inventing a duration", () => {
+    const item = exercise("straight");
+    const projection = projectSessionGuidance({
+      exercises: [item],
+      exerciseGroups: noGroups,
+      equipmentSetups: {},
+      occurrences: [
+        occurrence("known", item.id, 0, { plannedRestSec: 75 }),
+        occurrence("unknown", item.id, 1, { plannedRestSec: null }),
+      ],
+    });
+
+    expect(projection.actions.map((action) => action.restAfter)).toEqual([
+      { kind: "straight_set", seconds: 75 },
+      { kind: "unknown", seconds: null },
+    ]);
+  });
+
+  it("binds member rest to the acknowledged source and prepares the next ledger action", () => {
+    const first = exercise("member-a", {
+      name: "Raise",
+      sets: [set("saved-member-a", { setNo: 1 })],
+    });
+    const second = exercise("member-b", { name: "Pallof press" });
+    const group: SessionExerciseGroupData = {
+      id: "group-one",
+      name: "Accessory pair",
+      plannedRounds: 2,
+      memberCount: 2,
+      orderIdx: 0,
+    };
+    const occurrences = [
+      occurrence("member-a-r1", first.id, 0, {
+        kindOrdinal: 0,
+        groupSnapshotId: group.id,
+        groupRound: 1,
+        groupMemberOrderIdx: 0,
+        plannedRestSec: 20,
+        outcome: "completed",
+        completedSetId: "saved-member-a",
+      }),
+      occurrence("member-b-r1", second.id, 1, {
+        kindOrdinal: 0,
+        groupSnapshotId: group.id,
+        groupRound: 1,
+        groupMemberOrderIdx: 1,
+        plannedRestSec: 90,
+      }),
+      occurrence("member-a-r2", first.id, 2, {
+        kindOrdinal: 1,
+        groupSnapshotId: group.id,
+        groupRound: 2,
+        groupMemberOrderIdx: 0,
+        plannedRestSec: 20,
+      }),
+      occurrence("member-b-r2", second.id, 3, {
+        kindOrdinal: 1,
+        groupSnapshotId: group.id,
+        groupRound: 2,
+        groupMemberOrderIdx: 1,
+        plannedRestSec: 0,
+      }),
+    ];
+    const projection = projectSessionGuidance({
+      exercises: [first, second],
+      exerciseGroups: [group],
+      equipmentSetups: {},
+      occurrences,
+      restTimer: {
+        version: 1,
+        generationId: "rest-member-a",
+        revision: 0,
+        ownerId: "owner",
+        sessionId: "session",
+        sourceSessionExerciseId: first.id,
+        sourceOccurrenceId: "member-a-r1",
+        sourceCompletedSetId: "saved-member-a",
+        phase: "running",
+        endsAt: 120_000,
+        totalSec: 20,
+        readyAt: null,
+        completionContext: null,
+        completionCueOutcome: null,
+        attemptedMilestones: [],
+      },
+    });
+
+    expect(projection.actions.map((action) => action.restAfter)).toEqual([
+      { kind: "between_members", seconds: 20 },
+      { kind: "between_rounds", seconds: 90 },
+      { kind: "between_members", seconds: 20 },
+      { kind: "none", seconds: 0 },
+    ]);
+    expect(projection.currentAction).toMatchObject({
+      kind: "rest",
+      restKind: "between_members",
+      totalSec: 20,
+      source: { occurrenceId: "member-a-r1", actualExerciseName: "Raise" },
+    });
+    expect(projection.nextAction).toMatchObject({
+      kind: "working_set",
+      occurrenceId: "member-b-r1",
+    });
+    expect(projection.activeGroup).toMatchObject({
+      currentRound: 1,
+      currentMemberName: "Pallof press",
+      restAfterCurrent: { kind: "between_rounds", seconds: 90 },
+      activeRest: { restKind: "between_members" },
+    });
+  });
+
+  it("keeps a failed current save ahead of an older rest timer until acknowledgement", () => {
+    const item = exercise("ack", {
+      sets: [
+        set("acknowledged-one", { setNo: 1 }),
+        set("optimistic-two", { setNo: 2, saveState: "failed" }),
+      ],
+    });
+    const projection = projectSessionGuidance({
+      exercises: [item],
+      exerciseGroups: noGroups,
+      equipmentSetups: {},
+      occurrences: [
+        occurrence("set-one", item.id, 0, {
+          kindOrdinal: 0,
+          outcome: "completed",
+          completedSetId: "acknowledged-one",
+        }),
+        occurrence("set-two", item.id, 1, { kindOrdinal: 1 }),
+      ],
+      restTimer: {
+        version: 1,
+        generationId: "older-rest",
+        revision: 0,
+        ownerId: "owner",
+        sessionId: "session",
+        sourceSessionExerciseId: item.id,
+        sourceOccurrenceId: "set-one",
+        sourceCompletedSetId: "acknowledged-one",
+        phase: "running",
+        endsAt: 120_000,
+        totalSec: 60,
+        readyAt: null,
+        completionContext: null,
+        completionCueOutcome: null,
+        attemptedMilestones: [],
+      },
+    });
+
+    expect(projection.currentAction).toMatchObject({
+      kind: "working_set",
+      occurrenceId: "set-two",
+    });
+    expect(projection.nextAction).toBeNull();
+  });
+
+  it("makes a mixed resolved ledger ready to finish while preserving limited evidence", () => {
+    const item = exercise("resolved");
+    const projection = projectSessionGuidance({
+      exercises: [item],
+      exerciseGroups: noGroups,
+      equipmentSetups: {},
+      occurrences: [
+        occurrence("skipped", item.id, 0, { outcome: "skipped" }),
+        occurrence("legacy", item.id, 1, { outcome: "legacy_unrecorded" }),
+      ],
+    });
+
+    expect(projection.currentAction).toBeNull();
+    expect(projection.completion).toEqual({
+      state: "ready_to_finish",
+      pendingOccurrences: 0,
+      limitedEvidenceOccurrences: 1,
+      evidenceLimited: true,
     });
   });
 });
