@@ -51,6 +51,9 @@ describe("production readiness workflow contract", () => {
     const programReviewRecovery = steps.find(
       (step) => step.id === "browser-program-review-recovery",
     );
+    const t02AcknowledgementCorrection = steps.find(
+      (step) => step.id === "browser-v2-t02",
+    );
     const browserGate = steps.find(
       (step) => step.name === "Require every browser suite",
     );
@@ -60,6 +63,9 @@ describe("production readiness workflow contract", () => {
     expect(painHold?.run).toBe("npm run test:e2e:pain-hold");
     expect(programReviewRecovery?.run).toBe(
       "npm run test:e2e:program-editor-review-recovery",
+    );
+    expect(t02AcknowledgementCorrection?.run).toBe(
+      "npm run test:e2e:v2-t02",
     );
     expect(browserGate?.env?.BROWSER_HISTORY).toBe(
       "${{ steps.browser-history.outcome }}",
@@ -78,6 +84,12 @@ describe("production readiness workflow contract", () => {
     );
     expect(browserGate?.run).toContain(
       '"Program review recovery:${BROWSER_PROGRAM_REVIEW_RECOVERY}"',
+    );
+    expect(browserGate?.env?.BROWSER_V2_T02).toBe(
+      "${{ steps.browser-v2-t02.outcome }}",
+    );
+    expect(browserGate?.run).toContain(
+      '"T02 acknowledgement and correction:${BROWSER_V2_T02}"',
     );
   });
 });
