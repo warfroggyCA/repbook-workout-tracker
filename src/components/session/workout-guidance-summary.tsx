@@ -102,10 +102,11 @@ export const WorkoutGuidanceSummary = memo(function WorkoutGuidanceSummary({
                   stickySummary?.getBoundingClientRect().bottom ?? 0;
                 const targetTop = target.getBoundingClientRect().top;
                 const desiredTop = stickyBottom + 8;
-                if (targetTop < desiredTop) {
-                  window.scrollBy({ top: targetTop - desiredTop });
+                const correction = targetTop - desiredTop;
+                if (Math.abs(correction) > 1) {
+                  window.scrollBy({ top: correction });
                 }
-                target.focus({ preventScroll: true });
+                target.focus();
               });
             }}
             className="mt-1 inline-flex min-h-11 items-center rounded-md px-1 text-xs font-semibold underline underline-offset-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"

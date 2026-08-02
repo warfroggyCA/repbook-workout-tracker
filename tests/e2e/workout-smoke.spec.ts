@@ -2806,7 +2806,9 @@ test("a parked set pauses only its exercise while another exercise saves", async
   await secondExercise.locator('input[inputmode="decimal"]').first().fill("50");
   await secondExercise.locator('input[inputmode="numeric"]').first().fill("10");
   await secondExercise.getByRole("button", { name: "Log set", exact: true }).click();
-  await expect(secondExercise.locator(":scope > button")).toContainText("1/3 performed");
+  await expect(secondExercise.locator(":scope > button")).toContainText(
+    "1/3 planned performed",
+  );
   await expect(secondExercise.getByText("Saved", { exact: true })).toBeVisible();
 
   await firstExercise.locator(":scope > button").click();

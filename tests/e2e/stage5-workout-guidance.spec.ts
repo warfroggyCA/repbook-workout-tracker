@@ -95,9 +95,9 @@ async function skipCurrentSet(dock: Locator) {
   if ((await skipSet.count()) === 0) {
     await dock.locator("button").first().click();
   }
-  await currentCard
-    .getByRole("button", { name: "Skip set", exact: true })
-    .click();
+  await waitForScrollToSettle(page);
+  await skipSet.scrollIntoViewIfNeeded();
+  await skipSet.click();
   const dialog = page.getByRole("dialog", { name: /^Skip set / });
   await dialog.getByLabel("Reason").selectOption("time");
   await dialog.getByRole("button", { name: "Skip item", exact: true }).click();
@@ -105,6 +105,27 @@ async function skipCurrentSet(dock: Locator) {
   await expect
     .poll(async () => await progress.textContent())
     .not.toBe(before);
+  await waitForSetSkippedNoticesToSettle(page);
+  await waitForScrollToSettle(page);
+}
+
+async function waitForScrollToSettle(page: Page) {
+  await page.evaluate(
+    () =>
+      new Promise<void>((resolve) => {
+        let settleTimer = window.setTimeout(finish, 150);
+        function finish() {
+          window.removeEventListener("scroll", onScroll);
+          window.clearTimeout(settleTimer);
+          resolve();
+        }
+        function onScroll() {
+          window.clearTimeout(settleTimer);
+          settleTimer = window.setTimeout(finish, 150);
+        }
+        window.addEventListener("scroll", onScroll, { passive: true });
+      }),
+  );
 }
 
 async function expectNoHorizontalOverflow(page: Page) {

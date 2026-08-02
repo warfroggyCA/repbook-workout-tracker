@@ -169,7 +169,7 @@ test("adds a reviewed workout-only exercise without editing the Program", async 
   await expect(addedCard).toContainText("Set 1");
   await expect(addedCard).toContainText("Set 2");
   await addedCard.getByRole("button", { name: "Log set", exact: true }).click();
-  await expect(addedCard).toContainText("1/2 performed");
+  await expect(addedCard).toContainText("1/2 workout-only performed");
   await expect(
     page.locator('section[aria-labelledby^="session-exercise-heading-"]'),
   ).toHaveCount(plannedHeadingsBefore + 1);
