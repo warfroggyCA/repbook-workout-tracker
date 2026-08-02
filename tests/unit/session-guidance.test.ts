@@ -153,6 +153,61 @@ describe("session action labels", () => {
 });
 
 describe("GUIDE-02 session guidance truth", () => {
+  it("keeps an extra-before-plan separate while the planned action stays current", () => {
+    const planned = exercise("planned", {
+      targetSets: 1,
+      sets: [set("extra-result", { setNo: 2 })],
+    });
+    const workoutOnly = exercise("workout-only", {
+      modificationType: "added",
+      targetSets: null,
+      sets: [set("workout-only-result")],
+    });
+    const projection = projectSessionGuidance({
+      exercises: [planned, workoutOnly],
+      exerciseGroups: noGroups,
+      equipmentSetups: {},
+      occurrences: [
+        occurrence("planned-pending", planned.id, 0),
+        occurrence("workout-only-done", workoutOnly.id, 1, {
+          origin: "ad_hoc",
+          kindOrdinal: 0,
+          outcome: "completed",
+          completedSetId: "workout-only-result",
+        }),
+        occurrence("extra-done", planned.id, 2, {
+          origin: "ad_hoc",
+          kindOrdinal: 1,
+          plannedNote: "Added during this workout",
+          outcome: "completed",
+          completedSetId: "extra-result",
+        }),
+      ],
+    });
+
+    expect(projection.current?.occurrenceId).toBe("planned-pending");
+    expect(projection.totals).toMatchObject({
+      total: 3,
+      planned: 1,
+      extra: 1,
+      workoutOnly: 1,
+      performed: 2,
+      plannedPerformed: 0,
+      extraPerformed: 1,
+      workoutOnlyPerformed: 1,
+      pending: 1,
+    });
+    expect(projection.actions.map((action) => ({
+      id: action.occurrenceId,
+      role: action.role,
+      label: action.position.label,
+    }))).toEqual([
+      { id: "planned-pending", role: "planned", label: "Set 1" },
+      { id: "workout-only-done", role: "workout_only", label: "Set 1" },
+      { id: "extra-done", role: "extra", label: "Extra set 1" },
+    ]);
+  });
+
   it("counts only completed occurrences with a retained linked result as performed", () => {
     const item = exercise("one", {
       targetSets: 6,
@@ -182,8 +237,14 @@ describe("GUIDE-02 session guidance truth", () => {
     });
 
     expect(projection.totals).toEqual({
+      total: 6,
       planned: 6,
+      extra: 0,
+      workoutOnly: 0,
       performed: 1,
+      plannedPerformed: 1,
+      extraPerformed: 0,
+      workoutOnlyPerformed: 0,
       skipped: 1,
       abandoned: 1,
       pending: 1,

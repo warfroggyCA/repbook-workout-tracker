@@ -6,6 +6,7 @@ import {
   healthActivities,
   painLogs,
   sessionExercises,
+  sessionOccurrences,
   userProfiles,
   workoutSessions,
 } from "@/db/schema";
@@ -72,6 +73,7 @@ export function historyRangeStart(
 }
 
 type HistorySetInput = {
+  id: string;
   weight: number | null;
   weightUnit?: "lb" | "kg" | null;
   loadEntryMeaning?: SetLoadEntryMeaning | null;
@@ -99,6 +101,12 @@ export type HistoryCalendarSessionInput = {
   localDate: string;
   finishedAt: Date | null;
   excludeDurationFromAnalytics?: boolean;
+  occurrences: Array<{
+    kind: "day_warmup" | "exercise_warmup" | "working_set";
+    origin: "planned" | "ad_hoc" | "imported" | "legacy";
+    outcome: "pending" | "completed" | "skipped" | "abandoned" | "legacy_unrecorded";
+    completedSetId: string | null;
+  }>;
   exercises: Array<{
     modificationType: "as_planned" | "substituted" | "added" | "skipped";
     exercise?: {
@@ -109,6 +117,7 @@ export type HistoryCalendarSessionInput = {
     sets: Array<
       Pick<
         HistorySetInput,
+        | "id"
         | "weight"
         | "weightUnit"
         | "loadEntryMeaning"
@@ -158,6 +167,7 @@ export type HistorySessionInput = {
   finishedAt: Date | null;
   excludeDurationFromAnalytics?: boolean;
   programLinked?: boolean;
+  occurrences: HistoryCalendarSessionInput["occurrences"];
   exercises: Array<{
     modificationType: "as_planned" | "substituted" | "added" | "skipped";
     skipReason: string | null;
@@ -202,6 +212,17 @@ export function buildHistoryCalendarSessions(
   return [...sessions]
     .sort((a, b) => b.startedAt.getTime() - a.startedAt.getTime())
     .map((session) => {
+      const plannedCompletedSetIds = new Set(
+        session.occurrences
+          .filter(
+            (occurrence) =>
+              occurrence.kind === "working_set" &&
+              occurrence.origin === "planned" &&
+              occurrence.outcome === "completed" &&
+              occurrence.completedSetId != null,
+          )
+          .map((occurrence) => occurrence.completedSetId as string),
+      );
       const sets = session.exercises.flatMap((exercise) =>
         exercise.sets
           .filter((set) => !set.isWarmup)
@@ -228,6 +249,7 @@ export function buildHistoryCalendarSessions(
       const targetable = sets.filter(
         ({ set, semantics, modificationType }) =>
           modificationType === "as_planned" &&
+          plannedCompletedSetIds.has(set.id) &&
           semantics.prescriptionOutcomeEligible &&
           set.targetMet != null
       );
@@ -395,6 +417,17 @@ export function summarizeHistory(
   const semanticExclusions = new Map<SetMetricExclusionReason, number>();
 
   for (const session of completed) {
+    const plannedCompletedSetIds = new Set(
+      session.occurrences
+        .filter(
+          (occurrence) =>
+            occurrence.kind === "working_set" &&
+            occurrence.origin === "planned" &&
+            occurrence.outcome === "completed" &&
+            occurrence.completedSetId != null,
+        )
+        .map((occurrence) => occurrence.completedSetId as string),
+    );
     const sessionDuration = analyticsWorkoutDurationMinutes(
       session.startedAt,
       session.finishedAt,
@@ -556,6 +589,7 @@ export function summarizeHistory(
         }
         if (
           sessionExercise.modificationType === "as_planned" &&
+          plannedCompletedSetIds.has(set.id) &&
           semantics.prescriptionOutcomeEligible &&
           set.targetMet != null
         ) {
@@ -1163,7 +1197,8 @@ export async function getHistoryReport(
     ), occurrences AS MATERIALIZED (
       SELECT * FROM selected_occurrences WHERE status = 'completed'
     ), working_sets AS MATERIALIZED (
-      SELECT o.*, cs.id AS set_id, cs.set_no, cs.weight, cs.weight_unit,
+      SELECT o.*, occurrence.origin AS occurrence_origin,
+             cs.id AS set_id, cs.set_no, cs.weight, cs.weight_unit,
              cs.reps, cs.rpe, cs.target_met,
              cs.metric_type AS set_metric_type,
              cs.load_entry_meaning,
@@ -1184,7 +1219,7 @@ export async function getHistoryReport(
       JOIN completed_sets cs ON cs.session_exercise_id = o.session_exercise_id
         AND cs.archived_at IS NULL
         AND NOT cs.is_warmup
-      JOIN session_occurrences occurrence
+      LEFT JOIN session_occurrences occurrence
         ON occurrence.completed_set_id = cs.id
        AND occurrence.session_exercise_id = o.session_exercise_id
        AND occurrence.kind = 'working_set'
@@ -1442,16 +1477,19 @@ export async function getHistoryReport(
              END), 0))::int AS volume,
              CASE WHEN count(ws.set_id) FILTER (
                WHERE ws.modification_type = 'as_planned'
+                 AND ws.occurrence_origin = 'planned'
                  AND ws.prescription_outcome_eligible
                  AND ws.target_met IS NOT NULL
              ) > 0 THEN round(
                count(ws.set_id) FILTER (
                  WHERE ws.modification_type = 'as_planned'
+                   AND ws.occurrence_origin = 'planned'
                    AND ws.prescription_outcome_eligible
                    AND ws.target_met
                ) * 100.0 /
                count(ws.set_id) FILTER (
                  WHERE ws.modification_type = 'as_planned'
+                   AND ws.occurrence_origin = 'planned'
                    AND ws.prescription_outcome_eligible
                    AND ws.target_met IS NOT NULL
                )
@@ -1486,10 +1524,12 @@ export async function getHistoryReport(
         WHERE finished_at IS NOT NULL AND NOT duration_excluded) AS average_duration_min,
       (SELECT count(*)::int FROM working_sets
         WHERE modification_type = 'as_planned'
+          AND occurrence_origin = 'planned'
           AND prescription_outcome_eligible
           AND target_met IS NOT NULL) AS targetable_sets,
       (SELECT count(*)::int FROM working_sets
         WHERE modification_type = 'as_planned'
+          AND occurrence_origin = 'planned'
           AND prescription_outcome_eligible
           AND target_met) AS targets_met,
       (SELECT avg(rpe)::float8 FROM working_sets
@@ -2053,12 +2093,14 @@ export async function getHistoryCalendarRecords(
             count(cs.id) FILTER (
               WHERE NOT cs.is_warmup
                 AND se.modification_type = 'as_planned'
+                AND occurrence.origin = 'planned'
                 AND ${eligiblePrescriptionOutcomeSql(calendarSetSemantics)}
                 AND cs.target_met IS NOT NULL
             )::int AS targetable,
             count(cs.id) FILTER (
               WHERE NOT cs.is_warmup
                 AND se.modification_type = 'as_planned'
+                AND occurrence.origin = 'planned'
                 AND ${eligiblePrescriptionOutcomeSql(calendarSetSemantics)}
                 AND cs.target_met
             )::int AS targets_met,
@@ -2215,6 +2257,7 @@ export async function getHistoryCalendarRecords(
               orderBy: completedSets.setNo,
               where: isNull(completedSets.archivedAt),
               columns: {
+                id: true,
                 weight: true,
                 weightUnit: true,
                 loadEntryMeaning: true,
@@ -2232,6 +2275,15 @@ export async function getHistoryCalendarRecords(
         painLogs: {
           where: isNull(painLogs.archivedAt),
           columns: { id: true },
+        },
+        occurrences: {
+          orderBy: sessionOccurrences.sequenceIdx,
+          columns: {
+            kind: true,
+            origin: true,
+            outcome: true,
+            completedSetId: true,
+          },
         },
       },
     }),

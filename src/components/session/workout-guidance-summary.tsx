@@ -59,12 +59,15 @@ export const WorkoutGuidanceSummary = memo(function WorkoutGuidanceSummary({
         aria-label="Workout progress and upcoming work"
         className="min-w-0 rounded-lg border bg-background/95 px-3 py-2 shadow-sm"
       >
-        <div className="flex min-w-0 items-baseline gap-2 text-sm">
-          <span className="shrink-0 font-semibold tabular-nums">
-            {guidance.totals.performed}/{guidance.totals.planned}
+        <div className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1 text-sm">
+          <span className="min-w-0 max-w-full font-semibold tabular-nums">
+            {guidance.totals.plannedPerformed}/{guidance.totals.planned} planned
+            {guidance.totals.extraPerformed > 0
+              ? ` · ${guidance.totals.extraPerformed} extra`
+              : ""}
             {guidance.totals.skipped > 0 ? ` · ${guidance.totals.skipped} skipped` : ""}
           </span>
-          <p className="min-w-0 break-words leading-snug">
+          <p className="min-w-0 flex-1 basis-48 break-words leading-snug">
             <span className="font-medium">Now:</span>{" "}
             {guidance.currentAction
               ? formatSessionGuidanceAction(guidance.currentAction)
@@ -89,9 +92,7 @@ export const WorkoutGuidanceSummary = memo(function WorkoutGuidanceSummary({
             onClick={(event) => {
               event.preventDefault();
               const target = document.getElementById("active-workout-group");
-              const stickySummary = event.currentTarget
-                .closest("section")
-                ?.parentElement;
+              const stickySummary = event.currentTarget.closest("section");
               target?.scrollIntoView({ block: "start" });
               window.requestAnimationFrame(() => {
                 if (!target) return;
@@ -99,8 +100,9 @@ export const WorkoutGuidanceSummary = memo(function WorkoutGuidanceSummary({
                   stickySummary?.getBoundingClientRect().bottom ?? 0;
                 const targetTop = target.getBoundingClientRect().top;
                 const desiredTop = stickyBottom + 8;
-                if (targetTop < desiredTop) {
-                  window.scrollBy({ top: targetTop - desiredTop });
+                const correction = targetTop - desiredTop;
+                if (Math.abs(correction) > 1) {
+                  window.scrollBy({ top: correction });
                 }
                 target.focus({ preventScroll: true });
               });
@@ -127,11 +129,17 @@ export const WorkoutGuidanceSummary = memo(function WorkoutGuidanceSummary({
           Workout progress
         </p>
         <p className="text-sm font-semibold tabular-nums">
-          {guidance.totals.performed} of {guidance.totals.planned} performed
+          {guidance.totals.plannedPerformed} of {guidance.totals.planned} planned performed
         </p>
       </div>
       <p className="break-words text-xs text-muted-foreground">
         {guidance.totals.pending} remaining
+        {guidance.totals.extraPerformed > 0
+          ? ` · ${guidance.totals.extraPerformed} extra performed`
+          : ""}
+        {guidance.totals.workoutOnlyPerformed > 0
+          ? ` · ${guidance.totals.workoutOnlyPerformed} workout-only performed`
+          : ""}
         {guidance.totals.skipped > 0
           ? ` · ${guidance.totals.skipped} skipped`
           : ""}

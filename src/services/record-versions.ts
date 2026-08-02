@@ -335,6 +335,17 @@ export async function updateSetWithVersion(
         ws.history_revision,
         ws.timezone AS workout_timezone,
         ws.local_date AS workout_local_date,
+        (
+          SELECT occurrence.origin
+          FROM session_occurrences occurrence
+          WHERE occurrence.completed_set_id = cs.id
+            AND occurrence.session_id = ws.id
+            AND occurrence.session_exercise_id = cs.session_exercise_id
+            AND occurrence.kind = 'working_set'
+            AND occurrence.outcome = 'completed'
+          ORDER BY occurrence.sequence_idx, occurrence.id
+          LIMIT 1
+        ) AS occurrence_origin,
         COALESCE((
           SELECT max(
             CASE
@@ -429,6 +440,7 @@ export async function updateSetWithVersion(
       SELECT
         candidate.*,
         CASE
+          WHEN candidate.occurrence_origin IS DISTINCT FROM 'planned' THEN NULL
           WHEN candidate.is_warmup THEN NULL
           WHEN ${changesMeasurements}::boolean
             AND candidate.modification_type = 'as_planned'
@@ -924,6 +936,23 @@ export async function updateSessionExerciseWithVersion(
         )
         AND (candidate.next_target_load IS NULL) = (candidate.next_target_load_unit IS NULL)
         AND (
+          NOT ${action === "session_exercise.skip"}::boolean
+          OR NOT EXISTS (
+            SELECT 1
+            FROM session_occurrences target
+            JOIN session_occurrences earlier
+              ON earlier.group_snapshot_id = target.group_snapshot_id
+             AND earlier.kind = 'working_set'
+             AND earlier.sequence_idx < target.sequence_idx
+             AND earlier.outcome = 'pending'
+             AND earlier.session_exercise_id <> candidate.id
+            WHERE target.session_exercise_id = candidate.id
+              AND target.kind = 'working_set'
+              AND target.outcome = 'pending'
+              AND target.group_snapshot_id IS NOT NULL
+          )
+        )
+        AND (
           NOT ${requiresEmptyExercise}::boolean
           OR NOT EXISTS (
             SELECT 1 FROM completed_sets cs
@@ -1091,6 +1120,20 @@ export async function updateSessionExerciseWithVersion(
         SELECT 1 FROM completed_sets cs
         WHERE cs.session_exercise_id = current.id
       ) AS has_logged_sets,
+      NOT EXISTS (
+        SELECT 1
+        FROM session_occurrences target
+        JOIN session_occurrences earlier
+          ON earlier.group_snapshot_id = target.group_snapshot_id
+         AND earlier.kind = 'working_set'
+         AND earlier.sequence_idx < target.sequence_idx
+         AND earlier.outcome = 'pending'
+         AND earlier.session_exercise_id <> current.id
+        WHERE target.session_exercise_id = current.id
+          AND target.kind = 'working_set'
+          AND target.outcome = 'pending'
+          AND target.group_snapshot_id IS NOT NULL
+      ) AS skip_order_valid,
       (
         ${options.expectedExerciseId ?? null}::uuid IS NULL
         OR current.exercise_id = ${options.expectedExerciseId ?? null}::uuid
@@ -1113,6 +1156,8 @@ export async function updateSessionExerciseWithVersion(
           ? "This exercise changed after replacement opened. Review the current exercise before trying again."
         : requiresEmptyExercise && row.has_logged_sets
           ? "This exercise already has logged sets and cannot be substituted."
+          : action === "session_exercise.skip" && !row.skip_order_valid
+            ? "Finish or skip the earlier group item before skipping this exercise."
           : options.expectedExerciseId && !row.expected_exercise_matches
             ? "This exercise changed after replacement opened. Review the current exercise before trying again."
             : "The workout exercise is no longer compatible with this change.",
@@ -1372,6 +1417,17 @@ async function restoreSetVersion(
         ws.history_revision,
         ws.timezone AS workout_timezone,
         ws.local_date AS workout_local_date,
+        (
+          SELECT occurrence.origin
+          FROM session_occurrences occurrence
+          WHERE occurrence.completed_set_id = cs.id
+            AND occurrence.session_id = ws.id
+            AND occurrence.session_exercise_id = cs.session_exercise_id
+            AND occurrence.kind = 'working_set'
+            AND occurrence.outcome = 'completed'
+          ORDER BY occurrence.sequence_idx, occurrence.id
+          LIMIT 1
+        ) AS occurrence_origin,
         COALESCE((
           SELECT max(
             CASE
@@ -1424,7 +1480,11 @@ async function restoreSetVersion(
     ), next_state AS (
       SELECT
         candidate.*,
-        ${restoredTargetMetSql(restoredSemantics)} AS next_target_met
+        CASE
+          WHEN candidate.occurrence_origin = 'planned'
+            THEN ${restoredTargetMetSql(restoredSemantics)}
+          ELSE NULL
+        END AS next_target_met
       FROM candidate
     ), restored AS (
       UPDATE completed_sets cs

@@ -517,13 +517,19 @@ export async function getReviewDecisionData(db: Db, userId: string) {
         eq(sessionOccurrences.kind, "working_set"),
         eq(sessionOccurrences.outcome, "completed")
       ),
-      columns: { completedSetId: true },
+      columns: { completedSetId: true, origin: true },
     }),
   ]);
   const completedSetIds = new Set(
     completedOccurrences
       .map((occurrence) => occurrence.completedSetId)
       .filter((id): id is string => id != null)
+  );
+  const plannedCompletedSetIds = new Set(
+    completedOccurrences
+      .filter((occurrence) => occurrence.origin === "planned")
+      .map((occurrence) => occurrence.completedSetId)
+      .filter((id): id is string => id != null),
   );
   const followupBySessionExerciseId = new Map(
     followups.map((followup) => [followup.sessionExerciseId, followup])
@@ -599,7 +605,7 @@ export async function getReviewDecisionData(db: Db, userId: string) {
         )
       );
       const measurableSets = observedSets.filter(
-        (set) => set.targetMet != null
+        (set) => plannedCompletedSetIds.has(set.id) && set.targetMet != null,
       );
       const rpes = observedSets
         .map((set) => set.rpe)

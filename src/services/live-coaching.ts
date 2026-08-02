@@ -43,6 +43,10 @@ import {
 import { isPatternAllowedForSuggestions } from "@/engine/constraint-filter";
 import { sortConversationMessages } from "@/lib/live-coach-order";
 import {
+  workingSetDisplayPosition,
+  workingSetSemanticRole,
+} from "@/lib/session-occurrences";
+import {
   claimLiveCoachGeneration,
   estimateAICostMicrousd,
   type AIUsageClaim,
@@ -627,6 +631,15 @@ export async function buildLiveCoachingContext(
       )
       .map((occurrence) => occurrence.completedSetId as string),
   );
+  const completedWorkingOccurrenceBySetId = new Map(
+    session.occurrences.flatMap((occurrence) =>
+      occurrence.kind === "working_set" &&
+      occurrence.outcome === "completed" &&
+      occurrence.completedSetId != null
+        ? [[occurrence.completedSetId, occurrence] as const]
+        : [],
+    ),
+  );
   const workingSetsFor = (exercise: (typeof session.exercises)[number]) =>
     exercise.sets.filter(
       (set) => !set.isWarmup && completedWorkingSetIds.has(set.id),
@@ -653,7 +666,9 @@ export async function buildLiveCoachingContext(
   const occurrenceOutcomeLimit = 100;
   const outcomeOccurrences = session.occurrences.filter(
     (occurrence) =>
-      occurrence.kind !== "working_set" || occurrence.outcome !== "completed",
+      occurrence.kind !== "working_set" ||
+      occurrence.outcome !== "completed" ||
+      occurrence.origin !== "planned",
   );
   const warmupResults = session.exercises
     .flatMap((exercise) =>
@@ -713,16 +728,23 @@ export async function buildLiveCoachingContext(
               restSeconds: selected.restSec,
             },
             plannedNotes: boundedText(selected.notes),
-            setsLogged: claimEligibleSetsFor(selected).slice(-20).map((set) => ({
-              id: set.id,
-              setNo: set.setNo,
-              weight: set.weight,
-              unit: set.weightUnit,
-              reps: set.reps,
-              rpe: set.rpe,
-              note: boundedText(set.note, 500),
-              targetMet: set.targetMet,
-            })),
+            setsLogged: claimEligibleSetsFor(selected).slice(-20).map((set) => {
+              const occurrence = completedWorkingOccurrenceBySetId.get(set.id);
+              return {
+                id: set.id,
+                setNo: set.setNo,
+                displayLabel: occurrence
+                  ? workingSetDisplayPosition(occurrence, session.occurrences).label
+                  : `Recorded set ${set.setNo}`,
+                role: occurrence ? workingSetSemanticRole(occurrence) : "legacy",
+                weight: set.weight,
+                unit: set.weightUnit,
+                reps: set.reps,
+                rpe: set.rpe,
+                note: boundedText(set.note, 500),
+                targetMet: occurrence?.origin === "planned" ? set.targetMet : null,
+              };
+            }),
             setsSuppressedFromClaims:
               workingSetsFor(selected).length -
               claimEligibleSetsFor(selected).length,
@@ -738,12 +760,26 @@ export async function buildLiveCoachingContext(
         status: exercise.modificationType,
         targetSets: exercise.targetSets,
         setsLogged: workingSetsFor(exercise).length,
+        plannedSetsLogged: workingSetsFor(exercise).filter(
+          (set) => completedWorkingOccurrenceBySetId.get(set.id)?.origin === "planned",
+        ).length,
+        extraSetsLogged: workingSetsFor(exercise).filter((set) => {
+          const occurrence = completedWorkingOccurrenceBySetId.get(set.id);
+          return occurrence ? workingSetSemanticRole(occurrence) === "extra" : false;
+        }).length,
       })),
       occurrenceOutcomes: outcomeOccurrences
         .slice(0, occurrenceOutcomeLimit)
         .map((occurrence) => ({
           sequence: occurrence.sequenceIdx + 1,
           kind: occurrence.kind,
+          origin: occurrence.origin,
+          role: occurrence.kind === "working_set"
+            ? workingSetSemanticRole(occurrence)
+            : occurrence.origin,
+          displayLabel: occurrence.kind === "working_set"
+            ? workingSetDisplayPosition(occurrence, session.occurrences).label
+            : null,
           exerciseName: occurrence.sessionExerciseId
             ? session.exercises.find(
                 (exercise) => exercise.id === occurrence.sessionExerciseId,

@@ -5,12 +5,13 @@
   "repositoryRole": "public application source",
   "exactBaseCommit": "2c9ab1b9478502f1d08956a6c44dfb0850c8f168",
   "fixtureCatalogue": "tests/fixtures/v2/semantic-scenarios.json",
-  "currentPackage": "T02",
-  "currentPackageBaseCommit": "948e6227976fa2b2dc76f562d1935c7f309d46b6",
+  "currentPackage": "T03",
+  "currentPackageBaseCommit": "ea3ff34ef74717bb759bb5b6deb0f0b518ddf29b",
   "productBehaviorImplementedByP02": false,
   "implementedProductPackages": [
     "T01",
-    "T02"
+    "T02",
+    "T03"
   ],
   "legend": {
     "R": "required primary proof",
@@ -132,32 +133,32 @@
       "proves": "stale revisions, cross-owner requests, unlinked rows, mutation-identity collisions, malformed correction evidence, and unsupported queued formats fail closed without rewriting facts; legacy unknown meaning stays explicitly unknown"
     },
     "T03-databaseService": {
-      "status": "future_activation",
+      "status": "current",
       "implementingPackage": "T03",
       "testPath": "tests/unit/v2-t03-planned-order-db.test.ts",
       "command": "npx vitest run tests/unit/v2-t03-planned-order-db.test.ts",
-      "proves": "must pass in the same package that implements this product meaning"
+      "proves": "planned occurrences keep immutable order; same-exercise and grouped predecessors block out-of-order planned completion or skip; an extra can be recorded before or after the plan without gaining planned origin, ordinal, or target truth; exact retry and correction remain safe"
     },
     "T03-browser": {
-      "status": "future_activation",
+      "status": "current",
       "implementingPackage": "T03",
       "testPath": "tests/e2e/v2-t03-planned-order.spec.ts",
-      "command": "npx playwright test tests/e2e/v2-t03-planned-order.spec.ts",
-      "proves": "must pass in the same package that implements this product meaning"
+      "command": "npx playwright test --config=playwright.v2-t03.config.ts tests/e2e/v2-t03-planned-order.spec.ts",
+      "proves": "desktop Chromium and mobile WebKit keep Set 1 current when an extra is performed first, retain Extra set 1 across reload, expose grouped member order, separate finish counts, and preserve the distinction in History"
     },
     "T03-exportImport": {
-      "status": "future_activation",
+      "status": "current",
       "implementingPackage": "T03",
       "testPath": "tests/unit/v2-t03-planned-order-portability.test.ts",
       "command": "npx vitest run tests/unit/v2-t03-planned-order-portability.test.ts",
-      "proves": "must pass in the same package that implements this product meaning"
+      "proves": "CSV, History reports, deterministic Review digest, and coaching brief preserve planned versus extra origin, label, ordering, and target-adherence boundaries without excluding extra performed evidence"
     },
     "T03-restoreRollback": {
-      "status": "future_activation",
+      "status": "current",
       "implementingPackage": "T03",
       "testPath": "tests/unit/v2-t03-planned-order-restore.test.ts",
       "command": "npx vitest run tests/unit/v2-t03-planned-order-restore.test.ts",
-      "proves": "must pass in the same package that implements this product meaning"
+      "proves": "encrypted history restore retains planned and extra occurrence identity, immutable order, and the extra marker while recomputing unsupported or non-planned target outcomes to unknown"
     },
     "T04-databaseService": {
       "status": "future_activation",

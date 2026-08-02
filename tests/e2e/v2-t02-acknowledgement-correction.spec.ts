@@ -87,7 +87,7 @@ test("keeps a set pending until acknowledgement, then reviews and retains a corr
   await plank.getByRole("button", { name: "Log set", exact: true }).click();
   await expect(plank.getByRole("status")).toContainText("Saving");
   await expect(plank.getByRole("button", { name: "Correct set" })).toHaveCount(0);
-  await expect(plank).toContainText("1/1 performed");
+  await expect(plank).toContainText("1/1 workout-only performed");
   const plankDisclosure = plank.getByRole("button", { name: /RKC Plank/ });
   await expect(plankDisclosure).toHaveAttribute("aria-expanded", "false");
   await plankDisclosure.click();

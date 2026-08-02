@@ -303,15 +303,6 @@ export function ExerciseCard({
           occurrence.outcome === "pending",
       )
       .sort((left, right) => right.kindOrdinal - left.kindOrdinal)[0] ?? null;
-  const unresolvedPlannedWorkingSet = workingOccurrences.some(
-    (occurrence) =>
-      occurrence.outcome === "pending" &&
-      !isAppendedExtraSetOccurrence(occurrence),
-  ) || (
-    activeOccurrence?.kind === "working_set" &&
-    activeOccurrence.outcome === "pending" &&
-    !isAppendedExtraSetOccurrence(activeOccurrence)
-  );
   const appendSetNo =
     Math.max(exercise.targetSets ?? 0, highestLoggedSetNo, highestOccurrenceSetNo) + 1;
   // Planned occurrences are the durable source of set identity. A skipped set
@@ -555,8 +546,7 @@ export function ExerciseCard({
     if (
       appendingSet ||
       appendRequestRef.current ||
-      appendedOccurrence ||
-      unresolvedPlannedWorkingSet
+      appendedOccurrence
     ) {
       return;
     }
@@ -723,8 +713,8 @@ export function ExerciseCard({
             {isSkipped
               ? `Skipped (${exercise.skipReason})`
               : exercise.modificationType === "added"
-                ? `${progress.performed}/${progress.planned || "–"} performed${devicePendingSets > 0 ? ` · ${devicePendingSets} saving` : ""} · Added to this workout · ${formatRestTime(exercise.restSec)} rest`
-                : `${progress.performed}/${progress.planned || "–"} performed${devicePendingSets > 0 ? ` · ${devicePendingSets} saving` : ""} · Planned: ${targetText} · ${formatRestTime(exercise.restSec)} rest`}
+                ? `${progress.workoutOnlyPerformed}/${progress.workoutOnly || "–"} workout-only performed${progress.extraPerformed > 0 ? ` · ${progress.extraPerformed} extra` : ""}${devicePendingSets > 0 ? ` · ${devicePendingSets} saving` : ""} · Added to this workout · ${formatRestTime(exercise.restSec)} rest`
+                : `${progress.plannedPerformed}/${progress.planned || "–"} planned performed${progress.extraPerformed > 0 ? ` · ${progress.extraPerformed} extra` : ""}${devicePendingSets > 0 ? ` · ${devicePendingSets} saving` : ""} · Planned: ${targetText} · ${formatRestTime(exercise.restSec)} rest`}
             {exercise.modificationType === "substituted" &&
               ` · instead of ${exercise.plannedExerciseName ?? "planned exercise"}`}
           </p>
@@ -1182,8 +1172,7 @@ export function ExerciseCard({
               disabled={
                 Boolean(unconfirmedSet) ||
                 appendingSet ||
-                Boolean(appendedOccurrence) ||
-                unresolvedPlannedWorkingSet
+                Boolean(appendedOccurrence)
               }
               aria-describedby={`add-set-description-${exercise.id}`}
               onClick={() => void handleAppendSet()}
@@ -1195,9 +1184,8 @@ export function ExerciseCard({
               id={`add-set-description-${exercise.id}`}
               className="px-1 text-xs text-muted-foreground"
             >
-              {unresolvedPlannedWorkingSet
-                ? "Finish or skip the sets above before adding an extra."
-                : "Adds another set after your planned sets. Finish or skip it before adding one more."}
+              Adds ad-hoc work without changing the planned set order. Finish
+              or skip this extra before adding one more.
             </p>
           </div>
 

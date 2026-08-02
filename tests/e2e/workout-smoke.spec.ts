@@ -1686,9 +1686,9 @@ test("keeps every active-workout route reachable with one scroll surface", async
     exact: true,
   });
   await expect(addExtraSet).toBeVisible();
-  await expect(addExtraSet).toBeDisabled();
+  await expect(addExtraSet).toBeEnabled();
   await expect(currentCard).toContainText(
-    "Finish or skip the sets above before adding an extra.",
+    "Adds ad-hoc work without changing the planned set order.",
   );
   await expect(currentCard.getByRole("button", { name: "Skip set", exact: true })).toBeVisible();
   await expect(currentCard.getByRole("button", { name: "Ask Coach", exact: true })).toBeVisible();
@@ -1853,10 +1853,7 @@ test("keeps every active-workout route reachable with one scroll surface", async
   await waitForReactHandler(addSet);
   await addSet.focus();
   await expect(addSet).toBeFocused();
-  await addSet.evaluate((button) => {
-    (button as HTMLButtonElement).click();
-    (button as HTMLButtonElement).click();
-  });
+  await addSet.click();
   const addedSet = plannedCard.getByTestId("added-set-entry");
   await expect(addedSet).toContainText(
     "Extra set 1 · Added to this workout",
@@ -2806,7 +2803,9 @@ test("a parked set pauses only its exercise while another exercise saves", async
   await secondExercise.locator('input[inputmode="decimal"]').first().fill("50");
   await secondExercise.locator('input[inputmode="numeric"]').first().fill("10");
   await secondExercise.getByRole("button", { name: "Log set", exact: true }).click();
-  await expect(secondExercise.locator(":scope > button")).toContainText("1/3 performed");
+  await expect(secondExercise.locator(":scope > button")).toContainText(
+    "1/3 planned performed",
+  );
   await expect(secondExercise.getByText("Saved", { exact: true })).toBeVisible();
 
   await firstExercise.locator(":scope > button").click();

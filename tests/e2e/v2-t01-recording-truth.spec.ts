@@ -90,7 +90,7 @@ test("records duration and distance as explicit performed measurements without i
     .toHaveCount(0);
   await plank.getByLabel("Duration in seconds").fill("45");
   await plank.getByRole("button", { name: "Log set", exact: true }).click();
-  await expect(plank).toContainText("1/1 performed");
+  await expect(plank).toContainText("1/1 workout-only performed");
   await expectSetQueueDrained(page);
 
   const walking = page.getByRole("region", { name: "Walking" });
@@ -102,16 +102,16 @@ test("records duration and distance as explicit performed measurements without i
   await walking.getByLabel("Distance in kilometres").fill("1.2");
   await walking.getByLabel("Duration in seconds").fill("600");
   await walking.getByRole("button", { name: "Log set", exact: true }).click();
-  await expect(walking).toContainText("1/1 performed");
+  await expect(walking).toContainText("1/1 workout-only performed");
   await expectSetQueueDrained(page);
 
   await page.reload({ waitUntil: "domcontentloaded" });
   const restoredPlank = page.getByRole("region", { name: "RKC Plank" });
   const restoredWalking = page.getByRole("region", { name: "Walking" });
-  await expect(restoredPlank).toContainText("1/1 performed");
+  await expect(restoredPlank).toContainText("1/1 workout-only performed");
   await restoredPlank.getByRole("button", { name: /RKC Plank/ }).click();
   await expect(restoredPlank.getByText("45 sec", { exact: true })).toBeVisible();
-  await expect(restoredWalking).toContainText("1/1 performed");
+  await expect(restoredWalking).toContainText("1/1 workout-only performed");
   await restoredWalking.getByRole("button", { name: /Walking/ }).click();
   await expect(
     restoredWalking.getByText("1.2 km · 10:00", { exact: true }),
