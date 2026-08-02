@@ -952,11 +952,13 @@ describe("versioned Program editor persistence", () => {
       where: eq(workoutSessions.id, started.sessionId),
     });
     expect(session?.dayWarmupNotes).toContain(legacyWarmup);
-    expect(session?.dayWarmupItems).toEqual([
-      expect.objectContaining({
-        label: expect.stringContaining(legacyWarmup),
-      }),
-    ]);
+    expect(session?.dayWarmupItems).toEqual([]);
+    expect(await database.db.query.sessionOccurrences.findMany({
+      where: and(
+        eq(sessionOccurrences.sessionId, started.sessionId),
+        eq(sessionOccurrences.kind, "day_warmup"),
+      ),
+    })).toEqual([]);
   });
 
   it("publishes exactly the reviewed warm-up and snapshots it into a new workout", async () => {
@@ -1031,13 +1033,15 @@ describe("versioned Program editor persistence", () => {
       where: eq(workoutSessions.id, started.sessionId),
     })).toMatchObject({
       dayWarmupNotes: "Two minutes easy\nShoulder circles\nTwo ramp-up sets",
-      dayWarmupItems: [
-        expect.objectContaining({
-          label: "Two minutes easy\nShoulder circles\nTwo ramp-up sets",
-        }),
-      ],
+      dayWarmupItems: [],
       sourceProgramVersionId: published.programVersionId,
     });
+    expect(await database.db.query.sessionOccurrences.findMany({
+      where: and(
+        eq(sessionOccurrences.sessionId, started.sessionId),
+        eq(sessionOccurrences.kind, "day_warmup"),
+      ),
+    })).toEqual([]);
   });
 
   it("normalizes a pre-migration draft before review and preserves its revision", async () => {

@@ -9,7 +9,7 @@ import { historyRevisionLockSql } from "@/services/history-revision-lock";
 import { canonicalJson, sha256Hex } from "@/services/snapshot-crypto";
 import { workoutReplacementUnavailableReason } from "@/lib/exercise-replacements";
 import { getExerciseDiscoveryLibrary } from "@/services/exercise-discovery";
-import { effectiveProgramDayWarmupItemsSql } from "@/services/program-warmup-compatibility";
+import { actionableProgramDayWarmupItemsSql } from "@/services/program-warmup-compatibility";
 
 export type RetrospectiveWorkoutDependencies = {
   now?: () => Date;
@@ -195,9 +195,9 @@ export async function createRetrospectiveWorkout(
         template.name,
         template.warmup_notes,
         template.warmup_items,
-        ${effectiveProgramDayWarmupItemsSql({
+        ${actionableProgramDayWarmupItemsSql({
           lineageId: sql`template.lineage_id`,
-          fallbackItemKey: sql`template.lineage_id`,
+          fallbackItemKey: sql`template.id`,
           warmupNotes: sql`template.warmup_notes`,
           warmupItems: sql`template.warmup_items`,
         })} AS effective_warmup_items
@@ -665,26 +665,7 @@ export async function createRetrospectiveWorkout(
         exercise.id AS session_exercise_id,
         slot.exercise_id AS planned_exercise_id,
         exercise.order_idx,
-        0::integer AS local_order,
-        jsonb_build_object(
-          'label', slot.warmup_notes,
-          'reps', NULL,
-          'load', NULL,
-          'loadUnit', NULL,
-          'loadPercent', NULL,
-          'loadText', NULL,
-          'notes', NULL
-        ) AS value
-      FROM inserted_exercises exercise
-      JOIN workout_template_exercises slot
-        ON slot.id = exercise.planned_from_template_exercise_id
-      WHERE nullif(btrim(slot.warmup_notes), '') IS NOT NULL
-      UNION ALL
-      SELECT
-        exercise.id,
-        slot.exercise_id,
-        exercise.order_idx,
-        item.ordinality::integer,
+        item.ordinality::integer - 1 AS local_order,
         item.value
       FROM inserted_exercises exercise
       JOIN workout_template_exercises slot

@@ -31,7 +31,6 @@ import {
 import { parseHistoryRange } from "@/services/history-report";
 import { getWorkoutArchivePreview } from "@/services/archive";
 import { listLiveCoachMessages } from "@/services/live-coaching";
-import { formatWarmupSetLine } from "@/lib/warmup";
 import { buildHistoryEquipmentSetProjection } from "@/lib/history-equipment-presentation";
 import { ContextualNoteScope } from "@/components/contextual-notes/contextual-note-scope";
 import { getCompletedHistoryContextualNotes } from "@/services/history-page";
@@ -609,22 +608,12 @@ export default async function SessionDetailPage(
                   : ""}
               </p>
             )}
-            {se.modificationType !== "substituted" &&
-              (se.warmupNotes || se.warmupSets.length > 0) && (
+            {se.modificationType !== "substituted" && se.warmupNotes && (
               <div className="mt-2 rounded-md border bg-muted/30 px-2 py-1.5 text-xs">
-                <p className="font-medium">Warm-up</p>
-                {se.warmupNotes && (
-                  <p className="mt-1 text-muted-foreground">{se.warmupNotes}</p>
-                )}
-                {se.warmupSets.length > 0 && (
-                  <ul className="mt-1 flex flex-col gap-0.5 text-muted-foreground">
-                    {se.warmupSets.map((set, i) => (
-                      <li key={`${set.label}-${i}`}>
-                        {formatWarmupSetLine(set)}
-                      </li>
-                    ))}
-                  </ul>
-                )}
+                <p className="font-medium">Warm-up guidance · reference</p>
+                <p className="mt-1 whitespace-pre-line text-muted-foreground">
+                  {se.warmupNotes}
+                </p>
               </div>
             )}
             {workingSets.length > 0 && (

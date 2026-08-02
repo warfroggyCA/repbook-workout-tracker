@@ -299,11 +299,17 @@ function mutateOccurrence(
     throw new Error("legacy_unrecorded is a terminal occurrence outcome");
   }
 
-  if (mutation.operation !== "restore" && occurrence.outcome !== "pending") {
+  const canMutate =
+    (mutation.operation === "complete" && occurrence.outcome === "pending") ||
+    (mutation.operation === "skip" && occurrence.outcome === "pending") ||
+    (mutation.operation === "note" &&
+      ["pending", "completed", "skipped"].includes(occurrence.outcome)) ||
+    (mutation.operation === "restore" &&
+      (["skipped", "abandoned"].includes(occurrence.outcome) ||
+        (occurrence.kind !== "working_set" && occurrence.outcome === "completed")) &&
+      !occurrence.outcomeReason?.startsWith("exercise:"));
+  if (!canMutate) {
     throw new Error(`Cannot ${mutation.operation} an ${occurrence.outcome} occurrence`);
-  }
-  if (mutation.operation === "restore" && occurrence.outcome === "pending") {
-    throw new Error("Cannot restore a pending occurrence");
   }
 
   const next = { ...occurrence, revision: occurrence.revision + 1 };
@@ -335,7 +341,6 @@ function mutateOccurrence(
         ...next,
         outcome: "pending",
         outcomeReason: null,
-        outcomeNote: null,
         resolvedAt: null,
         completedSetId: null,
         performedExerciseId: null,

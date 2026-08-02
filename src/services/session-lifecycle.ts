@@ -20,7 +20,7 @@ import {
   type AddWorkoutExerciseInput,
 } from "@/lib/add-workout-exercise";
 import { getExerciseDiscoveryLibrary } from "@/services/exercise-discovery";
-import { effectiveProgramDayWarmupItemsSql } from "@/services/program-warmup-compatibility";
+import { actionableProgramDayWarmupItemsSql } from "@/services/program-warmup-compatibility";
 import { workoutReplacementUnavailableReason } from "@/lib/exercise-replacements";
 import {
   buildPerformedSetMeasurement,
@@ -875,6 +875,17 @@ export async function mutateWorkoutOccurrence(
   if (input.operation === "skip" && !input.reason?.trim()) {
     throw new Error("Skipping an occurrence requires a reason.");
   }
+  if (input.operation === "note" && input.reason?.trim()) {
+    throw new Error("A workout-item note cannot carry a skip reason.");
+  }
+  if (
+    ["complete", "restore"].includes(input.operation) &&
+    (input.reason?.trim() || input.note?.trim())
+  ) {
+    throw new Error(
+      "Completing or restoring a workout item cannot carry note or skip fields.",
+    );
+  }
   const canonicalPayloadHash = createHash("sha256")
     .update(JSON.stringify({
       operation: input.operation,
@@ -901,10 +912,45 @@ export async function mutateWorkoutOccurrence(
       SELECT occurrence.*
       FROM session_occurrences occurrence
       JOIN workout_sessions session ON session.id = occurrence.session_id
+      LEFT JOIN session_exercises exercise
+        ON exercise.id = occurrence.session_exercise_id
       WHERE occurrence.id = ${input.occurrenceId}::uuid
         AND session.user_id = ${userId}::uuid
         AND session.status = 'in_progress'
         AND session.archived_at IS NULL
+        AND NOT (
+          occurrence.outcome = 'pending'
+          AND occurrence.kind = 'day_warmup'
+          AND jsonb_array_length(session.day_warmup_items) > 0
+          AND jsonb_array_length(${actionableProgramDayWarmupItemsSql({
+            lineageId: sql`coalesce(session.source_day_lineage_id, session.id)`,
+            fallbackItemKey: sql`coalesce(session.template_id, session.id)`,
+            additionalCompatibilityItemKey: sql`session.id`,
+            warmupNotes: sql`session.day_warmup_notes`,
+            warmupItems: sql`session.day_warmup_items`,
+          })}) = 0
+        )
+        AND NOT (
+          occurrence.outcome = 'pending'
+          AND occurrence.kind = 'exercise_warmup'
+          AND nullif(btrim(exercise.warmup_notes), '') IS NOT NULL
+          AND occurrence.kind_ordinal = 0
+          AND occurrence.label = exercise.warmup_notes
+          AND occurrence.planned_reps_min IS NULL
+          AND occurrence.planned_reps_max IS NULL
+          AND occurrence.planned_load IS NULL
+          AND occurrence.planned_load_unit IS NULL
+          AND occurrence.planned_load_percent IS NULL
+          AND occurrence.planned_load_text IS NULL
+          AND occurrence.planned_rest_sec IS NULL
+          AND occurrence.planned_note IS NULL
+          AND (
+            SELECT count(*)
+            FROM session_occurrences peer
+            WHERE peer.session_exercise_id = exercise.id
+              AND peer.kind = 'exercise_warmup'
+          ) > jsonb_array_length(exercise.warmup_sets)
+        )
       FOR UPDATE OF occurrence, session
     ), updated AS (
       UPDATE session_occurrences occurrence
@@ -922,7 +968,6 @@ export async function mutateWorkoutOccurrence(
           outcome_note = CASE ${input.operation}
             WHEN 'note' THEN ${input.note?.trim() || null}
             WHEN 'skip' THEN ${input.note?.trim() || null}
-            WHEN 'restore' THEN NULL
             ELSE occurrence.outcome_note
           END,
           revision = occurrence.revision + 1,
@@ -941,6 +986,28 @@ export async function mutateWorkoutOccurrence(
         AND NOT EXISTS (SELECT 1 FROM existing_receipt)
         AND occurrence.revision = ${input.expectedRevision}
         AND occurrence.outcome <> 'legacy_unrecorded'
+        AND (
+          ${input.operation} <> 'restore'
+          OR occurrence.outcome_reason IS NULL
+          OR occurrence.outcome_reason NOT LIKE 'exercise:%'
+        )
+        AND (
+          ${input.operation} <> 'restore'
+          OR occurrence.session_exercise_id IS NULL
+          OR NOT EXISTS (
+            SELECT 1
+            FROM session_exercises aggregate_exercise
+            WHERE aggregate_exercise.id = occurrence.session_exercise_id
+              AND (
+                aggregate_exercise.modification_type = 'skipped'
+                OR (
+                  occurrence.kind = 'exercise_warmup'
+                  AND aggregate_exercise.exercise_id IS DISTINCT FROM
+                    occurrence.planned_exercise_id
+                )
+              )
+          )
+        )
         AND (
           ${input.operation} <> 'skip'
           OR occurrence.kind <> 'working_set'
@@ -981,7 +1048,13 @@ export async function mutateWorkoutOccurrence(
           OR (${input.operation} = 'skip' AND occurrence.outcome = 'pending')
           OR (${input.operation} = 'note'
             AND occurrence.outcome IN ('pending', 'completed', 'skipped'))
-          OR (${input.operation} = 'restore' AND occurrence.outcome IN ('skipped', 'abandoned'))
+          OR (${input.operation} = 'restore' AND (
+            occurrence.outcome IN ('skipped', 'abandoned')
+            OR (
+              occurrence.kind IN ('day_warmup', 'exercise_warmup')
+              AND occurrence.outcome = 'completed'
+            )
+          ))
         )
       RETURNING occurrence.*
     ), saved_receipt AS (
@@ -1079,7 +1152,7 @@ export async function startWorkoutSession(
              program.id AS source_program_id,
              version.id AS source_program_version_id,
              wt.lineage_id AS source_day_lineage_id,
-             ${effectiveProgramDayWarmupItemsSql({
+             ${actionableProgramDayWarmupItemsSql({
                lineageId: sql`wt.lineage_id`,
                fallbackItemKey: sql`wt.id`,
                warmupNotes: sql`wt.warmup_notes`,
@@ -1232,25 +1305,7 @@ export async function startWorkoutSession(
         exercise.session_id,
         exercise.exercise_id AS planned_exercise_id,
         exercise.order_idx,
-        0::integer AS local_order,
-        jsonb_build_object(
-          'label', exercise.warmup_notes,
-          'reps', NULL,
-          'load', NULL,
-          'loadUnit', NULL,
-          'loadPercent', NULL,
-          'loadText', NULL,
-          'notes', NULL
-        ) AS value
-      FROM inserted_exercises exercise
-      WHERE nullif(btrim(exercise.warmup_notes), '') IS NOT NULL
-      UNION ALL
-      SELECT
-        exercise.id,
-        exercise.session_id,
-        exercise.exercise_id,
-        exercise.order_idx,
-        item.ordinality::integer,
+        item.ordinality::integer - 1 AS local_order,
         item.value
       FROM inserted_exercises exercise
       CROSS JOIN LATERAL jsonb_array_elements(exercise.warmup_sets)

@@ -27,7 +27,7 @@ npm run docs:check
 npm run audit:check
 ```
 
-The Repbook v2 semantic foundation and current T01/T02/T03 activation packages have
+The Repbook v2 semantic foundation and current T01/T02/T03/T04 activation packages have
 focused gates:
 
 ```bash
@@ -38,6 +38,8 @@ npx vitest run tests/unit/v2-t02-acknowledgement-correction-db.test.ts tests/uni
 npm run test:e2e:v2-t02
 npx vitest run tests/unit/v2-t03-planned-order-db.test.ts tests/unit/v2-t03-planned-order-portability.test.ts tests/unit/v2-t03-planned-order-restore.test.ts
 npm run test:e2e:v2-t03
+npx vitest run tests/unit/v2-t04-warmup-occurrences-db.test.ts tests/unit/v2-t04-warmup-occurrences-portability.test.ts tests/unit/v2-t04-warmup-occurrences-restore.test.ts
+npm run test:e2e:v2-t04
 ```
 
 The semantic test validates all synthetic F01-F17 scenarios and every required
@@ -46,8 +48,11 @@ T01 tests activate the mapped database, browser, portability, recovery, and
 adversarial claims for truthful performed measurement. T02 activates the same
 evidence classes for acknowledgement, retry, and reviewed correction, including
 correction-lineage restore. T03 activates planned-order, extra-before/after-plan,
-group ordering, History/Review/export, and recovery evidence. Every later package must activate its own reserved
-evidence before its product behavior is considered implemented.
+group ordering, History/Review/export, and recovery evidence. T04 activates
+one-action-per-authored-warm-up truth, reversible acknowledgements, aggregate
+exercise-decision safety, portability, recovery, and desktop/mobile browser
+evidence. Every later package must activate its own reserved evidence before
+its product behavior is considered implemented.
 
 `audit:check` requires a clean production dependency audit and also reviews the
 complete development-tool tree. Any temporary development-only exception is

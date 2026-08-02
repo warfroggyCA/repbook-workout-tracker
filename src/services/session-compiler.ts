@@ -15,6 +15,7 @@ import { loadProgramPreflightContext } from "@/services/program-preflight";
 import { runProgramPreflight } from "@/lib/program-preflight";
 import { canonicalJson, sha256Hex } from "@/services/snapshot-crypto";
 import {
+  hasGeneratedOverviewWarmupItems,
   projectIntentProgramDocumentV2,
   upgradeStoredProgramDocumentToV3,
 } from "@/lib/program-document";
@@ -287,20 +288,10 @@ export async function acceptSessionCompilerProposal(
         : group.restAfterRoundSec,
     };
   }));
-  const dayWarmupItems = "warmupItems" in input.day && input.day.warmupItems.length > 0
+  const dayWarmupItems = "warmupItems" in input.day &&
+      !hasGeneratedOverviewWarmupItems(input.day, [input.templateId])
     ? input.day.warmupItems
-    : input.day.warmupNotes
-      ? [{
-          key: input.day.lineageId,
-          label: input.day.warmupNotes,
-          reps: null,
-          load: null,
-          loadUnit: null,
-          loadPercent: null,
-          loadText: null,
-          notes: null,
-        }]
-      : [];
+    : [];
   const dayWarmupsJson = JSON.stringify(dayWarmupItems);
   const snapshotJson = JSON.stringify(snapshot);
   const result = resultRows(await db.execute(sql`
@@ -444,25 +435,7 @@ export async function acceptSessionCompilerProposal(
         exercise.session_id,
         exercise.exercise_id AS planned_exercise_id,
         exercise.order_idx,
-        0::integer AS local_order,
-        jsonb_build_object(
-          'label', exercise.warmup_notes,
-          'reps', NULL,
-          'load', NULL,
-          'loadUnit', NULL,
-          'loadPercent', NULL,
-          'loadText', NULL,
-          'notes', NULL
-        ) AS value
-      FROM inserted_exercises exercise
-      WHERE nullif(btrim(exercise.warmup_notes), '') IS NOT NULL
-      UNION ALL
-      SELECT
-        exercise.id,
-        exercise.session_id,
-        exercise.exercise_id,
-        exercise.order_idx,
-        item.ordinality::integer,
+        item.ordinality::integer - 1 AS local_order,
         item.value
       FROM inserted_exercises exercise
       CROSS JOIN LATERAL jsonb_array_elements(exercise.warmup_sets)

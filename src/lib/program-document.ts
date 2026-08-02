@@ -519,9 +519,16 @@ export function hasGeneratedOverviewWarmupItems(
     ProgramDocumentDayV3,
     "lineageId" | "warmupNotes" | "warmupItems"
   >,
+  compatibilityKeys: readonly string[] = [],
 ): boolean {
   const first = day.warmupItems[0];
-  if (!first || first.key !== day.lineageId || !day.warmupNotes) return false;
+  if (
+    !first ||
+    (first.key !== day.lineageId && !compatibilityKeys.includes(first.key)) ||
+    !day.warmupNotes
+  ) {
+    return false;
+  }
   const hasOnlyPlainItems = day.warmupItems.every((item) =>
     item.reps == null &&
     item.load == null &&
@@ -534,7 +541,8 @@ export function hasGeneratedOverviewWarmupItems(
   const projectedLabels = overviewWarmupLabels(day.warmupNotes);
   return (
     (day.warmupItems.length === 1 &&
-      first.label === day.warmupNotes.slice(0, 120)) ||
+      (first.label === day.warmupNotes ||
+        first.label === day.warmupNotes.slice(0, 120))) ||
     day.warmupItems.map((item) => item.label).join("\n") ===
       projectedLabels.join("\n")
   );

@@ -58,6 +58,9 @@ describe("production readiness workflow contract", () => {
     const t03PlannedOrder = steps.find(
       (step) => step.id === "browser-v2-t03",
     );
+    const t04WarmupOccurrences = steps.find(
+      (step) => step.id === "browser-v2-t04",
+    );
     const browserGate = steps.find(
       (step) => step.name === "Require every browser suite",
     );
@@ -72,6 +75,7 @@ describe("production readiness workflow contract", () => {
       "npm run test:e2e:v2-t02",
     );
     expect(t03PlannedOrder?.run).toBe("npm run test:e2e:v2-t03");
+    expect(t04WarmupOccurrences?.run).toBe("npm run test:e2e:v2-t04");
     expect(browserGate?.env?.BROWSER_HISTORY).toBe(
       "${{ steps.browser-history.outcome }}",
     );
@@ -102,6 +106,12 @@ describe("production readiness workflow contract", () => {
     expect(browserGate?.run).toContain(
       '"T03 planned order and extra-set truth:${BROWSER_V2_T03}"',
     );
+    expect(browserGate?.env?.BROWSER_V2_T04).toBe(
+      "${{ steps.browser-v2-t04.outcome }}",
+    );
+    expect(browserGate?.run).toContain(
+      '"T04 warm-up occurrence truth:${BROWSER_V2_T04}"',
+    );
   });
 
   it("keeps dedicated v2 browser gates out of the stateful smoke journey", () => {
@@ -110,6 +120,7 @@ describe("production readiness workflow contract", () => {
         "v2-t01-recording-truth.spec.ts",
         "v2-t02-acknowledgement-correction.spec.ts",
         "v2-t03-planned-order.spec.ts",
+        "v2-t04-warmup-occurrences.spec.ts",
       ]),
     );
   });

@@ -1,0 +1,200 @@
+import { expect, test, type Locator, type Page } from "@playwright/test";
+import {
+  BA_WORKOUT_EMAIL,
+  BA_WORKOUT_FIXTURE,
+} from "../fixtures/ba-workout-contract";
+import { PRODUCTION_WORKOUT_START_WARMUP } from "../fixtures/production-workout-start-contract";
+import {
+  waitForEquipmentSelectionsToSettle,
+  waitForHydratedReactHandler,
+  waitForHydratedServerAction,
+} from "../helpers/react-readiness";
+
+async function signInAndStart(page: Page) {
+  await page.goto("/sign-in");
+  await page.getByPlaceholder("allowlisted email").fill(BA_WORKOUT_EMAIL);
+  const login = page.getByRole("button", { name: "Dev login", exact: true });
+  await waitForHydratedServerAction(login);
+  await login.click();
+  await expect(page).toHaveURL(/\/today$/);
+
+  await page.goto("/settings");
+  const extraLarge = page.getByRole("radio", { name: /Extra large/ });
+  await waitForHydratedReactHandler(extraLarge);
+  await extraLarge.click();
+  await expect.poll(() =>
+    page.evaluate(() => document.documentElement.dataset.fontSize),
+  ).toBe("extra-large");
+
+  await page.goto("/today");
+  const start = page.getByRole("button", {
+    name: "Train as planned",
+    exact: true,
+  });
+  await waitForHydratedServerAction(start);
+  await start.click();
+  await expect(page).toHaveURL(/\/session\/[0-9a-f-]+$/);
+  await waitForEquipmentSelectionsToSettle(page);
+}
+
+function warmupRow(panel: Locator, label: string) {
+  return panel.locator("li").filter({ hasText: label });
+}
+
+async function waitForSaved(row: Locator) {
+  await expect(row.getByText("Saved", { exact: true })).toBeVisible();
+}
+
+test("keeps warm-up actions singular, reversible, durable, and usable with minimal attention", async ({
+  page,
+}) => {
+  await signInAndStart(page);
+  const sessionId = page.url().split("/").at(-1)!;
+  const panel = page.locator("#workout-warmup");
+  const actions = panel.locator("li");
+
+  await expect(panel).toContainText("Check off only the distinct actions below.");
+  await expect(actions).toHaveCount(PRODUCTION_WORKOUT_START_WARMUP.length);
+  for (const action of PRODUCTION_WORKOUT_START_WARMUP) {
+    const row = warmupRow(panel, action.label);
+    await expect(row).toHaveCount(1);
+    await expect(
+      row.getByRole("checkbox", {
+        name: `Mark ${action.label} complete`,
+        exact: true,
+      }),
+    ).toHaveCount(1);
+  }
+
+  const dayOverview = BA_WORKOUT_FIXTURE.program.days[0].warmupNotes;
+  await expect(page.getByText(dayOverview, { exact: true })).toHaveCount(1);
+  await expect(page.getByText(dayOverview, { exact: true })).not.toBeVisible();
+  await expect(
+    page.getByText("Build gradually before the first work set.", { exact: true }),
+  ).toHaveCount(1);
+
+  const completedLabel = PRODUCTION_WORKOUT_START_WARMUP[0].label;
+  let completedRow = warmupRow(panel, completedLabel);
+  await completedRow.getByRole("button", { name: "Add note", exact: true }).click();
+  let dialog = page.getByRole("dialog");
+  await dialog.getByLabel("Workout-item note").fill("Setup felt stable");
+  await dialog.getByRole("button", { name: "Save note", exact: true }).click();
+  await expect(dialog).toHaveCount(0);
+  await waitForSaved(completedRow);
+  const complete = completedRow.getByRole("checkbox", {
+    name: `Mark ${completedLabel} complete`,
+    exact: true,
+  });
+  await complete.focus();
+  await page.keyboard.press("Enter");
+  await expect(completedRow.getByRole("button", { name: "Undo completion" }))
+    .toBeVisible();
+  await waitForSaved(completedRow);
+
+  await page.reload({ waitUntil: "networkidle" });
+  completedRow = warmupRow(page.locator("#workout-warmup"), completedLabel);
+  await expect(completedRow).toContainText("Note: Setup felt stable");
+  await expect(
+    completedRow.getByRole("checkbox", {
+      name: `${completedLabel} complete`,
+      exact: true,
+    }),
+  ).toHaveAttribute("aria-checked", "true");
+  await completedRow.getByRole("button", { name: "Undo completion" }).click();
+  await expect(
+    completedRow.getByRole("checkbox", {
+      name: `Mark ${completedLabel} complete`,
+      exact: true,
+    }),
+  ).toHaveAttribute("aria-checked", "false");
+  await expect(completedRow).toContainText("Note: Setup felt stable");
+  await waitForSaved(completedRow);
+
+  const skippedLabel = PRODUCTION_WORKOUT_START_WARMUP[1].label;
+  let skippedRow = warmupRow(page.locator("#workout-warmup"), skippedLabel);
+  await skippedRow.getByRole("button", { name: "Skip", exact: true }).click();
+  dialog = page.getByRole("dialog");
+  await dialog.getByLabel("Reason").selectOption("time");
+  await dialog.getByLabel("Optional note").fill("Short session today");
+  await dialog.getByRole("button", { name: "Skip item", exact: true }).click();
+  await expect(dialog).toHaveCount(0);
+  await expect(skippedRow.getByRole("button", { name: "Restore" })).toBeVisible();
+  await waitForSaved(skippedRow);
+
+  await page.reload({ waitUntil: "networkidle" });
+  skippedRow = warmupRow(page.locator("#workout-warmup"), skippedLabel);
+  await expect(skippedRow).toContainText("Note: Short session today");
+  await expect(skippedRow).toContainText("skipped");
+  await skippedRow.getByRole("button", { name: "Restore" }).click();
+  await expect(
+    skippedRow.getByRole("checkbox", {
+      name: `Mark ${skippedLabel} complete`,
+      exact: true,
+    }),
+  ).toBeVisible();
+  await expect(skippedRow).toContainText("Note: Short session today");
+  await waitForSaved(skippedRow);
+
+  const actionButtons = page.locator("#workout-warmup li button");
+  for (let index = 0; index < await actionButtons.count(); index += 1) {
+    const box = await actionButtons.nth(index).boundingBox();
+    expect(box?.height ?? 0).toBeGreaterThanOrEqual(44);
+  }
+  expect(await page.evaluate(() => document.documentElement.scrollWidth))
+    .toBeLessThanOrEqual(await page.evaluate(() => window.innerWidth + 1));
+
+  const occurrenceId = (await completedRow.getAttribute("id"))?.replace(
+    "warmup-occurrence-",
+    "",
+  );
+  if (!occurrenceId) throw new Error("The warm-up occurrence has no stable ID.");
+  await page.evaluate(
+    ({ activeSessionId, activeOccurrenceId }) => {
+      localStorage.setItem(
+        "workout-tracker:occurrence-mutation-outbox:v1",
+        JSON.stringify({
+          version: 1,
+          entries: [
+            {
+              clientKey: crypto.randomUUID(),
+              ownerId: crypto.randomUUID(),
+              sessionId: activeSessionId,
+              occurrenceId: activeOccurrenceId,
+              label: "Synthetic retained warm-up change",
+              expectedRevision: 3,
+              operation: "complete",
+              reason: null,
+              note: null,
+              createdAtISO: new Date().toISOString(),
+              status: "needs_attention",
+              attemptCount: 6,
+              nextAttemptAtISO: null,
+              lastAttemptAtISO: new Date().toISOString(),
+              lastError: "Synthetic offline failure",
+            },
+          ],
+        }),
+      );
+    },
+    { activeSessionId: sessionId, activeOccurrenceId: occurrenceId },
+  );
+  await page.goto("/today");
+  const discard = page.getByRole("button", {
+    name: "Discard this workout",
+    exact: true,
+  });
+  await waitForHydratedReactHandler(discard);
+  await discard.click();
+  const discardDialog = page.getByRole("dialog", {
+    name: /Discard .+\?/,
+  });
+  await expect(discardDialog.getByRole("alert")).toContainText(
+    "1 warm-up or workout-item change is still waiting to sync.",
+  );
+  await discardDialog
+    .getByRole("button", { name: "Discard unsent copies & abandon" })
+    .click();
+  await expect(
+    page.getByRole("button", { name: "Train as planned", exact: true }),
+  ).toBeVisible();
+});

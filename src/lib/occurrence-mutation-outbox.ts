@@ -107,6 +107,14 @@ function isNullableDate(value: unknown): value is string | null {
 
 function isEntry(value: unknown): value is OccurrenceMutationOutboxEntry {
   if (!isRecord(value)) return false;
+  const operationPayloadValid =
+    (value.operation === "skip" &&
+      typeof value.reason === "string" &&
+      value.reason.trim().length > 0) ||
+    (value.operation === "note" && value.reason === null) ||
+    ((value.operation === "complete" || value.operation === "restore") &&
+      value.reason === null &&
+      value.note === null);
   return (
     typeof value.clientKey === "string" &&
     UUID_PATTERN.test(value.clientKey) &&
@@ -125,10 +133,9 @@ function isEntry(value: unknown): value is OccurrenceMutationOutboxEntry {
     ["complete", "skip", "restore", "note"].includes(
       String(value.operation),
     ) &&
+    operationPayloadValid &&
     (value.reason === null ||
       (typeof value.reason === "string" && value.reason.length <= 160)) &&
-    (value.operation !== "skip" ||
-      (typeof value.reason === "string" && value.reason.trim().length > 0)) &&
     (value.note === null ||
       (typeof value.note === "string" && value.note.length <= 500)) &&
     isDate(value.createdAtISO) &&

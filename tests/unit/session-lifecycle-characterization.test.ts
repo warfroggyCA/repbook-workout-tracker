@@ -192,22 +192,18 @@ describe("workout lifecycle ownership and atomicity invariants", () => {
       localDate: "2026-06-30",
       dayWarmupNotes: "Five minutes easy, then ramp up",
     });
-    expect(session?.dayWarmupItems).toEqual([
-      expect.objectContaining({
-        key: templateId,
-        label: "Five minutes easy, then ramp up",
-      }),
-    ]);
-    const [compatibilityWarmup] = await database.db
+    expect(session?.dayWarmupItems).toEqual([]);
+    const occurrences = await database.db
       .select()
       .from(sessionOccurrences)
       .where(eq(sessionOccurrences.sessionId, result.sessionId))
       .orderBy(asc(sessionOccurrences.sequenceIdx));
-    expect(compatibilityWarmup).toMatchObject({
-      kind: "day_warmup",
-      label: "Five minutes easy, then ramp up",
-      outcome: "pending",
-    });
+    expect(occurrences).toHaveLength(3);
+    expect(occurrences.every((occurrence) => occurrence.kind === "working_set"))
+      .toBe(true);
+    expect(occurrences.some((occurrence) =>
+      occurrence.label === "Five minutes easy, then ramp up"
+    )).toBe(false);
   });
 
   it("starts from the retained production legacy percentage warm-up shape", async () => {
@@ -427,12 +423,11 @@ describe("workout lifecycle ownership and atomicity invariants", () => {
       .where(eq(sessionOccurrences.sessionId, started.sessionId))
       .orderBy(asc(sessionOccurrences.sequenceIdx));
     expect(occurrences.map((occurrence) => occurrence.outcome)).toEqual([
-      "abandoned",
       "completed",
       "abandoned",
       "abandoned",
     ]);
-    expect(occurrences[1]).toMatchObject({
+    expect(occurrences[0]).toMatchObject({
       completedSetId: saved.outcome === "saved" ? saved.setId : null,
       outcome: "completed",
     });
@@ -445,15 +440,15 @@ describe("workout lifecycle ownership and atomicity invariants", () => {
       await database.db
         .select()
         .from(sessionOccurrenceMutations),
-    ).toHaveLength(4);
+    ).toHaveLength(3);
     const csv = await buildSetsCsv(database.db, userId, null);
     expect(csv.split("\n")[0]).toContain("occurrence_kind");
     expect(csv.split("\n")[0]).toContain(
       "metric_type,performed_semantics_version,performed_load_type,performed_load_semantics",
     );
     expect(csv).toContain(",weight_reps,1,dumbbell,total,");
-    expect(csv.split("\n")).toHaveLength(5);
-    expect(csv).toContain("day_warmup");
+    expect(csv.split("\n")).toHaveLength(4);
+    expect(csv).not.toContain("day_warmup");
     expect(csv).toContain("working_set");
     expect(csv).toContain("abandoned");
     const digest = await buildTrainingDigest(
@@ -464,7 +459,7 @@ describe("workout lifecycle ownership and atomicity invariants", () => {
     );
     const brief = renderCoachingBrief(digest);
     expect(brief).toContain("Occurrence outcomes");
-    expect(brief).toContain("Five minutes easy, then ramp up: abandoned");
+    expect(brief).not.toContain("Five minutes easy, then ramp up");
     expect(brief).toContain("completed with a retained performed result");
   });
 
@@ -606,7 +601,12 @@ describe("workout lifecycle ownership and atomicity invariants", () => {
     });
     expect(restored).toMatchObject({
       outcome: "saved",
-      occurrence: { state: "pending", reason: null, note: null, revision: 2 },
+      occurrence: {
+        state: "pending",
+        reason: null,
+        note: "Left knee discomfort during setup",
+        revision: 2,
+      },
     });
 
     const staleReplay = await mutateWorkoutOccurrence(

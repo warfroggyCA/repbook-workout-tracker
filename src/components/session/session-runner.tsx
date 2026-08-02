@@ -809,6 +809,20 @@ export function SessionRunner(props: SessionRunnerProps) {
   const finishBlocked = finishBlockedByRecordedWork(exitQueues);
   const equipmentGuidancePending = equipmentSyncPending(exitQueues);
 
+  function plannedExerciseNameForOccurrence(
+    occurrence: SessionOccurrenceData,
+  ): string | null {
+    if (!occurrence.sessionExerciseId) return null;
+    const exercise = shownExercises.find(
+      (candidate) => candidate.id === occurrence.sessionExerciseId,
+    );
+    if (!exercise) return null;
+    return occurrence.plannedExerciseId != null &&
+      occurrence.plannedExerciseId === exercise.substitutedForExerciseId
+      ? exercise.plannedExerciseName ?? exercise.name
+      : exercise.name;
+  }
+
   function equipmentConfirmationBlocks(
     occurrence: SessionOccurrenceData,
   ): boolean {
@@ -1566,10 +1580,20 @@ export function SessionRunner(props: SessionRunnerProps) {
         planned={guidance.warmups.planned}
         remaining={guidance.warmups.remaining}
       >
-        {props.dayWarmupNotes ? (
+        {props.dayWarmupNotes && hasStructuredWarmup ? (
+          <details className="mt-1 rounded-md border border-violet-300/50 bg-background/60 text-sm">
+            <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-2 rounded-md px-3 py-2 font-medium text-violet-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 dark:text-violet-200">
+              <span>Day guidance · reference only</span>
+              <span className="text-xs text-muted-foreground">Show</span>
+            </summary>
+            <p className="whitespace-pre-line border-t px-3 py-2 leading-6 text-muted-foreground">
+              {props.dayWarmupNotes}
+            </p>
+          </details>
+        ) : props.dayWarmupNotes ? (
           <>
             <p className="mt-1 text-xs font-medium text-violet-800 dark:text-violet-200">
-              Saved with this workout when it began
+              Day guidance · reference only
             </p>
             <p className="mt-1 whitespace-pre-line text-sm leading-6 text-muted-foreground">
               {props.dayWarmupNotes}
@@ -1584,15 +1608,39 @@ export function SessionRunner(props: SessionRunnerProps) {
           </p>
         ) : null}
         {hasStructuredWarmup && (
-          <ul className="mt-3 space-y-2">
+          <>
+            <p className="mt-3 text-xs font-medium text-violet-800 dark:text-violet-200">
+              Check off only the distinct actions below.
+            </p>
+            <ul className="mt-2 space-y-2">
               {occurrences
                 .filter((occurrence) => occurrence.kind !== "working_set")
                 .map((occurrence) => {
-                  const exerciseName = occurrence.sessionExerciseId
+                  const occurrenceExercise = occurrence.sessionExerciseId
                     ? shownExercises.find(
                         (exercise) => exercise.id === occurrence.sessionExerciseId,
-                      )?.name
+                      )
                     : null;
+                  const exerciseName = plannedExerciseNameForOccurrence(
+                    occurrence,
+                  );
+                  const aggregateRestoreBlocked =
+                    occurrenceExercise?.modificationType === "skipped" ||
+                    (occurrence.kind === "exercise_warmup" &&
+                      occurrence.plannedExerciseId != null &&
+                      occurrence.plannedExerciseId !==
+                        occurrenceExercise?.exerciseId) ||
+                    occurrence.outcomeReason?.startsWith("exercise:") === true;
+                  const aggregateRestoreDirection =
+                    occurrence.outcomeReason?.startsWith(
+                      "exercise:substituted:",
+                    ) ||
+                    (occurrence.kind === "exercise_warmup" &&
+                      occurrence.plannedExerciseId != null &&
+                      occurrence.plannedExerciseId !==
+                        occurrenceExercise?.exerciseId)
+                      ? "Undo the exercise alternative to restore this action."
+                      : "Un-skip the exercise to restore this action.";
                   const prescription = formatOccurrencePrescription(occurrence);
                   const equipmentChangePending = equipmentConfirmationBlocks(occurrence);
                   const occurrenceMutation =
@@ -1613,11 +1661,15 @@ export function SessionRunner(props: SessionRunnerProps) {
                       }
                       className="scroll-mt-40 flex flex-wrap items-center justify-between gap-2 rounded-lg border bg-background/80 px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                     >
-                      <div>
+                      <div className="min-w-0 flex-1">
                         <p className="font-medium">
-                          {exerciseName ? `${exerciseName}: ` : ""}
                           {occurrence.label ?? "Warm-up item"}
                         </p>
+                        {exerciseName && (
+                          <p className="text-xs text-muted-foreground">
+                            For {exerciseName}
+                          </p>
+                        )}
                         {prescription && (
                           <p className="text-xs font-medium text-foreground">
                             {prescription}
@@ -1640,7 +1692,7 @@ export function SessionRunner(props: SessionRunnerProps) {
                         )}
                       </div>
                       {occurrence.outcome === "pending" ? (
-                        <div className="flex flex-wrap gap-2">
+                        <div className="flex w-full flex-wrap gap-2 sm:w-auto">
                           <Button
                             type="button"
                             size="sm"
@@ -1700,15 +1752,31 @@ export function SessionRunner(props: SessionRunnerProps) {
                       ) : (
                         <div className="flex flex-wrap gap-2">
                           {occurrence.outcome === "completed" && (
-                            <span
-                              role="checkbox"
-                              aria-checked="true"
-                              aria-label={`${occurrence.label ?? "Warm-up item"} complete`}
-                              className="inline-flex min-h-11 items-center gap-2 rounded-md border border-emerald-600/50 bg-emerald-500/10 px-3 text-sm font-medium text-emerald-900 dark:text-emerald-100"
-                            >
-                              <span aria-hidden className="flex size-4 items-center justify-center rounded border-2 border-current text-[10px] leading-none">✓</span>
-                              Complete
-                            </span>
+                            <>
+                              <span
+                                role="checkbox"
+                                aria-checked="true"
+                                aria-label={`${occurrence.label ?? "Warm-up item"} complete`}
+                                className="inline-flex min-h-11 items-center gap-2 rounded-md border border-emerald-600/50 bg-emerald-500/10 px-3 text-sm font-medium text-emerald-900 dark:text-emerald-100"
+                              >
+                                <span aria-hidden className="flex size-4 items-center justify-center rounded border-2 border-current text-[10px] leading-none">✓</span>
+                                Complete
+                              </span>
+                              {!aggregateRestoreBlocked && (
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  className="min-h-11"
+                                  variant="outline"
+                                  disabled={occurrenceMutation != null}
+                                  onClick={() =>
+                                    void applyOccurrenceMutation(occurrence, "restore")
+                                  }
+                                >
+                                  Undo completion
+                                </Button>
+                              )}
+                            </>
                           )}
                           <Button
                             type="button"
@@ -1725,7 +1793,8 @@ export function SessionRunner(props: SessionRunnerProps) {
                           >
                             {occurrence.outcomeNote ? "Edit note" : "Add note"}
                           </Button>
-                          {occurrence.outcome === "skipped" && (
+                          {occurrence.outcome === "skipped" &&
+                            !aggregateRestoreBlocked && (
                             <Button
                               type="button"
                               size="sm"
@@ -1738,6 +1807,11 @@ export function SessionRunner(props: SessionRunnerProps) {
                             >
                               Restore
                             </Button>
+                          )}
+                          {aggregateRestoreBlocked && (
+                            <p className="basis-full text-xs text-muted-foreground">
+                              {aggregateRestoreDirection}
+                            </p>
                           )}
                         </div>
                       )}
@@ -1760,7 +1834,8 @@ export function SessionRunner(props: SessionRunnerProps) {
                     </li>
                   );
                 })}
-          </ul>
+            </ul>
+          </>
         )}
       </WarmupPanel>
 
@@ -1851,12 +1926,6 @@ export function SessionRunner(props: SessionRunnerProps) {
                   occurrence.outcome !== "pending",
               )
             }
-            warmupSkipped={occurrences.some(
-              (occurrence) =>
-                occurrence.kind === "exercise_warmup" &&
-                occurrence.sessionExerciseId === exercise.id &&
-                occurrence.outcome === "skipped",
-            )}
             groupContext={groupContextByExerciseId[exercise.id] ?? null}
             occurrenceChangesBlocked={
               sessionEquipmentEntries.some(
@@ -1869,6 +1938,10 @@ export function SessionRunner(props: SessionRunnerProps) {
             onPrepareRestCue={primeRestCue}
             onPatch={(patch) => {
               patchExercise(exercise.id, patch);
+              const exerciseIdentityChanged = Object.hasOwn(
+                patch,
+                "exerciseId",
+              );
               if (patch.modificationType === "skipped") {
                 setOccurrences((current) => current.map((occurrence) =>
                   occurrence.sessionExerciseId === exercise.id &&
@@ -1883,18 +1956,57 @@ export function SessionRunner(props: SessionRunnerProps) {
                     : occurrence,
                 ));
               } else if (
+                exerciseIdentityChanged &&
+                patch.modificationType === "substituted"
+              ) {
+                setOccurrences((current) => current.map((occurrence) =>
+                  occurrence.sessionExerciseId === exercise.id &&
+                  occurrence.kind === "exercise_warmup" &&
+                  occurrence.outcome === "pending"
+                    ? {
+                        ...occurrence,
+                        outcome: "skipped",
+                        outcomeReason: "exercise:substituted:optimistic",
+                        revision: occurrence.revision + 1,
+                        resolvedAt: new Date().toISOString(),
+                      }
+                    : occurrence,
+                ));
+              } else if (
+                exerciseIdentityChanged &&
+                patch.modificationType === "as_planned"
+              ) {
+                setOccurrences((current) => current.map((occurrence) =>
+                  occurrence.sessionExerciseId === exercise.id &&
+                  occurrence.kind === "exercise_warmup" &&
+                  occurrence.outcome === "skipped" &&
+                  occurrence.outcomeReason?.startsWith(
+                    "exercise:substituted:",
+                  )
+                    ? {
+                        ...occurrence,
+                        outcome: "pending",
+                        outcomeReason: null,
+                        revision: occurrence.revision + 1,
+                        resolvedAt: null,
+                      }
+                    : occurrence,
+                ));
+              } else if (
                 patch.modificationType === "as_planned" ||
                 patch.modificationType === "substituted"
               ) {
                 setOccurrences((current) => current.map((occurrence) =>
                   occurrence.sessionExerciseId === exercise.id &&
                   occurrence.outcome === "skipped" &&
-                  occurrence.outcomeReason?.startsWith("exercise:")
+                  occurrence.outcomeReason?.startsWith("exercise:") &&
+                  !occurrence.outcomeReason.startsWith(
+                    "exercise:substituted:",
+                  )
                     ? {
                         ...occurrence,
                         outcome: "pending",
                         outcomeReason: null,
-                        outcomeNote: null,
                         revision: occurrence.revision + 1,
                         resolvedAt: null,
                       }
@@ -2155,11 +2267,7 @@ export function SessionRunner(props: SessionRunnerProps) {
           (candidate) => candidate.id === occurrenceAction.occurrenceId,
         );
         if (!occurrence) return null;
-        const exerciseName = occurrence.sessionExerciseId
-          ? shownExercises.find(
-              (exercise) => exercise.id === occurrence.sessionExerciseId,
-            )?.name
-          : null;
+        const exerciseName = plannedExerciseNameForOccurrence(occurrence);
         const itemLabel = [exerciseName, occurrence.label ?? "warm-up item"]
           .filter(Boolean)
           .join(": ");
