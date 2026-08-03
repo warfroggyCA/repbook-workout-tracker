@@ -124,13 +124,18 @@ async function skipCurrentSet(page: Page) {
     .getByRole("complementary", { name: "Workout status" })
     .getByRole("button")
     .first();
-  const prior = await showCurrent.innerText();
-  const exceptionDetails = current.locator("details", {
+  await showCurrent.click();
+  await expect(current.locator(":scope > button").first()).toHaveAttribute(
+    "aria-expanded",
+    "true",
+  );
+  const currentEntry = current.getByTestId("current-set-entry");
+  await expect(currentEntry).toHaveCount(1);
+  const priorOccurrenceId = await currentEntry.getAttribute("id");
+  expect(priorOccurrenceId).toMatch(/^set-entry-/);
+  await openNativeDetails(current.locator("details", {
     hasText: "Set exceptions",
-  });
-  if ((await exceptionDetails.count()) > 0) {
-    await openNativeDetails(exceptionDetails);
-  }
+  }));
   const skip = current
     .getByRole("button", { name: "Skip set", exact: true })
     .first();
@@ -140,7 +145,14 @@ async function skipCurrentSet(page: Page) {
   await dialog.getByLabel("Reason").selectOption("time");
   await dialog.getByRole("button", { name: "Skip item", exact: true }).click();
   await expect(dialog).toHaveCount(0);
-  await expect.poll(() => showCurrent.innerText()).not.toBe(prior);
+  await expect.poll(async () => {
+    const nextEntry = page
+      .getByTestId("current-exercise-card")
+      .getByTestId("current-set-entry");
+    if ((await nextEntry.count()) !== 1) return false;
+    const nextOccurrenceId = await nextEntry.getAttribute("id");
+    return nextOccurrenceId != null && nextOccurrenceId !== priorOccurrenceId;
+  }).toBe(true);
 }
 
 async function discardWorkout(page: Page) {

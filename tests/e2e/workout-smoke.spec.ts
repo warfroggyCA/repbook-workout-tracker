@@ -2019,6 +2019,9 @@ test("keeps pain and substitution lineage reconstructable through History", asyn
   await expect(page.getByText("Exercise note saved", { exact: true })).toBeVisible();
   await expect(noteDialog).toHaveCount(0);
 
+  await openNativeDetails(nextSet.locator("details", {
+    hasText: "Optional effort and set note",
+  }));
   await nextSet.getByLabel("Set note (optional)", { exact: true }).fill(setNote);
   await nextSet.getByRole("button", { name: "Log set", exact: true }).click();
   await expect(workoutStatus).toContainText(/Resting|Next set/);
@@ -2638,6 +2641,9 @@ test("keeps an offline set visible and waits for acknowledgement before the next
   const workoutStatus = page.getByRole("complementary", { name: "Workout status" });
   const weight = nextSet.getByLabel("Total load");
   const reps = nextSet.getByRole("textbox", { name: "Reps", exact: true });
+  await openNativeDetails(nextSet.locator("details", {
+    hasText: "Optional effort and set note",
+  }));
   const note = nextSet.getByLabel("Set note (optional)");
   await weight.fill("95");
   await reps.fill("8");
