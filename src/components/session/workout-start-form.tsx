@@ -5,10 +5,14 @@ import { useFormStatus } from "react-dom";
 import { startSession } from "@/app/actions/sessions";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { INITIAL_WORKOUT_START_STATE } from "@/lib/workout-start";
+import {
+  INITIAL_WORKOUT_START_STATE,
+  retainedWorkoutStartRequestKey,
+} from "@/lib/workout-start";
 
 type Props = {
   templateId: string;
+  startRequestKey: string;
   fallbackTimezone: string;
   retryLabel: string;
   children: ReactNode;
@@ -54,6 +58,7 @@ function StartButton({
 
 export function WorkoutStartForm({
   templateId,
+  startRequestKey,
   fallbackTimezone,
   retryLabel,
   children,
@@ -67,6 +72,10 @@ export function WorkoutStartForm({
   const [state, formAction] = useActionState(
     startSession.bind(null, templateId),
     INITIAL_WORKOUT_START_STATE,
+  );
+  const effectiveStartRequestKey = retainedWorkoutStartRequestKey(
+    startRequestKey,
+    state,
   );
 
   useEffect(() => {
@@ -91,6 +100,11 @@ export function WorkoutStartForm({
         type="hidden"
         name="timezone"
         defaultValue={fallbackTimezone}
+      />
+      <input
+        type="hidden"
+        name="startRequestKey"
+        value={effectiveStartRequestKey}
       />
       <StartButton
         variant={variant}

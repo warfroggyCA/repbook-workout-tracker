@@ -51,7 +51,7 @@ import { isPatternAllowedForSuggestions } from "@/engine/constraint-filter";
 import { audit } from "./audit";
 import { convertWeight } from "@/lib/units";
 import { PROGRESSION_JOB_MAX_ATTEMPTS } from "@/lib/progression-job-contract";
-import { eligibleTotalSystemLoadSql } from "@/lib/set-metric-semantics-sql";
+import { eligibleAutomaticProgressionSql } from "@/lib/set-metric-semantics-sql";
 import { reconcilePendingPainRecommendations } from "@/services/recommendation-evidence-eligibility";
 
 type LoadSteppers = {
@@ -128,8 +128,10 @@ async function recordProgressionRecommendation(
               OR session.archived_at IS NOT NULL
               OR session_exercise.modification_type <> 'as_planned'
               OR completed.archived_at IS NOT NULL
-              OR NOT ${eligibleTotalSystemLoadSql({
+              OR NOT ${eligibleAutomaticProgressionSql({
                 recordedMetricType: sql`completed.metric_type`,
+                prescribedSemanticsVersion:
+                  sql`session_exercise.prescribed_semantics_version`,
                 performedSemanticsVersion: sql`completed.performed_semantics_version`,
                 performedLoadType: sql`completed.performed_load_type`,
                 performedLoadSemantics: sql`completed.performed_load_semantics`,
@@ -504,8 +506,9 @@ export async function evaluateSessionProgression(
           AND se.exercise_id = requested.exercise_id
           AND cs.archived_at IS NULL
           AND NOT cs.is_warmup
-          AND ${eligibleTotalSystemLoadSql({
+          AND ${eligibleAutomaticProgressionSql({
             recordedMetricType: sql`cs.metric_type`,
+            prescribedSemanticsVersion: sql`se.prescribed_semantics_version`,
             performedSemanticsVersion: sql`cs.performed_semantics_version`,
             performedLoadType: sql`cs.performed_load_type`,
             performedLoadSemantics: sql`cs.performed_load_semantics`,

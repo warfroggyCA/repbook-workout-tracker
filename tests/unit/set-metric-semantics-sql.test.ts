@@ -4,8 +4,13 @@ import { drizzle } from "drizzle-orm/pglite";
 import { sql } from "drizzle-orm";
 import { resultRows } from "@/db/result";
 import { classifySetMetricContainment } from "@/lib/set-metric-semantics";
-import { setMetricExclusionReasonSql } from "@/lib/set-metric-semantics-sql";
-import { eligibleRepetitionClaimSql } from "@/lib/set-metric-semantics-sql";
+import {
+  eligibleAutomaticProgressionSql,
+  eligiblePrescriptionOutcomeSql,
+  eligibleRepetitionClaimSql,
+  eligibleTotalSystemLoadSql,
+  setMetricExclusionReasonSql,
+} from "@/lib/set-metric-semantics-sql";
 
 describe("SQL and pure set-semantic containment", () => {
   const clients: PGlite[] = [];
@@ -145,6 +150,69 @@ describe("SQL and pure set-semantic containment", () => {
       `),
     );
     expect(row?.reason ?? null).toBeNull();
+  });
+
+  it("separates schema-27 historical calculations from prescription and progression", async () => {
+    const client = new PGlite();
+    clients.push(client);
+    const db = drizzle(client);
+    const columns = {
+      recordedMetricType: sql`'weight_reps'`,
+      prescribedSemanticsVersion: sql`NULL::integer`,
+      performedSemanticsVersion: sql`1`,
+      performedLoadType: sql`'barbell'`,
+      performedLoadSemantics: sql`'total'`,
+      exerciseMetricType: sql`'assisted_reps'`,
+      loadType: sql`'external'`,
+      loadSemantics: sql`'assistance'`,
+      loadEntryMeaning: sql`'total_system'`,
+      weight: sql`100::numeric`,
+      reps: sql`8::integer`,
+      excludeFromAnalytics: sql`false`,
+    };
+    const [performed] = resultRows<{
+      historical: boolean;
+      prescription: boolean;
+      progression: boolean;
+      reason: string | null;
+    }>(await db.execute(sql`
+      SELECT
+        ${eligibleTotalSystemLoadSql(columns)} AS historical,
+        ${eligiblePrescriptionOutcomeSql(columns)} AS prescription,
+        ${eligibleAutomaticProgressionSql(columns)} AS progression,
+        ${setMetricExclusionReasonSql(columns)} AS reason
+    `));
+    expect(performed).toEqual({
+      historical: true,
+      prescription: false,
+      progression: false,
+      reason: null,
+    });
+
+    const missingColumns = {
+      ...columns,
+      performedSemanticsVersion: sql`NULL::integer`,
+      performedLoadType: sql`NULL::text`,
+      performedLoadSemantics: sql`NULL::text`,
+      exerciseMetricType: sql`'weight_reps'`,
+      loadType: sql`'barbell'`,
+      loadSemantics: sql`'total'`,
+    };
+    const [missing] = resultRows<{
+      historical: boolean;
+      progression: boolean;
+      reason: string | null;
+    }>(await db.execute(sql`
+      SELECT
+        ${eligibleTotalSystemLoadSql(missingColumns)} AS historical,
+        ${eligibleAutomaticProgressionSql(missingColumns)} AS progression,
+        ${setMetricExclusionReasonSql(missingColumns)} AS reason
+    `));
+    expect(missing).toEqual({
+      historical: false,
+      progression: false,
+      reason: "missing_prescribed_semantics",
+    });
   });
 
   it("keeps versioned band repetitions ineligible in pure and SQL consumers", async () => {

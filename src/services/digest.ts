@@ -242,6 +242,22 @@ export async function buildTrainingDigest(
   >();
   for (const s of completed) {
     for (const se of s.exercises) {
+      const usesPrescribedMeaning =
+        se.prescribedSemanticsVersion === 1 &&
+        se.modificationType !== "substituted" &&
+        se.modificationType !== "added";
+      const exerciseName = usesPrescribedMeaning
+        ? se.prescribedExerciseName!
+        : se.exercise.name;
+      const metricType = usesPrescribedMeaning
+        ? se.prescribedMetricType!
+        : se.exercise.metricType;
+      const loadType = usesPrescribedMeaning
+        ? se.prescribedLoadType!
+        : se.exercise.loadType;
+      const loadSemantics = usesPrescribedMeaning
+        ? se.prescribedLoadSemantics!
+        : se.exercise.loadSemantics;
       const working = se.sets.filter(
         (x): x is typeof x & { reps: number } =>
           completedWorkingSetIds.has(x.id) &&
@@ -249,12 +265,13 @@ export async function buildTrainingDigest(
           x.reps != null &&
           classifySetMetricContainment({
             recordedMetricType: x.metricType,
+            prescribedSemanticsVersion: se.prescribedSemanticsVersion,
             performedSemanticsVersion: x.performedSemanticsVersion,
             performedLoadType: x.performedLoadType,
             performedLoadSemantics: x.performedLoadSemantics,
-            currentExerciseMetricType: se.exercise.metricType,
-            loadType: se.exercise.loadType,
-            loadSemantics: se.exercise.loadSemantics,
+            currentExerciseMetricType: metricType,
+            loadType,
+            loadSemantics,
             loadEntryMeaning: x.loadEntryMeaning,
             weight: x.weight,
             reps: x.reps,
@@ -274,14 +291,14 @@ export async function buildTrainingDigest(
           ? candidate
           : best;
       });
-      const list = trendMap.get(se.exercise.name) ?? [];
+      const list = trendMap.get(exerciseName) ?? [];
       list.push({
         date: s.localDate,
         topWeight: top.weight,
         topWeightUnit: top.weightUnit,
         topReps: top.reps,
       });
-      trendMap.set(se.exercise.name, list);
+      trendMap.set(exerciseName, list);
     }
   }
 
@@ -290,7 +307,9 @@ export async function buildTrainingDigest(
       .filter((se) => se.modificationType === "skipped")
       .map((se) => ({
         date: s.localDate,
-        exercise: se.exercise.name,
+        exercise: se.prescribedSemanticsVersion === 1
+          ? se.prescribedExerciseName!
+          : se.exercise.name,
         reason: se.skipReason,
       }))
   );
@@ -300,7 +319,9 @@ export async function buildTrainingDigest(
       .map((se) => ({
         date: s.localDate,
         from: se.substitutedForExerciseId
-          ? (plannedExerciseNames.get(se.substitutedForExerciseId) ?? null)
+          ? (se.prescribedExerciseName ??
+            plannedExerciseNames.get(se.substitutedForExerciseId) ??
+            null)
           : null,
         to: se.exercise.name,
         reason: se.substitutionReason,
@@ -308,8 +329,12 @@ export async function buildTrainingDigest(
   );
 
   const targetableSets = completed.flatMap((session) =>
-    session.exercises.flatMap((sessionExercise) =>
-      sessionExercise.sets.filter((set) => {
+    session.exercises.flatMap((sessionExercise) => {
+      const usesPrescribedMeaning =
+        sessionExercise.prescribedSemanticsVersion === 1 &&
+        sessionExercise.modificationType !== "substituted" &&
+        sessionExercise.modificationType !== "added";
+      return sessionExercise.sets.filter((set) => {
         if (
           sessionExercise.modificationType !== "as_planned" ||
           !completedPlannedWorkingSetIds.has(set.id) ||
@@ -320,19 +345,27 @@ export async function buildTrainingDigest(
         }
         return classifySetMetricContainment({
           recordedMetricType: set.metricType,
+          prescribedSemanticsVersion:
+            sessionExercise.prescribedSemanticsVersion,
           performedSemanticsVersion: set.performedSemanticsVersion,
           performedLoadType: set.performedLoadType,
           performedLoadSemantics: set.performedLoadSemantics,
-          currentExerciseMetricType: sessionExercise.exercise.metricType,
-          loadType: sessionExercise.exercise.loadType,
-          loadSemantics: sessionExercise.exercise.loadSemantics,
+          currentExerciseMetricType: usesPrescribedMeaning
+            ? sessionExercise.prescribedMetricType!
+            : sessionExercise.exercise.metricType,
+          loadType: usesPrescribedMeaning
+            ? sessionExercise.prescribedLoadType!
+            : sessionExercise.exercise.loadType,
+          loadSemantics: usesPrescribedMeaning
+            ? sessionExercise.prescribedLoadSemantics!
+            : sessionExercise.exercise.loadSemantics,
           loadEntryMeaning: set.loadEntryMeaning,
           weight: set.weight,
           reps: set.reps,
           excludeFromAnalytics: set.excludeFromAnalytics,
         }).prescriptionOutcomeEligible;
-      })
-    )
+      });
+    })
   );
 
   const familyMap = new Map<
@@ -342,13 +375,31 @@ export async function buildTrainingDigest(
   let excludedMetricSets = 0;
   for (const session of completed) {
     for (const sessionExercise of session.exercises) {
-      const familyName = sessionExercise.exercise.family?.name ?? sessionExercise.exercise.name;
+      const usesPrescribedMeaning =
+        sessionExercise.prescribedSemanticsVersion === 1 &&
+        sessionExercise.modificationType !== "substituted" &&
+        sessionExercise.modificationType !== "added";
+      const exerciseName = usesPrescribedMeaning
+        ? sessionExercise.prescribedExerciseName!
+        : sessionExercise.exercise.name;
+      const metricType = usesPrescribedMeaning
+        ? sessionExercise.prescribedMetricType!
+        : sessionExercise.exercise.metricType;
+      const loadType = usesPrescribedMeaning
+        ? sessionExercise.prescribedLoadType!
+        : sessionExercise.exercise.loadType;
+      const loadSemantics = usesPrescribedMeaning
+        ? sessionExercise.prescribedLoadSemantics!
+        : sessionExercise.exercise.loadSemantics;
+      const familyName = usesPrescribedMeaning
+        ? exerciseName
+        : sessionExercise.exercise.family?.name ?? exerciseName;
       const family = familyMap.get(familyName) ?? {
         exercises: new Set<string>(),
         sessions: new Set<string>(),
         sets: 0,
       };
-      family.exercises.add(sessionExercise.exercise.name);
+      family.exercises.add(exerciseName);
       family.sessions.add(session.id);
       family.sets += sessionExercise.sets.filter(
         (set) => completedWorkingSetIds.has(set.id) && !set.isWarmup
@@ -358,12 +409,14 @@ export async function buildTrainingDigest(
         if (!completedWorkingSetIds.has(set.id)) return false;
         const exclusionReason = classifySetMetricContainment({
           recordedMetricType: set.metricType,
+          prescribedSemanticsVersion:
+            sessionExercise.prescribedSemanticsVersion,
           performedSemanticsVersion: set.performedSemanticsVersion,
           performedLoadType: set.performedLoadType,
           performedLoadSemantics: set.performedLoadSemantics,
-          currentExerciseMetricType: sessionExercise.exercise.metricType,
-          loadType: sessionExercise.exercise.loadType,
-          loadSemantics: sessionExercise.exercise.loadSemantics,
+          currentExerciseMetricType: metricType,
+          loadType,
+          loadSemantics,
           loadEntryMeaning: set.loadEntryMeaning,
           weight: set.weight,
           reps: set.reps,
@@ -396,6 +449,27 @@ export async function buildTrainingDigest(
   if (excludedMetricSets > 0) {
     dataGaps.push(
       `${excludedMetricSets} set metric${excludedMetricSets === 1 ? " has" : "s have"} limited calculation eligibility and ${excludedMetricSets === 1 ? "is" : "are"} preserved but excluded from unsupported conclusions.`
+    );
+  }
+  const missingPrescribedSetCount = completed.reduce(
+    (total, session) =>
+      total +
+      session.exercises.reduce(
+        (exerciseTotal, sessionExercise) =>
+          exerciseTotal +
+          (sessionExercise.prescribedSemanticsVersion === 1
+            ? 0
+            : sessionExercise.sets.filter(
+                (set) =>
+                  completedWorkingSetIds.has(set.id) && !set.isWarmup,
+              ).length),
+        0,
+      ),
+    0,
+  );
+  if (missingPrescribedSetCount > 0) {
+    dataGaps.push(
+      `${missingPrescribedSetCount} historical set${missingPrescribedSetCount === 1 ? " has" : "s have"} no retained prescribed baseline; performed facts remain visible where supported, but target and progression conclusions are unavailable.`,
     );
   }
   const legacyUnknownOccurrences = completed.flatMap((session) =>
@@ -451,17 +525,40 @@ export async function buildTrainingDigest(
           s.sourceProgramId != null &&
           s.sourceProgramVersionId != null &&
           s.sourceDayLineageId != null,
-        exercises: s.exercises.map((se) => ({
-          name: se.exercise.name,
-          family: se.exercise.family?.name ?? se.exercise.name,
+        exercises: s.exercises.map((se) => {
+          const usesPrescribedMeaning =
+            se.prescribedSemanticsVersion === 1 &&
+            se.modificationType !== "substituted" &&
+            se.modificationType !== "added";
+          const exerciseMeaning = {
+            name: usesPrescribedMeaning
+              ? se.prescribedExerciseName!
+              : se.exercise.name,
+            metricType: usesPrescribedMeaning
+              ? se.prescribedMetricType!
+              : se.exercise.metricType,
+            loadType: usesPrescribedMeaning
+              ? se.prescribedLoadType!
+              : se.exercise.loadType,
+            loadSemantics: usesPrescribedMeaning
+              ? se.prescribedLoadSemantics!
+              : se.exercise.loadSemantics,
+          };
+          return {
+          name: exerciseMeaning.name,
+          family: usesPrescribedMeaning
+            ? exerciseMeaning.name
+            : se.exercise.family?.name ?? exerciseMeaning.name,
           modification: se.modificationType,
           skipReason: se.skipReason,
           plannedExercise: se.substitutedForExerciseId
-            ? (plannedExerciseNames.get(se.substitutedForExerciseId) ?? null)
+            ? (se.prescribedExerciseName ??
+              plannedExerciseNames.get(se.substitutedForExerciseId) ??
+              null)
             : null,
           substitutionReason: se.substitutionReason,
           target:
-            se.targetSets != null
+            se.prescribedSemanticsVersion === 1 && se.targetSets != null
               ? `${se.targetSets}×${se.targetRepsMin}–${se.targetRepsMax}${se.targetLoad != null && se.targetLoadUnit != null ? ` @ ${se.targetLoad} ${se.targetLoadUnit}` : ""}`
               : null,
           sets: se.sets
@@ -469,25 +566,25 @@ export async function buildTrainingDigest(
             .filter((set) => {
               const semantics = classifySetMetricContainment({
                 recordedMetricType: set.metricType,
+                prescribedSemanticsVersion: se.prescribedSemanticsVersion,
                 performedSemanticsVersion: set.performedSemanticsVersion,
                 performedLoadType: set.performedLoadType,
                 performedLoadSemantics: set.performedLoadSemantics,
-                currentExerciseMetricType: se.exercise.metricType,
-                loadType: se.exercise.loadType,
-                loadSemantics: se.exercise.loadSemantics,
+                currentExerciseMetricType: exerciseMeaning.metricType,
+                loadType: exerciseMeaning.loadType,
+                loadSemantics: exerciseMeaning.loadSemantics,
                 loadEntryMeaning: set.loadEntryMeaning,
                 weight: set.weight,
                 reps: set.reps,
                 excludeFromAnalytics: set.excludeFromAnalytics,
               });
-              return semantics.measurementMeaning === "reps"
-                ? semantics.prescriptionOutcomeEligible
-                : semantics.automaticProgressionEligible;
+              return semantics.longitudinalComparable;
             })
-            .map((set) => formatDigestSet(set, se.exercise))
+            .map((set) => formatDigestSet(set, exerciseMeaning))
             .join(", "),
           note: se.notes,
-        })),
+          };
+        }),
         occurrences: s.occurrences.map((occurrence) => {
           const sessionExercise = occurrence.sessionExerciseId
             ? s.exercises.find(
@@ -515,6 +612,7 @@ export async function buildTrainingDigest(
             label: occurrence.label,
             exercise:
               occurrence.plannedExercise?.name ??
+              sessionExercise?.prescribedExerciseName ??
               sessionExercise?.exercise.name ??
               null,
             plannedRepsMin: occurrence.plannedRepsMin,

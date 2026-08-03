@@ -22,7 +22,7 @@ import {
 } from "../helpers/database";
 
 const PRODUCTION_MIGRATION = "0018_brave_timeslip";
-const LATEST_MIGRATION = "0071_warmup_occurrence_reversal";
+const LATEST_MIGRATION = "0072_preview_start_semantics";
 
 const previewBoundaries = [
   {
@@ -280,7 +280,7 @@ describe("current production schema upgrade", () => {
     }]);
   }, 60_000);
 
-  it("matches a fresh final schema exactly through the T02 correction-lineage contract", async () => {
+  it("matches a fresh final schema exactly through the T06 Start semantics contract", async () => {
     const fresh = await createMigratedTestDatabase();
     const productionShaped = await createTestDatabaseAtMigration(
       PRODUCTION_MIGRATION
@@ -947,7 +947,7 @@ describe("current production schema upgrade", () => {
     });
     expect(backup).toMatchObject({
       format: "workout-tracker-canonical-backup",
-      schemaVersion: "27",
+      schemaVersion: "28",
       recordCounts: {
         users: 1,
         user_profiles: 1,

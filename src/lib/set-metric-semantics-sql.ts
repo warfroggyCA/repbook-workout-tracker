@@ -3,6 +3,7 @@ import { KG_TO_LB } from "@/lib/units";
 
 type MetricSqlColumns = {
   recordedMetricType: SQL;
+  prescribedSemanticsVersion?: SQL;
   performedSemanticsVersion?: SQL;
   performedLoadType?: SQL;
   performedLoadSemantics?: SQL;
@@ -14,6 +15,35 @@ type MetricSqlColumns = {
   reps: SQL;
   excludeFromAnalytics?: SQL;
 };
+
+function completePerformedSemanticsSql(columns: MetricSqlColumns): SQL {
+  if (
+    !columns.performedSemanticsVersion ||
+    !columns.performedLoadType ||
+    !columns.performedLoadSemantics
+  ) return sql`false`;
+  return sql`coalesce((
+    ${columns.performedSemanticsVersion}::integer = 1
+    AND ${columns.performedLoadType}::text IS NOT NULL
+    AND btrim(${columns.performedLoadType}::text) <> ''
+    AND ${columns.performedLoadSemantics}::text IS NOT NULL
+  ), false)`;
+}
+
+function historicalMeaningKnownSql(columns: MetricSqlColumns): SQL {
+  return columns.prescribedSemanticsVersion
+    ? sql`coalesce((
+        ${columns.prescribedSemanticsVersion}::integer = 1
+        OR ${completePerformedSemanticsSql(columns)}
+      ), false)`
+    : sql`true`;
+}
+
+function prescribedMeaningKnownSql(columns: MetricSqlColumns): SQL {
+  return columns.prescribedSemanticsVersion
+    ? sql`coalesce(${columns.prescribedSemanticsVersion}::integer = 1, false)`
+    : sql`true`;
+}
 
 function effectiveLoadTypeSql(columns: MetricSqlColumns): SQL {
   return columns.performedSemanticsVersion && columns.performedLoadType
@@ -55,6 +85,8 @@ function repetitionSemanticsCoherentSql(columns: MetricSqlColumns): SQL {
 
 function eligibleTotalSystemPrescriptionSql(columns: MetricSqlColumns): SQL {
   return sql`(
+    ${historicalMeaningKnownSql(columns)}
+    AND
     ${columns.recordedMetricType}::text = 'weight_reps'
     AND ${recordedMetricAgreesSql(columns)}
     AND ${effectiveLoadSemanticsSql(columns)}::text = 'total'
@@ -74,8 +106,25 @@ export function eligibleTotalSystemLoadSql(columns: MetricSqlColumns): SQL {
   )`;
 }
 
+/**
+ * A historical set can retain trustworthy performed-v1 load meaning even when
+ * its older prescription meaning is unavailable. That evidence remains useful
+ * for read-only calculations, but it must never become an automatic plan
+ * change without a retained prescribed-v1 baseline.
+ */
+export function eligibleAutomaticProgressionSql(
+  columns: MetricSqlColumns,
+): SQL {
+  return sql`(
+    ${prescribedMeaningKnownSql(columns)}
+    AND ${eligibleTotalSystemLoadSql(columns)}
+  )`;
+}
+
 export function eligibleRepetitionClaimSql(columns: MetricSqlColumns): SQL {
   return sql`(
+    ${historicalMeaningKnownSql(columns)}
+    AND
     ${columns.recordedMetricType}::text = 'reps'
     AND ${recordedMetricAgreesSql(columns)}
     AND ${repetitionSemanticsCoherentSql(columns)}
@@ -90,8 +139,11 @@ export function eligibleRepetitionClaimSql(columns: MetricSqlColumns): SQL {
 
 export function eligiblePrescriptionOutcomeSql(columns: MetricSqlColumns): SQL {
   return sql`(
-    ${eligibleTotalSystemPrescriptionSql(columns)}
-    OR ${eligibleRepetitionClaimSql(columns)}
+    ${prescribedMeaningKnownSql(columns)}
+    AND (
+      ${eligibleTotalSystemPrescriptionSql(columns)}
+      OR ${eligibleRepetitionClaimSql(columns)}
+    )
   )`;
 }
 
@@ -149,6 +201,11 @@ export function setMetricExclusionReasonSql(
   return sql`
     CASE
       WHEN ${columns.excludeFromAnalytics ?? sql`false`} THEN 'source_excluded'
+      ${columns.prescribedSemanticsVersion
+        ? sql`WHEN ${columns.prescribedSemanticsVersion}::integer IS DISTINCT FROM 1
+              AND NOT ${completePerformedSemanticsSql(columns)}
+            THEN 'missing_prescribed_semantics'`
+        : sql``}
       ${columns.performedSemanticsVersion
         ? sql`WHEN ${columns.performedSemanticsVersion}::integer IS NOT NULL
               AND ${columns.performedSemanticsVersion}::integer <> 1

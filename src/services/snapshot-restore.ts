@@ -61,6 +61,7 @@ const OCCURRENCE_SNAPSHOT_SCHEMA_VERSION = "23";
 const PRE_CONTEXTUAL_NOTE_SNAPSHOT_SCHEMA_VERSION = "24";
 const PRE_HISTORY_IDENTITY_SNAPSHOT_SCHEMA_VERSION = "25";
 const PRE_PERFORMED_SEMANTICS_SNAPSHOT_SCHEMA_VERSION = "26";
+const PRE_START_SEMANTICS_SNAPSHOT_SCHEMA_VERSION = "27";
 
 type SnapshotRow = Record<string, unknown>;
 type RestoreRows = Record<string, SnapshotRow[]>;
@@ -407,6 +408,74 @@ function validateUnitAndCalendarIdentity(payload: CanonicalSnapshotPayload) {
   }
 }
 
+const START_REQUEST_KEY_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+const SHA256_PATTERN = /^[0-9a-f]{64}$/;
+const PRESCRIBED_METRIC_TYPES = new Set([
+  "weight_reps", "reps", "assisted_reps", "duration",
+  "distance_duration", "activity",
+]);
+const PRESCRIBED_LOAD_SEMANTICS = new Set([
+  "total", "per_implement", "bodyweight", "added_weight", "assistance",
+  "machine_stack", "resistance_band", "none",
+]);
+
+function validateStartAndPrescribedSemantics(payload: CanonicalSnapshotPayload) {
+  if (payload.schemaVersion !== SNAPSHOT_SCHEMA_VERSION) return;
+  const identities = new Set<string>();
+  for (const session of rows(payload, "workout_sessions")) {
+    for (const key of ["start_request_key", "start_request_hash"]) {
+      if (!Object.hasOwn(session, key)) {
+        throw new Error("Snapshot workout is missing Start request identity state.");
+      }
+    }
+    const requestKey = session.start_request_key;
+    const requestHash = session.start_request_hash;
+    if (requestKey == null && requestHash == null) continue;
+    if (
+      typeof requestKey !== "string" ||
+      !START_REQUEST_KEY_PATTERN.test(requestKey) ||
+      typeof requestHash !== "string" ||
+      !SHA256_PATTERN.test(requestHash)
+    ) {
+      throw new Error("Snapshot workout has invalid Start request identity.");
+    }
+    const ownerKey = `${String(session.user_id)}:${requestKey}`;
+    if (identities.has(ownerKey)) {
+      throw new Error("Snapshot reuses one owner Start request identity.");
+    }
+    identities.add(ownerKey);
+  }
+
+  const tupleKeys = [
+    "prescribed_semantics_version",
+    "prescribed_exercise_name",
+    "prescribed_metric_type",
+    "prescribed_load_type",
+    "prescribed_load_semantics",
+  ];
+  for (const exercise of rows(payload, "session_exercises")) {
+    if (tupleKeys.some((key) => !Object.hasOwn(exercise, key))) {
+      throw new Error("Snapshot workout exercise is missing prescribed meaning state.");
+    }
+    const values = tupleKeys.map((key) => exercise[key]);
+    if (values.every((value) => value == null)) continue;
+    if (
+      exercise.prescribed_semantics_version !== 1 ||
+      typeof exercise.prescribed_exercise_name !== "string" ||
+      exercise.prescribed_exercise_name.trim().length < 1 ||
+      exercise.prescribed_exercise_name.trim().length > 300 ||
+      !PRESCRIBED_METRIC_TYPES.has(String(exercise.prescribed_metric_type)) ||
+      typeof exercise.prescribed_load_type !== "string" ||
+      exercise.prescribed_load_type.trim().length < 1 ||
+      exercise.prescribed_load_type.trim().length > 50 ||
+      !PRESCRIBED_LOAD_SEMANTICS.has(String(exercise.prescribed_load_semantics))
+    ) {
+      throw new Error("Snapshot workout exercise has incoherent prescribed meaning.");
+    }
+  }
+}
+
 function isNonnegativeInteger(value: unknown) {
   return typeof value === "number" && Number.isInteger(value) && value >= 0;
 }
@@ -614,6 +683,7 @@ export function upgradeSnapshotPayload(
     PRE_CONTEXTUAL_NOTE_SNAPSHOT_SCHEMA_VERSION,
     PRE_HISTORY_IDENTITY_SNAPSHOT_SCHEMA_VERSION,
     PRE_PERFORMED_SEMANTICS_SNAPSHOT_SCHEMA_VERSION,
+    PRE_START_SEMANTICS_SNAPSHOT_SCHEMA_VERSION,
     SNAPSHOT_SCHEMA_VERSION,
   ]);
   if (!supported.has(payload.schemaVersion)) {
@@ -627,6 +697,7 @@ export function upgradeSnapshotPayload(
     reconcileSnapshotCompletedSetOutcomes(upgraded);
     sanitizeSnapshotPrivacy(upgraded);
     validateUnitAndCalendarIdentity(upgraded);
+    validateStartAndPrescribedSemantics(upgraded);
     validateHistoryIdentityAndTiming(upgraded);
     return upgraded;
   }
@@ -686,6 +757,7 @@ export function upgradeSnapshotPayload(
       PRE_CONTEXTUAL_NOTE_SNAPSHOT_SCHEMA_VERSION,
       PRE_HISTORY_IDENTITY_SNAPSHOT_SCHEMA_VERSION,
       PRE_PERFORMED_SEMANTICS_SNAPSHOT_SCHEMA_VERSION,
+      PRE_START_SEMANTICS_SNAPSHOT_SCHEMA_VERSION,
       SNAPSHOT_SCHEMA_VERSION,
     ].includes(upgraded.schemaVersion)
   ) {
@@ -791,6 +863,8 @@ export function upgradeSnapshotPayload(
     );
     session.compilation_acceptance_key ??= null;
     session.compilation_snapshot ??= null;
+    session.start_request_key ??= null;
+    session.start_request_hash ??= null;
     let timezone =
       typeof session.timezone === "string" &&
       isValidIanaTimezone(session.timezone)
@@ -862,6 +936,11 @@ export function upgradeSnapshotPayload(
   for (const exercise of rows(upgraded, "session_exercises")) {
     exercise.target_load_unit ??= null;
     exercise.current_equipment_snapshot_id ??= null;
+    exercise.prescribed_semantics_version ??= null;
+    exercise.prescribed_exercise_name ??= null;
+    exercise.prescribed_metric_type ??= null;
+    exercise.prescribed_load_type ??= null;
+    exercise.prescribed_load_semantics ??= null;
     if (
       exercise.source_slot_lineage_id == null &&
       exercise.planned_from_template_exercise_id != null
@@ -946,6 +1025,7 @@ export function upgradeSnapshotPayload(
   reconcileSnapshotCompletedSetOutcomes(upgraded);
   upgraded.schemaVersion = SNAPSHOT_SCHEMA_VERSION;
   validateUnitAndCalendarIdentity(upgraded);
+  validateStartAndPrescribedSemantics(upgraded);
   validateHistoryIdentityAndTiming(upgraded);
   return upgraded;
 }
@@ -1721,6 +1801,7 @@ export function validateSnapshotPayload(
       PRE_CONTEXTUAL_NOTE_SNAPSHOT_SCHEMA_VERSION,
       PRE_HISTORY_IDENTITY_SNAPSHOT_SCHEMA_VERSION,
       PRE_PERFORMED_SEMANTICS_SNAPSHOT_SCHEMA_VERSION,
+      PRE_START_SEMANTICS_SNAPSHOT_SCHEMA_VERSION,
       SNAPSHOT_SCHEMA_VERSION,
     ].includes(payload.schemaVersion)
   ) {
@@ -1758,6 +1839,7 @@ export function validateSnapshotPayload(
       PRE_CONTEXTUAL_NOTE_SNAPSHOT_SCHEMA_VERSION,
       PRE_HISTORY_IDENTITY_SNAPSHOT_SCHEMA_VERSION,
       PRE_PERFORMED_SEMANTICS_SNAPSHOT_SCHEMA_VERSION,
+      PRE_START_SEMANTICS_SNAPSHOT_SCHEMA_VERSION,
       SNAPSHOT_SCHEMA_VERSION,
     ].includes(payload.schemaVersion)
   ) {
@@ -1912,6 +1994,7 @@ export function validateSnapshotPayload(
       PRE_CONTEXTUAL_NOTE_SNAPSHOT_SCHEMA_VERSION,
       PRE_HISTORY_IDENTITY_SNAPSHOT_SCHEMA_VERSION,
       PRE_PERFORMED_SEMANTICS_SNAPSHOT_SCHEMA_VERSION,
+      PRE_START_SEMANTICS_SNAPSHOT_SCHEMA_VERSION,
       SNAPSHOT_SCHEMA_VERSION,
     ].includes(payload.schemaVersion)
   ) {
@@ -2067,6 +2150,7 @@ export function validateSnapshotPayload(
   }
   if (payload.schemaVersion === SNAPSHOT_SCHEMA_VERSION) {
     validateUnitAndCalendarIdentity(payload);
+    validateStartAndPrescribedSemantics(payload);
     validateVersionedProgramData(payload);
     validateSessionCompilerIdentity(payload);
     validateSessionOccurrenceData(payload);

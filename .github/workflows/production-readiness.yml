@@ -88,8 +88,11 @@ jobs:
       - name: Validate current documentation links
         run: npm run docs:check
 
+      - name: Run isolated production performance budgets
+        run: npm run test:performance:isolated
+
       - name: Run unit, database, race, failure, and coverage checks
-        run: npm run test:coverage
+        run: npm run test:coverage:ci
 
       - name: Type check
         run: npm run typecheck
@@ -220,6 +223,11 @@ jobs:
         continue-on-error: true
         run: npm run test:e2e:v2-t05
 
+      - name: Verify T06 preview and Start truth on desktop and mobile
+        id: browser-v2-t06
+        continue-on-error: true
+        run: npm run test:e2e:v2-t06
+
       - name: Require every browser suite
         if: ${{ always() }}
         env:
@@ -244,6 +252,7 @@ jobs:
           BROWSER_V2_T03: ${{ steps.browser-v2-t03.outcome }}
           BROWSER_V2_T04: ${{ steps.browser-v2-t04.outcome }}
           BROWSER_V2_T05: ${{ steps.browser-v2-t05.outcome }}
+          BROWSER_V2_T06: ${{ steps.browser-v2-t06.outcome }}
         run: |
           failed=0
           for result in \
@@ -267,7 +276,8 @@ jobs:
             "T02 acknowledgement and correction:${BROWSER_V2_T02}" \
             "T03 planned order and extra-set truth:${BROWSER_V2_T03}" \
             "T04 warm-up occurrence truth:${BROWSER_V2_T04}" \
-            "T05 current, next, group, and rest truth:${BROWSER_V2_T05}"
+            "T05 current, next, group, and rest truth:${BROWSER_V2_T05}" \
+            "T06 preview and Start truth:${BROWSER_V2_T06}"
           do
             name="${result%%:*}"
             outcome="${result#*:}"

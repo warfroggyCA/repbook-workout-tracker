@@ -111,7 +111,17 @@ describe("Session Compiler durable review and acceptance", () => {
     const replay = await acceptSessionCompilerProposal(database.db, userId, proposal.id, acceptanceKey, "America/Toronto");
     expect(replay).toEqual({ outcome: "already_accepted", sessionId: first.sessionId });
     expect(await database.db.select().from(workoutSessions)).toHaveLength(1);
-    expect(await database.db.select().from(sessionExercises)).toHaveLength(2);
+    const compilerExercises = await database.db.select().from(sessionExercises);
+    expect(compilerExercises).toHaveLength(2);
+    expect(compilerExercises).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        prescribedSemanticsVersion: 1,
+        prescribedExerciseName: expect.any(String),
+        prescribedMetricType: expect.any(String),
+        prescribedLoadType: expect.any(String),
+        prescribedLoadSemantics: expect.any(String),
+      }),
+    ]));
     const session = await database.db.query.workoutSessions.findFirst({ where: eq(workoutSessions.id, first.sessionId) });
     expect(session).toMatchObject({ source: "compiler", compilationAcceptanceKey: acceptanceKey });
     expect(session?.compilationSnapshot).toMatchObject({ proposalId: proposal.id, proposalHash: proposal.contentHash });
@@ -144,7 +154,7 @@ describe("Session Compiler durable review and acceptance", () => {
     expect(csv).toContain(versionId);
     expect(csv).toContain(dayLineageId);
     const backup = await buildJsonBackup(database.db, userId);
-    expect(backup.schemaVersion).toBe("27");
+    expect(backup.schemaVersion).toBe("28");
     expect(backup.canonical.tables.session_compiler_proposals).toContainEqual(
       expect.objectContaining({ id: proposal.id, accepted_session_id: first.sessionId, content_hash: proposal.contentHash }),
     );
@@ -463,7 +473,7 @@ describe("Session Compiler durable review and acceptance", () => {
       created.snapshotId,
       { store, keyring }
     );
-    expect(captured.payload.schemaVersion).toBe("27");
+    expect(captured.payload.schemaVersion).toBe("28");
     expect(captured.payload.tables.session_compiler_proposals).toContainEqual(
       expect.objectContaining({
         id: proposal.id,

@@ -109,6 +109,49 @@ export async function evaluateApplicationIntegrity(
       WHERE e.id IS NULL OR (e.user_id IS NOT NULL AND e.user_id <> ${userId}::uuid)
 
       UNION ALL
+      SELECT 'workout_session.start_request_identity', 'error', 'workout_session', ws.id::text,
+        'A workout has incomplete, malformed, or reused Start request identity.',
+        jsonb_build_object(
+          'startRequestKey', ws.start_request_key,
+          'startRequestHash', ws.start_request_hash
+        )
+      FROM user_sessions ws
+      WHERE (ws.start_request_key IS NULL) <> (ws.start_request_hash IS NULL)
+        OR (ws.start_request_key IS NOT NULL AND (
+          ws.start_request_key !~ '^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
+          OR ws.start_request_hash !~ '^[0-9a-f]{64}$'
+          OR EXISTS (
+            SELECT 1 FROM user_sessions duplicate
+            WHERE duplicate.start_request_key = ws.start_request_key
+              AND duplicate.id <> ws.id
+          )
+        ))
+
+      UNION ALL
+      SELECT 'session_exercise.prescribed_semantics', 'error', 'session_exercise', se.id::text,
+        'A workout exercise has incomplete or invalid prescribed meaning.',
+        jsonb_build_object(
+          'version', se.prescribed_semantics_version,
+          'name', se.prescribed_exercise_name,
+          'metricType', se.prescribed_metric_type,
+          'loadType', se.prescribed_load_type,
+          'loadSemantics', se.prescribed_load_semantics
+        )
+      FROM user_session_exercises se
+      WHERE num_nonnulls(
+          se.prescribed_semantics_version,
+          se.prescribed_exercise_name,
+          se.prescribed_metric_type,
+          se.prescribed_load_type,
+          se.prescribed_load_semantics
+        ) NOT IN (0, 5)
+        OR (se.prescribed_semantics_version IS NOT NULL AND (
+          se.prescribed_semantics_version <> 1
+          OR length(btrim(se.prescribed_exercise_name)) NOT BETWEEN 1 AND 300
+          OR length(btrim(se.prescribed_load_type)) NOT BETWEEN 1 AND 50
+        ))
+
+      UNION ALL
       SELECT 'session_exercise.substitution', 'error', 'session_exercise', se.id::text,
         'A workout substitution points to an unavailable original exercise.',
         jsonb_build_object('exerciseId', se.substituted_for_exercise_id)

@@ -27,7 +27,7 @@ npm run docs:check
 npm run audit:check
 ```
 
-The Repbook v2 semantic foundation and current T01/T02/T03/T04/T05 activation
+The Repbook v2 semantic foundation and current T01/T02/T03/T04/T05/T06 activation
 packages have focused gates:
 
 ```bash
@@ -42,6 +42,8 @@ npx vitest run tests/unit/v2-t04-warmup-occurrences-db.test.ts tests/unit/v2-t04
 npm run test:e2e:v2-t04
 npx vitest run tests/unit/v2-t05-execution-semantics-db.test.ts tests/unit/v2-t05-execution-semantics-portability.test.ts tests/unit/v2-t05-execution-semantics-restore.test.ts
 npm run test:e2e:v2-t05
+npx vitest run tests/unit/v2-t06-preview-start-db.test.ts tests/unit/v2-t06-preview-start-portability.test.ts tests/unit/v2-t06-preview-start-restore.test.ts tests/unit/live-coaching-db.test.ts
+npm run test:e2e:v2-t06
 ```
 
 The semantic test validates all synthetic F01-F17 scenarios and every required
@@ -56,7 +58,11 @@ exercise-decision safety, portability, recovery, and desktop/mobile browser
 evidence. T05 activates acknowledgement-ordered current/next guidance,
 source-bound durable rest, group/member/round mixed-resolution state,
 ready-to-finish without implicit completion, portability, recovery, and
-desktop/mobile browser evidence. Every later package must activate its own
+desktop/mobile browser evidence. T06 activates read-only preview, one canonical
+owner-scoped Start intent across retries, truthful active-workout collision
+outcomes, and immutable prescribed exercise meaning across active display,
+History/Review, export, snapshot schema 28, and restore. Recovery manifest 10
+remains the authoritative table inventory. Every later package must activate its own
 reserved evidence before its product behavior is considered implemented.
 
 `audit:check` requires a clean production dependency audit and also reviews the
@@ -86,6 +92,7 @@ npm run test:e2e:program-editor
 npm run test:e2e:program-editor-cross-browser
 npm run test:e2e:current-action
 npm run test:e2e:superset-prep
+npm run test:e2e:v2-t06
 ```
 
 Run the smallest affected browser suite first, then the complete protected

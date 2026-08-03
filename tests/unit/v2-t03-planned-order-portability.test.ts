@@ -49,12 +49,17 @@ describe("V2 T03 planned-order portability", () => {
         metricType: "reps",
         loadSemantics: "bodyweight",
       })
-      .returning({ id: exercises.id });
+      .returning({ id: exercises.id, name: exercises.name });
     const [sessionExercise] = await database.db
       .insert(sessionExercises)
       .values({
         sessionId: fixture.sessionId,
         exerciseId: exercise.id,
+        prescribedSemanticsVersion: 1,
+        prescribedExerciseName: exercise.name,
+        prescribedMetricType: "reps",
+        prescribedLoadType: "bodyweight",
+        prescribedLoadSemantics: "bodyweight",
         orderIdx: 20,
         targetSets: 1,
         targetRepsMin: 8,

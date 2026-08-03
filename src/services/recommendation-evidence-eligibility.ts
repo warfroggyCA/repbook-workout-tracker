@@ -136,6 +136,8 @@ export async function recommendationEvidenceEligibleForAction(
       exerciseId: sessionExercises.exerciseId,
       sourceSlotLineageId: sessionExercises.sourceSlotLineageId,
       modificationType: sessionExercises.modificationType,
+      prescribedSemanticsVersion:
+        sessionExercises.prescribedSemanticsVersion,
       exerciseMetricType: exercises.metricType,
       exerciseLoadType: exercises.loadType,
       exerciseLoadSemantics: exercises.loadSemantics,
@@ -179,6 +181,7 @@ export async function recommendationEvidenceEligibleForAction(
       set.modificationType === "as_planned" &&
       classifySetMetricContainment({
         recordedMetricType: set.metricType,
+        prescribedSemanticsVersion: set.prescribedSemanticsVersion,
         performedSemanticsVersion: set.performedSemanticsVersion,
         performedLoadType: set.performedLoadType,
         performedLoadSemantics: set.performedLoadSemantics,

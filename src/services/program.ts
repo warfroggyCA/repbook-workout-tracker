@@ -88,6 +88,8 @@ export type TemplateWithSlots = {
       movementPattern: string;
       primaryMuscles: string[];
       loadType: string;
+      metricType: "weight_reps" | "reps" | "assisted_reps" | "duration" | "distance_duration" | "activity";
+      loadSemantics: "total" | "per_implement" | "bodyweight" | "added_weight" | "assistance" | "machine_stack" | "resistance_band" | "none";
     };
     prescription: typeof exercisePrescriptions.$inferSelect | null;
   }>;
@@ -133,6 +135,8 @@ export async function getTemplatesWithSlots(
         movementPattern: e.exercise.movementPattern,
         primaryMuscles: e.exercise.primaryMuscles,
         loadType: e.exercise.loadType,
+        metricType: e.exercise.metricType,
+        loadSemantics: e.exercise.loadSemantics,
       },
       prescription: prescriptionBySlot.get(e.id) ?? null,
     })),

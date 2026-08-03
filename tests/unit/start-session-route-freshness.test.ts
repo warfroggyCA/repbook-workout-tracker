@@ -4,7 +4,9 @@ const mocks = vi.hoisted(() => ({
   revalidatePath: vi.fn(),
   redirect: vi.fn(),
   startWorkoutSession: vi.fn(),
+  findOwnedWorkoutByStartRequest: vi.fn(),
   findOwnedActiveWorkout: vi.fn(),
+  buildWorkoutStartRequestHash: vi.fn(() => "canonical-start-hash"),
   logServerEvent: vi.fn(),
 }));
 
@@ -30,7 +32,9 @@ vi.mock("@/services/session-lifecycle", () => ({
   logWorkoutSet: vi.fn(),
   mutateWorkoutOccurrence: vi.fn(),
   startWorkoutSession: mocks.startWorkoutSession,
+  findOwnedWorkoutByStartRequest: mocks.findOwnedWorkoutByStartRequest,
   findOwnedActiveWorkout: mocks.findOwnedActiveWorkout,
+  buildWorkoutStartRequestHash: mocks.buildWorkoutStartRequestHash,
   IncompleteWorkoutCreationError: class extends Error {},
   StaleWorkoutTemplateError: class extends Error {},
 }));
@@ -40,12 +44,15 @@ import {
   IncompleteWorkoutCreationError,
   StaleWorkoutTemplateError,
 } from "@/services/session-lifecycle";
+import { retainedWorkoutStartRequestKey } from "@/lib/workout-start";
 
 const templateId = "03f2ae60-94aa-4ed3-b668-5b3d6a1f8143";
+const startRequestKey = "da8bd7af-77e3-4c78-8be6-5a2c76fccd5b";
 
 function startForm() {
   const form = new FormData();
   form.set("timezone", "America/Toronto");
+  form.set("startRequestKey", startRequestKey);
   return form;
 }
 
@@ -53,9 +60,22 @@ describe("startSession route freshness", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.startWorkoutSession.mockResolvedValue({
+      outcome: "created",
       sessionId: "7c18bb2f-26d8-492f-8dbe-af4c57abef97",
+      existing: false,
     });
+    mocks.findOwnedWorkoutByStartRequest.mockResolvedValue(undefined);
     mocks.findOwnedActiveWorkout.mockResolvedValue(undefined);
+  });
+
+  it("retains the submitted server-issued identity across an error rerender", () => {
+    expect(retainedWorkoutStartRequestKey(crypto.randomUUID(), {
+      status: "error",
+      code: "not_created",
+      message: "Try again",
+      workoutCreated: false,
+      startRequestKey,
+    })).toBe(startRequestKey);
   });
 
   it("invalidates Today before redirecting so browser Back sees the active workout", async () => {
@@ -88,6 +108,7 @@ describe("startSession route freshness", () => {
       code,
       message: expect.stringContaining(message),
       workoutCreated: false,
+      startRequestKey,
     });
     expect(mocks.redirect).not.toHaveBeenCalled();
     expect(mocks.revalidatePath).not.toHaveBeenCalled();
@@ -106,22 +127,26 @@ describe("startSession route freshness", () => {
     expect(mocks.findOwnedActiveWorkout).not.toHaveBeenCalled();
   });
 
-  it("resumes the active workout when an ambiguous failure committed before responding", async () => {
-    const activeId = "5dfed613-5c19-4c6a-bd2a-1b04c718b825";
+  it("resumes only the exact requested workout after an ambiguous response", async () => {
+    const exactId = "5dfed613-5c19-4c6a-bd2a-1b04c718b825";
     mocks.startWorkoutSession.mockRejectedValueOnce(new Error("response lost"));
-    mocks.findOwnedActiveWorkout.mockResolvedValueOnce({ id: activeId });
+    mocks.findOwnedWorkoutByStartRequest.mockResolvedValueOnce({
+      id: exactId,
+      startRequestHash: "canonical-start-hash",
+    });
 
     await startSession(templateId, { status: "idle" }, startForm());
 
     expect(mocks.revalidatePath).toHaveBeenCalledWith("/today");
-    expect(mocks.redirect).toHaveBeenCalledWith(`/session/${activeId}`, "push");
+    expect(mocks.redirect).toHaveBeenCalledWith(`/session/${exactId}`, "push");
+    expect(mocks.findOwnedActiveWorkout).not.toHaveBeenCalled();
   });
 
-  it("states uncertainty when active-workout reconciliation also fails", async () => {
+  it("states uncertainty when exact-request reconciliation fails", async () => {
     const sensitive = new Error("reconciliation detail");
     sensitive.name = "private user text";
     mocks.startWorkoutSession.mockRejectedValueOnce(new Error("response lost"));
-    mocks.findOwnedActiveWorkout.mockRejectedValueOnce(sensitive);
+    mocks.findOwnedWorkoutByStartRequest.mockRejectedValueOnce(sensitive);
 
     await expect(
       startSession(templateId, { status: "idle" }, startForm()),
@@ -129,11 +154,30 @@ describe("startSession route freshness", () => {
       status: "error",
       code: "status_unknown",
       workoutCreated: null,
+      startRequestKey,
       message: expect.stringContaining("could not confirm whether"),
     });
     expect(JSON.stringify(mocks.logServerEvent.mock.calls)).not.toContain(
       "private user text",
     );
+  });
+
+  it("returns a same-key conflict inline without revalidating the form", async () => {
+    mocks.startWorkoutSession.mockResolvedValueOnce({
+      outcome: "request_conflict",
+      sessionId: crypto.randomUUID(),
+      existing: true,
+    });
+
+    await expect(
+      startSession(templateId, { status: "idle" }, startForm()),
+    ).resolves.toMatchObject({
+      status: "error",
+      code: "request_conflict",
+      startRequestKey,
+    });
+    expect(mocks.revalidatePath).not.toHaveBeenCalled();
+    expect(mocks.redirect).not.toHaveBeenCalled();
   });
 
   it("logs only safe identifiers and a category for an unexpected creation failure", async () => {

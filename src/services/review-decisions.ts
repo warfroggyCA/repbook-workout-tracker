@@ -4,6 +4,7 @@ import {
   eq,
   inArray,
   isNull,
+  sql,
 } from "drizzle-orm";
 import type { Db } from "@/db";
 import {
@@ -452,10 +453,32 @@ export async function getReviewDecisionData(db: Db, userId: string) {
       plannedSlotId: sessionExercises.plannedFromTemplateExerciseId,
       exerciseId: sessionExercises.exerciseId,
       modificationType: sessionExercises.modificationType,
-      exerciseName: exercises.name,
-      exerciseMetricType: exercises.metricType,
-      exerciseLoadType: exercises.loadType,
-      exerciseLoadSemantics: exercises.loadSemantics,
+      prescribedSemanticsVersion:
+        sessionExercises.prescribedSemanticsVersion,
+      exerciseName: sql<string>`CASE
+        WHEN ${sessionExercises.prescribedSemanticsVersion} = 1
+          AND ${sessionExercises.modificationType} NOT IN ('substituted', 'added')
+        THEN ${sessionExercises.prescribedExerciseName}
+        ELSE ${exercises.name}
+      END`,
+      exerciseMetricType: sql<typeof exercises.metricType._.data>`CASE
+        WHEN ${sessionExercises.prescribedSemanticsVersion} = 1
+          AND ${sessionExercises.modificationType} NOT IN ('substituted', 'added')
+        THEN ${sessionExercises.prescribedMetricType}
+        ELSE ${exercises.metricType}
+      END`,
+      exerciseLoadType: sql<string>`CASE
+        WHEN ${sessionExercises.prescribedSemanticsVersion} = 1
+          AND ${sessionExercises.modificationType} NOT IN ('substituted', 'added')
+        THEN ${sessionExercises.prescribedLoadType}
+        ELSE ${exercises.loadType}
+      END`,
+      exerciseLoadSemantics: sql<typeof exercises.loadSemantics._.data>`CASE
+        WHEN ${sessionExercises.prescribedSemanticsVersion} = 1
+          AND ${sessionExercises.modificationType} NOT IN ('substituted', 'added')
+        THEN ${sessionExercises.prescribedLoadSemantics}
+        ELSE ${exercises.loadSemantics}
+      END`,
       targetLoad: sessionExercises.targetLoad,
       targetLoadUnit: sessionExercises.targetLoadUnit,
       sessionId: workoutSessions.id,
@@ -540,6 +563,7 @@ export async function getReviewDecisionData(db: Db, userId: string) {
     if (!followup) return false;
     return classifySetMetricContainment({
       recordedMetricType: set.metricType,
+      prescribedSemanticsVersion: followup.prescribedSemanticsVersion,
       performedSemanticsVersion: set.performedSemanticsVersion,
       performedLoadType: set.performedLoadType,
       performedLoadSemantics: set.performedLoadSemantics,
@@ -550,7 +574,7 @@ export async function getReviewDecisionData(db: Db, userId: string) {
       weight: set.weight,
       reps: set.reps,
       excludeFromAnalytics: set.excludeFromAnalytics,
-    }).loadedWorkEligible;
+    }).automaticProgressionEligible;
   });
   const setsByExercise = new Map<string, typeof sets>();
   for (const set of sets) {

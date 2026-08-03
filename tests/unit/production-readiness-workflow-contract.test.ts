@@ -24,6 +24,10 @@ type Workflow = {
   jobs: Record<string, { steps: WorkflowStep[] }>;
 };
 
+type PackageJson = {
+  scripts?: Record<string, string>;
+};
+
 describe("production readiness workflow contract", () => {
   it("runs branch pushes only for main while retaining the PR gate", async () => {
     const source = await readFile(
@@ -47,6 +51,13 @@ describe("production readiness workflow contract", () => {
     const documentation = steps.find(
       (step) => step.name === "Validate current documentation links",
     );
+    const isolatedPerformance = steps.find(
+      (step) => step.name === "Run isolated production performance budgets",
+    );
+    const coverage = steps.find(
+      (step) =>
+        step.name === "Run unit, database, race, failure, and coverage checks",
+    );
     const history = steps.find((step) => step.id === "browser-history");
     const painHold = steps.find((step) => step.id === "browser-pain-hold");
     const programReviewRecovery = steps.find(
@@ -64,11 +75,18 @@ describe("production readiness workflow contract", () => {
     const t05ExecutionSemantics = steps.find(
       (step) => step.id === "browser-v2-t05",
     );
+    const t06PreviewStart = steps.find(
+      (step) => step.id === "browser-v2-t06",
+    );
     const browserGate = steps.find(
       (step) => step.name === "Require every browser suite",
     );
 
     expect(documentation?.run).toBe("npm run docs:check");
+    expect(isolatedPerformance?.run).toBe(
+      "npm run test:performance:isolated",
+    );
+    expect(coverage?.run).toBe("npm run test:coverage:ci");
     expect(history?.run).toBe("npm run test:e2e:history-calendar");
     expect(painHold?.run).toBe("npm run test:e2e:pain-hold");
     expect(programReviewRecovery?.run).toBe(
@@ -80,6 +98,7 @@ describe("production readiness workflow contract", () => {
     expect(t03PlannedOrder?.run).toBe("npm run test:e2e:v2-t03");
     expect(t04WarmupOccurrences?.run).toBe("npm run test:e2e:v2-t04");
     expect(t05ExecutionSemantics?.run).toBe("npm run test:e2e:v2-t05");
+    expect(t06PreviewStart?.run).toBe("npm run test:e2e:v2-t06");
     expect(browserGate?.env?.BROWSER_HISTORY).toBe(
       "${{ steps.browser-history.outcome }}",
     );
@@ -122,6 +141,25 @@ describe("production readiness workflow contract", () => {
     expect(browserGate?.run).toContain(
       '"T05 current, next, group, and rest truth:${BROWSER_V2_T05}"',
     );
+    expect(browserGate?.env?.BROWSER_V2_T06).toBe(
+      "${{ steps.browser-v2-t06.outcome }}",
+    );
+    expect(browserGate?.run).toContain(
+      '"T06 preview and Start truth:${BROWSER_V2_T06}"',
+    );
+  });
+
+  it("measures the unchanged performance ceiling without parallel test contention", async () => {
+    const packageJson = JSON.parse(
+      await readFile("package.json", "utf8"),
+    ) as PackageJson;
+
+    expect(packageJson.scripts?.["test:performance:isolated"]).toBe(
+      "vitest run tests/unit/performance-budgets-db.test.ts --maxWorkers=1 --no-file-parallelism",
+    );
+    expect(packageJson.scripts?.["test:coverage:ci"]).toBe(
+      "vitest run --coverage --exclude tests/unit/performance-budgets-db.test.ts",
+    );
   });
 
   it("keeps dedicated v2 browser gates out of the stateful smoke journey", () => {
@@ -132,6 +170,7 @@ describe("production readiness workflow contract", () => {
         "v2-t03-planned-order.spec.ts",
         "v2-t04-warmup-occurrences.spec.ts",
         "v2-t05-execution-semantics.spec.ts",
+        "v2-t06-preview-start.spec.ts",
       ]),
     );
   });

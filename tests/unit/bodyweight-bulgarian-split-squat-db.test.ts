@@ -13,7 +13,6 @@ import {
   sessionExercises,
   sessionOccurrences,
   users,
-  workoutSessions,
 } from "@/db/schema";
 import { buildJsonBackup } from "@/services/export";
 import { getExerciseReplacementOptions } from "@/services/exercise-replacements";
@@ -24,6 +23,7 @@ import {
 import { logWorkoutSet } from "../helpers/log-workout-set";
 import {
   createTestDatabaseAtMigration,
+  migrateTestDatabaseThrough,
   type TestDatabase,
 } from "../helpers/database";
 
@@ -95,81 +95,65 @@ describe("0069 bodyweight Bulgarian split-squat performed variant", () => {
       variantAttributes: { laterality: "unilateral" },
       catalogReviewed: true,
     });
-    await db.insert(workoutSessions).values([
-      {
-        id: historicalSessionId,
-        userId,
-        templateName: "Historical evidence",
-        status: "completed",
-        startedAt: new Date("2026-07-28T14:00:00.000Z"),
-        finishedAt: new Date("2026-07-28T15:00:00.000Z"),
-        timezone: "America/Toronto",
-        localDate: "2026-07-28",
-      },
-      {
-        id: activeSessionId,
-        userId,
-        templateName: "Bodyweight substitution",
-        status: "in_progress",
-        startedAt: new Date("2026-07-29T14:00:00.000Z"),
-        timezone: "America/Toronto",
-        localDate: "2026-07-29",
-      },
-    ]);
-    await db.insert(sessionExercises).values([
-      {
-        id: historicalSessionExerciseId,
-        sessionId: historicalSessionId,
-        exerciseId: loadedExerciseId,
-        orderIdx: 0,
-        targetSets: 1,
-        targetRepsMin: 8,
-        targetRepsMax: 12,
-        targetLoad: 25,
-        targetLoadUnit: "lb",
-      },
-      {
-        id: activeSessionExerciseId,
-        sessionId: activeSessionId,
-        exerciseId: loadedExerciseId,
-        orderIdx: 0,
-        targetSets: 1,
-        targetRepsMin: 8,
-        targetRepsMax: 12,
-        targetLoad: 25,
-        targetLoadUnit: "lb",
-        notes: "Loaded Program cue",
-        warmupNotes: "Loaded warm-up cue",
-        setNotes: ["Loaded set cue"],
-      },
-    ]);
-    await db.insert(completedSets).values({
-      id: historicalSetId,
-      sessionExerciseId: historicalSessionExerciseId,
-      setNo: 1,
-      weight: 25,
-      weightUnit: "lb",
-      reps: 10,
-      metricType: "weight_reps",
-      performedSemanticsVersion: 1,
-      performedLoadType: "dumbbell",
-      performedLoadSemantics: "per_implement",
-    });
-    await db.insert(sessionOccurrences).values({
-      id: workingOccurrenceId,
-      sessionId: activeSessionId,
-      sessionExerciseId: activeSessionExerciseId,
-      kind: "working_set",
-      origin: "planned",
-      sequenceIdx: 0,
-      kindOrdinal: 0,
-      plannedExerciseId: loadedExerciseId,
-      plannedRepsMin: 8,
-      plannedRepsMax: 12,
-      plannedLoad: 25,
-      plannedLoadUnit: "lb",
-      outcome: "pending",
-    });
+    // This fixture intentionally starts at 0068. Limit setup SQL to columns
+    // that existed at that boundary instead of letting the latest ORM emit
+    // fields introduced by later migrations.
+    await db.execute(sql`
+      INSERT INTO workout_sessions (
+        id, user_id, template_name, status, started_at, finished_at,
+        timezone, local_date
+      ) VALUES
+        (
+          ${historicalSessionId}::uuid, ${userId}::uuid, 'Historical evidence',
+          'completed', ${new Date("2026-07-28T14:00:00.000Z")},
+          ${new Date("2026-07-28T15:00:00.000Z")}, 'America/Toronto',
+          '2026-07-28'
+        ),
+        (
+          ${activeSessionId}::uuid, ${userId}::uuid, 'Bodyweight substitution',
+          'in_progress', ${new Date("2026-07-29T14:00:00.000Z")}, NULL,
+          'America/Toronto', '2026-07-29'
+        )
+    `);
+    await db.execute(sql`
+      INSERT INTO session_exercises (
+        id, session_id, exercise_id, order_idx, target_sets,
+        target_reps_min, target_reps_max, target_load, target_load_unit,
+        notes, warmup_notes, set_notes
+      ) VALUES
+        (
+          ${historicalSessionExerciseId}::uuid, ${historicalSessionId}::uuid,
+          ${loadedExerciseId}::uuid, 0, 1, 8, 12, 25, 'lb', NULL, NULL,
+          '[]'::jsonb
+        ),
+        (
+          ${activeSessionExerciseId}::uuid, ${activeSessionId}::uuid,
+          ${loadedExerciseId}::uuid, 0, 1, 8, 12, 25, 'lb',
+          'Loaded Program cue', 'Loaded warm-up cue',
+          '["Loaded set cue"]'::jsonb
+        )
+    `);
+    await db.execute(sql`
+      INSERT INTO completed_sets (
+        id, session_exercise_id, set_no, weight, weight_unit, reps,
+        metric_type, performed_semantics_version, performed_load_type,
+        performed_load_semantics
+      ) VALUES (
+        ${historicalSetId}::uuid, ${historicalSessionExerciseId}::uuid,
+        1, 25, 'lb', 10, 'weight_reps', 1, 'dumbbell', 'per_implement'
+      )
+    `);
+    await db.execute(sql`
+      INSERT INTO session_occurrences (
+        id, session_id, session_exercise_id, kind, origin, sequence_idx,
+        kind_ordinal, planned_exercise_id, planned_reps_min, planned_reps_max,
+        planned_load, planned_load_unit, outcome
+      ) VALUES (
+        ${workingOccurrenceId}::uuid, ${activeSessionId}::uuid,
+        ${activeSessionExerciseId}::uuid, 'working_set', 'planned', 0, 0,
+        ${loadedExerciseId}::uuid, 8, 12, 25, 'lb', 'pending'
+      )
+    `);
 
     const [historicalBefore] = resultRows(
       await db.execute(sql`
@@ -262,6 +246,10 @@ describe("0069 bodyweight Bulgarian split-squat performed variant", () => {
       `),
     );
     expect(historicalAfter).toEqual(historicalBefore);
+
+    // The 0069 result is now proven. Bring the same preserved rows through
+    // the remaining additive migrations before exercising current services.
+    await migrateTestDatabaseThrough(database, "0072_preview_start_semantics");
 
     const options = await getExerciseReplacementOptions(
       db,

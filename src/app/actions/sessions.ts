@@ -43,7 +43,9 @@ import {
   mutateWorkoutOccurrence,
   IncompleteWorkoutCreationError,
   StaleWorkoutTemplateError,
+  buildWorkoutStartRequestHash,
   findOwnedActiveWorkout,
+  findOwnedWorkoutByStartRequest,
   startWorkoutSession,
 } from "@/services/session-lifecycle";
 import { addWorkoutExerciseInputSchema } from "@/lib/add-workout-exercise";
@@ -109,10 +111,20 @@ export async function startSession(
       : undefined,
   );
   const parsedTemplateId = z.string().uuid().safeParse(templateId);
+  const parsedStartRequestKey = z.string().uuid().safeParse(
+    formData.get("startRequestKey"),
+  );
+  const submittedStartRequestKey = parsedStartRequestKey.success
+    ? parsedStartRequestKey.data.toLowerCase()
+    : null;
   const acceptanceFailure = isPhase0StartDisposableAcceptanceRuntime()
     ? formData.get("phase0StartFailure")
     : null;
-  if (!timezoneResult.success || !parsedTemplateId.success) {
+  if (
+    !timezoneResult.success ||
+    !parsedTemplateId.success ||
+    !parsedStartRequestKey.success
+  ) {
     logServerEvent("warn", "session.start_rejected", {
       userId: user.id,
       templateId: parsedTemplateId.success ? parsedTemplateId.data : null,
@@ -123,17 +135,26 @@ export async function startSession(
       code: "not_created" as const,
       message: "No workout was created. Check your device settings and try again.",
       workoutCreated: false as const,
+      startRequestKey: submittedStartRequestKey,
     };
   }
+  const timeBudgetMin = sessionTimeBudgetSchema.parse(undefined);
+  const startRequestKey = submittedStartRequestKey!;
+  const startRequestHash = buildWorkoutStartRequestHash({
+    templateId: parsedTemplateId.data,
+    timezone: timezoneResult.data,
+    timeBudgetMin: timeBudgetMin ?? null,
+  });
   let result: Awaited<ReturnType<typeof startWorkoutSession>>;
   try {
     result = await startWorkoutSession(
       db,
       user.id,
       parsedTemplateId.data,
-      sessionTimeBudgetSchema.parse(undefined),
+      timeBudgetMin,
       {
         timezone: timezoneResult.data,
+        startRequestKey,
         now: acceptanceWorkoutNow("start"),
         ...(acceptanceFailure === "incomplete"
           ? { evaluateStartCounts: () => false }
@@ -165,6 +186,7 @@ export async function startSession(
         code: "not_created" as const,
         message: "The workout was not created completely, so nothing was kept. Try again.",
         workoutCreated: false as const,
+        startRequestKey,
       };
     }
     logServerEvent("error", "session.start_failed", {
@@ -173,9 +195,53 @@ export async function startSession(
       category: "unexpected_creation_failure",
       errorName: safeErrorName(error),
     });
-    let active: Awaited<ReturnType<typeof findOwnedActiveWorkout>>;
+    let exact: Awaited<ReturnType<typeof findOwnedWorkoutByStartRequest>>;
     try {
-      active = await findOwnedActiveWorkout(db, user.id);
+      exact = await findOwnedWorkoutByStartRequest(
+        db,
+        user.id,
+        startRequestKey,
+      );
+    } catch (reconciliationError) {
+      logServerEvent("error", "session.start_reconciliation_failed", {
+        userId: user.id,
+        templateId: parsedTemplateId.data,
+        category: "start_request_status_unknown",
+        errorName: safeErrorName(reconciliationError),
+      });
+      return {
+        status: "error" as const,
+        code: "status_unknown" as const,
+        message: "We could not confirm whether the workout was created. Check Today before trying again.",
+        workoutCreated: null,
+        startRequestKey,
+      };
+    }
+    if (exact?.startRequestHash === startRequestHash) {
+      logServerEvent("warn", "session.start_reconciled", {
+        userId: user.id,
+        templateId: parsedTemplateId.data,
+        sessionId: exact.id,
+        category: "exact_start_request_found",
+      });
+      revalidatePath("/today");
+      return redirect(`/session/${exact.id}`, RedirectType.push);
+    }
+    if (exact) {
+      return {
+        status: "error" as const,
+        code: "request_conflict" as const,
+        message: "This Start request no longer matches the workout you chose. Refresh Today and start again.",
+        workoutCreated: false as const,
+        startRequestKey,
+      };
+    }
+    try {
+      const active = await findOwnedActiveWorkout(db, user.id);
+      if (active) {
+        revalidatePath("/today");
+        return redirect("/today?start=active", RedirectType.replace);
+      }
     } catch (reconciliationError) {
       logServerEvent("error", "session.start_reconciliation_failed", {
         userId: user.id,
@@ -188,24 +254,29 @@ export async function startSession(
         code: "status_unknown" as const,
         message: "We could not confirm whether the workout was created. Check Today before trying again.",
         workoutCreated: null,
+        startRequestKey,
       };
-    }
-    if (active) {
-      logServerEvent("warn", "session.start_reconciled", {
-        userId: user.id,
-        templateId: parsedTemplateId.data,
-        sessionId: active.id,
-        category: "active_workout_found",
-      });
-      revalidatePath("/today");
-      return redirect(`/session/${active.id}`, RedirectType.push);
     }
     return {
       status: "error" as const,
       code: "not_created" as const,
       message: "This workout could not be started. No workout was created. Try again.",
       workoutCreated: false as const,
+      startRequestKey,
     };
+  }
+  if (result.outcome === "request_conflict") {
+    return {
+      status: "error" as const,
+      code: "request_conflict" as const,
+      message: "This Start request no longer matches the workout you chose. Refresh Today and start again.",
+      workoutCreated: false as const,
+      startRequestKey,
+    };
+  }
+  if (result.outcome === "active_workout_exists") {
+    revalidatePath("/today");
+    return redirect("/today?start=active", RedirectType.replace);
   }
   revalidatePath("/today");
   redirect(

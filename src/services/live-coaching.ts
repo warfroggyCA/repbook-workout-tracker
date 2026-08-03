@@ -621,6 +621,36 @@ export async function buildLiveCoachingContext(
       ...referencedExercises,
     ].map((exercise) => [exercise.id, exercise.name])
   );
+  const coachExerciseMeaning = (
+    exercise: (typeof session.exercises)[number],
+  ) => {
+    const usesPrescribedMeaning =
+      exercise.prescribedSemanticsVersion === 1 &&
+      exercise.modificationType !== "substituted" &&
+      exercise.modificationType !== "added";
+    return {
+      usesPrescribedMeaning,
+      prescribedSemanticsVersion: usesPrescribedMeaning ? 1 : null,
+      name: usesPrescribedMeaning
+        ? exercise.prescribedExerciseName!
+        : exercise.exercise.name,
+      metricType: usesPrescribedMeaning
+        ? exercise.prescribedMetricType!
+        : exercise.exercise.metricType,
+      loadType: usesPrescribedMeaning
+        ? exercise.prescribedLoadType!
+        : exercise.exercise.loadType,
+      loadSemantics: usesPrescribedMeaning
+        ? exercise.prescribedLoadSemantics!
+        : exercise.exercise.loadSemantics,
+    };
+  };
+  const coachExerciseNamesBySessionExerciseId = new Map(
+    session.exercises.map((exercise) => [
+      exercise.id,
+      coachExerciseMeaning(exercise).name,
+    ]),
+  );
   const completedWorkingSetIds = new Set(
     session.occurrences
       .filter(
@@ -646,23 +676,26 @@ export async function buildLiveCoachingContext(
     );
   const claimEligibleSetsFor = (
     exercise: (typeof session.exercises)[number],
-  ) =>
-    workingSetsFor(exercise).filter(
+  ) => {
+    const meaning = coachExerciseMeaning(exercise);
+    return workingSetsFor(exercise).filter(
       (set) =>
         liveCoachSetEvidenceEligible({
           recordedMetricType: set.metricType,
+          prescribedSemanticsVersion: meaning.prescribedSemanticsVersion,
           performedSemanticsVersion: set.performedSemanticsVersion,
           performedLoadType: set.performedLoadType,
           performedLoadSemantics: set.performedLoadSemantics,
-          currentExerciseMetricType: exercise.exercise.metricType,
-          loadType: exercise.exercise.loadType,
-          loadSemantics: exercise.exercise.loadSemantics,
+          currentExerciseMetricType: meaning.metricType,
+          loadType: meaning.loadType,
+          loadSemantics: meaning.loadSemantics,
           loadEntryMeaning: set.loadEntryMeaning,
           weight: set.weight,
           reps: set.reps,
           excludeFromAnalytics: set.excludeFromAnalytics,
         }),
     );
+  };
   const occurrenceOutcomeLimit = 100;
   const outcomeOccurrences = session.occurrences.filter(
     (occurrence) =>
@@ -671,27 +704,29 @@ export async function buildLiveCoachingContext(
       occurrence.origin !== "planned",
   );
   const warmupResults = session.exercises
-    .flatMap((exercise) =>
-      exercise.sets
+    .flatMap((exercise) => {
+      const meaning = coachExerciseMeaning(exercise);
+      return exercise.sets
         .filter(
           (set) =>
             set.isWarmup &&
             liveCoachSetEvidenceEligible({
               recordedMetricType: set.metricType,
+              prescribedSemanticsVersion: meaning.prescribedSemanticsVersion,
               performedSemanticsVersion: set.performedSemanticsVersion,
               performedLoadType: set.performedLoadType,
               performedLoadSemantics: set.performedLoadSemantics,
-              currentExerciseMetricType: exercise.exercise.metricType,
-              loadType: exercise.exercise.loadType,
-              loadSemantics: exercise.exercise.loadSemantics,
+              currentExerciseMetricType: meaning.metricType,
+              loadType: meaning.loadType,
+              loadSemantics: meaning.loadSemantics,
               loadEntryMeaning: set.loadEntryMeaning,
               weight: set.weight,
               reps: set.reps,
               excludeFromAnalytics: set.excludeFromAnalytics,
             }),
         )
-        .map((set) => ({ exercise, set })),
-    )
+        .map((set) => ({ exercise, set }));
+    })
     .slice(-20);
 
   return {
@@ -713,12 +748,16 @@ export async function buildLiveCoachingContext(
       selectedExerciseId: selected?.id ?? null,
       selectedExercise: selected
         ? {
-            name: selected.exercise.name,
+            name: coachExerciseMeaning(selected).name,
             plannedExercise: selected.substitutedForExerciseId
-              ? (exerciseNames.get(selected.substitutedForExerciseId) ?? null)
+              ? (selected.prescribedExerciseName ??
+                exerciseNames.get(selected.substitutedForExerciseId) ??
+                null)
               : null,
             substitutionReason: selected.substitutionReason,
-            movementPattern: selected.exercise.movementPattern,
+            movementPattern: coachExerciseMeaning(selected).usesPrescribedMeaning
+              ? "unknown"
+              : selected.exercise.movementPattern,
             target: {
               sets: selected.targetSets,
               repsMin: selected.targetRepsMin,
@@ -752,9 +791,11 @@ export async function buildLiveCoachingContext(
         : null,
       allExercises: session.exercises.slice(0, 50).map((exercise) => ({
         id: exercise.id,
-        name: exercise.exercise.name,
+        name: coachExerciseMeaning(exercise).name,
         plannedExercise: exercise.substitutedForExerciseId
-          ? (exerciseNames.get(exercise.substitutedForExerciseId) ?? null)
+          ? (exercise.prescribedExerciseName ??
+            exerciseNames.get(exercise.substitutedForExerciseId) ??
+            null)
           : null,
         substitutionReason: exercise.substitutionReason,
         status: exercise.modificationType,
@@ -781,9 +822,9 @@ export async function buildLiveCoachingContext(
             ? workingSetDisplayPosition(occurrence, session.occurrences).label
             : null,
           exerciseName: occurrence.sessionExerciseId
-            ? session.exercises.find(
-                (exercise) => exercise.id === occurrence.sessionExerciseId,
-              )?.exercise.name ?? null
+            ? (coachExerciseNamesBySessionExerciseId.get(
+                occurrence.sessionExerciseId,
+              ) ?? null)
             : null,
           label: boundedText(occurrence.label, 120),
           outcome: occurrence.outcome,
@@ -793,7 +834,7 @@ export async function buildLiveCoachingContext(
       occurrenceOutcomesTruncated:
         outcomeOccurrences.length > occurrenceOutcomeLimit,
       performedWarmupResults: warmupResults.map(({ exercise, set }) => ({
-        exerciseName: exercise.exercise.name,
+        exerciseName: coachExerciseMeaning(exercise).name,
         setNo: set.setNo,
         weight: set.weight,
         unit: set.weightUnit,

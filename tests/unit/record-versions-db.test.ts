@@ -128,7 +128,7 @@ describe("immutable record version history", () => {
           loadType: "dumbbell",
         },
       ])
-      .returning({ id: exercises.id });
+      .returning({ id: exercises.id, name: exercises.name });
     exerciseId = exercise.id;
     alternateExerciseId = alternateExercise.id;
     const [session] = await db
@@ -149,6 +149,11 @@ describe("immutable record version history", () => {
       .values({
         sessionId: session.id,
         exerciseId: exercise.id,
+        prescribedSemanticsVersion: 1,
+        prescribedExerciseName: exercise.name,
+        prescribedMetricType: "weight_reps",
+        prescribedLoadType: "barbell",
+        prescribedLoadSemantics: "total",
         targetRepsMin: 5,
         targetLoad: 100,
         targetLoadUnit: "lb",

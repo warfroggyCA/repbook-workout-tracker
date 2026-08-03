@@ -14,6 +14,17 @@ const compilerExerciseSchema = z.object({
   templateExerciseId: z.string().uuid(),
   exerciseId: z.string().uuid(),
   exerciseName: z.string().min(1).max(300),
+  // Optional only so schema-27 compiler evidence remains restorable. Every
+  // newly built proposal includes this complete immutable meaning tuple.
+  metricType: z.enum([
+    "weight_reps", "reps", "assisted_reps", "duration",
+    "distance_duration", "activity",
+  ]).optional(),
+  loadType: z.string().trim().min(1).max(50).optional(),
+  loadSemantics: z.enum([
+    "total", "per_implement", "bodyweight", "added_weight", "assistance",
+    "machine_stack", "resistance_band", "none",
+  ]).optional(),
   orderIdx: z.number().int().min(0),
   supersetKey: z.string().uuid().nullable(),
   groupMemberOrderIdx: z.number().int().min(0).nullable().optional(),
