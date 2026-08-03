@@ -284,9 +284,7 @@ test("keeps Stage 5 guidance truthful, persistent, and usable on narrow mobile s
   ).toBeVisible();
   await expect(guidance).toContainText("0/14");
   await expect(guidance).toContainText("Now: Romanian Deadlift, set 1");
-  await expect(guidance).not.toContainText("Next:");
-  await expect(dock).toContainText("Next action");
-  await expect(dock).toContainText("Romanian Deadlift, set 2");
+  await expect(guidance).toContainText("Next: Romanian Deadlift, set 2");
   releaseSave();
   await expect(guidance).toContainText("1/14");
   await expect(guidance).toContainText(
@@ -530,10 +528,8 @@ test("keeps Stage 5 guidance truthful, persistent, and usable on narrow mobile s
     name: "Workout progress and upcoming work",
   });
   await expect(durableGroupGuidance).toContainText("9 skipped");
-  await expect(durableGroupGuidance).not.toContainText("Next:");
-  await expect(groupDock).toContainText("Next action");
-  await expect(groupDock).toContainText(
-    "Superset, round 1, member 2 of 2: Pallof Press, set 1",
+  await expect(durableGroupGuidance).toContainText(
+    /Next: Superset, round 1, member 2 of 2: Pallof Press, set 1/,
   );
   await expect(durableGroupGuidance).toContainText(
     /Now: Superset, round 1, member 1 of 2: Dumbbell Lateral Raise, set 1/,

@@ -1573,6 +1573,22 @@ export function SessionRunner(props: SessionRunnerProps) {
       defaultAttachmentKey: attachments[0]?.key ?? "general",
     };
   })();
+  const currentWorkingAction =
+    guidance.currentAction?.kind === "working_set"
+      ? guidance.currentAction
+      : null;
+  const currentWorkingExercise =
+    currentWorkingAction
+      ? shownExercises.find(
+          (exercise) => exercise.id === currentWorkingAction.sessionExerciseId,
+        ) ?? null
+      : null;
+  const currentCardOwnsNextAction =
+    currentWorkingExercise != null &&
+    expandedId === currentWorkingExercise.id &&
+    !currentWorkingExercise.sets.some(
+      (set) => set.saveState != null && set.saveState !== "saved",
+    );
 
   return (
     <main className="mx-auto flex max-w-3xl flex-col gap-3 p-3 pb-[calc(12rem+env(safe-area-inset-bottom))] min-[360px]:pb-[calc(8rem+env(safe-area-inset-bottom))] sm:p-5 sm:pb-[calc(8rem+env(safe-area-inset-bottom))] lg:p-8 lg:pb-24">
@@ -1597,10 +1613,7 @@ export function SessionRunner(props: SessionRunnerProps) {
         <WorkoutGuidanceSummary
           guidance={guidance}
           compact
-          deferNextActionToCurrentCard={
-            guidance.currentAction?.kind === "working_set" &&
-            expandedId === guidance.currentAction.sessionExerciseId
-          }
+          deferNextActionToCurrentCard={currentCardOwnsNextAction}
         />
       </div>
 
