@@ -1,6 +1,7 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
 import {
   installNextDevelopmentRefreshControl,
+  openNativeDetails,
   waitForEquipmentSelectionsToSettle,
   waitForHydratedReactHandler,
   waitForHydratedServerAction,
@@ -124,6 +125,9 @@ async function skipCurrentSet(page: Page) {
     .getByRole("button")
     .first();
   const prior = await showCurrent.innerText();
+  await openNativeDetails(current.locator("details", {
+    hasText: "Set exceptions",
+  }));
   const skip = current
     .getByRole("button", { name: "Skip set", exact: true })
     .first();
@@ -170,7 +174,9 @@ test("keeps one ledger-driven current/next/group/rest state through retry, inter
   const otherExercise = page.getByRole("region", { name: "Dumbbell Bench Press" });
   await otherExercise.locator(":scope > button").click();
   await expect(guidance).toContainText("Now: Barbell Back Squat, set 1");
-  await expect(guidance).toContainText("Next: Barbell Back Squat, set 2");
+  await expect(guidance).not.toContainText("Next:");
+  await expect(first).toContainText("Next action");
+  await expect(first).toContainText("Barbell Back Squat, set 2");
   await status.getByRole("button").first().click();
 
   for (let count = 0; count < 20; count += 1) {
@@ -218,8 +224,12 @@ test("keeps one ledger-driven current/next/group/rest state through retry, inter
   await expect(guidance).toContainText(
     /Now: Superset, round 1, member 1 of 2: Dumbbell Lateral Raise, set 1/,
   );
-  await expect(guidance).toContainText(
-    /Next: Superset, round 1, member 2 of 2: Pallof Press, set 1/,
+  await expect(guidance).not.toContainText("Next:");
+  await expect(page.getByTestId("current-exercise-card")).toContainText(
+    "Next action",
+  );
+  await expect(page.getByTestId("current-exercise-card")).toContainText(
+    "Superset, round 1, member 2 of 2: Pallof Press, set 1",
   );
   await expect(status.getByLabel("Rest timer")).toHaveCount(0);
 

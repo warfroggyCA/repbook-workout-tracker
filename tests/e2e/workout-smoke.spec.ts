@@ -3,6 +3,7 @@ import { mkdir, readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import {
   installNextDevelopmentRefreshControl,
+  openNativeDetails,
   waitForEquipmentSelectionsToSettle,
   waitForHydratedFormSubmit,
   waitForHydratedServerAction,
@@ -1531,6 +1532,9 @@ test("signs in and completes a durable workout flow", async ({ page }) => {
   const reps = nextSet.getByRole("textbox", { name: "Reps", exact: true });
   await weight.fill("95");
   await reps.fill("8");
+  await openNativeDetails(nextSet.locator("details", {
+    hasText: "Optional effort and set note",
+  }));
   await nextSet.getByRole("button", { name: /^Hard — RPE 8;/ }).click();
   await expect(nextSet.getByText("Selected: Hard — RPE 8", {
     exact: true,
@@ -1690,6 +1694,12 @@ test("keeps every active-workout route reachable with one scroll surface", async
   await expect(currentCard).toContainText(
     "Adds ad-hoc work without changing the planned set order.",
   );
+  await openNativeDetails(currentCard.locator("details", {
+    hasText: "Optional effort and set note",
+  }));
+  await openNativeDetails(currentCard.locator("details", {
+    hasText: "Set exceptions",
+  }));
   await expect(currentCard.getByRole("button", { name: "Skip set", exact: true })).toBeVisible();
   await expect(currentCard.getByRole("button", { name: "Ask Coach", exact: true })).toBeVisible();
   await expect(currentCard.getByRole("button", { name: "Form guide", exact: true })).toBeVisible();
@@ -1720,7 +1730,8 @@ test("keeps every active-workout route reachable with one scroll surface", async
   }
   await expect(statusBar.getByRole("button", { name: "Add training note", exact: true })).toBeVisible();
   await expect(statusBar.getByRole("button", { name: "Finish", exact: true })).toBeVisible();
-  await expect(orientation).toContainText("Next:");
+  await expect(orientation).not.toContainText("Next:");
+  await expect(currentCard).toContainText("Next action");
 
   await expect(currentCard).toContainText(
     "Ask Coach gives guidance. It does not change the exercise.",
@@ -1821,6 +1832,9 @@ test("keeps every active-workout route reachable with one scroll surface", async
   const plannedSetThree = plannedCard.getByText("Set 3", { exact: true });
   await expect(plannedSetThree).toBeVisible();
   for (let setNo = 1; setNo <= 3; setNo += 1) {
+    await openNativeDetails(plannedCard.locator("details", {
+      hasText: "Set exceptions",
+    }));
     await plannedCard
       .getByRole("button", { name: "Skip set", exact: true })
       .click();
@@ -3144,6 +3158,9 @@ test("opens failed-set recovery from Settings at 145 percent on iPhone WebKit", 
   await expect(totalLoad).toHaveValue("80");
   await reps.fill("10");
   await expect(reps).toHaveValue("10");
+  await openNativeDetails(currentSet.locator("details", {
+    hasText: "Optional effort and set note",
+  }));
   await currentSet.getByRole("button", { name: /^Hard / }).click();
   await context.setOffline(true);
   await logSet.click();

@@ -36,21 +36,22 @@ async function signInAndStartDayA(page: Page) {
 }
 
 async function expectReachableTarget(locator: Locator) {
-  await locator.scrollIntoViewIfNeeded();
+  await locator.evaluate((element) => {
+    element.scrollIntoView({ block: "center", inline: "center" });
+  });
   await expect(locator).toBeVisible();
-  const result = await locator.evaluate((element) => {
+  await expect.poll(() => locator.evaluate((element) => {
     const rect = element.getBoundingClientRect();
     const hit = document.elementFromPoint(
       rect.left + rect.width / 2,
       rect.top + rect.height / 2,
     );
-    return {
-      height: rect.height,
-      width: rect.width,
-      reachable: hit === element || (hit != null && element.contains(hit)),
-    };
+    return hit === element || (hit != null && element.contains(hit));
+  })).toBe(true);
+  const result = await locator.evaluate((element) => {
+    const rect = element.getBoundingClientRect();
+    return { height: rect.height, width: rect.width };
   });
-  expect(result.reachable).toBe(true);
   expect(result.height).toBeGreaterThanOrEqual(44);
   expect(result.width).toBeGreaterThanOrEqual(44);
 }
@@ -107,23 +108,25 @@ test("keeps the ordinary active set current-first, unobstructed, and acknowledge
       page.getByRole("region", { name: "Workout progress and upcoming work" }),
     ).not.toContainText("Next:");
 
-    const visibleOrder = await currentEntry.innerText();
-    expect(visibleOrder.indexOf("Current action")).toBeLessThan(
-      visibleOrder.indexOf("Performed measure"),
+    const orderedVisibleActions = [
+      currentEntry.getByText("Current action", { exact: true }),
+      currentEntry.getByText("Performed measure", { exact: true }),
+      currentEntry.getByRole("button", { name: "Log set", exact: true }),
+      currentEntry.getByText("Next action", { exact: true }),
+      exceptionDetails.locator(":scope > summary"),
+    ];
+    for (const action of orderedVisibleActions) await expect(action).toBeVisible();
+    const actionBounds = await Promise.all(
+      orderedVisibleActions.map((action) => action.boundingBox()),
     );
-    expect(visibleOrder.indexOf("Performed measure")).toBeLessThan(
-      visibleOrder.indexOf("Log set"),
-    );
-    expect(visibleOrder.indexOf("Log set")).toBeLessThan(
-      visibleOrder.indexOf("Next action"),
-    );
-    expect(visibleOrder.indexOf("Next action")).toBeLessThan(
-      visibleOrder.indexOf("Set exceptions"),
-    );
+    expect(actionBounds.every((bounds) => bounds !== null)).toBe(true);
+    for (let index = 1; index < actionBounds.length; index += 1) {
+      expect(actionBounds[index]!.y).toBeGreaterThan(actionBounds[index - 1]!.y);
+    }
 
     const primaryTargets = [
-      currentEntry.getByLabel("Total load"),
-      currentEntry.getByLabel("Reps"),
+      currentEntry.getByLabel("Total load", { exact: true }),
+      currentEntry.getByRole("textbox", { name: "Reps", exact: true }),
       currentEntry.getByRole("button", { name: "Log set", exact: true }),
       optionalDetails.locator("summary"),
       exceptionDetails.locator("summary"),
@@ -143,6 +146,19 @@ test("keeps the ordinary active set current-first, unobstructed, and acknowledge
       exact: true,
     });
     await logSet.click();
+    await expect(currentCard.getByText("Saved", { exact: true })).toBeVisible();
+    await expect(
+      currentCard.getByText("Acknowledged by Repbook", { exact: true }),
+    ).toBeVisible();
+    const workoutStatus = page.getByRole("complementary", {
+      name: "Workout status",
+    });
+    await workoutStatus
+      .getByRole("button", { name: "Skip rest", exact: true })
+      .click();
+    await workoutStatus
+      .getByRole("button", { name: "Dismiss rest timer", exact: true })
+      .click();
     const receipt = currentCard.getByTestId("active-set-save-receipt");
     await expect(receipt).toContainText("Saved · Set 1");
     await expect(receipt).toContainText("Acknowledged by Repbook");

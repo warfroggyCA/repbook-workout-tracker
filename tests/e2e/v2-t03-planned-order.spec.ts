@@ -1,6 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 import {
   installNextDevelopmentRefreshControl,
+  openNativeDetails,
   waitForEquipmentSelectionsToSettle,
   waitForHydratedReactHandler,
   waitForHydratedServerAction,
@@ -27,6 +28,9 @@ async function signInAndStartDayA(page: Page) {
 
 async function skipCurrentSet(page: Page) {
   const current = page.getByTestId("current-exercise-card");
+  await openNativeDetails(current.locator("details", {
+    hasText: "Set exceptions",
+  }));
   await current.getByRole("button", { name: "Skip set", exact: true }).click();
   const dialog = page.getByRole("dialog", { name: /^Skip set .+\?$/ });
   await dialog.getByLabel("Reason").selectOption("time");

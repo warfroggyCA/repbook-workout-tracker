@@ -3,6 +3,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import {
   installNextDevelopmentRefreshControl,
+  openNativeDetails,
   waitForEquipmentSelectionsToSettle,
   waitForHydratedReactHandler,
   waitForHydratedServerAction,
@@ -92,9 +93,13 @@ async function skipCurrentSet(dock: Locator) {
     name: "Skip set",
     exact: true,
   });
-  if ((await skipSet.count()) === 0) {
+  const exceptionDetails = currentCard.locator("details", {
+    hasText: "Set exceptions",
+  });
+  if ((await exceptionDetails.count()) === 0) {
     await dock.locator("button").first().click();
   }
+  await openNativeDetails(exceptionDetails);
   await waitForScrollToSettle(page);
   await skipSet.evaluate((element) => {
     element.scrollIntoView({ block: "center" });
@@ -245,7 +250,9 @@ test("keeps Stage 5 guidance truthful, persistent, and usable on narrow mobile s
   await expect(statusBar).toContainText("Romanian Deadlift");
   await expect(statusBar).toContainText("Set 1 of 3");
   await expect(guidance).toContainText("Now: Romanian Deadlift, set 1");
-  await expect(guidance).toContainText("Next: Romanian Deadlift, set 2");
+  await expect(guidance).not.toContainText("Next:");
+  await expect(dock).toContainText("Next action");
+  await expect(dock).toContainText("Romanian Deadlift, set 2");
 
   let releaseSave!: () => void;
   const saveMayFinish = new Promise<void>((resolve) => {
@@ -277,7 +284,9 @@ test("keeps Stage 5 guidance truthful, persistent, and usable on narrow mobile s
   ).toBeVisible();
   await expect(guidance).toContainText("0/14");
   await expect(guidance).toContainText("Now: Romanian Deadlift, set 1");
-  await expect(guidance).toContainText("Next: Romanian Deadlift, set 2");
+  await expect(guidance).not.toContainText("Next:");
+  await expect(dock).toContainText("Next action");
+  await expect(dock).toContainText("Romanian Deadlift, set 2");
   releaseSave();
   await expect(guidance).toContainText("1/14");
   await expect(guidance).toContainText(
@@ -487,6 +496,9 @@ test("keeps Stage 5 guidance truthful, persistent, and usable on narrow mobile s
   await startProgramDay(page, "Day A — Squat", false);
   const groupDock = page.getByTestId("current-exercise-card");
   await expect.poll(() => equipmentSelectionStarted).toBe(true);
+  await openNativeDetails(groupDock.locator("details", {
+    hasText: "Set exceptions",
+  }));
   await expect(
     groupDock.getByRole("button", { name: "Skip set", exact: true }),
   ).toBeDisabled();
@@ -499,8 +511,10 @@ test("keeps Stage 5 guidance truthful, persistent, and usable on narrow mobile s
   const groupGuidance = page.getByRole("region", {
     name: "Workout progress and upcoming work",
   });
-  await expect(groupGuidance).toContainText(
-    /Next: Superset, round 1, member 2 of 2: Pallof Press, set 1/,
+  await expect(groupGuidance).not.toContainText("Next:");
+  await expect(groupDock).toContainText("Next action");
+  await expect(groupDock).toContainText(
+    "Superset, round 1, member 2 of 2: Pallof Press, set 1",
   );
   await expect(groupGuidance).toContainText(
     /Now: Superset, round 1, member 1 of 2: Dumbbell Lateral Raise, set 1/,
@@ -516,8 +530,10 @@ test("keeps Stage 5 guidance truthful, persistent, and usable on narrow mobile s
     name: "Workout progress and upcoming work",
   });
   await expect(durableGroupGuidance).toContainText("9 skipped");
-  await expect(durableGroupGuidance).toContainText(
-    /Next: Superset, round 1, member 2 of 2: Pallof Press, set 1/,
+  await expect(durableGroupGuidance).not.toContainText("Next:");
+  await expect(groupDock).toContainText("Next action");
+  await expect(groupDock).toContainText(
+    "Superset, round 1, member 2 of 2: Pallof Press, set 1",
   );
   await expect(durableGroupGuidance).toContainText(
     /Now: Superset, round 1, member 1 of 2: Dumbbell Lateral Raise, set 1/,
