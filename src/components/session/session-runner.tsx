@@ -123,6 +123,7 @@ import {
   type RestAlertPreference,
 } from "@/lib/rest-alert-preference";
 import {
+  formatSessionGuidanceAction,
   projectSessionGuidance,
   sessionNonPerformedOutcomeParts,
   sessionEquipmentSetupMatchesExercise,
@@ -262,6 +263,7 @@ export function SessionRunner(props: SessionRunnerProps) {
   const pendingSetAcknowledgementAnchorRef = useRef<{
     clientKey: string;
     elementId: string;
+    receiptElementId: string;
     viewportTop: number;
   } | null>(null);
   const pendingSetAcknowledgementFrameRef = useRef<number | null>(null);
@@ -611,6 +613,8 @@ export function SessionRunner(props: SessionRunnerProps) {
           pendingSetAcknowledgementAnchorRef.current = {
             clientKey: detail.clientKey,
             elementId: acknowledgedRowId,
+            receiptElementId:
+              `active-set-save-receipt-${detail.entry.sessionExerciseId}-${detail.entry.setNo}`,
             viewportTop: bounds.top,
           };
           if (pendingSetAcknowledgementFrameRef.current != null) {
@@ -622,7 +626,9 @@ export function SessionRunner(props: SessionRunnerProps) {
           const keepAcknowledgementInPlace = () => {
             const anchor = pendingSetAcknowledgementAnchorRef.current;
             if (!anchor || anchor.clientKey !== detail.clientKey) return;
-            const row = document.getElementById(anchor.elementId);
+            const row =
+              document.getElementById(anchor.receiptElementId) ??
+              document.getElementById(anchor.elementId);
             if (row?.textContent?.includes("Saved")) {
               const offset =
                 row.getBoundingClientRect().top - anchor.viewportTop;
@@ -1588,7 +1594,14 @@ export function SessionRunner(props: SessionRunnerProps) {
       </header>
 
       <div className="sticky top-[env(safe-area-inset-top)] z-20 -mx-1 bg-background/95 py-1 backdrop-blur">
-        <WorkoutGuidanceSummary guidance={guidance} compact />
+        <WorkoutGuidanceSummary
+          guidance={guidance}
+          compact
+          deferNextActionToCurrentCard={
+            guidance.currentAction?.kind === "working_set" &&
+            expandedId === guidance.currentAction.sessionExerciseId
+          }
+        />
       </div>
 
       <WarmupPanel
@@ -1928,6 +1941,14 @@ export function SessionRunner(props: SessionRunnerProps) {
             acknowledgedOccurrenceIds={acknowledgedOccurrenceIds}
             isCurrentExercise={
               currentOccurrence?.sessionExerciseId === exercise.id
+            }
+            nextActionLabel={
+              guidance.currentAction?.kind === "working_set" &&
+              guidance.currentAction.sessionExerciseId === exercise.id
+                ? guidance.nextAction
+                  ? formatSessionGuidanceAction(guidance.nextAction)
+                  : "No further unresolved work"
+                : null
             }
             warmupResolved={
               occurrences.some(

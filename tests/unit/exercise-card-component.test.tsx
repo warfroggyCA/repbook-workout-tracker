@@ -313,6 +313,7 @@ describe("ExerciseCard", () => {
           completedSetId: null,
         }}
         isCurrentExercise
+        nextActionLabel="Barbell Squat, set 2"
         onPatch={() => undefined}
         onQueueSet={async () => true}
         onSkipSet={async () => true}
@@ -336,6 +337,24 @@ describe("ExerciseCard", () => {
     expect(html).toContain("Hard — RPE 8");
     expect(html).toContain("Grind — RPE 9.5");
     expect(html).toContain("Current exercise");
+    expect(html).toContain("Current action");
+    expect(html).toContain("Performed measure");
+    expect(html).toContain("Barbell Squat, set 2");
+    expect(html).toContain("Optional effort and set note");
+    expect(html).toContain("Set exceptions");
+    expect(html.indexOf("Current action")).toBeLessThan(
+      html.indexOf("Performed measure"),
+    );
+    expect(html.indexOf("Performed measure")).toBeLessThan(
+      html.indexOf("Next action"),
+    );
+    expect(html.indexOf("Next action")).toBeLessThan(
+      html.indexOf("Set exceptions"),
+    );
+    expect(html.indexOf("Current action")).toBeLessThan(
+      html.indexOf("Warm-up guidance"),
+    );
+    expect(html.match(/Log set/g)).toHaveLength(1);
     expect(html).toContain("Ask Coach gives guidance");
     expect(html).toContain("Change exercise for this workout");
     expect(html).toContain("Compatible alternatives");
@@ -411,6 +430,7 @@ describe("ExerciseCard", () => {
           completedSetId: null,
         }}
         isCurrentExercise
+        nextActionLabel="Workout complete"
         onPatch={() => undefined}
         onQueueSet={async () => true}
         onSkipSet={async () => true}
@@ -424,6 +444,11 @@ describe("ExerciseCard", () => {
     );
 
     expect(html).toContain("Set 3 of 3");
+    expect(html).toContain(
+      `id="active-set-save-receipt-${afterSkippedSecond.id}-1"`,
+    );
+    expect(html).toContain("Saved · Set 1");
+    expect(html).toContain("Acknowledged by Repbook");
     expect(html).toContain(
       `id="set-entry-${afterSkippedSecond.id}-00000000-0000-4000-8000-000000000004"`,
     );

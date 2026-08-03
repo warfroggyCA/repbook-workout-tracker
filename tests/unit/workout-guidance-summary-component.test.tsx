@@ -76,6 +76,21 @@ describe("WorkoutGuidanceSummary", () => {
     expect(html).not.toContain("truncate");
   });
 
+  it("defers duplicate next-work guidance when the current action card owns it", () => {
+    const html = renderToStaticMarkup(
+      <WorkoutGuidanceSummary
+        guidance={guidance}
+        compact
+        deferNextActionToCurrentCard
+      />,
+    );
+
+    expect(html).toContain(
+      "Now:</span> Single-Arm Supported Dumbbell Romanian Deadlift, set 1",
+    );
+    expect(html).not.toContain("Next:</span>");
+  });
+
   it("names appended performed work as an extra instead of extending planned numbering", () => {
     const html = renderToStaticMarkup(
       <WorkoutGuidanceSummary

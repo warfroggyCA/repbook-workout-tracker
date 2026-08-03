@@ -153,7 +153,8 @@ correction. T03 activates database, browser, portability, and recovery proofs
 for planned order and extra-set truth. T04 activates the same required proof
 classes for warm-up occurrence truth. T05 activates them for current, next,
 group, and rest truth. T06 activates preview and Start truth, including
-prescribed exercise meaning; later packages remain future work.
+prescribed exercise meaning. U01 activates the presentation-only active-workout
+hierarchy and ergonomics gate; later packages remain future work.
 
 ## T01 performed-measurement contract
 
@@ -309,3 +310,20 @@ schema 27 upgrades add explicit null unknowns. Recovery manifest 10 remains
 unchanged because no table was added, but its workout and session-exercise
 contracts include the new evidence. Restore validates all-or-none tuples,
 owner-scoped request uniqueness, UUID/SHA shape, and exact round trip.
+
+## U01 active-workout hierarchy and ergonomics contract
+
+The expanded card for the exact current working-set action leads with current
+identity and the applicable performed measure. Ordinary logging exposes one
+visible commit action. Exact save state follows that commit, the ledger-derived
+next action follows the save state, and optional effort, set notes, and skip
+controls use native progressive disclosure after the ordinary path. Prior-set,
+warm-up-reference, coaching, and workout-only context remain available below
+the active flow instead of preceding it.
+
+The compact sticky summary keeps current identity and progress, but defers its
+duplicate next line while the expanded current card owns that guidance. If the
+card is collapsed or the focused action is warm-up or rest, the sticky summary
+continues to show next work. U01 changes no occurrence ordering, writer,
+acknowledgement, correction, rest, group, persistence, export, recovery, or
+historical semantics and adds no schema migration.
