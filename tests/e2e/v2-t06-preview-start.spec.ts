@@ -6,8 +6,11 @@ import {
 } from "../helpers/react-readiness";
 import {
   isCorrelatedWebKitRscPrefetchCancellation,
+  isExpectedWebKitRscLinkCancellation,
   observeNextRscPrefetches,
 } from "../helpers/webkit-rsc-prefetch-errors";
+
+const EXPECTED_APP_SHELL_PREFETCHES = new Set(["/history"]);
 
 async function signIn(page: Page) {
   await installNextDevelopmentRefreshControl(page);
@@ -180,11 +183,32 @@ test("keeps preview read-only and Start replay-safe with truthful active collisi
   await second.close();
   await discardActive(page);
   await nextRscPrefetches.settle();
-  expect(browserErrors.filter(
-    (message) => !isCorrelatedWebKitRscPrefetchCancellation(
+  const expectedLinkCancellationCount = browserErrors.filter((message) =>
+    isExpectedWebKitRscLinkCancellation(
       message,
       browserName,
-      nextRscPrefetches.observedUrls,
-    ),
+      EXPECTED_APP_SHELL_PREFETCHES,
+    )
+  ).length;
+  const loadFailureCount = browserErrors.filter(
+    (message) => message === "Load failed",
+  ).length;
+  const hasOnlyPairedWebKitLoadFailures =
+    browserName === "webkit" &&
+    expectedLinkCancellationCount > 0 &&
+    loadFailureCount <= expectedLinkCancellationCount;
+  expect(browserErrors.filter(
+    (message) =>
+      !(hasOnlyPairedWebKitLoadFailures && message === "Load failed") &&
+      !isExpectedWebKitRscLinkCancellation(
+        message,
+        browserName,
+        EXPECTED_APP_SHELL_PREFETCHES,
+      ) &&
+      !isCorrelatedWebKitRscPrefetchCancellation(
+        message,
+        browserName,
+        nextRscPrefetches.observedUrls,
+      ),
   )).toEqual([]);
 });
