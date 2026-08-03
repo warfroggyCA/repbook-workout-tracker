@@ -129,9 +129,10 @@ async function skipCurrentSet(page: Page) {
     "aria-expanded",
     "true",
   );
-  const currentEntry = current.locator(
-    '[data-testid="current-set-entry"], [data-testid="added-set-entry"]',
-  );
+  const plannedEntry = current.getByTestId("current-set-entry");
+  const currentEntry = (await plannedEntry.count()) === 1
+    ? plannedEntry
+    : current.getByTestId("added-set-entry");
   await expect(currentEntry).toHaveCount(1);
   const priorOccurrenceId = await currentEntry.getAttribute("id");
   expect(priorOccurrenceId).toMatch(/^(?:set-entry|added-set-entry)-/);
@@ -151,11 +152,11 @@ async function skipCurrentSet(page: Page) {
   await dialog.getByRole("button", { name: "Skip item", exact: true }).click();
   await expect(dialog).toHaveCount(0);
   await expect.poll(async () => {
-    const nextEntry = page
-      .getByTestId("current-exercise-card")
-      .locator(
-        '[data-testid="current-set-entry"], [data-testid="added-set-entry"]',
-      );
+    const nextCard = page.getByTestId("current-exercise-card");
+    const nextPlannedEntry = nextCard.getByTestId("current-set-entry");
+    const nextEntry = (await nextPlannedEntry.count()) === 1
+      ? nextPlannedEntry
+      : nextCard.getByTestId("added-set-entry");
     if ((await nextEntry.count()) === 1) {
       const nextOccurrenceId = await nextEntry.getAttribute("id");
       if (nextOccurrenceId != null && nextOccurrenceId !== priorOccurrenceId) {
