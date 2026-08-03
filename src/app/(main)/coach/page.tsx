@@ -47,6 +47,12 @@ import {
   AlertTitle,
 } from "@/components/ui/alert";
 import { CoachActivityContext } from "@/components/coach/activity-context";
+import {
+  LIMITATION_CAUSE_LABELS,
+  TECHNIQUE_ISSUE_LABELS,
+  type LimitationCause,
+  type TechniqueIssue,
+} from "@/lib/set-exception-context";
 
 function Metric({
   label,
@@ -220,6 +226,64 @@ export default async function CoachPage() {
               }
             />
           ))
+        )}
+      </section>
+
+      <section
+        className="flex flex-col gap-3"
+        aria-labelledby="recent-exception-context-heading"
+      >
+        <div>
+          <h2 id="recent-exception-context-heading" className="font-medium">
+            Recent effort and issue context
+          </h2>
+          <p className="text-xs text-muted-foreground">
+            Recorded observations are evidence for Review. They do not change
+            your Program, approve a proposal, or create an adaptation.
+          </p>
+        </div>
+        {review.recentExceptions.length === 0 ? (
+          <p className="rounded-xl border border-dashed p-4 text-sm text-muted-foreground">
+            No optional effort or issue context is recorded. Ordinary completed
+            sets remain unknown for these fields.
+          </p>
+        ) : (
+          <ol className="grid gap-3 md:grid-cols-2" aria-label="Recent effort and issue context">
+            {review.recentExceptions.map((item) => {
+              const details = [
+                item.rir == null ? null : `RIR ${item.rir}`,
+                item.rpe == null ? null : `RPE ${item.rpe}`,
+                item.techniqueIssue != null && item.techniqueIssue in TECHNIQUE_ISSUE_LABELS
+                  ? `Technique: ${TECHNIQUE_ISSUE_LABELS[item.techniqueIssue as TechniqueIssue]}`
+                  : null,
+                item.limitationCause != null && item.limitationCause in LIMITATION_CAUSE_LABELS
+                  ? `Limited by: ${LIMITATION_CAUSE_LABELS[item.limitationCause as LimitationCause]}`
+                  : null,
+                item.painBodyPart == null || item.painSeverity == null
+                  ? null
+                  : `Pain: ${item.painBodyPart} ${item.painSeverity}/10`,
+              ].filter((value): value is string => value != null);
+              return (
+                <li key={item.setId} className="rounded-xl border bg-card p-4">
+                  <p className="font-medium">
+                    {item.exerciseName} · set {item.setNo}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    {item.workoutName} · {formatRecordedLocalDate(item.localDate)}
+                  </p>
+                  <ul className="mt-2 space-y-1 text-sm">
+                    {details.map((detail) => <li key={detail}>{detail}</li>)}
+                  </ul>
+                  <Link
+                    href={`/history/${item.sessionId}`}
+                    className="mt-3 inline-flex min-h-8 items-center text-xs font-medium text-primary underline-offset-4 hover:underline focus-visible:rounded-sm focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+                  >
+                    Open supporting workout
+                  </Link>
+                </li>
+              );
+            })}
+          </ol>
         )}
       </section>
 

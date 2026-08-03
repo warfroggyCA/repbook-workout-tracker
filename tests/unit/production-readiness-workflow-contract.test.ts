@@ -147,6 +147,18 @@ describe("production readiness workflow contract", () => {
     expect(browserGate?.run).toContain(
       '"T06 preview and Start truth:${BROWSER_V2_T06}"',
     );
+    expect(browserGate?.env?.BROWSER_V2_U01).toBe(
+      "${{ steps.browser-v2-u01.outcome }}",
+    );
+    expect(browserGate?.run).toContain(
+      '"U01 active-workout hierarchy:${BROWSER_V2_U01}"',
+    );
+    expect(browserGate?.env?.BROWSER_V2_U02).toBe(
+      "${{ steps.browser-v2-u02.outcome }}",
+    );
+    expect(browserGate?.run).toContain(
+      '"U02 exception-only context:${BROWSER_V2_U02}"',
+    );
   });
 
   it("measures the unchanged performance ceiling without parallel test contention", async () => {

@@ -2472,7 +2472,7 @@ test("downloads one canonical full backup with intact workout relationships", as
     canonical: { tables: Record<string, Array<Record<string, unknown>>> };
   };
   expect(backup.format).toBe("workout-tracker-canonical-backup");
-  expect(backup.schemaVersion).toBe("28");
+  expect(backup.schemaVersion).toBe("29");
   expect(backup.canonical.tables.users).toHaveLength(1);
   expect(backup.canonical.tables.workout_sessions.length).toBeGreaterThan(0);
   expect(backup.recordCounts.workout_sessions).toBe(

@@ -30,6 +30,14 @@ import {
   type PerformedLoadSemantics,
   type PerformedSetMeasurement,
 } from "@/lib/set-metric-semantics";
+import {
+  LIMITATION_CAUSES,
+  PAIN_BODY_PARTS,
+  TECHNIQUE_ISSUES,
+  type LimitationCause,
+  type SetPainContext,
+  type TechniqueIssue,
+} from "@/lib/set-exception-context";
 
 export type LifecycleCheckpoint = (boundary: string) => void | Promise<void>;
 
@@ -210,6 +218,10 @@ export type LogWorkoutSetInput = {
   performedLoadSemantics: PerformedLoadSemantics;
   setNo: number;
   rpe?: number | null;
+  rir?: number | null;
+  techniqueIssue?: TechniqueIssue | null;
+  limitationCause?: LimitationCause | null;
+  pain?: SetPainContext | null;
   isWarmup?: boolean;
   note?: string | null;
   clientKey: string;
@@ -1727,6 +1739,25 @@ export async function logWorkoutSet(
   dependencies: SessionLifecycleDependencies = {}
 ): Promise<LogWorkoutSetResult> {
   if (
+    (input.rir != null && (
+      !Number.isFinite(input.rir) || input.rir < 0 || input.rir > 10
+    )) ||
+    (input.rpe != null && input.rir != null) ||
+    (input.techniqueIssue != null &&
+      !TECHNIQUE_ISSUES.includes(input.techniqueIssue)) ||
+    (input.limitationCause != null &&
+      !LIMITATION_CAUSES.includes(input.limitationCause)) ||
+    (input.pain != null && (
+      !PAIN_BODY_PARTS.includes(input.pain.bodyPart) ||
+      !Number.isInteger(input.pain.severity) ||
+      input.pain.severity < 1 ||
+      input.pain.severity > 10 ||
+      (input.pain.note?.length ?? 0) > 500
+    ))
+  ) {
+    throw new Error("Set exception context is invalid.");
+  }
+  if (
     input.performedSemanticsVersion !== 1 ||
     !PERFORMED_LOAD_SEMANTICS.includes(input.performedLoadSemantics) ||
     typeof input.performedLoadType !== "string" ||
@@ -1787,6 +1818,14 @@ async function logWorkoutSetAttempt(
   const equipmentSnapshotId = input.equipmentSnapshotId ?? null;
   const loadEntryMeaning = input.loadEntryMeaning ?? "legacy_unknown";
   const observedCompletedAtISO = input.observedCompletedAtISO ?? null;
+  const rir = input.rir ?? null;
+  const techniqueIssue = input.techniqueIssue ?? null;
+  const limitationCause = input.limitationCause ?? null;
+  const pain = input.pain ?? null;
+  if (input.rpe != null && rir != null) {
+    throw new Error("Record effort as either RIR or RPE, not both.");
+  }
+  const painId = randomUUID();
   const equipmentExerciseId =
     equipmentAvailability?.exerciseId ?? input.sessionExerciseId;
   const equipmentSourceRevision = equipmentAvailability?.sourceRevision ?? "";
@@ -1807,6 +1846,10 @@ async function logWorkoutSetAttempt(
       distanceKm: input.distanceKm,
       durationSeconds: input.durationSeconds,
       rpe: input.rpe ?? null,
+      rir,
+      techniqueIssue,
+      limitationCause,
+      pain,
       isWarmup: input.isWarmup ?? false,
       note: input.note ?? null,
       equipmentSnapshotId,
@@ -2147,6 +2190,7 @@ async function logWorkoutSetAttempt(
     ), saved AS (
       INSERT INTO completed_sets (
         id, session_exercise_id, set_no, weight, weight_unit, reps, rpe,
+        rir, technique_issue, limitation_cause,
         distance_km, duration_seconds, is_warmup, metric_type, target_met,
         note, client_key, equipment_snapshot_id,
         load_entry_meaning, performed_semantics_version, performed_load_type,
@@ -2161,6 +2205,9 @@ async function logWorkoutSetAttempt(
         ${input.weightUnit}::unit,
         ${input.reps},
         ${input.rpe ?? null},
+        ${rir},
+        ${techniqueIssue},
+        ${limitationCause},
         ${input.distanceKm},
         ${input.durationSeconds},
         ${input.isWarmup ?? false},
@@ -2236,6 +2283,9 @@ async function logWorkoutSetAttempt(
           completed_sets.distance_km,
           completed_sets.duration_seconds,
           completed_sets.rpe,
+          completed_sets.rir,
+          completed_sets.technique_issue,
+          completed_sets.limitation_cause,
           completed_sets.is_warmup,
           completed_sets.metric_type,
           completed_sets.note,
@@ -2255,6 +2305,9 @@ async function logWorkoutSetAttempt(
           excluded.distance_km,
           excluded.duration_seconds,
           excluded.rpe,
+          excluded.rir,
+          excluded.technique_issue,
+          excluded.limitation_cause,
           excluded.is_warmup,
           excluded.metric_type,
           excluded.note,
@@ -2268,6 +2321,25 @@ async function logWorkoutSetAttempt(
           , excluded.observed_completion_quality
         )
       RETURNING id, session_exercise_id
+    ), inserted_pain AS (
+      INSERT INTO pain_logs (
+        id, user_id, session_id, exercise_id, completed_set_id,
+        body_part, severity, source, note
+      )
+      SELECT
+        ${painId}::uuid,
+        ${userId}::uuid,
+        selected.session_id,
+        selected.exercise_id,
+        saved.id,
+        ${pain?.bodyPart ?? null},
+        ${pain?.severity ?? null},
+        'set_exception',
+        ${pain?.note ?? null}
+      FROM saved
+      JOIN selected_setup selected ON selected.id = saved.session_exercise_id
+      WHERE ${pain != null}::boolean
+      RETURNING id
     ), updated_occurrence AS (
       UPDATE session_occurrences occurrence
       SET outcome = 'completed',
@@ -2437,7 +2509,7 @@ async function logWorkoutSetAttempt(
       SELECT
         completed_set.id,
         occurrence.id AS occurrence_id,
-        ROW(
+        (ROW(
           completed_set.set_no,
           completed_set.weight,
           completed_set.weight_unit,
@@ -2445,6 +2517,9 @@ async function logWorkoutSetAttempt(
           completed_set.distance_km,
           completed_set.duration_seconds,
           completed_set.rpe,
+          completed_set.rir,
+          completed_set.technique_issue,
+          completed_set.limitation_cause,
           completed_set.is_warmup,
           completed_set.metric_type,
           completed_set.note,
@@ -2464,6 +2539,9 @@ async function logWorkoutSetAttempt(
           ${input.distanceKm}::real,
           ${input.durationSeconds}::integer,
           ${input.rpe ?? null}::real,
+          ${rir}::real,
+          ${techniqueIssue}::text,
+          ${limitationCause}::text,
           false,
           ${input.metricType}::metric_type,
           ${input.note ?? null}::text,
@@ -2477,7 +2555,29 @@ async function logWorkoutSetAttempt(
               THEN 'unknown' ELSE 'live_client' END
           , CASE WHEN ${observedCompletedAtISO}::timestamptz IS NULL
               THEN 'unknown' ELSE 'trustworthy' END
-        ) AS exact
+        ))
+        AND CASE
+          WHEN ${pain != null}::boolean THEN (
+            SELECT count(*) = 1
+              AND bool_and(ROW(
+                pain.body_part,
+                pain.severity,
+                pain.note
+              ) IS NOT DISTINCT FROM ROW(
+                ${pain?.bodyPart ?? null}::text,
+                ${pain?.severity ?? null}::integer,
+                ${pain?.note ?? null}::text
+              ))
+            FROM pain_logs pain
+            WHERE pain.completed_set_id = completed_set.id
+              AND pain.archived_at IS NULL
+          )
+          ELSE NOT EXISTS (
+            SELECT 1 FROM pain_logs pain
+            WHERE pain.completed_set_id = completed_set.id
+              AND pain.archived_at IS NULL
+          )
+        END AS exact
       FROM completed_sets completed_set
       JOIN session_occurrences occurrence
         ON occurrence.completed_set_id = completed_set.id

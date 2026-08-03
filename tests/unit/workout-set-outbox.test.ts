@@ -58,6 +58,16 @@ function setInput(
   };
 }
 
+function withUnknownExceptionContext<T extends object>(entry: T) {
+  return {
+    ...entry,
+    rir: null,
+    techniqueIssue: null,
+    limitationCause: null,
+    pain: null,
+  };
+}
+
 describe("workout set device queue", () => {
   it("persists the complete set before delivery under one stable identity", () => {
     const storage = new MemoryStorage();
@@ -444,16 +454,16 @@ describe("workout set device queue", () => {
     );
 
     const snapshot = readWorkoutSetOutbox(storage);
-    expect(snapshot.entries).toEqual([
-      first,
-    ]);
+    expect(snapshot.entries).toEqual([withUnknownExceptionContext(first)]);
     expect(snapshot.quarantined).toEqual([
       expect.objectContaining({ quarantineKey: "entries:1", raw: corrupt }),
     ]);
-    expect(nextWorkoutSetOutboxEntry(snapshot.entries, first.ownerId)).toEqual({
-      ...first,
-      observedCompletedAtISO: null,
-    });
+    expect(nextWorkoutSetOutboxEntry(snapshot.entries, first.ownerId)).toEqual(
+      withUnknownExceptionContext({
+        ...first,
+        observedCompletedAtISO: null,
+      }),
+    );
 
     markWorkoutSetTransientFailure(
       storage,
@@ -495,9 +505,7 @@ describe("workout set device queue", () => {
     const snapshot = parseWorkoutSetOutbox(
       JSON.stringify({ version: 4, entries: [first, later] })
     );
-    expect(snapshot.entries).toEqual([
-      first,
-    ]);
+    expect(snapshot.entries).toEqual([withUnknownExceptionContext(first)]);
     expect(snapshot.quarantined).toEqual([
       expect.objectContaining({
         quarantineKey: "entries:1",
@@ -533,9 +541,7 @@ describe("workout set device queue", () => {
     const snapshot = parseWorkoutSetOutbox(
       JSON.stringify({ version: 4, entries: [first, later] })
     );
-    expect(snapshot.entries).toEqual([
-      first,
-    ]);
+    expect(snapshot.entries).toEqual([withUnknownExceptionContext(first)]);
     expect(snapshot.quarantined).toEqual([
       expect.objectContaining({
         raw: later,
@@ -573,9 +579,7 @@ describe("workout set device queue", () => {
       )
     ).toMatchObject({ ok: true });
     const snapshot = readWorkoutSetOutbox(storage);
-    expect(snapshot.entries).toEqual([
-      valid,
-    ]);
+    expect(snapshot.entries).toEqual([withUnknownExceptionContext(valid)]);
     expect(snapshot.quarantined).toEqual([
       expect.objectContaining({ raw: secondCorrupt }),
     ]);
@@ -584,7 +588,7 @@ describe("workout set device queue", () => {
     ).toEqual({
       version: 4,
       entries: [
-        valid,
+        withUnknownExceptionContext(valid),
         {
           quarantine: "workout-set-outbox-entry-v1",
           raw: secondCorrupt,

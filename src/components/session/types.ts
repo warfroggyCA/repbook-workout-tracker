@@ -6,6 +6,11 @@ import type { LoadUnit } from "@/lib/units";
 import type { WorkoutSetLoadEntryMeaning } from "@/lib/workout-set-outbox";
 import type { MachineLoadConfig } from "@/engine/machine-load-math";
 import type { PerformedMetricType } from "@/lib/set-metric-semantics";
+import type {
+  LimitationCause,
+  SetPainContext,
+  TechniqueIssue,
+} from "@/lib/set-exception-context";
 
 export type LoggedSet = {
   id: string;
@@ -18,6 +23,10 @@ export type LoggedSet = {
   distanceKm?: number | null;
   durationSeconds?: number | null;
   rpe: number | null;
+  rir?: number | null;
+  techniqueIssue?: TechniqueIssue | null;
+  limitationCause?: LimitationCause | null;
+  pain?: SetPainContext | null;
   note: string | null;
   correctionCount?: number;
   saveState?: "pending" | "saving" | "retrying" | "failed" | "saved";

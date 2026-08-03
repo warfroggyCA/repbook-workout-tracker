@@ -43,6 +43,24 @@ import {
   setMetricExclusionLabel,
 } from "@/lib/set-metric-semantics";
 import { workingSetDisplayPosition } from "@/lib/session-occurrences";
+import {
+  LIMITATION_CAUSE_LABELS,
+  TECHNIQUE_ISSUE_LABELS,
+  type LimitationCause,
+  type TechniqueIssue,
+} from "@/lib/set-exception-context";
+
+function techniqueIssueLabel(value: string | null) {
+  return value != null && value in TECHNIQUE_ISSUE_LABELS
+    ? TECHNIQUE_ISSUE_LABELS[value as TechniqueIssue]
+    : null;
+}
+
+function limitationCauseLabel(value: string | null) {
+  return value != null && value in LIMITATION_CAUSE_LABELS
+    ? LIMITATION_CAUSE_LABELS[value as LimitationCause]
+    : null;
+}
 
 export default async function SessionDetailPage(
   props: PageProps<"/history/[id]">
@@ -156,6 +174,17 @@ export default async function SessionDetailPage(
       ...session.exercises.map((exercise) => exercise.exercise),
       ...referencedExercises,
     ].map((exercise) => [exercise.id, exercise.name])
+  );
+  const painByCompletedSetId = new Map(
+    session.painLogs.flatMap((pain) => pain.completedSetId == null
+      ? []
+      : [[pain.completedSetId, pain] as const]),
+  );
+  const completedSetLabels = new Map(
+    session.exercises.flatMap((exercise) => exercise.sets.map((set) => [
+      set.id,
+      `${exercise.exercise.name} · set ${set.setNo}`,
+    ] as const)),
   );
   if (!archivePreview) notFound();
 
@@ -712,6 +741,11 @@ export default async function SessionDetailPage(
                                 RPE {s.rpe}
                               </span>
                             )}
+                            {s.rir != null && (
+                              <span className="text-xs text-muted-foreground">
+                                RIR {s.rir}
+                              </span>
+                            )}
                             {targetOutcomeVisible && s.targetMet === true && (
                               <Check className="size-3.5 text-green-600" />
                             )}
@@ -767,6 +801,25 @@ export default async function SessionDetailPage(
                             {s.note}
                           </p>
                         )}
+                        {techniqueIssueLabel(s.techniqueIssue) && (
+                          <p className="mt-1 text-xs text-muted-foreground">
+                            Technique issue: {techniqueIssueLabel(s.techniqueIssue)}
+                          </p>
+                        )}
+                        {limitationCauseLabel(s.limitationCause) && (
+                          <p className="mt-1 text-xs text-muted-foreground">
+                            Limited by: {limitationCauseLabel(s.limitationCause)}
+                          </p>
+                        )}
+                        {painByCompletedSetId.get(s.id) && (
+                          <p className="mt-1 text-xs text-muted-foreground">
+                            Pain: {painByCompletedSetId.get(s.id)!.bodyPart}{" "}
+                            {painByCompletedSetId.get(s.id)!.severity}/10
+                            {painByCompletedSetId.get(s.id)!.note
+                              ? ` — ${painByCompletedSetId.get(s.id)!.note}`
+                              : ""}
+                          </p>
+                        )}
                       </li>
                     );
                   },
@@ -788,8 +841,11 @@ export default async function SessionDetailPage(
           <h2 className="mb-1 text-sm font-medium">Pain flags</h2>
           {session.painLogs.map((p) => (
             <p key={p.id} className="text-sm text-muted-foreground">
-              {p.exerciseId && exerciseNames.has(p.exerciseId)
+              {!p.completedSetId && p.exerciseId && exerciseNames.has(p.exerciseId)
                 ? `${exerciseNames.get(p.exerciseId)} · `
+                : ""}
+              {p.completedSetId && completedSetLabels.has(p.completedSetId)
+                ? `${completedSetLabels.get(p.completedSetId)} · `
                 : ""}
               {p.bodyPart} {p.severity}/10{p.note ? ` — ${p.note}` : ""}
             </p>

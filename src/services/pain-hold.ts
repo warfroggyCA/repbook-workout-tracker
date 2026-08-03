@@ -1,4 +1,4 @@
-import { and, desc, eq, gt, isNull } from "drizzle-orm";
+import { and, desc, eq, gt, isNull, ne } from "drizzle-orm";
 import type { Db } from "@/db";
 import { exercises, painLogs, workoutSessions } from "@/db/schema";
 import {
@@ -41,6 +41,7 @@ export async function loadExercisePainHold(
           eq(workoutSessions.status, "completed"),
           isNull(workoutSessions.archivedAt),
           isNull(painLogs.archivedAt),
+          ne(painLogs.source, "set_exception"),
           gt(painLogs.createdAt, windowStart)
         )
       )

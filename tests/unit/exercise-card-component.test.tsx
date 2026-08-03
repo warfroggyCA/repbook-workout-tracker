@@ -342,6 +342,12 @@ describe("ExerciseCard", () => {
     expect(html).toContain("Performed measure");
     expect(html).toContain("Barbell Squat, set 2");
     expect(html).toContain("Optional effort and set note");
+    expect(html).toContain("RIR (0–10)");
+    expect(html).toContain("Technique issue");
+    expect(html).toContain("What limited this set?");
+    expect(html).toContain("No flag means unknown, not “no pain.”");
+    expect(html).toContain("Record pain");
+    expect(html).not.toContain('aria-label="Pain severity 1"');
     expect(html).toContain("Set exceptions");
     expect(html.indexOf("Current action")).toBeLessThan(
       html.indexOf("Performed measure"),

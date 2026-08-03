@@ -50,6 +50,10 @@ import {
   type PerformedMetricType,
 } from "@/lib/set-metric-semantics";
 import { analyzeHistoricalSemanticsPayload } from "@/services/historical-semantics-gate";
+import {
+  LIMITATION_CAUSES,
+  TECHNIQUE_ISSUES,
+} from "@/lib/set-exception-context";
 
 export type SnapshotRestoreScope = "history" | "full";
 
@@ -62,6 +66,7 @@ const PRE_CONTEXTUAL_NOTE_SNAPSHOT_SCHEMA_VERSION = "24";
 const PRE_HISTORY_IDENTITY_SNAPSHOT_SCHEMA_VERSION = "25";
 const PRE_PERFORMED_SEMANTICS_SNAPSHOT_SCHEMA_VERSION = "26";
 const PRE_START_SEMANTICS_SNAPSHOT_SCHEMA_VERSION = "27";
+const PRE_EXCEPTION_CONTEXT_SNAPSHOT_SCHEMA_VERSION = "28";
 
 type SnapshotRow = Record<string, unknown>;
 type RestoreRows = Record<string, SnapshotRow[]>;
@@ -476,6 +481,70 @@ function validateStartAndPrescribedSemantics(payload: CanonicalSnapshotPayload) 
   }
 }
 
+function validateSetExceptionContext(payload: CanonicalSnapshotPayload) {
+  if (payload.schemaVersion !== SNAPSHOT_SCHEMA_VERSION) return;
+  const sessionExercises = new Map(
+    rows(payload, "session_exercises").map((row) => [String(row.id), row]),
+  );
+  const sessions = new Map(
+    rows(payload, "workout_sessions").map((row) => [String(row.id), row]),
+  );
+  const completed = new Map(
+    rows(payload, "completed_sets").map((row) => [String(row.id), row]),
+  );
+  for (const set of completed.values()) {
+    for (const key of ["rir", "technique_issue", "limitation_cause"]) {
+      if (!Object.hasOwn(set, key)) {
+        throw new Error("Snapshot completed set is missing exception context state.");
+      }
+    }
+    if (
+      (set.rir != null && (
+        typeof set.rir !== "number" ||
+        !Number.isFinite(set.rir) ||
+        set.rir < 0 ||
+        set.rir > 10 ||
+        set.rpe != null
+      )) ||
+      (set.technique_issue != null &&
+        !TECHNIQUE_ISSUES.includes(set.technique_issue as never)) ||
+      (set.limitation_cause != null &&
+        !LIMITATION_CAUSES.includes(set.limitation_cause as never))
+    ) {
+      throw new Error("Snapshot completed set has invalid exception context.");
+    }
+  }
+
+  const activePainBySet = new Set<string>();
+  for (const pain of rows(payload, "pain_logs")) {
+    if (pain.completed_set_id == null) continue;
+    const setId = String(pain.completed_set_id);
+    const linkedSet = completed.get(setId);
+    const exercise = linkedSet == null
+      ? undefined
+      : sessionExercises.get(String(linkedSet.session_exercise_id));
+    const session = exercise == null
+      ? undefined
+      : sessions.get(String(exercise.session_id));
+    if (
+      !linkedSet || !exercise || !session ||
+      pain.session_id !== exercise.session_id ||
+      pain.exercise_id !== exercise.exercise_id ||
+      pain.user_id !== session.user_id
+    ) {
+      throw new Error(
+        "Snapshot set-linked pain evidence contradicts its owner, workout, or exercise.",
+      );
+    }
+    if (pain.archived_at == null) {
+      if (activePainBySet.has(setId)) {
+        throw new Error("Snapshot completed set has more than one active pain flag.");
+      }
+      activePainBySet.add(setId);
+    }
+  }
+}
+
 function isNonnegativeInteger(value: unknown) {
   return typeof value === "number" && Number.isInteger(value) && value >= 0;
 }
@@ -684,6 +753,7 @@ export function upgradeSnapshotPayload(
     PRE_HISTORY_IDENTITY_SNAPSHOT_SCHEMA_VERSION,
     PRE_PERFORMED_SEMANTICS_SNAPSHOT_SCHEMA_VERSION,
     PRE_START_SEMANTICS_SNAPSHOT_SCHEMA_VERSION,
+    PRE_EXCEPTION_CONTEXT_SNAPSHOT_SCHEMA_VERSION,
     SNAPSHOT_SCHEMA_VERSION,
   ]);
   if (!supported.has(payload.schemaVersion)) {
@@ -698,6 +768,7 @@ export function upgradeSnapshotPayload(
     sanitizeSnapshotPrivacy(upgraded);
     validateUnitAndCalendarIdentity(upgraded);
     validateStartAndPrescribedSemantics(upgraded);
+    validateSetExceptionContext(upgraded);
     validateHistoryIdentityAndTiming(upgraded);
     return upgraded;
   }
@@ -758,6 +829,7 @@ export function upgradeSnapshotPayload(
       PRE_HISTORY_IDENTITY_SNAPSHOT_SCHEMA_VERSION,
       PRE_PERFORMED_SEMANTICS_SNAPSHOT_SCHEMA_VERSION,
       PRE_START_SEMANTICS_SNAPSHOT_SCHEMA_VERSION,
+      PRE_EXCEPTION_CONTEXT_SNAPSHOT_SCHEMA_VERSION,
       SNAPSHOT_SCHEMA_VERSION,
     ].includes(upgraded.schemaVersion)
   ) {
@@ -970,6 +1042,9 @@ export function upgradeSnapshotPayload(
     completed.performed_semantics_version ??= null;
     completed.performed_load_type ??= null;
     completed.performed_load_semantics ??= null;
+    completed.rir ??= null;
+    completed.technique_issue ??= null;
+    completed.limitation_cause ??= null;
   }
   for (const job of rows(upgraded, "progression_jobs")) {
     job.source_session_revision ??= 0;
@@ -1026,6 +1101,7 @@ export function upgradeSnapshotPayload(
   upgraded.schemaVersion = SNAPSHOT_SCHEMA_VERSION;
   validateUnitAndCalendarIdentity(upgraded);
   validateStartAndPrescribedSemantics(upgraded);
+  validateSetExceptionContext(upgraded);
   validateHistoryIdentityAndTiming(upgraded);
   return upgraded;
 }
@@ -1802,6 +1878,7 @@ export function validateSnapshotPayload(
       PRE_HISTORY_IDENTITY_SNAPSHOT_SCHEMA_VERSION,
       PRE_PERFORMED_SEMANTICS_SNAPSHOT_SCHEMA_VERSION,
       PRE_START_SEMANTICS_SNAPSHOT_SCHEMA_VERSION,
+      PRE_EXCEPTION_CONTEXT_SNAPSHOT_SCHEMA_VERSION,
       SNAPSHOT_SCHEMA_VERSION,
     ].includes(payload.schemaVersion)
   ) {
@@ -1840,6 +1917,7 @@ export function validateSnapshotPayload(
       PRE_HISTORY_IDENTITY_SNAPSHOT_SCHEMA_VERSION,
       PRE_PERFORMED_SEMANTICS_SNAPSHOT_SCHEMA_VERSION,
       PRE_START_SEMANTICS_SNAPSHOT_SCHEMA_VERSION,
+      PRE_EXCEPTION_CONTEXT_SNAPSHOT_SCHEMA_VERSION,
       SNAPSHOT_SCHEMA_VERSION,
     ].includes(payload.schemaVersion)
   ) {
@@ -1995,6 +2073,7 @@ export function validateSnapshotPayload(
       PRE_HISTORY_IDENTITY_SNAPSHOT_SCHEMA_VERSION,
       PRE_PERFORMED_SEMANTICS_SNAPSHOT_SCHEMA_VERSION,
       PRE_START_SEMANTICS_SNAPSHOT_SCHEMA_VERSION,
+      PRE_EXCEPTION_CONTEXT_SNAPSHOT_SCHEMA_VERSION,
       SNAPSHOT_SCHEMA_VERSION,
     ].includes(payload.schemaVersion)
   ) {
@@ -2151,6 +2230,7 @@ export function validateSnapshotPayload(
   if (payload.schemaVersion === SNAPSHOT_SCHEMA_VERSION) {
     validateUnitAndCalendarIdentity(payload);
     validateStartAndPrescribedSemantics(payload);
+    validateSetExceptionContext(payload);
     validateVersionedProgramData(payload);
     validateSessionCompilerIdentity(payload);
     validateSessionOccurrenceData(payload);

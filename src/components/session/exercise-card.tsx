@@ -98,6 +98,17 @@ import {
 import { createClientUuid } from "@/lib/client-uuid";
 import type { OccurrenceMutationOutboxEntry } from "@/lib/occurrence-mutation-outbox";
 import { CompletedSetCorrection } from "@/components/history/completed-set-correction";
+import {
+  LIMITATION_CAUSES,
+  LIMITATION_CAUSE_LABELS,
+  PAIN_BODY_PARTS,
+  TECHNIQUE_ISSUES,
+  TECHNIQUE_ISSUE_LABELS,
+  type LimitationCause,
+  type PainBodyPart,
+  type SetPainContext,
+  type TechniqueIssue,
+} from "@/lib/set-exception-context";
 
 const RPE_CHIPS = EFFORT_CHOICES.map((choice) => ({
   label: choice.label,
@@ -105,8 +116,6 @@ const RPE_CHIPS = EFFORT_CHOICES.map((choice) => ({
   meaning: choice.meaning,
   value: choice.legacyRpe,
 }));
-
-const BODY_PARTS = ["shoulder", "knee", "back", "elbow", "wrist", "hip", "other"];
 
 function formatLoggedSet(
   set: LoggedSet,
@@ -144,6 +153,21 @@ function formatPerformedDuration(durationSeconds: number) {
     : `${seconds} sec`;
 }
 
+function formatLoggedExceptionContext(set: LoggedSet) {
+  const context: string[] = [];
+  if (set.rir != null) context.push(`RIR ${set.rir}`);
+  if (set.techniqueIssue != null) {
+    context.push(`Technique: ${TECHNIQUE_ISSUE_LABELS[set.techniqueIssue]}`);
+  }
+  if (set.limitationCause != null) {
+    context.push(`Limited by: ${LIMITATION_CAUSE_LABELS[set.limitationCause]}`);
+  }
+  if (set.pain != null) {
+    context.push(`Pain: ${set.pain.bodyPart} ${set.pain.severity}/10`);
+  }
+  return context;
+}
+
 function performedMetricTypeForLivePatch(
   metricType: string,
 ): PerformedMetricType | null {
@@ -159,6 +183,12 @@ const ALTERNATIVE_REASON_LABELS: Record<ExerciseAlternativeReason, string> = {
   other: "Another reason",
 };
 
+type SetPainDraft = {
+  bodyPart: PainBodyPart | null;
+  severity: number | null;
+  note: string | null;
+};
+
 type SetDraft = {
   weight: number | null;
   weightUnit: LoadUnit | null;
@@ -166,6 +196,10 @@ type SetDraft = {
   distanceKm: number | null;
   durationSeconds: number | null;
   rpe: number | null;
+  rir: number | null;
+  techniqueIssue: TechniqueIssue | null;
+  limitationCause: LimitationCause | null;
+  pain: SetPainDraft | null;
   note: string;
 };
 
@@ -365,6 +399,10 @@ export function ExerciseCard({
     distanceKm: null,
     durationSeconds: null,
     rpe: null,
+    rir: null,
+    techniqueIssue: null,
+    limitationCause: null,
+    pain: null,
     note: defaultSetNote,
   });
   const [appendedDraft, setAppendedDraft] = useState<SetDraft>({
@@ -377,6 +415,10 @@ export function ExerciseCard({
     distanceKm: null,
     durationSeconds: null,
     rpe: null,
+    rir: null,
+    techniqueIssue: null,
+    limitationCause: null,
+    pain: null,
     note: "",
   });
   const [appendingSet, setAppendingSet] = useState(false);
@@ -483,6 +525,21 @@ export function ExerciseCard({
       toast.error(performed.message);
       return;
     }
+    let pain: SetPainContext | null = null;
+    if (submittedDraft.pain != null) {
+      if (
+        submittedDraft.pain.bodyPart == null ||
+        submittedDraft.pain.severity == null
+      ) {
+        toast.error("Choose a pain location and severity, or clear the pain flag.");
+        return;
+      }
+      pain = {
+        bodyPart: submittedDraft.pain.bodyPart,
+        severity: submittedDraft.pain.severity,
+        note: submittedDraft.pain.note,
+      };
+    }
     let clientKey: string;
     try {
       clientKey = createClientUuid();
@@ -500,6 +557,10 @@ export function ExerciseCard({
       setNo,
       ...performed.measurement,
       rpe: submittedDraft.rpe,
+      rir: submittedDraft.rir,
+      techniqueIssue: submittedDraft.techniqueIssue,
+      limitationCause: submittedDraft.limitationCause,
+      pain,
       note: cleanNote,
       saveState: "pending",
     };
@@ -536,6 +597,10 @@ export function ExerciseCard({
           ? null
           : current.durationSeconds,
       rpe: null,
+      rir: null,
+      techniqueIssue: null,
+      limitationCause: null,
+      pain: null,
       note: exercise.setNotes[setNo] ?? "",
     });
     if (occurrence?.id === appendedOccurrence?.id) {
@@ -581,6 +646,10 @@ export function ExerciseCard({
         distanceKm: null,
         durationSeconds: null,
         rpe: null,
+        rir: null,
+        techniqueIssue: null,
+        limitationCause: null,
+        pain: null,
         note: "",
       });
     } finally {
@@ -824,6 +893,14 @@ export function ExerciseCard({
                       {set.note && (
                         <p className="mt-1 text-xs text-muted-foreground">{set.note}</p>
                       )}
+                      {formatLoggedExceptionContext(set).map((context) => (
+                        <p
+                          key={context}
+                          className="mt-1 text-xs text-muted-foreground"
+                        >
+                          {context}
+                        </p>
+                      ))}
                     </div>
                     {set.saveState && (
                       <div className="mt-2 flex flex-wrap items-center justify-between gap-2 border-t pt-2 text-xs">
@@ -1158,6 +1235,16 @@ export function ExerciseCard({
                               displayedAcknowledgementReceipt.metricType,
                             )} · Acknowledged by Repbook
                           </p>
+                          {formatLoggedExceptionContext(
+                            displayedAcknowledgementReceipt.set,
+                          ).map((context) => (
+                            <p
+                              key={context}
+                              className="mt-0.5 text-xs text-muted-foreground"
+                            >
+                              {context}
+                            </p>
+                          ))}
                         </div>
                       )}
                       {prioritizeCurrentAction && (
@@ -1173,7 +1260,7 @@ export function ExerciseCard({
                           <details className="mt-3 rounded-md border border-dashed text-sm">
                             <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-2 rounded-md px-3 py-2 font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
                               <span>Set exceptions</span>
-                              <span className="text-xs text-muted-foreground">Skip or explain</span>
+                              <span className="text-xs text-muted-foreground">Skip set</span>
                             </summary>
                             <div className="border-t p-2">
                               <Button
@@ -1804,6 +1891,7 @@ function SetEntry({
   const distanceInputId = useId();
   const durationInputId = useId();
   const exactRpeId = useId();
+  const exactRirId = useId();
   const [exactOpen, setExactOpen] = useState(
     draft.rpe != null && !RPE_CHIPS.some((chip) => chip.value === draft.rpe),
   );
@@ -1816,7 +1904,7 @@ function SetEntry({
       ? formatMachineLoadGuidance(draft.weight, machineLoadConfig)
       : null;
   const selectedEffort = EFFORT_CHOICES.find(
-    (choice) => choice.legacyRpe === draft.rpe,
+    (choice) => draft.rir == null && choice.legacyRpe === draft.rpe,
   );
   if (!supported) {
     return (
@@ -1833,8 +1921,8 @@ function SetEntry({
   const optionalSetFields = (
     <>
       <p className="text-sm text-muted-foreground">
-        Effort shortcuts are broad categories. Each shows the numeric RPE saved;
-        use exact entry when the number matters.
+        All fields below are optional. Record effort as either RIR or RPE;
+        leaving it blank keeps effort unknown.
       </p>
       {selectedEffort && !exactOpen && (
         <p className="text-sm font-medium">
@@ -1850,7 +1938,11 @@ function SetEntry({
             className="h-auto min-h-11 whitespace-normal text-xs"
             aria-label={`${chip.shortcutLabel}; ${chip.meaning}`}
             onClick={() =>
-              setDraft((d) => ({ ...d, rpe: d.rpe === chip.value ? null : chip.value }))
+              setDraft((d) => ({
+                ...d,
+                rpe: d.rpe === chip.value ? null : chip.value,
+                rir: null,
+              }))
             }
           >
             {chip.shortcutLabel}
@@ -1887,11 +1979,193 @@ function SetEntry({
                   event.target.value === ""
                     ? null
                     : Math.min(10, Math.max(1, Number(event.target.value))),
+                rir: null,
               }))
             }
           />
         </div>
       )}
+      <div className="max-w-48">
+        <label htmlFor={exactRirId} className="text-sm font-medium">
+          RIR (0–10)
+        </label>
+        <Input
+          id={exactRirId}
+          type="number"
+          inputMode="decimal"
+          min={0}
+          max={10}
+          step={0.5}
+          value={draft.rir ?? ""}
+          onChange={(event) =>
+            setDraft((current) => ({
+              ...current,
+              rir:
+                event.target.value === ""
+                  ? null
+                  : Math.min(10, Math.max(0, Number(event.target.value))),
+              rpe: null,
+            }))
+          }
+        />
+        <p className="mt-1 text-xs text-muted-foreground">
+          Reps you believe remained. Entering RIR clears RPE.
+        </p>
+      </div>
+      <fieldset className="space-y-2 rounded-md border p-2">
+        <legend className="px-1 text-sm font-medium">Technique issue</legend>
+        <p className="text-xs text-muted-foreground">
+          Select only if you noticed one. Select it again to clear it.
+        </p>
+        <div className="grid grid-cols-2 gap-1.5">
+          {TECHNIQUE_ISSUES.map((issue) => (
+            <Button
+              key={issue}
+              type="button"
+              variant={draft.techniqueIssue === issue ? "default" : "outline"}
+              size="sm"
+              className="h-auto min-h-11 whitespace-normal text-xs"
+              aria-pressed={draft.techniqueIssue === issue}
+              onClick={() => setDraft((current) => ({
+                ...current,
+                techniqueIssue:
+                  current.techniqueIssue === issue ? null : issue,
+              }))}
+            >
+              {TECHNIQUE_ISSUE_LABELS[issue]}
+            </Button>
+          ))}
+        </div>
+      </fieldset>
+      <fieldset className="space-y-2 rounded-md border p-2">
+        <legend className="px-1 text-sm font-medium">What limited this set?</legend>
+        <p className="text-xs text-muted-foreground">
+          Optional context, not a change to your Program or next workout.
+        </p>
+        <div className="grid grid-cols-2 gap-1.5">
+          {LIMITATION_CAUSES.map((cause) => (
+            <Button
+              key={cause}
+              type="button"
+              variant={draft.limitationCause === cause ? "default" : "outline"}
+              size="sm"
+              className="h-auto min-h-11 whitespace-normal text-xs"
+              aria-pressed={draft.limitationCause === cause}
+              onClick={() => setDraft((current) => ({
+                ...current,
+                limitationCause:
+                  current.limitationCause === cause ? null : cause,
+              }))}
+            >
+              {LIMITATION_CAUSE_LABELS[cause]}
+            </Button>
+          ))}
+        </div>
+      </fieldset>
+      <div className="space-y-2 rounded-md border p-2">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <p className="text-sm font-medium">Pain during this set</p>
+            <p className="text-xs text-muted-foreground">
+              No flag means unknown, not “no pain.”
+            </p>
+          </div>
+          <Button
+            type="button"
+            variant={draft.pain == null ? "outline" : "default"}
+            size="sm"
+            aria-expanded={draft.pain != null}
+            onClick={() => setDraft((current) => ({
+              ...current,
+              pain: current.pain == null
+                ? { bodyPart: null, severity: null, note: null }
+                : null,
+            }))}
+          >
+            {draft.pain == null ? "Record pain" : "Clear pain flag"}
+          </Button>
+        </div>
+        {draft.pain != null && (
+          <div className="space-y-3 border-t pt-3">
+            <div className="flex flex-wrap gap-1.5">
+              {PAIN_BODY_PARTS.map((part) => (
+                <Button
+                  key={part}
+                  type="button"
+                  variant={draft.pain?.bodyPart === part ? "default" : "outline"}
+                  size="sm"
+                  aria-pressed={draft.pain?.bodyPart === part}
+                  onClick={() => setDraft((current) => ({
+                    ...current,
+                    pain: current.pain == null
+                      ? null
+                      : { ...current.pain, bodyPart: part },
+                  }))}
+                >
+                  {part}
+                </Button>
+              ))}
+            </div>
+            <div>
+              <p className="mb-2 text-sm text-muted-foreground">
+                Pain severity: {draft.pain.severity == null ? (
+                  <span className="font-medium text-foreground">choose 1–10</span>
+                ) : (
+                  <span className="font-medium text-foreground">
+                    {draft.pain.severity}/10
+                  </span>
+                )}
+              </p>
+              <div
+                className="grid grid-cols-5 gap-1.5"
+                role="group"
+                aria-label="Pain severity"
+              >
+                {Array.from({ length: 10 }, (_, index) => index + 1).map(
+                  (severity) => (
+                    <Button
+                      key={severity}
+                      type="button"
+                      variant={draft.pain?.severity === severity ? "default" : "outline"}
+                      size="sm"
+                      className="min-h-11 min-w-11"
+                      aria-label={`Pain severity ${severity}`}
+                      aria-pressed={draft.pain?.severity === severity}
+                      onClick={() => setDraft((current) => ({
+                        ...current,
+                        pain: current.pain == null
+                          ? null
+                          : { ...current.pain, severity },
+                      }))}
+                    >
+                      {severity}
+                    </Button>
+                  ),
+                )}
+              </div>
+            </div>
+            <Textarea
+              aria-label="Pain note (optional)"
+              value={draft.pain.note ?? ""}
+              maxLength={SET_NOTE_MAX_LENGTH}
+              onChange={(event) => setDraft((current) => ({
+                ...current,
+                pain: current.pain == null
+                  ? null
+                  : { ...current.pain, note: event.target.value || null },
+              }))}
+              placeholder="What did it feel like? (optional)"
+              rows={2}
+            />
+            {(draft.pain.severity ?? 0) >= 5 && (
+              <p className="rounded-md bg-destructive/10 px-3 py-2 text-xs text-destructive">
+                That is significant pain. Stop this movement today. If it
+                persists, seek a professional opinion rather than a workaround.
+              </p>
+            )}
+          </div>
+        )}
+      </div>
       <Textarea
         aria-label="Set note (optional)"
         value={draft.note}
@@ -2063,7 +2337,9 @@ function SetEntry({
         <details className="rounded-md border border-dashed text-sm">
           <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-2 rounded-md px-3 py-2 font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
             <span>Optional effort and set note</span>
-            <span className="text-xs text-muted-foreground">Add details</span>
+            <span className="text-xs text-muted-foreground">
+              Effort, pain, technique, or limitation
+            </span>
           </summary>
           <div className="space-y-2 border-t p-3">{optionalSetFields}</div>
         </details>
@@ -2098,7 +2374,7 @@ function PainDrawer({
         </DrawerHeader>
         <div className="flex flex-col gap-4 px-4">
           <div className="flex flex-wrap gap-1.5">
-            {BODY_PARTS.map((part) => (
+            {PAIN_BODY_PARTS.map((part) => (
               <Button
                 key={part}
                 variant={bodyPart === part ? "default" : "outline"}

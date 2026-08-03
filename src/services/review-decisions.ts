@@ -3,7 +3,10 @@ import {
   desc,
   eq,
   inArray,
+  isNotNull,
   isNull,
+  ne,
+  or,
   sql,
 } from "drizzle-orm";
 import type { Db } from "@/db";
@@ -59,6 +62,21 @@ export type OutcomeReadyDecision = {
   painFlags: number;
   maxPainSeverity: number | null;
   evidenceLimited: boolean;
+};
+
+export type RecentExceptionEvidence = {
+  setId: string;
+  sessionId: string;
+  localDate: string;
+  workoutName: string;
+  exerciseName: string;
+  setNo: number;
+  rpe: number | null;
+  rir: number | null;
+  techniqueIssue: string | null;
+  limitationCause: string | null;
+  painBodyPart: string | null;
+  painSeverity: number | null;
 };
 
 type DecisionHistoryInput = {
@@ -388,10 +406,65 @@ export async function getReviewDecisionData(db: Db, userId: string) {
   const activeAccepted = acceptedWithAdaptation.filter(
     ({ adaptation }) => adaptation.undoneAt == null
   );
+  const recentExceptions: RecentExceptionEvidence[] = await db
+    .select({
+      setId: completedSets.id,
+      sessionId: workoutSessions.id,
+      localDate: workoutSessions.localDate,
+      workoutName: sql<string>`coalesce(${workoutSessions.templateName}, 'Completed workout')`,
+      exerciseName: sql<string>`CASE
+        WHEN ${sessionExercises.prescribedSemanticsVersion} = 1
+          AND ${sessionExercises.modificationType} NOT IN ('substituted', 'added')
+        THEN ${sessionExercises.prescribedExerciseName}
+        ELSE ${exercises.name}
+      END`,
+      setNo: completedSets.setNo,
+      rpe: completedSets.rpe,
+      rir: completedSets.rir,
+      techniqueIssue: completedSets.techniqueIssue,
+      limitationCause: completedSets.limitationCause,
+      painBodyPart: painLogs.bodyPart,
+      painSeverity: painLogs.severity,
+    })
+    .from(completedSets)
+    .innerJoin(
+      sessionExercises,
+      eq(sessionExercises.id, completedSets.sessionExerciseId),
+    )
+    .innerJoin(
+      workoutSessions,
+      eq(workoutSessions.id, sessionExercises.sessionId),
+    )
+    .innerJoin(exercises, eq(exercises.id, sessionExercises.exerciseId))
+    .leftJoin(
+      painLogs,
+      and(
+        eq(painLogs.completedSetId, completedSets.id),
+        eq(painLogs.userId, userId),
+        isNull(painLogs.archivedAt),
+      ),
+    )
+    .where(and(
+      eq(workoutSessions.userId, userId),
+      eq(workoutSessions.status, "completed"),
+      isNull(workoutSessions.archivedAt),
+      isNull(completedSets.archivedAt),
+      eq(completedSets.isWarmup, false),
+      or(
+        isNotNull(completedSets.rpe),
+        isNotNull(completedSets.rir),
+        isNotNull(completedSets.techniqueIssue),
+        isNotNull(completedSets.limitationCause),
+        isNotNull(painLogs.id),
+      ),
+    ))
+    .orderBy(desc(workoutSessions.startedAt), desc(completedSets.setNo))
+    .limit(12);
   if (activeAccepted.length === 0) {
     return {
       pending,
       recent,
+      recentExceptions,
       outcomes: [] as OutcomeReadyDecision[],
       acceptedDecisionCount: activeAcceptedDecisionCount,
       outcomeSupportedDecisionCount: 0,
@@ -436,6 +509,7 @@ export async function getReviewDecisionData(db: Db, userId: string) {
     return {
       pending,
       recent,
+      recentExceptions,
       outcomes: [] as OutcomeReadyDecision[],
       acceptedDecisionCount: activeAcceptedDecisionCount,
       outcomeSupportedDecisionCount: 0,
@@ -506,6 +580,7 @@ export async function getReviewDecisionData(db: Db, userId: string) {
     return {
       pending,
       recent,
+      recentExceptions,
       outcomes: [] as OutcomeReadyDecision[],
       acceptedDecisionCount: activeAcceptedDecisionCount,
       outcomeSupportedDecisionCount,
@@ -527,6 +602,7 @@ export async function getReviewDecisionData(db: Db, userId: string) {
       where: and(
         eq(painLogs.userId, userId),
         inArray(painLogs.sessionId, sessionIds),
+        ne(painLogs.source, "set_exception"),
         isNull(painLogs.archivedAt)
       ),
     }),
@@ -701,6 +777,7 @@ export async function getReviewDecisionData(db: Db, userId: string) {
   return {
     pending,
     recent,
+    recentExceptions,
     outcomes: outcomes.slice(0, 8),
     acceptedDecisionCount: activeAcceptedDecisionCount,
     outcomeSupportedDecisionCount,
