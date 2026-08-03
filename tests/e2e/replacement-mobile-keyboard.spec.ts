@@ -5,10 +5,13 @@ import {
 } from "../helpers/react-readiness";
 import {
   isCorrelatedWebKitRscPrefetchCancellation,
+  isExpectedWebKitRscLinkCancellation,
   observeNextRscPrefetches,
 } from "../helpers/webkit-rsc-prefetch-errors";
 
 test.describe.configure({ mode: "serial" });
+
+const EXPECTED_APP_SHELL_PREFETCHES = new Set(["/program"]);
 
 async function signIn(page: Page) {
   await page.goto("/sign-in");
@@ -356,6 +359,11 @@ test("keeps unrestricted replacement truthful and reachable through mobile keybo
   expect(
     unexpectedErrors.filter(
       (message) =>
+        !isExpectedWebKitRscLinkCancellation(
+          message,
+          browserName,
+          EXPECTED_APP_SHELL_PREFETCHES,
+        ) &&
         !isCorrelatedWebKitRscPrefetchCancellation(
           message,
           browserName,

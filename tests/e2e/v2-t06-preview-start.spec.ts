@@ -69,11 +69,25 @@ async function clearFailure(button: Locator) {
 
 async function discardActive(page: Page) {
   await page.waitForLoadState("networkidle");
-  await page.goto("/today");
-  const discard = page.getByRole("button", { name: "Discard this workout", exact: true });
+  if (!/\/session\/[0-9a-f-]+$/.test(page.url())) {
+    const resume = page.getByRole("button", { name: "Resume workout", exact: true });
+    await waitForHydratedReactHandler(resume);
+    await resume.click();
+    await expect(page).toHaveURL(/\/session\/[0-9a-f-]+$/);
+  }
+  const finish = page.getByRole("button", { name: "Finish", exact: true });
+  await waitForHydratedReactHandler(finish);
+  await finish.click();
+  const finishDialog = page.getByRole("dialog", { name: "Finish workout" });
+  const discard = finishDialog.getByRole("button", {
+    name: "Discard workout",
+    exact: true,
+  });
   await waitForHydratedReactHandler(discard);
   await discard.click();
-  const confirm = page.getByRole("button", { name: "Confirm discard", exact: true });
+  const confirm = page
+    .getByRole("dialog", { name: /^Discard .+\?$/ })
+    .getByRole("button", { name: "Confirm discard", exact: true });
   await waitForHydratedReactHandler(confirm);
   await confirm.click();
   await expect(page.getByRole("button", { name: "Train as planned", exact: true }))
