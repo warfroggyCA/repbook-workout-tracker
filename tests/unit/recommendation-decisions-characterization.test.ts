@@ -48,6 +48,7 @@ describe("recommendation decisions publish immutable Program versions", () => {
   let programId: string;
   let initialSlotId: string;
   let currentExerciseId: string;
+  let currentExerciseName: string;
   let targetExerciseId: string;
 
   beforeEach(async () => {
@@ -57,7 +58,7 @@ describe("recommendation decisions publish immutable Program versions", () => {
       .values({ email: `recommendation-${crypto.randomUUID()}@example.com` })
       .returning({ id: users.id });
     await database.db.insert(userProfiles).values({ userId, unit: "lb" });
-    [{ id: currentExerciseId }, { id: targetExerciseId }] = await database.db
+    const [currentExercise, targetExercise] = await database.db
       .insert(exercises)
       .values([
         {
@@ -79,7 +80,10 @@ describe("recommendation decisions publish immutable Program versions", () => {
           variantAttributes: { assistance: "none" },
         },
       ])
-      .returning({ id: exercises.id });
+      .returning({ id: exercises.id, name: exercises.name });
+    currentExerciseId = currentExercise.id;
+    currentExerciseName = currentExercise.name;
+    targetExerciseId = targetExercise.id;
     const activated = await activateProgramAtomically(database.db, {
       userId,
       loadUnit: "lb",
@@ -185,6 +189,11 @@ describe("recommendation decisions publish immutable Program versions", () => {
       .values({
         sessionId: session.id,
         exerciseId: slot.exerciseId,
+        prescribedSemanticsVersion: 1,
+        prescribedExerciseName: currentExerciseName,
+        prescribedMetricType: "weight_reps",
+        prescribedLoadType: "barbell",
+        prescribedLoadSemantics: "total",
         plannedFromTemplateExerciseId: slot.id,
         sourceSlotLineageId: slot.lineageId,
         modificationType: "as_planned",
@@ -210,6 +219,9 @@ describe("recommendation decisions publish immutable Program versions", () => {
         weightUnit: options.loadUnit ?? prescription.targetLoadUnit ?? "lb",
         reps: 8,
         metricType: "weight_reps",
+        performedSemanticsVersion: 1,
+        performedLoadType: "barbell",
+        performedLoadSemantics: "total",
         equipmentSnapshotId: snapshotId,
         loadEntryMeaning: "total_system",
       })

@@ -53,6 +53,7 @@ describe("versioned Program editor persistence", () => {
   let database: TestDatabase;
   let userId: string;
   let exerciseId: string;
+  let exerciseName: string;
 
   beforeEach(async () => {
     database = await createMigratedTestDatabase();
@@ -68,8 +69,9 @@ describe("versioned Program editor persistence", () => {
       movementPattern: "horizontal_push",
       primaryMuscles: ["chest"],
       loadType: "bodyweight",
-    }).returning({ id: exercises.id });
+    }).returning({ id: exercises.id, name: exercises.name });
     exerciseId = exercise.id;
+    exerciseName = exercise.name;
     const activated = await activateProgramAtomically(database.db, {
       userId,
       loadUnit: "lb",
@@ -219,6 +221,11 @@ describe("versioned Program editor persistence", () => {
       .values({
         sessionId: evidenceSession.id,
         exerciseId,
+        prescribedSemanticsVersion: 1,
+        prescribedExerciseName: exerciseName,
+        prescribedMetricType: "weight_reps",
+        prescribedLoadType: "barbell",
+        prescribedLoadSemantics: "total",
         plannedFromTemplateExerciseId: slot.id,
         sourceSlotLineageId: slot.lineageId,
         modificationType: "as_planned",
@@ -247,6 +254,9 @@ describe("versioned Program editor persistence", () => {
         weightUnit: "lb",
         reps: 12,
         metricType: "weight_reps",
+        performedSemanticsVersion: 1,
+        performedLoadType: "barbell",
+        performedLoadSemantics: "total",
         loadEntryMeaning: "total_system",
         equipmentSnapshotId,
       })
@@ -1239,6 +1249,11 @@ describe("versioned Program editor persistence", () => {
       .values({
         sessionId: evidenceSession.id,
         exerciseId,
+        prescribedSemanticsVersion: 1,
+        prescribedExerciseName: exerciseName,
+        prescribedMetricType: "weight_reps",
+        prescribedLoadType: "barbell",
+        prescribedLoadSemantics: "total",
         plannedFromTemplateExerciseId: slot.id,
         sourceSlotLineageId: slot.lineageId,
         modificationType: "as_planned",
@@ -1267,6 +1282,9 @@ describe("versioned Program editor persistence", () => {
         weightUnit: "lb",
         reps: 12,
         metricType: "weight_reps",
+        performedSemanticsVersion: 1,
+        performedLoadType: "barbell",
+        performedLoadSemantics: "total",
         loadEntryMeaning: "total_system",
         equipmentSnapshotId,
       })

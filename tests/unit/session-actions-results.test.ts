@@ -134,9 +134,36 @@ describe("session action named results", () => {
     const insertedExercises = await database.db
       .insert(sessionExercises)
       .values([
-        { sessionId: activeSession.id, exerciseId: exercise.id, orderIdx: 0 },
-        { sessionId: completedSession.id, exerciseId: exercise.id, orderIdx: 0 },
-        { sessionId: otherSession.id, exerciseId: exercise.id, orderIdx: 0 },
+        {
+          sessionId: activeSession.id,
+          exerciseId: exercise.id,
+          prescribedSemanticsVersion: 1,
+          prescribedExerciseName: "Action Result Press",
+          prescribedMetricType: "weight_reps",
+          prescribedLoadType: "dumbbell",
+          prescribedLoadSemantics: "per_implement",
+          orderIdx: 0,
+        },
+        {
+          sessionId: completedSession.id,
+          exerciseId: exercise.id,
+          prescribedSemanticsVersion: 1,
+          prescribedExerciseName: "Action Result Press",
+          prescribedMetricType: "weight_reps",
+          prescribedLoadType: "dumbbell",
+          prescribedLoadSemantics: "per_implement",
+          orderIdx: 0,
+        },
+        {
+          sessionId: otherSession.id,
+          exerciseId: exercise.id,
+          prescribedSemanticsVersion: 1,
+          prescribedExerciseName: "Action Result Press",
+          prescribedMetricType: "weight_reps",
+          prescribedLoadType: "dumbbell",
+          prescribedLoadSemantics: "per_implement",
+          orderIdx: 0,
+        },
       ])
       .returning({ id: sessionExercises.id });
     activeExerciseId = insertedExercises[0].id;
@@ -150,6 +177,10 @@ describe("session action named results", () => {
           weight: 40,
           weightUnit: "lb",
           reps: 8,
+          metricType: "weight_reps",
+          performedSemanticsVersion: 1,
+          performedLoadType: "dumbbell",
+          performedLoadSemantics: "per_implement",
           clientKey: `active-${crypto.randomUUID()}`,
         },
         {
@@ -158,6 +189,10 @@ describe("session action named results", () => {
           weight: 45,
           weightUnit: "lb",
           reps: 8,
+          metricType: "weight_reps",
+          performedSemanticsVersion: 1,
+          performedLoadType: "dumbbell",
+          performedLoadSemantics: "per_implement",
           clientKey: `completed-${crypto.randomUUID()}`,
         },
       ])

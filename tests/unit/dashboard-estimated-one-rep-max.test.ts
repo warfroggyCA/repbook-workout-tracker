@@ -199,7 +199,7 @@ describe("dashboard estimated one-rep max boundary", () => {
         metricType: "assisted_reps",
         loadSemantics: "assistance",
       })
-      .returning({ id: exercises.id });
+      .returning({ id: exercises.id, name: exercises.name });
     const sessions = await database.db
       .insert(workoutSessions)
       .values([
@@ -229,6 +229,11 @@ describe("dashboard estimated one-rep max boundary", () => {
         sessions.map((session) => ({
           sessionId: session.id,
           exerciseId: exercise.id,
+          prescribedSemanticsVersion: 1,
+          prescribedExerciseName: exercise.name,
+          prescribedMetricType: "assisted_reps" as const,
+          prescribedLoadType: "machine",
+          prescribedLoadSemantics: "assistance" as const,
           orderIdx: 0,
         })),
       )
@@ -254,6 +259,9 @@ describe("dashboard estimated one-rep max boundary", () => {
           weightUnit: "lb" as const,
           reps: 10,
           metricType: "assisted_reps" as const,
+          performedSemanticsVersion: 1,
+          performedLoadType: "machine",
+          performedLoadSemantics: "assistance" as const,
           equipmentSnapshotId: assistanceSnapshotIds[index],
           loadEntryMeaning: "displayed_stack",
           targetMet: true,
