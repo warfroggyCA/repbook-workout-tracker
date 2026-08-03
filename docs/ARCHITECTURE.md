@@ -152,7 +152,8 @@ activates those proof classes for acknowledgement, retry, and reviewed
 correction. T03 activates database, browser, portability, and recovery proofs
 for planned order and extra-set truth. T04 activates the same required proof
 classes for warm-up occurrence truth. T05 activates them for current, next,
-group, and rest truth; later packages remain future work.
+group, and rest truth. T06 activates preview and Start truth, including
+prescribed exercise meaning; later packages remain future work.
 
 ## T01 performed-measurement contract
 
@@ -281,3 +282,30 @@ not from a second execution state. Fully performed work is resolved; a fully
 settled mix containing skips, abandonment, or limited evidence is
 resolved-with-changes. T05 adds no historical rewrite or migration and does not
 reinterpret unsupported legacy evidence.
+
+## T06 preview, Start, and prescribed-meaning contract
+
+Preview is a URL-backed read-only projection. Rendering, reloading, leaving,
+returning, or opening an invalid preview creates no workout. Each rendered
+Start form owns one random UUID that remains stable across action failure and
+retry. The server hashes the canonical template, timezone, and time-budget
+payload and persists the key and hash together on the created workout. Exact
+owner-scoped replay wins before Program freshness, including after the workout
+becomes terminal. Reusing a key for different evidence is a conflict; a
+different active workout is a separate truthful outcome and is never presented
+as if the requested day started.
+
+The same atomic Start statement captures version 1 of the prescribed exercise
+name, metric type, load type, and load semantics. Session Compiler acceptance
+does the same. Active display, Live Coach evidence, History, Review, and
+exports use this snapshot for unchanged prescribed work, while explicit
+substitutions and workout-only additions use their performed exercise meaning.
+Legacy, imported, and completed-only rows keep the complete nullable tuple
+null; no catalog metadata is inferred backward.
+
+Additive migration `0072_preview_start_semantics` owns these identities and
+immutability constraints. Canonical and encrypted snapshots use schema 28;
+schema 27 upgrades add explicit null unknowns. Recovery manifest 10 remains
+unchanged because no table was added, but its workout and session-exercise
+contracts include the new evidence. Restore validates all-or-none tuples,
+owner-scoped request uniqueness, UUID/SHA shape, and exact round trip.

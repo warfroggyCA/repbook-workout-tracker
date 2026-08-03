@@ -5,7 +5,7 @@ import { resultRows } from "@/db/result";
 import { assertCanonicalSnapshotTableCoverage } from "@/services/recovery-manifest";
 import { canonicalizeProgramDraftIdentity } from "@/services/program-document-integrity";
 
-export const SNAPSHOT_SCHEMA_VERSION = "27";
+export const SNAPSHOT_SCHEMA_VERSION = "28";
 
 export type CanonicalSnapshotPayload = {
   schemaVersion: string;

@@ -30,7 +30,7 @@ import { hashProgramDocument } from "@/services/program-document-hash";
 import { getCurrentProgramDocument } from "@/services/program-documents";
 import { canonicalJson, sha256Hex } from "@/services/snapshot-crypto";
 import { loadProgramPreflightContext } from "@/services/program-preflight";
-import { eligibleTotalSystemLoadSql } from "@/lib/set-metric-semantics-sql";
+import { eligibleAutomaticProgressionSql } from "@/lib/set-metric-semantics-sql";
 
 type PublicationMode = "editor" | "restore" | "recommendation";
 
@@ -381,8 +381,10 @@ async function publishDocumentAtomically(
                   IS DISTINCT FROM recommendation.source_slot_lineage_id
                 OR completed.archived_at IS NOT NULL
                 OR evidence_occurrence.id IS NULL
-                OR NOT ${eligibleTotalSystemLoadSql({
+                OR NOT ${eligibleAutomaticProgressionSql({
                   recordedMetricType: sql`completed.metric_type`,
+                  prescribedSemanticsVersion:
+                    sql`evidence_exercise.prescribed_semantics_version`,
                   performedSemanticsVersion: sql`completed.performed_semantics_version`,
                   performedLoadType: sql`completed.performed_load_type`,
                   performedLoadSemantics: sql`completed.performed_load_semantics`,

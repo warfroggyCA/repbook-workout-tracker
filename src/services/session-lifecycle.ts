@@ -22,6 +22,7 @@ import {
 import { getExerciseDiscoveryLibrary } from "@/services/exercise-discovery";
 import { actionableProgramDayWarmupItemsSql } from "@/services/program-warmup-compatibility";
 import { workoutReplacementUnavailableReason } from "@/lib/exercise-replacements";
+import { isValidIanaTimezone } from "@/lib/workout-calendar";
 import {
   buildPerformedSetMeasurement,
   PERFORMED_LOAD_SEMANTICS,
@@ -55,7 +56,45 @@ export type SessionLifecycleDependencies = {
   }) => void | Promise<void>;
   now?: () => Date;
   timezone?: string;
+  startRequestKey?: string;
 };
+
+export type WorkoutStartResult =
+  | {
+      outcome: "created" | "replayed";
+      sessionId: string;
+      existing: boolean;
+    }
+  | {
+      outcome: "active_workout_exists";
+      /** Compatibility alias; callers must inspect outcome before navigation. */
+      sessionId: string;
+      activeSessionId: string;
+      existing: true;
+    }
+  | {
+      outcome: "request_conflict";
+      /** Identifies the prior request receipt, never a newly requested success. */
+      sessionId: string;
+      existing: true;
+    };
+
+const START_REQUEST_UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+
+export function buildWorkoutStartRequestHash(input: {
+  templateId: string;
+  timezone: string;
+  timeBudgetMin: number | null;
+}) {
+  return createHash("sha256")
+    .update(JSON.stringify({
+      templateId: input.templateId,
+      timezone: input.timezone,
+      timeBudgetMin: input.timeBudgetMin,
+    }))
+    .digest("hex");
+}
 
 /** A stale Program page tried to start a template that is no longer current. */
 export class StaleWorkoutTemplateError extends Error {
@@ -93,6 +132,26 @@ export async function findOwnedActiveWorkout(db: Db, userId: string) {
       templateId: true,
       templateName: true,
       startedAt: true,
+    },
+  });
+}
+
+/** Reconciles only the exact Start intent, including after it became terminal. */
+export async function findOwnedWorkoutByStartRequest(
+  db: Db,
+  userId: string,
+  startRequestKey: string,
+) {
+  return db.query.workoutSessions.findFirst({
+    where: and(
+      eq(workoutSessions.userId, userId),
+      eq(workoutSessions.startRequestKey, startRequestKey),
+    ),
+    columns: {
+      id: true,
+      startRequestHash: true,
+      status: true,
+      archivedAt: true,
     },
   });
 }
@@ -1132,19 +1191,45 @@ export async function startWorkoutSession(
   templateId: string,
   timeBudgetMin?: number,
   dependencies: SessionLifecycleDependencies = {}
-) {
+): Promise<WorkoutStartResult> {
   const validatedTimeBudget = sessionTimeBudgetSchema.parse(timeBudgetMin);
+  const startRequestKey = dependencies.startRequestKey?.toLowerCase() ?? null;
+  if (
+    startRequestKey != null &&
+    (!START_REQUEST_UUID_PATTERN.test(startRequestKey) ||
+      dependencies.timezone == null ||
+      !isValidIanaTimezone(dependencies.timezone))
+  ) {
+    throw new Error("A valid Start request identity and timezone are required.");
+  }
+  const startRequestHash = startRequestKey == null
+    ? null
+    : buildWorkoutStartRequestHash({
+        templateId,
+        timezone: dependencies.timezone!,
+        timeBudgetMin: validatedTimeBudget ?? null,
+      });
   const checkpoint = dependencies.checkpoint ?? noCheckpoint;
   const startedAt = (dependencies.now ?? (() => new Date()))();
   const sessionId = randomUUID();
   await checkpoint("before-start-statement");
   const query = sql`
-    WITH existing_active AS MATERIALIZED (
-      SELECT ws.id, false AS inserted
+    WITH existing_request AS MATERIALIZED (
+      SELECT ws.id, false AS inserted, 'request'::text AS selected_by,
+             ws.start_request_key, ws.start_request_hash
+      FROM workout_sessions ws
+      WHERE ${startRequestKey}::text IS NOT NULL
+        AND ws.user_id = ${userId}::uuid
+        AND ws.start_request_key = ${startRequestKey}::text
+      LIMIT 1
+    ), existing_active AS MATERIALIZED (
+      SELECT ws.id, false AS inserted, 'active'::text AS selected_by,
+             ws.start_request_key, ws.start_request_hash
       FROM workout_sessions ws
       WHERE ws.user_id = ${userId}::uuid
         AND ws.status = 'in_progress'
         AND ws.archived_at IS NULL
+        AND NOT EXISTS (SELECT 1 FROM existing_request)
       ORDER BY ws.started_at, ws.id
       LIMIT 1
     ), owned_template AS MATERIALIZED (
@@ -1171,6 +1256,7 @@ export async function startWorkoutSession(
     ), upserted_session AS (
       INSERT INTO workout_sessions (
         id, user_id, template_id, template_name, time_budget_min,
+        start_request_key, start_request_hash,
         started_at, timezone, local_date, day_warmup_notes, day_warmup_items,
         source_program_id, source_program_version_id, source_day_lineage_id
       )
@@ -1180,6 +1266,8 @@ export async function startWorkoutSession(
         template.id,
         template.name,
         ${validatedTimeBudget ?? null}::integer,
+        ${startRequestKey}::text,
+        ${startRequestHash}::text,
         ${startedAt.toISOString()}::timestamptz,
         coalesce(${dependencies.timezone ?? null}::text, template.profile_timezone),
         timezone(
@@ -1192,12 +1280,19 @@ export async function startWorkoutSession(
         template.source_program_version_id,
         template.source_day_lineage_id
       FROM owned_template template
-      WHERE NOT EXISTS (SELECT 1 FROM existing_active)
-      ON CONFLICT (user_id)
-        WHERE status = 'in_progress' AND archived_at IS NULL
-      DO UPDATE SET user_id = excluded.user_id
-      RETURNING id, id = ${sessionId}::uuid AS inserted
+      WHERE NOT EXISTS (SELECT 1 FROM existing_request)
+        AND NOT EXISTS (SELECT 1 FROM existing_active)
+      -- Either owner-scoped uniqueness rule may win under native PostgreSQL:
+      -- exact Start identity or the one-active-workout invariant. Do not bind
+      -- this insert to only one arbiter; reconcile the winning row below from
+      -- a fresh statement snapshot when this insert loses a race.
+      ON CONFLICT DO NOTHING
+      RETURNING id, id = ${sessionId}::uuid AS inserted,
+                'upsert'::text AS selected_by,
+                start_request_key, start_request_hash
     ), selected_session AS MATERIALIZED (
+      SELECT * FROM existing_request
+      UNION ALL
       SELECT * FROM existing_active
       UNION ALL
       SELECT * FROM upserted_session
@@ -1243,6 +1338,9 @@ export async function startWorkoutSession(
       INSERT INTO session_exercises (
         session_id, exercise_id, planned_from_template_exercise_id,
         source_slot_lineage_id,
+        prescribed_semantics_version, prescribed_exercise_name,
+        prescribed_metric_type, prescribed_load_type,
+        prescribed_load_semantics,
         order_idx, superset_key, group_snapshot_id, group_member_order_idx,
         rest_sec, target_sets, target_reps_min,
         target_reps_max, target_load, target_load_unit, notes,
@@ -1253,6 +1351,11 @@ export async function startWorkoutSession(
         slot.exercise_id,
         slot.id,
         slot.lineage_id,
+        1,
+        catalog.name,
+        catalog.metric_type,
+        catalog.load_type,
+        catalog.load_semantics,
         slot.order_idx,
         slot.superset_group_id::text,
         session_group.id,
@@ -1279,6 +1382,7 @@ export async function startWorkoutSession(
       JOIN owned_template template ON selected.inserted
       JOIN workout_template_exercises slot
         ON slot.workout_template_id = template.id
+      JOIN exercises catalog ON catalog.id = slot.exercise_id
       LEFT JOIN LATERAL (
         SELECT active.*
         FROM exercise_prescriptions active
@@ -1493,6 +1597,9 @@ export async function startWorkoutSession(
     SELECT
       selected.id,
       NOT selected.inserted AS existing,
+      selected.selected_by,
+      selected.start_request_key,
+      selected.start_request_hash,
       CASE WHEN selected.inserted THEN (
         SELECT count(*)::int
         FROM workout_template_exercises slot
@@ -1521,7 +1628,67 @@ export async function startWorkoutSession(
   `;
   const row = resultRows(await db.execute(query))[0];
   if (!row) {
+    if (startRequestKey != null) {
+      const exact = await findOwnedWorkoutByStartRequest(
+        db,
+        userId,
+        startRequestKey,
+      );
+      if (exact) {
+        await checkpoint("after-start-statement");
+        return exact.startRequestHash === startRequestHash
+          ? {
+              outcome: "replayed",
+              sessionId: exact.id,
+              existing: true,
+            }
+          : {
+              outcome: "request_conflict",
+              sessionId: exact.id,
+              existing: true,
+            };
+      }
+    }
+    const active = await findOwnedActiveWorkout(db, userId);
+    if (active) {
+      await checkpoint("after-start-statement");
+      return startRequestKey == null
+        ? {
+            outcome: "replayed",
+            sessionId: active.id,
+            existing: true,
+          }
+        : {
+            outcome: "active_workout_exists",
+            sessionId: active.id,
+            activeSessionId: active.id,
+            existing: true,
+          };
+    }
     throw new StaleWorkoutTemplateError();
+  }
+  if (startRequestKey != null) {
+    const selectedKey = row.start_request_key == null
+      ? null
+      : String(row.start_request_key);
+    const selectedHash = row.start_request_hash == null
+      ? null
+      : String(row.start_request_hash);
+    if (selectedKey === startRequestKey && selectedHash !== startRequestHash) {
+      return {
+        outcome: "request_conflict",
+        sessionId: String(row.id),
+        existing: true,
+      };
+    }
+    if (selectedKey !== startRequestKey) {
+      return {
+        outcome: "active_workout_exists",
+        sessionId: String(row.id),
+        activeSessionId: String(row.id),
+        existing: true,
+      };
+    }
   }
   if (
     !row.existing &&
@@ -1545,7 +1712,12 @@ export async function startWorkoutSession(
     throw new IncompleteWorkoutCreationError();
   }
   await checkpoint("after-start-statement");
-  return { sessionId: String(row.id), existing: Boolean(row.existing) } as const;
+  const existing = Boolean(row.existing);
+  return {
+    outcome: existing ? "replayed" : "created",
+    sessionId: String(row.id),
+    existing,
+  };
 }
 
 export async function logWorkoutSet(
@@ -1642,6 +1814,28 @@ async function logWorkoutSetAttempt(
       observedCompletedAtISO,
     }))
     .digest("hex");
+  const usesPrescribedMeaning = sql`coalesce((
+    se.prescribed_semantics_version = 1
+    AND se.modification_type NOT IN ('substituted', 'added')
+  ), false)`;
+  const authoritativeMetricType = sql`CASE
+    WHEN ${usesPrescribedMeaning} THEN se.prescribed_metric_type
+    ELSE exercise.metric_type
+  END`;
+  const authoritativeLoadType = sql`CASE
+    WHEN ${usesPrescribedMeaning} THEN se.prescribed_load_type
+    ELSE exercise.load_type
+  END`;
+  const authoritativeLoadSemantics = sql`CASE
+    WHEN ${usesPrescribedMeaning} THEN se.prescribed_load_semantics
+    ELSE exercise.load_semantics
+  END`;
+  const performedMetricType = sql`CASE
+    WHEN ${authoritativeMetricType}::text = 'weight_reps'
+      AND ${authoritativeLoadSemantics}::text = 'resistance_band'
+      THEN 'reps'::metric_type
+    ELSE ${authoritativeMetricType}
+  END`;
   await checkpoint("before-set-statement");
   const query = sql`
     WITH visible AS MATERIALIZED (
@@ -1653,50 +1847,36 @@ async function logWorkoutSetAttempt(
         AND ws.user_id = ${userId}::uuid
     ), owned AS MATERIALIZED (
       SELECT se.*,
-             CASE
-               WHEN exercise.metric_type::text = 'weight_reps'
-                 AND exercise.load_semantics::text = 'resistance_band'
-                 THEN 'reps'::metric_type
-               ELSE exercise.metric_type
-             END AS performed_metric_type,
-             exercise.load_type AS performed_load_type,
-             exercise.load_semantics AS performed_load_semantics,
+             ${usesPrescribedMeaning} AS uses_prescribed_meaning,
+             ${performedMetricType} AS performed_metric_type,
+             ${authoritativeLoadType} AS performed_load_type,
+             ${authoritativeLoadSemantics} AS performed_load_semantics,
              se.exercise_id = ${input.performedExerciseId}::uuid
                AS performed_exercise_matches,
-             (CASE
-               WHEN exercise.metric_type::text = 'weight_reps'
-                 AND exercise.load_semantics::text = 'resistance_band'
-                 THEN 'reps'::metric_type
-               ELSE exercise.metric_type
-             END) = ${input.metricType}::metric_type
+             ${performedMetricType} = ${input.metricType}::metric_type
                AS performed_metric_matches,
-             exercise.load_type = ${input.performedLoadType}
-               AND exercise.load_semantics =
+             ${authoritativeLoadType}::text = ${input.performedLoadType}
+               AND ${authoritativeLoadSemantics} =
                  ${input.performedLoadSemantics}::load_semantics
                AND ${input.performedSemanticsVersion}::integer = 1
                AS performed_semantics_match,
              CASE
                WHEN (
-                 (exercise.load_semantics::text = 'assistance')
+                 (${authoritativeLoadSemantics}::text = 'assistance')
                  IS DISTINCT FROM
-                 (exercise.metric_type::text = 'assisted_reps')
+                 (${authoritativeMetricType}::text = 'assisted_reps')
                ) THEN false
-               WHEN exercise.metric_type::text = 'weight_reps'
-                 AND exercise.load_semantics::text = 'resistance_band'
+               WHEN ${authoritativeMetricType}::text = 'weight_reps'
+                 AND ${authoritativeLoadSemantics}::text = 'resistance_band'
                  THEN ${input.weight}::double precision IS NULL
                    AND ${input.weightUnit}::unit IS NULL
                    AND ${input.reps}::integer IS NOT NULL
                    AND ${input.distanceKm}::real IS NULL
                    AND ${input.durationSeconds}::integer IS NULL
-               WHEN exercise.metric_type::text IN ('duration', 'distance_duration')
-                 AND exercise.load_semantics::text NOT IN ('none', 'bodyweight')
+               WHEN ${authoritativeMetricType}::text IN ('duration', 'distance_duration')
+                 AND ${authoritativeLoadSemantics}::text NOT IN ('none', 'bodyweight')
                  THEN false
-               ELSE CASE (CASE
-                 WHEN exercise.metric_type::text = 'weight_reps'
-                   AND exercise.load_semantics::text = 'resistance_band'
-                   THEN 'reps'
-                 ELSE exercise.metric_type::text
-               END)
+               ELSE CASE ${performedMetricType}::text
                WHEN 'weight_reps' THEN
                  ${input.weight}::double precision IS NOT NULL
                  AND ${input.weightUnit}::unit IS NOT NULL
@@ -1731,8 +1911,11 @@ async function logWorkoutSetAttempt(
              END AS writer_shape_supported,
              (
                (
-                 exercise.load_type IN ('barbell', 'ez_bar', 'trap_bar')
-                 OR exact_requirement.exercise_id IS NOT NULL
+                 ${authoritativeLoadType}::text IN ('barbell', 'ez_bar', 'trap_bar')
+                 OR (
+                   NOT ${usesPrescribedMeaning}
+                   AND exact_requirement.exercise_id IS NOT NULL
+                 )
                )
                AND (
                  ${equipmentAvailability == null}::boolean
@@ -1747,12 +1930,13 @@ async function logWorkoutSetAttempt(
                  AND ${sessionEquipmentSelectionSourceRevisionExpression(
                    userId,
                    equipmentExerciseId,
+                   !(equipmentAvailability?.usesPrescribedMeaning ?? false),
                  )} = ${equipmentSourceRevision}
                )
              ) AS equipment_source_current,
              snapshot.profile_kind AS selected_profile_kind,
              snapshot.geometry_snapshot AS selected_geometry_snapshot,
-             NOT EXISTS (
+             (${usesPrescribedMeaning}) OR NOT EXISTS (
                SELECT 1
                FROM exercise_equipment_requirements requirement
                WHERE requirement.exercise_id = se.exercise_id
@@ -1782,7 +1966,7 @@ async function logWorkoutSetAttempt(
                    )
                  )
              ) AS broad_requirements_valid,
-             EXISTS (
+             (${usesPrescribedMeaning}) OR EXISTS (
                SELECT 1
                FROM exercise_equipment_requirements primary_requirement
                WHERE primary_requirement.exercise_id = se.exercise_id
@@ -1796,7 +1980,7 @@ async function logWorkoutSetAttempt(
                    )
                  )
              ) AS selected_primary_matches_broad,
-             CASE exercise.load_type
+             CASE ${authoritativeLoadType}::text
                WHEN 'barbell' THEN snapshot.profile_kind = 'plate_loaded_implement'
                  AND snapshot.geometry_snapshot->>'loadingKind' = 'olympic'
                WHEN 'ez_bar' THEN snapshot.profile_kind = 'plate_loaded_implement'
@@ -1805,7 +1989,8 @@ async function logWorkoutSetAttempt(
                  AND snapshot.geometry_snapshot->>'loadingKind' = 'trap_hex'
                ELSE true
              END AS selected_profile_matches_load_type,
-             CASE WHEN exact_requirement.exercise_id IS NULL THEN true ELSE
+             CASE WHEN ${usesPrescribedMeaning} THEN true
+             WHEN exact_requirement.exercise_id IS NULL THEN true ELSE
                (exact_requirement.required_profile_kind IS NULL
                  OR exact_requirement.required_profile_kind = snapshot.profile_kind)
                AND (exact_requirement.required_equipment_definition_id IS NULL

@@ -210,12 +210,29 @@ export default async function SessionDetailPage(
         sessionExercise,
         semantics: classifySetMetricContainment({
           recordedMetricType: set.metricType,
+          prescribedSemanticsVersion:
+            sessionExercise.prescribedSemanticsVersion,
           performedSemanticsVersion: set.performedSemanticsVersion,
           performedLoadType: set.performedLoadType,
           performedLoadSemantics: set.performedLoadSemantics,
-          currentExerciseMetricType: sessionExercise.exercise.metricType,
-          loadType: sessionExercise.exercise.loadType,
-          loadSemantics: sessionExercise.exercise.loadSemantics,
+          currentExerciseMetricType:
+            sessionExercise.prescribedSemanticsVersion === 1 &&
+            sessionExercise.modificationType !== "substituted" &&
+            sessionExercise.modificationType !== "added"
+              ? sessionExercise.prescribedMetricType
+              : sessionExercise.exercise.metricType,
+          loadType:
+            sessionExercise.prescribedSemanticsVersion === 1 &&
+            sessionExercise.modificationType !== "substituted" &&
+            sessionExercise.modificationType !== "added"
+              ? sessionExercise.prescribedLoadType
+              : sessionExercise.exercise.loadType,
+          loadSemantics:
+            sessionExercise.prescribedSemanticsVersion === 1 &&
+            sessionExercise.modificationType !== "substituted" &&
+            sessionExercise.modificationType !== "added"
+              ? sessionExercise.prescribedLoadSemantics
+              : sessionExercise.exercise.loadSemantics,
           loadEntryMeaning: set.loadEntryMeaning,
           weight: set.weight,
           reps: set.reps,
@@ -622,12 +639,29 @@ export default async function SessionDetailPage(
                   ({ set: s, setup, loadMeaning, performedSetup }) => {
                     const semantics = classifySetMetricContainment({
                       recordedMetricType: s.metricType,
+                      prescribedSemanticsVersion:
+                        se.prescribedSemanticsVersion,
                       performedSemanticsVersion: s.performedSemanticsVersion,
                       performedLoadType: s.performedLoadType,
                       performedLoadSemantics: s.performedLoadSemantics,
-                      currentExerciseMetricType: se.exercise.metricType,
-                      loadType: se.exercise.loadType,
-                      loadSemantics: se.exercise.loadSemantics,
+                      currentExerciseMetricType:
+                        se.prescribedSemanticsVersion === 1 &&
+                        se.modificationType !== "substituted" &&
+                        se.modificationType !== "added"
+                          ? se.prescribedMetricType
+                          : se.exercise.metricType,
+                      loadType:
+                        se.prescribedSemanticsVersion === 1 &&
+                        se.modificationType !== "substituted" &&
+                        se.modificationType !== "added"
+                          ? se.prescribedLoadType
+                          : se.exercise.loadType,
+                      loadSemantics:
+                        se.prescribedSemanticsVersion === 1 &&
+                        se.modificationType !== "substituted" &&
+                        se.modificationType !== "added"
+                          ? se.prescribedLoadSemantics
+                          : se.exercise.loadSemantics,
                       loadEntryMeaning: s.loadEntryMeaning,
                       weight: s.weight,
                       reps: s.reps,

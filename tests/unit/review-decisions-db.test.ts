@@ -247,6 +247,7 @@ describe("Review outcome readiness", () => {
     recordedMetricType?: "weight_reps" | "assisted_reps";
     performedExerciseId?: string;
     modificationType?: "as_planned" | "substituted";
+    omitPrescribedSemantics?: boolean;
     sets: Array<{ targetMet: boolean | null; rpe: number | null }>;
     painSeverity?: number;
     painLinkedToDuplicate?: boolean;
@@ -269,6 +270,15 @@ describe("Review outcome readiness", () => {
       columns: { lineageId: true },
     });
     if (!sourceSlot) throw new Error("Review fixture source slot missing");
+    const prescribedExercise = await database.db.query.exercises.findFirst({
+      where: eq(exercises.id, exerciseId),
+    });
+    const performedExercise = await database.db.query.exercises.findFirst({
+      where: eq(exercises.id, input.performedExerciseId ?? exerciseId),
+    });
+    if (!prescribedExercise || !performedExercise) {
+      throw new Error("Review fixture exercise meaning missing");
+    }
     const [sessionExercise] = await database.db
       .insert(sessionExercises)
       .values({
@@ -284,6 +294,15 @@ describe("Review outcome readiness", () => {
         targetRepsMax: 8,
         targetLoad: input.targetLoad,
         targetLoadUnit: "lb",
+        ...(input.omitPrescribedSemantics
+          ? {}
+          : {
+              prescribedSemanticsVersion: 1,
+              prescribedExerciseName: prescribedExercise.name,
+              prescribedMetricType: prescribedExercise.metricType,
+              prescribedLoadType: prescribedExercise.loadType,
+              prescribedLoadSemantics: prescribedExercise.loadSemantics,
+            }),
       })
       .returning({ id: sessionExercises.id });
     if (input.sets.length > 0) {
@@ -306,6 +325,9 @@ describe("Review outcome readiness", () => {
           targetMet: set.targetMet,
           rpe: set.rpe,
           metricType: input.recordedMetricType ?? ("weight_reps" as const),
+          performedSemanticsVersion: 1,
+          performedLoadType: performedExercise.loadType,
+          performedLoadSemantics: performedExercise.loadSemantics,
           equipmentSnapshotId,
           loadEntryMeaning: "total_system",
         }))
@@ -628,6 +650,29 @@ describe("Review outcome readiness", () => {
       }),
       ]),
     );
+  });
+
+  it("does not turn complete performed-v1 facts into Review outcomes without prescribed meaning", async () => {
+    const recommendationId = await approveLoad(100, 105);
+    await database.db
+      .update(adaptationEvents)
+      .set({ appliedAt: new Date("2026-01-01T12:00:00.000Z") })
+      .where(eq(adaptationEvents.recommendationId, recommendationId));
+    const current = await currentSlot();
+    await seedFollowup({
+      ownerId: userId,
+      slotId: current.slot.id,
+      templateId: current.template.id,
+      startedAt: new Date("2026-01-02T12:00:00.000Z"),
+      targetLoad: 105,
+      sets: [{ targetMet: true, rpe: 7 }],
+      omitPrescribedSemantics: true,
+    });
+
+    const review = await getReviewDecisionData(database.db, userId);
+    expect(review.acceptedDecisionCount).toBe(1);
+    expect(review.outcomeSupportedDecisionCount).toBe(1);
+    expect(review.outcomes).toEqual([]);
   });
 
   it("hides and refuses a pending load change backed by assisted evidence", async () => {

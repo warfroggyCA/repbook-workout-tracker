@@ -830,6 +830,73 @@ describe.sequential("real PostgreSQL parallel invariants", () => {
     ).toEqual([expect.objectContaining({ status: "completed", attempts: 1 })]);
   });
 
+  it("converges same-key Start delivery on one created and replayed session", async () => {
+    const fixture = await createProgramFixture("keyed same Start");
+    const startRequestKey = crypto.randomUUID();
+    const starts = await Promise.all(
+      Array.from({ length: 12 }, () =>
+        startWorkoutSession(db, fixture.userId, fixture.templateId, 45, {
+          startRequestKey,
+          timezone: "America/Toronto",
+        }),
+      ),
+    );
+
+    expect(starts.filter((result) => result.outcome === "created")).toHaveLength(1);
+    expect(starts.filter((result) => result.outcome === "replayed")).toHaveLength(11);
+    expect(new Set(starts.map((result) => result.sessionId))).toHaveLength(1);
+    expect(await db.select().from(workoutSessions).where(
+      eq(workoutSessions.userId, fixture.userId),
+    )).toHaveLength(1);
+  });
+
+  it("returns conflict for concurrent same-key Start payloads without a second session", async () => {
+    const fixture = await createProgramFixture("keyed conflicting Start");
+    const startRequestKey = crypto.randomUUID();
+    const starts = await Promise.all([
+      startWorkoutSession(db, fixture.userId, fixture.templateId, 30, {
+        startRequestKey,
+        timezone: "America/Toronto",
+      }),
+      startWorkoutSession(db, fixture.userId, fixture.templateId, 45, {
+        startRequestKey,
+        timezone: "America/Toronto",
+      }),
+    ]);
+
+    expect(starts.filter((result) => result.outcome === "created")).toHaveLength(1);
+    expect(starts.filter((result) => result.outcome === "request_conflict"))
+      .toHaveLength(1);
+    expect(new Set(starts.map((result) => result.sessionId))).toHaveLength(1);
+    expect(await db.select().from(workoutSessions).where(
+      eq(workoutSessions.userId, fixture.userId),
+    )).toHaveLength(1);
+  });
+
+  it("admits one different-key Start and reports the remaining active collision", async () => {
+    const fixture = await createProgramFixture("keyed active Start");
+    const starts = await Promise.all(
+      Array.from({ length: 12 }, () =>
+        startWorkoutSession(db, fixture.userId, fixture.templateId, 45, {
+          startRequestKey: crypto.randomUUID(),
+          timezone: "America/Toronto",
+        }),
+      ),
+    );
+
+    expect(starts.filter((result) => result.outcome === "created")).toHaveLength(1);
+    expect(
+      starts.filter((result) => result.outcome === "active_workout_exists"),
+    ).toHaveLength(11);
+    expect(new Set(starts.map((result) => result.sessionId))).toHaveLength(1);
+    expect(await db.select().from(workoutSessions).where(
+      and(
+        eq(workoutSessions.userId, fixture.userId),
+        eq(workoutSessions.status, "in_progress"),
+      ),
+    )).toHaveLength(1);
+  });
+
   it("refuses out-of-order planned work while preserving an extra before the plan", async () => {
     const fixture = await createProgramFixture("ordered set writer", { sets: 2 });
     const started = await startWorkoutSession(

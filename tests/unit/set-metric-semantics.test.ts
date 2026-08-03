@@ -358,6 +358,45 @@ describe("performed-set semantic containment", () => {
     });
   });
 
+  it("contains schema-27 rows without discarding complete performed-v1 facts", () => {
+    expect(
+      classify({
+        prescribedSemanticsVersion: null,
+        performedSemanticsVersion: null,
+        performedLoadType: null,
+        performedLoadSemantics: null,
+      }),
+    ).toMatchObject({
+      prescriptionOutcomeEligible: false,
+      longitudinalComparable: false,
+      loadedWorkEligible: false,
+      personalRecordEligible: false,
+      automaticProgressionEligible: false,
+      exclusionReason: "missing_prescribed_semantics",
+    });
+
+    expect(
+      classify({
+        prescribedSemanticsVersion: null,
+        performedSemanticsVersion: 1,
+        performedLoadType: "barbell",
+        performedLoadSemantics: "total",
+        currentExerciseMetricType: "assisted_reps",
+        loadType: "external",
+        loadSemantics: "assistance",
+      }),
+    ).toMatchObject({
+      evidenceProvenance: "performed_semantics_snapshot",
+      prescriptionOutcomeEligible: false,
+      longitudinalComparable: true,
+      loadedWorkEligible: true,
+      estimatedStrengthEligible: true,
+      personalRecordEligible: true,
+      automaticProgressionEligible: false,
+      exclusionReason: null,
+    });
+  });
+
   it("fails closed for incomplete or unsupported performed-time versions", () => {
     expect(
       classify({

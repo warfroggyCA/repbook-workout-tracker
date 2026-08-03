@@ -109,6 +109,11 @@ export type HistoryCalendarSessionInput = {
   }>;
   exercises: Array<{
     modificationType: "as_planned" | "substituted" | "added" | "skipped";
+    prescribedSemanticsVersion?: number | null;
+    prescribedExerciseName?: string | null;
+    prescribedMetricType?: HistorySetInput["metricType"] | null;
+    prescribedLoadType?: string | null;
+    prescribedLoadSemantics?: string | null;
     exercise?: {
       loadType: string;
       metricType?: HistorySetInput["metricType"];
@@ -171,6 +176,11 @@ export type HistorySessionInput = {
   exercises: Array<{
     modificationType: "as_planned" | "substituted" | "added" | "skipped";
     skipReason: string | null;
+    prescribedSemanticsVersion?: number | null;
+    prescribedExerciseName?: string | null;
+    prescribedMetricType?: HistorySetInput["metricType"] | null;
+    prescribedLoadType?: string | null;
+    prescribedLoadSemantics?: string | null;
     substitutionReason?: string | null;
     plannedSlotLinked?: boolean;
     plannedExerciseName?: string | null;
@@ -232,6 +242,7 @@ export function buildHistoryCalendarSessions(
             semantics: classifySetMetricContainment({
               recordedMetricType:
                 set.metricType ?? exercise.exercise?.metricType ?? "weight_reps",
+              prescribedSemanticsVersion: exercise.prescribedSemanticsVersion,
               performedSemanticsVersion: set.performedSemanticsVersion,
               performedLoadType: set.performedLoadType,
               performedLoadSemantics: set.performedLoadSemantics,
@@ -458,6 +469,22 @@ export function summarizeHistory(
         continue;
       }
       if (sessionExercise.modificationType === "substituted") substitutions += 1;
+      const usesPrescribedMeaning =
+        sessionExercise.prescribedSemanticsVersion === 1 &&
+        sessionExercise.modificationType !== "substituted" &&
+        sessionExercise.modificationType !== "added";
+      const exerciseName = usesPrescribedMeaning
+        ? sessionExercise.prescribedExerciseName!
+        : sessionExercise.exercise.name;
+      const metricType = usesPrescribedMeaning
+        ? sessionExercise.prescribedMetricType!
+        : (sessionExercise.exercise.metricType ?? "weight_reps");
+      const loadType = usesPrescribedMeaning
+        ? sessionExercise.prescribedLoadType!
+        : sessionExercise.exercise.loadType;
+      const loadSemantics = usesPrescribedMeaning
+        ? sessionExercise.prescribedLoadSemantics!
+        : (sessionExercise.exercise.loadSemantics ?? "total");
       const sets = sessionExercise.sets.filter((set) => !set.isWarmup);
       if (!sets.length) continue;
 
@@ -470,12 +497,10 @@ export function summarizeHistory(
       let exerciseStats = exerciseMap.get(sessionExercise.exercise.id);
       if (!exerciseStats) {
         exerciseStats = {
-          name: sessionExercise.exercise.name,
-          loadType: sessionExercise.exercise.loadType,
-          metricType:
-            sessionExercise.exercise.metricType ?? "weight_reps",
-          loadSemantics:
-            sessionExercise.exercise.loadSemantics ?? "total",
+          name: exerciseName,
+          loadType,
+          metricType,
+          loadSemantics,
           sessions: new Set<string>(),
           sets: 0,
           volume: 0,
@@ -488,7 +513,7 @@ export function summarizeHistory(
 
       const familyKey = sessionExercise.exercise.family?.id ?? `exercise:${sessionExercise.exercise.id}`;
       const familyStats = familyMap.get(familyKey) ?? {
-        name: sessionExercise.exercise.family?.name ?? sessionExercise.exercise.name,
+        name: sessionExercise.exercise.family?.name ?? exerciseName,
         sessions: new Set<string>(),
         exercises: new Set<string>(),
         sets: 0,
@@ -512,14 +537,15 @@ export function summarizeHistory(
       for (const set of sets) {
         const semantics = classifySetMetricContainment({
           recordedMetricType:
-            set.metricType ?? sessionExercise.exercise.metricType ?? "weight_reps",
+            set.metricType ?? metricType,
+          prescribedSemanticsVersion:
+            sessionExercise.prescribedSemanticsVersion,
           performedSemanticsVersion: set.performedSemanticsVersion,
           performedLoadType: set.performedLoadType,
           performedLoadSemantics: set.performedLoadSemantics,
-          currentExerciseMetricType:
-            sessionExercise.exercise.metricType ?? set.metricType ?? "weight_reps",
-          loadType: sessionExercise.exercise.loadType,
-          loadSemantics: sessionExercise.exercise.loadSemantics ?? "total",
+          currentExerciseMetricType: metricType ?? set.metricType ?? "weight_reps",
+          loadType,
+          loadSemantics,
           loadEntryMeaning: set.loadEntryMeaning ?? "legacy_unknown",
           weight: set.weight,
           reps: set.reps,
@@ -1114,6 +1140,7 @@ export async function getHistoryReport(
     : sql``;
   const workingSetSemantics = {
     recordedMetricType: sql`cs.metric_type`,
+    prescribedSemanticsVersion: sql`o.prescribed_semantics_version`,
     performedSemanticsVersion: sql`cs.performed_semantics_version`,
     performedLoadType: sql`cs.performed_load_type`,
     performedLoadSemantics: sql`cs.performed_load_semantics`,
@@ -1161,11 +1188,24 @@ export async function getHistoryReport(
       SELECT se.id AS session_exercise_id, se.session_id, se.exercise_id,
              se.planned_from_template_exercise_id,
              se.source_slot_lineage_id,
+             se.prescribed_semantics_version,
              se.modification_type, se.skip_reason, se.substitution_reason,
              s.status, s.template_id, s.local_date, s.week_start,
-             e.name AS exercise_name, e.load_type,
-             e.metric_type AS exercise_metric_type,
-             e.load_semantics, e.primary_muscles,
+             CASE WHEN se.prescribed_semantics_version = 1
+                    AND se.modification_type NOT IN ('substituted', 'added')
+               THEN se.prescribed_exercise_name ELSE e.name END AS exercise_name,
+             CASE WHEN se.prescribed_semantics_version = 1
+                    AND se.modification_type NOT IN ('substituted', 'added')
+               THEN se.prescribed_load_type ELSE e.load_type END AS load_type,
+             CASE WHEN se.prescribed_semantics_version = 1
+                    AND se.modification_type NOT IN ('substituted', 'added')
+               THEN se.prescribed_metric_type ELSE e.metric_type END
+               AS exercise_metric_type,
+             CASE WHEN se.prescribed_semantics_version = 1
+                    AND se.modification_type NOT IN ('substituted', 'added')
+               THEN se.prescribed_load_semantics ELSE e.load_semantics END
+               AS load_semantics,
+             e.primary_muscles,
              replaced.name AS planned_exercise_name,
              planned_slot.id AS matched_planned_slot_id,
              EXISTS (
@@ -2020,6 +2060,7 @@ export async function getHistoryCalendarRecords(
     const window = historyCalendarWindow(visible.view, visible.date);
     const calendarSetSemantics = {
       recordedMetricType: sql`cs.metric_type`,
+      prescribedSemanticsVersion: sql`se.prescribed_semantics_version`,
       performedSemanticsVersion: sql`cs.performed_semantics_version`,
       performedLoadType: sql`cs.performed_load_type`,
       performedLoadSemantics: sql`cs.performed_load_semantics`,

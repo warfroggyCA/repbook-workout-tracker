@@ -122,6 +122,11 @@ describe("unit, calendar, and backup production findings", () => {
       .values({
         sessionId: session.id,
         exerciseId,
+        prescribedSemanticsVersion: 1,
+        prescribedExerciseName: "Kilogram Squat",
+        prescribedMetricType: "weight_reps",
+        prescribedLoadType: "barbell",
+        prescribedLoadSemantics: "total",
         targetSets: 1,
         targetRepsMin: 8,
         targetRepsMax: 8,
@@ -276,6 +281,9 @@ describe("unit, calendar, and backup production findings", () => {
       reps: 8,
       targetMet: true,
       metricType: "weight_reps",
+      performedSemanticsVersion: 1,
+      performedLoadType: "barbell",
+      performedLoadSemantics: "total",
       loadEntryMeaning: "total_system",
       equipmentSnapshotId,
     }).returning({ id: completedSets.id });
@@ -407,7 +415,7 @@ describe("unit, calendar, and backup production findings", () => {
     expect(csv).toContain("weight_unit");
     expect(csv).toContain(",100,kg,8,");
     expect(csv).toContain("America/Toronto,2026-07-12");
-    expect(backup.schemaVersion).toBe("27");
+    expect(backup.schemaVersion).toBe("28");
     expect(backup.canonical.tables.workout_sessions[0]).toMatchObject({
       id: session.id,
       timezone: "America/Toronto",

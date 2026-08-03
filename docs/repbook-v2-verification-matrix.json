@@ -5,15 +5,16 @@
   "repositoryRole": "public application source",
   "exactBaseCommit": "2c9ab1b9478502f1d08956a6c44dfb0850c8f168",
   "fixtureCatalogue": "tests/fixtures/v2/semantic-scenarios.json",
-  "currentPackage": "T05",
-  "currentPackageBaseCommit": "fe4a1460e9de8bbc7be3a3ef6bd88818418d0a04",
+  "currentPackage": "T06",
+  "currentPackageBaseCommit": "7d86269bf82b0d758d367a9be924f19a7b029183",
   "productBehaviorImplementedByP02": false,
   "implementedProductPackages": [
     "T01",
     "T02",
     "T03",
     "T04",
-    "T05"
+    "T05",
+    "T06"
   ],
   "legend": {
     "R": "required primary proof",
@@ -37,32 +38,32 @@
       "proves": "synthetic semantic oracle only; not released product behavior"
     },
     "T06-databaseService": {
-      "status": "future_activation",
+      "status": "current",
       "implementingPackage": "T06",
       "testPath": "tests/unit/v2-t06-preview-start-db.test.ts",
-      "command": "npx vitest run tests/unit/v2-t06-preview-start-db.test.ts",
-      "proves": "must pass in the same package that implements this product meaning"
+      "command": "npx vitest run tests/unit/v2-t06-preview-start-db.test.ts tests/unit/live-coaching-db.test.ts",
+      "proves": "one owner-scoped canonical Start request creates once, exact retries replay before freshness, contradictory reuse and unrelated active workouts return distinct truthful outcomes, and new workouts freeze prescribed exercise meaning across active and Live Coach consumers while legacy rows remain explicit unknown"
     },
     "T06-browser": {
-      "status": "future_activation",
+      "status": "current",
       "implementingPackage": "T06",
       "testPath": "tests/e2e/v2-t06-preview-start.spec.ts",
-      "command": "npx playwright test tests/e2e/v2-t06-preview-start.spec.ts",
-      "proves": "must pass in the same package that implements this product meaning"
+      "command": "npx playwright test --config=playwright.v2-t06.config.ts tests/e2e/v2-t06-preview-start.spec.ts",
+      "proves": "desktop Chromium and narrow mobile WebKit keep alternate preview read-only, retain one Start identity through failure and retry, reconcile ambiguous completion to the exact request, and report a different active workout without presenting the requested day as started"
     },
     "T06-exportImport": {
-      "status": "future_activation",
+      "status": "current",
       "implementingPackage": "T06",
       "testPath": "tests/unit/v2-t06-preview-start-portability.test.ts",
       "command": "npx vitest run tests/unit/v2-t06-preview-start-portability.test.ts",
-      "proves": "must pass in the same package that implements this product meaning"
+      "proves": "snapshot schema 28, CSV, digest, and integrity consumers carry exact Start identity and nullable prescribed name, metric, load type, and load semantics without mutable-catalog reinterpretation"
     },
     "T06-restoreRollback": {
-      "status": "future_activation",
+      "status": "current",
       "implementingPackage": "T06",
       "testPath": "tests/unit/v2-t06-preview-start-restore.test.ts",
       "command": "npx vitest run tests/unit/v2-t06-preview-start-restore.test.ts",
-      "proves": "must pass in the same package that implements this product meaning"
+      "proves": "full restore round-trips exact Start and prescribed-meaning evidence; schema 27 upgrades add explicit null unknowns without inference; malformed current tuples fail closed"
     },
     "T01-databaseService": {
       "status": "current",

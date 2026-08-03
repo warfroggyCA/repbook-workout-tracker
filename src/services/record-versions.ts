@@ -299,6 +299,7 @@ export async function updateSetWithVersion(
   }
   const candidateSemantics = {
     recordedMetricType: sql`candidate.metric_type`,
+    prescribedSemanticsVersion: sql`candidate.prescribed_semantics_version`,
     performedSemanticsVersion: sql`candidate.performed_semantics_version`,
     performedLoadType: sql`candidate.performed_load_type`,
     performedLoadSemantics: sql`candidate.performed_load_semantics`,
@@ -327,6 +328,7 @@ export async function updateSetWithVersion(
         se.target_load_unit,
         se.source_slot_lineage_id,
         se.modification_type,
+        se.prescribed_semantics_version,
         exercise.metric_type AS exercise_metric_type,
         exercise.load_type AS exercise_load_type,
         exercise.load_semantics AS exercise_load_semantics,

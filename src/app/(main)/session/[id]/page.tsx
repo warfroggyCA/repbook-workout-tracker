@@ -228,18 +228,28 @@ async function renderSessionPage(
   const plateConfigs: Record<string, PlateMathConfig> = {};
   const equipmentSetups: SessionRunnerProps["equipmentSetups"] = {};
   for (const sessionExercise of session.exercises) {
-    const exact = exactByExercise.get(sessionExercise.exerciseId) ?? null;
+    const usesPrescribedMeaning =
+      sessionExercise.prescribedSemanticsVersion === 1 &&
+      sessionExercise.modificationType !== "substituted" &&
+      sessionExercise.modificationType !== "added";
+    const exact = usesPrescribedMeaning
+      ? null
+      : exactByExercise.get(sessionExercise.exerciseId) ?? null;
     const presentation = buildSessionEquipmentPresentation({
       exercise: {
         id: sessionExercise.id,
         exerciseId: sessionExercise.exerciseId,
-        loadType: sessionExercise.exercise.loadType,
+        loadType: usesPrescribedMeaning
+          ? sessionExercise.prescribedLoadType!
+          : sessionExercise.exercise.loadType,
         targetLoad: sessionExercise.targetLoad,
         targetLoadUnit: sessionExercise.targetLoadUnit,
-        requirements: sessionExercise.exercise.equipmentRequirements.map((requirement) => ({
-          equipmentType: requirement.equipmentType,
-          minWeight: requirement.minWeight,
-        })),
+        requirements: usesPrescribedMeaning
+          ? []
+          : sessionExercise.exercise.equipmentRequirements.map((requirement) => ({
+              equipmentType: requirement.equipmentType,
+              minWeight: requirement.minWeight,
+            })),
         exactRequirement: exact ? {
           requiredProfileKind: exact.requiredProfileKind,
           requiredEquipmentDefinitionId: exact.requiredEquipmentDefinitionId,
@@ -306,15 +316,29 @@ async function renderSessionPage(
     const last = se.plannedFromTemplateExerciseId
       ? lastPerformances[se.plannedFromTemplateExerciseId]
       : undefined;
+    const usesPrescribedMeaning =
+      se.prescribedSemanticsVersion === 1 &&
+      se.modificationType !== "substituted" &&
+      se.modificationType !== "added";
     return {
       id: se.id,
       exerciseId: se.exerciseId,
-      name: se.exercise.name,
-      family: se.exercise.family?.name ?? null,
-      loadType: se.exercise.loadType,
-      loadSemantics: se.exercise.loadSemantics,
-      metricType: se.exercise.metricType,
-      movementPattern: se.exercise.movementPattern,
+      name: usesPrescribedMeaning
+        ? se.prescribedExerciseName!
+        : se.exercise.name,
+      family: usesPrescribedMeaning ? null : se.exercise.family?.name ?? null,
+      loadType: usesPrescribedMeaning
+        ? se.prescribedLoadType!
+        : se.exercise.loadType,
+      loadSemantics: usesPrescribedMeaning
+        ? se.prescribedLoadSemantics!
+        : se.exercise.loadSemantics,
+      metricType: usesPrescribedMeaning
+        ? se.prescribedMetricType!
+        : se.exercise.metricType,
+      movementPattern: usesPrescribedMeaning
+        ? "unknown"
+        : se.exercise.movementPattern,
       orderIdx: se.orderIdx,
       supersetKey: se.supersetKey,
       restSec: se.restSec,
@@ -324,7 +348,9 @@ async function renderSessionPage(
       substitutionReason: se.substitutionReason,
       substitutedAt: se.substitutedAt?.toISOString() ?? null,
       plannedExerciseName: se.substitutedForExerciseId
-        ? (plannedExerciseNames.get(se.substitutedForExerciseId) ?? null)
+        ? (se.prescribedExerciseName ??
+          plannedExerciseNames.get(se.substitutedForExerciseId) ??
+          null)
         : null,
       targetSets: se.targetSets,
       targetRepsMin: se.targetRepsMin,
@@ -335,9 +361,12 @@ async function renderSessionPage(
       warmupNotes: se.warmupNotes,
       warmupSets: se.warmupSets,
       setNotes: se.setNotes,
-      cautionBodyParts:
-        flags.get(se.exercise.movementPattern)?.bodyParts ?? [],
-      media: mediaByExercise.get(se.exercise.id) ?? null,
+      cautionBodyParts: usesPrescribedMeaning
+        ? []
+        : flags.get(se.exercise.movementPattern)?.bodyParts ?? [],
+      media: usesPrescribedMeaning
+        ? null
+        : mediaByExercise.get(se.exercise.id) ?? null,
       sets: se.sets
         .filter((s) => !s.isWarmup)
         .map((s) => ({

@@ -119,6 +119,7 @@ export type SetLoadEntryMeaning =
 
 export type SetMetricExclusionReason =
   | "source_excluded"
+  | "missing_prescribed_semantics"
   | "unsupported_performed_semantics_version"
   | "incomplete_performed_semantics"
   | "metric_semantics_conflict"
@@ -184,6 +185,7 @@ export type SetMetricContainment = {
 
 export type SetMetricContainmentInput = {
   recordedMetricType: PerformedMetricType;
+  prescribedSemanticsVersion?: number | null;
   performedSemanticsVersion?: number | null;
   performedLoadType?: string | null;
   performedLoadSemantics?: string | null;
@@ -239,6 +241,9 @@ export function classifySetMetricContainment(
     typeof input.performedLoadType === "string" &&
     input.performedLoadType.trim().length > 0 &&
     input.performedLoadSemantics != null;
+  const prescriptionMeaningKnown =
+    input.prescribedSemanticsVersion === undefined ||
+    input.prescribedSemanticsVersion === 1;
   const loadType = hasCompletePerformedSemantics
     ? input.performedLoadType
     : input.loadType;
@@ -261,6 +266,19 @@ export function classifySetMetricContainment(
       personalRecordEligible: false,
       automaticProgressionEligible: false,
       exclusionReason: "source_excluded",
+    };
+  }
+  if (!prescriptionMeaningKnown && !hasCompletePerformedSemantics) {
+    return {
+      ...base,
+      difficultyDirection: "unknown",
+      prescriptionOutcomeEligible: false,
+      longitudinalComparable: false,
+      loadedWorkEligible: false,
+      estimatedStrengthEligible: false,
+      personalRecordEligible: false,
+      automaticProgressionEligible: false,
+      exclusionReason: "missing_prescribed_semantics",
     };
   }
   if (
@@ -380,7 +398,8 @@ export function classifySetMetricContainment(
     return {
       ...base,
       difficultyDirection: "higher_repetitions_may_be_harder",
-      prescriptionOutcomeEligible: cleanRepetitionShape,
+      prescriptionOutcomeEligible:
+        cleanRepetitionShape && prescriptionMeaningKnown,
       longitudinalComparable: cleanRepetitionShape,
       loadedWorkEligible: false,
       estimatedStrengthEligible: false,
@@ -478,7 +497,7 @@ export function classifySetMetricContainment(
     return {
       ...base,
       difficultyDirection: "higher_load_is_harder",
-      prescriptionOutcomeEligible: true,
+      prescriptionOutcomeEligible: prescriptionMeaningKnown,
       longitudinalComparable: false,
       loadedWorkEligible: false,
       estimatedStrengthEligible: false,
@@ -490,12 +509,12 @@ export function classifySetMetricContainment(
   return {
     ...base,
     difficultyDirection: "higher_load_is_harder",
-    prescriptionOutcomeEligible: true,
+    prescriptionOutcomeEligible: prescriptionMeaningKnown,
     longitudinalComparable: true,
     loadedWorkEligible: true,
     estimatedStrengthEligible: true,
     personalRecordEligible: true,
-    automaticProgressionEligible: true,
+    automaticProgressionEligible: prescriptionMeaningKnown,
     exclusionReason: null,
   };
 }
@@ -844,6 +863,8 @@ export function setMetricExclusionLabel(
       return "Comparable strength estimate unavailable for assisted work.";
     case "metric_semantics_conflict":
       return "Calculation unavailable because the recorded and current metric meanings conflict.";
+    case "missing_prescribed_semantics":
+      return "Calculation unavailable because this workout's prescribed measurement meaning was not retained.";
     case "unsupported_performed_semantics_version":
     case "incomplete_performed_semantics":
       return "Calculation unavailable because this set's performed measurement meaning is unsupported.";

@@ -26,6 +26,7 @@ export default defineConfig({
     "v2-t03-planned-order.spec.ts",
     "v2-t04-warmup-occurrences.spec.ts",
     "v2-t05-execution-semantics.spec.ts",
+    "v2-t06-preview-start.spec.ts",
   ],
   outputDir: "./output/playwright/test-results",
   fullyParallel: false,

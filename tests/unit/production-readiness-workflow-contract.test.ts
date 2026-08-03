@@ -64,6 +64,9 @@ describe("production readiness workflow contract", () => {
     const t05ExecutionSemantics = steps.find(
       (step) => step.id === "browser-v2-t05",
     );
+    const t06PreviewStart = steps.find(
+      (step) => step.id === "browser-v2-t06",
+    );
     const browserGate = steps.find(
       (step) => step.name === "Require every browser suite",
     );
@@ -80,6 +83,7 @@ describe("production readiness workflow contract", () => {
     expect(t03PlannedOrder?.run).toBe("npm run test:e2e:v2-t03");
     expect(t04WarmupOccurrences?.run).toBe("npm run test:e2e:v2-t04");
     expect(t05ExecutionSemantics?.run).toBe("npm run test:e2e:v2-t05");
+    expect(t06PreviewStart?.run).toBe("npm run test:e2e:v2-t06");
     expect(browserGate?.env?.BROWSER_HISTORY).toBe(
       "${{ steps.browser-history.outcome }}",
     );
@@ -122,6 +126,12 @@ describe("production readiness workflow contract", () => {
     expect(browserGate?.run).toContain(
       '"T05 current, next, group, and rest truth:${BROWSER_V2_T05}"',
     );
+    expect(browserGate?.env?.BROWSER_V2_T06).toBe(
+      "${{ steps.browser-v2-t06.outcome }}",
+    );
+    expect(browserGate?.run).toContain(
+      '"T06 preview and Start truth:${BROWSER_V2_T06}"',
+    );
   });
 
   it("keeps dedicated v2 browser gates out of the stateful smoke journey", () => {
@@ -132,6 +142,7 @@ describe("production readiness workflow contract", () => {
         "v2-t03-planned-order.spec.ts",
         "v2-t04-warmup-occurrences.spec.ts",
         "v2-t05-execution-semantics.spec.ts",
+        "v2-t06-preview-start.spec.ts",
       ]),
     );
   });

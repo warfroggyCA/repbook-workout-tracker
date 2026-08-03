@@ -79,7 +79,11 @@ export async function getExerciseReplacementOptions(
   return {
     currentExerciseId: sessionExercise.exerciseId,
     plannedExerciseId,
-    plannedExerciseName: planned.name,
+    plannedExerciseName:
+      sessionExercise.prescribedSemanticsVersion === 1 &&
+      sessionExercise.prescribedExerciseName
+        ? sessionExercise.prescribedExerciseName
+        : planned.name,
     currentState: {
       modificationType: sessionExercise.modificationType,
       skipReason: sessionExercise.skipReason,
