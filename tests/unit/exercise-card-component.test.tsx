@@ -22,6 +22,7 @@ import { ExerciseCard } from "@/components/session/exercise-card";
 import type {
   SessionExerciseData,
   SessionOccurrenceData,
+  SetAcknowledgementReceipt,
 } from "@/components/session/types";
 import type { OccurrenceMutationOutboxEntry } from "@/lib/occurrence-mutation-outbox";
 
@@ -375,7 +376,10 @@ describe("ExerciseCard", () => {
         { id: "saved-first", clientKey: "first-key", setNo: 1, weight: 95, weightUnit: "lb" as const, reps: 8, rpe: null, note: null, saveState: "saved" as const },
       ],
     };
-    const html = renderToStaticMarkup(
+    const renderCard = (
+      acknowledgementReceipt: SetAcknowledgementReceipt | null = null,
+      nextActionLabel: string | null = "Workout complete",
+    ) => renderToStaticMarkup(
       <ExerciseCard
         exercise={afterSkippedSecond}
         historyRevision={0}
@@ -429,8 +433,9 @@ describe("ExerciseCard", () => {
           resolvedAt: null,
           completedSetId: null,
         }}
+        acknowledgementReceipt={acknowledgementReceipt}
         isCurrentExercise
-        nextActionLabel="Workout complete"
+        nextActionLabel={nextActionLabel}
         onPatch={() => undefined}
         onQueueSet={async () => true}
         onSkipSet={async () => true}
@@ -442,6 +447,7 @@ describe("ExerciseCard", () => {
         onAdjustIntentChange={() => undefined}
       />
     );
+    const html = renderCard();
 
     expect(html).toContain("Set 3 of 3");
     expect(html).toContain(
@@ -453,6 +459,36 @@ describe("ExerciseCard", () => {
       `id="set-entry-${afterSkippedSecond.id}-00000000-0000-4000-8000-000000000004"`,
     );
     expect(html).toContain("Set 2");
+
+    const sourceExerciseId = "00000000-0000-4000-8000-000000000030";
+    const crossExerciseHtml = renderCard(
+      {
+        sessionExerciseId: sourceExerciseId,
+        exerciseName: "Barbell Bench Press",
+        metricType: "weight_reps",
+        set: {
+          id: "acknowledged-third",
+          clientKey: "acknowledged-third-key",
+          setNo: 3,
+          weight: 135,
+          weightUnit: "lb",
+          reps: 8,
+          metricType: "weight_reps",
+          rpe: null,
+          note: null,
+          saveState: "saved",
+        },
+      },
+      null,
+    );
+    expect(crossExerciseHtml).toContain(
+      `id="active-set-save-receipt-${sourceExerciseId}-3"`,
+    );
+    expect(crossExerciseHtml).toContain(
+      "Saved · Barbell Bench Press · Set 3",
+    );
+    expect(crossExerciseHtml).toContain("135 lb × 8 reps");
+    expect(crossExerciseHtml).toContain("Acknowledged by Repbook");
   });
 
   it("keeps the exact working-set row visible while a skip saves and after it is acknowledged", () => {

@@ -149,9 +149,20 @@ async function skipCurrentSet(page: Page) {
     const nextEntry = page
       .getByTestId("current-exercise-card")
       .getByTestId("current-set-entry");
-    if ((await nextEntry.count()) !== 1) return false;
-    const nextOccurrenceId = await nextEntry.getAttribute("id");
-    return nextOccurrenceId != null && nextOccurrenceId !== priorOccurrenceId;
+    if ((await nextEntry.count()) === 1) {
+      const nextOccurrenceId = await nextEntry.getAttribute("id");
+      if (nextOccurrenceId != null && nextOccurrenceId !== priorOccurrenceId) {
+        return true;
+      }
+    }
+    const status = await page
+      .getByRole("complementary", { name: "Workout status" })
+      .innerText();
+    const guidance = await page
+      .getByRole("region", { name: "Workout progress and upcoming work" })
+      .innerText();
+    return status.includes("Ready to finish") &&
+      guidance.includes("All actions resolved");
   }).toBe(true);
 }
 

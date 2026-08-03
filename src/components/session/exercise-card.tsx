@@ -61,7 +61,12 @@ import {
   MessageSquareText,
   PlayCircle,
 } from "lucide-react";
-import type { SessionExerciseData, SessionOccurrenceData, LoggedSet } from "./types";
+import type {
+  LoggedSet,
+  SessionExerciseData,
+  SessionOccurrenceData,
+  SetAcknowledgementReceipt,
+} from "./types";
 import type { ExerciseProgressProjection } from "@/lib/session-guidance";
 import type { MachineLoadConfig } from "@/engine/machine-load-math";
 import {
@@ -188,6 +193,7 @@ type Props = {
   occurrenceMutationEntries?: OccurrenceMutationOutboxEntry[];
   occurrenceRuntimeSaveStates?: Record<string, "saving" | "retrying">;
   acknowledgedOccurrenceIds?: string[];
+  acknowledgementReceipt?: SetAcknowledgementReceipt | null;
   isCurrentExercise?: boolean;
   nextActionLabel?: string | null;
   warmupResolved?: boolean;
@@ -241,6 +247,7 @@ export function ExerciseCard({
   occurrenceMutationEntries = [],
   occurrenceRuntimeSaveStates = {},
   acknowledgedOccurrenceIds = [],
+  acknowledgementReceipt = null,
   isCurrentExercise = false,
   nextActionLabel = null,
   warmupResolved = false,
@@ -630,6 +637,20 @@ export function ExerciseCard({
           (set) => set.saveState === "saved" && set.setNo < nextSetNo,
         )
         .sort((left, right) => right.setNo - left.setNo)[0] ?? null
+    : null;
+  const displayedAcknowledgementReceipt = isCurrentExercise
+    ? acknowledgementReceipt ??
+      (prioritizeCurrentAction && latestAcknowledgedSet
+        ? {
+            sessionExerciseId: exercise.id,
+            exerciseName: exercise.name,
+            metricType:
+              latestAcknowledgedSet.metricType ??
+              exercise.metricType ??
+              "weight_reps",
+            set: latestAcknowledgedSet,
+          }
+        : null)
     : null;
   const prioritizedRowIndex = prioritizeCurrentAction
     ? nextSetIdx
@@ -1118,18 +1139,24 @@ export function ExerciseCard({
                         onRetry={onRetryOccurrenceMutation}
                         onDiscard={onDiscardOccurrenceMutation}
                       />
-                      {latestAcknowledgedSet && (
+                      {displayedAcknowledgementReceipt && (
                         <div
-                          id={`active-set-save-receipt-${exercise.id}-${latestAcknowledgedSet.setNo}`}
+                          id={`active-set-save-receipt-${displayedAcknowledgementReceipt.sessionExerciseId}-${displayedAcknowledgementReceipt.set.setNo}`}
                           data-testid="active-set-save-receipt"
                           role="status"
                           className="mt-3 rounded-md border border-green-600/30 bg-green-600/10 px-3 py-2 text-sm"
                         >
                           <p className="font-semibold">
-                            Saved · Set {latestAcknowledgedSet.setNo}
+                            Saved · {displayedAcknowledgementReceipt.sessionExerciseId !== exercise.id
+                              ? `${displayedAcknowledgementReceipt.exerciseName} · `
+                              : ""}
+                            Set {displayedAcknowledgementReceipt.set.setNo}
                           </p>
                           <p className="mt-0.5 text-xs text-muted-foreground">
-                            {formatLoggedSet(latestAcknowledgedSet, exercise.metricType)} · Acknowledged by Repbook
+                            {formatLoggedSet(
+                              displayedAcknowledgementReceipt.set,
+                              displayedAcknowledgementReceipt.metricType,
+                            )} · Acknowledged by Repbook
                           </p>
                         </div>
                       )}

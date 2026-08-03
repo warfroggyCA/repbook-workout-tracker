@@ -125,7 +125,7 @@ async function signInAndStartWorkout(page: import("@playwright/test").Page) {
   if ((await resumeWorkout.count()) > 0) {
     await waitForReactHandler(resumeWorkout);
     await resumeWorkout.click();
-    await expect(page).toHaveURL(/\/session\/[0-9a-f-]+$/);
+    await expect(page).toHaveURL(/\/session\/[0-9a-f-]+(?:#.*)?$/);
     await page.getByRole("button", { name: "Finish", exact: true }).click();
     await confirmActiveWorkoutDiscard(page);
     await expect(page).toHaveURL(/\/today$/);
@@ -191,7 +191,7 @@ async function abandonActiveWorkout(
 
   await waitForReactHandler(resumeWorkout);
   await resumeWorkout.click();
-  await expect(page).toHaveURL(/\/session\/[0-9a-f-]+$/);
+  await expect(page).toHaveURL(/\/session\/[0-9a-f-]+(?:#.*)?$/);
   await page.getByRole("button", { name: "Finish", exact: true }).click();
   await confirmActiveWorkoutDiscard(page);
   await expect(page).toHaveURL(/\/today$/);
@@ -2044,7 +2044,7 @@ test("keeps pain and substitution lineage reconstructable through History", asyn
   expect(browserErrors.filter((message) => message !== "NEXT_REDIRECT")).toEqual([]);
 });
 
-test("keeps the final tapped row visible through acknowledgement and background return", async ({
+test("keeps the final set acknowledgement visible through background return", async ({
   page,
   context,
 }) => {
@@ -2052,7 +2052,9 @@ test("keeps the final tapped row visible through acknowledgement and background 
   const nextSet = page.getByTestId("current-exercise-card");
   const firstExercise = page.locator('[id^="exercise-"]').first();
   const workoutStatus = page.getByRole("complementary", { name: "Workout status" });
-  const firstName = await nextSet.getByRole("heading", { level: 2 }).textContent();
+  const firstName =
+    (await nextSet.getByRole("heading", { level: 2 }).textContent())?.trim() ??
+    "";
 
   for (let setNo = 1; setNo <= 2; setNo += 1) {
     await nextSet.getByRole("button", { name: "Log set", exact: true }).click();
@@ -2085,8 +2087,7 @@ test("keeps the final tapped row visible through acknowledgement and background 
   const tappedRow = firstExercise.locator(
     '[id^="logged-set-"][id$="-3"]',
   );
-  const tappedRowTop = await tappedRow
-    .evaluate((element) => element.getBoundingClientRect().top);
+  await expect(tappedRow).toBeInViewport();
   const backgroundPage = await context.newPage();
   await backgroundPage.goto("about:blank");
   await backgroundPage.bringToFront();
@@ -2098,18 +2099,16 @@ test("keeps the final tapped row visible through acknowledgement and background 
   await expect(savedRow.getByText("Saved", { exact: true })).toBeVisible();
   await expect(savedRow).toContainText("Set 3");
   await expect(firstExercise.getByRole("heading", { level: 2 })).toHaveText(
-    firstName ?? "",
+    firstName,
   );
-  await expect
-    .poll(async () =>
-      Math.abs(
-        (await savedRow.evaluate((element) =>
-          element.getBoundingClientRect().top,
-        )) - tappedRowTop,
-      ),
-    )
-    .toBeLessThanOrEqual(2);
-  await expect(savedRow).toBeInViewport();
+  await expect(page).toHaveURL(/#workout-rest-status$/);
+  await expect(workoutStatus).toContainText("Resting");
+  const acknowledgement = nextSet.getByTestId("active-set-save-receipt");
+  await expect(acknowledgement).toContainText(
+    `Saved · ${firstName} · Set 3`,
+  );
+  await expect(acknowledgement).toContainText("Acknowledged by Repbook");
+  await expect(acknowledgement).toBeInViewport();
   await backgroundPage.close();
   await page.unrouteAll({ behavior: "wait" });
 

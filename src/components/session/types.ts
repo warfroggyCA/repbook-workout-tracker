@@ -24,6 +24,13 @@ export type LoggedSet = {
   lastError?: string | null;
 };
 
+export type SetAcknowledgementReceipt = {
+  sessionExerciseId: string;
+  exerciseName: string;
+  metricType: PerformedMetricType;
+  set: LoggedSet;
+};
+
 export type SessionExerciseData = {
   id: string;
   exerciseId: string;

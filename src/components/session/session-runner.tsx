@@ -50,9 +50,11 @@ import {
   type PerformedLoadSemantics,
 } from "@/lib/set-metric-semantics";
 import type {
+  LoggedSet,
   SessionRunnerProps,
   SessionExerciseData,
   SessionOccurrenceData,
+  SetAcknowledgementReceipt,
 } from "./types";
 import { toast } from "sonner";
 import {
@@ -87,7 +89,6 @@ import {
   type OccurrenceMutationOutboxClientEvent,
   type OccurrenceMutationOperation,
 } from "@/lib/occurrence-mutation-outbox";
-import type { LoggedSet } from "./types";
 import {
   equipmentSyncPending,
   finishBlockedByRecordedWork,
@@ -270,6 +271,8 @@ export function SessionRunner(props: SessionRunnerProps) {
   const [acknowledgedOccurrenceIds, setAcknowledgedOccurrenceIds] = useState<
     string[]
   >([]);
+  const [latestSetAcknowledgement, setLatestSetAcknowledgement] =
+    useState<SetAcknowledgementReceipt | null>(null);
   const [
     occurrenceRuntimeSaveStates,
     setOccurrenceRuntimeSaveStates,
@@ -653,24 +656,30 @@ export function SessionRunner(props: SessionRunnerProps) {
             window.requestAnimationFrame(keepAcknowledgementInPlace);
         }
       }
+      const saved: LoggedSet = {
+        id: detail.setId,
+        clientKey: detail.clientKey,
+        setNo: detail.entry.setNo,
+        weight: detail.entry.weight,
+        weightUnit: detail.entry.weightUnit,
+        reps: detail.entry.reps,
+        distanceKm: detail.entry.distanceKm,
+        durationSeconds: detail.entry.durationSeconds,
+        metricType: detail.entry.metricType,
+        rpe: detail.entry.rpe,
+        note: detail.entry.note,
+        correctionCount: 0,
+        saveState: "saved",
+      };
+      setLatestSetAcknowledgement({
+        sessionExerciseId: detail.entry.sessionExerciseId,
+        exerciseName: detail.entry.exerciseName,
+        metricType: detail.entry.metricType,
+        set: saved,
+      });
       setExercises((current) =>
         current.map((exercise) => {
           if (exercise.id !== detail.entry.sessionExerciseId) return exercise;
-          const saved: LoggedSet = {
-            id: detail.setId,
-            clientKey: detail.clientKey,
-            setNo: detail.entry.setNo,
-            weight: detail.entry.weight,
-            weightUnit: detail.entry.weightUnit,
-            reps: detail.entry.reps,
-            distanceKm: detail.entry.distanceKm,
-            durationSeconds: detail.entry.durationSeconds,
-            metricType: detail.entry.metricType,
-            rpe: detail.entry.rpe,
-            note: detail.entry.note,
-            correctionCount: 0,
-            saveState: "saved",
-          };
           const withoutClientCopy = exercise.sets.filter(
             (set) => set.clientKey !== detail.clientKey
           );
@@ -1952,6 +1961,12 @@ export function SessionRunner(props: SessionRunnerProps) {
             )}
             occurrenceRuntimeSaveStates={occurrenceRuntimeSaveStates}
             acknowledgedOccurrenceIds={acknowledgedOccurrenceIds}
+            acknowledgementReceipt={
+              guidance.currentAction?.kind === "working_set" ||
+              guidance.currentAction?.kind === "rest"
+                ? latestSetAcknowledgement
+                : null
+            }
             isCurrentExercise={
               currentOccurrence?.sessionExerciseId === exercise.id
             }
