@@ -1,6 +1,7 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
 import {
   installNextDevelopmentRefreshControl,
+  openNativeDetails,
   waitForEquipmentSelectionsToSettle,
   waitForHydratedReactHandler,
   waitForHydratedServerAction,
@@ -123,17 +124,54 @@ async function skipCurrentSet(page: Page) {
     .getByRole("complementary", { name: "Workout status" })
     .getByRole("button")
     .first();
-  const prior = await showCurrent.innerText();
-  const skip = current
-    .getByRole("button", { name: "Skip set", exact: true })
-    .first();
+  await showCurrent.click();
+  await expect(current.locator(":scope > button").first()).toHaveAttribute(
+    "aria-expanded",
+    "true",
+  );
+  const plannedEntry = current.getByTestId("current-set-entry");
+  const currentEntry = (await plannedEntry.count()) === 1
+    ? plannedEntry
+    : current.getByTestId("added-set-entry");
+  await expect(currentEntry).toHaveCount(1);
+  const priorOccurrenceId = await currentEntry.getAttribute("id");
+  expect(priorOccurrenceId).toMatch(/^(?:set-entry|added-set-entry)-/);
+  if ((await currentEntry.getAttribute("data-testid")) === "current-set-entry") {
+    await openNativeDetails(currentEntry.locator("details", {
+      hasText: "Set exceptions",
+    }));
+  }
+  const skip = currentEntry.getByRole("button", {
+    name: "Skip set",
+    exact: true,
+  });
   await expect(skip).toBeEnabled();
   await clickCentered(page, skip);
   const dialog = page.getByRole("dialog", { name: /^Skip .+\?$/ });
   await dialog.getByLabel("Reason").selectOption("time");
   await dialog.getByRole("button", { name: "Skip item", exact: true }).click();
   await expect(dialog).toHaveCount(0);
-  await expect.poll(() => showCurrent.innerText()).not.toBe(prior);
+  await expect.poll(async () => {
+    const nextCard = page.getByTestId("current-exercise-card");
+    const nextPlannedEntry = nextCard.getByTestId("current-set-entry");
+    const nextEntry = (await nextPlannedEntry.count()) === 1
+      ? nextPlannedEntry
+      : nextCard.getByTestId("added-set-entry");
+    if ((await nextEntry.count()) === 1) {
+      const nextOccurrenceId = await nextEntry.getAttribute("id");
+      if (nextOccurrenceId != null && nextOccurrenceId !== priorOccurrenceId) {
+        return true;
+      }
+    }
+    const status = await page
+      .getByRole("complementary", { name: "Workout status" })
+      .innerText();
+    const guidance = await page
+      .getByRole("region", { name: "Workout progress and upcoming work" })
+      .innerText();
+    return status.includes("Ready to finish") &&
+      guidance.includes("All actions resolved");
+  }).toBe(true);
 }
 
 async function discardWorkout(page: Page) {

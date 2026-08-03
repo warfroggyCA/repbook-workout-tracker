@@ -3,6 +3,7 @@ import { mkdir } from "node:fs/promises";
 import { resolve } from "node:path";
 import {
   installNextDevelopmentRefreshControl,
+  openNativeDetails,
   waitForEquipmentSelectionsToSettle,
   waitForHydratedServerAction,
 } from "../helpers/react-readiness";
@@ -265,6 +266,9 @@ test("publishes and preserves durable warm-up and grouped workout outcomes", asy
     .getByRole("button", { name: "Dismiss rest timer", exact: true })
     .click();
 
+  await openNativeDetails(nextSet.locator("details", {
+    hasText: "Set exceptions",
+  }));
   await nextSet.getByRole("button", { name: "Skip set", exact: true }).click();
   const workingSkip = page.getByRole("dialog", {
     name: "Skip set 1 of Barbell Overhead Press?",

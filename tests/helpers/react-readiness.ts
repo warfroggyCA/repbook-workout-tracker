@@ -82,6 +82,15 @@ export async function waitForHydratedReactChangeHandler(locator: Locator) {
   await waitForHydratedReactEventHandler(locator, "onChange");
 }
 
+export async function openNativeDetails(details: Locator) {
+  await expect(details).toHaveCount(1);
+  await expect(details).toBeVisible();
+  if ((await details.getAttribute("open")) !== null) return;
+
+  await details.locator(":scope > summary").click();
+  await expect(details).toHaveAttribute("open", "");
+}
+
 async function waitForHydratedReactEventHandler(
   locator: Locator,
   eventName: "onClick" | "onChange",

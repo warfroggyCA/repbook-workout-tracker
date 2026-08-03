@@ -228,6 +228,11 @@ jobs:
         continue-on-error: true
         run: npm run test:e2e:v2-t06
 
+      - name: Verify U01 active-workout hierarchy and ergonomics
+        id: browser-v2-u01
+        continue-on-error: true
+        run: npm run test:e2e:v2-u01
+
       - name: Require every browser suite
         if: ${{ always() }}
         env:
@@ -253,6 +258,7 @@ jobs:
           BROWSER_V2_T04: ${{ steps.browser-v2-t04.outcome }}
           BROWSER_V2_T05: ${{ steps.browser-v2-t05.outcome }}
           BROWSER_V2_T06: ${{ steps.browser-v2-t06.outcome }}
+          BROWSER_V2_U01: ${{ steps.browser-v2-u01.outcome }}
         run: |
           failed=0
           for result in \
@@ -277,7 +283,8 @@ jobs:
             "T03 planned order and extra-set truth:${BROWSER_V2_T03}" \
             "T04 warm-up occurrence truth:${BROWSER_V2_T04}" \
             "T05 current, next, group, and rest truth:${BROWSER_V2_T05}" \
-            "T06 preview and Start truth:${BROWSER_V2_T06}"
+            "T06 preview and Start truth:${BROWSER_V2_T06}" \
+            "U01 active-workout hierarchy:${BROWSER_V2_U01}"
           do
             name="${result%%:*}"
             outcome="${result#*:}"

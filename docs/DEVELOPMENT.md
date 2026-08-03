@@ -27,7 +27,7 @@ npm run docs:check
 npm run audit:check
 ```
 
-The Repbook v2 semantic foundation and current T01/T02/T03/T04/T05/T06 activation
+The Repbook v2 semantic foundation and current T01/T02/T03/T04/T05/T06/U01 activation
 packages have focused gates:
 
 ```bash
@@ -44,6 +44,7 @@ npx vitest run tests/unit/v2-t05-execution-semantics-db.test.ts tests/unit/v2-t0
 npm run test:e2e:v2-t05
 npx vitest run tests/unit/v2-t06-preview-start-db.test.ts tests/unit/v2-t06-preview-start-portability.test.ts tests/unit/v2-t06-preview-start-restore.test.ts tests/unit/live-coaching-db.test.ts
 npm run test:e2e:v2-t06
+npm run test:e2e:v2-u01
 ```
 
 The semantic test validates all synthetic F01-F17 scenarios and every required
@@ -61,7 +62,10 @@ ready-to-finish without implicit completion, portability, recovery, and
 desktop/mobile browser evidence. T06 activates read-only preview, one canonical
 owner-scoped Start intent across retries, truthful active-workout collision
 outcomes, and immutable prescribed exercise meaning across active display,
-History/Review, export, snapshot schema 28, and restore. Recovery manifest 10
+History/Review, export, snapshot schema 28, and restore. U01 activates the
+current-first active-workout hierarchy, one ordinary commit action, progressive
+disclosure, exact acknowledgement visibility, 44-pixel reachable controls, and
+overflow checks on desktop, 440×956 mobile, and 320×700 mobile. Recovery manifest 10
 remains the authoritative table inventory. Every later package must activate its own
 reserved evidence before its product behavior is considered implemented.
 
@@ -93,6 +97,7 @@ npm run test:e2e:program-editor-cross-browser
 npm run test:e2e:current-action
 npm run test:e2e:superset-prep
 npm run test:e2e:v2-t06
+npm run test:e2e:v2-u01
 ```
 
 Run the smallest affected browser suite first, then the complete protected

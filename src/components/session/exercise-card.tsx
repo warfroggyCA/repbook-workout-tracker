@@ -61,7 +61,12 @@ import {
   MessageSquareText,
   PlayCircle,
 } from "lucide-react";
-import type { SessionExerciseData, SessionOccurrenceData, LoggedSet } from "./types";
+import type {
+  LoggedSet,
+  SessionExerciseData,
+  SessionOccurrenceData,
+  SetAcknowledgementReceipt,
+} from "./types";
 import type { ExerciseProgressProjection } from "@/lib/session-guidance";
 import type { MachineLoadConfig } from "@/engine/machine-load-math";
 import {
@@ -188,7 +193,9 @@ type Props = {
   occurrenceMutationEntries?: OccurrenceMutationOutboxEntry[];
   occurrenceRuntimeSaveStates?: Record<string, "saving" | "retrying">;
   acknowledgedOccurrenceIds?: string[];
+  acknowledgementReceipt?: SetAcknowledgementReceipt | null;
   isCurrentExercise?: boolean;
+  nextActionLabel?: string | null;
   warmupResolved?: boolean;
   groupContext?: {
     name: string;
@@ -240,7 +247,9 @@ export function ExerciseCard({
   occurrenceMutationEntries = [],
   occurrenceRuntimeSaveStates = {},
   acknowledgedOccurrenceIds = [],
+  acknowledgementReceipt = null,
   isCurrentExercise = false,
+  nextActionLabel = null,
   warmupResolved = false,
   groupContext = null,
   occurrenceChangesBlocked = false,
@@ -621,6 +630,41 @@ export function ExerciseCard({
   const unconfirmedSet = exercise.sets.find(
     (set) => set.saveState != null && set.saveState !== "saved",
   );
+  const prioritizeCurrentAction = nextActionLabel != null;
+  const latestAcknowledgedSet = prioritizeCurrentAction
+    ? [...exercise.sets]
+        .filter(
+          (set) => set.saveState === "saved" && set.setNo < nextSetNo,
+        )
+        .sort((left, right) => right.setNo - left.setNo)[0] ?? null
+    : null;
+  const displayedAcknowledgementReceipt = isCurrentExercise
+    ? acknowledgementReceipt ??
+      (prioritizeCurrentAction && latestAcknowledgedSet
+        ? {
+            sessionExerciseId: exercise.id,
+            exerciseName: exercise.name,
+            metricType:
+              latestAcknowledgedSet.metricType ??
+              exercise.metricType ??
+              "weight_reps",
+            set: latestAcknowledgedSet,
+          }
+        : null)
+    : null;
+  const prioritizedRowIndex = prioritizeCurrentAction
+    ? nextSetIdx
+    : unconfirmedSet
+      ? unconfirmedSet.setNo - 1
+      : null;
+  const plannedRowOrder = Array.from(
+    { length: plannedRows },
+    (_, index) => index,
+  ).sort((left, right) => {
+    if (left === prioritizedRowIndex) return -1;
+    if (right === prioritizedRowIndex) return 1;
+    return left - right;
+  });
   const isCurrentPlannedSet =
     activeOccurrence?.sessionExerciseId === exercise.id &&
     activeOccurrence.kind === "working_set" &&
@@ -730,63 +774,9 @@ export function ExerciseCard({
           id={`session-exercise-details-${exercise.id}`}
           className="flex flex-col gap-3 border-t p-3"
         >
-          {exercise.modificationType === "added" && (
-            <p className="rounded-md border border-primary/25 bg-primary/5 px-3 py-2 text-sm">
-              Added during this workout. It has no Program slot or progression
-              target, and your Program remains unchanged.
-            </p>
-          )}
-          {exercise.last && (
-            <p className="text-xs text-muted-foreground">
-              Last time:{" "}
-              {exercise.last.sets
-                .map(
-                  (s) =>
-                    `${s.weight != null && s.weightUnit != null ? `${s.weight} ${s.weightUnit}×` : ""}${s.reps}`
-                )
-                .join(", ")}
-            </p>
-          )}
-          {exercise.cautionBodyParts.length > 0 && (
-            <p className="rounded-md bg-amber-500/10 px-2 py-1 text-xs text-amber-700 dark:text-amber-400">
-              Take care of your {exercise.cautionBodyParts.join(" and ")} — stop
-              if pain goes above mild.
-            </p>
-          )}
-          {exercise.modificationType === "substituted" && (
-            <div className="rounded-md border border-primary/30 bg-primary/5 px-3 py-2 text-sm">
-              <p className="font-medium">
-                Using {exercise.name} instead of {exercise.plannedExerciseName ?? "the planned exercise"}
-              </p>
-              <p className="mt-1 text-xs text-muted-foreground">
-                Reason: {exercise.substitutionReason
-                  ? ALTERNATIVE_REASON_LABELS[exercise.substitutionReason]
-                  : "Not recorded"}. Exercise-specific loads, warm-ups, and cues from the plan do not carry over.
-              </p>
-            </div>
-          )}
-          {warmupGuidance && (
-            warmupResolved ? (
-              <details className="rounded-md border bg-muted/30 text-xs">
-                <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-2 px-3 py-2 font-medium text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
-                  <span>Warm-up guidance · reference</span>
-                  <span className="text-muted-foreground">Show details</span>
-                </summary>
-                <div className="border-t px-3 pb-2">{warmupGuidance}</div>
-              </details>
-            ) : (
-              <div className="rounded-md border bg-muted/30 px-3 py-2 text-xs">
-                <p className="font-medium text-foreground">
-                  Warm-up guidance · not a check-off item
-                </p>
-                {warmupGuidance}
-              </div>
-            )
-          )}
-
           {/* Logged sets */}
           <div className="flex flex-col gap-1">
-            {Array.from({ length: plannedRows }).map((_, i) => {
+            {plannedRowOrder.map((i) => {
               const set = exercise.sets.find((candidate) => candidate.setNo === i + 1);
               const occurrenceForRow = workingOccurrences.find(
                 (occurrence) => occurrence.kindOrdinal === i,
@@ -1067,11 +1057,30 @@ export function ExerciseCard({
                       key={`active-${i}`}
                       id={`set-entry-${exercise.id}-${activeOccurrence.id}`}
                       data-testid="current-set-entry"
-                      className="scroll-mt-24 rounded-md border border-primary/40 p-2"
+                      className={cn(
+                        "scroll-mt-24 p-2",
+                        prioritizeCurrentAction
+                          ? "rounded-lg border-2 border-primary/60 bg-background p-3 shadow-sm"
+                          : "rounded-md border border-primary/40",
+                      )}
                     >
-                      <p className="mb-2 px-1 text-sm font-medium">
-                        Set {i + 1} of {exercise.targetSets ?? "open"}
-                      </p>
+                      {prioritizeCurrentAction ? (
+                        <div className="mb-3">
+                          <p className="text-xs font-semibold uppercase tracking-[0.12em] text-primary">
+                            Current action
+                          </p>
+                          <p className="mt-1 break-words text-base font-semibold">
+                            {exercise.name} · Set {i + 1} of {exercise.targetSets ?? "open"}
+                          </p>
+                        </div>
+                      ) : (
+                        <p className="mb-2 px-1 text-sm font-medium">
+                          Set {i + 1} of {exercise.targetSets ?? "open"}
+                        </p>
+                      )}
+                      {prioritizeCurrentAction && (
+                        <p className="mb-2 text-sm font-semibold">Performed measure</p>
+                      )}
                       <SetEntry
                         metricType={performedMetricType}
                         supported={metricSupported}
@@ -1083,9 +1092,17 @@ export function ExerciseCard({
                         weightLabel={liveWeightLabel}
                         plateConfig={plateConfig}
                         machineLoadConfig={machineLoadConfig}
+                        prioritizePerformedMeasure={prioritizeCurrentAction}
                       />
-                      <div className="mt-2 grid grid-cols-[1fr_auto] gap-2">
+                      <div
+                        className={cn(
+                          prioritizeCurrentAction
+                            ? "mt-3"
+                            : "mt-2 grid grid-cols-[1fr_auto] gap-2",
+                        )}
+                      >
                         <Button
+                          className={cn(prioritizeCurrentAction && "w-full")}
                           onClick={() => handleLog()}
                           disabled={
                             pending || !metricSupported || Boolean(occurrenceMutation)
@@ -1093,19 +1110,21 @@ export function ExerciseCard({
                         >
                           <Check className="size-4" /> Log set
                         </Button>
-                        <Button
-                          type="button"
-                          variant="outline"
-                          disabled={
-                            occurrenceChangesBlocked ||
-                            Boolean(occurrenceMutation)
-                          }
-                          onClick={() =>
-                            setSkipSetOccurrence(activeOccurrence)
-                          }
-                        >
-                          Skip set
-                        </Button>
+                        {!prioritizeCurrentAction && (
+                          <Button
+                            type="button"
+                            variant="outline"
+                            disabled={
+                              occurrenceChangesBlocked ||
+                              Boolean(occurrenceMutation)
+                            }
+                            onClick={() =>
+                              setSkipSetOccurrence(activeOccurrence)
+                            }
+                          >
+                            Skip set
+                          </Button>
+                        )}
                       </div>
                       <OccurrenceSaveStatus
                         entry={occurrenceMutation}
@@ -1120,6 +1139,61 @@ export function ExerciseCard({
                         onRetry={onRetryOccurrenceMutation}
                         onDiscard={onDiscardOccurrenceMutation}
                       />
+                      {displayedAcknowledgementReceipt && (
+                        <div
+                          id={`active-set-save-receipt-${displayedAcknowledgementReceipt.sessionExerciseId}-${displayedAcknowledgementReceipt.set.setNo}`}
+                          data-testid="active-set-save-receipt"
+                          role="status"
+                          className="mt-3 rounded-md border border-green-600/30 bg-green-600/10 px-3 py-2 text-sm"
+                        >
+                          <p className="font-semibold">
+                            Saved · {displayedAcknowledgementReceipt.sessionExerciseId !== exercise.id
+                              ? `${displayedAcknowledgementReceipt.exerciseName} · `
+                              : ""}
+                            Set {displayedAcknowledgementReceipt.set.setNo}
+                          </p>
+                          <p className="mt-0.5 text-xs text-muted-foreground">
+                            {formatLoggedSet(
+                              displayedAcknowledgementReceipt.set,
+                              displayedAcknowledgementReceipt.metricType,
+                            )} · Acknowledged by Repbook
+                          </p>
+                        </div>
+                      )}
+                      {prioritizeCurrentAction && (
+                        <>
+                          <div className="mt-3 border-t pt-3">
+                            <p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+                              Next action
+                            </p>
+                            <p className="mt-1 break-words text-sm">
+                              {nextActionLabel}
+                            </p>
+                          </div>
+                          <details className="mt-3 rounded-md border border-dashed text-sm">
+                            <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-2 rounded-md px-3 py-2 font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
+                              <span>Set exceptions</span>
+                              <span className="text-xs text-muted-foreground">Skip or explain</span>
+                            </summary>
+                            <div className="border-t p-2">
+                              <Button
+                                type="button"
+                                variant="outline"
+                                className="w-full"
+                                disabled={
+                                  occurrenceChangesBlocked ||
+                                  Boolean(occurrenceMutation)
+                                }
+                                onClick={() =>
+                                  setSkipSetOccurrence(activeOccurrence)
+                                }
+                              >
+                                Skip set
+                              </Button>
+                            </div>
+                          </details>
+                        </>
+                      )}
                     </div>
                   );
                 }
@@ -1172,6 +1246,62 @@ export function ExerciseCard({
               Adds ad-hoc work without changing the planned set order. Finish
               or skip this extra before adding one more.
             </p>
+          </div>
+
+          <div className="flex flex-col gap-2" data-testid="exercise-reference-context">
+            {exercise.modificationType === "added" && (
+              <p className="rounded-md border border-primary/25 bg-primary/5 px-3 py-2 text-sm">
+                Added during this workout. It has no Program slot or progression
+                target, and your Program remains unchanged.
+              </p>
+            )}
+            {exercise.last && (
+              <p className="text-xs text-muted-foreground">
+                Last time:{" "}
+                {exercise.last.sets
+                  .map(
+                    (set) =>
+                      `${set.weight != null && set.weightUnit != null ? `${set.weight} ${set.weightUnit}×` : ""}${set.reps}`,
+                  )
+                  .join(", ")}
+              </p>
+            )}
+            {exercise.cautionBodyParts.length > 0 && (
+              <p className="rounded-md bg-amber-500/10 px-2 py-1 text-xs text-amber-700 dark:text-amber-400">
+                Take care of your {exercise.cautionBodyParts.join(" and ")} — stop
+                if pain goes above mild.
+              </p>
+            )}
+            {exercise.modificationType === "substituted" && (
+              <div className="rounded-md border border-primary/30 bg-primary/5 px-3 py-2 text-sm">
+                <p className="font-medium">
+                  Using {exercise.name} instead of {exercise.plannedExerciseName ?? "the planned exercise"}
+                </p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Reason: {exercise.substitutionReason
+                    ? ALTERNATIVE_REASON_LABELS[exercise.substitutionReason]
+                    : "Not recorded"}. Exercise-specific loads, warm-ups, and cues from the plan do not carry over.
+                </p>
+              </div>
+            )}
+            {warmupGuidance && (
+              warmupResolved ? (
+                <details className="rounded-md border bg-muted/30 text-xs">
+                  <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-2 px-3 py-2 font-medium text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
+                    <span>Warm-up guidance · reference</span>
+                    <span className="text-muted-foreground">Show details</span>
+                  </summary>
+                  <div className="border-t px-3 pb-2">{warmupGuidance}</div>
+                </details>
+              ) : (
+                <div className="rounded-md border bg-muted/30 px-3 py-2 text-xs">
+                  <p className="font-medium text-foreground">
+                    Warm-up guidance · not a check-off item
+                  </p>
+                  {warmupGuidance}
+                </div>
+              )
+            )}
           </div>
 
           <section
@@ -1656,6 +1786,7 @@ function SetEntry({
   weightLabel,
   plateConfig,
   machineLoadConfig,
+  prioritizePerformedMeasure = false,
 }: {
   metricType: PerformedMetricType;
   supported: boolean;
@@ -1667,6 +1798,7 @@ function SetEntry({
   weightLabel?: string;
   plateConfig?: PlateMathConfig;
   machineLoadConfig?: MachineLoadConfig | null;
+  prioritizePerformedMeasure?: boolean;
 }) {
   const weightInputId = useId();
   const distanceInputId = useId();
@@ -1698,6 +1830,79 @@ function SetEntry({
     metricType === "weight_reps" ||
     metricType === "reps" ||
     metricType === "assisted_reps";
+  const optionalSetFields = (
+    <>
+      <p className="text-sm text-muted-foreground">
+        Effort shortcuts are broad categories. Each shows the numeric RPE saved;
+        use exact entry when the number matters.
+      </p>
+      {selectedEffort && !exactOpen && (
+        <p className="text-sm font-medium">
+          Selected: {selectedEffort.label} — RPE {selectedEffort.legacyRpe}
+        </p>
+      )}
+      <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-4">
+        {RPE_CHIPS.map((chip) => (
+          <Button
+            key={chip.value}
+            variant={draft.rpe === chip.value ? "default" : "outline"}
+            size="sm"
+            className="h-auto min-h-11 whitespace-normal text-xs"
+            aria-label={`${chip.shortcutLabel}; ${chip.meaning}`}
+            onClick={() =>
+              setDraft((d) => ({ ...d, rpe: d.rpe === chip.value ? null : chip.value }))
+            }
+          >
+            {chip.shortcutLabel}
+          </Button>
+        ))}
+      </div>
+      <Button
+        type="button"
+        variant="ghost"
+        size="sm"
+        className="self-start"
+        aria-expanded={exactOpen}
+        onClick={() => setExactOpen((open) => !open)}
+      >
+        {exactOpen ? "Hide exact RPE" : "Enter exact RPE instead"}
+      </Button>
+      {exactOpen && (
+        <div className="max-w-48">
+          <label htmlFor={exactRpeId} className="text-sm font-medium">
+            Exact RPE (1–10)
+          </label>
+          <Input
+            id={exactRpeId}
+            type="number"
+            inputMode="decimal"
+            min={1}
+            max={10}
+            step={0.5}
+            value={draft.rpe ?? ""}
+            onChange={(event) =>
+              setDraft((current) => ({
+                ...current,
+                rpe:
+                  event.target.value === ""
+                    ? null
+                    : Math.min(10, Math.max(1, Number(event.target.value))),
+              }))
+            }
+          />
+        </div>
+      )}
+      <Textarea
+        aria-label="Set note (optional)"
+        value={draft.note}
+        maxLength={SET_NOTE_MAX_LENGTH}
+        onChange={(e) => setDraft((d) => ({ ...d, note: e.target.value }))}
+        placeholder="Set note…"
+        rows={2}
+        className="min-h-14 text-sm"
+      />
+    </>
+  );
   return (
     <div className="flex flex-col gap-2">
       <div className="flex flex-wrap items-end gap-2">
@@ -1849,80 +2054,22 @@ function SetEntry({
           </div>
         )}
       </div>
-      <p className="text-sm text-muted-foreground">
-        Effort shortcuts are broad categories. Each shows the numeric RPE saved;
-        use exact entry when the number matters.
-      </p>
-      {selectedEffort && !exactOpen && (
-        <p className="text-sm font-medium">
-          Selected: {selectedEffort.label} — RPE {selectedEffort.legacyRpe}
-        </p>
-      )}
       {(machineLine ?? plateLine) && (
         <p className="rounded-md bg-muted/50 px-2 py-1.5 text-sm text-muted-foreground" aria-live="polite">
           {machineLine ?? plateLine}
         </p>
       )}
-      <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-4">
-        {RPE_CHIPS.map((chip) => (
-          <Button
-            key={chip.value}
-            variant={draft.rpe === chip.value ? "default" : "outline"}
-            size="sm"
-            className="h-auto min-h-11 whitespace-normal text-xs"
-            aria-label={`${chip.shortcutLabel}; ${chip.meaning}`}
-            onClick={() =>
-              setDraft((d) => ({ ...d, rpe: d.rpe === chip.value ? null : chip.value }))
-            }
-          >
-            {chip.shortcutLabel}
-          </Button>
-        ))}
-      </div>
-      <Button
-        type="button"
-        variant="ghost"
-        size="sm"
-        className="self-start"
-        aria-expanded={exactOpen}
-        onClick={() => setExactOpen((open) => !open)}
-      >
-        {exactOpen ? "Hide exact RPE" : "Enter exact RPE instead"}
-      </Button>
-      {exactOpen && (
-        <div className="max-w-48">
-          <label htmlFor={exactRpeId} className="text-sm font-medium">
-            Exact RPE (1–10)
-          </label>
-          <Input
-            id={exactRpeId}
-            type="number"
-            inputMode="decimal"
-            min={1}
-            max={10}
-            step={0.5}
-            value={draft.rpe ?? ""}
-            onChange={(event) =>
-              setDraft((current) => ({
-                ...current,
-                rpe:
-                  event.target.value === ""
-                    ? null
-                    : Math.min(10, Math.max(1, Number(event.target.value))),
-              }))
-            }
-          />
-        </div>
+      {prioritizePerformedMeasure ? (
+        <details className="rounded-md border border-dashed text-sm">
+          <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-2 rounded-md px-3 py-2 font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
+            <span>Optional effort and set note</span>
+            <span className="text-xs text-muted-foreground">Add details</span>
+          </summary>
+          <div className="space-y-2 border-t p-3">{optionalSetFields}</div>
+        </details>
+      ) : (
+        <div className="space-y-2">{optionalSetFields}</div>
       )}
-      <Textarea
-        aria-label="Set note (optional)"
-        value={draft.note}
-        maxLength={SET_NOTE_MAX_LENGTH}
-        onChange={(e) => setDraft((d) => ({ ...d, note: e.target.value }))}
-        placeholder="Set note…"
-        rows={2}
-        className="min-h-14 text-sm"
-      />
     </div>
   );
 }

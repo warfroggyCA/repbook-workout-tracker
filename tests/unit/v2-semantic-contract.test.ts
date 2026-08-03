@@ -119,12 +119,32 @@ describe("Repbook v2 ratified semantic contract", () => {
       schemaVersion: 1,
       contractVersion: V2_CONTRACT_VERSION,
       exactBaseCommit: "2c9ab1b9478502f1d08956a6c44dfb0850c8f168",
-      currentPackage: "T06",
-      currentPackageBaseCommit: "7d86269bf82b0d758d367a9be924f19a7b029183",
+      currentPackage: "U01",
+      currentPackageBaseCommit: "d3c38e66ac6f12d5a880fadf38f3411d1c49dfed",
       productBehaviorImplementedByP02: false,
-      implementedProductPackages: ["T01", "T02", "T03", "T04", "T05", "T06"],
+      implementedProductPackages: [
+        "T01",
+        "T02",
+        "T03",
+        "T04",
+        "T05",
+        "T06",
+        "U01",
+      ],
     });
     expect(matrix.columns).toEqual(columns);
+    expect(matrix.verifications["U01-browser"]).toMatchObject({
+      status: "current",
+      implementingPackage: "U01",
+      testPath: "tests/e2e/v2-u01-active-workout-hierarchy.spec.ts",
+      command:
+        "npx playwright test --config=playwright.v2-u01.config.ts tests/e2e/v2-u01-active-workout-hierarchy.spec.ts",
+    });
+    expect(
+      existsSync(
+        resolve(root, matrix.verifications["U01-browser"].testPath),
+      ),
+    ).toBe(true);
     expect(matrix.concerns.map((concern) => concern.concernId)).toEqual(
       Object.keys(requiredLevels),
     );
@@ -149,7 +169,7 @@ describe("Repbook v2 ratified semantic contract", () => {
         const verification = matrix.verifications[cell.verificationId ?? ""];
         expect(verification).toBeDefined();
         expect(verification.implementingPackage).toMatch(
-          /^(?:P02|T0[1-6]|U02|H0[235]|A0[145]|D02|R01)$/,
+          /^(?:P02|T0[1-6]|U0[12]|H0[235]|A0[145]|D02|R01)$/,
         );
         expect(verification.testPath).toMatch(
           /^tests\/(?:unit|e2e)\/.+\.(?:test|spec)\.ts$/,

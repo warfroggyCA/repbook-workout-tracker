@@ -15,9 +15,11 @@ function equipmentDetails(cue: EquipmentPreparationCue) {
 export const WorkoutGuidanceSummary = memo(function WorkoutGuidanceSummary({
   guidance,
   compact = false,
+  deferNextActionToCurrentCard = false,
 }: {
   guidance: SessionGuidanceProjection;
   compact?: boolean;
+  deferNextActionToCurrentCard?: boolean;
 }) {
   const currentEquipment = equipmentDetails(guidance.currentEquipment);
   const equipment = equipmentDetails(guidance.upcomingEquipment);
@@ -78,7 +80,11 @@ export const WorkoutGuidanceSummary = memo(function WorkoutGuidanceSummary({
                 : "All actions resolved"}
           </p>
         </div>
-        {guidance.nextAction && (
+        {guidance.nextAction &&
+          !(
+            deferNextActionToCurrentCard &&
+            guidance.currentAction?.kind === "working_set"
+          ) && (
           <p className="break-words text-xs text-muted-foreground">
             <span className="font-medium text-foreground">Next:</span>{" "}
             {formatSessionGuidanceAction(guidance.nextAction)}

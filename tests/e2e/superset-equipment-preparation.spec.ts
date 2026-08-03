@@ -1,6 +1,7 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
 import {
   installNextDevelopmentRefreshControl,
+  openNativeDetails,
   waitForEquipmentSelectionsToSettle,
   waitForHydratedServerAction,
 } from "../helpers/react-readiness";
@@ -43,6 +44,9 @@ async function skipCurrentSet(page: Page) {
   });
   const showCurrent = workoutStatus.getByRole("button").first();
   const currentLabel = await showCurrent.innerText();
+  await openNativeDetails(card.locator("details", {
+    hasText: "Set exceptions",
+  }));
   await card.getByRole("button", { name: "Skip set", exact: true }).click();
   const dialog = page.getByRole("dialog", { name: /^Skip set / });
   await dialog.getByLabel("Reason").selectOption("time");
@@ -52,6 +56,11 @@ async function skipCurrentSet(page: Page) {
     .poll(() => showCurrent.innerText())
     .not.toBe(currentLabel);
   await showCurrent.click();
+  await openNativeDetails(
+    page.getByTestId("current-exercise-card").locator("details", {
+      hasText: "Set exceptions",
+    }),
+  );
   await expect(
     page
       .getByTestId("current-exercise-card")
@@ -266,6 +275,9 @@ test("presents immutable superset order, truthful progress, and next-member equi
   const currentActionUrl = page.url();
   await page.reload({ waitUntil: "domcontentloaded" });
   await expect(page).toHaveURL(currentActionUrl);
+  await openNativeDetails(currentCard.locator("details", {
+    hasText: "Set exceptions",
+  }));
   await expect(
     currentCard.getByRole("button", { name: "Skip set", exact: true }),
   ).toBeVisible();
@@ -326,8 +338,10 @@ test("presents immutable superset order, truthful progress, and next-member equi
   await expect(advancedGuidance).toContainText(
     /Now: Superset, round 1, member 2 of 2: Pallof Press, set 1/,
   );
-  await expect(advancedGuidance).toContainText(
-    /Next: Superset, round 2, member 1 of 2: Dumbbell Lateral Raise, set 2/,
+  await expect(advancedGuidance).not.toContainText("Next:");
+  await expect(currentCard).toContainText("Next action");
+  await expect(currentCard).toContainText(
+    "Superset, round 2, member 1 of 2: Dumbbell Lateral Raise, set 2",
   );
   await page.unrouteAll({ behavior: "wait" });
 

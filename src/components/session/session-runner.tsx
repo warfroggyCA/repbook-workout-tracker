@@ -50,9 +50,11 @@ import {
   type PerformedLoadSemantics,
 } from "@/lib/set-metric-semantics";
 import type {
+  LoggedSet,
   SessionRunnerProps,
   SessionExerciseData,
   SessionOccurrenceData,
+  SetAcknowledgementReceipt,
 } from "./types";
 import { toast } from "sonner";
 import {
@@ -87,7 +89,6 @@ import {
   type OccurrenceMutationOutboxClientEvent,
   type OccurrenceMutationOperation,
 } from "@/lib/occurrence-mutation-outbox";
-import type { LoggedSet } from "./types";
 import {
   equipmentSyncPending,
   finishBlockedByRecordedWork,
@@ -123,6 +124,7 @@ import {
   type RestAlertPreference,
 } from "@/lib/rest-alert-preference";
 import {
+  formatSessionGuidanceAction,
   projectSessionGuidance,
   sessionNonPerformedOutcomeParts,
   sessionEquipmentSetupMatchesExercise,
@@ -262,12 +264,15 @@ export function SessionRunner(props: SessionRunnerProps) {
   const pendingSetAcknowledgementAnchorRef = useRef<{
     clientKey: string;
     elementId: string;
+    receiptElementId: string;
     viewportTop: number;
   } | null>(null);
   const pendingSetAcknowledgementFrameRef = useRef<number | null>(null);
   const [acknowledgedOccurrenceIds, setAcknowledgedOccurrenceIds] = useState<
     string[]
   >([]);
+  const [latestSetAcknowledgement, setLatestSetAcknowledgement] =
+    useState<SetAcknowledgementReceipt | null>(null);
   const [
     occurrenceRuntimeSaveStates,
     setOccurrenceRuntimeSaveStates,
@@ -611,6 +616,8 @@ export function SessionRunner(props: SessionRunnerProps) {
           pendingSetAcknowledgementAnchorRef.current = {
             clientKey: detail.clientKey,
             elementId: acknowledgedRowId,
+            receiptElementId:
+              `active-set-save-receipt-${detail.entry.sessionExerciseId}-${detail.entry.setNo}`,
             viewportTop: bounds.top,
           };
           if (pendingSetAcknowledgementFrameRef.current != null) {
@@ -622,7 +629,9 @@ export function SessionRunner(props: SessionRunnerProps) {
           const keepAcknowledgementInPlace = () => {
             const anchor = pendingSetAcknowledgementAnchorRef.current;
             if (!anchor || anchor.clientKey !== detail.clientKey) return;
-            const row = document.getElementById(anchor.elementId);
+            const row =
+              document.getElementById(anchor.receiptElementId) ??
+              document.getElementById(anchor.elementId);
             if (row?.textContent?.includes("Saved")) {
               const offset =
                 row.getBoundingClientRect().top - anchor.viewportTop;
@@ -647,24 +656,30 @@ export function SessionRunner(props: SessionRunnerProps) {
             window.requestAnimationFrame(keepAcknowledgementInPlace);
         }
       }
+      const saved: LoggedSet = {
+        id: detail.setId,
+        clientKey: detail.clientKey,
+        setNo: detail.entry.setNo,
+        weight: detail.entry.weight,
+        weightUnit: detail.entry.weightUnit,
+        reps: detail.entry.reps,
+        distanceKm: detail.entry.distanceKm,
+        durationSeconds: detail.entry.durationSeconds,
+        metricType: detail.entry.metricType,
+        rpe: detail.entry.rpe,
+        note: detail.entry.note,
+        correctionCount: 0,
+        saveState: "saved",
+      };
+      setLatestSetAcknowledgement({
+        sessionExerciseId: detail.entry.sessionExerciseId,
+        exerciseName: detail.entry.exerciseName,
+        metricType: detail.entry.metricType,
+        set: saved,
+      });
       setExercises((current) =>
         current.map((exercise) => {
           if (exercise.id !== detail.entry.sessionExerciseId) return exercise;
-          const saved: LoggedSet = {
-            id: detail.setId,
-            clientKey: detail.clientKey,
-            setNo: detail.entry.setNo,
-            weight: detail.entry.weight,
-            weightUnit: detail.entry.weightUnit,
-            reps: detail.entry.reps,
-            distanceKm: detail.entry.distanceKm,
-            durationSeconds: detail.entry.durationSeconds,
-            metricType: detail.entry.metricType,
-            rpe: detail.entry.rpe,
-            note: detail.entry.note,
-            correctionCount: 0,
-            saveState: "saved",
-          };
           const withoutClientCopy = exercise.sets.filter(
             (set) => set.clientKey !== detail.clientKey
           );
@@ -1567,6 +1582,22 @@ export function SessionRunner(props: SessionRunnerProps) {
       defaultAttachmentKey: attachments[0]?.key ?? "general",
     };
   })();
+  const currentWorkingAction =
+    guidance.currentAction?.kind === "working_set"
+      ? guidance.currentAction
+      : null;
+  const currentWorkingExercise =
+    currentWorkingAction
+      ? shownExercises.find(
+          (exercise) => exercise.id === currentWorkingAction.sessionExerciseId,
+        ) ?? null
+      : null;
+  const currentCardOwnsNextAction =
+    currentWorkingExercise != null &&
+    expandedId === currentWorkingExercise.id &&
+    !currentWorkingExercise.sets.some(
+      (set) => set.saveState != null && set.saveState !== "saved",
+    );
 
   return (
     <main className="mx-auto flex max-w-3xl flex-col gap-3 p-3 pb-[calc(12rem+env(safe-area-inset-bottom))] min-[360px]:pb-[calc(8rem+env(safe-area-inset-bottom))] sm:p-5 sm:pb-[calc(8rem+env(safe-area-inset-bottom))] lg:p-8 lg:pb-24">
@@ -1588,7 +1619,11 @@ export function SessionRunner(props: SessionRunnerProps) {
       </header>
 
       <div className="sticky top-[env(safe-area-inset-top)] z-20 -mx-1 bg-background/95 py-1 backdrop-blur">
-        <WorkoutGuidanceSummary guidance={guidance} compact />
+        <WorkoutGuidanceSummary
+          guidance={guidance}
+          compact
+          deferNextActionToCurrentCard={currentCardOwnsNextAction}
+        />
       </div>
 
       <WarmupPanel
@@ -1926,8 +1961,22 @@ export function SessionRunner(props: SessionRunnerProps) {
             )}
             occurrenceRuntimeSaveStates={occurrenceRuntimeSaveStates}
             acknowledgedOccurrenceIds={acknowledgedOccurrenceIds}
+            acknowledgementReceipt={
+              guidance.currentAction?.kind === "working_set" ||
+              guidance.currentAction?.kind === "rest"
+                ? latestSetAcknowledgement
+                : null
+            }
             isCurrentExercise={
               currentOccurrence?.sessionExerciseId === exercise.id
+            }
+            nextActionLabel={
+              guidance.currentAction?.kind === "working_set" &&
+              guidance.currentAction.sessionExerciseId === exercise.id
+                ? guidance.nextAction
+                  ? formatSessionGuidanceAction(guidance.nextAction)
+                  : "No further unresolved work"
+                : null
             }
             warmupResolved={
               occurrences.some(

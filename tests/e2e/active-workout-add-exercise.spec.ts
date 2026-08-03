@@ -153,9 +153,12 @@ test("adds a reviewed workout-only exercise without editing the Program", async 
   const addedCard = page.getByRole("region", { name: "Push-Up" });
   await expect(addedCard).toBeVisible();
   await expect(addedCard).toContainText("Workout only");
+  const currentCard = page.getByTestId("current-exercise-card");
   await expect(
     page.getByRole("region", { name: "Workout progress and upcoming work" }),
-  ).toContainText("Next: Barbell Back Squat, set 2");
+  ).not.toContainText("Next:");
+  await expect(currentCard).toContainText("Next action");
+  await expect(currentCard).toContainText("Barbell Back Squat, set 2");
   await expect(
     page.getByRole("complementary", { name: "Workout status" }),
   ).toContainText("Barbell Back Squat");

@@ -1,6 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 import {
   installNextDevelopmentRefreshControl,
+  openNativeDetails,
   waitForEquipmentSelectionsToSettle,
   waitForHydratedReactHandler,
   waitForHydratedServerAction,
@@ -27,11 +28,31 @@ async function signInAndStartDayA(page: Page) {
 
 async function skipCurrentSet(page: Page) {
   const current = page.getByTestId("current-exercise-card");
-  await current.getByRole("button", { name: "Skip set", exact: true }).click();
+  const currentEntry = current.getByTestId("current-set-entry");
+  await expect(currentEntry).toHaveCount(1);
+  const priorOccurrenceId = await currentEntry.getAttribute("id");
+  expect(priorOccurrenceId).toMatch(/^set-entry-/);
+  await openNativeDetails(currentEntry.locator("details", {
+    hasText: "Set exceptions",
+  }));
+  const skip = currentEntry.getByRole("button", {
+    name: "Skip set",
+    exact: true,
+  });
+  await expect(skip).toBeEnabled();
+  await skip.click();
   const dialog = page.getByRole("dialog", { name: /^Skip set .+\?$/ });
   await dialog.getByLabel("Reason").selectOption("time");
   await dialog.getByRole("button", { name: "Skip item", exact: true }).click();
   await expect(dialog).toHaveCount(0);
+  await expect.poll(async () => {
+    const nextEntry = page
+      .getByTestId("current-exercise-card")
+      .getByTestId("current-set-entry");
+    if ((await nextEntry.count()) !== 1) return false;
+    const nextOccurrenceId = await nextEntry.getAttribute("id");
+    return nextOccurrenceId != null && nextOccurrenceId !== priorOccurrenceId;
+  }).toBe(true);
 }
 
 test("keeps planned work authoritative around extra-before-plan and grouped work", async ({

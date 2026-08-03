@@ -5,8 +5,8 @@
   "repositoryRole": "public application source",
   "exactBaseCommit": "2c9ab1b9478502f1d08956a6c44dfb0850c8f168",
   "fixtureCatalogue": "tests/fixtures/v2/semantic-scenarios.json",
-  "currentPackage": "T06",
-  "currentPackageBaseCommit": "7d86269bf82b0d758d367a9be924f19a7b029183",
+  "currentPackage": "U01",
+  "currentPackageBaseCommit": "d3c38e66ac6f12d5a880fadf38f3411d1c49dfed",
   "productBehaviorImplementedByP02": false,
   "implementedProductPackages": [
     "T01",
@@ -14,7 +14,8 @@
     "T03",
     "T04",
     "T05",
-    "T06"
+    "T06",
+    "U01"
   ],
   "legend": {
     "R": "required primary proof",
@@ -36,6 +37,13 @@
       "testPath": "tests/unit/v2-semantic-contract.test.ts",
       "command": "npx vitest run tests/unit/v2-semantic-contract.test.ts",
       "proves": "synthetic semantic oracle only; not released product behavior"
+    },
+    "U01-browser": {
+      "status": "current",
+      "implementingPackage": "U01",
+      "testPath": "tests/e2e/v2-u01-active-workout-hierarchy.spec.ts",
+      "command": "npx playwright test --config=playwright.v2-u01.config.ts tests/e2e/v2-u01-active-workout-hierarchy.spec.ts",
+      "proves": "desktop Chromium, 440 by 956 mobile Chromium, and 320 by 700 mobile WebKit at extra-large text keep the current action and applicable performed measure first, expose one ordinary commit action, defer optional details and exceptions, retain reachable 44-pixel controls without horizontal overflow, and keep exact saved acknowledgement visible"
     },
     "T06-databaseService": {
       "status": "current",
@@ -1680,6 +1688,7 @@
     "Every future cell names one exact activation test path, command, and implementing package.",
     "A consequential package owns its required persistence, UI, portability, recovery, and adversarial activation evidence rather than deferring those obligations to a later audit.",
     "No production owner data, production access, feature route, schema, migration, or deployment is part of P02.",
-    "No production owner data, production access, schema migration, or deployment is part of T01."
+    "No production owner data, production access, schema migration, or deployment is part of T01.",
+    "U01 current status means its presentation change and dedicated browser evidence travel together; it adds no schema, migration, persistence writer, or historical rewrite."
   ]
 }
