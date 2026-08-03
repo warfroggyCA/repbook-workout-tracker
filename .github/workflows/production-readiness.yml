@@ -88,8 +88,11 @@ jobs:
       - name: Validate current documentation links
         run: npm run docs:check
 
+      - name: Run isolated production performance budgets
+        run: npm run test:performance:isolated
+
       - name: Run unit, database, race, failure, and coverage checks
-        run: npm run test:coverage
+        run: npm run test:coverage:ci
 
       - name: Type check
         run: npm run typecheck

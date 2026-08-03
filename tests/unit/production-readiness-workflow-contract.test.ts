@@ -24,6 +24,10 @@ type Workflow = {
   jobs: Record<string, { steps: WorkflowStep[] }>;
 };
 
+type PackageJson = {
+  scripts?: Record<string, string>;
+};
+
 describe("production readiness workflow contract", () => {
   it("runs branch pushes only for main while retaining the PR gate", async () => {
     const source = await readFile(
@@ -46,6 +50,13 @@ describe("production readiness workflow contract", () => {
     const steps = workflow.jobs.verify.steps;
     const documentation = steps.find(
       (step) => step.name === "Validate current documentation links",
+    );
+    const isolatedPerformance = steps.find(
+      (step) => step.name === "Run isolated production performance budgets",
+    );
+    const coverage = steps.find(
+      (step) =>
+        step.name === "Run unit, database, race, failure, and coverage checks",
     );
     const history = steps.find((step) => step.id === "browser-history");
     const painHold = steps.find((step) => step.id === "browser-pain-hold");
@@ -72,6 +83,10 @@ describe("production readiness workflow contract", () => {
     );
 
     expect(documentation?.run).toBe("npm run docs:check");
+    expect(isolatedPerformance?.run).toBe(
+      "npm run test:performance:isolated",
+    );
+    expect(coverage?.run).toBe("npm run test:coverage:ci");
     expect(history?.run).toBe("npm run test:e2e:history-calendar");
     expect(painHold?.run).toBe("npm run test:e2e:pain-hold");
     expect(programReviewRecovery?.run).toBe(
@@ -131,6 +146,19 @@ describe("production readiness workflow contract", () => {
     );
     expect(browserGate?.run).toContain(
       '"T06 preview and Start truth:${BROWSER_V2_T06}"',
+    );
+  });
+
+  it("measures the unchanged performance ceiling without parallel test contention", async () => {
+    const packageJson = JSON.parse(
+      await readFile("package.json", "utf8"),
+    ) as PackageJson;
+
+    expect(packageJson.scripts?.["test:performance:isolated"]).toBe(
+      "vitest run tests/unit/performance-budgets-db.test.ts --maxWorkers=1 --no-file-parallelism",
+    );
+    expect(packageJson.scripts?.["test:coverage:ci"]).toBe(
+      "vitest run --coverage --exclude tests/unit/performance-budgets-db.test.ts",
     );
   });
 

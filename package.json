@@ -10,6 +10,8 @@
     "typecheck": "next typegen && tsc --noEmit",
     "test": "node scripts/run-unit-tests.mjs",
     "test:coverage": "vitest run --coverage",
+    "test:coverage:ci": "vitest run --coverage --exclude tests/unit/performance-budgets-db.test.ts",
+    "test:performance:isolated": "vitest run tests/unit/performance-budgets-db.test.ts --maxWorkers=1 --no-file-parallelism",
     "test:selection": "node scripts/check-test-selection.mjs",
     "test:e2e": "playwright test",
     "test:e2e:pain-hold": "playwright test --config=playwright.pain-hold-notice.config.ts",
