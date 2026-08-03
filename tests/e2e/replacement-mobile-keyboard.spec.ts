@@ -1,5 +1,6 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
 import {
+  waitForHydratedReactChangeHandler,
   waitForHydratedReactHandler,
   waitForHydratedServerAction,
 } from "../helpers/react-readiness";
@@ -54,6 +55,7 @@ async function startWorkout(page: Page) {
 
 async function inspectSearchResult(picker: Locator, name: string) {
   const search = picker.getByLabel("Search exercise library");
+  await waitForHydratedReactChangeHandler(search);
   await search.fill(name);
   const result = picker.getByRole("button", {
     name: `View details for ${name}`,
@@ -155,8 +157,12 @@ test("keeps unrestricted replacement truthful and reachable through mobile keybo
   const card = page.getByTestId("current-exercise-card");
   const weight = card.getByLabel(/^(Weight|Total load|Displayed load)/);
   const reps = card.getByLabel("Reps", { exact: true });
+  await waitForHydratedReactChangeHandler(weight);
+  await waitForHydratedReactChangeHandler(reps);
   await weight.fill("77");
   await reps.fill("9");
+  await expect(weight).toHaveValue("77");
+  await expect(reps).toHaveValue("9");
 
   const replaceTrigger = card.getByRole("button", {
     name: "Replace exercise",
@@ -322,6 +328,7 @@ test("keeps unrestricted replacement truthful and reachable through mobile keybo
   await expect(reps).toHaveValue("10");
   const logSet = card.getByRole("button", { name: "Log set", exact: true });
   await waitForHydratedReactHandler(logSet);
+  await waitForHydratedReactChangeHandler(reps);
   await reps.fill("9");
   await expect(reps).toHaveValue("9");
   await logSet.click();
