@@ -129,16 +129,21 @@ async function skipCurrentSet(page: Page) {
     "aria-expanded",
     "true",
   );
-  const currentEntry = current.getByTestId("current-set-entry");
+  const currentEntry = current.locator(
+    '[data-testid="current-set-entry"], [data-testid="added-set-entry"]',
+  );
   await expect(currentEntry).toHaveCount(1);
   const priorOccurrenceId = await currentEntry.getAttribute("id");
-  expect(priorOccurrenceId).toMatch(/^set-entry-/);
-  await openNativeDetails(current.locator("details", {
-    hasText: "Set exceptions",
-  }));
-  const skip = current
-    .getByRole("button", { name: "Skip set", exact: true })
-    .first();
+  expect(priorOccurrenceId).toMatch(/^(?:set-entry|added-set-entry)-/);
+  if ((await currentEntry.getAttribute("data-testid")) === "current-set-entry") {
+    await openNativeDetails(currentEntry.locator("details", {
+      hasText: "Set exceptions",
+    }));
+  }
+  const skip = currentEntry.getByRole("button", {
+    name: "Skip set",
+    exact: true,
+  });
   await expect(skip).toBeEnabled();
   await clickCentered(page, skip);
   const dialog = page.getByRole("dialog", { name: /^Skip .+\?$/ });
@@ -148,7 +153,9 @@ async function skipCurrentSet(page: Page) {
   await expect.poll(async () => {
     const nextEntry = page
       .getByTestId("current-exercise-card")
-      .getByTestId("current-set-entry");
+      .locator(
+        '[data-testid="current-set-entry"], [data-testid="added-set-entry"]',
+      );
     if ((await nextEntry.count()) === 1) {
       const nextOccurrenceId = await nextEntry.getAttribute("id");
       if (nextOccurrenceId != null && nextOccurrenceId !== priorOccurrenceId) {

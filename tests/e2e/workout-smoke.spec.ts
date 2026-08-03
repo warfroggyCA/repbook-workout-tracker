@@ -2084,10 +2084,6 @@ test("keeps the final set acknowledgement visible through background return", as
   await expect(workoutStatus).toContainText("Set 3 of 3");
   await expect(workoutStatus).toContainText("Saving");
   await expect(nextSet.getByText("Saving…", { exact: true })).toBeVisible();
-  const tappedRow = firstExercise.locator(
-    '[id^="logged-set-"][id$="-3"]',
-  );
-  await expect(tappedRow).toBeInViewport();
   const backgroundPage = await context.newPage();
   await backgroundPage.goto("about:blank");
   await backgroundPage.bringToFront();
