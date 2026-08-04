@@ -6,6 +6,7 @@ import {
   waitForHydratedReactHandler,
   waitForHydratedServerAction,
 } from "../helpers/react-readiness";
+import { observeGauntletPageErrors } from "../helpers/v2-gauntlet-a-errors";
 
 async function signInAndStartDayA(page: Page) {
   await installNextDevelopmentRefreshControl(page);
@@ -189,6 +190,9 @@ test("keeps one ledger-driven current/next/group/rest state through retry, inter
   context,
   page,
 }) => {
+  const pageErrors = observeGauntletPageErrors(page, [
+    /500|Internal Server Error|Failed to load resource/i,
+  ]);
   await signInAndStartDayA(page);
   const guidance = page.getByRole("region", {
     name: "Workout progress and upcoming work",
@@ -333,4 +337,5 @@ test("keeps one ledger-driven current/next/group/rest state through retry, inter
   ).toBeLessThanOrEqual(1);
 
   await discardWorkout(page);
+  pageErrors.expectNoUnexpected();
 });

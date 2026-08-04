@@ -378,4 +378,6 @@ test("keeps unrestricted replacement truthful and reachable through mobile keybo
         ),
     ),
   ).toEqual([]);
+  await page.goto("/today");
+  await discardActiveWorkout(page);
 });

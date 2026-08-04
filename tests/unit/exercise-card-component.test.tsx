@@ -337,6 +337,12 @@ describe("ExerciseCard", () => {
     expect(html).toContain("OK — RPE 7");
     expect(html).toContain("Hard — RPE 8");
     expect(html).toContain("Grind — RPE 9.5");
+    expect(html).toContain('role="group" aria-label="Effort shortcuts"');
+    for (const shortcut of ["Easy", "OK", "Hard", "Grind"]) {
+      expect(html).toMatch(
+        new RegExp(`aria-label="${shortcut}[^\"]*" aria-pressed="false"`),
+      );
+    }
     expect(html).toContain("Current exercise");
     expect(html).toContain("Current action");
     expect(html).toContain("Performed measure");

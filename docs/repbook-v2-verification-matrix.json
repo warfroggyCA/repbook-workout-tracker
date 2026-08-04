@@ -19,6 +19,24 @@
     "U02",
     "U03"
   ],
+  "milestoneEvidence": {
+    "gauntletA": {
+      "status": "current_candidate",
+      "exactBaseCommit": "96bee98b83edcb72ad072e3204fe18cec2e6f7e9",
+      "scenarioCommand": "npm run test:e2e:v2-gauntlet-a",
+      "scenarioPaths": [
+        "tests/e2e/replacement-mobile-keyboard.spec.ts",
+        "tests/e2e/v2-gauntlet-a-recovery.spec.ts",
+        "tests/e2e/v2-t03-planned-order.spec.ts",
+        "tests/e2e/v2-t04-warmup-occurrences.spec.ts",
+        "tests/e2e/v2-t05-execution-semantics.spec.ts",
+        "tests/e2e/v2-u01-active-workout-hierarchy.spec.ts",
+        "tests/e2e/v2-u02-exception-context.spec.ts"
+      ],
+      "semanticCommand": "npx vitest run tests/unit/v2-gauntlet-a-semantic-recovery.test.ts tests/unit/exercise-card-component.test.tsx",
+      "proves": "desktop Chromium, 440 by 956 mobile Chromium, and 320 by 700 enlarged-text mobile WebKit cover the complete real-workout scenario bar with exact acknowledgement, offline and timeout-after-commit recovery, bodyweight substitution, warm-up, group and rest, planned and extra work, exception-only context, finish and abandon, accessible selected state, overflow, page-error, History, CSV, snapshot, duplicate, and completed-calculation exclusion oracles"
+    }
+  },
   "legend": {
     "R": "required primary proof",
     "C": "required consistency or round-trip proof",

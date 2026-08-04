@@ -4,6 +4,7 @@ import {
   type ReactNode,
   useCallback,
   useEffect,
+  useId,
   useMemo,
   useRef,
   useState,
@@ -220,6 +221,7 @@ function actionOccurrenceId(action: SessionGuidanceFocusAction | null) {
 
 export function SessionRunner(props: SessionRunnerProps) {
   const elapsed = useElapsed(props.startedAtISO);
+  const fatigueLabelId = useId();
   const [exercises, setExercises] = useState<SessionExerciseData[]>(
     props.exercises
   );
@@ -2266,16 +2268,25 @@ export function SessionRunner(props: SessionRunnerProps) {
               rows={2}
             />
             <div>
-              <p className="mb-2 text-sm text-muted-foreground">
+              <p
+                id={fatigueLabelId}
+                className="mb-2 text-sm text-muted-foreground"
+              >
                 Overall fatigue
               </p>
-              <div className="flex gap-2">
+              <div
+                role="group"
+                aria-labelledby={fatigueLabelId}
+                className="flex gap-2"
+              >
                 {[1, 2, 3, 4, 5].map((n) => (
                   <Button
                     key={n}
                     variant={fatigue === n ? "default" : "outline"}
-                    size="sm"
+                    size="touch"
                     className="flex-1"
+                    aria-label={`Overall fatigue ${n}`}
+                    aria-pressed={fatigue === n}
                     onClick={() => setFatigue(fatigue === n ? null : n)}
                   >
                     {n}

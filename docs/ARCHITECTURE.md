@@ -383,3 +383,20 @@ work or fails closed without advancing the Program. Restoring an earlier version
 creates another draft and requires a fresh exact review before it can be
 published as a new future version. U03 adds no schema, migration, historical
 repair, production mutation, recommendation approval, or automatic adaptation.
+
+## Gauntlet A milestone contract
+
+Gauntlet A does not add a new workout meaning. It verifies the complete T01–U03
+experience against one desktop reference and the 440×956 and 320×700 mobile
+references at enlarged text. Ordinary work, supported bodyweight substitution,
+group/rest order, structured warm-ups, planned skips plus extra work,
+exception-only context, offline resume, timeout-after-commit retry, finish early,
+and abandonment must retain one exact acknowledgement and remain usable without
+horizontal overflow or unexplained browser errors.
+
+Optional effort and overall fatigue use keyboard-operable native buttons whose
+selected state is programmatically exposed. An abandoned session remains
+distinct from a completed session: History and CSV export retain its acknowledged
+sets and explicit occurrence outcomes, while progression, Review calculations,
+and completed-workout metrics continue to exclude it. CSV carries the explicit
+session status so retained evidence cannot be mistaken for completed training.

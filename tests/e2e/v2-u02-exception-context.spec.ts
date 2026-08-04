@@ -5,6 +5,7 @@ import {
   waitForHydratedReactHandler,
   waitForHydratedServerAction,
 } from "../helpers/react-readiness";
+import { observeGauntletPageErrors } from "../helpers/v2-gauntlet-a-errors";
 
 async function signInAndStartDayA(page: Page) {
   await installNextDevelopmentRefreshControl(page);
@@ -60,6 +61,9 @@ test("keeps ordinary completion minimal and makes exception evidence reversible,
   page,
   context,
 }) => {
+  const pageErrors = observeGauntletPageErrors(page, [
+    /Failed to fetch|Load failed|ERR_(?:FAILED|INTERNET_DISCONNECTED)|NetworkError when attempting to fetch resource/i,
+  ]);
   await signInAndStartDayA(page);
   const currentCard = page.getByTestId("current-exercise-card");
 
@@ -83,6 +87,15 @@ test("keeps ordinary completion minimal and makes exception evidence reversible,
   await expect(optional).toContainText(
     "leaving it blank keeps effort unknown",
   );
+  const effort = optional.getByRole("group", { name: "Effort shortcuts" });
+  const hard = effort.getByRole("button", { name: /^Hard — RPE 8/ });
+  await expect(hard).toHaveAttribute("aria-pressed", "false");
+  await hard.focus();
+  await expect(hard).toBeFocused();
+  await hard.press("Space");
+  await expect(hard).toHaveAttribute("aria-pressed", "true");
+  await hard.press("Space");
+  await expect(hard).toHaveAttribute("aria-pressed", "false");
   await expectTouchTarget(optional.locator("summary"));
 
   await optional.getByLabel("RIR (0–10)").fill("2");
@@ -182,4 +195,5 @@ test("keeps ordinary completion minimal and makes exception evidence reversible,
   await expect(review).toContainText(
     "They do not change your Program, approve a proposal, or create an adaptation.",
   );
+  pageErrors.expectNoUnexpected();
 });

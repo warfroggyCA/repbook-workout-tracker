@@ -9,6 +9,7 @@ import {
   waitForHydratedReactHandler,
   waitForHydratedServerAction,
 } from "../helpers/react-readiness";
+import { observeGauntletPageErrors } from "../helpers/v2-gauntlet-a-errors";
 
 async function signInAndStart(page: Page) {
   await page.goto("/sign-in");
@@ -48,6 +49,7 @@ async function waitForSaved(row: Locator) {
 test("keeps warm-up actions singular, reversible, durable, and usable with minimal attention", async ({
   page,
 }) => {
+  const pageErrors = observeGauntletPageErrors(page);
   await signInAndStart(page);
   const sessionId = page.url().split("/").at(-1)!;
   const panel = page.locator("#workout-warmup");
@@ -197,4 +199,5 @@ test("keeps warm-up actions singular, reversible, durable, and usable with minim
   await expect(
     page.getByRole("button", { name: "Train as planned", exact: true }),
   ).toBeVisible();
+  pageErrors.expectNoUnexpected();
 });
