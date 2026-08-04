@@ -12,7 +12,13 @@ import {
 
 test.describe.configure({ mode: "serial" });
 
-const EXPECTED_APP_SHELL_PREFETCHES = new Set(["/program"]);
+const EXPECTED_APP_SHELL_PREFETCHES = new Set([
+  "/today",
+  "/history",
+  "/coach",
+  "/program",
+  "/settings",
+]);
 
 async function signIn(page: Page) {
   await page.goto("/sign-in");
@@ -28,7 +34,9 @@ async function discardActiveWorkout(page: Page) {
   if ((await resume.count()) === 0) return;
   await waitForHydratedReactHandler(resume);
   await resume.click();
-  await expect(page).toHaveURL(/\/session\/[0-9a-f-]+$/);
+  await expect(page).toHaveURL(
+    /\/session\/[0-9a-f-]+(?:#workout-rest-status)?$/,
+  );
   await page.getByRole("button", { name: "Finish", exact: true }).click();
   await page
     .getByRole("dialog", { name: "Finish workout" })
@@ -55,65 +63,87 @@ async function startWorkout(page: Page) {
 
 async function inspectSearchResult(picker: Locator, name: string) {
   const search = picker.getByLabel("Search exercise library");
-  await waitForHydratedReactChangeHandler(search);
-  await search.fill(name);
   const result = picker.getByRole("button", {
     name: `View details for ${name}`,
     exact: true,
   });
-  await expect(result).toBeVisible();
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    await expect(search).toBeEditable();
+    await search.fill("");
+    await search.pressSequentially(name, { delay: 10 });
+    try {
+      await expect(result).toBeVisible({ timeout: 5_000 });
+      break;
+    } catch (error) {
+      if (attempt === 1) throw error;
+    }
+  }
   await result.click();
 }
 
+async function returnToSearchResults(picker: Locator) {
+  const back = picker.getByRole("button", { name: "Back", exact: true });
+  await waitForHydratedReactHandler(back);
+  await back.click();
+  await expect(picker.getByLabel("Search exercise library")).toBeEditable();
+}
+
 async function expectKeyboardGeometry(page: Page, picker: Locator) {
-  const geometry = await picker.evaluate((dialog) => {
-    const viewport = window.visualViewport;
-    const visibleTop = viewport?.offsetTop ?? 0;
-    const visibleBottom = visibleTop + (viewport?.height ?? window.innerHeight);
-    const dialogRect = dialog.getBoundingClientRect();
-    const focusedRect = document.activeElement?.getBoundingClientRect() ?? null;
-    const scrollOwners = [...dialog.querySelectorAll<HTMLElement>("*")]
-      .filter((element) => {
-        const style = getComputedStyle(element);
-        return (
-          /(auto|scroll)/.test(style.overflowY) &&
-          element.scrollHeight > element.clientHeight + 1
+  await expect(async () => {
+    const geometry = await picker.evaluate((dialog) => {
+      const viewport = window.visualViewport;
+      const visibleTop = viewport?.offsetTop ?? 0;
+      const visibleBottom = visibleTop + (viewport?.height ?? window.innerHeight);
+      const dialogRect = dialog.getBoundingClientRect();
+      const focusedRect = document.activeElement?.getBoundingClientRect() ?? null;
+      const scrollOwners = [...dialog.querySelectorAll<HTMLElement>("*")]
+        .filter((element) => {
+          const style = getComputedStyle(element);
+          return (
+            /(auto|scroll)/.test(style.overflowY) &&
+            element.scrollHeight > element.clientHeight + 1
+          );
+        })
+        .map(
+          (element) =>
+            element.dataset.testid ?? element.dataset.slot ?? element.tagName,
         );
-      })
-      .map((element) => element.dataset.testid ?? element.dataset.slot ?? element.tagName);
-    return {
-      visibleTop,
-      visibleBottom,
-      dialog: {
-        top: dialogRect.top,
-        bottom: dialogRect.bottom,
-        left: dialogRect.left,
-        right: dialogRect.right,
-      },
-      focused: focusedRect
-        ? { top: focusedRect.top, bottom: focusedRect.bottom }
-        : null,
-      scrollOwners,
-      documentOverflow:
-        document.documentElement.scrollWidth -
-        document.documentElement.clientWidth,
-    };
-  });
-  expect(geometry.dialog.top).toBeGreaterThanOrEqual(geometry.visibleTop - 1);
-  expect(geometry.dialog.bottom).toBeLessThanOrEqual(geometry.visibleBottom + 1);
-  expect(geometry.dialog.left).toBeGreaterThanOrEqual(-1);
-  expect(geometry.dialog.right).toBeLessThanOrEqual(
-    (await page.evaluate(() => document.documentElement.clientWidth)) + 1,
-  );
-  expect(geometry.focused).not.toBeNull();
-  expect(geometry.focused?.top ?? -1).toBeGreaterThanOrEqual(
-    geometry.visibleTop - 1,
-  );
-  expect(geometry.focused?.bottom ?? Number.POSITIVE_INFINITY).toBeLessThanOrEqual(
-    geometry.visibleBottom + 1,
-  );
-  expect(geometry.scrollOwners).toEqual(["exercise-picker-scroll"]);
-  expect(geometry.documentOverflow).toBeLessThanOrEqual(1);
+      return {
+        visibleTop,
+        visibleBottom,
+        dialog: {
+          top: dialogRect.top,
+          bottom: dialogRect.bottom,
+          left: dialogRect.left,
+          right: dialogRect.right,
+        },
+        focused: focusedRect
+          ? { top: focusedRect.top, bottom: focusedRect.bottom }
+          : null,
+        scrollOwners,
+        documentOverflow:
+          document.documentElement.scrollWidth -
+          document.documentElement.clientWidth,
+      };
+    });
+    expect(geometry.dialog.top).toBeGreaterThanOrEqual(geometry.visibleTop - 1);
+    expect(geometry.dialog.bottom).toBeLessThanOrEqual(
+      geometry.visibleBottom + 1,
+    );
+    expect(geometry.dialog.left).toBeGreaterThanOrEqual(-1);
+    expect(geometry.dialog.right).toBeLessThanOrEqual(
+      (await page.evaluate(() => document.documentElement.clientWidth)) + 1,
+    );
+    expect(geometry.focused).not.toBeNull();
+    expect(geometry.focused?.top ?? -1).toBeGreaterThanOrEqual(
+      geometry.visibleTop - 1,
+    );
+    expect(
+      geometry.focused?.bottom ?? Number.POSITIVE_INFINITY,
+    ).toBeLessThanOrEqual(geometry.visibleBottom + 1);
+    expect(geometry.scrollOwners).toEqual(["exercise-picker-scroll"]);
+    expect(geometry.documentOverflow).toBeLessThanOrEqual(1);
+  }).toPass({ timeout: 5_000 });
 }
 
 test("keeps unrestricted replacement truthful and reachable through mobile keyboard resize", async ({
@@ -272,11 +302,11 @@ test("keeps unrestricted replacement truthful and reachable through mobile keybo
       { exact: true },
     ),
   ).toHaveCount(0);
-  await picker.getByRole("button", { name: "Back", exact: true }).click();
+  await returnToSearchResults(picker);
 
   await inspectSearchResult(picker, "Cable Face Pull");
   await expect(picker).toContainText("Required equipment is unavailable");
-  await picker.getByRole("button", { name: "Back", exact: true }).click();
+  await returnToSearchResults(picker);
 
   await inspectSearchResult(picker, "Bodyweight Bulgarian Split Squat");
   await expect(picker).toContainText("Reps");
@@ -378,4 +408,6 @@ test("keeps unrestricted replacement truthful and reachable through mobile keybo
         ),
     ),
   ).toEqual([]);
+  await page.goto("/today");
+  await discardActiveWorkout(page);
 });

@@ -81,6 +81,9 @@ describe("production readiness workflow contract", () => {
     const u03FutureProgram = steps.find(
       (step) => step.id === "browser-v2-u03",
     );
+    const gauntletA = steps.find(
+      (step) => step.id === "browser-v2-gauntlet-a",
+    );
     const browserGate = steps.find(
       (step) => step.name === "Require every browser suite",
     );
@@ -103,6 +106,7 @@ describe("production readiness workflow contract", () => {
     expect(t05ExecutionSemantics?.run).toBe("npm run test:e2e:v2-t05");
     expect(t06PreviewStart?.run).toBe("npm run test:e2e:v2-t06");
     expect(u03FutureProgram?.run).toBe("npm run test:e2e:v2-u03");
+    expect(gauntletA?.run).toBe("npm run test:e2e:v2-gauntlet-a");
     expect(browserGate?.env?.BROWSER_HISTORY).toBe(
       "${{ steps.browser-history.outcome }}",
     );
@@ -169,6 +173,12 @@ describe("production readiness workflow contract", () => {
     expect(browserGate?.run).toContain(
       '"U03 future-only Program publication:${BROWSER_V2_U03}"',
     );
+    expect(browserGate?.env?.BROWSER_V2_GAUNTLET_A).toBe(
+      "${{ steps.browser-v2-gauntlet-a.outcome }}",
+    );
+    expect(browserGate?.run).toContain(
+      '"Repbook v2 Gauntlet A:${BROWSER_V2_GAUNTLET_A}"',
+    );
   });
 
   it("measures the unchanged performance ceiling without parallel test contention", async () => {
@@ -194,6 +204,7 @@ describe("production readiness workflow contract", () => {
         "v2-t05-execution-semantics.spec.ts",
         "v2-t06-preview-start.spec.ts",
         "v2-u03-future-program.spec.ts",
+        "v2-gauntlet-a-recovery.spec.ts",
       ]),
     );
   });

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   BODY_AREA_FILTERS,
   DEFAULT_EXERCISE_FILTERS,
@@ -537,15 +537,6 @@ export function ExercisePicker({
         height: viewport?.height ?? window.innerHeight,
         offsetTop: viewport?.offsetTop ?? 0,
       });
-      requestAnimationFrame(() => {
-        const active = document.activeElement;
-        if (
-          active instanceof HTMLElement &&
-          resultsScrollRef.current?.contains(active)
-        ) {
-          active.scrollIntoView({ block: "center" });
-        }
-      });
     };
     const frame = requestAnimationFrame(update);
     window.visualViewport?.addEventListener("resize", update);
@@ -558,6 +549,38 @@ export function ExercisePicker({
       window.removeEventListener("resize", update);
     };
   }, [open]);
+
+  useLayoutEffect(() => {
+    if (!open || !visualViewport) return;
+    const scrollRegion = resultsScrollRef.current;
+    if (!scrollRegion) return;
+    let frame = 0;
+    const keepActiveControlVisible = () => {
+      const active = document.activeElement;
+      if (!(active instanceof HTMLElement) || !scrollRegion.contains(active)) {
+        return;
+      }
+      const regionRect = scrollRegion.getBoundingClientRect();
+      const activeRect = active.getBoundingClientRect();
+      const inset = 8;
+      if (activeRect.bottom > regionRect.bottom - inset) {
+        scrollRegion.scrollTop += activeRect.bottom - regionRect.bottom + inset;
+      } else if (activeRect.top < regionRect.top + inset) {
+        scrollRegion.scrollTop -= regionRect.top - activeRect.top + inset;
+      }
+    };
+    const scheduleVisibilityCheck = () => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(keepActiveControlVisible);
+    };
+    const scrollRegionObserver = new ResizeObserver(scheduleVisibilityCheck);
+    scrollRegionObserver.observe(scrollRegion);
+    scheduleVisibilityCheck();
+    return () => {
+      cancelAnimationFrame(frame);
+      scrollRegionObserver.disconnect();
+    };
+  }, [open, visualViewport]);
 
   return (
     <Dialog

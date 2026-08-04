@@ -75,6 +75,7 @@ export async function buildSetsCsv(
       timezone: workoutSessions.timezone,
       localDate: workoutSessions.localDate,
       template: workoutSessions.templateName,
+      sessionStatus: workoutSessions.status,
       source: workoutSessions.source,
       sourceWorkoutKey: workoutSessions.sourceWorkoutKey,
       importBatchId: workoutSessions.importBatchId,
@@ -176,7 +177,7 @@ export async function buildSetsCsv(
     .where(
       and(
         eq(workoutSessions.userId, userId),
-        eq(workoutSessions.status, "completed"),
+        inArray(workoutSessions.status, ["completed", "abandoned"]),
         isNull(workoutSessions.archivedAt),
         isNull(completedSets.archivedAt),
         ...(since ? [gte(workoutSessions.startedAt, since)] : [])
@@ -190,6 +191,7 @@ export async function buildSetsCsv(
       timezone: workoutSessions.timezone,
       localDate: workoutSessions.localDate,
       template: workoutSessions.templateName,
+      sessionStatus: workoutSessions.status,
       source: workoutSessions.source,
       sourceWorkoutKey: workoutSessions.sourceWorkoutKey,
       importBatchId: workoutSessions.importBatchId,
@@ -260,7 +262,7 @@ export async function buildSetsCsv(
     )
     .where(and(
       eq(workoutSessions.userId, userId),
-      eq(workoutSessions.status, "completed"),
+      inArray(workoutSessions.status, ["completed", "abandoned"]),
       isNull(workoutSessions.archivedAt),
       isNull(sessionOccurrences.completedSetId),
       ...(since ? [gte(workoutSessions.startedAt, since)] : []),
@@ -312,7 +314,8 @@ export async function buildSetsCsv(
       exerciseOrder: r.exerciseOrder,
       setNo: r.setNo,
       values: [
-        r.date.toISOString(), r.timezone, r.localDate, r.template, r.source,
+        r.date.toISOString(), r.timezone, r.localDate, r.template,
+        r.sessionStatus, r.source,
         r.sourceWorkoutKey, r.importBatchId,
         r.historyRevision, r.performedTimePrecision, r.sourceProgramId,
         r.sourceProgramVersionId, r.sourceDayLineageId,
@@ -360,7 +363,8 @@ export async function buildSetsCsv(
       exerciseOrder: r.exerciseOrder,
       setNo: null,
       values: [
-        r.date.toISOString(), r.timezone, r.localDate, r.template, r.source,
+        r.date.toISOString(), r.timezone, r.localDate, r.template,
+        r.sessionStatus, r.source,
         r.sourceWorkoutKey, r.importBatchId,
         r.historyRevision, r.performedTimePrecision, r.sourceProgramId,
         r.sourceProgramVersionId, r.sourceDayLineageId,
@@ -401,7 +405,8 @@ export async function buildSetsCsv(
 
   return toCsv(
     [
-      "started_at", "timezone", "local_date", "template", "source", "source_workout_key", "import_batch_id",
+      "started_at", "timezone", "local_date", "template", "session_status",
+      "source", "source_workout_key", "import_batch_id",
       "history_revision", "performed_time_precision", "source_program_id",
       "source_program_version_id", "source_day_lineage_id",
       "start_request_key", "start_request_hash",

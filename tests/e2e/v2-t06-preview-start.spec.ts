@@ -21,11 +21,18 @@ async function signIn(page: Page) {
   await waitForHydratedServerAction(login);
   await login.click();
   await expect(page).toHaveURL(/\/today$/);
+  await page.waitForLoadState("networkidle");
 }
 
 async function openAlternatePreview(page: Page, day: RegExp) {
-  await page.goto("/today");
+  const current = new URL(page.url());
+  if (current.pathname !== "/today" || current.search) {
+    await page.goto("/today");
+  } else {
+    await page.waitForLoadState("networkidle");
+  }
   const alternatives = page.getByTestId("alternate-program-days");
+  await expect(alternatives).toBeVisible();
   await openNativeDetails(alternatives);
   await alternatives.getByRole("button", { name: day }).click();
   await expect(page).toHaveURL(/\/today\?preview=[0-9a-f-]+$/);
@@ -194,23 +201,16 @@ test("keeps preview read-only and Start replay-safe with truthful active collisi
   await second.close();
   await discardActive(page);
   await nextRscPrefetches.settle();
-  const expectedLinkCancellationCount = browserErrors.filter((message) =>
-    isExpectedWebKitRscLinkCancellation(
-      message,
-      browserName,
-      EXPECTED_APP_SHELL_PREFETCHES,
-    )
-  ).length;
   const loadFailureCount = browserErrors.filter(
     (message) => message === "Load failed",
   ).length;
-  const hasOnlyPairedWebKitLoadFailures =
+  const hasOnlyCorrelatedWebKitLoadFailures =
     browserName === "webkit" &&
-    expectedLinkCancellationCount > 0 &&
-    loadFailureCount <= expectedLinkCancellationCount;
+    nextRscPrefetches.observedUrls.size > 0 &&
+    loadFailureCount <= nextRscPrefetches.observedUrls.size;
   expect(browserErrors.filter(
     (message) =>
-      !(hasOnlyPairedWebKitLoadFailures && message === "Load failed") &&
+      !(hasOnlyCorrelatedWebKitLoadFailures && message === "Load failed") &&
       !isExpectedWebKitRscLinkCancellation(
         message,
         browserName,

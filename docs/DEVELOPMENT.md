@@ -49,6 +49,8 @@ npx vitest run tests/unit/v2-u02-exception-context-db.test.ts tests/unit/v2-u02-
 npm run test:e2e:v2-u02
 npx vitest run tests/unit/program-editor-db.test.ts tests/unit/program-editor-component.test.tsx
 npm run test:e2e:v2-u03
+npx vitest run tests/unit/v2-gauntlet-a-semantic-recovery.test.ts tests/unit/exercise-card-component.test.tsx
+npm run test:e2e:v2-gauntlet-a
 ```
 
 The semantic test validates all synthetic F01-F17 scenarios and every required
@@ -74,7 +76,12 @@ exception-only effort, technique, limitation, note, and set-linked pain capture;
 offline retry identity; History and Review visibility; snapshot schema 29; and
 restore with explicit unknowns for schema 28. U03 activates exact future-only
 draft, review, publication, failure-recovery, and active-session/History/version
-isolation without a schema or recovery-manifest change. Recovery manifest 10 remains the
+isolation without a schema or recovery-manifest change. Gauntlet A reruns the
+complete real-workout scenario bar at desktop, 440×956 mobile, and 320×700
+enlarged-text mobile references. It includes exact offline and
+timeout-after-commit retry, bodyweight substitution, abandoned-session export,
+keyboard-selected-state, touch-target, overflow, and page-error oracles.
+Recovery manifest 10 remains the
 authoritative table inventory. Every later package must activate its own reserved
 evidence before its product behavior is considered implemented.
 
@@ -109,6 +116,7 @@ npm run test:e2e:v2-t06
 npm run test:e2e:v2-u01
 npm run test:e2e:v2-u02
 npm run test:e2e:v2-u03
+npm run test:e2e:v2-gauntlet-a
 ```
 
 Run the smallest affected browser suite first, then the complete protected

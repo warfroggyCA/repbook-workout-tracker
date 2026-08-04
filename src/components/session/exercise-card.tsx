@@ -1929,7 +1929,11 @@ function SetEntry({
           Selected: {selectedEffort.label} — RPE {selectedEffort.legacyRpe}
         </p>
       )}
-      <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-4">
+      <div
+        role="group"
+        aria-label="Effort shortcuts"
+        className="grid grid-cols-2 gap-1.5 sm:grid-cols-4"
+      >
         {RPE_CHIPS.map((chip) => (
           <Button
             key={chip.value}
@@ -1937,6 +1941,7 @@ function SetEntry({
             size="sm"
             className="h-auto min-h-11 whitespace-normal text-xs"
             aria-label={`${chip.shortcutLabel}; ${chip.meaning}`}
+            aria-pressed={draft.rpe === chip.value && draft.rir == null}
             onClick={() =>
               setDraft((d) => ({
                 ...d,

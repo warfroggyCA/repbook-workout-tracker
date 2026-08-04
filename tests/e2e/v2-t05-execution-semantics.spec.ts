@@ -6,6 +6,7 @@ import {
   waitForHydratedReactHandler,
   waitForHydratedServerAction,
 } from "../helpers/react-readiness";
+import { observeGauntletPageErrors } from "../helpers/v2-gauntlet-a-errors";
 
 async function signInAndStartDayA(page: Page) {
   await installNextDevelopmentRefreshControl(page);
@@ -44,72 +45,80 @@ async function currentExerciseName(page: Page) {
 }
 
 async function clickCentered(page: Page, locator: Locator) {
-  await locator.evaluate((element) => {
-    element.scrollIntoView({ block: "center", inline: "center" });
-    const viewportHeight = window.visualViewport?.height ?? window.innerHeight;
-    const rect = element.getBoundingClientRect();
-    const centerX = rect.left + rect.width / 2;
-    let unobstructedTop = 0;
-    let unobstructedBottom = viewportHeight;
-    for (const candidate of document.body.querySelectorAll<HTMLElement>("*")) {
-      if (
-        candidate === element ||
-        candidate.contains(element) ||
-        element.contains(candidate)
-      ) continue;
-      const position = getComputedStyle(candidate).position;
-      if (position !== "fixed" && position !== "sticky") continue;
-      const candidateRect = candidate.getBoundingClientRect();
-      if (
-        candidateRect.width <= 0 ||
-        candidateRect.height <= 0 ||
-        centerX < candidateRect.left ||
-        centerX > candidateRect.right
-      ) continue;
-      const candidateCenter = candidateRect.top + candidateRect.height / 2;
-      if (candidateCenter < viewportHeight / 2) {
-        unobstructedTop = Math.max(unobstructedTop, candidateRect.bottom);
-      } else {
-        unobstructedBottom = Math.min(unobstructedBottom, candidateRect.top);
+  const settleCenteredHitTest = async () => {
+    await locator.evaluate((element) => {
+      element.scrollIntoView({ block: "center", inline: "center" });
+      const viewportHeight = window.visualViewport?.height ?? window.innerHeight;
+      const rect = element.getBoundingClientRect();
+      const centerX = rect.left + rect.width / 2;
+      let unobstructedTop = 0;
+      let unobstructedBottom = viewportHeight;
+      for (const candidate of document.body.querySelectorAll<HTMLElement>("*")) {
+        if (
+          candidate === element ||
+          candidate.contains(element) ||
+          element.contains(candidate)
+        ) continue;
+        const position = getComputedStyle(candidate).position;
+        if (position !== "fixed" && position !== "sticky") continue;
+        const candidateRect = candidate.getBoundingClientRect();
+        if (
+          candidateRect.width <= 0 ||
+          candidateRect.height <= 0 ||
+          centerX < candidateRect.left ||
+          centerX > candidateRect.right
+        ) continue;
+        const candidateCenter = candidateRect.top + candidateRect.height / 2;
+        if (candidateCenter < viewportHeight / 2) {
+          unobstructedTop = Math.max(unobstructedTop, candidateRect.bottom);
+        } else {
+          unobstructedBottom = Math.min(unobstructedBottom, candidateRect.top);
+        }
       }
-    }
-    const inset = rect.height / 2 + 8;
-    const unobstructedCenter = Math.max(
-      unobstructedTop + inset,
-      Math.min(
-        (unobstructedTop + unobstructedBottom) / 2,
-        unobstructedBottom - inset,
-      ),
-    );
-    window.scrollBy({
-      top: rect.top + rect.height / 2 - unobstructedCenter,
-      behavior: "instant",
+      const inset = rect.height / 2 + 8;
+      const unobstructedCenter = Math.max(
+        unobstructedTop + inset,
+        Math.min(
+          (unobstructedTop + unobstructedBottom) / 2,
+          unobstructedBottom - inset,
+        ),
+      );
+      window.scrollBy({
+        top: rect.top + rect.height / 2 - unobstructedCenter,
+        behavior: "instant",
+      });
     });
-  });
-  await page.evaluate(
-    () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())),
-  );
-  const hitTest = await locator.evaluate((element) => {
-    const rect = element.getBoundingClientRect();
-    const hit = document.elementFromPoint(
-      rect.left + rect.width / 2,
-      rect.top + rect.height / 2,
+    await page.evaluate(
+      () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())),
     );
-    return {
-      reachable: hit === element || (hit != null && element.contains(hit)),
-      x: rect.left + rect.width / 2,
-      y: rect.top + rect.height / 2,
-      coarsePointer: window.matchMedia("(pointer: coarse)").matches,
-      blocker: hit instanceof HTMLElement
-        ? {
-            tag: hit.tagName,
-            role: hit.getAttribute("role"),
-            ariaLabel: hit.getAttribute("aria-label"),
-            testId: hit.dataset.testid ?? null,
-          }
-        : null,
-    };
-  });
+    return locator.evaluate((element) => {
+      const rect = element.getBoundingClientRect();
+      const hit = document.elementFromPoint(
+        rect.left + rect.width / 2,
+        rect.top + rect.height / 2,
+      );
+      return {
+        reachable: hit === element || (hit != null && element.contains(hit)),
+        x: rect.left + rect.width / 2,
+        y: rect.top + rect.height / 2,
+        coarsePointer: window.matchMedia("(pointer: coarse)").matches,
+        blocker: hit instanceof HTMLElement
+          ? {
+              tag: hit.tagName,
+              role: hit.getAttribute("role"),
+              ariaLabel: hit.getAttribute("aria-label"),
+              testId: hit.dataset.testid ?? null,
+            }
+          : null,
+      };
+    });
+  };
+
+  let hitTest = await settleCenteredHitTest();
+  await expect.poll(async () => {
+    hitTest = await settleCenteredHitTest();
+    return hitTest.reachable;
+  }, { timeout: 10_000 }).toBe(true);
   expect(hitTest.reachable, JSON.stringify(hitTest)).toBe(true);
   if (hitTest.coarsePointer) {
     await page.touchscreen.tap(hitTest.x, hitTest.y);
@@ -186,9 +195,13 @@ async function discardWorkout(page: Page) {
 }
 
 test("keeps one ledger-driven current/next/group/rest state through retry, interruption, extra work, and finish readiness", async ({
+  browserName,
   context,
   page,
 }) => {
+  const pageErrors = observeGauntletPageErrors(page, browserName, [
+    /500|Internal Server Error|Failed to load resource/i,
+  ]);
   await signInAndStartDayA(page);
   const guidance = page.getByRole("region", {
     name: "Workout progress and upcoming work",
@@ -333,4 +346,5 @@ test("keeps one ledger-driven current/next/group/rest state through retry, inter
   ).toBeLessThanOrEqual(1);
 
   await discardWorkout(page);
+  await pageErrors.expectNoUnexpected();
 });

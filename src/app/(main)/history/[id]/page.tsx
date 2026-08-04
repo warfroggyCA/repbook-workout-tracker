@@ -360,6 +360,11 @@ export default async function SessionDetailPage(
                 : "Not linked to Program"}
             </Badge>
           )}
+          {session.status === "abandoned" && (
+            <Badge className="ml-2 mt-2" variant="outline">
+              Abandoned workout
+            </Badge>
+          )}
           <p className="text-sm text-muted-foreground">
             {formatRecordedLocalDate(session.localDate)}
             {session.performedTimePrecision === "date_only"

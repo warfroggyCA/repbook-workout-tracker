@@ -5,6 +5,7 @@ import {
   waitForHydratedReactHandler,
   waitForHydratedServerAction,
 } from "../helpers/react-readiness";
+import { observeGauntletPageErrors } from "../helpers/v2-gauntlet-a-errors";
 
 async function signInAndStartDayA(page: Page) {
   await installNextDevelopmentRefreshControl(page);
@@ -84,8 +85,10 @@ async function discardWorkout(page: Page) {
 }
 
 test("keeps the ordinary active set current-first, unobstructed, and acknowledgement-truthful", async ({
+  browserName,
   page,
 }) => {
+  const pageErrors = observeGauntletPageErrors(page, browserName);
   try {
     await signInAndStartDayA(page);
 
@@ -180,4 +183,5 @@ test("keeps the ordinary active set current-first, unobstructed, and acknowledge
   } finally {
     await discardWorkout(page);
   }
+  await pageErrors.expectNoUnexpected();
 });

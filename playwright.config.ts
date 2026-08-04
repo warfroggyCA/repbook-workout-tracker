@@ -30,6 +30,7 @@ export default defineConfig({
     "v2-u01-active-workout-hierarchy.spec.ts",
     "v2-u02-exception-context.spec.ts",
     "v2-u03-future-program.spec.ts",
+    "v2-gauntlet-a-recovery.spec.ts",
   ],
   outputDir: "./output/playwright/test-results",
   fullyParallel: false,

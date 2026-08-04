@@ -6,6 +6,7 @@ import {
   waitForHydratedReactHandler,
   waitForHydratedServerAction,
 } from "../helpers/react-readiness";
+import { observeGauntletPageErrors } from "../helpers/v2-gauntlet-a-errors";
 
 async function signInAndStartDayA(page: Page) {
   await installNextDevelopmentRefreshControl(page);
@@ -16,6 +17,12 @@ async function signInAndStartDayA(page: Page) {
   await waitForHydratedServerAction(login);
   await login.click();
   await expect(page).toHaveURL(/\/today$/);
+  await page.goto("/settings");
+  const extraLarge = page.getByRole("radio", { name: /Extra large/ });
+  await waitForHydratedReactHandler(extraLarge);
+  if (!(await extraLarge.isChecked())) await extraLarge.click();
+  await expect(extraLarge).toBeChecked();
+  await page.goto("/today");
   const alternateDays = page.getByTestId("alternate-program-days");
   await alternateDays.locator("summary").click();
   await alternateDays.getByRole("button", { name: /Day A — Squat/ }).click();
@@ -56,8 +63,10 @@ async function skipCurrentSet(page: Page) {
 }
 
 test("keeps planned work authoritative around extra-before-plan and grouped work", async ({
+  browserName,
   page,
 }) => {
+  const pageErrors = observeGauntletPageErrors(page, browserName);
   await signInAndStartDayA(page);
   const first = page.getByTestId("current-exercise-card");
   await expect(first).toContainText("Barbell Back Squat");
@@ -101,8 +110,18 @@ test("keeps planned work authoritative around extra-before-plan and grouped work
   const finish = page.getByRole("dialog", { name: "Finish workout" });
   await expect(finish).toContainText("0 of 13 planned sets done");
   await expect(finish).toContainText("1 extra set performed");
+  const fatigue = finish.getByRole("group", { name: "Overall fatigue" });
+  const fatigueThree = fatigue.getByRole("button", {
+    name: "3",
+    exact: true,
+  });
+  await expect(fatigueThree).toHaveAttribute("aria-pressed", "false");
+  await fatigueThree.focus();
+  await fatigueThree.press("Space");
+  await expect(fatigueThree).toHaveAttribute("aria-pressed", "true");
   await finish.getByRole("button", { name: "Save workout", exact: true }).click();
   await expect(page).toHaveURL(/\/history\/[0-9a-f-]+\?finished=1$/);
   await expect(page.getByText(/extra set 1/i).first()).toBeVisible();
   await expect(page.getByText("added during workout", { exact: true }).first()).toBeVisible();
+  await pageErrors.expectNoUnexpected();
 });
