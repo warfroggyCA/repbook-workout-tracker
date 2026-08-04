@@ -12,7 +12,13 @@ import {
 
 test.describe.configure({ mode: "serial" });
 
-const EXPECTED_APP_SHELL_PREFETCHES = new Set(["/program"]);
+const EXPECTED_APP_SHELL_PREFETCHES = new Set([
+  "/today",
+  "/history",
+  "/coach",
+  "/program",
+  "/settings",
+]);
 
 async function signIn(page: Page) {
   await page.goto("/sign-in");
