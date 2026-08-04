@@ -154,7 +154,7 @@ describe("Session Compiler durable review and acceptance", () => {
     expect(csv).toContain(versionId);
     expect(csv).toContain(dayLineageId);
     const backup = await buildJsonBackup(database.db, userId);
-    expect(backup.schemaVersion).toBe("28");
+    expect(backup.schemaVersion).toBe("29");
     expect(backup.canonical.tables.session_compiler_proposals).toContainEqual(
       expect.objectContaining({ id: proposal.id, accepted_session_id: first.sessionId, content_hash: proposal.contentHash }),
     );
@@ -473,7 +473,7 @@ describe("Session Compiler durable review and acceptance", () => {
       created.snapshotId,
       { store, keyring }
     );
-    expect(captured.payload.schemaVersion).toBe("28");
+    expect(captured.payload.schemaVersion).toBe("29");
     expect(captured.payload.tables.session_compiler_proposals).toContainEqual(
       expect.objectContaining({
         id: proposal.id,

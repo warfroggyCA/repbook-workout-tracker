@@ -199,7 +199,7 @@ describe("durable progression job handoff", () => {
       }),
     ]);
     const backup = await buildJsonBackup(database.db, userId);
-    expect(backup.schemaVersion).toBe("28");
+    expect(backup.schemaVersion).toBe("29");
     expect(backup.canonical.tables.progression_jobs).toEqual([
       expect.objectContaining({ id: result.progressionJobId }),
     ]);

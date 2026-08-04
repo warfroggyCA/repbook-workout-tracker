@@ -154,7 +154,9 @@ for planned order and extra-set truth. T04 activates the same required proof
 classes for warm-up occurrence truth. T05 activates them for current, next,
 group, and rest truth. T06 activates preview and Start truth, including
 prescribed exercise meaning. U01 activates the presentation-only active-workout
-hierarchy and ergonomics gate; later packages remain future work.
+hierarchy and ergonomics gate. U02 activates optional set-level effort, issue,
+note, and linked pain evidence from capture through Review, export, and recovery;
+later packages remain future work.
 
 ## T01 performed-measurement contract
 
@@ -327,3 +329,33 @@ card is collapsed or the focused action is warm-up or rest, the sticky summary
 continues to show next work. U01 changes no occurrence ordering, writer,
 acknowledgement, correction, rest, group, persistence, export, recovery, or
 historical semantics and adds no schema migration.
+
+## U02 exception-context contract
+
+Ordinary set completion requires no exception fields. Optional details disclose
+RIR or RPE (never both), one controlled technique issue, one controlled
+limitation cause, a set note, and an optional pain observation. Missing values
+remain explicit unknowns. Before the set is saved, every optional choice can be
+cleared without affecting the ordinary performed measure.
+
+One canonical set command carries the selected context through offline retry.
+The completed set and any pain observation are written atomically, and pain is
+bound to the exact owner, workout, exercise, and completed set. Exact retry
+replays the acknowledgement; reusing the command identity with changed context
+fails closed. Capture writes no recommendation, decision, or accepted adaptation.
+
+History and Review present the recorded evidence as observations. The durable
+`set_exception` pain source distinguishes U02 evidence from the established
+`set_flag` safety workflow. U02 observations do not
+reinterpret the performed set, alter Program intent, approve a proposal, or
+adapt future work. Set-linked pain remains outside automatic Program preflight,
+progression, pain-hold, simulation, and accepted-decision outcome consumers;
+those consumers continue to use the established independent pain workflow until
+a later package explicitly contracts a reviewed bridge. Set and pain CSVs,
+canonical snapshots, and restore retain the
+exact nullable fields and completed-set link. Additive migration
+`0073_exception_context` owns the new columns and linkage constraints. Snapshot
+schema 29 owns this evidence; schema 28 upgrades add null unknowns without
+backfilling from current catalogue, Program, or equipment metadata. Recovery
+manifest 10 keeps the same table inventory while strengthening completed-set and
+pain integrity checks.

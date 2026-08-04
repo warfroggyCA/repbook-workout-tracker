@@ -87,8 +87,20 @@ export async function openNativeDetails(details: Locator) {
   await expect(details).toBeVisible();
   if ((await details.getAttribute("open")) !== null) return;
 
-  await details.locator(":scope > summary").click();
-  await expect(details).toHaveAttribute("open", "");
+  const summary = details.locator(":scope > summary");
+  await expect(summary).toHaveCount(1);
+  await expect(summary).toBeVisible();
+
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    await summary.scrollIntoViewIfNeeded();
+    await summary.click();
+    try {
+      await expect(details).toHaveAttribute("open", "", { timeout: 2_000 });
+      return;
+    } catch (error) {
+      if (attempt === 1) throw error;
+    }
+  }
 }
 
 async function waitForHydratedReactEventHandler(

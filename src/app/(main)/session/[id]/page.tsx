@@ -14,6 +14,7 @@ import {
   constraints as constraintsTable,
   exercises as exercisesTable,
   recordVersions,
+  painLogs,
 } from "@/db/schema";
 import { getCurrentUser } from "@/lib/user";
 import { getLastPerformances } from "@/services/today";
@@ -34,6 +35,32 @@ import { logServerEvent } from "@/lib/server-log";
 import { safeErrorName } from "@/lib/safe-error-name";
 import { Button } from "@/components/ui/button";
 import { actionableActiveSessionOccurrences } from "@/lib/warmup-occurrence-compatibility";
+import {
+  LIMITATION_CAUSES,
+  PAIN_BODY_PARTS,
+  TECHNIQUE_ISSUES,
+  type LimitationCause,
+  type PainBodyPart,
+  type TechniqueIssue,
+} from "@/lib/set-exception-context";
+
+function techniqueIssue(value: string | null): TechniqueIssue | null {
+  return TECHNIQUE_ISSUES.includes(value as TechniqueIssue)
+    ? value as TechniqueIssue
+    : null;
+}
+
+function limitationCause(value: string | null): LimitationCause | null {
+  return LIMITATION_CAUSES.includes(value as LimitationCause)
+    ? value as LimitationCause
+    : null;
+}
+
+function painBodyPart(value: string): PainBodyPart | null {
+  return PAIN_BODY_PARTS.includes(value as PainBodyPart)
+    ? value as PainBodyPart
+    : null;
+}
 
 function ConfirmedSessionLoadRecovery({ sessionId }: { sessionId: string }) {
   return (
@@ -188,16 +215,23 @@ async function renderSessionPage(
   const visibleSetIds = session.exercises.flatMap((exercise) =>
     exercise.sets.filter((set) => !set.isWarmup).map((set) => set.id),
   );
-  const setCorrectionVersions = visibleSetIds.length > 0
-    ? await db.query.recordVersions.findMany({
+  const [setCorrectionVersions, setPainLogs] = visibleSetIds.length > 0
+    ? await Promise.all([db.query.recordVersions.findMany({
         where: and(
           eq(recordVersions.userId, user.id),
           eq(recordVersions.entityType, "completed_set"),
           inArray(recordVersions.entityId, visibleSetIds),
         ),
         columns: { entityId: true, action: true },
-      })
-    : [];
+      }), db.query.painLogs.findMany({
+        where: and(
+          eq(painLogs.userId, user.id),
+          eq(painLogs.sessionId, session.id),
+          inArray(painLogs.completedSetId, visibleSetIds),
+          isNull(painLogs.archivedAt),
+        ),
+      })])
+    : [[], []];
   const correctionCountBySetId = new Map<string, number>();
   for (const version of setCorrectionVersions) {
     if (
@@ -209,6 +243,18 @@ async function renderSessionPage(
       (correctionCountBySetId.get(version.entityId) ?? 0) + 1,
     );
   }
+  const painBySetId = new Map(
+    setPainLogs.flatMap((pain) => {
+      const bodyPart = painBodyPart(pain.bodyPart);
+      return pain.completedSetId != null && bodyPart != null
+        ? [[pain.completedSetId, {
+            bodyPart,
+            severity: pain.severity,
+            note: pain.note,
+          }] as const]
+        : [];
+    }),
+  );
   const plannedExerciseNames = new Map(
     plannedExercises.map((exercise) => [exercise.id, exercise.name])
   );
@@ -380,6 +426,10 @@ async function renderSessionPage(
           distanceKm: s.distanceKm,
           durationSeconds: s.durationSeconds,
           rpe: s.rpe,
+          rir: s.rir,
+          techniqueIssue: techniqueIssue(s.techniqueIssue),
+          limitationCause: limitationCause(s.limitationCause),
+          pain: painBySetId.get(s.id) ?? null,
           note: s.note,
           correctionCount: correctionCountBySetId.get(s.id) ?? 0,
         })),

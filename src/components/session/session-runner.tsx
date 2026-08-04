@@ -239,6 +239,9 @@ export function SessionRunner(props: SessionRunnerProps) {
     return firstOpen?.id ?? null;
   });
   const previousCurrentActionIdRef = useRef<string | null>(null);
+  const previousCurrentActionKindRef = useRef<
+    SessionGuidanceFocusAction["kind"] | null
+  >(null);
   const [timer, setTimer] = useState<DurableRestTimer | null>(null);
   const [restTimerHydrated, setRestTimerHydrated] = useState(false);
   const [restNow, setRestNow] = useState(() => Date.now());
@@ -443,9 +446,14 @@ export function SessionRunner(props: SessionRunnerProps) {
         ? guidance.current?.sessionExerciseId ?? null
         : null;
   const currentActionTargetId = actionTargetId(guidance.currentAction);
+  const latestAcknowledgementTargetId = latestSetAcknowledgement
+    ? `active-set-save-receipt-${latestSetAcknowledgement.sessionExerciseId}-${latestSetAcknowledgement.set.setNo}`
+    : null;
   useEffect(() => {
     const previousActionId = previousCurrentActionIdRef.current;
+    const previousActionKind = previousCurrentActionKindRef.current;
     previousCurrentActionIdRef.current = currentActionId;
+    previousCurrentActionKindRef.current = currentActionKind;
     if (previousActionId == null || previousActionId === currentActionId) return;
 
     const previousOccurrence = occurrences.find(
@@ -459,6 +467,14 @@ export function SessionRunner(props: SessionRunnerProps) {
       previousOccurrence?.outcome === "pending" &&
       !restoredEarlierAction
     ) return;
+    const acknowledgementBelongsToPreviousAction =
+      previousOccurrence?.kind === "working_set" &&
+      latestAcknowledgementTargetId ===
+        `active-set-save-receipt-${previousOccurrence.sessionExerciseId}-${previousOccurrence.kindOrdinal + 1}`;
+    const shouldRevealLatestAcknowledgement =
+      currentActionKind === "rest" ||
+      previousActionKind === "rest" ||
+      acknowledgementBelongsToPreviousAction;
 
     let focusFrame = 0;
     let scrollFrame = 0;
@@ -477,7 +493,15 @@ export function SessionRunner(props: SessionRunnerProps) {
       }
       focusFrame = window.requestAnimationFrame(() => {
         const target = document.getElementById(currentActionTargetId);
-        target?.scrollIntoView({ behavior: "smooth", block: "center" });
+        const acknowledgement =
+          shouldRevealLatestAcknowledgement && latestAcknowledgementTargetId
+            ? document.getElementById(latestAcknowledgementTargetId)
+            : null;
+        if (acknowledgement) {
+          acknowledgement.scrollIntoView({ behavior: "auto", block: "center" });
+        } else if (currentActionKind !== "rest") {
+          target?.scrollIntoView({ behavior: "smooth", block: "center" });
+        }
         const focusTarget = target?.matches("[tabindex]")
           ? target
           : target?.querySelector<HTMLElement>("button, [href], input");
@@ -497,6 +521,7 @@ export function SessionRunner(props: SessionRunnerProps) {
     currentActionSequenceIdx,
     currentActionSessionExerciseId,
     currentActionTargetId,
+    latestAcknowledgementTargetId,
     occurrences,
   ]);
   const groupContextByExerciseId = useMemo(
@@ -667,6 +692,10 @@ export function SessionRunner(props: SessionRunnerProps) {
         durationSeconds: detail.entry.durationSeconds,
         metricType: detail.entry.metricType,
         rpe: detail.entry.rpe,
+        rir: detail.entry.rir,
+        techniqueIssue: detail.entry.techniqueIssue,
+        limitationCause: detail.entry.limitationCause,
+        pain: detail.entry.pain,
         note: detail.entry.note,
         correctionCount: 0,
         saveState: "saved",
@@ -950,6 +979,10 @@ export function SessionRunner(props: SessionRunnerProps) {
       setNo: set.setNo,
       ...performed.measurement,
       rpe: set.rpe,
+      rir: set.rir ?? null,
+      techniqueIssue: set.techniqueIssue ?? null,
+      limitationCause: set.limitationCause ?? null,
+      pain: set.pain ?? null,
       note: set.note,
       equipmentSnapshotId: useSnapshot ? setup?.currentSnapshotId ?? null : null,
       equipmentSelectionClientKey: useSnapshot

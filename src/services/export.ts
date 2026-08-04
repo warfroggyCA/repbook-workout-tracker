@@ -118,6 +118,9 @@ export async function buildSetsCsv(
       distanceKm: completedSets.distanceKm,
       durationSeconds: completedSets.durationSeconds,
       rpe: completedSets.rpe,
+      rir: completedSets.rir,
+      techniqueIssue: completedSets.techniqueIssue,
+      limitationCause: completedSets.limitationCause,
       isWarmup: completedSets.isWarmup,
       targetMet: completedSets.targetMet,
       targetLoad: sessionExercises.targetLoad,
@@ -327,6 +330,7 @@ export async function buildSetsCsv(
         r.substitutedAt?.toISOString(), r.setNo, r.weight, r.weightUnit, r.reps,
         r.metricType, r.performedSemanticsVersion, r.performedLoadType,
         r.performedLoadSemantics, r.distanceKm, r.durationSeconds, r.rpe,
+        r.rir, r.techniqueIssue, r.limitationCause,
         r.isWarmup, r.occurrenceOrigin === "planned" ? r.targetMet : null,
         r.occurrenceOrigin === "planned" ? r.targetLoad : null,
         r.occurrenceOrigin === "planned" ? r.targetLoadUnit : null,
@@ -372,6 +376,7 @@ export async function buildSetsCsv(
         r.exerciseOrder, r.supersetKey,
         r.modification, r.skipReason, r.substitutionReason, r.substitutedAt?.toISOString(),
         null, null, null, null, null, null, null, null, null, null, null, null,
+        null, null, null,
         null,
         r.targetLoad, r.targetLoadUnit, r.targetRepsMin, r.targetRepsMax, null,
         null, null, null, null, null, null, null,
@@ -409,7 +414,8 @@ export async function buildSetsCsv(
       "modification", "skip_reason", "substitution_reason", "substituted_at",
       "set_no", "weight", "weight_unit", "reps",
       "metric_type", "performed_semantics_version", "performed_load_type",
-      "performed_load_semantics", "distance_km", "duration_seconds", "rpe", "is_warmup",
+      "performed_load_semantics", "distance_km", "duration_seconds", "rpe",
+      "rir", "technique_issue", "limitation_cause", "is_warmup",
       "target_met", "target_load", "target_load_unit", "target_reps_min", "target_reps_max", "note",
       "source_set_index", "source_row", "excluded_from_analytics", "logged_at",
       "observed_completed_at", "observed_completion_provenance",
@@ -437,8 +443,11 @@ export async function buildPainFatigueCsv(
     db
       .select({
         date: painLogs.createdAt,
+        sessionId: painLogs.sessionId,
+        completedSetId: painLogs.completedSetId,
         bodyPart: painLogs.bodyPart,
         severity: painLogs.severity,
+        source: painLogs.source,
         exercise: exercises.name,
         note: painLogs.note,
       })
@@ -475,15 +484,18 @@ export async function buildPainFatigueCsv(
   ]);
 
   return toCsv(
-    ["date", "kind", "body_part", "severity", "exercise", "note"],
+    [
+      "date", "kind", "session_id", "completed_set_id", "body_part",
+      "severity", "source", "exercise", "note",
+    ],
     [
       ...pain.map((p) => [
-        p.date.toISOString().slice(0, 10), "pain", p.bodyPart, p.severity,
-        p.exercise, p.note,
+        p.date.toISOString().slice(0, 10), "pain", p.sessionId,
+        p.completedSetId, p.bodyPart, p.severity, p.source, p.exercise, p.note,
       ]),
       ...fatigue.map((f) => [
-        f.createdAt.toISOString().slice(0, 10), "fatigue", "", f.severity,
-        "", f.note,
+        f.createdAt.toISOString().slice(0, 10), "fatigue", "", "", "",
+        f.severity, "", "", f.note,
       ]),
     ]
   );

@@ -22,7 +22,7 @@ import {
 } from "../helpers/database";
 
 const PRODUCTION_MIGRATION = "0018_brave_timeslip";
-const LATEST_MIGRATION = "0072_preview_start_semantics";
+const LATEST_MIGRATION = "0073_exception_context";
 
 const previewBoundaries = [
   {
@@ -280,7 +280,7 @@ describe("current production schema upgrade", () => {
     }]);
   }, 60_000);
 
-  it("matches a fresh final schema exactly through the T06 Start semantics contract", async () => {
+  it("matches a fresh final schema exactly through the U02 exception-context contract", async () => {
     const fresh = await createMigratedTestDatabase();
     const productionShaped = await createTestDatabaseAtMigration(
       PRODUCTION_MIGRATION
@@ -376,6 +376,24 @@ describe("current production schema upgrade", () => {
             type: "integer",
             not_null: true,
           }),
+          expect.objectContaining({
+            table_name: "completed_sets",
+            column_name: "rir",
+            type: "real",
+            not_null: false,
+          }),
+          expect.objectContaining({
+            table_name: "completed_sets",
+            column_name: "technique_issue",
+            type: "text",
+            not_null: false,
+          }),
+          expect.objectContaining({
+            table_name: "completed_sets",
+            column_name: "limitation_cause",
+            type: "text",
+            not_null: false,
+          }),
         ])
       );
       expect(freshSchema.objects).toContainEqual({
@@ -401,6 +419,9 @@ describe("current production schema upgrade", () => {
           "session_compiler_proposals_revision_check",
           "session_compiler_proposals_decision_check",
           "workout_sessions_compilation_snapshot_check",
+          "completed_sets_effort_measure_valid",
+          "completed_sets_technique_issue_valid",
+          "completed_sets_limitation_cause_valid",
         ])
       );
 
@@ -412,6 +433,7 @@ describe("current production schema upgrade", () => {
           "session_compiler_proposals_session_uq",
           "session_compiler_proposals_acceptance_uq",
           "workout_sessions_compilation_acceptance_uq",
+          "pain_logs_active_completed_set_uq",
         ])
       );
 
@@ -422,6 +444,7 @@ describe("current production schema upgrade", () => {
         expect.arrayContaining([
           "session_compiler_proposals_immutable",
           "workout_sessions_compiler_provenance_immutable",
+          "pain_logs_completed_set_context_valid",
         ])
       );
       expect(freshSchema.triggers).toEqual(
@@ -442,6 +465,7 @@ describe("current production schema upgrade", () => {
           "protect_session_compiler_proposal",
           "restore_user_snapshot",
           "permanent_delete_archive_preview",
+          "validate_pain_completed_set_context",
         ])
       );
     } finally {
@@ -947,7 +971,7 @@ describe("current production schema upgrade", () => {
     });
     expect(backup).toMatchObject({
       format: "workout-tracker-canonical-backup",
-      schemaVersion: "28",
+      schemaVersion: "29",
       recordCounts: {
         users: 1,
         user_profiles: 1,

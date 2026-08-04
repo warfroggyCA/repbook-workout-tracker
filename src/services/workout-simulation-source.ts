@@ -1,6 +1,6 @@
 import "server-only";
 
-import { and, count, eq, gt, gte, inArray, isNull, lte } from "drizzle-orm";
+import { and, count, eq, gt, gte, inArray, isNull, lte, ne } from "drizzle-orm";
 import type { Db } from "@/db";
 import {
   constraints as constraintsTable,
@@ -431,6 +431,7 @@ export async function loadWorkoutSimulationSource(
               eq(workoutSessions.status, "completed"),
               isNull(workoutSessions.archivedAt),
               isNull(painLogs.archivedAt),
+              ne(painLogs.source, "set_exception"),
               // Zero is retained raw evidence, but it is not a pain report
               // and cannot stand in for a pain-free session.
               gte(painLogs.severity, 1),

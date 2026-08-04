@@ -56,7 +56,7 @@ function preflightEvidenceTokenQuery(userId: string, exerciseIds: string[]) {
         pain.source,
         pain.archived_at,
         pain.created_at
-      ) ORDER BY pain.id), '[]'::jsonb)::text FROM pain_logs pain WHERE pain.user_id = ${userId}::uuid),
+      ) ORDER BY pain.id), '[]'::jsonb)::text FROM pain_logs pain WHERE pain.user_id = ${userId}::uuid AND pain.source <> 'set_exception'::pain_source),
       (SELECT COALESCE(jsonb_agg(jsonb_build_array(session_row.id, session_row.template_id, session_row.started_at, session_row.finished_at, session_row.exclude_duration_from_analytics) ORDER BY session_row.id), '[]'::jsonb)::text FROM workout_sessions session_row WHERE session_row.user_id = ${userId}::uuid AND session_row.status = 'completed' AND session_row.archived_at IS NULL),
       (SELECT COALESCE(jsonb_agg(jsonb_build_array(exercise.id, exercise.movement_pattern) ORDER BY exercise.id), '[]'::jsonb)::text FROM exercises exercise WHERE exercise.id IN (${exerciseList})),
       (SELECT COALESCE(jsonb_agg(jsonb_build_array(requirement.id, requirement.exercise_id, requirement.equipment_type, requirement.equipment_definition_id, requirement.min_weight) ORDER BY requirement.id), '[]'::jsonb)::text FROM exercise_equipment_requirements requirement WHERE requirement.exercise_id IN (${exerciseList}))

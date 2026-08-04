@@ -403,7 +403,7 @@ describe("AI cost, concurrency, and privacy controls", () => {
       NOW,
       "privacy-test"
     );
-    expect(safeBackup.schemaVersion).toBe("28");
+    expect(safeBackup.schemaVersion).toBe("29");
     expect(safeBackup.tables.import_events).toHaveLength(2);
     expect(safeBackup.tables.import_events).toEqual(expect.arrayContaining([
       expect.objectContaining({

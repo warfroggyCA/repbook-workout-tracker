@@ -437,6 +437,9 @@ export const completedSets = pgTable(
     distanceKm: real("distance_km"),
     durationSeconds: integer("duration_seconds"),
     rpe: real("rpe"), // ~6 easy / 7 ok / 8 hard / 9.5 grind
+    rir: real("rir"),
+    techniqueIssue: text("technique_issue"),
+    limitationCause: text("limitation_cause"),
     isWarmup: boolean("is_warmup").notNull().default(false),
     targetMet: boolean("target_met"),
     restTakenSec: integer("rest_taken_sec"),
@@ -517,6 +520,18 @@ export const completedSets = pgTable(
         OR
         (${t.performedSemanticsVersion} = 1 AND ${t.performedLoadType} IS NOT NULL AND length(btrim(${t.performedLoadType})) > 0 AND ${t.performedLoadSemantics} IS NOT NULL)
       )`,
+    ),
+    check(
+      "completed_sets_effort_measure_valid",
+      sql`${t.rir} IS NULL OR (${t.rir} BETWEEN 0 AND 10 AND ${t.rpe} IS NULL)`,
+    ),
+    check(
+      "completed_sets_technique_issue_valid",
+      sql`${t.techniqueIssue} IS NULL OR ${t.techniqueIssue} IN ('bracing', 'range_of_motion', 'control', 'balance', 'positioning', 'tempo', 'other')`,
+    ),
+    check(
+      "completed_sets_limitation_cause_valid",
+      sql`${t.limitationCause} IS NULL OR ${t.limitationCause} IN ('strength_fatigue', 'breathing_conditioning', 'grip', 'mobility', 'pain', 'technique', 'equipment_setup', 'time', 'other')`,
     ),
   ]
 );
@@ -817,6 +832,9 @@ export const painLogs = pgTable(
     index("pain_logs_active_session_idx")
       .on(t.sessionId)
       .where(sql`${t.archivedAt} IS NULL AND ${t.sessionId} IS NOT NULL`),
+    uniqueIndex("pain_logs_active_completed_set_uq")
+      .on(t.completedSetId)
+      .where(sql`${t.archivedAt} IS NULL AND ${t.completedSetId} IS NOT NULL`),
   ]
 );
 

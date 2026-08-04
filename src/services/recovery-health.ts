@@ -182,7 +182,10 @@ export async function evaluateApplicationIntegrity(
         'A logged set contains an invalid set number or measurement.',
         jsonb_build_object(
           'setNo', cs.set_no, 'weight', cs.weight, 'reps', cs.reps,
-          'rpe', cs.rpe, 'distanceKm', cs.distance_km,
+          'rpe', cs.rpe, 'rir', cs.rir,
+          'techniqueIssue', cs.technique_issue,
+          'limitationCause', cs.limitation_cause,
+          'distanceKm', cs.distance_km,
           'durationSeconds', cs.duration_seconds
         )
       FROM user_sets cs
@@ -190,6 +193,16 @@ export async function evaluateApplicationIntegrity(
         OR cs.weight < 0
         OR cs.reps < 0
         OR cs.rpe < 0 OR cs.rpe > 10
+        OR cs.rir < 0 OR cs.rir > 10
+        OR (cs.rir IS NOT NULL AND cs.rpe IS NOT NULL)
+        OR cs.technique_issue NOT IN (
+          'bracing', 'range_of_motion', 'control', 'balance', 'positioning',
+          'tempo', 'other'
+        )
+        OR cs.limitation_cause NOT IN (
+          'strength_fatigue', 'breathing_conditioning', 'grip', 'mobility',
+          'pain', 'technique', 'equipment_setup', 'time', 'other'
+        )
         OR cs.distance_km < 0
         OR cs.duration_seconds < 0
 
@@ -357,6 +370,43 @@ export async function evaluateApplicationIntegrity(
       WHERE p.user_id = ${userId}::uuid
         AND p.completed_set_id IS NOT NULL
         AND cs.id IS NULL
+
+      UNION ALL
+      SELECT 'pain_log.completed_set_context', 'error', 'pain_log', p.id::text,
+        'A set-linked pain record contradicts its completed set context.',
+        jsonb_build_object(
+          'completedSetId', p.completed_set_id,
+          'sessionId', p.session_id,
+          'exerciseId', p.exercise_id
+        )
+      FROM pain_logs p
+      JOIN user_sets cs ON cs.id = p.completed_set_id
+      JOIN user_session_exercises se ON se.id = cs.session_exercise_id
+      WHERE p.user_id = ${userId}::uuid
+        AND (
+          p.session_id IS DISTINCT FROM se.session_id
+          OR p.exercise_id IS DISTINCT FROM se.exercise_id
+          OR p.body_part NOT IN (
+            'shoulder', 'knee', 'back', 'elbow', 'wrist', 'hip', 'other'
+          )
+          OR p.severity NOT BETWEEN 1 AND 10
+          OR p.source NOT IN ('set_flag', 'set_exception')
+          OR length(coalesce(p.note, '')) > 500
+        )
+
+      UNION ALL
+      SELECT 'pain_log.completed_set_unique', 'error', 'completed_set', p.completed_set_id::text,
+        'A completed set has more than one active pain record.',
+        jsonb_build_object(
+          'completedSetId', p.completed_set_id,
+          'activeCount', count(*)
+        )
+      FROM pain_logs p
+      WHERE p.user_id = ${userId}::uuid
+        AND p.completed_set_id IS NOT NULL
+        AND p.archived_at IS NULL
+      GROUP BY p.completed_set_id
+      HAVING count(*) > 1
 
       UNION ALL
       SELECT 'pain_log.severity', 'error', 'pain_log', p.id::text,

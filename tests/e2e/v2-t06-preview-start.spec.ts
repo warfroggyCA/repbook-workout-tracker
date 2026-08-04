@@ -1,6 +1,7 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
 import {
   installNextDevelopmentRefreshControl,
+  openNativeDetails,
   waitForHydratedReactHandler,
   waitForHydratedServerAction,
 } from "../helpers/react-readiness";
@@ -23,13 +24,9 @@ async function signIn(page: Page) {
 }
 
 async function openAlternatePreview(page: Page, day: RegExp) {
-  const current = new URL(page.url());
-  if (current.pathname !== "/today" || current.search) {
-    await page.waitForLoadState("networkidle");
-    await page.goto("/today");
-  }
+  await page.goto("/today");
   const alternatives = page.getByTestId("alternate-program-days");
-  await alternatives.locator("summary").click();
+  await openNativeDetails(alternatives);
   await alternatives.getByRole("button", { name: day }).click();
   await expect(page).toHaveURL(/\/today\?preview=[0-9a-f-]+$/);
   const start = page.getByRole("button", { name: "Start workout", exact: true });

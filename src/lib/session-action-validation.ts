@@ -3,6 +3,11 @@ import {
   PERFORMED_LOAD_SEMANTICS,
   validateSetWriterShape,
 } from "@/lib/set-metric-semantics";
+import {
+  LIMITATION_CAUSES,
+  PAIN_BODY_PARTS,
+  TECHNIQUE_ISSUES,
+} from "@/lib/set-exception-context";
 
 const loadUnitSchema = z.enum(["lb", "kg"]);
 const loadSemanticsSchema = z.enum(PERFORMED_LOAD_SEMANTICS);
@@ -15,6 +20,14 @@ const logSetCommandFields = {
   performedLoadSemantics: loadSemanticsSchema,
   setNo: z.number().int().min(1).max(50),
   rpe: z.number().min(1).max(10).nullable().optional(),
+  rir: z.number().min(0).max(10).nullable().optional(),
+  techniqueIssue: z.enum(TECHNIQUE_ISSUES).nullable().optional(),
+  limitationCause: z.enum(LIMITATION_CAUSES).nullable().optional(),
+  pain: z.object({
+    bodyPart: z.enum(PAIN_BODY_PARTS),
+    severity: z.number().int().min(1).max(10),
+    note: z.string().max(500).nullable(),
+  }).nullable().optional(),
   isWarmup: z.boolean().optional(),
   note: z.string().max(500).nullable().optional(),
   clientKey: z.string().min(1).max(64),
@@ -100,6 +113,10 @@ export const logSetSchema = z
   .refine((value) => value.isWarmup !== true, {
     message: "Warm-ups use the occurrence action path.",
     path: ["isWarmup"],
+  })
+  .refine((value) => value.rpe == null || value.rir == null, {
+    message: "Record effort as either RIR or RPE, not both.",
+    path: ["rir"],
   })
   .refine(
     (value) =>

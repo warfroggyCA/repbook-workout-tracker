@@ -5,8 +5,8 @@
   "repositoryRole": "public application source",
   "exactBaseCommit": "2c9ab1b9478502f1d08956a6c44dfb0850c8f168",
   "fixtureCatalogue": "tests/fixtures/v2/semantic-scenarios.json",
-  "currentPackage": "U01",
-  "currentPackageBaseCommit": "d3c38e66ac6f12d5a880fadf38f3411d1c49dfed",
+  "currentPackage": "U02",
+  "currentPackageBaseCommit": "91060159e9a8ecb0d853506427731c9d81351f46",
   "productBehaviorImplementedByP02": false,
   "implementedProductPackages": [
     "T01",
@@ -15,7 +15,8 @@
     "T04",
     "T05",
     "T06",
-    "U01"
+    "U01",
+    "U02"
   ],
   "legend": {
     "R": "required primary proof",
@@ -368,39 +369,39 @@
       "proves": "must pass in the same package that implements this product meaning"
     },
     "U02-databaseService": {
-      "status": "future_activation",
+      "status": "current",
       "implementingPackage": "U02",
       "testPath": "tests/unit/v2-u02-exception-context-db.test.ts",
       "command": "npx vitest run tests/unit/v2-u02-exception-context-db.test.ts",
-      "proves": "must pass in the same package that implements this product meaning"
+      "proves": "ordinary completed sets retain null unknown exception fields, while one explicit RIR-or-RPE, technique issue, limitation cause, note, and set-linked pain flag save atomically with exact retry identity"
     },
     "U02-browser": {
-      "status": "future_activation",
+      "status": "current",
       "implementingPackage": "U02",
       "testPath": "tests/e2e/v2-u02-exception-context.spec.ts",
-      "command": "npx playwright test tests/e2e/v2-u02-exception-context.spec.ts",
-      "proves": "must pass in the same package that implements this product meaning"
+      "command": "npx playwright test --config=playwright.v2-u02.config.ts tests/e2e/v2-u02-exception-context.spec.ts",
+      "proves": "desktop Chromium, 440 by 956 mobile Chromium, and 320 by 700 mobile WebKit at extra-large text keep ordinary logging collapsed, make pain and issue context clearable before save, retain the exact offline command, and expose saved evidence in History and Review without overflow"
     },
     "U02-exportImport": {
-      "status": "future_activation",
+      "status": "current",
       "implementingPackage": "U02",
       "testPath": "tests/unit/v2-u02-exception-context-portability.test.ts",
       "command": "npx vitest run tests/unit/v2-u02-exception-context-portability.test.ts",
-      "proves": "must pass in the same package that implements this product meaning"
+      "proves": "set CSV, pain CSV, and snapshot schema 29 preserve exact nullable effort and issue fields plus the exact completed-set pain link"
     },
     "U02-restoreRollback": {
-      "status": "future_activation",
+      "status": "current",
       "implementingPackage": "U02",
       "testPath": "tests/unit/v2-u02-exception-context-restore.test.ts",
       "command": "npx vitest run tests/unit/v2-u02-exception-context-restore.test.ts",
-      "proves": "must pass in the same package that implements this product meaning"
+      "proves": "history restore returns set exception and linked pain evidence together, while schema 28 upgrades add explicit null unknowns without inference"
     },
     "U02-adversarialPrivacy": {
-      "status": "future_activation",
+      "status": "current",
       "implementingPackage": "U02",
       "testPath": "tests/unit/v2-u02-exception-context-adversarial.test.ts",
       "command": "npx vitest run tests/unit/v2-u02-exception-context-adversarial.test.ts",
-      "proves": "must pass in the same package that implements this product meaning"
+      "proves": "changed retry evidence conflicts, cross-owner and invented pain linkage fails closed, old offline commands upgrade with unknown context, capture itself writes no recommendation, decision, or adaptation, and durable set_exception pain remains Review-visible without entering automatic pain holds"
     },
     "R01-databaseService": {
       "status": "future_activation",
@@ -1689,6 +1690,7 @@
     "A consequential package owns its required persistence, UI, portability, recovery, and adversarial activation evidence rather than deferring those obligations to a later audit.",
     "No production owner data, production access, feature route, schema, migration, or deployment is part of P02.",
     "No production owner data, production access, schema migration, or deployment is part of T01.",
-    "U01 current status means its presentation change and dedicated browser evidence travel together; it adds no schema, migration, persistence writer, or historical rewrite."
+    "U01 current status means its presentation change and dedicated browser evidence travel together; it adds no schema, migration, persistence writer, or historical rewrite.",
+    "U02 current status means exception evidence, its set-linked pain identity, browser failure recovery, History and Review read paths, export, and restore evidence travel together; it does not imply release, deployment, recommendation approval, or Program adaptation."
   ]
 }

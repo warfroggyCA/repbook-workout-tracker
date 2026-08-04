@@ -6,6 +6,14 @@ import {
   type PerformedMetricType,
   type PerformedSetMeasurement,
 } from "@/lib/set-metric-semantics";
+import {
+  LIMITATION_CAUSES,
+  PAIN_BODY_PARTS,
+  TECHNIQUE_ISSUES,
+  type LimitationCause,
+  type SetPainContext,
+  type TechniqueIssue,
+} from "@/lib/set-exception-context";
 
 export const WORKOUT_SET_OUTBOX_STORAGE_KEY =
   "workout-tracker:workout-set-outbox:v1";
@@ -55,6 +63,10 @@ type WorkoutSetOutboxCommand = {
   exerciseName: string;
   setNo: number;
   rpe: number | null;
+  rir: number | null;
+  techniqueIssue: TechniqueIssue | null;
+  limitationCause: LimitationCause | null;
+  pain: SetPainContext | null;
   note: string | null;
   equipmentSnapshotId: string | null;
   /** Pending local selection that must be acknowledged before this set. */
@@ -90,7 +102,17 @@ export type NewWorkoutSetOutboxEntry = DistributiveOmit<
   | "lastAttemptAtISO"
   | "lastError"
   | "observedCompletedAtISO"
-> & { observedCompletedAtISO?: string | null };
+  | "rir"
+  | "techniqueIssue"
+  | "limitationCause"
+  | "pain"
+> & {
+  observedCompletedAtISO?: string | null;
+  rir?: number | null;
+  techniqueIssue?: TechniqueIssue | null;
+  limitationCause?: LimitationCause | null;
+  pain?: SetPainContext | null;
+};
 
 export type WorkoutSetOutboxSnapshot = {
   entries: WorkoutSetOutboxEntry[];
@@ -428,6 +450,21 @@ function isWorkoutSetOutboxEntry(value: unknown): value is WorkoutSetOutboxEntry
     value.setNo >= 1 &&
     value.setNo <= 50 &&
     isNullableNumber(value.rpe, 1, 10) &&
+    isNullableNumber(value.rir, 0, 10) &&
+    (value.rpe === null || value.rir === null) &&
+    (value.techniqueIssue === null ||
+      TECHNIQUE_ISSUES.includes(value.techniqueIssue as TechniqueIssue)) &&
+    (value.limitationCause === null ||
+      LIMITATION_CAUSES.includes(value.limitationCause as LimitationCause)) &&
+    (value.pain === null || (
+      isRecord(value.pain) &&
+      PAIN_BODY_PARTS.includes(value.pain.bodyPart as SetPainContext["bodyPart"]) &&
+      Number.isInteger(value.pain.severity) &&
+      Number(value.pain.severity) >= 1 &&
+      Number(value.pain.severity) <= 10 &&
+      (value.pain.note === null ||
+        (typeof value.pain.note === "string" && value.pain.note.length <= 500))
+    )) &&
     (value.note === null ||
       (typeof value.note === "string" && value.note.length <= 500)) &&
     isDate(value.createdAtISO) &&
@@ -529,7 +566,15 @@ export function parseWorkoutSetOutbox(raw: string | null): WorkoutSetOutboxSnaps
       });
       continue;
     }
-    const migrated = raw;
+    const migrated = isRecord(raw)
+      ? {
+          ...raw,
+          rir: raw.rir ?? null,
+          techniqueIssue: raw.techniqueIssue ?? null,
+          limitationCause: raw.limitationCause ?? null,
+          pain: raw.pain ?? null,
+        }
+      : raw;
     if (!isWorkoutSetOutboxEntry(migrated)) {
       quarantined.push({
         quarantineKey: `entries:${sourceIndex}`,
@@ -615,6 +660,10 @@ function sameSet(
     entry.distanceKm === input.distanceKm &&
     entry.durationSeconds === input.durationSeconds &&
     entry.rpe === input.rpe &&
+    entry.rir === (input.rir ?? null) &&
+    entry.techniqueIssue === (input.techniqueIssue ?? null) &&
+    entry.limitationCause === (input.limitationCause ?? null) &&
+    hasSameRawValue(entry.pain, input.pain ?? null) &&
     entry.note === input.note
     && entry.equipmentSnapshotId === input.equipmentSnapshotId
     && (entry.equipmentSelectionClientKey ?? null) ===
@@ -672,6 +721,10 @@ export function enqueueWorkoutSetOutboxEntry(
   }
   const entry: WorkoutSetOutboxEntry = {
     ...input,
+    rir: input.rir ?? null,
+    techniqueIssue: input.techniqueIssue ?? null,
+    limitationCause: input.limitationCause ?? null,
+    pain: input.pain ?? null,
     observedCompletedAtISO: input.observedCompletedAtISO ?? null,
     status: "queued",
     attemptCount: 0,

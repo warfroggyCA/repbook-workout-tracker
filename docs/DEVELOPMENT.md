@@ -27,7 +27,7 @@ npm run docs:check
 npm run audit:check
 ```
 
-The Repbook v2 semantic foundation and current T01/T02/T03/T04/T05/T06/U01 activation
+The Repbook v2 semantic foundation and current T01/T02/T03/T04/T05/T06/U01/U02 activation
 packages have focused gates:
 
 ```bash
@@ -45,6 +45,8 @@ npm run test:e2e:v2-t05
 npx vitest run tests/unit/v2-t06-preview-start-db.test.ts tests/unit/v2-t06-preview-start-portability.test.ts tests/unit/v2-t06-preview-start-restore.test.ts tests/unit/live-coaching-db.test.ts
 npm run test:e2e:v2-t06
 npm run test:e2e:v2-u01
+npx vitest run tests/unit/v2-u02-exception-context-db.test.ts tests/unit/v2-u02-exception-context-portability.test.ts tests/unit/v2-u02-exception-context-restore.test.ts tests/unit/v2-u02-exception-context-adversarial.test.ts
+npm run test:e2e:v2-u02
 ```
 
 The semantic test validates all synthetic F01-F17 scenarios and every required
@@ -65,9 +67,12 @@ outcomes, and immutable prescribed exercise meaning across active display,
 History/Review, export, snapshot schema 28, and restore. U01 activates the
 current-first active-workout hierarchy, one ordinary commit action, progressive
 disclosure, exact acknowledgement visibility, 44-pixel reachable controls, and
-overflow checks on desktop, 440×956 mobile, and 320×700 mobile. Recovery manifest 10
-remains the authoritative table inventory. Every later package must activate its own
-reserved evidence before its product behavior is considered implemented.
+overflow checks on desktop, 440×956 mobile, and 320×700 mobile. U02 activates
+exception-only effort, technique, limitation, note, and set-linked pain capture;
+offline retry identity; History and Review visibility; snapshot schema 29; and
+restore with explicit unknowns for schema 28. Recovery manifest 10 remains the
+authoritative table inventory. Every later package must activate its own reserved
+evidence before its product behavior is considered implemented.
 
 `audit:check` requires a clean production dependency audit and also reviews the
 complete development-tool tree. Any temporary development-only exception is
@@ -98,6 +103,7 @@ npm run test:e2e:current-action
 npm run test:e2e:superset-prep
 npm run test:e2e:v2-t06
 npm run test:e2e:v2-u01
+npm run test:e2e:v2-u02
 ```
 
 Run the smallest affected browser suite first, then the complete protected

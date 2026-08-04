@@ -54,6 +54,7 @@ export async function loadProgramPreflightContext(
         AND session.status = 'completed'
         AND session.archived_at IS NULL
         AND pain.archived_at IS NULL
+        AND pain.source <> 'set_exception'::pain_source
         AND pain.severity > 0
         AND pain.exercise_id IS NOT NULL
         AND pain.exercise_id IN (${sql.join(exerciseIds.map((id) => sql`${id}::uuid`), sql`, `)})

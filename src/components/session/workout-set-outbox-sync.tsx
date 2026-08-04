@@ -68,18 +68,35 @@ import {
   writeRestTimer,
 } from "@/lib/rest-timer";
 import { effortChoiceForLegacyRpe } from "@/lib/active-workout-language";
+import {
+  LIMITATION_CAUSE_LABELS,
+  TECHNIQUE_ISSUE_LABELS,
+} from "@/lib/set-exception-context";
 
 const activeOwners = new Set<string>();
 
 const TRANSIENT_SET_FAILURE =
   "We couldn't save this set yet. We'll keep trying when you're back online.";
 
-function formatRetainedEffort(rpe: number | null) {
-  if (rpe == null) return "";
-  const category = effortChoiceForLegacyRpe(rpe);
-  return category
-    ? ` · ${category.label} (RPE ${rpe})`
-    : ` · RPE ${rpe}`;
+function formatRetainedContext(entry: WorkoutSetOutboxEntry) {
+  const context: string[] = [];
+  if (entry.rir != null) context.push(`RIR ${entry.rir}`);
+  if (entry.rpe != null) {
+    const category = effortChoiceForLegacyRpe(entry.rpe);
+    context.push(category
+      ? `${category.label} (RPE ${entry.rpe})`
+      : `RPE ${entry.rpe}`);
+  }
+  if (entry.techniqueIssue != null) {
+    context.push(`Technique: ${TECHNIQUE_ISSUE_LABELS[entry.techniqueIssue]}`);
+  }
+  if (entry.limitationCause != null) {
+    context.push(`Limited by: ${LIMITATION_CAUSE_LABELS[entry.limitationCause]}`);
+  }
+  if (entry.pain != null) {
+    context.push(`Pain: ${entry.pain.bodyPart} ${entry.pain.severity}/10`);
+  }
+  return context.length === 0 ? "" : ` · ${context.join(" · ")}`;
 }
 
 function formatRetainedWorkout(entry: WorkoutSetOutboxEntry) {
@@ -113,6 +130,10 @@ function serverSetCommand(entry: WorkoutSetOutboxEntry): LogSetInput {
     performedLoadSemantics: entry.performedLoadSemantics,
     setNo: entry.setNo,
     rpe: entry.rpe,
+    rir: entry.rir,
+    techniqueIssue: entry.techniqueIssue,
+    limitationCause: entry.limitationCause,
+    pain: entry.pain,
     note: entry.note,
     clientKey: entry.clientKey,
     equipmentSnapshotId: entry.equipmentSnapshotId,
@@ -854,7 +875,7 @@ export function WorkoutSetOutboxTray({
                   </div>
                   <p className="mt-2 text-sm">
                     {formatRetainedMeasurement(entry)}
-                    {formatRetainedEffort(entry.rpe)}
+                    {formatRetainedContext(entry)}
                   </p>
                   {entry.lastError && (
                     <p className="mt-2 text-xs text-amber-800 dark:text-amber-300">
