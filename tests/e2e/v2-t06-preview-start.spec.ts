@@ -21,6 +21,7 @@ async function signIn(page: Page) {
   await waitForHydratedServerAction(login);
   await login.click();
   await expect(page).toHaveURL(/\/today$/);
+  await page.waitForLoadState("networkidle");
 }
 
 async function openAlternatePreview(page: Page, day: RegExp) {
