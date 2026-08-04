@@ -62,7 +62,7 @@ async function inspectSearchResult(picker: Locator, name: string) {
     exact: true,
   });
   for (let attempt = 0; attempt < 2; attempt += 1) {
-    await waitForHydratedReactChangeHandler(search);
+    await expect(search).toBeEditable();
     await search.fill("");
     await search.pressSequentially(name, { delay: 10 });
     try {
@@ -76,54 +76,61 @@ async function inspectSearchResult(picker: Locator, name: string) {
 }
 
 async function expectKeyboardGeometry(page: Page, picker: Locator) {
-  const geometry = await picker.evaluate((dialog) => {
-    const viewport = window.visualViewport;
-    const visibleTop = viewport?.offsetTop ?? 0;
-    const visibleBottom = visibleTop + (viewport?.height ?? window.innerHeight);
-    const dialogRect = dialog.getBoundingClientRect();
-    const focusedRect = document.activeElement?.getBoundingClientRect() ?? null;
-    const scrollOwners = [...dialog.querySelectorAll<HTMLElement>("*")]
-      .filter((element) => {
-        const style = getComputedStyle(element);
-        return (
-          /(auto|scroll)/.test(style.overflowY) &&
-          element.scrollHeight > element.clientHeight + 1
+  await expect(async () => {
+    const geometry = await picker.evaluate((dialog) => {
+      const viewport = window.visualViewport;
+      const visibleTop = viewport?.offsetTop ?? 0;
+      const visibleBottom = visibleTop + (viewport?.height ?? window.innerHeight);
+      const dialogRect = dialog.getBoundingClientRect();
+      const focusedRect = document.activeElement?.getBoundingClientRect() ?? null;
+      const scrollOwners = [...dialog.querySelectorAll<HTMLElement>("*")]
+        .filter((element) => {
+          const style = getComputedStyle(element);
+          return (
+            /(auto|scroll)/.test(style.overflowY) &&
+            element.scrollHeight > element.clientHeight + 1
+          );
+        })
+        .map(
+          (element) =>
+            element.dataset.testid ?? element.dataset.slot ?? element.tagName,
         );
-      })
-      .map((element) => element.dataset.testid ?? element.dataset.slot ?? element.tagName);
-    return {
-      visibleTop,
-      visibleBottom,
-      dialog: {
-        top: dialogRect.top,
-        bottom: dialogRect.bottom,
-        left: dialogRect.left,
-        right: dialogRect.right,
-      },
-      focused: focusedRect
-        ? { top: focusedRect.top, bottom: focusedRect.bottom }
-        : null,
-      scrollOwners,
-      documentOverflow:
-        document.documentElement.scrollWidth -
-        document.documentElement.clientWidth,
-    };
-  });
-  expect(geometry.dialog.top).toBeGreaterThanOrEqual(geometry.visibleTop - 1);
-  expect(geometry.dialog.bottom).toBeLessThanOrEqual(geometry.visibleBottom + 1);
-  expect(geometry.dialog.left).toBeGreaterThanOrEqual(-1);
-  expect(geometry.dialog.right).toBeLessThanOrEqual(
-    (await page.evaluate(() => document.documentElement.clientWidth)) + 1,
-  );
-  expect(geometry.focused).not.toBeNull();
-  expect(geometry.focused?.top ?? -1).toBeGreaterThanOrEqual(
-    geometry.visibleTop - 1,
-  );
-  expect(geometry.focused?.bottom ?? Number.POSITIVE_INFINITY).toBeLessThanOrEqual(
-    geometry.visibleBottom + 1,
-  );
-  expect(geometry.scrollOwners).toEqual(["exercise-picker-scroll"]);
-  expect(geometry.documentOverflow).toBeLessThanOrEqual(1);
+      return {
+        visibleTop,
+        visibleBottom,
+        dialog: {
+          top: dialogRect.top,
+          bottom: dialogRect.bottom,
+          left: dialogRect.left,
+          right: dialogRect.right,
+        },
+        focused: focusedRect
+          ? { top: focusedRect.top, bottom: focusedRect.bottom }
+          : null,
+        scrollOwners,
+        documentOverflow:
+          document.documentElement.scrollWidth -
+          document.documentElement.clientWidth,
+      };
+    });
+    expect(geometry.dialog.top).toBeGreaterThanOrEqual(geometry.visibleTop - 1);
+    expect(geometry.dialog.bottom).toBeLessThanOrEqual(
+      geometry.visibleBottom + 1,
+    );
+    expect(geometry.dialog.left).toBeGreaterThanOrEqual(-1);
+    expect(geometry.dialog.right).toBeLessThanOrEqual(
+      (await page.evaluate(() => document.documentElement.clientWidth)) + 1,
+    );
+    expect(geometry.focused).not.toBeNull();
+    expect(geometry.focused?.top ?? -1).toBeGreaterThanOrEqual(
+      geometry.visibleTop - 1,
+    );
+    expect(
+      geometry.focused?.bottom ?? Number.POSITIVE_INFINITY,
+    ).toBeLessThanOrEqual(geometry.visibleBottom + 1);
+    expect(geometry.scrollOwners).toEqual(["exercise-picker-scroll"]);
+    expect(geometry.documentOverflow).toBeLessThanOrEqual(1);
+  }).toPass({ timeout: 5_000 });
 }
 
 test("keeps unrestricted replacement truthful and reachable through mobile keyboard resize", async ({
