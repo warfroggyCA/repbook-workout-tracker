@@ -477,7 +477,11 @@ export function SessionRunner(props: SessionRunnerProps) {
       }
       focusFrame = window.requestAnimationFrame(() => {
         const target = document.getElementById(currentActionTargetId);
-        target?.scrollIntoView({ behavior: "smooth", block: "center" });
+        // The rest status is fixed and already visible. Scrolling it can move the
+        // acknowledgement that was deliberately kept in view after a save.
+        if (currentActionKind !== "rest") {
+          target?.scrollIntoView({ behavior: "smooth", block: "center" });
+        }
         const focusTarget = target?.matches("[tabindex]")
           ? target
           : target?.querySelector<HTMLElement>("button, [href], input");
