@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { and, desc, eq, inArray, isNull } from "drizzle-orm";
 import { getDb } from "@/db";
 import {
@@ -49,6 +49,21 @@ import {
   type LimitationCause,
   type TechniqueIssue,
 } from "@/lib/set-exception-context";
+import {
+  HISTORY_CORRECTION_LABELS,
+  HISTORY_PROVENANCE_LABELS,
+  HISTORY_SET_CORRECTION_ACTIONS,
+  PERFORMED_SEMANTIC_FACET_LABELS,
+  buildHistoryCorrectionEvidenceRows,
+  classifyCalculationEligibility,
+  classifyHistoryCorrectionFacet,
+  classifyHistoryProvenance,
+  classifyHistoryTerminalState,
+  classifyPerformedSemanticFacet,
+  completedWarmupOccurrences,
+  historyTerminalLabel,
+  performedWorkingSetIds,
+} from "@/lib/history-workout-evidence";
 
 function techniqueIssueLabel(value: string | null) {
   return value != null && value in TECHNIQUE_ISSUE_LABELS
@@ -108,9 +123,11 @@ export default async function SessionDetailPage(
       painLogs: { where: isNull(painLogs.archivedAt) },
       notes: { where: isNull(sessionNotes.archivedAt) },
       occurrences: { orderBy: sessionOccurrences.sequenceIdx },
+      importBatch: true,
     },
   });
   if (!session) notFound();
+  if (session.status === "in_progress") redirect(`/session/${session.id}`);
   const durationExcluded =
     session.finishedAt != null &&
     shouldExcludeWorkoutDuration(
@@ -161,10 +178,7 @@ export default async function SessionDetailPage(
   ]);
   const correctionsBySetId = new Map<string, typeof setVersions>();
   for (const version of setVersions) {
-    if (
-      version.action !== "set.active_correction" &&
-      version.action !== "set.completed_correction"
-    ) continue;
+    if (!HISTORY_SET_CORRECTION_ACTIONS.has(version.action)) continue;
     const current = correctionsBySetId.get(version.entityId) ?? [];
     current.push(version);
     correctionsBySetId.set(version.entityId, current);
@@ -188,6 +202,15 @@ export default async function SessionDetailPage(
   );
   if (!archivePreview) notFound();
 
+  const terminalState = classifyHistoryTerminalState(
+    session.status,
+    session.occurrences,
+  );
+  const provenanceFacet = classifyHistoryProvenance({
+    source: session.source,
+    importBatchId: session.importBatchId,
+  });
+
   const pendingRecs = justFinished
     ? await filterRecommendationsEligibleForAction(
         db,
@@ -203,16 +226,15 @@ export default async function SessionDetailPage(
     : [];
 
   const activeSetIds = new Set(visibleSetIds);
-  const performedWorkingSetIds = new Set(
-    session.occurrences
-      .filter(
-        (occurrence) =>
-          occurrence.kind === "working_set" &&
-          occurrence.outcome === "completed" &&
-          occurrence.completedSetId != null &&
-          activeSetIds.has(occurrence.completedSetId),
-      )
-      .map((occurrence) => occurrence.completedSetId as string),
+  const performedWorkingSetIdSet = performedWorkingSetIds(
+    session.occurrences,
+    activeSetIds,
+  );
+  const performedWarmups = completedWarmupOccurrences(session.occurrences);
+  const retainedSourceSets = session.exercises.flatMap((exercise) =>
+    exercise.sets.flatMap((set) =>
+      performedWorkingSetIdSet.has(set.id) ? [] : [{ set, exercise }],
+    ),
   );
   const performedPlannedWorkingSetIds = new Set(
     session.occurrences
@@ -229,7 +251,7 @@ export default async function SessionDetailPage(
   const performedSetsBySessionExerciseId = new Map(
     session.exercises.map((exercise) => [
       exercise.id,
-      exercise.sets.filter((set) => performedWorkingSetIds.has(set.id)),
+      exercise.sets.filter((set) => performedWorkingSetIdSet.has(set.id)),
     ]),
   );
   const performedSetEvidence = session.exercises.flatMap((sessionExercise) =>
@@ -237,6 +259,11 @@ export default async function SessionDetailPage(
       (set) => ({
         set,
         sessionExercise,
+        semanticFacet: classifyPerformedSemanticFacet({
+          performedSemanticsVersion: set.performedSemanticsVersion,
+          performedLoadType: set.performedLoadType,
+          performedLoadSemantics: set.performedLoadSemantics,
+        }),
         semantics: classifySetMetricContainment({
           recordedMetricType: set.metricType,
           prescribedSemanticsVersion:
@@ -272,9 +299,10 @@ export default async function SessionDetailPage(
   );
   const totalSets = performedSetEvidence.length;
   const targetableSets = performedSetEvidence.filter(
-    ({ set, sessionExercise, semantics }) =>
+    ({ set, sessionExercise, semanticFacet, semantics }) =>
       sessionExercise.modificationType === "as_planned" &&
       performedPlannedWorkingSetIds.has(set.id) &&
+      semanticFacet === "supported" &&
       semantics.prescriptionOutcomeEligible &&
       set.targetMet != null,
   );
@@ -284,6 +312,20 @@ export default async function SessionDetailPage(
       version.action === "workout_session.timing_correction" ||
       version.action === "workout_session.version_restore",
   ).length;
+  const workoutCorrectionFacet = classifyHistoryCorrectionFacet(
+    [...setVersions, ...timingVersions]
+      .sort(
+        (left, right) =>
+          right.createdAt.getTime() - left.createdAt.getTime(),
+      )
+      .map((version) => version.action),
+  );
+  const exercisePlanEvidence = session.exercises.filter(
+    (exercise) =>
+      exercise.targetSets != null ||
+      exercise.notes != null ||
+      exercise.warmupNotes != null,
+  );
 
   return (
     <main className="flex flex-col gap-4 p-4">
@@ -344,25 +386,20 @@ export default async function SessionDetailPage(
           <h1 className="text-2xl font-semibold">
             {session.templateName ?? "Workout"}
           </h1>
-          {session.source === "history_manual" ? (
-            <Badge className="mt-2" variant="outline">
-              Entered after the workout
+          <div className="mt-2 flex flex-wrap gap-2" aria-label="Workout evidence status">
+            <Badge variant="outline">{historyTerminalLabel(terminalState)}</Badge>
+            <Badge variant="outline">
+              {HISTORY_PROVENANCE_LABELS[provenanceFacet]}
             </Badge>
-          ) : session.source !== "tracker" ? (
-            <Badge className="mt-2" variant="outline">
-              Imported from {session.source === "hevy" ? "Hevy" : session.source}
+            <Badge variant="outline">
+              {HISTORY_CORRECTION_LABELS[workoutCorrectionFacet]}
             </Badge>
-          ) : null}
+          </div>
           {session.source === "history_manual" && (
-            <Badge className="ml-2 mt-2" variant="outline">
+            <Badge className="mt-2" variant="outline">
               {session.sourceProgramId
                 ? "Linked to Program day"
                 : "Not linked to Program"}
-            </Badge>
-          )}
-          {session.status === "abandoned" && (
-            <Badge className="ml-2 mt-2" variant="outline">
-              Abandoned workout
             </Badge>
           )}
           <p className="text-sm text-muted-foreground">
@@ -378,7 +415,10 @@ export default async function SessionDetailPage(
                     ? ` · ${formatDuration(session.startedAt, session.finishedAt)}${durationExcluded ? " recorded" : ""}`
                     : " · Duration unknown"
                 }`}
-            {` · ${totalSets} sets`}
+            {` · ${totalSets} performed working ${totalSets === 1 ? "set" : "sets"}`}
+            {performedWarmups.length > 0
+              ? ` · ${performedWarmups.length} completed ${performedWarmups.length === 1 ? "warm-up" : "warm-ups"}`
+              : ""}
             {targetableSets.length > 0
               ? ` · ${targetsMet} of ${targetableSets.length} comparable targets met`
               : ""}
@@ -414,13 +454,7 @@ export default async function SessionDetailPage(
               excludeDurationFromAnalytics={
                 session.excludeDurationFromAnalytics
               }
-              sourceLabel={
-                session.source === "history_manual"
-                  ? "Entered after the workout"
-                  : session.source === "tracker"
-                    ? "Recorded in Repbook"
-                    : `Imported from ${session.source === "hevy" ? "Hevy" : session.source}`
-              }
+              sourceLabel={HISTORY_PROVENANCE_LABELS[provenanceFacet]}
               programLinkLabel={
                 session.sourceProgramId
                   ? "Program-day linkage retained"
@@ -452,6 +486,27 @@ export default async function SessionDetailPage(
         </div>
       </header>
 
+      {terminalState === "abandoned" && (
+        <section className="rounded-xl border border-amber-400/50 bg-amber-50/60 p-4 text-sm dark:bg-amber-950/20">
+          <h2 className="font-medium">Retained abandoned-workout evidence</h2>
+          <p className="mt-1 text-muted-foreground">
+            Acknowledged performed facts remain visible and correctable. They are
+            excluded from completed metrics, progression, and Review; the
+            abandoned workout does not become a completed workout.
+          </p>
+        </section>
+      )}
+
+      {terminalState === "finished_early" && (
+        <section className="rounded-xl border border-amber-400/50 bg-amber-50/60 p-4 text-sm dark:bg-amber-950/20">
+          <h2 className="font-medium">Finished early</h2>
+          <p className="mt-1 text-muted-foreground">
+            Completed working sets remain performed evidence. Items left when
+            you finished stay in the original plan as not completed.
+          </p>
+        </section>
+      )}
+
       {pendingRecs.length > 0 && (
         <div className="rounded-xl border border-primary/40 p-3">
           <p className="text-sm font-medium">
@@ -467,155 +522,65 @@ export default async function SessionDetailPage(
         </div>
       )}
 
-      {session.dayWarmupNotes && (
-        <section className="rounded-xl border border-violet-300/60 bg-violet-50/60 p-4 dark:bg-violet-950/20">
-          <h2 className="font-medium">Warm-up</h2>
-          <p className="mt-1 whitespace-pre-line text-sm leading-6 text-muted-foreground">
-            {session.dayWarmupNotes}
-          </p>
-        </section>
-      )}
-
-      {contextualNotes.length > 0 && (
-        <section className="rounded-xl border p-4" aria-labelledby="contextual-notes-heading">
-          <h2 id="contextual-notes-heading" className="font-medium">Training notes</h2>
-          <p className="mt-1 text-xs text-muted-foreground">
-            Your observations are shown with the workout item they describe. Private notes stay out of Coach and Review context.
-          </p>
-          <ol className="mt-3 space-y-2">
-            {contextualNotes.map((note) => {
-              const exerciseName = note.sessionExerciseId
-                ? session.exercises.find((exercise) => exercise.id === note.sessionExerciseId)?.exercise.name
-                : null;
-              const occurrence = note.occurrenceId
-                ? session.occurrences.find((item) => item.id === note.occurrenceId)
-                : null;
-              const placement = note.attachmentKind === "workout"
-                ? "Entire workout"
-                : note.attachmentKind === "rest"
-                  ? `Rest · ${exerciseName ?? "workout item"}`
-                  : note.attachmentKind === "set" || note.attachmentKind === "occurrence"
-                    ? `${exerciseName ?? "Workout item"}${occurrence ? ` · item ${occurrence.sequenceIdx + 1}` : ""}`
-                    : exerciseName ?? "Workout note";
-              return (
-                <li key={note.id} className="rounded-lg bg-muted/40 p-3 text-sm">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <span className="font-medium">{placement}</span>
-                    <span className="text-xs text-muted-foreground">
-                      {note.coachVisible ? "Coach-visible" : "Private"} · revision {note.revision}
-                    </span>
-                  </div>
-                  <p className="mt-1 whitespace-pre-wrap leading-6">{note.body}</p>
-                </li>
-              );
-            })}
-          </ol>
-        </section>
-      )}
-
-      {session.occurrences.length > 0 && (
-        <section className="rounded-xl border p-4">
-          <h2 className="font-medium">Plan and results</h2>
-          <p className="mt-1 text-xs text-muted-foreground">
-            Your original plan stays separate from what you actually did.
-          </p>
-          <ol className="mt-3 flex flex-col gap-2">
-            {session.occurrences.map((occurrence) => {
-              const exerciseName = occurrence.plannedExerciseId
-                ? exerciseNames.get(occurrence.plannedExerciseId) ?? "Exercise"
-                : null;
-              const setPosition =
-                occurrence.kind === "working_set"
-                  ? workingSetDisplayPosition(
-                      occurrence,
-                      session.occurrences,
-                    )
-                  : null;
-              const identity = occurrence.kind === "day_warmup"
-                ? occurrence.label ?? "Day warm-up"
-                : occurrence.kind === "exercise_warmup"
-                  ? `${exerciseName ?? "Exercise"} warm-up${occurrence.label ? ` — ${occurrence.label}` : ""}`
-                  : `${exerciseName ?? "Exercise"} · ${setPosition?.lowercaseLabel ?? `set ${occurrence.kindOrdinal + 1}`}`;
-              const archivedResult = occurrence.outcome === "completed"
-                && occurrence.completedSetId != null
-                && !activeSetIds.has(occurrence.completedSetId);
-              const prescription: string[] = [];
-              if (occurrence.plannedRepsMin != null) {
-                prescription.push(
-                  occurrence.plannedRepsMax != null &&
-                    occurrence.plannedRepsMax !== occurrence.plannedRepsMin
-                    ? `${occurrence.plannedRepsMin}–${occurrence.plannedRepsMax} reps`
-                    : `${occurrence.plannedRepsMin} reps`,
-                );
-              }
-              if (occurrence.plannedLoad != null && occurrence.plannedLoadUnit) {
-                prescription.push(`${occurrence.plannedLoad} ${occurrence.plannedLoadUnit}`);
-              } else if (occurrence.plannedLoadPercent != null) {
-                prescription.push(`${occurrence.plannedLoadPercent}% of work weight`);
-              } else if (occurrence.plannedLoadText) {
-                prescription.push(occurrence.plannedLoadText);
-              }
-              if (occurrence.plannedNote) prescription.push(occurrence.plannedNote);
-              if (occurrence.plannedRestSec != null && !occurrence.groupSnapshotId) {
-                prescription.push(`${occurrence.plannedRestSec}s rest after`);
-              }
-              return (
-                <li key={occurrence.id} className="rounded-md bg-muted/40 px-3 py-2 text-sm">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <span>{occurrence.sequenceIdx + 1}. {identity}</span>
-                    <span className="flex flex-wrap gap-1">
-                      {occurrence.origin === "ad_hoc" && (
-                        <Badge variant="outline">added during workout</Badge>
-                      )}
-                      <Badge variant="outline">
-                        {archivedResult
-                          ? "saved result removed"
-                          : occurrenceOutcomeLabel(occurrence.outcome)}
-                      </Badge>
-                    </span>
-                  </div>
-                  {prescription.length > 0 && (
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      {occurrence.origin === "ad_hoc"
-                        ? "Workout-only guidance"
-                        : "Planned"}
-                      : {prescription.join(" · ")}
-                    </p>
-                  )}
-                  {(occurrence.outcomeReason || occurrence.outcomeNote) && (
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      {occurrence.outcomeReason
-                        ? `Reason: ${occurrence.outcomeReason.replaceAll("_", " ")}`
-                        : ""}
-                      {occurrence.outcomeReason && occurrence.outcomeNote ? " · " : ""}
-                      {occurrence.outcomeNote ? `Note: ${occurrence.outcomeNote}` : ""}
-                    </p>
-                  )}
-                  {occurrence.groupSnapshotId && (
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      Group round {occurrence.groupRound ?? "?"} · member {(occurrence.groupMemberOrderIdx ?? 0) + 1}
-                      {occurrence.plannedRestSec != null ? ` · ${occurrence.plannedRestSec}s rest after` : ""}
-                    </p>
-                  )}
-                </li>
-              );
-            })}
-          </ol>
-        </section>
-      )}
-
-      <div
+      <section
         id="performed-exercises"
         className="flex scroll-mt-4 flex-col gap-3"
+        aria-labelledby="what-you-did-heading"
       >
-        {session.exercises.map((se) => {
+        <div>
+          <h2 id="what-you-did-heading" className="text-lg font-semibold">
+            What you did
+          </h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Acknowledged performed working sets appear first. Warm-ups and
+            retained source records stay distinct and do not inflate this count.
+          </p>
+        </div>
+
+        {performedWarmups.length > 0 && (
+          <div className="rounded-xl border p-3">
+            <h3 className="font-medium">Completed warm-ups</h3>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Completed warm-up actions are performed evidence, not working sets.
+            </p>
+            <ul className="mt-2 space-y-2 text-sm">
+              {performedWarmups.map((occurrence) => (
+                <li
+                  key={occurrence.id}
+                  id={`performed-warmup-${occurrence.id}`}
+                  className="scroll-mt-4 rounded-md bg-muted/40 px-3 py-2"
+                >
+                  {occurrence.label ??
+                    (occurrence.kind === "day_warmup"
+                      ? "Day warm-up"
+                      : `${occurrence.plannedExerciseId ? exerciseNames.get(occurrence.plannedExerciseId) ?? "Exercise" : "Exercise"} warm-up`)}
+                  {occurrence.outcomeNote ? ` — ${occurrence.outcomeNote}` : ""}
+                  <Link
+                    className="ml-2 inline-flex min-h-11 items-center text-xs underline underline-offset-2"
+                    href={`#occurrence-${occurrence.id}`}
+                  >
+                    Original plan
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {session.exercises
+          .filter(
+            (exercise) =>
+              (performedSetsBySessionExerciseId.get(exercise.id)?.length ?? 0) >
+              0,
+          )
+          .map((se) => {
           const workingSets = performedSetsBySessionExerciseId.get(se.id) ?? [];
           const workingSetEquipment = buildHistoryEquipmentSetProjection(workingSets);
           return (
           <section key={se.id} className="rounded-xl border p-3">
             <div className="flex items-center justify-between">
               <div>
-                <h2 className="font-medium">{se.exercise.name}</h2>
+                <h3 className="font-medium">{se.exercise.name}</h3>
                 {se.sourceExerciseName && se.sourceExerciseName !== se.exercise.name && (
                   <p className="text-xs text-muted-foreground">
                     Hevy name: {se.sourceExerciseName}
@@ -650,22 +615,6 @@ export default async function SessionDetailPage(
                 Added during this workout. It has no Program slot or progression
                 target, and the saved Program was not changed.
               </p>
-            )}
-            {se.targetSets != null && (
-              <p className="text-xs text-muted-foreground">
-                Target: {se.targetSets}×{se.targetRepsMin}–{se.targetRepsMax}
-                {se.targetLoad != null && se.targetLoadUnit != null
-                  ? ` @ ${se.targetLoad} ${se.targetLoadUnit}`
-                  : ""}
-              </p>
-            )}
-            {se.modificationType !== "substituted" && se.warmupNotes && (
-              <div className="mt-2 rounded-md border bg-muted/30 px-2 py-1.5 text-xs">
-                <p className="font-medium">Warm-up guidance · reference</p>
-                <p className="mt-1 whitespace-pre-line text-muted-foreground">
-                  {se.warmupNotes}
-                </p>
-              </div>
             )}
             {workingSets.length > 0 && (
               <ul className="mt-2 flex flex-col gap-0.5 text-sm tabular-nums">
@@ -715,9 +664,27 @@ export default async function SessionDetailPage(
                             session.occurrences,
                           )
                         : null;
+                    const setCorrections = correctionsBySetId.get(s.id) ?? [];
+                    const semanticFacet = classifyPerformedSemanticFacet({
+                      performedSemanticsVersion: s.performedSemanticsVersion,
+                      performedLoadType: s.performedLoadType,
+                      performedLoadSemantics: s.performedLoadSemantics,
+                    });
+                    const correctionFacet = classifyHistoryCorrectionFacet(
+                      setCorrections.map((version) => version.action),
+                    );
+                    const correctionEvidence =
+                      buildHistoryCorrectionEvidenceRows(setCorrections);
+                    const calculationEligibility =
+                      classifyCalculationEligibility(
+                        session.status,
+                        semantics,
+                        semanticFacet,
+                      );
                     return (
                       <li
                         key={s.id}
+                        id={`performed-set-${s.id}`}
                         className="rounded-md bg-primary/5 px-2 py-1.5"
                       >
                         {setup && (
@@ -759,10 +726,27 @@ export default async function SessionDetailPage(
                             )}
                           </span>
                         </div>
+                        <div
+                          className="mt-2 flex flex-wrap gap-1"
+                          aria-label="Performed evidence facets"
+                        >
+                          <Badge variant="outline">
+                            {HISTORY_PROVENANCE_LABELS[provenanceFacet]}
+                          </Badge>
+                          <Badge variant="outline">
+                            {PERFORMED_SEMANTIC_FACET_LABELS[semanticFacet]}
+                          </Badge>
+                          <Badge variant="outline">
+                            {HISTORY_CORRECTION_LABELS[correctionFacet]}
+                          </Badge>
+                        </div>
+                        <p className="mt-2 text-xs text-muted-foreground">
+                          {calculationEligibility.label}
+                        </p>
                         <div className="mt-2 flex flex-wrap items-center justify-between gap-2 border-t pt-2">
                           <span className="text-xs text-muted-foreground">
-                            {(correctionsBySetId.get(s.id)?.length ?? 0) > 0
-                              ? `${correctionsBySetId.get(s.id)?.length} saved correction${correctionsBySetId.get(s.id)?.length === 1 ? "" : "s"} · original retained in revision history`
+                            {setCorrections.length > 0
+                              ? `${setCorrections.length} saved evidence change${setCorrections.length === 1 ? "" : "s"} · prior values retained in revision history`
                               : "No saved corrections"}
                           </span>
                           {s.metricType === "activity" ? (
@@ -786,6 +770,72 @@ export default async function SessionDetailPage(
                             />
                           )}
                         </div>
+                        {correctionEvidence.length > 0 && (
+                          <details className="mt-2 rounded-md border bg-background/70 px-2 py-1.5">
+                            <summary className="flex min-h-11 cursor-pointer items-center text-xs font-medium">
+                              Correction and restore evidence
+                            </summary>
+                            <ol className="mt-2 space-y-2">
+                              {correctionEvidence.map((version) => (
+                                <li
+                                  key={version.id}
+                                  className="rounded-md bg-muted/40 px-2 py-1.5 text-xs"
+                                >
+                                  <p className="font-medium">
+                                    {version.actionLabel}
+                                  </p>
+                                  {version.readableEnvelope ? (
+                                    <>
+                                      <p className="mt-1 text-muted-foreground">
+                                        {version.categoryLabel}
+                                        {version.reasonNote
+                                          ? ` · ${version.reasonNote}`
+                                          : ""}
+                                      </p>
+                                      <p className="mt-1 text-muted-foreground">
+                                        Source {version.sourceLabel} · History
+                                        revision {version.historyRevisionLabel} ·
+                                        evidence revision {version.ledgerRevisionLabel}
+                                      </p>
+                                      {version.decidedAt && (
+                                        <p className="mt-1 text-muted-foreground">
+                                          Decided {version.decidedAt}
+                                        </p>
+                                      )}
+                                      {version.restoreReference && (
+                                        <p className="mt-1 break-all text-muted-foreground">
+                                          Restore source {version.restoreReference}
+                                        </p>
+                                      )}
+                                    </>
+                                  ) : (
+                                    <p className="mt-1 text-muted-foreground">
+                                      Legacy correction envelope unreadable. Only
+                                      reviewed changed field names are shown.
+                                    </p>
+                                  )}
+                                  {version.deltas.length > 0 ? (
+                                    <ul className="mt-2 space-y-1">
+                                      {version.deltas.map((delta) => (
+                                        <li key={delta.field}>
+                                          {delta.label}: {delta.before} → {delta.after}
+                                        </li>
+                                      ))}
+                                    </ul>
+                                  ) : version.changedFieldLabels.length > 0 ? (
+                                    <p className="mt-2">
+                                      Changed fields: {version.changedFieldLabels.join(", ")}
+                                    </p>
+                                  ) : (
+                                    <p className="mt-2 text-muted-foreground">
+                                      No safe field delta is available.
+                                    </p>
+                                  )}
+                                </li>
+                              ))}
+                            </ol>
+                          </details>
+                        )}
                         <p className="mt-1 text-xs text-muted-foreground">
                           Load meaning: {loadMeaning}
                         </p>
@@ -831,15 +881,330 @@ export default async function SessionDetailPage(
                 )}
               </ul>
             )}
-            {se.notes && (
-              <p className="mt-2 rounded-md bg-muted px-2 py-1 text-xs">
-                {se.notes}
-              </p>
-            )}
           </section>
           );
         })}
-      </div>
+
+        {totalSets === 0 && performedWarmups.length === 0 && (
+          <p className="rounded-xl border p-4 text-sm text-muted-foreground">
+            No acknowledged performed working sets or completed warm-up actions
+            are linked to this workout.
+          </p>
+        )}
+      </section>
+
+      {(session.occurrences.length > 0 || exercisePlanEvidence.length > 0) && (
+        <section className="rounded-xl border p-4">
+          <h2 className="font-medium">Plan and results</h2>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Your original plan stays separate from what you actually did.
+          </p>
+          {session.dayWarmupNotes && (
+            <div className="mt-3 rounded-md border border-violet-300/60 bg-violet-50/60 p-3 dark:bg-violet-950/20">
+              <h3 className="text-sm font-medium">Original warm-up guidance</h3>
+              <p className="mt-1 whitespace-pre-line text-sm leading-6 text-muted-foreground">
+                {session.dayWarmupNotes}
+              </p>
+            </div>
+          )}
+          {exercisePlanEvidence.length > 0 && (
+            <div className="mt-3 rounded-md border bg-muted/20 p-3">
+              <h3 className="text-sm font-medium">Original exercise guidance</h3>
+              <ul className="mt-2 space-y-2 text-sm">
+                {exercisePlanEvidence.map((exercise) => {
+                  const plannedName =
+                    exercise.prescribedExerciseName ??
+                    (exercise.substitutedForExerciseId
+                      ? exerciseNames.get(exercise.substitutedForExerciseId)
+                      : null) ??
+                    exercise.exercise.name;
+                  const targetParts: string[] = [];
+                  if (exercise.targetSets != null) {
+                    targetParts.push(
+                      `${exercise.targetSets} planned ${exercise.targetSets === 1 ? "set" : "sets"}`,
+                    );
+                  }
+                  if (exercise.targetRepsMin != null) {
+                    targetParts.push(
+                      exercise.targetRepsMax != null &&
+                        exercise.targetRepsMax !== exercise.targetRepsMin
+                        ? `${exercise.targetRepsMin}–${exercise.targetRepsMax} reps`
+                        : `${exercise.targetRepsMin} reps`,
+                    );
+                  }
+                  if (
+                    exercise.targetLoad != null &&
+                    exercise.targetLoadUnit != null
+                  ) {
+                    targetParts.push(
+                      `${exercise.targetLoad} ${exercise.targetLoadUnit}`,
+                    );
+                  }
+                  return (
+                    <li key={exercise.id} className="rounded-md bg-background/70 px-3 py-2">
+                      <p className="font-medium">{plannedName}</p>
+                      {targetParts.length > 0 && (
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          Target: {targetParts.join(" · ")}
+                        </p>
+                      )}
+                      {exercise.warmupNotes && (
+                        <p className="mt-1 whitespace-pre-line text-xs text-muted-foreground">
+                          Warm-up guidance: {exercise.warmupNotes}
+                        </p>
+                      )}
+                      {exercise.notes && (
+                        <p className="mt-1 whitespace-pre-line text-xs text-muted-foreground">
+                          Exercise guidance: {exercise.notes}
+                        </p>
+                      )}
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          )}
+          {session.occurrences.length > 0 && (
+            <ol className="mt-3 flex flex-col gap-2">
+              {session.occurrences.map((occurrence) => {
+              const exerciseName = occurrence.plannedExerciseId
+                ? exerciseNames.get(occurrence.plannedExerciseId) ?? "Exercise"
+                : null;
+              const setPosition =
+                occurrence.kind === "working_set"
+                  ? workingSetDisplayPosition(
+                      occurrence,
+                      session.occurrences,
+                    )
+                  : null;
+              const identity = occurrence.kind === "day_warmup"
+                ? occurrence.label ?? "Day warm-up"
+                : occurrence.kind === "exercise_warmup"
+                  ? `${exerciseName ?? "Exercise"} warm-up${occurrence.label ? ` — ${occurrence.label}` : ""}`
+                  : `${exerciseName ?? "Exercise"} · ${setPosition?.lowercaseLabel ?? `set ${occurrence.kindOrdinal + 1}`}`;
+              const archivedResult = occurrence.outcome === "completed"
+                && occurrence.completedSetId != null
+                && !activeSetIds.has(occurrence.completedSetId);
+              const prescription: string[] = [];
+              if (occurrence.plannedRepsMin != null) {
+                prescription.push(
+                  occurrence.plannedRepsMax != null &&
+                    occurrence.plannedRepsMax !== occurrence.plannedRepsMin
+                    ? `${occurrence.plannedRepsMin}–${occurrence.plannedRepsMax} reps`
+                    : `${occurrence.plannedRepsMin} reps`,
+                );
+              }
+              if (occurrence.plannedLoad != null && occurrence.plannedLoadUnit) {
+                prescription.push(`${occurrence.plannedLoad} ${occurrence.plannedLoadUnit}`);
+              } else if (occurrence.plannedLoadPercent != null) {
+                prescription.push(`${occurrence.plannedLoadPercent}% of work weight`);
+              } else if (occurrence.plannedLoadText) {
+                prescription.push(occurrence.plannedLoadText);
+              }
+              if (occurrence.plannedNote) prescription.push(occurrence.plannedNote);
+              if (occurrence.plannedRestSec != null && !occurrence.groupSnapshotId) {
+                prescription.push(`${occurrence.plannedRestSec}s rest after`);
+              }
+              return (
+                <li
+                  key={occurrence.id}
+                  id={`occurrence-${occurrence.id}`}
+                  className="scroll-mt-4 rounded-md bg-muted/40 px-3 py-2 text-sm"
+                >
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span>{occurrence.sequenceIdx + 1}. {identity}</span>
+                    <span className="flex flex-wrap gap-1">
+                      {occurrence.origin === "ad_hoc" && (
+                        <Badge variant="outline">added during workout</Badge>
+                      )}
+                      <Badge variant="outline">
+                        {archivedResult
+                          ? "saved result removed"
+                          : occurrenceOutcomeLabel(occurrence.outcome)}
+                      </Badge>
+                    </span>
+                  </div>
+                  {prescription.length > 0 && (
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      {occurrence.origin === "ad_hoc"
+                        ? "Workout-only guidance"
+                        : "Planned"}
+                      : {prescription.join(" · ")}
+                    </p>
+                  )}
+                  {(occurrence.outcomeReason || occurrence.outcomeNote) && (
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      {occurrence.outcomeReason
+                        ? `Reason: ${occurrence.outcomeReason.replaceAll("_", " ")}`
+                        : ""}
+                      {occurrence.outcomeReason && occurrence.outcomeNote ? " · " : ""}
+                      {occurrence.outcomeNote ? `Note: ${occurrence.outcomeNote}` : ""}
+                    </p>
+                  )}
+                  {occurrence.groupSnapshotId && (
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Group round {occurrence.groupRound ?? "?"} · member {(occurrence.groupMemberOrderIdx ?? 0) + 1}
+                      {occurrence.plannedRestSec != null ? ` · ${occurrence.plannedRestSec}s rest after` : ""}
+                    </p>
+                  )}
+                  {occurrence.kind === "working_set" &&
+                    occurrence.outcome === "completed" &&
+                    occurrence.completedSetId != null &&
+                    activeSetIds.has(occurrence.completedSetId) && (
+                      <Link
+                        className="mt-2 inline-flex min-h-11 items-center text-xs underline underline-offset-2"
+                        href={`#performed-set-${occurrence.completedSetId}`}
+                      >
+                        Performed evidence
+                      </Link>
+                    )}
+                  {(occurrence.kind === "day_warmup" ||
+                    occurrence.kind === "exercise_warmup") &&
+                    occurrence.outcome === "completed" && (
+                      <Link
+                        className="mt-2 inline-flex min-h-11 items-center text-xs underline underline-offset-2"
+                        href={`#performed-warmup-${occurrence.id}`}
+                      >
+                        Performed warm-up evidence
+                      </Link>
+                    )}
+                </li>
+              );
+              })}
+            </ol>
+          )}
+        </section>
+      )}
+
+      {retainedSourceSets.length > 0 && (
+        <details className="rounded-xl border p-3">
+          <summary className="flex min-h-11 cursor-pointer items-center font-medium">
+            Retained source records ({retainedSourceSets.length})
+          </summary>
+          <p className="mt-2 text-xs text-muted-foreground">
+            These active source rows have no completed working-set occurrence
+            link. They remain inspectable evidence but are not counted as
+            performed working sets.
+          </p>
+          <ul className="mt-3 space-y-2 text-sm">
+            {retainedSourceSets.map(({ set, exercise }) => (
+              <li key={set.id} className="rounded-md bg-muted/40 px-3 py-2">
+                <p className="font-medium">
+                  {exercise.exercise.name} · source set {set.setNo}
+                </p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {formatSetMetric(set)} · set ID {set.id}
+                  {set.sourceSetIndex != null
+                    ? ` · source index ${set.sourceSetIndex}`
+                    : ""}
+                  {set.sourceRow != null ? ` · source row ${set.sourceRow}` : ""}
+                </p>
+                {set.note && <p className="mt-1 text-xs">{set.note}</p>}
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
+      {contextualNotes.length > 0 && (
+        <section className="rounded-xl border p-4" aria-labelledby="contextual-notes-heading">
+          <h2 id="contextual-notes-heading" className="font-medium">Training notes</h2>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Your observations are shown with the workout item they describe. Private notes stay out of Coach and Review context.
+          </p>
+          <ol className="mt-3 space-y-2">
+            {contextualNotes.map((note) => {
+              const exerciseName = note.sessionExerciseId
+                ? session.exercises.find((exercise) => exercise.id === note.sessionExerciseId)?.exercise.name
+                : null;
+              const occurrence = note.occurrenceId
+                ? session.occurrences.find((item) => item.id === note.occurrenceId)
+                : null;
+              const placement = note.attachmentKind === "workout"
+                ? "Entire workout"
+                : note.attachmentKind === "rest"
+                  ? `Rest · ${exerciseName ?? "workout item"}`
+                  : note.attachmentKind === "set" || note.attachmentKind === "occurrence"
+                    ? `${exerciseName ?? "Workout item"}${occurrence ? ` · item ${occurrence.sequenceIdx + 1}` : ""}`
+                    : exerciseName ?? "Workout note";
+              return (
+                <li key={note.id} className="rounded-lg bg-muted/40 p-3 text-sm">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span className="font-medium">{placement}</span>
+                    <span className="text-xs text-muted-foreground">
+                      {note.coachVisible ? "Coach-visible" : "Private"} · revision {note.revision}
+                    </span>
+                  </div>
+                  <p className="mt-1 whitespace-pre-wrap leading-6">{note.body}</p>
+                </li>
+              );
+            })}
+          </ol>
+        </section>
+      )}
+
+      <details className="rounded-xl border p-4">
+        <summary className="flex min-h-11 cursor-pointer items-center font-medium">
+          Source and lineage details
+        </summary>
+        <dl className="mt-3 grid gap-2 text-sm sm:grid-cols-2">
+          <div>
+            <dt className="text-xs text-muted-foreground">Source</dt>
+            <dd>{HISTORY_PROVENANCE_LABELS[provenanceFacet]}</dd>
+          </div>
+          <div>
+            <dt className="text-xs text-muted-foreground">Workout ID</dt>
+            <dd className="break-all">{session.id}</dd>
+          </div>
+          <div>
+            <dt className="text-xs text-muted-foreground">History revision</dt>
+            <dd>{session.historyRevision}</dd>
+          </div>
+          <div>
+            <dt className="text-xs text-muted-foreground">Recorded time</dt>
+            <dd>
+              {session.performedTimePrecision === "date_only"
+                ? "Date only; exact time unknown"
+                : `Exact instant in ${session.timezone}`}
+            </dd>
+          </div>
+          {session.sourceWorkoutKey && (
+            <div>
+              <dt className="text-xs text-muted-foreground">Source workout key</dt>
+              <dd className="break-all">{session.sourceWorkoutKey}</dd>
+            </div>
+          )}
+          {session.importBatchId && (
+            <div>
+              <dt className="text-xs text-muted-foreground">Import batch ID</dt>
+              <dd className="break-all">{session.importBatchId}</dd>
+            </div>
+          )}
+          {session.importBatch && (
+            <div>
+              <dt className="text-xs text-muted-foreground">Import source</dt>
+              <dd>{session.importBatch.source}</dd>
+            </div>
+          )}
+          {session.sourceProgramId && (
+            <div>
+              <dt className="text-xs text-muted-foreground">Program ID</dt>
+              <dd className="break-all">{session.sourceProgramId}</dd>
+            </div>
+          )}
+          {session.sourceProgramVersionId && (
+            <div>
+              <dt className="text-xs text-muted-foreground">Program version ID</dt>
+              <dd className="break-all">{session.sourceProgramVersionId}</dd>
+            </div>
+          )}
+          {session.sourceDayLineageId && (
+            <div>
+              <dt className="text-xs text-muted-foreground">Program day lineage ID</dt>
+              <dd className="break-all">{session.sourceDayLineageId}</dd>
+            </div>
+          )}
+        </dl>
+      </details>
 
       {session.painLogs.length > 0 && (
         <section className="rounded-xl border border-destructive/40 p-3">

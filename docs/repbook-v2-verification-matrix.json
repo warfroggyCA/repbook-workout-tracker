@@ -5,8 +5,8 @@
   "repositoryRole": "public application source",
   "exactBaseCommit": "2c9ab1b9478502f1d08956a6c44dfb0850c8f168",
   "fixtureCatalogue": "tests/fixtures/v2/semantic-scenarios.json",
-  "currentPackage": "U03",
-  "currentPackageBaseCommit": "bec45152590ace215bb3d5dfbf847a8e38571683",
+  "currentPackage": "H01",
+  "currentPackageBaseCommit": "4e0aa3e688d0345a473bdab96cb84b81a077596c",
   "productBehaviorImplementedByP02": false,
   "implementedProductPackages": [
     "T01",
@@ -17,12 +17,14 @@
     "T06",
     "U01",
     "U02",
-    "U03"
+    "U03",
+    "H01"
   ],
   "milestoneEvidence": {
     "gauntletA": {
-      "status": "current_candidate",
+      "status": "passed",
       "exactBaseCommit": "96bee98b83edcb72ad072e3204fe18cec2e6f7e9",
+      "finalCandidateCommit": "4e0aa3e688d0345a473bdab96cb84b81a077596c",
       "scenarioCommand": "npm run test:e2e:v2-gauntlet-a",
       "scenarioPaths": [
         "tests/e2e/replacement-mobile-keyboard.spec.ts",
@@ -57,6 +59,20 @@
       "testPath": "tests/unit/v2-semantic-contract.test.ts",
       "command": "npx vitest run tests/unit/v2-semantic-contract.test.ts",
       "proves": "synthetic semantic oracle only; not released product behavior"
+    },
+    "H01-pureContract": {
+      "status": "current",
+      "implementingPackage": "H01",
+      "testPath": "tests/unit/v2-h01-history-workout-evidence.test.ts",
+      "command": "npx vitest run tests/unit/v2-h01-history-workout-evidence.test.ts",
+      "proves": "performed-first History classification keeps terminal state, linked working sets, structured warm-ups, provenance, correction lineage, performed semantics, and calculation eligibility explicit without inferring unknown evidence"
+    },
+    "H01-browser": {
+      "status": "current",
+      "implementingPackage": "H01",
+      "testPath": "tests/e2e/v2-h01-performed-first-history.spec.ts",
+      "command": "npx playwright test --config=playwright.v2-h01.config.ts tests/e2e/v2-h01-performed-first-history.spec.ts",
+      "proves": "desktop Chromium and 320 by 700 enlarged-text mobile WebKit present acknowledged performed evidence before plan and retained source rows, preserve exact completed, finished-early, abandoned, and active-session meaning, expose safe correction and source lineage, remain keyboard and touch usable without horizontal overflow, and make no post-login write"
     },
     "U01-browser": {
       "status": "current",
@@ -1800,6 +1816,7 @@
     "No production owner data, production access, schema migration, or deployment is part of T01.",
     "U01 current status means its presentation change and dedicated browser evidence travel together; it adds no schema, migration, persistence writer, or historical rewrite.",
     "U02 current status means exception evidence, its set-linked pain identity, browser failure recovery, History and Review read paths, export, and restore evidence travel together; it does not imply release, deployment, recommendation approval, or Program adaptation.",
-    "U03 current status means exact future Program review and publication clarity travel with active-session, completed/imported History, earlier-version, conflict, failure, export, and restore isolation evidence; it adds no schema, migration, historical rewrite, release, or deployment."
+    "U03 current status means exact future Program review and publication clarity travel with active-session, completed/imported History, earlier-version, conflict, failure, export, and restore isolation evidence; it adds no schema, migration, historical rewrite, release, or deployment.",
+    "H01 current status means performed-first completed and imported workout presentation travels with exact terminal, provenance, correction, semantic, calculation-eligibility, retained-source, accessibility, and zero-write evidence; it adds no schema, migration, writer, historical rewrite, release, or deployment."
   ]
 }

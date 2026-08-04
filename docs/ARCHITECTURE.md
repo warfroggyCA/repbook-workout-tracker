@@ -160,7 +160,10 @@ hierarchy and ergonomics gate. U02 activates optional set-level effort, issue,
 note, and linked pain evidence from capture through Review, export, and recovery.
 U03 activates exact future-only Program review and publication clarity together
 with active-session, History, earlier-version, failure, conflict, and restore
-isolation evidence; later packages remain future work.
+isolation evidence. Gauntlet A passed on its exact unmerged candidate. H01
+activates performed-first completed and imported workout presentation without a
+new writer or persisted meaning; later History and Coaching packages remain
+future work.
 
 ## T01 performed-measurement contract
 
@@ -400,3 +403,39 @@ distinct from a completed session: History and CSV export retain its acknowledge
 sets and explicit occurrence outcomes, while progression, Review calculations,
 and completed-workout metrics continue to exclude it. CSV carries the explicit
 session status so retained evidence cannot be mistaken for completed training.
+
+## H01 performed-first workout History contract
+
+Completed and imported workout detail leads with acknowledged performed facts.
+Only an active completed working-set occurrence linked to its retained set row
+enters the performed working-set count. Completed structured warm-up occurrences
+are shown as performed actions but remain separate from working sets. Skipped,
+legacy-unknown, and unlinked source rows stay in the original plan or a distinct
+retained-source disclosure and never inflate the performed count.
+
+The terminal facet distinguishes completed, finished early, abandoned, and
+in-progress workouts. In-progress History URLs redirect to the active session.
+Finished-early meaning requires an abandoned occurrence with the exact
+`finished_early` reason; a skip alone cannot imply it. Abandoned workouts retain
+acknowledged facts for inspection and correction while excluding them from
+completed metrics, progression, and Review.
+
+Provenance, correction state, performed semantic support, and calculation
+eligibility are orthogonal facets. Correction and restore history uses the
+reviewed correction envelope and an allowlist of safe human-readable deltas;
+raw envelopes and unknown fields are not rendered. Supported repetitions-only
+evidence may remain eligible for exact named calculations even when loaded
+workload and strength estimates do not apply. Missing performed semantics remain
+legacy partial, malformed partial tuples remain unsupported, and neither is
+inferred from current Program or catalogue metadata.
+
+Tracker-started and Session Compiler workouts are native Repbook provenance;
+retrospective owner entry, import, and unclassified legacy sources remain
+distinct. The correction headline follows the newest applicable set or workout
+timing action, so a later correction after a restore does not keep an obsolete
+restore label. Detailed earlier transitions remain inspectable underneath it.
+
+H01 is a read-only presentation package. It adds no schema, migration, writer,
+historical rewrite, calculation formula, recommendation, decision, adaptation,
+or production action. The dedicated browser fixture is disposable and proves
+the screen makes no post-login mutation.

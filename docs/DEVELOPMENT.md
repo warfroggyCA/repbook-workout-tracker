@@ -27,7 +27,7 @@ npm run docs:check
 npm run audit:check
 ```
 
-The Repbook v2 semantic foundation and current T01/T02/T03/T04/T05/T06/U01/U02/U03 activation
+The Repbook v2 semantic foundation and current T01/T02/T03/T04/T05/T06/U01/U02/U03/H01 activation
 packages have focused gates:
 
 ```bash
@@ -51,6 +51,8 @@ npx vitest run tests/unit/program-editor-db.test.ts tests/unit/program-editor-co
 npm run test:e2e:v2-u03
 npx vitest run tests/unit/v2-gauntlet-a-semantic-recovery.test.ts tests/unit/exercise-card-component.test.tsx
 npm run test:e2e:v2-gauntlet-a
+npx vitest run tests/unit/v2-h01-history-workout-evidence.test.ts tests/unit/live03-pain-substitution-continuity.test.tsx
+npm run test:e2e:v2-h01
 ```
 
 The semantic test validates all synthetic F01-F17 scenarios and every required
@@ -81,6 +83,13 @@ complete real-workout scenario bar at desktop, 440×956 mobile, and 320×700
 enlarged-text mobile references. It includes exact offline and
 timeout-after-commit retry, bodyweight substitution, abandoned-session export,
 keyboard-selected-state, touch-target, overflow, and page-error oracles.
+H01 then activates performed-first completed and imported workout detail: only
+linked acknowledged working-set occurrences enter the performed count,
+structured warm-ups stay separate, plan and retained source rows remain
+inspectable, and terminal, provenance, correction, performed-meaning, and
+calculation-eligibility facets stay explicit. Its dedicated fresh fixture proves
+desktop and narrow enlarged-text mobile behavior, active-session redirect,
+keyboard and touch access, zero overflow, and no post-login mutation.
 Recovery manifest 10 remains the
 authoritative table inventory. Every later package must activate its own reserved
 evidence before its product behavior is considered implemented.
@@ -117,6 +126,7 @@ npm run test:e2e:v2-u01
 npm run test:e2e:v2-u02
 npm run test:e2e:v2-u03
 npm run test:e2e:v2-gauntlet-a
+npm run test:e2e:v2-h01
 ```
 
 Run the smallest affected browser suite first, then the complete protected

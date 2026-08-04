@@ -20,6 +20,7 @@ const optimizedRouteFixtures = process.argv.includes(
 const programEditorDisabled = process.argv.includes(
   "--program-editor-disabled",
 );
+const v2H01History = process.argv.includes("--v2-h01-history");
 const port = Number.parseInt(process.env.E2E_PORT ?? "3100", 10);
 if (!Number.isInteger(port) || port < 1024 || port > 65535) {
   throw new Error("E2E_PORT must be an integer from 1024 through 65535.");
@@ -49,6 +50,23 @@ if (
 }
 if (stage6Simulation && !baRoutineChange) {
   throw new Error("Stage 6 simulation fixtures require BA routine-change mode.");
+}
+if (
+  v2H01History &&
+  [
+    baFixture,
+    baRoutineChange,
+    stage6Simulation,
+    stage7Ux,
+    phase0Start,
+    phase1Foundation,
+    baCalendar,
+    plateMachineGuidance,
+    optimizedRouteFixtures,
+    programEditorDisabled,
+  ].some(Boolean)
+) {
+  throw new Error("H01 History fixtures cannot be combined with another fixture mode.");
 }
 if (
   (baFixture || baRoutineChange || baCalendar) &&
@@ -101,11 +119,13 @@ const environment = {
   ...process.env,
   AI_FAKE: "1",
   ANTHROPIC_API_KEY: "",
-  ALLOWED_EMAILS: baFixture || baCalendar
-    ? "ba.iphone.e2e@example.com"
-    : baRoutineChange
-      ? "ba.routine-change.e2e@example.com"
-      : "owner@example.com,second.e2e@example.com,program-page.e2e@example.com,today-empty.e2e@example.com,history-calendar.e2e@example.com,history-workspace-sparse.e2e@example.com,review-decisions.e2e@example.com",
+  ALLOWED_EMAILS: v2H01History
+    ? "v2.h01.history.e2e@example.com"
+    : baFixture || baCalendar
+      ? "ba.iphone.e2e@example.com"
+      : baRoutineChange
+        ? "ba.routine-change.e2e@example.com"
+        : "owner@example.com,second.e2e@example.com,program-page.e2e@example.com,today-empty.e2e@example.com,history-calendar.e2e@example.com,history-workspace-sparse.e2e@example.com,review-decisions.e2e@example.com",
   AUTH_SECRET: "local-e2e-secret-not-used-outside-this-process",
   AUTH_TRUST_HOST: "true",
   BA_FIXTURE_MODE: baFixture || baRoutineChange || baCalendar ? "1" : "",
@@ -148,7 +168,7 @@ const serverScriptEnvironment = {
 
 const seeded = spawnSync(
   "npm",
-  baFixture || baRoutineChange || baCalendar
+  baFixture || baRoutineChange || baCalendar || v2H01History
     ? ["run", "db:seed"]
     : ["run", "db:seed", "--", "--demo"],
   {
@@ -170,7 +190,9 @@ if (seeded.status !== 0) {
   throw new Error(`E2E seed failed with status ${seeded.status}.`);
 }
 
-const fixtures = plateMachineGuidance
+const fixtures = v2H01History
+  ? [{ label: "H01 performed-first History", script: "tests/helpers/seed-v2-h01-history.ts" }]
+  : plateMachineGuidance
   ? [{
       label: "Plate-machine guidance",
       script: "tests/helpers/seed-plate-machine-guidance.ts",
