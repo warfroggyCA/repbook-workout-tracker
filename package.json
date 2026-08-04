@@ -34,6 +34,7 @@
     "test:e2e:v2-t06": "playwright test --config=playwright.v2-t06.config.ts",
     "test:e2e:v2-u01": "playwright test --config=playwright.v2-u01.config.ts",
     "test:e2e:v2-u02": "playwright test --config=playwright.v2-u02.config.ts",
+    "test:e2e:v2-u03": "playwright test --config=playwright.v2-u03.config.ts",
     "study:physical-device-server": "E2E_HOSTNAME=0.0.0.0 E2E_PORT=3128 node scripts/run-e2e-server.mjs --production",
     "test:e2e:ba:chrome": "env BA_BROWSER=chromium playwright test --config=playwright.ba-workout.config.ts",
     "test:e2e:ba:webkit": "env BA_BROWSER=webkit playwright test --config=playwright.ba-workout.config.ts",

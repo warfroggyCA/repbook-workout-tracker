@@ -41,7 +41,7 @@ export function VersionInspection({
               </h2>
             </CardTitle>
             <CardDescription>
-              This is the immutable plan activated for this version.
+              This is the immutable plan published for this version.
             </CardDescription>
           </div>
           <Button type="button" variant="outline" onClick={onClose}>

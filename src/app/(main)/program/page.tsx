@@ -116,12 +116,12 @@ export default async function ProgramPage(props: PageProps<"/program">) {
               {preflightStatus?.availability === "legacy" ? (
                 <p className="mt-2 text-sm text-muted-foreground">
                   This older Program version predates the current checks. Open a
-                  draft to review its saved planning details before activating a
+                  draft to review its saved planning details before publishing a
                   new version.
                 </p>
               ) : preflightStatus?.availability === "unavailable" ? (
                 <p className="mt-2 text-sm text-muted-foreground">
-                  The checks saved when this version was activated are
+                  The checks saved when this version was published are
                   unavailable. Current evidence stays separate and does not
                   rewrite this version.
                 </p>
@@ -130,7 +130,7 @@ export default async function ProgramPage(props: PageProps<"/program">) {
                 <div className="mt-3 grid gap-3 lg:grid-cols-2">
                   <div className="rounded-xl border p-3">
                     <h3 className="text-sm font-medium">
-                      When this version was activated
+                      When this version was published
                     </h3>
                     {preflightStatus.publication.durations
                       .filter(
@@ -177,7 +177,7 @@ export default async function ProgramPage(props: PageProps<"/program">) {
                               <li key={finding.id}>
                                 <span className="font-medium">
                                   {finding.severity === "blocking"
-                                    ? "Needs fixing before activation"
+                                    ? "Needs fixing before publication"
                                     : "Worth checking"}
                                   {slotName ? ` · ${slotName}` : ""}
                                 </span>
@@ -192,13 +192,13 @@ export default async function ProgramPage(props: PageProps<"/program">) {
                   </div>
                   <div className="rounded-xl border p-3">
                     <h3 className="text-sm font-medium">
-                      What has changed since activation
+                      What has changed since publication
                     </h3>
                     <p className="mt-2 text-xs text-muted-foreground">
                       Checked{" "}
                       {new Date(preflightStatus.current.checkedAt).toLocaleString()}
                       . This current check stays separate from the saved
-                      activation record.
+                      publication record.
                     </p>
                     {preflightStatus.addedFindings.filter(
                       (finding) => finding.dayLineageId === selected.lineageId,
@@ -219,7 +219,7 @@ export default async function ProgramPage(props: PageProps<"/program">) {
                         ) && (
                           <li>
                             The estimated time range or the workout history
-                            behind it changed after activation.
+                            behind it changed after publication.
                           </li>
                         )}
                         {preflightStatus.addedFindings

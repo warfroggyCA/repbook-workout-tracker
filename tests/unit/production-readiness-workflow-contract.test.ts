@@ -78,6 +78,9 @@ describe("production readiness workflow contract", () => {
     const t06PreviewStart = steps.find(
       (step) => step.id === "browser-v2-t06",
     );
+    const u03FutureProgram = steps.find(
+      (step) => step.id === "browser-v2-u03",
+    );
     const browserGate = steps.find(
       (step) => step.name === "Require every browser suite",
     );
@@ -99,6 +102,7 @@ describe("production readiness workflow contract", () => {
     expect(t04WarmupOccurrences?.run).toBe("npm run test:e2e:v2-t04");
     expect(t05ExecutionSemantics?.run).toBe("npm run test:e2e:v2-t05");
     expect(t06PreviewStart?.run).toBe("npm run test:e2e:v2-t06");
+    expect(u03FutureProgram?.run).toBe("npm run test:e2e:v2-u03");
     expect(browserGate?.env?.BROWSER_HISTORY).toBe(
       "${{ steps.browser-history.outcome }}",
     );
@@ -159,6 +163,12 @@ describe("production readiness workflow contract", () => {
     expect(browserGate?.run).toContain(
       '"U02 exception-only context:${BROWSER_V2_U02}"',
     );
+    expect(browserGate?.env?.BROWSER_V2_U03).toBe(
+      "${{ steps.browser-v2-u03.outcome }}",
+    );
+    expect(browserGate?.run).toContain(
+      '"U03 future-only Program publication:${BROWSER_V2_U03}"',
+    );
   });
 
   it("measures the unchanged performance ceiling without parallel test contention", async () => {
@@ -183,6 +193,7 @@ describe("production readiness workflow contract", () => {
         "v2-t04-warmup-occurrences.spec.ts",
         "v2-t05-execution-semantics.spec.ts",
         "v2-t06-preview-start.spec.ts",
+        "v2-u03-future-program.spec.ts",
       ]),
     );
   });

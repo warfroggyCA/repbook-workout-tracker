@@ -78,6 +78,7 @@ const requiredLevels: Record<string, readonly Level[]> = {
   "derived-invalidation-recompute": ["R", "R", "R", "C", "R", "C"],
   "recommendation-decision-adaptation": ["R", "R", "R", "R", "R", "R"],
   "exception-only-context": ["R", "R", "R", "C", "C", "C"],
+  "future-write-program-editing": ["R", "R", "R", "C", "R", "C"],
   "owner-isolation": ["R", "R", "R", "R", "R", "R"],
   "external-ai-envelope-manifest-import": ["R", "R", "R", "R", "C", "R"],
   "diagnostic-redaction-preview": ["R", "R", "R", "R", "C", "R"],
@@ -119,8 +120,8 @@ describe("Repbook v2 ratified semantic contract", () => {
       schemaVersion: 1,
       contractVersion: V2_CONTRACT_VERSION,
       exactBaseCommit: "2c9ab1b9478502f1d08956a6c44dfb0850c8f168",
-      currentPackage: "U02",
-      currentPackageBaseCommit: "91060159e9a8ecb0d853506427731c9d81351f46",
+      currentPackage: "U03",
+      currentPackageBaseCommit: "bec45152590ace215bb3d5dfbf847a8e38571683",
       productBehaviorImplementedByP02: false,
       implementedProductPackages: [
         "T01",
@@ -131,6 +132,7 @@ describe("Repbook v2 ratified semantic contract", () => {
         "T06",
         "U01",
         "U02",
+        "U03",
       ],
     });
     expect(matrix.columns).toEqual(columns);
@@ -152,6 +154,13 @@ describe("Repbook v2 ratified semantic contract", () => {
       testPath: "tests/e2e/v2-u02-exception-context.spec.ts",
       command:
         "npx playwright test --config=playwright.v2-u02.config.ts tests/e2e/v2-u02-exception-context.spec.ts",
+    });
+    expect(matrix.verifications["U03-browser"]).toMatchObject({
+      status: "current",
+      implementingPackage: "U03",
+      testPath: "tests/e2e/v2-u03-future-program.spec.ts",
+      command:
+        "npx playwright test --config=playwright.v2-u03.config.ts tests/e2e/v2-u03-future-program.spec.ts",
     });
     expect(matrix.concerns.map((concern) => concern.concernId)).toEqual(
       Object.keys(requiredLevels),
@@ -177,7 +186,7 @@ describe("Repbook v2 ratified semantic contract", () => {
         const verification = matrix.verifications[cell.verificationId ?? ""];
         expect(verification).toBeDefined();
         expect(verification.implementingPackage).toMatch(
-          /^(?:P02|T0[1-6]|U0[12]|H0[235]|A0[145]|D02|R01)$/,
+          /^(?:P02|T0[1-6]|U0[1-3]|H0[235]|A0[145]|D02|R01)$/,
         );
         expect(verification.testPath).toMatch(
           /^tests\/(?:unit|e2e)\/.+\.(?:test|spec)\.ts$/,

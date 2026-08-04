@@ -308,7 +308,7 @@ export function useProgramEditorController({ ownerId, library, initialDayId }: {
       setMessage(
         error instanceof Error
           ? error.message
-          : "The new Program version was not activated.",
+          : "The future Program was not published.",
       );
     } finally {
       setPublishing(false);
