@@ -47,9 +47,10 @@ async function waitForSaved(row: Locator) {
 }
 
 test("keeps warm-up actions singular, reversible, durable, and usable with minimal attention", async ({
+  browserName,
   page,
 }) => {
-  const pageErrors = observeGauntletPageErrors(page);
+  const pageErrors = observeGauntletPageErrors(page, browserName);
   await signInAndStart(page);
   const sessionId = page.url().split("/").at(-1)!;
   const panel = page.locator("#workout-warmup");
@@ -199,5 +200,5 @@ test("keeps warm-up actions singular, reversible, durable, and usable with minim
   await expect(
     page.getByRole("button", { name: "Train as planned", exact: true }),
   ).toBeVisible();
-  pageErrors.expectNoUnexpected();
+  await pageErrors.expectNoUnexpected();
 });

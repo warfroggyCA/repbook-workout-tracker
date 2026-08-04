@@ -58,10 +58,11 @@ async function dismissRest(page: Page) {
 }
 
 test("keeps ordinary completion minimal and makes exception evidence reversible, retry-safe, and reviewable", async ({
+  browserName,
   page,
   context,
 }) => {
-  const pageErrors = observeGauntletPageErrors(page, [
+  const pageErrors = observeGauntletPageErrors(page, browserName, [
     /Failed to fetch|Load failed|ERR_(?:FAILED|INTERNET_DISCONNECTED)|NetworkError when attempting to fetch resource/i,
   ]);
   await signInAndStartDayA(page);
@@ -195,5 +196,5 @@ test("keeps ordinary completion minimal and makes exception evidence reversible,
   await expect(review).toContainText(
     "They do not change your Program, approve a proposal, or create an adaptation.",
   );
-  pageErrors.expectNoUnexpected();
+  await pageErrors.expectNoUnexpected();
 });

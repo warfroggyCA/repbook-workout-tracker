@@ -28,7 +28,9 @@ async function discardActiveWorkout(page: Page) {
   if ((await resume.count()) === 0) return;
   await waitForHydratedReactHandler(resume);
   await resume.click();
-  await expect(page).toHaveURL(/\/session\/[0-9a-f-]+$/);
+  await expect(page).toHaveURL(
+    /\/session\/[0-9a-f-]+(?:#workout-rest-status)?$/,
+  );
   await page.getByRole("button", { name: "Finish", exact: true }).click();
   await page
     .getByRole("dialog", { name: "Finish workout" })

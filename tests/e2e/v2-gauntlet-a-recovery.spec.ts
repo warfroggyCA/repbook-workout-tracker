@@ -55,10 +55,11 @@ async function dismissRest(page: Page) {
 }
 
 test("recovers offline and timeout-after-commit sets exactly, then reviews abandonment accessibly", async ({
+  browserName,
   context,
   page,
 }) => {
-  const pageErrors = observeGauntletPageErrors(page, [
+  const pageErrors = observeGauntletPageErrors(page, browserName, [
     /Failed to fetch/i,
     /Load failed/i,
     /ERR_(?:FAILED|INTERNET_DISCONNECTED)/i,
@@ -117,7 +118,7 @@ test("recovers offline and timeout-after-commit sets exactly, then reviews aband
   const finish = page.getByRole("dialog", { name: "Finish workout" });
   const fatigue = finish.getByRole("group", { name: "Overall fatigue" });
   const fatigueThree = fatigue.getByRole("button", {
-    name: "Overall fatigue 3",
+    name: "3",
     exact: true,
   });
   await expect(fatigueThree).toHaveAttribute("aria-pressed", "false");
@@ -143,5 +144,5 @@ test("recovers offline and timeout-after-commit sets exactly, then reviews aband
   await page.goto(`/history/${sessionId}`);
   await expect(page.getByText("Abandoned workout", { exact: true })).toBeVisible();
   await expect(page.getByText(/· 2 sets/)).toBeVisible();
-  pageErrors.expectNoUnexpected();
+  await pageErrors.expectNoUnexpected();
 });

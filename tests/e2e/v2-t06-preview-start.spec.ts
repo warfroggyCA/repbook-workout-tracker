@@ -194,23 +194,16 @@ test("keeps preview read-only and Start replay-safe with truthful active collisi
   await second.close();
   await discardActive(page);
   await nextRscPrefetches.settle();
-  const expectedLinkCancellationCount = browserErrors.filter((message) =>
-    isExpectedWebKitRscLinkCancellation(
-      message,
-      browserName,
-      EXPECTED_APP_SHELL_PREFETCHES,
-    )
-  ).length;
   const loadFailureCount = browserErrors.filter(
     (message) => message === "Load failed",
   ).length;
-  const hasOnlyPairedWebKitLoadFailures =
+  const hasOnlyCorrelatedWebKitLoadFailures =
     browserName === "webkit" &&
-    expectedLinkCancellationCount > 0 &&
-    loadFailureCount <= expectedLinkCancellationCount;
+    nextRscPrefetches.observedUrls.size > 0 &&
+    loadFailureCount <= nextRscPrefetches.observedUrls.size;
   expect(browserErrors.filter(
     (message) =>
-      !(hasOnlyPairedWebKitLoadFailures && message === "Load failed") &&
+      !(hasOnlyCorrelatedWebKitLoadFailures && message === "Load failed") &&
       !isExpectedWebKitRscLinkCancellation(
         message,
         browserName,

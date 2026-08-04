@@ -187,10 +187,11 @@ async function discardWorkout(page: Page) {
 }
 
 test("keeps one ledger-driven current/next/group/rest state through retry, interruption, extra work, and finish readiness", async ({
+  browserName,
   context,
   page,
 }) => {
-  const pageErrors = observeGauntletPageErrors(page, [
+  const pageErrors = observeGauntletPageErrors(page, browserName, [
     /500|Internal Server Error|Failed to load resource/i,
   ]);
   await signInAndStartDayA(page);
@@ -337,5 +338,5 @@ test("keeps one ledger-driven current/next/group/rest state through retry, inter
   ).toBeLessThanOrEqual(1);
 
   await discardWorkout(page);
-  pageErrors.expectNoUnexpected();
+  await pageErrors.expectNoUnexpected();
 });

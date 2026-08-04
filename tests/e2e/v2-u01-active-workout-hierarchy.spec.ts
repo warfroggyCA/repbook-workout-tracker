@@ -85,9 +85,10 @@ async function discardWorkout(page: Page) {
 }
 
 test("keeps the ordinary active set current-first, unobstructed, and acknowledgement-truthful", async ({
+  browserName,
   page,
 }) => {
-  const pageErrors = observeGauntletPageErrors(page);
+  const pageErrors = observeGauntletPageErrors(page, browserName);
   try {
     await signInAndStartDayA(page);
 
@@ -182,5 +183,5 @@ test("keeps the ordinary active set current-first, unobstructed, and acknowledge
   } finally {
     await discardWorkout(page);
   }
-  pageErrors.expectNoUnexpected();
+  await pageErrors.expectNoUnexpected();
 });

@@ -63,9 +63,10 @@ async function skipCurrentSet(page: Page) {
 }
 
 test("keeps planned work authoritative around extra-before-plan and grouped work", async ({
+  browserName,
   page,
 }) => {
-  const pageErrors = observeGauntletPageErrors(page);
+  const pageErrors = observeGauntletPageErrors(page, browserName);
   await signInAndStartDayA(page);
   const first = page.getByTestId("current-exercise-card");
   await expect(first).toContainText("Barbell Back Squat");
@@ -111,7 +112,7 @@ test("keeps planned work authoritative around extra-before-plan and grouped work
   await expect(finish).toContainText("1 extra set performed");
   const fatigue = finish.getByRole("group", { name: "Overall fatigue" });
   const fatigueThree = fatigue.getByRole("button", {
-    name: "Overall fatigue 3",
+    name: "3",
     exact: true,
   });
   await expect(fatigueThree).toHaveAttribute("aria-pressed", "false");
@@ -122,5 +123,5 @@ test("keeps planned work authoritative around extra-before-plan and grouped work
   await expect(page).toHaveURL(/\/history\/[0-9a-f-]+\?finished=1$/);
   await expect(page.getByText(/extra set 1/i).first()).toBeVisible();
   await expect(page.getByText("added during workout", { exact: true }).first()).toBeVisible();
-  pageErrors.expectNoUnexpected();
+  await pageErrors.expectNoUnexpected();
 });

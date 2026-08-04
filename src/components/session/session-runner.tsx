@@ -2285,7 +2285,6 @@ export function SessionRunner(props: SessionRunnerProps) {
                     variant={fatigue === n ? "default" : "outline"}
                     size="touch"
                     className="flex-1"
-                    aria-label={`Overall fatigue ${n}`}
                     aria-pressed={fatigue === n}
                     onClick={() => setFatigue(fatigue === n ? null : n)}
                   >
