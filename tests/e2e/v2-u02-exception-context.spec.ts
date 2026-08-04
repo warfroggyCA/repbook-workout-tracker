@@ -99,7 +99,9 @@ test("keeps ordinary completion minimal and makes exception evidence reversible,
   await expectTouchTarget(recordPain);
   await recordPain.click();
   await optional.getByRole("button", { name: "back", exact: true }).click();
-  await optional.getByRole("button", { name: "Pain severity 4" }).click();
+  let severityFour = optional.getByRole("button", { name: "Pain severity 4" });
+  await expectTouchTarget(severityFour);
+  await severityFour.click();
   await optional.getByLabel("Pain note (optional)").fill(
     "Sharp only at the bottom",
   );
@@ -112,7 +114,9 @@ test("keeps ordinary completion minimal and makes exception evidence reversible,
 
   await optional.getByRole("button", { name: "Record pain", exact: true }).click();
   await optional.getByRole("button", { name: "back", exact: true }).click();
-  await optional.getByRole("button", { name: "Pain severity 4" }).click();
+  severityFour = optional.getByRole("button", { name: "Pain severity 4" });
+  await expectTouchTarget(severityFour);
+  await severityFour.click();
   await optional.getByLabel("Pain note (optional)").fill(
     "Sharp only at the bottom",
   );

@@ -2117,7 +2117,7 @@ function SetEntry({
                 )}
               </p>
               <div
-                className="grid grid-cols-5 gap-1.5"
+                className="grid grid-cols-2 gap-1.5 min-[400px]:grid-cols-5"
                 role="group"
                 aria-label="Pain severity"
               >
@@ -2337,9 +2337,7 @@ function SetEntry({
         <details className="rounded-md border border-dashed text-sm">
           <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-2 rounded-md px-3 py-2 font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
             <span>Optional effort and set note</span>
-            <span className="text-xs text-muted-foreground">
-              Effort, pain, technique, or limitation
-            </span>
+            <span className="text-xs text-muted-foreground">Add details</span>
           </summary>
           <div className="space-y-2 border-t p-3">{optionalSetFields}</div>
         </details>
