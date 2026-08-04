@@ -56,6 +56,13 @@ async function expectReachableTarget(locator: Locator) {
   expect(result.width).toBeGreaterThanOrEqual(44);
 }
 
+async function expectFullyInViewport(locator: Locator) {
+  await expect.poll(() => locator.evaluate((element) => {
+    const rect = element.getBoundingClientRect();
+    return rect.top >= 0 && rect.bottom <= window.innerHeight;
+  })).toBe(true);
+}
+
 async function discardWorkout(page: Page) {
   if (!/\/session\/[0-9a-f-]+(?:#.*)?$/.test(page.url())) return;
   const finish = page.getByRole("button", { name: "Finish", exact: true });
@@ -150,6 +157,11 @@ test("keeps the ordinary active set current-first, unobstructed, and acknowledge
     await expect(
       currentCard.getByText("Acknowledged by Repbook", { exact: true }),
     ).toBeVisible();
+    const receipt = currentCard.getByTestId("active-set-save-receipt");
+    await expect(receipt).toContainText("Saved · Set 1");
+    await expect(receipt).toContainText("Acknowledged by Repbook");
+    await expect(receipt).toBeVisible();
+    await expectFullyInViewport(receipt);
     const workoutStatus = page.getByRole("complementary", {
       name: "Workout status",
     });
@@ -159,16 +171,7 @@ test("keeps the ordinary active set current-first, unobstructed, and acknowledge
     await workoutStatus
       .getByRole("button", { name: "Dismiss rest timer", exact: true })
       .click();
-    const receipt = currentCard.getByTestId("active-set-save-receipt");
-    await expect(receipt).toContainText("Saved · Set 1");
-    await expect(receipt).toContainText("Acknowledged by Repbook");
-    await expect(receipt).toBeVisible();
-    const receiptBounds = await receipt.evaluate((element) => {
-      const rect = element.getBoundingClientRect();
-      return { top: rect.top, bottom: rect.bottom, viewport: window.innerHeight };
-    });
-    expect(receiptBounds.top).toBeGreaterThanOrEqual(0);
-    expect(receiptBounds.bottom).toBeLessThanOrEqual(receiptBounds.viewport);
+    await expectFullyInViewport(receipt);
     expect(
       await page.evaluate(
         () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
