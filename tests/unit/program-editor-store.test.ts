@@ -79,7 +79,12 @@ describe("programEditorReducer", () => {
     const state = programEditorReducer(programEditorReducer(initialProgramEditorState, { type: "load", draft: draft() }), {
       type: "publish-handoff", versionNo: 2,
     });
-    expect(state).toMatchObject({ dirty: false, review: null, status: "published", message: "Version 2 is now current." });
+    expect(state).toMatchObject({
+      dirty: false,
+      review: null,
+      status: "published",
+      message: "Version 2 is published for workouts started from this point forward.",
+    });
   });
 
   it("discards all draft state", () => {

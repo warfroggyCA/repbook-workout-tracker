@@ -33,7 +33,9 @@ async function publishExactBaRoutineChange(page: Page) {
   await page.getByRole("button", { name: "Check Program", exact: true }).first().click();
   await expect(page.getByRole("heading", { name: "Ready to publish", exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Publish future Program", exact: true }).click();
-  await expect(page.getByText(/Version 2 is now current/)).toBeVisible();
+  await expect(
+    page.getByText(/Version 2 is now used for workouts started from this point forward/i),
+  ).toBeVisible();
   await page.goto("/program");
   await expect(page.getByText("v2", { exact: true })).toBeVisible();
   await page.getByRole("tab", { name: "Day 2", exact: true }).click();

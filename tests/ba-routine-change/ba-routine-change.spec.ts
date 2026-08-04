@@ -337,12 +337,14 @@ test("traces the exact BA routine change through proposal, publication, Today, a
     screenshot: reviewScreenshot,
   });
   await page.getByRole("button", { name: "Publish future Program", exact: true }).click();
-  await expect(page.getByText(/Version 2 is now current/)).toBeVisible();
+  await expect(
+    page.getByText(/Version 2 is now used for workouts started from this point forward/i),
+  ).toBeVisible();
   await checkpoint({
     id: "QA-02-RC-ACTIVATION",
-    action: "Activate the reviewed draft.",
-    expected: "Program version 2 becomes current.",
-    observed: "The editor confirmed Version 2 is now current.",
+    action: "Publish the reviewed draft for future workouts.",
+    expected: "Program version 2 is used only for workouts started afterward.",
+    observed: "The editor confirmed Version 2 will be used for workouts started from this point forward.",
   });
 
   await page.goto("/program");

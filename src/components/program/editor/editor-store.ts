@@ -136,7 +136,7 @@ export function programEditorReducer(
         dirty: false,
         review: null,
         status: "published",
-        message: `Version ${action.versionNo || "created"} is now current.`,
+        message: `Version ${action.versionNo || "created"} is published for workouts started from this point forward.`,
         conflictDraft: null,
       };
     case "discard":

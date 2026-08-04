@@ -393,7 +393,9 @@ test("autosaves, resolves tab conflicts, publishes v2, and restores v1 as v3", a
   await expect(
     page.getByText("Future Program published", { exact: true }),
   ).toBeVisible();
-  await expect(page.getByText(/Version 2 is now current/)).toBeVisible();
+  await expect(
+    page.getByText(/Version 2 is now used for workouts started from this point forward/i),
+  ).toBeVisible();
 
   await page.goto("/program");
   await expect(page.getByRole("heading", { name: "Program checks" })).toBeVisible();
@@ -520,7 +522,9 @@ test("autosaves, resolves tab conflicts, publishes v2, and restores v1 as v3", a
   await page
     .getByRole("button", { name: "Publish future Program", exact: true })
     .click();
-  await expect(page.getByText(/Version 3 is now current/)).toBeVisible();
+  await expect(
+    page.getByText(/Version 3 is now used for workouts started from this point forward/i),
+  ).toBeVisible();
   await page.goto("/program");
   await expect(page.getByText("v3", { exact: true })).toBeVisible();
   await expect(
@@ -642,7 +646,9 @@ test("full replacement creates a reviewable Program proposal without auto-publis
   await expect(
     page.getByRole("button", { name: "Publish future Program", exact: true }),
   ).toBeVisible();
-  await expect(page.getByText(/Version 3 is now current/)).toHaveCount(0);
+  await expect(
+    page.getByText(/Version 3 is now used for workouts started from this point forward/i),
+  ).toHaveCount(0);
 
   await page.getByRole("button", { name: "Discard draft", exact: true }).click();
   await page.getByRole("button", { name: "Discard draft", exact: true }).last().click();
@@ -722,7 +728,9 @@ test("builds, reviews, and explicitly accepts one deterministic session proposal
   await page.getByRole("button", { name: "Check Program", exact: true }).first().click();
   await expect(page.getByRole("heading", { name: "Ready to publish" })).toBeVisible();
   await page.getByRole("button", { name: "Publish future Program", exact: true }).click();
-  await expect(page.getByText(/is now current/)).toBeVisible();
+  await expect(
+    page.getByText(/workouts started from this point forward/i),
+  ).toBeVisible();
   await page.goto("/program");
   const versionBefore = await page.locator("header").getByText(/^v\d+$/).textContent();
   await page.screenshot({ path: testInfo.outputPath("compiler-before.png"), fullPage: true });

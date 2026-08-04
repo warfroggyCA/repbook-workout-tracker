@@ -123,7 +123,9 @@ test("opens and operates the keyboard-accessible Program editor", async ({
     await page.getByRole("button", { name: "Check Program", exact: true }).first().click();
     await expect(page.getByRole("heading", { name: "Ready to publish" })).toBeVisible();
     await page.getByRole("button", { name: "Publish future Program", exact: true }).click();
-    await expect(page.getByText(/is now current/)).toBeVisible();
+    await expect(
+      page.getByText(/workouts started from this point forward/i),
+    ).toBeVisible();
     await page.getByRole("link", { name: "View active Program", exact: true }).click();
     await expect(page).toHaveURL(/\/program$/);
     compilerEntry = page.getByText("Build session proposal", { exact: true });
