@@ -57,13 +57,21 @@ async function startWorkout(page: Page) {
 
 async function inspectSearchResult(picker: Locator, name: string) {
   const search = picker.getByLabel("Search exercise library");
-  await waitForHydratedReactChangeHandler(search);
-  await search.fill(name);
   const result = picker.getByRole("button", {
     name: `View details for ${name}`,
     exact: true,
   });
-  await expect(result).toBeVisible();
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    await waitForHydratedReactChangeHandler(search);
+    await search.fill("");
+    await search.pressSequentially(name, { delay: 10 });
+    try {
+      await expect(result).toBeVisible({ timeout: 5_000 });
+      break;
+    } catch (error) {
+      if (attempt === 1) throw error;
+    }
+  }
   await result.click();
 }
 

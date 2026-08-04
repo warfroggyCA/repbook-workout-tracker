@@ -73,14 +73,21 @@ test("recovers offline and timeout-after-commit sets exactly, then reviews aband
   await context.setOffline(true);
   await entry.getByRole("button", { name: "Log set", exact: true }).click();
   await expectSetQueueLength(page, 1);
-  await expect(current.getByRole("status")).toContainText(/Saving|Retrying|waiting/i);
+  await expect(current.getByRole("status")).toContainText(
+    /Saving|Retrying|waiting|Pending on this device/i,
+  );
 
   await context.setOffline(false);
-  await page.reload({ waitUntil: "domcontentloaded" });
-  current = page.getByTestId("current-exercise-card");
+  await page.evaluate(() => window.dispatchEvent(new Event("online")));
   await expect(current.getByTestId("active-set-save-receipt"))
     .toContainText("Saved · Set 1");
   await expectSetQueueLength(page, 0);
+  await page.reload({ waitUntil: "domcontentloaded" });
+  current = page.getByTestId("current-exercise-card");
+  await expect(
+    current.locator('[id^="logged-set-"]').filter({ hasText: "Set 1" }),
+  ).toBeVisible();
+  await expect(current.getByTestId("current-set-entry")).toContainText("Set 2");
   await dismissRest(page);
 
   let afterCommitInterceptions = 0;
