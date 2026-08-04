@@ -141,11 +141,11 @@ test("publishes and preserves durable warm-up and grouped workout outcomes", asy
     .getByRole("button", { name: "Check Program", exact: true })
     .first()
     .click();
-  await expect(page.getByRole("heading", { name: "Ready to activate" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Ready to publish" })).toBeVisible();
   await page
-    .getByRole("button", { name: "Activate new version", exact: true })
+    .getByRole("button", { name: "Publish future Program", exact: true })
     .click();
-  await expect(page.getByText("New Program version activated", { exact: true })).toBeVisible();
+  await expect(page.getByText("Future Program published", { exact: true })).toBeVisible();
 
   await page.goto("/today");
   await expect(page.getByRole("heading", { name: "Day B — Hinge" })).toBeVisible();

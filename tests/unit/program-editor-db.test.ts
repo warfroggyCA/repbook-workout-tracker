@@ -504,6 +504,135 @@ describe("versioned Program editor persistence", () => {
     })).toMatchObject({ name: "Day A" });
   });
 
+  it("publishes future intent without changing an active snapshot or imported History", async () => {
+    const programBefore = await database.db.query.programs.findFirst({
+      where: eq(programs.userId, userId),
+    });
+    if (!programBefore?.currentVersionId) throw new Error("Program missing");
+    const originalVersionId = programBefore.currentVersionId;
+    const originalDay = await database.db.query.workoutTemplates.findFirst({
+      where: eq(workoutTemplates.programVersionId, originalVersionId),
+    });
+    if (!originalDay) throw new Error("Program day missing");
+    const originalSlot = await database.db.query.workoutTemplateExercises.findFirst({
+      where: eq(workoutTemplateExercises.workoutTemplateId, originalDay.id),
+    });
+    if (!originalSlot) throw new Error("Program slot missing");
+
+    const active = await startWorkoutSession(database.db, userId, originalDay.id);
+    const [importedSession] = await database.db.insert(workoutSessions).values({
+      userId,
+      templateName: "Imported evidence — preserve exactly",
+      source: "strong_csv",
+      sourceWorkoutKey: "u03-imported-history-1",
+      status: "completed",
+      startedAt: new Date("2026-06-20T12:00:00.000Z"),
+      finishedAt: new Date("2026-06-20T13:00:00.000Z"),
+      timezone: "America/Toronto",
+      localDate: "2026-06-20",
+    }).returning();
+    const [importedExercise] = await database.db.insert(sessionExercises).values({
+      sessionId: importedSession.id,
+      exerciseId,
+      sourceExerciseKey: "imported-press",
+      sourceExerciseName: "Imported press",
+      modificationType: "as_planned",
+      orderIdx: 0,
+      targetSets: null,
+      targetRepsMin: null,
+      targetRepsMax: null,
+      targetLoad: null,
+      targetLoadUnit: null,
+    }).returning();
+    await database.db.insert(completedSets).values({
+      sessionExerciseId: importedExercise.id,
+      setNo: 1,
+      weight: 37.5,
+      weightUnit: "lb",
+      reps: 9,
+      metricType: "weight_reps",
+      loadEntryMeaning: "legacy_unknown",
+      sourceSetIndex: 0,
+      sourceRow: 2,
+      observedCompletedAt: new Date("2026-06-20T12:30:00.000Z"),
+      observedCompletionProvenance: "import_source",
+      observedCompletionQuality: "trustworthy",
+    });
+
+    const factSnapshot = async () => ({
+      activeSession: await database.db.query.workoutSessions.findFirst({
+        where: eq(workoutSessions.id, active.sessionId),
+      }),
+      activeExercises: await database.db.query.sessionExercises.findMany({
+        where: eq(sessionExercises.sessionId, active.sessionId),
+      }),
+      activeOccurrences: await database.db.query.sessionOccurrences.findMany({
+        where: eq(sessionOccurrences.sessionId, active.sessionId),
+      }),
+      importedSession: await database.db.query.workoutSessions.findFirst({
+        where: eq(workoutSessions.id, importedSession.id),
+      }),
+      importedExercises: await database.db.query.sessionExercises.findMany({
+        where: eq(sessionExercises.sessionId, importedSession.id),
+      }),
+      importedSets: await database.db.query.completedSets.findMany({
+        where: eq(completedSets.sessionExerciseId, importedExercise.id),
+      }),
+      originalVersion: await database.db.query.programVersions.findFirst({
+        where: eq(programVersions.id, originalVersionId),
+      }),
+      originalDays: await database.db.query.workoutTemplates.findMany({
+        where: eq(workoutTemplates.programVersionId, originalVersionId),
+      }),
+      originalSlots: await database.db.query.workoutTemplateExercises.findMany({
+        where: eq(workoutTemplateExercises.workoutTemplateId, originalDay.id),
+      }),
+      originalPrescriptions: await database.db.query.exercisePrescriptions.findMany({
+        where: eq(exercisePrescriptions.templateExerciseId, originalSlot.id),
+      }),
+    });
+    const before = await factSnapshot();
+
+    const edited = await reviewedEditedDraft(42, "Future Strength Plan");
+    const published = await publishProgramDraft(database.db, userId, {
+      draftId: edited.draftId,
+      expectedRevision: edited.revision,
+      reviewHash: edited.review.hash,
+    });
+    expect(published).toMatchObject({ ok: true, versionNo: 2 });
+    if (!published.ok) throw new Error(published.reason);
+
+    expect(await factSnapshot()).toEqual(before);
+    expect(await database.db.query.programs.findFirst({
+      where: eq(programs.userId, userId),
+    })).toMatchObject({
+      currentVersionId: published.programVersionId,
+      name: "Future Strength Plan",
+    });
+    expect(await database.db.query.workoutSessions.findFirst({
+      where: eq(workoutSessions.id, active.sessionId),
+    })).toMatchObject({
+      status: "in_progress",
+      sourceProgramVersionId: originalVersionId,
+      templateId: originalDay.id,
+    });
+
+    const publishedDay = await database.db.query.workoutTemplates.findFirst({
+      where: eq(workoutTemplates.programVersionId, published.programVersionId),
+    });
+    if (!publishedDay) throw new Error("Published day missing");
+    const publishedSlot = await database.db.query.workoutTemplateExercises.findFirst({
+      where: eq(workoutTemplateExercises.workoutTemplateId, publishedDay.id),
+    });
+    if (!publishedSlot) throw new Error("Published slot missing");
+    expect(await database.db.query.exercisePrescriptions.findFirst({
+      where: and(
+        eq(exercisePrescriptions.templateExerciseId, publishedSlot.id),
+        isNull(exercisePrescriptions.supersededById),
+      ),
+    })).toMatchObject({ targetLoad: 42 });
+  });
+
   it("reconnects a stale-base open draft after the active Program advanced", async () => {
     const originalProgram = await database.db.query.programs.findFirst({
       where: eq(programs.userId, userId),

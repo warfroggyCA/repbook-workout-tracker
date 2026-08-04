@@ -21,22 +21,24 @@ These concepts must never be collapsed:
 - Coach or Review proposals and decisions
 - independent activity context
 
-## Program editing and activation review
+## Program editing and future publication
 
 The editor prepares an editable current-schema draft from the immutable active
 Program. Automatic preparation of an older Program remains separate internally
 from deliberate user changes; it is never counted as something the user chose
 to edit. The normal review screen presents the safety result and any issues that
-need attention instead of a field-by-field comparison. Activation still
-requires an exact saved-revision review and creates a new immutable Program
-version.
+need attention alongside an expandable exact before-and-after change list.
+Publication still requires an exact saved-revision review and creates a new
+immutable Program version used only by workouts started afterward. An active
+session keeps its start-time snapshot; completed and imported History and every
+earlier Program version remain unchanged.
 
 Cross-version drafts are schema-validated and fenced by their saved revision
-and canonical content hash. Harmless legacy JSON fields do not block activation
+and canonical content hash. Harmless legacy JSON fields do not block publication
 or become part of the new immutable version.
 
 An older exercise group with unequal member set counts stays explicitly marked
-as legacy when another Program edit is activated. Repbook preserves its saved
+as legacy when another Program edit is published. Repbook preserves its saved
 sets, order, and rest instead of writing an invented round count back into the
 Program; execution and simulation run through the largest saved set count and
 skip each member after its own sets are complete. The editor offers an optional
@@ -51,7 +53,7 @@ structured steps as actions, so one retained action produces one occurrence.
 
 Every change to weekly work-set totals must be accounted for internally by an
 add, removal, replacement, or target change. If the review cannot account for a
-set total, activation fails closed.
+set total, publication fails closed.
 
 ## Persisted evidence
 
@@ -155,8 +157,10 @@ classes for warm-up occurrence truth. T05 activates them for current, next,
 group, and rest truth. T06 activates preview and Start truth, including
 prescribed exercise meaning. U01 activates the presentation-only active-workout
 hierarchy and ergonomics gate. U02 activates optional set-level effort, issue,
-note, and linked pain evidence from capture through Review, export, and recovery;
-later packages remain future work.
+note, and linked pain evidence from capture through Review, export, and recovery.
+U03 activates exact future-only Program review and publication clarity together
+with active-session, History, earlier-version, failure, conflict, and restore
+isolation evidence; later packages remain future work.
 
 ## T01 performed-measurement contract
 
@@ -359,3 +363,23 @@ schema 29 owns this evidence; schema 28 upgrades add null unknowns without
 backfilling from current catalogue, Program, or equipment metadata. Recovery
 manifest 10 keeps the same table inventory while strengthening completed-set and
 pain integrity checks.
+
+## U03 future-write Program contract
+
+The Program editor owns a durable future draft. Drafting and review do not
+change the current Program. The review is tied to one exact saved revision and
+shows the deliberate change labels plus expandable current and future values;
+automatic preparation of older stored details remains separate from owner edits.
+
+Publishing is one explicit action. It creates a new immutable Program version
+for workouts started from that point forward. A workout already in progress
+keeps its original Program, day, exercise, target, warm-up, and group snapshots.
+Completed and imported History, earlier Program versions, recommendations,
+decisions, and accepted adaptations are not rewritten or inferred by the edit.
+
+Discard removes only the open draft. A stale base, conflicting tab, obsolete
+review, malformed document, or publication failure preserves recoverable owner
+work or fails closed without advancing the Program. Restoring an earlier version
+creates another draft and requires a fresh exact review before it can be
+published as a new future version. U03 adds no schema, migration, historical
+repair, production mutation, recommendation approval, or automatic adaptation.

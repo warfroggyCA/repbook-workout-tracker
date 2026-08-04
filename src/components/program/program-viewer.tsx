@@ -123,7 +123,7 @@ export function ProgramViewer({
               }
               nativeButton={false}
             >
-              <Pencil /> Edit program
+              <Pencil /> Edit future Program
             </Button>
           )}
           <Button

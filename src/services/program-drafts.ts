@@ -246,7 +246,7 @@ export async function getOpenProgramDraft(db: Db, userId: string) {
     draft: asDraftView(
       reconciled.draft,
       reconciled.baseAdvanced
-        ? "The active Program changed while this draft was open. Your edits were preserved, and a fresh review is required before activation."
+        ? "The active Program changed while this draft was open. Your edits were preserved, and a fresh review is required before publication."
         : undefined,
     ),
     history: await listProgramVersionHistory(db, userId, program.id),
@@ -332,7 +332,7 @@ export async function getOrCreateProgramDraft(db: Db, userId: string, attempt = 
     draft: asDraftView(
       draft,
       baseAdvanced
-        ? "The active Program changed while this draft was open. Your edits were preserved, and a fresh review is required before activation."
+        ? "The active Program changed while this draft was open. Your edits were preserved, and a fresh review is required before publication."
         : undefined,
     ),
     history: await listProgramVersionHistory(db, userId, program.id),

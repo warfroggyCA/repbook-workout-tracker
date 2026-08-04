@@ -37,7 +37,7 @@ test("opens and operates the keyboard-accessible Program editor", async ({
   await signIn(page);
   await page.emulateMedia({ reducedMotion: "reduce" });
   await page.goto("/program");
-  await page.getByRole("button", { name: "Edit program", exact: true }).click();
+  await page.getByRole("button", { name: "Edit future Program", exact: true }).click();
   await expect(page.getByRole("heading", { name: /^Edit / })).toBeVisible();
   await expect(page.getByRole("status")).toContainText("All changes saved");
   const advancedOptions = page
@@ -62,7 +62,7 @@ test("opens and operates the keyboard-accessible Program editor", async ({
   await expect(reviewTab).toHaveAttribute("aria-selected", "true");
   await expect(
     page.getByRole("heading", {
-      name: /Check before activating|Ready to activate|No Program changes yet/,
+      name: /Review before publishing|Ready to publish|No Program changes yet/,
     }),
   ).toBeVisible();
   await page.keyboard.press("ArrowRight");
@@ -121,8 +121,8 @@ test("opens and operates the keyboard-accessible Program editor", async ({
     await expect(page.getByRole("status")).toContainText("All changes saved");
     await page.getByRole("tab", { name: "Review", exact: true }).click();
     await page.getByRole("button", { name: "Check Program", exact: true }).first().click();
-    await expect(page.getByRole("heading", { name: "Ready to activate" })).toBeVisible();
-    await page.getByRole("button", { name: "Activate new version", exact: true }).click();
+    await expect(page.getByRole("heading", { name: "Ready to publish" })).toBeVisible();
+    await page.getByRole("button", { name: "Publish future Program", exact: true }).click();
     await expect(page.getByText(/is now current/)).toBeVisible();
     await page.getByRole("link", { name: "View active Program", exact: true }).click();
     await expect(page).toHaveURL(/\/program$/);

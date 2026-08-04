@@ -336,7 +336,7 @@ test("traces the exact BA routine change through proposal, publication, Today, a
     observed: "The Changes you made review was visible before activation.",
     screenshot: reviewScreenshot,
   });
-  await page.getByRole("button", { name: "Activate new version", exact: true }).click();
+  await page.getByRole("button", { name: "Publish future Program", exact: true }).click();
   await expect(page.getByText(/Version 2 is now current/)).toBeVisible();
   await checkpoint({
     id: "QA-02-RC-ACTIVATION",

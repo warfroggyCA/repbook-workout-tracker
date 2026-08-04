@@ -6,7 +6,11 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import type { ProgramEditorController } from "@/components/program/editor/use-program-editor-controller";
-import type { ProgramReview } from "@/lib/program-editor-client";
+import {
+  describeProgramReviewChange,
+  formatProgramReviewValue,
+  type ProgramReview,
+} from "@/lib/program-editor-client";
 import type { ProgramPreflightFinding } from "@/lib/program-preflight";
 import { cn } from "@/lib/utils";
 
@@ -58,20 +62,20 @@ function findingGroupCopy(group: FindingGroup) {
       return {
         title: `${countLabel(count, "exercise")} ${count === 1 ? "doesn't" : "don't"} match your saved equipment`,
         description:
-          "Change these exercises or update your saved equipment before activating.",
+          "Change these exercises or update your saved equipment before publishing.",
         affectedLabel: countLabel(count, "affected exercise"),
       };
     case "active_avoid_constraint":
       return {
         title: `${countLabel(count, "exercise")} ${count === 1 ? "conflicts" : "conflict"} with something you're avoiding`,
         description:
-          "Change these exercises or review the saved limit before activating.",
+          "Change these exercises or review the saved limit before publishing.",
         affectedLabel: countLabel(count, "affected exercise"),
       };
     case "active_caution_constraint":
       return {
         title: `${countLabel(count, "exercise")} ${count === 1 ? "matches" : "match"} one of your saved cautions`,
-        description: "Have a look before you activate this Program.",
+        description: "Have a look before you publish this Program.",
         affectedLabel: countLabel(count, "affected exercise"),
       };
     case "duration_target_overrun":
@@ -109,6 +113,16 @@ function findingGroupCopy(group: FindingGroup) {
 
 function unique(values: string[]) {
   return [...new Set(values)];
+}
+
+function compactReviewValue(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(compactReviewValue);
+  if (!value || typeof value !== "object") return value;
+  return Object.fromEntries(
+    Object.entries(value as Record<string, unknown>)
+      .filter(([, item]) => item != null && item !== "")
+      .map(([key, item]) => [key, compactReviewValue(item)]),
+  );
 }
 
 export function ReviewDialog({ editor, currentReview, canReview }: { editor: ProgramEditorController; currentReview: ProgramReview | null; canReview: boolean }) {
@@ -151,12 +165,12 @@ export function ReviewDialog({ editor, currentReview, canReview }: { editor: Pro
                 <CardHeader>
                   <CardTitle>
                     <h2 className="text-lg font-semibold">
-                      Check before activating
+                      Review before publishing
                     </h2>
                   </CardTitle>
                   <CardDescription>
                     Repbook checks the saved Program, your equipment, and its
-                    safety rules. Nothing changes until you activate it.
+                    safety rules. Nothing changes until you publish it.
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
@@ -184,28 +198,28 @@ export function ReviewDialog({ editor, currentReview, canReview }: { editor: Pro
                         {currentReview.changes.length === 0
                           ? "No Program changes yet"
                           : currentReview.status === "publishable"
-                            ? "Ready to activate"
-                            : "Needs attention before activation"}
+                            ? "Ready to publish"
+                            : "Needs attention before publishing"}
                       </h2>
                     </CardTitle>
                     <CardDescription>
                       {currentReview.changes.length === 0
-                        ? "Make a change in Edit before activating a new version."
+                        ? "Make a change in Edit before publishing a new version."
                         : currentReview.status === "publishable"
-                          ? "Your changes are saved and Repbook found nothing that blocks activation."
-                          : "Your changes are saved. Fix the items below before activating."}
+                          ? "Your changes are saved and Repbook found nothing that blocks publication."
+                          : "Your changes are saved. Fix the items below before publishing."}
                     </CardDescription>
                   </CardHeader>
                 </Card>
                 {currentReview.blockingErrors.length > 0 && (
                   <Alert variant="destructive">
                     <CircleAlert />
-                    <AlertTitle>Activation is paused</AlertTitle>
+                    <AlertTitle>Publication is paused</AlertTitle>
                     <AlertDescription>
                       <p>
                         {blockingFindingCount > 0
-                          ? `Fix the red ${blockingFindingCount === 1 ? "item" : "items"} below before you activate. Your draft is safe and nothing has been activated.`
-                          : "Fix the issue below before activating. Your draft is safe and nothing has been activated."}
+                          ? `Fix the red ${blockingFindingCount === 1 ? "item" : "items"} below before you publish. Your draft is safe and nothing has been published.`
+                          : "Fix the issue below before publishing. Your draft is safe and nothing has been published."}
                       </p>
                       {otherBlockingErrors.length > 0 && (
                         <ul className="mt-2 list-disc space-y-1 pl-5">
@@ -234,7 +248,7 @@ export function ReviewDialog({ editor, currentReview, canReview }: { editor: Pro
                   <CardHeader>
                     <CardTitle>
                       <h2 className="text-lg font-semibold">
-                        Before you activate
+                        Before you publish
                       </h2>
                     </CardTitle>
                     <CardDescription>
@@ -389,6 +403,54 @@ export function ReviewDialog({ editor, currentReview, canReview }: { editor: Pro
                     )}
                   </CardContent>
                 </Card>
+                <Card>
+                  <CardHeader>
+                    <CardTitle>
+                      <h2 className="text-lg font-semibold">
+                        What will change for future workouts
+                      </h2>
+                    </CardTitle>
+                    <CardDescription>
+                      This is the exact change list for saved draft revision {currentReview.reviewedRevision}.
+                      Publishing uses it only for workouts started afterward.
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    {currentReview.changes.length === 0 ? (
+                      <p className="text-sm text-muted-foreground">
+                        No future Program changes are included in this review.
+                      </p>
+                    ) : (
+                      <ol className="space-y-2">
+                        {currentReview.changes.map((change) => {
+                          return (
+                            <li key={`${change.kind}:${change.path}`}>
+                              <details className="rounded-lg border bg-background p-3">
+                                <summary className="min-h-10 cursor-pointer font-medium [overflow-wrap:anywhere]">
+                                  {describeProgramReviewChange(change)}
+                                </summary>
+                                <dl className="mt-3 grid gap-3 text-sm sm:grid-cols-2">
+                                  <div className="rounded-md bg-muted/50 p-3">
+                                    <dt className="font-medium">Current Program</dt>
+                                    <dd className="mt-1 whitespace-pre-wrap text-muted-foreground [overflow-wrap:anywhere]">
+                                      {formatProgramReviewValue(compactReviewValue(change.before))}
+                                    </dd>
+                                  </div>
+                                  <div className="rounded-md bg-muted/50 p-3">
+                                    <dt className="font-medium">Future Program after publication</dt>
+                                    <dd className="mt-1 whitespace-pre-wrap text-muted-foreground [overflow-wrap:anywhere]">
+                                      {formatProgramReviewValue(compactReviewValue(change.after))}
+                                    </dd>
+                                  </div>
+                                </dl>
+                              </details>
+                            </li>
+                          );
+                        })}
+                      </ol>
+                    )}
+                  </CardContent>
+                </Card>
                 {currentReview.recommendationConsequences.length > 0 && (
                   <Card>
                     <CardHeader>
@@ -420,8 +482,8 @@ export function ReviewDialog({ editor, currentReview, canReview }: { editor: Pro
                 )}
                 <div className="flex flex-col gap-2 rounded-xl border bg-card p-4 sm:flex-row sm:items-center sm:justify-between">
                   <p className="text-sm text-muted-foreground">
-                    Activation creates a new immutable version. It never
-                    rewrites a past or active workout.
+                    Publication creates a new immutable version for workouts
+                    started afterward. An active workout and History stay unchanged.
                   </p>
                   <Button
                     type="button"
@@ -438,7 +500,7 @@ export function ReviewDialog({ editor, currentReview, canReview }: { editor: Pro
                     ) : (
                       <Check />
                     )}{" "}
-                    Activate new version
+                    Publish future Program
                   </Button>
                 </div>
               </>

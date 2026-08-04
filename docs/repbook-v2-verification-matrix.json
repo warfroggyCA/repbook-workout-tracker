@@ -5,8 +5,8 @@
   "repositoryRole": "public application source",
   "exactBaseCommit": "2c9ab1b9478502f1d08956a6c44dfb0850c8f168",
   "fixtureCatalogue": "tests/fixtures/v2/semantic-scenarios.json",
-  "currentPackage": "U02",
-  "currentPackageBaseCommit": "91060159e9a8ecb0d853506427731c9d81351f46",
+  "currentPackage": "U03",
+  "currentPackageBaseCommit": "bec45152590ace215bb3d5dfbf847a8e38571683",
   "productBehaviorImplementedByP02": false,
   "implementedProductPackages": [
     "T01",
@@ -16,7 +16,8 @@
     "T05",
     "T06",
     "U01",
-    "U02"
+    "U02",
+    "U03"
   ],
   "legend": {
     "R": "required primary proof",
@@ -402,6 +403,41 @@
       "testPath": "tests/unit/v2-u02-exception-context-adversarial.test.ts",
       "command": "npx vitest run tests/unit/v2-u02-exception-context-adversarial.test.ts",
       "proves": "changed retry evidence conflicts, cross-owner and invented pain linkage fails closed, old offline commands upgrade with unknown context, capture itself writes no recommendation, decision, or adaptation, and durable set_exception pain remains Review-visible without entering automatic pain holds"
+    },
+    "U03-databaseService": {
+      "status": "current",
+      "implementingPackage": "U03",
+      "testPath": "tests/unit/program-editor-db.test.ts",
+      "command": "npx vitest run tests/unit/program-editor-db.test.ts",
+      "proves": "a reviewed Program draft publishes one new immutable future version while an already active session snapshot, completed or imported History, and every earlier Program version remain byte-for-byte unchanged"
+    },
+    "U03-browser": {
+      "status": "current",
+      "implementingPackage": "U03",
+      "testPath": "tests/e2e/v2-u03-future-program.spec.ts",
+      "command": "npx playwright test --config=playwright.v2-u03.config.ts tests/e2e/v2-u03-future-program.spec.ts",
+      "proves": "the editor labels draft, review, and publication as future-only; exposes the exact reviewed before and after values; remains operable at 320 pixels and extra-large text; and recovers truthfully from a publication failure"
+    },
+    "U03-exportImport": {
+      "status": "current",
+      "implementingPackage": "U03",
+      "testPath": "tests/unit/program-editor-db.test.ts",
+      "command": "npx vitest run tests/unit/program-editor-db.test.ts",
+      "proves": "draft and immutable Program-version documents retain exact authored intent and version identity through the existing canonical snapshot and version-export boundaries without reinterpreting workout facts"
+    },
+    "U03-restoreRollback": {
+      "status": "current",
+      "implementingPackage": "U03",
+      "testPath": "tests/unit/program-editor-db.test.ts",
+      "command": "npx vitest run tests/unit/program-editor-db.test.ts",
+      "proves": "injected publication failure rolls back without advancing the Program, while restore creates a new draft that requires a fresh exact review and publishes as a new future version rather than rewriting history"
+    },
+    "U03-adversarialPrivacy": {
+      "status": "current",
+      "implementingPackage": "U03",
+      "testPath": "tests/unit/program-editor-db.test.ts",
+      "command": "npx vitest run tests/unit/program-editor-db.test.ts",
+      "proves": "stale revisions, changed bases, conflicting tabs, obsolete review hashes, malformed drafts, and failed publication remain recoverable or fail closed without mutating active or historical workout facts"
     },
     "R01-databaseService": {
       "status": "future_activation",
@@ -1382,6 +1418,60 @@
       }
     },
     {
+      "concernId": "future-write-program-editing",
+      "label": "Future-write Program editing",
+      "cells": {
+        "pureContract": {
+          "level": "R",
+          "fixtures": [
+            "F11",
+            "F12"
+          ],
+          "verificationId": "P02-pureContract"
+        },
+        "databaseService": {
+          "level": "R",
+          "fixtures": [
+            "F11",
+            "F12"
+          ],
+          "verificationId": "U03-databaseService"
+        },
+        "browser": {
+          "level": "R",
+          "fixtures": [
+            "F11",
+            "F12"
+          ],
+          "verificationId": "U03-browser"
+        },
+        "exportImport": {
+          "level": "C",
+          "fixtures": [
+            "F11",
+            "F12"
+          ],
+          "verificationId": "U03-exportImport"
+        },
+        "restoreRollback": {
+          "level": "R",
+          "fixtures": [
+            "F11",
+            "F12"
+          ],
+          "verificationId": "U03-restoreRollback"
+        },
+        "adversarialPrivacy": {
+          "level": "C",
+          "fixtures": [
+            "F11",
+            "F12"
+          ],
+          "verificationId": "U03-adversarialPrivacy"
+        }
+      }
+    },
+    {
       "concernId": "owner-isolation",
       "label": "Owner isolation",
       "cells": {
@@ -1691,6 +1781,7 @@
     "No production owner data, production access, feature route, schema, migration, or deployment is part of P02.",
     "No production owner data, production access, schema migration, or deployment is part of T01.",
     "U01 current status means its presentation change and dedicated browser evidence travel together; it adds no schema, migration, persistence writer, or historical rewrite.",
-    "U02 current status means exception evidence, its set-linked pain identity, browser failure recovery, History and Review read paths, export, and restore evidence travel together; it does not imply release, deployment, recommendation approval, or Program adaptation."
+    "U02 current status means exception evidence, its set-linked pain identity, browser failure recovery, History and Review read paths, export, and restore evidence travel together; it does not imply release, deployment, recommendation approval, or Program adaptation.",
+    "U03 current status means exact future Program review and publication clarity travel with active-session, completed/imported History, earlier-version, conflict, failure, export, and restore isolation evidence; it adds no schema, migration, historical rewrite, release, or deployment."
   ]
 }

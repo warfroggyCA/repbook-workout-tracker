@@ -238,6 +238,11 @@ jobs:
         continue-on-error: true
         run: npm run test:e2e:v2-u02
 
+      - name: Verify U03 future-only Program publication
+        id: browser-v2-u03
+        continue-on-error: true
+        run: npm run test:e2e:v2-u03
+
       - name: Require every browser suite
         if: ${{ always() }}
         env:
@@ -265,6 +270,7 @@ jobs:
           BROWSER_V2_T06: ${{ steps.browser-v2-t06.outcome }}
           BROWSER_V2_U01: ${{ steps.browser-v2-u01.outcome }}
           BROWSER_V2_U02: ${{ steps.browser-v2-u02.outcome }}
+          BROWSER_V2_U03: ${{ steps.browser-v2-u03.outcome }}
         run: |
           failed=0
           for result in \
@@ -291,7 +297,8 @@ jobs:
             "T05 current, next, group, and rest truth:${BROWSER_V2_T05}" \
             "T06 preview and Start truth:${BROWSER_V2_T06}" \
             "U01 active-workout hierarchy:${BROWSER_V2_U01}" \
-            "U02 exception-only context:${BROWSER_V2_U02}"
+            "U02 exception-only context:${BROWSER_V2_U02}" \
+            "U03 future-only Program publication:${BROWSER_V2_U03}"
           do
             name="${result%%:*}"
             outcome="${result#*:}"

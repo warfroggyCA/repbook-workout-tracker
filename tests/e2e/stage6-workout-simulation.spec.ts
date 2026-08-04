@@ -31,8 +31,8 @@ async function publishExactBaRoutineChange(page: Page) {
   await expect(page.getByRole("status")).toContainText("All changes saved");
   await page.getByRole("tab", { name: "Review", exact: true }).click();
   await page.getByRole("button", { name: "Check Program", exact: true }).first().click();
-  await expect(page.getByRole("heading", { name: "Ready to activate", exact: true })).toBeVisible();
-  await page.getByRole("button", { name: "Activate new version", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Ready to publish", exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Publish future Program", exact: true }).click();
   await expect(page.getByText(/Version 2 is now current/)).toBeVisible();
   await page.goto("/program");
   await expect(page.getByText("v2", { exact: true })).toBeVisible();
