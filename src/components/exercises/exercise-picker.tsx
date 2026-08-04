@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   BODY_AREA_FILTERS,
   DEFAULT_EXERCISE_FILTERS,
@@ -537,15 +537,6 @@ export function ExercisePicker({
         height: viewport?.height ?? window.innerHeight,
         offsetTop: viewport?.offsetTop ?? 0,
       });
-      requestAnimationFrame(() => {
-        const active = document.activeElement;
-        if (
-          active instanceof HTMLElement &&
-          resultsScrollRef.current?.contains(active)
-        ) {
-          active.scrollIntoView({ block: "center" });
-        }
-      });
     };
     const frame = requestAnimationFrame(update);
     window.visualViewport?.addEventListener("resize", update);
@@ -558,6 +549,17 @@ export function ExercisePicker({
       window.removeEventListener("resize", update);
     };
   }, [open]);
+
+  useLayoutEffect(() => {
+    if (!open || !visualViewport) return;
+    const active = document.activeElement;
+    if (
+      active instanceof HTMLElement &&
+      resultsScrollRef.current?.contains(active)
+    ) {
+      active.scrollIntoView({ block: "center" });
+    }
+  }, [open, visualViewport]);
 
   return (
     <Dialog
