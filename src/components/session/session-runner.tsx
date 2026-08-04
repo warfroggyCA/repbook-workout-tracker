@@ -239,6 +239,9 @@ export function SessionRunner(props: SessionRunnerProps) {
     return firstOpen?.id ?? null;
   });
   const previousCurrentActionIdRef = useRef<string | null>(null);
+  const previousCurrentActionKindRef = useRef<
+    SessionGuidanceFocusAction["kind"] | null
+  >(null);
   const [timer, setTimer] = useState<DurableRestTimer | null>(null);
   const [restTimerHydrated, setRestTimerHydrated] = useState(false);
   const [restNow, setRestNow] = useState(() => Date.now());
@@ -443,9 +446,14 @@ export function SessionRunner(props: SessionRunnerProps) {
         ? guidance.current?.sessionExerciseId ?? null
         : null;
   const currentActionTargetId = actionTargetId(guidance.currentAction);
+  const latestAcknowledgementTargetId = latestSetAcknowledgement
+    ? `active-set-save-receipt-${latestSetAcknowledgement.sessionExerciseId}-${latestSetAcknowledgement.set.setNo}`
+    : null;
   useEffect(() => {
     const previousActionId = previousCurrentActionIdRef.current;
+    const previousActionKind = previousCurrentActionKindRef.current;
     previousCurrentActionIdRef.current = currentActionId;
+    previousCurrentActionKindRef.current = currentActionKind;
     if (previousActionId == null || previousActionId === currentActionId) return;
 
     const previousOccurrence = occurrences.find(
@@ -459,6 +467,14 @@ export function SessionRunner(props: SessionRunnerProps) {
       previousOccurrence?.outcome === "pending" &&
       !restoredEarlierAction
     ) return;
+    const acknowledgementBelongsToPreviousAction =
+      previousOccurrence?.kind === "working_set" &&
+      latestAcknowledgementTargetId ===
+        `active-set-save-receipt-${previousOccurrence.sessionExerciseId}-${previousOccurrence.kindOrdinal + 1}`;
+    const shouldRevealLatestAcknowledgement =
+      currentActionKind === "rest" ||
+      previousActionKind === "rest" ||
+      acknowledgementBelongsToPreviousAction;
 
     let focusFrame = 0;
     let scrollFrame = 0;
@@ -477,9 +493,13 @@ export function SessionRunner(props: SessionRunnerProps) {
       }
       focusFrame = window.requestAnimationFrame(() => {
         const target = document.getElementById(currentActionTargetId);
-        // The rest status is fixed and already visible. Scrolling it can move the
-        // acknowledgement that was deliberately kept in view after a save.
-        if (currentActionKind !== "rest") {
+        const acknowledgement =
+          shouldRevealLatestAcknowledgement && latestAcknowledgementTargetId
+            ? document.getElementById(latestAcknowledgementTargetId)
+            : null;
+        if (acknowledgement) {
+          acknowledgement.scrollIntoView({ behavior: "auto", block: "center" });
+        } else if (currentActionKind !== "rest") {
           target?.scrollIntoView({ behavior: "smooth", block: "center" });
         }
         const focusTarget = target?.matches("[tabindex]")
@@ -501,6 +521,7 @@ export function SessionRunner(props: SessionRunnerProps) {
     currentActionSequenceIdx,
     currentActionSessionExerciseId,
     currentActionTargetId,
+    latestAcknowledgementTargetId,
     occurrences,
   ]);
   const groupContextByExerciseId = useMemo(
