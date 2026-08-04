@@ -25,8 +25,14 @@ async function signIn(page: Page) {
 }
 
 async function openAlternatePreview(page: Page, day: RegExp) {
-  await page.goto("/today");
+  const current = new URL(page.url());
+  if (current.pathname !== "/today" || current.search) {
+    await page.goto("/today");
+  } else {
+    await page.waitForLoadState("networkidle");
+  }
   const alternatives = page.getByTestId("alternate-program-days");
+  await expect(alternatives).toBeVisible();
   await openNativeDetails(alternatives);
   await alternatives.getByRole("button", { name: day }).click();
   await expect(page).toHaveURL(/\/today\?preview=[0-9a-f-]+$/);
