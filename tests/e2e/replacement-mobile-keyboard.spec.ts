@@ -75,6 +75,13 @@ async function inspectSearchResult(picker: Locator, name: string) {
   await result.click();
 }
 
+async function returnToSearchResults(picker: Locator) {
+  const back = picker.getByRole("button", { name: "Back", exact: true });
+  await waitForHydratedReactHandler(back);
+  await back.click();
+  await expect(picker.getByLabel("Search exercise library")).toBeEditable();
+}
+
 async function expectKeyboardGeometry(page: Page, picker: Locator) {
   await expect(async () => {
     const geometry = await picker.evaluate((dialog) => {
@@ -289,11 +296,11 @@ test("keeps unrestricted replacement truthful and reachable through mobile keybo
       { exact: true },
     ),
   ).toHaveCount(0);
-  await picker.getByRole("button", { name: "Back", exact: true }).click();
+  await returnToSearchResults(picker);
 
   await inspectSearchResult(picker, "Cable Face Pull");
   await expect(picker).toContainText("Required equipment is unavailable");
-  await picker.getByRole("button", { name: "Back", exact: true }).click();
+  await returnToSearchResults(picker);
 
   await inspectSearchResult(picker, "Bodyweight Bulgarian Split Squat");
   await expect(picker).toContainText("Reps");
