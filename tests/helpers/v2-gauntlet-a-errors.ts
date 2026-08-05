@@ -10,6 +10,7 @@ const EXPECTED_APP_SHELL_PREFETCHES = new Set([
   "/coach",
   "/history",
   "/program",
+  "/simulation",
   "/settings",
 ]);
 
