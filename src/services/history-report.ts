@@ -1,8 +1,10 @@
-import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, isNotNull, isNull, or, sql } from "drizzle-orm";
 import type { Db } from "@/db";
 import { resultRows } from "@/db/result";
 import {
   completedSets,
+  exercises,
+  externalExerciseMappings,
   healthActivities,
   painLogs,
   sessionExercises,
@@ -10,6 +12,7 @@ import {
   userProfiles,
   workoutSessions,
 } from "@/db/schema";
+import { hevyMappingKey } from "@/services/exercise-map";
 import { convertWeight, KG_TO_LB, type LoadUnit } from "@/lib/units";
 import { estimateOneRepMax } from "@/lib/one-rep-max";
 import { activityDateKey, activityTypeLabel } from "@/lib/activities";
@@ -54,6 +57,16 @@ import {
   buildTrainingCadence,
   type TrainingCadenceSession,
 } from "@/lib/training-cadence";
+import {
+  hasOneExactCompletedWorkingOccurrence,
+  resolveReviewedExerciseMapping,
+} from "@/lib/history-exercise-evidence";
+import type {
+  ExerciseEvidenceTier,
+  ExerciseIdentityScope,
+  ReviewedExerciseMapping,
+  ReviewedMappingStatus,
+} from "@/lib/history-exercise-evidence";
 
 export const HISTORY_RANGES = [
   { key: "4w", label: "4 weeks", days: 28 },
@@ -62,6 +75,8 @@ export const HISTORY_RANGES = [
   { key: "1y", label: "1 year", days: 365 },
   { key: "all", label: "All time", days: null },
 ] as const;
+
+export const HISTORY_EXERCISE_EVIDENCE_LIMIT = 24;
 
 export type HistoryRangeKey = (typeof HISTORY_RANGES)[number]["key"];
 
@@ -592,7 +607,17 @@ export function summarizeHistory(
       const loadSemantics = usesPrescribedMeaning
         ? sessionExercise.prescribedLoadSemantics!
         : (sessionExercise.exercise.loadSemantics ?? "total");
-      const sets = sessionExercise.sets.filter((set) => !set.isWarmup);
+      // Exercise calculations are admitted only when the performed set has one
+      // exact completed working-set occurrence. Retained but unlinked legacy
+      // facts remain available in workout evidence and exports.
+      const sets = sessionExercise.sets.filter(
+        (set) =>
+          !set.isWarmup &&
+          hasOneExactCompletedWorkingOccurrence(
+            set.id,
+            targetOccurrencesBySetId.get(set.id) ?? [],
+          ),
+      );
       if (!sets.length) continue;
 
       workingSets += sets.length;
@@ -631,8 +656,7 @@ export function summarizeHistory(
       familyStats.sets += sets.length;
 
       let bestWeighted:
-        | { score: number; weight: number; reps: number }
-        | undefined;
+        { score: number; weight: number; reps: number } | undefined;
       let bestReps = 0;
       let rawObservation:
         | {
@@ -1189,6 +1213,39 @@ export function summarizeHistory(
       }))
       .sort((a, b) => b.sets - a.sets),
     exerciseProgress,
+    exerciseEvidence: [] as Array<{
+      exerciseId: string;
+      exercise: string;
+      scope: ExerciseIdentityScope;
+      familyId: string | null;
+      familyName: string | null;
+      retainedSets: number;
+      exactLinkedSets: number;
+      calculationEligibleSets: number;
+      tiers: ExerciseEvidenceTier[];
+      sources: string[];
+      sourceExerciseKeys: string[];
+      reviewedMappings: ReviewedExerciseMapping[];
+      evidence: Array<{
+        setId: string;
+        sessionId: string;
+        localDate: string;
+        setNo: number;
+        weight: number | null;
+        weightUnit: string | null;
+        reps: number | null;
+        tier: ExerciseEvidenceTier;
+        exactLinked: boolean;
+        calculationEligible: boolean;
+        mappingStatus: ReviewedMappingStatus;
+        reviewedMapping: ReviewedExerciseMapping | null;
+        source: string;
+        sourceExerciseKey: string | null;
+        sourceExerciseName: string | null;
+        plannedExerciseId: string | null;
+        performedExerciseId: string;
+      }>;
+    }>,
     records,
     families: [...familyMap.entries()]
       .map(([familyKey, family]) => ({
@@ -1221,7 +1278,11 @@ export async function getHistoryReport(
   range: HistoryRangeKey,
   plannedPerWeek: number,
   now = new Date(),
-  suppliedProfile?: { timezone: string; unit: LoadUnit }
+  suppliedProfile?: { timezone: string; unit: LoadUnit },
+  exerciseEvidenceSelection?: {
+    exerciseId: string | null;
+    tier: ExerciseEvidenceTier | "all";
+  },
 ) {
   const since = historyRangeStart(range, now);
   const profile =
@@ -1237,6 +1298,83 @@ export async function getHistoryReport(
       ))
     : null;
   const nowLocalDate = workoutLocalDate(now, profile.timezone);
+  const selectedExerciseId = exerciseEvidenceSelection?.exerciseId ?? null;
+  const selectedEvidenceTier = exerciseEvidenceSelection?.tier ?? "all";
+  const [historicalSourceBindings, ownerMappingRows] = await Promise.all([
+    db
+      .selectDistinct({
+        sourceName: sessionExercises.sourceExerciseName,
+        exerciseId: sessionExercises.exerciseId,
+      })
+      .from(sessionExercises)
+      .innerJoin(
+        workoutSessions,
+        eq(sessionExercises.sessionId, workoutSessions.id),
+      )
+      .innerJoin(
+        exercises,
+        and(
+          eq(sessionExercises.exerciseId, exercises.id),
+          or(isNull(exercises.userId), eq(exercises.userId, userId)),
+        ),
+      )
+      .where(
+        and(
+          eq(workoutSessions.userId, userId),
+          eq(workoutSessions.source, "hevy"),
+          inArray(workoutSessions.status, ["completed", "abandoned"]),
+          isNull(workoutSessions.archivedAt),
+          isNotNull(sessionExercises.sourceExerciseName),
+          ...(sinceLocalDate
+            ? [gte(workoutSessions.localDate, sinceLocalDate)]
+            : []),
+        ),
+      ),
+    db.query.externalExerciseMappings.findMany({
+      where: and(
+        eq(externalExerciseMappings.userId, userId),
+        eq(externalExerciseMappings.source, "hevy"),
+      ),
+    }),
+  ]);
+  const ownerMappings: ReviewedExerciseMapping[] = ownerMappingRows.map(
+    (mapping) => ({
+      id: mapping.id,
+      source: mapping.source,
+      normalizedKey: mapping.normalizedKey,
+      sourceName: mapping.sourceName,
+      sourceEquipment: mapping.sourceEquipment,
+      exerciseId: mapping.exerciseId,
+      confirmedAtISO: mapping.confirmedAt.toISOString(),
+    }),
+  );
+  const sourceMappingResolutions = historicalSourceBindings.flatMap(
+    (binding) => {
+      if (binding.sourceName == null) return [];
+      const resolved = resolveReviewedExerciseMapping({
+        source: "hevy",
+        performedExerciseId: binding.exerciseId,
+        normalizedKey: hevyMappingKey(binding.sourceName),
+        mappings: ownerMappings,
+      });
+      return [
+        {
+          source: "hevy",
+          source_name: binding.sourceName,
+          performed_exercise_id: binding.exerciseId,
+          mapping_status: resolved.status,
+          mapping_id: resolved.mapping?.id ?? null,
+          mapping_source: resolved.mapping?.source ?? null,
+          mapping_normalized_key: resolved.mapping?.normalizedKey ?? null,
+          mapping_source_name: resolved.mapping?.sourceName ?? null,
+          mapping_source_equipment:
+            resolved.mapping?.sourceEquipment ?? null,
+          mapping_exercise_id: resolved.mapping?.exerciseId ?? null,
+          mapping_confirmed_at: resolved.mapping?.confirmedAtISO ?? null,
+        },
+      ];
+    },
+  );
   const sessionSince = sinceLocalDate
     ? sql`AND ws.local_date >= ${sinceLocalDate}::date`
     : sql``;
@@ -1268,7 +1406,24 @@ export async function getHistoryReport(
     targetLoadText: sql`occurrence.planned_load_text`,
   };
   const executed = await db.execute(sql`
-    WITH selected_sessions AS MATERIALIZED (
+    WITH reviewed_mapping_resolutions AS MATERIALIZED (
+      SELECT *
+      FROM jsonb_to_recordset(
+        ${JSON.stringify(sourceMappingResolutions)}::jsonb
+      ) AS resolution(
+        source text,
+        source_name text,
+        performed_exercise_id uuid,
+        mapping_status text,
+        mapping_id uuid,
+        mapping_source text,
+        mapping_normalized_key text,
+        mapping_source_name text,
+        mapping_source_equipment text,
+        mapping_exercise_id uuid,
+        mapping_confirmed_at timestamptz
+      )
+    ), selected_sessions AS MATERIALIZED (
       SELECT ws.*,
              date_trunc('week', ws.local_date::timestamp)::date AS week_start,
              ws.finished_at IS NOT NULL AND (
@@ -1301,11 +1456,33 @@ export async function getHistoryReport(
       )
     ), selected_occurrences AS MATERIALIZED (
       SELECT se.id AS session_exercise_id, se.session_id, se.exercise_id,
+             se.substituted_for_exercise_id AS planned_exercise_id,
              se.planned_from_template_exercise_id,
              se.source_slot_lineage_id,
+             se.source_exercise_key, se.source_exercise_name,
              se.prescribed_semantics_version,
              se.modification_type, se.skip_reason, se.substitution_reason,
              s.status, s.template_id, s.local_date, s.week_start,
+             s.source AS session_source, s.import_batch_id,
+             CASE
+               WHEN s.source <> 'hevy' THEN 'not_applicable'
+               WHEN se.source_exercise_name IS NULL THEN 'missing'
+               ELSE coalesce(mapping.mapping_status, 'missing')
+             END AS reviewed_mapping_status,
+             mapping.mapping_id AS reviewed_mapping_id,
+             mapping.mapping_source AS reviewed_mapping_source,
+             mapping.mapping_normalized_key AS reviewed_mapping_normalized_key,
+             mapping.mapping_source_name AS reviewed_mapping_source_name,
+             mapping.mapping_source_equipment AS reviewed_mapping_source_equipment,
+             mapping.mapping_exercise_id AS reviewed_mapping_exercise_id,
+             mapping.mapping_confirmed_at AS reviewed_mapping_confirmed_at,
+             e.user_id AS exercise_owner_id,
+             e.created_from_import_event_id,
+             CASE
+               WHEN e.user_id IS NULL THEN 'shared'
+               WHEN e.created_from_import_event_id IS NOT NULL THEN 'import_created'
+               ELSE 'owner_created'
+             END AS exercise_scope,
              CASE WHEN se.prescribed_semantics_version = 1
                     AND se.modification_type NOT IN ('substituted', 'added')
                THEN se.prescribed_exercise_name ELSE e.name END AS exercise_name,
@@ -1340,11 +1517,17 @@ export async function getHistoryReport(
       FROM selected_sessions s
       JOIN session_exercises se ON se.session_id = s.id
       JOIN exercises e ON e.id = se.exercise_id
+        AND (e.user_id IS NULL OR e.user_id = ${userId}::uuid)
       LEFT JOIN exercises replaced ON replaced.id = se.substituted_for_exercise_id
+        AND (replaced.user_id IS NULL OR replaced.user_id = ${userId}::uuid)
       LEFT JOIN workout_template_exercises planned_slot
         ON planned_slot.id = se.planned_from_template_exercise_id
        AND planned_slot.workout_template_id = s.template_id
       LEFT JOIN exercise_families ef ON ef.id = e.family_id
+      LEFT JOIN reviewed_mapping_resolutions mapping
+        ON mapping.source = s.source::text
+       AND mapping.source_name = se.source_exercise_name
+       AND mapping.performed_exercise_id = se.exercise_id
     ), program_occurrences AS MATERIALIZED (
       SELECT o.*
       FROM selected_occurrences o
@@ -1384,7 +1567,7 @@ export async function getHistoryReport(
       JOIN completed_sets cs ON cs.session_exercise_id = o.session_exercise_id
         AND cs.archived_at IS NULL
         AND NOT cs.is_warmup
-      LEFT JOIN LATERAL (
+      JOIN LATERAL (
         SELECT candidate.*, count(*) OVER ()::int AS occurrence_count
         FROM session_occurrences candidate
         WHERE candidate.completed_set_id = cs.id
@@ -1394,6 +1577,145 @@ export async function getHistoryReport(
         ORDER BY candidate.sequence_idx, candidate.id
         LIMIT 1
       ) occurrence ON true
+      WHERE o.reviewed_mapping_status IN ('not_applicable', 'confirmed')
+    ), retained_exercise_sets_raw AS MATERIALIZED (
+      SELECT o.*, cs.id AS set_id, cs.set_no, cs.weight, cs.weight_unit,
+             cs.reps, cs.metric_type AS set_metric_type,
+             cs.performed_semantics_version, cs.performed_load_type,
+             cs.performed_load_semantics, cs.exclude_from_analytics,
+             occurrence.origin AS occurrence_origin,
+             occurrence.occurrence_count,
+             EXISTS (
+               SELECT 1 FROM record_versions version
+               WHERE version.user_id = ${userId}::uuid
+                 AND version.entity_type = 'completed_set'
+                 AND version.entity_id = cs.id
+             ) AS corrected
+      FROM occurrences o
+      JOIN completed_sets cs ON cs.session_exercise_id = o.session_exercise_id
+        AND cs.archived_at IS NULL
+        AND NOT cs.is_warmup
+      LEFT JOIN LATERAL (
+        SELECT candidate.origin, count(*) OVER ()::int AS occurrence_count
+        FROM session_occurrences candidate
+        WHERE candidate.completed_set_id = cs.id
+          AND candidate.session_exercise_id = o.session_exercise_id
+          AND candidate.kind = 'working_set'
+          AND candidate.outcome = 'completed'
+        ORDER BY candidate.sequence_idx, candidate.id
+        LIMIT 1
+      ) occurrence ON true
+    ), retained_exercise_sets AS MATERIALIZED (
+      SELECT evidence.*,
+             CASE
+               WHEN (
+                 evidence.performed_semantics_version IS NOT NULL
+                 OR evidence.performed_load_type IS NOT NULL
+                 OR evidence.performed_load_semantics IS NOT NULL
+               ) AND NOT (
+                 evidence.performed_semantics_version = 1
+                 AND evidence.performed_load_type IS NOT NULL
+                 AND btrim(evidence.performed_load_type::text) <> ''
+                 AND evidence.performed_load_semantics IS NOT NULL
+                 AND btrim(evidence.performed_load_semantics::text) <> ''
+               ) THEN 'unsupported'
+               WHEN evidence.set_metric_type IN (
+                 'duration', 'distance_duration', 'activity'
+               ) THEN 'unsupported'
+               WHEN evidence.reviewed_mapping_status = 'inconsistent'
+                 THEN 'unsupported'
+               WHEN evidence.performed_semantics_version IS NULL
+                 AND evidence.performed_load_type IS NULL
+                 AND evidence.performed_load_semantics IS NULL THEN 'legacy'
+               WHEN evidence.occurrence_count IS DISTINCT FROM 1
+                 OR evidence.occurrence_origin = 'legacy' THEN 'legacy'
+               WHEN evidence.reviewed_mapping_status = 'missing' THEN 'legacy'
+               WHEN evidence.corrected THEN 'corrected'
+               WHEN evidence.import_batch_id IS NOT NULL
+                 OR evidence.session_source = 'hevy'
+                 OR evidence.occurrence_origin = 'imported' THEN 'imported'
+               WHEN evidence.session_source = 'history_manual' THEN 'manual'
+               ELSE 'native'
+             END AS evidence_tier,
+             evidence.occurrence_count = 1 AS exact_occurrence_linked,
+             evidence.occurrence_count = 1
+               AND evidence.reviewed_mapping_status IN (
+                 'not_applicable', 'confirmed'
+               )
+               AND evidence.set_metric_type NOT IN (
+                 'duration', 'distance_duration', 'activity'
+               )
+               AND evidence.performed_semantics_version = 1
+               AND evidence.performed_load_type IS NOT NULL
+               AND btrim(evidence.performed_load_type::text) <> ''
+               AND evidence.performed_load_semantics IS NOT NULL
+               AND btrim(evidence.performed_load_semantics::text) <> ''
+               AS calculation_eligible
+      FROM retained_exercise_sets_raw evidence
+    ), visible_exercise_evidence AS MATERIALIZED (
+      SELECT *
+      FROM retained_exercise_sets
+      WHERE (${selectedExerciseId}::uuid IS NULL
+             OR exercise_id = ${selectedExerciseId}::uuid)
+        AND (${selectedEvidenceTier}::text = 'all'
+             OR evidence_tier = ${selectedEvidenceTier}::text)
+      ORDER BY local_date DESC, session_id DESC, set_no DESC
+      LIMIT ${HISTORY_EXERCISE_EVIDENCE_LIMIT}
+    ), exercise_evidence_rows AS (
+      SELECT exercise_id, exercise_name, exercise_scope,
+             family_id, family_name,
+             count(*)::int AS retained_sets,
+             count(*) FILTER (WHERE exact_occurrence_linked)::int
+               AS exact_linked_sets,
+             count(*) FILTER (WHERE calculation_eligible)::int
+               AS calculation_eligible_sets,
+             array_agg(DISTINCT evidence_tier ORDER BY evidence_tier)
+               AS evidence_tiers,
+             array_agg(DISTINCT session_source ORDER BY session_source)
+               AS sources,
+             array_agg(DISTINCT source_exercise_key ORDER BY source_exercise_key)
+               FILTER (WHERE source_exercise_key IS NOT NULL)
+               AS source_exercise_keys,
+             coalesce((
+               SELECT jsonb_agg(jsonb_build_object(
+                 'setId', visible.set_id,
+                 'sessionId', visible.session_id,
+                 'localDate', visible.local_date,
+                 'setNo', visible.set_no,
+                 'weight', visible.weight,
+                 'weightUnit', visible.weight_unit,
+                 'reps', visible.reps,
+                 'tier', visible.evidence_tier,
+                 'exactLinked', visible.exact_occurrence_linked,
+                 'calculationEligible', visible.calculation_eligible,
+                 'mappingStatus', visible.reviewed_mapping_status,
+                 'reviewedMapping', CASE
+                   WHEN visible.reviewed_mapping_id IS NULL THEN NULL
+                   ELSE jsonb_build_object(
+                     'id', visible.reviewed_mapping_id,
+                     'source', visible.reviewed_mapping_source,
+                     'normalizedKey', visible.reviewed_mapping_normalized_key,
+                     'sourceName', visible.reviewed_mapping_source_name,
+                     'sourceEquipment', visible.reviewed_mapping_source_equipment,
+                     'exerciseId', visible.reviewed_mapping_exercise_id,
+                     'confirmedAtISO', to_char(
+                       visible.reviewed_mapping_confirmed_at AT TIME ZONE 'UTC',
+                       'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'
+                     )
+                   )
+                 END,
+                 'source', visible.session_source,
+                 'sourceExerciseKey', visible.source_exercise_key,
+                 'sourceExerciseName', visible.source_exercise_name,
+                 'plannedExerciseId', visible.planned_exercise_id,
+                 'performedExerciseId', visible.exercise_id
+               ) ORDER BY visible.local_date DESC, visible.session_id DESC,
+                 visible.set_no DESC)
+               FROM visible_exercise_evidence visible
+               WHERE visible.exercise_id = retained_exercise_sets.exercise_id
+             ), '[]'::jsonb) AS evidence
+      FROM retained_exercise_sets
+      GROUP BY exercise_id, exercise_name, exercise_scope, family_id, family_name
     ), week_duration_rows AS (
       SELECT week_start,
              round(coalesce(sum(
@@ -1782,6 +2104,9 @@ export async function getHistoryReport(
         FROM muscle_rows), '[]'::jsonb) AS muscles,
       coalesce((SELECT jsonb_agg(to_jsonb(exercise_rows)
         ORDER BY sessions DESC, sets DESC) FROM exercise_rows), '[]'::jsonb) AS exercise_progress,
+      coalesce((SELECT jsonb_agg(to_jsonb(exercise_evidence_rows)
+        ORDER BY retained_sets DESC, exercise_name)
+        FROM exercise_evidence_rows), '[]'::jsonb) AS exercise_evidence,
       coalesce((SELECT jsonb_agg(to_jsonb(records)
         ORDER BY sessions DESC, exercise_name)
         FROM (
@@ -1905,11 +2230,9 @@ export async function getHistoryReport(
     const firstScore = Number(exercise.first_score);
     const latestScore = Number(exercise.latest_score);
     const firstMetric = String(exercise.first_metric) as
-      | "estimated_strength"
-      | "reps";
+      "estimated_strength" | "reps";
     const latestMetric = String(exercise.latest_metric) as
-      | "estimated_strength"
-      | "reps";
+      "estimated_strength" | "reps";
     const comparable =
       Number(exercise.observations) > 1 &&
       firstMetric === latestMetric &&
@@ -1965,6 +2288,114 @@ export async function getHistoryReport(
           : null,
     };
   });
+  const exerciseEvidence = (
+    row.exercise_evidence as Array<Record<string, unknown>>
+  ).map((exercise) => ({
+    exerciseId: String(exercise.exercise_id),
+    exercise: String(exercise.exercise_name),
+    scope: String(exercise.exercise_scope) as ExerciseIdentityScope,
+    familyId: exercise.family_id == null ? null : String(exercise.family_id),
+    familyName:
+      exercise.family_name == null ? null : String(exercise.family_name),
+    retainedSets: Number(exercise.retained_sets),
+    exactLinkedSets: Number(exercise.exact_linked_sets),
+    calculationEligibleSets: Number(exercise.calculation_eligible_sets),
+    tiers: (exercise.evidence_tiers as unknown[]).map(
+      (tier) => String(tier) as ExerciseEvidenceTier,
+    ),
+    sources: (exercise.sources as unknown[]).map(String),
+    sourceExerciseKeys: Array.isArray(exercise.source_exercise_keys)
+      ? exercise.source_exercise_keys.map(String)
+      : [],
+    reviewedMappings: Array.from(
+      new Map(
+        (exercise.evidence as Array<Record<string, unknown>>)
+          .map((entry) =>
+            entry.mappingStatus === "confirmed" ? entry.reviewedMapping : null,
+          )
+          .filter(
+            (mapping): mapping is Record<string, unknown> => mapping != null,
+          )
+          .map((mapping) => [
+            String(mapping.id),
+            {
+              id: String(mapping.id),
+              source: String(mapping.source),
+              normalizedKey: String(mapping.normalizedKey),
+              sourceName: String(mapping.sourceName),
+              sourceEquipment:
+                mapping.sourceEquipment == null
+                  ? null
+                  : String(mapping.sourceEquipment),
+              exerciseId: String(mapping.exerciseId),
+              confirmedAtISO: String(mapping.confirmedAtISO),
+            },
+          ]),
+      ).values(),
+    ),
+    evidence: (exercise.evidence as Array<Record<string, unknown>>).map(
+      (entry) => ({
+        setId: String(entry.setId),
+        sessionId: String(entry.sessionId),
+        localDate: String(entry.localDate),
+        setNo: Number(entry.setNo),
+        weight: entry.weight == null ? null : Number(entry.weight),
+        weightUnit: entry.weightUnit == null ? null : String(entry.weightUnit),
+        reps: entry.reps == null ? null : Number(entry.reps),
+        tier: String(entry.tier) as ExerciseEvidenceTier,
+        exactLinked: Boolean(entry.exactLinked),
+        calculationEligible: Boolean(entry.calculationEligible),
+        mappingStatus: String(entry.mappingStatus) as ReviewedMappingStatus,
+        reviewedMapping:
+          entry.reviewedMapping == null
+            ? null
+            : {
+                id: String(
+                  (entry.reviewedMapping as Record<string, unknown>).id,
+                ),
+                source: String(
+                  (entry.reviewedMapping as Record<string, unknown>).source,
+                ),
+                normalizedKey: String(
+                  (entry.reviewedMapping as Record<string, unknown>)
+                    .normalizedKey,
+                ),
+                sourceName: String(
+                  (entry.reviewedMapping as Record<string, unknown>).sourceName,
+                ),
+                sourceEquipment:
+                  (entry.reviewedMapping as Record<string, unknown>)
+                    .sourceEquipment == null
+                    ? null
+                    : String(
+                        (entry.reviewedMapping as Record<string, unknown>)
+                          .sourceEquipment,
+                      ),
+                exerciseId: String(
+                  (entry.reviewedMapping as Record<string, unknown>).exerciseId,
+                ),
+                confirmedAtISO: String(
+                  (entry.reviewedMapping as Record<string, unknown>)
+                    .confirmedAtISO,
+                ),
+              },
+        source: String(entry.source),
+        sourceExerciseKey:
+          entry.sourceExerciseKey == null
+            ? null
+            : String(entry.sourceExerciseKey),
+        sourceExerciseName:
+          entry.sourceExerciseName == null
+            ? null
+            : String(entry.sourceExerciseName),
+        plannedExerciseId:
+          entry.plannedExerciseId == null
+            ? null
+            : String(entry.plannedExerciseId),
+        performedExerciseId: String(entry.performedExerciseId),
+      }),
+    ),
+  }));
   const programFit: HistoryProgramFitEvidence = {
     completedSessions: Number(row.program_completed_sessions),
     abandonedSessions: Number(row.program_abandoned_sessions),
@@ -2223,6 +2654,7 @@ export async function getHistoryReport(
         : 0,
     })),
     exerciseProgress,
+    exerciseEvidence,
     records,
     families: (row.families as Array<Record<string, unknown>>).map((family) => ({
       familyKey: String(family.family_key),

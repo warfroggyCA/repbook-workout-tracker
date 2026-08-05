@@ -82,7 +82,10 @@ async function inspectSearchResult(picker: Locator, name: string) {
 }
 
 async function returnToSearchResults(picker: Locator) {
-  const back = picker.getByRole("button", { name: "Back", exact: true });
+  const back = picker.getByRole("button", {
+    name: "Back to results",
+    exact: true,
+  });
   await waitForHydratedReactHandler(back);
   await back.click();
   await expect(picker.getByLabel("Search exercise library")).toBeEditable();

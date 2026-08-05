@@ -8,10 +8,21 @@ export const HISTORY_INSIGHT_LENSES = [
   "work-capacity",
   "records",
 ] as const;
+export const HISTORY_EXERCISE_EVIDENCE_TIERS = [
+  "all",
+  "native",
+  "manual",
+  "imported",
+  "corrected",
+  "legacy",
+  "unsupported",
+] as const;
 
 export type HistoryCalendarView = (typeof HISTORY_CALENDAR_VIEWS)[number];
 export type HistoryView = (typeof HISTORY_VIEWS)[number];
 export type HistoryInsightLens = (typeof HISTORY_INSIGHT_LENSES)[number];
+export type HistoryExerciseEvidenceTier =
+  (typeof HISTORY_EXERCISE_EVIDENCE_TIERS)[number];
 export type SearchParamValue = string | string[] | undefined;
 
 function dateKey(date: Date) {
@@ -31,7 +42,7 @@ function addUtcDays(date: Date, days: number) {
 /** Exact date span rendered by the calendar. */
 export function historyCalendarWindow(
   view: HistoryCalendarView,
-  anchorKey: string
+  anchorKey: string,
 ) {
   const anchor = utcDate(anchorKey);
   if (view === "year") {
@@ -57,7 +68,7 @@ export function firstSearchParam(value: SearchParamValue): string | undefined {
 }
 
 export function parseHistoryCalendarView(
-  value: SearchParamValue
+  value: SearchParamValue,
 ): HistoryCalendarView {
   const candidate = firstSearchParam(value);
   return HISTORY_CALENDAR_VIEWS.some((view) => view === candidate)
@@ -73,7 +84,7 @@ export function parseHistoryView(value: SearchParamValue): HistoryView {
 }
 
 export function parseHistoryInsightLens(
-  value: SearchParamValue
+  value: SearchParamValue,
 ): HistoryInsightLens {
   const candidate = firstSearchParam(value);
   return HISTORY_INSIGHT_LENSES.some((lens) => lens === candidate)
@@ -81,8 +92,27 @@ export function parseHistoryInsightLens(
     : "overview";
 }
 
+export function parseHistoryExerciseEvidenceTier(
+  value: SearchParamValue,
+): HistoryExerciseEvidenceTier {
+  const candidate = firstSearchParam(value);
+  return HISTORY_EXERCISE_EVIDENCE_TIERS.some((tier) => tier === candidate)
+    ? (candidate as HistoryExerciseEvidenceTier)
+    : "all";
+}
+
+export function parseHistoryExerciseId(value: SearchParamValue): string | null {
+  const candidate = firstSearchParam(value);
+  return candidate &&
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+      candidate,
+    )
+    ? candidate.toLowerCase()
+    : null;
+}
+
 export function parseHistoryCalendarDate(
-  value: SearchParamValue
+  value: SearchParamValue,
 ): string | null {
   const candidate = firstSearchParam(value);
   if (!candidate || !/^\d{4}-\d{2}-\d{2}$/.test(candidate)) return null;
@@ -102,6 +132,8 @@ export type HistoryContext = {
   lens?: HistoryInsightLens;
   calendarView?: HistoryCalendarView;
   calendarDate?: string | null;
+  exerciseId?: string | null;
+  evidenceTier?: HistoryExerciseEvidenceTier;
 };
 
 function contextParams({
@@ -110,18 +142,24 @@ function contextParams({
   lens = "overview",
   calendarView,
   calendarDate,
+  exerciseId,
+  evidenceTier = "all",
 }: HistoryContext) {
   const params = new URLSearchParams({ range });
   if (view !== "calendar") params.set("view", view);
   if (view === "insights" && lens !== "overview") params.set("lens", lens);
   if (calendarView) params.set("calendarView", calendarView);
   if (calendarDate) params.set("calendarDate", calendarDate);
+  if (view === "exercises" && exerciseId) params.set("exerciseId", exerciseId);
+  if (view === "exercises" && evidenceTier !== "all") {
+    params.set("evidenceTier", evidenceTier);
+  }
   return params;
 }
 
 export function buildHistoryHref(
   context: HistoryContext,
-  options: { focusCalendar?: boolean } = {}
+  options: { focusCalendar?: boolean } = {},
 ) {
   const hash = options.focusCalendar ? "#history-calendar" : "";
   return `/history?${contextParams(context).toString()}${hash}`;
@@ -129,28 +167,28 @@ export function buildHistoryHref(
 
 export function buildWorkoutHistoryHref(
   workoutId: string,
-  context: HistoryContext
+  context: HistoryContext,
 ) {
   return `/history/${encodeURIComponent(workoutId)}?${contextParams(context).toString()}`;
 }
 
 export function buildActivityHistoryHref(
   activityId: string,
-  context: HistoryContext
+  context: HistoryContext,
 ) {
   return `/activity/${encodeURIComponent(activityId)}?${contextParams(context).toString()}`;
 }
 
 export function buildActivityEditHref(
   activityId: string,
-  context: HistoryContext
+  context: HistoryContext,
 ) {
   return `/activity/${encodeURIComponent(activityId)}/edit?${contextParams(context).toString()}`;
 }
 
 export function buildRetrospectiveWorkoutHref(
   localDate: string,
-  context: HistoryContext
+  context: HistoryContext,
 ) {
   const params = contextParams(context);
   params.set("date", localDate);

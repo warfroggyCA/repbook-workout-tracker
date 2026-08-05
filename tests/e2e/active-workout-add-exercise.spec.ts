@@ -387,11 +387,15 @@ test("refuses incomplete assistance, then preserves assisted work without false 
 
   await page.goto("/history?view=exercises&range=all");
   const assistedProgress = page
-    .locator("article")
-    .filter({ hasText: "Assisted Push-Up" });
+    .getByRole("heading", {
+      level: 3,
+      name: "Assisted Push-Up",
+      exact: true,
+    })
+    .locator("../..");
   await expect(assistedProgress).toContainText("Not comparable");
   await expect(assistedProgress).toContainText("Assistance: 40 lb · 8 reps");
   await expect(
-    page.getByRole("link", { name: /Assisted Push-Up/ }),
+    assistedProgress.getByRole("link", { name: /Assisted Push-Up/ }),
   ).toHaveCount(0);
 });

@@ -38,6 +38,7 @@
     "test:e2e:v2-gauntlet-a": "playwright test --config=playwright.v2-gauntlet-a.config.ts && playwright test --config=playwright.v2-gauntlet-a-warmup.config.ts",
     "test:e2e:v2-h01": "playwright test --config=playwright.v2-h01.config.ts",
     "test:e2e:v2-h02": "playwright test --config=playwright.v2-h02.config.ts",
+    "test:e2e:v2-h03": "playwright test --config=playwright.v2-h03.config.ts --project=desktop-chromium && V2_H03_PORT=3144 playwright test --config=playwright.v2-h03.config.ts --project=narrow-mobile-webkit",
     "study:physical-device-server": "E2E_HOSTNAME=0.0.0.0 E2E_PORT=3128 node scripts/run-e2e-server.mjs --production",
     "test:e2e:ba:chrome": "env BA_BROWSER=chromium playwright test --config=playwright.ba-workout.config.ts",
     "test:e2e:ba:webkit": "env BA_BROWSER=webkit playwright test --config=playwright.ba-workout.config.ts",

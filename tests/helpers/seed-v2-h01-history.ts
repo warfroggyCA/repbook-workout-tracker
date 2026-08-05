@@ -1,6 +1,7 @@
 import { getDb } from "@/db";
 import {
   completedSets,
+  externalExerciseMappings,
   exercises,
   historyImportBatches,
   importEvents,
@@ -11,6 +12,7 @@ import {
   users,
   workoutSessions,
 } from "@/db/schema";
+import { hevyMappingKey } from "@/services/exercise-map";
 import {
   V2_H01_HISTORY_EMAIL,
   V2_H01_HISTORY_IDS as ids,
@@ -84,6 +86,16 @@ async function main() {
       loadSemantics: "bodyweight",
     },
   ]);
+
+  await db.insert(externalExerciseMappings).values({
+    id: ids.externalExerciseMapping,
+    userId: ids.user,
+    source: "hevy",
+    sourceName: "Bulgarian Split Squat",
+    normalizedKey: hevyMappingKey("Bulgarian Split Squat"),
+    exerciseId: ids.performedExercise,
+    confirmedAt: new Date("2026-08-01T13:04:00.000Z"),
+  });
 
   await db.insert(workoutSessions).values([
     {

@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
-import { and, desc, eq, inArray, isNull } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, or } from "drizzle-orm";
 import { getDb } from "@/db";
 import {
   workoutSessions,
@@ -26,6 +26,8 @@ import {
   parseHistoryCalendarDate,
   parseHistoryCalendarView,
   parseHistoryInsightLens,
+  parseHistoryExerciseEvidenceTier,
+  parseHistoryExerciseId,
   parseHistoryView,
 } from "@/lib/history-navigation";
 import { parseHistoryRange } from "@/services/history-report";
@@ -90,6 +92,10 @@ export default async function SessionDetailPage(
   const historyLens = parseHistoryInsightLens(searchParams.lens);
   const calendarView = parseHistoryCalendarView(searchParams.calendarView);
   const calendarDate = parseHistoryCalendarDate(searchParams.calendarDate);
+  const exerciseId = parseHistoryExerciseId(searchParams.exerciseId);
+  const evidenceTier = parseHistoryExerciseEvidenceTier(
+    searchParams.evidenceTier,
+  );
   const historyHref = buildHistoryHref(
     {
       range: historyRange,
@@ -97,6 +103,8 @@ export default async function SessionDetailPage(
       lens: historyLens,
       calendarView,
       calendarDate,
+      exerciseId,
+      evidenceTier,
     },
     { focusCalendar: historyView === "calendar" }
   );
@@ -129,6 +137,14 @@ export default async function SessionDetailPage(
     },
   });
   if (!session) notFound();
+  if (
+    session.exercises.some(
+      (entry) =>
+        entry.exercise.userId != null && entry.exercise.userId !== user.id,
+    )
+  ) {
+    notFound();
+  }
   if (session.status === "in_progress") redirect(`/session/${session.id}`);
   const durationExcluded =
     session.finishedAt != null &&
@@ -155,7 +171,10 @@ export default async function SessionDetailPage(
     listLiveCoachMessages(db, user.id, session.id),
     referencedExerciseIds.length > 0
       ? db.query.exercises.findMany({
-          where: inArray(exercises.id, referencedExerciseIds),
+          where: and(
+            inArray(exercises.id, referencedExerciseIds),
+            or(isNull(exercises.userId), eq(exercises.userId, user.id)),
+          ),
         })
       : Promise.resolve([]),
     getCompletedHistoryContextualNotes(db, user.id, session.id),

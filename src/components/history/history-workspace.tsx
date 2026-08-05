@@ -18,6 +18,7 @@ import {
   type HistoryContext,
   type HistoryInsightLens,
   type HistoryView,
+  type HistoryExerciseEvidenceTier,
 } from "@/lib/history-navigation";
 import { cn } from "@/lib/utils";
 import type { ActivityReport } from "@/services/activity-report";
@@ -65,6 +66,8 @@ export function HistoryWorkspace({
   lens,
   calendarView,
   calendarDate,
+  exerciseId,
+  evidenceTier,
   ownerToday,
   unit,
   testSessionCount,
@@ -79,6 +82,8 @@ export function HistoryWorkspace({
   lens: HistoryInsightLens;
   calendarView: HistoryCalendarView;
   calendarDate: string | null;
+  exerciseId: string | null;
+  evidenceTier: HistoryExerciseEvidenceTier;
   ownerToday: string;
   unit: string;
   testSessionCount: number;
@@ -95,6 +100,8 @@ export function HistoryWorkspace({
     lens,
     calendarView,
     calendarDate,
+    exerciseId,
+    evidenceTier,
   };
   const exportWeeks = {
     "4w": "4",

@@ -33,4 +33,5 @@ export const V2_H01_HISTORY_IDS = {
   snapshot: "00000000-0000-4000-8000-000000000339",
   importedUnknownOccurrence: "00000000-0000-4000-8000-000000000340",
   timingCorrectionVersion: "00000000-0000-4000-8000-000000000341",
+  externalExerciseMapping: "00000000-0000-4000-8000-000000000342",
 } as const;

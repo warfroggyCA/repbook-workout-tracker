@@ -58,7 +58,7 @@ jobs:
       # Playwright 1.61.1 Noble image, pinned to its reviewed multi-architecture manifest.
       image: mcr.microsoft.com/playwright@sha256:5b8f294aff9041b7191c34a4bab3ac270157a28774d4b0660e9743297b697e48
       options: --user 1001
-    timeout-minutes: 60
+    timeout-minutes: 90
     env:
       PLAYWRIGHT_BROWSERS_PATH: /ms-playwright
     steps:
@@ -258,6 +258,11 @@ jobs:
         continue-on-error: true
         run: npm run test:e2e:v2-h02
 
+      - name: Verify H03 exact exercise evidence on desktop and mobile
+        id: browser-v2-h03
+        continue-on-error: true
+        run: npm run test:e2e:v2-h03
+
       - name: Require every browser suite
         if: ${{ always() }}
         env:
@@ -289,6 +294,7 @@ jobs:
           BROWSER_V2_GAUNTLET_A: ${{ steps.browser-v2-gauntlet-a.outcome }}
           BROWSER_V2_H01: ${{ steps.browser-v2-h01.outcome }}
           BROWSER_V2_H02: ${{ steps.browser-v2-h02.outcome }}
+          BROWSER_V2_H03: ${{ steps.browser-v2-h03.outcome }}
         run: |
           failed=0
           for result in \
@@ -319,7 +325,8 @@ jobs:
             "U03 future-only Program publication:${BROWSER_V2_U03}" \
             "Repbook v2 Gauntlet A:${BROWSER_V2_GAUNTLET_A}" \
             "H01 performed-first History:${BROWSER_V2_H01}" \
-            "H02 cadence and planned-set outcomes:${BROWSER_V2_H02}"
+            "H02 cadence and planned-set outcomes:${BROWSER_V2_H02}" \
+            "H03 exact exercise evidence:${BROWSER_V2_H03}"
           do
             name="${result%%:*}"
             outcome="${result#*:}"

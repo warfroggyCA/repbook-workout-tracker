@@ -5,8 +5,8 @@
   "repositoryRole": "public application source",
   "exactBaseCommit": "2c9ab1b9478502f1d08956a6c44dfb0850c8f168",
   "fixtureCatalogue": "tests/fixtures/v2/semantic-scenarios.json",
-  "currentPackage": "H02",
-  "currentPackageBaseCommit": "24bc5333cfa768227c4ab76e69da185fb400d905",
+  "currentPackage": "H03",
+  "currentPackageBaseCommit": "d2cb0674ac3f8bb080e973d3ef392fbec671e6cb",
   "productBehaviorImplementedByP02": false,
   "implementedProductPackages": [
     "T01",
@@ -19,7 +19,8 @@
     "U02",
     "U03",
     "H01",
-    "H02"
+    "H02",
+    "H03"
   ],
   "milestoneEvidence": {
     "gauntletA": {
@@ -265,39 +266,39 @@
       "proves": "encrypted history restore preserves exact occurrence identities, order, group coordinates, outcomes, nullable rest facts, resolved-with-changes completion, and ready-to-finish projection while immutable plan evidence rejects rewriting"
     },
     "H03-databaseService": {
-      "status": "future_activation",
+      "status": "current",
       "implementingPackage": "H03",
       "testPath": "tests/unit/v2-h03-evidence-identity-db.test.ts",
       "command": "npx vitest run tests/unit/v2-h03-evidence-identity-db.test.ts",
-      "proves": "must pass in the same package that implements this product meaning"
+      "proves": "owner-scoped History retains exact performed exercise identities and every completed set fact while admitting only one-to-one completed working-set occurrence links to exercise calculations; owner-created and import-created scopes are explicit, and Hevy calculations require the owner's confirmed source mapping to the same performed exercise while missing or inconsistent mappings fail closed"
     },
     "H03-browser": {
-      "status": "future_activation",
+      "status": "current",
       "implementingPackage": "H03",
       "testPath": "tests/e2e/v2-h03-evidence-identity.spec.ts",
-      "command": "npx playwright test tests/e2e/v2-h03-evidence-identity.spec.ts",
-      "proves": "must pass in the same package that implements this product meaning"
+      "command": "npx playwright test --config=playwright.v2-h03.config.ts tests/e2e/v2-h03-evidence-identity.spec.ts",
+      "proves": "desktop Chromium and 320 by 700 enlarged-text mobile WebKit expose exact IDs, scope, source mapping, evidence tiers, retained-only facts, substitution identity, versioned derived labels, URL-backed filters, and source-workout return context without post-login writes or horizontal overflow"
     },
     "H03-exportImport": {
-      "status": "future_activation",
+      "status": "current",
       "implementingPackage": "H03",
       "testPath": "tests/unit/v2-h03-evidence-identity-portability.test.ts",
       "command": "npx vitest run tests/unit/v2-h03-evidence-identity-portability.test.ts",
-      "proves": "must pass in the same package that implements this product meaning"
+      "proves": "set CSV exports exact performed and prescribed identity, exercise scope, family and import-creation context, evidence tier, exact occurrence-link status, frozen source occurrence evidence separately from the owner-scoped reviewed mapping and confirmation provenance, and the derived algorithm version"
     },
     "H03-restoreRollback": {
-      "status": "future_activation",
+      "status": "current",
       "implementingPackage": "H03",
       "testPath": "tests/unit/v2-h03-evidence-identity-restore.test.ts",
       "command": "npx vitest run tests/unit/v2-h03-evidence-identity-restore.test.ts",
-      "proves": "must pass in the same package that implements this product meaning"
+      "proves": "snapshot schema 29 already preserves owner-scoped exercises, import provenance, session exercise bindings, occurrences, completed sets, source rows, mappings, and record versions needed to recompute H03 without a schema or recovery-manifest change"
     },
     "H03-adversarialPrivacy": {
-      "status": "future_activation",
+      "status": "current",
       "implementingPackage": "H03",
       "testPath": "tests/unit/v2-h03-evidence-identity-adversarial.test.ts",
       "command": "npx vitest run tests/unit/v2-h03-evidence-identity-adversarial.test.ts",
-      "proves": "must pass in the same package that implements this product meaning"
+      "proves": "cross-owner exercise and mapping identities fail closed, ambiguous or missing links cannot enter calculations, and unsupported, legacy, corrected, imported, missing-mapping, and inconsistent-mapping precedence remains conservative"
     },
     "H02-databaseService": {
       "status": "current",
