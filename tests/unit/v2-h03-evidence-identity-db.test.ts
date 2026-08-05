@@ -164,6 +164,30 @@ describe("V2 H03 exact exercise evidence", () => {
         }),
       ]),
     );
+    const selectedImported = await getHistoryReport(
+      database.db,
+      fixture.userId,
+      "4w",
+      3,
+      V2_H02_NOW,
+      undefined,
+      { exerciseId: V2_H03_IDS.importExercise, tier: "imported" },
+    );
+    expect(
+      selectedImported.exerciseEvidence.flatMap((entry) => entry.evidence),
+    ).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          performedExerciseId: V2_H03_IDS.importExercise,
+          tier: "imported",
+        }),
+      ]),
+    );
+    expect(
+      selectedImported.exerciseEvidence
+        .filter((entry) => entry.exerciseId !== V2_H03_IDS.importExercise)
+        .flatMap((entry) => entry.evidence),
+    ).toEqual([]);
     expect(JSON.stringify(confirmed)).not.toContain("Other owner private press");
     expect(JSON.stringify(confirmed)).not.toContain(
       V2_H03_IDS.otherOwnerMapping,

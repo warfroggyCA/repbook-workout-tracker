@@ -21,6 +21,7 @@ import {
 import { buildSessionEquipmentConfigurationIdentity } from "@/lib/session-equipment-snapshot-contract";
 import { getDashboardStats } from "@/services/dashboard";
 import {
+  HISTORY_EXERCISE_EVIDENCE_LIMIT,
   getHistoryCalendarRecords,
   getHistoryReport,
 } from "@/services/history-report";
@@ -144,6 +145,12 @@ describe("production performance budgets", () => {
       expect(large.report.calendarSessions.length).toBeLessThanOrEqual(
         budgets.finalBudgets.historyPage.maxRecentSessions
       );
+      expect(
+        large.report.exerciseEvidence.reduce(
+          (total, exercise) => total + exercise.evidence.length,
+          0,
+        ),
+      ).toBeLessThanOrEqual(HISTORY_EXERCISE_EVIDENCE_LIMIT);
       expect(large.calendar).toHaveLength(baseline.calendar.length);
       expect(large.payloadBytes / baseline.payloadBytes).toBeLessThan(
         budgets.finalBudgets.largeHistoryFixture

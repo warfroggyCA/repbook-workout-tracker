@@ -53,7 +53,8 @@ export default async function HistoryPage({
       range,
       user.profile.weeklyFrequency,
       new Date(),
-      { timezone: user.profile.timezone, unit: user.profile.unit }
+      { timezone: user.profile.timezone, unit: user.profile.unit },
+      { exerciseId, tier: evidenceTier },
     ),
     view === "insights"
       ? getActivityReport(db, user.id, range)

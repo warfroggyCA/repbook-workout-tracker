@@ -76,6 +76,8 @@ export const HISTORY_RANGES = [
   { key: "all", label: "All time", days: null },
 ] as const;
 
+export const HISTORY_EXERCISE_EVIDENCE_LIMIT = 24;
+
 export type HistoryRangeKey = (typeof HISTORY_RANGES)[number]["key"];
 
 export function parseHistoryRange(value: string | undefined): HistoryRangeKey {
@@ -1276,7 +1278,11 @@ export async function getHistoryReport(
   range: HistoryRangeKey,
   plannedPerWeek: number,
   now = new Date(),
-  suppliedProfile?: { timezone: string; unit: LoadUnit }
+  suppliedProfile?: { timezone: string; unit: LoadUnit },
+  exerciseEvidenceSelection?: {
+    exerciseId: string | null;
+    tier: ExerciseEvidenceTier | "all";
+  },
 ) {
   const since = historyRangeStart(range, now);
   const profile =
@@ -1292,6 +1298,8 @@ export async function getHistoryReport(
       ))
     : null;
   const nowLocalDate = workoutLocalDate(now, profile.timezone);
+  const selectedExerciseId = exerciseEvidenceSelection?.exerciseId ?? null;
+  const selectedEvidenceTier = exerciseEvidenceSelection?.tier ?? "all";
   const [historicalSourceBindings, ownerMappingRows] = await Promise.all([
     db
       .selectDistinct({
@@ -1644,6 +1652,15 @@ export async function getHistoryReport(
                AND btrim(evidence.performed_load_semantics::text) <> ''
                AS calculation_eligible
       FROM retained_exercise_sets_raw evidence
+    ), visible_exercise_evidence AS MATERIALIZED (
+      SELECT *
+      FROM retained_exercise_sets
+      WHERE (${selectedExerciseId}::uuid IS NULL
+             OR exercise_id = ${selectedExerciseId}::uuid)
+        AND (${selectedEvidenceTier}::text = 'all'
+             OR evidence_tier = ${selectedEvidenceTier}::text)
+      ORDER BY local_date DESC, session_id DESC, set_no DESC
+      LIMIT ${HISTORY_EXERCISE_EVIDENCE_LIMIT}
     ), exercise_evidence_rows AS (
       SELECT exercise_id, exercise_name, exercise_scope,
              family_id, family_name,
@@ -1659,40 +1676,44 @@ export async function getHistoryReport(
              array_agg(DISTINCT source_exercise_key ORDER BY source_exercise_key)
                FILTER (WHERE source_exercise_key IS NOT NULL)
                AS source_exercise_keys,
-             jsonb_agg(jsonb_build_object(
-               'setId', set_id,
-               'sessionId', session_id,
-               'localDate', local_date,
-               'setNo', set_no,
-               'weight', weight,
-               'weightUnit', weight_unit,
-               'reps', reps,
-               'tier', evidence_tier,
-               'exactLinked', exact_occurrence_linked,
-               'calculationEligible', calculation_eligible,
-               'mappingStatus', reviewed_mapping_status,
-               'reviewedMapping', CASE
-                 WHEN reviewed_mapping_id IS NULL THEN NULL
-                 ELSE jsonb_build_object(
-                   'id', reviewed_mapping_id,
-                   'source', reviewed_mapping_source,
-                   'normalizedKey', reviewed_mapping_normalized_key,
-                   'sourceName', reviewed_mapping_source_name,
-                   'sourceEquipment', reviewed_mapping_source_equipment,
-                   'exerciseId', reviewed_mapping_exercise_id,
-                   'confirmedAtISO', to_char(
-                     reviewed_mapping_confirmed_at AT TIME ZONE 'UTC',
-                     'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'
+             coalesce((
+               SELECT jsonb_agg(jsonb_build_object(
+                 'setId', visible.set_id,
+                 'sessionId', visible.session_id,
+                 'localDate', visible.local_date,
+                 'setNo', visible.set_no,
+                 'weight', visible.weight,
+                 'weightUnit', visible.weight_unit,
+                 'reps', visible.reps,
+                 'tier', visible.evidence_tier,
+                 'exactLinked', visible.exact_occurrence_linked,
+                 'calculationEligible', visible.calculation_eligible,
+                 'mappingStatus', visible.reviewed_mapping_status,
+                 'reviewedMapping', CASE
+                   WHEN visible.reviewed_mapping_id IS NULL THEN NULL
+                   ELSE jsonb_build_object(
+                     'id', visible.reviewed_mapping_id,
+                     'source', visible.reviewed_mapping_source,
+                     'normalizedKey', visible.reviewed_mapping_normalized_key,
+                     'sourceName', visible.reviewed_mapping_source_name,
+                     'sourceEquipment', visible.reviewed_mapping_source_equipment,
+                     'exerciseId', visible.reviewed_mapping_exercise_id,
+                     'confirmedAtISO', to_char(
+                       visible.reviewed_mapping_confirmed_at AT TIME ZONE 'UTC',
+                       'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'
+                     )
                    )
-                 )
-               END,
-               'source', session_source,
-               'sourceExerciseKey', source_exercise_key,
-               'sourceExerciseName', source_exercise_name,
-               'plannedExerciseId', planned_exercise_id,
-               'performedExerciseId', exercise_id
-             ) ORDER BY local_date DESC, session_id DESC, set_no DESC)
-               AS evidence
+                 END,
+                 'source', visible.session_source,
+                 'sourceExerciseKey', visible.source_exercise_key,
+                 'sourceExerciseName', visible.source_exercise_name,
+                 'plannedExerciseId', visible.planned_exercise_id,
+                 'performedExerciseId', visible.exercise_id
+               ) ORDER BY visible.local_date DESC, visible.session_id DESC,
+                 visible.set_no DESC)
+               FROM visible_exercise_evidence visible
+               WHERE visible.exercise_id = retained_exercise_sets.exercise_id
+             ), '[]'::jsonb) AS evidence
       FROM retained_exercise_sets
       GROUP BY exercise_id, exercise_name, exercise_scope, family_id, family_name
     ), week_duration_rows AS (

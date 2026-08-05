@@ -299,6 +299,12 @@ export function HistoryExercisesWorkspace({
               </p>
             )}
           </div>
+          {visibleEvidence.length > 0 && (
+            <p className="text-xs text-muted-foreground">
+              Showing up to 24 most recent matching retained sets in this
+              range.
+            </p>
+          )}
           <p className="text-xs text-muted-foreground">
             Derived progression and best observations use{" "}
             {EXERCISE_HISTORY_ALGORITHM_VERSION}; they are calculations, not
