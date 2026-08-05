@@ -310,7 +310,7 @@
       "status": "current",
       "implementingPackage": "H02",
       "testPath": "tests/e2e/v2-h02-cadence-targets-time.spec.ts",
-      "command": "npm run test:e2e:v2-h02",
+      "command": "npx playwright test --config=playwright.v2-h02.config.ts tests/e2e/v2-h02-cadence-targets-time.spec.ts",
       "proves": "desktop Chromium and 320 by 700 enlarged-text mobile WebKit keep cadence distinct from planned-set outcomes, label current preference as a comparison rather than adherence, preserve date-only time as unknown, expose stable Program-day lineage, make no post-login write, and remain free of horizontal overflow and unexplained page errors"
     },
     "H02-exportImport": {
