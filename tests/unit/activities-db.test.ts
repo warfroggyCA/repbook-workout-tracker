@@ -105,7 +105,7 @@ describe("health activity database integration", () => {
     const brief = renderCoachingBrief(digest);
 
     expect(digest.sessions).toHaveLength(0);
-    expect(digest.adherence.completedSessions).toBe(0);
+    expect(digest.cadence.completedSessions).toBe(0);
     expect(digest.independentActivities.overview.totalActivities).toBe(1);
     expect(digest.independentActivities.recent[0]).toMatchObject({
       title: "Power walk",

@@ -753,6 +753,46 @@ export function buildPerformedSetMeasurement(input: {
 
 export type PrescriptionOutcome = "below" | "at" | "above" | "unknown";
 
+export const PRESCRIPTION_OUTCOME_ALGORITHM_VERSION =
+  "prescription-outcome-v1";
+
+export type PrescriptionOutcomeSummary = {
+  algorithmVersion: typeof PRESCRIPTION_OUTCOME_ALGORITHM_VERSION;
+  below: number;
+  at: number;
+  above: number;
+  unknown: number;
+  supported: number;
+  atOrAboveRate: number | null;
+};
+
+export function buildPrescriptionOutcomeSummary(input: {
+  below: number;
+  at: number;
+  above: number;
+  unknown: number;
+}): PrescriptionOutcomeSummary {
+  const supported = input.below + input.at + input.above;
+  return {
+    algorithmVersion: PRESCRIPTION_OUTCOME_ALGORITHM_VERSION,
+    ...input,
+    supported,
+    atOrAboveRate: supported
+      ? Math.round(((input.at + input.above) / supported) * 100)
+      : null,
+  };
+}
+
+export function summarizePrescriptionOutcomes(
+  outcomes: PrescriptionOutcome[],
+): PrescriptionOutcomeSummary {
+  const below = outcomes.filter((outcome) => outcome === "below").length;
+  const at = outcomes.filter((outcome) => outcome === "at").length;
+  const above = outcomes.filter((outcome) => outcome === "above").length;
+  const unknown = outcomes.filter((outcome) => outcome === "unknown").length;
+  return buildPrescriptionOutcomeSummary({ below, at, above, unknown });
+}
+
 export function classifyPrescriptionOutcome(input: {
   semantics: SetMetricContainment;
   reps: number | null;
@@ -762,32 +802,41 @@ export function classifyPrescriptionOutcome(input: {
   targetRepsMax?: number | null;
   targetLoad: number | null;
   targetLoadUnit: LoadUnit | null;
+  targetLoadPercent?: number | null;
+  targetLoadText?: string | null;
 }): PrescriptionOutcome {
   if (
     !input.semantics.prescriptionOutcomeEligible ||
     input.reps == null ||
-    input.targetRepsMin == null
+    input.targetRepsMin == null ||
+    input.targetLoadPercent != null ||
+    input.targetLoadText != null
+  ) {
+    return "unknown";
+  }
+  const repetitionsOnly = input.semantics.measurementMeaning === "reps";
+  const { targetLoad, targetLoadUnit, weight, weightUnit } = input;
+  if (
+    (targetLoad == null && (targetLoadUnit != null || !repetitionsOnly)) ||
+    (targetLoad != null &&
+      (targetLoadUnit == null || weight == null || weightUnit == null))
   ) {
     return "unknown";
   }
   if (input.reps < input.targetRepsMin) return "below";
   const aboveRepetitions =
     input.targetRepsMax != null && input.reps > input.targetRepsMax;
-  if (input.targetLoad == null) return aboveRepetitions ? "above" : "at";
-  if (
-    input.weight == null ||
-    input.weightUnit == null ||
-    input.targetLoadUnit == null
-  ) {
+  if (targetLoad == null) return aboveRepetitions ? "above" : "at";
+  if (weight == null || weightUnit == null || targetLoadUnit == null) {
     return "unknown";
   }
   const performed = convertWeight(
-    input.weight,
-    input.weightUnit,
-    input.targetLoadUnit,
+    weight,
+    weightUnit,
+    targetLoadUnit,
   );
-  if (performed < input.targetLoad) return "below";
-  if (performed > input.targetLoad || aboveRepetitions) return "above";
+  if (performed < targetLoad) return "below";
+  if (performed > targetLoad || aboveRepetitions) return "above";
   return "at";
 }
 
@@ -817,6 +866,8 @@ export function recomputeRestoredTargetMet(input: {
   targetRepsMax?: number | null;
   targetLoad: number | null;
   targetLoadUnit: LoadUnit | null;
+  targetLoadPercent?: number | null;
+  targetLoadText?: string | null;
   isWarmup?: boolean;
   modificationType?: string | null;
   excludeFromAnalytics?: boolean;
@@ -851,6 +902,8 @@ export function recomputeRestoredTargetMet(input: {
       targetRepsMax: input.targetRepsMax,
       targetLoad: input.targetLoad,
       targetLoadUnit: input.targetLoadUnit,
+      targetLoadPercent: input.targetLoadPercent,
+      targetLoadText: input.targetLoadText,
     }),
   );
 }

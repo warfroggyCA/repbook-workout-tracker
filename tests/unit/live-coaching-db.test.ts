@@ -620,7 +620,11 @@ describe("Live Coach durable workout conversation", () => {
       setsSuppressedFromClaims: 0,
     });
     expect(frozenContext.liveWorkout.selectedExercise?.setsLogged).toEqual([
-      expect.objectContaining({ weight: 135, reps: 6, targetMet: true }),
+      expect.objectContaining({
+        weight: 135,
+        reps: 6,
+        targetOutcome: "unknown",
+      }),
     ]);
     expect(frozenContext.liveWorkout.allExercises[0]?.name).toBe(
       "Frozen prescribed press",
@@ -1022,7 +1026,7 @@ describe("Live Coach durable workout conversation", () => {
     const coachingBrief = renderCoachingBrief(digest);
     expect(coachingBrief).toContain("My bracing felt better");
     expect(coachingBrief).toContain(
-      "100% of comparable planned sets with measurable targets met them.",
+      "No supported planned set target outcome is available.",
     );
     expect(coachingBrief).not.toContain(
       "100% of working sets met their target.",

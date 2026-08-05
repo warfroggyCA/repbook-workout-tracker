@@ -120,8 +120,8 @@ describe("Repbook v2 ratified semantic contract", () => {
       schemaVersion: 1,
       contractVersion: V2_CONTRACT_VERSION,
       exactBaseCommit: "2c9ab1b9478502f1d08956a6c44dfb0850c8f168",
-      currentPackage: "H01",
-      currentPackageBaseCommit: "4e0aa3e688d0345a473bdab96cb84b81a077596c",
+      currentPackage: "H02",
+      currentPackageBaseCommit: "24bc5333cfa768227c4ab76e69da185fb400d905",
       productBehaviorImplementedByP02: false,
       implementedProductPackages: [
         "T01",
@@ -134,6 +134,7 @@ describe("Repbook v2 ratified semantic contract", () => {
         "U02",
         "U03",
         "H01",
+        "H02",
       ],
     });
     expect(matrix.columns).toEqual(columns);

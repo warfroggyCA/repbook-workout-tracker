@@ -56,7 +56,7 @@ const FIELD_LABELS: Record<string, string> = {
   performed_time_precision: "Time precision",
   exclude_duration_from_analytics: "Excluded from duration insights",
   data_quality_flags: "Timing quality",
-  target_met: "Target met",
+  target_met: "Legacy target projection",
   target_load: "Planned load",
   timezone: "Timezone",
   title: "Title",

@@ -26,7 +26,12 @@ import {
   type RecommendationPayload,
 } from "@/db/schema";
 import { convertWeight, loadsEqual } from "@/lib/units";
-import { classifySetMetricContainment } from "@/lib/set-metric-semantics";
+import {
+  classifyPrescriptionOutcome,
+  classifySetMetricContainment,
+  summarizePrescriptionOutcomes,
+  type PrescriptionOutcomeSummary,
+} from "@/lib/set-metric-semantics";
 import {
   recommendationEvidenceEligibleForAction,
   reconcilePendingPainRecommendations,
@@ -57,6 +62,7 @@ export type OutcomeReadyDecision = {
   workingSets: number;
   measurableSets: number;
   targetsMet: number;
+  targetOutcomes: PrescriptionOutcomeSummary;
   rpeCount: number;
   averageRpe: number | null;
   painFlags: number;
@@ -616,7 +622,16 @@ export async function getReviewDecisionData(db: Db, userId: string) {
         eq(sessionOccurrences.kind, "working_set"),
         eq(sessionOccurrences.outcome, "completed")
       ),
-      columns: { completedSetId: true, origin: true },
+      columns: {
+        completedSetId: true,
+        origin: true,
+        plannedRepsMin: true,
+        plannedRepsMax: true,
+        plannedLoad: true,
+        plannedLoadUnit: true,
+        plannedLoadPercent: true,
+        plannedLoadText: true,
+      },
     }),
   ]);
   const completedSetIds = new Set(
@@ -624,12 +639,17 @@ export async function getReviewDecisionData(db: Db, userId: string) {
       .map((occurrence) => occurrence.completedSetId)
       .filter((id): id is string => id != null)
   );
-  const plannedCompletedSetIds = new Set(
-    completedOccurrences
-      .filter((occurrence) => occurrence.origin === "planned")
-      .map((occurrence) => occurrence.completedSetId)
-      .filter((id): id is string => id != null),
-  );
+  const completedOccurrencesBySetId = new Map<
+    string,
+    typeof completedOccurrences
+  >();
+  for (const occurrence of completedOccurrences) {
+    if (occurrence.completedSetId == null) continue;
+    const linked =
+      completedOccurrencesBySetId.get(occurrence.completedSetId) ?? [];
+    linked.push(occurrence);
+    completedOccurrencesBySetId.set(occurrence.completedSetId, linked);
+  }
   const followupBySessionExerciseId = new Map(
     followups.map((followup) => [followup.sessionExerciseId, followup])
   );
@@ -704,8 +724,45 @@ export async function getReviewDecisionData(db: Db, userId: string) {
           completedSetMatchesPayload(payload, set)
         )
       );
-      const measurableSets = observedSets.filter(
-        (set) => plannedCompletedSetIds.has(set.id) && set.targetMet != null,
+      const targetOutcomes = summarizePrescriptionOutcomes(
+        observedSets.flatMap((set) => {
+          const occurrences = completedOccurrencesBySetId.get(set.id) ?? [];
+          const plannedOccurrences = occurrences.filter(
+            (occurrence) => occurrence.origin === "planned",
+          );
+          if (plannedOccurrences.length === 0) return [];
+          const occurrence = occurrences.length === 1 ? occurrences[0] : null;
+          const followup = followupBySessionExerciseId.get(
+            set.sessionExerciseId,
+          );
+          if (occurrence?.origin !== "planned" || !followup) return ["unknown"];
+          const semantics = classifySetMetricContainment({
+            recordedMetricType: set.metricType,
+            prescribedSemanticsVersion: followup.prescribedSemanticsVersion,
+            performedSemanticsVersion: set.performedSemanticsVersion,
+            performedLoadType: set.performedLoadType,
+            performedLoadSemantics: set.performedLoadSemantics,
+            currentExerciseMetricType: followup.exerciseMetricType,
+            loadType: followup.exerciseLoadType,
+            loadSemantics: followup.exerciseLoadSemantics,
+            loadEntryMeaning: set.loadEntryMeaning,
+            weight: set.weight,
+            reps: set.reps,
+            excludeFromAnalytics: set.excludeFromAnalytics,
+          });
+          return [classifyPrescriptionOutcome({
+            semantics,
+            reps: set.reps,
+            weight: set.weight,
+            weightUnit: set.weightUnit,
+            targetRepsMin: occurrence.plannedRepsMin,
+            targetRepsMax: occurrence.plannedRepsMax,
+            targetLoad: occurrence.plannedLoad,
+            targetLoadUnit: occurrence.plannedLoadUnit,
+            targetLoadPercent: occurrence.plannedLoadPercent,
+            targetLoadText: occurrence.plannedLoadText,
+          })];
+        }),
       );
       const rpes = observedSets
         .map((set) => set.rpe)
@@ -750,8 +807,9 @@ export async function getReviewDecisionData(db: Db, userId: string) {
           latestSessionName: latest.sessionName ?? "Completed workout",
           latestLocalDate: latest.localDate,
           workingSets: observedSets.length,
-          measurableSets: measurableSets.length,
-          targetsMet: measurableSets.filter((set) => set.targetMet).length,
+          measurableSets: targetOutcomes.supported,
+          targetsMet: targetOutcomes.at + targetOutcomes.above,
+          targetOutcomes,
           rpeCount: rpes.length,
           averageRpe:
             rpes.length > 0
@@ -766,7 +824,7 @@ export async function getReviewDecisionData(db: Db, userId: string) {
               ? Math.max(...observedPain.map((pain) => pain.severity))
               : null,
           evidenceLimited:
-            measurableSets.length < observedSets.length ||
+            targetOutcomes.unknown > 0 ||
             rpes.length < observedSets.length,
         },
       ];

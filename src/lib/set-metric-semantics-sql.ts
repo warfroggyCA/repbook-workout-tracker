@@ -147,21 +147,94 @@ export function eligiblePrescriptionOutcomeSql(columns: MetricSqlColumns): SQL {
   )`;
 }
 
+export function prescriptionOutcomeSql(
+  columns: MetricSqlColumns & {
+    weightUnit: SQL;
+    targetRepsMin: SQL;
+    targetRepsMax: SQL;
+    targetLoad: SQL;
+    targetLoadUnit: SQL;
+    targetLoadPercent?: SQL;
+    targetLoadText?: SQL;
+  },
+): SQL {
+  return sql`
+    CASE
+      WHEN NOT ${eligiblePrescriptionOutcomeSql(columns)}
+        OR ${columns.targetRepsMin} IS NULL
+        OR ${columns.reps} IS NULL
+        OR ${columns.targetLoadPercent ?? sql`NULL`} IS NOT NULL
+        OR ${columns.targetLoadText ?? sql`NULL`} IS NOT NULL
+      THEN 'unknown'
+      WHEN ${columns.targetLoad} IS NULL
+        AND (
+          ${columns.targetLoadUnit} IS NOT NULL
+          OR ${columns.recordedMetricType}::text <> 'reps'
+        )
+      THEN 'unknown'
+      WHEN ${columns.targetLoad} IS NOT NULL
+        AND (
+          ${columns.targetLoadUnit} IS NULL
+          OR ${columns.weight} IS NULL
+          OR ${columns.weightUnit} IS NULL
+        )
+      THEN 'unknown'
+      WHEN ${columns.reps} < ${columns.targetRepsMin}
+      THEN 'below'
+      WHEN ${columns.targetLoad} IS NULL
+      THEN CASE
+        WHEN ${columns.targetRepsMax} IS NOT NULL
+          AND ${columns.reps} > ${columns.targetRepsMax}
+        THEN 'above'
+        ELSE 'at'
+      END
+      WHEN CASE ${columns.weightUnit}::text
+          WHEN 'kg' THEN ${columns.weight} * ${KG_TO_LB}
+          ELSE ${columns.weight}
+        END < CASE ${columns.targetLoadUnit}::text
+          WHEN 'kg' THEN ${columns.targetLoad} * ${KG_TO_LB}
+          ELSE ${columns.targetLoad}
+        END
+      THEN 'below'
+      WHEN CASE ${columns.weightUnit}::text
+          WHEN 'kg' THEN ${columns.weight} * ${KG_TO_LB}
+          ELSE ${columns.weight}
+        END > CASE ${columns.targetLoadUnit}::text
+          WHEN 'kg' THEN ${columns.targetLoad} * ${KG_TO_LB}
+          ELSE ${columns.targetLoad}
+        END
+        OR (
+          ${columns.targetRepsMax} IS NOT NULL
+          AND ${columns.reps} > ${columns.targetRepsMax}
+        )
+      THEN 'above'
+      ELSE 'at'
+    END
+  `;
+}
+
 /**
  * Restore-only projection of the derived prescription outcome. It requires
  * retained version-1 meaning and never treats current catalog metadata or an
- * older stored boolean as historical proof.
+ * earlier stored projection as evidence for the restored result.
  */
 export function restoredTargetMetSql(
   columns: MetricSqlColumns & {
     weightUnit: SQL;
     targetRepsMin: SQL;
+    targetRepsMax?: SQL;
     targetLoad: SQL;
     targetLoadUnit: SQL;
+    targetLoadPercent?: SQL;
+    targetLoadText?: SQL;
     isWarmup: SQL;
     modificationType: SQL;
   },
 ): SQL {
+  const outcome = prescriptionOutcomeSql({
+    ...columns,
+    targetRepsMax: columns.targetRepsMax ?? columns.targetRepsMin,
+  });
   return sql`
     CASE
       WHEN ${columns.isWarmup}
@@ -173,24 +246,9 @@ export function restoredTargetMetSql(
         OR ${columns.targetRepsMin} IS NULL
         OR ${columns.reps} IS NULL
       THEN NULL
-      WHEN ${columns.recordedMetricType}::text = 'reps'
-      THEN ${columns.reps} >= ${columns.targetRepsMin}
-      ELSE ${columns.reps} >= ${columns.targetRepsMin}
-        AND (
-          ${columns.targetLoad} IS NULL
-          OR (
-            ${columns.weight} IS NOT NULL
-            AND ${columns.weightUnit} IS NOT NULL
-            AND ${columns.targetLoadUnit} IS NOT NULL
-            AND CASE ${columns.weightUnit}::text
-              WHEN 'kg' THEN ${columns.weight} * ${KG_TO_LB}
-              ELSE ${columns.weight}
-            END >= CASE ${columns.targetLoadUnit}::text
-              WHEN 'kg' THEN ${columns.targetLoad} * ${KG_TO_LB}
-              ELSE ${columns.targetLoad}
-            END
-          )
-        )
+      WHEN ${outcome}::text IN ('at', 'above') THEN true
+      WHEN ${outcome}::text = 'below' THEN false
+      ELSE NULL
     END
   `;
 }

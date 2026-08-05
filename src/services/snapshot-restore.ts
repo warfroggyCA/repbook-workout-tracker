@@ -142,10 +142,11 @@ export function reconcileSnapshotCompletedSetOutcomes(
       completed.weight_unit === "lb" || completed.weight_unit === "kg"
         ? completed.weight_unit
         : null;
+    const plannedOccurrence = linkedOccurrences[0];
     const targetLoadUnit =
-      sessionExercise.target_load_unit === "lb" ||
-      sessionExercise.target_load_unit === "kg"
-        ? sessionExercise.target_load_unit
+      plannedOccurrence.planned_load_unit === "lb" ||
+      plannedOccurrence.planned_load_unit === "kg"
+        ? plannedOccurrence.planned_load_unit
         : null;
     completed.target_met = recomputeRestoredTargetMet({
       recordedMetricType: metricType as PerformedMetricType,
@@ -168,9 +169,15 @@ export function reconcileSnapshotCompletedSetOutcomes(
       weight: optionalNumber(completed.weight),
       weightUnit,
       reps: optionalNumber(completed.reps),
-      targetRepsMin: optionalNumber(sessionExercise.target_reps_min),
-      targetLoad: optionalNumber(sessionExercise.target_load),
+      targetRepsMin: optionalNumber(plannedOccurrence.planned_reps_min),
+      targetRepsMax: optionalNumber(plannedOccurrence.planned_reps_max),
+      targetLoad: optionalNumber(plannedOccurrence.planned_load),
       targetLoadUnit,
+      targetLoadPercent: optionalNumber(plannedOccurrence.planned_load_percent),
+      targetLoadText:
+        typeof plannedOccurrence.planned_load_text === "string"
+          ? plannedOccurrence.planned_load_text
+          : null,
       isWarmup: completed.is_warmup === true,
       modificationType:
         typeof sessionExercise.modification_type === "string"

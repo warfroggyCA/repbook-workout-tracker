@@ -23,19 +23,19 @@ import {
   summarizeActivities,
 } from "@/services/activity-report";
 import { weightInPounds } from "@/lib/units";
-import {
-  localDateDifference,
-  workoutLocalDate,
-} from "@/lib/workout-calendar";
+import { workoutLocalDate } from "@/lib/workout-calendar";
 import { PRODUCT_NAME } from "@/lib/product-identity";
 import {
+  classifyPrescriptionOutcome,
   classifySetMetricContainment,
   setMetricExclusionLabel,
+  summarizePrescriptionOutcomes,
 } from "@/lib/set-metric-semantics";
 import {
   workingSetDisplayPosition,
   workingSetSemanticRole,
 } from "@/lib/session-occurrences";
+import { buildTrainingCadence } from "@/lib/training-cadence";
 
 /**
  * Deterministic training digest (plan §13 contract 12, §16). All numbers are
@@ -55,7 +55,6 @@ export async function buildTrainingDigest(
   });
   if (!profile) throw new Error("Profile not found");
   const sinceLocalDate = workoutLocalDate(since, profile.timezone);
-  const nowLocalDate = workoutLocalDate(now, profile.timezone);
   const [
     userConstraints,
     equipment,
@@ -216,19 +215,23 @@ export async function buildTrainingDigest(
         .map((occurrence) => occurrence.completedSetId as string)
     )
   );
-  const completedPlannedWorkingSetIds = new Set(
-    completed.flatMap((session) =>
-      session.occurrences
-        .filter(
-          (occurrence) =>
-            occurrence.kind === "working_set" &&
-            occurrence.origin === "planned" &&
-            occurrence.outcome === "completed" &&
-            occurrence.completedSetId != null,
-        )
-        .map((occurrence) => occurrence.completedSetId as string),
-    ),
-  );
+  const completedWorkingOccurrencesBySetId = new Map<
+    string,
+    (typeof completed)[number]["occurrences"]
+  >();
+  for (const occurrence of completed.flatMap((session) => session.occurrences)) {
+    if (
+      occurrence.kind !== "working_set" ||
+      occurrence.outcome !== "completed" ||
+      occurrence.completedSetId == null
+    ) {
+      continue;
+    }
+    const linked =
+      completedWorkingOccurrencesBySetId.get(occurrence.completedSetId) ?? [];
+    linked.push(occurrence);
+    completedWorkingOccurrencesBySetId.set(occurrence.completedSetId, linked);
+  }
 
   // Per-exercise top-set trend across the range
   const trendMap = new Map<
@@ -328,22 +331,29 @@ export async function buildTrainingDigest(
       }))
   );
 
-  const targetableSets = completed.flatMap((session) =>
+  const targetResults = completed.flatMap((session) =>
     session.exercises.flatMap((sessionExercise) => {
       const usesPrescribedMeaning =
         sessionExercise.prescribedSemanticsVersion === 1 &&
         sessionExercise.modificationType !== "substituted" &&
         sessionExercise.modificationType !== "added";
-      return sessionExercise.sets.filter((set) => {
+      return sessionExercise.sets.flatMap((set) => {
+        const occurrences = completedWorkingOccurrencesBySetId.get(set.id) ?? [];
+        const plannedOccurrences = occurrences.filter(
+          (occurrence) => occurrence.origin === "planned",
+        );
         if (
           sessionExercise.modificationType !== "as_planned" ||
-          !completedPlannedWorkingSetIds.has(set.id) ||
-          set.isWarmup ||
-          set.targetMet == null
+          plannedOccurrences.length === 0 ||
+          set.isWarmup
         ) {
-          return false;
+          return [];
         }
-        return classifySetMetricContainment({
+        const occurrence = occurrences.length === 1 ? occurrences[0] : null;
+        if (occurrence?.origin !== "planned") {
+          return [{ set, outcome: "unknown" as const }];
+        }
+        const semantics = classifySetMetricContainment({
           recordedMetricType: set.metricType,
           prescribedSemanticsVersion:
             sessionExercise.prescribedSemanticsVersion,
@@ -363,10 +373,52 @@ export async function buildTrainingDigest(
           weight: set.weight,
           reps: set.reps,
           excludeFromAnalytics: set.excludeFromAnalytics,
-        }).prescriptionOutcomeEligible;
+        });
+        return [{
+          set,
+          outcome: classifyPrescriptionOutcome({
+            semantics,
+            reps: set.reps,
+            weight: set.weight,
+            weightUnit: set.weightUnit,
+            targetRepsMin: occurrence.plannedRepsMin,
+            targetRepsMax: occurrence.plannedRepsMax,
+            targetLoad: occurrence.plannedLoad,
+            targetLoadUnit: occurrence.plannedLoadUnit,
+            targetLoadPercent: occurrence.plannedLoadPercent,
+            targetLoadText: occurrence.plannedLoadText,
+          }),
+        }];
       });
     })
   );
+  const targetOutcomes = summarizePrescriptionOutcomes(
+    targetResults.map((result) => result.outcome),
+  );
+  const supportedTargetSets = targetResults.filter(
+    (result) => result.outcome !== "unknown",
+  );
+  const cadence = buildTrainingCadence({
+    sessions: sessions
+      .filter(
+        (session): session is typeof session & {
+          status: "completed" | "abandoned";
+        } => session.status === "completed" || session.status === "abandoned",
+      )
+      .map((session) => ({
+      id: session.id,
+      status: session.status,
+      startedAt: session.startedAt,
+      timezone: session.timezone,
+      localDate: session.localDate,
+      sourceDayLineageId: session.sourceDayLineageId,
+      templateName: session.templateName,
+      })),
+    rangeStartLocalDate: sinceLocalDate,
+    now,
+    currentTimezone: profile.timezone,
+    currentWeeklyFrequency: profile.weeklyFrequency,
+  });
 
   const familyMap = new Map<
     string,
@@ -428,8 +480,11 @@ export async function buildTrainingDigest(
   }
 
   const dataGaps: string[] = [];
-  const rpeCount = targetableSets.filter((s) => s.rpe != null).length;
-  if (targetableSets.length && rpeCount / targetableSets.length < 0.3) {
+  const rpeCount = supportedTargetSets.filter(({ set }) => set.rpe != null).length;
+  if (
+    supportedTargetSets.length &&
+    rpeCount / supportedTargetSets.length < 0.3
+  ) {
     dataGaps.push(
       "RPE/effort is recorded on few sets — effort-based conclusions are weak."
     );
@@ -638,20 +693,8 @@ export async function buildTrainingDigest(
         notes: s.notes.map((n) => n.text),
       };
     }),
-    adherence: {
-      completedSessions: completed.length,
-      plannedPerWeek: profile.weeklyFrequency,
-      weeksInRange: Math.max(
-        1,
-        Math.round(localDateDifference(nowLocalDate, sinceLocalDate) / 7)
-      ),
-      targetHitRate: targetableSets.length
-        ? Math.round(
-            (100 * targetableSets.filter((s) => s.targetMet).length) /
-              targetableSets.length
-          )
-        : null,
-    },
+    cadence,
+    targetOutcomes,
     trends: [...trendMap.entries()].map(([name, points]) => ({
       exercise: name,
       topSets: points.map(
@@ -811,13 +854,18 @@ export function renderCoachingBrief(digest: TrainingDigest): string {
     "## What this brief does NOT contain",
     ...digest.dataGaps.map((g) => `- ${g}`),
     "",
-    "## Adherence",
-    `- ${digest.adherence.completedSessions} sessions completed over ~${digest.adherence.weeksInRange} weeks (plan: ${digest.adherence.plannedPerWeek ?? "?"}/week).`,
-    ...(digest.adherence.targetHitRate != null
+    "## Training cadence",
+    `- ${digest.cadence.completedSessions} sessions completed; ${digest.cadence.averageSessionsPerCompleteWeek == null ? "no complete calendar week is available for an average" : `${digest.cadence.averageSessionsPerCompleteWeek} sessions per complete calendar week across ${digest.cadence.completeWeeks} complete weeks`}.`,
+    `- Median gap: ${digest.cadence.medianGapDays == null ? "unknown" : `${digest.cadence.medianGapDays} calendar days`}. Current gap: ${digest.cadence.currentGapDays == null ? "unknown" : `${digest.cadence.currentGapDays} calendar days`}.`,
+    `- Current preference: ${digest.cadence.currentPreference.sessionsPerWeek}/week. ${digest.cadence.currentPreference.limitation}`,
+    "",
+    "## Planned set target outcomes",
+    ...(digest.targetOutcomes.atOrAboveRate != null
       ? [
-          `- ${digest.adherence.targetHitRate}% of comparable planned sets with measurable targets met them.`,
+          `- ${digest.targetOutcomes.atOrAboveRate}% of ${digest.targetOutcomes.supported} supported planned set outcomes landed at or above target (${digest.targetOutcomes.at} at, ${digest.targetOutcomes.above} above, ${digest.targetOutcomes.below} below).`,
         ]
-      : []),
+      : ["- No supported planned set target outcome is available."]),
+    `- ${digest.targetOutcomes.unknown} planned set outcomes remain unknown.`,
     "",
     "## Independent health activities (separate from strength progression)",
     `- Rule: ${digest.independentActivities.rule}`,
