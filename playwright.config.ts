@@ -34,6 +34,7 @@ export default defineConfig({
     "v2-h01-performed-first-history.spec.ts",
     "v2-h02-cadence-targets-time.spec.ts",
     "v2-h03-evidence-identity.spec.ts",
+    "v2-h04-pain-consistency.spec.ts",
   ],
   outputDir: "./output/playwright/test-results",
   fullyParallel: false,

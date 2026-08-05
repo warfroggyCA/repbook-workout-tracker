@@ -94,7 +94,11 @@ person heard or felt it.
 
 ## Pain safety hold
 
-Progression uses one shared pain-hold classifier for an exact stable exercise.
+`src/lib/pain-evidence.ts` owns `pain-evidence-v1`: missing evidence is
+`unknown`, a supported general 0/10 report is `explicit_no_issue`, supported
+1–10 evidence is `pain`, and malformed or unsupported retained evidence is
+`unsupported`. Progression uses that meaning plus one shared pain-hold
+classifier for an exact stable exercise.
 Raw positive pain observations from completed, unarchived workouts contribute
 to recurrence. An observation of 3/10 or higher holds a load increase until 14
 days have passed without another 3/10-or-higher observation for that exercise.
@@ -105,6 +109,10 @@ linked sessions with positive observations remain inside that window.
 
 A missing pain entry and an explicit zero are preserved as different facts.
 Neither is invented as a pain-free session and neither shortens the wait.
+Supported positive `set_exception` evidence participates in the same
+proposal-only hold; its exact completed set, performed exercise, planned
+exercise, and substitution context remain separate. Program preflight,
+simulation, and Session Compiler do not consume that bridge directly.
 Contradictory or out-of-order evidence is classified deterministically from its
 retained time, severity, stable identity, and provenance. Corrections, archive
 restore, snapshot restore, and version restore use the same classifier. The
@@ -352,13 +360,16 @@ replays the acknowledgement; reusing the command identity with changed context
 fails closed. Capture writes no recommendation, decision, or accepted adaptation.
 
 History and Review present the recorded evidence as observations. The durable
-`set_exception` pain source distinguishes U02 evidence from the established
-`set_flag` safety workflow. U02 observations do not
+`set_exception` pain source distinguishes set-linked evidence from the
+general `set_flag` workflow. U02 observations do not
 reinterpret the performed set, alter Program intent, approve a proposal, or
-adapt future work. Set-linked pain remains outside automatic Program preflight,
-progression, pain-hold, simulation, and accepted-decision outcome consumers;
-those consumers continue to use the established independent pain workflow until
-a later package explicitly contracts a reviewed bridge. Set and pain CSVs,
+adapt future work. H04's `pain-evidence-v1` bridge now lets supported positive
+set-linked evidence participate in Review and proposal-only pain holds and
+progression recommendations. Explicit severity-zero general reports remain
+no-issue evidence, and a missing record remains unknown. Program preflight,
+simulation, and Session Compiler still do not consume this evidence directly,
+and no pain evidence changes Program intent without an explicit owner decision.
+Set and pain CSVs,
 canonical snapshots, and restore retain the
 exact nullable fields and completed-set link. Additive migration
 `0073_exception_context` owns the new columns and linkage constraints. Snapshot

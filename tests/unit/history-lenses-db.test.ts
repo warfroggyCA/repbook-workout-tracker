@@ -507,7 +507,7 @@ describe("History lens database evidence", () => {
 
     expect(pain.answer).toContain(benchName);
     expect(pain.answer).toContain("Shoulder");
-    expect(pain.limitation).toContain("2 of 3 pain flags name an exercise");
+    expect(pain.limitation).toContain("2 of 3 positive pain reports name an exercise");
     expect(pain.evidence.some((item) => item.label === "Session-level · Knee")).toBe(
       true,
     );
@@ -581,7 +581,7 @@ describe("History lens database evidence", () => {
       (lens) => lens.key === "pain-constraints",
     )!;
     expect(archivedRecords.evidence[0].value).toBe("105 lb × 10");
-    expect(archivedPain.limitation).toContain("2 of 2 pain flags name an exercise");
+    expect(archivedPain.limitation).toContain("2 of 2 positive pain reports name an exercise");
 
     await database.db
       .update(completedSets)
@@ -600,6 +600,6 @@ describe("History lens database evidence", () => {
     ).toBe("200 lb × 1");
     expect(
       restored.lenses.find((lens) => lens.key === "pain-constraints")!.limitation,
-    ).toContain("2 of 3 pain flags name an exercise");
+    ).toContain("2 of 3 positive pain reports name an exercise");
   }, 30_000);
 });

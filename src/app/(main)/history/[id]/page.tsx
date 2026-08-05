@@ -54,6 +54,10 @@ import {
   type TechniqueIssue,
 } from "@/lib/set-exception-context";
 import {
+  classifyPainEvidence,
+  formatPainEvidence,
+} from "@/lib/pain-evidence";
+import {
   HISTORY_CORRECTION_LABELS,
   HISTORY_PROVENANCE_LABELS,
   HISTORY_SET_CORRECTION_ACTIONS,
@@ -214,6 +218,13 @@ export default async function SessionDetailPage(
     session.painLogs.flatMap((pain) => pain.completedSetId == null
       ? []
       : [[pain.completedSetId, pain] as const]),
+  );
+  const classifiedPainEvidence = session.painLogs.map((pain) => ({
+    pain,
+    evidence: classifyPainEvidence(pain),
+  }));
+  const hasPositivePainEvidence = classifiedPainEvidence.some(
+    ({ evidence }) => evidence.meaning === "pain",
   );
   const completedSetLabels = new Map(
     session.exercises.flatMap((exercise) => exercise.sets.map((set) => [
@@ -918,8 +929,7 @@ export default async function SessionDetailPage(
                         )}
                         {painByCompletedSetId.get(s.id) && (
                           <p className="mt-1 text-xs text-muted-foreground">
-                            Pain: {painByCompletedSetId.get(s.id)!.bodyPart}{" "}
-                            {painByCompletedSetId.get(s.id)!.severity}/10
+                            {formatPainEvidence(painByCompletedSetId.get(s.id)!)}
                             {painByCompletedSetId.get(s.id)!.note
                               ? ` — ${painByCompletedSetId.get(s.id)!.note}`
                               : ""}
@@ -1256,10 +1266,17 @@ export default async function SessionDetailPage(
         </dl>
       </details>
 
-      {session.painLogs.length > 0 && (
-        <section className="rounded-xl border border-destructive/40 p-3">
-          <h2 className="mb-1 text-sm font-medium">Pain flags</h2>
-          {session.painLogs.map((p) => (
+      <section
+        className={`rounded-xl border p-3 ${
+          hasPositivePainEvidence ? "border-destructive/40" : ""
+        }`}
+      >
+          <h2 className="mb-1 text-sm font-medium">Pain / no-issue evidence</h2>
+          {classifiedPainEvidence.length === 0 ? (
+            <p className="text-sm text-muted-foreground">
+              Pain not recorded (unknown). This is not evidence that the workout was pain-free.
+            </p>
+          ) : classifiedPainEvidence.map(({ pain: p, evidence }) => (
             <p key={p.id} className="text-sm text-muted-foreground">
               {!p.completedSetId && p.exerciseId && exerciseNames.has(p.exerciseId)
                 ? `${exerciseNames.get(p.exerciseId)} · `
@@ -1267,11 +1284,11 @@ export default async function SessionDetailPage(
               {p.completedSetId && completedSetLabels.has(p.completedSetId)
                 ? `${completedSetLabels.get(p.completedSetId)} · `
                 : ""}
-              {p.bodyPart} {p.severity}/10{p.note ? ` — ${p.note}` : ""}
+              {formatPainEvidence(evidence)}
+              {p.note ? ` — ${p.note}` : ""}
             </p>
           ))}
         </section>
-      )}
 
       {session.notes.length > 0 && (
         <section className="rounded-xl border p-3">

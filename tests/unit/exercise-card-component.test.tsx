@@ -151,7 +151,7 @@ describe("ExerciseCard", () => {
     expect(html).not.toContain("Use the Next set dock");
     expect(html).toContain("Workout actions");
     expect(html).toContain("Add note");
-    expect(html).toContain("Flag pain");
+    expect(html).toContain("Pain / no issue");
     expect(html).toContain("Skip exercise");
   });
 

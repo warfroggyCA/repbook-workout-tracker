@@ -547,16 +547,16 @@ test.describe.serial("matched active-workout friction study", () => {
       const noteDialog = page.getByRole("dialog", { name: /^Add note for / });
       await noteDialog.getByRole("textbox", { name: "Exercise note" }).fill("Synthetic fixture note");
       await noteDialog.getByRole("button", { name: "Save note", exact: true }).click();
-      await current.getByRole("button", { name: "Flag pain", exact: true }).click();
+      await current.getByRole("button", { name: "Pain / no issue", exact: true }).click();
     } else {
       await exercise.getByRole("button", { name: "Note", exact: true }).click();
       const note = exercise.getByPlaceholder("Note for this exercise…");
       await note.fill("Synthetic fixture note");
       await note.blur();
-      await exercise.getByRole("button", { name: "Flag pain", exact: true }).click();
+      await exercise.getByRole("button", { name: "Pain / no issue", exact: true }).click();
     }
-    const pain = page.getByRole("dialog", { name: "Flag pain" });
-    await pain.getByRole("button", { name: "Save pain flag", exact: true }).click();
+    const pain = page.getByRole("dialog", { name: "Pain / no-issue evidence" });
+    await pain.getByRole("button", { name: "Save pain report", exact: true }).click();
     if (variant === "after") {
       await currentSurface(page).getByRole("button", { name: "Ask Coach", exact: true }).click();
     } else {

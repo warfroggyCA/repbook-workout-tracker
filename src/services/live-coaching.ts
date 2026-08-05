@@ -56,6 +56,10 @@ import {
   classifySetMetricContainment,
   type SetMetricContainmentInput,
 } from "@/lib/set-metric-semantics";
+import {
+  PAIN_EVIDENCE_ALGORITHM_VERSION,
+  classifyPainEvidence,
+} from "@/lib/pain-evidence";
 
 export type LiveCoachMessageKind = "question" | "observation";
 export type LiveCoachInputMode = "text" | "dictation" | "realtime_voice";
@@ -895,15 +899,22 @@ export async function buildLiveCoachingContext(
         rpe: set.rpe,
         note: boundedText(set.note, 500),
       })),
-      painFlags: session.painLogs.slice(-10).map((pain) => ({
-        exerciseId: pain.exerciseId,
-        exerciseName: pain.exerciseId
-          ? (exerciseNames.get(pain.exerciseId) ?? null)
-          : null,
-        bodyPart: pain.bodyPart,
-        severity: pain.severity,
-        note: boundedText(pain.note, 500),
-      })),
+      painEvidence: session.painLogs.slice(-10).map((pain) => {
+        const evidence = classifyPainEvidence(pain);
+        return {
+          exerciseId: pain.exerciseId,
+          exerciseName: pain.exerciseId
+            ? (exerciseNames.get(pain.exerciseId) ?? null)
+            : null,
+          completedSetId: pain.completedSetId,
+          bodyPart: pain.bodyPart,
+          severity: pain.severity,
+          source: pain.source,
+          meaning: evidence.meaning,
+          algorithmVersion: PAIN_EVIDENCE_ALGORITHM_VERSION,
+          note: boundedText(pain.note, 500),
+        };
+      }),
       notes: session.notes.slice(-10).map((note) => boundedText(note.text)),
       contextualNotes: visibleContextualNotes.slice(-20).map((note) => ({
         id: note.id,
@@ -931,6 +942,7 @@ export async function buildLiveCoachingContext(
       noAutomaticChanges: true,
       substitutionsMustComeFromApprovedList: true,
       painRequiresExistingSafetyThresholds: true,
+      painAbsenceMeansUnknown: true,
     },
   };
 }

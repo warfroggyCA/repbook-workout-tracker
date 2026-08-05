@@ -61,6 +61,7 @@ import {
   hasOneExactCompletedWorkingOccurrence,
   resolveReviewedExerciseMapping,
 } from "@/lib/history-exercise-evidence";
+import { isPositivePainEvidence } from "@/lib/pain-evidence";
 import type {
   ExerciseEvidenceTier,
   ExerciseIdentityScope,
@@ -168,7 +169,11 @@ export type HistoryCalendarSessionInput = {
       >
     >;
   }>;
-  painLogs: unknown[];
+  painLogs: Array<{
+    severity: number;
+    bodyPart?: string;
+    source: string;
+  }>;
 };
 
 export type HistoryCalendarActivityInput = {
@@ -229,6 +234,7 @@ export type HistorySessionInput = {
     severity: number;
     bodyPart?: string;
     exerciseName?: string | null;
+    source: string;
   }>;
 };
 
@@ -447,7 +453,7 @@ export function buildHistoryCalendarSessions(
         skipped: session.exercises.filter(
           (exercise) => exercise.modificationType === "skipped"
         ).length,
-        painEvents: session.painLogs.length,
+        painEvents: session.painLogs.filter(isPositivePainEvidence).length,
       };
     });
 }
@@ -976,7 +982,7 @@ export function summarizeHistory(
     HistoryPainContextEvidence
   >();
   for (const session of chronological) {
-    for (const pain of session.painLogs) {
+    for (const pain of session.painLogs.filter(isPositivePainEvidence)) {
       const exercise = pain.exerciseName ?? null;
       const bodyPart = pain.bodyPart ?? "unspecified context";
       const key = `${exercise ?? "session"}\u0000${bodyPart}`;
@@ -1033,12 +1039,15 @@ export function summarizeHistory(
   );
 
   const painEvents = sessions.reduce(
-    (count, session) => count + session.painLogs.length,
+    (count, session) =>
+      count + session.painLogs.filter(isPositivePainEvidence).length,
     0
   );
   const highPainEvents = sessions.reduce(
     (count, session) =>
-      count + session.painLogs.filter((pain) => pain.severity >= 4).length,
+      count + session.painLogs.filter(
+        (pain) => isPositivePainEvidence(pain) && pain.severity >= 4,
+      ).length,
     0
   );
   const targetOutcomes = summarizePrescriptionOutcomes(prescriptionOutcomes);
@@ -1134,14 +1143,14 @@ export function summarizeHistory(
   if (highPainEvents > 0) {
     insights.push({
       tone: "watch",
-      title: "Pain flags deserve attention",
+      title: "Positive pain reports deserve attention",
       detail: `${highPainEvents} pain ${highPainEvents === 1 ? "entry was" : "entries were"} rated 4/10 or higher in this period.`,
     });
   } else if (averageFatigue != null) {
     insights.push({
       tone: averageFatigue >= 4 ? "watch" : "positive",
       title: averageFatigue >= 4 ? "Post-workout fatigue is high" : "Recovery signal looks manageable",
-      detail: `Average post-workout fatigue is ${averageFatigue}/5 across ${fatigue.length} check-ins, with no pain flags at 4/10 or higher.`,
+      detail: `Average post-workout fatigue is ${averageFatigue}/5 across ${fatigue.length} check-ins, with no positive pain reports at 4/10 or higher.`,
     });
   } else if (completed.length) {
     insights.push({
@@ -1905,6 +1914,8 @@ export async function getHistoryReport(
       LEFT JOIN exercises e ON e.id = pl.exercise_id
       WHERE pl.user_id = ${userId}::uuid
         AND pl.archived_at IS NULL
+        AND pl.severity BETWEEN 1 AND 10
+        AND length(btrim(pl.body_part)) BETWEEN 1 AND 50
       GROUP BY e.name, pl.body_part
     ), pain_skip_rows AS (
       SELECT exercise_name AS planned_exercise, count(*)::int AS events
@@ -2006,7 +2017,10 @@ export async function getHistoryReport(
              (SELECT count(*)::int FROM session_exercises se
                WHERE se.session_id = s.id AND se.modification_type = 'skipped') AS skipped,
              (SELECT count(*)::int FROM pain_logs pl
-               WHERE pl.session_id = s.id AND pl.archived_at IS NULL) AS pain_events
+               WHERE pl.session_id = s.id
+                 AND pl.archived_at IS NULL
+                 AND pl.severity BETWEEN 1 AND 10
+                 AND length(btrim(pl.body_part)) BETWEEN 1 AND 50) AS pain_events
       FROM recent_sessions s
       LEFT JOIN working_sets ws ON ws.session_id = s.id
       GROUP BY s.id, s.template_name, s.status, s.started_at, s.timezone,
@@ -2052,10 +2066,15 @@ export async function getHistoryReport(
       (SELECT count(*)::int FROM occurrences WHERE modification_type = 'skipped') AS skipped_exercises,
       (SELECT count(*)::int FROM occurrences WHERE modification_type = 'substituted') AS substitutions,
       (SELECT count(*)::int FROM pain_logs pl JOIN selected_sessions s ON s.id = pl.session_id
-        WHERE pl.user_id = ${userId}::uuid AND pl.archived_at IS NULL) AS pain_events,
+        WHERE pl.user_id = ${userId}::uuid
+          AND pl.archived_at IS NULL
+          AND pl.severity BETWEEN 1 AND 10
+          AND length(btrim(pl.body_part)) BETWEEN 1 AND 50) AS pain_events,
       (SELECT count(*)::int FROM pain_logs pl JOIN selected_sessions s ON s.id = pl.session_id
         WHERE pl.user_id = ${userId}::uuid
-          AND pl.archived_at IS NULL AND pl.severity >= 4) AS high_pain_events,
+          AND pl.archived_at IS NULL
+          AND pl.severity BETWEEN 4 AND 10
+          AND length(btrim(pl.body_part)) BETWEEN 1 AND 50) AS high_pain_events,
       (SELECT count(*)::int FROM valid_program_sessions
         WHERE status = 'completed') AS program_completed_sessions,
       (SELECT count(*)::int FROM valid_program_sessions
@@ -2549,7 +2568,7 @@ export async function getHistoryReport(
   if (highPainEvents > 0) {
     insights.push({
       tone: "watch",
-      title: "Pain flags deserve attention",
+      title: "Positive pain reports deserve attention",
       detail: `${highPainEvents} pain ${highPainEvents === 1 ? "entry was" : "entries were"} rated 4/10 or higher in this period.`,
     });
   } else if (averageFatigue != null) {
@@ -2559,7 +2578,7 @@ export async function getHistoryReport(
         averageFatigue >= 4
           ? "Post-workout fatigue is high"
           : "Recovery signal looks manageable",
-      detail: `Average post-workout fatigue is ${averageFatigue}/5 across ${fatigueCheckIns} check-ins, with no pain flags at 4/10 or higher.`,
+      detail: `Average post-workout fatigue is ${averageFatigue}/5 across ${fatigueCheckIns} check-ins, with no positive pain reports at 4/10 or higher.`,
     });
   } else if (completedSessions) {
     insights.push({
@@ -2845,7 +2864,10 @@ export async function getHistoryCalendarRecords(
         LEFT JOIN LATERAL (
           SELECT count(*)::int AS events
           FROM pain_logs pl
-          WHERE pl.session_id = ws.id AND pl.archived_at IS NULL
+          WHERE pl.session_id = ws.id
+            AND pl.archived_at IS NULL
+            AND pl.severity BETWEEN 1 AND 10
+            AND length(btrim(pl.body_part)) BETWEEN 1 AND 50
         ) pain ON true
       ), activity_records AS (
         SELECT
@@ -3008,7 +3030,11 @@ export async function getHistoryCalendarRecords(
         },
         painLogs: {
           where: isNull(painLogs.archivedAt),
-          columns: { id: true },
+          columns: {
+            severity: true,
+            bodyPart: true,
+            source: true,
+          },
         },
         occurrences: {
           orderBy: sessionOccurrences.sequenceIdx,

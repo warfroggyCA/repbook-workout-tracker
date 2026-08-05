@@ -461,7 +461,7 @@ describe("recommendation decisions publish immutable Program versions", () => {
       status: "expired",
       decidedAt: null,
       reconciliationReason:
-        "You dismissed this notice. The recorded pain flags still count, and your Program wasn’t changed.",
+        "You dismissed this notice. The recorded positive pain reports still count, and your Program wasn’t changed.",
     });
     expect(await database.db.select().from(userDecisions)).toHaveLength(0);
     expect(
@@ -828,7 +828,7 @@ describe("recommendation decisions publish immutable Program versions", () => {
     await expect(approve(painId)).resolves.toMatchObject({
       ok: false,
       reason: expect.stringContaining(
-        "comes off hold 14 days after the latest 3/10 or higher flag"
+        "comes off hold 14 days after the latest 3/10 or higher report"
       ),
     });
     expect(await database.db.select().from(userDecisions)).toHaveLength(0);
@@ -852,7 +852,7 @@ describe("recommendation decisions publish immutable Program versions", () => {
     await expect(approve(repeatedRecommendation)).resolves.toMatchObject({
       ok: false,
       reason: expect.stringContaining(
-        "pain was flagged in 3 workouts in the last 14 days"
+        "positive pain was reported in 3 workouts in the last 14 days"
       ),
     });
   });
@@ -874,7 +874,7 @@ describe("recommendation decisions publish immutable Program versions", () => {
     await expect(attempt()).resolves.toMatchObject({
       ok: false,
       reason: expect.stringContaining(
-        "comes off hold 14 days after the latest 3/10 or higher flag"
+        "comes off hold 14 days after the latest 3/10 or higher report"
       ),
     });
     expect((await currentState()).prescription.targetLoad).toBe(100);

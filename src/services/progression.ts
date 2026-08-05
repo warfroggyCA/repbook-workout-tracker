@@ -8,7 +8,6 @@ import {
   inArray,
   isNull,
   lte,
-  ne,
   or,
   sql,
 } from "drizzle-orm";
@@ -441,7 +440,9 @@ export async function evaluateSessionProgression(
           eq(workoutSessions.status, "completed"),
           isNull(workoutSessions.archivedAt),
           isNull(painLogs.archivedAt),
-          ne(painLogs.source, "set_exception"),
+          gt(painLogs.severity, 0),
+          lte(painLogs.severity, 10),
+          sql`length(btrim(${painLogs.bodyPart})) BETWEEN 1 AND 50`,
           inArray(painLogs.exerciseId, painExerciseIds),
           gt(painLogs.createdAt, painWindowStart),
           lte(painLogs.createdAt, painWindowEnd)

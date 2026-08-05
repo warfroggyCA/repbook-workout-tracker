@@ -2,10 +2,11 @@ import {
   and,
   desc,
   eq,
+  gt,
   inArray,
   isNotNull,
   isNull,
-  ne,
+  lte,
   or,
   sql,
 } from "drizzle-orm";
@@ -32,6 +33,12 @@ import {
   summarizePrescriptionOutcomes,
   type PrescriptionOutcomeSummary,
 } from "@/lib/set-metric-semantics";
+import {
+  PAIN_EVIDENCE_ALGORITHM_VERSION,
+  classifyPainEvidence,
+  isPositivePainEvidence,
+  type PainEvidenceMeaning,
+} from "@/lib/pain-evidence";
 import {
   recommendationEvidenceEligibleForAction,
   reconcilePendingPainRecommendations,
@@ -65,7 +72,7 @@ export type OutcomeReadyDecision = {
   targetOutcomes: PrescriptionOutcomeSummary;
   rpeCount: number;
   averageRpe: number | null;
-  painFlags: number;
+  positivePainReports: number;
   maxPainSeverity: number | null;
   evidenceLimited: boolean;
 };
@@ -76,6 +83,12 @@ export type RecentExceptionEvidence = {
   localDate: string;
   workoutName: string;
   exerciseName: string;
+  performedExerciseId: string;
+  performedExerciseName: string;
+  plannedExerciseId: string | null;
+  plannedExerciseName: string | null;
+  modificationType: "as_planned" | "substituted" | "added" | "skipped";
+  substitutionReason: string | null;
   setNo: number;
   rpe: number | null;
   rir: number | null;
@@ -83,6 +96,9 @@ export type RecentExceptionEvidence = {
   limitationCause: string | null;
   painBodyPart: string | null;
   painSeverity: number | null;
+  painSource: string | null;
+  painMeaning: PainEvidenceMeaning;
+  painAlgorithmVersion: typeof PAIN_EVIDENCE_ALGORITHM_VERSION;
 };
 
 type DecisionHistoryInput = {
@@ -93,17 +109,17 @@ type DecisionHistoryInput = {
 const signalLabels: Record<string, string> = {
   cleanExposures: "Clean completed workouts",
   hardMissExposures: "Repeated hard-miss workouts",
-  worstPainSeverity: "Highest recorded pain flag",
-  worstSeverity: "Highest recorded pain flag",
-  painReports: "Recorded pain flags",
-  positiveReports: "Recorded pain flags",
-  holdReports: "Flags at 3/10 or higher",
-  linkedSessions: "Workouts with a pain flag",
+  worstPainSeverity: "Highest positive pain report",
+  worstSeverity: "Highest positive pain report",
+  painReports: "Positive pain reports",
+  positiveReports: "Positive pain reports",
+  holdReports: "Reports at 3/10 or higher",
+  linkedSessions: "Workouts with positive pain evidence",
   windowDays: "Evidence window",
   releaseAt: "Hold checks again",
   highSeverityReview: "Higher-severity review",
   repeatedSessionReview: "Repeated-workout review",
-  triggerEvidenceId: "Triggering pain flag",
+  triggerEvidenceId: "Triggering pain report",
   triggerSessionId: "Triggering workout",
   fromLoad: "Previous target",
   toLoad: "Suggested target",
@@ -191,7 +207,7 @@ export function buildReviewEvidenceItems(
   }
   if (evidence.painLogIds?.length) {
     items.push({
-      label: "Linked pain flags",
+      label: "Linked positive pain reports",
       value: String(evidence.painLogIds.length),
     });
   }
@@ -412,7 +428,7 @@ export async function getReviewDecisionData(db: Db, userId: string) {
   const activeAccepted = acceptedWithAdaptation.filter(
     ({ adaptation }) => adaptation.undoneAt == null
   );
-  const recentExceptions: RecentExceptionEvidence[] = await db
+  const recentExceptionRows = await db
     .select({
       setId: completedSets.id,
       sessionId: workoutSessions.id,
@@ -424,6 +440,22 @@ export async function getReviewDecisionData(db: Db, userId: string) {
         THEN ${sessionExercises.prescribedExerciseName}
         ELSE ${exercises.name}
       END`,
+      performedExerciseId: sessionExercises.exerciseId,
+      performedExerciseName: exercises.name,
+      plannedExerciseId: sql<string | null>`CASE
+        WHEN ${sessionExercises.modificationType} = 'added' THEN NULL
+        WHEN ${sessionExercises.modificationType} = 'substituted'
+          THEN ${sessionExercises.substitutedForExerciseId}
+        ELSE ${sessionExercises.exerciseId}
+      END`,
+      plannedExerciseName: sql<string | null>`CASE
+        WHEN ${sessionExercises.modificationType} = 'added' THEN NULL
+        WHEN ${sessionExercises.prescribedSemanticsVersion} = 1
+          THEN ${sessionExercises.prescribedExerciseName}
+        ELSE NULL
+      END`,
+      modificationType: sessionExercises.modificationType,
+      substitutionReason: sessionExercises.substitutionReason,
       setNo: completedSets.setNo,
       rpe: completedSets.rpe,
       rir: completedSets.rir,
@@ -431,6 +463,7 @@ export async function getReviewDecisionData(db: Db, userId: string) {
       limitationCause: completedSets.limitationCause,
       painBodyPart: painLogs.bodyPart,
       painSeverity: painLogs.severity,
+      painSource: painLogs.source,
     })
     .from(completedSets)
     .innerJoin(
@@ -466,6 +499,24 @@ export async function getReviewDecisionData(db: Db, userId: string) {
     ))
     .orderBy(desc(workoutSessions.startedAt), desc(completedSets.setNo))
     .limit(12);
+  const recentExceptions: RecentExceptionEvidence[] = recentExceptionRows.map(
+    (row) => {
+      const pain = classifyPainEvidence(
+        row.painBodyPart == null || row.painSeverity == null
+          ? null
+          : {
+              bodyPart: row.painBodyPart,
+              severity: row.painSeverity,
+              source: row.painSource,
+            },
+      );
+      return {
+        ...row,
+        painMeaning: pain.meaning,
+        painAlgorithmVersion: pain.algorithmVersion,
+      };
+    },
+  );
   if (activeAccepted.length === 0) {
     return {
       pending,
@@ -608,7 +659,9 @@ export async function getReviewDecisionData(db: Db, userId: string) {
       where: and(
         eq(painLogs.userId, userId),
         inArray(painLogs.sessionId, sessionIds),
-        ne(painLogs.source, "set_exception"),
+        gt(painLogs.severity, 0),
+        lte(painLogs.severity, 10),
+        sql`length(btrim(${painLogs.bodyPart})) BETWEEN 1 AND 50`,
         isNull(painLogs.archivedAt)
       ),
     }),
@@ -774,6 +827,7 @@ export async function getReviewDecisionData(db: Db, userId: string) {
         )
       );
       const observedPain = pains.filter((pain) => {
+        if (!isPositivePainEvidence(pain)) return false;
         if (pain.completedSetId) {
           return observedSetIds.has(pain.completedSetId);
         }
@@ -818,7 +872,7 @@ export async function getReviewDecisionData(db: Db, userId: string) {
                     10
                 ) / 10
               : null,
-          painFlags: observedPain.length,
+          positivePainReports: observedPain.length,
           maxPainSeverity:
             observedPain.length > 0
               ? Math.max(...observedPain.map((pain) => pain.severity))

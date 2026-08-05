@@ -120,8 +120,8 @@ describe("Repbook v2 ratified semantic contract", () => {
       schemaVersion: 1,
       contractVersion: V2_CONTRACT_VERSION,
       exactBaseCommit: "2c9ab1b9478502f1d08956a6c44dfb0850c8f168",
-      currentPackage: "H03",
-      currentPackageBaseCommit: "d2cb0674ac3f8bb080e973d3ef392fbec671e6cb",
+      currentPackage: "H04",
+      currentPackageBaseCommit: "e618f3836ed5aabb779d7ad6bf4b69d1ece859ce",
       productBehaviorImplementedByP02: false,
       implementedProductPackages: [
         "T01",
@@ -136,6 +136,7 @@ describe("Repbook v2 ratified semantic contract", () => {
         "H01",
         "H02",
         "H03",
+        "H04",
       ],
     });
     expect(matrix.columns).toEqual(columns);
@@ -151,6 +152,13 @@ describe("Repbook v2 ratified semantic contract", () => {
         resolve(root, matrix.verifications["U01-browser"].testPath),
       ),
     ).toBe(true);
+    expect(matrix.verifications["H04-browser"]).toMatchObject({
+      status: "current",
+      implementingPackage: "H04",
+      testPath: "tests/e2e/v2-h04-pain-consistency.spec.ts",
+      command:
+        "npx playwright test --config=playwright.v2-h04.config.ts tests/e2e/v2-h04-pain-consistency.spec.ts --project=desktop-chromium && V2_H04_PORT=3146 npx playwright test --config=playwright.v2-h04.config.ts tests/e2e/v2-h04-pain-consistency.spec.ts --project=narrow-mobile-webkit",
+    });
     expect(matrix.verifications["U02-browser"]).toMatchObject({
       status: "current",
       implementingPackage: "U02",
@@ -196,7 +204,7 @@ describe("Repbook v2 ratified semantic contract", () => {
         const verification = matrix.verifications[cell.verificationId ?? ""];
         expect(verification).toBeDefined();
         expect(verification.implementingPackage).toMatch(
-          /^(?:P02|T0[1-6]|U0[1-3]|H0[235]|A0[145]|D02|R01)$/,
+          /^(?:P02|T0[1-6]|U0[1-3]|H0[2345]|A0[145]|D02|R01)$/,
         );
         expect(verification.testPath).toMatch(
           /^tests\/(?:unit|e2e)\/.+\.(?:test|spec)\.ts$/,

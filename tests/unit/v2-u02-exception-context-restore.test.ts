@@ -17,6 +17,7 @@ import {
   type T01RecordingTruthFixture,
 } from "../helpers/v2-t01-recording-truth";
 import { recordU02Exception } from "../helpers/v2-u02-exception-context";
+import { classifyPainEvidence } from "@/lib/pain-evidence";
 
 describe("V2 U02 exception context restore", () => {
   let database: TestDatabase;
@@ -89,13 +90,17 @@ describe("V2 U02 exception context restore", () => {
       limitationCause: "strength_fatigue",
       note: "Stopped before technique degraded further",
     });
-    expect(await database.db.query.painLogs.findFirst({
+    const restoredPain = await database.db.query.painLogs.findFirst({
       where: eq(painLogs.completedSetId, saved.setId),
-    })).toMatchObject({
+    });
+    expect(restoredPain).toMatchObject({
       bodyPart: "back",
       severity: 4,
       note: "Sharp only at the bottom",
     });
+    expect(classifyPainEvidence(restoredPain)).toMatchObject({
+      meaning: "pain",
+      algorithmVersion: "pain-evidence-v1",
+    });
   });
 });
-

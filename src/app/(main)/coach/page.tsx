@@ -53,6 +53,7 @@ import {
   type LimitationCause,
   type TechniqueIssue,
 } from "@/lib/set-exception-context";
+import { formatPainEvidence } from "@/lib/pain-evidence";
 
 function Metric({
   label,
@@ -261,12 +262,21 @@ export default async function CoachPage() {
                   : null,
                 item.painBodyPart == null || item.painSeverity == null
                   ? null
-                  : `Pain: ${item.painBodyPart} ${item.painSeverity}/10`,
+                  : formatPainEvidence({
+                      bodyPart: item.painBodyPart,
+                      severity: item.painSeverity,
+                      source: item.painSource,
+                    }),
+                item.modificationType === "substituted"
+                  ? `Performed ${item.performedExerciseName} instead of ${
+                      item.plannedExerciseName ?? "the retained planned exercise"
+                    }${item.substitutionReason ? ` · ${item.substitutionReason}` : ""}`
+                  : null,
               ].filter((value): value is string => value != null);
               return (
                 <li key={item.setId} className="rounded-xl border bg-card p-4">
                   <p className="font-medium">
-                    {item.exerciseName} · set {item.setNo}
+                    {item.performedExerciseName} · set {item.setNo}
                   </p>
                   <p className="text-xs text-muted-foreground">
                     {item.workoutName} · {formatRecordedLocalDate(item.localDate)}
@@ -452,10 +462,10 @@ export default async function CoachPage() {
                   <div className="rounded-lg bg-muted/55 p-2">
                     <dt className="text-muted-foreground">Pain evidence</dt>
                     <dd className="mt-0.5 font-medium">
-                      {outcome.painFlags === 0
-                        ? "No pain flag recorded"
-                        : `${outcome.painFlags} flag${
-                            outcome.painFlags === 1 ? "" : "s"
+                      {outcome.positivePainReports === 0
+                        ? "No positive pain evidence recorded; absence remains unknown"
+                        : `${outcome.positivePainReports} positive report${
+                            outcome.positivePainReports === 1 ? "" : "s"
                           } · max ${outcome.maxPainSeverity}/10`}
                     </dd>
                   </div>

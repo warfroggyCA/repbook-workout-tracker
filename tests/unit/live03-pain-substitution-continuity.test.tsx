@@ -189,6 +189,7 @@ vi.mock("@/db", async (importOriginal) => {
         exerciseId: historyFixture.performedExerciseId,
         bodyPart: "shoulder",
         severity: 5,
+        source: "set_flag",
         note: historyFixture.painNote,
       },
     ],
@@ -444,10 +445,13 @@ describe("LIVE-03 Coach context continuity", () => {
       plannedExercise: plannedName,
       substitutionReason: "discomfort",
     });
-    const painFlag = context.liveWorkout.painFlags.find(
+    const painFlag = context.liveWorkout.painEvidence.find(
       (entry) => entry.bodyPart === "shoulder" && entry.severity === 5
     );
-    expect(painFlag).toBeDefined();
+    expect(painFlag).toMatchObject({
+      meaning: "pain",
+      algorithmVersion: "pain-evidence-v1",
+    });
     expect(JSON.stringify(painFlag)).toContain(performedName);
   });
 });
@@ -467,7 +471,7 @@ describe("LIVE-03 History reconstruction", () => {
     expect(html).toContain(historyFixture.painNote);
     expect(html).toMatch(
       new RegExp(
-        `Pain flags[\\s\\S]*${historyFixture.performedName}[\\s\\S]*shoulder 5/10`
+        `Pain / no-issue evidence[\\s\\S]*${historyFixture.performedName}[\\s\\S]*Pain: shoulder 5/10`
       )
     );
   });

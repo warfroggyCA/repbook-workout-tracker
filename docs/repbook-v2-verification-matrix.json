@@ -5,8 +5,8 @@
   "repositoryRole": "public application source",
   "exactBaseCommit": "2c9ab1b9478502f1d08956a6c44dfb0850c8f168",
   "fixtureCatalogue": "tests/fixtures/v2/semantic-scenarios.json",
-  "currentPackage": "H03",
-  "currentPackageBaseCommit": "d2cb0674ac3f8bb080e973d3ef392fbec671e6cb",
+  "currentPackage": "H04",
+  "currentPackageBaseCommit": "e618f3836ed5aabb779d7ad6bf4b69d1ece859ce",
   "productBehaviorImplementedByP02": false,
   "implementedProductPackages": [
     "T01",
@@ -20,7 +20,8 @@
     "U03",
     "H01",
     "H02",
-    "H03"
+    "H03",
+    "H04"
   ],
   "milestoneEvidence": {
     "gauntletA": {
@@ -334,6 +335,41 @@
       "testPath": "tests/unit/v2-h02-cadence-targets-time-adversarial.test.ts",
       "command": "npx vitest run tests/unit/v2-h02-cadence-targets-time-adversarial.test.ts",
       "proves": "reviewed correction and record-version restore recompute current outcomes without changing planned targets; owner, archived, abandoned, unsupported-target, and partial-current-week boundaries remain explicit and current weekly preference never becomes an adherence claim"
+    },
+    "H04-databaseService": {
+      "status": "current",
+      "implementingPackage": "H04",
+      "testPath": "tests/unit/v2-h04-pain-consistency-db.test.ts",
+      "command": "npx vitest run tests/unit/v2-h04-pain-consistency.test.ts tests/unit/v2-h04-pain-consistency-db.test.ts tests/unit/v2-u02-exception-context-adversarial.test.ts",
+      "proves": "one versioned meaning keeps absence unknown, distinguishes explicit zero no-issue from positive pain, excludes unsupported evidence from History calculations, allows supported set_exception evidence into proposal-only holds, preserves substitution identity, and creates no recommendation, decision, adaptation, or Program write during capture"
+    },
+    "H04-browser": {
+      "status": "current",
+      "implementingPackage": "H04",
+      "testPath": "tests/e2e/v2-h04-pain-consistency.spec.ts",
+      "command": "npx playwright test --config=playwright.v2-h04.config.ts tests/e2e/v2-h04-pain-consistency.spec.ts --project=desktop-chromium && V2_H04_PORT=3146 npx playwright test --config=playwright.v2-h04.config.ts tests/e2e/v2-h04-pain-consistency.spec.ts --project=narrow-mobile-webkit",
+      "proves": "desktop Chromium and independent 320 by 700 enlarged-text mobile WebKit fixtures show optional no-issue capture, positive and explicit no-issue History, performed versus planned substitution identity, distinct technique and limitation evidence, Review context, zero post-login writes, no horizontal overflow, and no unexpected page errors"
+    },
+    "H04-exportImport": {
+      "status": "current",
+      "implementingPackage": "H04",
+      "testPath": "tests/unit/v2-h04-pain-consistency-db.test.ts",
+      "command": "npx vitest run tests/unit/v2-h04-pain-consistency-db.test.ts tests/unit/v2-u02-exception-context-portability.test.ts",
+      "proves": "pain CSV retains raw severity and source while adding pain-evidence-v1 meaning plus exact performed and planned exercise identity, modification, substitution, and completed-set context without same-name inference"
+    },
+    "H04-restoreRollback": {
+      "status": "current",
+      "implementingPackage": "H04",
+      "testPath": "tests/unit/v2-u02-exception-context-restore.test.ts",
+      "command": "npx vitest run tests/unit/v2-u02-exception-context-restore.test.ts",
+      "proves": "snapshot schema 29 restores the raw set-linked pain fact and recomputes pain-evidence-v1 meaning without restoring a recommendation, decision, adaptation, or stale derived conclusion"
+    },
+    "H04-adversarialPrivacy": {
+      "status": "current",
+      "implementingPackage": "H04",
+      "testPath": "tests/unit/v2-u02-exception-context-adversarial.test.ts",
+      "command": "npx vitest run tests/unit/v2-u02-exception-context-adversarial.test.ts tests/unit/v2-h04-pain-consistency.test.ts",
+      "proves": "changed retry identity, cross-owner or invented linkage, invalid severity, missing location, unsupported source, set_exception zero, duplicate occurrence, and missing evidence fail closed or remain unknown without changing another fact or decision"
     },
     "H05-databaseService": {
       "status": "future_activation",
@@ -1417,7 +1453,7 @@
             "F01",
             "F16"
           ],
-          "verificationId": "U02-databaseService"
+          "verificationId": "H04-databaseService"
         },
         "browser": {
           "level": "R",
@@ -1425,7 +1461,7 @@
             "F01",
             "F16"
           ],
-          "verificationId": "U02-browser"
+          "verificationId": "H04-browser"
         },
         "exportImport": {
           "level": "C",
@@ -1433,7 +1469,7 @@
             "F01",
             "F16"
           ],
-          "verificationId": "U02-exportImport"
+          "verificationId": "H04-exportImport"
         },
         "restoreRollback": {
           "level": "C",
@@ -1441,7 +1477,7 @@
             "F01",
             "F16"
           ],
-          "verificationId": "U02-restoreRollback"
+          "verificationId": "H04-restoreRollback"
         },
         "adversarialPrivacy": {
           "level": "C",
@@ -1449,7 +1485,7 @@
             "F01",
             "F16"
           ],
-          "verificationId": "U02-adversarialPrivacy"
+          "verificationId": "H04-adversarialPrivacy"
         }
       }
     },
@@ -1819,6 +1855,7 @@
     "U01 current status means its presentation change and dedicated browser evidence travel together; it adds no schema, migration, persistence writer, or historical rewrite.",
     "U02 current status means exception evidence, its set-linked pain identity, browser failure recovery, History and Review read paths, export, and restore evidence travel together; it does not imply release, deployment, recommendation approval, or Program adaptation.",
     "U03 current status means exact future Program review and publication clarity travel with active-session, completed/imported History, earlier-version, conflict, failure, export, and restore isolation evidence; it adds no schema, migration, historical rewrite, release, or deployment.",
-    "H01 current status means performed-first completed and imported workout presentation travels with exact terminal, provenance, correction, semantic, calculation-eligibility, retained-source, accessibility, and zero-write evidence; it adds no schema, migration, writer, historical rewrite, release, or deployment."
+    "H01 current status means performed-first completed and imported workout presentation travels with exact terminal, provenance, correction, semantic, calculation-eligibility, retained-source, accessibility, and zero-write evidence; it adds no schema, migration, writer, historical rewrite, release, or deployment.",
+    "H04 current status means pain-evidence-v1 meaning travels together across active workout, History, Review, Coach context, progression proposals, CSV, snapshot restore, and adversarial identity boundaries; absence remains unknown, explicit zero remains no-issue evidence, and no pain evidence silently changes Program intent."
   ]
 }

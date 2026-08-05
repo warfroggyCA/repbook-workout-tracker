@@ -42,7 +42,7 @@ export type RecommendationDecisionDependencies = {
 };
 
 export const AUTOMATIC_HOLD_NOTICE_DISMISSED_REASON =
-  "You dismissed this notice. The recorded pain flags still count, and your Program wasn’t changed.";
+  "You dismissed this notice. The recorded positive pain reports still count, and your Program wasn’t changed.";
 
 function isAutomaticHoldNotice(
   recommendation: Awaited<ReturnType<typeof getOwnedRecommendation>>
