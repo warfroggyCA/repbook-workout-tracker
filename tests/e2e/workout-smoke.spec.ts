@@ -1652,8 +1652,12 @@ test("signs in and completes a durable workout flow", async ({ page }) => {
   await correction.getByRole("button", { name: "Save reviewed correction", exact: true }).click();
   await expect(page.getByText("Set correction acknowledged")).toBeVisible();
   await expect(page.getByText(/100 lb × 9/)).toBeVisible();
-  await expect(page.getByText(/2 saved corrections · original retained in revision history/)).toBeVisible();
-  await expect(page.getByText("Reviewed after the workout.")).toBeVisible();
+  await expect(
+    page.getByText(/2 saved evidence changes · prior values retained in revision history/),
+  ).toBeVisible();
+  await expect(
+    page.getByText("Reviewed after the workout.", { exact: true }),
+  ).toBeVisible();
   expect(browserErrors).toEqual([]);
 });
 
@@ -2035,7 +2039,9 @@ test("keeps pain and substitution lineage reconstructable through History", asyn
     }),
   ).toBeVisible();
   await expect(page.getByText(/alternative · discomfort/i)).toBeVisible();
-  await expect(page.getByText(exerciseNote, { exact: true })).toBeVisible();
+  await expect(
+    page.getByText(`Exercise guidance: ${exerciseNote}`, { exact: true }),
+  ).toBeVisible();
   await expect(page.getByText(setNote, { exact: true })).toBeVisible();
   const painFlags = page.getByRole("heading", { name: "Pain flags" }).locator("..");
   await expect(painFlags).toContainText(plannedExercise);
@@ -2588,7 +2594,17 @@ test("reviews and imports a complete Hevy CSV workout into History", async ({
     await expect(directImportedWorkout).toBeVisible();
     await directImportedWorkout.click();
   }
-  await expect(page.getByText("Imported from Hevy", { exact: true })).toBeVisible();
+  await expect(
+    page
+      .getByLabel("Workout evidence status")
+      .getByText("Imported evidence", { exact: true }),
+  ).toBeVisible();
+  const sourceDetails = page.locator("details", {
+    hasText: "Source and lineage details",
+  });
+  await openNativeDetails(sourceDetails);
+  await expect(sourceDetails).toContainText("Import source");
+  await expect(sourceDetails).toContainText("hevy");
   await expect(page.getByText(/135 lb × 8/)).toBeVisible();
   await expect(page.getByText(/145 lb × 6/)).toBeVisible();
   await expect(page.getByText("Browser-imported session", { exact: true })).toBeVisible();

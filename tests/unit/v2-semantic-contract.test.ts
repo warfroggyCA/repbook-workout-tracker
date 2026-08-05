@@ -120,8 +120,8 @@ describe("Repbook v2 ratified semantic contract", () => {
       schemaVersion: 1,
       contractVersion: V2_CONTRACT_VERSION,
       exactBaseCommit: "2c9ab1b9478502f1d08956a6c44dfb0850c8f168",
-      currentPackage: "U03",
-      currentPackageBaseCommit: "bec45152590ace215bb3d5dfbf847a8e38571683",
+      currentPackage: "H01",
+      currentPackageBaseCommit: "4e0aa3e688d0345a473bdab96cb84b81a077596c",
       productBehaviorImplementedByP02: false,
       implementedProductPackages: [
         "T01",
@@ -133,6 +133,7 @@ describe("Repbook v2 ratified semantic contract", () => {
         "U01",
         "U02",
         "U03",
+        "H01",
       ],
     });
     expect(matrix.columns).toEqual(columns);
@@ -161,6 +162,13 @@ describe("Repbook v2 ratified semantic contract", () => {
       testPath: "tests/e2e/v2-u03-future-program.spec.ts",
       command:
         "npx playwright test --config=playwright.v2-u03.config.ts tests/e2e/v2-u03-future-program.spec.ts",
+    });
+    expect(matrix.verifications["H01-browser"]).toMatchObject({
+      status: "current",
+      implementingPackage: "H01",
+      testPath: "tests/e2e/v2-h01-performed-first-history.spec.ts",
+      command:
+        "npx playwright test --config=playwright.v2-h01.config.ts tests/e2e/v2-h01-performed-first-history.spec.ts",
     });
     expect(matrix.concerns.map((concern) => concern.concernId)).toEqual(
       Object.keys(requiredLevels),
