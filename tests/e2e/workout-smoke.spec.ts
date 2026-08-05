@@ -1976,8 +1976,10 @@ test("keeps pain and substitution lineage reconstructable through History", asyn
   const severity = pain.getByRole("slider");
   await severity.focus();
   await severity.press("ArrowRight");
+  await expect(severity).toHaveAttribute("aria-valuenow", "4");
   await severity.press("ArrowRight");
-  await expect(pain.getByText("Severity: 5/10", { exact: true })).toBeVisible();
+  await expect(severity).toHaveAttribute("aria-valuenow", "5");
+  await expect(pain.getByText("Pain: shoulder 5/10", { exact: true })).toBeVisible();
   await pain.getByPlaceholder("What did it feel like? (optional)").fill(painNote);
   await expect(pain.getByText("Stop this movement today.")).toBeVisible();
   await expect(pain.getByText(/professional opinion, not a workaround/)).toBeVisible();
