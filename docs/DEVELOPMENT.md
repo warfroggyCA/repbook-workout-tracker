@@ -27,7 +27,7 @@ npm run docs:check
 npm run audit:check
 ```
 
-The Repbook v2 semantic foundation and current T01/T02/T03/T04/T05/T06/U01/U02/U03/H01 activation
+The Repbook v2 semantic foundation and current T01/T02/T03/T04/T05/T06/U01/U02/U03/H01/H02 activation
 packages have focused gates:
 
 ```bash
@@ -53,6 +53,8 @@ npx vitest run tests/unit/v2-gauntlet-a-semantic-recovery.test.ts tests/unit/exe
 npm run test:e2e:v2-gauntlet-a
 npx vitest run tests/unit/v2-h01-history-workout-evidence.test.ts tests/unit/live03-pain-substitution-continuity.test.tsx
 npm run test:e2e:v2-h01
+npx vitest run tests/unit/v2-h02-cadence-targets-time-db.test.ts tests/unit/v2-h02-cadence-targets-time-portability.test.ts tests/unit/v2-h02-cadence-targets-time-restore.test.ts tests/unit/v2-h02-cadence-targets-time-adversarial.test.ts
+npm run test:e2e:v2-h02
 ```
 
 The semantic test validates all synthetic F01-F17 scenarios and every required
@@ -90,6 +92,18 @@ inspectable, and terminal, provenance, correction, performed-meaning, and
 calculation-eligibility facets stay explicit. Its dedicated fresh fixture proves
 desktop and narrow enlarged-text mobile behavior, active-session redirect,
 keyboard and touch access, zero overflow, and no post-login mutation.
+H02 activates versioned calendar cadence and planned-set outcome calculations.
+Only complete Monday-to-Sunday weeks enter the weekly cadence average; gaps use
+retained workout-local calendar dates, and Program-day exposure uses stable day
+lineage while retaining historical labels. Below, at, above, and unknown
+outcomes are recomputed from acknowledged performed evidence and the exact
+frozen occurrence target. Unsupported, percentage, text, missing, or ambiguous
+targets remain unknown. The current weekly preference is shown only as a
+comparison and never as an adherence claim. Corrections and restores recompute
+current outcomes without editing Program intent or trusting the legacy stored
+target projection. The dedicated disposable browser fixture proves these
+distinctions on desktop and narrow enlarged-text mobile with no post-login
+mutation.
 Recovery manifest 10 remains the
 authoritative table inventory. Every later package must activate its own reserved
 evidence before its product behavior is considered implemented.
@@ -127,6 +141,7 @@ npm run test:e2e:v2-u02
 npm run test:e2e:v2-u03
 npm run test:e2e:v2-gauntlet-a
 npm run test:e2e:v2-h01
+npm run test:e2e:v2-h02
 ```
 
 Run the smallest affected browser suite first, then the complete protected

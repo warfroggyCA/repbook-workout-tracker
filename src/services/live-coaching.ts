@@ -52,6 +52,7 @@ import {
   type AIUsageClaim,
 } from "@/services/ai-control";
 import {
+  classifyPrescriptionOutcome,
   classifySetMetricContainment,
   type SetMetricContainmentInput,
 } from "@/lib/set-metric-semantics";
@@ -465,7 +466,8 @@ function minimizeRecentTraining(
     windowDays: context.windowDays,
     sampleData: context.sampleData,
     trainingDigest: {
-      adherence: digest.adherence,
+      cadence: digest.cadence,
+      targetOutcomes: digest.targetOutcomes,
       trends: digest.trends.slice(-12).map((trend) => ({
         exercise: trend.exercise,
         topSets: trend.topSets.slice(-6),
@@ -661,15 +663,23 @@ export async function buildLiveCoachingContext(
       )
       .map((occurrence) => occurrence.completedSetId as string),
   );
-  const completedWorkingOccurrenceBySetId = new Map(
-    session.occurrences.flatMap((occurrence) =>
-      occurrence.kind === "working_set" &&
-      occurrence.outcome === "completed" &&
-      occurrence.completedSetId != null
-        ? [[occurrence.completedSetId, occurrence] as const]
-        : [],
-    ),
-  );
+  const completedWorkingOccurrencesBySetId = new Map<
+    string,
+    typeof session.occurrences
+  >();
+  for (const occurrence of session.occurrences) {
+    if (
+      occurrence.kind !== "working_set" ||
+      occurrence.outcome !== "completed" ||
+      occurrence.completedSetId == null
+    ) {
+      continue;
+    }
+    const linked =
+      completedWorkingOccurrencesBySetId.get(occurrence.completedSetId) ?? [];
+    linked.push(occurrence);
+    completedWorkingOccurrencesBySetId.set(occurrence.completedSetId, linked);
+  }
   const workingSetsFor = (exercise: (typeof session.exercises)[number]) =>
     exercise.sets.filter(
       (set) => !set.isWarmup && completedWorkingSetIds.has(set.id),
@@ -768,7 +778,27 @@ export async function buildLiveCoachingContext(
             },
             plannedNotes: boundedText(selected.notes),
             setsLogged: claimEligibleSetsFor(selected).slice(-20).map((set) => {
-              const occurrence = completedWorkingOccurrenceBySetId.get(set.id);
+              const occurrences =
+                completedWorkingOccurrencesBySetId.get(set.id) ?? [];
+              const plannedOccurrences = occurrences.filter(
+                (occurrence) => occurrence.origin === "planned",
+              );
+              const occurrence = occurrences.length === 1 ? occurrences[0] : null;
+              const meaning = coachExerciseMeaning(selected);
+              const semantics = classifySetMetricContainment({
+                recordedMetricType: set.metricType,
+                prescribedSemanticsVersion: meaning.prescribedSemanticsVersion,
+                performedSemanticsVersion: set.performedSemanticsVersion,
+                performedLoadType: set.performedLoadType,
+                performedLoadSemantics: set.performedLoadSemantics,
+                currentExerciseMetricType: meaning.metricType,
+                loadType: meaning.loadType,
+                loadSemantics: meaning.loadSemantics,
+                loadEntryMeaning: set.loadEntryMeaning,
+                weight: set.weight,
+                reps: set.reps,
+                excludeFromAnalytics: set.excludeFromAnalytics,
+              });
               return {
                 id: set.id,
                 setNo: set.setNo,
@@ -781,7 +811,24 @@ export async function buildLiveCoachingContext(
                 reps: set.reps,
                 rpe: set.rpe,
                 note: boundedText(set.note, 500),
-                targetMet: occurrence?.origin === "planned" ? set.targetMet : null,
+                targetOutcome:
+                  selected.modificationType !== "as_planned" ||
+                  plannedOccurrences.length === 0
+                    ? null
+                    : occurrence?.origin === "planned"
+                    ? classifyPrescriptionOutcome({
+                        semantics,
+                        reps: set.reps,
+                        weight: set.weight,
+                        weightUnit: set.weightUnit,
+                        targetRepsMin: occurrence.plannedRepsMin,
+                        targetRepsMax: occurrence.plannedRepsMax,
+                        targetLoad: occurrence.plannedLoad,
+                        targetLoadUnit: occurrence.plannedLoadUnit,
+                        targetLoadPercent: occurrence.plannedLoadPercent,
+                        targetLoadText: occurrence.plannedLoadText,
+                      })
+                    : "unknown",
               };
             }),
             setsSuppressedFromClaims:
@@ -802,10 +849,16 @@ export async function buildLiveCoachingContext(
         targetSets: exercise.targetSets,
         setsLogged: workingSetsFor(exercise).length,
         plannedSetsLogged: workingSetsFor(exercise).filter(
-          (set) => completedWorkingOccurrenceBySetId.get(set.id)?.origin === "planned",
+          (set) => {
+            const occurrences =
+              completedWorkingOccurrencesBySetId.get(set.id) ?? [];
+            return occurrences.length === 1 && occurrences[0].origin === "planned";
+          },
         ).length,
         extraSetsLogged: workingSetsFor(exercise).filter((set) => {
-          const occurrence = completedWorkingOccurrenceBySetId.get(set.id);
+          const occurrences =
+            completedWorkingOccurrencesBySetId.get(set.id) ?? [];
+          const occurrence = occurrences.length === 1 ? occurrences[0] : null;
           return occurrence ? workingSetSemanticRole(occurrence) === "extra" : false;
         }).length,
       })),

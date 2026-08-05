@@ -19,7 +19,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { WorkoutArchiveButton } from "@/components/history/workout-archive-button";
 import { LiveCoachHistory } from "@/components/history/live-coach-history";
-import { ArrowLeft, Check, X } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
 import {
   buildHistoryHref,
   firstSearchParam,
@@ -39,8 +39,10 @@ import { shouldExcludeWorkoutDuration } from "@/lib/workout-duration-quality";
 import { WorkoutTimingCorrection } from "@/components/history/workout-timing-correction";
 import { filterRecommendationsEligibleForAction } from "@/services/recommendation-evidence-eligibility";
 import {
+  classifyPrescriptionOutcome,
   classifySetMetricContainment,
   setMetricExclusionLabel,
+  summarizePrescriptionOutcomes,
 } from "@/lib/set-metric-semantics";
 import { workingSetDisplayPosition } from "@/lib/session-occurrences";
 import {
@@ -236,18 +238,24 @@ export default async function SessionDetailPage(
       performedWorkingSetIdSet.has(set.id) ? [] : [{ set, exercise }],
     ),
   );
-  const performedPlannedWorkingSetIds = new Set(
-    session.occurrences
-      .filter(
-        (occurrence) =>
-          occurrence.kind === "working_set" &&
-          occurrence.origin === "planned" &&
-          occurrence.outcome === "completed" &&
-          occurrence.completedSetId != null &&
-          activeSetIds.has(occurrence.completedSetId),
-      )
-      .map((occurrence) => occurrence.completedSetId as string),
-  );
+  const completedWorkingOccurrencesBySetId = new Map<
+    string,
+    typeof session.occurrences
+  >();
+  for (const occurrence of session.occurrences) {
+    if (
+      occurrence.kind !== "working_set" ||
+      occurrence.outcome !== "completed" ||
+      occurrence.completedSetId == null ||
+      !activeSetIds.has(occurrence.completedSetId)
+    ) {
+      continue;
+    }
+    const linked =
+      completedWorkingOccurrencesBySetId.get(occurrence.completedSetId) ?? [];
+    linked.push(occurrence);
+    completedWorkingOccurrencesBySetId.set(occurrence.completedSetId, linked);
+  }
   const performedSetsBySessionExerciseId = new Map(
     session.exercises.map((exercise) => [
       exercise.id,
@@ -256,15 +264,13 @@ export default async function SessionDetailPage(
   );
   const performedSetEvidence = session.exercises.flatMap((sessionExercise) =>
     (performedSetsBySessionExerciseId.get(sessionExercise.id) ?? []).map(
-      (set) => ({
-        set,
-        sessionExercise,
-        semanticFacet: classifyPerformedSemanticFacet({
-          performedSemanticsVersion: set.performedSemanticsVersion,
-          performedLoadType: set.performedLoadType,
-          performedLoadSemantics: set.performedLoadSemantics,
-        }),
-        semantics: classifySetMetricContainment({
+      (set) => {
+        const occurrences = completedWorkingOccurrencesBySetId.get(set.id) ?? [];
+        const plannedOccurrences = occurrences.filter(
+          (occurrence) => occurrence.origin === "planned",
+        );
+        const occurrence = occurrences.length === 1 ? occurrences[0] : null;
+        const semantics = classifySetMetricContainment({
           recordedMetricType: set.metricType,
           prescribedSemanticsVersion:
             sessionExercise.prescribedSemanticsVersion,
@@ -293,20 +299,47 @@ export default async function SessionDetailPage(
           weight: set.weight,
           reps: set.reps,
           excludeFromAnalytics: set.excludeFromAnalytics,
-        }),
-      }),
+        });
+        return {
+          set,
+          sessionExercise,
+          semanticFacet: classifyPerformedSemanticFacet({
+            performedSemanticsVersion: set.performedSemanticsVersion,
+            performedLoadType: set.performedLoadType,
+            performedLoadSemantics: set.performedLoadSemantics,
+          }),
+          semantics,
+          targetOutcome:
+            sessionExercise.modificationType !== "as_planned" ||
+            plannedOccurrences.length === 0
+              ? null
+              : occurrence?.origin === "planned"
+                ? classifyPrescriptionOutcome({
+                    semantics,
+                    reps: set.reps,
+                    weight: set.weight,
+                    weightUnit: set.weightUnit,
+                    targetRepsMin: occurrence.plannedRepsMin,
+                    targetRepsMax: occurrence.plannedRepsMax,
+                    targetLoad: occurrence.plannedLoad,
+                    targetLoadUnit: occurrence.plannedLoadUnit,
+                    targetLoadPercent: occurrence.plannedLoadPercent,
+                    targetLoadText: occurrence.plannedLoadText,
+                  })
+                : ("unknown" as const),
+        };
+      },
     ),
   );
-  const totalSets = performedSetEvidence.length;
-  const targetableSets = performedSetEvidence.filter(
-    ({ set, sessionExercise, semanticFacet, semantics }) =>
-      sessionExercise.modificationType === "as_planned" &&
-      performedPlannedWorkingSetIds.has(set.id) &&
-      semanticFacet === "supported" &&
-      semantics.prescriptionOutcomeEligible &&
-      set.targetMet != null,
+  const targetOutcomeBySetId = new Map(
+    performedSetEvidence.map(({ set, targetOutcome }) => [set.id, targetOutcome]),
   );
-  const targetsMet = targetableSets.filter(({ set }) => set.targetMet).length;
+  const totalSets = performedSetEvidence.length;
+  const targetOutcomes = summarizePrescriptionOutcomes(
+    performedSetEvidence.flatMap(({ targetOutcome }) =>
+      targetOutcome == null ? [] : [targetOutcome],
+    ),
+  );
   const timingCorrectionCount = timingVersions.filter(
     (version) =>
       version.action === "workout_session.timing_correction" ||
@@ -419,8 +452,11 @@ export default async function SessionDetailPage(
             {performedWarmups.length > 0
               ? ` · ${performedWarmups.length} completed ${performedWarmups.length === 1 ? "warm-up" : "warm-ups"}`
               : ""}
-            {targetableSets.length > 0
-              ? ` · ${targetsMet} of ${targetableSets.length} comparable targets met`
+            {targetOutcomes.supported > 0
+              ? ` · Planned targets: ${targetOutcomes.below} below, ${targetOutcomes.at} at, ${targetOutcomes.above} above`
+              : ""}
+            {targetOutcomes.unknown > 0
+              ? ` · ${targetOutcomes.unknown} target outcome${targetOutcomes.unknown === 1 ? "" : "s"} unknown`
               : ""}
           </p>
           {timingCorrectionCount > 0 && (
@@ -650,13 +686,9 @@ export default async function SessionDetailPage(
                       reps: s.reps,
                       excludeFromAnalytics: s.excludeFromAnalytics,
                     });
-                    const occurrence = session.occurrences.find(
-                      (candidate) => candidate.completedSetId === s.id,
-                    );
-                    const targetOutcomeVisible =
-                      occurrence?.origin === "planned" &&
-                      se.modificationType === "as_planned" &&
-                      semantics.prescriptionOutcomeEligible;
+                    const occurrence =
+                      completedWorkingOccurrencesBySetId.get(s.id)?.[0];
+                    const targetOutcome = targetOutcomeBySetId.get(s.id) ?? null;
                     const setPosition =
                       occurrence?.kind === "working_set"
                         ? workingSetDisplayPosition(
@@ -718,12 +750,11 @@ export default async function SessionDetailPage(
                                 RIR {s.rir}
                               </span>
                             )}
-                            {targetOutcomeVisible && s.targetMet === true && (
-                              <Check className="size-3.5 text-green-600" />
-                            )}
-                            {targetOutcomeVisible && s.targetMet === false && (
-                              <X className="size-3.5 text-muted-foreground" />
-                            )}
+                            {targetOutcome != null ? (
+                              <Badge variant="outline">
+                                Planned target: {targetOutcome}
+                              </Badge>
+                            ) : null}
                           </span>
                         </div>
                         <div

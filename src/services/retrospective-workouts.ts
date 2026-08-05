@@ -622,7 +622,7 @@ export async function createRetrospectiveWorkout(
         (reviewed.outcome->'completedSet'->>'distanceKm')::real,
         (reviewed.outcome->'completedSet'->>'durationSeconds')::integer,
         (reviewed.outcome->'completedSet'->>'rpe')::real,
-        (reviewed.outcome->'completedSet'->>'targetMet')::boolean,
+        NULL::boolean,
         (reviewed.outcome->'completedSet'->>'restTakenSec')::integer,
         reviewed.outcome->'completedSet'->>'note',
         reviewed.outcome->'completedSet'->>'clientKey',

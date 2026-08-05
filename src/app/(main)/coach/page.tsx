@@ -615,16 +615,20 @@ export default async function CoachPage() {
             <Metric
               label="Workouts"
               value={String(report.overview.completedSessions)}
-              hint={`${report.overview.workingSets} working sets`}
+              hint={
+                report.cadence.averageSessionsPerCompleteWeek == null
+                  ? `${report.overview.workingSets} working sets`
+                  : `${report.cadence.averageSessionsPerCompleteWeek} per complete week · current preference ${report.cadence.currentPreference.sessionsPerWeek}`
+              }
             />
             <Metric
-              label="Targets met"
+              label="Planned sets at or above"
               value={
-                report.overview.targetHitRate == null
+                report.overview.targetOutcomes.atOrAboveRate == null
                   ? "—"
-                  : `${report.overview.targetHitRate}%`
+                  : `${report.overview.targetOutcomes.atOrAboveRate}%`
               }
-              hint="Measurable sets"
+              hint={`${report.overview.targetOutcomes.below} below · ${report.overview.targetOutcomes.at} at · ${report.overview.targetOutcomes.above} above · ${report.overview.targetOutcomes.unknown} unknown`}
             />
             <Metric
               label="Avg. effort"

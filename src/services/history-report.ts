@@ -15,7 +15,6 @@ import { estimateOneRepMax } from "@/lib/one-rep-max";
 import { activityDateKey, activityTypeLabel } from "@/lib/activities";
 import {
   addLocalDays,
-  localDateDifference,
   localWeekStart,
   workoutLocalDate,
 } from "@/lib/workout-calendar";
@@ -29,13 +28,18 @@ import {
   shouldExcludeWorkoutDuration,
 } from "@/lib/workout-duration-quality";
 import {
+  buildPrescriptionOutcomeSummary,
+  classifyPrescriptionOutcome,
   classifySetMetricContainment,
+  summarizePrescriptionOutcomes,
+  type PrescriptionOutcome,
   type SetLoadEntryMeaning,
   type SetMetricExclusionReason,
 } from "@/lib/set-metric-semantics";
 import {
   eligiblePrescriptionOutcomeSql,
   eligibleTotalSystemLoadSql,
+  prescriptionOutcomeSql,
   setMetricExclusionReasonSql,
 } from "@/lib/set-metric-semantics-sql";
 import {
@@ -46,6 +50,10 @@ import {
   type HistoryProgramFitEvidence,
   type HistoryRecordEvidence,
 } from "@/services/history-lenses";
+import {
+  buildTrainingCadence,
+  type TrainingCadenceSession,
+} from "@/lib/training-cadence";
 
 export const HISTORY_RANGES = [
   { key: "4w", label: "4 weeks", days: 28 },
@@ -106,6 +114,12 @@ export type HistoryCalendarSessionInput = {
     origin: "planned" | "ad_hoc" | "imported" | "legacy";
     outcome: "pending" | "completed" | "skipped" | "abandoned" | "legacy_unrecorded";
     completedSetId: string | null;
+    plannedRepsMin?: number | null;
+    plannedRepsMax?: number | null;
+    plannedLoad?: number | null;
+    plannedLoadUnit?: LoadUnit | null;
+    plannedLoadPercent?: number | null;
+    plannedLoadText?: string | null;
   }>;
   exercises: Array<{
     modificationType: "as_planned" | "substituted" | "added" | "skipped";
@@ -172,6 +186,7 @@ export type HistorySessionInput = {
   finishedAt: Date | null;
   excludeDurationFromAnalytics?: boolean;
   programLinked?: boolean;
+  sourceDayLineageId?: string | null;
   occurrences: HistoryCalendarSessionInput["occurrences"];
   exercises: Array<{
     modificationType: "as_planned" | "substituted" | "added" | "skipped";
@@ -215,6 +230,103 @@ type HistoryReportRecord = HistoryRecordEvidence & {
 
 export type HistoryReport = ReturnType<typeof summarizeHistory>;
 
+type HistoryTargetOccurrence =
+  HistoryCalendarSessionInput["occurrences"][number];
+
+function completedWorkingOccurrencesBySetId(
+  occurrences: HistoryTargetOccurrence[],
+) {
+  const grouped = new Map<string, HistoryTargetOccurrence[]>();
+  for (const occurrence of occurrences) {
+    if (
+      occurrence.kind !== "working_set" ||
+      occurrence.outcome !== "completed" ||
+      occurrence.completedSetId == null
+    ) {
+      continue;
+    }
+    const linked = grouped.get(occurrence.completedSetId) ?? [];
+    linked.push(occurrence);
+    grouped.set(occurrence.completedSetId, linked);
+  }
+  return grouped;
+}
+
+type HistoryTargetExercise = Pick<
+  HistorySessionInput["exercises"][number],
+  | "modificationType"
+  | "prescribedSemanticsVersion"
+  | "prescribedMetricType"
+  | "prescribedLoadType"
+  | "prescribedLoadSemantics"
+  | "exercise"
+>;
+
+function targetOutcomeForHistorySet(input: {
+  set: Pick<
+    HistorySetInput,
+    | "weight"
+    | "weightUnit"
+    | "reps"
+    | "metricType"
+    | "loadEntryMeaning"
+    | "performedSemanticsVersion"
+    | "performedLoadType"
+    | "performedLoadSemantics"
+    | "excludeFromAnalytics"
+  >;
+  exercise: HistoryTargetExercise;
+  occurrences: HistoryTargetOccurrence[];
+}): PrescriptionOutcome | null {
+  const { set, exercise, occurrences } = input;
+  const plannedOccurrences = occurrences.filter(
+    (occurrence) => occurrence.origin === "planned",
+  );
+  if (
+    plannedOccurrences.length === 0 ||
+    exercise.modificationType !== "as_planned"
+  ) {
+    return null;
+  }
+  if (occurrences.length !== 1 || occurrences[0].origin !== "planned") {
+    return "unknown";
+  }
+  const occurrence = occurrences[0];
+  const usesPrescribedMeaning = exercise.prescribedSemanticsVersion === 1;
+  const semantics = classifySetMetricContainment({
+    recordedMetricType: set.metricType ?? exercise.exercise.metricType ?? "weight_reps",
+    prescribedSemanticsVersion: exercise.prescribedSemanticsVersion,
+    performedSemanticsVersion: set.performedSemanticsVersion,
+    performedLoadType: set.performedLoadType,
+    performedLoadSemantics: set.performedLoadSemantics,
+    currentExerciseMetricType: usesPrescribedMeaning
+      ? exercise.prescribedMetricType
+      : exercise.exercise.metricType,
+    loadType: usesPrescribedMeaning
+      ? exercise.prescribedLoadType
+      : exercise.exercise.loadType,
+    loadSemantics: usesPrescribedMeaning
+      ? exercise.prescribedLoadSemantics
+      : exercise.exercise.loadSemantics,
+    loadEntryMeaning: set.loadEntryMeaning,
+    weight: set.weight,
+    reps: set.reps,
+    excludeFromAnalytics: set.excludeFromAnalytics,
+  });
+  return classifyPrescriptionOutcome({
+    semantics,
+    reps: set.reps,
+    weight: set.weight,
+    weightUnit: set.weightUnit ?? null,
+    targetRepsMin: occurrence.plannedRepsMin ?? null,
+    targetRepsMax: occurrence.plannedRepsMax ?? null,
+    targetLoad: occurrence.plannedLoad ?? null,
+    targetLoadUnit: occurrence.plannedLoadUnit ?? null,
+    targetLoadPercent: occurrence.plannedLoadPercent,
+    targetLoadText: occurrence.plannedLoadText,
+  });
+}
+
 export function buildHistoryCalendarSessions(
   sessions: HistoryCalendarSessionInput[],
   displayUnit: LoadUnit = "lb"
@@ -222,16 +334,8 @@ export function buildHistoryCalendarSessions(
   return [...sessions]
     .sort((a, b) => b.startedAt.getTime() - a.startedAt.getTime())
     .map((session) => {
-      const plannedCompletedSetIds = new Set(
-        session.occurrences
-          .filter(
-            (occurrence) =>
-              occurrence.kind === "working_set" &&
-              occurrence.origin === "planned" &&
-              occurrence.outcome === "completed" &&
-              occurrence.completedSetId != null,
-          )
-          .map((occurrence) => occurrence.completedSetId as string),
+      const targetOccurrencesBySetId = completedWorkingOccurrencesBySetId(
+        session.occurrences,
       );
       const sets = session.exercises.flatMap((exercise) =>
         exercise.sets
@@ -257,12 +361,34 @@ export function buildHistoryCalendarSessions(
             }),
           }))
       );
-      const targetable = sets.filter(
-        ({ set, semantics, modificationType }) =>
-          modificationType === "as_planned" &&
-          plannedCompletedSetIds.has(set.id) &&
-          semantics.prescriptionOutcomeEligible &&
-          set.targetMet != null
+      const targetOutcomes = summarizePrescriptionOutcomes(
+        session.exercises.flatMap((exercise) =>
+          exercise.sets.flatMap((set) => {
+            if (set.isWarmup) return [];
+            const outcome = targetOutcomeForHistorySet({
+              set,
+              exercise: {
+                modificationType: exercise.modificationType,
+                prescribedSemanticsVersion:
+                  exercise.prescribedSemanticsVersion,
+                prescribedMetricType: exercise.prescribedMetricType,
+                prescribedLoadType: exercise.prescribedLoadType,
+                prescribedLoadSemantics: exercise.prescribedLoadSemantics,
+                exercise: {
+                  id: "calendar-exercise",
+                  name: exercise.prescribedExerciseName ?? "Exercise",
+                  loadType: exercise.exercise?.loadType ?? "unknown",
+                  metricType:
+                    exercise.exercise?.metricType ?? set.metricType ?? "weight_reps",
+                  loadSemantics: exercise.exercise?.loadSemantics ?? "none",
+                  primaryMuscles: [],
+                },
+              },
+              occurrences: targetOccurrencesBySetId.get(set.id) ?? [],
+            });
+            return outcome == null ? [] : [outcome];
+          }),
+        ),
       );
       const duration = analyticsWorkoutDurationMinutes(
         session.startedAt,
@@ -301,13 +427,8 @@ export function buildHistoryCalendarSessions(
             0
           )
         ),
-        targetHitRate: targetable.length
-          ? Math.round(
-              (targetable.filter(({ set }) => set.targetMet).length /
-                targetable.length) *
-                100
-            )
-          : null,
+        targetOutcomes,
+        targetHitRate: targetOutcomes.atOrAboveRate,
         skipped: session.exercises.filter(
           (exercise) => exercise.modificationType === "skipped"
         ).length,
@@ -370,19 +491,13 @@ export function summarizeHistory(
       : configuredSince
         ? workoutLocalDate(configuredSince, currentTimezone)
         : (chronological[0]?.localDate ?? nowLocalDate);
-  const weeksInRange = Math.max(
-    1,
-    localDateDifference(nowLocalDate, effectiveSince) / 7
-  );
-
   let workingSets = 0;
   let totalReps = 0;
   let loadedVolume = 0;
   let timedActivitySeconds = 0;
   let distanceKm = 0;
   let excludedMetricSets = 0;
-  let targetableSets = 0;
-  let targetsMet = 0;
+  const prescriptionOutcomes: PrescriptionOutcome[] = [];
   let rpeTotal = 0;
   let rpeCount = 0;
   let skippedExercises = 0;
@@ -428,16 +543,8 @@ export function summarizeHistory(
   const semanticExclusions = new Map<SetMetricExclusionReason, number>();
 
   for (const session of completed) {
-    const plannedCompletedSetIds = new Set(
-      session.occurrences
-        .filter(
-          (occurrence) =>
-            occurrence.kind === "working_set" &&
-            occurrence.origin === "planned" &&
-            occurrence.outcome === "completed" &&
-            occurrence.completedSetId != null,
-        )
-        .map((occurrence) => occurrence.completedSetId as string),
+    const targetOccurrencesBySetId = completedWorkingOccurrencesBySetId(
+      session.occurrences,
     );
     const sessionDuration = analyticsWorkoutDurationMinutes(
       session.startedAt,
@@ -613,14 +720,13 @@ export function summarizeHistory(
             };
           }
         }
-        if (
-          sessionExercise.modificationType === "as_planned" &&
-          plannedCompletedSetIds.has(set.id) &&
-          semantics.prescriptionOutcomeEligible &&
-          set.targetMet != null
-        ) {
-          targetableSets += 1;
-          if (set.targetMet) targetsMet += 1;
+        const prescriptionOutcome = targetOutcomeForHistorySet({
+          set,
+          exercise: sessionExercise,
+          occurrences: targetOccurrencesBySetId.get(set.id) ?? [],
+        });
+        if (prescriptionOutcome != null) {
+          prescriptionOutcomes.push(prescriptionOutcome);
         }
         if (set.rpe != null) {
           rpeTotal += set.rpe;
@@ -911,12 +1017,22 @@ export function summarizeHistory(
       count + session.painLogs.filter((pain) => pain.severity >= 4).length,
     0
   );
-  const targetHitRate = targetableSets
-    ? Math.round((targetsMet / targetableSets) * 100)
-    : null;
-  const planCompletionRate = plannedPerWeek
-    ? Math.round((completed.length / (plannedPerWeek * weeksInRange)) * 100)
-    : null;
+  const targetOutcomes = summarizePrescriptionOutcomes(prescriptionOutcomes);
+  const cadence = buildTrainingCadence({
+    sessions: chronological.map((session) => ({
+      id: session.id,
+      status: session.status,
+      startedAt: session.startedAt,
+      timezone: session.timezone,
+      localDate: session.localDate,
+      sourceDayLineageId: session.sourceDayLineageId,
+      templateName: session.templateName,
+    } satisfies TrainingCadenceSession)),
+    rangeStartLocalDate: effectiveSince,
+    now,
+    currentTimezone,
+    currentWeeklyFrequency: plannedPerWeek,
+  });
   const averageFatigue = fatigue.length
     ? round(
         fatigue.reduce((total, entry) => total + entry.severity, 0) /
@@ -932,23 +1048,11 @@ export function summarizeHistory(
       title: "No completed workouts in this period",
       detail: "Choose a longer range or complete a workout to unlock trends.",
     });
-  } else if (planCompletionRate != null && planCompletionRate >= 90) {
-    insights.push({
-      tone: "positive",
-      title: "Broad consistency estimate is high",
-      detail: `${completed.length} completed sessions is ${planCompletionRate}% of the current ${plannedPerWeek}-per-week frequency over this period. Historical Program or frequency changes are not reconstructed.`,
-    });
-  } else if (planCompletionRate != null && planCompletionRate < 70) {
-    insights.push({
-      tone: "watch",
-      title: "Broad consistency estimate is low",
-      detail: `${completed.length} completed sessions is ${planCompletionRate}% of the current ${plannedPerWeek}-per-week frequency over this period. Historical Program or frequency changes are not reconstructed.`,
-    });
-  } else if (planCompletionRate != null) {
+  } else if (cadence.averageSessionsPerCompleteWeek != null) {
     insights.push({
       tone: "neutral",
-      title: "Broad consistency estimate is in the middle",
-      detail: `${completed.length} completed sessions is ${planCompletionRate}% of the current ${plannedPerWeek}-per-week frequency over this period. Historical Program or frequency changes are not reconstructed.`,
+      title: "Training cadence",
+      detail: `${completed.length} completed sessions averaged ${cadence.averageSessionsPerCompleteWeek} per complete calendar week across ${cadence.completeWeeks} complete weeks. The current preference is ${plannedPerWeek} per week; historical preferences and scheduled opportunities are not reconstructed.`,
     });
   }
 
@@ -990,16 +1094,16 @@ export function summarizeHistory(
     });
   }
 
-  if (targetHitRate != null) {
+  if (targetOutcomes.atOrAboveRate != null) {
     insights.push({
-      tone: targetHitRate >= 80 ? "positive" : targetHitRate < 60 ? "watch" : "neutral",
+      tone: targetOutcomes.atOrAboveRate >= 80 ? "positive" : targetOutcomes.atOrAboveRate < 60 ? "watch" : "neutral",
       title:
-        targetHitRate >= 80
+        targetOutcomes.atOrAboveRate >= 80
           ? "Most working sets are landing on target"
-          : targetHitRate < 60
+          : targetOutcomes.atOrAboveRate < 60
             ? "Targets are being missed often"
             : "Target completion is mixed",
-      detail: `${targetHitRate}% of ${targetableSets} sets with measurable targets met them.`,
+      detail: `${targetOutcomes.atOrAboveRate}% of ${targetOutcomes.supported} planned sets with supported targets landed at or above them. ${targetOutcomes.unknown} planned set outcomes remain unknown.`,
     });
   }
 
@@ -1071,11 +1175,12 @@ export function summarizeHistory(
         ),
       excludedDurationSessions,
       averageDurationMin,
-      planCompletionRate,
-      targetHitRate,
+      targetOutcomes,
+      targetHitRate: targetOutcomes.atOrAboveRate,
       averageRpe: rpeCount ? round(rpeTotal / rpeCount, 1) : null,
     },
     weekly: visibleWeekly,
+    cadence,
     muscles: [...muscleSets.entries()]
       .map(([muscle, sets]) => ({
         muscle,
@@ -1151,6 +1256,16 @@ export async function getHistoryReport(
     weight: sql`cs.weight`,
     reps: sql`cs.reps`,
     excludeFromAnalytics: sql`cs.exclude_from_analytics`,
+  };
+  const workingSetOutcome = {
+    ...workingSetSemantics,
+    weightUnit: sql`cs.weight_unit`,
+    targetRepsMin: sql`occurrence.planned_reps_min`,
+    targetRepsMax: sql`occurrence.planned_reps_max`,
+    targetLoad: sql`occurrence.planned_load`,
+    targetLoadUnit: sql`occurrence.planned_load_unit`,
+    targetLoadPercent: sql`occurrence.planned_load_percent`,
+    targetLoadText: sql`occurrence.planned_load_text`,
   };
   const executed = await db.execute(sql`
     WITH selected_sessions AS MATERIALIZED (
@@ -1239,7 +1354,7 @@ export async function getHistoryReport(
     ), working_sets AS MATERIALIZED (
       SELECT o.*, occurrence.origin AS occurrence_origin,
              cs.id AS set_id, cs.set_no, cs.weight, cs.weight_unit,
-             cs.reps, cs.rpe, cs.target_met,
+             cs.reps, cs.rpe,
              cs.metric_type AS set_metric_type,
              cs.load_entry_meaning,
              cs.distance_km, cs.duration_seconds, cs.exclude_from_analytics,
@@ -1247,6 +1362,16 @@ export async function getHistoryReport(
                AS loaded_work_eligible,
              ${eligiblePrescriptionOutcomeSql(workingSetSemantics)}
                AS prescription_outcome_eligible,
+             CASE
+               WHEN o.modification_type = 'as_planned'
+                 AND occurrence.origin = 'planned'
+               THEN CASE
+                 WHEN occurrence.occurrence_count = 1
+                 THEN ${prescriptionOutcomeSql(workingSetOutcome)}
+                 ELSE 'unknown'
+               END
+               ELSE 'unknown'
+             END AS prescription_outcome,
              ${setMetricExclusionReasonSql(workingSetSemantics)}
                AS metric_exclusion_reason,
              CASE
@@ -1259,11 +1384,16 @@ export async function getHistoryReport(
       JOIN completed_sets cs ON cs.session_exercise_id = o.session_exercise_id
         AND cs.archived_at IS NULL
         AND NOT cs.is_warmup
-      LEFT JOIN session_occurrences occurrence
-        ON occurrence.completed_set_id = cs.id
-       AND occurrence.session_exercise_id = o.session_exercise_id
-       AND occurrence.kind = 'working_set'
-       AND occurrence.outcome = 'completed'
+      LEFT JOIN LATERAL (
+        SELECT candidate.*, count(*) OVER ()::int AS occurrence_count
+        FROM session_occurrences candidate
+        WHERE candidate.completed_set_id = cs.id
+          AND candidate.session_exercise_id = o.session_exercise_id
+          AND candidate.kind = 'working_set'
+          AND candidate.outcome = 'completed'
+        ORDER BY candidate.sequence_idx, candidate.id
+        LIMIT 1
+      ) occurrence ON true
     ), week_duration_rows AS (
       SELECT week_start,
              round(coalesce(sum(
@@ -1518,22 +1648,39 @@ export async function getHistoryReport(
              CASE WHEN count(ws.set_id) FILTER (
                WHERE ws.modification_type = 'as_planned'
                  AND ws.occurrence_origin = 'planned'
-                 AND ws.prescription_outcome_eligible
-                 AND ws.target_met IS NOT NULL
+                 AND ws.prescription_outcome <> 'unknown'
              ) > 0 THEN round(
                count(ws.set_id) FILTER (
                  WHERE ws.modification_type = 'as_planned'
                    AND ws.occurrence_origin = 'planned'
-                   AND ws.prescription_outcome_eligible
-                   AND ws.target_met
+                   AND ws.prescription_outcome IN ('at', 'above')
                ) * 100.0 /
                count(ws.set_id) FILTER (
                  WHERE ws.modification_type = 'as_planned'
                    AND ws.occurrence_origin = 'planned'
-                   AND ws.prescription_outcome_eligible
-                   AND ws.target_met IS NOT NULL
+                   AND ws.prescription_outcome <> 'unknown'
                )
              )::int ELSE NULL END AS target_hit_rate,
+             count(ws.set_id) FILTER (
+               WHERE ws.modification_type = 'as_planned'
+                 AND ws.occurrence_origin = 'planned'
+                 AND ws.prescription_outcome = 'below'
+             )::int AS target_below,
+             count(ws.set_id) FILTER (
+               WHERE ws.modification_type = 'as_planned'
+                 AND ws.occurrence_origin = 'planned'
+                 AND ws.prescription_outcome = 'at'
+             )::int AS target_at,
+             count(ws.set_id) FILTER (
+               WHERE ws.modification_type = 'as_planned'
+                 AND ws.occurrence_origin = 'planned'
+                 AND ws.prescription_outcome = 'above'
+             )::int AS target_above,
+             count(ws.set_id) FILTER (
+               WHERE ws.modification_type = 'as_planned'
+                 AND ws.occurrence_origin = 'planned'
+                 AND ws.prescription_outcome = 'unknown'
+             )::int AS target_unknown,
              (SELECT count(*)::int FROM session_exercises se
                WHERE se.session_id = s.id AND se.modification_type = 'skipped') AS skipped,
              (SELECT count(*)::int FROM pain_logs pl
@@ -1565,13 +1712,19 @@ export async function getHistoryReport(
       (SELECT count(*)::int FROM working_sets
         WHERE modification_type = 'as_planned'
           AND occurrence_origin = 'planned'
-          AND prescription_outcome_eligible
-          AND target_met IS NOT NULL) AS targetable_sets,
+          AND prescription_outcome = 'below') AS target_below,
       (SELECT count(*)::int FROM working_sets
         WHERE modification_type = 'as_planned'
           AND occurrence_origin = 'planned'
-          AND prescription_outcome_eligible
-          AND target_met) AS targets_met,
+          AND prescription_outcome = 'at') AS target_at,
+      (SELECT count(*)::int FROM working_sets
+        WHERE modification_type = 'as_planned'
+          AND occurrence_origin = 'planned'
+          AND prescription_outcome = 'above') AS target_above,
+      (SELECT count(*)::int FROM working_sets
+        WHERE modification_type = 'as_planned'
+          AND occurrence_origin = 'planned'
+          AND prescription_outcome = 'unknown') AS target_unknown,
       (SELECT avg(rpe)::float8 FROM working_sets
         WHERE NOT exclude_from_analytics AND rpe IS NOT NULL) AS average_rpe,
       (SELECT count(*)::int FROM occurrences WHERE modification_type = 'skipped') AS skipped_exercises,
@@ -1613,6 +1766,16 @@ export async function getHistoryReport(
         WHERE exercise IS NOT NULL), 0) AS attributed_pain_events,
       (SELECT check_ins FROM fatigue_summary) AS fatigue_check_ins,
       (SELECT average FROM fatigue_summary) AS average_fatigue,
+      coalesce((SELECT jsonb_agg(jsonb_build_object(
+        'id', id,
+        'status', status,
+        'startedAtISO', to_char(started_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'),
+        'timezone', timezone,
+        'localDate', local_date::text,
+        'sourceDayLineageId', source_day_lineage_id,
+        'templateName', template_name
+      ) ORDER BY local_date, started_at, id) FROM selected_sessions), '[]'::jsonb)
+        AS cadence_sessions,
       coalesce((SELECT jsonb_agg(to_jsonb(week_rows) ORDER BY week_start)
         FROM week_rows), '[]'::jsonb) AS weekly_rows,
       coalesce((SELECT jsonb_agg(to_jsonb(muscle_rows) ORDER BY sets DESC, muscle)
@@ -1667,7 +1830,10 @@ export async function getHistoryReport(
           'timezone', timezone, 'calendarDateKey', calendar_date_key,
           'durationMin', duration_min, 'durationExcluded', duration_excluded,
           'sets', sets, 'volume', volume,
-          'targetHitRate', target_hit_rate, 'skipped', skipped,
+          'targetHitRate', target_hit_rate,
+          'targetBelow', target_below, 'targetAt', target_at,
+          'targetAbove', target_above, 'targetUnknown', target_unknown,
+          'skipped', skipped,
           'painEvents', pain_events
         ) ORDER BY started_at DESC, id DESC) FROM recent_rows), '[]'::jsonb) AS recent_sessions
   `);
@@ -1678,10 +1844,27 @@ export async function getHistoryReport(
   const workingSets = Number(row.working_sets);
   const effectiveSince =
     sinceLocalDate ?? String(row.earliest_local_date ?? nowLocalDate);
-  const weeksInRange = Math.max(
-    1,
-    localDateDifference(nowLocalDate, effectiveSince) / 7
-  );
+  const cadence = buildTrainingCadence({
+    sessions: (row.cadence_sessions as Array<Record<string, unknown>>).map(
+      (session) => ({
+        id: String(session.id),
+        status: session.status as "completed" | "abandoned",
+        startedAt: new Date(String(session.startedAtISO)),
+        timezone: String(session.timezone),
+        localDate: String(session.localDate),
+        sourceDayLineageId:
+          session.sourceDayLineageId == null
+            ? null
+            : String(session.sourceDayLineageId),
+        templateName:
+          session.templateName == null ? null : String(session.templateName),
+      }),
+    ),
+    rangeStartLocalDate: effectiveSince,
+    now,
+    currentTimezone: profile.timezone,
+    currentWeeklyFrequency: plannedPerWeek,
+  });
   const weeklyValues = new Map(
     (row.weekly_rows as Array<Record<string, unknown>>).map((week) => [
       String(week.week_start),
@@ -1852,14 +2035,12 @@ export async function getHistoryReport(
         metric === "estimated_strength" ? Math.round(Number(record.score)) : null,
     };
   });
-  const targetableSets = Number(row.targetable_sets);
-  const targetsMet = Number(row.targets_met);
-  const targetHitRate = targetableSets
-    ? Math.round((targetsMet / targetableSets) * 100)
-    : null;
-  const planCompletionRate = plannedPerWeek
-    ? Math.round((completedSessions / (plannedPerWeek * weeksInRange)) * 100)
-    : null;
+  const targetOutcomes = buildPrescriptionOutcomeSummary({
+    below: Number(row.target_below),
+    at: Number(row.target_at),
+    above: Number(row.target_above),
+    unknown: Number(row.target_unknown),
+  });
   const averageFatigue =
     row.average_fatigue == null ? null : round(Number(row.average_fatigue), 1);
   const fatigueCheckIns = Number(row.fatigue_check_ins);
@@ -1872,21 +2053,11 @@ export async function getHistoryReport(
       title: "No completed workouts in this period",
       detail: "Choose a longer range or complete a workout to unlock trends.",
     });
-  } else if (planCompletionRate != null) {
+  } else if (cadence.averageSessionsPerCompleteWeek != null) {
     insights.push({
-      tone:
-        planCompletionRate >= 90
-          ? "positive"
-          : planCompletionRate < 70
-            ? "watch"
-            : "neutral",
-      title:
-        planCompletionRate >= 90
-          ? "Broad consistency estimate is high"
-          : planCompletionRate < 70
-            ? "Broad consistency estimate is low"
-            : "Broad consistency estimate is in the middle",
-      detail: `${completedSessions} completed sessions is ${planCompletionRate}% of the current ${plannedPerWeek}-per-week frequency over this period. Historical Program or frequency changes are not reconstructed.`,
+      tone: "neutral",
+      title: "Training cadence",
+      detail: `${completedSessions} completed sessions averaged ${cadence.averageSessionsPerCompleteWeek} per complete calendar week across ${cadence.completeWeeks} complete weeks. The current preference is ${plannedPerWeek} per week; historical preferences and scheduled opportunities are not reconstructed.`,
     });
   }
   const comparisonWeeks = weekly.slice(-8);
@@ -1927,17 +2098,21 @@ export async function getHistoryReport(
           : `Best-set reps are up ${strongestProgress.repChange ?? 0} from the first exposure in this period.`,
     });
   }
-  if (targetHitRate != null) {
+  if (targetOutcomes.atOrAboveRate != null) {
     insights.push({
       tone:
-        targetHitRate >= 80 ? "positive" : targetHitRate < 60 ? "watch" : "neutral",
+        targetOutcomes.atOrAboveRate >= 80
+          ? "positive"
+          : targetOutcomes.atOrAboveRate < 60
+            ? "watch"
+            : "neutral",
       title:
-        targetHitRate >= 80
+        targetOutcomes.atOrAboveRate >= 80
           ? "Most working sets are landing on target"
-          : targetHitRate < 60
+          : targetOutcomes.atOrAboveRate < 60
             ? "Targets are being missed often"
             : "Target completion is mixed",
-      detail: `${targetHitRate}% of ${targetableSets} sets with measurable targets met them.`,
+      detail: `${targetOutcomes.atOrAboveRate}% of ${targetOutcomes.supported} planned sets with supported targets landed at or above them. ${targetOutcomes.unknown} planned set outcomes remain unknown.`,
     });
   }
   if (highPainEvents > 0) {
@@ -1964,9 +2139,31 @@ export async function getHistoryReport(
     });
   }
 
-  const recentSessions = row.recent_sessions as ReturnType<
-    typeof buildHistoryCalendarSessions
-  >;
+  const recentSessions = (row.recent_sessions as Array<Record<string, unknown>>).map(
+    (session) => ({
+      id: String(session.id),
+      name: String(session.name),
+      status: session.status as "completed" | "abandoned",
+      startedAtISO: String(session.startedAtISO),
+      timezone: String(session.timezone),
+      calendarDateKey: String(session.calendarDateKey),
+      durationMin:
+        session.durationMin == null ? null : Number(session.durationMin),
+      durationExcluded: Boolean(session.durationExcluded),
+      sets: Number(session.sets),
+      volume: Number(session.volume),
+      targetOutcomes: buildPrescriptionOutcomeSummary({
+        below: Number(session.targetBelow),
+        at: Number(session.targetAt),
+        above: Number(session.targetAbove),
+        unknown: Number(session.targetUnknown),
+      }),
+      targetHitRate:
+        session.targetHitRate == null ? null : Number(session.targetHitRate),
+      skipped: Number(session.skipped),
+      painEvents: Number(session.painEvents),
+    }),
+  ) as ReturnType<typeof buildHistoryCalendarSessions>;
   const abandonedSessions = Number(row.abandoned_sessions);
   const averageDurationMin =
     row.average_duration_min == null
@@ -2011,12 +2208,13 @@ export async function getHistoryReport(
       })),
       excludedDurationSessions: Number(row.excluded_duration_sessions),
       averageDurationMin,
-      planCompletionRate,
-      targetHitRate,
+      targetOutcomes,
+      targetHitRate: targetOutcomes.atOrAboveRate,
       averageRpe:
         row.average_rpe == null ? null : round(Number(row.average_rpe), 1),
     },
     weekly: visibleWeekly,
+    cadence,
     muscles: (row.muscles as Array<Record<string, unknown>>).map((muscle) => ({
       muscle: String(muscle.muscle),
       sets: Number(muscle.sets),
@@ -2072,6 +2270,21 @@ export async function getHistoryCalendarRecords(
       reps: sql`cs.reps`,
       excludeFromAnalytics: sql`cs.exclude_from_analytics`,
     };
+    const calendarSetOutcome = {
+      ...calendarSetSemantics,
+      weightUnit: sql`cs.weight_unit`,
+      targetRepsMin: sql`occurrence.planned_reps_min`,
+      targetRepsMax: sql`occurrence.planned_reps_max`,
+      targetLoad: sql`occurrence.planned_load`,
+      targetLoadUnit: sql`occurrence.planned_load_unit`,
+      targetLoadPercent: sql`occurrence.planned_load_percent`,
+      targetLoadText: sql`occurrence.planned_load_text`,
+    };
+    const calendarPrescriptionOutcome = sql`CASE
+      WHEN occurrence.occurrence_count = 1
+      THEN ${prescriptionOutcomeSql(calendarSetOutcome)}
+      ELSE 'unknown'
+    END`;
     const executed = await db.execute(sql`
       WITH visible_workouts AS MATERIALIZED (
         SELECT ws.*
@@ -2110,6 +2323,10 @@ export async function getHistoryCalendarRecords(
           CASE WHEN coalesce(metrics.targetable, 0) > 0
             THEN round(metrics.targets_met * 100.0 / metrics.targetable)::int
             ELSE NULL END AS target_hit_rate,
+          coalesce(metrics.target_below, 0)::int AS target_below,
+          coalesce(metrics.target_at, 0)::int AS target_at,
+          coalesce(metrics.target_above, 0)::int AS target_above,
+          coalesce(metrics.target_unknown, 0)::int AS target_unknown,
           coalesce(metrics.skipped, 0)::int AS skipped,
           coalesce(pain.events, 0)::int AS pain_events,
           NULL::float8 AS distance_km,
@@ -2135,27 +2352,62 @@ export async function getHistoryCalendarRecords(
               WHERE NOT cs.is_warmup
                 AND se.modification_type = 'as_planned'
                 AND occurrence.origin = 'planned'
-                AND ${eligiblePrescriptionOutcomeSql(calendarSetSemantics)}
-                AND cs.target_met IS NOT NULL
+                AND ${calendarPrescriptionOutcome}::text <> 'unknown'
             )::int AS targetable,
             count(cs.id) FILTER (
               WHERE NOT cs.is_warmup
                 AND se.modification_type = 'as_planned'
                 AND occurrence.origin = 'planned'
-                AND ${eligiblePrescriptionOutcomeSql(calendarSetSemantics)}
-                AND cs.target_met
+                AND ${calendarPrescriptionOutcome}::text IN ('at', 'above')
             )::int AS targets_met,
+            count(cs.id) FILTER (
+              WHERE NOT cs.is_warmup
+                AND se.modification_type = 'as_planned'
+                AND occurrence.origin = 'planned'
+                AND ${calendarPrescriptionOutcome}::text = 'below'
+            )::int AS target_below,
+            count(cs.id) FILTER (
+              WHERE NOT cs.is_warmup
+                AND se.modification_type = 'as_planned'
+                AND occurrence.origin = 'planned'
+                AND ${calendarPrescriptionOutcome}::text = 'at'
+            )::int AS target_at,
+            count(cs.id) FILTER (
+              WHERE NOT cs.is_warmup
+                AND se.modification_type = 'as_planned'
+                AND occurrence.origin = 'planned'
+                AND ${calendarPrescriptionOutcome}::text = 'above'
+            )::int AS target_above,
+            count(cs.id) FILTER (
+              WHERE NOT cs.is_warmup
+                AND se.modification_type = 'as_planned'
+                AND occurrence.origin = 'planned'
+                AND ${calendarPrescriptionOutcome}::text = 'unknown'
+            )::int AS target_unknown,
             count(DISTINCT se.id) FILTER (WHERE se.modification_type = 'skipped')::int AS skipped
           FROM session_exercises se
           JOIN exercises e ON e.id = se.exercise_id
-          LEFT JOIN session_occurrences occurrence
-            ON occurrence.session_exercise_id = se.id
-           AND occurrence.kind = 'working_set'
-           AND occurrence.outcome = 'completed'
           LEFT JOIN completed_sets cs
-            ON cs.id = occurrence.completed_set_id
-           AND cs.session_exercise_id = se.id
+            ON cs.session_exercise_id = se.id
            AND cs.archived_at IS NULL
+           AND EXISTS (
+             SELECT 1
+             FROM session_occurrences linked
+             WHERE linked.completed_set_id = cs.id
+               AND linked.session_exercise_id = se.id
+               AND linked.kind = 'working_set'
+               AND linked.outcome = 'completed'
+           )
+          LEFT JOIN LATERAL (
+            SELECT candidate.*, count(*) OVER ()::int AS occurrence_count
+            FROM session_occurrences candidate
+            WHERE candidate.completed_set_id = cs.id
+              AND candidate.session_exercise_id = se.id
+              AND candidate.kind = 'working_set'
+              AND candidate.outcome = 'completed'
+            ORDER BY candidate.sequence_idx, candidate.id
+            LIMIT 1
+          ) occurrence ON true
           WHERE se.session_id = ws.id
         ) metrics ON true
         LEFT JOIN LATERAL (
@@ -2180,6 +2432,10 @@ export async function getHistoryCalendarRecords(
           NULL::int AS sets,
           NULL::int AS volume,
           NULL::int AS target_hit_rate,
+          NULL::int AS target_below,
+          NULL::int AS target_at,
+          NULL::int AS target_above,
+          NULL::int AS target_unknown,
           NULL::int AS skipped,
           NULL::int AS pain_events,
           ha.distance_km,
@@ -2254,6 +2510,12 @@ export async function getHistoryCalendarRecords(
         durationExcluded: Boolean(row.duration_excluded),
         sets: Number(row.sets),
         volume: Number(row.volume),
+        targetOutcomes: buildPrescriptionOutcomeSummary({
+          below: Number(row.target_below),
+          at: Number(row.target_at),
+          above: Number(row.target_above),
+          unknown: Number(row.target_unknown),
+        }),
         targetHitRate:
           row.target_hit_rate == null ? null : Number(row.target_hit_rate),
         skipped: Number(row.skipped),
@@ -2308,7 +2570,6 @@ export async function getHistoryCalendarRecords(
                 durationSeconds: true,
                 excludeFromAnalytics: true,
                 isWarmup: true,
-                targetMet: true,
               },
             },
           },
@@ -2324,6 +2585,12 @@ export async function getHistoryCalendarRecords(
             origin: true,
             outcome: true,
             completedSetId: true,
+            plannedRepsMin: true,
+            plannedRepsMax: true,
+            plannedLoad: true,
+            plannedLoadUnit: true,
+            plannedLoadPercent: true,
+            plannedLoadText: true,
           },
         },
       },

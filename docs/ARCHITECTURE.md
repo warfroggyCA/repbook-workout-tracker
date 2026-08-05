@@ -439,3 +439,35 @@ H01 is a read-only presentation package. It adds no schema, migration, writer,
 historical rewrite, calculation formula, recommendation, decision, adaptation,
 or production action. The dedicated browser fixture is disposable and proves
 the screen makes no post-login mutation.
+
+## H02 cadence and planned-set outcome contract
+
+H02 keeps training cadence and planned-set outcomes as separate calculated
+views over retained evidence. Calendar cadence counts owner-scoped, unarchived,
+completed workouts by their retained workout-local calendar date. Its weekly
+average includes only complete Monday-to-Sunday weeks inside the selected
+range; partial boundary weeks do not silently lower the result. Median and
+current gaps are differences between those local dates, so a date-only import
+can support a calendar gap without fabricating an observed clock time or
+duration.
+
+Program-day exposure groups historical workouts by stable source-day lineage
+and retains every observed historical label. Unlinked workouts stay explicit.
+The current profile frequency is a labelled comparison only: it is not the
+historical prescription and does not produce an adherence percentage.
+
+Planned-set outcomes use `prescription-outcome-v1`. A performed working set is
+below, at, or above only when one exact planned occurrence supplies supported
+repetition and load targets in compatible units. Missing, ambiguous,
+percentage, text, or otherwise unsupported targets produce `unknown`. The
+legacy stored `target_met` value remains a portability projection and is never
+read as current calculated truth. History, Coach, Review, corrections, exports,
+and record-version restores share this interpretation. Corrections and restores
+recompute the outcome from the retained performed tuple and frozen occurrence
+target without changing Program intent.
+
+H02 adds no schema, migration, Program writer, historical repair,
+recommendation, decision, adaptation, or production action. Its browser fixture
+is disposable and verifies separate cadence and outcome presentation, truthful
+unknown states, desktop and narrow enlarged-text mobile layout, and no
+post-login mutation.

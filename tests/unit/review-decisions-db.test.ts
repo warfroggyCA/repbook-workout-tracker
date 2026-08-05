@@ -344,6 +344,12 @@ describe("Review outcome readiness", () => {
           outcome: "completed" as const,
           resolvedAt: input.startedAt,
           completedSetId: set.id,
+          plannedRepsMin: input.sets[index].targetMet == null ? null : 6,
+          plannedRepsMax: input.sets[index].targetMet == null ? null : 8,
+          plannedLoad:
+            input.sets[index].targetMet == null ? null : input.targetLoad,
+          plannedLoadUnit:
+            input.sets[index].targetMet == null ? null : ("lb" as const),
           equipmentSnapshotId,
         }))
       );
@@ -595,7 +601,7 @@ describe("Review outcome readiness", () => {
         followupSessions: 1,
         workingSets: 3,
         measurableSets: 3,
-        targetsMet: 2,
+        targetsMet: 3,
         rpeCount: 3,
         averageRpe: 8,
         painFlags: 1,

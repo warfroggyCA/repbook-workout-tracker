@@ -19,6 +19,8 @@ import {
 import { coachingQaSystemPrompt } from "@/ai/tasks/coaching-qa/prompt";
 import { buildTrainingDigest } from "@/services/digest";
 import { TEST_DATA_PREFIX } from "@/services/workout-test-data";
+import { TRAINING_CADENCE_ALGORITHM_VERSION } from "@/lib/training-cadence";
+import { PRESCRIPTION_OUTCOME_ALGORITHM_VERSION } from "@/lib/set-metric-semantics";
 
 const COACHING_WINDOW_DAYS = 84;
 
@@ -115,6 +117,9 @@ export async function createTrainingReview(
         windowDays: context.windowDays,
         sampleData: context.sampleData,
         completedSessions: context.trainingDigest.sessions.length,
+        cadenceAlgorithmVersion: TRAINING_CADENCE_ALGORITHM_VERSION,
+        prescriptionOutcomeAlgorithmVersion:
+          PRESCRIPTION_OUTCOME_ALGORITHM_VERSION,
       },
       model: result.model,
     })
@@ -151,6 +156,9 @@ export async function createCoachingAnswer(
         question,
         generatedAt: context.generatedAt,
         windowDays: context.windowDays,
+        cadenceAlgorithmVersion: TRAINING_CADENCE_ALGORITHM_VERSION,
+        prescriptionOutcomeAlgorithmVersion:
+          PRESCRIPTION_OUTCOME_ALGORITHM_VERSION,
       },
       model: result.model,
     })

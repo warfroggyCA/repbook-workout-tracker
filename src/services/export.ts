@@ -22,6 +22,11 @@ import {
 } from "@/services/snapshot-capture";
 import { validateSnapshotPayload } from "@/services/snapshot-restore";
 import { workingSetDisplayPosition } from "@/lib/session-occurrences";
+import {
+  PRESCRIPTION_OUTCOME_ALGORITHM_VERSION,
+  classifyPrescriptionOutcome,
+  classifySetMetricContainment,
+} from "@/lib/set-metric-semantics";
 
 export const BACKUP_SCHEMA_VERSION = SNAPSHOT_SCHEMA_VERSION;
 export const USER_HELD_BACKUP_FORMAT = "workout-tracker-canonical-backup";
@@ -124,10 +129,12 @@ export async function buildSetsCsv(
       limitationCause: completedSets.limitationCause,
       isWarmup: completedSets.isWarmup,
       targetMet: completedSets.targetMet,
-      targetLoad: sessionExercises.targetLoad,
-      targetLoadUnit: sessionExercises.targetLoadUnit,
-      targetRepsMin: sessionExercises.targetRepsMin,
-      targetRepsMax: sessionExercises.targetRepsMax,
+      targetLoad: sessionOccurrences.plannedLoad,
+      targetLoadUnit: sessionOccurrences.plannedLoadUnit,
+      targetLoadPercent: sessionOccurrences.plannedLoadPercent,
+      targetLoadText: sessionOccurrences.plannedLoadText,
+      targetRepsMin: sessionOccurrences.plannedRepsMin,
+      targetRepsMax: sessionOccurrences.plannedRepsMax,
       note: completedSets.note,
       sourceSetIndex: completedSets.sourceSetIndex,
       sourceRow: completedSets.sourceRow,
@@ -224,10 +231,12 @@ export async function buildSetsCsv(
       skipReason: sessionExercises.skipReason,
       substitutionReason: sessionExercises.substitutionReason,
       substitutedAt: sessionExercises.substitutedAt,
-      targetLoad: sessionExercises.targetLoad,
-      targetLoadUnit: sessionExercises.targetLoadUnit,
-      targetRepsMin: sessionExercises.targetRepsMin,
-      targetRepsMax: sessionExercises.targetRepsMax,
+      targetLoad: sessionOccurrences.plannedLoad,
+      targetLoadUnit: sessionOccurrences.plannedLoadUnit,
+      targetLoadPercent: sessionOccurrences.plannedLoadPercent,
+      targetLoadText: sessionOccurrences.plannedLoadText,
+      targetRepsMin: sessionOccurrences.plannedRepsMin,
+      targetRepsMax: sessionOccurrences.plannedRepsMax,
       occurrenceId: sessionOccurrences.id,
       occurrenceSessionExerciseId: sessionOccurrences.sessionExerciseId,
       occurrenceKind: sessionOccurrences.kind,
@@ -307,8 +316,57 @@ export async function buildSetsCsv(
         : null,
     ]),
   );
+  const completedOccurrenceRowsBySetId = new Map<string, typeof rows>();
+  for (const row of rows) {
+    if (row.completedSetId == null || row.occurrenceId == null) continue;
+    const linked = completedOccurrenceRowsBySetId.get(row.completedSetId) ?? [];
+    linked.push(row);
+    completedOccurrenceRowsBySetId.set(row.completedSetId, linked);
+  }
   const exportedRows = [
-    ...rows.map((r) => ({
+    ...rows.map((r) => {
+      const semantics = classifySetMetricContainment({
+        recordedMetricType: r.metricType,
+        prescribedSemanticsVersion: r.prescribedSemanticsVersion,
+        performedSemanticsVersion: r.performedSemanticsVersion,
+        performedLoadType: r.performedLoadType,
+        performedLoadSemantics: r.performedLoadSemantics,
+        currentExerciseMetricType: r.prescribedMetricType,
+        loadType: r.prescribedLoadType,
+        loadSemantics: r.prescribedLoadSemantics,
+        loadEntryMeaning: r.loadEntryMeaning,
+        weight: r.weight,
+        reps: r.reps,
+        excludeFromAnalytics: r.excludedFromAnalytics,
+      });
+      const linkedOccurrenceRows =
+        completedOccurrenceRowsBySetId.get(r.completedSetId) ?? [];
+      const hasPlannedOccurrence = linkedOccurrenceRows.some(
+        (row) => row.occurrenceOrigin === "planned",
+      );
+      const targetOutcome =
+        r.modification !== "as_planned" ||
+        r.isWarmup ||
+        !hasPlannedOccurrence
+          ? null
+          : linkedOccurrenceRows.length !== 1 ||
+              r.occurrenceOrigin !== "planned" ||
+              r.occurrenceKind !== "working_set" ||
+              r.occurrenceOutcome !== "completed"
+            ? ("unknown" as const)
+            : classifyPrescriptionOutcome({
+                semantics,
+                reps: r.reps,
+                weight: r.weight,
+                weightUnit: r.weightUnit,
+                targetRepsMin: r.targetRepsMin,
+                targetRepsMax: r.targetRepsMax,
+                targetLoad: r.targetLoad,
+                targetLoadUnit: r.targetLoadUnit,
+                targetLoadPercent: r.targetLoadPercent,
+                targetLoadText: r.targetLoadText,
+              });
+      return {
       date: r.date,
       sequence: r.occurrenceSequence,
       exerciseOrder: r.exerciseOrder,
@@ -335,8 +393,12 @@ export async function buildSetsCsv(
         r.performedLoadSemantics, r.distanceKm, r.durationSeconds, r.rpe,
         r.rir, r.techniqueIssue, r.limitationCause,
         r.isWarmup, r.occurrenceOrigin === "planned" ? r.targetMet : null,
+        targetOutcome,
+        targetOutcome == null ? null : PRESCRIPTION_OUTCOME_ALGORITHM_VERSION,
         r.occurrenceOrigin === "planned" ? r.targetLoad : null,
         r.occurrenceOrigin === "planned" ? r.targetLoadUnit : null,
+        r.occurrenceOrigin === "planned" ? r.targetLoadPercent : null,
+        r.occurrenceOrigin === "planned" ? r.targetLoadText : null,
         r.occurrenceOrigin === "planned" ? r.targetRepsMin : null,
         r.occurrenceOrigin === "planned" ? r.targetRepsMax : null,
         r.note, r.sourceSetIndex,
@@ -356,7 +418,8 @@ export async function buildSetsCsv(
         r.attachmentLabel, r.equipmentConfigurationHash,
         r.equipmentGeometry == null ? null : JSON.stringify(r.equipmentGeometry),
       ],
-    })),
+      };
+    }),
     ...occurrenceOnlyRows.map((r) => ({
       date: r.date,
       sequence: r.occurrenceSequence,
@@ -382,7 +445,9 @@ export async function buildSetsCsv(
         null, null, null, null, null, null, null, null, null, null, null, null,
         null, null, null,
         null,
-        r.targetLoad, r.targetLoadUnit, r.targetRepsMin, r.targetRepsMax, null,
+        null, null,
+        r.targetLoad, r.targetLoadUnit, r.targetLoadPercent, r.targetLoadText,
+        r.targetRepsMin, r.targetRepsMax, null,
         null, null, null, null, null, null, null,
         r.occurrenceId, r.occurrenceKind, r.occurrenceOrigin, r.occurrenceSequence,
         r.occurrenceKindOrdinal,
@@ -421,7 +486,10 @@ export async function buildSetsCsv(
       "metric_type", "performed_semantics_version", "performed_load_type",
       "performed_load_semantics", "distance_km", "duration_seconds", "rpe",
       "rir", "technique_issue", "limitation_cause", "is_warmup",
-      "target_met", "target_load", "target_load_unit", "target_reps_min", "target_reps_max", "note",
+      "legacy_target_met_projection", "calculated_target_outcome",
+      "target_outcome_algorithm_version", "target_load", "target_load_unit",
+      "target_load_percent", "target_load_text", "target_reps_min",
+      "target_reps_max", "note",
       "source_set_index", "source_row", "excluded_from_analytics", "logged_at",
       "observed_completed_at", "observed_completion_provenance",
       "observed_completion_quality",

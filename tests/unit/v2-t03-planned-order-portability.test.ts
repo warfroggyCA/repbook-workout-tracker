@@ -140,7 +140,7 @@ describe("V2 T03 planned-order portability", () => {
         ordinal: row.occurrence_kind_ordinal,
         label: row.occurrence_display_label,
         plannedNote: row.occurrence_planned_note,
-        targetMet: row.target_met,
+        targetMet: row.legacy_target_met_projection,
         targetRepsMin: row.target_reps_min,
         targetRepsMax: row.target_reps_max,
       }));
@@ -172,7 +172,7 @@ describe("V2 T03 planned-order portability", () => {
       fixture.userId,
       new Date(Date.now() - 7 * 24 * 60 * 60 * 1000),
     );
-    expect(digest.adherence.targetHitRate).toBe(100);
+    expect(digest.targetOutcomes.atOrAboveRate).toBe(100);
     const session = digest.sessions.find(
       (item) => item.template === "T01 truthful recording",
     );
@@ -205,7 +205,8 @@ describe("V2 T03 planned-order portability", () => {
     });
     expect(history.insights).toContainEqual(
       expect.objectContaining({
-        detail: "100% of 1 sets with measurable targets met them.",
+        detail:
+          "100% of 1 planned sets with supported targets landed at or above them. 0 planned set outcomes remain unknown.",
       }),
     );
   });

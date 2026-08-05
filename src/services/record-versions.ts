@@ -5,9 +5,9 @@ import type { Db } from "@/db";
 import { resultRows } from "@/db/result";
 import { recordVersions } from "@/db/schema";
 import type { RoutineWarmupSet } from "@/db/schema/user";
-import { KG_TO_LB, type LoadUnit } from "@/lib/units";
+import { type LoadUnit } from "@/lib/units";
 import {
-  eligiblePrescriptionOutcomeSql,
+  prescriptionOutcomeSql,
   restoredTargetMetSql,
 } from "@/lib/set-metric-semantics-sql";
 import {
@@ -311,6 +311,16 @@ export async function updateSetWithVersion(
     reps: sql`candidate.next_reps`,
     excludeFromAnalytics: sql`candidate.exclude_from_analytics`,
   };
+  const candidatePrescriptionOutcome = prescriptionOutcomeSql({
+    ...candidateSemantics,
+    weightUnit: sql`candidate.next_weight_unit`,
+    targetRepsMin: sql`candidate.target_reps_min`,
+    targetRepsMax: sql`candidate.target_reps_max`,
+    targetLoad: sql`candidate.target_load`,
+    targetLoadUnit: sql`candidate.target_load_unit`,
+    targetLoadPercent: sql`candidate.target_load_percent`,
+    targetLoadText: sql`candidate.target_load_text`,
+  });
   const query = sql`
     WITH history_revision_lock AS MATERIALIZED (
       ${historyRevisionLockSql(userId)}
@@ -323,9 +333,12 @@ export async function updateSetWithVersion(
       SELECT
         cs.*,
         to_jsonb(cs) AS before_data,
-        se.target_reps_min,
-        se.target_load,
-        se.target_load_unit,
+        target_occurrence.planned_reps_min AS target_reps_min,
+        target_occurrence.planned_reps_max AS target_reps_max,
+        target_occurrence.planned_load AS target_load,
+        target_occurrence.planned_load_unit AS target_load_unit,
+        target_occurrence.planned_load_percent AS target_load_percent,
+        target_occurrence.planned_load_text AS target_load_text,
         se.source_slot_lineage_id,
         se.modification_type,
         se.prescribed_semantics_version,
@@ -337,17 +350,16 @@ export async function updateSetWithVersion(
         ws.history_revision,
         ws.timezone AS workout_timezone,
         ws.local_date AS workout_local_date,
+        target_occurrence.origin AS occurrence_origin,
         (
-          SELECT occurrence.origin
+          SELECT count(*)::int
           FROM session_occurrences occurrence
           WHERE occurrence.completed_set_id = cs.id
             AND occurrence.session_id = ws.id
             AND occurrence.session_exercise_id = cs.session_exercise_id
             AND occurrence.kind = 'working_set'
             AND occurrence.outcome = 'completed'
-          ORDER BY occurrence.sequence_idx, occurrence.id
-          LIMIT 1
-        ) AS occurrence_origin,
+        ) AS target_occurrence_count,
         COALESCE((
           SELECT max(
             CASE
@@ -366,6 +378,17 @@ export async function updateSetWithVersion(
       JOIN session_exercises se ON se.id = cs.session_exercise_id
       JOIN exercises exercise ON exercise.id = se.exercise_id
       JOIN workout_sessions ws ON ws.id = se.session_id
+      LEFT JOIN LATERAL (
+        SELECT occurrence.*
+        FROM session_occurrences occurrence
+        WHERE occurrence.completed_set_id = cs.id
+          AND occurrence.session_id = ws.id
+          AND occurrence.session_exercise_id = cs.session_exercise_id
+          AND occurrence.kind = 'working_set'
+          AND occurrence.outcome = 'completed'
+        ORDER BY occurrence.sequence_idx, occurrence.id
+        LIMIT 1
+      ) target_occurrence ON true
       WHERE cs.id = ${setId}::uuid
         AND ws.user_id = ${userId}::uuid
         AND cs.archived_at IS NULL
@@ -443,31 +466,16 @@ export async function updateSetWithVersion(
         candidate.*,
         CASE
           WHEN candidate.occurrence_origin IS DISTINCT FROM 'planned' THEN NULL
+          WHEN candidate.target_occurrence_count <> 1 THEN NULL
           WHEN candidate.is_warmup THEN NULL
           WHEN ${changesMeasurements}::boolean
             AND candidate.modification_type = 'as_planned'
-            AND ${eligiblePrescriptionOutcomeSql(candidateSemantics)}
             THEN
-            CASE
-              WHEN candidate.target_reps_min IS NULL OR candidate.next_reps IS NULL THEN NULL
-              WHEN candidate.metric_type::text = 'reps'
-                THEN candidate.next_reps >= candidate.target_reps_min
-              ELSE candidate.next_reps >= candidate.target_reps_min
-                AND (
-                  candidate.target_load IS NULL
-                  OR (
-                    candidate.next_weight IS NOT NULL
-                    AND candidate.next_weight_unit IS NOT NULL
-                    AND candidate.target_load_unit IS NOT NULL
-                    AND CASE candidate.next_weight_unit
-                      WHEN 'kg' THEN candidate.next_weight * ${KG_TO_LB}
-                      ELSE candidate.next_weight
-                    END >= CASE candidate.target_load_unit
-                      WHEN 'kg' THEN candidate.target_load * ${KG_TO_LB}
-                      ELSE candidate.target_load
-                    END
-                  )
-                )
+            CASE ${candidatePrescriptionOutcome}::text
+              WHEN 'at' THEN true
+              WHEN 'above' THEN true
+              WHEN 'below' THEN false
+              ELSE NULL
             END
           WHEN ${changesMeasurements}::boolean THEN NULL
           ELSE candidate.target_met
@@ -1411,8 +1419,11 @@ async function restoreSetVersion(
     reps: sql`candidate.next_reps`,
     excludeFromAnalytics: sql`candidate.exclude_from_analytics`,
     targetRepsMin: sql`candidate.target_reps_min`,
+    targetRepsMax: sql`candidate.target_reps_max`,
     targetLoad: sql`candidate.target_load`,
     targetLoadUnit: sql`candidate.target_load_unit`,
+    targetLoadPercent: sql`candidate.target_load_percent`,
+    targetLoadText: sql`candidate.target_load_text`,
     isWarmup: sql`candidate.is_warmup`,
     modificationType: sql`candidate.modification_type`,
   };
@@ -1438,17 +1449,16 @@ async function restoreSetVersion(
         ws.history_revision,
         ws.timezone AS workout_timezone,
         ws.local_date AS workout_local_date,
+        target_occurrence.origin AS occurrence_origin,
         (
-          SELECT occurrence.origin
+          SELECT count(*)::int
           FROM session_occurrences occurrence
           WHERE occurrence.completed_set_id = cs.id
             AND occurrence.session_id = ws.id
             AND occurrence.session_exercise_id = cs.session_exercise_id
             AND occurrence.kind = 'working_set'
             AND occurrence.outcome = 'completed'
-          ORDER BY occurrence.sequence_idx, occurrence.id
-          LIMIT 1
-        ) AS occurrence_origin,
+        ) AS target_occurrence_count,
         COALESCE((
           SELECT max(
             CASE
@@ -1463,9 +1473,12 @@ async function restoreSetVersion(
             AND ledger.entity_id = cs.id
         ), 0) AS correction_ledger_revision,
         se.source_slot_lineage_id,
-        se.target_reps_min,
-        se.target_load,
-        se.target_load_unit,
+        target_occurrence.planned_reps_min AS target_reps_min,
+        target_occurrence.planned_reps_max AS target_reps_max,
+        target_occurrence.planned_load AS target_load,
+        target_occurrence.planned_load_unit AS target_load_unit,
+        target_occurrence.planned_load_percent AS target_load_percent,
+        target_occurrence.planned_load_text AS target_load_text,
         se.modification_type,
         exercise.metric_type AS exercise_metric_type,
         exercise.load_type AS exercise_load_type,
@@ -1476,6 +1489,17 @@ async function restoreSetVersion(
       JOIN session_exercises se ON se.id = cs.session_exercise_id
       JOIN exercises exercise ON exercise.id = se.exercise_id
       JOIN workout_sessions ws ON ws.id = se.session_id
+      LEFT JOIN LATERAL (
+        SELECT occurrence.*
+        FROM session_occurrences occurrence
+        WHERE occurrence.completed_set_id = cs.id
+          AND occurrence.session_id = ws.id
+          AND occurrence.session_exercise_id = cs.session_exercise_id
+          AND occurrence.kind = 'working_set'
+          AND occurrence.outcome = 'completed'
+        ORDER BY occurrence.sequence_idx, occurrence.id
+        LIMIT 1
+      ) target_occurrence ON true
       WHERE ws.user_id = ${userId}::uuid
         AND cs.archived_at IS NULL
         AND ws.archived_at IS NULL
@@ -1503,6 +1527,7 @@ async function restoreSetVersion(
         candidate.*,
         CASE
           WHEN candidate.occurrence_origin = 'planned'
+            AND candidate.target_occurrence_count = 1
             THEN ${restoredTargetMetSql(restoredSemantics)}
           ELSE NULL
         END AS next_target_met

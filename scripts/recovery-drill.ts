@@ -91,7 +91,7 @@ async function main() {
   if (calendarWorkouts !== counts.workouts) {
     failures.push("History calendar workout count differs from restored rows.");
   }
-  if (digest.adherence.completedSessions !== counts.workouts) {
+  if (digest.cadence.completedSessions !== counts.workouts) {
     failures.push("Coach digest workout count differs from restored rows.");
   }
   if (backup.canonical.tables.workout_sessions.length !== counts.workouts) {
@@ -110,7 +110,7 @@ async function main() {
     applicationViews: {
       historySessions: report.overview.completedSessions,
       calendarWorkouts,
-      coachSessions: digest.adherence.completedSessions,
+      coachSessions: digest.cadence.completedSessions,
       backupSessions: backup.canonical.tables.workout_sessions.length,
       snapshotRecords: snapshotCounts.total,
     },

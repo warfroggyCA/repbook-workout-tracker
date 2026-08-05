@@ -35,6 +35,15 @@ function session(
           origin: "planned" as const,
           outcome: "completed" as const,
           completedSetId: set.id,
+          plannedRepsMin:
+            set.targetMet == null || set.reps == null
+              ? null
+              : set.targetMet
+                ? set.reps
+                : set.reps + 1,
+          plannedRepsMax: set.reps,
+          plannedLoad: set.weight,
+          plannedLoadUnit: set.weightUnit,
         })),
     );
   }
@@ -220,9 +229,21 @@ describe("summarizeHistory", () => {
       totalReps: 36,
       loadedVolume: 3780,
       averageDurationMin: 50,
-      planCompletionRate: 50,
       targetHitRate: 75,
       averageRpe: 7.7,
+    });
+    expect(report.cadence).toMatchObject({
+      completedSessions: 2,
+      completeWeeks: 3,
+      averageSessionsPerCompleteWeek: 0.67,
+      medianGapDays: 14,
+    });
+    expect(report.overview.targetOutcomes).toMatchObject({
+      below: 1,
+      at: 3,
+      above: 0,
+      unknown: 0,
+      atOrAboveRate: 75,
     });
     expect(report.muscles[0]).toEqual({
       muscle: "chest",

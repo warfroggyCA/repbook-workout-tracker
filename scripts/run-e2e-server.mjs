@@ -21,6 +21,7 @@ const programEditorDisabled = process.argv.includes(
   "--program-editor-disabled",
 );
 const v2H01History = process.argv.includes("--v2-h01-history");
+const v2H02Cadence = process.argv.includes("--v2-h02-cadence-targets-time");
 const port = Number.parseInt(process.env.E2E_PORT ?? "3100", 10);
 if (!Number.isInteger(port) || port < 1024 || port > 65535) {
   throw new Error("E2E_PORT must be an integer from 1024 through 65535.");
@@ -52,8 +53,9 @@ if (stage6Simulation && !baRoutineChange) {
   throw new Error("Stage 6 simulation fixtures require BA routine-change mode.");
 }
 if (
-  v2H01History &&
+  (v2H01History || v2H02Cadence) &&
   [
+    v2H01History && v2H02Cadence,
     baFixture,
     baRoutineChange,
     stage6Simulation,
@@ -66,7 +68,7 @@ if (
     programEditorDisabled,
   ].some(Boolean)
 ) {
-  throw new Error("H01 History fixtures cannot be combined with another fixture mode.");
+  throw new Error("Dedicated v2 History fixtures cannot be combined with another fixture mode.");
 }
 if (
   (baFixture || baRoutineChange || baCalendar) &&
@@ -119,8 +121,10 @@ const environment = {
   ...process.env,
   AI_FAKE: "1",
   ANTHROPIC_API_KEY: "",
-  ALLOWED_EMAILS: v2H01History
-    ? "v2.h01.history.e2e@example.com"
+  ALLOWED_EMAILS: v2H02Cadence
+    ? "v2.h02.cadence.e2e@example.com"
+    : v2H01History
+      ? "v2.h01.history.e2e@example.com"
     : baFixture || baCalendar
       ? "ba.iphone.e2e@example.com"
       : baRoutineChange
@@ -168,7 +172,7 @@ const serverScriptEnvironment = {
 
 const seeded = spawnSync(
   "npm",
-  baFixture || baRoutineChange || baCalendar || v2H01History
+  baFixture || baRoutineChange || baCalendar || v2H01History || v2H02Cadence
     ? ["run", "db:seed"]
     : ["run", "db:seed", "--", "--demo"],
   {
@@ -190,8 +194,13 @@ if (seeded.status !== 0) {
   throw new Error(`E2E seed failed with status ${seeded.status}.`);
 }
 
-const fixtures = v2H01History
-  ? [{ label: "H01 performed-first History", script: "tests/helpers/seed-v2-h01-history.ts" }]
+const fixtures = v2H02Cadence
+  ? [{
+      label: "H02 cadence and targets",
+      script: "tests/helpers/seed-v2-h02-cadence-targets-time.ts",
+    }]
+  : v2H01History
+    ? [{ label: "H01 performed-first History", script: "tests/helpers/seed-v2-h01-history.ts" }]
   : plateMachineGuidance
   ? [{
       label: "Plate-machine guidance",

@@ -5,8 +5,8 @@
   "repositoryRole": "public application source",
   "exactBaseCommit": "2c9ab1b9478502f1d08956a6c44dfb0850c8f168",
   "fixtureCatalogue": "tests/fixtures/v2/semantic-scenarios.json",
-  "currentPackage": "H01",
-  "currentPackageBaseCommit": "4e0aa3e688d0345a473bdab96cb84b81a077596c",
+  "currentPackage": "H02",
+  "currentPackageBaseCommit": "24bc5333cfa768227c4ab76e69da185fb400d905",
   "productBehaviorImplementedByP02": false,
   "implementedProductPackages": [
     "T01",
@@ -18,7 +18,8 @@
     "U01",
     "U02",
     "U03",
-    "H01"
+    "H01",
+    "H02"
   ],
   "milestoneEvidence": {
     "gauntletA": {
@@ -299,39 +300,39 @@
       "proves": "must pass in the same package that implements this product meaning"
     },
     "H02-databaseService": {
-      "status": "future_activation",
+      "status": "current",
       "implementingPackage": "H02",
       "testPath": "tests/unit/v2-h02-cadence-targets-time-db.test.ts",
       "command": "npx vitest run tests/unit/v2-h02-cadence-targets-time-db.test.ts",
-      "proves": "must pass in the same package that implements this product meaning"
+      "proves": "History and Coach derive versioned complete-week calendar cadence, local-calendar gaps, stable Program-day lineage exposure, and below, at, above, or unknown planned-set outcomes from owner-scoped completed evidence and immutable occurrence targets while ignoring stale legacy target flags"
     },
     "H02-browser": {
-      "status": "future_activation",
+      "status": "current",
       "implementingPackage": "H02",
       "testPath": "tests/e2e/v2-h02-cadence-targets-time.spec.ts",
-      "command": "npx playwright test tests/e2e/v2-h02-cadence-targets-time.spec.ts",
-      "proves": "must pass in the same package that implements this product meaning"
+      "command": "npm run test:e2e:v2-h02",
+      "proves": "desktop Chromium and 320 by 700 enlarged-text mobile WebKit keep cadence distinct from planned-set outcomes, label current preference as a comparison rather than adherence, preserve date-only time as unknown, expose stable Program-day lineage, make no post-login write, and remain free of horizontal overflow and unexplained page errors"
     },
     "H02-exportImport": {
-      "status": "future_activation",
+      "status": "current",
       "implementingPackage": "H02",
       "testPath": "tests/unit/v2-h02-cadence-targets-time-portability.test.ts",
       "command": "npx vitest run tests/unit/v2-h02-cadence-targets-time-portability.test.ts",
-      "proves": "must pass in the same package that implements this product meaning"
+      "proves": "CSV portability retains immutable occurrence targets, performed local date and timezone identity, the raw legacy projection, and additive calculated outcome plus algorithm version without presenting a stale stored target flag as current truth"
     },
     "H02-restoreRollback": {
-      "status": "future_activation",
+      "status": "current",
       "implementingPackage": "H02",
       "testPath": "tests/unit/v2-h02-cadence-targets-time-restore.test.ts",
       "command": "npx vitest run tests/unit/v2-h02-cadence-targets-time-restore.test.ts",
-      "proves": "must pass in the same package that implements this product meaning"
+      "proves": "encrypted snapshot restore rehydrates performed and planned facts, then recomputes the legacy projection only from one exact frozen occurrence target while ambiguous, missing, unsupported, percentage, and text targets remain unknown"
     },
     "H02-adversarialPrivacy": {
-      "status": "future_activation",
+      "status": "current",
       "implementingPackage": "H02",
       "testPath": "tests/unit/v2-h02-cadence-targets-time-adversarial.test.ts",
       "command": "npx vitest run tests/unit/v2-h02-cadence-targets-time-adversarial.test.ts",
-      "proves": "must pass in the same package that implements this product meaning"
+      "proves": "reviewed correction and record-version restore recompute current outcomes without changing planned targets; owner, archived, abandoned, unsupported-target, and partial-current-week boundaries remain explicit and current weekly preference never becomes an adherence claim"
     },
     "H05-databaseService": {
       "status": "future_activation",

@@ -36,6 +36,10 @@ function payload(
         origin: "planned",
         outcome: "completed",
         completed_set_id: "set",
+        planned_reps_min: 8,
+        planned_reps_max: 8,
+        planned_load: 100,
+        planned_load_unit: "lb",
       }],
     },
   };
@@ -92,8 +96,8 @@ describe("snapshot restore performed outcome reconciliation", () => {
       performed_load_semantics: "total",
       target_met: true,
     });
-    (missingTarget.tables.session_exercises[0] as Record<string, unknown>)
-      .target_reps_min = null;
+    (missingTarget.tables.session_occurrences[0] as Record<string, unknown>)
+      .planned_reps_min = null;
     expect(
       reconcileSnapshotCompletedSetOutcomes(missingTarget)
         .tables.completed_sets[0],
