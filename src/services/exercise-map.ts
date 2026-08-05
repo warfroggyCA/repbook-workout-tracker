@@ -103,6 +103,20 @@ export function extractExerciseIdentity(rawName: string): ExerciseIdentityHints 
   };
 }
 
+/** Canonical, source-scoped key used by reviewed Hevy exercise mappings. */
+export function hevyMappingKey(rawName: string): string {
+  const hints = extractExerciseIdentity(rawName);
+  // Preserve the complete source wording. Synonyms such as "pressdown" and
+  // "pushdown" remain separate source entries until the owner confirms each.
+  const sourceName = rawName
+    .toLowerCase()
+    .normalize("NFKD")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim()
+    .replace(/\s+/g, " ");
+  return [sourceName, hints.equipment ?? "", hints.assistance ?? ""].join("|");
+}
+
 function tokens(value: string): Set<string> {
   return new Set(
     normalizeExerciseText(value)

@@ -11,10 +11,10 @@ import {
 } from "@/db/schema";
 import {
   extractExerciseIdentity,
+  hevyMappingKey,
   normalizeExerciseText,
 } from "@/services/exercise-map";
 import {
-  hevyMappingKey,
   isSuspiciousSetDuration,
   parseHevyCsv,
   type HevyExerciseReview,

@@ -27,7 +27,7 @@ npm run docs:check
 npm run audit:check
 ```
 
-The Repbook v2 semantic foundation and current T01/T02/T03/T04/T05/T06/U01/U02/U03/H01/H02 activation
+The Repbook v2 semantic foundation and current T01/T02/T03/T04/T05/T06/U01/U02/U03/H01/H02/H03 activation
 packages have focused gates:
 
 ```bash
@@ -55,6 +55,8 @@ npx vitest run tests/unit/v2-h01-history-workout-evidence.test.ts tests/unit/liv
 npm run test:e2e:v2-h01
 npx vitest run tests/unit/v2-h02-cadence-targets-time-db.test.ts tests/unit/v2-h02-cadence-targets-time-portability.test.ts tests/unit/v2-h02-cadence-targets-time-restore.test.ts tests/unit/v2-h02-cadence-targets-time-adversarial.test.ts
 npm run test:e2e:v2-h02
+npx vitest run tests/unit/v2-h03-evidence-identity-db.test.ts tests/unit/v2-h03-evidence-identity-portability.test.ts tests/unit/v2-h03-evidence-identity-restore.test.ts tests/unit/v2-h03-evidence-identity-adversarial.test.ts
+npm run test:e2e:v2-h03
 ```
 
 The semantic test validates all synthetic F01-F17 scenarios and every required
@@ -104,6 +106,18 @@ current outcomes without editing Program intent or trusting the legacy stored
 target projection. The dedicated disposable browser fixture proves these
 distinctions on desktop and narrow enlarged-text mobile with no post-login
 mutation.
+H03 activates exact performed exercise identity, owner scope, reviewed source
+mapping, and evidence tiers across History, CSV, and recovery. Only one exact
+linked completed working-set occurrence can enter exercise calculations; Hevy
+evidence additionally requires the current owner's source-scoped mapping to the
+same performed exercise. Missing mappings remain legacy, mismatches remain
+unsupported, and the frozen source occurrence key stays separate from the
+reviewed mapping and its confirmation provenance. Substitutions keep prescribed
+and performed IDs separate, and derived progression is labelled with
+`exercise-history-v1`. URL-backed filters and source-workout returns preserve
+context, while cross-owner identities fail closed. The dedicated disposable
+browser fixture verifies desktop and narrow enlarged-text mobile behavior with
+no post-login mutation.
 Recovery manifest 10 remains the
 authoritative table inventory. Every later package must activate its own reserved
 evidence before its product behavior is considered implemented.

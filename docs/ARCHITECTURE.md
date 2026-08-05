@@ -471,3 +471,36 @@ recommendation, decision, adaptation, or production action. Its browser fixture
 is disposable and verifies separate cadence and outcome presentation, truthful
 unknown states, desktop and narrow enlarged-text mobile layout, and no
 post-login mutation.
+
+## H03 exact exercise evidence contract
+
+H03 groups exercise history only by the stable performed `exercise_id` retained
+on each session exercise. Shared catalogue, owner-created, and import-created
+identities remain explicit scopes. Mutable names and families provide labelled
+context only; they do not merge variants or reinterpret historical facts. The
+frozen source occurrence key is not a reviewed mapping. Imported Hevy evidence
+enters exercise calculations only when the current owner's source-scoped mapping
+matches the exact performed exercise; a missing mapping is legacy evidence and a
+mismatched mapping is unsupported. A substitution retains both the prescribed
+exercise ID and the performed exercise ID.
+
+Every retained completed set remains inspectable. Only a set with exactly one
+completed working-set occurrence linked to the same session exercise may enter
+exercise progression, selected-period best observations, workload, or records.
+Missing and ambiguous links remain legacy evidence; unsupported performed
+measurements remain unsupported. Supported facts are labelled as native, manual,
+imported, or corrected according to their retained source and version evidence.
+Derived results use the named `exercise-history-v1` algorithm and are never
+presented as stored workout facts.
+
+The Exercises workspace keeps exact exercise and evidence-tier filters in the
+URL and carries them through supporting workout links and back navigation. CSV
+exports preserve the same identity, scope, tier, frozen source occurrence,
+reviewed mapping identity and confirmation time, link status, and algorithm
+provenance. Owner-scoped reads and exports fail closed on a cross-owner exercise
+or mapping identity.
+
+H03 adds no schema, migration, writer, historical repair, recommendation,
+decision, adaptation, or production action. Snapshot schema 29 and recovery
+manifest 10 already cover the durable source facts; restore recomputes the
+derived view.

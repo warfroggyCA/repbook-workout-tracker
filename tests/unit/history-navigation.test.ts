@@ -8,6 +8,8 @@ import {
   parseHistoryCalendarView,
   parseHistoryInsightLens,
   parseHistoryView,
+  parseHistoryExerciseEvidenceTier,
+  parseHistoryExerciseId,
   historyCalendarWindow,
 } from "@/lib/history-navigation";
 
@@ -43,6 +45,15 @@ describe("history navigation", () => {
     expect(parseHistoryInsightLens("recovery")).toBe("overview");
   });
 
+  it("parses only supported evidence filters and exact UUID identities", () => {
+    expect(parseHistoryExerciseEvidenceTier("corrected")).toBe("corrected");
+    expect(parseHistoryExerciseEvidenceTier("derived")).toBe("all");
+    expect(parseHistoryExerciseId("11111111-1111-4111-8111-111111111111")).toBe(
+      "11111111-1111-4111-8111-111111111111",
+    );
+    expect(parseHistoryExerciseId("Bench Press")).toBeNull();
+  });
+
   it("accepts real date keys and rejects malformed or impossible dates", () => {
     expect(parseHistoryCalendarDate("2024-02-29")).toBe("2024-02-29");
     expect(parseHistoryCalendarDate("2026-02-29")).toBeNull();
@@ -63,10 +74,10 @@ describe("history navigation", () => {
           calendarView: "year",
           calendarDate: "2025-11-18",
         },
-        { focusCalendar: true }
-      )
+        { focusCalendar: true },
+      ),
     ).toBe(
-      "/history?range=all&calendarView=year&calendarDate=2025-11-18#history-calendar"
+      "/history?range=all&calendarView=year&calendarDate=2025-11-18#history-calendar",
     );
   });
 
@@ -76,9 +87,9 @@ describe("history navigation", () => {
         range: "6m",
         calendarView: "week",
         calendarDate: "2026-07-10",
-      })
+      }),
     ).toBe(
-      "/history/workout%20id?range=6m&calendarView=week&calendarDate=2026-07-10"
+      "/history/workout%20id?range=6m&calendarView=week&calendarDate=2026-07-10",
     );
   });
 
@@ -93,6 +104,16 @@ describe("history navigation", () => {
       }),
     ).toBe(
       "/history?range=12w&view=insights&lens=progress&calendarView=month&calendarDate=2026-07-10",
+    );
+    expect(
+      buildWorkoutHistoryHref("workout-id", {
+        range: "all",
+        view: "exercises",
+        exerciseId: "11111111-1111-4111-8111-111111111111",
+        evidenceTier: "imported",
+      }),
+    ).toBe(
+      "/history/workout-id?range=all&view=exercises&exerciseId=11111111-1111-4111-8111-111111111111&evidenceTier=imported",
     );
     expect(
       buildHistoryHref({
@@ -120,9 +141,9 @@ describe("history navigation", () => {
         range: "all",
         calendarView: "month",
         calendarDate: "2026-07-08",
-      })
+      }),
     ).toBe(
-      "/history/record?range=all&calendarView=month&calendarDate=2026-07-08&date=2026-07-08"
+      "/history/record?range=all&calendarView=month&calendarDate=2026-07-08&date=2026-07-08",
     );
   });
 });

@@ -195,6 +195,9 @@ describe("production readiness workflow contract", () => {
     expect(packageJson.scripts?.["test:e2e:v2-t06"]).toBe(
       "playwright test --config=playwright.v2-t06.config.ts --project=desktop-chromium && V2_T06_PORT=3136 playwright test --config=playwright.v2-t06.config.ts --project=narrow-mobile-webkit",
     );
+    expect(packageJson.scripts?.["test:e2e:v2-h03"]).toBe(
+      "playwright test --config=playwright.v2-h03.config.ts --project=desktop-chromium && V2_H03_PORT=3144 playwright test --config=playwright.v2-h03.config.ts --project=narrow-mobile-webkit",
+    );
   });
 
   it("keeps dedicated v2 browser gates out of the stateful smoke journey", () => {
@@ -209,6 +212,7 @@ describe("production readiness workflow contract", () => {
         "v2-u03-future-program.spec.ts",
         "v2-gauntlet-a-recovery.spec.ts",
         "v2-h02-cadence-targets-time.spec.ts",
+        "v2-h03-evidence-identity.spec.ts",
       ]),
     );
   });
