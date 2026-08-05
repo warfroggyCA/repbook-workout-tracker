@@ -17,7 +17,11 @@ async function signIn(page: Page) {
   const login = page.getByRole("button", { name: "Dev login", exact: true });
   await waitForHydratedServerAction(login);
   await login.click();
-  await expect(page).toHaveURL(/\/(?:today|settings\/setup)$/);
+  // This History-only fixture deliberately has no active Program. Its
+  // authenticated landing path is therefore /today -> /setup -> the completed
+  // account's setup-management page. Wait for that terminal redirect before
+  // starting an independent History navigation.
+  await expect(page).toHaveURL(/\/settings\/setup$/);
   await page.waitForLoadState("networkidle");
 }
 
@@ -43,8 +47,8 @@ test("presents performed evidence first without rewriting or inflating History",
   browserName,
   page,
 }) => {
-  await signIn(page);
   const pageErrors = observeGauntletPageErrors(page, browserName);
+  await signIn(page);
 
   const mutationRequests: string[] = [];
   page.on("request", (request) => {
