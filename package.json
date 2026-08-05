@@ -31,7 +31,7 @@
     "test:e2e:v2-t03": "playwright test --config=playwright.v2-t03.config.ts",
     "test:e2e:v2-t04": "playwright test --config=playwright.v2-t04.config.ts",
     "test:e2e:v2-t05": "playwright test --config=playwright.v2-t05.config.ts",
-    "test:e2e:v2-t06": "playwright test --config=playwright.v2-t06.config.ts",
+    "test:e2e:v2-t06": "playwright test --config=playwright.v2-t06.config.ts --project=desktop-chromium && V2_T06_PORT=3136 playwright test --config=playwright.v2-t06.config.ts --project=narrow-mobile-webkit",
     "test:e2e:v2-u01": "playwright test --config=playwright.v2-u01.config.ts",
     "test:e2e:v2-u02": "playwright test --config=playwright.v2-u02.config.ts",
     "test:e2e:v2-u03": "playwright test --config=playwright.v2-u03.config.ts",
