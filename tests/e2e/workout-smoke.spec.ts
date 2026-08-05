@@ -738,7 +738,7 @@ async function verifyReviewAndDecisions({
   await expect(benchOutcome).toContainText(
     "Evidence is limited: target results or effort are missing for one or more recorded sets."
   );
-  await expect(benchOutcome).toContainText("1 flag · max 4/10");
+  await expect(benchOutcome).toContainText("1 positive report · max 4/10");
 
   const liveCoachContext = page.getByRole("region", {
     name: "Live Coach stays with the workout",
