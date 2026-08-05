@@ -45,10 +45,18 @@ async function expectNoHorizontalOverflow(page: Page) {
 
 test("presents performed evidence first without rewriting or inflating History", async ({
   browserName,
-  page,
+  page: authPage,
 }) => {
+  await signIn(authPage);
+
+  // Authentication lands this deliberately Program-less fixture on the setup
+  // management page. Run the History proof in a fresh page within the same
+  // authenticated context so delayed WebKit cancellations from that unrelated
+  // setup page cannot be misattributed to History.
+  const page = await authPage.context().newPage();
+  await installNextDevelopmentRefreshControl(page);
+  await authPage.close();
   const pageErrors = observeGauntletPageErrors(page, browserName);
-  await signIn(page);
 
   const mutationRequests: string[] = [];
   page.on("request", (request) => {
