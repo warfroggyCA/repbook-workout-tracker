@@ -336,6 +336,13 @@ test("keeps Stage 5 guidance truthful, persistent, and usable on narrow mobile s
   const persistentDock = page.getByRole("complementary", { name: "Workout status" });
   await expect(persistentDock).toContainText("Ready");
 
+  const compactNavigation = page.getByRole("navigation", {
+    name: "Primary navigation",
+  });
+  await page.setViewportSize({ width: 359, height: 700 });
+  await expect(compactNavigation).toBeHidden();
+  await page.setViewportSize({ width: 360, height: 700 });
+  await expect(compactNavigation).toBeVisible();
   await page.setViewportSize({ width: 320, height: 700 });
   await expectNoHorizontalOverflow(page);
   await expect(
@@ -348,10 +355,31 @@ test("keeps Stage 5 guidance truthful, persistent, and usable on narrow mobile s
     page.getByRole("region", { name: "Workout progress and upcoming work" })
       .getByText(/Now: Rest complete after Romanian Deadlift, set 1/),
   ).toBeVisible();
-  await expect(
-    page.getByRole("region", { name: "Workout progress and upcoming work" })
-      .getByText(/Next: Romanian Deadlift, set 2/),
-  ).toBeHidden();
+  const compactNextGuidance = page
+    .getByRole("region", { name: "Workout progress and upcoming work" })
+    .getByText(/Next: Romanian Deadlift, set 2/);
+  await expect(compactNextGuidance).toHaveText(
+    /Next: Romanian Deadlift, set 2/,
+  );
+  await expect
+    .poll(() =>
+      compactNextGuidance.evaluate((element) => {
+        const style = getComputedStyle(element);
+        const box = element.getBoundingClientRect();
+        return {
+          clipPath: style.clipPath,
+          height: box.height,
+          position: style.position,
+          width: box.width,
+        };
+      }),
+    )
+    .toEqual({
+      clipPath: "inset(50%)",
+      height: 1,
+      position: "absolute",
+      width: 1,
+    });
   const collapsedMetrics = await persistentDock.evaluate((element) => {
     const navigation = document.querySelector("nav.fixed");
     const navigationRect = navigation?.getBoundingClientRect() ?? null;

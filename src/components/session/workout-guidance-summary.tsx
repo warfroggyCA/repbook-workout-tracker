@@ -71,7 +71,7 @@ export const WorkoutGuidanceSummary = memo(function WorkoutGuidanceSummary({
               : ""}
             {guidance.totals.skipped > 0 ? ` · ${guidance.totals.skipped} skipped` : ""}
           </span>
-          <p className="min-w-0 flex-1 basis-48 break-words leading-snug max-[359px]:line-clamp-2">
+          <p className="min-w-0 flex-1 basis-48 break-words leading-snug max-[360px]:line-clamp-2">
             <span className="font-medium">Now:</span>{" "}
             {guidance.currentAction
               ? formatSessionGuidanceAction(guidance.currentAction)
@@ -85,13 +85,13 @@ export const WorkoutGuidanceSummary = memo(function WorkoutGuidanceSummary({
             deferNextActionToCurrentCard &&
             guidance.currentAction?.kind === "working_set"
           ) && (
-          <p className="break-words text-xs text-muted-foreground max-[359px]:hidden">
+          <p className="break-words text-xs text-muted-foreground max-[360px]:sr-only">
             <span className="font-medium text-foreground">Next:</span>{" "}
             {formatSessionGuidanceAction(guidance.nextAction)}
           </p>
         )}
         {prepCue && (
-          <p className="break-words text-xs text-muted-foreground max-[359px]:hidden">
+          <p className="break-words text-xs text-muted-foreground max-[360px]:sr-only">
             <span className="font-medium text-foreground">{prepLabel}:</span>{" "}
             {prepCue}
           </p>

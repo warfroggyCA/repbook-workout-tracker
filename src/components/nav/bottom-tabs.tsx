@@ -202,7 +202,7 @@ export function BottomTabs({
         className={cn(
           "fixed inset-x-0 bottom-0 z-40 border-t bg-background pb-[env(safe-area-inset-bottom)] lg:hidden",
           mobileNavigationUsesFocusedWorkoutMode(activePathname) &&
-            "max-[359px]:hidden",
+            "max-[360px]:hidden",
         )}
       >
         <div className="mx-auto flex max-w-lg items-stretch justify-around">
