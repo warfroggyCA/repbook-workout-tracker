@@ -5,8 +5,8 @@
   "repositoryRole": "public application source",
   "exactBaseCommit": "2c9ab1b9478502f1d08956a6c44dfb0850c8f168",
   "fixtureCatalogue": "tests/fixtures/v2/semantic-scenarios.json",
-  "currentPackage": "H04",
-  "currentPackageBaseCommit": "e618f3836ed5aabb779d7ad6bf4b69d1ece859ce",
+  "currentPackage": "H05",
+  "currentPackageBaseCommit": "ed34623b5aab89d5c4bd500f70e3a3c972b8a815",
   "productBehaviorImplementedByP02": false,
   "implementedProductPackages": [
     "T01",
@@ -21,7 +21,8 @@
     "H01",
     "H02",
     "H03",
-    "H04"
+    "H04",
+    "H05"
   ],
   "milestoneEvidence": {
     "gauntletA": {
@@ -372,39 +373,39 @@
       "proves": "changed retry identity, cross-owner or invented linkage, invalid severity, missing location, unsupported source, set_exception zero, duplicate occurrence, and missing evidence fail closed or remain unknown without changing another fact or decision"
     },
     "H05-databaseService": {
-      "status": "future_activation",
+      "status": "current",
       "implementingPackage": "H05",
-      "testPath": "tests/unit/v2-h05-evidence-review-db.test.ts",
-      "command": "npx vitest run tests/unit/v2-h05-evidence-review-db.test.ts",
-      "proves": "must pass in the same package that implements this product meaning"
+      "testPath": "tests/unit/recommendation-decisions-characterization.test.ts",
+      "command": "npx vitest run tests/unit/recommendation-decisions-characterization.test.ts tests/unit/review-decisions-db.test.ts tests/unit/recommendation-card.test.tsx",
+      "proves": "versioned owner-scoped evidence is resolved at review and decision time; supported approval publishes one future Program version atomically, while contradictory, unsupported, stale, deferred, cross-owner, and changed-revision proposals remain visible but cannot mutate Program or performed facts"
     },
     "H05-browser": {
-      "status": "future_activation",
+      "status": "current",
       "implementingPackage": "H05",
-      "testPath": "tests/e2e/v2-h05-evidence-review.spec.ts",
-      "command": "npx playwright test tests/e2e/v2-h05-evidence-review.spec.ts",
-      "proves": "must pass in the same package that implements this product meaning"
+      "testPath": "tests/e2e/v2-h05-evidence-linked-review.spec.ts",
+      "command": "npx playwright test --config=playwright.v2-h05.config.ts tests/e2e/v2-h05-evidence-linked-review.spec.ts --project=desktop-chromium && V2_H05_PORT=3148 npx playwright test --config=playwright.v2-h05.config.ts tests/e2e/v2-h05-evidence-linked-review.spec.ts --project=narrow-mobile-webkit",
+      "proves": "desktop Chromium and independent 320 by 700 enlarged-text mobile WebKit move from each material claim to exact workout and set evidence and back, expose source, version, limitations, confidence and future effect, keep unsupported approval disabled, persist defer and resume, and preserve performed evidence after future-only acceptance"
     },
     "H05-exportImport": {
-      "status": "future_activation",
+      "status": "current",
       "implementingPackage": "H05",
-      "testPath": "tests/unit/v2-h05-evidence-review-portability.test.ts",
-      "command": "npx vitest run tests/unit/v2-h05-evidence-review-portability.test.ts",
-      "proves": "must pass in the same package that implements this product meaning"
+      "testPath": "tests/unit/v2-h05-review-portability.test.ts",
+      "command": "npx vitest run tests/unit/v2-h05-review-portability.test.ts tests/unit/json-backup-db.test.ts",
+      "proves": "canonical snapshot schema 30 retains versioned recommendation evidence, review and defer revisions, durable defer state, and immutable decision-time evidence while schema 29 upgrades explicitly to legacy-unknown without inventing meaning"
     },
     "H05-restoreRollback": {
-      "status": "future_activation",
+      "status": "current",
       "implementingPackage": "H05",
-      "testPath": "tests/unit/v2-h05-evidence-review-restore.test.ts",
-      "command": "npx vitest run tests/unit/v2-h05-evidence-review-restore.test.ts",
-      "proves": "must pass in the same package that implements this product meaning"
+      "testPath": "tests/unit/v2-h05-review-portability.test.ts",
+      "command": "npx vitest run tests/unit/v2-h05-review-portability.test.ts tests/unit/snapshots-db.test.ts",
+      "proves": "restore validates coherent review, defer and decision snapshots before writes, rejects malformed state, and restores retained proposals and decisions without recomputing them from mutable current metadata"
     },
     "H05-adversarialPrivacy": {
-      "status": "future_activation",
+      "status": "current",
       "implementingPackage": "H05",
-      "testPath": "tests/unit/v2-h05-evidence-review-adversarial.test.ts",
-      "command": "npx vitest run tests/unit/v2-h05-evidence-review-adversarial.test.ts",
-      "proves": "must pass in the same package that implements this product meaning"
+      "testPath": "tests/unit/recommendation-decisions-characterization.test.ts",
+      "command": "npx vitest run tests/unit/recommendation-decisions-characterization.test.ts tests/unit/v2-h05-review-portability.test.ts",
+      "proves": "concurrent decisions, stale facts, contradictory or missing support, deferred state, invalid dates, revision races, failed audit or publication, lost acknowledgement, owner scoping, and malformed restore all fail closed without duplicate decisions, adaptations, or historical mutation"
     },
     "A05-databaseService": {
       "status": "future_activation",
@@ -1856,6 +1857,7 @@
     "U02 current status means exception evidence, its set-linked pain identity, browser failure recovery, History and Review read paths, export, and restore evidence travel together; it does not imply release, deployment, recommendation approval, or Program adaptation.",
     "U03 current status means exact future Program review and publication clarity travel with active-session, completed/imported History, earlier-version, conflict, failure, export, and restore isolation evidence; it adds no schema, migration, historical rewrite, release, or deployment.",
     "H01 current status means performed-first completed and imported workout presentation travels with exact terminal, provenance, correction, semantic, calculation-eligibility, retained-source, accessibility, and zero-write evidence; it adds no schema, migration, writer, historical rewrite, release, or deployment.",
-    "H04 current status means pain-evidence-v1 meaning travels together across active workout, History, Review, Coach context, progression proposals, CSV, snapshot restore, and adversarial identity boundaries; absence remains unknown, explicit zero remains no-issue evidence, and no pain evidence silently changes Program intent."
+    "H04 current status means pain-evidence-v1 meaning travels together across active workout, History, Review, Coach context, progression proposals, CSV, snapshot restore, and adversarial identity boundaries; absence remains unknown, explicit zero remains no-issue evidence, and no pain evidence silently changes Program intent.",
+    "H05 current status means every material Review proposal carries versioned exact evidence, visible limitations and a future-only effect; owner decisions and durable deferrals are revision-fenced, evidence-linked, snapshotted, and atomic, while unsupported, contradictory, stale, missing, or cross-owner facts never become Program changes."
   ]
 }

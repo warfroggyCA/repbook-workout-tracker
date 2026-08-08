@@ -1,6 +1,8 @@
 import {
   check,
+  date,
   index,
+  integer,
   jsonb,
   pgTable,
   text,
@@ -49,7 +51,38 @@ export type RecommendationEvidence = {
   sessionIds?: string[];
   setIds?: string[];
   painLogIds?: string[];
+  review?: RecommendationReviewEvidence;
 };
+
+export type RecommendationReviewEvidence = {
+  schemaVersion: "review-evidence-v1";
+  producer: "progression_rules" | "pain_consistency";
+  sourceVersion: string;
+  generatedAt: string;
+  quality: "supported" | "contradictory" | "unsupported";
+  confidence: "not_scored";
+  limitations: string[];
+  proposedEffect: {
+    kind: "future_program_change" | "none";
+    summary: string;
+  };
+};
+
+export type ReviewDecisionSnapshot =
+  | { schemaVersion: "legacy-unknown" }
+  | {
+      schemaVersion: "review-decision-v1";
+      recommendationId: string;
+      reviewRevision: number;
+      deferRevision: number;
+      recordedAt: string;
+      evidenceState: "supported" | "contradictory" | "unsupported" | "stale";
+      source: "rule" | "ai";
+      ruleId: string | null;
+      payload: RecommendationPayload;
+      reason: string;
+      evidence: RecommendationEvidence;
+    };
 
 export const recommendations = pgTable(
   "recommendations",
@@ -72,6 +105,11 @@ export const recommendations = pgTable(
     payload: jsonb("payload").$type<RecommendationPayload>().notNull(),
     reason: text("reason").notNull(),
     evidence: jsonb("evidence").$type<RecommendationEvidence>().notNull(),
+    reviewRevision: integer("review_revision").notNull().default(1),
+    deferRevision: integer("defer_revision").notNull().default(0),
+    deferredAt: timestamp("deferred_at", { withTimezone: true }),
+    revisitOn: date("revisit_on"),
+    deferReason: text("defer_reason"),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -112,6 +150,18 @@ export const recommendations = pgTable(
       "recommendations_reconciliation_reason_check",
       sql`${t.status} <> 'expired' OR (nullif(btrim(${t.reconciliationReason}), '') IS NOT NULL AND ${t.reconciledAt} IS NOT NULL)`
     ),
+    check(
+      "recommendations_review_revision_check",
+      sql`${t.reviewRevision} >= 0 AND ${t.deferRevision} >= 0`
+    ),
+    check(
+      "recommendations_defer_state_check",
+      sql`(${t.deferredAt} IS NULL AND ${t.revisitOn} IS NULL AND ${t.deferReason} IS NULL) OR (${t.deferredAt} IS NOT NULL AND ${t.status} = 'pending' AND ${t.archivedAt} IS NULL)`
+    ),
+    check(
+      "recommendations_defer_reason_check",
+      sql`${t.deferReason} IS NULL OR (nullif(btrim(${t.deferReason}), '') IS NOT NULL AND char_length(${t.deferReason}) <= 500)`
+    ),
   ]
 );
 
@@ -125,6 +175,10 @@ export const userDecisions = pgTable(
     decision: decisionEnum("decision").notNull(),
     editedPayload: jsonb("edited_payload").$type<RecommendationPayload>(),
     reason: text("reason"),
+    reviewSnapshot: jsonb("review_snapshot")
+      .$type<ReviewDecisionSnapshot>()
+      .notNull()
+      .default(sql`'{"schemaVersion":"legacy-unknown"}'::jsonb`),
     decidedAt: timestamp("decided_at", { withTimezone: true })
       .notNull()
       .defaultNow(),

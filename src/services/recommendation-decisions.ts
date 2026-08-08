@@ -12,9 +12,13 @@ import {
   recommendations,
   userDecisions,
   type RecommendationPayload,
+  type ReviewDecisionSnapshot,
 } from "@/db/schema";
-import { recommendationEvidenceEligibleForAction } from "@/services/recommendation-evidence-eligibility";
 import { loadExercisePainHold } from "@/services/pain-hold";
+import {
+  buildReviewDecisionSnapshot,
+  resolveReviewEvidence,
+} from "@/services/review-evidence";
 
 export type RecommendationCheckpoint = (boundary: string) => void | Promise<void>;
 
@@ -30,6 +34,9 @@ export type PublishRecommendationProgramVersion = (
     expectedPayload: RecommendationPayload;
     appliedPayload: RecommendationPayload;
     decision: "approve" | "edit";
+    expectedReviewRevision: number;
+    expectedDeferRevision: number;
+    reviewSnapshot: ReviewDecisionSnapshot;
   }
 ) => Promise<RecommendationProgramPublicationResult>;
 
@@ -153,7 +160,12 @@ async function approveRetryResult(
 export async function approveRecommendationDecision(
   db: Db,
   userId: string,
-  input: { recommendationId: string; editedToLoad?: number },
+  input: {
+    recommendationId: string;
+    editedToLoad?: number;
+    expectedReviewRevision: number;
+    expectedDeferRevision: number;
+  },
   dependencies: RecommendationDecisionDependencies = {}
 ): Promise<{ ok: true } | { ok: false; reason: string }> {
   const checkpoint = dependencies.checkpoint ?? (() => undefined);
@@ -163,6 +175,15 @@ export async function approveRecommendationDecision(
     input.recommendationId
   );
   if (!recommendation) return { ok: false, reason: "Recommendation not found." };
+  if (
+    input.expectedReviewRevision !== recommendation.reviewRevision ||
+    input.expectedDeferRevision !== recommendation.deferRevision
+  ) {
+    return { ok: false, reason: "This proposal changed. Refresh and review its current evidence." };
+  }
+  if (recommendation.deferredAt != null) {
+    return { ok: false, reason: "Resume this deferred review before making a decision." };
+  }
 
   const parsed = actionablePayloadSchema.safeParse(recommendation.payload);
   if (!parsed.success) {
@@ -209,17 +230,11 @@ export async function approveRecommendationDecision(
   if (recommendation.status !== "pending") {
     return approveRetryResult(db, recommendation.id, edited, payload);
   }
-  if (
-    !(await recommendationEvidenceEligibleForAction(
-      db,
-      userId,
-      recommendation,
-    ))
-  ) {
+  const assessment = await resolveReviewEvidence(db, userId, recommendation);
+  if (!assessment.actionable) {
     return {
       ok: false,
-      reason:
-        "This load recommendation no longer has comparable completed-set evidence and cannot be applied.",
+      reason: assessment.explanation,
     };
   }
   if (
@@ -253,6 +268,9 @@ export async function approveRecommendationDecision(
     expectedPayload: parsed.data,
     appliedPayload: payload,
     decision: edited ? "edit" : "approve",
+    expectedReviewRevision: recommendation.reviewRevision,
+    expectedDeferRevision: recommendation.deferRevision,
+    reviewSnapshot: buildReviewDecisionSnapshot(recommendation, assessment),
   });
 
   if (publication.ok) {
@@ -279,7 +297,12 @@ export async function approveRecommendationDecision(
 export async function rejectRecommendationDecision(
   db: Db,
   userId: string,
-  input: { recommendationId: string; reason?: string },
+  input: {
+    recommendationId: string;
+    reason?: string;
+    expectedReviewRevision: number;
+    expectedDeferRevision: number;
+  },
   dependencies: RecommendationDecisionDependencies = {}
 ): Promise<{ ok: true } | { ok: false; reason: string }> {
   const checkpoint = dependencies.checkpoint ?? (() => undefined);
@@ -301,8 +324,19 @@ export async function rejectRecommendationDecision(
             : "This recommendation is no longer pending.",
         };
   }
+  if (
+    input.expectedReviewRevision !== recommendation.reviewRevision ||
+    input.expectedDeferRevision !== recommendation.deferRevision
+  ) {
+    return { ok: false, reason: "This proposal changed. Refresh and review its current evidence." };
+  }
+  if (recommendation.deferredAt != null) {
+    return { ok: false, reason: "Resume this deferred review before making a decision." };
+  }
 
   const decisionId = randomUUID();
+  const assessment = await resolveReviewEvidence(db, userId, recommendation);
+  const reviewSnapshot = buildReviewDecisionSnapshot(recommendation, assessment);
   await checkpoint("recommendation-ready");
   const query = sql`
     WITH claimed AS (
@@ -313,10 +347,13 @@ export async function rejectRecommendationDecision(
         AND recommendation.user_id = ${userId}::uuid
         AND recommendation.status = 'pending'
         AND recommendation.archived_at IS NULL
+        AND recommendation.review_revision = ${recommendation.reviewRevision}::int
+        AND recommendation.defer_revision = ${recommendation.deferRevision}::int
+        AND recommendation.deferred_at IS NULL
       RETURNING recommendation.id
     ), recorded_decision AS (
-      INSERT INTO user_decisions (id, recommendation_id, decision, reason)
-      SELECT ${decisionId}::uuid, claimed.id, 'reject', ${reason}
+      INSERT INTO user_decisions (id, recommendation_id, decision, reason, review_snapshot)
+      SELECT ${decisionId}::uuid, claimed.id, 'reject', ${reason}, ${JSON.stringify(reviewSnapshot)}::jsonb
       FROM claimed
       RETURNING id
     ), recorded_audit AS (
@@ -363,6 +400,150 @@ export async function rejectRecommendationDecision(
           ? `This recommendation was already ${decision.decision === "reject" ? "rejected with a different reason" : "approved"}.`
           : "This recommendation is no longer pending.",
       };
+}
+
+const revisitOnSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine(
+  (value) => {
+    const parsed = new Date(`${value}T00:00:00.000Z`);
+    return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
+  },
+  "Choose a valid revisit date.",
+);
+
+export async function deferRecommendationDecision(
+  db: Db,
+  userId: string,
+  input: {
+    recommendationId: string;
+    expectedReviewRevision: number;
+    expectedDeferRevision: number;
+    revisitOn?: string;
+    reason?: string;
+  },
+  dependencies: RecommendationDecisionDependencies = {},
+): Promise<{ ok: true } | { ok: false; reason: string }> {
+  const recommendation = await getOwnedRecommendation(db, userId, input.recommendationId);
+  if (!recommendation) return { ok: false, reason: "Recommendation not found." };
+  if (recommendation.payload.kind === "hold") {
+    return { ok: false, reason: "Automatic hold notices can be dismissed, not deferred." };
+  }
+  const parsedRevisitOn = input.revisitOn
+    ? revisitOnSchema.safeParse(input.revisitOn)
+    : null;
+  if (parsedRevisitOn && !parsedRevisitOn.success) {
+    return { ok: false, reason: "Choose a valid revisit date." };
+  }
+  const revisitOn = parsedRevisitOn?.data ?? null;
+  const reason = input.reason?.trim() || null;
+  if (reason && reason.length > 500) {
+    return { ok: false, reason: "The defer note must be 500 characters or fewer." };
+  }
+  if (
+    recommendation.deferredAt != null &&
+    recommendation.revisitOn === revisitOn &&
+    (recommendation.deferReason ?? null) === reason
+  ) {
+    return { ok: true };
+  }
+  if (recommendation.status !== "pending" || recommendation.archivedAt != null) {
+    return { ok: false, reason: "This proposal is no longer pending." };
+  }
+  if (
+    recommendation.reviewRevision !== input.expectedReviewRevision ||
+    recommendation.deferRevision !== input.expectedDeferRevision
+  ) {
+    return { ok: false, reason: "This proposal changed. Refresh before deferring it." };
+  }
+  await dependencies.checkpoint?.("recommendation-defer-ready");
+  const applied = resultRows(await db.execute(sql`
+    WITH claimed AS (
+      UPDATE recommendations recommendation
+      SET deferred_at = statement_timestamp(),
+          revisit_on = ${revisitOn}::date,
+          defer_reason = ${reason}
+      WHERE recommendation.id = ${recommendation.id}::uuid
+        AND recommendation.user_id = ${userId}::uuid
+        AND recommendation.status = 'pending'
+        AND recommendation.archived_at IS NULL
+        AND recommendation.review_revision = ${input.expectedReviewRevision}::int
+        AND recommendation.defer_revision = ${input.expectedDeferRevision}::int
+      RETURNING recommendation.id, recommendation.review_revision, recommendation.defer_revision
+    ), recorded_audit AS (
+      INSERT INTO audit_logs (
+        user_id, actor_type, action, entity_type, entity_id, summary,
+        cause_ref, idempotency_key
+      )
+      SELECT
+        CASE WHEN ${dependencies.failureAt ?? null}::text IS NULL THEN ${userId}::uuid ELSE NULL::uuid END,
+        'user', 'recommendation.defer', 'recommendation', claimed.id::text,
+        CASE WHEN ${revisitOn}::date IS NULL THEN 'Deferred recommendation review' ELSE 'Deferred recommendation review until ' || ${revisitOn}::text END,
+        jsonb_build_object('recommendationId', claimed.id, 'reviewRevision', claimed.review_revision, 'deferRevision', claimed.defer_revision),
+        'recommendation:' || claimed.id::text || ':defer:' || claimed.defer_revision::text
+      FROM claimed
+      RETURNING id
+    )
+    SELECT claimed.id FROM claimed WHERE EXISTS (SELECT 1 FROM recorded_audit)
+  `)).length === 1;
+  if (applied) return { ok: true };
+  const latest = await getOwnedRecommendation(db, userId, recommendation.id);
+  return latest?.deferredAt != null &&
+    latest.revisitOn === revisitOn &&
+    (latest.deferReason ?? null) === reason
+    ? { ok: true }
+    : { ok: false, reason: "This proposal changed while it was being deferred. Refresh and try again." };
+}
+
+export async function resumeRecommendationDecision(
+  db: Db,
+  userId: string,
+  input: {
+    recommendationId: string;
+    expectedReviewRevision: number;
+    expectedDeferRevision: number;
+  },
+  dependencies: RecommendationDecisionDependencies = {},
+): Promise<{ ok: true } | { ok: false; reason: string }> {
+  const recommendation = await getOwnedRecommendation(db, userId, input.recommendationId);
+  if (!recommendation) return { ok: false, reason: "Recommendation not found." };
+  if (recommendation.deferredAt == null) return { ok: true };
+  if (
+    recommendation.status !== "pending" ||
+    recommendation.reviewRevision !== input.expectedReviewRevision ||
+    recommendation.deferRevision !== input.expectedDeferRevision
+  ) {
+    return { ok: false, reason: "This deferred proposal changed. Refresh before resuming it." };
+  }
+  const applied = resultRows(await db.execute(sql`
+    WITH claimed AS (
+      UPDATE recommendations recommendation
+      SET deferred_at = NULL, revisit_on = NULL, defer_reason = NULL
+      WHERE recommendation.id = ${recommendation.id}::uuid
+        AND recommendation.user_id = ${userId}::uuid
+        AND recommendation.status = 'pending'
+        AND recommendation.archived_at IS NULL
+        AND recommendation.review_revision = ${input.expectedReviewRevision}::int
+        AND recommendation.defer_revision = ${input.expectedDeferRevision}::int
+        AND recommendation.deferred_at IS NOT NULL
+      RETURNING recommendation.id, recommendation.review_revision, recommendation.defer_revision
+    ), recorded_audit AS (
+      INSERT INTO audit_logs (
+        user_id, actor_type, action, entity_type, entity_id, summary,
+        cause_ref, idempotency_key
+      )
+      SELECT
+        CASE WHEN ${dependencies.failureAt ?? null}::text IS NULL THEN ${userId}::uuid ELSE NULL::uuid END,
+        'user', 'recommendation.resume', 'recommendation', claimed.id::text,
+        'Resumed deferred recommendation review',
+        jsonb_build_object('recommendationId', claimed.id, 'reviewRevision', claimed.review_revision, 'deferRevision', claimed.defer_revision),
+        'recommendation:' || claimed.id::text || ':resume:' || claimed.defer_revision::text
+      FROM claimed
+      RETURNING id
+    )
+    SELECT claimed.id FROM claimed WHERE EXISTS (SELECT 1 FROM recorded_audit)
+  `)).length === 1;
+  return applied
+    ? { ok: true }
+    : { ok: false, reason: "This proposal changed while it was being resumed. Refresh and try again." };
 }
 
 export async function dismissAutomaticHoldNotice(

@@ -2,15 +2,19 @@
 
 import { useId, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import {
   approveRecommendation,
+  deferRecommendation,
   dismissRecommendationNotice,
   rejectRecommendation,
+  resumeRecommendation,
 } from "@/app/actions/recommendations";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Gauge, ListChecks, Minus, Plus } from "lucide-react";
+import { CalendarClock, ExternalLink, Gauge, ListChecks, Minus, Plus } from "lucide-react";
 import type { ReviewEvidenceItem } from "@/services/review-decisions";
+import type { ReviewEvidenceLink, ReviewEvidenceState } from "@/services/review-evidence";
 
 export type RecommendationCardData = {
   id: string;
@@ -25,6 +29,22 @@ export type RecommendationCardData = {
   suggestedExercise: string | null;
   alternatives: string[];
   evidence: ReviewEvidenceItem[];
+  reviewRevision: number;
+  deferRevision: number;
+  deferredAt: string | null;
+  revisitOn: string | null;
+  deferReason: string | null;
+  createdAt: string;
+  createdAtLabel: string;
+  evidenceState: ReviewEvidenceState;
+  evidenceExplanation: string;
+  evidenceLinks: ReviewEvidenceLink[];
+  actionable: boolean;
+  producer: "progression_rules" | "pain_consistency" | null;
+  sourceVersion: string | null;
+  generatedAt: string | null;
+  limitations: string[];
+  proposedEffect: string;
 };
 
 export function RecommendationCard({
@@ -38,18 +58,23 @@ export function RecommendationCard({
   const titleId = useId();
   const [pending, startTransition] = useTransition();
   const [editedLoad, setEditedLoad] = useState<number | null>(rec.toLoad);
+  const [revisitOn, setRevisitOn] = useState(rec.revisitOn ?? "");
+  const [deferReason, setDeferReason] = useState(rec.deferReason ?? "");
   const [error, setError] = useState<string | null>(null);
 
   const isLoadChange = rec.kind === "load_change";
   const isHold = rec.kind === "hold";
   const edited = isLoadChange && editedLoad !== rec.toLoad;
+  const deferred = rec.deferredAt != null;
 
-  function decide(action: "approve" | "reject" | "dismiss") {
+  function decide(action: "approve" | "reject" | "dismiss" | "defer" | "resume") {
     setError(null);
     startTransition(async () => {
       if (action === "approve") {
         const result = await approveRecommendation({
           recommendationId: rec.id,
+          expectedReviewRevision: rec.reviewRevision,
+          expectedDeferRevision: rec.deferRevision,
           editedToLoad:
             isLoadChange && editedLoad != null ? editedLoad : undefined,
         });
@@ -58,12 +83,16 @@ export function RecommendationCard({
           return;
         }
       } else if (action === "reject") {
-        const result = await rejectRecommendation({ recommendationId: rec.id });
+        const result = await rejectRecommendation({
+          recommendationId: rec.id,
+          expectedReviewRevision: rec.reviewRevision,
+          expectedDeferRevision: rec.deferRevision,
+        });
         if (!result.ok) {
           setError(result.reason);
           return;
         }
-      } else {
+      } else if (action === "dismiss") {
         const result = await dismissRecommendationNotice({
           recommendationId: rec.id,
         });
@@ -72,6 +101,30 @@ export function RecommendationCard({
           setError(result.reason);
           return;
         }
+      } else if (action === "defer") {
+        const result = await deferRecommendation({
+          recommendationId: rec.id,
+          expectedReviewRevision: rec.reviewRevision,
+          expectedDeferRevision: rec.deferRevision,
+          revisitOn: revisitOn || undefined,
+          reason: deferReason || undefined,
+        });
+        if (!result.ok) {
+          setError(result.reason);
+          return;
+        }
+      } else {
+        const result = await resumeRecommendation({
+          recommendationId: rec.id,
+          expectedReviewRevision: rec.reviewRevision,
+          expectedDeferRevision: rec.deferRevision,
+        });
+        if (!result.ok) {
+          setError(result.reason);
+          return;
+        }
+        setRevisitOn("");
+        setDeferReason("");
       }
       router.refresh();
     });
@@ -79,6 +132,7 @@ export function RecommendationCard({
 
   return (
     <section
+      id={`recommendation-${rec.id}`}
       className="rounded-xl border-2 border-primary/25 bg-card p-3 shadow-[var(--shadow-soft)] sm:p-4"
       aria-labelledby={titleId}
     >
@@ -106,7 +160,7 @@ export function RecommendationCard({
         </Badge>
       </div>
 
-      {isLoadChange && (
+      {isLoadChange && !deferred && rec.actionable && (
         <p className="text-sm font-medium tabular-nums">
           {rec.fromLoad ?? "No target"} → {editedLoad ?? rec.toLoad} {rec.loadUnit}
           {edited && (
@@ -121,6 +175,28 @@ export function RecommendationCard({
       )}
 
       <p className="mt-1 text-sm text-muted-foreground">{rec.reason}</p>
+
+      <div className="mt-3 rounded-lg border bg-muted/30 p-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h4 className="text-xs font-medium uppercase tracking-wide">Review evidence</h4>
+          <Badge variant={rec.evidenceState === "supported" ? "secondary" : "outline"}>
+            {rec.evidenceState === "supported"
+              ? "Supported"
+              : rec.evidenceState === "contradictory"
+                ? "Contradictory"
+                : rec.evidenceState === "stale"
+                  ? "Stale"
+                  : "Unsupported"}
+          </Badge>
+        </div>
+        <p className="mt-1 text-xs text-muted-foreground">{rec.evidenceExplanation}</p>
+        <dl className="mt-2 grid gap-1 text-xs sm:grid-cols-2">
+          <div><dt className="text-muted-foreground">Source</dt><dd className="font-medium">{rec.producer?.replaceAll("_", " ") ?? rec.source}</dd></div>
+          <div><dt className="text-muted-foreground">Source version</dt><dd className="font-medium break-all">{rec.sourceVersion ?? "Legacy / unknown"}</dd></div>
+          <div><dt className="text-muted-foreground">Created</dt><dd className="font-medium"><time dateTime={rec.createdAt}>{rec.createdAtLabel}</time></dd></div>
+          <div><dt className="text-muted-foreground">Confidence</dt><dd className="font-medium">Not scored</dd></div>
+        </dl>
+      </div>
 
       {isHold && (
         <p className="mt-2 text-sm">
@@ -140,7 +216,7 @@ export function RecommendationCard({
       >
         <div className="rounded-lg bg-muted/55 p-3">
           <h4 className="flex items-center gap-1.5 text-xs font-medium">
-            <ListChecks className="size-3.5 text-primary" /> Evidence on record
+            <ListChecks className="size-3.5 text-primary" /> Observed basis
           </h4>
           {rec.evidence.length > 0 ? (
             <dl className="mt-2 flex flex-col gap-1.5 text-xs">
@@ -159,17 +235,28 @@ export function RecommendationCard({
               No supporting signal details were stored with this proposal.
             </p>
           )}
+          {rec.evidenceLinks.length > 0 && (
+            <ul className="mt-3 space-y-1.5 border-t pt-2 text-xs">
+              {rec.evidenceLinks.map((link) => (
+                <li key={`${link.kind}-${link.id}`}>
+                  <Link className="inline-flex min-h-8 items-center gap-1 text-primary underline-offset-2 hover:underline" href={link.href}>
+                    {link.label}<ExternalLink className="size-3" aria-hidden="true" />
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
         {!isHold && (
           <div className="rounded-lg bg-muted/55 p-3">
             <h4 className="flex items-center gap-1.5 text-xs font-medium">
-              <Gauge className="size-3.5 text-primary" /> Confidence
+              <Gauge className="size-3.5 text-primary" /> Proposed future Program effect
             </h4>
-            <p className="mt-2 text-sm font-medium">Not scored</p>
-            <p className="mt-1 text-xs text-muted-foreground">
-              This decision record contains no confidence score. Use the named
-              source, rule, and evidence instead of an invented percentage.
-            </p>
+            <p className="mt-2 text-sm">{rec.proposedEffect}</p>
+            <h5 className="mt-3 text-xs font-medium">Limitations</h5>
+            <ul className="mt-1 list-disc space-y-1 pl-4 text-xs text-muted-foreground">
+              {rec.limitations.map((limitation) => <li key={limitation}>{limitation}</li>)}
+            </ul>
           </div>
         )}
       </div>
@@ -215,29 +302,68 @@ export function RecommendationCard({
         </p>
       )}
 
+      {!isHold && deferred && (
+        <div className="mt-3 rounded-lg border border-amber-400/50 bg-amber-50/60 p-3 text-sm dark:bg-amber-950/20">
+          <p className="font-medium">Review deferred</p>
+          <p className="mt-1 text-xs text-muted-foreground">
+            {rec.revisitOn ? `Revisit on ${rec.revisitOn}.` : "No revisit date was chosen."}
+            {rec.deferReason ? ` ${rec.deferReason}` : ""}
+          </p>
+          <Button className="mt-2 min-h-10 w-full" variant="outline" disabled={pending} onClick={() => decide("resume")}>
+            Resume review
+          </Button>
+        </div>
+      )}
+
+      {!isHold && !deferred && (
+        <details className="mt-3 rounded-lg border p-3">
+          <summary className="flex min-h-8 cursor-pointer items-center gap-2 text-sm font-medium">
+            <CalendarClock className="size-4 text-primary" /> Decide later
+          </summary>
+          <div className="mt-3 grid gap-3">
+            <label className="grid gap-1 text-xs">
+              Optional revisit date
+              <input className="min-h-10 rounded-md border bg-background px-3 text-sm" type="date" value={revisitOn} onChange={(event) => setRevisitOn(event.target.value)} />
+            </label>
+            <label className="grid gap-1 text-xs">
+              Optional note
+              <textarea className="min-h-20 rounded-md border bg-background p-3 text-sm" maxLength={500} value={deferReason} onChange={(event) => setDeferReason(event.target.value)} />
+            </label>
+            <Button className="min-h-10 w-full" variant="outline" disabled={pending} onClick={() => decide("defer")}>
+              Defer review
+            </Button>
+          </div>
+        </details>
+      )}
+
       <div
         className={`mt-3 grid grid-cols-1 gap-2 ${
           isHold ? "" : "min-[22rem]:grid-cols-2"
         }`}
       >
-        {!isHold && (
+        {!isHold && !deferred && (
           <Button
             className="min-h-10 w-full"
-            disabled={pending}
+            disabled={pending || !rec.actionable}
             onClick={() => decide("approve")}
           >
             {edited ? "Approve edited" : "Approve"}
           </Button>
         )}
-        <Button
-          variant="outline"
-          className="min-h-10 w-full"
-          disabled={pending}
-          onClick={() => decide(isHold ? "dismiss" : "reject")}
-        >
-          {isHold ? "Dismiss notice" : "Reject"}
-        </Button>
+        {!deferred && (
+          <Button
+            variant="outline"
+            className="min-h-10 w-full"
+            disabled={pending}
+            onClick={() => decide(isHold ? "dismiss" : "reject")}
+          >
+            {isHold ? "Dismiss notice" : "Reject"}
+          </Button>
+        )}
       </div>
+      {!isHold && !deferred && !rec.actionable && (
+        <p className="mt-2 text-xs text-muted-foreground">Approval is unavailable because this evidence is {rec.evidenceState}. Reject or defer the retained proposal instead.</p>
+      )}
     </section>
   );
 }

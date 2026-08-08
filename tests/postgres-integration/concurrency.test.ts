@@ -311,6 +311,22 @@ async function insertLoadRecommendation(
   return recommendation;
 }
 
+function reviewSnapshotFor(recommendation: typeof recommendations.$inferSelect) {
+  return {
+    schemaVersion: "review-decision-v1" as const,
+    recommendationId: recommendation.id,
+    reviewRevision: recommendation.reviewRevision,
+    deferRevision: recommendation.deferRevision,
+    recordedAt: new Date().toISOString(),
+    evidenceState: "supported" as const,
+    source: recommendation.source,
+    ruleId: recommendation.ruleId,
+    payload: recommendation.payload,
+    reason: recommendation.reason,
+    evidence: recommendation.evidence,
+  };
+}
+
 async function publishReviewedDraft(draft: ReviewedDraft, userId: string) {
   return publishProgramDraft(db, userId, {
     draftId: draft.draftId,
@@ -1714,6 +1730,9 @@ describe.sequential("real PostgreSQL parallel invariants", () => {
         expectedPayload: recommendation.payload,
         appliedPayload: recommendation.payload,
         decision: "approve",
+        expectedReviewRevision: recommendation.reviewRevision,
+        expectedDeferRevision: recommendation.deferRevision,
+        reviewSnapshot: reviewSnapshotFor(recommendation),
       })
     ).resolves.toEqual({ ok: false, reason: "invalid" });
     expect(

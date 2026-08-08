@@ -40,9 +40,9 @@ import {
   type PainEvidenceMeaning,
 } from "@/lib/pain-evidence";
 import {
-  recommendationEvidenceEligibleForAction,
   reconcilePendingPainRecommendations,
 } from "@/services/recommendation-evidence-eligibility";
+import { resolveReviewEvidenceBatch } from "@/services/review-evidence";
 
 export type ReviewEvidenceItem = {
   label: string;
@@ -372,20 +372,11 @@ export async function getReviewDecisionData(db: Db, userId: string) {
       with: { exercise: true, decisions: true, adaptations: true },
     }),
   ]);
-  const pending = (
-    await Promise.all(
-      pendingRows.map(async (recommendation) => ({
-        recommendation,
-        eligible: await recommendationEvidenceEligibleForAction(
-          db,
-          userId,
-          recommendation,
-        ),
-      })),
-    )
-  )
-    .filter(({ eligible }) => eligible)
-    .map(({ recommendation }) => recommendation);
+  const pendingEvidence = await resolveReviewEvidenceBatch(db, userId, pendingRows);
+  const pending = pendingRows.map((recommendation) => ({
+    ...recommendation,
+    reviewEvidence: pendingEvidence.get(recommendation.id)!,
+  }));
 
   // The recommendation is owner-scoped above, but adaptation_events also has
   // its own owner column. Defensively enforce both sides before using an

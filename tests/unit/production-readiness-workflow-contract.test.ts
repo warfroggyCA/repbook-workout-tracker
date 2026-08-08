@@ -87,6 +87,9 @@ describe("production readiness workflow contract", () => {
     const h04PainConsistency = steps.find(
       (step) => step.id === "browser-v2-h04",
     );
+    const h05EvidenceLinkedReview = steps.find(
+      (step) => step.id === "browser-v2-h05",
+    );
     const browserGate = steps.find(
       (step) => step.name === "Require every browser suite",
     );
@@ -111,6 +114,7 @@ describe("production readiness workflow contract", () => {
     expect(u03FutureProgram?.run).toBe("npm run test:e2e:v2-u03");
     expect(gauntletA?.run).toBe("npm run test:e2e:v2-gauntlet-a");
     expect(h04PainConsistency?.run).toBe("npm run test:e2e:v2-h04");
+    expect(h05EvidenceLinkedReview?.run).toBe("npm run test:e2e:v2-h05");
     expect(browserGate?.env?.BROWSER_HISTORY).toBe(
       "${{ steps.browser-history.outcome }}",
     );
@@ -189,6 +193,12 @@ describe("production readiness workflow contract", () => {
     expect(browserGate?.run).toContain(
       '"H04 pain consistency:${BROWSER_V2_H04}"',
     );
+    expect(browserGate?.env?.BROWSER_V2_H05).toBe(
+      "${{ steps.browser-v2-h05.outcome }}",
+    );
+    expect(browserGate?.run).toContain(
+      '"H05 evidence-linked Review:${BROWSER_V2_H05}"',
+    );
   });
 
   it("measures the unchanged performance ceiling without parallel test contention", async () => {
@@ -211,6 +221,9 @@ describe("production readiness workflow contract", () => {
     expect(packageJson.scripts?.["test:e2e:v2-h04"]).toBe(
       "playwright test --config=playwright.v2-h04.config.ts --project=desktop-chromium && V2_H04_PORT=3146 playwright test --config=playwright.v2-h04.config.ts --project=narrow-mobile-webkit",
     );
+    expect(packageJson.scripts?.["test:e2e:v2-h05"]).toBe(
+      "playwright test --config=playwright.v2-h05.config.ts --project=desktop-chromium && V2_H05_PORT=3148 playwright test --config=playwright.v2-h05.config.ts --project=narrow-mobile-webkit",
+    );
   });
 
   it("keeps dedicated v2 browser gates out of the stateful smoke journey", () => {
@@ -227,6 +240,7 @@ describe("production readiness workflow contract", () => {
         "v2-h02-cadence-targets-time.spec.ts",
         "v2-h03-evidence-identity.spec.ts",
         "v2-h04-pain-consistency.spec.ts",
+        "v2-h05-evidence-linked-review.spec.ts",
       ]),
     );
   });

@@ -6,8 +6,10 @@ import { getDb } from "@/db";
 import { getCurrentUser } from "@/lib/user";
 import {
   approveRecommendationDecision,
+  deferRecommendationDecision,
   dismissAutomaticHoldNotice,
   rejectRecommendationDecision,
+  resumeRecommendationDecision,
 } from "@/services/recommendation-decisions";
 import { publishRecommendationProgramVersion } from "@/services/program-publication";
 import { createAutomaticSafetySnapshot } from "@/services/snapshots";
@@ -17,6 +19,8 @@ const approveSchema = z.object({
   recommendationId: z.string().uuid(),
   /** For load changes the user may tweak the number before approving. */
   editedToLoad: z.number().min(0).max(2000).optional(),
+  expectedReviewRevision: z.number().int().nonnegative(),
+  expectedDeferRevision: z.number().int().nonnegative(),
 });
 
 export async function approveRecommendation(
@@ -54,6 +58,8 @@ export async function approveRecommendation(
 const rejectSchema = z.object({
   recommendationId: z.string().uuid(),
   reason: z.string().max(500).optional(),
+  expectedReviewRevision: z.number().int().nonnegative(),
+  expectedDeferRevision: z.number().int().nonnegative(),
 });
 
 export async function rejectRecommendation(input: z.infer<typeof rejectSchema>) {
@@ -64,6 +70,40 @@ export async function rejectRecommendation(input: z.infer<typeof rejectSchema>) 
   if (!result.ok) return result;
   revalidatePath("/coach");
   revalidatePath("/today");
+  return result;
+}
+
+const deferSchema = z.object({
+  recommendationId: z.string().uuid(),
+  expectedReviewRevision: z.number().int().nonnegative(),
+  expectedDeferRevision: z.number().int().nonnegative(),
+  revisitOn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  reason: z.string().max(500).optional(),
+});
+
+export async function deferRecommendation(input: z.infer<typeof deferSchema>) {
+  const parsed = deferSchema.parse(input);
+  const user = await getCurrentUser();
+  const db = await getDb();
+  const result = await deferRecommendationDecision(db, user.id, parsed);
+  if (!result.ok) return result;
+  revalidatePath("/coach");
+  return result;
+}
+
+const resumeSchema = z.object({
+  recommendationId: z.string().uuid(),
+  expectedReviewRevision: z.number().int().nonnegative(),
+  expectedDeferRevision: z.number().int().nonnegative(),
+});
+
+export async function resumeRecommendation(input: z.infer<typeof resumeSchema>) {
+  const parsed = resumeSchema.parse(input);
+  const user = await getCurrentUser();
+  const db = await getDb();
+  const result = await resumeRecommendationDecision(db, user.id, parsed);
+  if (!result.ok) return result;
+  revalidatePath("/coach");
   return result;
 }
 

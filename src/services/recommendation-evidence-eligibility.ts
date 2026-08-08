@@ -17,6 +17,11 @@ import { classifySetMetricContainment } from "@/lib/set-metric-semantics";
 import { loadExercisePainHold } from "@/services/pain-hold";
 import type { PainHoldClassification } from "@/engine/progression/pain-hold";
 import { canonicalJson } from "@/services/snapshot-crypto";
+import { PAIN_EVIDENCE_ALGORITHM_VERSION } from "@/lib/pain-evidence";
+import {
+  parseRecommendationReviewEvidence,
+  withRecommendationReviewEvidence,
+} from "@/lib/review-evidence";
 
 type RecommendationEvidenceCandidate = {
   payload: RecommendationPayload;
@@ -262,7 +267,7 @@ export async function reconcilePendingPainRecommendations(
               : {}),
           }
         : {};
-    const evidence: RecommendationEvidence = {
+    const baseEvidence: RecommendationEvidence = {
       signals: {
         ...painHold.signals,
         ...substitutionDisplaySignals,
@@ -270,6 +275,27 @@ export async function reconcilePendingPainRecommendations(
       sessionIds: painHold.sessionIds,
       painLogIds: painHold.evidenceIds,
     };
+    const priorReview = parseRecommendationReviewEvidence(recommendation.evidence);
+    const priorBaseEvidence = { ...recommendation.evidence };
+    delete priorBaseEvidence.review;
+    const claimInputsUnchanged =
+      recommendation.ruleId === expectedRule &&
+      recommendation.reason === explanation &&
+      canonicalJson(recommendation.payload) === canonicalJson(payload) &&
+      canonicalJson(priorBaseEvidence) === canonicalJson(baseEvidence);
+    const evidence: RecommendationEvidence = withRecommendationReviewEvidence(baseEvidence, {
+      payload,
+      producer: "pain_consistency",
+      sourceVersion: PAIN_EVIDENCE_ALGORITHM_VERSION,
+      generatedAt:
+        claimInputsUnchanged && priorReview.success
+          ? new Date(priorReview.data.generatedAt)
+          : undefined,
+      limitations: [
+        "Only explicit cited pain reports were evaluated. Missing pain fields remain unknown.",
+        "This deterministic status has no confidence score and never diagnoses an injury.",
+      ],
+    });
     const changed =
       recommendation.ruleId !== expectedRule ||
       recommendation.reason !== explanation ||

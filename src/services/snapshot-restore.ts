@@ -54,6 +54,7 @@ import {
   LIMITATION_CAUSES,
   TECHNIQUE_ISSUES,
 } from "@/lib/set-exception-context";
+import { recommendationReviewEvidenceSchema } from "@/lib/review-evidence";
 
 export type SnapshotRestoreScope = "history" | "full";
 
@@ -67,6 +68,7 @@ const PRE_HISTORY_IDENTITY_SNAPSHOT_SCHEMA_VERSION = "25";
 const PRE_PERFORMED_SEMANTICS_SNAPSHOT_SCHEMA_VERSION = "26";
 const PRE_START_SEMANTICS_SNAPSHOT_SCHEMA_VERSION = "27";
 const PRE_EXCEPTION_CONTEXT_SNAPSHOT_SCHEMA_VERSION = "28";
+const PRE_REVIEW_SNAPSHOT_SCHEMA_VERSION = "29";
 
 type SnapshotRow = Record<string, unknown>;
 type RestoreRows = Record<string, SnapshotRow[]>;
@@ -552,6 +554,97 @@ function validateSetExceptionContext(payload: CanonicalSnapshotPayload) {
   }
 }
 
+function validIsoInstant(value: unknown) {
+  return typeof value === "string" &&
+    !Number.isNaN(new Date(value).getTime()) &&
+    new Date(value).toISOString() === value;
+}
+
+function validCalendarDate(value: unknown) {
+  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const parsed = new Date(`${value}T00:00:00.000Z`);
+  return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
+}
+
+function validNonnegativeRevision(value: unknown) {
+  return typeof value === "number" && Number.isInteger(value) && value >= 0;
+}
+
+function validateReviewState(payload: CanonicalSnapshotPayload) {
+  if (payload.schemaVersion !== SNAPSHOT_SCHEMA_VERSION) return;
+  const recommendationById = new Map(
+    rows(payload, "recommendations").map((recommendation) => [
+      String(recommendation.id),
+      recommendation,
+    ]),
+  );
+
+  for (const recommendation of recommendationById.values()) {
+    if (
+      !Object.hasOwn(recommendation, "review_revision") ||
+      !Object.hasOwn(recommendation, "defer_revision") ||
+      !Object.hasOwn(recommendation, "deferred_at") ||
+      !Object.hasOwn(recommendation, "revisit_on") ||
+      !Object.hasOwn(recommendation, "defer_reason") ||
+      !validNonnegativeRevision(recommendation.review_revision) ||
+      !validNonnegativeRevision(recommendation.defer_revision)
+    ) {
+      throw new Error("Snapshot recommendation is missing valid Review revision state.");
+    }
+    const deferred = recommendation.deferred_at != null;
+    const reason = recommendation.defer_reason;
+    if (
+      (!deferred && (recommendation.revisit_on != null || reason != null)) ||
+      (deferred && (
+        !validIsoInstant(recommendation.deferred_at) ||
+        recommendation.status !== "pending" ||
+        recommendation.archived_at != null ||
+        (recommendation.revisit_on != null && !validCalendarDate(recommendation.revisit_on)) ||
+        (reason != null && (
+          typeof reason !== "string" ||
+          reason.trim().length === 0 ||
+          reason.length > 500
+        ))
+      ))
+    ) {
+      throw new Error("Snapshot recommendation has incoherent deferred Review state.");
+    }
+    const evidence = recommendation.evidence as { review?: unknown } | null;
+    if (evidence?.review != null && !recommendationReviewEvidenceSchema.safeParse(evidence.review).success) {
+      throw new Error("Snapshot recommendation has invalid versioned Review evidence.");
+    }
+  }
+
+  for (const decision of rows(payload, "user_decisions")) {
+    if (!Object.hasOwn(decision, "review_snapshot")) {
+      throw new Error("Snapshot recommendation decision is missing its Review snapshot.");
+    }
+    const snapshot = decision.review_snapshot as SnapshotRow | null;
+    if (!snapshot || typeof snapshot !== "object" || Array.isArray(snapshot)) {
+      throw new Error("Snapshot recommendation decision has invalid Review evidence.");
+    }
+    if (snapshot.schemaVersion === "legacy-unknown") continue;
+    const embeddedEvidence = snapshot.evidence as { review?: unknown } | null;
+    if (
+      snapshot.schemaVersion !== "review-decision-v1" ||
+      snapshot.recommendationId !== decision.recommendation_id ||
+      !recommendationById.has(String(snapshot.recommendationId)) ||
+      !validNonnegativeRevision(snapshot.reviewRevision) ||
+      !validNonnegativeRevision(snapshot.deferRevision) ||
+      !validIsoInstant(snapshot.recordedAt) ||
+      !["supported", "contradictory", "unsupported", "stale"].includes(String(snapshot.evidenceState)) ||
+      !["rule", "ai"].includes(String(snapshot.source)) ||
+      (snapshot.ruleId != null && typeof snapshot.ruleId !== "string") ||
+      typeof snapshot.reason !== "string" ||
+      !snapshot.payload || typeof snapshot.payload !== "object" || Array.isArray(snapshot.payload) ||
+      !embeddedEvidence || typeof embeddedEvidence !== "object" ||
+      !recommendationReviewEvidenceSchema.safeParse(embeddedEvidence.review).success
+    ) {
+      throw new Error("Snapshot recommendation decision has invalid versioned Review evidence.");
+    }
+  }
+}
+
 function isNonnegativeInteger(value: unknown) {
   return typeof value === "number" && Number.isInteger(value) && value >= 0;
 }
@@ -761,6 +854,7 @@ export function upgradeSnapshotPayload(
     PRE_PERFORMED_SEMANTICS_SNAPSHOT_SCHEMA_VERSION,
     PRE_START_SEMANTICS_SNAPSHOT_SCHEMA_VERSION,
     PRE_EXCEPTION_CONTEXT_SNAPSHOT_SCHEMA_VERSION,
+    PRE_REVIEW_SNAPSHOT_SCHEMA_VERSION,
     SNAPSHOT_SCHEMA_VERSION,
   ]);
   if (!supported.has(payload.schemaVersion)) {
@@ -777,6 +871,7 @@ export function upgradeSnapshotPayload(
     validateStartAndPrescribedSemantics(upgraded);
     validateSetExceptionContext(upgraded);
     validateHistoryIdentityAndTiming(upgraded);
+    validateReviewState(upgraded);
     return upgraded;
   }
 
@@ -837,6 +932,7 @@ export function upgradeSnapshotPayload(
       PRE_PERFORMED_SEMANTICS_SNAPSHOT_SCHEMA_VERSION,
       PRE_START_SEMANTICS_SNAPSHOT_SCHEMA_VERSION,
       PRE_EXCEPTION_CONTEXT_SNAPSHOT_SCHEMA_VERSION,
+      PRE_REVIEW_SNAPSHOT_SCHEMA_VERSION,
       SNAPSHOT_SCHEMA_VERSION,
     ].includes(upgraded.schemaVersion)
   ) {
@@ -1076,6 +1172,14 @@ export function upgradeSnapshotPayload(
         ? "Expired before versioned Program reconciliation; the original reason was not recorded."
         : null;
     recommendation.reconciled_by_program_version_id ??= null;
+    recommendation.review_revision ??= 0;
+    recommendation.defer_revision ??= 0;
+    recommendation.deferred_at ??= null;
+    recommendation.revisit_on ??= null;
+    recommendation.defer_reason ??= null;
+  }
+  for (const decision of rows(upgraded, "user_decisions")) {
+    decision.review_snapshot ??= { schemaVersion: "legacy-unknown" };
   }
   for (const audit of rows(upgraded, "audit_logs")) {
     audit.idempotency_key ??= null;
@@ -1110,6 +1214,7 @@ export function upgradeSnapshotPayload(
   validateStartAndPrescribedSemantics(upgraded);
   validateSetExceptionContext(upgraded);
   validateHistoryIdentityAndTiming(upgraded);
+  validateReviewState(upgraded);
   return upgraded;
 }
 
@@ -1886,6 +1991,7 @@ export function validateSnapshotPayload(
       PRE_PERFORMED_SEMANTICS_SNAPSHOT_SCHEMA_VERSION,
       PRE_START_SEMANTICS_SNAPSHOT_SCHEMA_VERSION,
       PRE_EXCEPTION_CONTEXT_SNAPSHOT_SCHEMA_VERSION,
+      PRE_REVIEW_SNAPSHOT_SCHEMA_VERSION,
       SNAPSHOT_SCHEMA_VERSION,
     ].includes(payload.schemaVersion)
   ) {
@@ -1925,6 +2031,7 @@ export function validateSnapshotPayload(
       PRE_PERFORMED_SEMANTICS_SNAPSHOT_SCHEMA_VERSION,
       PRE_START_SEMANTICS_SNAPSHOT_SCHEMA_VERSION,
       PRE_EXCEPTION_CONTEXT_SNAPSHOT_SCHEMA_VERSION,
+      PRE_REVIEW_SNAPSHOT_SCHEMA_VERSION,
       SNAPSHOT_SCHEMA_VERSION,
     ].includes(payload.schemaVersion)
   ) {
@@ -2081,6 +2188,7 @@ export function validateSnapshotPayload(
       PRE_PERFORMED_SEMANTICS_SNAPSHOT_SCHEMA_VERSION,
       PRE_START_SEMANTICS_SNAPSHOT_SCHEMA_VERSION,
       PRE_EXCEPTION_CONTEXT_SNAPSHOT_SCHEMA_VERSION,
+      PRE_REVIEW_SNAPSHOT_SCHEMA_VERSION,
       SNAPSHOT_SCHEMA_VERSION,
     ].includes(payload.schemaVersion)
   ) {
@@ -2238,6 +2346,7 @@ export function validateSnapshotPayload(
     validateUnitAndCalendarIdentity(payload);
     validateStartAndPrescribedSemantics(payload);
     validateSetExceptionContext(payload);
+    validateReviewState(payload);
     validateVersionedProgramData(payload);
     validateSessionCompilerIdentity(payload);
     validateSessionOccurrenceData(payload);

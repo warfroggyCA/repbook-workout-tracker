@@ -164,6 +164,30 @@ export default async function CoachPage() {
           )
         : [],
       evidence: buildReviewEvidenceItems(recommendation.evidence, loadUnit),
+      reviewRevision: recommendation.reviewRevision,
+      deferRevision: recommendation.deferRevision,
+      deferredAt: recommendation.deferredAt?.toISOString() ?? null,
+      revisitOn: recommendation.revisitOn,
+      deferReason: recommendation.deferReason,
+      createdAt: recommendation.createdAt.toISOString(),
+      createdAtLabel: new Intl.DateTimeFormat("en-CA", {
+        dateStyle: "medium",
+        timeStyle: "short",
+        timeZone: user.profile.timezone,
+      }).format(recommendation.createdAt),
+      evidenceState: recommendation.reviewEvidence.state,
+      evidenceExplanation: recommendation.reviewEvidence.explanation,
+      evidenceLinks: recommendation.reviewEvidence.links,
+      actionable: recommendation.reviewEvidence.actionable,
+      producer: recommendation.reviewEvidence.metadata?.producer ?? null,
+      sourceVersion: recommendation.reviewEvidence.metadata?.sourceVersion ?? null,
+      generatedAt: recommendation.reviewEvidence.metadata?.generatedAt ?? null,
+      limitations: recommendation.reviewEvidence.metadata?.limitations ?? [
+        "The complete versioned evidence contract was not retained for this proposal.",
+      ],
+      proposedEffect:
+        recommendation.reviewEvidence.metadata?.proposedEffect.summary ??
+        "No supported future effect can be applied from this retained proposal.",
     };
   };
 
@@ -217,7 +241,7 @@ export default async function CoachPage() {
         ) : (
           review.pending.map((recommendation) => (
             <RecommendationCard
-              key={recommendation.id}
+              key={`${recommendation.id}:${recommendation.reviewRevision}:${recommendation.deferRevision}`}
               rec={toCardData(recommendation)}
               loadStep={
                 recommendation.payload.kind === "load_change" &&

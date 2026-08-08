@@ -32,6 +32,10 @@ import {
   type TestDatabase,
 } from "../helpers/database";
 import { createTotalSystemTestSnapshot } from "../helpers/set-semantics";
+import {
+  PROGRESSION_REVIEW_SOURCE_VERSION,
+  withRecommendationReviewEvidence,
+} from "@/lib/review-evidence";
 
 describe("Review and decisions presentation contracts", () => {
   it("presents stored evidence without inventing confidence or hidden signals", () => {
@@ -219,17 +223,29 @@ describe("Review outcome readiness", () => {
         sourceSlotLineageId: slot.lineageId,
         payload,
         reason: "Exact follow-up fixture",
-        evidence: {
+        evidence: withRecommendationReviewEvidence({
           signals: { cleanExposures: 2, fromLoad, toLoad },
           sessionIds: [evidenceSessionId],
           setIds: evidenceSets.map((set) => set.id),
-        },
+        }, {
+          payload,
+          producer: "progression_rules",
+          sourceVersion: PROGRESSION_REVIEW_SOURCE_VERSION,
+        }),
       })
-      .returning({ id: recommendations.id });
+      .returning({
+        id: recommendations.id,
+        reviewRevision: recommendations.reviewRevision,
+        deferRevision: recommendations.deferRevision,
+      });
     const approved = await approveRecommendationDecision(
       database.db,
       userId,
-      { recommendationId: recommendation.id },
+      {
+        recommendationId: recommendation.id,
+        expectedReviewRevision: recommendation.reviewRevision,
+        expectedDeferRevision: recommendation.deferRevision,
+      },
       { publishProgramVersion: publishRecommendationProgramVersion }
     );
     if (!approved.ok) throw new Error(approved.reason);
@@ -727,21 +743,41 @@ describe("Review outcome readiness", () => {
         sourceSlotLineageId: current.slot.lineageId,
         payload,
         reason: "Unsafe assisted fixture",
-        evidence: {
+        evidence: withRecommendationReviewEvidence({
           sessionIds: [sessionId],
           setIds: [evidenceSet.id],
           signals: {},
-        },
+        }, {
+          payload,
+          producer: "progression_rules",
+          sourceVersion: PROGRESSION_REVIEW_SOURCE_VERSION,
+        }),
       })
-      .returning({ id: recommendations.id });
+      .returning({
+        id: recommendations.id,
+        reviewRevision: recommendations.reviewRevision,
+        deferRevision: recommendations.deferRevision,
+      });
 
-    expect((await getReviewDecisionData(database.db, userId)).pending).toEqual([]);
+    expect((await getReviewDecisionData(database.db, userId)).pending).toEqual([
+      expect.objectContaining({
+        id: recommendation.id,
+        reviewEvidence: expect.objectContaining({
+          state: "stale",
+          actionable: false,
+        }),
+      }),
+    ]);
     let publicationCalled = false;
     await expect(
       approveRecommendationDecision(
         database.db,
         userId,
-        { recommendationId: recommendation.id },
+        {
+          recommendationId: recommendation.id,
+          expectedReviewRevision: recommendation.reviewRevision,
+          expectedDeferRevision: recommendation.deferRevision,
+        },
         {
           publishProgramVersion: async () => {
             publicationCalled = true;
@@ -752,7 +788,7 @@ describe("Review outcome readiness", () => {
     ).resolves.toEqual({
       ok: false,
       reason:
-        "This load recommendation no longer has comparable completed-set evidence and cannot be applied.",
+        "The cited facts or current Program changed after this proposal was created. It cannot be applied without a fresh proposal.",
     });
     expect(publicationCalled).toBe(false);
   });

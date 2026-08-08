@@ -120,8 +120,8 @@ describe("Repbook v2 ratified semantic contract", () => {
       schemaVersion: 1,
       contractVersion: V2_CONTRACT_VERSION,
       exactBaseCommit: "2c9ab1b9478502f1d08956a6c44dfb0850c8f168",
-      currentPackage: "H04",
-      currentPackageBaseCommit: "e618f3836ed5aabb779d7ad6bf4b69d1ece859ce",
+      currentPackage: "H05",
+      currentPackageBaseCommit: "ed34623b5aab89d5c4bd500f70e3a3c972b8a815",
       productBehaviorImplementedByP02: false,
       implementedProductPackages: [
         "T01",
@@ -137,6 +137,7 @@ describe("Repbook v2 ratified semantic contract", () => {
         "H02",
         "H03",
         "H04",
+        "H05",
       ],
     });
     expect(matrix.columns).toEqual(columns);
@@ -158,6 +159,13 @@ describe("Repbook v2 ratified semantic contract", () => {
       testPath: "tests/e2e/v2-h04-pain-consistency.spec.ts",
       command:
         "npx playwright test --config=playwright.v2-h04.config.ts tests/e2e/v2-h04-pain-consistency.spec.ts --project=desktop-chromium && V2_H04_PORT=3146 npx playwright test --config=playwright.v2-h04.config.ts tests/e2e/v2-h04-pain-consistency.spec.ts --project=narrow-mobile-webkit",
+    });
+    expect(matrix.verifications["H05-browser"]).toMatchObject({
+      status: "current",
+      implementingPackage: "H05",
+      testPath: "tests/e2e/v2-h05-evidence-linked-review.spec.ts",
+      command:
+        "npx playwright test --config=playwright.v2-h05.config.ts tests/e2e/v2-h05-evidence-linked-review.spec.ts --project=desktop-chromium && V2_H05_PORT=3148 npx playwright test --config=playwright.v2-h05.config.ts tests/e2e/v2-h05-evidence-linked-review.spec.ts --project=narrow-mobile-webkit",
     });
     expect(matrix.verifications["U02-browser"]).toMatchObject({
       status: "current",

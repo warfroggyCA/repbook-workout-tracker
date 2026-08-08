@@ -664,12 +664,12 @@ async function verifyReviewAndDecisions({
     pendingRegion.getByText("Automatic status", { exact: true })
   ).toHaveCount(1);
   await expect(
-    pendingRegion.getByRole("heading", { name: "Evidence on record", exact: true })
+    pendingRegion.getByRole("heading", { name: "Observed basis", exact: true })
   ).toHaveCount(2);
   await expect(
-    pendingRegion.getByRole("heading", { name: "Confidence", exact: true })
-  ).toHaveCount(1);
-  await expect(pendingRegion.getByText("Not scored", { exact: true })).toHaveCount(1);
+    pendingRegion.locator("dt").filter({ hasText: "Confidence" })
+  ).toHaveCount(2);
+  await expect(pendingRegion.getByText("Not scored", { exact: true })).toHaveCount(2);
   await expect(pendingRegion.getByText("Linked completed workouts")).toHaveCount(2);
   const benchHold = pendingRegion
     .locator("section")
@@ -887,6 +887,10 @@ async function verifyReviewAndDecisions({
   await decrease.press("Tab");
   await expect(
     squatDecision.getByRole("button", { name: "Increase load", exact: true })
+  ).toBeFocused();
+  await page.keyboard.press("Tab");
+  await expect(
+    squatDecision.getByText("Decide later", { exact: true })
   ).toBeFocused();
   await page.keyboard.press("Tab");
   await expect(
@@ -2480,7 +2484,7 @@ test("downloads one canonical full backup with intact workout relationships", as
     canonical: { tables: Record<string, Array<Record<string, unknown>>> };
   };
   expect(backup.format).toBe("workout-tracker-canonical-backup");
-  expect(backup.schemaVersion).toBe("29");
+  expect(backup.schemaVersion).toBe("30");
   expect(backup.canonical.tables.users).toHaveLength(1);
   expect(backup.canonical.tables.workout_sessions.length).toBeGreaterThan(0);
   expect(backup.recordCounts.workout_sessions).toBe(

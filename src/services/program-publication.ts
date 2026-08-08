@@ -11,6 +11,7 @@ import {
   programVersions,
   recommendations,
   type RecommendationPayload,
+  type ReviewDecisionSnapshot,
 } from "@/db/schema";
 import { progressionConfig as cfg } from "@/engine/progression/config";
 import {
@@ -31,6 +32,7 @@ import { getCurrentProgramDocument } from "@/services/program-documents";
 import { canonicalJson, sha256Hex } from "@/services/snapshot-crypto";
 import { loadProgramPreflightContext } from "@/services/program-preflight";
 import { eligibleAutomaticProgressionSql } from "@/lib/set-metric-semantics-sql";
+import { resolveReviewEvidence } from "@/services/review-evidence";
 
 type PublicationMode = "editor" | "restore" | "recommendation";
 
@@ -39,6 +41,9 @@ type RecommendationPublication = {
   expectedPayload: RecommendationPayload;
   appliedPayload: RecommendationPayload;
   decision: "approve" | "edit";
+  expectedReviewRevision: number;
+  expectedDeferRevision: number;
+  reviewSnapshot: ReviewDecisionSnapshot;
   /** Test-only transaction failure injection. */
   failureAt?: string;
 };
@@ -344,6 +349,9 @@ async function publishDocumentAtomically(
         AND recommendation.user_id = ${userId}::uuid
         AND recommendation.status = 'pending'
         AND recommendation.archived_at IS NULL
+        AND recommendation.review_revision = ${recommendation?.expectedReviewRevision ?? -1}::int
+        AND recommendation.defer_revision = ${recommendation?.expectedDeferRevision ?? -1}::int
+        AND recommendation.deferred_at IS NULL
         AND recommendation.payload = ${expectedPayload}::jsonb
         AND day.program_version_id = program.current_version_id
         AND recommendation.source_slot_lineage_id = slot.lineage_id
@@ -711,10 +719,11 @@ async function publishDocumentAtomically(
         AND EXISTS (SELECT 1 FROM new_version)
       RETURNING recommendation.*
     ), recorded_decision AS (
-      INSERT INTO user_decisions (id, recommendation_id, decision, edited_payload)
+      INSERT INTO user_decisions (id, recommendation_id, decision, edited_payload, review_snapshot)
       SELECT ${decisionId}::uuid, claimed.id,
              ${recommendation?.decision ?? "approve"}::decision,
-             CASE WHEN ${recommendation?.decision === "edit"}::boolean THEN ${appliedPayload}::jsonb ELSE NULL END
+             CASE WHEN ${recommendation?.decision === "edit"}::boolean THEN ${appliedPayload}::jsonb ELSE NULL END,
+             ${JSON.stringify(recommendation?.reviewSnapshot ?? { schemaVersion: "legacy-unknown" })}::jsonb
       FROM claimed_recommendation claimed
       RETURNING id
     ), recorded_adaptation AS (
@@ -871,6 +880,29 @@ export async function publishRecommendationProgramVersion(
   ]);
   if (!recommendation) return { ok: false, reason: "not_pending" };
   if (!current || !program || !recommendation.sourceSlotLineageId) return { ok: false, reason: "stale" };
+  const reviewSnapshot = input.reviewSnapshot;
+  if (
+    recommendation.deferredAt != null ||
+    recommendation.reviewRevision !== input.expectedReviewRevision ||
+    recommendation.deferRevision !== input.expectedDeferRevision ||
+    reviewSnapshot.schemaVersion !== "review-decision-v1" ||
+    reviewSnapshot.recommendationId !== recommendation.id ||
+    reviewSnapshot.reviewRevision !== recommendation.reviewRevision ||
+    reviewSnapshot.deferRevision !== recommendation.deferRevision ||
+    reviewSnapshot.evidenceState !== "supported" ||
+    reviewSnapshot.source !== recommendation.source ||
+    reviewSnapshot.ruleId !== recommendation.ruleId ||
+    reviewSnapshot.reason !== recommendation.reason ||
+    canonicalJson(reviewSnapshot.payload) !== canonicalJson(recommendation.payload) ||
+    canonicalJson(reviewSnapshot.evidence) !== canonicalJson(recommendation.evidence) ||
+    Number.isNaN(new Date(reviewSnapshot.recordedAt).getTime())
+  ) {
+    return { ok: false, reason: "invalid" };
+  }
+  const evidenceAssessment = await resolveReviewEvidence(db, userId, recommendation);
+  if (!evidenceAssessment.actionable) {
+    return { ok: false, reason: "invalid" };
+  }
   const document = structuredClone(current);
   let found = false;
   for (const day of document.days) {
