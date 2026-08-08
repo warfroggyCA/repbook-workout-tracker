@@ -29,5 +29,17 @@ server. User-specific responses are not shared-cacheable. Logs and client error
 messages are redacted. Imports, exports, snapshots, restore, archive, and
 permanent deletion validate authorization and preserve audit boundaries.
 
+Versioned analysis packages are prepared only after an authenticated,
+same-origin owner request. The server allowlists purpose-bounded fields and
+omits account identity, raw provider or AI material, private contextual notes,
+operational data, and recovery material. The exact package is previewed and
+downloaded locally without automatic provider transmission or detailed server
+retention. Repbook stores only a digest-and-source receipt with a maximum
+30-day trust window; owner deletion physically removes it. These operational
+receipts are excluded from snapshots and restore, and the existing privacy-
+retention job deletes them at expiry. The question-specific allowlist omits
+unneeded domains, and session-equipment snapshots stay outside the package
+until their separate semantic preparation is complete.
+
 Security reports use the private process in `SECURITY.md`; public issues must
 contain synthetic data only.

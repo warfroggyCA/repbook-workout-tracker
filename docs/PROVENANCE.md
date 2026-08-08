@@ -19,6 +19,12 @@ Application source, schema, migrations, and runtime tests otherwise come from
 the mapped private commit. Future public changes are reviewed normally through
 protected pull requests.
 
+Owner-generated analysis exports carry their own package, schema, semantic,
+canonicalization, and digest versions plus stable source IDs and revisions.
+These package-level bindings establish which retained facts were selected; they
+do not convert external or calculated material into performed evidence, an
+owner decision, or an accepted Program adaptation.
+
 The first public `fix/pain-hold-truth` commit maps the application and test
 changes from private source commit
 `f308ead8c8ef27430707c5aa5651b97808ccfab6`. Private release-record and

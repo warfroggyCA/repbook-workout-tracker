@@ -27,7 +27,7 @@ npm run docs:check
 npm run audit:check
 ```
 
-The Repbook v2 semantic foundation and current T01/T02/T03/T04/T05/T06/U01/U02/U03/H01/H02/H03/H04 activation
+The Repbook v2 semantic foundation and current T01/T02/T03/T04/T05/T06/U01/U02/U03/H01/H02/H03/H04/A01 activation
 packages have focused gates:
 
 ```bash
@@ -59,6 +59,8 @@ npx vitest run tests/unit/v2-h03-evidence-identity-db.test.ts tests/unit/v2-h03-
 npm run test:e2e:v2-h03
 npx vitest run tests/unit/v2-h04-pain-consistency.test.ts tests/unit/v2-h04-pain-consistency-db.test.ts tests/unit/v2-u02-exception-context-adversarial.test.ts tests/unit/v2-u02-exception-context-portability.test.ts tests/unit/v2-u02-exception-context-restore.test.ts
 npm run test:e2e:v2-h04
+npx vitest run tests/unit/analysis-package-db.test.ts tests/unit/recovery-manifest-db.test.ts --maxWorkers=1 --no-file-parallelism
+npm run test:e2e:v2-a01
 ```
 
 The semantic test validates all synthetic F01-F17 scenarios and every required
@@ -140,7 +142,16 @@ finish journey. It runs against independent disposable desktop, tall-phone, and
 errors. Recovery manifest 11 also makes History-only restore monotonic for
 owner decisions and accepted adaptations: it cannot downgrade a later terminal
 recommendation or resurrect an older pending proposal. Snapshot schema 30 and
-the durable table inventory are unchanged.
+the durable table inventory are unchanged. A01 activates a complete,
+purpose-bounded, versioned owner export, a canonical digest, exact
+preview/download bytes, privacy-minimal owner-scoped manifests, physical owner
+deletion, explicit omissions, and separated fact, calculation, recommendation,
+decision, and adaptation domains. Its desktop and independent 320 by 700
+WebKit journey at 145% text proves no external request, exact download equality,
+owner deletion, accessibility, and no horizontal overflow. Migration 0075 adds
+only the manifest receipt; recovery manifest 12 excludes that operational
+receipt from snapshot schema 30 and restore, while the existing privacy-
+retention job physically removes expired receipts.
 
 `audit:check` requires a clean production dependency audit and also reviews the
 complete development-tool tree. Any temporary development-only exception is
@@ -180,6 +191,7 @@ npm run test:e2e:v2-h03
 npm run test:e2e:v2-h04
 npm run test:e2e:v2-h05
 npm run test:e2e:v2-gauntlet-b
+npm run test:e2e:v2-a01
 ```
 
 Run the smallest affected browser suite first, then the complete protected

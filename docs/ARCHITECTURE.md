@@ -542,3 +542,48 @@ remains authoritative while workout history is restored. Preview fingerprints,
 transaction rollback, and retry remain fail-closed. Full restore semantics are
 unchanged. Gauntlet B adds no schema migration, snapshot-shape change, historical
 repair, production action, or automatic Program decision.
+
+## A01 versioned analysis-package contract
+
+A01 adds an owner-controlled export at `/export/analysis` for one closed
+analysis question and a selected 28-, 84-, or 182-day evidence window. One
+repeatable-read snapshot supplies the complete package. The server allowlists
+Program intent, exercise identity, completed or imported evidence, independent
+activity context, calculated metrics, recommendation proposals, owner
+decisions, and accepted future adaptations as separate domains. Stable source
+IDs, revisions, local dates, IANA timezone, units, load meaning, provenance,
+evidence quality, unknown states, inventory counts, and omission reasons travel
+with those values. Current catalogue or Program metadata never repairs missing
+historical meaning.
+
+The question policy is an allowlist, not only a label. Program progress omits
+independent activities; recovery and constraints omits general equipment
+configuration; training consistency keeps workout timing, Program cadence, and
+independent activity context while omitting detailed sets, recovery notes,
+equipment, and recommendation state. Every such omission is counted and
+explained. Legacy `target_met` projections live only in the calculated-metrics
+domain and are explicitly labelled as legacy or unknown, never as performed
+set evidence. Performed session-equipment snapshots remain omitted until their
+separate semantic preparation is complete; A01 does not export dangling
+equipment-snapshot identifiers.
+
+The package uses schema `analysis-package/1`, semantic version `repbook-v2/1`,
+and canonicalization `repbook-canonical-json/1`. The SHA-256 digest covers the
+canonical package core. The exact human-readable JSON shown in preview is the
+same byte sequence downloaded by the owner; Repbook makes no provider request
+and retains no detailed copy.
+
+Migration `0075_analysis_package_manifest` adds an owner-scoped, privacy-minimal
+receipt containing only versions, digest, scope, inventory, source bindings,
+creation and evidence-cutoff times, and a maximum 30-day trust expiry. Owner
+deletion physically removes the receipt and bindings. Expired or absent
+receipts cannot support a later import, and the established privacy-retention
+job deletes expired receipts. Recovery manifest 12 classifies these
+receipts as operational and excludes them from snapshots and restore, so
+recovery cannot revive expired trust. Snapshot schema 30 and historical workout
+facts remain unchanged.
+
+A01 does not send the package to an external system, retain provider output,
+import analysis, create a recommendation or decision, change Program intent,
+rewrite history, or access production. Those later boundaries are separate
+owner-gated packages.

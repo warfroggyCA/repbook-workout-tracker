@@ -36,10 +36,10 @@ describe("versioned recovery ownership manifest", () => {
     ).map((row) => String(row.table_name));
     const manifested = RECOVERY_TABLE_MANIFEST.map((item) => item.table).sort();
 
-    expect(RECOVERY_MANIFEST_VERSION).toBe(11);
+    expect(RECOVERY_MANIFEST_VERSION).toBe(12);
     expect(new Set(manifested).size).toBe(manifested.length);
     expect(manifested).toEqual(tables);
-    expect(RECOVERY_TABLE_MANIFEST).toHaveLength(64);
+    expect(RECOVERY_TABLE_MANIFEST).toHaveLength(65);
     for (const item of RECOVERY_TABLE_MANIFEST) {
       expect(item.ownershipPath.length).toBeGreaterThan(0);
       expect(item.archiveBehavior.length).toBeGreaterThan(0);
@@ -56,6 +56,7 @@ describe("versioned recovery ownership manifest", () => {
       )
     ).toEqual([
       ["ai_usage_events", "excluded_operational"],
+      ["analysis_package_manifests", "excluded_operational"],
       ["expensive_operation_leases", "excluded_operational"],
       ["permanent_delete_grants", "excluded_security"],
     ]);

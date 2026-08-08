@@ -32,6 +32,9 @@ Before application changes, read:
   derived conclusions where required.
 - Never add an automatic Program mutation. Recommendations remain
   approval-gated.
+- External-analysis packages are owner-selected, purpose-bounded, versioned,
+  previewable, and downloaded without automatic transmission. Package contents
+  never become performed facts, recommendations, decisions, or Program changes.
 - Schema work is additive. Never edit an applied migration or silently rewrite
   historical rows.
 
