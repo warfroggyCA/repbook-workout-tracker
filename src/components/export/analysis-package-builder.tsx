@@ -18,6 +18,7 @@ import {
   EXTERNAL_ANALYSIS_RESPONSE_SCHEMA_VERSION,
 } from "@/lib/external-analysis-versions";
 import { Button } from "@/components/ui/button";
+import { ExternalAnalysisResponseValidator } from "@/components/export/external-analysis-response-validator";
 import {
   Card,
   CardContent,
@@ -271,9 +272,10 @@ export function AnalysisPackageBuilder({
                 <p className="font-medium">Typed, but still untrusted</p>
                 <p className="text-muted-foreground">
                   Repbook can define and validate the response contract, but the
-                  later paste/upload flow is not available yet. Review the
-                  external provider&apos;s privacy and retention settings before
-                  sharing this package.
+                  paste/upload validator below can now check this exact package
+                  receipt and show a transient preview. It still cannot import,
+                  accept, or apply anything. Review the external provider&apos;s
+                  privacy and retention settings before sharing this package.
                 </p>
               </div>
               <pre
@@ -295,6 +297,8 @@ export function AnalysisPackageBuilder({
           </Card>
         </>
       ) : null}
+
+      <ExternalAnalysisResponseValidator />
 
       <Card>
         <CardHeader>

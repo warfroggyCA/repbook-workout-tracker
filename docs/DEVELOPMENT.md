@@ -27,7 +27,7 @@ npm run docs:check
 npm run audit:check
 ```
 
-The Repbook v2 semantic foundation and current T01/T02/T03/T04/T05/T06/U01/U02/U03/H01/H02/H03/H04/A01/A02 activation
+The Repbook v2 semantic foundation and current T01/T02/T03/T04/T05/T06/U01/U02/U03/H01/H02/H03/H04/A01/A02/A03/A04 activation
 packages have focused gates:
 
 ```bash
@@ -63,6 +63,10 @@ npx vitest run tests/unit/analysis-package-db.test.ts tests/unit/recovery-manife
 npm run test:e2e:v2-a01
 npx vitest run tests/unit/v2-a02-external-ai-instructions.test.ts
 npm run test:e2e:v2-a02
+npx vitest run tests/unit/v2-a03-external-analysis-response.test.ts
+npm run test:e2e:v2-a03
+npx vitest run tests/unit/v2-a04-external-analysis-validation.test.ts --maxWorkers=1 --no-file-parallelism
+npm run test:e2e:v2-a04
 ```
 
 The semantic test validates all synthetic F01-F17 scenarios and every required
@@ -169,6 +173,15 @@ desktop and narrow WebKit journey proves the exact downloaded instructions bind
 the current package and describe the strict future-review-only response shape.
 A03 adds no import UI, durable response, migration, recommendation, decision,
 adaptation, or Program write.
+A04 activates the transient untrusted-input boundary. Raw response bytes, JSON
+media and UTF-8, nesting depth, active or display-unsafe text, the owner-scoped
+manifest, expiry, exact Program/version precondition, closed A03 bindings,
+evidence IDs, units, and effects all fail closed before preview. Desktop and
+independent narrow WebKit journeys exercise paste and file paths, exact
+plain-text preview, active-content refusal, untouched local recovery download,
+discard, accessibility, and overflow. Validation retains and imports nothing,
+adds no migration or snapshot shape, and creates no recommendation, decision,
+adaptation, or Program write.
 
 `audit:check` requires a clean production dependency audit and also reviews the
 complete development-tool tree. Any temporary development-only exception is
@@ -210,6 +223,8 @@ npm run test:e2e:v2-h05
 npm run test:e2e:v2-gauntlet-b
 npm run test:e2e:v2-a01
 npm run test:e2e:v2-a02
+npm run test:e2e:v2-a03
+npm run test:e2e:v2-a04
 ```
 
 Run the smallest affected browser suite first, then the complete protected

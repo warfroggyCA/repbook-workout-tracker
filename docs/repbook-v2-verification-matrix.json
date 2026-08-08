@@ -5,8 +5,8 @@
   "repositoryRole": "public application source",
   "exactBaseCommit": "2c9ab1b9478502f1d08956a6c44dfb0850c8f168",
   "fixtureCatalogue": "tests/fixtures/v2/semantic-scenarios.json",
-  "currentPackage": "A03",
-  "currentPackageBaseCommit": "3d470867dc6e361a8c6fa96ed5539783905413e1",
+  "currentPackage": "A04",
+  "currentPackageBaseCommit": "b0e97aed8d486226d97f580afe34426c645fbe9f",
   "productBehaviorImplementedByP02": false,
   "implementedProductPackages": [
     "T01",
@@ -25,7 +25,8 @@
     "H05",
     "A01",
     "A02",
-    "A03"
+    "A03",
+    "A04"
   ],
   "milestoneEvidence": {
     "gauntletA": {
@@ -628,39 +629,39 @@
       "proves": "must pass in the same package that implements this product meaning"
     },
     "A04-databaseService": {
-      "status": "future_activation",
+      "status": "current",
       "implementingPackage": "A04",
-      "testPath": "tests/unit/v2-a04-ai-import-validation-db.test.ts",
-      "command": "npx vitest run tests/unit/v2-a04-ai-import-validation-db.test.ts",
-      "proves": "must pass in the same package that implements this product meaning"
+      "testPath": "tests/unit/v2-a04-external-analysis-validation.test.ts",
+      "command": "npx vitest run tests/unit/v2-a04-external-analysis-validation.test.ts --maxWorkers=1 --no-file-parallelism",
+      "proves": "an authenticated owner can validate only against the exact active owner-scoped manifest; absent, expired, cross-owner, malformed, or stale-Program receipts fail closed without retaining a response or creating a recommendation, decision, adaptation, or Program write"
     },
     "A04-browser": {
-      "status": "future_activation",
+      "status": "current",
       "implementingPackage": "A04",
-      "testPath": "tests/e2e/v2-a04-ai-import-validation.spec.ts",
-      "command": "npx playwright test tests/e2e/v2-a04-ai-import-validation.spec.ts",
-      "proves": "must pass in the same package that implements this product meaning"
+      "testPath": "tests/e2e/v2-a04-ai-response-validation.spec.ts",
+      "command": "npx playwright test --config=playwright.v2-a04.config.ts tests/e2e/v2-a04-ai-response-validation.spec.ts",
+      "proves": "desktop Chromium and independent narrow WebKit paste or upload JSON, preview exact plain text and future-only effects, reject active content, download the untouched original input, discard transient state, and retain accessible no-overflow layout"
     },
     "A04-exportImport": {
-      "status": "future_activation",
+      "status": "current",
       "implementingPackage": "A04",
-      "testPath": "tests/unit/v2-a04-ai-import-validation-portability.test.ts",
-      "command": "npx vitest run tests/unit/v2-a04-ai-import-validation-portability.test.ts",
-      "proves": "must pass in the same package that implements this product meaning"
+      "testPath": "tests/unit/v2-a04-external-analysis-validation.test.ts",
+      "command": "npx vitest run tests/unit/v2-a04-external-analysis-validation.test.ts --maxWorkers=1 --no-file-parallelism",
+      "proves": "the minimal A01 manifest supplies exact versions, digest, question, evidence IDs, expiry, and current Program precondition for response validation without a retained raw package or any import side effect"
     },
     "A04-restoreRollback": {
-      "status": "future_activation",
+      "status": "current",
       "implementingPackage": "A04",
-      "testPath": "tests/unit/v2-a04-ai-import-validation-restore.test.ts",
-      "command": "npx vitest run tests/unit/v2-a04-ai-import-validation-restore.test.ts",
-      "proves": "must pass in the same package that implements this product meaning"
+      "testPath": "tests/unit/v2-a04-external-analysis-validation.test.ts",
+      "command": "npx vitest run tests/unit/v2-a04-external-analysis-validation.test.ts --maxWorkers=1 --no-file-parallelism",
+      "proves": "validation creates no durable response to restore, the operational manifest remains excluded from snapshot schema 30, and the response identity is absent from captured recovery data"
     },
     "A04-adversarialPrivacy": {
-      "status": "future_activation",
+      "status": "current",
       "implementingPackage": "A04",
-      "testPath": "tests/unit/v2-a04-ai-import-validation-adversarial.test.ts",
-      "command": "npx vitest run tests/unit/v2-a04-ai-import-validation-adversarial.test.ts",
-      "proves": "must pass in the same package that implements this product meaning"
+      "testPath": "tests/unit/v2-a04-external-analysis-validation.test.ts",
+      "command": "npx vitest run tests/unit/v2-a04-external-analysis-validation.test.ts --maxWorkers=1 --no-file-parallelism",
+      "proves": "wrong media, malformed UTF-8 or JSON, excessive nesting, active or display-unsafe text, cross-owner manifests, stale Programs, and invalid manifest metadata fail closed before a trusted preview"
     },
     "D02-databaseService": {
       "status": "future_activation",
@@ -1942,6 +1943,7 @@
     "Gauntlet B current status means the complete enlarged-text live-workout recovery journey and History-only restore monotonicity travel with their implementation; it does not authorize release, deployment, production mutation, historical repair, or Milestone 4.",
     "A01 current status means one complete versioned, owner-selected analysis package travels with its deterministic digest, exact preview and download, privacy-minimal expiring receipt, owner deletion, omission inventory, cross-owner isolation and snapshot exclusion evidence; it does not authorize external transmission, analysis import, recommendation or Program mutation, release, deployment, production mutation, historical repair, or A02.",
     "A02 current status means deterministic provider-neutral instructions bind the exact package and digest, preserve semantic distinctions and unknowns, forbid embedded instructions and guesses, and require evidence-linked limitations without provider transmission, response retention, import, or mutation.",
-    "A03 current status means the closed analysis-response/1 contract validates exact snapshot binding, identifiers, units, evidence citations, bounded content, one future-review-only effect, prohibited and unknown effects, and deterministic duplicate/conflict outcomes; it creates no paste/upload flow, durable response, recommendation, decision, adaptation, or Program write."
+    "A03 current status means the closed analysis-response/1 contract validates exact snapshot binding, identifiers, units, evidence citations, bounded content, one future-review-only effect, prohibited and unknown effects, and deterministic duplicate/conflict outcomes.",
+    "A04 current status means paste or JSON upload stays bounded and transient while the exact active owner manifest, Program precondition, schema, evidence, units, effects, and display-safe text are validated before an exact preview; it creates no durable response, recommendation, decision, adaptation, or Program write."
   ]
 }
