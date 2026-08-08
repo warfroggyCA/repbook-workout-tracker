@@ -51,9 +51,9 @@ test("previews and downloads one complete owner-controlled package without trans
   await packageLink.click();
   await expect(page.getByRole("heading", { name: "Analysis package" })).toBeVisible();
   if (narrow) {
-    await page.evaluate(() => {
-      document.documentElement.dataset.fontSize = "extra-large";
-    });
+    await expect.poll(() =>
+      page.evaluate(() => document.documentElement.dataset.fontSize)
+    ).toBe("extra-large");
   }
 
   await page.getByLabel(/Recovery and constraints/).check();

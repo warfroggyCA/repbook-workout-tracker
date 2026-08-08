@@ -28,6 +28,7 @@ export async function seedV2A01AnalysisPackageFixture() {
       experience: "intermediate",
       weeklyFrequency: 3,
       sessionLengthMin: 50,
+      fontSize: "extra-large",
     })
     .where(eq(userProfiles.userId, ids.user));
   await db.insert(constraints).values({
