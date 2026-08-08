@@ -51,6 +51,7 @@ const baseRecommendation: RecommendationCardData = {
   generatedAt: "2026-08-07T12:00:00.000Z",
   limitations: ["Missing observations remain unknown."],
   proposedEffect: "No Program change.",
+  externalRequestedOutcome: null,
 };
 
 function render(rec: RecommendationCardData) {

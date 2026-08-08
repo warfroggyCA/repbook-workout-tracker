@@ -22,7 +22,7 @@ import {
 } from "../helpers/database";
 
 const PRODUCTION_MIGRATION = "0018_brave_timeslip";
-const LATEST_MIGRATION = "0075_analysis_package_manifest";
+const LATEST_MIGRATION = "0076_external_analysis_review_bridge";
 
 const previewBoundaries = [
   {
@@ -280,7 +280,7 @@ describe("current production schema upgrade", () => {
     }]);
   }, 60_000);
 
-  it("matches a fresh final schema exactly through the U02 exception-context contract", async () => {
+  it("matches a fresh final schema exactly through the A05 Review bridge contract", async () => {
     const fresh = await createMigratedTestDatabase();
     const productionShaped = await createTestDatabaseAtMigration(
       PRODUCTION_MIGRATION

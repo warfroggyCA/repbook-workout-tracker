@@ -533,6 +533,13 @@
       "when": 1786248000000,
       "tag": "0075_analysis_package_manifest",
       "breakpoints": true
+    },
+    {
+      "idx": 76,
+      "version": "7",
+      "when": 1786334400000,
+      "tag": "0076_external_analysis_review_bridge",
+      "breakpoints": true
     }
   ]
 }

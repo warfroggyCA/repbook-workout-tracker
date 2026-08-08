@@ -237,7 +237,9 @@ export async function reconcilePendingPainRecommendations(
     const templateExerciseId =
       recommendation.payload.kind === "deload"
         ? recommendation.sourceTemplateExerciseId
-        : recommendation.payload.templateExerciseId;
+        : "templateExerciseId" in recommendation.payload
+          ? recommendation.payload.templateExerciseId
+          : null;
     if (!templateExerciseId) return [];
     const payload: RecommendationPayload =
       expectedRule === "pain_substitute" &&

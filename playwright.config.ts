@@ -41,6 +41,7 @@ export default defineConfig({
     "v2-a02-provider-neutral-instructions.spec.ts",
     "v2-a03-typed-response-schema.spec.ts",
     "v2-a04-ai-response-validation.spec.ts",
+    "v2-a05-selective-review-bridge.spec.ts",
   ],
   outputDir: "./output/playwright/test-results",
   fullyParallel: false,

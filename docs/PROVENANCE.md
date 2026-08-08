@@ -25,6 +25,15 @@ These package-level bindings establish which retained facts were selected; they
 do not convert external or calculated material into performed evidence, an
 owner decision, or an accepted Program adaptation.
 
+Selected A05 external-analysis material retains a separate
+`external-analysis-import/1` receipt with the exact package and response
+digests, response identity, source bindings, selected IDs, and explicit
+proposal-to-recommendation mapping. Imported observations and proposals stay
+labelled external. The raw response and unselected content are not retained.
+Only a later explicit owner action creates a decision; accepting creates a
+future Review-direction adaptation with `programChanged: false`, not a
+performed fact or published Program version.
+
 The first public `fix/pain-hold-truth` commit maps the application and test
 changes from private source commit
 `f308ead8c8ef27430707c5aa5651b97808ccfab6`. Private release-record and

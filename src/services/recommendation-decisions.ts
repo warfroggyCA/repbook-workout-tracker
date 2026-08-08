@@ -82,9 +82,22 @@ const substitutionPayloadSchema = z.object({
   toExerciseId: z.string().uuid(),
 });
 
+const externalReviewPayloadSchema = z.object({
+  kind: z.literal("external_review"),
+  targetKind: z.enum([
+    "program",
+    "schedule",
+    "recovery_constraint",
+    "training_consistency",
+    "general_review",
+  ]),
+  requestedOutcome: z.string().trim().min(1).max(1_000),
+});
+
 const actionablePayloadSchema = z.discriminatedUnion("kind", [
   loadChangePayloadSchema,
   substitutionPayloadSchema,
+  externalReviewPayloadSchema,
 ]);
 
 function sameJson(left: unknown, right: unknown) {
@@ -163,6 +176,7 @@ export async function approveRecommendationDecision(
   input: {
     recommendationId: string;
     editedToLoad?: number;
+    editedRequestedOutcome?: string;
     expectedReviewRevision: number;
     expectedDeferRevision: number;
   },
@@ -227,8 +241,23 @@ export async function approveRecommendationDecision(
   if (edited && payload.kind === "load_change") {
     payload = { ...payload, toLoad: editedToLoad! };
   }
+  const editedRequestedOutcome = input.editedRequestedOutcome?.trim();
+  if (
+    editedRequestedOutcome != null &&
+    (editedRequestedOutcome.length === 0 || editedRequestedOutcome.length > 1_000)
+  ) {
+    return { ok: false, reason: "The edited future Review direction must be 1,000 characters or fewer." };
+  }
+  const externalEdited =
+    payload.kind === "external_review" &&
+    editedRequestedOutcome != null &&
+    editedRequestedOutcome !== payload.requestedOutcome;
+  if (externalEdited && payload.kind === "external_review") {
+    payload = { ...payload, requestedOutcome: editedRequestedOutcome! };
+  }
+  const decisionEdited = edited || externalEdited;
   if (recommendation.status !== "pending") {
-    return approveRetryResult(db, recommendation.id, edited, payload);
+    return approveRetryResult(db, recommendation.id, decisionEdited, payload);
   }
   const assessment = await resolveReviewEvidence(db, userId, recommendation);
   if (!assessment.actionable) {
@@ -254,6 +283,186 @@ export async function approveRecommendationDecision(
     }
   }
 
+  if (payload.kind === "external_review") {
+    await checkpoint("recommendation-ready");
+    const decisionId = randomUUID();
+    const adaptationId = randomUUID();
+    const reviewSnapshot = buildReviewDecisionSnapshot(recommendation, assessment);
+    const applied = resultRows(await db.execute(sql`
+      WITH fresh_import AS (
+        SELECT insight.id
+        FROM coaching_insights insight
+        WHERE insight.id = ${recommendation.insightId}::uuid
+          AND insight.user_id = ${userId}::uuid
+          AND insight.kind = 'external_analysis_import'
+          AND insight.archived_at IS NULL
+          AND insight.data_digest->>'schemaVersion' = 'external-analysis-import/1'
+          AND EXISTS (
+            SELECT 1
+            FROM jsonb_array_elements(insight.data_digest->'recommendationMap') item
+            WHERE item->>'recommendationId' = ${recommendation.id}
+          )
+          AND NOT EXISTS (
+            SELECT 1
+            FROM jsonb_array_elements(insight.data_digest->'sourceBindings') binding
+            CROSS JOIN LATERAL jsonb_array_elements(
+              COALESCE(binding->'revisions', '[]'::jsonb)
+            ) AS source_revision(value)
+            WHERE CASE binding->>'entity'
+              WHEN 'workout_sessions' THEN NOT EXISTS (
+                SELECT 1 FROM workout_sessions session
+                WHERE session.id = (source_revision.value->>'id')::uuid
+                  AND session.user_id = ${userId}::uuid
+                  AND session.status IN ('completed', 'abandoned')
+                  AND session.archived_at IS NULL
+                  AND session.history_revision = (source_revision.value->>'revision')::int
+              )
+              WHEN 'session_occurrences' THEN NOT EXISTS (
+                SELECT 1 FROM session_occurrences occurrence
+                JOIN workout_sessions session ON session.id = occurrence.session_id
+                WHERE occurrence.id = (source_revision.value->>'id')::uuid
+                  AND session.user_id = ${userId}::uuid
+                  AND session.archived_at IS NULL
+                  AND occurrence.revision = (source_revision.value->>'revision')::int
+              )
+              WHEN 'contextual_notes' THEN NOT EXISTS (
+                SELECT 1 FROM contextual_notes note
+                WHERE note.id = (source_revision.value->>'id')::uuid
+                  AND note.user_id = ${userId}::uuid
+                  AND note.archived_at IS NULL
+                  AND note.revision = (source_revision.value->>'revision')::int
+              )
+              WHEN 'recommendations' THEN NOT EXISTS (
+                SELECT 1 FROM recommendations source_recommendation
+                WHERE source_recommendation.id = (source_revision.value->>'id')::uuid
+                  AND source_recommendation.user_id = ${userId}::uuid
+                  AND source_recommendation.archived_at IS NULL
+                  AND source_recommendation.review_revision = (source_revision.value->>'revision')::int
+              )
+              ELSE false
+            END
+          )
+          AND (
+            (
+              NOT EXISTS (
+                SELECT 1 FROM jsonb_array_elements(insight.data_digest->'sourceBindings') binding
+                WHERE binding->>'entity' = 'programs'
+                  AND jsonb_array_length(binding->'ids') > 0
+              )
+              AND NOT EXISTS (
+                SELECT 1 FROM programs program
+                WHERE program.user_id = ${userId}::uuid
+                  AND program.status = 'active'
+                  AND program.archived_at IS NULL
+              )
+            )
+            OR EXISTS (
+              SELECT 1 FROM programs program
+              WHERE program.user_id = ${userId}::uuid
+                AND program.status = 'active'
+                AND program.archived_at IS NULL
+                AND program.id::text = (
+                  SELECT (binding->'ids')->>0
+                  FROM jsonb_array_elements(insight.data_digest->'sourceBindings') binding
+                  WHERE binding->>'entity' = 'programs'
+                    AND jsonb_array_length(binding->'ids') = 1
+                )
+                AND program.current_version_id::text = (
+                  SELECT (binding->'ids')->>0
+                  FROM jsonb_array_elements(insight.data_digest->'sourceBindings') binding
+                  WHERE binding->>'entity' = 'program_versions'
+                    AND jsonb_array_length(binding->'ids') = 1
+                )
+            )
+          )
+      ), claimed AS (
+        UPDATE recommendations recommendation
+        SET status = ${decisionEdited ? "edited" : "approved"},
+            decided_at = statement_timestamp()
+        FROM fresh_import
+        WHERE recommendation.id = ${recommendation.id}::uuid
+          AND recommendation.user_id = ${userId}::uuid
+          AND recommendation.status = 'pending'
+          AND recommendation.archived_at IS NULL
+          AND recommendation.review_revision = ${recommendation.reviewRevision}::int
+          AND recommendation.defer_revision = ${recommendation.deferRevision}::int
+          AND recommendation.deferred_at IS NULL
+          AND recommendation.insight_id = fresh_import.id
+        RETURNING recommendation.id
+      ), recorded_decision AS (
+        INSERT INTO user_decisions (
+          id, recommendation_id, decision, edited_payload, review_snapshot
+        )
+        SELECT
+          ${decisionId}::uuid,
+          claimed.id,
+          ${decisionEdited ? "edit" : "approve"},
+          ${decisionEdited ? JSON.stringify(payload) : null}::jsonb,
+          ${JSON.stringify(reviewSnapshot)}::jsonb
+        FROM claimed
+        RETURNING id
+      ), recorded_adaptation AS (
+        INSERT INTO adaptation_events (
+          id, user_id, recommendation_id, before_snapshot, after_snapshot
+        )
+        SELECT
+          ${adaptationId}::uuid,
+          ${userId}::uuid,
+          claimed.id,
+          jsonb_build_object(
+            'schemaVersion', 'external-review-intent-v1',
+            'state', 'proposed',
+            'payload', ${JSON.stringify(recommendation.payload)}::jsonb
+          ),
+          jsonb_build_object(
+            'schemaVersion', 'external-review-intent-v1',
+            'state', 'accepted',
+            'payload', ${JSON.stringify(payload)}::jsonb,
+            'programChanged', false
+          )
+        FROM claimed
+        RETURNING id
+      ), recorded_audit AS (
+        INSERT INTO audit_logs (
+          user_id, actor_type, action, entity_type, entity_id, summary,
+          cause_ref, idempotency_key
+        )
+        SELECT
+          CASE
+            WHEN (SELECT count(*) FROM recorded_decision) = 1
+              AND (SELECT count(*) FROM recorded_adaptation) = 1
+              AND ${dependencies.failureAt ?? null}::text IS NULL
+            THEN ${userId}::uuid
+            ELSE NULL::uuid
+          END,
+          'user',
+          ${decisionEdited ? "recommendation.edit_accept" : "recommendation.approve"},
+          'recommendation',
+          claimed.id::text,
+          'Accepted external-AI direction for future Review without changing the Program',
+          jsonb_build_object('recommendationId', claimed.id, 'programChanged', false),
+          'recommendation:' || claimed.id::text || ':decision'
+        FROM claimed
+        RETURNING id
+      )
+      SELECT claimed.id
+      FROM claimed
+      WHERE EXISTS (SELECT 1 FROM recorded_audit)
+    `)).length === 1;
+    if (applied) {
+      await checkpoint("recommendation-applied");
+      return { ok: true };
+    }
+    const latest = await getOwnedRecommendation(db, userId, recommendation.id);
+    if (latest && latest.status !== "pending") {
+      return approveRetryResult(db, recommendation.id, decisionEdited, payload);
+    }
+    return {
+      ok: false,
+      reason: "The imported proposal became stale. Refresh Review or regenerate the analysis package.",
+    };
+  }
+
   if (!dependencies.publishProgramVersion) {
     return {
       ok: false,
@@ -267,7 +476,7 @@ export async function approveRecommendationDecision(
     recommendationId: recommendation.id,
     expectedPayload: parsed.data,
     appliedPayload: payload,
-    decision: edited ? "edit" : "approve",
+    decision: decisionEdited ? "edit" : "approve",
     expectedReviewRevision: recommendation.reviewRevision,
     expectedDeferRevision: recommendation.deferRevision,
     reviewSnapshot: buildReviewDecisionSnapshot(recommendation, assessment),
@@ -279,11 +488,11 @@ export async function approveRecommendationDecision(
   }
 
   if (publication.reason === "not_pending") {
-    return approveRetryResult(db, recommendation.id, edited, payload);
+    return approveRetryResult(db, recommendation.id, decisionEdited, payload);
   }
   const latest = await getOwnedRecommendation(db, userId, recommendation.id);
   if (latest && latest.status !== "pending") {
-    return approveRetryResult(db, recommendation.id, edited, payload);
+    return approveRetryResult(db, recommendation.id, decisionEdited, payload);
   }
   return {
     ok: false,

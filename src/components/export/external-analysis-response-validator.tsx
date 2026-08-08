@@ -1,6 +1,11 @@
 "use client";
 
-import { useRef, useState } from "react";
+import {
+  useRef,
+  useState,
+  type Dispatch,
+  type SetStateAction,
+} from "react";
 import { Download, FileJson2, ShieldAlert, Trash2 } from "lucide-react";
 import {
   EXTERNAL_ANALYSIS_RESPONSE_MAX_BYTES,
@@ -49,12 +54,23 @@ export function ExternalAnalysisResponseValidator() {
   const [issues, setIssues] = useState<ExternalAnalysisResponseIssue[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const [selectedObservationIds, setSelectedObservationIds] = useState<string[]>([]);
+  const [selectedProposalIds, setSelectedProposalIds] = useState<string[]>([]);
+  const [imported, setImported] = useState<{
+    observationCount: number;
+    proposalCount: number;
+    replay: "new" | "idempotent_duplicate";
+  } | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
 
   function clearValidation() {
     setPreview(null);
     setIssues([]);
     setError(null);
+    setSelectedObservationIds([]);
+    setSelectedProposalIds([]);
+    setImported(null);
   }
 
   async function chooseFile(file: File | undefined) {
@@ -130,6 +146,65 @@ export function ExternalAnalysisResponseValidator() {
     setSourceLabel("paste");
     clearValidation();
     if (fileInput.current) fileInput.current.value = "";
+  }
+
+  function toggleSelection(
+    id: string,
+    setSelected: Dispatch<SetStateAction<string[]>>,
+  ) {
+    setSelected((selected) =>
+      selected.includes(id)
+        ? selected.filter((item) => item !== id)
+        : [...selected, id],
+    );
+  }
+
+  async function importSelected() {
+    if (!preview || selectedObservationIds.length + selectedProposalIds.length === 0) return;
+    setError(null);
+    setImporting(true);
+    try {
+      const response = await fetch("/api/export/analysis/import", {
+        method: "POST",
+        headers: { Accept: "application/json", "Content-Type": "application/json" },
+        body: JSON.stringify({
+          response: JSON.parse(rawInput),
+          selections: {
+            observationIds: selectedObservationIds,
+            proposalIds: selectedProposalIds,
+          },
+        }),
+      });
+      const data = (await response.json()) as {
+        error?: string;
+        observationCount?: number;
+        proposalCount?: number;
+        replay?: "new" | "idempotent_duplicate";
+      };
+      if (
+        !response.ok ||
+        data.observationCount == null ||
+        data.proposalCount == null ||
+        data.replay == null
+      ) {
+        throw new Error(data.error ?? "The selected items could not be imported.");
+      }
+      setImported({
+        observationCount: data.observationCount,
+        proposalCount: data.proposalCount,
+        replay: data.replay,
+      });
+      setRawInput("");
+      setPreview(null);
+      setIssues([]);
+      setSelectedObservationIds([]);
+      setSelectedProposalIds([]);
+      if (fileInput.current) fileInput.current.value = "";
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "The selected items could not be imported.");
+    } finally {
+      setImporting(false);
+    }
   }
 
   return (
@@ -221,6 +296,18 @@ export function ExternalAnalysisResponseValidator() {
           </details>
         ) : null}
 
+        {imported ? (
+          <div role="status" className="rounded-md border border-success/40 bg-success/5 p-3 text-sm">
+            <p className="font-medium">Selected items are in Review</p>
+            <p className="mt-1 text-muted-foreground">
+              {imported.observationCount} observation{imported.observationCount === 1 ? "" : "s"} and {imported.proposalCount} proposal{imported.proposalCount === 1 ? "" : "s"} were {imported.replay === "new" ? "imported" : "already imported"}. The raw response was discarded.
+            </p>
+            <a className="mt-2 inline-flex min-h-10 items-center text-primary underline-offset-2 hover:underline" href="/coach">
+              Open Review and decisions
+            </a>
+          </div>
+        ) : null}
+
         <div className="flex flex-wrap gap-2">
           <Button type="button" onClick={() => void validate()} disabled={loading || rawInput.length === 0} className="min-h-11">
             {loading ? "Validating…" : "Validate and preview"}
@@ -255,6 +342,14 @@ export function ExternalAnalysisResponseValidator() {
                 <ul className="space-y-3">
                   {preview.preview.observations.map((observation) => (
                     <li key={observation.id} className="rounded-md border bg-muted/20 p-3 text-sm leading-6">
+                      <label className="mb-2 flex min-h-11 cursor-pointer items-center gap-2 font-medium">
+                        <input
+                          type="checkbox"
+                          checked={selectedObservationIds.includes(observation.id)}
+                          onChange={() => toggleSelection(observation.id, setSelectedObservationIds)}
+                        />
+                        Import this labelled external observation
+                      </label>
                       <p className="font-medium">{observation.statement}</p>
                       <p className="text-muted-foreground">Evidence: {observation.evidenceIds.join(", ")}</p>
                       <p className="text-muted-foreground">Limits: {observation.limitations.join(" · ")}</p>
@@ -272,6 +367,14 @@ export function ExternalAnalysisResponseValidator() {
                 <ul className="space-y-3">
                   {preview.preview.proposedActions.map((proposal) => (
                     <li key={proposal.id} className="rounded-md border bg-muted/20 p-3 text-sm leading-6">
+                      <label className="mb-2 flex min-h-11 cursor-pointer items-center gap-2 font-medium">
+                        <input
+                          type="checkbox"
+                          checked={selectedProposalIds.includes(proposal.id)}
+                          onChange={() => toggleSelection(proposal.id, setSelectedProposalIds)}
+                        />
+                        Import this proposal into Review
+                      </label>
                       <p className="font-medium">{proposal.summary}</p>
                       <p>{proposal.rationale}</p>
                       <p className="text-muted-foreground">
@@ -298,6 +401,21 @@ export function ExternalAnalysisResponseValidator() {
                 </ul>
               </div>
             ) : null}
+
+            <div className="rounded-md border bg-muted/20 p-3">
+              <p className="text-sm font-medium">Import only what you selected</p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Import retains the selected allowlisted items and a provenance receipt, then deletes the temporary package manifest. It does not accept a proposal or change your Program.
+              </p>
+              <Button
+                type="button"
+                className="mt-3 min-h-11 w-full sm:w-auto"
+                disabled={importing || selectedObservationIds.length + selectedProposalIds.length === 0}
+                onClick={() => void importSelected()}
+              >
+                {importing ? "Importing…" : "Import selected into Review"}
+              </Button>
+            </div>
           </section>
         ) : null}
       </CardContent>

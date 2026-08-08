@@ -247,7 +247,8 @@ function isRecommendationPayload(value: unknown): value is RecommendationPayload
     kind === "deload" ||
     kind === "substitution" ||
     kind === "remove_exercise" ||
-    kind === "hold"
+    kind === "hold" ||
+    kind === "external_review"
   );
 }
 
@@ -280,6 +281,8 @@ export function summarizeRecommendationChange(
       return "Remove exercise";
     case "hold":
       return "Hold the current target";
+    case "external_review":
+      return payload.requestedOutcome;
   }
 }
 

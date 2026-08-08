@@ -13,12 +13,14 @@ import {
 } from "@/db/schema";
 import { parseRecommendationReviewEvidence } from "@/lib/review-evidence";
 import { recommendationEvidenceEligibleForAction } from "@/services/recommendation-evidence-eligibility";
+import { externalAnalysisRecommendationIsCurrent } from "@/services/external-analysis-review";
 
 export type ReviewEvidenceState =
   | "supported"
   | "contradictory"
   | "unsupported"
-  | "stale";
+  | "stale"
+  | "external";
 
 export type ReviewEvidenceLink = {
   id: string;
@@ -37,6 +39,7 @@ export type ReviewEvidenceAssessment = {
 
 type ReviewCandidate = {
   id: string;
+  insightId?: string | null;
   source: "rule" | "ai";
   ruleId: string | null;
   payload: RecommendationPayload;
@@ -135,6 +138,16 @@ export async function resolveReviewEvidenceBatch<T extends ReviewCandidate>(
   const sets = new Map(setRows.map((row) => [row.id, row]));
   const pains = new Map(painRows.map((row) => [row.id, row]));
   const assessments = new Map<string, ReviewEvidenceAssessment>();
+  const externalCurrent = new Map(
+    await Promise.all(
+      candidates.map(async (recommendation) => [
+        recommendation.id,
+        recommendation.evidence.review?.producer === "external_analysis"
+          ? await externalAnalysisRecommendationIsCurrent(db, userId, recommendation)
+          : false,
+      ] as const),
+    ),
+  );
   const eligibility = new Map(await Promise.all(candidates.map(async (recommendation) => {
     const expectedSessions = unique(recommendation.evidence.sessionIds);
     const expectedSets = unique(recommendation.evidence.setIds);
@@ -146,7 +159,9 @@ export async function resolveReviewEvidenceBatch<T extends ReviewCandidate>(
     const hasEvidence =
       expectedSessions.length + expectedSets.length + expectedPains.length > 0;
     const parsed = parseRecommendationReviewEvidence(recommendation.evidence);
-    const eligible = parsed.success && referencesPresent && hasEvidence
+    const eligible = parsed.success &&
+      parsed.data.producer !== "external_analysis" &&
+      referencesPresent && hasEvidence
       ? await recommendationEvidenceEligibleForAction(db, userId, recommendation)
       : false;
     return [recommendation.id, eligible] as const;
@@ -164,15 +179,24 @@ export async function resolveReviewEvidenceBatch<T extends ReviewCandidate>(
       expectedSessions.length + expectedSets.length + expectedPains.length > 0;
     const parsed = parseRecommendationReviewEvidence(recommendation.evidence);
     const baseEligible = eligibility.get(recommendation.id) ?? false;
+    const externalEvidenceCount =
+      recommendation.evidence.externalAnalysis?.citedEvidenceIds.length ?? 0;
+    const isExternal = parsed.success && parsed.data.producer === "external_analysis";
 
     let state: ReviewEvidenceState;
     let explanation: string;
     if (!referencesPresent) {
       state = "stale";
       explanation = "One or more cited records are no longer current owner-scoped evidence. Refresh or reject this proposal; it cannot be applied.";
-    } else if (!parsed.success || !hasEvidence) {
+    } else if (!parsed.success || (!hasEvidence && (!isExternal || externalEvidenceCount === 0))) {
       state = "unsupported";
       explanation = "This retained proposal lacks the complete versioned evidence contract. Its claim remains visible, but it cannot change the Program.";
+    } else if (isExternal && !externalCurrent.get(recommendation.id)) {
+      state = "stale";
+      explanation = "The imported response, cited evidence, or current Program changed after import. Regenerate the package before accepting this proposal.";
+    } else if (isExternal) {
+      state = "external";
+      explanation = "The response identity, cited owner-scoped records, and current Program still match. Repbook validated the boundary, not the quality of the external advice.";
     } else if (parsed.data.quality === "contradictory") {
       state = "contradictory";
       explanation = "The cited evidence is explicitly contradictory. Review or reject the proposal; it cannot change the Program.";
@@ -222,7 +246,8 @@ export async function resolveReviewEvidenceBatch<T extends ReviewCandidate>(
     assessments.set(recommendation.id, {
       state,
       actionable:
-        state === "supported" && recommendation.payload.kind !== "hold",
+        (state === "supported" || state === "external") &&
+        recommendation.payload.kind !== "hold",
       explanation,
       metadata: parsed.success ? parsed.data : null,
       links,

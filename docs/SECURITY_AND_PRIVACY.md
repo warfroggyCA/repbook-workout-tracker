@@ -72,5 +72,20 @@ or discard and is neither echoed in an error nor retained or logged by the
 server. A04 performs no import and creates no recommendation, decision,
 adaptation, Program write, migration, snapshot content, or recovery record.
 
+A05 import repeats same-origin authentication, owner-scoped manifest lookup,
+bounded UTF-8 JSON, and the complete closed response validation before any
+write. The owner must select each imported item. One transaction consumes the
+temporary manifest and writes a minimal typed receipt plus selected Review
+proposals, so an injected or concurrent failure cannot leave a partial import.
+The raw response, unknowns, unselected material, and provider or model details
+are discarded. Response identity replay is idempotent only for the same
+canonical content and exact selections; changed reuse conflicts.
+
+Snapshot sanitization allowlists the minimal receipt and restore validates its
+owner, response identity, proposal mapping, and current Program relationship.
+Acceptance rechecks source revisions and Program identity atomically. It records
+only an explicit owner decision and future Review direction and cannot change a
+Program, active workout, or completed fact.
+
 Security reports use the private process in `SECURITY.md`; public issues must
 contain synthetic data only.

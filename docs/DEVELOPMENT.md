@@ -27,7 +27,7 @@ npm run docs:check
 npm run audit:check
 ```
 
-The Repbook v2 semantic foundation and current T01/T02/T03/T04/T05/T06/U01/U02/U03/H01/H02/H03/H04/A01/A02/A03/A04 activation
+The Repbook v2 semantic foundation and current T01/T02/T03/T04/T05/T06/U01/U02/U03/H01/H02/H03/H04/A01/A02/A03/A04/A05 activation
 packages have focused gates:
 
 ```bash
@@ -67,6 +67,8 @@ npx vitest run tests/unit/v2-a03-external-analysis-response.test.ts
 npm run test:e2e:v2-a03
 npx vitest run tests/unit/v2-a04-external-analysis-validation.test.ts --maxWorkers=1 --no-file-parallelism
 npm run test:e2e:v2-a04
+npx vitest run tests/unit/v2-a05-selective-review-bridge.test.ts --maxWorkers=1 --no-file-parallelism
+npm run test:e2e:v2-a05
 ```
 
 The semantic test validates all synthetic F01-F17 scenarios and every required
@@ -182,6 +184,17 @@ plain-text preview, active-content refusal, untouched local recovery download,
 discard, accessibility, and overflow. Validation retains and imports nothing,
 adds no migration or snapshot shape, and creates no recommendation, decision,
 adaptation, or Program write.
+A05 activates explicit selective import into the existing Review lifecycle.
+Focused database proof covers owner scope, exact replay and conflict identity,
+atomic rollback, manifest consumption, durable defer, resume, reject, edit-and-
+accept, source-correction and Program staleness, snapshot privacy, and restore
+graph validation. Its disposable desktop and narrow WebKit journey imports one
+observation and one proposal, preserves external labels and owner-decision copy,
+exercises acceptance or deferral, and checks overflow and page errors.
+Migration 0076 adds only receipt identity and invariant guards; snapshot schema
+30 stays fixed while recovery manifest 13 includes the durable provenance
+relationship. Acceptance records a future Review direction with
+`programChanged: false`; it does not publish a Program or rewrite history.
 
 `audit:check` requires a clean production dependency audit and also reviews the
 complete development-tool tree. Any temporary development-only exception is
@@ -225,6 +238,7 @@ npm run test:e2e:v2-a01
 npm run test:e2e:v2-a02
 npm run test:e2e:v2-a03
 npm run test:e2e:v2-a04
+npm run test:e2e:v2-a05
 ```
 
 Run the smallest affected browser suite first, then the complete protected

@@ -40,11 +40,12 @@ export type RecommendationCardData = {
   evidenceExplanation: string;
   evidenceLinks: ReviewEvidenceLink[];
   actionable: boolean;
-  producer: "progression_rules" | "pain_consistency" | null;
+  producer: "progression_rules" | "pain_consistency" | "external_analysis" | null;
   sourceVersion: string | null;
   generatedAt: string | null;
   limitations: string[];
   proposedEffect: string;
+  externalRequestedOutcome: string | null;
 };
 
 export function RecommendationCard({
@@ -60,11 +61,15 @@ export function RecommendationCard({
   const [editedLoad, setEditedLoad] = useState<number | null>(rec.toLoad);
   const [revisitOn, setRevisitOn] = useState(rec.revisitOn ?? "");
   const [deferReason, setDeferReason] = useState(rec.deferReason ?? "");
+  const [externalOutcome, setExternalOutcome] = useState(rec.externalRequestedOutcome ?? "");
   const [error, setError] = useState<string | null>(null);
 
   const isLoadChange = rec.kind === "load_change";
   const isHold = rec.kind === "hold";
+  const isExternal = rec.kind === "external_review";
   const edited = isLoadChange && editedLoad !== rec.toLoad;
+  const externalEdited =
+    isExternal && externalOutcome.trim() !== rec.externalRequestedOutcome;
   const deferred = rec.deferredAt != null;
 
   function decide(action: "approve" | "reject" | "dismiss" | "defer" | "resume") {
@@ -77,6 +82,10 @@ export function RecommendationCard({
           expectedDeferRevision: rec.deferRevision,
           editedToLoad:
             isLoadChange && editedLoad != null ? editedLoad : undefined,
+          editedRequestedOutcome:
+            isExternal && externalOutcome.trim()
+              ? externalOutcome.trim()
+              : undefined,
         });
         if (!result.ok) {
           setError(result.reason);
@@ -139,7 +148,7 @@ export function RecommendationCard({
       <div className="mb-1 flex flex-wrap items-start justify-between gap-2">
         <div>
           <p className="text-xs font-medium uppercase tracking-wide text-primary">
-            {isHold ? "Automatic status" : "Decision required"}
+            {isHold ? "Automatic status" : isExternal ? "External AI proposal · you decide" : "Decision required"}
           </p>
           <h3 id={titleId} className="font-medium">
             {rec.exerciseName ?? "Program"}
@@ -179,9 +188,11 @@ export function RecommendationCard({
       <div className="mt-3 rounded-lg border bg-muted/30 p-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h4 className="text-xs font-medium uppercase tracking-wide">Review evidence</h4>
-          <Badge variant={rec.evidenceState === "supported" ? "secondary" : "outline"}>
+          <Badge variant={rec.evidenceState === "supported" || rec.evidenceState === "external" ? "secondary" : "outline"}>
             {rec.evidenceState === "supported"
               ? "Supported"
+              : rec.evidenceState === "external"
+                ? "Validated external"
               : rec.evidenceState === "contradictory"
                 ? "Contradictory"
                 : rec.evidenceState === "stale"
@@ -250,7 +261,7 @@ export function RecommendationCard({
         {!isHold && (
           <div className="rounded-lg bg-muted/55 p-3">
             <h4 className="flex items-center gap-1.5 text-xs font-medium">
-              <Gauge className="size-3.5 text-primary" /> Proposed future Program effect
+              <Gauge className="size-3.5 text-primary" /> {isExternal ? "Proposed future Review direction" : "Proposed future Program effect"}
             </h4>
             <p className="mt-2 text-sm">{rec.proposedEffect}</p>
             <h5 className="mt-3 text-xs font-medium">Limitations</h5>
@@ -290,6 +301,23 @@ export function RecommendationCard({
           >
             <Plus className="size-3.5" />
           </Button>
+        </div>
+      )}
+
+      {isExternal && !deferred && (
+        <div className="mt-3 rounded-lg border p-3">
+          <label className="grid gap-2 text-xs font-medium">
+            Direction to accept for future Review
+            <textarea
+              className="min-h-24 rounded-md border bg-background p-3 text-sm font-normal leading-6"
+              maxLength={1_000}
+              value={externalOutcome}
+              onChange={(event) => setExternalOutcome(event.target.value)}
+            />
+          </label>
+          <p className="mt-2 text-xs text-muted-foreground">
+            Accepting records this direction and your decision atomically. It does not edit or publish your Program, active workout, or completed history.
+          </p>
         </div>
       )}
 
@@ -344,10 +372,16 @@ export function RecommendationCard({
         {!isHold && !deferred && (
           <Button
             className="min-h-10 w-full"
-            disabled={pending || !rec.actionable}
+            disabled={pending || !rec.actionable || (isExternal && externalOutcome.trim().length === 0)}
             onClick={() => decide("approve")}
           >
-            {edited ? "Approve edited" : "Approve"}
+            {isExternal
+              ? externalEdited
+                ? "Accept edited direction"
+                : "Accept for future Review"
+              : edited
+                ? "Approve edited"
+                : "Approve"}
           </Button>
         )}
         {!deferred && (

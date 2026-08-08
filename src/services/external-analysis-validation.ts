@@ -12,6 +12,7 @@ import {
   analysisQuestionSchema,
   analysisWindowDaysSchema,
 } from "@/lib/analysis-package";
+import type { AnalysisPackageSourceBinding } from "@/db/schema";
 import type { ExternalAnalysisResponseBinding } from "@/lib/external-analysis-response";
 
 const manifestScopeSchema = z
@@ -29,7 +30,11 @@ const manifestBindingsSchema = z
   .max(100);
 
 export type ExternalAnalysisManifestLookup =
-  | { ok: true; binding: ExternalAnalysisResponseBinding }
+  | {
+      ok: true;
+      binding: ExternalAnalysisResponseBinding;
+      sourceBindings: AnalysisPackageSourceBinding[];
+    }
   | {
       ok: false;
       reason: "not_found" | "expired" | "stale_program" | "invalid_manifest";
@@ -106,6 +111,7 @@ export async function getExternalAnalysisResponseBinding(
 
   return {
     ok: true,
+    sourceBindings: sourceBindings.data,
     binding: {
       packageId: manifest.id,
       packageNamespace: manifest.packageNamespace,

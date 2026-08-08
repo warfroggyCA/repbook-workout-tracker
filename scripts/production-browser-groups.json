@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "expectedSuiteCount": 36,
+  "expectedSuiteCount": 37,
   "groups": [
     {
       "name": "baseline-history",
@@ -65,7 +65,8 @@
         "test:e2e:v2-a01",
         "test:e2e:v2-a02",
         "test:e2e:v2-a03",
-        "test:e2e:v2-a04"
+        "test:e2e:v2-a04",
+        "test:e2e:v2-a05"
       ]
     }
   ]
