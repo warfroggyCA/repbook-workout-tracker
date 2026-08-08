@@ -30,7 +30,7 @@ const baseRecommendation: RecommendationCardData = {
   suggestedExercise: null,
   alternatives: [],
   evidence: [
-    { label: "Highest recorded pain flag", value: "4/10" },
+    { label: "Highest positive pain report", value: "4/10" },
     { label: "Evidence window", value: "14 days" },
   ],
 };

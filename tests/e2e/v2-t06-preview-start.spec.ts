@@ -24,9 +24,13 @@ async function signIn(page: Page) {
   await page.waitForLoadState("networkidle");
 }
 
-async function openAlternatePreview(page: Page, day: RegExp) {
+async function openAlternatePreview(
+  page: Page,
+  day: RegExp,
+  options: { refreshToday?: boolean } = {},
+) {
   const current = new URL(page.url());
-  if (current.pathname !== "/today" || current.search) {
+  if (options.refreshToday || current.pathname !== "/today" || current.search) {
     await page.goto("/today");
   } else {
     await page.waitForLoadState("networkidle");
@@ -146,7 +150,7 @@ test("keeps preview read-only and Start replay-safe with truthful active collisi
   await expect(page.getByRole("button", { name: "Resume workout", exact: true }))
     .toHaveCount(0);
 
-  start = await openAlternatePreview(page, /Day A — Squat/);
+  start = await openAlternatePreview(page, /Day A — Squat/, { refreshToday: true });
   await injectFailure(start, "incomplete");
   const retryKey = await startRequestKey(start);
   await start.click();

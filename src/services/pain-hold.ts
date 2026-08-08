@@ -1,4 +1,4 @@
-import { and, desc, eq, gt, isNull, ne } from "drizzle-orm";
+import { and, desc, eq, gt, isNull, lte, sql } from "drizzle-orm";
 import type { Db } from "@/db";
 import { exercises, painLogs, workoutSessions } from "@/db/schema";
 import {
@@ -41,7 +41,9 @@ export async function loadExercisePainHold(
           eq(workoutSessions.status, "completed"),
           isNull(workoutSessions.archivedAt),
           isNull(painLogs.archivedAt),
-          ne(painLogs.source, "set_exception"),
+          gt(painLogs.severity, 0),
+          lte(painLogs.severity, 10),
+          sql`length(btrim(${painLogs.bodyPart})) BETWEEN 1 AND 50`,
           gt(painLogs.createdAt, windowStart)
         )
       )

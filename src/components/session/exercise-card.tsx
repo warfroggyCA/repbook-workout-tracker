@@ -96,6 +96,7 @@ import {
   type PerformedMetricType,
 } from "@/lib/set-metric-semantics";
 import { createClientUuid } from "@/lib/client-uuid";
+import { formatPainEvidence } from "@/lib/pain-evidence";
 import type { OccurrenceMutationOutboxEntry } from "@/lib/occurrence-mutation-outbox";
 import { CompletedSetCorrection } from "@/components/history/completed-set-correction";
 import {
@@ -2369,11 +2370,11 @@ function PainDrawer({
   return (
     <Drawer open={open} onOpenChange={setOpen}>
       <DrawerTrigger render={<Button variant="outline" size="sm" />}>
-        Flag pain
+        Pain / no issue
       </DrawerTrigger>
       <DrawerContent className="[&_button]:min-h-11 [&_button]:min-w-11 [&_textarea]:min-h-11">
         <DrawerHeader>
-          <DrawerTitle>Flag pain</DrawerTitle>
+          <DrawerTitle>Pain / no-issue evidence</DrawerTitle>
         </DrawerHeader>
         <div className="flex flex-col gap-4 px-4">
           <div className="flex flex-wrap gap-1.5">
@@ -2390,7 +2391,11 @@ function PainDrawer({
           </div>
           <div>
             <p className="mb-2 text-sm text-muted-foreground">
-              Severity: <span className="font-medium text-foreground">{severity}/10</span>
+              <span className="font-medium text-foreground">
+                {severity === 0
+                  ? "No issue reported"
+                  : formatPainEvidence({ bodyPart, severity, source: "set_flag" })}
+              </span>
             </p>
             <Slider
               min={0}
@@ -2430,14 +2435,14 @@ function PainDrawer({
                     return;
                   }
                 } catch {
-                  toast.error("The pain flag could not be saved.");
+                  toast.error("The pain / no-issue report could not be saved.");
                   return;
                 }
                 setOpen(false);
               })
             }
           >
-            Save pain flag
+            {severity === 0 ? "Save no-issue report" : "Save pain report"}
           </Button>
         </DrawerFooter>
       </DrawerContent>

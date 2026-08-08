@@ -72,6 +72,7 @@ import {
   LIMITATION_CAUSE_LABELS,
   TECHNIQUE_ISSUE_LABELS,
 } from "@/lib/set-exception-context";
+import { formatPainEvidence } from "@/lib/pain-evidence";
 
 const activeOwners = new Set<string>();
 
@@ -94,7 +95,7 @@ function formatRetainedContext(entry: WorkoutSetOutboxEntry) {
     context.push(`Limited by: ${LIMITATION_CAUSE_LABELS[entry.limitationCause]}`);
   }
   if (entry.pain != null) {
-    context.push(`Pain: ${entry.pain.bodyPart} ${entry.pain.severity}/10`);
+    context.push(formatPainEvidence({ ...entry.pain, source: "set_exception" }));
   }
   return context.length === 0 ? "" : ` · ${context.join(" · ")}`;
 }

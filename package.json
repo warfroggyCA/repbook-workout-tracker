@@ -39,6 +39,7 @@
     "test:e2e:v2-h01": "playwright test --config=playwright.v2-h01.config.ts",
     "test:e2e:v2-h02": "playwright test --config=playwright.v2-h02.config.ts",
     "test:e2e:v2-h03": "playwright test --config=playwright.v2-h03.config.ts --project=desktop-chromium && V2_H03_PORT=3144 playwright test --config=playwright.v2-h03.config.ts --project=narrow-mobile-webkit",
+    "test:e2e:v2-h04": "playwright test --config=playwright.v2-h04.config.ts --project=desktop-chromium && V2_H04_PORT=3146 playwright test --config=playwright.v2-h04.config.ts --project=narrow-mobile-webkit",
     "study:physical-device-server": "E2E_HOSTNAME=0.0.0.0 E2E_PORT=3128 node scripts/run-e2e-server.mjs --production",
     "test:e2e:ba:chrome": "env BA_BROWSER=chromium playwright test --config=playwright.ba-workout.config.ts",
     "test:e2e:ba:webkit": "env BA_BROWSER=webkit playwright test --config=playwright.ba-workout.config.ts",
@@ -100,7 +101,7 @@
     "drizzle-kit": "^0.31.10",
     "eslint": "^9",
     "eslint-config-next": "16.2.11",
-    "js-yaml": "^4.3.0",
+    "js-yaml": "^4.3.1",
     "pg": "^8.22.0",
     "shadcn": "^4.13.0",
     "tailwindcss": "^4",
@@ -109,6 +110,7 @@
     "vitest": "^4.1.10"
   },
   "overrides": {
+    "nanoid": "3.3.17",
     "postcss": "8.5.23",
     "sharp": "0.35.3"
   }

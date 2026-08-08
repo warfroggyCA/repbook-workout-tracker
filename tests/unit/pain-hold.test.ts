@@ -43,7 +43,7 @@ describe("classifyPainHold", () => {
     });
     expect(result.releaseAt?.toISOString()).toBe("2026-08-08T12:00:00.000Z");
     expect(result.explanation).toContain(
-      "It comes off hold 14 days after the latest 3/10 or higher flag."
+      "It comes off hold 14 days after the latest 3/10 or higher report."
     );
     expect(result.explanation).toContain(
       "A workout with no pain entry doesn't shorten that time."
@@ -58,8 +58,8 @@ describe("classifyPainHold", () => {
     expect(result.state).toBe("substitution_review");
     expect(result.signals.highSeverityReview).toBe(true);
     expect(result.explanation).toBe(
-      "Barbell Back Squat needs an alternative review because a 5/10 pain flag was saved in the last 14 days. " +
-        "The pain hold clears 14 days after the latest 3/10 or higher flag. " +
+      "Barbell Back Squat needs an alternative review because a 5/10 positive pain report was saved in the last 14 days. " +
+        "The pain hold clears 14 days after the latest 3/10 or higher report. " +
         "A workout with no pain entry doesn't shorten that time."
     );
   });
@@ -81,10 +81,10 @@ describe("classifyPainHold", () => {
       },
     });
     expect(result.explanation).toContain(
-      "pain was flagged in 3 workouts in the last 14 days"
+      "positive pain was reported in 3 workouts in the last 14 days"
     );
     expect(result.explanation).toContain(
-      "Progression stays paused while those flags are in the 14-day window."
+      "Progression stays paused while those reports are in the 14-day window."
     );
   });
 

@@ -204,7 +204,7 @@ describe("summarizeHistory", () => {
             },
           ]),
         ],
-        painLogs: [{ severity: 5 }],
+        painLogs: [{ severity: 5, bodyPart: "shoulder", source: "set_flag" }],
       }),
       session({
         id: "abandoned",
@@ -273,7 +273,7 @@ describe("summarizeHistory", () => {
       painEvents: 1,
       highPainEvents: 1,
     });
-    expect(report.insights.some((insight) => insight.title === "Pain flags deserve attention")).toBe(true);
+    expect(report.insights.some((insight) => insight.title === "Positive pain reports deserve attention")).toBe(true);
     expect(report.recentSessions[0].id).toBe("abandoned");
     expect(report.calendarSessions.map((entry) => entry.id)).toEqual([
       "abandoned",
@@ -286,6 +286,31 @@ describe("summarizeHistory", () => {
     const report = summarizeHistory([], [], 3, historyRangeStart("4w", now), now);
     expect(report.overview.completedSessions).toBe(0);
     expect(report.insights[0].title).toBe("No completed workouts in this period");
+  });
+
+  it("counts only supported positive pain while retaining zero as no-issue evidence", () => {
+    const report = summarizeHistory(
+      [
+        session({
+          id: "pain-meaning",
+          painLogs: [
+            { severity: 0, bodyPart: "shoulder", source: "set_flag" },
+            { severity: 4, bodyPart: "back", source: "set_exception" },
+            { severity: 12, bodyPart: "knee", source: "set_flag" },
+          ],
+        }),
+      ],
+      [],
+      3,
+      historyRangeStart("4w", now),
+      now,
+    );
+
+    expect(report.recovery).toMatchObject({
+      painEvents: 1,
+      highPainEvents: 1,
+    });
+    expect(report.calendarSessions[0]).toMatchObject({ painEvents: 1 });
   });
 
   it("converts kilogram sets to pounds before summing volume", () => {

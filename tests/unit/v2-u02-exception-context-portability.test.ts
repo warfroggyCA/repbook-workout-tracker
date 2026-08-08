@@ -55,6 +55,11 @@ describe("V2 U02 exception context portability", () => {
       body_part: "back",
       severity: "4",
       source: "set_exception",
+      pain_meaning: "pain",
+      pain_algorithm_version: "pain-evidence-v1",
+      performed_exercise_id: fixture.exerciseIds.loaded,
+      planned_exercise_id: fixture.exerciseIds.loaded,
+      modification_type: "as_planned",
     }));
 
     const backup = validateUserHeldJsonBackup(

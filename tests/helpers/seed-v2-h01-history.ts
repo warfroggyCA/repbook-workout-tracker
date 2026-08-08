@@ -1,4 +1,5 @@
 import { getDb } from "@/db";
+import { pathToFileURL } from "node:url";
 import {
   completedSets,
   externalExerciseMappings,
@@ -18,7 +19,7 @@ import {
   V2_H01_HISTORY_IDS as ids,
 } from "./v2-h01-history";
 
-async function main() {
+export async function seedV2H01HistoryFixture() {
   const db = await getDb();
   const timezone = "America/Toronto";
 
@@ -528,7 +529,12 @@ async function main() {
   console.log(`Seeded H01 History fixture for ${V2_H01_HISTORY_EMAIL}.`);
 }
 
-void main().catch((error) => {
-  console.error(error);
-  process.exitCode = 1;
-});
+if (
+  process.argv[1] != null &&
+  import.meta.url === pathToFileURL(process.argv[1]).href
+) {
+  void seedV2H01HistoryFixture().catch((error) => {
+    console.error(error);
+    process.exitCode = 1;
+  });
+}

@@ -11,11 +11,13 @@ import {
   workoutTemplates,
 } from "@/db/schema";
 import { convertWeight } from "@/lib/units";
+import { addLocalDays, workoutLocalDate } from "@/lib/workout-calendar";
 import { activateProgramAtomically } from "@/services/program-activation";
 import { createTotalSystemTestSnapshot } from "./set-semantics";
 import {
   V2_H02_EMAIL,
   V2_H02_IDS,
+  V2_H02_NOW,
 } from "./v2-h02-cadence-targets-time-constants";
 
 export {
@@ -50,7 +52,11 @@ export type V2H02CadenceFixture = {
 
 export async function seedV2H02CadenceTargetsTime(
   db: Db,
+  now = V2_H02_NOW,
 ): Promise<V2H02CadenceFixture> {
+  const anchorDate = workoutLocalDate(now, "America/Toronto");
+  const fixtureDate = (daysFromAnchor: number) =>
+    addLocalDays(anchorDate, daysFromAnchor);
   const [{ id: userId }, { id: otherUserId }] = await db
     .insert(users)
     .values([
@@ -161,7 +167,9 @@ export async function seedV2H02CadenceTargetsTime(
               ? dayLineages.second
               : null,
         performedTimePrecision: input.dateOnly ? "date_only" : "instant",
-        archivedAt: input.archived ? new Date("2026-08-01T12:00:00.000Z") : null,
+        archivedAt: input.archived
+          ? new Date(`${fixtureDate(-4)}T12:00:00.000Z`)
+          : null,
       })
       .returning({ id: workoutSessions.id });
     return session.id;
@@ -170,49 +178,49 @@ export async function seedV2H02CadenceTargetsTime(
   const sessionIds = {
     first: await addSession({
       id: V2_H02_IDS.firstSession,
-      localDate: "2026-07-13",
+      localDate: fixtureDate(-23),
       name: "Strength A",
       programDay: "first",
     }),
     second: await addSession({
       id: V2_H02_IDS.secondSession,
-      localDate: "2026-07-16",
+      localDate: fixtureDate(-20),
       name: "Strength B",
       programDay: "second",
     }),
     renamed: await addSession({
       id: V2_H02_IDS.renamedSession,
-      localDate: "2026-07-20",
+      localDate: fixtureDate(-16),
       name: "Push renamed",
       programDay: "first",
     }),
     dateOnly: await addSession({
       id: V2_H02_IDS.dateOnlySession,
-      localDate: "2026-07-27",
+      localDate: fixtureDate(-9),
       name: "Imported date-only workout",
       dateOnly: true,
     }),
     currentPartialWeek: await addSession({
       id: V2_H02_IDS.currentSession,
-      localDate: "2026-08-04",
+      localDate: fixtureDate(-1),
       name: "Current partial week",
     }),
     abandoned: await addSession({
       id: V2_H02_IDS.abandonedSession,
-      localDate: "2026-07-22",
+      localDate: fixtureDate(-14),
       name: "Abandoned evidence",
       status: "abandoned",
     }),
     archived: await addSession({
       id: V2_H02_IDS.archivedSession,
-      localDate: "2026-07-23",
+      localDate: fixtureDate(-13),
       name: "Archived evidence",
       archived: true,
     }),
     otherOwner: await addSession({
       id: V2_H02_IDS.otherSession,
       ownerId: otherUserId,
-      localDate: "2026-07-24",
+      localDate: fixtureDate(-12),
       name: "Other owner evidence",
     }),
   };

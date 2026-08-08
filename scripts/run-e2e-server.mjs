@@ -23,6 +23,7 @@ const programEditorDisabled = process.argv.includes(
 const v2H01History = process.argv.includes("--v2-h01-history");
 const v2H02Cadence = process.argv.includes("--v2-h02-cadence-targets-time");
 const v2H03Evidence = process.argv.includes("--v2-h03-evidence-identity");
+const v2H04Pain = process.argv.includes("--v2-h04-pain-consistency");
 const port = Number.parseInt(process.env.E2E_PORT ?? "3100", 10);
 if (!Number.isInteger(port) || port < 1024 || port > 65535) {
   throw new Error("E2E_PORT must be an integer from 1024 through 65535.");
@@ -54,11 +55,14 @@ if (stage6Simulation && !baRoutineChange) {
   throw new Error("Stage 6 simulation fixtures require BA routine-change mode.");
 }
 if (
-  (v2H01History || v2H02Cadence || v2H03Evidence) &&
+  (v2H01History || v2H02Cadence || v2H03Evidence || v2H04Pain) &&
   [
     v2H01History && v2H02Cadence,
     v2H01History && v2H03Evidence,
     v2H02Cadence && v2H03Evidence,
+    v2H01History && v2H04Pain,
+    v2H02Cadence && v2H04Pain,
+    v2H03Evidence && v2H04Pain,
     baFixture,
     baRoutineChange,
     stage6Simulation,
@@ -126,7 +130,7 @@ const environment = {
   ANTHROPIC_API_KEY: "",
   ALLOWED_EMAILS: v2H02Cadence
     ? "v2.h02.cadence.e2e@example.com"
-    : v2H01History || v2H03Evidence
+    : v2H01History || v2H03Evidence || v2H04Pain
       ? "v2.h01.history.e2e@example.com"
     : baFixture || baCalendar
       ? "ba.iphone.e2e@example.com"
@@ -175,7 +179,7 @@ const serverScriptEnvironment = {
 
 const seeded = spawnSync(
   "npm",
-  baFixture || baRoutineChange || baCalendar || v2H01History || v2H02Cadence || v2H03Evidence
+  baFixture || baRoutineChange || baCalendar || v2H01History || v2H02Cadence || v2H03Evidence || v2H04Pain
     ? ["run", "db:seed"]
     : ["run", "db:seed", "--", "--demo"],
   {
@@ -197,7 +201,14 @@ if (seeded.status !== 0) {
   throw new Error(`E2E seed failed with status ${seeded.status}.`);
 }
 
-const fixtures = v2H03Evidence
+const fixtures = v2H04Pain
+  ? [
+      {
+        label: "H04 pain consistency",
+        script: "tests/helpers/seed-v2-h04-pain-consistency.ts",
+      },
+    ]
+  : v2H03Evidence
   ? [{
       label: "H03 exercise evidence",
       script: "tests/helpers/seed-v2-h01-history.ts",

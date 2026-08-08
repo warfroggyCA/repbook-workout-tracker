@@ -40,6 +40,10 @@ import {
   type ReviewedExerciseMapping,
   type ReviewedMappingStatus,
 } from "@/lib/history-exercise-evidence";
+import {
+  PAIN_EVIDENCE_ALGORITHM_VERSION,
+  classifyPainEvidence,
+} from "@/lib/pain-evidence";
 
 export const BACKUP_SCHEMA_VERSION = SNAPSHOT_SCHEMA_VERSION;
 export const USER_HELD_BACKUP_FORMAT = "workout-tracker-canonical-backup";
@@ -686,11 +690,35 @@ export async function buildPainFatigueCsv(
         bodyPart: painLogs.bodyPart,
         severity: painLogs.severity,
         source: painLogs.source,
+        performedExerciseId: sql<string | null>`coalesce(
+          ${sessionExercises.exerciseId}, ${painLogs.exerciseId}
+        )`,
         exercise: exercises.name,
+        plannedExerciseId: sql<string | null>`CASE
+          WHEN ${sessionExercises.modificationType} = 'added' THEN NULL
+          WHEN ${sessionExercises.modificationType} = 'substituted'
+            THEN ${sessionExercises.substitutedForExerciseId}
+          WHEN ${sessionExercises.id} IS NOT NULL
+            THEN ${sessionExercises.exerciseId}
+          ELSE NULL
+        END`,
+        plannedExercise: sql<string | null>`CASE
+          WHEN ${sessionExercises.modificationType} = 'added' THEN NULL
+          WHEN ${sessionExercises.prescribedSemanticsVersion} = 1
+            THEN ${sessionExercises.prescribedExerciseName}
+          ELSE NULL
+        END`,
+        modificationType: sessionExercises.modificationType,
+        substitutionReason: sessionExercises.substitutionReason,
         note: painLogs.note,
       })
       .from(painLogs)
       .leftJoin(exercises, eq(painLogs.exerciseId, exercises.id))
+      .leftJoin(completedSets, eq(painLogs.completedSetId, completedSets.id))
+      .leftJoin(
+        sessionExercises,
+        eq(completedSets.sessionExerciseId, sessionExercises.id),
+      )
       .leftJoin(workoutSessions, eq(painLogs.sessionId, workoutSessions.id))
       .where(
         and(
@@ -721,19 +749,31 @@ export async function buildPainFatigueCsv(
       ),
   ]);
 
+  const painRows = pain.map((entry) => ({
+    ...entry,
+    evidence: classifyPainEvidence(entry),
+  }));
+
   return toCsv(
     [
       "date", "kind", "session_id", "completed_set_id", "body_part",
-      "severity", "source", "exercise", "note",
+      "severity", "source", "pain_meaning", "pain_algorithm_version",
+      "performed_exercise_id", "performed_exercise", "planned_exercise_id",
+      "planned_exercise", "modification_type", "substitution_reason",
+      "exercise", "note",
     ],
     [
-      ...pain.map((p) => [
+      ...painRows.map((p) => [
         p.date.toISOString().slice(0, 10), "pain", p.sessionId,
-        p.completedSetId, p.bodyPart, p.severity, p.source, p.exercise, p.note,
+        p.completedSetId, p.bodyPart, p.severity, p.source,
+        p.evidence.meaning, PAIN_EVIDENCE_ALGORITHM_VERSION,
+        p.performedExerciseId, p.exercise, p.plannedExerciseId,
+        p.plannedExercise, p.modificationType, p.substitutionReason,
+        p.exercise, p.note,
       ]),
       ...fatigue.map((f) => [
         f.createdAt.toISOString().slice(0, 10), "fatigue", "", "", "",
-        f.severity, "", "", f.note,
+        f.severity, "", "", "", "", "", "", "", "", "", "", f.note,
       ]),
     ]
   );

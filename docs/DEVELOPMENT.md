@@ -27,7 +27,7 @@ npm run docs:check
 npm run audit:check
 ```
 
-The Repbook v2 semantic foundation and current T01/T02/T03/T04/T05/T06/U01/U02/U03/H01/H02/H03 activation
+The Repbook v2 semantic foundation and current T01/T02/T03/T04/T05/T06/U01/U02/U03/H01/H02/H03/H04 activation
 packages have focused gates:
 
 ```bash
@@ -57,6 +57,8 @@ npx vitest run tests/unit/v2-h02-cadence-targets-time-db.test.ts tests/unit/v2-h
 npm run test:e2e:v2-h02
 npx vitest run tests/unit/v2-h03-evidence-identity-db.test.ts tests/unit/v2-h03-evidence-identity-portability.test.ts tests/unit/v2-h03-evidence-identity-restore.test.ts tests/unit/v2-h03-evidence-identity-adversarial.test.ts
 npm run test:e2e:v2-h03
+npx vitest run tests/unit/v2-h04-pain-consistency.test.ts tests/unit/v2-h04-pain-consistency-db.test.ts tests/unit/v2-u02-exception-context-adversarial.test.ts tests/unit/v2-u02-exception-context-portability.test.ts tests/unit/v2-u02-exception-context-restore.test.ts
+npm run test:e2e:v2-h04
 ```
 
 The semantic test validates all synthetic F01-F17 scenarios and every required
@@ -118,6 +120,18 @@ and performed IDs separate, and derived progression is labelled with
 context, while cross-owner identities fail closed. The dedicated disposable
 browser fixture verifies desktop and narrow enlarged-text mobile behavior with
 no post-login mutation.
+H04 activates `pain-evidence-v1` across active workout, History, Review, Coach
+context, proposal-only pain holds, CSV, and snapshot restore. No record stays
+unknown, valid general severity zero is explicit no-issue evidence, positive
+supported records are pain evidence, and unsupported shapes are retained but
+excluded from conclusions. Positive `set_exception` evidence can now inform a
+reviewable hold or progression proposal without changing Program intent,
+approving a decision, or creating an adaptation. Exact performed/planned
+substitution identity travels with exported and Review evidence. The dedicated
+desktop and independent narrow enlarged-text mobile fixtures verify optional
+zero capture, positive/no-issue History, distinct technique and limitation
+context, Review visibility, zero post-login mutation, overflow, and page-error
+boundaries.
 Recovery manifest 10 remains the
 authoritative table inventory. Every later package must activate its own reserved
 evidence before its product behavior is considered implemented.
@@ -156,6 +170,8 @@ npm run test:e2e:v2-u03
 npm run test:e2e:v2-gauntlet-a
 npm run test:e2e:v2-h01
 npm run test:e2e:v2-h02
+npm run test:e2e:v2-h03
+npm run test:e2e:v2-h04
 ```
 
 Run the smallest affected browser suite first, then the complete protected

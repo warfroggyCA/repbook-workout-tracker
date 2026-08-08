@@ -113,20 +113,20 @@ export function classifyPainHold(input: {
   if (highSeverityReview || repeatedSessionReview) {
     state = "substitution_review";
     const reason = highSeverityReview
-      ? `a ${worstSeverity}/10 pain flag was saved in the last 14 days`
-      : `pain was flagged in ${pluralizedWorkouts(linkedSessionIds.length)} in the last 14 days`;
+      ? `a ${worstSeverity}/10 positive pain report was saved in the last 14 days`
+      : `positive pain was reported in ${pluralizedWorkouts(linkedSessionIds.length)} in the last 14 days`;
     const releaseExplanation =
       releaseAt == null
-        ? "Progression stays paused while those flags are in the 14-day window."
-        : "The pain hold clears 14 days after the latest 3/10 or higher flag.";
+        ? "Progression stays paused while those reports are in the 14-day window."
+        : "The pain hold clears 14 days after the latest 3/10 or higher report.";
     explanation =
       `${input.exerciseName} needs an alternative review because ${reason}. ` +
       `${releaseExplanation} A workout with no pain entry doesn't shorten that time.`;
   } else if (holdEvidence.length > 0) {
     state = "hold";
     explanation =
-      `${input.exerciseName} is on hold because a ${worstSeverity}/10 pain flag was saved in the last 14 days. ` +
-      "It comes off hold 14 days after the latest 3/10 or higher flag. " +
+      `${input.exerciseName} is on hold because a ${worstSeverity}/10 positive pain report was saved in the last 14 days. ` +
+      "It comes off hold 14 days after the latest 3/10 or higher report. " +
       "A workout with no pain entry doesn't shorten that time.";
   }
 

@@ -54,7 +54,7 @@ describe("Review and decisions presentation contracts", () => {
     ).toEqual([
       { label: "Linked completed workouts", value: "2" },
       { label: "Linked working sets", value: "3" },
-      { label: "Linked pain flags", value: "1" },
+      { label: "Linked positive pain reports", value: "1" },
       { label: "Clean completed workouts", value: "2" },
       { label: "Previous target", value: "100 lb" },
       { label: "Suggested target", value: "105 lb" },
@@ -604,7 +604,7 @@ describe("Review outcome readiness", () => {
         targetsMet: 3,
         rpeCount: 3,
         averageRpe: 8,
-        painFlags: 1,
+        positivePainReports: 1,
         maxPainSeverity: 3,
         evidenceLimited: false,
       }),
@@ -952,7 +952,7 @@ describe("Review outcome readiness", () => {
       expect.objectContaining({
         recommendationId,
         workingSets: 1,
-        painFlags: 0,
+        positivePainReports: 0,
         maxPainSeverity: null,
       }),
     ]);

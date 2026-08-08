@@ -738,7 +738,7 @@ async function verifyReviewAndDecisions({
   await expect(benchOutcome).toContainText(
     "Evidence is limited: target results or effort are missing for one or more recorded sets."
   );
-  await expect(benchOutcome).toContainText("1 flag · max 4/10");
+  await expect(benchOutcome).toContainText("1 positive report · max 4/10");
 
   const liveCoachContext = page.getByRole("region", {
     name: "Live Coach stays with the workout",
@@ -1717,7 +1717,7 @@ test("keeps every active-workout route reachable with one scroll surface", async
     ),
   ).toBeGreaterThanOrEqual(2);
   await expect(currentCard.getByRole("button", { name: "Add note", exact: true })).toBeVisible();
-  await expect(currentCard.getByRole("button", { name: "Flag pain", exact: true })).toBeVisible();
+  await expect(currentCard.getByRole("button", { name: "Pain / no issue", exact: true })).toBeVisible();
   await expect(currentCard.getByRole("button", { name: "Skip exercise", exact: true })).toBeVisible();
   await expect(currentCard.getByRole("heading", {
     name: "Change exercise for this workout",
@@ -1971,17 +1971,19 @@ test("keeps pain and substitution lineage reconstructable through History", asyn
   const painNote = "Sharp at the bottom before changing movements.";
   const setNote = "Comfortable range on the substituted movement.";
 
-  await nextSet.getByRole("button", { name: "Flag pain", exact: true }).click();
-  const pain = page.getByRole("dialog", { name: "Flag pain" });
+  await nextSet.getByRole("button", { name: "Pain / no issue", exact: true }).click();
+  const pain = page.getByRole("dialog", { name: "Pain / no-issue evidence" });
   const severity = pain.getByRole("slider");
   await severity.focus();
   await severity.press("ArrowRight");
+  await expect(severity).toHaveAttribute("aria-valuenow", "4");
   await severity.press("ArrowRight");
-  await expect(pain.getByText("Severity: 5/10", { exact: true })).toBeVisible();
+  await expect(severity).toHaveAttribute("aria-valuenow", "5");
+  await expect(pain.getByText("Pain: shoulder 5/10", { exact: true })).toBeVisible();
   await pain.getByPlaceholder("What did it feel like? (optional)").fill(painNote);
   await expect(pain.getByText("Stop this movement today.")).toBeVisible();
   await expect(pain.getByText(/professional opinion, not a workaround/)).toBeVisible();
-  await pain.getByRole("button", { name: "Save pain flag", exact: true }).click();
+  await pain.getByRole("button", { name: "Save pain report", exact: true }).click();
   await expect(pain).toHaveCount(0);
   await nextSet.getByRole("button", { name: "View alternatives", exact: true }).click();
   const alternatives = page.getByRole("dialog", {
@@ -2043,7 +2045,7 @@ test("keeps pain and substitution lineage reconstructable through History", asyn
     page.getByText(`Exercise guidance: ${exerciseNote}`, { exact: true }),
   ).toBeVisible();
   await expect(page.getByText(setNote, { exact: true })).toBeVisible();
-  const painFlags = page.getByRole("heading", { name: "Pain flags" }).locator("..");
+  const painFlags = page.getByRole("heading", { name: "Pain / no-issue evidence" }).locator("..");
   await expect(painFlags).toContainText(plannedExercise);
   await expect(painFlags).toContainText("shoulder 5/10");
   await expect(painFlags).toContainText(painNote);

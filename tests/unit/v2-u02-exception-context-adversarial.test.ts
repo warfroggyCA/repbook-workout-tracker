@@ -68,18 +68,22 @@ describe("V2 U02 exception context boundaries", () => {
     expect(await database.db.select().from(adaptationEvents)).toHaveLength(0);
   });
 
-  it("shows set-linked pain in Review without feeding automatic pain holds", async () => {
+  it("lets H04 consume positive set-linked pain as proposal-only evidence", async () => {
     const saved = await recordU02Exception(database.db, fixture);
     await completeT01Workout(database.db, fixture);
+    const savedPain = await database.db.query.painLogs.findFirst({
+      where: eq(painLogs.completedSetId, saved.setId),
+    });
+    if (!savedPain) throw new Error("Expected retained set-linked pain evidence.");
 
     await expect(loadExercisePainHold(database.db, {
       userId: fixture.userId,
       exerciseId: fixture.exerciseIds.loaded,
       now: new Date(Date.now() + 1_000),
     })).resolves.toMatchObject({
-      state: "clear",
-      blocksProgression: false,
-      evidenceIds: [],
+      state: "hold",
+      blocksProgression: true,
+      evidenceIds: [savedPain.id],
     });
     const review = await getReviewDecisionData(database.db, fixture.userId);
     expect(review.recentExceptions).toContainEqual(expect.objectContaining({
@@ -87,6 +91,33 @@ describe("V2 U02 exception context boundaries", () => {
       sessionId: fixture.sessionId,
       painBodyPart: "back",
       painSeverity: 4,
+      painMeaning: "pain",
+      painAlgorithmVersion: "pain-evidence-v1",
+    }));
+    expect(await database.db.select().from(recommendations)).toHaveLength(0);
+    expect(await database.db.select().from(userDecisions)).toHaveLength(0);
+    expect(await database.db.select().from(adaptationEvents)).toHaveLength(0);
+  });
+
+  it("keeps substituted performed and planned identity separate in Review", async () => {
+    const saved = await logWorkoutSet(database.db, fixture.userId, {
+      ...fixture.commands.bodyweightSubstitution,
+      clientKey: "v2-h04-substitution-pain",
+      pain: { bodyPart: "knee", severity: 3, note: "Only at depth" },
+    });
+    if (saved.outcome !== "saved") throw new Error(saved.outcome);
+    await completeT01Workout(database.db, fixture);
+
+    const review = await getReviewDecisionData(database.db, fixture.userId);
+    expect(review.recentExceptions).toContainEqual(expect.objectContaining({
+      setId: saved.setId,
+      performedExerciseId: fixture.exerciseIds.bodyweightSubstitution,
+      performedExerciseName: expect.any(String),
+      plannedExerciseId: fixture.exerciseIds.plannedSubstitution,
+      plannedExerciseName: null,
+      modificationType: "substituted",
+      substitutionReason: "equipment_busy",
+      painMeaning: "pain",
     }));
     expect(await database.db.select().from(recommendations)).toHaveLength(0);
     expect(await database.db.select().from(userDecisions)).toHaveLength(0);

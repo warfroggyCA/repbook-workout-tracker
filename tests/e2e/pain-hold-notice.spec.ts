@@ -27,7 +27,7 @@ const expectedDismissalPrefetchPaths = new Set([
   "/settings",
 ]);
 const holdReason =
-  "Barbell Bench Press is on hold because a 4/10 pain flag was saved in the last 14 days. It comes off hold 14 days after the latest 3/10 or higher flag. A workout with no pain entry doesn't shorten that time.";
+  "Barbell Bench Press is on hold because a 4/10 positive pain report was saved in the last 14 days. It comes off hold 14 days after the latest 3/10 or higher report. A workout with no pain entry doesn't shorten that time.";
 const holdExplanation =
   "This notice doesn't change your Program. The current load stays in place until the evidence window above clears.";
 const productVersionLabel = `Repbook v${packageMetadata.version}`;
@@ -96,7 +96,7 @@ test("explains the automatic pain hold without offering a Program change", async
   await expect(hold.getByText("Load held", { exact: true })).toBeVisible();
   await expect(hold.getByText(holdReason, { exact: true })).toBeVisible();
   await expect(hold.getByText(holdExplanation, { exact: true })).toBeVisible();
-  await expect(hold.getByText("Highest recorded pain flag")).toBeVisible();
+  await expect(hold.getByText("Highest positive pain report")).toBeVisible();
   await expect(hold.getByText("4", { exact: true })).toBeVisible();
   await expect(
     hold.getByText("Evidence window", { exact: true }),

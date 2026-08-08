@@ -36,6 +36,11 @@ import {
   workingSetSemanticRole,
 } from "@/lib/session-occurrences";
 import { buildTrainingCadence } from "@/lib/training-cadence";
+import {
+  PAIN_EVIDENCE_ALGORITHM_VERSION,
+  classifyPainEvidence,
+  formatPainEvidence,
+} from "@/lib/pain-evidence";
 
 /**
  * Deterministic training digest (plan §13 contract 12, §16). All numbers are
@@ -114,6 +119,7 @@ export async function buildTrainingDigest(
           date: painLogs.createdAt,
           bodyPart: painLogs.bodyPart,
           severity: painLogs.severity,
+          source: painLogs.source,
           exercise: exercises.name,
           note: painLogs.note,
         })
@@ -710,13 +716,19 @@ export async function buildTrainingDigest(
         sets: values.sets,
       }))
       .sort((a, b) => b.sets - a.sets),
-    pain: pain.map((p) => ({
-      date: p.date,
-      bodyPart: p.bodyPart,
-      severity: p.severity,
-      exercise: p.exercise,
-      note: p.note,
-    })),
+    pain: pain.map((p) => {
+      const evidence = classifyPainEvidence(p);
+      return {
+        date: p.date,
+        bodyPart: p.bodyPart,
+        severity: p.severity,
+        source: p.source,
+        meaning: evidence.meaning,
+        algorithmVersion: PAIN_EVIDENCE_ALGORITHM_VERSION,
+        exercise: p.exercise,
+        note: p.note,
+      };
+    }),
     fatigue: fatigue.map((f) => ({ date: f.createdAt, severity: f.severity })),
     skips,
     substitutions,
@@ -945,12 +957,18 @@ export function renderCoachingBrief(digest: TrainingDigest): string {
   }
 
   if (digest.pain.length) {
-    lines.push("", "## Pain reports");
+    lines.push("", "## Pain and no-issue evidence");
     for (const p2 of digest.pain) {
       lines.push(
-        `- ${fmtDate(p2.date)}: ${p2.bodyPart} ${p2.severity}/10${p2.exercise ? ` on ${p2.exercise}` : ""}${p2.note ? ` — "${p2.note}"` : ""}`
+        `- ${fmtDate(p2.date)}: ${formatPainEvidence(p2)}${p2.exercise ? ` on ${p2.exercise}` : ""}${p2.note ? ` — "${p2.note}"` : ""}`
       );
     }
+  } else {
+    lines.push(
+      "",
+      "## Pain and no-issue evidence",
+      "- Pain not recorded (unknown); absence is not evidence of a pain-free period.",
+    );
   }
   if (digest.fatigue.length) {
     lines.push("", "## Fatigue check-ins");
