@@ -587,3 +587,25 @@ A01 does not send the package to an external system, retain provider output,
 import analysis, create a recommendation or decision, change Program intent,
 rewrite history, or access production. Those later boundaries are separate
 owner-gated packages.
+
+## A02 provider-neutral instruction contract
+
+A02 pairs the exact owner-previewed analysis package with deterministic plain-
+text instructions. The instructions bind the package ID, namespace, schema,
+semantic version, digest, evidence cutoff, expiry, selected question, and
+purpose. They work through a paste or file-upload workflow without relying on a
+provider-specific system prompt, tool call, API, or hidden behavior.
+
+The instruction contract restates Repbook's fact, intent, calculation,
+proposal, decision, adaptation, correction, ownership, and unknown-evidence
+meanings. Every package value is untrusted data, even when it resembles a prompt
+or tool command. The model is told not to browse, call tools, retrieve omitted
+facts, guess a value, collapse evidence classes, claim causality, or describe a
+record or Program as changed. Every observation and proposed future action must
+cite exact package evidence IDs and state its limitations.
+
+The A02 starter response shape is explicitly human-review-only and cannot be
+imported into Repbook. A later package owns the strict typed response and import
+boundary. A02 adds no provider request, response retention, durable record,
+schema, migration, recommendation, owner decision, adaptation, Program write,
+performed fact, recovery obligation, or production action.

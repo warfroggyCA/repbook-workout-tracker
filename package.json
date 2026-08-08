@@ -48,6 +48,7 @@
     "test:e2e:v2-h05": "playwright test --config=playwright.v2-h05.config.ts --project=desktop-chromium && V2_H05_PORT=3148 playwright test --config=playwright.v2-h05.config.ts --project=narrow-mobile-webkit",
     "test:e2e:v2-gauntlet-b": "playwright test --config=playwright.v2-gauntlet-b.config.ts --project=desktop-chromium && V2_GAUNTLET_B_PORT=3150 playwright test --config=playwright.v2-gauntlet-b.config.ts --project=mobile-reference-chromium && V2_GAUNTLET_B_PORT=3151 playwright test --config=playwright.v2-gauntlet-b.config.ts --project=narrow-mobile-webkit",
     "test:e2e:v2-a01": "playwright test --config=playwright.v2-a01.config.ts --project=desktop-chromium && V2_A01_PORT=3153 playwright test --config=playwright.v2-a01.config.ts --project=narrow-mobile-webkit",
+    "test:e2e:v2-a02": "playwright test --config=playwright.v2-a02.config.ts --project=desktop-chromium && V2_A02_PORT=3155 playwright test --config=playwright.v2-a02.config.ts --project=narrow-mobile-webkit",
     "study:physical-device-server": "E2E_HOSTNAME=0.0.0.0 E2E_PORT=3128 node scripts/run-e2e-server.mjs --production",
     "test:e2e:ba:chrome": "env BA_BROWSER=chromium playwright test --config=playwright.ba-workout.config.ts",
     "test:e2e:ba:webkit": "env BA_BROWSER=webkit playwright test --config=playwright.ba-workout.config.ts",
