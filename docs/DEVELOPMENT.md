@@ -183,9 +183,13 @@ npm run test:e2e:v2-gauntlet-b
 ```
 
 Run the smallest affected browser suite first, then the complete protected
-workflow for a merge candidate. The Stage 5 timer suite requires an unused
-`STAGE5_RUN_ID` matching its documented format. All browser fixtures must
-remain synthetic.
+workflow for a merge candidate. Protected CI runs the authoritative inventory
+in `scripts/production-browser-groups.json` as six balanced parallel groups;
+`verify` remains a fail-closed collector over PostgreSQL, the complete
+automated/static/build core, and every browser group. Validate registry and
+workflow alignment with `npm run ci:browser-groups:check`. The Stage 5 timer
+suite receives an unused run identity from the group runner. All browser
+fixtures must remain synthetic.
 
 ## Pull requests
 

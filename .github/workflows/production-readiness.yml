@@ -52,13 +52,13 @@ jobs:
       - name: Run true parallel PostgreSQL integration tests
         run: npm run test:integration:postgres
 
-  verify:
+  core:
     runs-on: ubuntu-latest
     container:
       # Playwright 1.61.1 Noble image, pinned to its reviewed multi-architecture manifest.
       image: mcr.microsoft.com/playwright@sha256:5b8f294aff9041b7191c34a4bab3ac270157a28774d4b0660e9743297b697e48
       options: --user 1001
-    timeout-minutes: 90
+    timeout-minutes: 45
     env:
       PLAYWRIGHT_BROWSERS_PATH: /ms-playwright
     steps:
@@ -88,6 +88,9 @@ jobs:
       - name: Validate current documentation links
         run: npm run docs:check
 
+      - name: Validate protected browser group coverage
+        run: npm run ci:browser-groups:check
+
       - name: Run isolated production performance budgets
         run: npm run test:performance:isolated
 
@@ -116,243 +119,68 @@ jobs:
           node -e 'const fs = require("fs"); const { chromium, firefox, webkit } = require("playwright"); for (const [name, browser] of Object.entries({ chromium, firefox, webkit })) { const executable = browser.executablePath(); fs.accessSync(executable, fs.constants.X_OK); console.log(`${name}: ${executable}`); }'
           npx playwright install --list
 
-      - name: Run signed-in browser smoke tests
-        id: browser-smoke
-        continue-on-error: true
-        run: npm run test:e2e
+  browser:
+    name: browser / ${{ matrix.group }}
+    runs-on: ubuntu-latest
+    container:
+      # Keep every browser group on the same exact image verified by core.
+      image: mcr.microsoft.com/playwright@sha256:5b8f294aff9041b7191c34a4bab3ac270157a28774d4b0660e9743297b697e48
+      options: --user 1001
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        group:
+          - baseline-history
+          - program
+          - workout-remediation
+          - v2-recording
+          - v2-execution
+          - v2-history-coaching
+    env:
+      PLAYWRIGHT_BROWSERS_PATH: /ms-playwright
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
 
-      - name: Verify pain-hold notice on desktop Chromium and mobile WebKit
-        id: browser-pain-hold
-        continue-on-error: true
-        run: npm run test:e2e:pain-hold
+      - name: Use Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
 
-      - name: Run complete History management browser matrix
-        id: browser-history
-        continue-on-error: true
-        run: npm run test:e2e:history-calendar
+      - name: Install dependencies
+        run: npm ci
 
-      - name: Run focused History workspace browser matrix
-        id: browser-history-workspace
-        continue-on-error: true
-        run: npm run test:e2e:history-workspace
+      - name: Run protected browser group
+        run: node scripts/run-production-browser-group.mjs "${{ matrix.group }}"
 
-      - name: Run complete Program editor browser lifecycle
-        id: browser-program-lifecycle
-        continue-on-error: true
-        run: npm run test:e2e:program-editor
-
-      - name: Run Program editor cross-browser accessibility checks
-        id: browser-program-cross-browser
-        continue-on-error: true
-        run: npm run test:e2e:program-editor-cross-browser
-
-      - name: Verify Program draft review recovery on desktop and mobile
-        id: browser-program-review-recovery
-        continue-on-error: true
-        run: npm run test:e2e:program-editor-review-recovery
-
-      - name: Verify the Program editor disabled rollout state
-        id: browser-program-disabled
-        continue-on-error: true
-        run: npm run test:e2e:program-editor-disabled
-
-      - name: Verify production browser-security headers
-        id: browser-security-headers
-        continue-on-error: true
-        run: npm run test:e2e:production-headers
-
-      - name: Verify failed-set recovery remains reachable
-        id: browser-failed-set-recovery
-        continue-on-error: true
-        run: npx playwright test -c playwright.failed-set-recovery.config.ts
-
-      - name: Verify plate-loaded machine setup and live guidance
-        id: browser-plate-machine-guidance
-        continue-on-error: true
-        run: npx playwright test -c playwright.plate-machine-guidance.config.ts
-
-      - name: Verify unrestricted replacement and mobile keyboard safety
-        id: browser-replacement-mobile
-        continue-on-error: true
-        run: npx playwright test -c playwright.replacement-mobile.config.ts
-
-      - name: Verify current action and warm-up transition
-        id: browser-current-action
-        continue-on-error: true
-        run: npm run test:e2e:current-action
-
-      - name: Verify compact rest timer and acknowledged action changes
-        id: browser-compact-timer
-        continue-on-error: true
+  verify:
+    runs-on: ubuntu-latest
+    if: ${{ always() }}
+    needs:
+      - postgres-integration
+      - core
+      - browser
+    steps:
+      - name: Require every protected job
         env:
-          STAGE5_RUN_ID: remediation-2026-07-31-stage5-r${{ github.run_attempt }}
-        run: npx playwright test --config=playwright.stage5.config.ts
-
-      - name: Verify superset presentation and equipment preparation
-        id: browser-superset-prep
-        continue-on-error: true
-        run: npm run test:e2e:superset-prep
-
-      - name: Verify active-workout exercise addition
-        id: browser-active-workout-add-exercise
-        continue-on-error: true
-        run: npm run test:e2e:active-workout-add-exercise
-
-      - name: Verify T01 performed measurement on desktop and mobile
-        id: browser-v2-t01
-        continue-on-error: true
-        run: npm run test:e2e:v2-t01
-
-      - name: Verify T02 acknowledgement and correction on desktop and mobile
-        id: browser-v2-t02
-        continue-on-error: true
-        run: npm run test:e2e:v2-t02
-
-      - name: Verify T03 planned order and extra-set truth on desktop and mobile
-        id: browser-v2-t03
-        continue-on-error: true
-        run: npm run test:e2e:v2-t03
-
-      - name: Verify T04 warm-up occurrence truth on desktop and mobile
-        id: browser-v2-t04
-        continue-on-error: true
-        run: npm run test:e2e:v2-t04
-
-      - name: Verify T05 current, next, group, and rest truth on desktop and mobile
-        id: browser-v2-t05
-        continue-on-error: true
-        run: npm run test:e2e:v2-t05
-
-      - name: Verify T06 preview and Start truth on desktop and mobile
-        id: browser-v2-t06
-        continue-on-error: true
-        run: npm run test:e2e:v2-t06
-
-      - name: Verify U01 active-workout hierarchy and ergonomics
-        id: browser-v2-u01
-        continue-on-error: true
-        run: npm run test:e2e:v2-u01
-
-      - name: Verify U02 exception-only context on desktop and mobile
-        id: browser-v2-u02
-        continue-on-error: true
-        run: npm run test:e2e:v2-u02
-
-      - name: Verify U03 future-only Program publication
-        id: browser-v2-u03
-        continue-on-error: true
-        run: npm run test:e2e:v2-u03
-
-      - name: Verify Repbook v2 Gauntlet A scenarios
-        id: browser-v2-gauntlet-a
-        continue-on-error: true
-        run: npm run test:e2e:v2-gauntlet-a
-
-      - name: Verify H01 performed-first History on desktop and mobile
-        id: browser-v2-h01
-        continue-on-error: true
-        run: npm run test:e2e:v2-h01
-
-      - name: Verify H02 cadence and planned-set outcomes
-        id: browser-v2-h02
-        continue-on-error: true
-        run: npm run test:e2e:v2-h02
-
-      - name: Verify H03 exact exercise evidence on desktop and mobile
-        id: browser-v2-h03
-        continue-on-error: true
-        run: npm run test:e2e:v2-h03
-
-      - name: Verify H04 pain consistency on desktop and mobile
-        id: browser-v2-h04
-        continue-on-error: true
-        run: npm run test:e2e:v2-h04
-
-      - name: Verify H05 evidence-linked Review on desktop and mobile
-        id: browser-v2-h05
-        continue-on-error: true
-        run: npm run test:e2e:v2-h05
-
-      - name: Verify Repbook v2 Gauntlet B live-workout recovery
-        id: browser-v2-gauntlet-b
-        continue-on-error: true
-        run: npm run test:e2e:v2-gauntlet-b
-
-      - name: Require every browser suite
-        if: ${{ always() }}
-        env:
-          BROWSER_SMOKE: ${{ steps.browser-smoke.outcome }}
-          BROWSER_PAIN_HOLD: ${{ steps.browser-pain-hold.outcome }}
-          BROWSER_HISTORY: ${{ steps.browser-history.outcome }}
-          BROWSER_HISTORY_WORKSPACE: ${{ steps.browser-history-workspace.outcome }}
-          BROWSER_PROGRAM_LIFECYCLE: ${{ steps.browser-program-lifecycle.outcome }}
-          BROWSER_PROGRAM_CROSS_BROWSER: ${{ steps.browser-program-cross-browser.outcome }}
-          BROWSER_PROGRAM_REVIEW_RECOVERY: ${{ steps.browser-program-review-recovery.outcome }}
-          BROWSER_PROGRAM_DISABLED: ${{ steps.browser-program-disabled.outcome }}
-          BROWSER_SECURITY_HEADERS: ${{ steps.browser-security-headers.outcome }}
-          BROWSER_FAILED_SET_RECOVERY: ${{ steps.browser-failed-set-recovery.outcome }}
-          BROWSER_PLATE_MACHINE_GUIDANCE: ${{ steps.browser-plate-machine-guidance.outcome }}
-          BROWSER_REPLACEMENT_MOBILE: ${{ steps.browser-replacement-mobile.outcome }}
-          BROWSER_CURRENT_ACTION: ${{ steps.browser-current-action.outcome }}
-          BROWSER_COMPACT_TIMER: ${{ steps.browser-compact-timer.outcome }}
-          BROWSER_SUPERSET_PREP: ${{ steps.browser-superset-prep.outcome }}
-          BROWSER_ACTIVE_WORKOUT_ADD_EXERCISE: ${{ steps.browser-active-workout-add-exercise.outcome }}
-          BROWSER_V2_T01: ${{ steps.browser-v2-t01.outcome }}
-          BROWSER_V2_T02: ${{ steps.browser-v2-t02.outcome }}
-          BROWSER_V2_T03: ${{ steps.browser-v2-t03.outcome }}
-          BROWSER_V2_T04: ${{ steps.browser-v2-t04.outcome }}
-          BROWSER_V2_T05: ${{ steps.browser-v2-t05.outcome }}
-          BROWSER_V2_T06: ${{ steps.browser-v2-t06.outcome }}
-          BROWSER_V2_U01: ${{ steps.browser-v2-u01.outcome }}
-          BROWSER_V2_U02: ${{ steps.browser-v2-u02.outcome }}
-          BROWSER_V2_U03: ${{ steps.browser-v2-u03.outcome }}
-          BROWSER_V2_GAUNTLET_A: ${{ steps.browser-v2-gauntlet-a.outcome }}
-          BROWSER_V2_H01: ${{ steps.browser-v2-h01.outcome }}
-          BROWSER_V2_H02: ${{ steps.browser-v2-h02.outcome }}
-          BROWSER_V2_H03: ${{ steps.browser-v2-h03.outcome }}
-          BROWSER_V2_H04: ${{ steps.browser-v2-h04.outcome }}
-          BROWSER_V2_H05: ${{ steps.browser-v2-h05.outcome }}
-          BROWSER_V2_GAUNTLET_B: ${{ steps.browser-v2-gauntlet-b.outcome }}
+          POSTGRES_RESULT: ${{ needs.postgres-integration.result }}
+          CORE_RESULT: ${{ needs.core.result }}
+          BROWSER_RESULT: ${{ needs.browser.result }}
         run: |
           failed=0
           for result in \
-            "signed-in smoke:${BROWSER_SMOKE}" \
-            "pain-hold notice:${BROWSER_PAIN_HOLD}" \
-            "History management:${BROWSER_HISTORY}" \
-            "History workspace:${BROWSER_HISTORY_WORKSPACE}" \
-            "Program lifecycle:${BROWSER_PROGRAM_LIFECYCLE}" \
-            "Program cross-browser:${BROWSER_PROGRAM_CROSS_BROWSER}" \
-            "Program review recovery:${BROWSER_PROGRAM_REVIEW_RECOVERY}" \
-            "Program disabled:${BROWSER_PROGRAM_DISABLED}" \
-            "security headers:${BROWSER_SECURITY_HEADERS}" \
-            "failed-set recovery:${BROWSER_FAILED_SET_RECOVERY}" \
-            "plate-machine guidance:${BROWSER_PLATE_MACHINE_GUIDANCE}" \
-            "replacement mobile keyboard:${BROWSER_REPLACEMENT_MOBILE}" \
-            "current action and warm-up transition:${BROWSER_CURRENT_ACTION}" \
-            "compact timer and acknowledged action changes:${BROWSER_COMPACT_TIMER}" \
-            "superset equipment preparation:${BROWSER_SUPERSET_PREP}" \
-            "active-workout exercise addition:${BROWSER_ACTIVE_WORKOUT_ADD_EXERCISE}" \
-            "T01 performed measurement:${BROWSER_V2_T01}" \
-            "T02 acknowledgement and correction:${BROWSER_V2_T02}" \
-            "T03 planned order and extra-set truth:${BROWSER_V2_T03}" \
-            "T04 warm-up occurrence truth:${BROWSER_V2_T04}" \
-            "T05 current, next, group, and rest truth:${BROWSER_V2_T05}" \
-            "T06 preview and Start truth:${BROWSER_V2_T06}" \
-            "U01 active-workout hierarchy:${BROWSER_V2_U01}" \
-            "U02 exception-only context:${BROWSER_V2_U02}" \
-            "U03 future-only Program publication:${BROWSER_V2_U03}" \
-            "Repbook v2 Gauntlet A:${BROWSER_V2_GAUNTLET_A}" \
-            "H01 performed-first History:${BROWSER_V2_H01}" \
-            "H02 cadence and planned-set outcomes:${BROWSER_V2_H02}" \
-            "H03 exact exercise evidence:${BROWSER_V2_H03}" \
-            "H04 pain consistency:${BROWSER_V2_H04}" \
-            "H05 evidence-linked Review:${BROWSER_V2_H05}" \
-            "Repbook v2 Gauntlet B:${BROWSER_V2_GAUNTLET_B}"
+            "PostgreSQL:${POSTGRES_RESULT}" \
+            "automated/static/build core:${CORE_RESULT}" \
+            "complete browser matrix:${BROWSER_RESULT}"
           do
             name="${result%%:*}"
             outcome="${result#*:}"
             if [ "${outcome}" != "success" ]; then
-              echo "::error::${name} browser suite finished with ${outcome}."
+              echo "::error::${name} finished with ${outcome}."
               failed=1
             fi
           done
