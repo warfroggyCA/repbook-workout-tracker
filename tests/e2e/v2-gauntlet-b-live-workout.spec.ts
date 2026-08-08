@@ -181,8 +181,9 @@ test("keeps the full live workout usable through warm-up, skip, replace, continu
     const log = currentSet.getByRole("button", { name: "Log set", exact: true });
     await expectReachableTarget(log);
     await log.click();
-    await expect(current.getByTestId("active-set-save-receipt"))
-      .toContainText(`Saved · Set ${setNo}`);
+    const receipt = current.getByTestId("active-set-save-receipt");
+    await expect(receipt).toContainText(`Set ${setNo}`);
+    await expect(receipt).toContainText("Acknowledged by Repbook");
     await dismissRest(page);
     await expectActiveViewportBudget(page);
   }
