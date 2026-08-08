@@ -34,6 +34,11 @@ Only a later explicit owner action creates a decision; accepting creates a
 future Review-direction adaptation with `programChanged: false`, not a
 performed fact or published Program version.
 
+The A06 adversarial corpus contains synthetic transformations of the public A03
+response fixture only. Its declared oracles are test evidence, not imported
+training evidence, model-quality claims, owner decisions, or release records.
+No real provider output or private operating chronology is included.
+
 The first public `fix/pain-hold-truth` commit maps the application and test
 changes from private source commit
 `f308ead8c8ef27430707c5aa5651b97808ccfab6`. Private release-record and

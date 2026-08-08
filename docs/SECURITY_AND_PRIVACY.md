@@ -87,5 +87,13 @@ Acceptance rechecks source revisions and Program identity atomically. It records
 only an explicit owner decision and future Review direction and cannot change a
 Program, active workout, or completed fact.
 
+A06 keeps its entire adversarial corpus synthetic and provider-neutral. Raw
+size/depth attacks, active text, guessed facts, unknown identifiers, units,
+fields and effects, mixed versions, cross-owner attempts, stale receipts, and
+conflicting replay all have deterministic fail-closed or recovery oracles.
+Stateful cases assert that rejected or recovery input leaves both protected
+workout/Program state and the import lifecycle unchanged. No provider response,
+owner identity, or operational evidence is checked into the corpus.
+
 Security reports use the private process in `SECURITY.md`; public issues must
 contain synthetic data only.

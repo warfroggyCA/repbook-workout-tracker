@@ -27,7 +27,7 @@ npm run docs:check
 npm run audit:check
 ```
 
-The Repbook v2 semantic foundation and current T01/T02/T03/T04/T05/T06/U01/U02/U03/H01/H02/H03/H04/A01/A02/A03/A04/A05 activation
+The Repbook v2 semantic foundation and current T01/T02/T03/T04/T05/T06/U01/U02/U03/H01/H02/H03/H04/A01/A02/A03/A04/A05/A06 activation
 packages have focused gates:
 
 ```bash
@@ -69,6 +69,7 @@ npx vitest run tests/unit/v2-a04-external-analysis-validation.test.ts --maxWorke
 npm run test:e2e:v2-a04
 npx vitest run tests/unit/v2-a05-selective-review-bridge.test.ts --maxWorkers=1 --no-file-parallelism
 npm run test:e2e:v2-a05
+npx vitest run tests/unit/v2-a06-adversarial-corpus.test.ts --maxWorkers=1 --no-file-parallelism
 ```
 
 The semantic test validates all synthetic F01-F17 scenarios and every required
@@ -195,6 +196,15 @@ Migration 0076 adds only receipt identity and invariant guards; snapshot schema
 30 stays fixed while recovery manifest 13 includes the durable provenance
 relationship. Acceptance records a future Review direction with
 `programChanged: false`; it does not publish a Program or rewrite history.
+A06 activates the synthetic provider-neutral adversarial corpus without adding
+a browser or runtime path. Its exact raw, response, and stateful import oracles
+cover valid, partial, stale, hallucinated, prompt-injected, oversized, deeply
+nested, duplicate, conflicting, cross-user, unknown-exercise, wrong-unit,
+unsupported-legacy, mixed-version, unknown-field, and unknown-effect cases.
+Valid import is limited to the expected external Review records and Review
+revision transition. Every rejection, recovery, and replay oracle proves
+Program intent, immutable Program versions, active work, and performed facts do
+not change; stateful failures also preserve the complete import state.
 
 `audit:check` requires a clean production dependency audit and also reviews the
 complete development-tool tree. Any temporary development-only exception is

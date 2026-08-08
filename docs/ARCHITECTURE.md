@@ -695,3 +695,24 @@ recommendation Program revision guard through a narrow external-proposal path.
 Snapshot schema 30 is unchanged. Recovery manifest 13 adds the durable receipt
 relationship; privacy sanitization retains only its typed allowlist and restore
 validates the full receipt, proposal, owner, and current-Program graph.
+
+## A06 adversarial evaluation corpus
+
+A06 adds a provider-neutral, synthetic-only corpus over the complete external-
+analysis boundary. Each valid, partial, stale, hallucinated, prompt-injected,
+oversized, deeply nested, duplicate, conflicting, cross-user, unknown-exercise,
+wrong-unit, unsupported-legacy, mixed-version, unknown-field, and unknown-
+effect item owns one deterministic accept, non-actionable, reject, or recovery
+oracle.
+
+The focused oracle runs raw request limits, the closed response schema, exact
+package binding, and the real A05 import service. A valid import may create only
+the selected external receipt and Review proposal and the established Review
+revision transition; Program intent, immutable Program versions, active work,
+and completed facts remain unchanged. Exact replay is idempotent. Conflict,
+cross-user, and stale attempts leave both protected state and the complete
+import state unchanged. Unknown fields and effects fail closed.
+
+A06 is verification-only. It adds no runtime path, schema, migration, snapshot
+or recovery version, browser behavior, provider call, Program publication,
+historical repair, or production action.
