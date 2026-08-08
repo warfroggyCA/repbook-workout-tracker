@@ -120,8 +120,8 @@ describe("Repbook v2 ratified semantic contract", () => {
       schemaVersion: 1,
       contractVersion: V2_CONTRACT_VERSION,
       exactBaseCommit: "2c9ab1b9478502f1d08956a6c44dfb0850c8f168",
-      currentPackage: "A03",
-      currentPackageBaseCommit: "3d470867dc6e361a8c6fa96ed5539783905413e1",
+      currentPackage: "A04",
+      currentPackageBaseCommit: "b0e97aed8d486226d97f580afe34426c645fbe9f",
       productBehaviorImplementedByP02: false,
       implementedProductPackages: [
         "T01",
@@ -141,6 +141,7 @@ describe("Repbook v2 ratified semantic contract", () => {
         "A01",
         "A02",
         "A03",
+        "A04",
       ],
     });
     expect(matrix.columns).toEqual(columns);
@@ -201,6 +202,16 @@ describe("Repbook v2 ratified semantic contract", () => {
       implementingPackage: "A03",
       testPath: "tests/e2e/v2-a03-typed-response-schema.spec.ts",
       command: "npm run test:e2e:v2-a03",
+    });
+    expect(matrix.verifications["A04-databaseService"]).toMatchObject({
+      status: "current",
+      implementingPackage: "A04",
+      testPath: "tests/unit/v2-a04-external-analysis-validation.test.ts",
+    });
+    expect(matrix.verifications["A04-browser"]).toMatchObject({
+      status: "current",
+      implementingPackage: "A04",
+      testPath: "tests/e2e/v2-a04-ai-response-validation.spec.ts",
     });
     expect(matrix.verifications["A01-databaseService"]).toMatchObject({
       status: "current",

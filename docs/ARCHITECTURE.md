@@ -634,3 +634,32 @@ response identity and same content is an idempotent duplicate, while changed
 content under that identity is a conflict. A03 itself adds no paste/upload UI,
 manifest lookup, durable response, import writer, recommendation, decision,
 adaptation, migration, recovery obligation, or Program write.
+
+## A04 untrusted response validation contract
+
+A04 adds a transient paste or local JSON-file path on `/export/analysis`.
+The browser keeps the original input only in page state so the owner can retry,
+download it unchanged, or deliberately discard it. The request boundary limits
+the raw body to 256 KiB, accepts only the closed JSON media types, requires
+valid UTF-8, and scans JSON container depth before parsing. The A03 closed
+schema then enforces all field, collection, identifier, evidence, unit, version,
+and effect limits. Active markup, executable URL schemes, event-handler text,
+control characters, and bidirectional display controls fail closed.
+
+The server extracts only the package identity needed to locate the A01 receipt.
+The receipt lookup is authenticated and owner-scoped; another owner's identity
+is indistinguishable from a missing receipt. Expired, malformed, or deleted
+receipts fail closed. Its source bindings reconstruct the exact allowed
+evidence-ID inventory without retaining the raw package. The bound current
+Program and version must still be current; later Program publication makes the
+response stale and requires a new package. Exact question text comes from the
+closed question allowlist, while package namespace, schema, semantic version,
+digest, evidence cutoff, and expiry come from the receipt.
+
+A validated response is returned only as a plain-text React preview of distinct
+observations, unknowns, and future-only Review proposals with exact effects,
+evidence, and limitations. No raw HTML is rendered. The server does not log or
+retain the response, and A04 adds no response table, import writer,
+recommendation, owner decision, accepted adaptation, Program mutation,
+migration, snapshot change, or recovery obligation. A05 owns any later
+selective durable Review bridge.

@@ -30,6 +30,9 @@ export const EXTERNAL_ANALYSIS_PROHIBITED_EFFECTS = [
   "production_operation",
 ] as const;
 
+export const EXTERNAL_ANALYSIS_RESPONSE_MAX_BYTES = 256 * 1024;
+export const EXTERNAL_ANALYSIS_RESPONSE_MAX_DEPTH = 12;
+
 const MAX_TEXT = 1_000;
 const MAX_ITEMS = 25;
 const MAX_EVIDENCE_IDS = 20;
@@ -166,7 +169,8 @@ export type ExternalAnalysisResponseErrorCode =
   | "duplicate_item_id"
   | "unknown_evidence_id"
   | "prohibited_effect"
-  | "unknown_effect";
+  | "unknown_effect"
+  | "unsafe_text";
 
 export type ExternalAnalysisResponseIssue = {
   code: ExternalAnalysisResponseErrorCode;
@@ -181,6 +185,34 @@ export type ExternalAnalysisResponseValidation =
       canonicalResponse: string;
     }
   | { ok: false; issues: ExternalAnalysisResponseIssue[] };
+
+export type ExternalAnalysisResponseBinding = {
+  packageId: string;
+  packageNamespace: string;
+  schemaVersion: typeof ANALYSIS_PACKAGE_SCHEMA_VERSION;
+  semanticVersion: typeof ANALYSIS_PACKAGE_SEMANTIC_VERSION;
+  digest: string;
+  evidenceCutoff: string;
+  expiresAt: string;
+  questionId: AnalysisPackage["request"]["questionId"];
+  questionText: string;
+  evidenceIds: readonly string[];
+};
+
+export type ExternalAnalysisRawInputFailure = {
+  ok: false;
+  code:
+    | "invalid_media_type"
+    | "invalid_encoding"
+    | "empty_input"
+    | "too_deep"
+    | "malformed_json";
+  message: string;
+};
+
+export type ExternalAnalysisRawInputResult =
+  | { ok: true; value: unknown; rawText: string }
+  | ExternalAnalysisRawInputFailure;
 
 export function classifyExternalAnalysisEffectType(
   value: unknown,
@@ -269,9 +301,132 @@ function packageEvidenceIds(value: AnalysisPackage) {
   return ids;
 }
 
+export function externalAnalysisResponseBindingFromPackage(
+  value: AnalysisPackage,
+): ExternalAnalysisResponseBinding {
+  return {
+    packageId: value.packageId,
+    packageNamespace: value.packageNamespace,
+    schemaVersion: value.schemaVersion,
+    semanticVersion: value.semanticVersion,
+    digest: value.integrity.digest,
+    evidenceCutoff: value.evidenceCutoff,
+    expiresAt: value.expiresAt,
+    questionId: value.request.questionId,
+    questionText: value.request.question,
+    evidenceIds: [...packageEvidenceIds(value)],
+  };
+}
+
+function normalizeBinding(
+  value: AnalysisPackage | ExternalAnalysisResponseBinding,
+): ExternalAnalysisResponseBinding {
+  return "integrity" in value
+    ? externalAnalysisResponseBindingFromPackage(value)
+    : value;
+}
+
+function findUnsafeText(value: unknown, path = ""): ExternalAnalysisResponseIssue[] {
+  if (typeof value === "string") {
+    const activeContent =
+      /<\s*\/?\s*(?:script|iframe|object|embed|link|meta|style|svg|math)\b/i.test(value) ||
+      /\bon[a-z]+\s*=/i.test(value) ||
+      /(?:javascript|vbscript)\s*:/i.test(value) ||
+      /data\s*:\s*text\/html/i.test(value);
+    const unsafeControls = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f\u202a-\u202e\u2066-\u2069]/u.test(value);
+    return activeContent || unsafeControls
+      ? [{
+          code: "unsafe_text",
+          path,
+          message: "The response contains active or display-unsafe text.",
+        }]
+      : [];
+  }
+  if (Array.isArray(value)) {
+    return value.flatMap((item, index) =>
+      findUnsafeText(item, path ? `${path}.${index}` : String(index)),
+    );
+  }
+  if (value && typeof value === "object") {
+    return Object.entries(value as Record<string, unknown>).flatMap(
+      ([key, item]) => findUnsafeText(item, path ? `${path}.${key}` : key),
+    );
+  }
+  return [];
+}
+
+function exceedsJsonDepth(raw: string, maxDepth: number): boolean {
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+  for (const character of raw) {
+    if (inString) {
+      if (escaped) escaped = false;
+      else if (character === "\\") escaped = true;
+      else if (character === '"') inString = false;
+      continue;
+    }
+    if (character === '"') inString = true;
+    else if (character === "{" || character === "[") {
+      depth += 1;
+      if (depth > maxDepth) return true;
+    } else if (character === "}" || character === "]") {
+      depth -= 1;
+      if (depth < 0) return false;
+    }
+  }
+  return false;
+}
+
+export function parseExternalAnalysisRawInput(
+  bytes: Uint8Array,
+  contentType: string | null,
+): ExternalAnalysisRawInputResult {
+  const mediaType = contentType?.split(";", 1)[0]?.trim().toLowerCase();
+  if (
+    mediaType !== "application/json" &&
+    mediaType !== "application/vnd.repbook.analysis-response+json"
+  ) {
+    return {
+      ok: false,
+      code: "invalid_media_type",
+      message: "Use a JSON response file or paste JSON text.",
+    };
+  }
+  let rawText: string;
+  try {
+    rawText = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+  } catch {
+    return {
+      ok: false,
+      code: "invalid_encoding",
+      message: "The response must be valid UTF-8 JSON.",
+    };
+  }
+  if (rawText.trim().length === 0) {
+    return { ok: false, code: "empty_input", message: "Paste or choose a JSON response first." };
+  }
+  if (exceedsJsonDepth(rawText, EXTERNAL_ANALYSIS_RESPONSE_MAX_DEPTH)) {
+    return {
+      ok: false,
+      code: "too_deep",
+      message: "The response nesting is deeper than the supported contract.",
+    };
+  }
+  try {
+    return { ok: true, value: JSON.parse(rawText), rawText };
+  } catch {
+    return {
+      ok: false,
+      code: "malformed_json",
+      message: "The response is not valid JSON.",
+    };
+  }
+}
+
 export function validateExternalAnalysisResponse(
   value: unknown,
-  sourcePackage: AnalysisPackage,
+  source: AnalysisPackage | ExternalAnalysisResponseBinding,
 ): ExternalAnalysisResponseValidation {
   const effectIssues: ExternalAnalysisResponseIssue[] = [];
   for (const { index, type } of responseEffectTypes(value)) {
@@ -305,6 +460,11 @@ export function validateExternalAnalysisResponse(
   }
 
   const response = parsed.data;
+  const unsafeTextIssues = findUnsafeText(response);
+  if (unsafeTextIssues.length > 0) {
+    return { ok: false, issues: unsafeTextIssues };
+  }
+  const sourcePackage = normalizeBinding(source);
   const bindingPairs: Array<[string, string, string]> = [
     [
       "analysisPackage.packageId",
@@ -329,7 +489,7 @@ export function validateExternalAnalysisResponse(
     [
       "analysisPackage.digest",
       response.analysisPackage.digest,
-      sourcePackage.integrity.digest,
+      sourcePackage.digest,
     ],
     [
       "analysisPackage.evidenceCutoff",
@@ -341,8 +501,8 @@ export function validateExternalAnalysisResponse(
       response.analysisPackage.expiresAt,
       sourcePackage.expiresAt,
     ],
-    ["question.id", response.question.id, sourcePackage.request.questionId],
-    ["question.text", response.question.text, sourcePackage.request.question],
+    ["question.id", response.question.id, sourcePackage.questionId],
+    ["question.text", response.question.text, sourcePackage.questionText],
   ];
   const issues: ExternalAnalysisResponseIssue[] = bindingPairs
     .filter(([, actual, expected]) => actual !== expected)
@@ -369,7 +529,7 @@ export function validateExternalAnalysisResponse(
     seenItemIds.add(id);
   }
 
-  const knownEvidenceIds = packageEvidenceIds(sourcePackage);
+  const knownEvidenceIds = new Set(sourcePackage.evidenceIds);
   const citedEvidence: ReadonlyArray<readonly [string, readonly string[]]> = [
     ...response.observations.map((item, index) => [
       `observations.${index}.evidenceIds`,

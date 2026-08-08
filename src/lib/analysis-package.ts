@@ -103,7 +103,7 @@ const proposalRecordSchema = z
   })
   .strict();
 
-const sourceBindingSchema = z
+export const analysisPackageSourceBindingSchema = z
   .object({
     entity: z.string().min(1),
     ids: z.array(z.string().min(1)),
@@ -203,7 +203,7 @@ export const analysisPackageCoreSchema = z
     recommendationProposals: z.array(proposalRecordSchema),
     ownerDecisions: z.array(proposalRecordSchema),
     acceptedAdaptations: z.array(proposalRecordSchema),
-    sourceBindings: z.array(sourceBindingSchema),
+    sourceBindings: z.array(analysisPackageSourceBindingSchema),
   })
   .strict();
 

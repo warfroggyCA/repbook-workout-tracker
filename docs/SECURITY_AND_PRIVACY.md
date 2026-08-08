@@ -55,8 +55,22 @@ package ID, owner namespace, versions, digest, evidence cutoff, expiry, question
 evidence IDs, supported measurement units, bounded text and collections, and
 one review-only future effect. Extra or executable content, prohibited or
 unknown effects, cross-package evidence, and conflicting identity reuse fail
-closed. A03 performs no upload, manifest lookup, persistence, logging, or
-mutation; raw-input handling and sanitization remain the separate A04 boundary.
+closed. A03 itself performs no upload, manifest lookup, persistence, logging, or
+mutation.
+
+The A04 paste/file validator treats the returned JSON as hostile. The browser
+and server cap it at 256 KiB; the server accepts only JSON media, requires valid
+UTF-8, limits nesting before parsing, and rejects active markup, executable URL
+schemes, event-handler text, control characters, and display-direction controls.
+Authentication and owner scope are rechecked at the route and receipt lookup;
+cross-owner package IDs return the same boundary as missing receipts. Deleted,
+expired, malformed, or stale-Program receipts cannot validate a response.
+
+React renders the validated preview as ordinary text without raw HTML. The
+original input remains transient browser state for deliberate recovery download
+or discard and is neither echoed in an error nor retained or logged by the
+server. A04 performs no import and creates no recommendation, decision,
+adaptation, Program write, migration, snapshot content, or recovery record.
 
 Security reports use the private process in `SECURITY.md`; public issues must
 contain synthetic data only.
