@@ -85,6 +85,9 @@ function limitationCauseLabel(value: string | null) {
     : null;
 }
 
+const REVIEW_RECOMMENDATION_ID =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
 export default async function SessionDetailPage(
   props: PageProps<"/history/[id]">
 ) {
@@ -100,6 +103,14 @@ export default async function SessionDetailPage(
   const evidenceTier = parseHistoryExerciseEvidenceTier(
     searchParams.evidenceTier,
   );
+  const reviewRecommendationId = firstSearchParam(
+    searchParams.recommendationId,
+  );
+  const reviewReturnHref =
+    firstSearchParam(searchParams.returnTo) === "review" &&
+    REVIEW_RECOMMENDATION_ID.test(reviewRecommendationId ?? "")
+      ? `/coach#recommendation-${reviewRecommendationId}`
+      : null;
   const historyHref = buildHistoryHref(
     {
       range: historyRange,
@@ -538,11 +549,11 @@ export default async function SessionDetailPage(
             </Button>
           )}
           <Button
-            render={<Link href={historyHref} />}
+            render={<Link href={reviewReturnHref ?? historyHref} />}
             nativeButton={false}
             variant="outline"
           >
-            <ArrowLeft className="size-4" /> Back to history
+            <ArrowLeft className="size-4" /> {reviewReturnHref ? "Back to review" : "Back to history"}
           </Button>
           <WorkoutArchiveButton
             sessionId={session.id}
@@ -1277,7 +1288,11 @@ export default async function SessionDetailPage(
               Pain not recorded (unknown). This is not evidence that the workout was pain-free.
             </p>
           ) : classifiedPainEvidence.map(({ pain: p, evidence }) => (
-            <p key={p.id} className="text-sm text-muted-foreground">
+            <p
+              key={p.id}
+              id={`pain-evidence-${p.id}`}
+              className="scroll-mt-24 text-sm text-muted-foreground"
+            >
               {!p.completedSetId && p.exerciseId && exerciseNames.has(p.exerciseId)
                 ? `${exerciseNames.get(p.exerciseId)} · `
                 : ""}

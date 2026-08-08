@@ -53,6 +53,11 @@ import { convertWeight } from "@/lib/units";
 import { PROGRESSION_JOB_MAX_ATTEMPTS } from "@/lib/progression-job-contract";
 import { eligibleAutomaticProgressionSql } from "@/lib/set-metric-semantics-sql";
 import { reconcilePendingPainRecommendations } from "@/services/recommendation-evidence-eligibility";
+import { PAIN_EVIDENCE_ALGORITHM_VERSION } from "@/lib/pain-evidence";
+import {
+  PROGRESSION_REVIEW_SOURCE_VERSION,
+  withRecommendationReviewEvidence,
+} from "@/lib/review-evidence";
 
 type LoadSteppers = {
   nextLoadUp: (current: number) => number | null;
@@ -99,10 +104,24 @@ async function recordProgressionRecommendation(
   }
 ) {
   const recommendationId = randomUUID();
+  const painRule = input.ruleId === "pain_freeze" || input.ruleId === "pain_substitute";
+  const evidence = withRecommendationReviewEvidence(input.evidence, {
+    payload: input.payload,
+    producer: painRule ? "pain_consistency" : "progression_rules",
+    sourceVersion: painRule
+      ? PAIN_EVIDENCE_ALGORITHM_VERSION
+      : PROGRESSION_REVIEW_SOURCE_VERSION,
+    limitations: painRule
+      ? [
+          "Only explicit cited pain reports were evaluated. Missing pain fields remain unknown.",
+          "This deterministic status has no confidence score and never diagnoses an injury.",
+        ]
+      : undefined,
+  });
   const idempotencyKey = input.progressionJobId
     ? `progression:${input.progressionJobId}:${input.sourceSlotLineageId}:recommendation`
     : null;
-  const evidenceSetIds = input.evidence.setIds ?? [];
+  const evidenceSetIds = evidence.setIds ?? [];
   const evidenceSetIdsJson = JSON.stringify(evidenceSetIds);
   const requiresComparableLoadEvidence = input.payload.kind === "load_change";
   const query = sql`
@@ -162,7 +181,7 @@ async function recordProgressionRecommendation(
         ${input.sourceSlotLineageId}::uuid,
         ${JSON.stringify(input.payload)}::jsonb,
         ${input.reason}::text,
-        ${JSON.stringify(input.evidence)}::jsonb
+        ${JSON.stringify(evidence)}::jsonb
       FROM eligible_evidence
       ON CONFLICT (progression_job_id, source_slot_lineage_id)
         WHERE progression_job_id IS NOT NULL

@@ -55,8 +55,8 @@ describe("Repbook v2 T06 Start portability", () => {
       new Date("2026-08-02T18:00:00.000Z"),
       "v2-t06-portability",
     );
-    expect(SNAPSHOT_SCHEMA_VERSION).toBe("29");
-    expect(captured.schemaVersion).toBe("29");
+    expect(SNAPSHOT_SCHEMA_VERSION).toBe("30");
+    expect(captured.schemaVersion).toBe("30");
     expect(
       (captured.tables.workout_sessions as Array<Record<string, unknown>>)
         .find((row) => row.id === started.sessionId),

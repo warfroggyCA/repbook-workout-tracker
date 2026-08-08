@@ -40,6 +40,7 @@
     "test:e2e:v2-h02": "playwright test --config=playwright.v2-h02.config.ts",
     "test:e2e:v2-h03": "playwright test --config=playwright.v2-h03.config.ts --project=desktop-chromium && V2_H03_PORT=3144 playwright test --config=playwright.v2-h03.config.ts --project=narrow-mobile-webkit",
     "test:e2e:v2-h04": "playwright test --config=playwright.v2-h04.config.ts --project=desktop-chromium && V2_H04_PORT=3146 playwright test --config=playwright.v2-h04.config.ts --project=narrow-mobile-webkit",
+    "test:e2e:v2-h05": "playwright test --config=playwright.v2-h05.config.ts --project=desktop-chromium && V2_H05_PORT=3148 playwright test --config=playwright.v2-h05.config.ts --project=narrow-mobile-webkit",
     "study:physical-device-server": "E2E_HOSTNAME=0.0.0.0 E2E_PORT=3128 node scripts/run-e2e-server.mjs --production",
     "test:e2e:ba:chrome": "env BA_BROWSER=chromium playwright test --config=playwright.ba-workout.config.ts",
     "test:e2e:ba:webkit": "env BA_BROWSER=webkit playwright test --config=playwright.ba-workout.config.ts",

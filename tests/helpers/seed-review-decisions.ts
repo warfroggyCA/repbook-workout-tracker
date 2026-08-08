@@ -26,6 +26,11 @@ import {
 import { workoutLocalDate } from "@/lib/workout-calendar";
 import { getReviewDecisionData } from "@/services/review-decisions";
 import { mutateSessionEquipmentSelection } from "@/services/session-equipment-selection";
+import {
+  PROGRESSION_REVIEW_SOURCE_VERSION,
+  withRecommendationReviewEvidence,
+} from "@/lib/review-evidence";
+import { PAIN_EVIDENCE_ALGORITHM_VERSION } from "@/lib/pain-evidence";
 
 export const REVIEW_DECISIONS_EMAIL = "review-decisions.e2e@example.com";
 
@@ -545,6 +550,26 @@ async function main() {
 
     const allSessionIds = sessionRecords.map((session) => session.id);
     const allSquatSetIds = sessionRecords.flatMap((session) => session.squatSetIds);
+    const squatPayload: RecommendationPayload = {
+      kind: "load_change",
+      templateExerciseId: squatSlot.id,
+      fromLoad: 105,
+      toLoad: 110,
+      loadUnit: "lb",
+    };
+    const benchHoldPayload: RecommendationPayload = {
+      kind: "hold",
+      templateExerciseId: benchSlot.id,
+      reason:
+        "A 4/10 pain flag for Barbell Bench Press is keeping the load from going up.",
+    };
+    const unsupportedPayload: RecommendationPayload = {
+      kind: "load_change",
+      templateExerciseId: squatSlot.id,
+      fromLoad: 105,
+      toLoad: 115,
+      loadUnit: "lb",
+    };
     await tx.insert(recommendations).values([
       {
         userId: user.id,
@@ -554,20 +579,18 @@ async function main() {
         exerciseId: squat.id,
         sourceTemplateExerciseId: squatSlot.id,
         sourceSlotLineageId: squatSlot.lineageId,
-        payload: {
-          kind: "load_change" as const,
-          templateExerciseId: squatSlot.id,
-          fromLoad: 105,
-          toLoad: 110,
-          loadUnit: "lb" as const,
-        },
+        payload: squatPayload,
         reason:
           "Two completed squat workouts at 105 lb reached the planned work without repeated grinding.",
-        evidence: {
+        evidence: withRecommendationReviewEvidence({
           signals: { cleanExposures: 2, fromLoad: 105, toLoad: 110 },
           sessionIds: allSessionIds,
           setIds: allSquatSetIds,
-        },
+        }, {
+          payload: squatPayload,
+          producer: "progression_rules",
+          sourceVersion: PROGRESSION_REVIEW_SOURCE_VERSION,
+        }),
         createdAt: new Date(),
       },
       {
@@ -578,15 +601,10 @@ async function main() {
         exerciseId: bench.id,
         sourceTemplateExerciseId: benchSlot.id,
         sourceSlotLineageId: benchSlot.lineageId,
-        payload: {
-          kind: "hold" as const,
-          templateExerciseId: benchSlot.id,
-          reason:
-            "A 4/10 pain flag for Barbell Bench Press is keeping the load from going up.",
-        },
+        payload: benchHoldPayload,
         reason:
           "A 4/10 pain flag for Barbell Bench Press is keeping the load from going up. The app will check again once there hasn’t been another 3/10-or-higher flag for this exercise for 14 days. A workout with no pain entry doesn’t shorten the wait.",
-        evidence: {
+        evidence: withRecommendationReviewEvidence({
           signals: {
             worstPainSeverity: 4,
             painReports: 1,
@@ -597,9 +615,44 @@ async function main() {
           sessionIds: [sessionRecords[1].id],
           painLogIds: [pain.id],
           setIds: sessionRecords[1].benchSetIds,
-        },
+        }, {
+          payload: benchHoldPayload,
+          producer: "pain_consistency",
+          sourceVersion: PAIN_EVIDENCE_ALGORITHM_VERSION,
+          limitations: [
+            "Only explicit cited pain reports were evaluated. Missing pain fields remain unknown.",
+            "This deterministic status has no confidence score and never diagnoses an injury.",
+          ],
+        }),
         createdAt: new Date(Date.now() - 1_000),
       },
+      ...(process.env.V2_H05_REVIEW_FIXTURE === "1"
+        ? [{
+            userId: user.id,
+            source: "rule" as const,
+            status: "pending" as const,
+            ruleId: "retained_unsupported",
+            exerciseId: squat.id,
+            sourceTemplateExerciseId: squatSlot.id,
+            sourceSlotLineageId: squatSlot.lineageId,
+            payload: unsupportedPayload,
+            reason: "Retained proposal with explicitly unsupported evidence.",
+            evidence: withRecommendationReviewEvidence({
+              signals: { fromLoad: 105, toLoad: 115 },
+              sessionIds: allSessionIds,
+              setIds: allSquatSetIds,
+            }, {
+              payload: unsupportedPayload,
+              producer: "progression_rules",
+              sourceVersion: PROGRESSION_REVIEW_SOURCE_VERSION,
+              quality: "unsupported",
+              limitations: [
+                "The retained source explicitly marks this proposal unsupported.",
+              ],
+            }),
+            createdAt: new Date(Date.now() - 2_000),
+          }]
+        : []),
     ]);
 
     return {
@@ -610,9 +663,10 @@ async function main() {
   });
 
   const review = await getReviewDecisionData(db, fixture.userId);
-  if (review.pending.length !== 2) {
+  const expectedPending = process.env.V2_H05_REVIEW_FIXTURE === "1" ? 3 : 2;
+  if (review.pending.length !== expectedPending) {
     throw new Error(
-      `Expected two actionable pending Review decisions, found ${review.pending.length}.`,
+      `Expected ${expectedPending} pending Review decisions, found ${review.pending.length}.`,
     );
   }
 

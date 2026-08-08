@@ -48,6 +48,10 @@ import {
   type TestDatabase,
 } from "../helpers/database";
 import { createTotalSystemTestSnapshot } from "../helpers/set-semantics";
+import {
+  PROGRESSION_REVIEW_SOURCE_VERSION,
+  withRecommendationReviewEvidence,
+} from "@/lib/review-evidence";
 
 describe("versioned Program editor persistence", () => {
   let database: TestDatabase;
@@ -283,9 +287,32 @@ describe("versioned Program editor persistence", () => {
       exerciseId,
       payload,
       reason: "Load comparison regression fixture",
-      evidence: { signals: {}, setIds: [evidenceSet.id] },
+      evidence: withRecommendationReviewEvidence(
+        { signals: {}, setIds: [evidenceSet.id] },
+        {
+          payload,
+          producer: "progression_rules",
+          sourceVersion: PROGRESSION_REVIEW_SOURCE_VERSION,
+        },
+      ),
     }).returning();
     return recommendation;
+  }
+
+  function reviewSnapshotFor(recommendation: typeof recommendations.$inferSelect) {
+    return {
+      schemaVersion: "review-decision-v1" as const,
+      recommendationId: recommendation.id,
+      reviewRevision: recommendation.reviewRevision,
+      deferRevision: recommendation.deferRevision,
+      recordedAt: new Date().toISOString(),
+      evidenceState: "supported" as const,
+      source: recommendation.source,
+      ruleId: recommendation.ruleId,
+      payload: recommendation.payload,
+      reason: recommendation.reason,
+      evidence: recommendation.evidence,
+    };
   }
 
   it("loads a durable draft with an obsolete review without rewriting source data", async () => {
@@ -707,6 +734,9 @@ describe("versioned Program editor persistence", () => {
       expectedPayload: recommendation.payload,
       appliedPayload: recommendation.payload,
       decision: "approve",
+      expectedReviewRevision: recommendation.reviewRevision,
+      expectedDeferRevision: recommendation.deferRevision,
+      reviewSnapshot: reviewSnapshotFor(recommendation),
     });
     if (!advanced.ok) throw new Error(advanced.reason);
     expect(advanced.programVersionId).not.toBe(originalVersionId);
@@ -1440,13 +1470,23 @@ describe("versioned Program editor persistence", () => {
       exerciseId,
       payload,
       reason: "Completed the target range",
-      evidence: { signals: {}, setIds: [evidenceSet.id] },
+      evidence: withRecommendationReviewEvidence(
+        { signals: {}, setIds: [evidenceSet.id] },
+        {
+          payload,
+          producer: "progression_rules",
+          sourceVersion: PROGRESSION_REVIEW_SOURCE_VERSION,
+        },
+      ),
     }).returning();
     const result = await publishRecommendationProgramVersion(database.db, userId, {
       recommendationId: recommendation.id,
       expectedPayload: payload,
       appliedPayload: payload,
       decision: "approve",
+      expectedReviewRevision: recommendation.reviewRevision,
+      expectedDeferRevision: recommendation.deferRevision,
+      reviewSnapshot: reviewSnapshotFor(recommendation),
     });
     expect(result).toMatchObject({ ok: true, versionNo: 2 });
     if (!result.ok) throw new Error(result.reason);
