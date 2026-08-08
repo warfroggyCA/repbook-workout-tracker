@@ -26,6 +26,7 @@ const v2H03Evidence = process.argv.includes("--v2-h03-evidence-identity");
 const v2H04Pain = process.argv.includes("--v2-h04-pain-consistency");
 const v2H05Review = process.argv.includes("--v2-h05-evidence-linked-review");
 const v2GauntletBLiveWorkout = process.argv.includes("--v2-gauntlet-b-live-workout");
+const v2A01AnalysisPackage = process.argv.includes("--v2-a01-analysis-package");
 const port = Number.parseInt(process.env.E2E_PORT ?? "3100", 10);
 if (!Number.isInteger(port) || port < 1024 || port > 65535) {
   throw new Error("E2E_PORT must be an integer from 1024 through 65535.");
@@ -57,7 +58,7 @@ if (stage6Simulation && !baRoutineChange) {
   throw new Error("Stage 6 simulation fixtures require BA routine-change mode.");
 }
 if (
-  (v2H01History || v2H02Cadence || v2H03Evidence || v2H04Pain || v2H05Review || v2GauntletBLiveWorkout) &&
+  (v2H01History || v2H02Cadence || v2H03Evidence || v2H04Pain || v2H05Review || v2GauntletBLiveWorkout || v2A01AnalysisPackage) &&
   [
     v2H01History && v2H02Cadence,
     v2H01History && v2H03Evidence,
@@ -74,6 +75,12 @@ if (
     v2H03Evidence && v2GauntletBLiveWorkout,
     v2H04Pain && v2GauntletBLiveWorkout,
     v2H05Review && v2GauntletBLiveWorkout,
+    v2H01History && v2A01AnalysisPackage,
+    v2H02Cadence && v2A01AnalysisPackage,
+    v2H03Evidence && v2A01AnalysisPackage,
+    v2H04Pain && v2A01AnalysisPackage,
+    v2H05Review && v2A01AnalysisPackage,
+    v2GauntletBLiveWorkout && v2A01AnalysisPackage,
     baFixture,
     baRoutineChange,
     stage6Simulation,
@@ -141,6 +148,8 @@ const environment = {
   ANTHROPIC_API_KEY: "",
   ALLOWED_EMAILS: v2GauntletBLiveWorkout
     ? "ba.iphone.e2e@example.com"
+    : v2A01AnalysisPackage
+    ? "v2.h01.history.e2e@example.com"
     : v2H05Review
     ? "review-decisions.e2e@example.com"
     : v2H02Cadence
@@ -195,7 +204,7 @@ const serverScriptEnvironment = {
 
 const seeded = spawnSync(
   "npm",
-  baFixture || baRoutineChange || baCalendar || v2H01History || v2H02Cadence || v2H03Evidence || v2H04Pain || v2GauntletBLiveWorkout
+  baFixture || baRoutineChange || baCalendar || v2H01History || v2H02Cadence || v2H03Evidence || v2H04Pain || v2GauntletBLiveWorkout || v2A01AnalysisPackage
     ? ["run", "db:seed"]
     : ["run", "db:seed", "--", "--demo"],
   {
@@ -217,7 +226,9 @@ if (seeded.status !== 0) {
   throw new Error(`E2E seed failed with status ${seeded.status}.`);
 }
 
-const fixtures = v2GauntletBLiveWorkout
+const fixtures = v2A01AnalysisPackage
+  ? [{ label: "A01 analysis package", script: "tests/helpers/seed-v2-a01-analysis-package.ts" }]
+  : v2GauntletBLiveWorkout
   ? [
       { label: "BA workout", script: "tests/helpers/seed-ba-workout.ts" },
       {

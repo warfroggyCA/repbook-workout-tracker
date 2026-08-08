@@ -5,8 +5,8 @@
   "repositoryRole": "public application source",
   "exactBaseCommit": "2c9ab1b9478502f1d08956a6c44dfb0850c8f168",
   "fixtureCatalogue": "tests/fixtures/v2/semantic-scenarios.json",
-  "currentPackage": "Gauntlet B",
-  "currentPackageBaseCommit": "fb4b351d7039f30aa0b272d11b53486a70ca4946",
+  "currentPackage": "A01",
+  "currentPackageBaseCommit": "a5f46fc1ce28f181c0a2c893437c47fccc5d5a8a",
   "productBehaviorImplementedByP02": false,
   "implementedProductPackages": [
     "T01",
@@ -22,7 +22,8 @@
     "H02",
     "H03",
     "H04",
-    "H05"
+    "H05",
+    "A01"
   ],
   "milestoneEvidence": {
     "gauntletA": {
@@ -57,6 +58,41 @@
     "adversarialPrivacy"
   ],
   "verifications": {
+    "A01-databaseService": {
+      "status": "current",
+      "implementingPackage": "A01",
+      "testPath": "tests/unit/analysis-package-db.test.ts",
+      "command": "npx vitest run tests/unit/analysis-package-db.test.ts tests/unit/recovery-manifest-db.test.ts --maxWorkers=1 --no-file-parallelism",
+      "proves": "one owner-selected question produces a versioned deterministic package from one canonical snapshot; stable source bindings, explicit unknowns and separated domains travel with a SHA-256 digest, while only a maximum-30-day owner-scoped receipt is retained and owner deletion removes it"
+    },
+    "A01-browser": {
+      "status": "current",
+      "implementingPackage": "A01",
+      "testPath": "tests/e2e/v2-a01-analysis-package.spec.ts",
+      "command": "npm run test:e2e:v2-a01",
+      "proves": "desktop Chromium and independent 320 by 700 WebKit at 145 percent text select one purpose, preview and download exact matching bytes, verify the canonical digest and privacy omissions, make no external request, delete the owner receipt, and retain accessible no-overflow layout"
+    },
+    "A01-exportImport": {
+      "status": "current",
+      "implementingPackage": "A01",
+      "testPath": "tests/unit/analysis-package-db.test.ts",
+      "command": "npx vitest run tests/unit/analysis-package-db.test.ts --maxWorkers=1 --no-file-parallelism",
+      "proves": "schema analysis-package/1 and semantic version repbook-v2/1 preserve exact definitions, provenance, units, time semantics, scope, inventory, source identity, evidence quality, owner context and a canonical digest without performing any provider transmission or import"
+    },
+    "A01-restoreRollback": {
+      "status": "current",
+      "implementingPackage": "A01",
+      "testPath": "tests/unit/recovery-manifest-db.test.ts",
+      "command": "npx vitest run tests/unit/recovery-manifest-db.test.ts --maxWorkers=1 --no-file-parallelism",
+      "proves": "recovery manifest 12 excludes operational analysis-package receipts from snapshot schema 30 and restore so recovery cannot revive an expired or owner-deleted trust boundary"
+    },
+    "A01-adversarialPrivacy": {
+      "status": "current",
+      "implementingPackage": "A01",
+      "testPath": "tests/unit/analysis-package-db.test.ts",
+      "command": "npx vitest run tests/unit/analysis-package-db.test.ts --maxWorkers=1 --no-file-parallelism",
+      "proves": "account identity, raw provider or AI material, private notes, operational data and raw package contents are omitted; manifests list and delete only for their owner, and unknown historical semantics are never inferred"
+    },
     "P02-pureContract": {
       "status": "current",
       "implementingPackage": "P02",
@@ -1873,6 +1909,7 @@
     "H01 current status means performed-first completed and imported workout presentation travels with exact terminal, provenance, correction, semantic, calculation-eligibility, retained-source, accessibility, and zero-write evidence; it adds no schema, migration, writer, historical rewrite, release, or deployment.",
     "H04 current status means pain-evidence-v1 meaning travels together across active workout, History, Review, Coach context, progression proposals, CSV, snapshot restore, and adversarial identity boundaries; absence remains unknown, explicit zero remains no-issue evidence, and no pain evidence silently changes Program intent.",
     "H05 current status means every material Review proposal carries versioned exact evidence, visible limitations and a future-only effect; owner decisions and durable deferrals are revision-fenced, evidence-linked, snapshotted, and atomic, while unsupported, contradictory, stale, missing, or cross-owner facts never become Program changes.",
-    "Gauntlet B current status means the complete enlarged-text live-workout recovery journey and History-only restore monotonicity travel with their implementation; it does not authorize release, deployment, production mutation, historical repair, or Milestone 4."
+    "Gauntlet B current status means the complete enlarged-text live-workout recovery journey and History-only restore monotonicity travel with their implementation; it does not authorize release, deployment, production mutation, historical repair, or Milestone 4.",
+    "A01 current status means one complete versioned, owner-selected analysis package travels with its deterministic digest, exact preview and download, privacy-minimal expiring receipt, owner deletion, omission inventory, cross-owner isolation and snapshot exclusion evidence; it does not authorize external transmission, analysis import, recommendation or Program mutation, release, deployment, production mutation, historical repair, or A02."
   ]
 }

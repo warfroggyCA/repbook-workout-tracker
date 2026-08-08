@@ -22,7 +22,7 @@ import {
 } from "../helpers/database";
 
 const PRODUCTION_MIGRATION = "0018_brave_timeslip";
-const LATEST_MIGRATION = "0074_evidence_linked_review";
+const LATEST_MIGRATION = "0075_analysis_package_manifest";
 
 const previewBoundaries = [
   {

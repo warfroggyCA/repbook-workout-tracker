@@ -120,8 +120,8 @@ describe("Repbook v2 ratified semantic contract", () => {
       schemaVersion: 1,
       contractVersion: V2_CONTRACT_VERSION,
       exactBaseCommit: "2c9ab1b9478502f1d08956a6c44dfb0850c8f168",
-      currentPackage: "Gauntlet B",
-      currentPackageBaseCommit: "fb4b351d7039f30aa0b272d11b53486a70ca4946",
+      currentPackage: "A01",
+      currentPackageBaseCommit: "a5f46fc1ce28f181c0a2c893437c47fccc5d5a8a",
       productBehaviorImplementedByP02: false,
       implementedProductPackages: [
         "T01",
@@ -138,6 +138,7 @@ describe("Repbook v2 ratified semantic contract", () => {
         "H03",
         "H04",
         "H05",
+        "A01",
       ],
     });
     expect(matrix.columns).toEqual(columns);
@@ -183,6 +184,28 @@ describe("Repbook v2 ratified semantic contract", () => {
     for (const verificationId of [
       "GauntletB-liveWorkout",
       "GauntletB-historyRestore",
+    ]) {
+      expect(
+        existsSync(resolve(root, matrix.verifications[verificationId].testPath)),
+      ).toBe(true);
+    }
+    expect(matrix.verifications["A01-databaseService"]).toMatchObject({
+      status: "current",
+      implementingPackage: "A01",
+      testPath: "tests/unit/analysis-package-db.test.ts",
+    });
+    expect(matrix.verifications["A01-browser"]).toMatchObject({
+      status: "current",
+      implementingPackage: "A01",
+      testPath: "tests/e2e/v2-a01-analysis-package.spec.ts",
+      command: "npm run test:e2e:v2-a01",
+    });
+    for (const verificationId of [
+      "A01-databaseService",
+      "A01-browser",
+      "A01-exportImport",
+      "A01-restoreRollback",
+      "A01-adversarialPrivacy",
     ]) {
       expect(
         existsSync(resolve(root, matrix.verifications[verificationId].testPath)),

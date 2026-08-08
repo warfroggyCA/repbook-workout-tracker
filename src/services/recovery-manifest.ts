@@ -1,4 +1,4 @@
-export const RECOVERY_MANIFEST_VERSION = 11 as const;
+export const RECOVERY_MANIFEST_VERSION = 12 as const;
 
 export type RecoveryOwnership =
   | "direct_user"
@@ -138,6 +138,7 @@ export const RECOVERY_TABLE_MANIFEST = [
   entry("import_events", "Imports", "direct_user", "import_events.user_id", ["users"], "canonical", "replace", "dependency", preserve, cascade, "temporary_raw_then_durable_provenance", ["owner", "one current Hevy stage", "raw privacy boundary"]),
   entry("history_import_batches", "History imports", "direct_user", "history_import_batches.user_id", ["users", "import_events", "archive_operations"], "canonical", "replace", "replace", linked, cascade, durable, ["owner", "import reference", "timezone"]),
   entry("export_events", "Export ledger", "operational_user", "export_events.user_id", ["users"], "canonical", "preserve", "preserve", preserve, "cascade with account", "durable_audit", ["owner"]),
+  entry("analysis_package_manifests", "External-analysis package manifests", "operational_user", "analysis_package_manifests.user_id", ["users"], "excluded_operational", "preserve", "preserve", preserve, "cascade with account, owner delete, or privacy expiry", "thirty_day_owner_scoped_manifest", ["owner", "schema and semantic version", "canonical digest", "source bindings", "expiry", "no raw package retention"]),
   entry("expensive_operation_leases", "Expensive-operation controls", "operational_user", "expensive_operation_leases.user_id", ["users"], "excluded_operational", "preserve", "preserve", preserve, "cascade with account", "operational_control_state", ["owner", "lease state", "supported operation kind"]),
   entry("audit_logs", "Audit log", "operational_user", "audit_logs.user_id", ["users"], "canonical", "preserve", "preserve", preserve, "cascade with account", "durable_audit", ["owner"]),
   entry("archive_operations", "Archive actions", "direct_user", "archive_operations.user_id", ["users"], "canonical", "replace", "dependency", "root archive ledger", cascade, durable, ["owner", "archive membership"]),

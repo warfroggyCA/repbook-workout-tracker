@@ -526,6 +526,13 @@
       "when": 1786161600000,
       "tag": "0074_evidence_linked_review",
       "breakpoints": true
+    },
+    {
+      "idx": 75,
+      "version": "7",
+      "when": 1786248000000,
+      "tag": "0075_analysis_package_manifest",
+      "breakpoints": true
     }
   ]
 }
