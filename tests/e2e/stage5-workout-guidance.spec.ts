@@ -351,9 +351,14 @@ test("keeps Stage 5 guidance truthful, persistent, and usable on narrow mobile s
   await expect(
     page.getByRole("region", { name: "Workout progress and upcoming work" })
       .getByText(/Next: Romanian Deadlift, set 2/),
-  ).toBeVisible();
+  ).toBeHidden();
   const collapsedMetrics = await persistentDock.evaluate((element) => {
     const navigation = document.querySelector("nav.fixed");
+    const navigationRect = navigation?.getBoundingClientRect() ?? null;
+    const navigationVisible =
+      navigation != null &&
+      getComputedStyle(navigation).display !== "none" &&
+      (navigationRect?.height ?? 0) > 0;
     const primary = Array.from(element.querySelectorAll("button")).filter(
       (button) =>
         button.textContent?.trim() === "Dismiss rest timer" ||
@@ -362,7 +367,10 @@ test("keeps Stage 5 guidance truthful, persistent, and usable on narrow mobile s
     return {
       dockBottom: element.getBoundingClientRect().bottom,
       navigationTop:
-        navigation?.getBoundingClientRect().top ?? Number.POSITIVE_INFINITY,
+        navigationVisible
+          ? navigationRect?.top ?? window.innerHeight
+          : window.innerHeight,
+      navigationVisible,
       primary: primary.map((button) => {
         const box = button.getBoundingClientRect();
         return {
@@ -374,6 +382,7 @@ test("keeps Stage 5 guidance truthful, persistent, and usable on narrow mobile s
       }),
     };
   });
+  expect(collapsedMetrics.navigationVisible).toBe(false);
   expect(collapsedMetrics.dockBottom).toBeLessThanOrEqual(
     collapsedMetrics.navigationTop + 1,
   );

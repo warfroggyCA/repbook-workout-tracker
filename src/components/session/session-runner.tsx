@@ -1644,9 +1644,9 @@ export function SessionRunner(props: SessionRunnerProps) {
   return (
     <main className="mx-auto flex max-w-3xl flex-col gap-3 p-3 pb-[calc(12rem+env(safe-area-inset-bottom))] min-[360px]:pb-[calc(8rem+env(safe-area-inset-bottom))] sm:p-5 sm:pb-[calc(8rem+env(safe-area-inset-bottom))] lg:p-8 lg:pb-24">
       <ContextualNoteScope value={contextualNoteScope} />
-      <header className="flex flex-wrap items-center justify-between gap-2 px-1">
+      <header className="flex flex-wrap items-center justify-between gap-2 px-1 max-[359px]:sr-only">
         <div className="min-w-0 max-[359px]:w-full">
-          <h1 className="text-lg font-semibold max-[359px]:line-clamp-1 max-[359px]:text-xs">
+          <h1 className="text-lg font-semibold">
             {props.templateName}
           </h1>
           <p className="text-xs text-muted-foreground max-[359px]:hidden">
@@ -1662,7 +1662,7 @@ export function SessionRunner(props: SessionRunnerProps) {
         </div>
       </header>
 
-      <div className="sticky top-[env(safe-area-inset-top)] z-20 -mx-1 bg-background/95 py-1 backdrop-blur">
+      <div className="sticky top-[env(safe-area-inset-top)] z-20 -mx-1 bg-background/95 py-1 backdrop-blur max-[359px]:py-0">
         <WorkoutGuidanceSummary
           guidance={guidance}
           compact

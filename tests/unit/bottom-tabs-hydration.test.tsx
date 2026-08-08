@@ -2,6 +2,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 import {
   BottomTabs,
+  mobileNavigationUsesFocusedWorkoutMode,
   navigationItemIsActive,
   navigationItemShouldPrefetch,
 } from "@/components/nav/bottom-tabs";
@@ -38,5 +39,13 @@ describe("BottomTabs hydration", () => {
       navigationItemShouldPrefetch("/history/session-id", "/history"),
     ).toBe(true);
     expect(navigationItemShouldPrefetch(null, "/today")).toBe(true);
+  });
+
+  it("reserves extreme-width focused mode for an active workout route", () => {
+    expect(mobileNavigationUsesFocusedWorkoutMode("/session/session-id")).toBe(true);
+    expect(mobileNavigationUsesFocusedWorkoutMode("/session")).toBe(true);
+    expect(mobileNavigationUsesFocusedWorkoutMode("/sessions")).toBe(false);
+    expect(mobileNavigationUsesFocusedWorkoutMode("/today")).toBe(false);
+    expect(mobileNavigationUsesFocusedWorkoutMode(null)).toBe(false);
   });
 });
