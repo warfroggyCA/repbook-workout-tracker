@@ -151,19 +151,26 @@ test("keeps the full live workout usable through warm-up, skip, replace, continu
     .not.toMatch(/fixed|sticky/);
   await expectActiveViewportBudget(page);
 
-  for (const action of PRODUCTION_WORKOUT_START_WARMUP) {
+  for (const [index, action] of PRODUCTION_WORKOUT_START_WARMUP.entries()) {
     const checkbox = warmup.getByRole("checkbox", {
       name: `Mark ${action.label} complete`,
       exact: true,
     });
     await expectReachableTarget(checkbox);
     await checkbox.click();
+    const completedLastAction =
+      index === PRODUCTION_WORKOUT_START_WARMUP.length - 1;
+    if (completedLastAction) {
+      await expect(warmup).not.toHaveAttribute("open", "");
+      await warmup.locator("summary").click();
+    }
     await expect(
       warmup.getByRole("checkbox", {
         name: `${action.label} complete`,
         exact: true,
       }),
     ).toHaveAttribute("aria-checked", "true");
+    if (completedLastAction) await warmup.locator("summary").click();
   }
   await expect(warmup).not.toHaveAttribute("open", "");
 
