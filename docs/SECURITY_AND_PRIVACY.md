@@ -41,5 +41,14 @@ retention job deletes them at expiry. The question-specific allowlist omits
 unneeded domains, and session-equipment snapshots stay outside the package
 until their separate semantic preparation is complete.
 
+Provider-neutral model instructions are generated locally from the exact
+previewed package identity and digest. They treat every package value as data,
+forbid embedded instructions, browsing, tool use, guessed facts, direct
+mutation claims, and requests for omitted information, and require exact
+evidence IDs plus limitations. Repbook does not send the package or instructions
+to a provider. The owner remains responsible for reviewing the external
+provider's privacy and retention settings. A02 retains no response and exposes
+no import path.
+
 Security reports use the private process in `SECURITY.md`; public issues must
 contain synthetic data only.

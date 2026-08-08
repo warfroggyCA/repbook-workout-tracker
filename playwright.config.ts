@@ -38,6 +38,7 @@ export default defineConfig({
     "v2-h05-evidence-linked-review.spec.ts",
     "v2-gauntlet-b-live-workout.spec.ts",
     "v2-a01-analysis-package.spec.ts",
+    "v2-a02-provider-neutral-instructions.spec.ts",
   ],
   outputDir: "./output/playwright/test-results",
   fullyParallel: false,

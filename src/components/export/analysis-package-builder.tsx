@@ -9,6 +9,11 @@ import {
   type AnalysisPackageManifestSummary,
   type AnalysisQuestionId,
 } from "@/lib/analysis-package";
+import {
+  buildExternalAnalysisInstructions,
+  EXTERNAL_ANALYSIS_INSTRUCTION_VERSION,
+  externalAnalysisInstructionsFilename,
+} from "@/lib/external-analysis-instructions";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -98,6 +103,19 @@ export function AnalysisPackageBuilder({
     const anchor = document.createElement("a");
     anchor.href = url;
     anchor.download = packageFilename(packageValue);
+    anchor.click();
+    URL.revokeObjectURL(url);
+  }
+
+  function downloadInstructions() {
+    if (!packageValue) return;
+    const instructions = buildExternalAnalysisInstructions(packageValue);
+    const url = URL.createObjectURL(
+      new Blob([instructions], { type: "text/plain;charset=utf-8" }),
+    );
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = externalAnalysisInstructionsFilename(packageValue);
     anchor.click();
     URL.revokeObjectURL(url);
   }
@@ -209,31 +227,68 @@ export function AnalysisPackageBuilder({
       </Card>
 
       {packageValue && exactPreview ? (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <FileCheck2 className="size-5 text-primary" aria-hidden="true" />
-              Exact package preview
-            </CardTitle>
-            <CardDescription>
-              The downloaded file uses these exact bytes. Schema {packageValue.schemaVersion};
-              digest {packageValue.integrity.digest.slice(0, 16)}…
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <pre
-              data-testid="analysis-package-preview"
-              className="max-h-[32rem] max-w-full overflow-auto whitespace-pre rounded-lg border bg-muted/35 p-3 text-xs leading-5"
-              tabIndex={0}
-            >
-              {exactPreview}
-            </pre>
-            <Button onClick={download} className="min-h-11">
-              <Download className="size-4" aria-hidden="true" />
-              Download exact JSON
-            </Button>
-          </CardContent>
-        </Card>
+        <>
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <FileCheck2 className="size-5 text-primary" aria-hidden="true" />
+                Exact package preview
+              </CardTitle>
+              <CardDescription>
+                The downloaded file uses these exact bytes. Schema {packageValue.schemaVersion};
+                digest {packageValue.integrity.digest.slice(0, 16)}…
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <pre
+                data-testid="analysis-package-preview"
+                className="max-h-[32rem] max-w-full overflow-auto whitespace-pre rounded-lg border bg-muted/35 p-3 text-xs leading-5"
+                tabIndex={0}
+              >
+                {exactPreview}
+              </pre>
+              <Button onClick={download} className="min-h-11">
+                <Download className="size-4" aria-hidden="true" />
+                Download exact JSON
+              </Button>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Provider-neutral instructions</CardTitle>
+              <CardDescription>
+                Use the same complete instructions with ChatGPT or another capable
+                language model. They bind the exact package, forbid guessed facts
+                and direct mutation, and require evidence IDs and limitations.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="rounded-lg border bg-muted/35 p-4 text-sm leading-6">
+                <p className="font-medium">Human review only</p>
+                <p className="text-muted-foreground">
+                  The starter response is untrusted and cannot be imported into
+                  Repbook. Review the external provider&apos;s privacy and retention
+                  settings before sharing this package.
+                </p>
+              </div>
+              <pre
+                data-testid="external-analysis-instructions"
+                className="max-h-[32rem] max-w-full overflow-auto whitespace-pre-wrap break-words rounded-lg border bg-muted/35 p-3 text-xs leading-5"
+                tabIndex={0}
+              >
+                {buildExternalAnalysisInstructions(packageValue)}
+              </pre>
+              <Button onClick={downloadInstructions} variant="outline" className="min-h-11">
+                <Download className="size-4" aria-hidden="true" />
+                Download model instructions
+              </Button>
+              <p className="text-xs leading-5 text-muted-foreground">
+                Instruction contract: {EXTERNAL_ANALYSIS_INSTRUCTION_VERSION}.
+              </p>
+            </CardContent>
+          </Card>
+        </>
       ) : null}
 
       <Card>

@@ -27,7 +27,7 @@ npm run docs:check
 npm run audit:check
 ```
 
-The Repbook v2 semantic foundation and current T01/T02/T03/T04/T05/T06/U01/U02/U03/H01/H02/H03/H04/A01 activation
+The Repbook v2 semantic foundation and current T01/T02/T03/T04/T05/T06/U01/U02/U03/H01/H02/H03/H04/A01/A02 activation
 packages have focused gates:
 
 ```bash
@@ -61,6 +61,8 @@ npx vitest run tests/unit/v2-h04-pain-consistency.test.ts tests/unit/v2-h04-pain
 npm run test:e2e:v2-h04
 npx vitest run tests/unit/analysis-package-db.test.ts tests/unit/recovery-manifest-db.test.ts --maxWorkers=1 --no-file-parallelism
 npm run test:e2e:v2-a01
+npx vitest run tests/unit/v2-a02-external-ai-instructions.test.ts
+npm run test:e2e:v2-a02
 ```
 
 The semantic test validates all synthetic F01-F17 scenarios and every required
@@ -152,6 +154,13 @@ owner deletion, accessibility, and no horizontal overflow. Migration 0075 adds
 only the manifest receipt; recovery manifest 12 excludes that operational
 receipt from snapshot schema 30 and restore, while the existing privacy-
 retention job physically removes expired receipts.
+A02 activates deterministic provider-neutral instructions bound to that exact
+package and digest. Its two synthetic workflow oracles require evidence-linked
+observations, explicit limitations, preserved unknowns, no embedded-instruction
+execution, no guessed fact, and no mutation claim. The dedicated desktop and
+narrow enlarged-text browser proof downloads the exact instruction bytes and
+confirms that preparing them makes no external request. The starter response is
+not an import format, and A02 adds no schema, durable response, or Program write.
 
 `audit:check` requires a clean production dependency audit and also reviews the
 complete development-tool tree. Any temporary development-only exception is
@@ -192,6 +201,7 @@ npm run test:e2e:v2-h04
 npm run test:e2e:v2-h05
 npm run test:e2e:v2-gauntlet-b
 npm run test:e2e:v2-a01
+npm run test:e2e:v2-a02
 ```
 
 Run the smallest affected browser suite first, then the complete protected
