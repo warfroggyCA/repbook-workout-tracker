@@ -159,8 +159,16 @@ package and digest. Its two synthetic workflow oracles require evidence-linked
 observations, explicit limitations, preserved unknowns, no embedded-instruction
 execution, no guessed fact, and no mutation claim. The dedicated desktop and
 narrow enlarged-text browser proof downloads the exact instruction bytes and
-confirms that preparing them makes no external request. The starter response is
-not an import format, and A02 adds no schema, durable response, or Program write.
+confirms that preparing them makes no external request.
+A03 activates closed `analysis-response/1` instructions and validation in
+`src/lib/external-analysis-response.ts`. Focused contract tests reject extra
+fields, incompatible versions, stale or contradictory package binding,
+unsupported units, unknown evidence, duplicate IDs, prohibited or unknown
+effects, oversized content, and conflicting response replay. The dedicated
+desktop and narrow WebKit journey proves the exact downloaded instructions bind
+the current package and describe the strict future-review-only response shape.
+A03 adds no import UI, durable response, migration, recommendation, decision,
+adaptation, or Program write.
 
 `audit:check` requires a clean production dependency audit and also reviews the
 complete development-tool tree. Any temporary development-only exception is

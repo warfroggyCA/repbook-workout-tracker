@@ -5,8 +5,8 @@
   "repositoryRole": "public application source",
   "exactBaseCommit": "2c9ab1b9478502f1d08956a6c44dfb0850c8f168",
   "fixtureCatalogue": "tests/fixtures/v2/semantic-scenarios.json",
-  "currentPackage": "A01",
-  "currentPackageBaseCommit": "a5f46fc1ce28f181c0a2c893437c47fccc5d5a8a",
+  "currentPackage": "A03",
+  "currentPackageBaseCommit": "3d470867dc6e361a8c6fa96ed5539783905413e1",
   "productBehaviorImplementedByP02": false,
   "implementedProductPackages": [
     "T01",
@@ -23,7 +23,9 @@
     "H03",
     "H04",
     "H05",
-    "A01"
+    "A01",
+    "A02",
+    "A03"
   ],
   "milestoneEvidence": {
     "gauntletA": {
@@ -92,6 +94,34 @@
       "testPath": "tests/unit/analysis-package-db.test.ts",
       "command": "npx vitest run tests/unit/analysis-package-db.test.ts --maxWorkers=1 --no-file-parallelism",
       "proves": "account identity, raw provider or AI material, private notes, operational data and raw package contents are omitted; manifests list and delete only for their owner, and unknown historical semantics are never inferred"
+    },
+    "A02-pureContract": {
+      "status": "current",
+      "implementingPackage": "A02",
+      "testPath": "tests/unit/v2-a02-external-ai-instructions.test.ts",
+      "command": "npx vitest run tests/unit/v2-a02-external-ai-instructions.test.ts",
+      "proves": "one deterministic provider-neutral instruction bundle binds the exact package and digest, preserves ratified meanings and unknowns, requires exact evidence citations and limitations, and forbids embedded instructions, guesses, external retrieval and mutation claims"
+    },
+    "A02-browser": {
+      "status": "current",
+      "implementingPackage": "A02",
+      "testPath": "tests/e2e/v2-a02-provider-neutral-instructions.spec.ts",
+      "command": "npm run test:e2e:v2-a02",
+      "proves": "desktop Chromium and independent narrow WebKit preview and download exact package-bound provider-neutral instructions without external transmission or horizontal overflow"
+    },
+    "A03-pureContract": {
+      "status": "current",
+      "implementingPackage": "A03",
+      "testPath": "tests/unit/v2-a03-external-analysis-response.test.ts",
+      "command": "npx vitest run tests/unit/v2-a03-external-analysis-response.test.ts",
+      "proves": "analysis-response/1 is closed, bounded and versioned; exact package, namespace, digest, cutoff, expiry and question binding, evidence IDs, units, stable item IDs, one review-only effect and deterministic duplicate classification fail closed"
+    },
+    "A03-browser": {
+      "status": "current",
+      "implementingPackage": "A03",
+      "testPath": "tests/e2e/v2-a03-typed-response-schema.spec.ts",
+      "command": "npm run test:e2e:v2-a03",
+      "proves": "desktop Chromium and independent narrow WebKit download the exact strict typed response contract bound to the previewed package without provider transmission or an import writer"
     },
     "P02-pureContract": {
       "status": "current",
@@ -1670,7 +1700,7 @@
             "F13",
             "F15"
           ],
-          "verificationId": "P02-pureContract"
+          "verificationId": "A03-pureContract"
         },
         "databaseService": {
           "level": "R",
@@ -1910,6 +1940,8 @@
     "H04 current status means pain-evidence-v1 meaning travels together across active workout, History, Review, Coach context, progression proposals, CSV, snapshot restore, and adversarial identity boundaries; absence remains unknown, explicit zero remains no-issue evidence, and no pain evidence silently changes Program intent.",
     "H05 current status means every material Review proposal carries versioned exact evidence, visible limitations and a future-only effect; owner decisions and durable deferrals are revision-fenced, evidence-linked, snapshotted, and atomic, while unsupported, contradictory, stale, missing, or cross-owner facts never become Program changes.",
     "Gauntlet B current status means the complete enlarged-text live-workout recovery journey and History-only restore monotonicity travel with their implementation; it does not authorize release, deployment, production mutation, historical repair, or Milestone 4.",
-    "A01 current status means one complete versioned, owner-selected analysis package travels with its deterministic digest, exact preview and download, privacy-minimal expiring receipt, owner deletion, omission inventory, cross-owner isolation and snapshot exclusion evidence; it does not authorize external transmission, analysis import, recommendation or Program mutation, release, deployment, production mutation, historical repair, or A02."
+    "A01 current status means one complete versioned, owner-selected analysis package travels with its deterministic digest, exact preview and download, privacy-minimal expiring receipt, owner deletion, omission inventory, cross-owner isolation and snapshot exclusion evidence; it does not authorize external transmission, analysis import, recommendation or Program mutation, release, deployment, production mutation, historical repair, or A02.",
+    "A02 current status means deterministic provider-neutral instructions bind the exact package and digest, preserve semantic distinctions and unknowns, forbid embedded instructions and guesses, and require evidence-linked limitations without provider transmission, response retention, import, or mutation.",
+    "A03 current status means the closed analysis-response/1 contract validates exact snapshot binding, identifiers, units, evidence citations, bounded content, one future-review-only effect, prohibited and unknown effects, and deterministic duplicate/conflict outcomes; it creates no paste/upload flow, durable response, recommendation, decision, adaptation, or Program write."
   ]
 }

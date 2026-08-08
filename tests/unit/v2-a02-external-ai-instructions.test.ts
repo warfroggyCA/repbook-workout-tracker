@@ -4,9 +4,9 @@ import type { AnalysisPackage } from "@/lib/analysis-package";
 import {
   buildExternalAnalysisInstructions,
   EXTERNAL_ANALYSIS_INSTRUCTION_VERSION,
-  EXTERNAL_ANALYSIS_STARTER_RESPONSE_VERSION,
   externalAnalysisInstructionsFilename,
 } from "@/lib/external-analysis-instructions";
+import { EXTERNAL_ANALYSIS_RESPONSE_SCHEMA_VERSION } from "@/lib/external-analysis-response";
 
 function syntheticPackage(): AnalysisPackage {
   return {
@@ -73,7 +73,7 @@ describe("A02 provider-neutral external-analysis instructions", () => {
 
     expect(buildExternalAnalysisInstructions(value)).toBe(instructions);
     expect(instructions).toContain(EXTERNAL_ANALYSIS_INSTRUCTION_VERSION);
-    expect(instructions).toContain(EXTERNAL_ANALYSIS_STARTER_RESPONSE_VERSION);
+    expect(instructions).toContain(EXTERNAL_ANALYSIS_RESPONSE_SCHEMA_VERSION);
     expect(instructions).toContain(value.packageId);
     expect(instructions).toContain(value.packageNamespace);
     expect(instructions).toContain(value.integrity.digest);
@@ -83,7 +83,7 @@ describe("A02 provider-neutral external-analysis instructions", () => {
     expect(instructions).toContain("Do not invent measurements, dates, units");
     expect(instructions).toContain("Do not claim that you changed Repbook");
     expect(instructions).toContain("Cite exact package evidence IDs");
-    expect(instructions).toContain("cannot be imported into Repbook");
+    expect(instructions).toContain("does not yet expose the later paste/upload import flow");
     expect(instructions).not.toMatch(/system prompt|assistant api|anthropic api|openai api/i);
     expect(externalAnalysisInstructionsFilename(value)).toBe(
       "repbook-instructions-program_progress-2026-08-08.txt",
@@ -99,7 +99,7 @@ describe("A02 provider-neutral external-analysis instructions", () => {
 
     for (const { response } of workflowFixtures.workflows) {
       expect(response).toMatchObject({
-        format: EXTERNAL_ANALYSIS_STARTER_RESPONSE_VERSION,
+        format: "external-analysis-starter-response/1",
         instructionVersion: EXTERNAL_ANALYSIS_INSTRUCTION_VERSION,
         analysisPackage: {
           packageId: workflowFixtures.packageId,

@@ -14,6 +14,9 @@ import {
   EXTERNAL_ANALYSIS_INSTRUCTION_VERSION,
   externalAnalysisInstructionsFilename,
 } from "@/lib/external-analysis-instructions";
+import {
+  EXTERNAL_ANALYSIS_RESPONSE_SCHEMA_VERSION,
+} from "@/lib/external-analysis-versions";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -265,11 +268,12 @@ export function AnalysisPackageBuilder({
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="rounded-lg border bg-muted/35 p-4 text-sm leading-6">
-                <p className="font-medium">Human review only</p>
+                <p className="font-medium">Typed, but still untrusted</p>
                 <p className="text-muted-foreground">
-                  The starter response is untrusted and cannot be imported into
-                  Repbook. Review the external provider&apos;s privacy and retention
-                  settings before sharing this package.
+                  Repbook can define and validate the response contract, but the
+                  later paste/upload flow is not available yet. Review the
+                  external provider&apos;s privacy and retention settings before
+                  sharing this package.
                 </p>
               </div>
               <pre
@@ -284,7 +288,8 @@ export function AnalysisPackageBuilder({
                 Download model instructions
               </Button>
               <p className="text-xs leading-5 text-muted-foreground">
-                Instruction contract: {EXTERNAL_ANALYSIS_INSTRUCTION_VERSION}.
+                Instruction contract: {EXTERNAL_ANALYSIS_INSTRUCTION_VERSION} ·
+                response schema: {EXTERNAL_ANALYSIS_RESPONSE_SCHEMA_VERSION}.
               </p>
             </CardContent>
           </Card>

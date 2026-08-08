@@ -50,5 +50,13 @@ to a provider. The owner remains responsible for reviewing the external
 provider's privacy and retention settings. A02 retains no response and exposes
 no import path.
 
+External responses use closed `analysis-response/1`. Validation binds the exact
+package ID, owner namespace, versions, digest, evidence cutoff, expiry, question,
+evidence IDs, supported measurement units, bounded text and collections, and
+one review-only future effect. Extra or executable content, prohibited or
+unknown effects, cross-package evidence, and conflicting identity reuse fail
+closed. A03 performs no upload, manifest lookup, persistence, logging, or
+mutation; raw-input handling and sanitization remain the separate A04 boundary.
+
 Security reports use the private process in `SECURITY.md`; public issues must
 contain synthetic data only.

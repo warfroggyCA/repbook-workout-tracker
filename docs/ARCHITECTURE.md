@@ -609,3 +609,28 @@ imported into Repbook. A later package owns the strict typed response and import
 boundary. A02 adds no provider request, response retention, durable record,
 schema, migration, recommendation, owner decision, adaptation, Program write,
 performed fact, recovery obligation, or production action.
+
+## A03 strict typed response contract
+
+A03 replaces the generated starter shape with closed
+`repbook-analysis-response` schema `analysis-response/1`. The response must
+echo the exact package ID, owner namespace, package and semantic versions,
+canonical digest, evidence cutoff, expiry, selected question ID, and exact
+question text. Unknown fields at every typed object boundary, incompatible
+versions, unbounded text or collections, unsupported measurement units,
+duplicate item identities, and evidence IDs outside the bound package fail
+closed.
+
+Observations, proposed actions, and unknowns remain separate. Every observation
+and proposed action cites bound evidence and states limitations. The only
+allowed effect is `review_future_training` with `future_only_review` scope; it
+can request later owner review but cannot publish, accept, or mutate anything.
+Known history, active-session, ownership, destructive, acceptance, publication,
+and production effects are classified as prohibited. Every other effect is
+unknown. Both fail validation before a typed response is returned.
+
+Canonical response content gives A04 a deterministic replay boundary: the same
+response identity and same content is an idempotent duplicate, while changed
+content under that identity is a conflict. A03 itself adds no paste/upload UI,
+manifest lookup, durable response, import writer, recommendation, decision,
+adaptation, migration, recovery obligation, or Program write.
