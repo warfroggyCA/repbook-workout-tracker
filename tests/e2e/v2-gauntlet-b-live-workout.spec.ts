@@ -162,7 +162,7 @@ test("keeps the full live workout usable through warm-up, skip, replace, continu
       index === PRODUCTION_WORKOUT_START_WARMUP.length - 1;
     if (completedLastAction) {
       await expect(warmup).not.toHaveAttribute("open", "");
-      await warmup.locator("summary").click();
+      await warmup.locator(":scope > summary").click();
     }
     await expect(
       warmup.getByRole("checkbox", {
@@ -170,7 +170,7 @@ test("keeps the full live workout usable through warm-up, skip, replace, continu
         exact: true,
       }),
     ).toHaveAttribute("aria-checked", "true");
-    if (completedLastAction) await warmup.locator("summary").click();
+    if (completedLastAction) await warmup.locator(":scope > summary").click();
   }
   await expect(warmup).not.toHaveAttribute("open", "");
 
