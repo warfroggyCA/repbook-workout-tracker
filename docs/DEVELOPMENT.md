@@ -132,9 +132,15 @@ desktop and independent narrow enlarged-text mobile fixtures verify optional
 zero capture, positive/no-issue History, distinct technique and limitation
 context, Review visibility, zero post-login mutation, overflow, and page-error
 boundaries.
-Recovery manifest 10 remains the
-authoritative table inventory. Every later package must activate its own reserved
-evidence before its product behavior is considered implemented.
+Gauntlet B adds a complete live-workout regression over the real warm-up,
+ordinary set, equipment-driven skip, deliberate continuation, replacement, and
+finish journey. It runs against independent disposable desktop, tall-phone, and
+320 by 700 WebKit fixtures at 145% text and enforces a minimum usable viewport,
+44-pixel recovery targets, no horizontal overflow, and no unexpected page
+errors. Recovery manifest 11 also makes History-only restore monotonic for
+owner decisions and accepted adaptations: it cannot downgrade a later terminal
+recommendation or resurrect an older pending proposal. Snapshot schema 30 and
+the durable table inventory are unchanged.
 
 `audit:check` requires a clean production dependency audit and also reviews the
 complete development-tool tree. Any temporary development-only exception is
@@ -172,6 +178,8 @@ npm run test:e2e:v2-h01
 npm run test:e2e:v2-h02
 npm run test:e2e:v2-h03
 npm run test:e2e:v2-h04
+npm run test:e2e:v2-h05
+npm run test:e2e:v2-gauntlet-b
 ```
 
 Run the smallest affected browser suite first, then the complete protected

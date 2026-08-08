@@ -753,6 +753,104 @@ export function ExerciseCard({
     return exercise.setNotes[index]?.trim() || null;
   }
 
+  function reconcileReplacement(
+    candidate: ExerciseDiscoveryItem,
+    state: ReplacementOptions["currentState"],
+    plannedExerciseName: string,
+  ) {
+    const metricType = performedMetricTypeForLivePatch(candidate.metricType);
+    if (!metricType) {
+      toast.error(
+        "This exercise measurement is not supported in the live workout.",
+      );
+      router.refresh();
+      return;
+    }
+    onPatch({
+      exerciseId: candidate.id,
+      name: candidate.name,
+      family: candidate.family,
+      loadType: candidate.loadType,
+      metricType,
+      loadSemantics: candidate.loadSemantics,
+      movementPattern: candidate.movementPattern,
+      cautionBodyParts: candidate.cautionBodyParts,
+      modificationType: state.modificationType,
+      skipReason: state.skipReason,
+      substitutedForExerciseId: state.substitutedForExerciseId,
+      substitutionReason: state.substitutionReason,
+      substitutedAt: state.substitutedAt,
+      plannedExerciseName:
+        state.substitutedForExerciseId == null ? null : plannedExerciseName,
+      targetLoad: state.targetLoad,
+      targetLoadUnit: state.targetLoadUnit,
+      notes: state.notes,
+      warmupNotes: state.warmupNotes,
+      warmupSets: state.warmupSets,
+      setNotes: state.setNotes,
+      last: null,
+      media: candidate.media ?? null,
+    });
+    setDraft((current) => ({
+      ...current,
+      weight:
+        state.targetLoad != null && state.targetLoadUnit != null
+          ? convertWeight(state.targetLoad, state.targetLoadUnit, unit)
+          : null,
+      weightUnit: state.targetLoad == null ? null : unit,
+      note: state.setNotes[exercise.sets.length] ?? "",
+    }));
+    setNote(state.notes ?? "");
+    router.refresh();
+  }
+
+  function applyReplacement(
+    candidate: ExerciseDiscoveryItem,
+    reason: ExerciseAlternativeReason,
+  ) {
+    const metricType = performedMetricTypeForLivePatch(candidate.metricType);
+    if (!metricType) {
+      toast.error(
+        "This exercise measurement is not supported in the live workout.",
+      );
+      router.refresh();
+      return;
+    }
+    onAdjustIntentChange(null);
+    onPatch({
+      exerciseId: candidate.id,
+      name: candidate.name,
+      family: candidate.family,
+      loadType: candidate.loadType,
+      metricType,
+      loadSemantics: candidate.loadSemantics,
+      movementPattern: candidate.movementPattern,
+      cautionBodyParts: candidate.cautionBodyParts,
+      modificationType: "substituted",
+      skipReason: null,
+      substitutedForExerciseId:
+        exercise.substitutedForExerciseId ?? exercise.exerciseId,
+      substitutionReason: reason,
+      substitutedAt: new Date().toISOString(),
+      plannedExerciseName: exercise.plannedExerciseName ?? exercise.name,
+      targetLoad: null,
+      targetLoadUnit: null,
+      notes: null,
+      warmupNotes: null,
+      warmupSets: [],
+      setNotes: [],
+      last: null,
+      media: candidate.media ?? null,
+    });
+    setDraft((current) => ({
+      ...current,
+      weight: null,
+      weightUnit: null,
+      note: "",
+    }));
+    setNote("");
+  }
+
   return (
     <section
       id={`exercise-${exercise.id}`}
@@ -764,7 +862,7 @@ export function ExerciseCard({
         isCurrentExercise &&
           "border-2 border-foreground/70 bg-muted/25 shadow-[var(--shadow-soft)]",
         exercise.supersetKey && "border-l-4 border-l-primary/50",
-        isSkipped && "opacity-60"
+        isSkipped && "border-dashed bg-muted/20"
       )}
       onClickCapture={() => {
         if (isCurrentPlannedSet) tapsRef.current += 1;
@@ -1426,7 +1524,6 @@ export function ExerciseCard({
                 onDone={(reason) => {
                   onAdjustIntentChange(null);
                   onPatch({ modificationType: "skipped", skipReason: reason });
-                  onSkipComplete();
                 }}
               />
             </div>
@@ -1575,110 +1672,8 @@ export function ExerciseCard({
                       onOpenChange={(open) =>
                         onAdjustIntentChange(open ? "replace" : null)
                       }
-                      onReconcile={(candidate, state, plannedExerciseName) => {
-                        const metricType = performedMetricTypeForLivePatch(
-                          candidate.metricType,
-                        );
-                        if (!metricType) {
-                          toast.error(
-                            "This exercise measurement is not supported in the live workout.",
-                          );
-                          router.refresh();
-                          return;
-                        }
-                        onPatch({
-                          exerciseId: candidate.id,
-                          name: candidate.name,
-                          family: candidate.family,
-                          loadType: candidate.loadType,
-                          metricType,
-                          loadSemantics: candidate.loadSemantics,
-                          movementPattern: candidate.movementPattern,
-                          cautionBodyParts: candidate.cautionBodyParts,
-                          modificationType: state.modificationType,
-                          skipReason: state.skipReason,
-                          substitutedForExerciseId:
-                            state.substitutedForExerciseId,
-                          substitutionReason: state.substitutionReason,
-                          substitutedAt: state.substitutedAt,
-                          plannedExerciseName:
-                            state.substitutedForExerciseId == null
-                              ? null
-                              : plannedExerciseName,
-                          targetLoad: state.targetLoad,
-                          targetLoadUnit: state.targetLoadUnit,
-                          notes: state.notes,
-                          warmupNotes: state.warmupNotes,
-                          warmupSets: state.warmupSets,
-                          setNotes: state.setNotes,
-                          last: null,
-                          media: candidate.media ?? null,
-                        });
-                        setDraft((current) => ({
-                          ...current,
-                          weight:
-                            state.targetLoad != null &&
-                            state.targetLoadUnit != null
-                              ? convertWeight(
-                                  state.targetLoad,
-                                  state.targetLoadUnit,
-                                  unit,
-                                )
-                              : null,
-                          weightUnit:
-                            state.targetLoad == null ? null : unit,
-                          note:
-                            state.setNotes[exercise.sets.length] ?? "",
-                        }));
-                        setNote(state.notes ?? "");
-                        router.refresh();
-                      }}
-                      onDone={(candidate, reason) => {
-                        const metricType = performedMetricTypeForLivePatch(
-                          candidate.metricType,
-                        );
-                        if (!metricType) {
-                          toast.error(
-                            "This exercise measurement is not supported in the live workout.",
-                          );
-                          router.refresh();
-                          return;
-                        }
-                        onAdjustIntentChange(null);
-                        onPatch({
-                          exerciseId: candidate.id,
-                          name: candidate.name,
-                          family: candidate.family,
-                          loadType: candidate.loadType,
-                          metricType,
-                          loadSemantics: candidate.loadSemantics,
-                          movementPattern: candidate.movementPattern,
-                          cautionBodyParts: candidate.cautionBodyParts,
-                          modificationType: "substituted",
-                          skipReason: null,
-                          substitutedForExerciseId:
-                            exercise.substitutedForExerciseId ?? exercise.exerciseId,
-                          substitutionReason: reason,
-                          substitutedAt: new Date().toISOString(),
-                          plannedExerciseName:
-                            exercise.plannedExerciseName ?? exercise.name,
-                          targetLoad: null,
-                          targetLoadUnit: null,
-                          notes: null,
-                          warmupNotes: null,
-                          warmupSets: [],
-                          setNotes: [],
-                          last: null,
-                          media: candidate.media ?? null,
-                        });
-                        setDraft((current) => ({
-                          ...current,
-                          weight: null,
-                          weightUnit: null,
-                          note: "",
-                        }));
-                        setNote("");
-                      }}
+                      onReconcile={reconcileReplacement}
+                      onDone={applyReplacement}
                     />
                   </div>
                 </div>
@@ -1811,33 +1806,61 @@ export function ExerciseCard({
       )}
 
       {expanded && isSkipped && (
-        <div className="border-t p-3">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() =>
-              startTransition(async () => {
-                try {
-                  const result = await unskipExercise(exercise.id);
-                  if (!result.ok) {
-                    toast.error(result.message);
+        <div className="flex flex-col gap-3 border-t p-3">
+          <div
+            id={`skip-recovery-description-${exercise.id}`}
+            role="status"
+            className="rounded-lg border bg-background p-3"
+          >
+            <h3 className="text-sm font-semibold">Exercise skipped</h3>
+            <p className="mt-1 text-xs leading-5 text-muted-foreground">
+              Replace it for this workout, or deliberately continue. Your saved
+              Program is unchanged.
+            </p>
+          </div>
+          <div className="grid gap-2 sm:grid-cols-3">
+            <ReplacementDrawer
+              exerciseId={exercise.id}
+              describedBy={`skip-recovery-description-${exercise.id}`}
+              open={adjustIntent === "replace"}
+              onOpenChange={(open) =>
+                onAdjustIntentChange(open ? "replace" : null)
+              }
+              onReconcile={reconcileReplacement}
+              onDone={applyReplacement}
+            />
+            <Button type="button" onClick={onSkipComplete}>
+              Continue without replacement
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={pending}
+              onClick={() =>
+                startTransition(async () => {
+                  try {
+                    const result = await unskipExercise(exercise.id);
+                    if (!result.ok) {
+                      toast.error(result.message);
+                      return;
+                    }
+                  } catch {
+                    toast.error("The exercise could not be restored.");
                     return;
                   }
-                } catch {
-                  toast.error("The exercise could not be restored.");
-                  return;
-                }
-                onPatch({
-                  modificationType: exercise.substitutedForExerciseId
-                    ? "substituted"
-                    : "as_planned",
-                  skipReason: null,
-                });
-              })
-            }
-          >
-            Un-skip
-          </Button>
+                  onPatch({
+                    modificationType: exercise.substitutedForExerciseId
+                      ? "substituted"
+                      : "as_planned",
+                    skipReason: null,
+                  });
+                })
+              }
+            >
+              Un-skip
+            </Button>
+          </div>
         </div>
       )}
       <OccurrenceMutationDialog

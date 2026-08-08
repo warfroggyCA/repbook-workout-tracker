@@ -2058,19 +2058,40 @@ export function SessionRunner(props: SessionRunnerProps) {
                 exerciseIdentityChanged &&
                 patch.modificationType === "substituted"
               ) {
-                setOccurrences((current) => current.map((occurrence) =>
-                  occurrence.sessionExerciseId === exercise.id &&
-                  occurrence.kind === "exercise_warmup" &&
-                  occurrence.outcome === "pending"
-                    ? {
-                        ...occurrence,
-                        outcome: "skipped",
-                        outcomeReason: "exercise:substituted:optimistic",
-                        revision: occurrence.revision + 1,
-                        resolvedAt: new Date().toISOString(),
-                      }
-                    : occurrence,
-                ));
+                setOccurrences((current) => current.map((occurrence) => {
+                  if (occurrence.sessionExerciseId !== exercise.id) {
+                    return occurrence;
+                  }
+                  if (
+                    occurrence.kind === "exercise_warmup" &&
+                    occurrence.outcome === "pending"
+                  ) {
+                    return {
+                      ...occurrence,
+                      outcome: "skipped",
+                      outcomeReason: "exercise:substituted:optimistic",
+                      revision: occurrence.revision + 1,
+                      resolvedAt: new Date().toISOString(),
+                    };
+                  }
+                  if (
+                    occurrence.kind === "working_set" &&
+                    occurrence.outcome === "skipped" &&
+                    occurrence.outcomeReason?.startsWith("exercise:") &&
+                    !occurrence.outcomeReason.startsWith(
+                      "exercise:substituted:",
+                    )
+                  ) {
+                    return {
+                      ...occurrence,
+                      outcome: "pending",
+                      outcomeReason: null,
+                      revision: occurrence.revision + 1,
+                      resolvedAt: null,
+                    };
+                  }
+                  return occurrence;
+                }));
               } else if (
                 exerciseIdentityChanged &&
                 patch.modificationType === "as_planned"

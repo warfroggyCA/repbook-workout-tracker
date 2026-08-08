@@ -2510,6 +2510,191 @@ function compareMergedRows(current: SnapshotRow[], target: SnapshotRow[]) {
   return { ...compared, removed: 0 };
 }
 
+function mergeImmutableHistoryRows(
+  current: SnapshotRow[],
+  source: SnapshotRow[],
+  label: string
+) {
+  const merged = new Map(current.map((row) => [String(row.id), row]));
+  for (const sourceRow of source) {
+    const id = String(sourceRow.id);
+    const currentRow = merged.get(id);
+    if (currentRow && canonicalJson(currentRow) !== canonicalJson(sourceRow)) {
+      throw new Error(
+        `Snapshot ${label} identity conflicts with retained history. Nothing was restored.`
+      );
+    }
+    merged.set(id, currentRow ?? sourceRow);
+  }
+  return [...merged.values()].sort((a, b) =>
+    String(a.id).localeCompare(String(b.id))
+  );
+}
+
+function mergeHistoryAdaptations(
+  current: SnapshotRow[],
+  source: SnapshotRow[]
+) {
+  const merged = new Map(current.map((row) => [String(row.id), row]));
+  for (const sourceRow of source) {
+    const id = String(sourceRow.id);
+    const currentRow = merged.get(id);
+    if (!currentRow) {
+      merged.set(id, sourceRow);
+      continue;
+    }
+    const currentCore = { ...currentRow, undone_at: null };
+    const sourceCore = { ...sourceRow, undone_at: null };
+    if (canonicalJson(currentCore) !== canonicalJson(sourceCore)) {
+      throw new Error(
+        "Snapshot adaptation identity conflicts with retained history. Nothing was restored."
+      );
+    }
+    if (currentRow.undone_at == null && sourceRow.undone_at != null) {
+      merged.set(id, sourceRow);
+    } else if (
+      currentRow.undone_at != null &&
+      sourceRow.undone_at != null &&
+      currentRow.undone_at !== sourceRow.undone_at
+    ) {
+      throw new Error(
+        "Snapshot adaptation undo identity conflicts with retained history. Nothing was restored."
+      );
+    }
+  }
+  return [...merged.values()].sort((a, b) =>
+    String(a.id).localeCompare(String(b.id))
+  );
+}
+
+const recommendationDecisionStatus = {
+  approve: "approved",
+  edit: "edited",
+  reject: "rejected",
+} as const;
+
+function recommendationTimestamp(row: SnapshotRow) {
+  for (const key of ["reconciled_at", "decided_at", "created_at"] as const) {
+    const parsed = Date.parse(String(row[key] ?? ""));
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return 0;
+}
+
+function mergeHistoryRecommendations(
+  current: SnapshotRow[],
+  source: SnapshotRow[],
+  decisions: SnapshotRow[],
+  adaptations: SnapshotRow[]
+) {
+  const currentById = new Map(current.map((row) => [String(row.id), row]));
+  const sourceById = new Map(source.map((row) => [String(row.id), row]));
+  const decisionByRecommendation = new Map(
+    decisions.map((row) => [String(row.recommendation_id), row])
+  );
+  const adaptedRecommendations = new Set(
+    adaptations.map((row) => String(row.recommendation_id))
+  );
+  const ids = new Set([...currentById.keys(), ...sourceById.keys()]);
+  const merged: SnapshotRow[] = [];
+
+  for (const id of [...ids].sort()) {
+    const currentRow = currentById.get(id);
+    const sourceRow = sourceById.get(id);
+    if (!currentRow) {
+      // Pending advice is derived state. A History-only restore may bring back
+      // its evidence, but must not resurrect an older proposal as actionable.
+      if (sourceRow?.status !== "pending") merged.push(sourceRow!);
+      continue;
+    }
+    if (!sourceRow || canonicalJson(currentRow) === canonicalJson(sourceRow)) {
+      merged.push(currentRow);
+      continue;
+    }
+
+    const decision = decisionByRecommendation.get(id);
+    const expectedStatus = decision
+      ? recommendationDecisionStatus[
+          String(decision.decision) as keyof typeof recommendationDecisionStatus
+        ]
+      : undefined;
+    if (expectedStatus) {
+      const currentMatches = currentRow.status === expectedStatus;
+      const sourceMatches = sourceRow.status === expectedStatus;
+      if (currentMatches !== sourceMatches) {
+        merged.push(currentMatches ? currentRow : sourceRow);
+        continue;
+      }
+      if (!currentMatches) {
+        throw new Error(
+          "Snapshot recommendation conflicts with its retained owner decision. Nothing was restored."
+        );
+      }
+    }
+
+    const currentTerminal = currentRow.status !== "pending";
+    const sourceTerminal = sourceRow.status !== "pending";
+    if (currentTerminal !== sourceTerminal) {
+      merged.push(currentTerminal ? currentRow : sourceRow);
+      continue;
+    }
+    if (!currentTerminal) {
+      merged.push(currentRow);
+      continue;
+    }
+
+    const currentTime = recommendationTimestamp(currentRow);
+    const sourceTime = recommendationTimestamp(sourceRow);
+    if (
+      currentRow.status !== sourceRow.status &&
+      currentTime === sourceTime
+    ) {
+      throw new Error(
+        "Snapshot recommendation terminal state conflicts with retained history. Nothing was restored."
+      );
+    }
+    merged.push(currentTime > sourceTime ? currentRow : sourceRow);
+  }
+
+  const keptIds = new Set(merged.map((row) => String(row.id)));
+  if (
+    [...decisionByRecommendation.keys(), ...adaptedRecommendations].some(
+      (id) => !keptIds.has(id)
+    )
+  ) {
+    throw new Error(
+      "Snapshot coaching history has no retained recommendation parent. Nothing was restored."
+    );
+  }
+  return merged;
+}
+
+function reconcileHistoryCoachingRows(
+  expectedCurrent: RestoreRows,
+  desired: RestoreRows
+): RestoreRows {
+  const decisions = mergeImmutableHistoryRows(
+    expectedCurrent.user_decisions,
+    desired.user_decisions,
+    "owner decision"
+  );
+  const adaptations = mergeHistoryAdaptations(
+    expectedCurrent.adaptation_events,
+    desired.adaptation_events
+  );
+  return {
+    ...desired,
+    recommendations: mergeHistoryRecommendations(
+      expectedCurrent.recommendations,
+      desired.recommendations,
+      decisions,
+      adaptations
+    ),
+    user_decisions: decisions,
+    adaptation_events: adaptations,
+  };
+}
+
 function buildPlan(
   currentPayload: CanonicalSnapshotPayload,
   sourcePayload: CanonicalSnapshotPayload,
@@ -2517,7 +2702,11 @@ function buildPlan(
   scope: SnapshotRestoreScope
 ) {
   const expectedCurrent = targetRows(currentPayload, userId, scope);
-  const desired = targetRows(sourcePayload, userId, scope);
+  const sourceDesired = targetRows(sourcePayload, userId, scope);
+  const desired =
+    scope === "history"
+      ? reconcileHistoryCoachingRows(expectedCurrent, sourceDesired)
+      : sourceDesired;
   const dependencies = dependencyRows(sourcePayload, userId, scope);
   const tables = Object.keys(desired).map((table) => {
     const restoreMode = RECOVERY_MANIFEST_BY_TABLE[table]?.restore[scope];

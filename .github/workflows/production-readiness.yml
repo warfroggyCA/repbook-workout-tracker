@@ -273,6 +273,11 @@ jobs:
         continue-on-error: true
         run: npm run test:e2e:v2-h05
 
+      - name: Verify Repbook v2 Gauntlet B live-workout recovery
+        id: browser-v2-gauntlet-b
+        continue-on-error: true
+        run: npm run test:e2e:v2-gauntlet-b
+
       - name: Require every browser suite
         if: ${{ always() }}
         env:
@@ -307,6 +312,7 @@ jobs:
           BROWSER_V2_H03: ${{ steps.browser-v2-h03.outcome }}
           BROWSER_V2_H04: ${{ steps.browser-v2-h04.outcome }}
           BROWSER_V2_H05: ${{ steps.browser-v2-h05.outcome }}
+          BROWSER_V2_GAUNTLET_B: ${{ steps.browser-v2-gauntlet-b.outcome }}
         run: |
           failed=0
           for result in \
@@ -340,7 +346,8 @@ jobs:
             "H02 cadence and planned-set outcomes:${BROWSER_V2_H02}" \
             "H03 exact exercise evidence:${BROWSER_V2_H03}" \
             "H04 pain consistency:${BROWSER_V2_H04}" \
-            "H05 evidence-linked Review:${BROWSER_V2_H05}"
+            "H05 evidence-linked Review:${BROWSER_V2_H05}" \
+            "Repbook v2 Gauntlet B:${BROWSER_V2_GAUNTLET_B}"
           do
             name="${result%%:*}"
             outcome="${result#*:}"

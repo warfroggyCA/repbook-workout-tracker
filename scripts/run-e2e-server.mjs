@@ -25,6 +25,7 @@ const v2H02Cadence = process.argv.includes("--v2-h02-cadence-targets-time");
 const v2H03Evidence = process.argv.includes("--v2-h03-evidence-identity");
 const v2H04Pain = process.argv.includes("--v2-h04-pain-consistency");
 const v2H05Review = process.argv.includes("--v2-h05-evidence-linked-review");
+const v2GauntletBLiveWorkout = process.argv.includes("--v2-gauntlet-b-live-workout");
 const port = Number.parseInt(process.env.E2E_PORT ?? "3100", 10);
 if (!Number.isInteger(port) || port < 1024 || port > 65535) {
   throw new Error("E2E_PORT must be an integer from 1024 through 65535.");
@@ -56,7 +57,7 @@ if (stage6Simulation && !baRoutineChange) {
   throw new Error("Stage 6 simulation fixtures require BA routine-change mode.");
 }
 if (
-  (v2H01History || v2H02Cadence || v2H03Evidence || v2H04Pain || v2H05Review) &&
+  (v2H01History || v2H02Cadence || v2H03Evidence || v2H04Pain || v2H05Review || v2GauntletBLiveWorkout) &&
   [
     v2H01History && v2H02Cadence,
     v2H01History && v2H03Evidence,
@@ -68,6 +69,11 @@ if (
     v2H02Cadence && v2H05Review,
     v2H03Evidence && v2H05Review,
     v2H04Pain && v2H05Review,
+    v2H01History && v2GauntletBLiveWorkout,
+    v2H02Cadence && v2GauntletBLiveWorkout,
+    v2H03Evidence && v2GauntletBLiveWorkout,
+    v2H04Pain && v2GauntletBLiveWorkout,
+    v2H05Review && v2GauntletBLiveWorkout,
     baFixture,
     baRoutineChange,
     stage6Simulation,
@@ -133,7 +139,9 @@ const environment = {
   ...process.env,
   AI_FAKE: "1",
   ANTHROPIC_API_KEY: "",
-  ALLOWED_EMAILS: v2H05Review
+  ALLOWED_EMAILS: v2GauntletBLiveWorkout
+    ? "ba.iphone.e2e@example.com"
+    : v2H05Review
     ? "review-decisions.e2e@example.com"
     : v2H02Cadence
     ? "v2.h02.cadence.e2e@example.com"
@@ -146,7 +154,7 @@ const environment = {
         : "owner@example.com,second.e2e@example.com,program-page.e2e@example.com,today-empty.e2e@example.com,history-calendar.e2e@example.com,history-workspace-sparse.e2e@example.com,review-decisions.e2e@example.com",
   AUTH_SECRET: "local-e2e-secret-not-used-outside-this-process",
   AUTH_TRUST_HOST: "true",
-  BA_FIXTURE_MODE: baFixture || baRoutineChange || baCalendar ? "1" : "",
+  BA_FIXTURE_MODE: baFixture || baRoutineChange || baCalendar || v2GauntletBLiveWorkout ? "1" : "",
   BA_CALENDAR_MODE: baCalendar ? "1" : "",
   BA_ACCEPTANCE_START_AT: baCalendar
     ? process.env.BA_ACCEPTANCE_START_AT ?? ""
@@ -187,7 +195,7 @@ const serverScriptEnvironment = {
 
 const seeded = spawnSync(
   "npm",
-  baFixture || baRoutineChange || baCalendar || v2H01History || v2H02Cadence || v2H03Evidence || v2H04Pain
+  baFixture || baRoutineChange || baCalendar || v2H01History || v2H02Cadence || v2H03Evidence || v2H04Pain || v2GauntletBLiveWorkout
     ? ["run", "db:seed"]
     : ["run", "db:seed", "--", "--demo"],
   {
@@ -209,7 +217,15 @@ if (seeded.status !== 0) {
   throw new Error(`E2E seed failed with status ${seeded.status}.`);
 }
 
-const fixtures = v2H05Review
+const fixtures = v2GauntletBLiveWorkout
+  ? [
+      { label: "BA workout", script: "tests/helpers/seed-ba-workout.ts" },
+      {
+        label: "Gauntlet B unavailable-equipment workout",
+        script: "tests/helpers/seed-v2-gauntlet-b-live-workout.ts",
+      },
+    ]
+  : v2H05Review
   ? [{ label: "H05 evidence-linked Review", script: "tests/helpers/seed-review-decisions.ts" }]
   : v2H04Pain
   ? [

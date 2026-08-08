@@ -6,6 +6,7 @@ import { migrate } from "drizzle-orm/pglite/migrator";
 import { eq } from "drizzle-orm";
 import * as schema from "@/db/schema";
 import {
+  adaptationEvents,
   aiParsingEvents,
   coachingInsights,
   completedSets,
@@ -25,9 +26,11 @@ import {
   sessionExercises,
   sessionOccurrenceMutations,
   sessionOccurrences,
+  userDecisions,
   userProfiles,
   users,
   workoutSessions,
+  workoutTemplateExercises,
   workoutTemplates,
 } from "@/db/schema";
 import { activateProgramAtomically } from "@/services/program-activation";
@@ -1567,6 +1570,196 @@ describe("verified off-database snapshots", () => {
       /another user's record/
     );
   }, 30_000);
+
+  it("preserves a later Program decision and adaptation during an older History restore", async () => {
+    const firstProgram = await activateProgramAtomically(db, {
+      userId,
+      loadUnit: "kg",
+      programName: "History restore P1",
+      days: [{
+        name: "Day A",
+        exercises: [{
+          exerciseId,
+          sets: 3,
+          repMin: 8,
+          repMax: 12,
+          targetLoad: 20,
+          restSec: 90,
+          supersetKey: null,
+          notes: null,
+        }],
+      }],
+      changeSummary: "Create restore decision fixture",
+      auditAction: "program.activate",
+      auditSummary: "Created restore decision fixture",
+    });
+    if (!firstProgram.ok) throw new Error(firstProgram.reason);
+    const sourceTemplate = await db.query.workoutTemplates.findFirst({
+      where: eq(workoutTemplates.programVersionId, firstProgram.programVersionId),
+    });
+    if (!sourceTemplate) throw new Error("Source template missing.");
+    const sourceSlot = await db.query.workoutTemplateExercises.findFirst({
+      where: eq(workoutTemplateExercises.workoutTemplateId, sourceTemplate.id),
+    });
+    if (!sourceSlot) throw new Error("Source slot missing.");
+
+    const [recommendation] = await db
+      .insert(recommendations)
+      .values({
+        userId,
+        source: "rule",
+        status: "pending",
+        ruleId: "history-restore-decision",
+        sourceTemplateExerciseId: sourceSlot.id,
+        sourceSlotLineageId: sourceSlot.lineageId,
+        payload: {
+          kind: "load_change",
+          templateExerciseId: sourceSlot.id,
+          fromLoad: 20,
+          toLoad: 22.5,
+          loadUnit: "kg",
+        },
+        reason: "Increase the next working load",
+        evidence: { signals: {}, sessionIds: [sessionId] },
+      })
+      .returning({ id: recommendations.id });
+
+    const created = await createDataSnapshot(
+      db,
+      userId,
+      { name: "Before accepted adaptation", reason: "manual" },
+      { store, keyring, appVersion: "gauntlet-b-history-restore" }
+    );
+    if (!created.ok) throw new Error(created.reason);
+
+    const secondProgram = await activateProgramAtomically(db, {
+      userId,
+      loadUnit: "kg",
+      programName: "History restore P2",
+      days: [{
+        name: "Day A",
+        exercises: [{
+          exerciseId,
+          sets: 3,
+          repMin: 8,
+          repMax: 12,
+          targetLoad: 22.5,
+          restSec: 90,
+          supersetKey: null,
+          notes: null,
+        }],
+      }],
+      changeSummary: "Accept the proposed load",
+      auditAction: "program.activate",
+      auditSummary: "Activated accepted restore fixture",
+    });
+    if (!secondProgram.ok) throw new Error(secondProgram.reason);
+    const decidedAt = new Date("2026-07-20T12:00:00.000Z");
+    await db
+      .update(recommendations)
+      .set({ status: "approved", decidedAt })
+      .where(eq(recommendations.id, recommendation.id));
+    const [decision] = await db
+      .insert(userDecisions)
+      .values({
+        recommendationId: recommendation.id,
+        decision: "approve",
+        reviewSnapshot: { schemaVersion: "legacy-unknown" },
+        decidedAt,
+      })
+      .returning({ id: userDecisions.id });
+    const [adaptation] = await db
+      .insert(adaptationEvents)
+      .values({
+        userId,
+        recommendationId: recommendation.id,
+        beforeSnapshot: { programVersionId: firstProgram.programVersionId },
+        afterSnapshot: { programVersionId: secondProgram.programVersionId },
+        appliedAt: decidedAt,
+      })
+      .returning({ id: adaptationEvents.id });
+    await db
+      .update(completedSets)
+      .set({ reps: 3 })
+      .where(eq(completedSets.id, setId));
+
+    const preview = await getSnapshotRestorePreview(
+      db,
+      userId,
+      created.snapshotId,
+      "history",
+      { store, keyring }
+    );
+    expect(
+      preview.tables.find(({ table }) => table === "recommendations")
+    ).toMatchObject({ added: 0, updated: 0, removed: 0 });
+    expect(
+      preview.tables.find(({ table }) => table === "user_decisions")
+    ).toMatchObject({ added: 0, updated: 0, removed: 0, unchanged: 1 });
+    expect(
+      preview.tables.find(({ table }) => table === "adaptation_events")
+    ).toMatchObject({ added: 0, updated: 0, removed: 0, unchanged: 1 });
+
+    const failed = await restoreDataSnapshot(
+      db,
+      userId,
+      {
+        snapshotId: created.snapshotId,
+        scope: "history",
+        previewFingerprint: preview.fingerprint,
+        confirmation: "RESTORE",
+      },
+      {
+        store,
+        keyring,
+        appVersion: "gauntlet-b-history-restore",
+        failAfterTable: "adaptation_events",
+      }
+    );
+    expect(failed).toMatchObject({ ok: false });
+    expect(
+      await db.query.completedSets.findFirst({ where: eq(completedSets.id, setId) })
+    ).toMatchObject({ reps: 3 });
+
+    const restored = await restoreDataSnapshot(
+      db,
+      userId,
+      {
+        snapshotId: created.snapshotId,
+        scope: "history",
+        previewFingerprint: preview.fingerprint,
+        confirmation: "RESTORE",
+      },
+      { store, keyring, appVersion: "gauntlet-b-history-restore" }
+    );
+    expect(restored).toMatchObject({ ok: true, scope: "history" });
+    expect(
+      await db.query.programs.findFirst({
+        where: eq(programs.id, secondProgram.programId),
+      })
+    ).toMatchObject({
+      status: "active",
+      currentVersionId: secondProgram.programVersionId,
+    });
+    expect(
+      await db.query.recommendations.findFirst({
+        where: eq(recommendations.id, recommendation.id),
+      })
+    ).toMatchObject({ status: "approved", decidedAt });
+    expect(
+      await db.query.userDecisions.findFirst({
+        where: eq(userDecisions.id, decision.id),
+      })
+    ).toBeDefined();
+    expect(
+      await db.query.adaptationEvents.findFirst({
+        where: eq(adaptationEvents.id, adaptation.id),
+      })
+    ).toBeDefined();
+    expect(
+      await db.query.completedSets.findFirst({ where: eq(completedSets.id, setId) })
+    ).toMatchObject({ reps: 8 });
+  }, 45_000);
 
   it("keeps schema-6 and schema-7 snapshots previewable after later safety ledgers are added", async () => {
     const capturedAt = new Date("2026-07-11T12:00:00.000Z");

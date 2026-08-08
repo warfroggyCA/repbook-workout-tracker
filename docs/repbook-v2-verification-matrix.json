@@ -5,8 +5,8 @@
   "repositoryRole": "public application source",
   "exactBaseCommit": "2c9ab1b9478502f1d08956a6c44dfb0850c8f168",
   "fixtureCatalogue": "tests/fixtures/v2/semantic-scenarios.json",
-  "currentPackage": "H05",
-  "currentPackageBaseCommit": "ed34623b5aab89d5c4bd500f70e3a3c972b8a815",
+  "currentPackage": "Gauntlet B",
+  "currentPackageBaseCommit": "fb4b351d7039f30aa0b272d11b53486a70ca4946",
   "productBehaviorImplementedByP02": false,
   "implementedProductPackages": [
     "T01",
@@ -398,7 +398,7 @@
       "implementingPackage": "H05",
       "testPath": "tests/unit/v2-h05-review-portability.test.ts",
       "command": "npx vitest run tests/unit/v2-h05-review-portability.test.ts tests/unit/snapshots-db.test.ts",
-      "proves": "restore validates coherent review, defer and decision snapshots before writes, rejects malformed state, and restores retained proposals and decisions without recomputing them from mutable current metadata"
+      "proves": "restore validates coherent review, defer and decision snapshots before writes and rejects malformed state; full restore retains exact snapshot coaching state, while History-only restore uses the later Gauntlet B monotonic merge contract"
     },
     "H05-adversarialPrivacy": {
       "status": "current",
@@ -406,6 +406,20 @@
       "testPath": "tests/unit/recommendation-decisions-characterization.test.ts",
       "command": "npx vitest run tests/unit/recommendation-decisions-characterization.test.ts tests/unit/v2-h05-review-portability.test.ts",
       "proves": "concurrent decisions, stale facts, contradictory or missing support, deferred state, invalid dates, revision races, failed audit or publication, lost acknowledgement, owner scoping, and malformed restore all fail closed without duplicate decisions, adaptations, or historical mutation"
+    },
+    "GauntletB-liveWorkout": {
+      "status": "current",
+      "implementingPackage": "Gauntlet B",
+      "testPath": "tests/e2e/v2-gauntlet-b-live-workout.spec.ts",
+      "command": "npm run test:e2e:v2-gauntlet-b",
+      "proves": "independent disposable desktop Chromium, 440 by 956 mobile Chromium, and 320 by 700 enlarged-text mobile WebKit complete warm-up, three ordinary set acknowledgements, a genuinely unavailable suspension-equipment skip, deliberate continuation, un-skip, focused replacement, replacement-set acknowledgement, and finish while preserving at least 280 CSS pixels between the sticky guidance and workout-status dock, clearing mobile navigation, exposing 44-pixel recovery targets, avoiding horizontal overflow, and reporting no unexpected page errors"
+    },
+    "GauntletB-historyRestore": {
+      "status": "current",
+      "implementingPackage": "Gauntlet B",
+      "testPath": "tests/unit/snapshots-db.test.ts",
+      "command": "npx vitest run tests/unit/snapshots-db.test.ts tests/unit/recovery-manifest-db.test.ts",
+      "proves": "History-only restore keeps the current accepted Program, immutable owner decision, decision-time snapshot, and accepted adaptation; an older pending recommendation cannot become actionable, and injected failure rolls back before a successful exact retry"
     },
     "A05-databaseService": {
       "status": "future_activation",
@@ -1858,6 +1872,7 @@
     "U03 current status means exact future Program review and publication clarity travel with active-session, completed/imported History, earlier-version, conflict, failure, export, and restore isolation evidence; it adds no schema, migration, historical rewrite, release, or deployment.",
     "H01 current status means performed-first completed and imported workout presentation travels with exact terminal, provenance, correction, semantic, calculation-eligibility, retained-source, accessibility, and zero-write evidence; it adds no schema, migration, writer, historical rewrite, release, or deployment.",
     "H04 current status means pain-evidence-v1 meaning travels together across active workout, History, Review, Coach context, progression proposals, CSV, snapshot restore, and adversarial identity boundaries; absence remains unknown, explicit zero remains no-issue evidence, and no pain evidence silently changes Program intent.",
-    "H05 current status means every material Review proposal carries versioned exact evidence, visible limitations and a future-only effect; owner decisions and durable deferrals are revision-fenced, evidence-linked, snapshotted, and atomic, while unsupported, contradictory, stale, missing, or cross-owner facts never become Program changes."
+    "H05 current status means every material Review proposal carries versioned exact evidence, visible limitations and a future-only effect; owner decisions and durable deferrals are revision-fenced, evidence-linked, snapshotted, and atomic, while unsupported, contradictory, stale, missing, or cross-owner facts never become Program changes.",
+    "Gauntlet B current status means the complete enlarged-text live-workout recovery journey and History-only restore monotonicity travel with their implementation; it does not authorize release, deployment, production mutation, historical repair, or Milestone 4."
   ]
 }
