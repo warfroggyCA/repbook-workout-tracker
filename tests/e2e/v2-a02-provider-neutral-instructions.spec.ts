@@ -58,7 +58,7 @@ test("downloads provider-neutral instructions bound to the exact package without
   };
 
   expect(instructionText).toContain("external-analysis-instructions/1");
-  expect(instructionText).toContain("external-analysis-starter-response/1");
+  expect(instructionText).toContain("analysis-response/1");
   expect(instructionText).toContain(packageValue.packageId);
   expect(instructionText).toContain(packageValue.packageNamespace);
   expect(instructionText).toContain(packageValue.schemaVersion);
@@ -69,7 +69,7 @@ test("downloads provider-neutral instructions bound to the exact package without
   expect(instructionText).toContain("Do not invent measurements, dates, units");
   expect(instructionText).toContain("Do not claim that you changed Repbook");
   expect(instructionText).toContain("Cite exact package evidence IDs");
-  expect(instructionText).toContain("cannot be imported into Repbook");
+  expect(instructionText).toContain("does not yet expose the later paste/upload import flow");
 
   const downloadPromise = page.waitForEvent("download");
   await page.getByRole("button", { name: "Download model instructions" }).click();

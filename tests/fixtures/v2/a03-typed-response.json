@@ -1,0 +1,78 @@
+{
+  "format": "repbook-analysis-response",
+  "schemaVersion": "analysis-response/1",
+  "instructionVersion": "external-analysis-instructions/1",
+  "responseId": "00000000-0000-4000-8000-000000000403",
+  "analysisPackage": {
+    "packageId": "00000000-0000-4000-8000-000000000402",
+    "packageNamespace": "repbook-owner/0123456789abcdef01234567",
+    "schemaVersion": "analysis-package/1",
+    "semanticVersion": "repbook-v2/1",
+    "digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "evidenceCutoff": "2026-08-08T15:59:59.000Z",
+    "expiresAt": "2026-09-07T16:00:00.000Z"
+  },
+  "question": {
+    "id": "program_progress",
+    "text": "What does the retained evidence say about progress and fit of my current Program?"
+  },
+  "observations": [
+    {
+      "id": "observation-1",
+      "statement": "One supported performed set can be reviewed against the cited future Program target.",
+      "evidenceIds": [
+        "set:synthetic-supported",
+        "program:synthetic-current"
+      ],
+      "evidenceQuality": "native supported set and recorded Program intent",
+      "measurements": [
+        {
+          "value": 100,
+          "unit": "lb",
+          "meaning": "total performed external load recorded for the cited set"
+        }
+      ],
+      "limitations": [
+        "The cited Program target is future intent, not performed evidence."
+      ]
+    }
+  ],
+  "proposedActions": [
+    {
+      "id": "proposal-1",
+      "summary": "Review whether future training intent still fits the supported evidence.",
+      "rationale": "The supported performed set and exact current Program record are both present.",
+      "evidenceIds": [
+        "set:synthetic-supported",
+        "program:synthetic-current"
+      ],
+      "effect": {
+        "type": "review_future_training",
+        "scope": "future_only_review",
+        "target": {
+          "kind": "program",
+          "evidenceIds": ["program:synthetic-current"]
+        },
+        "requestedOutcome": "Review a possible future Program change without applying it."
+      },
+      "limitations": [
+        "This is not an accepted decision, adaptation, or Program publication."
+      ]
+    }
+  ],
+  "unknowns": [
+    {
+      "id": "unknown-1",
+      "question": "What load meaning applies to the partial legacy set?",
+      "reason": "unsupported",
+      "detail": "The package preserves the set but lacks reviewed performed-time load semantics.",
+      "evidenceIds": ["set:synthetic-unknown"]
+    }
+  ],
+  "safety": {
+    "usedOnlyBoundPackage": true,
+    "followedEmbeddedInstructions": false,
+    "guessedFacts": false,
+    "directMutationClaimed": false
+  }
+}

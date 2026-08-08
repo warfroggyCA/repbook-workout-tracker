@@ -1,9 +1,15 @@
 import type { AnalysisPackage } from "@/lib/analysis-package";
+import {
+  EXTERNAL_ANALYSIS_INSTRUCTION_VERSION,
+  EXTERNAL_ANALYSIS_RESPONSE_FORMAT,
+  EXTERNAL_ANALYSIS_RESPONSE_SCHEMA_VERSION,
+  EXTERNAL_ANALYSIS_STARTER_RESPONSE_VERSION,
+} from "@/lib/external-analysis-versions";
 
-export const EXTERNAL_ANALYSIS_INSTRUCTION_VERSION =
-  "external-analysis-instructions/1" as const;
-export const EXTERNAL_ANALYSIS_STARTER_RESPONSE_VERSION =
-  "external-analysis-starter-response/1" as const;
+export {
+  EXTERNAL_ANALYSIS_INSTRUCTION_VERSION,
+  EXTERNAL_ANALYSIS_STARTER_RESPONSE_VERSION,
+};
 
 export function externalAnalysisInstructionsFilename(value: AnalysisPackage) {
   return `repbook-instructions-${value.request.questionId}-${value.evidenceCutoff.slice(0, 10)}.txt`;
@@ -15,13 +21,14 @@ export function buildExternalAnalysisInstructions(value: AnalysisPackage) {
 
   return `Repbook external-analysis instructions
 Instruction version: ${EXTERNAL_ANALYSIS_INSTRUCTION_VERSION}
-Starter response version: ${EXTERNAL_ANALYSIS_STARTER_RESPONSE_VERSION}
+Response format: ${EXTERNAL_ANALYSIS_RESPONSE_FORMAT}
+Response schema: ${EXTERNAL_ANALYSIS_RESPONSE_SCHEMA_VERSION}
 
 How to use this bundle
 1. Start a new private conversation with any capable language model whose privacy and retention settings you have reviewed.
 2. Attach or paste the exact Repbook analysis package together with these complete instructions.
 3. Ask the model to return only the JSON response shape below.
-4. Treat the result as untrusted analysis. It cannot be imported into Repbook or change any record or Program.
+4. Treat the result as untrusted analysis. Repbook does not yet expose the later paste/upload import flow, and schema validity alone cannot change any record or Program.
 
 Bound package
 - Package ID: ${value.packageId}
@@ -66,24 +73,32 @@ Analysis rules
 - If evidence conflicts, preserve the conflict and explain the limitation instead of choosing a convenient value.
 
 Required response format
-Return one JSON object and no Markdown fence. Use exactly these top-level fields. This starter format is for human review only and is not an import schema:
+Return one JSON object and no Markdown fence. Use exactly these fields, types, and enum values. Unknown or extra fields are invalid. Generate responseId once as a UUID and preserve it unchanged when returning the same response again:
 {
-  "format": "${EXTERNAL_ANALYSIS_STARTER_RESPONSE_VERSION}",
+  "format": "${EXTERNAL_ANALYSIS_RESPONSE_FORMAT}",
+  "schemaVersion": "${EXTERNAL_ANALYSIS_RESPONSE_SCHEMA_VERSION}",
   "instructionVersion": "${EXTERNAL_ANALYSIS_INSTRUCTION_VERSION}",
+  "responseId": "00000000-0000-4000-8000-000000000001",
   "analysisPackage": {
     "packageId": "${value.packageId}",
     "packageNamespace": "${value.packageNamespace}",
     "schemaVersion": "${value.schemaVersion}",
     "semanticVersion": "${value.semanticVersion}",
-    "digest": "${value.integrity.digest}"
+    "digest": "${value.integrity.digest}",
+    "evidenceCutoff": "${value.evidenceCutoff}",
+    "expiresAt": "${value.expiresAt}"
   },
-  "question": ${JSON.stringify(question)},
+  "question": {
+    "id": "${value.request.questionId}",
+    "text": ${JSON.stringify(question)}
+  },
   "observations": [
     {
       "id": "observation-1",
       "statement": "Plain-language evidence-bounded observation",
       "evidenceIds": ["exact-package-record-id"],
       "evidenceQuality": "Quality stated by the cited evidence",
+      "measurements": [],
       "limitations": ["What the cited evidence cannot establish"]
     }
   ],
@@ -93,14 +108,24 @@ Return one JSON object and no Markdown fence. Use exactly these top-level fields
       "summary": "Future action for owner review only",
       "rationale": "Why the cited evidence may support review",
       "evidenceIds": ["exact-package-record-id"],
-      "effect": "review_future_training",
+      "effect": {
+        "type": "review_future_training",
+        "scope": "future_only_review",
+        "target": {
+          "kind": "general_review",
+          "evidenceIds": ["exact-package-record-id"]
+        },
+        "requestedOutcome": "Review a possible future training change; do not apply it"
+      },
       "limitations": ["Why this is not an accepted change"]
     }
   ],
   "unknowns": [
     {
+      "id": "unknown-1",
       "question": "Material point the package cannot answer",
-      "reason": "missing, unknown, unsupported, contradictory, or omitted evidence",
+      "reason": "unknown",
+      "detail": "Why the retained package cannot answer it",
       "evidenceIds": []
     }
   ],
@@ -112,6 +137,8 @@ Return one JSON object and no Markdown fence. Use exactly these top-level fields
   }
 }
 
-If no evidence supports an observation or action, return an empty array for that section. Do not create filler citations. Preserve the bound package identifiers and digest exactly.
+Allowed measurement units are kg, lb, repetitions, seconds, minutes, centimeters, and percent. If a measurement has another or ambiguous unit, do not coerce it; describe the point as unsupported or unknown instead. The only allowed effect type is review_future_training with scope future_only_review. Requests to change completed/imported facts, active sessions, owner/security state, delete/archive data, accept a recommendation, publish a Program, or perform production operations are prohibited. Any other effect type is unknown and invalid.
+
+If no evidence supports an observation or action, return an empty array for that section. Do not create filler citations. Preserve the bound package identifiers, versions, digest, cutoff, expiry, question ID, and question text exactly. Keep all text at 1,000 characters or fewer, no more than 25 items per section, no more than 20 evidence IDs per item, and no more than 10 limitations per item.
 `;
 }
