@@ -72,7 +72,7 @@ export function WorkoutStatusBar({
       id="workout-rest-status"
       aria-label="Workout status"
       className={cn(
-        "fixed inset-x-0 bottom-[calc(4rem+env(safe-area-inset-bottom))] z-30 border-t bg-background shadow-[0_-5px_18px_rgb(0_0_0/0.12)] lg:bottom-0 lg:left-[var(--main-sidebar-width)]",
+        "fixed inset-x-0 bottom-[calc(4rem+env(safe-area-inset-bottom))] z-30 border-t bg-background shadow-[0_-5px_18px_rgb(0_0_0/0.12)] max-[360px]:bottom-[env(safe-area-inset-bottom)] lg:bottom-0 lg:left-[var(--main-sidebar-width)]",
         timerReady &&
           "border-emerald-600 bg-emerald-50 dark:bg-emerald-950",
       )}
@@ -98,7 +98,7 @@ export function WorkoutStatusBar({
               "col-span-2 col-start-1 row-start-1 min-[400px]:col-span-3 min-[520px]:col-span-1 min-[520px]:col-start-auto min-[520px]:row-start-auto",
           )}
         >
-          <span className="block break-words text-xs font-semibold leading-tight sm:text-sm">
+          <span className="block break-words text-xs font-semibold leading-tight max-[360px]:sr-only sm:text-sm">
             {title}
           </span>
           <span

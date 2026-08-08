@@ -329,12 +329,19 @@ test("refuses incomplete assistance, then preserves assisted work without false 
   });
   await expect(dismissRest).toBeVisible();
   const readyLayout = await workoutStatus.evaluate((element) => {
-    const navigationTop =
-      document.querySelector("nav.fixed")?.getBoundingClientRect().top ??
-      Number.POSITIVE_INFINITY;
+    const navigation = document.querySelector("nav.fixed");
+    const navigationRect = navigation?.getBoundingClientRect() ?? null;
+    const navigationVisible =
+      navigation != null &&
+      getComputedStyle(navigation).display !== "none" &&
+      (navigationRect?.height ?? 0) > 0;
+    const navigationTop = navigationVisible
+      ? navigationRect?.top ?? window.innerHeight
+      : window.innerHeight;
     return {
       dockBottom: element.getBoundingClientRect().bottom,
       navigationTop,
+      navigationVisible,
       buttons: Array.from(element.querySelectorAll("button"))
         .filter((button) =>
           ["Dismiss rest timer", "Finish"].includes(
@@ -354,6 +361,7 @@ test("refuses incomplete assistance, then preserves assisted work without false 
   expect(readyLayout.dockBottom).toBeLessThanOrEqual(
     readyLayout.navigationTop + 1,
   );
+  expect(readyLayout.navigationVisible).toBe(false);
   expect(readyLayout.buttons).toHaveLength(2);
   expect(
     readyLayout.buttons.every(

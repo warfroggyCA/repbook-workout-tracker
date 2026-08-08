@@ -118,6 +118,11 @@ async function expectReachableGroupSurface(
       };
     });
     const navigation = document.querySelector("nav.fixed");
+    const navigationRect = navigation?.getBoundingClientRect() ?? null;
+    const navigationVisible =
+      navigation != null &&
+      getComputedStyle(navigation).display !== "none" &&
+      (navigationRect?.height ?? 0) > 0;
     const status = document.querySelector('[aria-label="Workout status"]');
     const stickySummary = document.querySelector(
       '[aria-label="Workout progress and upcoming work"]',
@@ -134,7 +139,10 @@ async function expectReachableGroupSurface(
       stickySummaryBottom:
         stickySummary?.getBoundingClientRect().bottom ?? null,
       statusBottom: status?.getBoundingClientRect().bottom ?? null,
-      navigationTop: navigation?.getBoundingClientRect().top ?? null,
+      navigationTop: navigationVisible
+        ? navigationRect?.top ?? window.innerHeight
+        : window.innerHeight,
+      navigationVisible,
     };
   });
   expect(geometry.left).toBeGreaterThanOrEqual(0);
@@ -146,6 +154,7 @@ async function expectReachableGroupSurface(
     );
   }
   expect(geometry.links).toHaveLength(2);
+  expect(geometry.navigationVisible).toBe(width >= 360);
   expect(
     geometry.links.every(
       (link) =>

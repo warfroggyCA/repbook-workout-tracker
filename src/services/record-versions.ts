@@ -842,6 +842,7 @@ export async function updateSessionExerciseWithVersion(
 ): Promise<VersionedEditResult> {
   const versionId = options.versionId ?? randomUUID();
   const occurrenceMutationClientKey = randomUUID();
+  const substitutionRestoreMutationClientKey = randomUUID();
   const changesOccurrenceState =
     action === "session_exercise.skip" ||
     action === "session_exercise.unskip" ||
@@ -860,6 +861,13 @@ export async function updateSessionExerciseWithVersion(
     .update(JSON.stringify({
       operation: occurrenceOperation,
       reason: occurrenceReason,
+      source: "exercise_state",
+    }))
+    .digest("hex");
+  const substitutionRestorePayloadHash = createHash("sha256")
+    .update(JSON.stringify({
+      operation: "restore",
+      reason: null,
       source: "exercise_state",
     }))
     .digest("hex");
@@ -1078,6 +1086,23 @@ export async function updateSessionExerciseWithVersion(
         )
       RETURNING occurrence.id, occurrence.revision - 1 AS expected_revision,
                 occurrence.revision AS resulting_revision
+    ), restored_substitution_occurrences AS (
+      UPDATE session_occurrences occurrence
+      SET outcome = 'pending',
+          outcome_reason = NULL,
+          equipment_snapshot_id = NULL,
+          revision = occurrence.revision + 1,
+          resolved_at = NULL,
+          completed_set_id = NULL
+      FROM updated
+      WHERE ${action === "session_exercise.substitute"}::boolean
+        AND occurrence.session_exercise_id = updated.id
+        AND occurrence.kind = 'working_set'
+        AND occurrence.outcome = 'skipped'
+        AND occurrence.outcome_reason LIKE 'exercise:%'
+        AND occurrence.outcome_reason NOT LIKE 'exercise:substituted:%'
+      RETURNING occurrence.id, occurrence.revision - 1 AS expected_revision,
+                occurrence.revision AS resulting_revision
     ), occurrence_receipts AS (
       INSERT INTO session_occurrence_mutations (
         occurrence_id, client_key, operation, canonical_payload_hash,
@@ -1087,6 +1112,16 @@ export async function updateSessionExerciseWithVersion(
              ${occurrenceOperation}, ${occurrencePayloadHash},
              occurrence.expected_revision, occurrence.resulting_revision, 'applied'
       FROM updated_occurrences occurrence
+      RETURNING id
+    ), restored_substitution_occurrence_receipts AS (
+      INSERT INTO session_occurrence_mutations (
+        occurrence_id, client_key, operation, canonical_payload_hash,
+        expected_revision, resulting_revision, result_code
+      )
+      SELECT occurrence.id, ${substitutionRestoreMutationClientKey}::uuid,
+             'restore', ${substitutionRestorePayloadHash},
+             occurrence.expected_revision, occurrence.resulting_revision, 'applied'
+      FROM restored_substitution_occurrences occurrence
       RETURNING id
     ), versioned AS (
       INSERT INTO record_versions (

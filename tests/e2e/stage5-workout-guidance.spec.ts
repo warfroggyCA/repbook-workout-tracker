@@ -336,6 +336,13 @@ test("keeps Stage 5 guidance truthful, persistent, and usable on narrow mobile s
   const persistentDock = page.getByRole("complementary", { name: "Workout status" });
   await expect(persistentDock).toContainText("Ready");
 
+  const compactNavigation = page.getByRole("navigation", {
+    name: "Primary navigation",
+  });
+  await page.setViewportSize({ width: 359, height: 700 });
+  await expect(compactNavigation).toBeHidden();
+  await page.setViewportSize({ width: 360, height: 700 });
+  await expect(compactNavigation).toBeVisible();
   await page.setViewportSize({ width: 320, height: 700 });
   await expectNoHorizontalOverflow(page);
   await expect(
@@ -348,12 +355,38 @@ test("keeps Stage 5 guidance truthful, persistent, and usable on narrow mobile s
     page.getByRole("region", { name: "Workout progress and upcoming work" })
       .getByText(/Now: Rest complete after Romanian Deadlift, set 1/),
   ).toBeVisible();
-  await expect(
-    page.getByRole("region", { name: "Workout progress and upcoming work" })
-      .getByText(/Next: Romanian Deadlift, set 2/),
-  ).toBeVisible();
+  const compactNextGuidance = page
+    .getByRole("region", { name: "Workout progress and upcoming work" })
+    .getByText(/Next: Romanian Deadlift, set 2/);
+  await expect(compactNextGuidance).toHaveText(
+    /Next: Romanian Deadlift, set 2/,
+  );
+  await expect
+    .poll(() =>
+      compactNextGuidance.evaluate((element) => {
+        const style = getComputedStyle(element);
+        const box = element.getBoundingClientRect();
+        return {
+          clipPath: style.clipPath,
+          height: box.height,
+          position: style.position,
+          width: box.width,
+        };
+      }),
+    )
+    .toEqual({
+      clipPath: "inset(50%)",
+      height: 1,
+      position: "absolute",
+      width: 1,
+    });
   const collapsedMetrics = await persistentDock.evaluate((element) => {
     const navigation = document.querySelector("nav.fixed");
+    const navigationRect = navigation?.getBoundingClientRect() ?? null;
+    const navigationVisible =
+      navigation != null &&
+      getComputedStyle(navigation).display !== "none" &&
+      (navigationRect?.height ?? 0) > 0;
     const primary = Array.from(element.querySelectorAll("button")).filter(
       (button) =>
         button.textContent?.trim() === "Dismiss rest timer" ||
@@ -362,7 +395,10 @@ test("keeps Stage 5 guidance truthful, persistent, and usable on narrow mobile s
     return {
       dockBottom: element.getBoundingClientRect().bottom,
       navigationTop:
-        navigation?.getBoundingClientRect().top ?? Number.POSITIVE_INFINITY,
+        navigationVisible
+          ? navigationRect?.top ?? window.innerHeight
+          : window.innerHeight,
+      navigationVisible,
       primary: primary.map((button) => {
         const box = button.getBoundingClientRect();
         return {
@@ -374,6 +410,7 @@ test("keeps Stage 5 guidance truthful, persistent, and usable on narrow mobile s
       }),
     };
   });
+  expect(collapsedMetrics.navigationVisible).toBe(false);
   expect(collapsedMetrics.dockBottom).toBeLessThanOrEqual(
     collapsedMetrics.navigationTop + 1,
   );

@@ -1792,9 +1792,12 @@ test("keeps every active-workout route reachable with one scroll surface", async
       const statusBox = await statusBar.boundingBox();
       const bottomNavBox = await page.locator("nav.fixed").boundingBox();
       expect(statusBox).not.toBeNull();
-      expect(bottomNavBox).not.toBeNull();
-      if (!statusBox || !bottomNavBox) throw new Error("Fixed workout controls were not measurable.");
-      expect(statusBox.y + statusBox.height).toBeLessThanOrEqual(bottomNavBox.y + 1);
+      expect(bottomNavBox == null).toBe(width < 360);
+      if (!statusBox) throw new Error("Fixed workout controls were not measurable.");
+      const lowerBoundary = bottomNavBox?.y ?? 844;
+      expect(statusBox.y + statusBox.height).toBeLessThanOrEqual(
+        lowerBoundary + 1,
+      );
       const logSetButton = currentCard.getByRole("button", {
         name: "Log set",
         exact: true,

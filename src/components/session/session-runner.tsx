@@ -240,6 +240,9 @@ export function SessionRunner(props: SessionRunnerProps) {
     );
     return firstOpen?.id ?? null;
   });
+  const [skipRecoveryExerciseId, setSkipRecoveryExerciseId] = useState<
+    string | null
+  >(null);
   const previousCurrentActionIdRef = useRef<string | null>(null);
   const previousCurrentActionKindRef = useRef<
     SessionGuidanceFocusAction["kind"] | null
@@ -456,6 +459,9 @@ export function SessionRunner(props: SessionRunnerProps) {
     const previousActionKind = previousCurrentActionKindRef.current;
     previousCurrentActionIdRef.current = currentActionId;
     previousCurrentActionKindRef.current = currentActionKind;
+    if (skipRecoveryExerciseId != null) {
+      return;
+    }
     if (previousActionId == null || previousActionId === currentActionId) return;
 
     const previousOccurrence = occurrences.find(
@@ -525,6 +531,7 @@ export function SessionRunner(props: SessionRunnerProps) {
     currentActionTargetId,
     latestAcknowledgementTargetId,
     occurrences,
+    skipRecoveryExerciseId,
   ]);
   const groupContextByExerciseId = useMemo(
     () =>
@@ -1637,10 +1644,12 @@ export function SessionRunner(props: SessionRunnerProps) {
   return (
     <main className="mx-auto flex max-w-3xl flex-col gap-3 p-3 pb-[calc(12rem+env(safe-area-inset-bottom))] min-[360px]:pb-[calc(8rem+env(safe-area-inset-bottom))] sm:p-5 sm:pb-[calc(8rem+env(safe-area-inset-bottom))] lg:p-8 lg:pb-24">
       <ContextualNoteScope value={contextualNoteScope} />
-      <header className="flex flex-wrap items-center justify-between gap-2 px-1">
-        <div>
-          <h1 className="text-lg font-semibold">{props.templateName}</h1>
-          <p className="text-xs text-muted-foreground">
+      <header className="flex flex-wrap items-center justify-between gap-2 px-1 max-[360px]:sr-only">
+        <div className="min-w-0 max-[360px]:w-full">
+          <h1 className="text-lg font-semibold">
+            {props.templateName}
+          </h1>
+          <p className="text-xs text-muted-foreground max-[360px]:hidden">
             {elapsed} · {plannedPerformed}/{totalPlanned || "?"} planned
             {extraPerformed > 0 ? ` · ${extraPerformed} extra` : ""}
             {workoutOnlyPerformed > 0
@@ -1648,12 +1657,12 @@ export function SessionRunner(props: SessionRunnerProps) {
               : ""}
           </p>
         </div>
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-1 max-[360px]:hidden">
           <WorkoutMeasurementsDrawer />
         </div>
       </header>
 
-      <div className="sticky top-[env(safe-area-inset-top)] z-20 -mx-1 bg-background/95 py-1 backdrop-blur">
+      <div className="sticky top-[env(safe-area-inset-top)] z-20 -mx-1 bg-background/95 py-1 backdrop-blur max-[360px]:py-0">
         <WorkoutGuidanceSummary
           guidance={guidance}
           compact
@@ -2042,6 +2051,8 @@ export function SessionRunner(props: SessionRunnerProps) {
                 "exerciseId",
               );
               if (patch.modificationType === "skipped") {
+                setSkipRecoveryExerciseId(exercise.id);
+                setExpandedId(exercise.id);
                 setOccurrences((current) => current.map((occurrence) =>
                   occurrence.sessionExerciseId === exercise.id &&
                   occurrence.outcome === "pending"
@@ -2058,19 +2069,43 @@ export function SessionRunner(props: SessionRunnerProps) {
                 exerciseIdentityChanged &&
                 patch.modificationType === "substituted"
               ) {
-                setOccurrences((current) => current.map((occurrence) =>
-                  occurrence.sessionExerciseId === exercise.id &&
-                  occurrence.kind === "exercise_warmup" &&
-                  occurrence.outcome === "pending"
-                    ? {
-                        ...occurrence,
-                        outcome: "skipped",
-                        outcomeReason: "exercise:substituted:optimistic",
-                        revision: occurrence.revision + 1,
-                        resolvedAt: new Date().toISOString(),
-                      }
-                    : occurrence,
-                ));
+                setSkipRecoveryExerciseId((current) =>
+                  current === exercise.id ? null : current,
+                );
+                setOccurrences((current) => current.map((occurrence) => {
+                  if (occurrence.sessionExerciseId !== exercise.id) {
+                    return occurrence;
+                  }
+                  if (
+                    occurrence.kind === "exercise_warmup" &&
+                    occurrence.outcome === "pending"
+                  ) {
+                    return {
+                      ...occurrence,
+                      outcome: "skipped",
+                      outcomeReason: "exercise:substituted:optimistic",
+                      revision: occurrence.revision + 1,
+                      resolvedAt: new Date().toISOString(),
+                    };
+                  }
+                  if (
+                    occurrence.kind === "working_set" &&
+                    occurrence.outcome === "skipped" &&
+                    occurrence.outcomeReason?.startsWith("exercise:") &&
+                    !occurrence.outcomeReason.startsWith(
+                      "exercise:substituted:",
+                    )
+                  ) {
+                    return {
+                      ...occurrence,
+                      outcome: "pending",
+                      outcomeReason: null,
+                      revision: occurrence.revision + 1,
+                      resolvedAt: null,
+                    };
+                  }
+                  return occurrence;
+                }));
               } else if (
                 exerciseIdentityChanged &&
                 patch.modificationType === "as_planned"
@@ -2095,6 +2130,9 @@ export function SessionRunner(props: SessionRunnerProps) {
                 patch.modificationType === "as_planned" ||
                 patch.modificationType === "substituted"
               ) {
+                setSkipRecoveryExerciseId((current) =>
+                  current === exercise.id ? null : current,
+                );
                 setOccurrences((current) => current.map((occurrence) =>
                   occurrence.sessionExerciseId === exercise.id &&
                   occurrence.outcome === "skipped" &&
@@ -2148,7 +2186,12 @@ export function SessionRunner(props: SessionRunnerProps) {
             onDiscardSet={discardSet}
             onHistoryRevisionChange={setHistoryRevision}
             onOpenCoach={() => openCoach(exercise.id)}
-            onSkipComplete={() => advanceAfterExercise(exercise.id)}
+            onSkipComplete={() => {
+              setSkipRecoveryExerciseId((current) =>
+                current === exercise.id ? null : current,
+              );
+              advanceAfterExercise(exercise.id);
+            }}
             adjustIntent={
               adjustment?.exerciseId === exercise.id
                 ? adjustment.intent

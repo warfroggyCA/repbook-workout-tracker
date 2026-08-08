@@ -31,7 +31,16 @@ async function openAlternatePreview(
 ) {
   const current = new URL(page.url());
   if (options.refreshToday || current.pathname !== "/today" || current.search) {
-    await page.goto("/today");
+    try {
+      await page.goto("/today");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (!/Navigation to ".*\/today" is interrupted by another navigation to ".*\/today"/.test(message)) {
+        throw error;
+      }
+      await expect(page).toHaveURL(/\/today$/);
+      await page.waitForLoadState("networkidle");
+    }
   } else {
     await page.waitForLoadState("networkidle");
   }

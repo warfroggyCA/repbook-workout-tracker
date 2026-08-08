@@ -11,6 +11,7 @@ import {
   healthActivities,
   recordVersions,
   sessionExercises,
+  sessionOccurrenceMutations,
   sessionOccurrences,
   users,
   workoutSessions,
@@ -943,6 +944,104 @@ describe("immutable record version history", () => {
     expect(
       await restoreRecordVersion(db, userId, restoredOriginal.versionId)
     ).toMatchObject({ ok: true, changed: true });
+  });
+
+  it("restores skipped working actions when the owner replaces that exercise", async () => {
+    await removeLoggedSetForFixture();
+    await db
+      .update(workoutSessions)
+      .set({ status: "in_progress", finishedAt: null })
+      .where(eq(workoutSessions.id, sessionId));
+    const [warmup, working] = await db
+      .insert(sessionOccurrences)
+      .values([
+        {
+          sessionId,
+          sessionExerciseId,
+          kind: "exercise_warmup",
+          origin: "planned",
+          sequenceIdx: 0,
+          kindOrdinal: 0,
+          label: "Replacement warm-up",
+          plannedExerciseId: exerciseId,
+          outcome: "pending",
+          revision: 0,
+        },
+        {
+          sessionId,
+          sessionExerciseId,
+          kind: "working_set",
+          origin: "planned",
+          sequenceIdx: 1,
+          kindOrdinal: 0,
+          plannedExerciseId: exerciseId,
+          plannedRepsMin: 5,
+          plannedRepsMax: 8,
+          plannedLoad: 100,
+          plannedLoadUnit: "lb",
+          outcome: "pending",
+          revision: 0,
+        },
+      ])
+      .returning({ id: sessionOccurrences.id });
+
+    await expect(updateSessionExerciseWithVersion(
+      db,
+      userId,
+      sessionExerciseId,
+      { modificationType: "skipped", skipReason: "equipment" },
+      "session_exercise.skip",
+      { activeOnly: true },
+    )).resolves.toMatchObject({ ok: true, changed: true });
+    expect(await db.query.sessionOccurrences.findFirst({
+      where: eq(sessionOccurrences.id, working.id),
+    })).toMatchObject({
+      outcome: "skipped",
+      outcomeReason: "exercise:equipment",
+    });
+
+    const versionId = crypto.randomUUID();
+    await expect(updateSessionExerciseWithVersion(
+      db,
+      userId,
+      sessionExerciseId,
+      {
+        exerciseId: alternateExerciseId,
+        modificationType: "substituted",
+        skipReason: null,
+        substitutedForExerciseId: exerciseId,
+        substitutionReason: "equipment_busy",
+        substitutedAt: new Date("2026-07-02T14:20:00.000Z"),
+        targetLoad: null,
+        targetLoadUnit: null,
+        notes: null,
+        warmupNotes: null,
+        warmupSets: [],
+        setNotes: [],
+      },
+      "session_exercise.substitute",
+      { activeOnly: true, versionId },
+    )).resolves.toMatchObject({ ok: true, changed: true, versionId });
+
+    expect(await db.query.sessionOccurrences.findFirst({
+      where: eq(sessionOccurrences.id, working.id),
+    })).toMatchObject({
+      outcome: "pending",
+      outcomeReason: null,
+      equipmentSnapshotId: null,
+      revision: 2,
+    });
+    expect(await db.query.sessionOccurrences.findFirst({
+      where: eq(sessionOccurrences.id, warmup.id),
+    })).toMatchObject({
+      outcome: "skipped",
+      outcomeReason: "exercise:equipment",
+      revision: 1,
+    });
+    expect((await db.select({ operation: sessionOccurrenceMutations.operation })
+      .from(sessionOccurrenceMutations))
+      .map((receipt) => receipt.operation)
+      .sort()).toEqual(["restore", "skip", "skip"]);
   });
 
   it("replaces only the prospective identity, clears stale guidance, and replays one mutation identity", async () => {

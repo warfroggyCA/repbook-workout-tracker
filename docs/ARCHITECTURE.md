@@ -323,8 +323,8 @@ null; no catalog metadata is inferred backward.
 
 Additive migration `0072_preview_start_semantics` owns these identities and
 immutability constraints. Canonical and encrypted snapshots use schema 28;
-schema 27 upgrades add explicit null unknowns. Recovery manifest 10 remains
-unchanged because no table was added, but its workout and session-exercise
+schema 27 upgrades add explicit null unknowns. The then-current recovery
+manifest remained version 10 because no table was added, but its workout and session-exercise
 contracts include the new evidence. Restore validates all-or-none tuples,
 owner-scoped request uniqueness, UUID/SHA shape, and exact round trip.
 
@@ -375,7 +375,7 @@ exact nullable fields and completed-set link. Additive migration
 `0073_exception_context` owns the new columns and linkage constraints. Snapshot
 schema 29 owns this evidence; schema 28 upgrades add null unknowns without
 backfilling from current catalogue, Program, or equipment metadata. Recovery
-manifest 10 keeps the same table inventory while strengthening completed-set and
+recovery manifest keeps the same table inventory while strengthening completed-set and
 pain integrity checks.
 
 ## U03 future-write Program contract
@@ -512,6 +512,33 @@ provenance. Owner-scoped reads and exports fail closed on a cross-owner exercise
 or mapping identity.
 
 H03 adds no schema, migration, writer, historical repair, recommendation,
-decision, adaptation, or production action. Snapshot schema 29 and recovery
-manifest 10 already cover the durable source facts; restore recomputes the
-derived view.
+decision, adaptation, or production action. Snapshot schema 29 and the recovery
+manifest already cover the durable source facts; restore recomputes the derived
+view.
+
+## Gauntlet B milestone-coherence contract
+
+During an active workout, the current action and its logging controls own the
+usable surface. The compact progress summary is the only workout-level sticky
+region. Structured warm-up actions remain in normal document flow and collapse
+after resolution; long reference guidance is disclosed only on request. At
+145% text, desktop, tall-phone, and 320 by 700 phone layouts retain at least 280
+CSS pixels between persistent top and bottom regions and do not overflow
+horizontally.
+
+An exercise-level skip remains recorded as a performed-workout fact. The same
+expanded card immediately offers two explicit recovery branches: replace the
+exercise for this workout or continue without replacement. Replacement restores
+only still-unperformed working-set occurrences that the exercise skip resolved;
+an already acknowledged warm-up skip stays intact. The replacement, continuation,
+and un-skip paths leave the saved Program and completed sets unchanged and retain
+44-pixel touch targets.
+
+History-only snapshot restore treats owner decisions and accepted adaptations as
+monotonic evidence. Recovery manifest 11 merges those rows, rejects contradictory
+identity reuse, preserves a later terminal recommendation over an older pending
+copy, and never resurrects a source-only pending proposal. The current Program
+remains authoritative while workout history is restored. Preview fingerprints,
+transaction rollback, and retry remain fail-closed. Full restore semantics are
+unchanged. Gauntlet B adds no schema migration, snapshot-shape change, historical
+repair, production action, or automatic Program decision.

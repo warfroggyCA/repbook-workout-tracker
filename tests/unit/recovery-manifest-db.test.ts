@@ -36,7 +36,7 @@ describe("versioned recovery ownership manifest", () => {
     ).map((row) => String(row.table_name));
     const manifested = RECOVERY_TABLE_MANIFEST.map((item) => item.table).sort();
 
-    expect(RECOVERY_MANIFEST_VERSION).toBe(10);
+    expect(RECOVERY_MANIFEST_VERSION).toBe(11);
     expect(new Set(manifested).size).toBe(manifested.length);
     expect(manifested).toEqual(tables);
     expect(RECOVERY_TABLE_MANIFEST).toHaveLength(64);
@@ -72,8 +72,14 @@ describe("versioned recovery ownership manifest", () => {
       restore: { full: "replace", history: "preserve" },
     });
     expect(RECOVERY_MANIFEST_BY_TABLE.recommendations).toMatchObject({
-      restore: { full: "replace", history: "replace" },
+      restore: { full: "replace", history: "merge" },
       integrityChecks: expect.arrayContaining(["decision consistency"]),
+    });
+    expect(RECOVERY_MANIFEST_BY_TABLE.user_decisions).toMatchObject({
+      restore: { full: "replace", history: "merge" },
+    });
+    expect(RECOVERY_MANIFEST_BY_TABLE.adaptation_events).toMatchObject({
+      restore: { full: "replace", history: "merge" },
     });
     expect(RECOVERY_MANIFEST_BY_TABLE.contextual_notes).toMatchObject({
       ownership: "direct_user",

@@ -1,6 +1,7 @@
 import { expect, type Page } from "@playwright/test";
 import {
   isCorrelatedWebKitRscPrefetchCancellation,
+  isExpectedWebKitRscHistoryLinkCancellation,
   isExpectedWebKitRscLinkCancellation,
   observeNextRscPrefetches,
 } from "./webkit-rsc-prefetch-errors";
@@ -18,6 +19,7 @@ export function observeGauntletPageErrors(
   page: Page,
   browserName: string,
   allowed: RegExp[] = [],
+  expectedWebKitRscPaths: ReadonlySet<string> = new Set(),
 ) {
   const errors: string[] = [];
   const nextRscPrefetches = observeNextRscPrefetches(page, browserName);
@@ -53,6 +55,15 @@ export function observeGauntletPageErrors(
                 rawMessage,
                 browserName,
                 EXPECTED_APP_SHELL_PREFETCHES,
+              ) &&
+              !isExpectedWebKitRscHistoryLinkCancellation(
+                rawMessage,
+                browserName,
+              ) &&
+              !isExpectedWebKitRscLinkCancellation(
+                rawMessage,
+                browserName,
+                expectedWebKitRscPaths,
               ) &&
               !isCorrelatedWebKitRscPrefetchCancellation(
                 rawMessage,

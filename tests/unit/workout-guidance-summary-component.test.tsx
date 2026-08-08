@@ -49,7 +49,7 @@ guidance.currentAction = guidance.current;
 guidance.nextAction = guidance.upNext;
 
 describe("WorkoutGuidanceSummary", () => {
-  it("allows the compact next-work identity to wrap instead of truncating it", () => {
+  it("retains full action text while budgeting the smallest viewport", () => {
     const html = renderToStaticMarkup(
       <WorkoutGuidanceSummary guidance={guidance} compact />,
     );
@@ -67,12 +67,14 @@ describe("WorkoutGuidanceSummary", () => {
       "flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1 text-sm",
     );
     expect(html).toContain(
-      "min-w-0 flex-1 basis-48 break-words leading-snug",
+      "min-w-0 flex-1 basis-48 break-words leading-snug max-[360px]:line-clamp-2",
     );
     expect(html).toContain("Long Resistance Band With Door Anchor");
     expect(html).toContain("Prepare:</span>");
     expect(html).not.toContain("Use now:</span>");
     expect(html).toContain("break-words text-xs text-muted-foreground");
+    expect(html).toContain("max-[360px]:sr-only");
+    expect(html).not.toContain("max-[360px]:hidden");
     expect(html).not.toContain("truncate");
   });
 
