@@ -72,6 +72,17 @@ if (!Array.isArray(workflowGroups)) {
   failures.push("workflow browser groups must exactly match the protected registry");
 }
 
+const browserRuns = workflow?.jobs?.browser?.steps
+  ?.map((step) => step?.run)
+  .filter((run) => typeof run === "string");
+if (
+  !Array.isArray(browserRuns) ||
+  !browserRuns.includes("npm run build") ||
+  !browserRuns.includes('node scripts/run-production-browser-group.mjs "${{ matrix.group }}"')
+) {
+  failures.push("every protected browser job must build before running its group");
+}
+
 const collectorNeeds = workflow?.jobs?.verify?.needs;
 const requiredNeeds = ["browser", "core", "postgres-integration"];
 if (

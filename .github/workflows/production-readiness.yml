@@ -154,6 +154,9 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Build production application
+        run: npm run build
+
       - name: Run protected browser group
         run: node scripts/run-production-browser-group.mjs "${{ matrix.group }}"
 
