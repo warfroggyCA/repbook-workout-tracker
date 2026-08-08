@@ -54,6 +54,7 @@ import {
   type TechniqueIssue,
 } from "@/lib/set-exception-context";
 import { formatPainEvidence } from "@/lib/pain-evidence";
+import { externalAnalysisImportDigestSchema } from "@/lib/external-analysis-import";
 
 function Metric({
   label,
@@ -80,6 +81,7 @@ export default async function CoachPage() {
   const [
     review,
     insightRows,
+    externalImportRows,
     report,
     activityReport,
     testSessionCount,
@@ -93,6 +95,15 @@ export default async function CoachPage() {
       ),
       orderBy: desc(coachingInsights.createdAt),
       limit: 12,
+    }),
+    db.query.coachingInsights.findMany({
+      where: and(
+        eq(coachingInsights.userId, user.id),
+        eq(coachingInsights.kind, "external_analysis_import"),
+        isNull(coachingInsights.archivedAt),
+      ),
+      orderBy: desc(coachingInsights.createdAt),
+      limit: 20,
     }),
     getHistoryReport(
       db,
@@ -133,6 +144,22 @@ export default async function CoachPage() {
         question: string;
       } => item.answer !== null && item.question !== null
     );
+  const externalObservations = externalImportRows.flatMap((row) => {
+    const parsed = externalAnalysisImportDigestSchema.safeParse(row.dataDigest);
+    if (!parsed.success) return [];
+    return parsed.data.observations.map((observation) => ({
+      importId: row.id,
+      importedAt: row.createdAt,
+      packageId: parsed.data.package.id,
+      responseId: parsed.data.response.id,
+      observation,
+    }));
+  });
+  const externalObservationDateFormatter = new Intl.DateTimeFormat("en-CA", {
+    dateStyle: "medium",
+    timeStyle: "short",
+    timeZone: user.profile.timezone,
+  });
 
   const toCardData = (
     recommendation: (typeof review.pending)[number]
@@ -188,6 +215,8 @@ export default async function CoachPage() {
       proposedEffect:
         recommendation.reviewEvidence.metadata?.proposedEffect.summary ??
         "No supported future effect can be applied from this retained proposal.",
+      externalRequestedOutcome:
+        payload.kind === "external_review" ? payload.requestedOutcome : null,
     };
   };
 
@@ -209,6 +238,30 @@ export default async function CoachPage() {
         </p>
       </header>
 
+      {externalObservations.length > 0 ? (
+        <section className="flex flex-col gap-3" aria-labelledby="external-observations-heading">
+          <div>
+            <h2 id="external-observations-heading" className="font-medium">Imported external observations</h2>
+            <p className="text-xs text-muted-foreground">
+              These are selected external-AI observations, not performed facts, Repbook calculations, or accepted decisions.
+            </p>
+          </div>
+          <ul className="grid gap-3 sm:grid-cols-2">
+            {externalObservations.map(({ importId, importedAt, observation }) => (
+              <li key={`${importId}-${observation.id}`} className="rounded-xl border bg-card p-4 shadow-[var(--shadow-soft)]">
+                <Badge variant="outline">External AI observation</Badge>
+                <p className="mt-2 text-sm font-medium leading-6">{observation.statement}</p>
+                <p className="mt-2 text-xs text-muted-foreground">Evidence: {observation.evidenceIds.join(", ")}</p>
+                <p className="mt-1 text-xs text-muted-foreground">Limits: {observation.limitations.join(" · ")}</p>
+                <p className="mt-2 text-xs text-muted-foreground">
+                  Imported {externalObservationDateFormatter.format(importedAt)}
+                </p>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
+
       <section
         className="flex flex-col gap-3"
         aria-labelledby="pending-decisions-heading"
@@ -219,7 +272,8 @@ export default async function CoachPage() {
               Decisions needing review
             </h2>
             <p className="text-xs text-muted-foreground">
-              These are proposed Program changes, not informational coaching.
+              These are proposals awaiting your decision. External items are
+              future Review directions, not direct Program changes.
             </p>
           </div>
           <Badge variant={review.pending.length > 0 ? "default" : "outline"}>

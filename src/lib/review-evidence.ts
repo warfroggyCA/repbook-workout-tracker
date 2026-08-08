@@ -10,14 +10,19 @@ export const PROGRESSION_REVIEW_SOURCE_VERSION = "progression-rules-v1" as const
 
 export const recommendationReviewEvidenceSchema = z.object({
   schemaVersion: z.literal(REVIEW_EVIDENCE_SCHEMA_VERSION),
-  producer: z.enum(["progression_rules", "pain_consistency"]),
+  producer: z.enum(["progression_rules", "pain_consistency", "external_analysis"]),
   sourceVersion: z.string().trim().min(1).max(100),
   generatedAt: z.iso.datetime(),
-  quality: z.enum(["supported", "contradictory", "unsupported"]),
+  quality: z.enum([
+    "supported",
+    "contradictory",
+    "unsupported",
+    "unverified_external",
+  ]),
   confidence: z.literal("not_scored"),
   limitations: z.array(z.string().trim().min(1).max(500)).min(1).max(10),
   proposedEffect: z.object({
-    kind: z.enum(["future_program_change", "none"]),
+    kind: z.enum(["future_program_change", "future_review_intent", "none"]),
     summary: z.string().trim().min(1).max(500),
   }),
 });
@@ -38,6 +43,8 @@ function proposedEffect(payload: RecommendationPayload) {
       return "Remove this exercise only from a new future Program version; completed workouts stay unchanged.";
     case "hold":
       return "No Program change. This informational status only prevents an unsupported automatic progression while its evidence remains current.";
+    case "external_review":
+      return `${payload.requestedOutcome} Accepting records this as an owner-approved future Review direction; it does not edit or publish the Program.`;
   }
 }
 
@@ -50,6 +57,7 @@ export function buildRecommendationReviewEvidence(input: {
   limitations?: string[];
 }): RecommendationReviewEvidence {
   const isHold = input.payload.kind === "hold";
+  const isExternal = input.payload.kind === "external_review";
   return recommendationReviewEvidenceSchema.parse({
     schemaVersion: REVIEW_EVIDENCE_SCHEMA_VERSION,
     producer: input.producer,
@@ -62,7 +70,11 @@ export function buildRecommendationReviewEvidence(input: {
       "This deterministic proposal has no confidence score and does not account for unrecorded context.",
     ],
     proposedEffect: {
-      kind: isHold ? "none" : "future_program_change",
+      kind: isHold
+        ? "none"
+        : isExternal
+          ? "future_review_intent"
+          : "future_program_change",
       summary: proposedEffect(input.payload),
     },
   });

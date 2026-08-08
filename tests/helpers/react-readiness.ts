@@ -200,6 +200,33 @@ export async function waitForHydratedServerAction(button: Locator) {
     .toBe(true);
 }
 
+/**
+ * Intentionally coupled to React DOM internals for client controls whose
+ * hydrated click handler calls a server action instead of submitting a form.
+ */
+export async function waitForHydratedClickHandler(control: Locator) {
+  await expect
+    .poll(
+      async () => {
+        if ((await control.count()) !== 1) return false;
+        return control.evaluate((element) => {
+          const propsKey = Object.getOwnPropertyNames(element).find((name) =>
+            name.startsWith("__reactProps$")
+          );
+          if (!propsKey) return false;
+          const props = (element as unknown as Record<string, unknown>)[propsKey];
+          return (
+            typeof props === "object" &&
+            props !== null &&
+            typeof (props as { onClick?: unknown }).onClick === "function"
+          );
+        });
+      },
+      { timeout: 30_000 }
+    )
+    .toBe(true);
+}
+
 export async function waitForHydratedFormSubmit(button: Locator) {
   await expect
     .poll(

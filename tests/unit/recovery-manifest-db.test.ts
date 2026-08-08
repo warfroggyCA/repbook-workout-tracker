@@ -36,7 +36,7 @@ describe("versioned recovery ownership manifest", () => {
     ).map((row) => String(row.table_name));
     const manifested = RECOVERY_TABLE_MANIFEST.map((item) => item.table).sort();
 
-    expect(RECOVERY_MANIFEST_VERSION).toBe(12);
+    expect(RECOVERY_MANIFEST_VERSION).toBe(13);
     expect(new Set(manifested).size).toBe(manifested.length);
     expect(manifested).toEqual(tables);
     expect(RECOVERY_TABLE_MANIFEST).toHaveLength(65);

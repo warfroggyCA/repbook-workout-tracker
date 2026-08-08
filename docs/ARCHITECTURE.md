@@ -663,3 +663,35 @@ retain the response, and A04 adds no response table, import writer,
 recommendation, owner decision, accepted adaptation, Program mutation,
 migration, snapshot change, or recovery obligation. A05 owns any later
 selective durable Review bridge.
+
+## A05 selective external-analysis Review bridge
+
+A05 lets the owner select individual validated observations and future-only
+proposals from the A04 preview. One atomic import consumes the temporary A01
+manifest, retains a minimal `external-analysis-import/1` provenance receipt in
+the existing coaching-insight lifecycle, and creates only the selected pending
+Review proposals. The receipt contains selected allowlisted observations,
+package and response digests, source bindings, and proposal-to-recommendation
+identities; the raw response, unknowns, unselected content, provider metadata,
+and model context are not retained.
+
+External observations remain visibly labelled external material. External
+proposals use the existing Review, durable defer, reject, owner-decision, and
+adaptation lifecycles, but their only accepted effect is an owner-approved
+future Review direction. Accept or edit-and-accept records the decision and a
+`programChanged: false` adaptation event atomically. It never edits or publishes
+the current Program, active workout, or completed history.
+
+Import identity is owner-scoped and idempotent by response UUID plus canonical
+response digest and exact selections. Reusing the identity with changed content
+or selections is a conflict. Another owner, a missing or expired manifest, a
+stale Program, and an interrupted transaction fail without partial writes.
+Later Program publication or correction of revision-bearing source evidence
+makes a pending external proposal stale before acceptance.
+
+Migration `0076_external_analysis_review_bridge` adds the external-import
+identity index, validates the minimal receipt shape, and preserves the pending-
+recommendation Program revision guard through a narrow external-proposal path.
+Snapshot schema 30 is unchanged. Recovery manifest 13 adds the durable receipt
+relationship; privacy sanitization retains only its typed allowlist and restore
+validates the full receipt, proposal, owner, and current-Program graph.

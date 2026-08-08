@@ -44,7 +44,27 @@ export type RecommendationPayload =
   | { kind: "deload"; scope: "program"; volumeFactor: number; loadFactor: number; durationSessionsPerTemplate: number }
   | { kind: "substitution"; templateExerciseId: string; fromExerciseId: string; toExerciseId: string }
   | { kind: "remove_exercise"; templateExerciseId: string }
-  | { kind: "hold"; templateExerciseId: string; reason: string };
+  | { kind: "hold"; templateExerciseId: string; reason: string }
+  | {
+      kind: "external_review";
+      targetKind:
+        | "program"
+        | "schedule"
+        | "recovery_constraint"
+        | "training_consistency"
+        | "general_review";
+      requestedOutcome: string;
+    };
+
+export type ExternalAnalysisRecommendationEvidence = {
+  schemaVersion: "external-analysis-evidence-v1";
+  importId: string;
+  packageId: string;
+  responseId: string;
+  responseDigest: string;
+  proposalId: string;
+  citedEvidenceIds: string[];
+};
 
 export type RecommendationEvidence = {
   signals: Record<string, unknown>;
@@ -52,18 +72,23 @@ export type RecommendationEvidence = {
   setIds?: string[];
   painLogIds?: string[];
   review?: RecommendationReviewEvidence;
+  externalAnalysis?: ExternalAnalysisRecommendationEvidence;
 };
 
 export type RecommendationReviewEvidence = {
   schemaVersion: "review-evidence-v1";
-  producer: "progression_rules" | "pain_consistency";
+  producer: "progression_rules" | "pain_consistency" | "external_analysis";
   sourceVersion: string;
   generatedAt: string;
-  quality: "supported" | "contradictory" | "unsupported";
+  quality:
+    | "supported"
+    | "contradictory"
+    | "unsupported"
+    | "unverified_external";
   confidence: "not_scored";
   limitations: string[];
   proposedEffect: {
-    kind: "future_program_change" | "none";
+    kind: "future_program_change" | "future_review_intent" | "none";
     summary: string;
   };
 };
@@ -76,7 +101,12 @@ export type ReviewDecisionSnapshot =
       reviewRevision: number;
       deferRevision: number;
       recordedAt: string;
-      evidenceState: "supported" | "contradictory" | "unsupported" | "stale";
+      evidenceState:
+        | "supported"
+        | "contradictory"
+        | "unsupported"
+        | "stale"
+        | "external";
       source: "rule" | "ai";
       ruleId: string | null;
       payload: RecommendationPayload;
@@ -286,6 +316,11 @@ export const coachingInsights = pgTable(
       .where(
         sql`${t.kind} = 'live_assistant' AND ${t.responseStatus} IN ('pending', 'generating') AND ${t.replyToId} IS NOT NULL`
       ),
+    uniqueIndex("coaching_insights_external_response_uq")
+      .on(t.userId, t.clientKey)
+      .where(
+        sql`${t.kind} = 'external_analysis_import' AND ${t.clientKey} IS NOT NULL`
+      ),
     check(
       "coaching_insights_author_valid",
       sql`${t.author} IS NULL OR ${t.author} IN ('user', 'assistant')`
@@ -305,6 +340,10 @@ export const coachingInsights = pgTable(
     check(
       "coaching_insights_generation_lease_valid",
       sql`(${t.responseStatus} = 'generating' AND ${t.generationLeaseId} IS NOT NULL AND ${t.generationLeaseExpiresAt} IS NOT NULL AND ${t.generationStartedAt} IS NOT NULL) OR (${t.responseStatus} IS DISTINCT FROM 'generating' AND ${t.generationLeaseId} IS NULL AND ${t.generationLeaseExpiresAt} IS NULL)`
+    ),
+    check(
+      "coaching_insights_external_import_valid",
+      sql`${t.kind} <> 'external_analysis_import' OR (${t.clientKey} ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$' AND ${t.responseStatus} = 'completed' AND ${t.completedAt} IS NOT NULL AND ${t.dataDigest}->>'schemaVersion' = 'external-analysis-import/1' AND ${t.dataDigest}->'rawResponseRetained' = 'false'::jsonb)`
     ),
   ]
 );

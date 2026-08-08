@@ -19,6 +19,8 @@ const approveSchema = z.object({
   recommendationId: z.string().uuid(),
   /** For load changes the user may tweak the number before approving. */
   editedToLoad: z.number().min(0).max(2000).optional(),
+  /** External proposals may be accepted with an owner-edited future Review direction. */
+  editedRequestedOutcome: z.string().trim().min(1).max(1_000).optional(),
   expectedReviewRevision: z.number().int().nonnegative(),
   expectedDeferRevision: z.number().int().nonnegative(),
 });

@@ -55,6 +55,10 @@ import {
   TECHNIQUE_ISSUES,
 } from "@/lib/set-exception-context";
 import { recommendationReviewEvidenceSchema } from "@/lib/review-evidence";
+import {
+  externalAnalysisImportDigestSchema,
+  externalAnalysisRecommendationEvidenceSchema,
+} from "@/lib/external-analysis-import";
 
 export type SnapshotRestoreScope = "history" | "full";
 
@@ -572,6 +576,15 @@ function validNonnegativeRevision(value: unknown) {
 
 function validateReviewState(payload: CanonicalSnapshotPayload) {
   if (payload.schemaVersion !== SNAPSHOT_SCHEMA_VERSION) return;
+  const externalImports = new Map<string, ReturnType<typeof externalAnalysisImportDigestSchema.parse>>();
+  for (const insight of rows(payload, "coaching_insights")) {
+    if (insight.kind !== "external_analysis_import") continue;
+    const digest = externalAnalysisImportDigestSchema.safeParse(insight.data_digest);
+    if (!digest.success || insight.client_key !== digest.data.response.id) {
+      throw new Error("Snapshot external-analysis import receipt is invalid.");
+    }
+    externalImports.set(String(insight.id), digest.data);
+  }
   const recommendationById = new Map(
     rows(payload, "recommendations").map((recommendation) => [
       String(recommendation.id),
@@ -613,6 +626,30 @@ function validateReviewState(payload: CanonicalSnapshotPayload) {
     if (evidence?.review != null && !recommendationReviewEvidenceSchema.safeParse(evidence.review).success) {
       throw new Error("Snapshot recommendation has invalid versioned Review evidence.");
     }
+    if (recommendation.source === "ai" && recommendation.rule_id === "external_analysis") {
+      const external = externalAnalysisRecommendationEvidenceSchema.safeParse(
+        (recommendation.evidence as { externalAnalysis?: unknown } | null)?.externalAnalysis,
+      );
+      if (!external.success) {
+        throw new Error("Snapshot external-analysis recommendation provenance is invalid.");
+      }
+      const imported = externalImports.get(external.data.importId);
+      const mapped = imported?.recommendationMap.some(
+        (item) =>
+          item.proposalId === external.data.proposalId &&
+          item.recommendationId === recommendation.id,
+      );
+      if (
+        !imported ||
+        recommendation.insight_id !== external.data.importId ||
+        imported.package.id !== external.data.packageId ||
+        imported.response.id !== external.data.responseId ||
+        imported.response.digest !== external.data.responseDigest ||
+        !mapped
+      ) {
+        throw new Error("Snapshot external-analysis recommendation provenance is invalid.");
+      }
+    }
   }
 
   for (const decision of rows(payload, "user_decisions")) {
@@ -632,7 +669,7 @@ function validateReviewState(payload: CanonicalSnapshotPayload) {
       !validNonnegativeRevision(snapshot.reviewRevision) ||
       !validNonnegativeRevision(snapshot.deferRevision) ||
       !validIsoInstant(snapshot.recordedAt) ||
-      !["supported", "contradictory", "unsupported", "stale"].includes(String(snapshot.evidenceState)) ||
+      !["supported", "contradictory", "unsupported", "stale", "external"].includes(String(snapshot.evidenceState)) ||
       !["rule", "ai"].includes(String(snapshot.source)) ||
       (snapshot.ruleId != null && typeof snapshot.ruleId !== "string") ||
       typeof snapshot.reason !== "string" ||
@@ -1652,9 +1689,54 @@ function validateVersionedProgramData(payload: CanonicalSnapshotPayload) {
       throw new Error("Snapshot recommendation source lineage does not match its Program slot.");
     }
     if (recommendation.status === "pending") {
+      const payloadKind =
+        (recommendation.payload as { kind?: unknown } | null)?.kind;
       const isProgramWide =
-        (recommendation.payload as { kind?: unknown } | null)?.kind === "deload";
-      if (isProgramWide) {
+        payloadKind === "deload";
+      const isExternalReview =
+        payloadKind === "external_review" &&
+        recommendation.source === "ai" &&
+        recommendation.rule_id === "external_analysis" &&
+        recommendation.insight_id != null;
+      if (isExternalReview) {
+        const importRow = rows(payload, "coaching_insights").find(
+          (insight) =>
+            String(insight.id) === String(recommendation.insight_id) &&
+            String(insight.user_id) === String(recommendation.user_id) &&
+            insight.kind === "external_analysis_import" &&
+            insight.archived_at == null,
+        );
+        const imported = externalAnalysisImportDigestSchema.safeParse(
+          importRow?.data_digest,
+        );
+        const programIds = imported.success
+          ? imported.data.sourceBindings.find(
+              (binding) => binding.entity === "programs",
+            )?.ids ?? []
+          : [];
+        const versionIds = imported.success
+          ? imported.data.sourceBindings.find(
+              (binding) => binding.entity === "program_versions",
+            )?.ids ?? []
+          : [];
+        if (
+          recommendation.source_template_exercise_id != null ||
+          recommendation.source_slot_lineage_id != null ||
+          !imported.success ||
+          programIds.length !== 1 ||
+          versionIds.length !== 1 ||
+          ![...programs.values()].some(
+            (program) =>
+              String(program.id) === programIds[0] &&
+              String(program.current_version_id) === versionIds[0] &&
+              String(program.user_id) === String(recommendation.user_id) &&
+              program.status === "active" &&
+              program.archived_at == null,
+          )
+        ) {
+          throw new Error("Snapshot external Review proposal is not tied to its owner current Program.");
+        }
+      } else if (isProgramWide) {
         if (
           recommendation.source_template_exercise_id != null ||
           recommendation.source_slot_lineage_id != null ||
