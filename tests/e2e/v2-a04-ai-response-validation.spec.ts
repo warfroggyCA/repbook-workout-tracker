@@ -58,7 +58,13 @@ function responseFor(packageValue: {
         statement: "The synthetic current Program has retained evidence available for owner review.",
         evidenceIds: [evidenceId],
         evidenceQuality: "Bound synthetic Program evidence.",
-        measurements: [],
+        measurements: [
+          {
+            value: 95,
+            unit: "lb",
+            meaning: "synthetic future Program target retained in the cited evidence",
+          },
+        ],
         limitations: ["This response does not establish that any future change is appropriate."],
       },
     ],
@@ -129,6 +135,12 @@ test("validates pasted or uploaded JSON into a transient exact preview", async (
   await expect(preview).toContainText("Validated preview only");
   await expect(preview).toContainText("review_future_training · future_only_review · program");
   await expect(preview).toContainText("Nothing was retained, imported, accepted, or applied.");
+  await page.getByText("Exact validated response").click();
+  const exactPreview = await page
+    .getByTestId("external-analysis-exact-preview")
+    .textContent();
+  if (!exactPreview) throw new Error("A04 exact validated preview missing.");
+  expect(JSON.parse(exactPreview)).toEqual(responseValue);
 
   const downloadPromise = page.waitForEvent("download");
   await page.getByRole("button", { name: "Download original input" }).click();

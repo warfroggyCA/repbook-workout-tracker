@@ -28,7 +28,7 @@ How to use this bundle
 1. Start a new private conversation with any capable language model whose privacy and retention settings you have reviewed.
 2. Attach or paste the exact Repbook analysis package together with these complete instructions.
 3. Ask the model to return only the JSON response shape below.
-4. Treat the result as untrusted analysis. Repbook does not yet expose the later paste/upload import flow, and schema validity alone cannot change any record or Program.
+4. Treat the result as untrusted analysis. Return to Repbook, validate it, inspect the exact owner preview, and explicitly select each item to import into Review. Schema validity alone cannot change any record or Program.
 
 Bound package
 - Package ID: ${value.packageId}

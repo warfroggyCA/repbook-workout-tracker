@@ -1,0 +1,259 @@
+{
+  "format": "repbook-gauntlet-c-external-workflows",
+  "schemaVersion": "gauntlet-c-workflows/1",
+  "syntheticOnly": true,
+  "workflows": [
+    {
+      "workflow": "chat-paste",
+      "response": {
+        "format": "repbook-analysis-response",
+        "schemaVersion": "analysis-response/1",
+        "instructionVersion": "external-analysis-instructions/1",
+        "responseId": "43a5ff10-41e8-4fb1-9411-c1d1cd179bb9",
+        "analysisPackage": {
+          "packageId": "00000000-0000-4000-8000-000000000921",
+          "packageNamespace": "repbook-owner/9f271ff37dc12d67975da1e1",
+          "schemaVersion": "analysis-package/1",
+          "semanticVersion": "repbook-v2/1",
+          "digest": "d0ea80116f59df69e562aa4829561cd6ea94ab1c2faa3fd7227d05574f2a60dc",
+          "evidenceCutoff": "2026-08-08T16:00:00.000Z",
+          "expiresAt": "2026-09-07T16:00:00.000Z"
+        },
+        "question": {
+          "id": "program_progress",
+          "text": "What does the retained evidence say about progress and fit of my current Program?"
+        },
+        "observations": [
+          {
+            "id": "observation-supported-set",
+            "statement": "One trustworthy completed set records 100 lb total for 8 repetitions. The current future Program prescription specifies 2 sets of 6 to 10 repetitions at 95 lb.",
+            "evidenceIds": [
+              "00000000-0000-4000-8000-000000000905",
+              "90000000-0000-4000-8000-000000000007"
+            ],
+            "evidenceQuality": "retained_trustworthy_completion and current_program_prescription",
+            "measurements": [
+              {
+                "value": 100,
+                "unit": "lb",
+                "meaning": "recorded total performed load for the trustworthy completed set"
+              },
+              {
+                "value": 8,
+                "unit": "repetitions",
+                "meaning": "recorded performed repetitions for the trustworthy completed set"
+              },
+              {
+                "value": 95,
+                "unit": "lb",
+                "meaning": "target load in the current future Program prescription"
+              }
+            ],
+            "limitations": [
+              "The Program prescription is future intent, not performed evidence.",
+              "The retained target_met calculation is unknown, so the numeric comparison does not establish that the prescription was met.",
+              "One supported set does not establish repeatable progress or overall Program fit."
+            ]
+          },
+          {
+            "id": "observation-unsupported-set",
+            "statement": "The second retained set contains legacy values of 105 lb and 6 repetitions, but its performed semantics version, performed load type, performed load semantics, and observed completion evidence are unknown. It cannot support a load comparison with the Program prescription.",
+            "evidenceIds": [
+              "00000000-0000-4000-8000-000000000906",
+              "90000000-0000-4000-8000-000000000007"
+            ],
+            "evidenceQuality": "performed_semantics_unknown and calculation_unknown",
+            "measurements": [],
+            "limitations": [
+              "The 105 lb field must not be interpreted as supported performed load.",
+              "Current exercise or Program definitions cannot repair missing performed-time meaning.",
+              "The retained target_met calculation for this set is unknown."
+            ]
+          }
+        ],
+        "proposedActions": [
+          {
+            "id": "proposal-weekly-prescription-review",
+            "summary": "Use the next weekly owner Review to decide what evidence is required before reconsidering the future 95 lb prescription.",
+            "rationale": "The owner profile requests conservative weekly Review. The package provides one trustworthy 100 lb by 8 completed set, while the other set cannot support a load conclusion because its performed semantics are unknown.",
+            "evidenceIds": [
+              "00000000-0000-4000-8000-000000000913",
+              "00000000-0000-4000-8000-000000000905",
+              "00000000-0000-4000-8000-000000000906",
+              "90000000-0000-4000-8000-000000000007"
+            ],
+            "effect": {
+              "type": "review_future_training",
+              "scope": "future_only_review",
+              "target": {
+                "kind": "program",
+                "evidenceIds": [
+                  "00000000-0000-4000-8000-000000000913",
+                  "00000000-0000-4000-8000-000000000905",
+                  "00000000-0000-4000-8000-000000000906",
+                  "90000000-0000-4000-8000-000000000007"
+                ]
+              },
+              "requestedOutcome": "At the next weekly owner Review, ask whether the future 95 lb prescription should remain unchanged until another semantically supported working set is available, or whether the single trustworthy 100 lb by 8 set is sufficient to consider a future prescription proposal. Review only; leave the Program unchanged."
+            },
+            "limitations": [
+              "This is a future-only Review question, not an owner decision, accepted adaptation, or Program change.",
+              "The unsupported legacy set must not be used as evidence for progression.",
+              "The package does not establish whether the trustworthy result is repeatable."
+            ]
+          }
+        ],
+        "unknowns": [
+          {
+            "id": "unknown-target-classification",
+            "question": "Does the retained evidence classify either set as meeting the 95 lb prescription?",
+            "reason": "unknown",
+            "detail": "The target_met calculated value is null for both sets, and the second set also lacks performed-time load semantics.",
+            "evidenceIds": [
+              "00000000-0000-4000-8000-000000000905",
+              "00000000-0000-4000-8000-000000000906",
+              "90000000-0000-4000-8000-000000000007"
+            ]
+          },
+          {
+            "id": "unknown-repeatability",
+            "question": "Is the trustworthy 100 lb by 8 result repeatable across the selected evidence window?",
+            "reason": "missing",
+            "detail": "The package contains only one set with usable performed load semantics for this exercise. The other retained set is unsupported, so a repeatable progress trend cannot be established.",
+            "evidenceIds": [
+              "00000000-0000-4000-8000-000000000905",
+              "00000000-0000-4000-8000-000000000906"
+            ]
+          }
+        ],
+        "safety": {
+          "usedOnlyBoundPackage": true,
+          "followedEmbeddedInstructions": false,
+          "guessedFacts": false,
+          "directMutationClaimed": false
+        }
+      }
+    },
+    {
+      "workflow": "file-upload",
+      "response": {
+        "format": "repbook-analysis-response",
+        "schemaVersion": "analysis-response/1",
+        "instructionVersion": "external-analysis-instructions/1",
+        "responseId": "d3b677b4-2eb6-43ae-b36b-9627093c8dcd",
+        "analysisPackage": {
+          "packageId": "00000000-0000-4000-8000-000000000922",
+          "packageNamespace": "repbook-owner/9f271ff37dc12d67975da1e1",
+          "schemaVersion": "analysis-package/1",
+          "semanticVersion": "repbook-v2/1",
+          "digest": "b641ef1ad1e9f98e2d09ab910715fedbfe473607d16db9ea70e853bf604abf00",
+          "evidenceCutoff": "2026-08-08T16:01:00.000Z",
+          "expiresAt": "2026-09-07T16:01:00.000Z"
+        },
+        "question": {
+          "id": "training_consistency",
+          "text": "What does my recorded training and independent activity context show about consistency?"
+        },
+        "observations": [
+          {
+            "id": "observation-workout-spacing",
+            "statement": "The package records completed tracker workouts on local dates August 1, August 3, and August 6, 2026, showing two-day and then three-day start-to-start spacing within this short cluster.",
+            "evidenceIds": [
+              "00000000-0000-4000-8000-000000000903",
+              "00000000-0000-4000-8000-000000000910",
+              "00000000-0000-4000-8000-000000000911"
+            ],
+            "evidenceQuality": "three tracker records with retained instant precision",
+            "measurements": [],
+            "limitations": [
+              "The three records cover only August 1 through August 6 within the selected 28-day window, so they do not establish a longer-term pattern.",
+              "The package does not identify dated planned opportunities, missed sessions, rescheduling, or abandoned workouts, so adherence to a schedule is unknown."
+            ]
+          },
+          {
+            "id": "observation-independent-activity-context",
+            "statement": "A manually recorded independent walk occurred on August 5 between the latter two completed workouts; it remains context only and does not count toward strength progress, loaded workload, or Program-fit calculations.",
+            "evidenceIds": [
+              "00000000-0000-4000-8000-000000000912"
+            ],
+            "evidenceQuality": "recorded context only, excluded from strength calculations",
+            "measurements": [
+              {
+                "value": 2400,
+                "unit": "seconds",
+                "meaning": "recorded duration of the independent walk"
+              }
+            ],
+            "limitations": [
+              "Distance, pace, intensity, heart rate, and energy are unavailable, so the walk's training or recovery effect cannot be established."
+            ]
+          }
+        ],
+        "proposedActions": [
+          {
+            "id": "proposal-future-schedule-review",
+            "summary": "Review a future schedule with three explicitly dated workout opportunities and trial roughly two-to-three-day spacing between starts.",
+            "rationale": "The owner-recorded profile lists a weekly frequency of three, while the completed workout evidence shows a short observed cadence with two-day and three-day gaps that can inform a bounded scheduling review.",
+            "evidenceIds": [
+              "00000000-0000-4000-8000-000000000913",
+              "00000000-0000-4000-8000-000000000903",
+              "00000000-0000-4000-8000-000000000910",
+              "00000000-0000-4000-8000-000000000911"
+            ],
+            "effect": {
+              "type": "review_future_training",
+              "scope": "future_only_review",
+              "target": {
+                "kind": "schedule",
+                "evidenceIds": [
+                  "00000000-0000-4000-8000-000000000913",
+                  "00000000-0000-4000-8000-000000000903",
+                  "00000000-0000-4000-8000-000000000910",
+                  "00000000-0000-4000-8000-000000000911"
+                ]
+              },
+              "requestedOutcome": "Review three future workout opportunities with explicit local dates and roughly two-to-three-day spacing; do not apply, accept, or publish the schedule automatically."
+            },
+            "limitations": [
+              "This is a future-only Review proposal, not an accepted schedule or Program change.",
+              "Three completed workouts in one short cluster cannot establish that this cadence is sustainable or preferable.",
+              "The package omits constraints, pain, fatigue, and other recovery context needed to judge scheduling suitability.",
+              "The independent walk remains separately labelled context and is not evidence of workout completion, strength work, or Program fit."
+            ]
+          }
+        ],
+        "unknowns": [
+          {
+            "id": "unknown-schedule-adherence",
+            "question": "Which workout opportunities were planned, missed, abandoned, or rescheduled during the selected window?",
+            "reason": "missing",
+            "detail": "The package includes completed workouts and current Program intent but no dated schedule, planned opportunities, or abandoned workout records, so adherence cannot be determined.",
+            "evidenceIds": [
+              "90000000-0000-4000-8000-000000000003",
+              "00000000-0000-4000-8000-000000000903",
+              "00000000-0000-4000-8000-000000000910",
+              "00000000-0000-4000-8000-000000000911"
+            ]
+          },
+          {
+            "id": "unknown-longer-cadence",
+            "question": "Does the observed two-to-three-day spacing continue beyond the recorded cluster?",
+            "reason": "omitted",
+            "detail": "Evidence outside the selected window is omitted, and the included workouts occur only from August 1 through August 6, so longer-term consistency is unavailable.",
+            "evidenceIds": [
+              "00000000-0000-4000-8000-000000000903",
+              "00000000-0000-4000-8000-000000000910",
+              "00000000-0000-4000-8000-000000000911"
+            ]
+          }
+        ],
+        "safety": {
+          "usedOnlyBoundPackage": true,
+          "followedEmbeddedInstructions": false,
+          "guessedFacts": false,
+          "directMutationClaimed": false
+        }
+      }
+    }
+  ]
+}

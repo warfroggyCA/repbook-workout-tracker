@@ -69,7 +69,9 @@ test("downloads provider-neutral instructions bound to the exact package without
   expect(instructionText).toContain("Do not invent measurements, dates, units");
   expect(instructionText).toContain("Do not claim that you changed Repbook");
   expect(instructionText).toContain("Cite exact package evidence IDs");
-  expect(instructionText).toContain("does not yet expose the later paste/upload import flow");
+  expect(instructionText).toContain("inspect the exact owner preview");
+  expect(instructionText).toContain("explicitly select each item to import into Review");
+  expect(instructionText).not.toContain("does not yet expose the later paste/upload import flow");
 
   const downloadPromise = page.waitForEvent("download");
   await page.getByRole("button", { name: "Download model instructions" }).click();

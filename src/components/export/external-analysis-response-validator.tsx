@@ -402,6 +402,23 @@ export function ExternalAnalysisResponseValidator() {
               </div>
             ) : null}
 
+            <details className="rounded-md border p-3 text-sm">
+              <summary className="min-h-11 cursor-pointer content-center font-medium">
+                Exact validated response
+              </summary>
+              <p className="mt-2 text-xs text-muted-foreground">
+                This is the complete validated object behind the selections above,
+                including evidence quality, measurements, target evidence, requested
+                outcomes, limitations, and unknowns.
+              </p>
+              <pre
+                data-testid="external-analysis-exact-preview"
+                className="mt-3 max-h-96 overflow-auto whitespace-pre-wrap break-all rounded-md bg-muted/30 p-3 font-mono text-xs leading-5"
+              >
+                {JSON.stringify(preview.preview, null, 2)}
+              </pre>
+            </details>
+
             <div className="rounded-md border bg-muted/20 p-3">
               <p className="text-sm font-medium">Import only what you selected</p>
               <p className="mt-1 text-xs text-muted-foreground">
