@@ -21,7 +21,14 @@ type Workflow = {
     pull_request: unknown;
     workflow_dispatch: unknown;
   };
-  jobs: Record<string, { steps: WorkflowStep[] }>;
+  jobs: Record<
+    string,
+    {
+      needs?: string[];
+      steps: WorkflowStep[];
+      strategy?: { "fail-fast"?: boolean; matrix?: { group?: string[] } };
+    }
+  >;
 };
 
 type PackageJson = {
@@ -41,164 +48,52 @@ describe("production readiness workflow contract", () => {
     expect(workflow.on).toHaveProperty("workflow_dispatch");
   });
 
-  it("requires documentation and the complete History browser matrix", async () => {
+  it("requires core checks and the complete parallel browser matrix", async () => {
     const source = await readFile(
       ".github/workflows/production-readiness.yml",
       "utf8",
     );
     const workflow = load(source) as Workflow;
-    const steps = workflow.jobs.verify.steps;
-    const documentation = steps.find(
+    const coreSteps = workflow.jobs.core.steps;
+    const documentation = coreSteps.find(
       (step) => step.name === "Validate current documentation links",
     );
-    const isolatedPerformance = steps.find(
+    const browserRegistry = coreSteps.find(
+      (step) => step.name === "Validate protected browser group coverage",
+    );
+    const isolatedPerformance = coreSteps.find(
       (step) => step.name === "Run isolated production performance budgets",
     );
-    const coverage = steps.find(
+    const coverage = coreSteps.find(
       (step) =>
         step.name === "Run unit, database, race, failure, and coverage checks",
     );
-    const history = steps.find((step) => step.id === "browser-history");
-    const painHold = steps.find((step) => step.id === "browser-pain-hold");
-    const programReviewRecovery = steps.find(
-      (step) => step.id === "browser-program-review-recovery",
+    const browserSteps = workflow.jobs.browser.steps;
+    const browserBuild = browserSteps.find(
+      (step) => step.name === "Build production application",
     );
-    const t02AcknowledgementCorrection = steps.find(
-      (step) => step.id === "browser-v2-t02",
+    const browserGroup = browserSteps.find(
+      (step) => step.name === "Run protected browser group",
     );
-    const t03PlannedOrder = steps.find(
-      (step) => step.id === "browser-v2-t03",
-    );
-    const t04WarmupOccurrences = steps.find(
-      (step) => step.id === "browser-v2-t04",
-    );
-    const t05ExecutionSemantics = steps.find(
-      (step) => step.id === "browser-v2-t05",
-    );
-    const t06PreviewStart = steps.find(
-      (step) => step.id === "browser-v2-t06",
-    );
-    const u03FutureProgram = steps.find(
-      (step) => step.id === "browser-v2-u03",
-    );
-    const gauntletA = steps.find(
-      (step) => step.id === "browser-v2-gauntlet-a",
-    );
-    const h04PainConsistency = steps.find(
-      (step) => step.id === "browser-v2-h04",
-    );
-    const h05EvidenceLinkedReview = steps.find(
-      (step) => step.id === "browser-v2-h05",
-    );
-    const browserGate = steps.find(
-      (step) => step.name === "Require every browser suite",
-    );
+    const collector = workflow.jobs.verify;
 
     expect(documentation?.run).toBe("npm run docs:check");
+    expect(browserRegistry?.run).toBe("npm run ci:browser-groups:check");
     expect(isolatedPerformance?.run).toBe(
       "npm run test:performance:isolated",
     );
     expect(coverage?.run).toBe("npm run test:coverage:ci");
-    expect(history?.run).toBe("npm run test:e2e:history-calendar");
-    expect(painHold?.run).toBe("npm run test:e2e:pain-hold");
-    expect(programReviewRecovery?.run).toBe(
-      "npm run test:e2e:program-editor-review-recovery",
+    expect(workflow.jobs.browser.strategy?.["fail-fast"]).toBe(false);
+    expect(workflow.jobs.browser.strategy?.matrix?.group).toHaveLength(6);
+    expect(browserBuild?.run).toBe("npm run build");
+    expect(browserGroup?.run).toBe(
+      'node scripts/run-production-browser-group.mjs "${{ matrix.group }}"',
     );
-    expect(t02AcknowledgementCorrection?.run).toBe(
-      "npm run test:e2e:v2-t02",
-    );
-    expect(t03PlannedOrder?.run).toBe("npm run test:e2e:v2-t03");
-    expect(t04WarmupOccurrences?.run).toBe("npm run test:e2e:v2-t04");
-    expect(t05ExecutionSemantics?.run).toBe("npm run test:e2e:v2-t05");
-    expect(t06PreviewStart?.run).toBe("npm run test:e2e:v2-t06");
-    expect(u03FutureProgram?.run).toBe("npm run test:e2e:v2-u03");
-    expect(gauntletA?.run).toBe("npm run test:e2e:v2-gauntlet-a");
-    expect(h04PainConsistency?.run).toBe("npm run test:e2e:v2-h04");
-    expect(h05EvidenceLinkedReview?.run).toBe("npm run test:e2e:v2-h05");
-    expect(browserGate?.env?.BROWSER_HISTORY).toBe(
-      "${{ steps.browser-history.outcome }}",
-    );
-    expect(browserGate?.env?.BROWSER_PAIN_HOLD).toBe(
-      "${{ steps.browser-pain-hold.outcome }}",
-    );
-    expect(browserGate?.run).toContain(
-      '"History management:${BROWSER_HISTORY}"',
-    );
-    expect(browserGate?.run).toContain(
-      '"pain-hold notice:${BROWSER_PAIN_HOLD}"',
-    );
-    expect(browserGate?.env?.BROWSER_PROGRAM_REVIEW_RECOVERY).toBe(
-      "${{ steps.browser-program-review-recovery.outcome }}",
-    );
-    expect(browserGate?.run).toContain(
-      '"Program review recovery:${BROWSER_PROGRAM_REVIEW_RECOVERY}"',
-    );
-    expect(browserGate?.env?.BROWSER_V2_T02).toBe(
-      "${{ steps.browser-v2-t02.outcome }}",
-    );
-    expect(browserGate?.run).toContain(
-      '"T02 acknowledgement and correction:${BROWSER_V2_T02}"',
-    );
-    expect(browserGate?.env?.BROWSER_V2_T03).toBe(
-      "${{ steps.browser-v2-t03.outcome }}",
-    );
-    expect(browserGate?.run).toContain(
-      '"T03 planned order and extra-set truth:${BROWSER_V2_T03}"',
-    );
-    expect(browserGate?.env?.BROWSER_V2_T04).toBe(
-      "${{ steps.browser-v2-t04.outcome }}",
-    );
-    expect(browserGate?.run).toContain(
-      '"T04 warm-up occurrence truth:${BROWSER_V2_T04}"',
-    );
-    expect(browserGate?.env?.BROWSER_V2_T05).toBe(
-      "${{ steps.browser-v2-t05.outcome }}",
-    );
-    expect(browserGate?.run).toContain(
-      '"T05 current, next, group, and rest truth:${BROWSER_V2_T05}"',
-    );
-    expect(browserGate?.env?.BROWSER_V2_T06).toBe(
-      "${{ steps.browser-v2-t06.outcome }}",
-    );
-    expect(browserGate?.run).toContain(
-      '"T06 preview and Start truth:${BROWSER_V2_T06}"',
-    );
-    expect(browserGate?.env?.BROWSER_V2_U01).toBe(
-      "${{ steps.browser-v2-u01.outcome }}",
-    );
-    expect(browserGate?.run).toContain(
-      '"U01 active-workout hierarchy:${BROWSER_V2_U01}"',
-    );
-    expect(browserGate?.env?.BROWSER_V2_U02).toBe(
-      "${{ steps.browser-v2-u02.outcome }}",
-    );
-    expect(browserGate?.run).toContain(
-      '"U02 exception-only context:${BROWSER_V2_U02}"',
-    );
-    expect(browserGate?.env?.BROWSER_V2_U03).toBe(
-      "${{ steps.browser-v2-u03.outcome }}",
-    );
-    expect(browserGate?.run).toContain(
-      '"U03 future-only Program publication:${BROWSER_V2_U03}"',
-    );
-    expect(browserGate?.env?.BROWSER_V2_GAUNTLET_A).toBe(
-      "${{ steps.browser-v2-gauntlet-a.outcome }}",
-    );
-    expect(browserGate?.run).toContain(
-      '"Repbook v2 Gauntlet A:${BROWSER_V2_GAUNTLET_A}"',
-    );
-    expect(browserGate?.env?.BROWSER_V2_H04).toBe(
-      "${{ steps.browser-v2-h04.outcome }}",
-    );
-    expect(browserGate?.run).toContain(
-      '"H04 pain consistency:${BROWSER_V2_H04}"',
-    );
-    expect(browserGate?.env?.BROWSER_V2_H05).toBe(
-      "${{ steps.browser-v2-h05.outcome }}",
-    );
-    expect(browserGate?.run).toContain(
-      '"H05 evidence-linked Review:${BROWSER_V2_H05}"',
-    );
+    expect(collector.needs).toEqual([
+      "postgres-integration",
+      "core",
+      "browser",
+    ]);
   });
 
   it("measures the unchanged performance ceiling without parallel test contention", async () => {

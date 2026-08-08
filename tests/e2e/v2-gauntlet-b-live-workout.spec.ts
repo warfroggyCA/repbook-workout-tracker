@@ -45,23 +45,27 @@ function exerciseCard(page: Page, name: string) {
 }
 
 async function expectReachableTarget(locator: Locator) {
-  await locator.scrollIntoViewIfNeeded();
   await expect(locator).toBeVisible();
-  const result = await locator.evaluate((element) => {
-    const rect = element.getBoundingClientRect();
-    const hit = document.elementFromPoint(
-      rect.left + rect.width / 2,
-      rect.top + rect.height / 2,
+  await expect(async () => {
+    await locator.evaluate((element) =>
+      element.scrollIntoView({ behavior: "auto", block: "center", inline: "center" })
     );
-    return {
-      height: rect.height,
-      width: rect.width,
-      hit: hit === element || (hit != null && element.contains(hit)),
-    };
-  });
-  expect(result).toMatchObject({ hit: true });
-  expect(result.height).toBeGreaterThanOrEqual(44);
-  expect(result.width).toBeGreaterThanOrEqual(44);
+    const result = await locator.evaluate((element) => {
+      const rect = element.getBoundingClientRect();
+      const hit = document.elementFromPoint(
+        rect.left + rect.width / 2,
+        rect.top + rect.height / 2,
+      );
+      return {
+        height: rect.height,
+        width: rect.width,
+        hit: hit === element || (hit != null && element.contains(hit)),
+      };
+    });
+    expect(result).toMatchObject({ hit: true });
+    expect(result.height).toBeGreaterThanOrEqual(44);
+    expect(result.width).toBeGreaterThanOrEqual(44);
+  }).toPass();
 }
 
 async function expectActiveViewportBudget(page: Page) {

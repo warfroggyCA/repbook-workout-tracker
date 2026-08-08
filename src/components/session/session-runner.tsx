@@ -240,6 +240,9 @@ export function SessionRunner(props: SessionRunnerProps) {
     );
     return firstOpen?.id ?? null;
   });
+  const [skipRecoveryExerciseId, setSkipRecoveryExerciseId] = useState<
+    string | null
+  >(null);
   const previousCurrentActionIdRef = useRef<string | null>(null);
   const previousCurrentActionKindRef = useRef<
     SessionGuidanceFocusAction["kind"] | null
@@ -456,6 +459,9 @@ export function SessionRunner(props: SessionRunnerProps) {
     const previousActionKind = previousCurrentActionKindRef.current;
     previousCurrentActionIdRef.current = currentActionId;
     previousCurrentActionKindRef.current = currentActionKind;
+    if (skipRecoveryExerciseId != null) {
+      return;
+    }
     if (previousActionId == null || previousActionId === currentActionId) return;
 
     const previousOccurrence = occurrences.find(
@@ -525,6 +531,7 @@ export function SessionRunner(props: SessionRunnerProps) {
     currentActionTargetId,
     latestAcknowledgementTargetId,
     occurrences,
+    skipRecoveryExerciseId,
   ]);
   const groupContextByExerciseId = useMemo(
     () =>
@@ -2042,6 +2049,8 @@ export function SessionRunner(props: SessionRunnerProps) {
                 "exerciseId",
               );
               if (patch.modificationType === "skipped") {
+                setSkipRecoveryExerciseId(exercise.id);
+                setExpandedId(exercise.id);
                 setOccurrences((current) => current.map((occurrence) =>
                   occurrence.sessionExerciseId === exercise.id &&
                   occurrence.outcome === "pending"
@@ -2058,6 +2067,9 @@ export function SessionRunner(props: SessionRunnerProps) {
                 exerciseIdentityChanged &&
                 patch.modificationType === "substituted"
               ) {
+                setSkipRecoveryExerciseId((current) =>
+                  current === exercise.id ? null : current,
+                );
                 setOccurrences((current) => current.map((occurrence) => {
                   if (occurrence.sessionExerciseId !== exercise.id) {
                     return occurrence;
@@ -2116,6 +2128,9 @@ export function SessionRunner(props: SessionRunnerProps) {
                 patch.modificationType === "as_planned" ||
                 patch.modificationType === "substituted"
               ) {
+                setSkipRecoveryExerciseId((current) =>
+                  current === exercise.id ? null : current,
+                );
                 setOccurrences((current) => current.map((occurrence) =>
                   occurrence.sessionExerciseId === exercise.id &&
                   occurrence.outcome === "skipped" &&
@@ -2169,7 +2184,12 @@ export function SessionRunner(props: SessionRunnerProps) {
             onDiscardSet={discardSet}
             onHistoryRevisionChange={setHistoryRevision}
             onOpenCoach={() => openCoach(exercise.id)}
-            onSkipComplete={() => advanceAfterExercise(exercise.id)}
+            onSkipComplete={() => {
+              setSkipRecoveryExerciseId((current) =>
+                current === exercise.id ? null : current,
+              );
+              advanceAfterExercise(exercise.id);
+            }}
             adjustIntent={
               adjustment?.exerciseId === exercise.id
                 ? adjustment.intent
