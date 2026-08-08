@@ -1645,9 +1645,11 @@ export function SessionRunner(props: SessionRunnerProps) {
     <main className="mx-auto flex max-w-3xl flex-col gap-3 p-3 pb-[calc(12rem+env(safe-area-inset-bottom))] min-[360px]:pb-[calc(8rem+env(safe-area-inset-bottom))] sm:p-5 sm:pb-[calc(8rem+env(safe-area-inset-bottom))] lg:p-8 lg:pb-24">
       <ContextualNoteScope value={contextualNoteScope} />
       <header className="flex flex-wrap items-center justify-between gap-2 px-1">
-        <div>
-          <h1 className="text-lg font-semibold">{props.templateName}</h1>
-          <p className="text-xs text-muted-foreground">
+        <div className="min-w-0 max-[359px]:w-full">
+          <h1 className="text-lg font-semibold max-[359px]:line-clamp-1 max-[359px]:text-xs">
+            {props.templateName}
+          </h1>
+          <p className="text-xs text-muted-foreground max-[359px]:hidden">
             {elapsed} · {plannedPerformed}/{totalPlanned || "?"} planned
             {extraPerformed > 0 ? ` · ${extraPerformed} extra` : ""}
             {workoutOnlyPerformed > 0
@@ -1655,7 +1657,7 @@ export function SessionRunner(props: SessionRunnerProps) {
               : ""}
           </p>
         </div>
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-1 max-[359px]:hidden">
           <WorkoutMeasurementsDrawer />
         </div>
       </header>

@@ -98,7 +98,7 @@ export function WorkoutStatusBar({
               "col-span-2 col-start-1 row-start-1 min-[400px]:col-span-3 min-[520px]:col-span-1 min-[520px]:col-start-auto min-[520px]:row-start-auto",
           )}
         >
-          <span className="block break-words text-xs font-semibold leading-tight sm:text-sm">
+          <span className="block break-words text-xs font-semibold leading-tight max-[359px]:line-clamp-2 sm:text-sm">
             {title}
           </span>
           <span

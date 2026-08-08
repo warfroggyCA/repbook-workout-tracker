@@ -48,6 +48,7 @@ describe("WorkoutStatusBar", () => {
     expect(html).toContain("Set 2 of 3 · Next set");
     expect(html).toContain('aria-label="Add training note"');
     expect(html).toContain("Finish");
+    expect(html).toContain("max-[359px]:line-clamp-2");
     expect(html).not.toContain("overflow-y-auto");
     expect(html).not.toContain("truncate");
   });
