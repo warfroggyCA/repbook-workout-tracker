@@ -23,7 +23,15 @@ test("keeps pain, no-issue, exception identity, and proposals consistent", async
   page,
 }) => {
   await signIn(page);
-  const pageErrors = observeGauntletPageErrors(page, browserName);
+  const pageErrors = observeGauntletPageErrors(
+    page,
+    browserName,
+    [],
+    new Set([
+      `/history/${h01.importedSession}`,
+      `/history/${h01.finishedEarlySession}`,
+    ]),
+  );
   const mutations: string[] = [];
   page.on("request", (request) => {
     if (["POST", "PUT", "PATCH", "DELETE"].includes(request.method())) {
