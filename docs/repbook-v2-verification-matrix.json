@@ -398,7 +398,7 @@
       "implementingPackage": "H05",
       "testPath": "tests/unit/v2-h05-review-portability.test.ts",
       "command": "npx vitest run tests/unit/v2-h05-review-portability.test.ts tests/unit/snapshots-db.test.ts",
-      "proves": "restore validates coherent review, defer and decision snapshots before writes and rejects malformed state; full restore retains exact snapshot coaching state, while History-only restore uses the later Gauntlet B monotonic merge contract"
+      "proves": "restore validates coherent review, defer and decision snapshots before writes and rejects malformed state; full restore retains exact snapshot coaching state, while History-only restore uses the current Gauntlet B monotonic merge contract"
     },
     "H05-adversarialPrivacy": {
       "status": "current",

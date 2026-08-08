@@ -120,8 +120,8 @@ describe("Repbook v2 ratified semantic contract", () => {
       schemaVersion: 1,
       contractVersion: V2_CONTRACT_VERSION,
       exactBaseCommit: "2c9ab1b9478502f1d08956a6c44dfb0850c8f168",
-      currentPackage: "H05",
-      currentPackageBaseCommit: "ed34623b5aab89d5c4bd500f70e3a3c972b8a815",
+      currentPackage: "Gauntlet B",
+      currentPackageBaseCommit: "fb4b351d7039f30aa0b272d11b53486a70ca4946",
       productBehaviorImplementedByP02: false,
       implementedProductPackages: [
         "T01",
@@ -167,6 +167,27 @@ describe("Repbook v2 ratified semantic contract", () => {
       command:
         "npx playwright test --config=playwright.v2-h05.config.ts tests/e2e/v2-h05-evidence-linked-review.spec.ts --project=desktop-chromium && V2_H05_PORT=3148 npx playwright test --config=playwright.v2-h05.config.ts tests/e2e/v2-h05-evidence-linked-review.spec.ts --project=narrow-mobile-webkit",
     });
+    expect(matrix.verifications["GauntletB-liveWorkout"]).toMatchObject({
+      status: "current",
+      implementingPackage: "Gauntlet B",
+      testPath: "tests/e2e/v2-gauntlet-b-live-workout.spec.ts",
+      command: "npm run test:e2e:v2-gauntlet-b",
+    });
+    expect(matrix.verifications["GauntletB-historyRestore"]).toMatchObject({
+      status: "current",
+      implementingPackage: "Gauntlet B",
+      testPath: "tests/unit/snapshots-db.test.ts",
+      command:
+        "npx vitest run tests/unit/snapshots-db.test.ts tests/unit/recovery-manifest-db.test.ts",
+    });
+    for (const verificationId of [
+      "GauntletB-liveWorkout",
+      "GauntletB-historyRestore",
+    ]) {
+      expect(
+        existsSync(resolve(root, matrix.verifications[verificationId].testPath)),
+      ).toBe(true);
+    }
     expect(matrix.verifications["U02-browser"]).toMatchObject({
       status: "current",
       implementingPackage: "U02",
