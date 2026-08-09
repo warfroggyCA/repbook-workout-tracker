@@ -73,6 +73,9 @@ describe("WorkoutStatusBar", () => {
     expect(html).toContain('aria-label="Increase rest by 15 seconds"');
     expect(html).toContain('aria-label="Skip rest"');
     expect(html).not.toContain("next set ready");
+    expect(html).toContain('data-rest-state="running"');
+    expect(html).toContain("border-amber-500");
+    expect(html).toContain("bg-amber-100");
     expect(html).toContain("grid-cols-[minmax(0,1fr)_auto_auto]");
     expect(html).toContain("col-span-3");
   });
