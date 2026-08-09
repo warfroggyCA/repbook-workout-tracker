@@ -46,6 +46,26 @@ export default function ExportPage() {
 
         <Card>
         <CardHeader>
+          <CardTitle>Support bundle</CardTitle>
+          <CardDescription>
+            Select one problem and preview a separate, redacted support file.
+            It is prepared locally, never uploaded automatically, and never
+            reused as an AI analysis package.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <Button
+            render={<a href="/export/support" />}
+            nativeButton={false}
+            variant="outline"
+          >
+            Prepare support bundle
+          </Button>
+        </CardContent>
+        </Card>
+
+        <Card>
+        <CardHeader>
           <CardTitle>Coaching brief (Markdown)</CardTitle>
           <CardDescription>
             A readable summary to paste into Claude, ChatGPT, or hand to a

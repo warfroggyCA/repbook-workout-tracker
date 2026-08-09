@@ -142,6 +142,7 @@ describe("Repbook v2 ratified semantic contract", () => {
         "A02",
         "A03",
         "A04",
+        "D02",
       ],
     });
     expect(matrix.columns).toEqual(columns);

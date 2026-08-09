@@ -224,7 +224,7 @@ export function evaluateSemanticFixture(fixture: SemanticFixture): SemanticOutco
         derivedStates.add(`${id}:minimum_necessary`);
         prohibitedMutations.add(`${id}:automatic_upload`);
         prohibitedMutations.add(`${id}:unknown_field_passthrough`);
-        lifecycleOutcomes.add(`${id}:preview_then_explicit_send`);
+        lifecycleOutcomes.add(`${id}:preview_then_explicit_local_export`);
         break;
       }
       case "abandoned_session":

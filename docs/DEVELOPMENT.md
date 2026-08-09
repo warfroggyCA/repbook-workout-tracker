@@ -27,7 +27,7 @@ npm run docs:check
 npm run audit:check
 ```
 
-The Repbook v2 semantic foundation and current T01/T02/T03/T04/T05/T06/U01/U02/U03/H01/H02/H03/H04/A01/A02/A03/A04/A05/A06/Gauntlet C/D01 activation
+The Repbook v2 semantic foundation and current T01/T02/T03/T04/T05/T06/U01/U02/U03/H01/H02/H03/H04/A01/A02/A03/A04/A05/A06/Gauntlet C/D01/D02 activation
 packages have focused gates:
 
 ```bash
@@ -72,6 +72,7 @@ npm run test:e2e:v2-a05
 npx vitest run tests/unit/v2-a06-adversarial-corpus.test.ts --maxWorkers=1 --no-file-parallelism
 npx vitest run tests/unit/v2-gauntlet-c-external-roundtrip.test.ts tests/unit/v2-a06-adversarial-corpus.test.ts --maxWorkers=1 --no-file-parallelism
 npx vitest run tests/unit/server-log.test.ts tests/unit/ai-provider-error.test.ts tests/unit/v2-d01-structured-diagnostics.test.ts --maxWorkers=1 --no-file-parallelism
+npx vitest run tests/unit/v2-d02-support-bundle.test.ts --maxWorkers=1 --no-file-parallelism
 ```
 
 The semantic test validates all synthetic F01-F17 scenarios and every required
@@ -226,6 +227,17 @@ of owner IDs, record IDs, workout content, raw errors, tokens, and provider
 payloads. D01 changes no browser path or persisted application state, so it
 does not add a dedicated browser or database gate.
 
+D02 activates the separate `support-bundle/1` and `support-redaction/1`
+boundary at `/export/support`. Its focused contract proof covers the four
+problem-specific coarse-context allowlists, random per-bundle correlation,
+populated, empty, and collection-error bundles, optional-section removal,
+bounded deliberate owner text, exact serialization, and static absence of
+upload, persistence, retained-log, or AI-analysis paths. The dedicated desktop
+and 320 by 700 WebKit journey proves the exact preview/download bytes, local-
+only request boundary, keyboard access, and no horizontal overflow. D02 adds no
+database, migration, snapshot, recovery-manifest, provider, Program, workout,
+or performed-fact change.
+
 `audit:check` requires a clean production dependency audit and also reviews the
 complete development-tool tree. Any temporary development-only exception is
 bound to exact lockfile nodes, carries a written reason and expiry date, and
@@ -269,6 +281,7 @@ npm run test:e2e:v2-a02
 npm run test:e2e:v2-a03
 npm run test:e2e:v2-a04
 npm run test:e2e:v2-a05
+npm run test:e2e:v2-d02
 ```
 
 Run the smallest affected browser suite first, then the complete protected

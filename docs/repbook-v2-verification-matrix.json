@@ -26,7 +26,8 @@
     "A01",
     "A02",
     "A03",
-    "A04"
+    "A04",
+    "D02"
   ],
   "milestoneEvidence": {
     "gauntletA": {
@@ -664,39 +665,39 @@
       "proves": "wrong media, malformed UTF-8 or JSON, excessive nesting, active or display-unsafe text, cross-owner manifests, stale Programs, and invalid manifest metadata fail closed before a trusted preview"
     },
     "D02-databaseService": {
-      "status": "future_activation",
+      "status": "current",
       "implementingPackage": "D02",
-      "testPath": "tests/unit/v2-d02-support-bundle-db.test.ts",
-      "command": "npx vitest run tests/unit/v2-d02-support-bundle-db.test.ts",
-      "proves": "must pass in the same package that implements this product meaning"
+      "testPath": "tests/unit/v2-d02-support-bundle.test.ts",
+      "command": "npx vitest run tests/unit/v2-d02-support-bundle.test.ts --maxWorkers=1 --no-file-parallelism",
+      "proves": "the support artifact is generated entirely from a closed client-local builder and adds no database, server action, API, persistence, retained-log, or owner-data read path"
     },
     "D02-browser": {
-      "status": "future_activation",
+      "status": "current",
       "implementingPackage": "D02",
       "testPath": "tests/e2e/v2-d02-support-bundle.spec.ts",
-      "command": "npx playwright test tests/e2e/v2-d02-support-bundle.spec.ts",
-      "proves": "must pass in the same package that implements this product meaning"
+      "command": "npx playwright test --config=playwright.v2-d02.config.ts tests/e2e/v2-d02-support-bundle.spec.ts",
+      "proves": "desktop Chromium and independent 320 by 700 WebKit select one problem, preview problem-specific coarse context, remove optional sections, deliberately download exact matching bytes, make no network request during preparation or download, and retain keyboard and no-overflow behavior"
     },
     "D02-exportImport": {
-      "status": "future_activation",
+      "status": "current",
       "implementingPackage": "D02",
-      "testPath": "tests/unit/v2-d02-support-bundle-portability.test.ts",
-      "command": "npx vitest run tests/unit/v2-d02-support-bundle-portability.test.ts",
-      "proves": "must pass in the same package that implements this product meaning"
+      "testPath": "tests/unit/v2-d02-support-bundle.test.ts",
+      "command": "npx vitest run tests/unit/v2-d02-support-bundle.test.ts --maxWorkers=1 --no-file-parallelism",
+      "proves": "support-bundle/1 serializes one exact owner-previewed JSON byte sequence and a non-identifying filename for deliberate local export; it has no import, upload, provider, or AI-analysis reuse path"
     },
     "D02-restoreRollback": {
-      "status": "future_activation",
+      "status": "current",
       "implementingPackage": "D02",
-      "testPath": "tests/unit/v2-d02-support-bundle-restore.test.ts",
-      "command": "npx vitest run tests/unit/v2-d02-support-bundle-restore.test.ts",
-      "proves": "must pass in the same package that implements this product meaning"
+      "testPath": "tests/unit/v2-d02-support-bundle.test.ts",
+      "command": "npx vitest run tests/unit/v2-d02-support-bundle.test.ts --maxWorkers=1 --no-file-parallelism",
+      "proves": "the transient bundle creates no durable entity or receipt to snapshot, restore, roll back, expire, or resurrect; collection failure degrades only to an allowlisted runtime category without raw error content"
     },
     "D02-adversarialPrivacy": {
-      "status": "future_activation",
+      "status": "current",
       "implementingPackage": "D02",
-      "testPath": "tests/unit/v2-d02-support-bundle-adversarial.test.ts",
-      "command": "npx vitest run tests/unit/v2-d02-support-bundle-adversarial.test.ts",
-      "proves": "must pass in the same package that implements this product meaning"
+      "testPath": "tests/unit/v2-d02-support-bundle.test.ts",
+      "command": "npx vitest run tests/unit/v2-d02-support-bundle.test.ts --maxWorkers=1 --no-file-parallelism",
+      "proves": "unknown context fields, stable identities, weights, repetitions, unsafe owner text, incompatible problem outcomes, raw browser strings, logs, provider content, analysis packages, secrets, and database rows cannot pass the closed problem allowlists"
     }
   },
   "concerns": [
@@ -1944,6 +1945,7 @@
     "A01 current status means one complete versioned, owner-selected analysis package travels with its deterministic digest, exact preview and download, privacy-minimal expiring receipt, owner deletion, omission inventory, cross-owner isolation and snapshot exclusion evidence; it does not authorize external transmission, analysis import, recommendation or Program mutation, release, deployment, production mutation, historical repair, or A02.",
     "A02 current status means deterministic provider-neutral instructions bind the exact package and digest, preserve semantic distinctions and unknowns, forbid embedded instructions and guesses, and require evidence-linked limitations without provider transmission, response retention, import, or mutation.",
     "A03 current status means the closed analysis-response/1 contract validates exact snapshot binding, identifiers, units, evidence citations, bounded content, one future-review-only effect, prohibited and unknown effects, and deterministic duplicate/conflict outcomes.",
-    "A04 current status means paste or JSON upload stays bounded and transient while the exact active owner manifest, Program precondition, schema, evidence, units, effects, and display-safe text are validated before an exact preview; it creates no durable response, recommendation, decision, adaptation, or Program write."
+    "A04 current status means paste or JSON upload stays bounded and transient while the exact active owner manifest, Program precondition, schema, evidence, units, effects, and display-safe text are validated before an exact preview; it creates no durable response, recommendation, decision, adaptation, or Program write.",
+    "D02 current status means one problem-specific support-bundle/1 artifact is generated locally with support-redaction/1, random per-bundle correlation, removable optional sections, exact preview and download bytes, and no upload, persistence, retained-log read, AI reuse, Program write, or performed-fact mutation."
   ]
 }

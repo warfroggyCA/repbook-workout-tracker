@@ -118,5 +118,19 @@ does not persist D01 events, and any runtime log sink is required to delete or
 expire them by that timestamp. D01 does not add a support-bundle generator,
 download or upload path, owner-data access, or production-maintenance action.
 
+D02 support bundles are a different artifact and never read or repackage D01
+stdout. The client starts from one selected problem and filters coarse browser
+context through that problem's closed allowlist. It automatically reads no
+workout or health facts and omits raw user-agent text, locale, timezone, stable
+owner and record identity, provider material, secrets, and rows. A random
+correlation exists only in the generated file and is not retained by Repbook.
+
+Optional coarse context can be removed from the exact preview. Optional owner-
+written text is off by default, bounded, rejects display-control content, and
+is plainly marked as potentially private. Preparing or downloading the bundle
+makes no API, upload, AI, or storage request. The separate `support-bundle/1`
+artifact has no import path and cannot be reused as an analysis package,
+diagnostic event, performed fact, proposal, decision, or adaptation.
+
 Security reports use the private process in `SECURITY.md`; public issues must
 contain synthetic data only.

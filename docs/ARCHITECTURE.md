@@ -762,3 +762,29 @@ The application does not create a diagnostic database or retain a diagnostic
 bundle. Its stdout sink must discard D01 events no later than their recorded
 expiry. D01 adds no schema, migration, snapshot, recovery-manifest, browser,
 support-bundle, upload, Program, workout, or performed-fact path.
+
+## D02 owner-previewed support bundle
+
+D02 adds a separate authenticated workspace at `/export/support`. The owner
+selects one closed problem and one coarse observed outcome. Each problem owns
+an exact context allowlist: workout start and Coach/Review availability may use
+only connection state; display problems may use only coarse browser family and
+viewport class; export/recovery problems may use only coarse browser family
+and download capability. The full browser string, locale, timezone, account or
+record identity, workout contents, and D01 log lines are never included or
+retained.
+
+The bundle uses schema `support-bundle/1`, redaction version
+`support-redaction/1`, and a random per-bundle correlation UUID. Coarse browser
+context can be removed after preview. Owner-written text is a separate section,
+off by default, limited to 500 display-safe characters, and visibly labelled
+as potentially containing private training or health detail. An unavailable
+browser-context collector records only the closed `runtime` category; no raw
+exception enters the artifact.
+
+The client generates the complete JSON in memory. The exact preview bytes are
+the exact deliberately downloaded bytes. There is no route handler, server
+action, fetch, upload, storage, diagnostic-log read, analysis-package reuse, or
+automatic provider transmission. The artifact creates no durable entity,
+receipt, migration, snapshot, recovery, Review, Coach, Program, workout, or
+performed-fact obligation.

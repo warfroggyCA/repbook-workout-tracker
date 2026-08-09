@@ -136,6 +136,7 @@ describe("production readiness workflow contract", () => {
         "v2-h03-evidence-identity.spec.ts",
         "v2-h04-pain-consistency.spec.ts",
         "v2-h05-evidence-linked-review.spec.ts",
+        "v2-d02-support-bundle.spec.ts",
       ]),
     );
   });

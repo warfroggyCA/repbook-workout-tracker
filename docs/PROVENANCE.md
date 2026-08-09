@@ -44,6 +44,11 @@ chat-paste and file-upload responses bound at test time to a disposable A01
 package. It is public verification evidence only. It includes no provider or
 owner identity and does not assert that model advice is generally reliable.
 
+The D02 support-bundle fixture uses only synthetic problem selections, coarse
+browser categories, and an explicitly labelled synthetic owner-written note.
+No generated bundle, account identity, real diagnostic line, workout fact,
+provider output, or private support exchange is checked into the repository.
+
 The first public `fix/pain-hold-truth` commit maps the application and test
 changes from private source commit
 `f308ead8c8ef27430707c5aa5651b97808ccfab6`. Private release-record and
