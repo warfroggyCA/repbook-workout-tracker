@@ -104,5 +104,19 @@ established allowlist and `programChanged: false` future Review direction. It
 does not transmit a package, retain unknown or unselected response content, or
 change Program, active-workout, or performed facts.
 
+D01 diagnostics use a closed, versioned server-side vocabulary. Event callers
+cannot add arbitrary fields, and runtime validation refuses unknown event
+names, unknown or missing fields, and invalid values before output. The
+allowlist omits owner and record identifiers; weights, reps, exercise names,
+training dates, notes and pain or health content; tokens and secrets; raw error
+names, messages and stacks; provider request or response bodies; and complete
+rows. Provider failures retain only the established categorical sanitizer.
+
+Correlation is a random UUID for a bounded 15-minute episode, never a durable
+owner identity. Each line declares a maximum 24-hour expiry. The application
+does not persist D01 events, and any runtime log sink is required to delete or
+expire them by that timestamp. D01 does not add a support-bundle generator,
+download or upload path, owner-data access, or production-maintenance action.
+
 Security reports use the private process in `SECURITY.md`; public issues must
 contain synthetic data only.

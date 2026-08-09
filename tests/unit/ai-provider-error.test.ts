@@ -5,7 +5,7 @@ import {
   sanitizeAIFinishReason,
   sanitizeAIProviderError,
 } from "@/lib/ai-provider-error";
-import { logServerEvent } from "@/lib/server-log";
+import { logDiagnosticEvent } from "@/lib/server-log";
 
 const SENTINELS = [
   "WT_SENTINEL_MESSAGE",
@@ -73,17 +73,15 @@ describe("AI provider error privacy boundary", () => {
       cause: new Error(SENTINELS[5]),
     });
 
-    logServerEvent("warn", "ai.fixture_failed", {
-      task: "fixture",
+    logDiagnosticEvent("ai.coach_question_failed", {
       ...sanitizeAIProviderError(error),
     });
 
     expect(write).toHaveBeenCalledTimes(1);
     const line = String(write.mock.calls[0]?.[0]);
     expect(JSON.parse(line)).toMatchObject({
-      level: "warn",
-      event: "ai.fixture_failed",
-      task: "fixture",
+      level: "error",
+      event: "ai.coach_question_failed",
       errorKind: "provider_api",
       providerStatusCode: 429,
       providerRetryable: true,

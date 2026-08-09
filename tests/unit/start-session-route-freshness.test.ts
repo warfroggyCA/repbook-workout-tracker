@@ -7,7 +7,7 @@ const mocks = vi.hoisted(() => ({
   findOwnedWorkoutByStartRequest: vi.fn(),
   findOwnedActiveWorkout: vi.fn(),
   buildWorkoutStartRequestHash: vi.fn(() => "canonical-start-hash"),
-  logServerEvent: vi.fn(),
+  logDiagnosticEvent: vi.fn(),
 }));
 
 vi.mock("next/cache", () => ({ revalidatePath: mocks.revalidatePath }));
@@ -24,7 +24,10 @@ vi.mock("@/lib/user-id-cache", () => ({
   getCurrentUserIdFast: vi.fn(),
   refreshCurrentUserIdFast: vi.fn(),
 }));
-vi.mock("@/lib/server-log", () => ({ logServerEvent: mocks.logServerEvent }));
+vi.mock("@/lib/server-log", () => ({
+  categorizeDiagnosticError: vi.fn((_error, fallback) => fallback),
+  logDiagnosticEvent: mocks.logDiagnosticEvent,
+}));
 vi.mock("@/services/session-lifecycle", () => ({
   abandonWorkoutSession: vi.fn(),
   completeWorkoutSession: vi.fn(),
@@ -157,7 +160,7 @@ describe("startSession route freshness", () => {
       startRequestKey,
       message: expect.stringContaining("could not confirm whether"),
     });
-    expect(JSON.stringify(mocks.logServerEvent.mock.calls)).not.toContain(
+    expect(JSON.stringify(mocks.logDiagnosticEvent.mock.calls)).not.toContain(
       "private user text",
     );
   });
@@ -180,23 +183,21 @@ describe("startSession route freshness", () => {
     expect(mocks.redirect).not.toHaveBeenCalled();
   });
 
-  it("logs only safe identifiers and a category for an unexpected creation failure", async () => {
+  it("logs only closed categories for an unexpected creation failure", async () => {
     mocks.startWorkoutSession.mockRejectedValueOnce(
       new Error("user note text must not reach logs"),
     );
 
     await startSession(templateId, { status: "idle" }, startForm());
 
-    expect(mocks.logServerEvent).toHaveBeenCalledWith(
-      "error",
+    expect(mocks.logDiagnosticEvent).toHaveBeenCalledWith(
       "session.start_failed",
-      expect.objectContaining({
-        templateId,
-        category: "unexpected_creation_failure",
-        errorName: "Error",
-      }),
+      {
+        failure: "unexpected_creation_failure",
+        errorCategory: "persistence",
+      },
     );
-    expect(JSON.stringify(mocks.logServerEvent.mock.calls)).not.toContain(
+    expect(JSON.stringify(mocks.logDiagnosticEvent.mock.calls)).not.toContain(
       "user note text",
     );
   });

@@ -53,8 +53,10 @@ import { workoutReplacementUnavailableReason } from "@/lib/exercise-replacements
 import { processProgressionJob } from "@/services/progression-jobs";
 import { sessionTimeBudgetSchema } from "@/lib/session-time-budget";
 import { actionFailure } from "@/lib/action-results";
-import { logServerEvent } from "@/lib/server-log";
-import { safeErrorName } from "@/lib/safe-error-name";
+import {
+  categorizeDiagnosticError,
+  logDiagnosticEvent,
+} from "@/lib/server-log";
 import { acceptanceWorkoutNow } from "@/lib/acceptance-workout-clock";
 import type { WorkoutStartState } from "@/lib/workout-start";
 import { isPhase0StartDisposableAcceptanceRuntime } from "@/lib/acceptance-runtime";
@@ -125,10 +127,8 @@ export async function startSession(
     !parsedTemplateId.success ||
     !parsedStartRequestKey.success
   ) {
-    logServerEvent("warn", "session.start_rejected", {
-      userId: user.id,
-      templateId: parsedTemplateId.success ? parsedTemplateId.data : null,
-      category: "invalid_request",
+    logDiagnosticEvent("session.start_rejected", {
+      rejection: "invalid_request",
     });
     return {
       status: "error" as const,
@@ -172,10 +172,8 @@ export async function startSession(
     );
   } catch (error) {
     if (error instanceof StaleWorkoutTemplateError) {
-      logServerEvent("warn", "session.start_rejected", {
-        userId: user.id,
-        templateId: parsedTemplateId.data,
-        category: "program_updated",
+      logDiagnosticEvent("session.start_rejected", {
+        rejection: "program_updated",
       });
       revalidatePath("/today");
       return redirect("/today?program=updated", RedirectType.replace);
@@ -189,11 +187,9 @@ export async function startSession(
         startRequestKey,
       };
     }
-    logServerEvent("error", "session.start_failed", {
-      userId: user.id,
-      templateId: parsedTemplateId.data,
-      category: "unexpected_creation_failure",
-      errorName: safeErrorName(error),
+    logDiagnosticEvent("session.start_failed", {
+      failure: "unexpected_creation_failure",
+      errorCategory: categorizeDiagnosticError(error, "persistence"),
     });
     let exact: Awaited<ReturnType<typeof findOwnedWorkoutByStartRequest>>;
     try {
@@ -203,11 +199,12 @@ export async function startSession(
         startRequestKey,
       );
     } catch (reconciliationError) {
-      logServerEvent("error", "session.start_reconciliation_failed", {
-        userId: user.id,
-        templateId: parsedTemplateId.data,
-        category: "start_request_status_unknown",
-        errorName: safeErrorName(reconciliationError),
+      logDiagnosticEvent("session.start_reconciliation_failed", {
+        reconciliation: "start_request_status_unknown",
+        errorCategory: categorizeDiagnosticError(
+          reconciliationError,
+          "persistence",
+        ),
       });
       return {
         status: "error" as const,
@@ -218,11 +215,8 @@ export async function startSession(
       };
     }
     if (exact?.startRequestHash === startRequestHash) {
-      logServerEvent("warn", "session.start_reconciled", {
-        userId: user.id,
-        templateId: parsedTemplateId.data,
-        sessionId: exact.id,
-        category: "exact_start_request_found",
+      logDiagnosticEvent("session.start_reconciled", {
+        reconciliation: "exact_start_request_found",
       });
       revalidatePath("/today");
       return redirect(`/session/${exact.id}`, RedirectType.push);
@@ -243,11 +237,12 @@ export async function startSession(
         return redirect("/today?start=active", RedirectType.replace);
       }
     } catch (reconciliationError) {
-      logServerEvent("error", "session.start_reconciliation_failed", {
-        userId: user.id,
-        templateId: parsedTemplateId.data,
-        category: "active_workout_status_unknown",
-        errorName: safeErrorName(reconciliationError),
+      logDiagnosticEvent("session.start_reconciliation_failed", {
+        reconciliation: "active_workout_status_unknown",
+        errorCategory: categorizeDiagnosticError(
+          reconciliationError,
+          "persistence",
+        ),
       });
       return {
         status: "error" as const,

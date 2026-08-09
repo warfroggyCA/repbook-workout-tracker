@@ -6,7 +6,10 @@ import { z } from "zod";
 import { getDb } from "@/db";
 import { userProfiles } from "@/db/schema";
 import { FONT_SIZE_OPTIONS, type FontSizeKey } from "@/lib/font-size";
-import { logServerEvent } from "@/lib/server-log";
+import {
+  categorizeDiagnosticError,
+  logDiagnosticEvent,
+} from "@/lib/server-log";
 import { getCurrentUser } from "@/lib/user";
 import { audit } from "@/services/audit";
 import { isValidIanaTimezone } from "@/lib/workout-calendar";
@@ -46,8 +49,8 @@ export async function saveTimezonePreference(
     revalidatePath("/settings");
     return { ok: true };
   } catch (error) {
-    logServerEvent("error", "settings.timezone_save_failed", {
-      errorName: error instanceof Error ? error.name : "UnknownError",
+    logDiagnosticEvent("settings.timezone_save_failed", {
+      errorCategory: categorizeDiagnosticError(error, "persistence"),
     });
     return { ok: false, reason: "The timezone could not be saved. Try again." };
   }
@@ -85,8 +88,8 @@ export async function saveFontSizePreference(
     });
     return { ok: true };
   } catch (error) {
-    logServerEvent("error", "settings.font_size_save_failed", {
-      errorName: error instanceof Error ? error.name : "UnknownError",
+    logDiagnosticEvent("settings.font_size_save_failed", {
+      errorCategory: categorizeDiagnosticError(error, "persistence"),
     });
     return {
       ok: false,
