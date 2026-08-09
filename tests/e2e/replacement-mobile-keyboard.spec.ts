@@ -215,7 +215,26 @@ test("keeps unrestricted replacement truthful and reachable through mobile keybo
     exact: true,
   });
   const search = picker.getByLabel("Search exercise library");
+  await expect(search).not.toBeFocused();
+  await expect(picker.getByText(/variants in \d+ families/)).toBeVisible();
+
+  const filterToggle = picker.getByRole("button", {
+    name: /^Filters/,
+  });
+  await filterToggle.click();
+  await expect(picker.getByRole("group", { name: "Equipment" })).toBeVisible();
+  await search.click();
+  await search.fill("Dumbbell Curl");
+  const immediateMatch = picker.getByRole("button", {
+    name: "View details for Dumbbell Curl",
+    exact: true,
+  });
+  await expect(picker.getByRole("group", { name: "Equipment" })).toHaveCount(0);
+  await expect(immediateMatch).toBeVisible();
+  await expect(immediateMatch).toBeInViewport();
+  await search.fill("");
   await expect(search).toBeFocused();
+  await expect(filterToggle).toHaveAttribute("aria-expanded", "false");
 
   for (const width of [320, 375, 390, 440]) {
     await page.setViewportSize({ width, height: 420 });

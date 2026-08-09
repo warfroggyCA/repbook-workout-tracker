@@ -471,6 +471,10 @@ export function ExercisePicker({
     filters.availability !== DEFAULT_EXERCISE_FILTERS.availability ||
     filters.query.length > 0;
   const searching = filters.query.trim().length > 0;
+  const hasNonQueryFilters =
+    activeCount > 0 ||
+    filters.shortcuts.length > 0 ||
+    filters.availability !== DEFAULT_EXERCISE_FILTERS.availability;
   const shownFamilies = families.slice(0, visibleFamilyCount);
   const resultCount = families.reduce((count, family) => count + family.variants.length, 0);
   const hasShortcut = (shortcut: ShortcutFilter) =>
@@ -484,6 +488,15 @@ export function ExercisePicker({
 
   function clearFilters() {
     setFilters({ ...DEFAULT_EXERCISE_FILTERS });
+    setVisibleFamilyCount(30);
+  }
+
+  function clearNonQueryFilters() {
+    setFilters((current) => ({
+      ...DEFAULT_EXERCISE_FILTERS,
+      availability: initialAvailability,
+      query: current.query,
+    }));
     setVisibleFamilyCount(30);
   }
 
@@ -648,13 +661,14 @@ export function ExercisePicker({
             <div className="relative">
               <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
               <Input
-                autoFocus
                 value={filters.query}
                 onChange={(event) => {
+                  const query = event.target.value;
                   setFilters((current) => ({
                     ...current,
-                    query: event.target.value,
+                    query,
                   }));
+                  if (query.trim()) setShowFilters(false);
                   setVisibleFamilyCount(30);
                 }}
                 placeholder="Search exercises, families, muscles, or equipment"
@@ -675,7 +689,12 @@ export function ExercisePicker({
               )}
             </div>
 
-            <div className="flex flex-wrap items-center gap-2">
+            <div
+              className={cn(
+                "flex flex-wrap items-center gap-2",
+                searching && "hidden",
+              )}
+            >
               {(["available", "all"] as const).map((availability) => (
                 <FilterChip
                   key={availability}
@@ -717,7 +736,7 @@ export function ExercisePicker({
               )}
             </div>
 
-            {showFilters && (
+            {showFilters && !searching && (
               <div className="grid gap-4 rounded-xl border bg-muted/20 p-3 sm:grid-cols-2">
                 <FilterGroup title="Equipment">
                   {equipmentFilters.map((equipment) => (
@@ -767,6 +786,21 @@ export function ExercisePicker({
                     </FilterChip>
                   ))}
                 </FilterGroup>
+              </div>
+            )}
+
+            {searching && hasNonQueryFilters && (
+              <div className="flex items-center justify-between gap-3 text-xs text-muted-foreground">
+                <span>Current filters still apply to these matches.</span>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  className="shrink-0"
+                  onClick={clearNonQueryFilters}
+                >
+                  Clear filters
+                </Button>
               </div>
             )}
           </div>

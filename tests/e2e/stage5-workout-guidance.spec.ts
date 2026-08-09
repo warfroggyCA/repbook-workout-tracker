@@ -318,6 +318,12 @@ test("keeps Stage 5 guidance truthful, persistent, and usable on narrow mobile s
 
   const rest = statusBar.getByLabel("Rest timer");
   await expect(rest).toBeVisible();
+  await expect(statusBar).toHaveAttribute("data-rest-state", "running");
+  const runningRestColors = await statusBar.evaluate((element) => ({
+    bar: getComputedStyle(element).backgroundColor,
+    page: getComputedStyle(document.body).backgroundColor,
+  }));
+  expect(runningRestColors.bar).not.toBe(runningRestColors.page);
   const decreaseRest = rest.getByRole("button", { name: "Decrease rest by 15 seconds", exact: true });
   for (let index = 0; index < 8; index += 1) await decreaseRest.click();
   await page.reload({ waitUntil: "domcontentloaded" });

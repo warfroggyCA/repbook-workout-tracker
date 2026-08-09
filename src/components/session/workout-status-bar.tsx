@@ -71,8 +71,13 @@ export function WorkoutStatusBar({
     <aside
       id="workout-rest-status"
       aria-label="Workout status"
+      data-rest-state={
+        timerRunning ? "running" : timerReady ? "ready" : "inactive"
+      }
       className={cn(
         "fixed inset-x-0 bottom-[calc(4rem+env(safe-area-inset-bottom))] z-30 border-t bg-background shadow-[0_-5px_18px_rgb(0_0_0/0.12)] max-[360px]:bottom-[env(safe-area-inset-bottom)] lg:bottom-0 lg:left-[var(--main-sidebar-width)]",
+        timerRunning &&
+          "border-amber-500 bg-amber-100 dark:border-amber-500 dark:bg-amber-950",
         timerReady &&
           "border-emerald-600 bg-emerald-50 dark:bg-emerald-950",
       )}
@@ -107,6 +112,8 @@ export function WorkoutStatusBar({
             className={cn(
               "block break-words text-[11px] leading-tight text-muted-foreground",
               saving === "Failed" && "font-semibold text-destructive",
+              timerRunning &&
+                "font-semibold text-amber-950 dark:text-amber-100",
               timerReady &&
                 "font-semibold text-emerald-900 dark:text-emerald-100",
             )}
@@ -125,7 +132,7 @@ export function WorkoutStatusBar({
             aria-label="Rest timer"
             className="col-span-2 col-start-1 row-start-2 flex min-w-0 w-full shrink-0 items-center justify-between gap-0.5 min-[400px]:col-span-1 min-[400px]:col-start-auto min-[400px]:row-start-auto min-[400px]:w-auto min-[400px]:justify-start"
           >
-            <span className="min-w-10 text-center text-sm font-semibold tabular-nums">
+            <span className="min-w-10 text-center text-sm font-semibold tabular-nums text-amber-950 dark:text-amber-100">
               {Math.floor(restRemainingSec / 60)}:{String(restRemainingSec % 60).padStart(2, "0")}
             </span>
             <Button type="button" variant="ghost" size="icon-sm" className="min-h-11 min-w-11" onClick={() => onRestAdjust(-15)} aria-label="Decrease rest by 15 seconds">
