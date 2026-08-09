@@ -282,6 +282,7 @@ npm run test:e2e:v2-a03
 npm run test:e2e:v2-a04
 npm run test:e2e:v2-a05
 npm run test:e2e:v2-d02
+npm run test:e2e:v2-r01
 ```
 
 Run the smallest affected browser suite first, then the complete protected
@@ -292,6 +293,14 @@ automated/static/build core, and every browser group. Validate registry and
 workflow alignment with `npm run ci:browser-groups:check`. The Stage 5 timer
 suite receives an unused run identity from the group runner. All browser
 fixtures must remain synthetic.
+
+R01 lifecycle verification is split across
+`tests/unit/v2-r01-lifecycle-audit-db.test.ts`, portability, restore, and
+adversarial omission tests plus the dedicated browser journey. The database
+test uses a disposable fully migrated database and must continue to match the
+65-table recovery manifest exactly. The browser spec is dedicated and excluded
+from the general Playwright configuration so its authenticated page loads
+cannot consume another suite's background-job fixtures.
 
 ## Pull requests
 

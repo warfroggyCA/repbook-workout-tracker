@@ -132,5 +132,18 @@ makes no API, upload, AI, or storage request. The separate `support-bundle/1`
 artifact has no import path and cannot be reused as an analysis package,
 diagnostic event, performed fact, proposal, decision, or adaptation.
 
+R01 treats lifecycle omission as a trust failure. Every v2 semantic field
+family has one explicit owner for authorization-sensitive creation and reads,
+correction, archive/delete, portability, snapshot/restore/rollback, device
+queues, diagnostics, Review, Coach, and recovery. A non-applicable boundary
+must explain why no data crosses it. The audit contains module names and
+synthetic contracts only; it does not inspect, log, export, or add owner data.
+
+The existing recovery manifest remains the single durable-table inventory, and
+the existing sign-out inventory remains the single device-command inventory.
+R01 tests cross-check those owners instead of creating another runtime copy.
+Diagnostics and local support artifacts stay explicitly outside snapshots,
+recovery, AI analysis, Review, and Coach.
+
 Security reports use the private process in `SECURITY.md`; public issues must
 contain synthetic data only.

@@ -49,6 +49,12 @@ browser categories, and an explicitly labelled synthetic owner-written note.
 No generated bundle, account identity, real diagnostic line, workout fact,
 provider output, or private support exchange is checked into the repository.
 
+The R01 lifecycle audit records public module paths, table and field names,
+package identifiers, and synthetic lifecycle contracts only. Its browser
+journey uses the established disposable synthetic owner. It includes no private
+programme chronology, real workout observation, owner identifier, diagnostic
+line, provider response, production row, deployment fact, or release claim.
+
 The first public `fix/pain-hold-truth` commit maps the application and test
 changes from private source commit
 `f308ead8c8ef27430707c5aa5651b97808ccfab6`. Private release-record and
