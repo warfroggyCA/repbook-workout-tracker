@@ -718,7 +718,7 @@
           "diagnostic:unknown_field_passthrough"
         ],
         "lifecycleOutcomes": [
-          "diagnostic:preview_then_explicit_send"
+          "diagnostic:preview_then_explicit_local_export"
         ]
       }
     },
