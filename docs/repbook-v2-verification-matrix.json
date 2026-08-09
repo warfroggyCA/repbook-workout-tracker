@@ -5,8 +5,8 @@
   "repositoryRole": "public application source",
   "exactBaseCommit": "2c9ab1b9478502f1d08956a6c44dfb0850c8f168",
   "fixtureCatalogue": "tests/fixtures/v2/semantic-scenarios.json",
-  "currentPackage": "A04",
-  "currentPackageBaseCommit": "b0e97aed8d486226d97f580afe34426c645fbe9f",
+  "currentPackage": "R01",
+  "currentPackageBaseCommit": "ace9b3bf52c4435976cee78b425b895805809d56",
   "productBehaviorImplementedByP02": false,
   "implementedProductPackages": [
     "T01",
@@ -27,7 +27,10 @@
     "A02",
     "A03",
     "A04",
-    "D02"
+    "A05",
+    "D01",
+    "D02",
+    "R01"
   ],
   "milestoneEvidence": {
     "gauntletA": {
@@ -490,39 +493,39 @@
       "proves": "History-only restore keeps the current accepted Program, immutable owner decision, decision-time snapshot, and accepted adaptation; an older pending recommendation cannot become actionable, and injected failure rolls back before a successful exact retry"
     },
     "A05-databaseService": {
-      "status": "future_activation",
+      "status": "current",
       "implementingPackage": "A05",
-      "testPath": "tests/unit/v2-a05-review-bridge-db.test.ts",
-      "command": "npx vitest run tests/unit/v2-a05-review-bridge-db.test.ts",
-      "proves": "must pass in the same package that implements this product meaning"
+      "testPath": "tests/unit/v2-a05-selective-review-bridge.test.ts",
+      "command": "npx vitest run tests/unit/v2-a05-selective-review-bridge.test.ts --maxWorkers=1 --no-file-parallelism",
+      "proves": "the exact owner-selected import writes one sanitized external-analysis receipt and only selected future-only Review proposals atomically, advances the current recommendation revision once, and leaves Program intent, active work, performed facts, independent activities, metrics, prior decisions, and accepted adaptations unchanged"
     },
     "A05-browser": {
-      "status": "future_activation",
+      "status": "current",
       "implementingPackage": "A05",
-      "testPath": "tests/e2e/v2-a05-review-bridge.spec.ts",
-      "command": "npx playwright test tests/e2e/v2-a05-review-bridge.spec.ts",
-      "proves": "must pass in the same package that implements this product meaning"
+      "testPath": "tests/e2e/v2-a05-selective-review-bridge.spec.ts",
+      "command": "npx playwright test --config=playwright.v2-a05.config.ts tests/e2e/v2-a05-selective-review-bridge.spec.ts",
+      "proves": "desktop Chromium and independent narrow WebKit keep exact external origin and evidence visible through selective import, Review preview, defer, reject, accept, and edit-and-accept without a silent Program or performed-fact change"
     },
     "A05-exportImport": {
-      "status": "future_activation",
+      "status": "current",
       "implementingPackage": "A05",
-      "testPath": "tests/unit/v2-a05-review-bridge-portability.test.ts",
-      "command": "npx vitest run tests/unit/v2-a05-review-bridge-portability.test.ts",
-      "proves": "must pass in the same package that implements this product meaning"
+      "testPath": "tests/unit/v2-a05-selective-review-bridge.test.ts",
+      "command": "npx vitest run tests/unit/v2-a05-selective-review-bridge.test.ts --maxWorkers=1 --no-file-parallelism",
+      "proves": "only allowlisted selected observations and future-only proposals cross the import boundary; the raw response is not retained, duplicate identity is idempotent, changed replay conflicts, and the typed receipt remains owner scoped"
     },
     "A05-restoreRollback": {
-      "status": "future_activation",
+      "status": "current",
       "implementingPackage": "A05",
-      "testPath": "tests/unit/v2-a05-review-bridge-restore.test.ts",
-      "command": "npx vitest run tests/unit/v2-a05-review-bridge-restore.test.ts",
-      "proves": "must pass in the same package that implements this product meaning"
+      "testPath": "tests/unit/v2-a05-selective-review-bridge.test.ts",
+      "command": "npx vitest run tests/unit/v2-a05-selective-review-bridge.test.ts --maxWorkers=1 --no-file-parallelism",
+      "proves": "injected import or decision failure rolls back the receipt, proposals, decisions, adaptations, and recommendation revision together, while recovery manifest 13 preserves the sanitized receipt without the raw response"
     },
     "A05-adversarialPrivacy": {
-      "status": "future_activation",
+      "status": "current",
       "implementingPackage": "A05",
-      "testPath": "tests/unit/v2-a05-review-bridge-adversarial.test.ts",
-      "command": "npx vitest run tests/unit/v2-a05-review-bridge-adversarial.test.ts",
-      "proves": "must pass in the same package that implements this product meaning"
+      "testPath": "tests/unit/v2-a05-selective-review-bridge.test.ts",
+      "command": "npx vitest run tests/unit/v2-a05-selective-review-bridge.test.ts --maxWorkers=1 --no-file-parallelism",
+      "proves": "expired, stale, cross-owner, changed, unselected, unsupported, malicious, and replayed content fails closed without retaining a raw response or creating a fact, calculation, Program write, owner decision, or accepted adaptation"
     },
     "U02-databaseService": {
       "status": "current",
@@ -595,39 +598,39 @@
       "proves": "stale revisions, changed bases, conflicting tabs, obsolete review hashes, malformed drafts, and failed publication remain recoverable or fail closed without mutating active or historical workout facts"
     },
     "R01-databaseService": {
-      "status": "future_activation",
+      "status": "current",
       "implementingPackage": "R01",
       "testPath": "tests/unit/v2-r01-lifecycle-audit-db.test.ts",
       "command": "npx vitest run tests/unit/v2-r01-lifecycle-audit-db.test.ts",
-      "proves": "must pass in the same package that implements this product meaning"
+      "proves": "the migrated database has exactly the 65 tables owned by recovery manifest 13, and every audited v2 table and semantic field exists under one complete lifecycle inventory"
     },
     "R01-browser": {
-      "status": "future_activation",
+      "status": "current",
       "implementingPackage": "R01",
       "testPath": "tests/e2e/v2-r01-lifecycle-audit.spec.ts",
-      "command": "npx playwright test tests/e2e/v2-r01-lifecycle-audit.spec.ts",
-      "proves": "must pass in the same package that implements this product meaning"
+      "command": "npx playwright test --config=playwright.v2-r01.config.ts tests/e2e/v2-r01-lifecycle-audit.spec.ts",
+      "proves": "desktop Chromium and independent narrow WebKit keep canonical exports, external-analysis packages, local support diagnostics, Review decisions, and Coach visibly separate without an external request"
     },
     "R01-exportImport": {
-      "status": "future_activation",
+      "status": "current",
       "implementingPackage": "R01",
       "testPath": "tests/unit/v2-r01-lifecycle-audit-portability.test.ts",
       "command": "npx vitest run tests/unit/v2-r01-lifecycle-audit-portability.test.ts",
-      "proves": "must pass in the same package that implements this product meaning"
+      "proves": "every implemented product package and audited field family has an exact portability owner or a bounded exclusion, including the privacy-minimal analysis receipt and the corrected live A05 import bridge evidence"
     },
     "R01-restoreRollback": {
-      "status": "future_activation",
+      "status": "current",
       "implementingPackage": "R01",
       "testPath": "tests/unit/v2-r01-lifecycle-audit-restore.test.ts",
       "command": "npx vitest run tests/unit/v2-r01-lifecycle-audit-restore.test.ts",
-      "proves": "must pass in the same package that implements this product meaning"
+      "proves": "every database field family routes through recovery manifest 13, canonical snapshot capture, atomic restore, and rollback, while device work, diagnostics, analysis-package receipts, and local support artifacts retain their explicit different boundaries"
     },
     "R01-adversarialPrivacy": {
-      "status": "future_activation",
+      "status": "current",
       "implementingPackage": "R01",
       "testPath": "tests/unit/v2-r01-lifecycle-audit-adversarial.test.ts",
       "command": "npx vitest run tests/unit/v2-r01-lifecycle-audit-adversarial.test.ts",
-      "proves": "must pass in the same package that implements this product meaning"
+      "proves": "duplicated identities, missing lifecycle consumers, empty field inventories, and unexplained exclusions are rejected deterministically before a field can be treated as covered"
     },
     "A04-databaseService": {
       "status": "current",
@@ -1946,6 +1949,9 @@
     "A02 current status means deterministic provider-neutral instructions bind the exact package and digest, preserve semantic distinctions and unknowns, forbid embedded instructions and guesses, and require evidence-linked limitations without provider transmission, response retention, import, or mutation.",
     "A03 current status means the closed analysis-response/1 contract validates exact snapshot binding, identifiers, units, evidence citations, bounded content, one future-review-only effect, prohibited and unknown effects, and deterministic duplicate/conflict outcomes.",
     "A04 current status means paste or JSON upload stays bounded and transient while the exact active owner manifest, Program precondition, schema, evidence, units, effects, and display-safe text are validated before an exact preview; it creates no durable response, recommendation, decision, adaptation, or Program write.",
-    "D02 current status means one problem-specific support-bundle/1 artifact is generated locally with support-redaction/1, random per-bundle correlation, removable optional sections, exact preview and download bytes, and no upload, persistence, retained-log read, AI reuse, Program write, or performed-fact mutation."
+    "A05 current status means the exact owner-selected allowlist writes one sanitized external-analysis receipt and selected future-only Review proposals atomically, never retains the raw response, and keeps imported observations, proposals, decisions, and future adaptations separate from Program intent and performed facts.",
+    "D01 current status means only the closed versioned diagnostic vocabulary may emit coarse operational categories with episode-scoped expiring correlation; unknown fields and private training, provider, error, token, and owner content fail closed, and accepted events expire within 24 hours.",
+    "D02 current status means one problem-specific support-bundle/1 artifact is generated locally with support-redaction/1, random per-bundle correlation, removable optional sections, exact preview and download bytes, and no upload, persistence, retained-log read, AI reuse, Program write, or performed-fact mutation.",
+    "R01 current status means recovery manifest 13 owns every migrated database table, the v2 lifecycle audit owns every consequential semantic field family and explicit exclusion, device queues match the sign-out inventory, and omission or stale activation metadata fails closed before release field use."
   ]
 }

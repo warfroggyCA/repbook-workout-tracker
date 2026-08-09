@@ -788,3 +788,28 @@ action, fetch, upload, storage, diagnostic-log read, analysis-package reuse, or
 automatic provider transmission. The artifact creates no durable entity,
 receipt, migration, snapshot, recovery, Review, Coach, Program, workout, or
 performed-fact obligation.
+
+## R01 cross-cutting lifecycle audit
+
+`src/services/recovery-manifest.ts` remains the only durable-table inventory.
+Recovery manifest 13 classifies every migrated base table exactly once and owns
+account scope, archive/permanent-delete behavior, capture, restore ordering,
+retention, and integrity checks. R01 does not duplicate that table registry.
+
+`src/lib/v2-lifecycle-audit.ts` adds the narrower semantic-field audit required
+for v2 hardening. It maps Program intent and versions, active plan snapshots,
+occurrences, performed sets, correction lineage, independent activities,
+progression inputs, Review proposals, owner decisions, accepted adaptations,
+external-analysis receipts, device queues, diagnostics, and support bundles to
+exact creation, read, correction, archive/delete, import/export, snapshot,
+restore, rollback, sign-out/device, diagnostic, Review, Coach, and recovery
+owners. Each non-applicable lifecycle requires an explicit bounded reason.
+
+Database introspection rejects an audited table or field absent from the exact
+migrated schema. Consistency tests reject a table absent from recovery manifest
+13, a missing lifecycle owner, an unexplained exclusion, a device queue absent
+from the sign-out inventory, or an implemented product package still marked as
+future. The audit exposed and corrected that last case for the already-live A05
+selective import bridge and the omitted D01 implementation marker. R01 adds no
+schema, migration, writer, runtime log,
+owner-data path, snapshot shape, or recovery-manifest version.
