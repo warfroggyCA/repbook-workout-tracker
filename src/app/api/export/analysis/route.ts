@@ -7,7 +7,10 @@ import {
 import { sensitiveJson } from "@/lib/http-security";
 import { getRouteUser } from "@/lib/route-auth";
 import { sameOriginMutationFailure } from "@/lib/route-security";
-import { logServerEvent } from "@/lib/server-log";
+import {
+  categorizeDiagnosticError,
+  logDiagnosticEvent,
+} from "@/lib/server-log";
 import {
   AnalysisPackageTooLargeError,
   createAnalysisPackage,
@@ -79,8 +82,8 @@ export async function POST(request: Request) {
     if (error instanceof AnalysisPackageTooLargeError) {
       return sensitiveJson({ error: error.message }, { status: 413 });
     }
-    logServerEvent("error", "analysis_package.generation_failed", {
-      errorName: error instanceof Error ? error.name : "unknown",
+    logDiagnosticEvent("analysis_package.generation_failed", {
+      errorCategory: categorizeDiagnosticError(error, "runtime"),
     });
     return sensitiveJson(
       {

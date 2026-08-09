@@ -57,11 +57,7 @@ function deterministicRfcUuidSql(seed: SQL) {
 export type SessionLifecycleDependencies = {
   checkpoint?: LifecycleCheckpoint;
   evaluateStartCounts?: (expected: number, inserted: number) => boolean;
-  logStartIncomplete?: (fields: {
-    userId: string;
-    templateId: string;
-    sessionId: string;
-  }) => void | Promise<void>;
+  logStartIncomplete?: () => void | Promise<void>;
   now?: () => Date;
   timezone?: string;
   startRequestKey?: string;
@@ -1714,12 +1710,11 @@ export async function startWorkoutSession(
     )
   ) {
     await cleanupIncompleteWorkoutCreation(db, userId, String(row.id));
-    const fields = { userId, templateId, sessionId: String(row.id) };
     if (dependencies.logStartIncomplete) {
-      await dependencies.logStartIncomplete(fields);
+      await dependencies.logStartIncomplete();
     } else {
-      const { logServerEvent } = await import("@/lib/server-log");
-      logServerEvent("error", "session.start_incomplete", fields);
+      const { logDiagnosticEvent } = await import("@/lib/server-log");
+      logDiagnosticEvent("session.start_incomplete", {});
     }
     throw new IncompleteWorkoutCreationError();
   }

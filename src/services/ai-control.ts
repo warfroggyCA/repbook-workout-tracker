@@ -12,7 +12,10 @@ import {
   type AIUsage,
 } from "@/ai/provider";
 import { optionalEnv } from "@/lib/env";
-import { logServerEvent } from "@/lib/server-log";
+import {
+  categorizeDiagnosticError,
+  logDiagnosticEvent,
+} from "@/lib/server-log";
 
 export const AI_RATE_WINDOW_MINUTES = 10;
 export const AI_REQUEST_LIMIT = 20;
@@ -369,14 +372,16 @@ export async function runControlledStructuredGeneration<T>(
       claim,
       cancelled ? "cancelled" : timedOut ? "timed_out" : "failed"
     ).catch((failureWriteError) => {
-      logServerEvent("error", "ai.usage_failure_write_failed", {
-        usageId: claim.id,
-        leaseId: claim.leaseId,
-        status: cancelled ? "cancelled" : timedOut ? "timed_out" : "failed",
-        errorName:
-          failureWriteError instanceof Error
-            ? failureWriteError.name
-            : "UnknownError",
+      logDiagnosticEvent("ai.usage_failure_write_failed", {
+        usageOutcome: cancelled
+          ? "cancelled"
+          : timedOut
+            ? "timed_out"
+            : "failed",
+        errorCategory: categorizeDiagnosticError(
+          failureWriteError,
+          "persistence",
+        ),
       });
     });
     throw error;

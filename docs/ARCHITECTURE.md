@@ -740,3 +740,25 @@ consumption, raw-response non-retention, and unchanged Program intent,
 immutable Program versions, active work, completed sets, and occurrence facts.
 Gauntlet C adds no provider call, schema, migration, snapshot or recovery
 version, Program publication, historical repair, or production action.
+
+## D01 structured redacted diagnostics
+
+D01 replaces arbitrary server log events with one server-only diagnostic
+boundary in `src/lib/server-log.ts`. Its manifest owns every permitted event
+name and fixes each event's level, component, operation, coarse state, and
+exact field validators. TypeScript rejects undeclared call-site shapes, and the
+runtime independently refuses unknown events, extra or missing fields, and
+invalid enum or numeric values without writing a partial event.
+
+Every accepted event carries the application version, diagnostic schema and
+redaction versions, timestamp, a 24-hour retention expiry, and a random
+episode correlation value. A correlation value is never derived from an owner
+or record identifier, is valid for at most 15 minutes, and becomes `null` when
+an explicitly supplied episode has expired. Raw exceptions are mapped only to
+a closed error category; provider failures first pass through the separate
+provider-error sanitizer.
+
+The application does not create a diagnostic database or retain a diagnostic
+bundle. Its stdout sink must discard D01 events no later than their recorded
+expiry. D01 adds no schema, migration, snapshot, recovery-manifest, browser,
+support-bundle, upload, Program, workout, or performed-fact path.

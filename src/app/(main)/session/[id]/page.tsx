@@ -31,8 +31,10 @@ import { loadEquipmentLoadProfiles } from "@/services/equipment-load-profiles";
 import { buildSessionEquipmentPresentation } from "@/lib/session-equipment-presentation";
 import { sessionEquipmentGeometrySnapshotSchema } from "@/lib/session-equipment-snapshot-contract";
 import { isPhase0StartDisposableAcceptanceRuntime } from "@/lib/acceptance-runtime";
-import { logServerEvent } from "@/lib/server-log";
-import { safeErrorName } from "@/lib/safe-error-name";
+import {
+  categorizeDiagnosticError,
+  logDiagnosticEvent,
+} from "@/lib/server-log";
 import { Button } from "@/components/ui/button";
 import { actionableActiveSessionOccurrences } from "@/lib/warmup-occurrence-compatibility";
 import {
@@ -93,22 +95,15 @@ function ConfirmedSessionLoadRecovery({ sessionId }: { sessionId: string }) {
 }
 
 export default async function SessionPage(props: PageProps<"/session/[id]">) {
-  let requestedId: string | null = null;
   try {
     const { id } = await props.params;
-    requestedId = id;
     const searchParams = await props.searchParams;
     return await renderSessionPage(id, searchParams);
   } catch (error) {
     unstable_rethrow(error);
-    logServerEvent("error", "session.render_failed", {
-      sessionId:
-        requestedId &&
-        /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(requestedId)
-          ? requestedId
-          : null,
-      category: "workout_status_unconfirmed",
-      errorName: safeErrorName(error),
+    logDiagnosticEvent("session.render_failed", {
+      routeState: "route_input",
+      errorCategory: categorizeDiagnosticError(error, "persistence"),
     });
     throw new Error("The workout status could not be confirmed.");
   }
@@ -498,10 +493,9 @@ async function renderSessionPage(
     );
   } catch (error) {
     unstable_rethrow(error);
-    logServerEvent("error", "session.render_failed", {
-      sessionId: session.id,
-      category: "confirmed_active_render_failure",
-      errorName: safeErrorName(error),
+    logDiagnosticEvent("session.render_failed", {
+      routeState: "confirmed_active",
+      errorCategory: categorizeDiagnosticError(error, "runtime"),
     });
     return <ConfirmedSessionLoadRecovery sessionId={session.id} />;
   }

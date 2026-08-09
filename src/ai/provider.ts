@@ -11,7 +11,7 @@ import { createOpenAI } from "@ai-sdk/openai";
 import type { z } from "zod";
 import { optionalEnv } from "@/lib/env";
 import { isDisposableAcceptanceRuntime } from "@/lib/acceptance-runtime";
-import { logServerEvent } from "@/lib/server-log";
+import { logDiagnosticEvent } from "@/lib/server-log";
 import { sanitizeAIFinishReason } from "@/lib/ai-provider-error";
 import { buildBaRoutineChangeFixture } from "@/ai/acceptance-routine-change-fixture";
 import {
@@ -183,13 +183,8 @@ class SdkProvider implements AIProvider {
       value = result.output;
     } catch (error) {
       if (NoOutputGeneratedError.isInstance(error)) {
-        logServerEvent("error", "ai.structured_output_missing", {
-          task: opts.task,
-          model: resolved.name,
+        logDiagnosticEvent("ai.structured_output_missing", {
           finishReason: sanitizeAIFinishReason(result.finishReason),
-          inputTokens: usage.inputTokens ?? 0,
-          outputTokens: usage.outputTokens ?? 0,
-          reasoningTokens: usage.outputTokenDetails.reasoningTokens ?? 0,
         });
       }
       throw error;

@@ -27,7 +27,7 @@ npm run docs:check
 npm run audit:check
 ```
 
-The Repbook v2 semantic foundation and current T01/T02/T03/T04/T05/T06/U01/U02/U03/H01/H02/H03/H04/A01/A02/A03/A04/A05/A06/Gauntlet C activation
+The Repbook v2 semantic foundation and current T01/T02/T03/T04/T05/T06/U01/U02/U03/H01/H02/H03/H04/A01/A02/A03/A04/A05/A06/Gauntlet C/D01 activation
 packages have focused gates:
 
 ```bash
@@ -71,6 +71,7 @@ npx vitest run tests/unit/v2-a05-selective-review-bridge.test.ts --maxWorkers=1 
 npm run test:e2e:v2-a05
 npx vitest run tests/unit/v2-a06-adversarial-corpus.test.ts --maxWorkers=1 --no-file-parallelism
 npx vitest run tests/unit/v2-gauntlet-c-external-roundtrip.test.ts tests/unit/v2-a06-adversarial-corpus.test.ts --maxWorkers=1 --no-file-parallelism
+npx vitest run tests/unit/server-log.test.ts tests/unit/ai-provider-error.test.ts tests/unit/v2-d01-structured-diagnostics.test.ts --maxWorkers=1 --no-file-parallelism
 ```
 
 The semantic test validates all synthetic F01-F17 scenarios and every required
@@ -216,6 +217,14 @@ and protected Program, active-workout, and performed-fact state to remain
 unchanged. Its A06 unknown-effect case must reject deterministically and permit
 validation of the corrected response without consuming the manifest or writing
 Review state.
+
+D01 activates the single structured diagnostic boundary. Its focused gate
+proves exact event and field allowlists, fail-closed unknown input, sanitized
+provider and ordinary error categories, random episode-scoped correlation,
+declared retention expiry, output-failure isolation, and source-wide omission
+of owner IDs, record IDs, workout content, raw errors, tokens, and provider
+payloads. D01 changes no browser path or persisted application state, so it
+does not add a dedicated browser or database gate.
 
 `audit:check` requires a clean production dependency audit and also reviews the
 complete development-tool tree. Any temporary development-only exception is

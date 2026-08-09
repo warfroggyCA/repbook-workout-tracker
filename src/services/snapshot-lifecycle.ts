@@ -2,7 +2,10 @@ import { randomUUID } from "node:crypto";
 import { sql } from "drizzle-orm";
 import type { Db } from "@/db";
 import { resultRows } from "@/db/result";
-import { logServerEvent } from "@/lib/server-log";
+import {
+  categorizeDiagnosticError,
+  logDiagnosticEvent,
+} from "@/lib/server-log";
 import {
   getSnapshotObjectStore,
   type SnapshotObjectStore,
@@ -317,12 +320,9 @@ export async function runSnapshotLifecycle(
       result.deletedSnapshots += 1;
     } catch (error) {
       result.deletionFailures += 1;
-      logServerEvent("error", "snapshot.lifecycle_deletion_failed", {
-        snapshotId: snapshot.id,
-        userId: snapshot.userId,
+      logDiagnosticEvent("snapshot.lifecycle_deletion_failed", {
         objectDeleted,
-        errorName: error instanceof Error ? error.name : "UnknownError",
-        errorMessage: errorMessage(error),
+        errorCategory: categorizeDiagnosticError(error, "storage"),
       });
       if (!objectDeleted) {
         await recordDeletionFailure(db, snapshot, now, errorMessage(error));
@@ -357,17 +357,15 @@ export async function runSnapshotLifecycle(
         result.orphanObjectsDeleted += 1;
       } catch (error) {
         result.orphanDeletionFailures += 1;
-        logServerEvent("error", "snapshot.lifecycle_orphan_delete_failed", {
-          errorName: error instanceof Error ? error.name : "UnknownError",
-          errorMessage: errorMessage(error),
+        logDiagnosticEvent("snapshot.lifecycle_orphan_delete_failed", {
+          errorCategory: categorizeDiagnosticError(error, "storage"),
         });
       }
     }
   } catch (error) {
     result.storeScanFailure = errorMessage(error);
-    logServerEvent("error", "snapshot.lifecycle_store_scan_failed", {
-      errorName: error instanceof Error ? error.name : "UnknownError",
-      errorMessage: result.storeScanFailure,
+    logDiagnosticEvent("snapshot.lifecycle_store_scan_failed", {
+      errorCategory: categorizeDiagnosticError(error, "storage"),
     });
   }
 

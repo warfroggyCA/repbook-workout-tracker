@@ -1,41 +1,162 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { logServerEvent } from "@/lib/server-log";
+import {
+  categorizeDiagnosticError,
+  createDiagnosticEpisode,
+  DIAGNOSTIC_EPISODE_MINUTES,
+  DIAGNOSTIC_EVENT_SCHEMA_VERSION,
+  DIAGNOSTIC_REDACTION_VERSION,
+  DIAGNOSTIC_RETENTION_HOURS,
+  logDiagnosticEvent,
+} from "@/lib/server-log";
+import { PRODUCT_VERSION } from "@/lib/product-version";
+
+const NOW = new Date("2026-08-08T18:00:00.000Z");
+const CORRELATION_ID = "2dc53f9e-d651-4c72-8b07-ca011afa2847";
 
 afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe("server event logger", () => {
-  it("writes one structured JSON line and truncates every supplied string", () => {
+describe("structured redacted diagnostic logger", () => {
+  it("writes one versioned, retention-bounded event from the closed vocabulary", () => {
     const write = vi.spyOn(console, "log").mockImplementation(() => undefined);
 
-    logServerEvent("error", "test.event", {
-      id: "record-1",
-      message: "x".repeat(700),
-      attempts: 2,
-      retrying: true,
-      optional: null,
-    });
+    const result = logDiagnosticEvent(
+      "progression.job_failed",
+      {
+        attemptCount: 2,
+        retryScheduled: true,
+        errorCategory: "persistence",
+      },
+      { now: NOW, randomId: () => CORRELATION_ID },
+    );
 
+    expect(result).toBe("written");
     expect(write).toHaveBeenCalledTimes(1);
-    const event = JSON.parse(String(write.mock.calls[0]?.[0]));
-    expect(event).toMatchObject({
+    expect(JSON.parse(String(write.mock.calls[0]?.[0]))).toEqual({
+      schemaVersion: DIAGNOSTIC_EVENT_SCHEMA_VERSION,
+      redactionVersion: DIAGNOSTIC_REDACTION_VERSION,
+      appVersion: PRODUCT_VERSION,
+      at: NOW.toISOString(),
+      retentionClass: "ephemeral_24h",
+      retentionExpiresAt: new Date(
+        NOW.getTime() + DIAGNOSTIC_RETENTION_HOURS * 60 * 60 * 1_000,
+      ).toISOString(),
+      correlationId: CORRELATION_ID,
       level: "error",
-      event: "test.event",
-      id: "record-1",
-      attempts: 2,
-      retrying: true,
-      optional: null,
+      event: "progression.job_failed",
+      component: "progression",
+      operation: "job",
+      state: "failed",
+      durationMs: null,
+      errorCategory: "persistence",
+      attemptCount: 2,
+      retryScheduled: true,
     });
-    expect(event.message).toHaveLength(500);
-    expect(new Date(event.at).toISOString()).toBe(event.at);
   });
 
-  it("never throws when output itself fails", () => {
-    vi.spyOn(console, "log").mockImplementation(() => {
+  it("refuses unknown events, extra fields, missing fields, and invalid values", () => {
+    const write = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    const unsafe = logDiagnosticEvent as (
+      event: string,
+      fields: Record<string, unknown>,
+    ) => string;
+
+    expect(unsafe("private.event", {})).toBe("refused");
+    expect(
+      unsafe("settings.timezone_save_failed", {
+        errorCategory: "persistence",
+        userId: "11111111-1111-4111-8111-111111111111",
+      }),
+    ).toBe("refused");
+    expect(unsafe("settings.timezone_save_failed", {})).toBe("refused");
+    expect(
+      unsafe("settings.timezone_save_failed", {
+        errorCategory: "database said owner note text",
+      }),
+    ).toBe("refused");
+    expect(write).not.toHaveBeenCalled();
+  });
+
+  it("reuses correlation only inside a valid short-lived episode", () => {
+    const write = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    const episode = createDiagnosticEpisode({
+      now: NOW,
+      randomId: () => CORRELATION_ID,
+    });
+    expect(episode).toEqual({
+      correlationId: CORRELATION_ID,
+      startedAt: NOW.toISOString(),
+      expiresAt: new Date(
+        NOW.getTime() + DIAGNOSTIC_EPISODE_MINUTES * 60 * 1_000,
+      ).toISOString(),
+    });
+
+    logDiagnosticEvent(
+      "settings.timezone_save_failed",
+      { errorCategory: "persistence" },
+      { now: NOW, episode },
+    );
+    logDiagnosticEvent(
+      "settings.font_size_save_failed",
+      { errorCategory: "persistence" },
+      {
+        now: new Date(
+          NOW.getTime() + (DIAGNOSTIC_EPISODE_MINUTES + 1) * 60 * 1_000,
+        ),
+        episode,
+      },
+    );
+
+    expect(JSON.parse(String(write.mock.calls[0]?.[0])).correlationId).toBe(
+      CORRELATION_ID,
+    );
+    expect(JSON.parse(String(write.mock.calls[1]?.[0])).correlationId).toBeNull();
+  });
+
+  it("categorizes errors without emitting message, stack, or hostile names", () => {
+    const sentinel = "WT_SENTINEL_PRIVATE_ERROR";
+    expect(
+      categorizeDiagnosticError(
+        new DOMException(sentinel, "TimeoutError"),
+        "runtime",
+      ),
+    ).toBe("timeout");
+    expect(categorizeDiagnosticError(new Error(sentinel), "storage")).toBe(
+      "storage",
+    );
+
+    const hostile = Object.defineProperty({}, "name", {
+      get() {
+        throw new Error(sentinel);
+      },
+    });
+    expect(categorizeDiagnosticError(hostile, "unknown")).toBe("unknown");
+    expect(
+      JSON.stringify([
+        categorizeDiagnosticError(new Error(sentinel), "storage"),
+        categorizeDiagnosticError(hostile, "unknown"),
+      ]),
+    ).not.toContain(sentinel);
+  });
+
+  it("never throws when random generation or diagnostic output fails", () => {
+    const write = vi.spyOn(console, "log").mockImplementation(() => {
       throw new Error("stdout unavailable");
     });
 
-    expect(() => logServerEvent("warn", "test.output_failed")).not.toThrow();
+    expect(() =>
+      logDiagnosticEvent(
+        "settings.timezone_save_failed",
+        { errorCategory: "persistence" },
+        {
+          now: NOW,
+          randomId: () => {
+            throw new Error("random unavailable");
+          },
+        },
+      ),
+    ).not.toThrow();
+    expect(write).toHaveBeenCalledTimes(1);
   });
 });

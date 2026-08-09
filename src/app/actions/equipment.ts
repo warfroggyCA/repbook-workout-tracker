@@ -5,7 +5,10 @@ import { getDb } from "@/db";
 import { getCurrentUser } from "@/lib/user";
 import { isSettingsManagementEnabled } from "@/lib/settings-management-feature";
 import { validateEquipmentInventoryDocument } from "@/lib/equipment-inventory-contract";
-import { logServerEvent } from "@/lib/server-log";
+import {
+  categorizeDiagnosticError,
+  logDiagnosticEvent,
+} from "@/lib/server-log";
 import {
   previewInventoryDocumentChanges,
   type InventoryChangePreview,
@@ -61,9 +64,8 @@ export async function previewEquipmentInventorySave(
       validated.document
     );
   } catch (error) {
-    logServerEvent("error", "equipment.inventory_preview_failed", {
-      userId: user.id,
-      errorName: error instanceof Error ? error.name : "UnknownError",
+    logDiagnosticEvent("equipment.inventory_preview_failed", {
+      errorCategory: categorizeDiagnosticError(error, "persistence"),
     });
     return {
       ok: false,
@@ -127,9 +129,8 @@ export async function saveEquipmentInventory(
       validated.document
     );
   } catch (error) {
-    logServerEvent("error", "equipment.inventory_pre_save_check_failed", {
-      userId: user.id,
-      errorName: error instanceof Error ? error.name : "UnknownError",
+    logDiagnosticEvent("equipment.inventory_pre_save_check_failed", {
+      errorCategory: categorizeDiagnosticError(error, "persistence"),
     });
     return {
       ok: false,
@@ -158,9 +159,8 @@ export async function saveEquipmentInventory(
       validated.document
     );
   } catch (error) {
-    logServerEvent("error", "equipment.inventory_save_failed", {
-      userId: user.id,
-      errorName: error instanceof Error ? error.name : "UnknownError",
+    logDiagnosticEvent("equipment.inventory_save_failed", {
+      errorCategory: categorizeDiagnosticError(error, "persistence"),
     });
     return {
       ok: false,

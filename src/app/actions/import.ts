@@ -14,7 +14,7 @@ import {
 import { getCurrentUser } from "@/lib/user";
 import { sanitizeAIProviderError } from "@/lib/ai-provider-error";
 import { MAX_STORED_LOAD, normalizeStoredLoad } from "@/lib/units";
-import { logServerEvent } from "@/lib/server-log";
+import { logDiagnosticEvent } from "@/lib/server-log";
 import { audit } from "@/services/audit";
 import { isAIAvailable, AIUnavailableError } from "@/ai/provider";
 import type { AIEnvelope } from "@/ai/envelope";
@@ -238,9 +238,7 @@ export async function parseRoutineText(
       }
     } catch (error) {
       // Deterministic candidates are already in place; review handles the rest.
-      logServerEvent("warn", "routine_import.exercise_map_degraded", {
-        userId: user.id,
-        importEventId: event.id,
+      logDiagnosticEvent("routine_import.exercise_map_degraded", {
         candidateCount: mapRequest.length,
         ...sanitizeAIProviderError(error),
       });

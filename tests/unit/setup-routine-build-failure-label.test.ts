@@ -6,7 +6,7 @@ const mocks = vi.hoisted(() => ({
   getDb: vi.fn(),
   getLibraryWithAvailability: vi.fn(),
   runControlledStructuredGeneration: vi.fn(),
-  logServerEvent: vi.fn(),
+  logDiagnosticEvent: vi.fn(),
 }));
 
 vi.mock("@/lib/user", () => ({
@@ -22,7 +22,7 @@ vi.mock("@/services/routine-import", () => ({
 }));
 
 vi.mock("@/lib/server-log", () => ({
-  logServerEvent: mocks.logServerEvent,
+  logDiagnosticEvent: mocks.logDiagnosticEvent,
 }));
 
 vi.mock("@/services/ai-control", async (importOriginal) => {
@@ -125,19 +125,16 @@ describe("routine-build failure labels", () => {
       reason:
         "Coach returned an unusable result for Day 1. Try again; if it repeats, submit that day by itself.",
     });
-    expect(mocks.logServerEvent).toHaveBeenCalledWith(
-      "error",
+    expect(mocks.logDiagnosticEvent).toHaveBeenCalledWith(
       "ai.setup_routine_build_failed",
       {
-        userId: "11111111-1111-4111-8111-111111111111",
-        routinePart: "Day 1",
         errorKind: "provider_api",
         providerStatusCode: 503,
         providerRetryable: true,
         causeKind: "unknown_error",
       }
     );
-    expect(JSON.stringify(mocks.logServerEvent.mock.calls)).not.toContain(
+    expect(JSON.stringify(mocks.logDiagnosticEvent.mock.calls)).not.toContain(
       "WT_SENTINEL"
     );
   });
