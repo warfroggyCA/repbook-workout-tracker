@@ -162,6 +162,7 @@ describe("Repbook v2 bounded Gauntlet C external round trip", () => {
     client = new PGlite();
     db = drizzle(client, { schema });
     await migrate(db, { migrationsFolder: "./src/db/migrations" });
+    await client.exec("set time zone 'UTC'");
     await db.insert(users).values({
       id: IDS.owner,
       email: "gauntlet-c-owner@example.com",
@@ -499,7 +500,7 @@ describe("Repbook v2 bounded Gauntlet C external round trip", () => {
         );
         expect(proposal.effect.target.kind).toBe("program");
         expect(proposal.effect.requestedOutcome).toMatch(
-          /95 lb.*supported working set|supported working set.*95 lb/i,
+          /95 lb.*(?:trustworthy|supported).*set/i,
         );
       } else {
         expect(proposal.evidenceIds).toEqual(
@@ -513,10 +514,12 @@ describe("Repbook v2 bounded Gauntlet C external round trip", () => {
         expect(proposal.evidenceIds).not.toContain(IDS.independentActivity);
         expect(proposal.effect.target.kind).toBe("schedule");
         expect(proposal.effect.requestedOutcome).toMatch(
-          /explicit local dates.*two-to-three-day spacing/i,
+          /two-week.*three dated workout opportunities/i,
         );
       }
-      expect(proposal.limitations.join(" ")).toMatch(/not an accepted|not.*Program change/i);
+      expect(proposal.limitations.join(" ")).toMatch(
+        /not an owner decision|not an accepted|not.*Program change/i,
+      );
       proposalShapes.push({
         questionId: validation.response.question.id,
         targetKind: proposal.effect.target.kind,
