@@ -27,7 +27,7 @@ npm run docs:check
 npm run audit:check
 ```
 
-The Repbook v2 semantic foundation and current T01/T02/T03/T04/T05/T06/U01/U02/U03/H01/H02/H03/H04/A01/A02/A03/A04/A05/A06 activation
+The Repbook v2 semantic foundation and current T01/T02/T03/T04/T05/T06/U01/U02/U03/H01/H02/H03/H04/A01/A02/A03/A04/A05/A06/Gauntlet C activation
 packages have focused gates:
 
 ```bash
@@ -70,6 +70,7 @@ npm run test:e2e:v2-a04
 npx vitest run tests/unit/v2-a05-selective-review-bridge.test.ts --maxWorkers=1 --no-file-parallelism
 npm run test:e2e:v2-a05
 npx vitest run tests/unit/v2-a06-adversarial-corpus.test.ts --maxWorkers=1 --no-file-parallelism
+npx vitest run tests/unit/v2-gauntlet-c-external-roundtrip.test.ts tests/unit/v2-a06-adversarial-corpus.test.ts --maxWorkers=1 --no-file-parallelism
 ```
 
 The semantic test validates all synthetic F01-F17 scenarios and every required
@@ -205,6 +206,16 @@ Valid import is limited to the expected external Review records and Review
 revision transition. Every rejection, recovery, and replay oracle proves
 Program intent, immutable Program versions, active work, and performed facts do
 not change; stateful failures also preserve the complete import state.
+
+Gauntlet C runs two independently produced synthetic responses through the real
+package, instruction, hostile-input parsing, owner-manifest validation,
+selective Review import, and explicit approval path. It requires the complete
+validated object to remain inspectable before import, both workflows to produce
+evidence-linked future-only proposals useful enough for explicit acceptance,
+and protected Program, active-workout, and performed-fact state to remain
+unchanged. Its A06 unknown-effect case must reject deterministically and permit
+validation of the corrected response without consuming the manifest or writing
+Review state.
 
 `audit:check` requires a clean production dependency audit and also reviews the
 complete development-tool tree. Any temporary development-only exception is

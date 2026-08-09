@@ -39,6 +39,11 @@ response fixture only. Its declared oracles are test evidence, not imported
 training evidence, model-quality claims, owner decisions, or release records.
 No real provider output or private operating chronology is included.
 
+The Gauntlet C workflow fixture contains independently generated synthetic
+chat-paste and file-upload responses bound at test time to a disposable A01
+package. It is public verification evidence only. It includes no provider or
+owner identity and does not assert that model advice is generally reliable.
+
 The first public `fix/pain-hold-truth` commit maps the application and test
 changes from private source commit
 `f308ead8c8ef27430707c5aa5651b97808ccfab6`. Private release-record and

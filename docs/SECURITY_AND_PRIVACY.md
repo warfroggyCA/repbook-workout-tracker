@@ -95,5 +95,14 @@ Stateful cases assert that rejected or recovery input leaves both protected
 workout/Program state and the import lifecycle unchanged. No provider response,
 owner identity, or operational evidence is checked into the corpus.
 
+Gauntlet C retains only two synthetic provider-neutral response fixtures and
+their workflow labels; it records no provider, account, or model metadata. The
+complete validated response is rendered as inert owner-preview text before
+selection, while the original bytes retain the existing transient recovery or
+discard boundary. The real import and explicit approval proof stores only the
+established allowlist and `programChanged: false` future Review direction. It
+does not transmit a package, retain unknown or unselected response content, or
+change Program, active-workout, or performed facts.
+
 Security reports use the private process in `SECURITY.md`; public issues must
 contain synthetic data only.

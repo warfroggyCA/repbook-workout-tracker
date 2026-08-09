@@ -716,3 +716,27 @@ import state unchanged. Unknown fields and effects fail closed.
 A06 is verification-only. It adds no runtime path, schema, migration, snapshot
 or recovery version, browser behavior, provider call, Program publication,
 historical repair, or production action.
+
+## Gauntlet C external-analysis trust gate
+
+Gauntlet C exercises two independent provider-neutral workflows—chat paste and
+local JSON file upload—against the real A01 package, A02 instructions, A03
+schema, A04 validation, A05 selective import and explicit Review decision, and
+A06 adversarial oracles. The checked-in responses are synthetic evaluation
+evidence, not provider metadata, owner data, or a claim that model advice is
+generally correct.
+
+The owner preview includes the complete validated response object as inert text
+alongside the selectable summary. This exposes evidence quality, measurements,
+target evidence, requested outcomes, limitations, unknowns, and safety claims
+before import. Current instructions accurately direct the owner back through
+that exact preview and explicit item selection. Validation alone still writes
+nothing; imported proposals remain external and an explicit later Review
+decision records only a future direction with `programChanged: false`.
+
+The focused round trip proves useful accepted proposals from both workflows,
+deterministic unknown-effect rejection, correction without manifest
+consumption, raw-response non-retention, and unchanged Program intent,
+immutable Program versions, active work, completed sets, and occurrence facts.
+Gauntlet C adds no provider call, schema, migration, snapshot or recovery
+version, Program publication, historical repair, or production action.

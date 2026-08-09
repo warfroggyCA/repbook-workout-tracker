@@ -83,7 +83,9 @@ describe("A02 provider-neutral external-analysis instructions", () => {
     expect(instructions).toContain("Do not invent measurements, dates, units");
     expect(instructions).toContain("Do not claim that you changed Repbook");
     expect(instructions).toContain("Cite exact package evidence IDs");
-    expect(instructions).toContain("does not yet expose the later paste/upload import flow");
+    expect(instructions).toContain("inspect the exact owner preview");
+    expect(instructions).toContain("explicitly select each item to import into Review");
+    expect(instructions).not.toContain("does not yet expose the later paste/upload import flow");
     expect(instructions).not.toMatch(/system prompt|assistant api|anthropic api|openai api/i);
     expect(externalAnalysisInstructionsFilename(value)).toBe(
       "repbook-instructions-program_progress-2026-08-08.txt",
