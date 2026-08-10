@@ -122,7 +122,7 @@ test("keeps a set pending until acknowledgement, then reviews and retains a corr
     .click();
 
   await expect(page.getByText("Set correction acknowledged")).toBeVisible();
-  await page.reload({ waitUntil: "networkidle" });
+  await page.reload({ waitUntil: "domcontentloaded" });
   await expect(plankDisclosure).toHaveAttribute("aria-expanded", "false");
   await waitForHydratedReactHandler(plankDisclosure);
   await plankDisclosure.click();
