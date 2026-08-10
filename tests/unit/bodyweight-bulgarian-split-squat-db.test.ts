@@ -12,7 +12,6 @@ import {
   recordVersions,
   sessionExercises,
   sessionOccurrences,
-  users,
 } from "@/db/schema";
 import { buildJsonBackup } from "@/services/export";
 import { getExerciseReplacementOptions } from "@/services/exercise-replacements";
@@ -68,10 +67,10 @@ describe("0069 bodyweight Bulgarian split-squat performed variant", () => {
     const activeSessionExerciseId = crypto.randomUUID();
     const workingOccurrenceId = crypto.randomUUID();
 
-    await db.insert(users).values({
-      id: userId,
-      email: `bodyweight-bss-${crypto.randomUUID()}@example.test`,
-    });
+    await database.client.query(
+      "INSERT INTO users (id, email) VALUES ($1, $2)",
+      [userId, `bodyweight-bss-${crypto.randomUUID()}@example.test`],
+    );
     const [family] = await db
       .insert(exerciseFamilies)
       .values({
