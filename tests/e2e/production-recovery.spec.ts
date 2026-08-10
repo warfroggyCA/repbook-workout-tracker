@@ -115,6 +115,10 @@ if (!process.env.PLAYWRIGHT_PRODUCTION_BASE_URL) {
     const stalePage = await context.newPage();
     await stalePage.goto(page.url());
     const staleNextSet = stalePage.getByTestId("current-exercise-card");
+    await staleNextSet
+      .locator("details", { hasText: "More for this exercise" })
+      .locator(":scope > summary")
+      .click();
     const staleAlternatives = staleNextSet.getByRole("button", {
       name: "View alternatives",
       exact: true,

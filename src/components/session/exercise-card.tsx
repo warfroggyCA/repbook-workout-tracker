@@ -101,7 +101,10 @@ import type { PreviousComparableSetEvidence } from "@/services/previous-comparab
 import { createClientUuid } from "@/lib/client-uuid";
 import { formatPainEvidence } from "@/lib/pain-evidence";
 import type { OccurrenceMutationOutboxEntry } from "@/lib/occurrence-mutation-outbox";
-import { CompletedSetCorrection } from "@/components/history/completed-set-correction";
+import {
+  CompletedSetCorrection,
+  type CorrectedSetValues,
+} from "@/components/history/completed-set-correction";
 import {
   LIMITATION_CAUSES,
   LIMITATION_CAUSE_LABELS,
@@ -199,6 +202,73 @@ function formatLoggedExceptionContext(set: LoggedSet) {
     context.push(`Pain: ${set.pain.bodyPart} ${set.pain.severity}/10`);
   }
   return context;
+}
+
+function ActiveSetSaveReceipt({
+  receipt,
+  currentExerciseId,
+  historyRevision,
+  onAcknowledged,
+}: {
+  receipt: SetAcknowledgementReceipt;
+  currentExerciseId: string;
+  historyRevision: number;
+  onAcknowledged: (result: {
+    values: CorrectedSetValues;
+    historyRevision: number;
+  }) => void;
+}) {
+  return (
+    <div
+      id={`active-set-save-receipt-${receipt.sessionExerciseId}-${receipt.set.setNo}`}
+      data-testid="active-set-save-receipt"
+      role="status"
+      className="mt-3 rounded-md border border-green-600/30 bg-green-600/10 px-3 py-2 text-sm"
+    >
+      <p className="font-semibold">
+        Saved · {receipt.sessionExerciseId !== currentExerciseId
+          ? `${receipt.exerciseName} · `
+          : ""}
+        Set {receipt.set.setNo}
+      </p>
+      <p className="mt-0.5 text-xs text-muted-foreground">
+        {formatLoggedSet(receipt.set, receipt.metricType)} · Acknowledged by
+        Repbook
+      </p>
+      {formatLoggedExceptionContext(receipt.set).map((context) => (
+        <p key={context} className="mt-0.5 text-xs text-muted-foreground">
+          {context}
+        </p>
+      ))}
+      <div className="mt-2 flex flex-wrap items-center justify-between gap-2 border-t border-green-700/20 pt-2">
+        <span className="text-xs text-muted-foreground">
+          Wrong value? Correct the saved set; the original remains in Edit
+          history.
+        </span>
+        {(receipt.set.metricType ?? receipt.metricType) === "activity" ? (
+          <span className="text-xs text-muted-foreground">
+            Correction unavailable for this legacy shape
+          </span>
+        ) : (
+          <CompletedSetCorrection
+            setId={receipt.set.id}
+            setNo={receipt.set.setNo}
+            weight={receipt.set.weight}
+            weightUnit={receipt.set.weightUnit}
+            reps={receipt.set.reps}
+            distanceKm={receipt.set.distanceKm ?? null}
+            durationSeconds={receipt.set.durationSeconds ?? null}
+            metricType={receipt.set.metricType ?? receipt.metricType}
+            rpe={receipt.set.rpe}
+            note={receipt.set.note}
+            historyRevision={historyRevision}
+            source="active_workout"
+            onAcknowledged={onAcknowledged}
+          />
+        )}
+      </div>
+    </div>
+  );
 }
 
 function performedMetricTypeForLivePatch(
@@ -820,20 +890,51 @@ export function ExerciseCard({
         )
         .sort((left, right) => right.setNo - left.setNo)[0] ?? null
     : null;
-  const displayedAcknowledgementReceipt = isCurrentExercise
-    ? acknowledgementReceipt ??
-      (prioritizeCurrentAction && latestAcknowledgedSet
-        ? {
-            sessionExerciseId: exercise.id,
-            exerciseName: exercise.name,
-            metricType:
-              latestAcknowledgedSet.metricType ??
-              exercise.metricType ??
-              "weight_reps",
-            set: latestAcknowledgedSet,
-          }
-        : null)
-    : null;
+  const displayedAcknowledgementReceipt =
+    acknowledgementReceipt ??
+    (isCurrentExercise && prioritizeCurrentAction && latestAcknowledgedSet
+      ? {
+          sessionExerciseId: exercise.id,
+          exerciseName: exercise.name,
+          metricType:
+            latestAcknowledgedSet.metricType ??
+            exercise.metricType ??
+            "weight_reps",
+          set: latestAcknowledgedSet,
+        }
+      : null);
+
+  function handleAcknowledgementCorrection(result: {
+    values: CorrectedSetValues;
+    historyRevision: number;
+  }) {
+    if (!displayedAcknowledgementReceipt) return;
+    if (displayedAcknowledgementReceipt.sessionExerciseId === exercise.id) {
+      onPatch({
+        sets: exercise.sets.map((candidate) =>
+          candidate.id === displayedAcknowledgementReceipt.set.id
+            ? {
+                ...candidate,
+                ...result.values,
+                correctionCount: (candidate.correctionCount ?? 0) + 1,
+              }
+            : candidate,
+        ),
+      });
+    }
+    onHistoryRevisionChange(result.historyRevision);
+    const measurement = readActiveWorkoutMeasurements().find(
+      (record) =>
+        (displayedAcknowledgementReceipt.set.clientKey != null &&
+          record.clientKey === displayedAcknowledgementReceipt.set.clientKey) ||
+        record.setId === displayedAcknowledgementReceipt.set.id,
+    );
+    if (measurement) {
+      patchActiveWorkoutMeasurement(measurement.clientKey, {
+        corrections: measurement.corrections + 1,
+      });
+    }
+  }
   const prioritizedRowIndex = prioritizeCurrentAction
     ? nextSetIdx
     : unconfirmedSet
@@ -1512,118 +1613,12 @@ export function ExerciseCard({
                         onDiscard={onDiscardOccurrenceMutation}
                       />
                       {displayedAcknowledgementReceipt && (
-                        <div
-                          id={`active-set-save-receipt-${displayedAcknowledgementReceipt.sessionExerciseId}-${displayedAcknowledgementReceipt.set.setNo}`}
-                          data-testid="active-set-save-receipt"
-                          role="status"
-                          className="mt-3 rounded-md border border-green-600/30 bg-green-600/10 px-3 py-2 text-sm"
-                        >
-                          <p className="font-semibold">
-                            Saved · {displayedAcknowledgementReceipt.sessionExerciseId !== exercise.id
-                              ? `${displayedAcknowledgementReceipt.exerciseName} · `
-                              : ""}
-                            Set {displayedAcknowledgementReceipt.set.setNo}
-                          </p>
-                          <p className="mt-0.5 text-xs text-muted-foreground">
-                            {formatLoggedSet(
-                              displayedAcknowledgementReceipt.set,
-                              displayedAcknowledgementReceipt.metricType,
-                            )} · Acknowledged by Repbook
-                          </p>
-                          {formatLoggedExceptionContext(
-                            displayedAcknowledgementReceipt.set,
-                          ).map((context) => (
-                            <p
-                              key={context}
-                              className="mt-0.5 text-xs text-muted-foreground"
-                            >
-                              {context}
-                            </p>
-                          ))}
-                          <div className="mt-2 flex flex-wrap items-center justify-between gap-2 border-t border-green-700/20 pt-2">
-                            <span className="text-xs text-muted-foreground">
-                              Wrong value? Correct the saved set; the original
-                              remains in Edit history.
-                            </span>
-                            {(displayedAcknowledgementReceipt.set.metricType ??
-                              displayedAcknowledgementReceipt.metricType) ===
-                            "activity" ? (
-                              <span className="text-xs text-muted-foreground">
-                                Correction unavailable for this legacy shape
-                              </span>
-                            ) : (
-                              <CompletedSetCorrection
-                                setId={displayedAcknowledgementReceipt.set.id}
-                                setNo={displayedAcknowledgementReceipt.set.setNo}
-                                weight={displayedAcknowledgementReceipt.set.weight}
-                                weightUnit={
-                                  displayedAcknowledgementReceipt.set.weightUnit
-                                }
-                                reps={displayedAcknowledgementReceipt.set.reps}
-                                distanceKm={
-                                  displayedAcknowledgementReceipt.set.distanceKm ??
-                                  null
-                                }
-                                durationSeconds={
-                                  displayedAcknowledgementReceipt.set
-                                    .durationSeconds ?? null
-                                }
-                                metricType={
-                                  displayedAcknowledgementReceipt.set.metricType ??
-                                  displayedAcknowledgementReceipt.metricType
-                                }
-                                rpe={displayedAcknowledgementReceipt.set.rpe}
-                                note={displayedAcknowledgementReceipt.set.note}
-                                historyRevision={historyRevision}
-                                source="active_workout"
-                                onAcknowledged={(result) => {
-                                  if (
-                                    displayedAcknowledgementReceipt.sessionExerciseId ===
-                                    exercise.id
-                                  ) {
-                                    onPatch({
-                                      sets: exercise.sets.map((candidate) =>
-                                        candidate.id ===
-                                        displayedAcknowledgementReceipt.set.id
-                                          ? {
-                                              ...candidate,
-                                              ...result.values,
-                                              correctionCount:
-                                                (candidate.correctionCount ?? 0) +
-                                                1,
-                                            }
-                                          : candidate,
-                                      ),
-                                    });
-                                  }
-                                  onHistoryRevisionChange(
-                                    result.historyRevision,
-                                  );
-                                  const measurement =
-                                    readActiveWorkoutMeasurements().find(
-                                      (record) =>
-                                        (displayedAcknowledgementReceipt.set
-                                          .clientKey != null &&
-                                          record.clientKey ===
-                                            displayedAcknowledgementReceipt.set
-                                              .clientKey) ||
-                                        record.setId ===
-                                          displayedAcknowledgementReceipt.set.id,
-                                    );
-                                  if (measurement) {
-                                    patchActiveWorkoutMeasurement(
-                                      measurement.clientKey,
-                                      {
-                                        corrections:
-                                          measurement.corrections + 1,
-                                      },
-                                    );
-                                  }
-                                }}
-                              />
-                            )}
-                          </div>
-                        </div>
+                        <ActiveSetSaveReceipt
+                          receipt={displayedAcknowledgementReceipt}
+                          currentExerciseId={exercise.id}
+                          historyRevision={historyRevision}
+                          onAcknowledged={handleAcknowledgementCorrection}
+                        />
                       )}
                       {prioritizeCurrentAction && (
                         <>
@@ -1721,6 +1716,15 @@ export function ExerciseCard({
                 </div>
               );
             })}
+
+            {activeOccurrence == null && displayedAcknowledgementReceipt && (
+              <ActiveSetSaveReceipt
+                receipt={displayedAcknowledgementReceipt}
+                currentExerciseId={exercise.id}
+                historyRevision={historyRevision}
+                onAcknowledged={handleAcknowledgementCorrection}
+              />
+            )}
 
             <details className="mt-1 rounded-lg border bg-muted/15 text-sm">
               <summary className="flex min-h-[44px] cursor-pointer list-none items-center justify-between gap-2 rounded-lg px-2 py-1 font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">

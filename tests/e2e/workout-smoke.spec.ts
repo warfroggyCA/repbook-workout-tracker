@@ -1717,7 +1717,6 @@ test("keeps every active-workout route reachable with one scroll surface", async
   await expect(currentCard.getByRole("button", { name: "Skip set", exact: true })).toBeVisible();
   await expect(currentCard.getByRole("button", { name: "Ask Coach", exact: true })).toBeVisible();
   await expect(currentCard.getByRole("button", { name: "Form guide", exact: true })).toBeVisible();
-  await expect(currentCard.getByText("Current exercise", { exact: true })).toBeVisible();
   const currentLabelId = await currentCard.getAttribute("aria-labelledby");
   expect(currentLabelId).toBeTruthy();
   await expect(page.locator(`#${currentLabelId}`)).toHaveText(/\S+/);
@@ -1995,6 +1994,9 @@ test("keeps pain and substitution lineage reconstructable through History", asyn
   const painNote = "Sharp at the bottom before changing movements.";
   const setNote = "Comfortable range on the substituted movement.";
 
+  await openNativeDetails(nextSet.locator("details", {
+    hasText: "More for this exercise",
+  }));
   await nextSet.getByRole("button", { name: "Pain / no issue", exact: true }).click();
   const pain = page.getByRole("dialog", { name: "Pain / no-issue evidence" });
   const severity = pain.getByRole("slider");
@@ -2040,6 +2042,9 @@ test("keeps pain and substitution lineage reconstructable through History", asyn
   await waitForEquipmentSelectionsToSettle(page);
   await nextSet.getByLabel("Total load").fill("45");
 
+  await openNativeDetails(nextSet.locator("details", {
+    hasText: "More for this exercise",
+  }));
   await nextSet.getByRole("button", { name: "Add note", exact: true }).click();
   const noteDialog = page.getByRole("dialog", {
     name: new RegExp(`Add note for ${performedExercise}`),
@@ -2082,7 +2087,6 @@ test("keeps the final set acknowledgement visible through background return", as
 }) => {
   await signInAndStartWorkout(page);
   const nextSet = page.getByTestId("current-exercise-card");
-  const firstExercise = page.locator('[id^="exercise-"]').first();
   const workoutStatus = page.getByRole("complementary", { name: "Workout status" });
   const firstName =
     (await nextSet.getByRole("heading", { level: 2 }).textContent())?.trim() ??
@@ -2121,21 +2125,17 @@ test("keeps the final set acknowledgement visible through background return", as
   await backgroundPage.bringToFront();
   releaseFinal();
   await page.bringToFront();
-  const savedRow = firstExercise.locator(
-    '[id^="logged-set-"][id$="-3"]',
-  );
-  await expect(savedRow.getByText("Saved", { exact: true })).toBeVisible();
-  await expect(savedRow).toContainText("Set 3");
-  await expect(firstExercise.getByRole("heading", { level: 2 })).toHaveText(
-    firstName,
-  );
   await expect(page).toHaveURL(/#workout-rest-status$/);
   await expect(workoutStatus).toContainText("Resting");
   const acknowledgement = nextSet.getByTestId("active-set-save-receipt");
+  await expect(page.getByTestId("active-set-save-receipt")).toHaveCount(1);
   await expect(acknowledgement).toContainText(
     `Saved · ${firstName} · Set 3`,
   );
   await expect(acknowledgement).toContainText("Acknowledged by Repbook");
+  await expect(
+    acknowledgement.getByRole("button", { name: "Correct set" }),
+  ).toBeVisible();
   await expect(acknowledgement).toBeInViewport();
   await backgroundPage.close();
   await page.unrouteAll({ behavior: "wait" });
@@ -2741,6 +2741,9 @@ test("keeps an offline set visible and waits for acknowledgement before the next
   await expect.poll(() => actionRequests).toBe(1);
 
   await page.reload();
+  await openNativeDetails(firstExercise.locator("details", {
+    hasText: "Exercise progress & extras",
+  }));
   const savedSet = firstExercise
     .locator('[id^="logged-set-"]')
     .filter({ hasText: "Set 1" })
@@ -2791,13 +2794,13 @@ test("retries a set automatically after one server 500 and still finishes", asyn
   });
 
   // Set entry and acknowledgement stay together in the exercise card.
-  const firstExercise = page.locator('[id^="exercise-"]').first();
   const nextSet = page.getByTestId("current-exercise-card");
   await nextSet.locator('input[inputmode="decimal"]').first().fill("95");
   await nextSet.locator('input[inputmode="numeric"]').first().fill("8");
   await nextSet.getByRole("button", { name: "Log set", exact: true }).click();
 
-  await expect(firstExercise.getByText("Saved", { exact: true })).toBeVisible();
+  await expect(nextSet.getByTestId("active-set-save-receipt"))
+    .toContainText("Acknowledged by Repbook");
   expect(actionRequests).toBeGreaterThanOrEqual(2);
   await page.getByRole("button", { name: "Finish", exact: true }).click();
   await page
@@ -2863,9 +2866,19 @@ test("a parked set pauses only its exercise while another exercise saves", async
   await expect(secondExercise.locator(":scope > button")).toContainText(
     "1/3 planned performed",
   );
-  await expect(secondExercise.getByText("Saved", { exact: true })).toBeVisible();
+  await expect.poll(() => page.evaluate(() => {
+    const raw = localStorage.getItem("workout-tracker:workout-set-outbox:v1");
+    if (!raw) return [];
+    const envelope = JSON.parse(raw) as {
+      entries?: Array<{ sessionExerciseId?: string }>;
+    };
+    return (envelope.entries ?? []).map((entry) => entry.sessionExerciseId);
+  })).toEqual([firstExerciseId]);
 
-  await firstExercise.locator(":scope > button").click();
+  const firstExerciseToggle = firstExercise.locator(":scope > button");
+  if ((await firstExerciseToggle.getAttribute("aria-expanded")) !== "true") {
+    await firstExerciseToggle.click();
+  }
   const removeParkedSet = firstExercise.getByRole("button", {
     name: "Discard",
     exact: true,
