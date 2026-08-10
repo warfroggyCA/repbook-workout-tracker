@@ -14,7 +14,7 @@ import {
   recordVersions,
 } from "@/db/schema";
 import { getCurrentUser } from "@/lib/user";
-import { formatDuration, formatRecordedLocalDate } from "@/lib/dates";
+import { formatRecordedLocalDate } from "@/lib/dates";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { WorkoutArchiveButton } from "@/components/history/workout-archive-button";
@@ -39,6 +39,8 @@ import { getCompletedHistoryContextualNotes } from "@/services/history-page";
 import { CompletedSetCorrection } from "@/components/history/completed-set-correction";
 import { shouldExcludeWorkoutDuration } from "@/lib/workout-duration-quality";
 import { WorkoutTimingCorrection } from "@/components/history/workout-timing-correction";
+import { WorkoutActiveDurationCorrection } from "@/components/history/workout-active-duration-correction";
+import { formatWallClockDuration } from "@/lib/active-session-timing";
 import { filterRecommendationsEligibleForAction } from "@/services/recommendation-evidence-eligibility";
 import {
   classifyPrescriptionOutcome,
@@ -83,6 +85,35 @@ function limitationCauseLabel(value: string | null) {
   return value != null && value in LIMITATION_CAUSE_LABELS
     ? LIMITATION_CAUSE_LABELS[value as LimitationCause]
     : null;
+}
+
+function completedDurationSummary(input: {
+  startedAt: Date;
+  finishedAt: Date | null;
+  activeDurationSemanticsVersion: number | null;
+  activeDurationSeconds: number | null;
+  activeDurationBasis: string | null;
+}) {
+  const wallClock = input.finishedAt == null
+    ? "unavailable"
+    : formatWallClockDuration(Math.max(
+        0,
+        Math.floor(
+          (input.finishedAt.getTime() - input.startedAt.getTime()) / 1_000,
+        ),
+      ));
+  if (
+    input.activeDurationSemanticsVersion === 1 &&
+    input.activeDurationBasis !== "interruption_unknown" &&
+    input.activeDurationSeconds != null
+  ) {
+    const ownerReported =
+      input.activeDurationBasis === "owner_reported" ? " · owner reported" : "";
+    return `Active ${formatWallClockDuration(input.activeDurationSeconds)} · wall clock ${wallClock}${ownerReported}`;
+  }
+  const legacy =
+    input.activeDurationSemanticsVersion == null ? " · legacy timing evidence" : "";
+  return `Active time unavailable · wall clock ${wallClock}${legacy}`;
 }
 
 const REVIEW_RECOMMENDATION_ID =
@@ -161,13 +192,26 @@ export default async function SessionDetailPage(
     notFound();
   }
   if (session.status === "in_progress") redirect(`/session/${session.id}`);
-  const durationExcluded =
-    session.finishedAt != null &&
-    shouldExcludeWorkoutDuration(
-      session.startedAt,
-      session.finishedAt,
-      session.excludeDurationFromAnalytics,
-    );
+  const durationExcluded = shouldExcludeWorkoutDuration(
+    session.startedAt,
+    session.finishedAt,
+    session.excludeDurationFromAnalytics,
+    {
+      activeDurationSemanticsVersion:
+        session.activeDurationSemanticsVersion,
+      activeDurationSeconds: session.activeDurationSeconds,
+      activeDurationBasis: session.activeDurationBasis,
+    },
+  );
+  const reviewedDateOnlyActiveDuration =
+    session.finishedAt == null &&
+    session.performedTimePrecision === "date_only" &&
+    session.activeDurationSemanticsVersion === 1 &&
+    (((session.activeDurationBasis === "wall_clock_no_stale_signal" ||
+      session.activeDurationBasis === "owner_reported") &&
+      session.activeDurationSeconds != null) ||
+      (session.activeDurationBasis === "interruption_unknown" &&
+        session.activeDurationSeconds == null));
   const visibleSetIds = session.exercises.flatMap((exercise) =>
     exercise.sets.map((set) => set.id),
   );
@@ -386,6 +430,9 @@ export default async function SessionDetailPage(
       version.action === "workout_session.timing_correction" ||
       version.action === "workout_session.version_restore",
   ).length;
+  const activeDurationCorrectionCount = timingVersions.filter(
+    (version) => version.action === "workout_session.duration_correction",
+  ).length;
   const workoutCorrectionFacet = classifyHistoryCorrectionFacet(
     [...setVersions, ...timingVersions]
       .sort(
@@ -479,16 +526,16 @@ export default async function SessionDetailPage(
           <p className="text-sm text-muted-foreground">
             {formatRecordedLocalDate(session.localDate)}
             {session.performedTimePrecision === "date_only"
-              ? " · Time and duration unknown"
+              ? session.activeDurationSemanticsVersion === 1 &&
+                session.activeDurationBasis !== "interruption_unknown" &&
+                session.activeDurationSeconds != null
+                ? ` · Time unknown · ${completedDurationSummary(session)}`
+                : " · Time and duration unknown"
               : ` · ${new Intl.DateTimeFormat("en-CA", {
                   timeZone: session.timezone,
                   hour: "numeric",
                   minute: "2-digit",
-                }).format(session.startedAt)}${
-                  session.finishedAt
-                    ? ` · ${formatDuration(session.startedAt, session.finishedAt)}${durationExcluded ? " recorded" : ""}`
-                    : " · Duration unknown"
-                }`}
+                }).format(session.startedAt)} · ${completedDurationSummary(session)}`}
             {` · ${totalSets} performed working ${totalSets === 1 ? "set" : "sets"}`}
             {performedWarmups.length > 0
               ? ` · ${performedWarmups.length} completed ${performedWarmups.length === 1 ? "warm-up" : "warm-ups"}`
@@ -507,37 +554,65 @@ export default async function SessionDetailPage(
               values retained in Edit history
             </p>
           )}
+          {activeDurationCorrectionCount > 0 && (
+            <p className="mt-1 text-xs text-muted-foreground">
+              Active duration corrected {activeDurationCorrectionCount}{" "}
+              {activeDurationCorrectionCount === 1 ? "time" : "times"} ·
+              source timestamps retained · earlier values retained in Edit
+              history
+            </p>
+          )}
           {durationExcluded && (
             <p className="mt-1 text-xs text-amber-700 dark:text-amber-400">
-              This duration is preserved as recorded but excluded from insights because it is marked as questionable.
+              Active duration is unavailable or marked as questionable, so it
+              is excluded from duration insights. Source timing evidence
+              remains unchanged.
             </p>
           )}
         </div>
         <div className="flex flex-wrap items-center gap-2">
           {session.status === "completed" && (
-            <WorkoutTimingCorrection
-              key={`${session.id}:${session.historyRevision}`}
-              sessionId={session.id}
-              historyRevision={session.historyRevision}
-              startedAtISO={session.startedAt.toISOString()}
-              finishedAtISO={session.finishedAt?.toISOString() ?? null}
-              timezone={session.timezone}
-              localDate={session.localDate}
-              precision={
-                session.performedTimePrecision === "date_only"
-                  ? "date_only"
-                  : "instant"
-              }
-              excludeDurationFromAnalytics={
-                session.excludeDurationFromAnalytics
-              }
-              sourceLabel={HISTORY_PROVENANCE_LABELS[provenanceFacet]}
-              programLinkLabel={
-                session.sourceProgramId
-                  ? "Program-day linkage retained"
-                  : "No Program-day linkage"
-              }
-            />
+            <>
+              {((session.finishedAt != null &&
+                session.performedTimePrecision !== "date_only") ||
+                reviewedDateOnlyActiveDuration) && (
+                  <WorkoutActiveDurationCorrection
+                    key={`active-duration:${session.id}:${session.historyRevision}`}
+                    sessionId={session.id}
+                    historyRevision={session.historyRevision}
+                    startedAtISO={session.startedAt.toISOString()}
+                    finishedAtISO={session.finishedAt?.toISOString() ?? null}
+                    activeDurationSemanticsVersion={
+                      session.activeDurationSemanticsVersion
+                    }
+                    activeDurationSeconds={session.activeDurationSeconds}
+                    activeDurationBasis={session.activeDurationBasis}
+                  />
+                )}
+              <WorkoutTimingCorrection
+                key={`source-timing:${session.id}:${session.historyRevision}`}
+                sessionId={session.id}
+                historyRevision={session.historyRevision}
+                startedAtISO={session.startedAt.toISOString()}
+                finishedAtISO={session.finishedAt?.toISOString() ?? null}
+                timezone={session.timezone}
+                localDate={session.localDate}
+                precision={
+                  session.performedTimePrecision === "date_only"
+                    ? "date_only"
+                    : "instant"
+                }
+                excludeDurationFromAnalytics={
+                  session.excludeDurationFromAnalytics
+                }
+                sourceLabel={HISTORY_PROVENANCE_LABELS[provenanceFacet]}
+                programLinkLabel={
+                  session.sourceProgramId
+                    ? "Program-day linkage retained"
+                    : "No Program-day linkage"
+                }
+              />
+            </>
           )}
           {totalSets > 0 && (
             <Button

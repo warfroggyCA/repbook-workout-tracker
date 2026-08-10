@@ -131,7 +131,16 @@ async function dismissRest(page: Page) {
   await expect(dismiss).toHaveCount(0);
 }
 
+async function openMoreForExercise(card: Locator) {
+  const details = card.locator("details", { hasText: "More for this exercise" });
+  if ((await details.getAttribute("open")) == null) {
+    await details.locator(":scope > summary").click();
+  }
+  await expect(details).toHaveAttribute("open", "");
+}
+
 async function skipForEquipment(card: Locator, page: Page) {
+  await openMoreForExercise(card);
   await card.getByRole("button", { name: "Skip exercise", exact: true }).click();
   const dialog = page.getByRole("dialog", { name: "Skip exercise — why?" });
   await dialog.getByRole("button", { name: "equipment", exact: true }).click();

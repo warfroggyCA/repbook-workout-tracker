@@ -7,8 +7,13 @@ import { KG_TO_LB, type LoadUnit } from "@/lib/units";
 import { sessionTimeBudgetSchema } from "@/lib/session-time-budget";
 import { ADDED_WORKOUT_SET_NOTE } from "@/lib/session-occurrences";
 import {
+  ACTIVE_WORKOUT_REVIEW_THRESHOLD_SECONDS,
+  LONG_WORKOUT_ELAPSED_FLAG,
   LONG_WORKOUT_DURATION_FLAG,
   MAX_ANALYTICS_WORKOUT_DURATION_MINUTES,
+  UNKNOWN_ACTIVE_WORKOUT_DURATION_FLAG,
+  resolveWorkoutCompletionDuration,
+  type WorkoutCompletionDurationDecision,
 } from "@/lib/workout-duration-quality";
 import {
   resolveSessionEquipmentAvailability,
@@ -2650,7 +2655,12 @@ async function logWorkoutSetAttempt(
 export async function completeWorkoutSession(
   db: Db,
   user: { id: string; coachingPrefs: CoachingPrefs },
-  input: { sessionId: string; note?: string; fatigue?: number },
+  input: {
+    sessionId: string;
+    note?: string;
+    fatigue?: number;
+    durationDecision?: WorkoutCompletionDurationDecision | null;
+  },
   dependencies: SessionLifecycleDependencies = {}
 ) {
   const checkpoint = dependencies.checkpoint ?? noCheckpoint;
@@ -2658,6 +2668,41 @@ export async function completeWorkoutSession(
   const finishedAt = now();
   const progressionJobId = randomUUID();
   const note = input.note?.trim() || null;
+  const target = await db.query.workoutSessions.findFirst({
+    where: and(
+      eq(workoutSessions.id, input.sessionId),
+      eq(workoutSessions.userId, user.id),
+      isNull(workoutSessions.archivedAt),
+    ),
+    columns: { status: true, startedAt: true },
+  });
+  if (!target) throw new Error("Session not found");
+  const durationResolution =
+    target.status === "in_progress"
+      ? resolveWorkoutCompletionDuration({
+          startedAt: target.startedAt,
+          finishedAt,
+          decision: input.durationDecision,
+        })
+      : null;
+  if (durationResolution && !durationResolution.ok) {
+    return {
+      outcome: durationResolution.code,
+      sessionId: input.sessionId,
+      alreadyFinished: false,
+      progressionJobId: null,
+      wallClockElapsedSeconds: durationResolution.wallClockElapsedSeconds,
+      reviewRequired: durationResolution.reviewRequired,
+      reason: durationResolution.reason,
+    } as const;
+  }
+  const activeDurationSemanticsVersion =
+    durationResolution?.activeDurationSemanticsVersion ?? null;
+  const activeDurationSeconds =
+    durationResolution?.activeDurationSeconds ?? null;
+  const activeDurationBasis = durationResolution?.activeDurationBasis ?? null;
+  const wallClockElapsedSeconds =
+    durationResolution?.wallClockElapsedSeconds ?? 0;
   const finishMutationHash = createHash("sha256")
     .update(JSON.stringify({ operation: "abandon", reason: "finished_early" }))
     .digest("hex");
@@ -2677,18 +2722,33 @@ export async function completeWorkoutSession(
       UPDATE workout_sessions ws
       SET status = 'completed',
           finished_at = ${finishedAt.toISOString()}::timestamptz,
+          active_duration_semantics_version =
+            ${activeDurationSemanticsVersion}::integer,
+          active_duration_seconds = ${activeDurationSeconds}::integer,
+          active_duration_basis = ${activeDurationBasis}::text,
           exclude_duration_from_analytics =
             owned.exclude_duration_from_analytics OR
-            ${finishedAt.toISOString()}::timestamptz - owned.started_at >
-              make_interval(mins => ${MAX_ANALYTICS_WORKOUT_DURATION_MINUTES}),
-          data_quality_flags = CASE
-            WHEN ${finishedAt.toISOString()}::timestamptz - owned.started_at >
-                   make_interval(mins => ${MAX_ANALYTICS_WORKOUT_DURATION_MINUTES})
-              AND NOT owned.data_quality_flags ? ${LONG_WORKOUT_DURATION_FLAG}
-            THEN owned.data_quality_flags ||
-              jsonb_build_array(${LONG_WORKOUT_DURATION_FLAG}::text)
-            ELSE owned.data_quality_flags
-          END
+            ${activeDurationSeconds}::integer IS NULL OR
+            ${activeDurationSeconds}::integer >
+              ${MAX_ANALYTICS_WORKOUT_DURATION_MINUTES * 60},
+          data_quality_flags =
+            (
+              owned.data_quality_flags
+                - ${LONG_WORKOUT_DURATION_FLAG}
+                - ${LONG_WORKOUT_ELAPSED_FLAG}
+                - ${UNKNOWN_ACTIVE_WORKOUT_DURATION_FLAG}
+            ) ||
+            CASE WHEN ${wallClockElapsedSeconds}::integer >
+              ${ACTIVE_WORKOUT_REVIEW_THRESHOLD_SECONDS}
+              THEN jsonb_build_array(${LONG_WORKOUT_ELAPSED_FLAG}::text)
+              ELSE '[]'::jsonb END ||
+            CASE WHEN ${activeDurationSeconds}::integer IS NULL
+              THEN jsonb_build_array(${UNKNOWN_ACTIVE_WORKOUT_DURATION_FLAG}::text)
+              ELSE '[]'::jsonb END ||
+            CASE WHEN ${activeDurationSeconds}::integer >
+              ${MAX_ANALYTICS_WORKOUT_DURATION_MINUTES * 60}
+              THEN jsonb_build_array(${LONG_WORKOUT_DURATION_FLAG}::text)
+              ELSE '[]'::jsonb END
       FROM owned
       WHERE ws.id = owned.id
         AND owned.status = 'in_progress'
@@ -2729,7 +2789,7 @@ export async function completeWorkoutSession(
       RETURNING id
     ), recorded_audit AS (
       INSERT INTO audit_logs (
-        user_id, actor_type, action, entity_type, entity_id, summary
+        user_id, actor_type, action, entity_type, entity_id, summary, cause_ref
       )
       SELECT
         ${user.id}::uuid,
@@ -2737,7 +2797,13 @@ export async function completeWorkoutSession(
         'session.complete',
         'workout_session',
         id::text,
-        'Completed ' || coalesce(template_name, 'workout')
+        'Completed ' || coalesce(template_name, 'workout'),
+        jsonb_build_object(
+          'activeDurationSemanticsVersion', active_duration_semantics_version,
+          'activeDurationSeconds', active_duration_seconds,
+          'activeDurationBasis', active_duration_basis,
+          'wallClockElapsedSeconds', ${wallClockElapsedSeconds}::integer
+        )
       FROM transitioned
       RETURNING id
     ), reconciled_progression AS (
@@ -2792,6 +2858,7 @@ export async function completeWorkoutSession(
   if (!row) throw new Error("Session not found");
   await checkpoint("after-completion-statement");
   return {
+    outcome: Boolean(row.transitioned) ? "completed" : "already_finished",
     sessionId: String(row.id),
     alreadyFinished: !Boolean(row.transitioned),
     progressionJobId: row.progression_job_id

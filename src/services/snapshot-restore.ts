@@ -75,9 +75,52 @@ const PRE_PERFORMED_SEMANTICS_SNAPSHOT_SCHEMA_VERSION = "26";
 const PRE_START_SEMANTICS_SNAPSHOT_SCHEMA_VERSION = "27";
 const PRE_EXCEPTION_CONTEXT_SNAPSHOT_SCHEMA_VERSION = "28";
 const PRE_REVIEW_SNAPSHOT_SCHEMA_VERSION = "29";
+const PRE_ACTIVE_DURATION_SNAPSHOT_SCHEMA_VERSION = "30";
 
 type SnapshotRow = Record<string, unknown>;
 type RestoreRows = Record<string, SnapshotRow[]>;
+
+const WORKOUT_TIMING_VERSION_ACTIONS = new Set([
+  "workout_session.duration_correction",
+  "workout_session.snapshot_restore",
+  "workout_session.timing_correction",
+  "workout_session.version_restore",
+]);
+const ACTIVE_DURATION_VERSION_FIELDS = new Set([
+  "active_duration_semantics_version",
+  "active_duration_seconds",
+  "active_duration_basis",
+]);
+const WORKOUT_TIMING_FACT_VERSION_FIELDS = new Set([
+  "started_at",
+  "finished_at",
+  "timezone",
+  "local_date",
+  "performed_time_precision",
+  "exclude_duration_from_analytics",
+  "data_quality_flags",
+  ...ACTIVE_DURATION_VERSION_FIELDS,
+]);
+
+function stringArray(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === "string")
+    : [];
+}
+
+function isWorkoutTimingVersion(row: SnapshotRow): boolean {
+  return (
+    row.entity_type === "workout_session" &&
+    WORKOUT_TIMING_VERSION_ACTIONS.has(String(row.action))
+  );
+}
+
+function auditVersionId(row: SnapshotRow): string | null {
+  const cause = row.cause_ref;
+  if (!cause || typeof cause !== "object" || Array.isArray(cause)) return null;
+  const versionId = (cause as SnapshotRow).versionId;
+  return typeof versionId === "string" ? versionId : null;
+}
 
 function rows(payload: CanonicalSnapshotPayload, table: string): SnapshotRow[] {
   const value = payload.tables[table];
@@ -718,6 +761,166 @@ function isNonnegativeInteger(value: unknown) {
   return typeof value === "number" && Number.isInteger(value) && value >= 0;
 }
 
+function hasCoherentActiveDurationTuple(row: SnapshotRow): boolean {
+  const version = row.active_duration_semantics_version;
+  const seconds = row.active_duration_seconds;
+  const basis = row.active_duration_basis;
+  if (version == null && seconds == null && basis == null) return true;
+  return (
+    version === 1 &&
+    (((basis === "wall_clock_no_stale_signal" || basis === "owner_reported") &&
+      isNonnegativeInteger(seconds) &&
+      Number(seconds) <= 604_800) ||
+      (basis === "interruption_unknown" && seconds == null))
+  );
+}
+
+function validateWorkoutTimingVersionEvidence(
+  payload: CanonicalSnapshotPayload,
+) {
+  const workoutIds = new Set(
+    rows(payload, "workout_sessions").map((session) => String(session.id)),
+  );
+  const allVersions = new Map(
+    rows(payload, "record_versions").map((version) => [String(version.id), version]),
+  );
+  const timingVersions = [...allVersions.values()].filter(isWorkoutTimingVersion);
+  const timingVersionIds = new Set(timingVersions.map((version) => String(version.id)));
+  const timingAudits = rows(payload, "audit_logs").filter((audit) =>
+    WORKOUT_TIMING_VERSION_ACTIONS.has(String(audit.action)),
+  );
+  const auditsByVersionId = new Map<string, SnapshotRow[]>();
+
+  for (const audit of timingAudits) {
+    const versionId = auditVersionId(audit);
+    const version = versionId == null ? undefined : allVersions.get(versionId);
+    if (
+      versionId == null ||
+      !version ||
+      !isWorkoutTimingVersion(version) ||
+      audit.action !== version.action ||
+      audit.entity_type !== "workout_session" ||
+      String(audit.entity_id) !== String(version.entity_id) ||
+      (audit.action === "workout_session.snapshot_restore" &&
+        audit.actor_type !== "user")
+    ) {
+      throw new Error(
+        "Snapshot workout-timing audit is missing its exact immutable version evidence.",
+      );
+    }
+    const matching = auditsByVersionId.get(versionId) ?? [];
+    matching.push(audit);
+    auditsByVersionId.set(versionId, matching);
+  }
+
+  for (const version of timingVersions) {
+    const sourceVersion = typeof version.source_version_id === "string"
+      ? allVersions.get(version.source_version_id)
+      : undefined;
+    if (!workoutIds.has(String(version.entity_id))) {
+      throw new Error(
+        "Snapshot workout-timing version references a missing workout.",
+      );
+    }
+    if ((auditsByVersionId.get(String(version.id)) ?? []).length !== 1) {
+      throw new Error(
+        "Snapshot workout-timing version is missing its exact immutable audit evidence.",
+      );
+    }
+    if (
+      version.action === "workout_session.version_restore" &&
+      (typeof version.source_version_id !== "string" ||
+        !isWorkoutTimingVersion(sourceVersion ?? {}) ||
+        String(sourceVersion?.entity_id) !== String(version.entity_id))
+    ) {
+      throw new Error(
+        "Snapshot workout-timing restore version is missing its source version.",
+      );
+    }
+    if (
+      version.action === "workout_session.snapshot_restore" &&
+      version.source_version_id != null &&
+      (typeof version.source_version_id !== "string" ||
+        !isWorkoutTimingVersion(sourceVersion ?? {}) ||
+        String(sourceVersion?.entity_id) !== String(version.entity_id))
+    ) {
+      throw new Error(
+        "Snapshot workout-timing snapshot transition has an invalid source version.",
+      );
+    }
+
+    const changedFields = stringArray(version.changed_fields);
+    const before = version.before_data as SnapshotRow;
+    const after = version.after_data as SnapshotRow;
+    const changesActiveDuration = changedFields.some((field) =>
+      ACTIVE_DURATION_VERSION_FIELDS.has(field) &&
+      JSON.stringify(before[field]) !== JSON.stringify(after[field]),
+    );
+    const changesWorkoutTimingFact = changedFields.some((field) =>
+      WORKOUT_TIMING_FACT_VERSION_FIELDS.has(field) &&
+      JSON.stringify(before[field]) !== JSON.stringify(after[field]),
+    );
+    if (version.action === "workout_session.duration_correction") {
+      if (!changesActiveDuration) {
+        throw new Error(
+          "Snapshot active-duration correction does not identify a changed duration field.",
+        );
+      }
+      if (
+        before.started_at !== after.started_at ||
+        before.finished_at !== after.finished_at
+      ) {
+        throw new Error(
+          "Snapshot active-duration correction rewrites source timestamps.",
+        );
+      }
+    }
+    if (
+      (version.action === "workout_session.duration_correction" ||
+        changesActiveDuration) &&
+      (!hasCoherentActiveDurationTuple(version.before_data as SnapshotRow) ||
+        !hasCoherentActiveDurationTuple(version.after_data as SnapshotRow))
+    ) {
+      throw new Error(
+        "Snapshot workout-timing version has incoherent active-duration evidence.",
+      );
+    }
+    if (
+      version.action === "workout_session.version_restore" ||
+      version.action === "workout_session.snapshot_restore"
+    ) {
+      const audit = (auditsByVersionId.get(String(version.id)) ?? [])[0];
+      const cause = audit?.cause_ref as SnapshotRow | null;
+      if (
+        cause?.sourceVersionId !== version.source_version_id ||
+        (version.action === "workout_session.snapshot_restore" &&
+          (typeof cause?.sourceSnapshotId !== "string" ||
+            !changesWorkoutTimingFact ||
+            !isNonnegativeInteger(
+              (version.before_data as SnapshotRow).history_revision,
+            ) ||
+            !isNonnegativeInteger(
+              (version.after_data as SnapshotRow).history_revision,
+            ) ||
+            Number((version.after_data as SnapshotRow).history_revision) <=
+              Number((version.before_data as SnapshotRow).history_revision)))
+      ) {
+        throw new Error(
+          "Snapshot workout-timing restore audit has incoherent source or revision evidence.",
+        );
+      }
+    }
+  }
+
+  for (const versionId of timingVersionIds) {
+    if (!auditsByVersionId.has(versionId)) {
+      throw new Error(
+        "Snapshot workout-timing version is missing its immutable audit evidence.",
+      );
+    }
+  }
+}
+
 function validateHistoryIdentityAndTiming(payload: CanonicalSnapshotPayload) {
   const programs = new Map(
     rows(payload, "programs").map((program) => [String(program.id), program])
@@ -749,6 +952,31 @@ function validateHistoryIdentityAndTiming(payload: CanonicalSnapshotPayload) {
       !["instant", "date_only"].includes(String(session.performed_time_precision))
     ) {
       throw new Error("Snapshot workout has invalid History revision or time precision.");
+    }
+    const durationTuple = [
+      session.active_duration_semantics_version,
+      session.active_duration_seconds,
+      session.active_duration_basis,
+    ];
+    const durationTuplePresent = durationTuple.some((value) => value != null);
+    const durationBasis = session.active_duration_basis;
+    const durationSeconds = session.active_duration_seconds;
+    if (
+      durationTuplePresent &&
+      !(
+        session.active_duration_semantics_version === 1 &&
+        ((
+          (durationBasis === "wall_clock_no_stale_signal" ||
+            durationBasis === "owner_reported") &&
+          isNonnegativeInteger(durationSeconds) &&
+          Number(durationSeconds) <= 604_800
+        ) || (
+          durationBasis === "interruption_unknown" &&
+          durationSeconds == null
+        ))
+      )
+    ) {
+      throw new Error("Snapshot workout has incoherent active-duration evidence.");
     }
     const lineage = [
       session.source_program_id,
@@ -924,6 +1152,7 @@ export function upgradeSnapshotPayload(
     PRE_START_SEMANTICS_SNAPSHOT_SCHEMA_VERSION,
     PRE_EXCEPTION_CONTEXT_SNAPSHOT_SCHEMA_VERSION,
     PRE_REVIEW_SNAPSHOT_SCHEMA_VERSION,
+    PRE_ACTIVE_DURATION_SNAPSHOT_SCHEMA_VERSION,
     SNAPSHOT_SCHEMA_VERSION,
   ]);
   if (!supported.has(payload.schemaVersion)) {
@@ -940,6 +1169,7 @@ export function upgradeSnapshotPayload(
     validateStartAndPrescribedSemantics(upgraded);
     validateSetExceptionContext(upgraded);
     validateHistoryIdentityAndTiming(upgraded);
+    validateWorkoutTimingVersionEvidence(upgraded);
     validateReviewState(upgraded);
     return upgraded;
   }
@@ -1002,6 +1232,7 @@ export function upgradeSnapshotPayload(
       PRE_START_SEMANTICS_SNAPSHOT_SCHEMA_VERSION,
       PRE_EXCEPTION_CONTEXT_SNAPSHOT_SCHEMA_VERSION,
       PRE_REVIEW_SNAPSHOT_SCHEMA_VERSION,
+      PRE_ACTIVE_DURATION_SNAPSHOT_SCHEMA_VERSION,
       SNAPSHOT_SCHEMA_VERSION,
     ].includes(upgraded.schemaVersion)
   ) {
@@ -1126,6 +1357,9 @@ export function upgradeSnapshotPayload(
     session.local_date = workoutLocalDate(new Date(session.started_at), timezone);
     session.history_revision ??= 0;
     session.performed_time_precision ??= "instant";
+    session.active_duration_semantics_version ??= null;
+    session.active_duration_seconds ??= null;
+    session.active_duration_basis ??= null;
     if (
       session.source_program_id == null &&
       session.source_program_version_id == null &&
@@ -1283,6 +1517,7 @@ export function upgradeSnapshotPayload(
   validateStartAndPrescribedSemantics(upgraded);
   validateSetExceptionContext(upgraded);
   validateHistoryIdentityAndTiming(upgraded);
+  validateWorkoutTimingVersionEvidence(upgraded);
   validateReviewState(upgraded);
   return upgraded;
 }
@@ -2106,6 +2341,7 @@ export function validateSnapshotPayload(
       PRE_START_SEMANTICS_SNAPSHOT_SCHEMA_VERSION,
       PRE_EXCEPTION_CONTEXT_SNAPSHOT_SCHEMA_VERSION,
       PRE_REVIEW_SNAPSHOT_SCHEMA_VERSION,
+      PRE_ACTIVE_DURATION_SNAPSHOT_SCHEMA_VERSION,
       SNAPSHOT_SCHEMA_VERSION,
     ].includes(payload.schemaVersion)
   ) {
@@ -2146,6 +2382,7 @@ export function validateSnapshotPayload(
       PRE_START_SEMANTICS_SNAPSHOT_SCHEMA_VERSION,
       PRE_EXCEPTION_CONTEXT_SNAPSHOT_SCHEMA_VERSION,
       PRE_REVIEW_SNAPSHOT_SCHEMA_VERSION,
+      PRE_ACTIVE_DURATION_SNAPSHOT_SCHEMA_VERSION,
       SNAPSHOT_SCHEMA_VERSION,
     ].includes(payload.schemaVersion)
   ) {
@@ -2303,6 +2540,7 @@ export function validateSnapshotPayload(
       PRE_START_SEMANTICS_SNAPSHOT_SCHEMA_VERSION,
       PRE_EXCEPTION_CONTEXT_SNAPSHOT_SCHEMA_VERSION,
       PRE_REVIEW_SNAPSHOT_SCHEMA_VERSION,
+      PRE_ACTIVE_DURATION_SNAPSHOT_SCHEMA_VERSION,
       SNAPSHOT_SCHEMA_VERSION,
     ].includes(payload.schemaVersion)
   ) {
@@ -2466,6 +2704,7 @@ export function validateSnapshotPayload(
     validateSessionOccurrenceData(payload);
     validateContextualNoteData(payload);
     validateHistoryIdentityAndTiming(payload);
+    validateWorkoutTimingVersionEvidence(payload);
   }
 }
 
@@ -2492,6 +2731,18 @@ function targetRows(
   const snapshotCompletedSetIds = new Set(
     rows(payload, "completed_sets").map((row) => String(row.id)),
   );
+  const snapshotWorkoutIds = new Set(
+    rows(payload, "workout_sessions").map((row) => String(row.id)),
+  );
+  const snapshotWorkoutTimingVersions = rows(payload, "record_versions").filter(
+    (row) =>
+      row.user_id === userId &&
+      snapshotWorkoutIds.has(String(row.entity_id)) &&
+      isWorkoutTimingVersion(row),
+  );
+  const snapshotWorkoutTimingVersionIds = new Set(
+    snapshotWorkoutTimingVersions.map((row) => String(row.id)),
+  );
   for (const table of tableNames) {
     const tableRows = rows(payload, table);
     if (table === "contextual_notes" && scope === "history") {
@@ -2503,16 +2754,27 @@ function targetRows(
     } else if (table === "exercises") {
       result[table] = tableRows.filter((row) => row.user_id === userId);
     } else if (table === "record_versions") {
-      // T02 activates merge semantics only for performed-set version chains.
-      // Other version types keep the established preserve-at-destination
-      // behavior until their own restore packages define a bridge transition.
       result[table] = tableRows.filter(
         (row) =>
           row.user_id === userId &&
-          row.entity_type === "completed_set" &&
-          (scope === "full" ||
-            snapshotCompletedSetIds.has(String(row.entity_id))),
+          ((row.entity_type === "completed_set" &&
+            (scope === "full" ||
+              snapshotCompletedSetIds.has(String(row.entity_id)))) ||
+            (snapshotWorkoutIds.has(String(row.entity_id)) &&
+              isWorkoutTimingVersion(row))),
       );
+    } else if (table === "audit_logs") {
+      result[table] = tableRows.filter((row) => {
+        const versionId = auditVersionId(row);
+        return (
+          row.user_id === userId &&
+          row.entity_type === "workout_session" &&
+          snapshotWorkoutIds.has(String(row.entity_id)) &&
+          WORKOUT_TIMING_VERSION_ACTIONS.has(String(row.action)) &&
+          versionId != null &&
+          snapshotWorkoutTimingVersionIds.has(versionId)
+        );
+      });
     } else if (
       table === "exercise_aliases" ||
       table === "exercise_sources" ||

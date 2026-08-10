@@ -4,6 +4,16 @@ import type { Db } from "@/db";
 import { resultRows } from "@/db/result";
 import type { WorkoutTimingCorrectionInput } from "@/lib/workout-timing-correction";
 import { normalizeWorkoutTimingCorrection } from "@/lib/workout-timing-correction";
+import {
+  ACTIVE_WORKOUT_REVIEW_THRESHOLD_SECONDS,
+  LONG_WORKOUT_DURATION_FLAG,
+  LONG_WORKOUT_ELAPSED_FLAG,
+  MAX_ANALYTICS_WORKOUT_DURATION_MINUTES,
+  MAX_ACTIVE_WORKOUT_DURATION_SECONDS,
+  UNKNOWN_ACTIVE_WORKOUT_DURATION_FLAG,
+  resolveWorkoutActiveDurationCorrection,
+  type WorkoutActiveDurationCorrectionDecision,
+} from "@/lib/workout-duration-quality";
 import { historyRevisionLockSql } from "@/services/history-revision-lock";
 
 export type WorkoutTimingCorrectionResult =
@@ -25,6 +35,337 @@ export type WorkoutTimingCorrectionResult =
       reason: string;
     };
 
+export type WorkoutActiveDurationCorrectionInput = {
+  sessionId: string;
+  clientMutationId: string;
+  expectedHistoryRevision: number;
+  expected: {
+    activeDurationSemanticsVersion: number | null;
+    activeDurationSeconds: number | null;
+    activeDurationBasis: string | null;
+  };
+  decision: WorkoutActiveDurationCorrectionDecision;
+};
+
+export async function correctCompletedWorkoutActiveDuration(
+  db: Db,
+  userId: string,
+  input: WorkoutActiveDurationCorrectionInput,
+  now = new Date(),
+): Promise<WorkoutTimingCorrectionResult> {
+  const target = await db.query.workoutSessions.findFirst({
+    where: (session, { and, eq, isNull }) =>
+      and(
+        eq(session.id, input.sessionId),
+        eq(session.userId, userId),
+        isNull(session.archivedAt),
+      ),
+    columns: {
+      startedAt: true,
+      finishedAt: true,
+      status: true,
+      performedTimePrecision: true,
+      activeDurationSemanticsVersion: true,
+      activeDurationSeconds: true,
+      activeDurationBasis: true,
+    },
+  });
+  if (!target || target.status !== "completed") {
+    return {
+      ok: false,
+      code: "invalid_state",
+      reason: "Only a completed, available workout can have active duration corrected.",
+    };
+  }
+  const hasReviewedActiveDuration =
+    target.activeDurationSemanticsVersion === 1 &&
+    (((target.activeDurationBasis === "wall_clock_no_stale_signal" ||
+      target.activeDurationBasis === "owner_reported") &&
+      typeof target.activeDurationSeconds === "number" &&
+      Number.isInteger(target.activeDurationSeconds) &&
+      target.activeDurationSeconds >= 0 &&
+      target.activeDurationSeconds <= MAX_ACTIVE_WORKOUT_DURATION_SECONDS) ||
+      (target.activeDurationBasis === "interruption_unknown" &&
+        target.activeDurationSeconds == null));
+  if (
+    target.finishedAt == null &&
+    (target.performedTimePrecision !== "date_only" ||
+      !hasReviewedActiveDuration)
+  ) {
+    return {
+      ok: false,
+      code: "invalid_state",
+      reason:
+        "Active duration without wall-clock finish evidence can only be corrected when reviewed date-only evidence already exists.",
+    };
+  }
+  const resolved = resolveWorkoutActiveDurationCorrection({
+    startedAt: target.startedAt,
+    finishedAt: target.finishedAt,
+    decision: input.decision,
+  });
+  if (!resolved.ok) {
+    return { ok: false, code: "failed", reason: resolved.reason };
+  }
+  const progressionJobId = randomUUID();
+  const query = sql`
+    WITH history_revision_lock AS MATERIALIZED (
+      ${historyRevisionLockSql(userId)}
+    ), existing_version AS MATERIALIZED (
+      SELECT version.*
+      FROM record_versions version
+      WHERE version.id = ${input.clientMutationId}::uuid
+    ), owned_target AS MATERIALIZED (
+      SELECT session.status, session.archived_at
+      FROM workout_sessions session
+      CROSS JOIN history_revision_lock
+      WHERE session.id = ${input.sessionId}::uuid
+        AND session.user_id = ${userId}::uuid
+    ), current_record AS MATERIALIZED (
+      SELECT session.*, to_jsonb(session) AS before_data
+      FROM workout_sessions session
+      CROSS JOIN history_revision_lock
+      WHERE session.id = ${input.sessionId}::uuid
+        AND session.user_id = ${userId}::uuid
+        AND session.status = 'completed'
+        AND session.archived_at IS NULL
+        AND session.history_revision = ${input.expectedHistoryRevision}
+        AND ROW(
+          session.active_duration_semantics_version,
+          session.active_duration_seconds,
+          session.active_duration_basis
+        ) IS NOT DISTINCT FROM ROW(
+          ${input.expected.activeDurationSemanticsVersion}::integer,
+          ${input.expected.activeDurationSeconds}::integer,
+          ${input.expected.activeDurationBasis}::text
+        )
+        AND NOT EXISTS (SELECT 1 FROM existing_version)
+      FOR UPDATE OF session
+    ), updated AS (
+      UPDATE workout_sessions session
+      SET active_duration_semantics_version =
+            ${resolved.activeDurationSemanticsVersion}::integer,
+          active_duration_seconds = ${resolved.activeDurationSeconds}::integer,
+          active_duration_basis = ${resolved.activeDurationBasis}::text,
+          exclude_duration_from_analytics =
+            ${resolved.activeDurationSeconds}::integer IS NULL OR
+            ${resolved.activeDurationSeconds}::integer >
+              ${MAX_ANALYTICS_WORKOUT_DURATION_MINUTES * 60},
+          data_quality_flags =
+            (
+              session.data_quality_flags
+                - ${LONG_WORKOUT_DURATION_FLAG}
+                - ${LONG_WORKOUT_ELAPSED_FLAG}
+                - ${UNKNOWN_ACTIVE_WORKOUT_DURATION_FLAG}
+            ) ||
+            CASE WHEN ${resolved.wallClockElapsedSeconds}::integer >
+              ${ACTIVE_WORKOUT_REVIEW_THRESHOLD_SECONDS}
+              THEN jsonb_build_array(${LONG_WORKOUT_ELAPSED_FLAG}::text)
+              ELSE '[]'::jsonb END ||
+            CASE WHEN ${resolved.activeDurationSeconds}::integer IS NULL
+              THEN jsonb_build_array(${UNKNOWN_ACTIVE_WORKOUT_DURATION_FLAG}::text)
+              ELSE '[]'::jsonb END ||
+            CASE WHEN ${resolved.activeDurationSeconds}::integer >
+              ${MAX_ANALYTICS_WORKOUT_DURATION_MINUTES * 60}
+              THEN jsonb_build_array(${LONG_WORKOUT_DURATION_FLAG}::text)
+              ELSE '[]'::jsonb END,
+          history_revision = session.history_revision + 1
+      FROM current_record current
+      WHERE session.id = current.id
+        AND ROW(
+          current.active_duration_semantics_version,
+          current.active_duration_seconds,
+          current.active_duration_basis
+        ) IS DISTINCT FROM ROW(
+          ${resolved.activeDurationSemanticsVersion}::integer,
+          ${resolved.activeDurationSeconds}::integer,
+          ${resolved.activeDurationBasis}::text
+        )
+      RETURNING session.*
+    ), versioned AS (
+      INSERT INTO record_versions (
+        id, user_id, entity_type, entity_id, action,
+        before_data, after_data, changed_fields
+      )
+      SELECT
+        ${input.clientMutationId}::uuid,
+        ${userId}::uuid,
+        'workout_session',
+        current.id,
+        'workout_session.duration_correction',
+        current.before_data,
+        to_jsonb(updated),
+        ARRAY(
+          SELECT old_value.key
+          FROM jsonb_each(current.before_data) old_value
+          JOIN jsonb_each(to_jsonb(updated)) new_value USING (key)
+          WHERE old_value.value IS DISTINCT FROM new_value.value
+            AND old_value.key IN (
+              'active_duration_basis',
+              'active_duration_seconds',
+              'active_duration_semantics_version',
+              'data_quality_flags',
+              'exclude_duration_from_analytics'
+            )
+          ORDER BY old_value.key
+        )
+      FROM current_record current
+      JOIN updated ON updated.id = current.id
+      RETURNING id, entity_id, changed_fields
+    ), affected_lineages AS MATERIALIZED (
+      SELECT DISTINCT exercise.source_slot_lineage_id
+      FROM current_record current
+      JOIN session_exercises exercise ON exercise.session_id = current.id
+      WHERE exercise.source_slot_lineage_id IS NOT NULL
+    ), reconciled_recommendations AS (
+      UPDATE recommendations recommendation
+      SET status = 'expired',
+          reconciled_at = statement_timestamp(),
+          reconciliation_reason =
+            'The completed workout active duration was corrected, so this suggestion no longer reflects the current history revision.'
+      FROM affected_lineages lineage
+      JOIN versioned ON TRUE
+      WHERE recommendation.user_id = ${userId}::uuid
+        AND recommendation.status = 'pending'
+        AND recommendation.archived_at IS NULL
+        AND recommendation.source_slot_lineage_id = lineage.source_slot_lineage_id
+      RETURNING recommendation.id
+    ), reconciled_stale_progression AS (
+      UPDATE progression_jobs job
+      SET status = 'completed',
+          lease_token = NULL,
+          leased_until = NULL,
+          last_error =
+            'Superseded progression input: workout history changed during active-duration correction.',
+          completed_at = statement_timestamp(),
+          updated_at = statement_timestamp()
+      FROM updated
+      JOIN versioned ON versioned.entity_id = updated.id
+      WHERE job.user_id = updated.user_id
+        AND job.session_id = updated.id
+        AND job.source_session_revision <> updated.history_revision
+        AND job.status IN ('pending', 'processing')
+      RETURNING job.id
+    ), queued_progression AS (
+      INSERT INTO progression_jobs (
+        id, user_id, session_id, source_session_revision,
+        coaching_prefs, next_attempt_at
+      )
+      SELECT
+        ${progressionJobId}::uuid,
+        updated.user_id,
+        updated.id,
+        updated.history_revision,
+        profile.coaching_prefs,
+        statement_timestamp()
+      FROM updated
+      JOIN versioned ON versioned.entity_id = updated.id
+      JOIN user_profiles profile ON profile.user_id = updated.user_id
+      ON CONFLICT (session_id, source_session_revision) DO NOTHING
+      RETURNING id
+    ), audited AS (
+      INSERT INTO audit_logs (
+        user_id, actor_type, action, entity_type, entity_id, summary, cause_ref
+      )
+      SELECT
+        ${userId}::uuid,
+        'user',
+        'workout_session.duration_correction',
+        'workout_session',
+        updated.id::text,
+        'Corrected active workout duration without changing source timestamps',
+        jsonb_build_object(
+          'versionId', versioned.id,
+          'activeDurationBasis', updated.active_duration_basis,
+          'activeDurationSeconds', updated.active_duration_seconds,
+          'historyRevision', updated.history_revision,
+          'decidedAt', ${now.toISOString()}::timestamptz,
+          'progressionJobId', (SELECT id FROM queued_progression)
+        )
+      FROM updated
+      JOIN versioned ON versioned.entity_id = updated.id
+    )
+    SELECT
+      coalesce(updated.id, existing.entity_id) AS session_id,
+      coalesce(versioned.id, existing.id) AS version_id,
+      coalesce(
+        updated.history_revision,
+        (existing.after_data->>'history_revision')::integer
+      )
+        AS history_revision,
+      (existing.id IS NOT NULL) AS replayed,
+      (target.status IS NOT NULL) AS owned_target_exists,
+      target.status AS target_status,
+      (target.archived_at IS NOT NULL) AS target_archived,
+      (
+        existing.id IS NOT NULL
+        AND NOT (
+          existing.user_id = ${userId}::uuid
+          AND existing.entity_type = 'workout_session'
+          AND existing.entity_id = ${input.sessionId}::uuid
+          AND existing.action = 'workout_session.duration_correction'
+          AND (existing.after_data->>'active_duration_semantics_version')::integer =
+            ${resolved.activeDurationSemanticsVersion}::integer
+          AND (existing.after_data->>'active_duration_seconds')::integer
+            IS NOT DISTINCT FROM ${resolved.activeDurationSeconds}::integer
+          AND existing.after_data->>'active_duration_basis' =
+            ${resolved.activeDurationBasis}::text
+        )
+      ) AS replay_conflict
+    FROM (SELECT 1) singleton
+    LEFT JOIN updated ON TRUE
+    LEFT JOIN versioned ON TRUE
+    LEFT JOIN existing_version existing ON TRUE
+    LEFT JOIN owned_target target ON TRUE
+  `;
+  const row = resultRows(await db.execute(query))[0];
+  if (row?.replay_conflict) {
+    return {
+      ok: false,
+      code: "conflict",
+      reason: "That correction identity already belongs to different duration evidence.",
+    };
+  }
+  if (row?.replayed) {
+    return {
+      ok: true,
+      outcome: "replayed",
+      sessionId: String(row.session_id),
+      versionId: String(row.version_id),
+      historyRevision: Number(row.history_revision),
+    };
+  }
+  if (!row?.owned_target_exists || row?.target_status !== "completed") {
+    return {
+      ok: false,
+      code: "invalid_state",
+      reason: "Only a completed, available workout can have active duration corrected.",
+    };
+  }
+  if (row?.target_archived) {
+    return {
+      ok: false,
+      code: "invalid_state",
+      reason: "Restore this workout from Archive before correcting active duration.",
+    };
+  }
+  if (!row?.session_id) {
+    return {
+      ok: false,
+      code: "stale",
+      reason:
+        "This workout changed after the duration review opened. Reload and review the latest evidence.",
+    };
+  }
+  return {
+    ok: true,
+    outcome: "corrected",
+    sessionId: String(row.session_id),
+    versionId: String(row.version_id),
+    historyRevision: Number(row.history_revision),
+  };
+}
+
 export async function correctCompletedWorkoutTiming(
   db: Db,
   userId: string,
@@ -33,6 +374,15 @@ export async function correctCompletedWorkoutTiming(
 ): Promise<WorkoutTimingCorrectionResult> {
   const normalized = normalizeWorkoutTimingCorrection(input, now);
   const { parsed } = normalized;
+  const normalizedWallClockElapsedSeconds = normalized.finishedAt == null
+    ? null
+    : Math.max(
+        0,
+        Math.floor(
+          (normalized.finishedAt.getTime() - normalized.startedAt.getTime()) /
+            1_000,
+        ),
+      );
   const progressionJobId = randomUUID();
   const query = sql`
     WITH history_revision_lock AS MATERIALIZED (
@@ -94,6 +444,15 @@ export async function correctCompletedWorkoutTiming(
             ${normalized.finishedAt?.toISOString() ?? null}::timestamptz
         )
       LIMIT 1
+    ), active_duration_conflict AS MATERIALIZED (
+      SELECT 1 AS conflict
+      FROM current_record current
+      WHERE current.active_duration_semantics_version = 1
+        AND current.active_duration_seconds IS NOT NULL
+        AND ${normalizedWallClockElapsedSeconds}::integer IS NOT NULL
+        AND current.active_duration_seconds >
+          ${normalizedWallClockElapsedSeconds}::integer
+      LIMIT 1
     ), updated AS (
       UPDATE workout_sessions session
       SET started_at = ${normalized.startedAt.toISOString()}::timestamptz,
@@ -101,17 +460,49 @@ export async function correctCompletedWorkoutTiming(
           timezone = ${parsed.proposed.timezone},
           local_date = ${parsed.proposed.localDate}::date,
           performed_time_precision = ${normalized.performedTimePrecision},
-          exclude_duration_from_analytics = ${normalized.excludeDurationFromAnalytics},
+          exclude_duration_from_analytics = CASE
+            WHEN session.active_duration_semantics_version = 1
+              THEN session.exclude_duration_from_analytics
+            ELSE ${normalized.excludeDurationFromAnalytics}
+          END,
           data_quality_flags =
-            (session.data_quality_flags - 'unknown_time') ||
+            (
+              session.data_quality_flags
+                - 'unknown_time'
+                - ${LONG_WORKOUT_DURATION_FLAG}
+                - ${LONG_WORKOUT_ELAPSED_FLAG}
+                - ${UNKNOWN_ACTIVE_WORKOUT_DURATION_FLAG}
+            ) ||
             CASE WHEN ${normalized.performedTimePrecision} = 'date_only'
               THEN '["unknown_time"]'::jsonb
+              ELSE '[]'::jsonb
+            END ||
+            CASE WHEN session.active_duration_semantics_version = 1
+              AND ${normalizedWallClockElapsedSeconds}::integer >
+                ${ACTIVE_WORKOUT_REVIEW_THRESHOLD_SECONDS}
+              THEN jsonb_build_array(${LONG_WORKOUT_ELAPSED_FLAG}::text)
+              ELSE '[]'::jsonb
+            END ||
+            CASE WHEN session.active_duration_semantics_version = 1
+              AND session.active_duration_seconds IS NULL
+              THEN jsonb_build_array(${UNKNOWN_ACTIVE_WORKOUT_DURATION_FLAG}::text)
+              ELSE '[]'::jsonb
+            END ||
+            CASE WHEN session.active_duration_semantics_version = 1
+              AND session.active_duration_seconds >
+                ${MAX_ANALYTICS_WORKOUT_DURATION_MINUTES * 60}
+              THEN jsonb_build_array(${LONG_WORKOUT_DURATION_FLAG}::text)
+              WHEN session.active_duration_semantics_version IS NULL
+                AND ${normalizedWallClockElapsedSeconds}::integer >
+                  ${ACTIVE_WORKOUT_REVIEW_THRESHOLD_SECONDS}
+              THEN jsonb_build_array(${LONG_WORKOUT_DURATION_FLAG}::text)
               ELSE '[]'::jsonb
             END,
           history_revision = session.history_revision + 1
       FROM current_record current
       WHERE session.id = current.id
         AND NOT EXISTS (SELECT 1 FROM observed_set_conflict)
+        AND NOT EXISTS (SELECT 1 FROM active_duration_conflict)
         AND ROW(
           current.started_at,
           current.finished_at,
@@ -125,7 +516,10 @@ export async function correctCompletedWorkoutTiming(
           ${parsed.proposed.timezone}::text,
           ${parsed.proposed.localDate}::date,
           ${normalized.performedTimePrecision}::text,
-          ${normalized.excludeDurationFromAnalytics}::boolean
+          CASE WHEN current.active_duration_semantics_version = 1
+            THEN current.exclude_duration_from_analytics
+            ELSE ${normalized.excludeDurationFromAnalytics}::boolean
+          END
         )
       RETURNING session.*
     ), versioned AS (
@@ -175,6 +569,22 @@ export async function correctCompletedWorkoutTiming(
         AND recommendation.source_slot_lineage_id =
           lineage.source_slot_lineage_id
       RETURNING recommendation.id
+    ), reconciled_stale_progression AS (
+      UPDATE progression_jobs job
+      SET status = 'completed',
+          lease_token = NULL,
+          leased_until = NULL,
+          last_error =
+            'Superseded progression input: workout history changed during timing correction.',
+          completed_at = statement_timestamp(),
+          updated_at = statement_timestamp()
+      FROM updated
+      JOIN versioned ON versioned.entity_id = updated.id
+      WHERE job.user_id = updated.user_id
+        AND job.session_id = updated.id
+        AND job.source_session_revision <> updated.history_revision
+        AND job.status IN ('pending', 'processing')
+      RETURNING job.id
     ), queued_progression AS (
       INSERT INTO progression_jobs (
         id, user_id, session_id, source_session_revision,
@@ -219,6 +629,7 @@ export async function correctCompletedWorkoutTiming(
         AS history_revision,
       (existing.id IS NOT NULL) AS replayed,
       (observed.conflict IS NOT NULL) AS observed_set_conflict,
+      (duration.conflict IS NOT NULL) AS active_duration_conflict,
       (target.status IS NOT NULL) AS owned_target_exists,
       target.status AS target_status,
       (target.archived_at IS NOT NULL) AS target_archived,
@@ -246,6 +657,7 @@ export async function correctCompletedWorkoutTiming(
     LEFT JOIN versioned ON TRUE
     LEFT JOIN existing_version existing ON TRUE
     LEFT JOIN observed_set_conflict observed ON TRUE
+    LEFT JOIN active_duration_conflict duration ON TRUE
     LEFT JOIN owned_target target ON TRUE
   `;
   const row = resultRows(await db.execute(query))[0];
@@ -271,6 +683,14 @@ export async function correctCompletedWorkoutTiming(
       code: "observed_set_conflict",
       reason:
         "This workout has exact set-completion times that would conflict with the proposed workout timing. Nothing was changed.",
+    };
+  }
+  if (row?.active_duration_conflict) {
+    return {
+      ok: false,
+      code: "failed",
+      reason:
+        "The corrected wall-clock range would be shorter than the reviewed active duration. Correct active duration first, or choose a compatible source time.",
     };
   }
   if (!row?.owned_target_exists) {
@@ -347,14 +767,26 @@ export async function restoreWorkoutTimingVersion(
         AND ROW(
           session.started_at, session.finished_at, session.timezone,
           session.local_date, session.performed_time_precision,
-          session.exclude_duration_from_analytics
+          session.exclude_duration_from_analytics,
+          session.active_duration_semantics_version,
+          session.active_duration_seconds,
+          session.active_duration_basis
         ) IS NOT DISTINCT FROM ROW(
           (selected.after_data->>'started_at')::timestamptz,
           (selected.after_data->>'finished_at')::timestamptz,
           selected.after_data->>'timezone',
           (selected.after_data->>'local_date')::date,
           selected.after_data->>'performed_time_precision',
-          (selected.after_data->>'exclude_duration_from_analytics')::boolean
+          (selected.after_data->>'exclude_duration_from_analytics')::boolean,
+          CASE WHEN selected.after_data ? 'active_duration_semantics_version'
+            THEN (selected.after_data->>'active_duration_semantics_version')::integer
+            ELSE session.active_duration_semantics_version END,
+          CASE WHEN selected.after_data ? 'active_duration_seconds'
+            THEN (selected.after_data->>'active_duration_seconds')::integer
+            ELSE session.active_duration_seconds END,
+          CASE WHEN selected.after_data ? 'active_duration_basis'
+            THEN selected.after_data->>'active_duration_basis'
+            ELSE session.active_duration_basis END
         )
         AND NOT EXISTS (SELECT 1 FROM existing_restore)
       FOR UPDATE OF session
@@ -391,6 +823,18 @@ export async function restoreWorkoutTimingVersion(
             selected.before_data->>'performed_time_precision',
           exclude_duration_from_analytics =
             (selected.before_data->>'exclude_duration_from_analytics')::boolean,
+          active_duration_semantics_version =
+            CASE WHEN selected.before_data ? 'active_duration_semantics_version'
+              THEN (selected.before_data->>'active_duration_semantics_version')::integer
+              ELSE current.active_duration_semantics_version END,
+          active_duration_seconds =
+            CASE WHEN selected.before_data ? 'active_duration_seconds'
+              THEN (selected.before_data->>'active_duration_seconds')::integer
+              ELSE current.active_duration_seconds END,
+          active_duration_basis =
+            CASE WHEN selected.before_data ? 'active_duration_basis'
+              THEN selected.before_data->>'active_duration_basis'
+              ELSE current.active_duration_basis END,
           data_quality_flags =
             coalesce(selected.before_data->'data_quality_flags', '[]'::jsonb),
           history_revision = session.history_revision + 1
@@ -420,7 +864,8 @@ export async function restoreWorkoutTimingVersion(
             AND old_value.key IN (
               'started_at', 'finished_at', 'timezone', 'local_date',
               'performed_time_precision', 'exclude_duration_from_analytics',
-              'data_quality_flags'
+              'data_quality_flags', 'active_duration_semantics_version',
+              'active_duration_seconds', 'active_duration_basis'
             )
           ORDER BY old_value.key
         ),
@@ -448,6 +893,22 @@ export async function restoreWorkoutTimingVersion(
         AND recommendation.source_slot_lineage_id =
           lineage.source_slot_lineage_id
       RETURNING recommendation.id
+    ), reconciled_stale_progression AS (
+      UPDATE progression_jobs job
+      SET status = 'completed',
+          lease_token = NULL,
+          leased_until = NULL,
+          last_error =
+            'Superseded progression input: workout history changed during workout timing restore.',
+          completed_at = statement_timestamp(),
+          updated_at = statement_timestamp()
+      FROM restored
+      JOIN versioned ON versioned.entity_id = restored.id
+      WHERE job.user_id = restored.user_id
+        AND job.session_id = restored.id
+        AND job.source_session_revision <> restored.history_revision
+        AND job.status IN ('pending', 'processing')
+      RETURNING job.id
     ), queued_progression AS (
       INSERT INTO progression_jobs (
         id, user_id, session_id, source_session_revision,

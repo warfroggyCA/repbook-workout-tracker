@@ -1,6 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { eq, sql } from "drizzle-orm";
-import { completedSets, recordVersions } from "@/db/schema";
+import {
+  completedSets,
+  progressionJobs,
+  recordVersions,
+  workoutSessions,
+} from "@/db/schema";
 import { readSetCorrectionEvidence } from "@/lib/set-correction";
 import { evaluateApplicationIntegrity } from "@/services/recovery-health";
 import { restoreRecordVersion, updateSetWithVersion } from "@/services/record-versions";
@@ -225,6 +230,28 @@ describe("V2 T02 correction recovery", () => {
       dependentConclusions: "snapshot_state_reconciled",
       restoredFromSnapshotId: created.snapshotId,
     });
+    const restoredWorkout = await database.db.query.workoutSessions.findFirst({
+      where: eq(workoutSessions.id, fixture.sessionId),
+    });
+    expect(restoredWorkout?.historyRevision).toBe(2);
+    const restoredProgressionJobs =
+      await database.db.query.progressionJobs.findMany({
+        where: eq(progressionJobs.sessionId, fixture.sessionId),
+      });
+    expect(
+      restoredProgressionJobs.filter(
+        (job) =>
+          job.sourceSessionRevision !== restoredWorkout?.historyRevision &&
+          (job.status === "pending" || job.status === "processing"),
+      ),
+    ).toEqual([]);
+    expect(
+      restoredProgressionJobs.some(
+        (job) =>
+          job.sourceSessionRevision === restoredWorkout?.historyRevision &&
+          job.status === "pending",
+      ),
+    ).toBe(true);
     expect(
       await evaluateApplicationIntegrity(database.db, fixture.userId),
     ).toEqual([]);

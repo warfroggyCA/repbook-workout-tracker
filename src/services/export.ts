@@ -120,6 +120,7 @@ export async function buildSetsCsv(
   const rows = await db
     .select({
       date: workoutSessions.startedAt,
+      finishedAt: workoutSessions.finishedAt,
       timezone: workoutSessions.timezone,
       localDate: workoutSessions.localDate,
       template: workoutSessions.templateName,
@@ -135,6 +136,9 @@ export async function buildSetsCsv(
       startRequestKey: workoutSessions.startRequestKey,
       startRequestHash: workoutSessions.startRequestHash,
       sessionQualityFlags: workoutSessions.dataQualityFlags,
+      activeDurationSemanticsVersion: workoutSessions.activeDurationSemanticsVersion,
+      activeDurationSeconds: workoutSessions.activeDurationSeconds,
+      activeDurationBasis: workoutSessions.activeDurationBasis,
       durationExcluded: workoutSessions.excludeDurationFromAnalytics,
       compilerProposalId: sql<string | null>`${workoutSessions.compilationSnapshot} ->> 'proposalId'`,
       compilerProposalHash: sql<string | null>`${workoutSessions.compilationSnapshot} ->> 'proposalHash'`,
@@ -245,6 +249,7 @@ export async function buildSetsCsv(
   const occurrenceOnlyRows = await db
     .select({
       date: workoutSessions.startedAt,
+      finishedAt: workoutSessions.finishedAt,
       timezone: workoutSessions.timezone,
       localDate: workoutSessions.localDate,
       template: workoutSessions.templateName,
@@ -260,6 +265,9 @@ export async function buildSetsCsv(
       startRequestKey: workoutSessions.startRequestKey,
       startRequestHash: workoutSessions.startRequestHash,
       sessionQualityFlags: workoutSessions.dataQualityFlags,
+      activeDurationSemanticsVersion: workoutSessions.activeDurationSemanticsVersion,
+      activeDurationSeconds: workoutSessions.activeDurationSeconds,
+      activeDurationBasis: workoutSessions.activeDurationBasis,
       durationExcluded: workoutSessions.excludeDurationFromAnalytics,
       compilerProposalId: sql<string | null>`${workoutSessions.compilationSnapshot} ->> 'proposalId'`,
       compilerProposalHash: sql<string | null>`${workoutSessions.compilationSnapshot} ->> 'proposalHash'`,
@@ -498,13 +506,14 @@ export async function buildSetsCsv(
       exerciseOrder: r.exerciseOrder,
       setNo: r.setNo,
       values: [
-        r.date.toISOString(), r.timezone, r.localDate, r.template,
+        r.date.toISOString(), r.finishedAt?.toISOString(), r.timezone, r.localDate, r.template,
         r.sessionStatus, r.source,
         r.sourceWorkoutKey, r.importBatchId,
         r.historyRevision, r.performedTimePrecision, r.sourceProgramId,
         r.sourceProgramVersionId, r.sourceDayLineageId,
         r.startRequestKey, r.startRequestHash,
-        r.sessionQualityFlags.join(" | "), r.durationExcluded, r.exercise,
+        r.sessionQualityFlags.join(" | "), r.activeDurationSemanticsVersion,
+        r.activeDurationSeconds, r.activeDurationBasis, r.durationExcluded, r.exercise,
         r.exerciseId, identityScope, r.exerciseFamilyId,
         r.exerciseCreatedFromImportEventId, evidenceTier,
         EXERCISE_HISTORY_ALGORITHM_VERSION, exactOccurrenceLinked,
@@ -572,13 +581,14 @@ export async function buildSetsCsv(
         exerciseOrder: r.exerciseOrder,
         setNo: null,
         values: [
-        r.date.toISOString(), r.timezone, r.localDate, r.template,
+        r.date.toISOString(), r.finishedAt?.toISOString(), r.timezone, r.localDate, r.template,
         r.sessionStatus, r.source,
         r.sourceWorkoutKey, r.importBatchId,
         r.historyRevision, r.performedTimePrecision, r.sourceProgramId,
         r.sourceProgramVersionId, r.sourceDayLineageId,
         r.startRequestKey, r.startRequestHash,
-        r.sessionQualityFlags.join(" | "), r.durationExcluded, r.exercise,
+        r.sessionQualityFlags.join(" | "), r.activeDurationSemanticsVersion,
+        r.activeDurationSeconds, r.activeDurationBasis, r.durationExcluded, r.exercise,
         r.exerciseId,
         r.exerciseId == null ? null : classifyExerciseIdentityScope({
           ownerId: userId,
@@ -635,12 +645,13 @@ export async function buildSetsCsv(
 
   return toCsv(
     [
-      "started_at", "timezone", "local_date", "template", "session_status",
+      "started_at", "finished_at", "timezone", "local_date", "template", "session_status",
       "source", "source_workout_key", "import_batch_id",
       "history_revision", "performed_time_precision", "source_program_id",
       "source_program_version_id", "source_day_lineage_id",
       "start_request_key", "start_request_hash",
-      "session_quality_flags", "duration_excluded", "exercise",
+      "session_quality_flags", "active_duration_semantics_version",
+      "active_duration_seconds", "active_duration_basis", "duration_excluded", "exercise",
       "exercise_id", "exercise_scope", "exercise_family_id",
       "exercise_created_from_import_event_id", "exercise_evidence_tier",
       "exercise_history_algorithm_version", "exact_occurrence_linked",

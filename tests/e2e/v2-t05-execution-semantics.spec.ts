@@ -210,6 +210,9 @@ test("keeps one ledger-driven current/next/group/rest state through retry, inter
 
   const first = page.getByTestId("current-exercise-card");
   await expect(guidance).toContainText("Now: Barbell Back Squat, set 1");
+  await first.locator("details", {
+    hasText: "Exercise progress & extras",
+  }).locator(":scope > summary").click();
   const addExtra = first.getByRole("button", { name: "Add extra set", exact: true });
   await waitForHydratedReactHandler(addExtra);
   await addExtra.click();

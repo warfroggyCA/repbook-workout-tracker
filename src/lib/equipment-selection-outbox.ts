@@ -174,6 +174,28 @@ export function hasPendingEquipmentSelection(
     entry.sessionExerciseId === identity.sessionExerciseId,
   );
 }
+
+export type EquipmentSelectionComparisonState =
+  | "safe"
+  | "pending_or_failed"
+  | "unreadable";
+
+/**
+ * Previous-set evidence is server-projected from the acknowledged equipment
+ * snapshot. Any retained device command can describe a newer physical setup,
+ * including one with the same load-entry meaning but different geometry.
+ */
+export function equipmentSelectionComparisonState(
+  snapshot: EquipmentSelectionOutboxSnapshot,
+  identity: { ownerId: string; sessionId: string; sessionExerciseId: string },
+): EquipmentSelectionComparisonState {
+  if (snapshot.error != null || snapshot.quarantined.length > 0) {
+    return "unreadable";
+  }
+  return hasPendingEquipmentSelection(snapshot, identity)
+    ? "pending_or_failed"
+    : "safe";
+}
 function write(storage: WorkoutSetOutboxStorage, snapshot: EquipmentSelectionOutboxSnapshot) {
   storage.setItem(EQUIPMENT_SELECTION_OUTBOX_STORAGE_KEY, JSON.stringify({
     version: 1,

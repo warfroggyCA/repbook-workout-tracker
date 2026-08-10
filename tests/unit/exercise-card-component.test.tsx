@@ -1,3 +1,4 @@
+import { cloneElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 import { formatCompactPlateLoadGuidance } from "@/lib/exercise-card";
@@ -153,6 +154,17 @@ describe("ExerciseCard", () => {
     expect(html).toContain("Add note");
     expect(html).toContain("Pain / no issue");
     expect(html).toContain("Skip exercise");
+    expect(html).toContain("Exercise progress &amp; extras");
+    expect(html).toContain("More for this exercise");
+    expect(html.indexOf(`id=\"logged-set-${exercise.id}-1\"`)).toBeLessThan(
+      html.indexOf("Exercise progress &amp; extras"),
+    );
+    expect(html.indexOf("Exercise progress &amp; extras")).toBeLessThan(
+      html.indexOf("Add extra set"),
+    );
+    expect(html.indexOf("More for this exercise")).toBeLessThan(
+      html.indexOf("Workout actions"),
+    );
   });
 
   it("labels an assisted set as assistance during the active workout", () => {
@@ -247,13 +259,59 @@ describe("ExerciseCard", () => {
       />,
     );
     expect(html).toContain("Assistance: 80 lb · 8 reps");
+    expect(html).toContain("Previous comparable set unavailable");
     expect(html).toContain('aria-label="Assistance"');
     expect(html).not.toContain("80 lb ×");
+    expect(html.indexOf("Exercise progress &amp; extras")).toBeLessThan(
+      html.indexOf(`id=\"logged-set-${assistedExercise.id}-1\"`),
+    );
   });
 
   it("renders the current planned set entry inline with effort, exact RPE, plate, log, and skip parity", () => {
-    const current = { ...exercise, sets: [] };
-    const html = renderToStaticMarkup(
+    const current: SessionExerciseData = {
+      ...exercise,
+      sets: [],
+      targetLoad: 95,
+      previousComparable: {
+        status: "available",
+        currentSessionExerciseId: exercise.id,
+        exerciseId: exercise.exerciseId,
+        semantics: {
+          version: 1,
+          metricType: "weight_reps",
+          loadType: "barbell",
+          loadSemantics: "total",
+          loadEntryMeaning: "total_system",
+        },
+        source: {
+          workoutId: "00000000-0000-4000-8000-000000000050",
+          localDate: "2026-08-03",
+          startedAtISO: "2026-08-03T14:00:00.000Z",
+          finishedAtISO: "2026-08-03T15:00:00.000Z",
+          historyHref: "/history/00000000-0000-4000-8000-000000000050",
+          workoutSource: "tracker",
+        },
+        sets: [{
+          setId: "00000000-0000-4000-8000-000000000051",
+          setNo: 1,
+          weight: 100,
+          weightUnit: "lb",
+          reps: 7,
+          distanceKm: null,
+          durationSeconds: null,
+          rpe: 8,
+          rir: null,
+          observedCompletedAtISO: "2026-08-03T14:20:00.000Z",
+          observedCompletionProvenance: "live_client",
+          observedCompletionQuality: "trustworthy",
+          correctionProvenance: {
+            state: "version_restored",
+            count: 2,
+          },
+        }],
+      },
+    };
+    const card = (
       <ExerciseCard
         exercise={current}
         historyRevision={0}
@@ -286,6 +344,7 @@ describe("ExerciseCard", () => {
         }}
         incrementals={{}}
         unit="lb"
+        loadEntryMeaning="total_system"
         activeOccurrence={{
           id: "00000000-0000-4000-8000-000000000003",
           sessionExerciseId: current.id,
@@ -326,6 +385,7 @@ describe("ExerciseCard", () => {
         onAdjustIntentChange={() => undefined}
       />
     );
+    const html = renderToStaticMarkup(card);
 
     expect(html).toContain(
       `id="set-entry-${current.id}-00000000-0000-4000-8000-000000000003"`,
@@ -343,8 +403,17 @@ describe("ExerciseCard", () => {
         new RegExp(`aria-label="${shortcut}[^\"]*" aria-pressed="false"`),
       );
     }
-    expect(html).toContain("Current exercise");
     expect(html).toContain("Current action");
+    expect(html).toContain("Previous · 2026-08-03 · Version restored ×2");
+    expect(html).toContain('data-comparison-state="available"');
+    expect(html).toContain("100 lb × 7 reps · source set 1");
+    expect(html).toContain('aria-label="Total load"');
+    expect(html).toContain('value="95"');
+    expect(html).toContain("View source workout");
+    expect(html).toContain(
+      'href="/history/00000000-0000-4000-8000-000000000050"',
+    );
+    expect(html).toContain('target="_blank"');
     expect(html).toContain("Performed measure");
     expect(html).toContain("Barbell Squat, set 2");
     expect(html).toContain("Optional effort and set note");
@@ -355,7 +424,13 @@ describe("ExerciseCard", () => {
     expect(html).toContain("Record pain");
     expect(html).not.toContain('aria-label="Pain severity 1"');
     expect(html).toContain("Set exceptions");
+    expect(html).toContain("Set options");
+    expect(html).toContain("Exercise progress &amp; extras");
+    expect(html).toContain("More for this exercise");
     expect(html.indexOf("Current action")).toBeLessThan(
+      html.indexOf("Previous ·"),
+    );
+    expect(html.indexOf("Previous ·")).toBeLessThan(
       html.indexOf("Performed measure"),
     );
     expect(html.indexOf("Performed measure")).toBeLessThan(
@@ -379,6 +454,15 @@ describe("ExerciseCard", () => {
     expect(html).toContain(
       "Adds ad-hoc work without changing the planned set order.",
     );
+
+    const unavailableHtml = renderToStaticMarkup(cloneElement(card, {
+      comparisonTemporarilyUnavailable: true,
+    }));
+    expect(unavailableHtml).toContain('data-comparison-state="loading"');
+    expect(unavailableHtml).toContain("Checking previous comparable set…");
+    expect(unavailableHtml).not.toContain("100 lb × 7 reps");
+    expect(unavailableHtml).toContain('aria-label="Total load"');
+    expect(unavailableHtml).toContain('value="95"');
   });
 
   it("keeps the planned occurrence number after an earlier set is skipped", () => {
@@ -467,6 +551,8 @@ describe("ExerciseCard", () => {
     );
     expect(html).toContain("Saved · Set 1");
     expect(html).toContain("Acknowledged by Repbook");
+    expect(html).toContain("Wrong value? Correct the saved set");
+    expect(html).toContain("Correct set");
     expect(html).toContain(
       `id="set-entry-${afterSkippedSecond.id}-00000000-0000-4000-8000-000000000004"`,
     );
@@ -620,6 +706,9 @@ describe("ExerciseCard", () => {
     expect(saved).toContain("Set 1");
     expect(saved).toContain("skipped");
     expect(saved).toContain("Saved");
+    expect(saved.indexOf("Set 1")).toBeLessThan(
+      saved.indexOf("Exercise progress &amp; extras"),
+    );
   });
 
   it("does not reinterpret a pre-existing ad-hoc occurrence as an appended set", () => {

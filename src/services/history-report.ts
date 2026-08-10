@@ -124,6 +124,9 @@ export type HistoryCalendarSessionInput = {
   timezone: string;
   localDate: string;
   finishedAt: Date | null;
+  activeDurationSemanticsVersion?: number | null;
+  activeDurationSeconds?: number | null;
+  activeDurationBasis?: string | null;
   excludeDurationFromAnalytics?: boolean;
   occurrences: Array<{
     kind: "day_warmup" | "exercise_warmup" | "working_set";
@@ -204,6 +207,9 @@ export type HistorySessionInput = {
   timezone: string;
   localDate: string;
   finishedAt: Date | null;
+  activeDurationSemanticsVersion?: number | null;
+  activeDurationSeconds?: number | null;
+  activeDurationBasis?: string | null;
   excludeDurationFromAnalytics?: boolean;
   programLinked?: boolean;
   sourceDayLineageId?: string | null;
@@ -415,6 +421,7 @@ export function buildHistoryCalendarSessions(
         session.startedAt,
         session.finishedAt,
         session.excludeDurationFromAnalytics,
+        session,
       );
       return {
         recordType: "workout" as const,
@@ -427,13 +434,12 @@ export function buildHistoryCalendarSessions(
         timezone: session.timezone,
         calendarDateKey: session.localDate,
         durationMin: duration == null ? null : Math.round(duration),
-        durationExcluded:
-          session.finishedAt != null &&
-          shouldExcludeWorkoutDuration(
-            session.startedAt,
-            session.finishedAt,
-            session.excludeDurationFromAnalytics,
-          ),
+        durationExcluded: shouldExcludeWorkoutDuration(
+          session.startedAt,
+          session.finishedAt,
+          session.excludeDurationFromAnalytics,
+          session,
+        ),
         sets: sets.length,
         volume: Math.round(
           sets.reduce(
@@ -571,10 +577,11 @@ export function summarizeHistory(
       session.startedAt,
       session.finishedAt,
       session.excludeDurationFromAnalytics,
+      session,
     );
     if (sessionDuration != null) {
       durations.push(sessionDuration);
-    } else if (session.finishedAt) {
+    } else {
       excludedDurationSessions += 1;
     }
     const weekKey = localWeekStart(session.localDate);
@@ -1432,20 +1439,29 @@ export async function getHistoryReport(
         mapping_exercise_id uuid,
         mapping_confirmed_at timestamptz
       )
-    ), selected_sessions AS MATERIALIZED (
+    ), selected_session_durations AS MATERIALIZED (
       SELECT ws.*,
              date_trunc('week', ws.local_date::timestamp)::date AS week_start,
-             ws.finished_at IS NOT NULL AND (
-               ws.exclude_duration_from_analytics OR
-               ws.finished_at < ws.started_at OR
-               extract(epoch FROM ws.finished_at - ws.started_at) / 60 >
-                 ${MAX_ANALYTICS_WORKOUT_DURATION_MINUTES}
-             ) AS duration_excluded
+             CASE
+               WHEN ws.active_duration_semantics_version = 1
+                 THEN ws.active_duration_seconds / 60.0
+               ELSE NULL::numeric
+             END AS effective_duration_minutes
       FROM workout_sessions ws
       WHERE ws.user_id = ${userId}::uuid
         AND ws.status IN ('completed', 'abandoned')
         AND ws.archived_at IS NULL
         ${sessionSince}
+    ), selected_sessions AS MATERIALIZED (
+      SELECT session_duration.*,
+             (
+               session_duration.exclude_duration_from_analytics OR
+               session_duration.effective_duration_minutes IS NULL OR
+               session_duration.effective_duration_minutes < 0 OR
+               session_duration.effective_duration_minutes >
+                 ${MAX_ANALYTICS_WORKOUT_DURATION_MINUTES}
+             ) AS duration_excluded
+      FROM selected_session_durations session_duration
     ), completed_sessions AS MATERIALIZED (
       SELECT * FROM selected_sessions WHERE status = 'completed'
     ), valid_program_sessions AS MATERIALIZED (
@@ -1728,14 +1744,12 @@ export async function getHistoryReport(
     ), week_duration_rows AS (
       SELECT week_start,
              round(coalesce(sum(
-               extract(epoch FROM finished_at - started_at) / 60
+               effective_duration_minutes
              ) FILTER (
-               WHERE finished_at IS NOT NULL
-                 AND NOT duration_excluded
+               WHERE NOT duration_excluded
              ), 0))::int AS duration_minutes,
              count(*) FILTER (
-               WHERE finished_at IS NOT NULL
-                 AND NOT duration_excluded
+               WHERE NOT duration_excluded
              )::int AS duration_sessions
       FROM completed_sessions
       GROUP BY week_start
@@ -1969,8 +1983,8 @@ export async function getHistoryReport(
       SELECT s.id, coalesce(s.template_name, 'Workout') AS name,
              s.status::text AS status, s.started_at, s.timezone,
              s.local_date::text AS calendar_date_key,
-             CASE WHEN s.finished_at IS NOT NULL AND NOT s.duration_excluded
-               THEN greatest(0, round(extract(epoch FROM s.finished_at - s.started_at) / 60))::int
+             CASE WHEN NOT s.duration_excluded
+               THEN greatest(0, round(s.effective_duration_minutes))::int
                ELSE NULL END AS duration_min,
              s.duration_excluded,
              count(ws.set_id)::int AS sets,
@@ -2024,7 +2038,8 @@ export async function getHistoryReport(
       FROM recent_sessions s
       LEFT JOIN working_sets ws ON ws.session_id = s.id
       GROUP BY s.id, s.template_name, s.status, s.started_at, s.timezone,
-               s.local_date, s.finished_at, s.duration_excluded
+               s.local_date, s.finished_at, s.duration_excluded,
+               s.effective_duration_minutes
     )
     SELECT
       (SELECT min(local_date)::text FROM selected_sessions) AS earliest_local_date,
@@ -2042,9 +2057,9 @@ export async function getHistoryReport(
       (SELECT count(*)::int FROM working_sets WHERE exclude_from_analytics) AS excluded_metric_sets,
       (SELECT count(*)::int FROM completed_sessions
         WHERE duration_excluded) AS excluded_duration_sessions,
-      (SELECT round(avg(extract(epoch FROM finished_at - started_at) / 60))::int
+      (SELECT round(avg(effective_duration_minutes))::int
         FROM completed_sessions
-        WHERE finished_at IS NOT NULL AND NOT duration_excluded) AS average_duration_min,
+        WHERE NOT duration_excluded) AS average_duration_min,
       (SELECT count(*)::int FROM working_sets
         WHERE modification_type = 'as_planned'
           AND occurrence_origin = 'planned'
@@ -2737,13 +2752,28 @@ export async function getHistoryCalendarRecords(
       ELSE 'unknown'
     END`;
     const executed = await db.execute(sql`
-      WITH visible_workouts AS MATERIALIZED (
-        SELECT ws.*
+      WITH visible_workout_durations AS MATERIALIZED (
+        SELECT ws.*,
+               CASE
+                 WHEN ws.active_duration_semantics_version = 1
+                   THEN ws.active_duration_seconds / 60.0
+                 ELSE NULL::numeric
+               END AS effective_duration_minutes
         FROM workout_sessions ws
         WHERE ws.user_id = ${userId}::uuid
           AND ws.status IN ('completed', 'abandoned')
           AND ws.archived_at IS NULL
           AND ws.local_date BETWEEN ${window.start}::date AND ${window.end}::date
+      ), visible_workouts AS MATERIALIZED (
+        SELECT visible_workout_duration.*,
+               (
+                 visible_workout_duration.exclude_duration_from_analytics OR
+                 visible_workout_duration.effective_duration_minutes IS NULL OR
+                 visible_workout_duration.effective_duration_minutes < 0 OR
+                 visible_workout_duration.effective_duration_minutes >
+                   ${MAX_ANALYTICS_WORKOUT_DURATION_MINUTES}
+               ) AS duration_excluded
+        FROM visible_workout_durations visible_workout_duration
       ), workout_records AS (
         SELECT
           'workout'::text AS record_type,
@@ -2756,19 +2786,10 @@ export async function getHistoryCalendarRecords(
           ws.started_at,
           ws.timezone,
           ws.local_date::text AS calendar_date_key,
-          CASE WHEN ws.finished_at IS NOT NULL
-              AND NOT ws.exclude_duration_from_analytics
-              AND ws.finished_at >= ws.started_at
-              AND extract(epoch FROM ws.finished_at - ws.started_at) / 60 <=
-                ${MAX_ANALYTICS_WORKOUT_DURATION_MINUTES}
-            THEN greatest(0, round(extract(epoch FROM ws.finished_at - ws.started_at) / 60))::int
+          CASE WHEN NOT ws.duration_excluded
+            THEN greatest(0, round(ws.effective_duration_minutes))::int
             ELSE NULL END AS duration_min,
-          ws.finished_at IS NOT NULL AND (
-            ws.exclude_duration_from_analytics OR
-            ws.finished_at < ws.started_at OR
-            extract(epoch FROM ws.finished_at - ws.started_at) / 60 >
-              ${MAX_ANALYTICS_WORKOUT_DURATION_MINUTES}
-          ) AS duration_excluded,
+          ws.duration_excluded,
           coalesce(metrics.sets, 0)::int AS sets,
           coalesce(metrics.volume, 0)::int AS volume,
           CASE WHEN coalesce(metrics.targetable, 0) > 0
@@ -2996,6 +3017,9 @@ export async function getHistoryCalendarRecords(
         timezone: true,
         localDate: true,
         finishedAt: true,
+        activeDurationSemanticsVersion: true,
+        activeDurationSeconds: true,
+        activeDurationBasis: true,
         excludeDurationFromAnalytics: true,
       },
       with: {

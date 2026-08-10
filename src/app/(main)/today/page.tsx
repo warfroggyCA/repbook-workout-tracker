@@ -32,6 +32,7 @@ import {
   AlertDescription,
   AlertTitle,
 } from "@/components/ui/alert";
+import { acceptanceWorkoutNow } from "@/lib/acceptance-workout-clock";
 
 function whyThisProgramDay(today: TodayData) {
   if (today.nextTemplateReason.kind === "after_completed_program_day") {
@@ -143,8 +144,9 @@ export default async function TodayPage({
   const query = await searchParams;
   const user = await getCurrentUser();
   const db = await getDb();
+  const now = acceptanceWorkoutNow("finish")?.() ?? new Date();
   const { today, pendingRecs, recentSessions, stats } =
-    await getTodayPageData(db, user.id, user.profile.timezone);
+    await getTodayPageData(db, user.id, user.profile.timezone, now);
 
   if (!today) redirect("/setup");
 
@@ -165,6 +167,8 @@ export default async function TodayPage({
   const alternateTemplates = today.allTemplates.filter(
     (template) => template.template.id !== next.template.id
   );
+  const activeTimingNeedsReview =
+    today.inProgressTiming?.reviewRequired ?? false;
 
   return (
     <main className="mx-auto flex max-w-5xl flex-col gap-3 px-4 py-0 sm:gap-4 sm:p-6 lg:p-8">
@@ -232,11 +236,21 @@ export default async function TodayPage({
           <Card
             data-testid="today-decision"
             size="sm"
-            className="border-primary/50"
+            className={
+              activeTimingNeedsReview
+                ? "border-amber-500/60 bg-amber-500/5"
+                : "border-primary/50"
+            }
           >
             <CardHeader className="gap-1">
-              <p className="text-xs font-medium uppercase tracking-[0.12em] text-primary">
-                Active workout
+              <p className={
+                activeTimingNeedsReview
+                  ? "text-xs font-medium uppercase tracking-[0.12em] text-amber-800 dark:text-amber-300"
+                  : "text-xs font-medium uppercase tracking-[0.12em] text-primary"
+              }>
+                {activeTimingNeedsReview
+                  ? "Workout needs attention"
+                  : "Active workout"}
               </p>
               <h2 className="text-xl font-semibold leading-tight sm:text-2xl">
                 {today.inProgressSessionName ?? "Workout in progress"}
@@ -261,6 +275,21 @@ export default async function TodayPage({
               </CardDescription>
             </CardHeader>
             <CardContent className="flex flex-col gap-2 sm:gap-3">
+              {activeTimingNeedsReview && today.inProgressTiming && (
+                <div
+                  role="status"
+                  data-testid="stale-workout-timing"
+                  className="rounded-xl border border-amber-500/50 bg-background/80 px-3 py-2.5 text-sm"
+                >
+                  <p className="font-medium">
+                    Timing needs review · wall clock {today.inProgressTiming.wallClockLabel}
+                  </p>
+                  <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+                    Active time is unavailable until you review the interruption.
+                    The recorded start is retained.
+                  </p>
+                </div>
+              )}
               <Button
                 render={<Link href={`/session/${today.inProgressSessionId}`} />}
                 nativeButton={false}
@@ -269,6 +298,21 @@ export default async function TodayPage({
               >
                 <Play className="size-4" /> Resume workout
               </Button>
+              {activeTimingNeedsReview && (
+                <Button
+                  render={
+                    <Link
+                      href={`/session/${today.inProgressSessionId}?reviewTiming=1`}
+                    />
+                  }
+                  nativeButton={false}
+                  variant="outline"
+                  size="lg"
+                  className="h-auto min-h-12 w-full whitespace-normal py-3 text-center text-base leading-tight"
+                >
+                  Review timing &amp; finish
+                </Button>
+              )}
               <ProgramDecisionStatus count={pendingRecs.length} />
               <ActiveWorkoutDiscard
                 sessionId={today.inProgressSessionId}

@@ -1693,6 +1693,9 @@ test("keeps every active-workout route reachable with one scroll surface", async
   });
 
   await expect(currentCard.getByRole("button", { name: "Log set", exact: true })).toBeVisible();
+  await openNativeDetails(currentCard.locator("details", {
+    hasText: "Exercise progress & extras",
+  }));
   const addExtraSet = currentCard.getByRole("button", {
     name: "Add extra set",
     exact: true,
@@ -1707,6 +1710,9 @@ test("keeps every active-workout route reachable with one scroll surface", async
   }));
   await openNativeDetails(currentCard.locator("details", {
     hasText: "Set exceptions",
+  }));
+  await openNativeDetails(currentCard.locator("details", {
+    hasText: "More for this exercise",
   }));
   await expect(currentCard.getByRole("button", { name: "Skip set", exact: true })).toBeVisible();
   await expect(currentCard.getByRole("button", { name: "Ask Coach", exact: true })).toBeVisible();
@@ -1870,6 +1876,9 @@ test("keeps every active-workout route reachable with one scroll surface", async
   await expect(
     plannedCard.getByText("skipped", { exact: true }),
   ).toHaveCount(3);
+  await openNativeDetails(plannedCard.locator("details", {
+    hasText: "Exercise progress & extras",
+  }));
   const addSet = plannedCard.getByRole("button", {
     name: "Add extra set",
     exact: true,
@@ -1929,6 +1938,14 @@ test("keeps every active-workout route reachable with one scroll surface", async
       .getByTestId("added-set-entry")
       .locator('input[inputmode="numeric"]'),
   ).toHaveValue(addedReps);
+  await expect(
+    refreshedCard.locator("details", {
+      hasText: "Exercise progress & extras",
+    }),
+  ).not.toHaveAttribute("open", "");
+  await openNativeDetails(refreshedCard.locator("details", {
+    hasText: "Exercise progress & extras",
+  }));
   await expect(
     refreshedCard.getByRole("button", {
       name: "Add extra set",
@@ -2487,7 +2504,7 @@ test("downloads one canonical full backup with intact workout relationships", as
     canonical: { tables: Record<string, Array<Record<string, unknown>>> };
   };
   expect(backup.format).toBe("workout-tracker-canonical-backup");
-  expect(backup.schemaVersion).toBe("30");
+  expect(backup.schemaVersion).toBe("31");
   expect(backup.canonical.tables.users).toHaveLength(1);
   expect(backup.canonical.tables.workout_sessions.length).toBeGreaterThan(0);
   expect(backup.recordCounts.workout_sessions).toBe(

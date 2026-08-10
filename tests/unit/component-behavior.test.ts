@@ -17,6 +17,7 @@ import { fitRoutineSetNotes, moveRoutineItem } from "@/lib/routine-builder";
 import {
   nextIncompleteExerciseId,
   mergeEquipmentSelectionOccurrenceStates,
+  previousComparableIsTemporarilyUnavailable,
   workoutSaveQueueMessage,
   workoutFinishIsBlocked,
 } from "@/lib/session-runner";
@@ -94,6 +95,28 @@ function exercise(
 }
 
 describe("exercise-card presentation rules", () => {
+  it("keeps comparison unavailable after equipment ack until the server projection refreshes", () => {
+    expect(previousComparableIsTemporarilyUnavailable({
+      equipmentOutboxHydrated: false,
+      equipmentState: "safe",
+      awaitingServerRefresh: false,
+    })).toBe(true);
+    expect(previousComparableIsTemporarilyUnavailable({
+      equipmentOutboxHydrated: true,
+      equipmentState: "pending_or_failed",
+      awaitingServerRefresh: false,
+    })).toBe(true);
+    expect(previousComparableIsTemporarilyUnavailable({
+      equipmentOutboxHydrated: true,
+      equipmentState: "safe",
+      awaitingServerRefresh: true,
+    })).toBe(true);
+    expect(previousComparableIsTemporarilyUnavailable({
+      equipmentOutboxHydrated: true,
+      equipmentState: "safe",
+      awaitingServerRefresh: false,
+    })).toBe(false);
+  });
   it("names equipment blockers truthfully instead of reporting zero sets", () => {
     expect(workoutSaveQueueMessage({
       equipmentError: null,

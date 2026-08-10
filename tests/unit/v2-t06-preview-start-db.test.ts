@@ -3,6 +3,7 @@
 // meaning, truthful collision outcomes, and replay before Program freshness.
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { eq, sql } from "drizzle-orm";
+import { resultRows } from "@/db/result";
 import {
   exercisePrescriptions,
   completedSets,
@@ -395,12 +396,27 @@ describe("Repbook v2 T06 migration boundary", () => {
         `);
 
         await migrateTestDatabaseThrough(database, "0072_preview_start_semantics");
-        const workout = await database.db.query.workoutSessions.findFirst({
-          where: eq(workoutSessions.id, sessionId),
-        });
-        const exercise = await database.db.query.sessionExercises.findFirst({
-          where: eq(sessionExercises.sessionId, sessionId),
-        });
+        const [workout] = resultRows(
+          await database.db.execute(sql`
+            SELECT
+              start_request_key AS "startRequestKey",
+              start_request_hash AS "startRequestHash"
+            FROM workout_sessions
+            WHERE id = ${sessionId}::uuid
+          `),
+        );
+        const [exercise] = resultRows(
+          await database.db.execute(sql`
+            SELECT
+              prescribed_semantics_version AS "prescribedSemanticsVersion",
+              prescribed_exercise_name AS "prescribedExerciseName",
+              prescribed_metric_type AS "prescribedMetricType",
+              prescribed_load_type AS "prescribedLoadType",
+              prescribed_load_semantics AS "prescribedLoadSemantics"
+            FROM session_exercises
+            WHERE session_id = ${sessionId}::uuid
+          `),
+        );
         expect(workout).toMatchObject({
           startRequestKey: null,
           startRequestHash: null,

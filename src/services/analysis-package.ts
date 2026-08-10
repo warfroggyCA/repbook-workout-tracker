@@ -331,8 +331,8 @@ function buildCore(input: {
     ? ["program_version_id", "lineage_id", "name", "order_idx", "notes", "warmup_notes", "warmup_items", "intent"] as const
     : ["program_version_id", "lineage_id", "name", "order_idx"] as const;
   const workoutFields = policy.includeWorkoutDetails
-    ? ["template_id", "template_name", "import_batch_id", "source", "source_workout_key", "history_revision", "performed_time_precision", "source_program_id", "source_program_version_id", "source_day_lineage_id", "data_quality_flags", "exclude_duration_from_analytics", "status", "time_budget_min", "started_at", "timezone", "local_date", "finished_at"] as const
-    : ["template_name", "import_batch_id", "source", "history_revision", "performed_time_precision", "source_program_id", "source_program_version_id", "source_day_lineage_id", "data_quality_flags", "exclude_duration_from_analytics", "status", "started_at", "timezone", "local_date", "finished_at"] as const;
+    ? ["template_id", "template_name", "import_batch_id", "source", "source_workout_key", "history_revision", "performed_time_precision", "source_program_id", "source_program_version_id", "source_day_lineage_id", "data_quality_flags", "active_duration_semantics_version", "active_duration_seconds", "active_duration_basis", "exclude_duration_from_analytics", "status", "time_budget_min", "started_at", "timezone", "local_date", "finished_at"] as const
+    : ["template_name", "import_batch_id", "source", "history_revision", "performed_time_precision", "source_program_id", "source_program_version_id", "source_day_lineage_id", "data_quality_flags", "active_duration_semantics_version", "active_duration_seconds", "active_duration_basis", "exclude_duration_from_analytics", "status", "started_at", "timezone", "local_date", "finished_at"] as const;
 
   const profileRows = table(snapshot, "user_profiles");
   const profile = profileRows[0] ?? null;

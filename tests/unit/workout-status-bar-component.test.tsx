@@ -48,6 +48,7 @@ describe("WorkoutStatusBar", () => {
     expect(html).toContain("Set 2 of 3 · Next set");
     expect(html).toContain('aria-label="Add training note"');
     expect(html).toContain("Finish");
+    expect(html).toContain("min-h-11 min-w-0 flex-1");
     expect(html).toContain("max-[360px]:sr-only");
     expect(html).toContain(
       "max-[360px]:bottom-[env(safe-area-inset-bottom)]",

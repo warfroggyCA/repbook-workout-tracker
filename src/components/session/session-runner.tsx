@@ -10,6 +10,7 @@ import {
   useState,
   useSyncExternalStore,
 } from "react";
+import { useRouter } from "next/navigation";
 import {
   appendWorkoutSet,
   completeSession,
@@ -32,6 +33,10 @@ import {
 import { ActiveWorkoutDiscard } from "./active-workout-actions";
 import { LiveCoachDrawer } from "./live-coach-drawer";
 import { WorkoutStatusBar } from "./workout-status-bar";
+import {
+  ActiveWorkoutTimingReview,
+  type ActiveDurationChoice,
+} from "./active-workout-timing-review";
 import { WorkoutGuidanceSummary } from "./workout-guidance-summary";
 import { WorkoutGroupContext } from "./workout-group-context";
 import {
@@ -74,6 +79,7 @@ import {
 import {
   getEquipmentSelectionOutboxServerSnapshot,
   getEquipmentSelectionOutboxSnapshot,
+  equipmentSelectionComparisonState,
   subscribeToEquipmentSelectionOutbox,
   subscribeToEquipmentSelectionOutboxStatus,
   type EquipmentSelectionOutboxEvent,
@@ -96,6 +102,7 @@ import {
   mergeSessionOutboxSets,
   mergeEquipmentSelectionOccurrenceStates,
   nextIncompleteExerciseId,
+  previousComparableIsTemporarilyUnavailable,
   resolveSetLoggingEquipment,
   shouldShowMissingWarmupMessage,
   workoutSaveQueueMessage,
@@ -136,19 +143,32 @@ import {
   patchActiveWorkoutMeasurement,
   readActiveWorkoutMeasurements,
 } from "@/lib/active-workout-measurements";
+import {
+  classifyActiveSessionTiming,
+  type ActiveSessionTiming,
+} from "@/lib/active-session-timing";
 
-function useElapsed(startedAtISO: string): string {
-  const [minutes, setMinutes] = useState(0);
+function useActiveTiming(
+  startedAtISO: string,
+  initialWallClockSeconds: number,
+): ActiveSessionTiming {
+  const startedAtMs = new Date(startedAtISO).getTime();
+  const [timing, setTiming] = useState(() =>
+    classifyActiveSessionTiming(
+      new Date(startedAtMs),
+      new Date(startedAtMs + initialWallClockSeconds * 1_000),
+    ),
+  );
   useEffect(() => {
     const compute = () =>
-      setMinutes(
-        Math.floor((Date.now() - new Date(startedAtISO).getTime()) / 60000)
+      setTiming(
+        classifyActiveSessionTiming(new Date(startedAtISO), new Date()),
       );
     compute();
     const t = setInterval(compute, 30_000);
     return () => clearInterval(t);
   }, [startedAtISO]);
-  return `${minutes} min`;
+  return timing;
 }
 
 function WarmupPanel({
@@ -207,6 +227,55 @@ function actionTargetId(action: SessionGuidanceFocusAction | null): string {
   return `${prefix}-${action.sessionExerciseId}-${action.occurrenceId}`;
 }
 
+function revealWorkoutTarget(
+  target: HTMLElement,
+  behavior: ScrollBehavior,
+) {
+  const visualViewport = window.visualViewport;
+  const viewportTop = visualViewport?.offsetTop ?? 0;
+  const viewportBottom =
+    viewportTop + (visualViewport?.height ?? window.innerHeight);
+  const stickySummary = document.querySelector<HTMLElement>(
+    '[data-testid="active-workout-sticky-summary"]',
+  );
+  const statusBar = document.querySelector<HTMLElement>(
+    '[aria-label="Workout status"]',
+  );
+  const visibleTop = Math.max(
+    viewportTop,
+    stickySummary?.getBoundingClientRect().bottom ?? viewportTop,
+  ) + 8;
+  const visibleBottom = Math.min(
+    viewportBottom,
+    statusBar?.getBoundingClientRect().top ?? viewportBottom,
+  ) - 12;
+  const revealTarget =
+    target.querySelector<HTMLElement>(
+      '[data-testid="active-workout-primary"]',
+    ) ?? target;
+  const availableHeight = Math.max(0, visibleBottom - visibleTop);
+  const primaryBounds = revealTarget.getBoundingClientRect();
+  const focalTarget = primaryBounds.height > availableHeight
+    ? revealTarget.querySelector<HTMLElement>(
+        '[data-testid="active-log-set"]',
+      ) ?? revealTarget
+    : revealTarget;
+  const bounds = focalTarget.getBoundingClientRect();
+  let desiredTop = bounds.top;
+  if (bounds.height <= availableHeight) {
+    if (bounds.top < visibleTop) desiredTop = visibleTop;
+    if (bounds.bottom > visibleBottom) {
+      desiredTop = visibleBottom - bounds.height;
+    }
+  } else {
+    desiredTop = visibleTop;
+  }
+  const top = bounds.top - desiredTop;
+  if (Math.abs(top) > 1) {
+    window.scrollBy({ left: 0, top, behavior });
+  }
+}
+
 function actionIdentity(action: SessionGuidanceFocusAction | null) {
   if (!action) return null;
   return action.kind === "rest" ? action.actionId : action.occurrenceId;
@@ -219,8 +288,25 @@ function actionOccurrenceId(action: SessionGuidanceFocusAction | null) {
     : action.occurrenceId;
 }
 
+function subscribeToClientHydration() {
+  return () => undefined;
+}
+
+function getClientHydrationSnapshot() {
+  return true;
+}
+
+function getServerHydrationSnapshot() {
+  return false;
+}
+
 export function SessionRunner(props: SessionRunnerProps) {
-  const elapsed = useElapsed(props.startedAtISO);
+  const router = useRouter();
+  const timing = useActiveTiming(
+    props.startedAtISO,
+    props.initialWallClockSeconds ?? 0,
+  );
+  const elapsed = timing.wallClockLabel;
   const fatigueLabelId = useId();
   const [exercises, setExercises] = useState<SessionExerciseData[]>(
     props.exercises
@@ -252,10 +338,20 @@ export function SessionRunner(props: SessionRunnerProps) {
   const [restNow, setRestNow] = useState(() => Date.now());
   const previousRestRemainingRef = useRef<number | null>(null);
   const restWasVisibleRef = useRef(true);
-  const [finishOpen, setFinishOpen] = useState(false);
+  const [finishOpen, setFinishOpen] = useState(
+    props.initialTimingReviewOpen ?? false,
+  );
   const [finishNote, setFinishNote] = useState("");
   const [fatigue, setFatigue] = useState<number | null>(null);
   const [finishing, setFinishing] = useState(false);
+  const [finishError, setFinishError] = useState<string | null>(null);
+  const [durationChoice, setDurationChoice] =
+    useState<ActiveDurationChoice | null>(() =>
+      props.initialTimingReviewRequired
+        ? null
+        : "wall_clock_no_stale_signal",
+    );
+  const [ownerReportedMinutes, setOwnerReportedMinutes] = useState("");
   const [coachOpen, setCoachOpen] = useState(false);
   const [coachExerciseId, setCoachExerciseId] = useState<string | null>(null);
   const [adjustment, setAdjustment] = useState<{
@@ -294,6 +390,9 @@ export function SessionRunner(props: SessionRunnerProps) {
       ]),
     ) as Record<string, WorkoutSetLoadEntryMeaning>,
   );
+  const [comparisonRefreshTargets, setComparisonRefreshTargets] = useState<
+    Record<string, string>
+  >({});
   const equipmentSnapshotIdsRef = useRef<Record<string, string | null>>(
     Object.fromEntries(
       Object.entries(props.equipmentSetups).map(([exerciseId, setup]) => [
@@ -331,6 +430,19 @@ export function SessionRunner(props: SessionRunnerProps) {
         setup.currentSnapshotId,
       ]),
     );
+    setComparisonRefreshTargets((current) => {
+      const next = { ...current };
+      let changed = false;
+      for (const [exerciseId, expectedSnapshot] of Object.entries(current)) {
+        const serverSnapshot =
+          props.equipmentSetups[exerciseId]?.currentSnapshotId ?? "none";
+        if (serverSnapshot === expectedSnapshot) {
+          delete next[exerciseId];
+          changed = true;
+        }
+      }
+      return changed ? next : current;
+    });
     // The stable identity intentionally represents the setup fields consumed above.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [equipmentSetupIdentity]);
@@ -353,6 +465,11 @@ export function SessionRunner(props: SessionRunnerProps) {
     subscribeToEquipmentSelectionOutbox,
     getEquipmentSelectionOutboxSnapshot,
     getEquipmentSelectionOutboxServerSnapshot,
+  );
+  const equipmentOutboxHydrated = useSyncExternalStore(
+    subscribeToClientHydration,
+    getClientHydrationSnapshot,
+    getServerHydrationSnapshot,
   );
   const occurrenceOutbox = useSyncExternalStore(
     subscribeToOccurrenceMutationOutbox,
@@ -378,8 +495,51 @@ export function SessionRunner(props: SessionRunnerProps) {
   );
 
   const shownExercises = useMemo(() => {
-    return mergeSessionOutboxSets(exercises, sessionEntries, runtimeSaveStates);
-  }, [exercises, runtimeSaveStates, sessionEntries]);
+    const serverComparisons = new Map(
+      props.exercises.map((exercise) => [
+        exercise.id,
+        exercise.previousComparable,
+      ]),
+    );
+    return mergeSessionOutboxSets(
+      exercises.map((exercise) => ({
+        ...exercise,
+        previousComparable:
+          serverComparisons.get(exercise.id) ?? exercise.previousComparable,
+      })),
+      sessionEntries,
+      runtimeSaveStates,
+    );
+  }, [exercises, props.exercises, runtimeSaveStates, sessionEntries]);
+  const comparisonUnavailableByExerciseId = useMemo(
+    () => Object.fromEntries(shownExercises.map((exercise) => {
+      const equipmentState = equipmentSelectionComparisonState(
+        equipmentSelectionOutbox,
+        {
+          ownerId: props.ownerId,
+          sessionId: props.sessionId,
+          sessionExerciseId: exercise.id,
+        },
+      );
+      return [
+        exercise.id,
+        previousComparableIsTemporarilyUnavailable({
+          equipmentOutboxHydrated,
+          equipmentState,
+          awaitingServerRefresh:
+            comparisonRefreshTargets[exercise.id] != null,
+        }),
+      ];
+    })),
+    [
+      comparisonRefreshTargets,
+      equipmentOutboxHydrated,
+      equipmentSelectionOutbox,
+      props.ownerId,
+      props.sessionId,
+      shownExercises,
+    ],
+  );
   useEffect(() => {
     const revealLinkedExercise = () => {
       const targetId = decodeURIComponent(window.location.hash.slice(1));
@@ -506,9 +666,9 @@ export function SessionRunner(props: SessionRunnerProps) {
             ? document.getElementById(latestAcknowledgementTargetId)
             : null;
         if (acknowledgement) {
-          acknowledgement.scrollIntoView({ behavior: "auto", block: "center" });
+          revealWorkoutTarget(acknowledgement, "auto");
         } else if (currentActionKind !== "rest") {
-          target?.scrollIntoView({ behavior: "smooth", block: "center" });
+          if (target) revealWorkoutTarget(target, "smooth");
         }
         const focusTarget = target?.matches("[tabindex]")
           ? target
@@ -818,12 +978,25 @@ export function SessionRunner(props: SessionRunnerProps) {
   useEffect(() => {
     const onStatus = (detail: EquipmentSelectionOutboxEvent) => {
       if (!detail || detail.type !== "saved") return;
+      if (!props.exercises.some(
+        (exercise) => exercise.id === detail.sessionExerciseId,
+      )) return;
       setOccurrences((current) =>
         mergeEquipmentSelectionOccurrenceStates(current, detail.occurrenceStates),
       );
+      const serverSnapshot =
+        props.equipmentSetups[detail.sessionExerciseId]?.currentSnapshotId ??
+        null;
+      if (serverSnapshot !== detail.snapshotId) {
+        setComparisonRefreshTargets((current) => ({
+          ...current,
+          [detail.sessionExerciseId]: detail.snapshotId ?? "none",
+        }));
+      }
+      router.refresh();
     };
     return subscribeToEquipmentSelectionOutboxStatus(onStatus);
-  }, []);
+  }, [props.equipmentSetups, props.exercises, router]);
 
   useEffect(
     () => () => {
@@ -877,6 +1050,24 @@ export function SessionRunner(props: SessionRunnerProps) {
   // setup ("awaiting information") is guidance and must never trap the workout.
   const finishBlocked = finishBlockedByRecordedWork(exitQueues);
   const equipmentGuidancePending = equipmentSyncPending(exitQueues);
+  const parsedOwnerReportedMinutes = Number(ownerReportedMinutes);
+  const effectiveDurationChoice =
+    timing.reviewRequired && durationChoice === "wall_clock_no_stale_signal"
+      ? null
+      : durationChoice;
+  const ownerReportedSeconds =
+    ownerReportedMinutes.trim() !== "" &&
+    Number.isInteger(parsedOwnerReportedMinutes) &&
+    parsedOwnerReportedMinutes > 0
+      ? parsedOwnerReportedMinutes * 60
+      : null;
+  const durationReviewReady =
+    effectiveDurationChoice === "interruption_unknown" ||
+    (effectiveDurationChoice === "wall_clock_no_stale_signal" &&
+      !timing.reviewRequired) ||
+    (effectiveDurationChoice === "owner_reported" &&
+      ownerReportedSeconds != null &&
+      ownerReportedSeconds <= timing.wallClockSeconds);
 
   function plannedExerciseNameForOccurrence(
     occurrence: SessionOccurrenceData,
@@ -1296,13 +1487,40 @@ export function SessionRunner(props: SessionRunnerProps) {
       toast.error("Retry or discard the unconfirmed set copies below before finishing.");
       return;
     }
+    if (!durationReviewReady || effectiveDurationChoice == null) {
+      setFinishError(
+        timing.reviewRequired
+          ? "Choose a defensible active time or explicitly keep it unknown."
+          : "Review the workout timing before saving.",
+      );
+      return;
+    }
     setFinishing(true);
-    await clearMatchingRestTimer();
-    await completeSession({
-      sessionId: props.sessionId,
-      note: finishNote || undefined,
-      fatigue: fatigue ?? undefined,
-    });
+    setFinishError(null);
+    try {
+      await clearMatchingRestTimer();
+      const result = await completeSession({
+        sessionId: props.sessionId,
+        note: finishNote || undefined,
+        fatigue: fatigue ?? undefined,
+        durationDecision:
+          effectiveDurationChoice === "owner_reported"
+            ? {
+                basis: "owner_reported",
+                activeDurationSeconds: ownerReportedSeconds!,
+              }
+            : { basis: effectiveDurationChoice },
+      });
+      if (result?.ok === false) {
+        setFinishError(result.message);
+        setFinishing(false);
+      }
+    } catch {
+      setFinishError(
+        "The workout was not saved. Review the latest timing and try again.",
+      );
+      setFinishing(false);
+    }
   }
 
   async function applyOccurrenceMutation(
@@ -1650,7 +1868,9 @@ export function SessionRunner(props: SessionRunnerProps) {
             {props.templateName}
           </h1>
           <p className="text-xs text-muted-foreground max-[360px]:hidden">
-            {elapsed} · {plannedPerformed}/{totalPlanned || "?"} planned
+            {timing.reviewRequired
+              ? `Timing review · wall ${elapsed}`
+              : `Active ${elapsed} · wall ${elapsed}`} · {plannedPerformed}/{totalPlanned || "?"} planned
             {extraPerformed > 0 ? ` · ${extraPerformed} extra` : ""}
             {workoutOnlyPerformed > 0
               ? ` · ${workoutOnlyPerformed} workout-only`
@@ -1662,13 +1882,41 @@ export function SessionRunner(props: SessionRunnerProps) {
         </div>
       </header>
 
-      <div className="sticky top-[env(safe-area-inset-top)] z-20 -mx-1 bg-background/95 py-1 backdrop-blur max-[360px]:py-0">
+      <div
+        data-testid="active-workout-sticky-summary"
+        className="sticky top-[env(safe-area-inset-top)] z-20 -mx-1 bg-background/95 py-1 backdrop-blur max-[360px]:py-0"
+      >
         <WorkoutGuidanceSummary
           guidance={guidance}
           compact
           deferNextActionToCurrentCard={currentCardOwnsNextAction}
         />
       </div>
+
+      {timing.reviewRequired && (
+        <section
+          role="status"
+          data-testid="active-workout-timing-warning"
+          className="rounded-xl border border-amber-500/50 bg-amber-500/10 px-3 py-2.5 text-sm"
+        >
+          <p className="font-semibold">
+            Timing needs review · wall clock {elapsed}
+          </p>
+          <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+            Active time is unavailable until you review the interruption.
+            Recorded source timestamps will stay unchanged.
+          </p>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="mt-2 min-h-11 w-full bg-background"
+            onClick={() => setFinishOpen(true)}
+          >
+            Review timing
+          </Button>
+        </section>
+      )}
 
       <WarmupPanel
         completed={guidance.warmups.completed}
@@ -1973,6 +2221,9 @@ export function SessionRunner(props: SessionRunnerProps) {
           <ExerciseCard
             key={`${exercise.id}:${exercise.exerciseId}:${exercise.metricType}:${exercise.loadType}:${exercise.loadSemantics}`}
             exercise={exercise}
+            comparisonTemporarilyUnavailable={
+              comparisonUnavailableByExerciseId[exercise.id] ?? true
+            }
             historyRevision={historyRevision}
             progress={
               guidance.exercises.find(
@@ -1989,6 +2240,11 @@ export function SessionRunner(props: SessionRunnerProps) {
             }
             incrementals={props.incrementals}
             unit={props.unit}
+            loadEntryMeaning={
+              equipmentLoadMeanings[exercise.id] ??
+              safeEquipmentSetups[exercise.id]?.loadEntryMeaning ??
+              null
+            }
             activeOccurrence={nextPendingOccurrenceForExercise(exercise.id)}
             workingOccurrences={occurrences.filter(
               (occurrence) =>
@@ -2215,7 +2471,9 @@ export function SessionRunner(props: SessionRunnerProps) {
         className="scroll-mt-4 rounded-xl border bg-card p-4 shadow-[var(--shadow-soft)]"
       >
         <p className="mb-3 text-center text-sm text-muted-foreground">
-          {totalPerformed} set{totalPerformed === 1 ? "" : "s"} performed · {elapsed}
+          {totalPerformed} set{totalPerformed === 1 ? "" : "s"} performed · {timing.reviewRequired
+            ? `active time unavailable · wall clock ${elapsed}`
+            : `active ${elapsed} · wall clock ${elapsed}`}
         </p>
         <Button
           type="button"
@@ -2239,7 +2497,7 @@ export function SessionRunner(props: SessionRunnerProps) {
           <DrawerHeader>
             <DrawerTitle>Finish workout</DrawerTitle>
             <DrawerDescription>
-              {plannedPerformed} of {totalPlanned} planned sets done in {elapsed}.
+              {plannedPerformed} of {totalPlanned} planned sets done. Wall clock {elapsed}.
               {extraPerformed > 0
                 ? ` ${extraPerformed} extra set${extraPerformed === 1 ? "" : "s"} performed.`
                 : ""}
@@ -2304,6 +2562,28 @@ export function SessionRunner(props: SessionRunnerProps) {
                 in the background.
               </p>
             )}
+            <ActiveWorkoutTimingReview
+              wallClockLabel={elapsed}
+              reviewRequired={timing.reviewRequired}
+              choice={effectiveDurationChoice}
+              ownerReportedMinutes={ownerReportedMinutes}
+              onChoiceChange={(choice) => {
+                setDurationChoice(choice);
+                setFinishError(null);
+              }}
+              onOwnerReportedMinutesChange={(value) => {
+                setOwnerReportedMinutes(value);
+                setFinishError(null);
+              }}
+            />
+            {finishError && (
+              <p
+                role="alert"
+                className="rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive"
+              >
+                {finishError}
+              </p>
+            )}
             <Textarea
               placeholder="Session note (optional) — how did it go?"
               value={finishNote}
@@ -2343,7 +2623,7 @@ export function SessionRunner(props: SessionRunnerProps) {
           <DrawerFooter>
             <Button
               onClick={handleFinish}
-              disabled={finishing || finishBlocked}
+              disabled={finishing || finishBlocked || !durationReviewReady}
               size="lg"
             >
               {finishing ? "Saving…" : "Save workout"}
@@ -2403,9 +2683,8 @@ export function SessionRunner(props: SessionRunnerProps) {
               `${window.location.pathname}${window.location.search}#${targetId}`,
             );
             requestAnimationFrame(() => {
-              document
-                .getElementById(targetId)
-                ?.scrollIntoView({ behavior: "smooth", block: "center" });
+              const target = document.getElementById(targetId);
+              if (target) revealWorkoutTarget(target, "smooth");
             });
           }}
           onRestAdjust={adjustRest}

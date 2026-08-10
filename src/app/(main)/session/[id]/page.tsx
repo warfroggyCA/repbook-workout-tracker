@@ -17,7 +17,10 @@ import {
   painLogs,
 } from "@/db/schema";
 import { getCurrentUser } from "@/lib/user";
-import { getLastPerformances } from "@/services/today";
+import {
+  getPreviousComparableSets,
+  PREVIOUS_COMPARABLE_SET_UNAVAILABLE,
+} from "@/services/previous-comparable-sets";
 import { patternFlags } from "@/engine/constraint-filter";
 import { SessionRunner } from "@/components/session/session-runner";
 import { listLiveCoachMessages } from "@/services/live-coaching";
@@ -45,6 +48,8 @@ import {
   type PainBodyPart,
   type TechniqueIssue,
 } from "@/lib/set-exception-context";
+import { classifyActiveSessionTiming } from "@/lib/active-session-timing";
+import { acceptanceWorkoutNow } from "@/lib/acceptance-workout-clock";
 
 function techniqueIssue(value: string | null): TechniqueIssue | null {
   return TECHNIQUE_ISSUES.includes(value as TechniqueIssue)
@@ -158,9 +163,6 @@ async function renderSessionPage(
     throw new Error("Injected Phase 0 session render failure");
   }
 
-  const slotIds = session.exercises
-    .map((e) => e.plannedFromTemplateExerciseId)
-    .filter((v): v is string => v != null);
   const plannedExerciseIds = [
     ...new Set(
       session.exercises
@@ -171,7 +173,6 @@ async function renderSessionPage(
   const exerciseIds = session.exercises.map((exercise) => exercise.exerciseId);
 
   const [
-    lastPerformances,
     plates,
     equipment,
     equipmentProfiles,
@@ -181,7 +182,6 @@ async function renderSessionPage(
     plannedExercises,
   ] =
     await Promise.all([
-      getLastPerformances(db, user.id, slotIds),
       db.query.plateInventory.findMany({
         where: eq(plateInventory.userId, user.id),
       }),
@@ -340,6 +340,16 @@ async function renderSessionPage(
     }
   }
 
+  const previousComparableByExercise = await getPreviousComparableSets(
+    db,
+    user.id,
+    session.exercises.map((exercise) => ({
+      sessionExerciseId: exercise.id,
+      loadEntryMeaning: equipmentSetups[exercise.id]?.loadEntryMeaning ?? null,
+      targetLoadUnit: user.profile.unit,
+    })),
+  );
+
   const flags = patternFlags(userConstraints);
   const mediaByExercise = await getApprovedExerciseMedia(
     db,
@@ -354,9 +364,6 @@ async function renderSessionPage(
   );
 
   const exercises: SessionExerciseData[] = session.exercises.map((se) => {
-    const last = se.plannedFromTemplateExerciseId
-      ? lastPerformances[se.plannedFromTemplateExerciseId]
-      : undefined;
     const usesPrescribedMeaning =
       se.prescribedSemanticsVersion === 1 &&
       se.modificationType !== "substituted" &&
@@ -428,12 +435,20 @@ async function renderSessionPage(
           note: s.note,
           correctionCount: correctionCountBySetId.get(s.id) ?? 0,
         })),
-      last: se.modificationType !== "substituted" && last
-        ? { dateISO: last.date.toISOString(), sets: last.sets }
-        : null,
+      previousComparable: previousComparableByExercise[se.id] ?? {
+        status: "unavailable",
+        currentSessionExerciseId: se.id,
+        message: PREVIOUS_COMPARABLE_SET_UNAVAILABLE,
+        reason: "current_exercise_unavailable",
+      },
+      last: null,
     };
   });
 
+  const activeTiming = classifyActiveSessionTiming(
+    session.startedAt,
+    acceptanceWorkoutNow("finish")?.() ?? new Date(),
+  );
   const runnerProps: SessionRunnerProps = {
     ownerId: user.id,
     sessionId: session.id,
@@ -477,6 +492,9 @@ async function renderSessionPage(
       orderIdx: group.orderIdx,
     })),
     startedAtISO: session.startedAt.toISOString(),
+    initialWallClockSeconds: activeTiming.wallClockSeconds,
+    initialTimingReviewRequired: activeTiming.reviewRequired,
+    initialTimingReviewOpen: searchParams.reviewTiming === "1",
     exercises,
     plateConfigs,
     equipmentSetups,

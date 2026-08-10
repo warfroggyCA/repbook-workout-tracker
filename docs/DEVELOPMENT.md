@@ -241,6 +241,20 @@ only request boundary, keyboard access, and no horizontal overflow. D02 adds no
 database, migration, snapshot, recovery-manifest, provider, Program, workout,
 or performed-fact change.
 
+The post-v2 active-workout tranche adds interruption-aware completion and
+stale-session recovery without rewriting source timestamps. Migration 0079
+stores reviewed active-duration evidence separately; snapshot schema 31
+round-trips it and upgrades schema 30 rows to null evidence. Recovery manifest
+14 keeps the same durable-table inventory and restores an active-duration
+correction together with its linked version and audit evidence. Legacy or
+explicitly unknown active time remains unavailable to duration analytics. The
+logging point now shows only exact, semantically compatible previous-set
+evidence with a source link or an explicit unavailable state. The 390 by 844
+surface keeps the current action primary and moves ordinary progress and
+secondary exercise tools into keyboard-accessible native disclosures without
+hiding pending writes, retry, skipped recovery, rest, finish, or saved-set
+correction.
+
 `audit:check` requires a clean production dependency audit and also reviews the
 complete development-tool tree. Any temporary development-only exception is
 bound to exact lockfile nodes, carries a written reason and expiry date, and
@@ -270,6 +284,7 @@ npm run test:e2e:current-action
 npm run test:e2e:superset-prep
 npm run test:e2e:v2-t06
 npm run test:e2e:v2-u01
+npm run test:e2e:post-v2-p1-timing
 npm run test:e2e:v2-u02
 npm run test:e2e:v2-u03
 npm run test:e2e:v2-gauntlet-a

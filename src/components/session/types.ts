@@ -11,6 +11,7 @@ import type {
   SetPainContext,
   TechniqueIssue,
 } from "@/lib/set-exception-context";
+import type { PreviousComparableSetResult } from "@/services/previous-comparable-sets";
 
 export type LoggedSet = {
   id: string;
@@ -70,6 +71,7 @@ export type SessionExerciseData = {
   cautionBodyParts: string[];
   media: ExerciseMediaPreview | null;
   sets: LoggedSet[];
+  previousComparable?: PreviousComparableSetResult;
   last: {
     dateISO: string;
     sets: Array<{
@@ -160,6 +162,10 @@ export type SessionRunnerProps = {
   occurrences: SessionOccurrenceData[];
   exerciseGroups: SessionExerciseGroupData[];
   startedAtISO: string;
+  initialWallClockSeconds?: number;
+  initialTimingReviewRequired?: boolean;
+  /** Opens the finish drawer at the timing-review step after stale recovery. */
+  initialTimingReviewOpen?: boolean;
   exercises: SessionExerciseData[];
   /** keyed by session exercise id; never by broad load type. */
   plateConfigs: Record<string, PlateMathConfig>;

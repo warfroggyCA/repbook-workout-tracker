@@ -2,6 +2,7 @@
 
 import { useEffect, useId, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { toast } from "sonner";
 import {
   archiveSet,
@@ -23,7 +24,7 @@ import {
   type PlateMathConfig,
   type IncrementalLoadConfig,
 } from "@/engine/plate-math";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { ExercisePicker } from "@/components/exercises/exercise-picker";
 import { ExerciseFamilyIcon } from "@/components/exercises/exercise-family-icon";
 import { ExerciseReferenceMedia } from "@/components/exercises/exercise-reference-media";
@@ -93,8 +94,10 @@ import {
   isSupportedSetWriterSemanticDefinition,
   PERFORMED_METRIC_TYPES,
   resolveFutureSetWriterMetricType,
+  type SetLoadEntryMeaning,
   type PerformedMetricType,
 } from "@/lib/set-metric-semantics";
+import type { PreviousComparableSetEvidence } from "@/services/previous-comparable-sets";
 import { createClientUuid } from "@/lib/client-uuid";
 import { formatPainEvidence } from "@/lib/pain-evidence";
 import type { OccurrenceMutationOutboxEntry } from "@/lib/occurrence-mutation-outbox";
@@ -146,6 +149,35 @@ function formatLoggedSet(
     : repetitions;
 }
 
+function formatPreviousComparableSet(
+  set: PreviousComparableSetEvidence,
+  metricType: PerformedMetricType,
+) {
+  return formatLoggedSet(
+    {
+      ...set,
+      id: set.setId,
+      clientKey: null,
+      metricType,
+      note: null,
+    },
+    metricType,
+  );
+}
+
+function compactComparableProvenance(
+  set: PreviousComparableSetEvidence,
+  workoutSource: string,
+) {
+  const { state, count } = set.correctionProvenance;
+  if (state === "corrected") return `Corrected ×${count}`;
+  if (state === "version_restored") return `Version restored ×${count}`;
+  if (state === "snapshot_restored") return `Snapshot restored ×${count}`;
+  if (workoutSource === "history_manual") return "Owner-entered source";
+  if (workoutSource === "hevy") return "Imported source";
+  return "Repbook source";
+}
+
 function formatPerformedDuration(durationSeconds: number) {
   const minutes = Math.floor(durationSeconds / 60);
   const seconds = durationSeconds % 60;
@@ -190,6 +222,35 @@ type SetPainDraft = {
   note: string | null;
 };
 
+type ActiveSetDraftCacheEntry = {
+  identity: string;
+  draft: SetDraft;
+};
+
+// A server refresh can replace the active SessionRunner when its history
+// revision advances (for example, after an automatic equipment selection is
+// acknowledged). Keep an unsaved set draft alive across that remount, but only
+// while the performed exercise and its measurement semantics are unchanged.
+// Session-exercise IDs are unique, so drafts from different workout rows never
+// share an entry.
+const serverActiveSetDraftCache = new Map<string, ActiveSetDraftCacheEntry>();
+
+function getActiveSetDraftCache() {
+  if (typeof window === "undefined") return serverActiveSetDraftCache;
+  const cacheOwner = window as typeof window & {
+    __repbookActiveSetDraftCache?: Map<string, ActiveSetDraftCacheEntry>;
+  };
+  cacheOwner.__repbookActiveSetDraftCache ??= new Map();
+  return cacheOwner.__repbookActiveSetDraftCache;
+}
+
+function copySetDraft(draft: SetDraft): SetDraft {
+  return {
+    ...draft,
+    pain: draft.pain == null ? null : { ...draft.pain },
+  };
+}
+
 type SetDraft = {
   weight: number | null;
   weightUnit: LoadUnit | null;
@@ -214,6 +275,8 @@ type Props = {
   machineLoadConfig?: MachineLoadConfig | null;
   incrementals: Record<string, IncrementalLoadConfig>;
   unit: LoadUnit;
+  loadEntryMeaning?: SetLoadEntryMeaning | null;
+  comparisonTemporarilyUnavailable?: boolean;
   onPatch: (patch: Partial<SessionExerciseData>) => void;
   onQueueSet: (
     set: LoggedSet,
@@ -274,6 +337,8 @@ export function ExerciseCard({
   machineLoadConfig = null,
   incrementals,
   unit,
+  loadEntryMeaning = null,
+  comparisonTemporarilyUnavailable = false,
   onPatch,
   onQueueSet,
   onAppendSet = async () => null,
@@ -355,11 +420,32 @@ export function ExerciseCard({
   const devicePendingSets = exercise.sets.filter(
     (set) => set.saveState != null && set.saveState !== "saved",
   ).length;
+  const comparableProjection = comparisonTemporarilyUnavailable
+    ? undefined
+    : exercise.previousComparable;
+  const comparableSemanticsMatch =
+    comparableProjection?.status === "available" &&
+    (comparableProjection.semantics.metricType !== "weight_reps" &&
+    comparableProjection.semantics.metricType !== "assisted_reps"
+      ? true
+      : comparableProjection.semantics.loadEntryMeaning === loadEntryMeaning);
+  const previousComparableSet =
+    comparableProjection?.status === "available" && comparableSemanticsMatch
+      ? comparableProjection.sets.find((set) => set.setNo === nextSetNo) ??
+        comparableProjection.sets.at(-1) ??
+        null
+      : null;
+  const comparableRenderState = comparisonTemporarilyUnavailable
+    ? "loading"
+    : comparableProjection?.status === "available" &&
+        comparableSemanticsMatch &&
+        previousComparableSet
+      ? "available"
+      : "unavailable";
   const prefillFrom =
     [...exercise.sets]
       .filter((set) => set.setNo < nextSetNo)
-      .sort((left, right) => right.setNo - left.setNo)[0] ??
-    exercise.last?.sets[Math.min(nextSetIdx, (exercise.last?.sets.length ?? 1) - 1)];
+      .sort((left, right) => right.setNo - left.setNo)[0] ?? null;
 
   const defaultWeight =
     prefillFrom?.weight != null && prefillFrom.weightUnit != null
@@ -391,7 +477,14 @@ export function ExerciseCard({
       ? ""
       : (exercise.setNotes[nextSetIdx] ?? "");
 
-  const [draft, setDraft] = useState<SetDraft>({
+  const draftIdentity = [
+    exercise.exerciseId,
+    performedMetricType,
+    exercise.loadType,
+    exercise.loadSemantics ?? "unknown",
+    unit,
+  ].join(":");
+  const initialDraft: SetDraft = {
     weight: recordsNumericLoad ? defaultWeight : null,
     weightUnit: recordsNumericLoad
       ? defaultWeight == null ? null : unit
@@ -405,7 +498,26 @@ export function ExerciseCard({
     limitationCause: null,
     pain: null,
     note: defaultSetNote,
+  };
+  const [draft, setDraftState] = useState<SetDraft>(() => {
+    const activeSetDraftCache = getActiveSetDraftCache();
+    const cached = activeSetDraftCache.get(exercise.id);
+    if (cached?.identity === draftIdentity) {
+      return copySetDraft(cached.draft);
+    }
+    if (cached) activeSetDraftCache.delete(exercise.id);
+    return initialDraft;
   });
+  const setDraft: React.Dispatch<React.SetStateAction<SetDraft>> = (update) => {
+    setDraftState((current) => {
+      const next = typeof update === "function" ? update(current) : update;
+      getActiveSetDraftCache().set(exercise.id, {
+        identity: draftIdentity,
+        draft: copySetDraft(next),
+      });
+      return next;
+    });
+  };
   const [appendedDraft, setAppendedDraft] = useState<SetDraft>({
     weight: recordsNumericLoad ? appendedWeight ?? defaultWeight : null,
     weightUnit: recordsNumericLoad &&
@@ -753,6 +865,37 @@ export function ExerciseCard({
     return exercise.setNotes[index]?.trim() || null;
   }
 
+  function rowNeedsImmediateAttention(index: number) {
+    const set = exercise.sets.find(
+      (candidate) => candidate.setNo === index + 1,
+    );
+    const occurrence =
+      workingOccurrences.find(
+        (candidate) => candidate.kindOrdinal === index,
+      ) ?? null;
+    const mutation =
+      occurrence == null
+        ? null
+        : occurrenceMutationEntries.find(
+            (entry) => entry.occurrenceId === occurrence.id,
+          ) ?? null;
+
+    return (
+      index === nextSetIdx ||
+      appendedOccurrence?.kindOrdinal === index ||
+      (set?.saveState != null && set.saveState !== "saved") ||
+      mutation != null ||
+      (occurrence != null &&
+        occurrence.outcome !== "pending" &&
+        (occurrence.outcome !== "completed" || set == null))
+    );
+  }
+
+  const immediateRowOrder = plannedRowOrder.filter(rowNeedsImmediateAttention);
+  const disclosedRowOrder = plannedRowOrder.filter(
+    (index) => !rowNeedsImmediateAttention(index),
+  );
+
   function reconcileReplacement(
     candidate: ExerciseDiscoveryItem,
     state: ReplacementOptions["currentState"],
@@ -857,6 +1000,7 @@ export function ExerciseCard({
       aria-labelledby={`session-exercise-heading-${exercise.id}`}
       data-testid={isCurrentExercise ? "current-exercise-card" : undefined}
       data-current-set={isCurrentExercise ? "true" : "false"}
+      data-draft-identity={draftIdentity}
       className={cn(
         "scroll-mt-32 rounded-xl border bg-card [&_button]:min-h-11 [&_button]:min-w-11 [&_input]:min-h-11",
         isCurrentExercise &&
@@ -876,7 +1020,7 @@ export function ExerciseCard({
         onClick={onToggle}
         aria-expanded={expanded}
         aria-controls={`session-exercise-details-${exercise.id}`}
-        className="flex w-full items-center justify-between gap-2 p-3 text-left"
+        className="flex w-full items-center justify-between gap-2 p-2 text-left"
       >
         <ExerciseFamilyIcon
           media={exercise.media}
@@ -885,12 +1029,7 @@ export function ExerciseCard({
           movementPattern={exercise.movementPattern}
         />
         <div className="min-w-0 flex-1">
-          {isCurrentExercise && (
-            <p className="mb-1 text-xs font-semibold uppercase tracking-[0.12em] text-foreground">
-              Current exercise
-            </p>
-          )}
-          <div className="flex items-center gap-2">
+          <div className="flex min-w-0 items-center gap-2">
             <h2
               id={`session-exercise-heading-${exercise.id}`}
               className={cn(
@@ -910,8 +1049,10 @@ export function ExerciseCard({
             {isSkipped
               ? `Skipped (${exercise.skipReason})`
               : exercise.modificationType === "added"
-                ? `${progress.workoutOnlyPerformed}/${progress.workoutOnly || "–"} workout-only performed${progress.extraPerformed > 0 ? ` · ${progress.extraPerformed} extra` : ""}${devicePendingSets > 0 ? ` · ${devicePendingSets} saving` : ""} · Added to this workout · ${formatRestTime(exercise.restSec)} rest`
-                : `${progress.plannedPerformed}/${progress.planned || "–"} planned performed${progress.extraPerformed > 0 ? ` · ${progress.extraPerformed} extra` : ""}${devicePendingSets > 0 ? ` · ${devicePendingSets} saving` : ""} · Planned: ${targetText} · ${formatRestTime(exercise.restSec)} rest`}
+                ? `${progress.workoutOnlyPerformed}/${progress.workoutOnly || "–"} workout-only performed${progress.extraPerformed > 0 ? ` · ${progress.extraPerformed} extra` : ""}${devicePendingSets > 0 ? ` · ${devicePendingSets} saving` : ""} · Added · ${formatRestTime(exercise.restSec)} rest`
+                : isCurrentExercise
+                  ? `${progress.plannedPerformed}/${progress.planned || "–"} done${progress.extraPerformed > 0 ? ` · ${progress.extraPerformed} extra` : ""}${devicePendingSets > 0 ? ` · ${devicePendingSets} saving` : ""} · ${targetText} · ${formatRestTime(exercise.restSec)} rest`
+                  : `${progress.plannedPerformed}/${progress.planned || "–"} planned performed${progress.extraPerformed > 0 ? ` · ${progress.extraPerformed} extra` : ""}${devicePendingSets > 0 ? ` · ${devicePendingSets} saving` : ""} · Planned: ${targetText} · ${formatRestTime(exercise.restSec)} rest`}
             {exercise.modificationType === "substituted" &&
               ` · instead of ${exercise.plannedExerciseName ?? "planned exercise"}`}
           </p>
@@ -940,11 +1081,11 @@ export function ExerciseCard({
       {expanded && !isSkipped && (
         <div
           id={`session-exercise-details-${exercise.id}`}
-          className="flex flex-col gap-3 border-t p-3"
+          className="flex flex-col gap-1.5 border-t px-2 py-1.5"
         >
-          {/* Logged sets */}
+          {/* The current action and unresolved writes stay outside disclosure. */}
           <div className="flex flex-col gap-1">
-            {plannedRowOrder.map((i) => {
+            {immediateRowOrder.map((i) => {
               const set = exercise.sets.find((candidate) => candidate.setNo === i + 1);
               const occurrenceForRow = workingOccurrences.find(
                 (occurrence) => occurrence.kindOrdinal === i,
@@ -1236,17 +1377,18 @@ export function ExerciseCard({
                       className={cn(
                         "scroll-mt-24 p-2",
                         prioritizeCurrentAction
-                          ? "rounded-lg border-2 border-primary/60 bg-background p-3 shadow-sm"
+                          ? "rounded-lg border-2 border-primary/60 bg-background p-2 shadow-sm"
                           : "rounded-md border border-primary/40",
                       )}
                     >
+                      <div data-testid="active-workout-primary">
                       {prioritizeCurrentAction ? (
-                        <div className="mb-3">
+                        <div className="mb-2 flex items-baseline justify-between gap-2">
                           <p className="text-xs font-semibold uppercase tracking-[0.12em] text-primary">
                             Current action
                           </p>
-                          <p className="mt-1 break-words text-base font-semibold">
-                            {exercise.name} · Set {i + 1} of {exercise.targetSets ?? "open"}
+                          <p className="shrink-0 text-sm font-semibold tabular-nums">
+                            Set {i + 1} of {exercise.targetSets ?? "open"}
                           </p>
                         </div>
                       ) : (
@@ -1254,8 +1396,60 @@ export function ExerciseCard({
                           Set {i + 1} of {exercise.targetSets ?? "open"}
                         </p>
                       )}
+                      <div
+                        data-testid="previous-comparable-set"
+                        data-comparison-state={comparableRenderState}
+                        className="mb-2 rounded-md border bg-muted/25 px-2 py-1.5 text-sm"
+                      >
+                        {comparableRenderState === "available" &&
+                        comparableProjection?.status === "available" &&
+                        previousComparableSet ? (
+                          <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2">
+                            <div className="min-w-0">
+                              <p className="truncate text-xs text-muted-foreground">
+                                Previous · {comparableProjection.source.localDate} · {compactComparableProvenance(
+                                  previousComparableSet,
+                                  comparableProjection.source.workoutSource,
+                                )}
+                              </p>
+                              <p className="truncate font-medium tabular-nums">
+                                {formatPreviousComparableSet(
+                                  previousComparableSet,
+                                  comparableProjection.semantics.metricType,
+                                )} · source set {previousComparableSet.setNo}
+                              </p>
+                            </div>
+                            <Link
+                              href={comparableProjection.source.historyHref}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              aria-label="View source workout"
+                              className={cn(
+                                buttonVariants({
+                                  variant: "ghost",
+                                  size: "sm",
+                                }),
+                                "min-h-11 min-w-11 shrink-0 px-2 text-xs",
+                              )}
+                            >
+                              Source
+                            </Link>
+                          </div>
+                        ) : comparableRenderState === "loading" ? (
+                          <p
+                            role="status"
+                            className="flex min-h-11 items-center font-medium"
+                          >
+                            Checking previous comparable set…
+                          </p>
+                        ) : (
+                          <p className="flex min-h-11 items-center font-medium">
+                            Previous comparable set unavailable
+                          </p>
+                        )}
+                      </div>
                       {prioritizeCurrentAction && (
-                        <p className="mb-2 text-sm font-semibold">Performed measure</p>
+                        <p className="mb-1 text-xs font-semibold uppercase tracking-[0.1em] text-muted-foreground">Performed measure</p>
                       )}
                       <SetEntry
                         metricType={performedMetricType}
@@ -1278,6 +1472,7 @@ export function ExerciseCard({
                         )}
                       >
                         <Button
+                          data-testid="active-log-set"
                           className={cn(prioritizeCurrentAction && "w-full")}
                           onClick={() => handleLog()}
                           disabled={
@@ -1301,6 +1496,7 @@ export function ExerciseCard({
                             Skip set
                           </Button>
                         )}
+                      </div>
                       </div>
                       <OccurrenceSaveStatus
                         entry={occurrenceMutation}
@@ -1344,24 +1540,138 @@ export function ExerciseCard({
                               {context}
                             </p>
                           ))}
+                          <div className="mt-2 flex flex-wrap items-center justify-between gap-2 border-t border-green-700/20 pt-2">
+                            <span className="text-xs text-muted-foreground">
+                              Wrong value? Correct the saved set; the original
+                              remains in Edit history.
+                            </span>
+                            {(displayedAcknowledgementReceipt.set.metricType ??
+                              displayedAcknowledgementReceipt.metricType) ===
+                            "activity" ? (
+                              <span className="text-xs text-muted-foreground">
+                                Correction unavailable for this legacy shape
+                              </span>
+                            ) : (
+                              <CompletedSetCorrection
+                                setId={displayedAcknowledgementReceipt.set.id}
+                                setNo={displayedAcknowledgementReceipt.set.setNo}
+                                weight={displayedAcknowledgementReceipt.set.weight}
+                                weightUnit={
+                                  displayedAcknowledgementReceipt.set.weightUnit
+                                }
+                                reps={displayedAcknowledgementReceipt.set.reps}
+                                distanceKm={
+                                  displayedAcknowledgementReceipt.set.distanceKm ??
+                                  null
+                                }
+                                durationSeconds={
+                                  displayedAcknowledgementReceipt.set
+                                    .durationSeconds ?? null
+                                }
+                                metricType={
+                                  displayedAcknowledgementReceipt.set.metricType ??
+                                  displayedAcknowledgementReceipt.metricType
+                                }
+                                rpe={displayedAcknowledgementReceipt.set.rpe}
+                                note={displayedAcknowledgementReceipt.set.note}
+                                historyRevision={historyRevision}
+                                source="active_workout"
+                                onAcknowledged={(result) => {
+                                  if (
+                                    displayedAcknowledgementReceipt.sessionExerciseId ===
+                                    exercise.id
+                                  ) {
+                                    onPatch({
+                                      sets: exercise.sets.map((candidate) =>
+                                        candidate.id ===
+                                        displayedAcknowledgementReceipt.set.id
+                                          ? {
+                                              ...candidate,
+                                              ...result.values,
+                                              correctionCount:
+                                                (candidate.correctionCount ?? 0) +
+                                                1,
+                                            }
+                                          : candidate,
+                                      ),
+                                    });
+                                  }
+                                  onHistoryRevisionChange(
+                                    result.historyRevision,
+                                  );
+                                  const measurement =
+                                    readActiveWorkoutMeasurements().find(
+                                      (record) =>
+                                        (displayedAcknowledgementReceipt.set
+                                          .clientKey != null &&
+                                          record.clientKey ===
+                                            displayedAcknowledgementReceipt.set
+                                              .clientKey) ||
+                                        record.setId ===
+                                          displayedAcknowledgementReceipt.set.id,
+                                    );
+                                  if (measurement) {
+                                    patchActiveWorkoutMeasurement(
+                                      measurement.clientKey,
+                                      {
+                                        corrections:
+                                          measurement.corrections + 1,
+                                      },
+                                    );
+                                  }
+                                }}
+                              />
+                            )}
+                          </div>
                         </div>
                       )}
                       {prioritizeCurrentAction && (
                         <>
-                          <div className="mt-3 border-t pt-3">
-                            <p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+                          <div className="mt-1 flex min-h-11 items-center gap-2 border-t">
+                            <p className="shrink-0 text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
                               Next action
                             </p>
-                            <p className="mt-1 break-words text-sm">
+                            <p className="min-w-0 truncate text-sm">
                               {nextActionLabel}
                             </p>
                           </div>
-                          <details className="mt-3 rounded-md border border-dashed text-sm">
-                            <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-2 rounded-md px-3 py-2 font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
-                              <span>Set exceptions</span>
-                              <span className="text-xs text-muted-foreground">Skip set</span>
+                          <details className="mt-1 rounded-md border border-dashed text-sm">
+                            <summary className="flex min-h-[44px] cursor-pointer list-none items-center justify-between gap-2 rounded-md px-2 py-1 font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
+                              <span>Set options</span>
+                              <span className="text-xs text-muted-foreground">Effort, note or skip</span>
                             </summary>
-                            <div className="border-t p-2">
+                            <div className="space-y-3 border-t p-3">
+                              <section aria-labelledby={`optional-set-fields-${exercise.id}`}>
+                                <h3
+                                  id={`optional-set-fields-${exercise.id}`}
+                                  className="mb-2 font-medium"
+                                >
+                                  Optional effort and set note
+                                </h3>
+                                <SetEntry
+                                  metricType={performedMetricType}
+                                  supported={metricSupported}
+                                  draft={draft}
+                                  setDraft={setDraft}
+                                  stepWeight={stepWeight}
+                                  unit={unit}
+                                  hasWeight={recordsNumericLoad}
+                                  weightLabel={liveWeightLabel}
+                                  plateConfig={plateConfig}
+                                  machineLoadConfig={machineLoadConfig}
+                                  optionalOnly
+                                />
+                              </section>
+                              <section
+                                aria-labelledby={`set-exceptions-${exercise.id}`}
+                                className="border-t pt-3"
+                              >
+                                <h3
+                                  id={`set-exceptions-${exercise.id}`}
+                                  className="mb-2 font-medium"
+                                >
+                                  Set exceptions
+                                </h3>
                               <Button
                                 type="button"
                                 variant="outline"
@@ -1376,6 +1686,7 @@ export function ExerciseCard({
                               >
                                 Skip set
                               </Button>
+                              </section>
                             </div>
                           </details>
                         </>
@@ -1410,46 +1721,201 @@ export function ExerciseCard({
                 </div>
               );
             })}
-            <Button
-              type="button"
-              variant="outline"
-              className="mt-1 w-full justify-start border-dashed"
-              disabled={
-                Boolean(unconfirmedSet) ||
-                appendingSet ||
-                Boolean(appendedOccurrence)
-              }
-              aria-describedby={`add-set-description-${exercise.id}`}
-              onClick={() => void handleAppendSet()}
-            >
-              <Plus className="size-4" />
-              {appendingSet ? "Adding extra set…" : "Add extra set"}
-            </Button>
-            <p
-              id={`add-set-description-${exercise.id}`}
-              className="px-1 text-xs text-muted-foreground"
-            >
-              Adds ad-hoc work without changing the planned set order. Finish
-              or skip this extra before adding one more.
-            </p>
+
+            <details className="mt-1 rounded-lg border bg-muted/15 text-sm">
+              <summary className="flex min-h-[44px] cursor-pointer list-none items-center justify-between gap-2 rounded-lg px-2 py-1 font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
+                <span>Exercise progress &amp; extras</span>
+                <span className="shrink-0 text-xs font-normal text-muted-foreground">
+                  {exercise.sets.filter(
+                    (set) => set.saveState == null || set.saveState === "saved",
+                  ).length} logged
+                </span>
+              </summary>
+              <div className="space-y-2 border-t p-2">
+                {disclosedRowOrder.map((i) => {
+                  const set = exercise.sets.find(
+                    (candidate) => candidate.setNo === i + 1,
+                  );
+                  const occurrenceForRow =
+                    workingOccurrences.find(
+                      (occurrence) => occurrence.kindOrdinal === i,
+                    ) ?? null;
+                  const rowPosition =
+                    occurrenceForRow == null
+                      ? null
+                      : workingSetDisplayPosition(
+                          occurrenceForRow,
+                          workingOccurrences,
+                        );
+                  const noteForSet = plannedNote(i);
+
+                  if (set) {
+                    return (
+                      <div
+                        key={set.id}
+                        id={`logged-set-${exercise.id}-${set.setNo}`}
+                        className="rounded-md bg-primary/5 px-3 py-2"
+                      >
+                        <div className="flex items-center justify-between gap-3">
+                          <span className="text-muted-foreground">
+                            {rowPosition?.label ?? `Set ${i + 1}`}
+                          </span>
+                          <span className="text-right font-medium tabular-nums">
+                            {formatLoggedSet(set, exercise.metricType)}
+                            {set.rpe != null &&
+                              ` · ${effortChoiceForLegacyRpe(set.rpe)?.label ?? `RPE ${set.rpe}`}`}
+                            <Check className="ml-2 inline size-3.5 text-green-600" />
+                          </span>
+                        </div>
+                        {set.note && (
+                          <p className="mt-1 text-xs text-muted-foreground">
+                            {set.note}
+                          </p>
+                        )}
+                        {formatLoggedExceptionContext(set).map((context) => (
+                          <p
+                            key={context}
+                            className="mt-1 text-xs text-muted-foreground"
+                          >
+                            {context}
+                          </p>
+                        ))}
+                        <div className="mt-2 flex flex-wrap items-center justify-between gap-2 border-t pt-2">
+                          <span className="text-xs text-muted-foreground">
+                            {(set.correctionCount ?? 0) > 0
+                              ? `${set.correctionCount} saved correction${
+                                  set.correctionCount === 1 ? "" : "s"
+                                } · original retained in Edit history`
+                              : "Acknowledged by Repbook"}
+                          </span>
+                          <div className="flex flex-wrap gap-2">
+                            {(set.metricType ?? performedMetricType) ===
+                            "activity" ? (
+                              <span className="self-center text-xs text-muted-foreground">
+                                Correction unavailable for this legacy shape
+                              </span>
+                            ) : (
+                              <CompletedSetCorrection
+                                setId={set.id}
+                                setNo={set.setNo}
+                                weight={set.weight}
+                                weightUnit={set.weightUnit}
+                                reps={set.reps}
+                                distanceKm={set.distanceKm ?? null}
+                                durationSeconds={set.durationSeconds ?? null}
+                                metricType={
+                                  set.metricType ?? performedMetricType
+                                }
+                                rpe={set.rpe}
+                                note={set.note}
+                                historyRevision={historyRevision}
+                                source="active_workout"
+                                onAcknowledged={(result) => {
+                                  onPatch({
+                                    sets: exercise.sets.map((candidate) =>
+                                      candidate.id === set.id
+                                        ? {
+                                            ...candidate,
+                                            ...result.values,
+                                            correctionCount:
+                                              (candidate.correctionCount ?? 0) +
+                                              1,
+                                          }
+                                        : candidate,
+                                    ),
+                                  });
+                                  onHistoryRevisionChange(
+                                    result.historyRevision,
+                                  );
+                                  const measurement =
+                                    readActiveWorkoutMeasurements().find(
+                                      (record) =>
+                                        (set.clientKey != null &&
+                                          record.clientKey === set.clientKey) ||
+                                        record.setId === set.id,
+                                    );
+                                  if (measurement) {
+                                    patchActiveWorkoutMeasurement(
+                                      measurement.clientKey,
+                                      {
+                                        corrections:
+                                          measurement.corrections + 1,
+                                      },
+                                    );
+                                  }
+                                }}
+                              />
+                            )}
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="ghost"
+                              className="text-destructive"
+                              onClick={() => handleDelete(set)}
+                              aria-label="Archive set"
+                            >
+                              <Archive className="size-4" />
+                            </Button>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  }
+
+                  return (
+                    <div
+                      key={`future-${i}`}
+                      className="rounded-md border border-dashed px-3 py-2 text-muted-foreground"
+                    >
+                      <div className="flex items-center justify-between">
+                        <span>Set {i + 1}</span>
+                        <span>Upcoming</span>
+                      </div>
+                      {noteForSet && (
+                        <p className="mt-1 text-xs">{noteForSet}</p>
+                      )}
+                    </div>
+                  );
+                })}
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="w-full justify-start border-dashed"
+                  disabled={
+                    Boolean(unconfirmedSet) ||
+                    appendingSet ||
+                    Boolean(appendedOccurrence)
+                  }
+                  aria-describedby={`add-set-description-${exercise.id}`}
+                  onClick={() => void handleAppendSet()}
+                >
+                  <Plus className="size-4" />
+                  {appendingSet ? "Adding extra set…" : "Add extra set"}
+                </Button>
+                <p
+                  id={`add-set-description-${exercise.id}`}
+                  className="px-1 text-xs text-muted-foreground"
+                >
+                  Adds ad-hoc work without changing the planned set order.
+                  Finish or skip this extra before adding one more.
+                </p>
+              </div>
+            </details>
           </div>
 
+          <details className="rounded-lg border bg-muted/15 text-sm">
+            <summary className="flex min-h-[44px] cursor-pointer list-none items-center justify-between gap-2 rounded-lg px-2 py-1 font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
+              <span>More for this exercise</span>
+              <span className="shrink-0 text-xs font-normal text-muted-foreground">
+                Notes, form &amp; swaps
+              </span>
+            </summary>
+            <div className="space-y-3 border-t p-2">
           <div className="flex flex-col gap-2" data-testid="exercise-reference-context">
             {exercise.modificationType === "added" && (
               <p className="rounded-md border border-primary/25 bg-primary/5 px-3 py-2 text-sm">
                 Added during this workout. It has no Program slot or progression
                 target, and your Program remains unchanged.
-              </p>
-            )}
-            {exercise.last && (
-              <p className="text-xs text-muted-foreground">
-                Last time:{" "}
-                {exercise.last.sets
-                  .map(
-                    (set) =>
-                      `${set.weight != null && set.weightUnit != null ? `${set.weight} ${set.weightUnit}×` : ""}${set.reps}`,
-                  )
-                  .join(", ")}
               </p>
             )}
             {exercise.cautionBodyParts.length > 0 && (
@@ -1755,6 +2221,9 @@ export function ExerciseCard({
             </section>
           )}
 
+            </div>
+          </details>
+
           <Drawer
             open={adjustIntent === "note"}
             onOpenChange={(open) => onAdjustIntentChange(open ? "note" : null)}
@@ -1898,6 +2367,7 @@ function SetEntry({
   plateConfig,
   machineLoadConfig,
   prioritizePerformedMeasure = false,
+  optionalOnly = false,
 }: {
   metricType: PerformedMetricType;
   supported: boolean;
@@ -1910,6 +2380,7 @@ function SetEntry({
   plateConfig?: PlateMathConfig;
   machineLoadConfig?: MachineLoadConfig | null;
   prioritizePerformedMeasure?: boolean;
+  optionalOnly?: boolean;
 }) {
   const weightInputId = useId();
   const distanceInputId = useId();
@@ -2206,11 +2677,22 @@ function SetEntry({
       />
     </>
   );
+  if (optionalOnly) {
+    return <div className="space-y-2">{optionalSetFields}</div>;
+  }
   return (
     <div className="flex flex-col gap-2">
-      <div className="flex flex-wrap items-end gap-2">
+      <div
+        className={cn(
+          "grid items-end gap-2",
+          (hasWeight && recordsRepetitions) ||
+            metricType === "distance_duration"
+            ? "grid-cols-2"
+            : "grid-cols-1 sm:grid-cols-2",
+        )}
+      >
         {hasWeight && (
-          <div className="flex min-w-[10.5rem] flex-1 flex-col gap-1">
+          <div className="flex min-w-0 flex-col gap-1">
             {weightLabel && (
               <label htmlFor={weightInputId} className="text-xs font-medium">
                 {weightLabel}
@@ -2220,6 +2702,7 @@ function SetEntry({
               <Button
                 variant="outline"
                 size="icon"
+                className="active-set-stepper shrink-0"
                 onClick={() =>
                   setDraft((d) => ({
                     ...d,
@@ -2230,7 +2713,7 @@ function SetEntry({
               >
                 <Minus className="size-4" />
               </Button>
-              <div className="relative flex-1">
+              <div className="relative min-w-0 flex-1">
                 <Input
                   id={weightInputId}
                   aria-label={weightLabel ?? "Weight"}
@@ -2252,6 +2735,7 @@ function SetEntry({
               <Button
                 variant="outline"
                 size="icon"
+                className="active-set-stepper shrink-0"
                 onClick={() =>
                   setDraft((d) => ({
                     ...d,
@@ -2266,10 +2750,11 @@ function SetEntry({
           </div>
         )}
         {recordsRepetitions && (
-        <div className="flex min-w-[10.5rem] flex-1 items-center gap-1">
+        <div className="flex min-w-0 items-center gap-1">
           <Button
             variant="outline"
             size="icon"
+            className="active-set-stepper shrink-0"
             onClick={() => setDraft((d) => ({
               ...d,
               reps: Math.max(0, (d.reps ?? 0) - 1),
@@ -2278,7 +2763,7 @@ function SetEntry({
           >
             <Minus className="size-4" />
           </Button>
-          <div className="relative flex-1">
+          <div className="relative min-w-0 flex-1">
             <Input
               aria-label="Reps"
               inputMode="numeric"
@@ -2298,6 +2783,7 @@ function SetEntry({
           <Button
             variant="outline"
             size="icon"
+            className="active-set-stepper shrink-0"
             onClick={() => setDraft((d) => ({
               ...d,
               reps: (d.reps ?? 0) + 1,
@@ -2309,7 +2795,7 @@ function SetEntry({
         </div>
         )}
         {metricType === "distance_duration" && (
-          <div className="flex min-w-[10.5rem] flex-1 flex-col gap-1">
+          <div className="flex min-w-0 flex-col gap-1">
             <label htmlFor={distanceInputId} className="text-xs font-medium">
               Distance
             </label>
@@ -2333,7 +2819,7 @@ function SetEntry({
           </div>
         )}
         {(metricType === "duration" || metricType === "distance_duration") && (
-          <div className="flex min-w-[10.5rem] flex-1 flex-col gap-1">
+          <div className="flex min-w-0 flex-col gap-1">
             <label htmlFor={durationInputId} className="text-xs font-medium">
               Duration {metricType === "distance_duration" ? "(optional)" : ""}
             </label>
@@ -2362,15 +2848,7 @@ function SetEntry({
           {machineLine ?? plateLine}
         </p>
       )}
-      {prioritizePerformedMeasure ? (
-        <details className="rounded-md border border-dashed text-sm">
-          <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-2 rounded-md px-3 py-2 font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
-            <span>Optional effort and set note</span>
-            <span className="text-xs text-muted-foreground">Add details</span>
-          </summary>
-          <div className="space-y-2 border-t p-3">{optionalSetFields}</div>
-        </details>
-      ) : (
+      {!prioritizePerformedMeasure && (
         <div className="space-y-2">{optionalSetFields}</div>
       )}
     </div>

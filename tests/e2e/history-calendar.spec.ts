@@ -414,6 +414,27 @@ test("corrects completed workout timing with an explicit review", async ({
   await page
     .getByRole("button", { name: "Correct workout timing", exact: true })
     .click();
+  await page
+    .getByRole("radio", {
+      name: "Date only — wall-clock start and elapsed span unknown",
+    })
+    .click();
+  await page
+    .getByRole("button", { name: "Review timing correction", exact: true })
+    .click();
+  await expect(
+    page.getByText(/Date only · wall-clock start and elapsed span unknown/),
+  ).toBeVisible();
+  await expect(
+    page.getByText(
+      "Active-duration evidence—and whether it is available for analytics—remains unchanged by this source-timing correction.",
+    ),
+  ).toBeVisible();
+  await page.keyboard.press("Escape");
+
+  await page
+    .getByRole("button", { name: "Correct workout timing", exact: true })
+    .click();
   await expect(
     page.getByRole("radio", { name: "Exact local start" }),
   ).toBeChecked();

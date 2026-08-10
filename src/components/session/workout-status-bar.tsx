@@ -96,7 +96,7 @@ export function WorkoutStatusBar({
           type="button"
           onClick={onShowCurrent}
           className={cn(
-            "min-w-0 flex-1 rounded-md px-1 py-1 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring",
+            "min-h-11 min-w-0 flex-1 rounded-md px-1 py-1 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring",
             timerRunning &&
               "col-span-2 col-start-1 row-start-1 min-[400px]:col-span-3 min-[520px]:col-span-1 min-[520px]:col-start-auto min-[520px]:row-start-auto",
             timerReady &&
