@@ -306,25 +306,51 @@ export async function approveRecommendationDecision(
         FROM users owner
         WHERE owner.id = ${userId}::uuid
         FOR UPDATE
-      ), fresh_import AS (
-        SELECT insight.id
+      ), locked_receipt AS MATERIALIZED (
+        SELECT insight.id, insight.data_digest
         FROM coaching_insights insight
         JOIN locked_owner owner ON owner.id = insight.user_id
         WHERE insight.id = ${recommendation.insightId}::uuid
-          AND insight.user_id = ${userId}::uuid
           AND insight.kind = 'external_analysis_import'
           AND insight.archived_at IS NULL
           AND insight.data_digest->>'schemaVersion' = 'external-analysis-import/1'
+        FOR UPDATE OF insight
+      ), target_recommendation AS MATERIALIZED (
+        SELECT recommendation.id
+        FROM recommendations recommendation
+        JOIN locked_owner owner ON owner.id = recommendation.user_id
+        JOIN locked_receipt receipt ON true
+        WHERE recommendation.id = ${recommendation.id}::uuid
+          AND recommendation.status = 'pending'
+          AND recommendation.archived_at IS NULL
+          AND recommendation.review_revision = ${recommendation.reviewRevision}::int
+          AND recommendation.defer_revision = ${recommendation.deferRevision}::int
+          AND recommendation.deferred_at IS NULL
+          AND recommendation.insight_id = ${recommendation.insightId}::uuid
+        FOR UPDATE OF recommendation
+      ), fresh_import AS (
+        -- Lock the owner and exact receipt before checking freshness. A sibling
+        -- action that waited on the owner lock therefore follows the receipt's
+        -- committed row version rather than the statement's older snapshot.
+        UPDATE coaching_insights insight
+        SET data_digest = jsonb_set(
+          receipt.data_digest,
+          '{package,sourceEvidenceRevision}',
+          to_jsonb((owner.analysis_evidence_revision + 4)::text),
+          false
+        )
+        FROM locked_owner owner, locked_receipt receipt, target_recommendation target
+        WHERE insight.id = receipt.id
           AND owner.analysis_evidence_revision::text =
-            insight.data_digest #>> '{package,sourceEvidenceRevision}'
+            receipt.data_digest #>> '{package,sourceEvidenceRevision}'
           AND EXISTS (
             SELECT 1
-            FROM jsonb_array_elements(insight.data_digest->'recommendationMap') item
-            WHERE item->>'recommendationId' = ${recommendation.id}
+            FROM jsonb_array_elements(receipt.data_digest->'recommendationMap') item
+            WHERE item->>'recommendationId' = target.id::text
           )
           AND NOT EXISTS (
             SELECT 1
-            FROM jsonb_array_elements(insight.data_digest->'sourceBindings') binding
+            FROM jsonb_array_elements(receipt.data_digest->'sourceBindings') binding
             CROSS JOIN LATERAL jsonb_array_elements(
               COALESCE(binding->'revisions', '[]'::jsonb)
             ) AS source_revision(value)
@@ -364,7 +390,7 @@ export async function approveRecommendationDecision(
           )
           AND NOT EXISTS (
             SELECT 1
-            FROM jsonb_array_elements(insight.data_digest->'sourceBindings') binding
+            FROM jsonb_array_elements(receipt.data_digest->'sourceBindings') binding
             CROSS JOIN LATERAL jsonb_array_elements(
               COALESCE(binding->'versionTokens', '[]'::jsonb)
             ) AS source_version(value)
@@ -373,7 +399,7 @@ export async function approveRecommendationDecision(
           AND (
             (
               NOT EXISTS (
-                SELECT 1 FROM jsonb_array_elements(insight.data_digest->'sourceBindings') binding
+                SELECT 1 FROM jsonb_array_elements(receipt.data_digest->'sourceBindings') binding
                 WHERE binding->>'entity' = 'programs'
                   AND jsonb_array_length(binding->'ids') > 0
               )
@@ -391,18 +417,19 @@ export async function approveRecommendationDecision(
                 AND program.archived_at IS NULL
                 AND program.id::text = (
                   SELECT (binding->'ids')->>0
-                  FROM jsonb_array_elements(insight.data_digest->'sourceBindings') binding
+                  FROM jsonb_array_elements(receipt.data_digest->'sourceBindings') binding
                   WHERE binding->>'entity' = 'programs'
                     AND jsonb_array_length(binding->'ids') = 1
                 )
                 AND program.current_version_id::text = (
                   SELECT (binding->'ids')->>0
-                  FROM jsonb_array_elements(insight.data_digest->'sourceBindings') binding
+                  FROM jsonb_array_elements(receipt.data_digest->'sourceBindings') binding
                   WHERE binding->>'entity' = 'program_versions'
                     AND jsonb_array_length(binding->'ids') = 1
                 )
             )
           )
+        RETURNING insight.id
       ), claimed AS (
         UPDATE recommendations recommendation
         SET status = ${decisionEdited ? "edited" : "approved"},
@@ -576,12 +603,35 @@ export async function rejectRecommendationDecision(
   const reviewSnapshot = buildReviewDecisionSnapshot(recommendation, assessment);
   await checkpoint("recommendation-ready");
   const query = sql`
-    WITH claimed AS (
+    WITH locked_owner AS MATERIALIZED (
+      SELECT owner.id, owner.analysis_evidence_revision
+      FROM users owner
+      WHERE owner.id = ${userId}::uuid
+      FOR UPDATE
+    ), locked_receipt AS MATERIALIZED (
+      SELECT insight.id, insight.data_digest
+      FROM coaching_insights insight
+      JOIN locked_owner owner ON owner.id = insight.user_id
+      WHERE insight.id = ${recommendation.insightId ?? null}::uuid
+        AND insight.kind = 'external_analysis_import'
+        AND insight.archived_at IS NULL
+        AND insight.data_digest->>'schemaVersion' = 'external-analysis-import/1'
+      FOR UPDATE OF insight
+    ), receipt_gate AS MATERIALIZED (
+      SELECT
+        owner.id,
+        owner.analysis_evidence_revision,
+        receipt.id AS receipt_id,
+        receipt.data_digest AS receipt_digest
+      FROM locked_owner owner
+      LEFT JOIN locked_receipt receipt ON true
+    ), claimed AS (
       UPDATE recommendations recommendation
       SET status = 'rejected',
           decided_at = now()
+      FROM receipt_gate owner
       WHERE recommendation.id = ${recommendation.id}::uuid
-        AND recommendation.user_id = ${userId}::uuid
+        AND recommendation.user_id = owner.id
         AND recommendation.status = 'pending'
         AND recommendation.archived_at IS NULL
         AND recommendation.review_revision = ${recommendation.reviewRevision}::int
@@ -593,6 +643,27 @@ export async function rejectRecommendationDecision(
       SELECT ${decisionId}::uuid, claimed.id, 'reject', ${reason}, ${JSON.stringify(reviewSnapshot)}::jsonb
       FROM claimed
       RETURNING id
+    ), advanced_receipt AS (
+      -- Rejection advances the recommendation, derived Program Review
+      -- revision, and owner decision. Rebase only a receipt that was current
+      -- while the owner row was locked.
+      UPDATE coaching_insights insight
+      SET data_digest = jsonb_set(
+        owner.receipt_digest,
+        '{package,sourceEvidenceRevision}',
+        to_jsonb((owner.analysis_evidence_revision + 3)::text),
+        false
+      )
+      FROM receipt_gate owner, claimed, recorded_decision
+      WHERE insight.id = owner.receipt_id
+        AND owner.receipt_digest #>> '{package,sourceEvidenceRevision}' =
+          owner.analysis_evidence_revision::text
+        AND EXISTS (
+          SELECT 1
+          FROM jsonb_array_elements(owner.receipt_digest->'recommendationMap') item
+          WHERE item->>'recommendationId' = claimed.id::text
+        )
+      RETURNING insight.id
     ), recorded_audit AS (
       INSERT INTO audit_logs (
         user_id, actor_type, action, entity_type, entity_id, summary,
@@ -693,18 +764,60 @@ export async function deferRecommendationDecision(
   }
   await dependencies.checkpoint?.("recommendation-defer-ready");
   const applied = resultRows(await db.execute(sql`
-    WITH claimed AS (
+    WITH locked_owner AS MATERIALIZED (
+      SELECT owner.id, owner.analysis_evidence_revision
+      FROM users owner
+      WHERE owner.id = ${userId}::uuid
+      FOR UPDATE
+    ), locked_receipt AS MATERIALIZED (
+      SELECT insight.id, insight.data_digest
+      FROM coaching_insights insight
+      JOIN locked_owner owner ON owner.id = insight.user_id
+      WHERE insight.id = ${recommendation.insightId ?? null}::uuid
+        AND insight.kind = 'external_analysis_import'
+        AND insight.archived_at IS NULL
+        AND insight.data_digest->>'schemaVersion' = 'external-analysis-import/1'
+      FOR UPDATE OF insight
+    ), receipt_gate AS MATERIALIZED (
+      SELECT
+        owner.id,
+        owner.analysis_evidence_revision,
+        receipt.id AS receipt_id,
+        receipt.data_digest AS receipt_digest
+      FROM locked_owner owner
+      LEFT JOIN locked_receipt receipt ON true
+    ), claimed AS (
       UPDATE recommendations recommendation
       SET deferred_at = statement_timestamp(),
           revisit_on = ${revisitOn}::date,
           defer_reason = ${reason}
+      FROM receipt_gate owner
       WHERE recommendation.id = ${recommendation.id}::uuid
-        AND recommendation.user_id = ${userId}::uuid
+        AND recommendation.user_id = owner.id
         AND recommendation.status = 'pending'
         AND recommendation.archived_at IS NULL
         AND recommendation.review_revision = ${input.expectedReviewRevision}::int
         AND recommendation.defer_revision = ${input.expectedDeferRevision}::int
       RETURNING recommendation.id, recommendation.review_revision, recommendation.defer_revision
+    ), advanced_receipt AS (
+      -- Defer changes only this recommendation's Review lifecycle row.
+      UPDATE coaching_insights insight
+      SET data_digest = jsonb_set(
+        owner.receipt_digest,
+        '{package,sourceEvidenceRevision}',
+        to_jsonb((owner.analysis_evidence_revision + 1)::text),
+        false
+      )
+      FROM receipt_gate owner, claimed
+      WHERE insight.id = owner.receipt_id
+        AND owner.receipt_digest #>> '{package,sourceEvidenceRevision}' =
+          owner.analysis_evidence_revision::text
+        AND EXISTS (
+          SELECT 1
+          FROM jsonb_array_elements(owner.receipt_digest->'recommendationMap') item
+          WHERE item->>'recommendationId' = claimed.id::text
+        )
+      RETURNING insight.id
     ), recorded_audit AS (
       INSERT INTO audit_logs (
         user_id, actor_type, action, entity_type, entity_id, summary,
@@ -751,17 +864,59 @@ export async function resumeRecommendationDecision(
     return { ok: false, reason: "This deferred proposal changed. Refresh before resuming it." };
   }
   const applied = resultRows(await db.execute(sql`
-    WITH claimed AS (
+    WITH locked_owner AS MATERIALIZED (
+      SELECT owner.id, owner.analysis_evidence_revision
+      FROM users owner
+      WHERE owner.id = ${userId}::uuid
+      FOR UPDATE
+    ), locked_receipt AS MATERIALIZED (
+      SELECT insight.id, insight.data_digest
+      FROM coaching_insights insight
+      JOIN locked_owner owner ON owner.id = insight.user_id
+      WHERE insight.id = ${recommendation.insightId ?? null}::uuid
+        AND insight.kind = 'external_analysis_import'
+        AND insight.archived_at IS NULL
+        AND insight.data_digest->>'schemaVersion' = 'external-analysis-import/1'
+      FOR UPDATE OF insight
+    ), receipt_gate AS MATERIALIZED (
+      SELECT
+        owner.id,
+        owner.analysis_evidence_revision,
+        receipt.id AS receipt_id,
+        receipt.data_digest AS receipt_digest
+      FROM locked_owner owner
+      LEFT JOIN locked_receipt receipt ON true
+    ), claimed AS (
       UPDATE recommendations recommendation
       SET deferred_at = NULL, revisit_on = NULL, defer_reason = NULL
+      FROM receipt_gate owner
       WHERE recommendation.id = ${recommendation.id}::uuid
-        AND recommendation.user_id = ${userId}::uuid
+        AND recommendation.user_id = owner.id
         AND recommendation.status = 'pending'
         AND recommendation.archived_at IS NULL
         AND recommendation.review_revision = ${input.expectedReviewRevision}::int
         AND recommendation.defer_revision = ${input.expectedDeferRevision}::int
         AND recommendation.deferred_at IS NOT NULL
       RETURNING recommendation.id, recommendation.review_revision, recommendation.defer_revision
+    ), advanced_receipt AS (
+      -- Resume changes only this recommendation's Review lifecycle row.
+      UPDATE coaching_insights insight
+      SET data_digest = jsonb_set(
+        owner.receipt_digest,
+        '{package,sourceEvidenceRevision}',
+        to_jsonb((owner.analysis_evidence_revision + 1)::text),
+        false
+      )
+      FROM receipt_gate owner, claimed
+      WHERE insight.id = owner.receipt_id
+        AND owner.receipt_digest #>> '{package,sourceEvidenceRevision}' =
+          owner.analysis_evidence_revision::text
+        AND EXISTS (
+          SELECT 1
+          FROM jsonb_array_elements(owner.receipt_digest->'recommendationMap') item
+          WHERE item->>'recommendationId' = claimed.id::text
+        )
+      RETURNING insight.id
     ), recorded_audit AS (
       INSERT INTO audit_logs (
         user_id, actor_type, action, entity_type, entity_id, summary,
