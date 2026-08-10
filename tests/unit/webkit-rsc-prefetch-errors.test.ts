@@ -4,6 +4,7 @@ import {
   isCorrelatedWebKitRscPrefetchCancellation,
   isExpectedWebKitRscHistoryLinkCancellation,
   isExpectedWebKitRscLinkCancellation,
+  isExpectedWebKitRscNavigationFallback,
   isNextRscPrefetch,
   isSuccessfulNextRscPrefetch,
   observeNextRscPrefetches,
@@ -175,6 +176,37 @@ describe("WebKit RSC prefetch cancellation classification", () => {
       ),
     ).toBe(true);
   });
+
+  it("accepts the exact recovered WebKit RSC navigation fallback for a reviewed route", () => {
+    expect(
+      isExpectedWebKitRscNavigationFallback(
+        "Failed to fetch RSC payload for http://127.0.0.1:3136/today. Falling back to browser navigation. TypeError: Load failed",
+        "webkit",
+        "/today",
+      ),
+    ).toBe(true);
+  });
+
+  it.each([
+    ["another browser", "chromium", "/today", ""],
+    ["another route", "webkit", "/history", ""],
+    ["a query-bearing route", "webkit", "/today", "?preview=example"],
+    ["another error", "webkit", "/today", " caused by application failure"],
+  ])(
+    "does not accept %s as a recovered WebKit RSC navigation fallback",
+    (_label, browserName, expectedPath, suffix) => {
+      const message = suffix.startsWith("?")
+        ? `Failed to fetch RSC payload for http://127.0.0.1:3136/today${suffix}. Falling back to browser navigation. TypeError: Load failed`
+        : `Failed to fetch RSC payload for http://127.0.0.1:3136/today. Falling back to browser navigation. TypeError: Load failed${suffix}`;
+      expect(
+        isExpectedWebKitRscNavigationFallback(
+          message,
+          browserName,
+          expectedPath,
+        ),
+      ).toBe(false);
+    },
+  );
 
   it.each([
     ["another browser", "chromium", webKitCancellation, ["/settings"]],
