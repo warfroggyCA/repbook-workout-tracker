@@ -465,7 +465,11 @@ test("keeps Stage 5 guidance truthful, persistent, and usable on narrow mobile s
   await expect(page.getByTestId("current-exercise-card").getByRole("heading", { level: 2 })).toHaveText(
     "EZ-Bar Curl",
   );
-  await page.getByTestId("current-exercise-card")
+  const currentExercise = page.getByTestId("current-exercise-card");
+  await openNativeDetails(currentExercise.locator("details", {
+    hasText: "More for this exercise",
+  }));
+  await currentExercise
     .getByRole("button", { name: "View alternatives", exact: true }).click();
   const alternatives = page.getByRole("dialog", {
     name: "Use an alternative for this workout",

@@ -282,6 +282,9 @@ test("publishes and preserves durable warm-up and grouped workout outcomes", asy
   await expect(page.getByRole("button", { name: "Open unsaved workout changes" })).toHaveCount(0);
   await workoutStatus.locator("button").first().click();
 
+  await openNativeDetails(nextSet.locator("details", {
+    hasText: "More for this exercise",
+  }));
   await nextSet.getByRole("button", { name: "View alternatives", exact: true }).click();
   const alternatives = page.getByRole("dialog", {
     name: "Use an alternative for this workout",
