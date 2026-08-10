@@ -73,6 +73,41 @@ test("opens and operates the keyboard-accessible Program editor", async ({
   ).toHaveText(firstExerciseName!);
   await expect(page.getByRole("status")).toContainText("All changes saved");
 
+  const firstExerciseToggle = exerciseRows
+    .nth(0)
+    .locator('button[aria-controls^="editor-"]');
+  if ((await firstExerciseToggle.getAttribute("aria-expanded")) === "true") {
+    await firstExerciseToggle.click();
+    await expect(firstExerciseToggle).toHaveAttribute("aria-expanded", "false");
+  }
+  await page.setViewportSize({ width: 390, height: 844 });
+  await exerciseRows.nth(1).scrollIntoViewIfNeeded();
+  const firstHandleBox = await firstHandle.boundingBox();
+  const secondHandleBox = await exerciseRows
+    .nth(1)
+    .getByRole("button", { name: /^Drag / })
+    .boundingBox();
+  expect(firstHandleBox).not.toBeNull();
+  expect(secondHandleBox).not.toBeNull();
+  await page.mouse.move(
+    firstHandleBox!.x + firstHandleBox!.width / 2,
+    firstHandleBox!.y + firstHandleBox!.height / 2,
+  );
+  await page.mouse.down();
+  await expect(
+    page.locator('[data-program-reorder-active="true"]'),
+  ).toBeVisible();
+  await expect(
+    exerciseRows.nth(0).getByText("Moving", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    exerciseRows.nth(0).getByText("Drop here", { exact: true }),
+  ).toBeVisible();
+  await page.mouse.up();
+  await expect(
+    page.locator('[data-program-reorder-active="true"]'),
+  ).toHaveCount(0);
+  await expect(page.getByText("Drop here", { exact: true })).toHaveCount(0);
   await firstHandle.dragTo(
     exerciseRows.nth(1).getByRole("button", { name: /^Drag / }),
   );
@@ -86,6 +121,7 @@ test("opens and operates the keyboard-accessible Program editor", async ({
     exerciseRows.nth(0).locator('button[aria-expanded] span[id$="-label"]'),
   ).toHaveText(firstExerciseName!);
   await expect(page.getByRole("status")).toContainText("All changes saved");
+  await page.setViewportSize({ width: 1280, height: 720 });
   await page.reload();
   await expect(page.getByRole("heading", { name: /^Edit / })).toBeVisible();
   await expect(

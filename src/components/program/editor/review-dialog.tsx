@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, CircleAlert, LoaderCircle, RefreshCw } from "lucide-react";
+import { Check, CircleAlert, LoaderCircle, PencilLine, RefreshCw } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -485,23 +485,39 @@ export function ReviewDialog({ editor, currentReview, canReview }: { editor: Pro
                     Publication creates a new immutable version for workouts
                     started afterward. An active workout and History stay unchanged.
                   </p>
-                  <Button
-                    type="button"
-                    className="min-h-11"
-                    disabled={
-                      publishing ||
-                      currentReview.status !== "publishable" ||
-                      currentReview.changes.length === 0
-                    }
-                    onClick={() => void publish()}
-                  >
-                    {publishing ? (
-                      <LoaderCircle className="animate-spin motion-reduce:animate-none" />
-                    ) : (
-                      <Check />
-                    )}{" "}
-                    Publish future Program
-                  </Button>
+                  <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="min-h-11"
+                      disabled={publishing}
+                      onClick={() => {
+                        setActiveTab("edit");
+                        requestAnimationFrame(() =>
+                          window.document.getElementById("program-name")?.focus(),
+                        );
+                      }}
+                    >
+                      <PencilLine /> Continue editing
+                    </Button>
+                    <Button
+                      type="button"
+                      className="min-h-11"
+                      disabled={
+                        publishing ||
+                        currentReview.status !== "publishable" ||
+                        currentReview.changes.length === 0
+                      }
+                      onClick={() => void publish()}
+                    >
+                      {publishing ? (
+                        <LoaderCircle className="animate-spin motion-reduce:animate-none" />
+                      ) : (
+                        <Check />
+                      )}{" "}
+                      Publish future Program
+                    </Button>
+                  </div>
                 </div>
               </>
             )}

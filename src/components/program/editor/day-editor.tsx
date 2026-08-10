@@ -29,6 +29,10 @@ function displayLabel(value: string) { return value.replaceAll("_", " ").replace
 export const DayEditor = memo(function DayEditor({ editor, canReview = false }: { editor: ProgramEditorController; canReview?: boolean }) {
   const { document, revision, router, library, updateDocument, activeDayId, setActiveDayId, dayHeadingRefs, updateDay, addDay, addExercise, pairingDayId, setPairingDayId, pairingSlotIds, setPairingSlotIds, expandedSlotId, setExpandedSlotId, slotHeadingRefs, exerciseById, moveSlotToDay, requestReview, reviewing } = editor;
   const [reorderAnnouncement, setReorderAnnouncement] = useState("");
+  const [reorderGesture, setReorderGesture] = useState<{
+    dayLineageId: string;
+    unitId: string;
+  } | null>(null);
   if (!document) return null;
   const documentValidation = programDocumentV3Schema.safeParse(document);
   return (
@@ -630,6 +634,11 @@ export const DayEditor = memo(function DayEditor({ editor, canReview = false }: 
                           "Unavailable exercise",
                       );
                       const reorderUnitId = pairing?.key ?? slot.lineageId;
+                      const isMovingUnit =
+                        reorderGesture?.dayLineageId === day.lineageId &&
+                        reorderGesture.unitId === reorderUnitId;
+                      const isMovingLead =
+                        isMovingUnit && (!pairing || pairingPosition === 0);
                       const canMoveUp = day.exercises
                         .slice(0, slotIndex)
                         .some(
@@ -650,13 +659,30 @@ export const DayEditor = memo(function DayEditor({ editor, canReview = false }: 
                           data-program-day-lineage={day.lineageId}
                           data-program-slot-index={slotIndex}
                           data-program-slot-unit={reorderUnitId}
+                          data-program-reordering={isMovingUnit ? "true" : undefined}
                           className={cn(
-                            "space-y-2",
+                            "space-y-2 transition-[background-color,box-shadow] motion-reduce:transition-none",
                             pairing && "border-l-4 border-violet-500 bg-violet-50/60 px-3 py-2 dark:bg-violet-950/20",
                             pairing && pairingPosition === 0 && "rounded-t-xl pt-3",
                             pairing && pairingPosition === pairingMembers.length - 1 && "rounded-b-xl pb-3",
+                            isMovingUnit &&
+                              "relative z-10 rounded-xl bg-primary/10 shadow-lg ring-2 ring-primary/70 ring-offset-2 ring-offset-background",
                           )}
                         >
+                        {isMovingLead && (
+                          <div
+                            data-program-drop-position="true"
+                            className="pointer-events-none absolute inset-x-0 -top-4 z-20 flex items-center gap-2 text-xs font-semibold text-primary"
+                          >
+                            <span
+                              aria-hidden="true"
+                              className="h-1 min-w-4 flex-1 rounded-full bg-primary shadow-sm"
+                            />
+                            <span className="shrink-0 rounded-full bg-primary px-2 py-1 text-primary-foreground shadow-sm">
+                              Drop here
+                            </span>
+                          </div>
+                        )}
                         {pairing && pairingPosition === 0 && (
                           <details className="rounded-lg border border-violet-300/70 bg-background/70 p-3">
                             <summary className="min-h-11 cursor-pointer font-medium">
@@ -820,6 +846,20 @@ export const DayEditor = memo(function DayEditor({ editor, canReview = false }: 
                               }))
                             }
                             onAnnounce={setReorderAnnouncement}
+                            onDragStart={() =>
+                              setReorderGesture({
+                                dayLineageId: day.lineageId,
+                                unitId: reorderUnitId,
+                              })
+                            }
+                            onDragEnd={() =>
+                              setReorderGesture((current) =>
+                                current?.dayLineageId === day.lineageId &&
+                                current.unitId === reorderUnitId
+                                  ? null
+                                  : current,
+                              )
+                            }
                           />
                           <button
                           ref={(node) => {
@@ -853,6 +893,11 @@ export const DayEditor = memo(function DayEditor({ editor, canReview = false }: 
                             <span className="mt-1 block text-sm text-muted-foreground">
                               {slot.sets} sets · {slot.repMin}–{slot.repMax} reps · {formatRestTime(slot.restSec)} · {displayLabel(slot.progressionRuleId)}
                             </span>
+                            {isMovingLead && (
+                              <span className="mt-2 inline-flex rounded-full bg-primary px-2 py-1 text-xs font-semibold text-primary-foreground">
+                                Moving
+                              </span>
+                            )}
                           </span>
                           <span className="text-sm font-medium text-primary">
                             {expandedSlotId === slot.lineageId ? "Close" : "Edit"}

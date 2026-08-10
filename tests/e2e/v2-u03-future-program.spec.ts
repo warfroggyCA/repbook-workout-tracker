@@ -63,6 +63,19 @@ test("reviews and publishes an exact future-only Program change with a recoverab
   await page.getByRole("tab", { name: "Review", exact: true }).click();
   await page.getByRole("button", { name: "Check Program", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Ready to publish", exact: true })).toBeVisible();
+  const continueEditing = page.getByRole("button", {
+    name: "Continue editing",
+    exact: true,
+  });
+  await expect(continueEditing).toBeVisible();
+  await continueEditing.click();
+  await expect(page.getByRole("tab", { name: "Edit", exact: true })).toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
+  await expect(page.getByLabel("Program name")).toHaveValue(futureName);
+  await page.getByRole("tab", { name: "Review", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Ready to publish", exact: true })).toBeVisible();
 
   const changeCard = page
     .getByRole("heading", { name: "What will change for future workouts", exact: true })

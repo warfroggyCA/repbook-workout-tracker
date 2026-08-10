@@ -15,6 +15,8 @@ export function ExerciseReorderHandle({
   canMoveDown,
   onMove,
   onAnnounce,
+  onDragStart,
+  onDragEnd,
 }: {
   dayLineageId: string;
   descriptionId: string;
@@ -25,6 +27,8 @@ export function ExerciseReorderHandle({
   canMoveDown: boolean;
   onMove: (direction: -1 | 1) => void;
   onAnnounce: (message: string) => void;
+  onDragStart: () => void;
+  onDragEnd: () => void;
 }) {
   const [dragging, setDragging] = useState(false);
   const draggingRef = useRef(false);
@@ -41,12 +45,15 @@ export function ExerciseReorderHandle({
   }
 
   function finishDrag(event: PointerEvent<HTMLButtonElement>) {
+    if (!draggingRef.current) return;
+    draggingRef.current = false;
+    lastTargetIndex.current = null;
+    setDragging(false);
+    onDragEnd();
+    onAnnounce(`${exerciseName} placed.`);
     if (event.currentTarget.hasPointerCapture(event.pointerId)) {
       event.currentTarget.releasePointerCapture(event.pointerId);
     }
-    lastTargetIndex.current = null;
-    draggingRef.current = false;
-    setDragging(false);
   }
 
   function handlePointerMove(event: PointerEvent<HTMLButtonElement>) {
@@ -92,12 +99,18 @@ export function ExerciseReorderHandle({
       size="icon-touch"
       variant="outline"
       className={cn(
-        "shrink-0 touch-none cursor-grab active:cursor-grabbing",
-        dragging && "border-primary bg-primary/10 text-primary ring-2 ring-primary/30",
+        "relative z-10 shrink-0 touch-none cursor-grab transition-[transform,background-color,border-color,box-shadow] active:cursor-grabbing motion-reduce:transition-none",
+        dragging &&
+          "scale-105 cursor-grabbing border-primary bg-primary text-primary-foreground shadow-lg ring-4 ring-primary/30",
       )}
-      aria-label={`Drag ${exerciseName} to reorder`}
+      aria-label={
+        dragging
+          ? `Moving ${exerciseName}. Release to place.`
+          : `Drag ${exerciseName} to reorder`
+      }
       aria-describedby={descriptionId}
       aria-keyshortcuts="ArrowUp ArrowDown"
+      data-program-reorder-active={dragging ? "true" : undefined}
       title="Drag to reorder. With a keyboard, use the up and down arrow keys."
       onKeyDown={handleKeyDown}
       onPointerDown={(event) => {
@@ -107,6 +120,10 @@ export function ExerciseReorderHandle({
         event.currentTarget.setPointerCapture(event.pointerId);
         draggingRef.current = true;
         setDragging(true);
+        onDragStart();
+        onAnnounce(
+          `${exerciseName} picked up. Drag to a new position, then release.`,
+        );
       }}
       onPointerMove={handlePointerMove}
       onPointerUp={finishDrag}
