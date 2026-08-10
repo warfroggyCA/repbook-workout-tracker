@@ -49,6 +49,7 @@ async function main() {
       )
       SELECT
         (SELECT count(*)::int FROM user_sessions) AS workouts,
+        (SELECT count(*)::int FROM user_sessions WHERE status = 'completed') AS completed_workouts,
         (SELECT count(*)::int FROM user_exercises) AS exercise_occurrences,
         (SELECT count(*)::int FROM completed_sets cs JOIN user_exercises se ON se.id = cs.session_exercise_id) AS sets,
         (SELECT count(*)::int FROM completed_sets cs JOIN user_exercises se ON se.id = cs.session_exercise_id WHERE cs.is_warmup) AS warmup_sets,
@@ -85,13 +86,13 @@ async function main() {
       }
     }
   }
-  if (report.overview.completedSessions !== counts.workouts) {
+  if (report.overview.completedSessions !== counts.completed_workouts) {
     failures.push("History report workout count differs from restored rows.");
   }
-  if (calendarWorkouts !== counts.workouts) {
+  if (calendarWorkouts !== counts.completed_workouts) {
     failures.push("History calendar workout count differs from restored rows.");
   }
-  if (digest.cadence.completedSessions !== counts.workouts) {
+  if (digest.cadence.completedSessions !== counts.completed_workouts) {
     failures.push("Coach digest workout count differs from restored rows.");
   }
   if (backup.canonical.tables.workout_sessions.length !== counts.workouts) {
