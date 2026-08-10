@@ -59,12 +59,22 @@ import {
   startWorkoutSession,
   StaleWorkoutTemplateError,
 } from "@/services/session-lifecycle";
+import { createAnalysisPackage } from "@/services/analysis-package";
+import { importExternalAnalysisSelection } from "@/services/external-analysis-import";
+import {
+  approveRecommendationDecision,
+  deferRecommendationDecision,
+  rejectRecommendationDecision,
+} from "@/services/recommendation-decisions";
+import { resolveReviewEvidence } from "@/services/review-evidence";
+import { externalAnalysisResponseSchema } from "@/lib/external-analysis-response";
 import { logWorkoutSet } from "../helpers/log-workout-set";
 import { createRetrospectiveWorkout } from "@/services/retrospective-workouts";
 import { getHistoryReport } from "@/services/history-report";
 import { getCurrentProgramDocument } from "@/services/program-documents";
 import { createStartBarrier } from "../helpers/database";
 import { createTotalSystemTestSnapshot } from "../helpers/set-semantics";
+import validExternalAnalysisFixture from "../fixtures/v2/a03-typed-response.json";
 
 const url = process.env.TEST_DATABASE_URL;
 if (!url) throw new Error("TEST_DATABASE_URL is required for PostgreSQL integration tests.");
@@ -190,6 +200,85 @@ async function createProgramFixture(
     slotId: slot.id,
     slotLineageId: slot.lineageId,
     comparableBarbell: options.comparableBarbell === true,
+  };
+}
+
+async function createExternalReviewFixture(label: string) {
+  const fixture = await createProgramFixture(label);
+  const created = await createAnalysisPackage(
+    db,
+    fixture.userId,
+    { questionId: "program_progress", windowDays: 84 },
+    {
+      now: new Date("2026-08-10T12:00:00.000Z"),
+      packageId: crypto.randomUUID(),
+      appVersion: "postgres-concurrency-test",
+    },
+  );
+  const response = structuredClone(validExternalAnalysisFixture);
+  response.responseId = crypto.randomUUID();
+  response.analysisPackage = {
+    packageId: created.package.packageId,
+    packageNamespace: created.package.packageNamespace,
+    schemaVersion: created.package.schemaVersion,
+    semanticVersion: created.package.semanticVersion,
+    digest: created.package.integrity.digest,
+    evidenceCutoff: created.package.evidenceCutoff,
+    expiresAt: created.package.expiresAt,
+  };
+  response.question = {
+    id: created.package.request.questionId,
+    text: created.package.request.question,
+  };
+  const evidenceId = created.package.currentProgramIntent.program?.id;
+  if (!evidenceId) throw new Error("External Review Program evidence missing.");
+  for (const observation of response.observations) {
+    observation.evidenceIds = [evidenceId];
+  }
+  for (const proposal of response.proposedActions) {
+    proposal.evidenceIds = [evidenceId];
+    proposal.effect.target.evidenceIds = [evidenceId];
+  }
+  for (const unknown of response.unknowns) unknown.evidenceIds = [evidenceId];
+  const secondProposal = structuredClone(response.proposedActions[0]);
+  secondProposal.id = `proposal-${crypto.randomUUID()}`;
+  secondProposal.summary = "Review an independent sibling direction.";
+  response.proposedActions.push(secondProposal);
+  const parsedResponse = externalAnalysisResponseSchema.parse(response);
+  const imported = await importExternalAnalysisSelection(db, fixture.userId, {
+    response: parsedResponse,
+    selections: {
+      observationIds: [parsedResponse.observations[0]!.id],
+      proposalIds: parsedResponse.proposedActions.map((proposal) => proposal.id),
+    },
+  });
+  if (!imported.ok) throw new Error(imported.message);
+  const importedRecommendations = await db
+    .select()
+    .from(recommendations)
+    .where(eq(recommendations.insightId, imported.importId));
+  if (importedRecommendations.length !== 2) {
+    throw new Error("External Review sibling fixture is incomplete.");
+  }
+  return {
+    userId: fixture.userId,
+    receiptId: imported.importId,
+    recommendations: importedRecommendations,
+  };
+}
+
+async function externalReviewCursor(userId: string, receiptId: string) {
+  const row = resultRows(await db.execute(sql`
+    SELECT owner.analysis_evidence_revision::text AS owner_revision,
+           insight.data_digest #>> '{package,sourceEvidenceRevision}' AS receipt_revision
+    FROM users owner
+    JOIN coaching_insights insight ON insight.user_id = owner.id
+    WHERE owner.id = ${userId}::uuid
+      AND insight.id = ${receiptId}::uuid
+  `))[0];
+  return {
+    ownerRevision: String(row?.owner_revision ?? ""),
+    receiptRevision: String(row?.receipt_revision ?? ""),
   };
 }
 
@@ -2688,4 +2777,149 @@ describe.sequential("real PostgreSQL parallel invariants", () => {
         .where(eq(workoutSessions.id, sessionId)),
     ).toHaveLength(0);
   });
+
+  it("serializes external Review defer and sibling rejection without self-staling", async () => {
+    const fixture = await createExternalReviewFixture("external Review lifecycle race");
+    const ready = createStartBarrier(2);
+    const [deferred, rejected] = await Promise.all([
+      deferRecommendationDecision(
+        db,
+        fixture.userId,
+        {
+          recommendationId: fixture.recommendations[0]!.id,
+          expectedReviewRevision: 1,
+          expectedDeferRevision: 0,
+          reason: "Concurrent defer",
+        },
+        {
+          checkpoint: async (boundary) => {
+            if (boundary === "recommendation-defer-ready") await ready();
+          },
+        },
+      ),
+      rejectRecommendationDecision(
+        db,
+        fixture.userId,
+        {
+          recommendationId: fixture.recommendations[1]!.id,
+          expectedReviewRevision: 1,
+          expectedDeferRevision: 0,
+          reason: "Concurrent rejection",
+        },
+        {
+          checkpoint: async (boundary) => {
+            if (boundary === "recommendation-ready") await ready();
+          },
+        },
+      ),
+    ]);
+    expect(deferred).toEqual({ ok: true });
+    expect(rejected).toEqual({ ok: true });
+    const cursor = await externalReviewCursor(fixture.userId, fixture.receiptId);
+    expect(cursor.receiptRevision).toBe(cursor.ownerRevision);
+    const currentDeferred = await db.query.recommendations.findFirst({
+      where: eq(recommendations.id, fixture.recommendations[0]!.id),
+    });
+    expect(await resolveReviewEvidence(
+      db,
+      fixture.userId,
+      currentDeferred!,
+    )).toMatchObject({ state: "external", actionable: true });
+  }, 60_000);
+
+  it("serializes concurrent sibling external approvals on the receipt cursor", async () => {
+    const fixture = await createExternalReviewFixture("external Review approval race");
+    const ready = createStartBarrier(2);
+    const results = await Promise.all(
+      fixture.recommendations.map((recommendation) =>
+        approveRecommendationDecision(
+          db,
+          fixture.userId,
+          {
+            recommendationId: recommendation.id,
+            expectedReviewRevision: 1,
+            expectedDeferRevision: 0,
+          },
+          {
+            checkpoint: async (boundary) => {
+              if (boundary === "recommendation-ready") await ready();
+            },
+          },
+        ),
+      ),
+    );
+    expect(results).toEqual([{ ok: true }, { ok: true }]);
+    const cursor = await externalReviewCursor(fixture.userId, fixture.receiptId);
+    expect(cursor.receiptRevision).toBe(cursor.ownerRevision);
+    expect(
+      await db
+        .select()
+        .from(recommendations)
+        .where(eq(recommendations.insightId, fixture.receiptId)),
+    ).toEqual([
+      expect.objectContaining({ status: "approved" }),
+      expect.objectContaining({ status: "approved" }),
+    ]);
+  }, 60_000);
+
+  it("never rebases unrelated evidence racing an external approval", async () => {
+    const fixture = await createExternalReviewFixture("external Review unrelated evidence race");
+    const ready = createStartBarrier(2);
+    const [approval] = await Promise.all([
+      approveRecommendationDecision(
+        db,
+        fixture.userId,
+        {
+          recommendationId: fixture.recommendations[0]!.id,
+          expectedReviewRevision: 1,
+          expectedDeferRevision: 0,
+        },
+        {
+          checkpoint: async (boundary) => {
+            if (boundary === "recommendation-ready") await ready();
+          },
+        },
+      ),
+      (async () => {
+        await ready();
+        await db.insert(schema.constraints).values({
+          userId: fixture.userId,
+          bodyPart: "synthetic shoulder",
+          affectedPatterns: ["horizontal_push"],
+          note: "Concurrent unrelated safety evidence",
+        });
+      })(),
+    ]);
+
+    const cursor = await externalReviewCursor(fixture.userId, fixture.receiptId);
+    expect(cursor.receiptRevision).not.toBe(cursor.ownerRevision);
+    const currentRecommendations = await db
+      .select()
+      .from(recommendations)
+      .where(eq(recommendations.insightId, fixture.receiptId));
+    for (const recommendation of currentRecommendations) {
+      expect(await resolveReviewEvidence(
+        db,
+        fixture.userId,
+        recommendation,
+      )).toMatchObject({ state: "stale", actionable: false });
+    }
+    if (!approval.ok) {
+      expect(currentRecommendations[0]).toMatchObject({ status: "pending" });
+      const [{ decisions, adaptations }] = resultRows<{
+        decisions: number;
+        adaptations: number;
+      }>(await db.execute(sql`
+        SELECT
+          (SELECT count(*)::int FROM user_decisions decision
+           JOIN recommendations recommendation ON recommendation.id = decision.recommendation_id
+           WHERE recommendation.insight_id = ${fixture.receiptId}::uuid) AS decisions,
+          (SELECT count(*)::int FROM adaptation_events adaptation
+           JOIN recommendations recommendation ON recommendation.id = adaptation.recommendation_id
+           WHERE recommendation.insight_id = ${fixture.receiptId}::uuid) AS adaptations
+      `));
+      expect(decisions).toBe(0);
+      expect(adaptations).toBe(0);
+    }
+  }, 60_000);
 });

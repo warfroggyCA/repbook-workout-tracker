@@ -185,6 +185,16 @@ describe("A05 selective external-analysis Review bridge", () => {
     };
   }
 
+  async function createTwoProposalImportRequest(): Promise<ExternalAnalysisImportRequest> {
+    const request = await createImportRequest();
+    const secondProposal = structuredClone(request.response.proposedActions[0]);
+    secondProposal.id = "proposal-second-independent-review";
+    secondProposal.summary = "Review a second independent future direction.";
+    request.response.proposedActions.push(secondProposal);
+    request.selections.proposalIds.push(secondProposal.id);
+    return request;
+  }
+
   it("keeps the evidence-epoch trigger inventory closed over every source entity", async () => {
     const triggerRows = resultRows(await db.execute(sql`
       SELECT relation.relname AS entity
@@ -571,6 +581,194 @@ describe("A05 selective external-analysis Review bridge", () => {
     })).resolves.toEqual({ ok: true });
     expect(await db.select().from(adaptationEvents)).toHaveLength(0);
     expect((await db.select().from(recommendations))[0]?.status).toBe("rejected");
+  }, 30_000);
+
+  it("keeps a fresh external proposal actionable across its own defer and resume lifecycle", async () => {
+    const request = await createImportRequest();
+    const imported = await importExternalAnalysisSelection(db, ownerId, request);
+    if (!imported.ok) throw new Error(imported.message);
+    const recommendation = (await db.select().from(recommendations))[0]!;
+
+    await expect(deferRecommendationDecision(db, ownerId, {
+      recommendationId: recommendation.id,
+      expectedReviewRevision: 1,
+      expectedDeferRevision: 0,
+      revisitOn: "2026-08-20",
+      reason: "Review after another training week.",
+    })).resolves.toEqual({ ok: true });
+    await expect(resumeRecommendationDecision(db, ownerId, {
+      recommendationId: recommendation.id,
+      expectedReviewRevision: 1,
+      expectedDeferRevision: 1,
+    })).resolves.toEqual({ ok: true });
+
+    const resumed = await db.query.recommendations.findFirst({
+      where: eq(recommendations.id, recommendation.id),
+    });
+    expect(resumed).toMatchObject({
+      status: "pending",
+      reviewRevision: 1,
+      deferRevision: 2,
+      deferredAt: null,
+    });
+    expect(await resolveReviewEvidence(db, ownerId, resumed!)).toMatchObject({
+      state: "external",
+      actionable: true,
+    });
+    await expect(approveRecommendationDecision(db, ownerId, {
+      recommendationId: recommendation.id,
+      expectedReviewRevision: 1,
+      expectedDeferRevision: 2,
+    })).resolves.toEqual({ ok: true });
+  }, 30_000);
+
+  it("keeps sibling proposals actionable after a decision from the same import", async () => {
+    const request = await createTwoProposalImportRequest();
+    const imported = await importExternalAnalysisSelection(db, ownerId, request);
+    if (!imported.ok) throw new Error(imported.message);
+    const receiptBefore = await db.query.coachingInsights.findFirst({
+      where: eq(coachingInsights.id, imported.importId),
+    });
+    const digestBefore = externalAnalysisImportDigestSchema.parse(receiptBefore?.dataDigest);
+    const importedRecommendations = await db.select().from(recommendations);
+    expect(importedRecommendations).toHaveLength(2);
+
+    await expect(approveRecommendationDecision(db, ownerId, {
+      recommendationId: importedRecommendations[0]!.id,
+      expectedReviewRevision: 1,
+      expectedDeferRevision: 0,
+    })).resolves.toEqual({ ok: true });
+    const sibling = await db.query.recommendations.findFirst({
+      where: eq(recommendations.id, importedRecommendations[1]!.id),
+    });
+    expect(await resolveReviewEvidence(db, ownerId, sibling!)).toMatchObject({
+      state: "external",
+      actionable: true,
+    });
+    await expect(approveRecommendationDecision(db, ownerId, {
+      recommendationId: sibling!.id,
+      expectedReviewRevision: 1,
+      expectedDeferRevision: 0,
+    })).resolves.toEqual({ ok: true });
+    expect(await db.select().from(userDecisions)).toHaveLength(2);
+    expect(await db.select().from(adaptationEvents)).toHaveLength(2);
+    const receiptAfter = await db.query.coachingInsights.findFirst({
+      where: eq(coachingInsights.id, imported.importId),
+    });
+    const digestAfter = externalAnalysisImportDigestSchema.parse(receiptAfter?.dataDigest);
+    const expectedDigest = structuredClone(digestBefore);
+    expectedDigest.package.sourceEvidenceRevision = digestAfter.package.sourceEvidenceRevision;
+    expect(digestAfter).toEqual(expectedDigest);
+    const owner = await db.query.users.findFirst({ where: eq(users.id, ownerId) });
+    expect(digestAfter.package.sourceEvidenceRevision).toBe(
+      String(owner?.analysisEvidenceRevision),
+    );
+    await expect(buildJsonBackup(db, ownerId, undefined, {
+      now: new Date("2026-08-08T22:00:00.000Z"),
+      appVersion: "a05-sibling-decisions",
+    })).resolves.toMatchObject({ schemaVersion: "30" });
+  }, 30_000);
+
+  it("rolls back the receipt cursor with a failed external decision", async () => {
+    const request = await createImportRequest();
+    const imported = await importExternalAnalysisSelection(db, ownerId, request);
+    if (!imported.ok) throw new Error(imported.message);
+    const recommendation = (await db.select().from(recommendations))[0]!;
+    const receiptBefore = await db.query.coachingInsights.findFirst({
+      where: eq(coachingInsights.id, imported.importId),
+    });
+    const ownerBefore = await db.query.users.findFirst({ where: eq(users.id, ownerId) });
+
+    await expect(approveRecommendationDecision(
+      db,
+      ownerId,
+      {
+        recommendationId: recommendation.id,
+        expectedReviewRevision: 1,
+        expectedDeferRevision: 0,
+      },
+      { failureAt: "before-audit" },
+    )).rejects.toThrow();
+
+    expect(await db.query.coachingInsights.findFirst({
+      where: eq(coachingInsights.id, imported.importId),
+    })).toEqual(receiptBefore);
+    expect(await db.query.users.findFirst({ where: eq(users.id, ownerId) })).toEqual(ownerBefore);
+    expect((await db.select().from(recommendations))[0]).toMatchObject({ status: "pending" });
+    expect(await db.select().from(userDecisions)).toHaveLength(0);
+    expect(await db.select().from(adaptationEvents)).toHaveLength(0);
+  }, 30_000);
+
+  it("keeps a sibling actionable after rejecting another proposal from the same import", async () => {
+    const request = await createTwoProposalImportRequest();
+    const imported = await importExternalAnalysisSelection(db, ownerId, request);
+    if (!imported.ok) throw new Error(imported.message);
+    const importedRecommendations = await db.select().from(recommendations);
+
+    await expect(rejectRecommendationDecision(db, ownerId, {
+      recommendationId: importedRecommendations[0]!.id,
+      expectedReviewRevision: 1,
+      expectedDeferRevision: 0,
+      reason: "Not useful for this Review.",
+    })).resolves.toEqual({ ok: true });
+    const sibling = await db.query.recommendations.findFirst({
+      where: eq(recommendations.id, importedRecommendations[1]!.id),
+    });
+    expect(await resolveReviewEvidence(db, ownerId, sibling!)).toMatchObject({
+      state: "external",
+      actionable: true,
+    });
+    expect(await db.select().from(userDecisions)).toHaveLength(1);
+    expect(await db.select().from(adaptationEvents)).toHaveLength(0);
+  }, 30_000);
+
+  it("does not revalidate a receipt after unrelated evidence changes during Review", async () => {
+    const request = await createTwoProposalImportRequest();
+    const imported = await importExternalAnalysisSelection(db, ownerId, request);
+    if (!imported.ok) throw new Error(imported.message);
+    const importedRecommendations = await db.select().from(recommendations);
+    const deferred = importedRecommendations[0]!;
+    const sibling = importedRecommendations[1]!;
+
+    await expect(deferRecommendationDecision(db, ownerId, {
+      recommendationId: deferred.id,
+      expectedReviewRevision: 1,
+      expectedDeferRevision: 0,
+      reason: "Pause before new evidence arrives.",
+    })).resolves.toEqual({ ok: true });
+    await db.insert(constraints).values({
+      userId: ownerId,
+      bodyPart: "synthetic shoulder",
+      affectedPatterns: ["horizontal_push"],
+      note: "Unrelated safety evidence added after import",
+    });
+    await expect(resumeRecommendationDecision(db, ownerId, {
+      recommendationId: deferred.id,
+      expectedReviewRevision: 1,
+      expectedDeferRevision: 1,
+    })).resolves.toEqual({ ok: true });
+
+    const resumed = await db.query.recommendations.findFirst({
+      where: eq(recommendations.id, deferred.id),
+    });
+    const currentSibling = await db.query.recommendations.findFirst({
+      where: eq(recommendations.id, sibling.id),
+    });
+    expect(await resolveReviewEvidence(db, ownerId, resumed!)).toMatchObject({
+      state: "stale",
+      actionable: false,
+    });
+    expect(await resolveReviewEvidence(db, ownerId, currentSibling!)).toMatchObject({
+      state: "stale",
+      actionable: false,
+    });
+    await expect(approveRecommendationDecision(db, ownerId, {
+      recommendationId: sibling.id,
+      expectedReviewRevision: 1,
+      expectedDeferRevision: 0,
+    })).resolves.toMatchObject({ ok: false });
+    expect(await db.select().from(userDecisions)).toHaveLength(0);
+    expect(await db.select().from(adaptationEvents)).toHaveLength(0);
   }, 30_000);
 
   it("edit-and-accept atomically records only a future Review direction", async () => {
