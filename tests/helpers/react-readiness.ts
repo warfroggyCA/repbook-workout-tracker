@@ -82,6 +82,27 @@ export async function waitForHydratedReactChangeHandler(locator: Locator) {
   await waitForHydratedReactEventHandler(locator, "onChange");
 }
 
+export async function openNativeDetails(details: Locator) {
+  await expect(details).toHaveCount(1);
+  await expect(details).toBeVisible();
+  if ((await details.getAttribute("open")) !== null) return;
+
+  const summary = details.locator(":scope > summary");
+  await expect(summary).toHaveCount(1);
+  await expect(summary).toBeVisible();
+
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    await summary.scrollIntoViewIfNeeded();
+    await summary.click();
+    try {
+      await expect(details).toHaveAttribute("open", "", { timeout: 2_000 });
+      return;
+    } catch (error) {
+      if (attempt === 1) throw error;
+    }
+  }
+}
+
 async function waitForHydratedReactEventHandler(
   locator: Locator,
   eventName: "onClick" | "onChange",
@@ -171,6 +192,33 @@ export async function waitForHydratedServerAction(button: Locator) {
             typeof props === "object" &&
             props !== null &&
             typeof (props as { action?: unknown }).action === "function"
+          );
+        });
+      },
+      { timeout: 30_000 }
+    )
+    .toBe(true);
+}
+
+/**
+ * Intentionally coupled to React DOM internals for client controls whose
+ * hydrated click handler calls a server action instead of submitting a form.
+ */
+export async function waitForHydratedClickHandler(control: Locator) {
+  await expect
+    .poll(
+      async () => {
+        if ((await control.count()) !== 1) return false;
+        return control.evaluate((element) => {
+          const propsKey = Object.getOwnPropertyNames(element).find((name) =>
+            name.startsWith("__reactProps$")
+          );
+          if (!propsKey) return false;
+          const props = (element as unknown as Record<string, unknown>)[propsKey];
+          return (
+            typeof props === "object" &&
+            props !== null &&
+            typeof (props as { onClick?: unknown }).onClick === "function"
           );
         });
       },

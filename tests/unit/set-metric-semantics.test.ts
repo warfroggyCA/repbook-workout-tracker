@@ -176,25 +176,53 @@ describe("performed-set semantic containment", () => {
         reps: 8,
       }),
     ).toMatchObject({ ok: false, reason: "metric_semantics_conflict" });
+    expect(
+      validateSetWriterShape({
+        metricType: "weight_reps",
+        weight: 100,
+        weightUnit: "lb",
+        reps: null,
+      }),
+    ).toMatchObject({ ok: false, reason: "measurement_shape_conflict" });
 
-    for (const metricType of [
-      "duration",
-      "distance_duration",
-      "activity",
-    ] as const) {
-      const refusal = validateSetWriterShape({
-        metricType,
+    expect(
+      validateSetWriterShape({
+        metricType: "duration",
         weight: null,
         weightUnit: null,
         reps: 8,
-      });
-      expect(refusal).toMatchObject({
+        durationSeconds: null,
+      }),
+    ).toMatchObject({
+      ok: false,
+      reason: "duration_requires_time",
+    });
+    expect(
+      validateSetWriterShape({
+        metricType: "distance_duration",
+        weight: null,
+        weightUnit: null,
+        reps: 8,
+        distanceKm: null,
+        durationSeconds: null,
+      }),
+    ).toMatchObject({
+      ok: false,
+      reason: "distance_duration_requires_distance",
+    });
+
+    const activityRefusal = validateSetWriterShape({
+      metricType: "activity",
+      weight: null,
+      weightUnit: null,
+      reps: 8,
+    });
+    expect(activityRefusal).toMatchObject({
         ok: false,
         reason: "unsupported_metric",
-      });
-      if (refusal.ok) throw new Error("Expected a refusal");
-      expect(refusal.message).toContain("activity or compatible duration");
-    }
+    });
+    if (activityRefusal.ok) throw new Error("Expected a refusal");
+    expect(activityRefusal.message).toContain("activity flow");
   });
 
   it("separates measurement, direction, outcome, comparability, eligibility, and provenance", () => {
@@ -326,6 +354,45 @@ describe("performed-set semantic containment", () => {
       loadedWorkEligible: true,
       estimatedStrengthEligible: true,
       automaticProgressionEligible: true,
+      exclusionReason: null,
+    });
+  });
+
+  it("contains schema-27 rows without discarding complete performed-v1 facts", () => {
+    expect(
+      classify({
+        prescribedSemanticsVersion: null,
+        performedSemanticsVersion: null,
+        performedLoadType: null,
+        performedLoadSemantics: null,
+      }),
+    ).toMatchObject({
+      prescriptionOutcomeEligible: false,
+      longitudinalComparable: false,
+      loadedWorkEligible: false,
+      personalRecordEligible: false,
+      automaticProgressionEligible: false,
+      exclusionReason: "missing_prescribed_semantics",
+    });
+
+    expect(
+      classify({
+        prescribedSemanticsVersion: null,
+        performedSemanticsVersion: 1,
+        performedLoadType: "barbell",
+        performedLoadSemantics: "total",
+        currentExerciseMetricType: "assisted_reps",
+        loadType: "external",
+        loadSemantics: "assistance",
+      }),
+    ).toMatchObject({
+      evidenceProvenance: "performed_semantics_snapshot",
+      prescriptionOutcomeEligible: false,
+      longitudinalComparable: true,
+      loadedWorkEligible: true,
+      estimatedStrengthEligible: true,
+      personalRecordEligible: true,
+      automaticProgressionEligible: false,
       exclusionReason: null,
     });
   });

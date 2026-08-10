@@ -15,9 +15,11 @@ function equipmentDetails(cue: EquipmentPreparationCue) {
 export const WorkoutGuidanceSummary = memo(function WorkoutGuidanceSummary({
   guidance,
   compact = false,
+  deferNextActionToCurrentCard = false,
 }: {
   guidance: SessionGuidanceProjection;
   compact?: boolean;
+  deferNextActionToCurrentCard?: boolean;
 }) {
   const currentEquipment = equipmentDetails(guidance.currentEquipment);
   const equipment = equipmentDetails(guidance.upcomingEquipment);
@@ -50,7 +52,9 @@ export const WorkoutGuidanceSummary = memo(function WorkoutGuidanceSummary({
           ? [currentEquipment, guidance.currentEquipment.message].filter(Boolean).join(" · ")
           : null;
     const prepLabel = nextIsCurrentWorkingSet
-      ? "After warm-up"
+      ? guidance.currentAction?.kind === "rest"
+        ? "After rest"
+        : "After warm-up"
       : nextIsUpcomingWorkingSet
         ? "Prepare"
         : "Use now";
@@ -59,26 +63,35 @@ export const WorkoutGuidanceSummary = memo(function WorkoutGuidanceSummary({
         aria-label="Workout progress and upcoming work"
         className="min-w-0 rounded-lg border bg-background/95 px-3 py-2 shadow-sm"
       >
-        <div className="flex min-w-0 items-baseline gap-2 text-sm">
-          <span className="shrink-0 font-semibold tabular-nums">
-            {guidance.totals.performed}/{guidance.totals.planned}
+        <div className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1 text-sm">
+          <span className="min-w-0 max-w-full font-semibold tabular-nums">
+            {guidance.totals.plannedPerformed}/{guidance.totals.planned} planned
+            {guidance.totals.extraPerformed > 0
+              ? ` · ${guidance.totals.extraPerformed} extra`
+              : ""}
             {guidance.totals.skipped > 0 ? ` · ${guidance.totals.skipped} skipped` : ""}
           </span>
-          <p className="min-w-0 break-words leading-snug">
+          <p className="min-w-0 flex-1 basis-48 break-words leading-snug max-[360px]:line-clamp-2">
             <span className="font-medium">Now:</span>{" "}
             {guidance.currentAction
               ? formatSessionGuidanceAction(guidance.currentAction)
-              : "Workout complete"}
+              : guidance.completion.evidenceLimited
+                ? "Actions resolved · evidence needs review"
+                : "All actions resolved"}
           </p>
         </div>
-        {guidance.nextAction && (
-          <p className="break-words text-xs text-muted-foreground">
+        {guidance.nextAction &&
+          !(
+            deferNextActionToCurrentCard &&
+            guidance.currentAction?.kind === "working_set"
+          ) && (
+          <p className="break-words text-xs text-muted-foreground max-[360px]:sr-only">
             <span className="font-medium text-foreground">Next:</span>{" "}
             {formatSessionGuidanceAction(guidance.nextAction)}
           </p>
         )}
         {prepCue && (
-          <p className="break-words text-xs text-muted-foreground">
+          <p className="break-words text-xs text-muted-foreground max-[360px]:sr-only">
             <span className="font-medium text-foreground">{prepLabel}:</span>{" "}
             {prepCue}
           </p>
@@ -89,9 +102,7 @@ export const WorkoutGuidanceSummary = memo(function WorkoutGuidanceSummary({
             onClick={(event) => {
               event.preventDefault();
               const target = document.getElementById("active-workout-group");
-              const stickySummary = event.currentTarget
-                .closest("section")
-                ?.parentElement;
+              const stickySummary = event.currentTarget.closest("section");
               target?.scrollIntoView({ block: "start" });
               window.requestAnimationFrame(() => {
                 if (!target) return;
@@ -99,8 +110,9 @@ export const WorkoutGuidanceSummary = memo(function WorkoutGuidanceSummary({
                   stickySummary?.getBoundingClientRect().bottom ?? 0;
                 const targetTop = target.getBoundingClientRect().top;
                 const desiredTop = stickyBottom + 8;
-                if (targetTop < desiredTop) {
-                  window.scrollBy({ top: targetTop - desiredTop });
+                const correction = targetTop - desiredTop;
+                if (Math.abs(correction) > 1) {
+                  window.scrollBy({ top: correction });
                 }
                 target.focus({ preventScroll: true });
               });
@@ -127,11 +139,17 @@ export const WorkoutGuidanceSummary = memo(function WorkoutGuidanceSummary({
           Workout progress
         </p>
         <p className="text-sm font-semibold tabular-nums">
-          {guidance.totals.performed} of {guidance.totals.planned} performed
+          {guidance.totals.plannedPerformed} of {guidance.totals.planned} planned performed
         </p>
       </div>
       <p className="break-words text-xs text-muted-foreground">
         {guidance.totals.pending} remaining
+        {guidance.totals.extraPerformed > 0
+          ? ` · ${guidance.totals.extraPerformed} extra performed`
+          : ""}
+        {guidance.totals.workoutOnlyPerformed > 0
+          ? ` · ${guidance.totals.workoutOnlyPerformed} workout-only performed`
+          : ""}
         {guidance.totals.skipped > 0
           ? ` · ${guidance.totals.skipped} skipped`
           : ""}
@@ -151,11 +169,19 @@ export const WorkoutGuidanceSummary = memo(function WorkoutGuidanceSummary({
           {formatSessionGuidanceAction(guidance.currentAction)}
         </p>
       )}
+      {!compact && !guidance.currentAction && (
+        <p className="break-words text-sm">
+          <span className="font-medium">Now:</span>{" "}
+          {guidance.completion.evidenceLimited
+            ? "Actions resolved · evidence needs review"
+            : "All actions resolved"}
+        </p>
+      )}
       <p className="break-words text-sm">
         <span className="font-medium">Next:</span>{" "}
         {guidance.nextAction
           ? formatSessionGuidanceAction(guidance.nextAction)
-          : "No further planned work"}
+          : "No further unresolved work"}
       </p>
       {guidance.currentAction?.kind === "working_set" &&
         guidance.current && guidance.currentEquipment.status !== "none" && (
@@ -168,13 +194,29 @@ export const WorkoutGuidanceSummary = memo(function WorkoutGuidanceSummary({
         </div>
       )}
       {guidance.nextAction?.kind === "working_set" &&
-        guidance.upNext?.occurrenceId === guidance.nextAction.occurrenceId &&
-        !upcomingDuplicatesCurrent && (
+        (guidance.current?.occurrenceId === guidance.nextAction.occurrenceId ||
+          guidance.upNext?.occurrenceId === guidance.nextAction.occurrenceId) &&
+        !(
+          guidance.upNext?.occurrenceId === guidance.nextAction.occurrenceId &&
+          upcomingDuplicatesCurrent
+        ) && (
         <div className="min-w-0 rounded-md border border-dashed bg-background/70 px-2.5 py-2 text-xs">
-          <p className="font-medium">Prepare next</p>
-          {equipment && <p className="break-words">{equipment}</p>}
+          <p className="font-medium">
+            {guidance.currentAction?.kind === "rest" ? "After rest" : "Prepare next"}
+          </p>
+          {(guidance.current?.occurrenceId === guidance.nextAction.occurrenceId
+            ? currentEquipment
+            : equipment) && (
+            <p className="break-words">
+              {guidance.current?.occurrenceId === guidance.nextAction.occurrenceId
+                ? currentEquipment
+                : equipment}
+            </p>
+          )}
           <p className="break-words text-muted-foreground">
-            {guidance.upcomingEquipment.message}
+            {guidance.current?.occurrenceId === guidance.nextAction.occurrenceId
+              ? guidance.currentEquipment.message
+              : guidance.upcomingEquipment.message}
           </p>
         </div>
       )}

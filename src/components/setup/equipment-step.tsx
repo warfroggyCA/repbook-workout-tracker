@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
   parseSetupEquipment,
@@ -25,6 +25,8 @@ import {
 import { labelForEquipmentType } from "@/lib/equipment-families";
 import {
   checklistFromExisting,
+  equipmentQuantityLabel,
+  nextChecklistItemLabel,
   type DraftChecklistItem,
   type SetupExistingInventory,
 } from "@/lib/setup-equipment-checklist";
@@ -134,16 +136,18 @@ function NumberInput({
 }
 
 function QuantityStepper({
+  label,
   value,
   onChange,
 }: {
+  label: string;
   value: number;
   onChange: (v: number) => void;
 }) {
   const set = (n: number) => onChange(Math.min(99, Math.max(1, n)));
   return (
     <div className="flex items-center gap-2 px-2 text-sm">
-      <span className="text-xs text-muted-foreground">How many</span>
+      <span className="text-xs text-muted-foreground">{label}</span>
       <div className="flex items-center gap-1">
         <Button
           type="button"
@@ -339,11 +343,14 @@ function ItemEditor({
 
   const showsUnit = WEIGHTED_ENTRY_TYPES.has(item.type);
   const showsWeights = item.type === "dumbbell" || item.type === "kettlebell";
+  const showsPairChoice =
+    item.type === "dumbbell" || item.type === "kettlebell";
 
   return (
     <div className="flex flex-col gap-2">
-      {item.type !== "plates" && (
+      {item.type !== "plates" && !showsPairChoice && (
         <QuantityStepper
+          label="How many"
           value={item.quantity}
           onChange={(v) => onChange({ ...item, quantity: v })}
         />
@@ -384,7 +391,7 @@ function ItemEditor({
 
       {showsWeights && <AvailableWeightsEditor item={item} onChange={onChange} />}
 
-      {(item.type === "dumbbell" || item.type === "kettlebell") && (
+      {showsPairChoice && (
         <AmberField active={ambers.has("adjustable")} question={q("adjustable")}>
           <ChoicePills
             value={item.adjustable}
@@ -397,7 +404,7 @@ function ItemEditor({
         </AmberField>
       )}
 
-      {(item.type === "dumbbell" || item.type === "kettlebell") && (
+      {showsPairChoice && (
         <AmberField active={ambers.has("pair")} question={q("pair")}>
           <ChoicePills
             value={item.pair}
@@ -408,6 +415,23 @@ function ItemEditor({
             onChange={(v) => onChange({ ...item, pair: v })}
           />
         </AmberField>
+      )}
+
+      {showsPairChoice && (
+        <div className="flex flex-col gap-1">
+          <QuantityStepper
+            label={equipmentQuantityLabel(item.type, item.pair)}
+            value={item.quantity}
+            onChange={(v) => onChange({ ...item, quantity: v })}
+          />
+          <p className="px-2 text-xs leading-5 text-muted-foreground">
+            {item.pair === true
+              ? "Quantity 1 means one matched pair: two physical weights."
+              : item.pair === false
+                ? "Quantity counts individual weights when Single is selected."
+                : "Choose Pair or Single before deciding the quantity."}
+          </p>
+        </div>
       )}
 
       {item.type === "plates" && (
@@ -784,9 +808,26 @@ function ChecklistTab({
   );
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+  const [recentlyAdded, setRecentlyAdded] = useState<{
+    clientKey: string;
+    label: string;
+  } | null>(null);
+
+  useEffect(() => {
+    if (!recentlyAdded) return;
+    const card = document.getElementById(
+      `setup-equipment-${recentlyAdded.clientKey}`
+    );
+    card?.scrollIntoView({ block: "center" });
+    card
+      ?.querySelector<HTMLInputElement>("input")
+      ?.focus({ preventScroll: true });
+  }, [recentlyAdded]);
 
   function addItem(type: ConfirmedEquipmentItem["type"], label: string) {
-    const item = emptyItem(type, label);
+    const clientKey = crypto.randomUUID();
+    const resolvedLabel = nextChecklistItemLabel(draftItems, type, label);
+    const item = emptyItem(type, resolvedLabel);
     item.unit = WEIGHTED_ENTRY_TYPES.has(type) ? profileUnit : null;
     if (type === "dumbbell") {
       item.adjustable = false;
@@ -798,8 +839,9 @@ function ChecklistTab({
     // are choices, never ownership assumptions (UI-006).
     setDraftItems((current) => [
       ...current,
-      { ...item, clientKey: crypto.randomUUID() },
+      { ...item, clientKey },
     ]);
+    setRecentlyAdded({ clientKey, label: resolvedLabel });
   }
 
   function updateItem(next: DraftChecklistItem) {
@@ -831,6 +873,16 @@ function ChecklistTab({
 
   return (
     <div className="flex flex-col gap-2">
+      <p className="rounded-lg border bg-muted/30 px-3 py-2 text-xs leading-5 text-muted-foreground">
+        For one matched dumbbell pair, choose Pair and leave quantity at 1.
+        Quantity counts complete pairs or individual singles, not the two
+        weights inside a pair. Add another only for a separate configuration.
+      </p>
+      <p role="status" aria-live="polite" className="sr-only">
+        {recentlyAdded
+          ? `${recentlyAdded.label} was added below and focused.`
+          : ""}
+      </p>
       {CHECKLIST.map(({ type, label }) => {
         const matchingItems = draftItems.filter((item) => item.type === type);
         return (
@@ -840,7 +892,15 @@ function ChecklistTab({
             aria-label={label}
           >
             <div className="flex items-center justify-between gap-2 px-1">
-              <h3 className="text-sm font-medium">{label}</h3>
+              <div className="flex min-w-0 items-center gap-2">
+                <h3 className="text-sm font-medium">{label}</h3>
+                {matchingItems.length > 0 && (
+                  <Badge variant="outline">
+                    {matchingItems.length}{" "}
+                    {matchingItems.length === 1 ? "entry" : "entries"}
+                  </Badge>
+                )}
+              </div>
               {(type !== "plates" || matchingItems.length === 0) && (
                 <Button
                   type="button"
@@ -858,16 +918,22 @@ function ChecklistTab({
               <p className="px-1 pb-1 text-xs text-muted-foreground">Not selected</p>
             ) : (
               <div className="mt-2 flex flex-col gap-2">
-                {matchingItems.map((item) => (
+                {matchingItems.map((item, index) => (
                   <ChecklistItemCard
                     key={item.clientKey}
                     item={item}
+                    position={index + 1}
+                    total={matchingItems.length}
+                    highlighted={recentlyAdded?.clientKey === item.clientKey}
                     onChange={updateItem}
-                    onRemove={() =>
+                    onRemove={() => {
                       setDraftItems((current) =>
                         current.filter((row) => row.clientKey !== item.clientKey)
-                      )
-                    }
+                      );
+                      setRecentlyAdded((current) =>
+                        current?.clientKey === item.clientKey ? null : current
+                      );
+                    }}
                   />
                 ))}
               </div>
@@ -924,15 +990,35 @@ function ChecklistTab({
 
 function ChecklistItemCard({
   item,
+  position,
+  total,
+  highlighted = false,
   onChange,
   onRemove,
 }: {
   item: DraftChecklistItem;
+  position?: number;
+  total?: number;
+  highlighted?: boolean;
   onChange: (item: DraftChecklistItem) => void;
   onRemove: () => void;
 }) {
   return (
-    <div className="rounded-lg border bg-background p-2">
+    <div
+      id={`setup-equipment-${item.clientKey}`}
+      className={cn(
+        "rounded-lg border bg-background p-2",
+        highlighted && "border-primary ring-2 ring-primary/20"
+      )}
+    >
+      {(total ?? 0) > 1 && (
+        <div className="mb-1 flex items-center justify-between gap-2 px-1">
+          <p className="text-xs font-medium text-muted-foreground">
+            Entry {position} of {total}
+          </p>
+          {highlighted && <Badge variant="secondary">New</Badge>}
+        </div>
+      )}
       <div className="mb-2 flex flex-wrap items-center gap-2">
         <Input
           aria-label={`Name for ${labelForEquipmentType(item.type)}`}

@@ -2,8 +2,13 @@ import {
   and,
   desc,
   eq,
+  gt,
   inArray,
+  isNotNull,
   isNull,
+  lte,
+  or,
+  sql,
 } from "drizzle-orm";
 import type { Db } from "@/db";
 import {
@@ -22,11 +27,22 @@ import {
   type RecommendationPayload,
 } from "@/db/schema";
 import { convertWeight, loadsEqual } from "@/lib/units";
-import { classifySetMetricContainment } from "@/lib/set-metric-semantics";
 import {
-  recommendationEvidenceEligibleForAction,
+  classifyPrescriptionOutcome,
+  classifySetMetricContainment,
+  summarizePrescriptionOutcomes,
+  type PrescriptionOutcomeSummary,
+} from "@/lib/set-metric-semantics";
+import {
+  PAIN_EVIDENCE_ALGORITHM_VERSION,
+  classifyPainEvidence,
+  isPositivePainEvidence,
+  type PainEvidenceMeaning,
+} from "@/lib/pain-evidence";
+import {
   reconcilePendingPainRecommendations,
 } from "@/services/recommendation-evidence-eligibility";
+import { resolveReviewEvidenceBatch } from "@/services/review-evidence";
 
 export type ReviewEvidenceItem = {
   label: string;
@@ -53,11 +69,36 @@ export type OutcomeReadyDecision = {
   workingSets: number;
   measurableSets: number;
   targetsMet: number;
+  targetOutcomes: PrescriptionOutcomeSummary;
   rpeCount: number;
   averageRpe: number | null;
-  painFlags: number;
+  positivePainReports: number;
   maxPainSeverity: number | null;
   evidenceLimited: boolean;
+};
+
+export type RecentExceptionEvidence = {
+  setId: string;
+  sessionId: string;
+  localDate: string;
+  workoutName: string;
+  exerciseName: string;
+  performedExerciseId: string;
+  performedExerciseName: string;
+  plannedExerciseId: string | null;
+  plannedExerciseName: string | null;
+  modificationType: "as_planned" | "substituted" | "added" | "skipped";
+  substitutionReason: string | null;
+  setNo: number;
+  rpe: number | null;
+  rir: number | null;
+  techniqueIssue: string | null;
+  limitationCause: string | null;
+  painBodyPart: string | null;
+  painSeverity: number | null;
+  painSource: string | null;
+  painMeaning: PainEvidenceMeaning;
+  painAlgorithmVersion: typeof PAIN_EVIDENCE_ALGORITHM_VERSION;
 };
 
 type DecisionHistoryInput = {
@@ -68,17 +109,17 @@ type DecisionHistoryInput = {
 const signalLabels: Record<string, string> = {
   cleanExposures: "Clean completed workouts",
   hardMissExposures: "Repeated hard-miss workouts",
-  worstPainSeverity: "Highest recorded pain flag",
-  worstSeverity: "Highest recorded pain flag",
-  painReports: "Recorded pain flags",
-  positiveReports: "Recorded pain flags",
-  holdReports: "Flags at 3/10 or higher",
-  linkedSessions: "Workouts with a pain flag",
+  worstPainSeverity: "Highest positive pain report",
+  worstSeverity: "Highest positive pain report",
+  painReports: "Positive pain reports",
+  positiveReports: "Positive pain reports",
+  holdReports: "Reports at 3/10 or higher",
+  linkedSessions: "Workouts with positive pain evidence",
   windowDays: "Evidence window",
   releaseAt: "Hold checks again",
   highSeverityReview: "Higher-severity review",
   repeatedSessionReview: "Repeated-workout review",
-  triggerEvidenceId: "Triggering pain flag",
+  triggerEvidenceId: "Triggering pain report",
   triggerSessionId: "Triggering workout",
   fromLoad: "Previous target",
   toLoad: "Suggested target",
@@ -166,7 +207,7 @@ export function buildReviewEvidenceItems(
   }
   if (evidence.painLogIds?.length) {
     items.push({
-      label: "Linked pain flags",
+      label: "Linked positive pain reports",
       value: String(evidence.painLogIds.length),
     });
   }
@@ -206,7 +247,8 @@ function isRecommendationPayload(value: unknown): value is RecommendationPayload
     kind === "deload" ||
     kind === "substitution" ||
     kind === "remove_exercise" ||
-    kind === "hold"
+    kind === "hold" ||
+    kind === "external_review"
   );
 }
 
@@ -239,6 +281,8 @@ export function summarizeRecommendationChange(
       return "Remove exercise";
     case "hold":
       return "Hold the current target";
+    case "external_review":
+      return payload.requestedOutcome;
   }
 }
 
@@ -331,20 +375,11 @@ export async function getReviewDecisionData(db: Db, userId: string) {
       with: { exercise: true, decisions: true, adaptations: true },
     }),
   ]);
-  const pending = (
-    await Promise.all(
-      pendingRows.map(async (recommendation) => ({
-        recommendation,
-        eligible: await recommendationEvidenceEligibleForAction(
-          db,
-          userId,
-          recommendation,
-        ),
-      })),
-    )
-  )
-    .filter(({ eligible }) => eligible)
-    .map(({ recommendation }) => recommendation);
+  const pendingEvidence = await resolveReviewEvidenceBatch(db, userId, pendingRows);
+  const pending = pendingRows.map((recommendation) => ({
+    ...recommendation,
+    reviewEvidence: pendingEvidence.get(recommendation.id)!,
+  }));
 
   // The recommendation is owner-scoped above, but adaptation_events also has
   // its own owner column. Defensively enforce both sides before using an
@@ -387,10 +422,100 @@ export async function getReviewDecisionData(db: Db, userId: string) {
   const activeAccepted = acceptedWithAdaptation.filter(
     ({ adaptation }) => adaptation.undoneAt == null
   );
+  const recentExceptionRows = await db
+    .select({
+      setId: completedSets.id,
+      sessionId: workoutSessions.id,
+      localDate: workoutSessions.localDate,
+      workoutName: sql<string>`coalesce(${workoutSessions.templateName}, 'Completed workout')`,
+      exerciseName: sql<string>`CASE
+        WHEN ${sessionExercises.prescribedSemanticsVersion} = 1
+          AND ${sessionExercises.modificationType} NOT IN ('substituted', 'added')
+        THEN ${sessionExercises.prescribedExerciseName}
+        ELSE ${exercises.name}
+      END`,
+      performedExerciseId: sessionExercises.exerciseId,
+      performedExerciseName: exercises.name,
+      plannedExerciseId: sql<string | null>`CASE
+        WHEN ${sessionExercises.modificationType} = 'added' THEN NULL
+        WHEN ${sessionExercises.modificationType} = 'substituted'
+          THEN ${sessionExercises.substitutedForExerciseId}
+        ELSE ${sessionExercises.exerciseId}
+      END`,
+      plannedExerciseName: sql<string | null>`CASE
+        WHEN ${sessionExercises.modificationType} = 'added' THEN NULL
+        WHEN ${sessionExercises.prescribedSemanticsVersion} = 1
+          THEN ${sessionExercises.prescribedExerciseName}
+        ELSE NULL
+      END`,
+      modificationType: sessionExercises.modificationType,
+      substitutionReason: sessionExercises.substitutionReason,
+      setNo: completedSets.setNo,
+      rpe: completedSets.rpe,
+      rir: completedSets.rir,
+      techniqueIssue: completedSets.techniqueIssue,
+      limitationCause: completedSets.limitationCause,
+      painBodyPart: painLogs.bodyPart,
+      painSeverity: painLogs.severity,
+      painSource: painLogs.source,
+    })
+    .from(completedSets)
+    .innerJoin(
+      sessionExercises,
+      eq(sessionExercises.id, completedSets.sessionExerciseId),
+    )
+    .innerJoin(
+      workoutSessions,
+      eq(workoutSessions.id, sessionExercises.sessionId),
+    )
+    .innerJoin(exercises, eq(exercises.id, sessionExercises.exerciseId))
+    .leftJoin(
+      painLogs,
+      and(
+        eq(painLogs.completedSetId, completedSets.id),
+        eq(painLogs.userId, userId),
+        isNull(painLogs.archivedAt),
+      ),
+    )
+    .where(and(
+      eq(workoutSessions.userId, userId),
+      eq(workoutSessions.status, "completed"),
+      isNull(workoutSessions.archivedAt),
+      isNull(completedSets.archivedAt),
+      eq(completedSets.isWarmup, false),
+      or(
+        isNotNull(completedSets.rpe),
+        isNotNull(completedSets.rir),
+        isNotNull(completedSets.techniqueIssue),
+        isNotNull(completedSets.limitationCause),
+        isNotNull(painLogs.id),
+      ),
+    ))
+    .orderBy(desc(workoutSessions.startedAt), desc(completedSets.setNo))
+    .limit(12);
+  const recentExceptions: RecentExceptionEvidence[] = recentExceptionRows.map(
+    (row) => {
+      const pain = classifyPainEvidence(
+        row.painBodyPart == null || row.painSeverity == null
+          ? null
+          : {
+              bodyPart: row.painBodyPart,
+              severity: row.painSeverity,
+              source: row.painSource,
+            },
+      );
+      return {
+        ...row,
+        painMeaning: pain.meaning,
+        painAlgorithmVersion: pain.algorithmVersion,
+      };
+    },
+  );
   if (activeAccepted.length === 0) {
     return {
       pending,
       recent,
+      recentExceptions,
       outcomes: [] as OutcomeReadyDecision[],
       acceptedDecisionCount: activeAcceptedDecisionCount,
       outcomeSupportedDecisionCount: 0,
@@ -435,6 +560,7 @@ export async function getReviewDecisionData(db: Db, userId: string) {
     return {
       pending,
       recent,
+      recentExceptions,
       outcomes: [] as OutcomeReadyDecision[],
       acceptedDecisionCount: activeAcceptedDecisionCount,
       outcomeSupportedDecisionCount: 0,
@@ -452,10 +578,32 @@ export async function getReviewDecisionData(db: Db, userId: string) {
       plannedSlotId: sessionExercises.plannedFromTemplateExerciseId,
       exerciseId: sessionExercises.exerciseId,
       modificationType: sessionExercises.modificationType,
-      exerciseName: exercises.name,
-      exerciseMetricType: exercises.metricType,
-      exerciseLoadType: exercises.loadType,
-      exerciseLoadSemantics: exercises.loadSemantics,
+      prescribedSemanticsVersion:
+        sessionExercises.prescribedSemanticsVersion,
+      exerciseName: sql<string>`CASE
+        WHEN ${sessionExercises.prescribedSemanticsVersion} = 1
+          AND ${sessionExercises.modificationType} NOT IN ('substituted', 'added')
+        THEN ${sessionExercises.prescribedExerciseName}
+        ELSE ${exercises.name}
+      END`,
+      exerciseMetricType: sql<typeof exercises.metricType._.data>`CASE
+        WHEN ${sessionExercises.prescribedSemanticsVersion} = 1
+          AND ${sessionExercises.modificationType} NOT IN ('substituted', 'added')
+        THEN ${sessionExercises.prescribedMetricType}
+        ELSE ${exercises.metricType}
+      END`,
+      exerciseLoadType: sql<string>`CASE
+        WHEN ${sessionExercises.prescribedSemanticsVersion} = 1
+          AND ${sessionExercises.modificationType} NOT IN ('substituted', 'added')
+        THEN ${sessionExercises.prescribedLoadType}
+        ELSE ${exercises.loadType}
+      END`,
+      exerciseLoadSemantics: sql<typeof exercises.loadSemantics._.data>`CASE
+        WHEN ${sessionExercises.prescribedSemanticsVersion} = 1
+          AND ${sessionExercises.modificationType} NOT IN ('substituted', 'added')
+        THEN ${sessionExercises.prescribedLoadSemantics}
+        ELSE ${exercises.loadSemantics}
+      END`,
       targetLoad: sessionExercises.targetLoad,
       targetLoadUnit: sessionExercises.targetLoadUnit,
       sessionId: workoutSessions.id,
@@ -483,6 +631,7 @@ export async function getReviewDecisionData(db: Db, userId: string) {
     return {
       pending,
       recent,
+      recentExceptions,
       outcomes: [] as OutcomeReadyDecision[],
       acceptedDecisionCount: activeAcceptedDecisionCount,
       outcomeSupportedDecisionCount,
@@ -504,6 +653,9 @@ export async function getReviewDecisionData(db: Db, userId: string) {
       where: and(
         eq(painLogs.userId, userId),
         inArray(painLogs.sessionId, sessionIds),
+        gt(painLogs.severity, 0),
+        lte(painLogs.severity, 10),
+        sql`length(btrim(${painLogs.bodyPart})) BETWEEN 1 AND 50`,
         isNull(painLogs.archivedAt)
       ),
     }),
@@ -517,7 +669,16 @@ export async function getReviewDecisionData(db: Db, userId: string) {
         eq(sessionOccurrences.kind, "working_set"),
         eq(sessionOccurrences.outcome, "completed")
       ),
-      columns: { completedSetId: true },
+      columns: {
+        completedSetId: true,
+        origin: true,
+        plannedRepsMin: true,
+        plannedRepsMax: true,
+        plannedLoad: true,
+        plannedLoadUnit: true,
+        plannedLoadPercent: true,
+        plannedLoadText: true,
+      },
     }),
   ]);
   const completedSetIds = new Set(
@@ -525,6 +686,17 @@ export async function getReviewDecisionData(db: Db, userId: string) {
       .map((occurrence) => occurrence.completedSetId)
       .filter((id): id is string => id != null)
   );
+  const completedOccurrencesBySetId = new Map<
+    string,
+    typeof completedOccurrences
+  >();
+  for (const occurrence of completedOccurrences) {
+    if (occurrence.completedSetId == null) continue;
+    const linked =
+      completedOccurrencesBySetId.get(occurrence.completedSetId) ?? [];
+    linked.push(occurrence);
+    completedOccurrencesBySetId.set(occurrence.completedSetId, linked);
+  }
   const followupBySessionExerciseId = new Map(
     followups.map((followup) => [followup.sessionExerciseId, followup])
   );
@@ -534,6 +706,7 @@ export async function getReviewDecisionData(db: Db, userId: string) {
     if (!followup) return false;
     return classifySetMetricContainment({
       recordedMetricType: set.metricType,
+      prescribedSemanticsVersion: followup.prescribedSemanticsVersion,
       performedSemanticsVersion: set.performedSemanticsVersion,
       performedLoadType: set.performedLoadType,
       performedLoadSemantics: set.performedLoadSemantics,
@@ -544,7 +717,7 @@ export async function getReviewDecisionData(db: Db, userId: string) {
       weight: set.weight,
       reps: set.reps,
       excludeFromAnalytics: set.excludeFromAnalytics,
-    }).loadedWorkEligible;
+    }).automaticProgressionEligible;
   });
   const setsByExercise = new Map<string, typeof sets>();
   for (const set of sets) {
@@ -598,8 +771,45 @@ export async function getReviewDecisionData(db: Db, userId: string) {
           completedSetMatchesPayload(payload, set)
         )
       );
-      const measurableSets = observedSets.filter(
-        (set) => set.targetMet != null
+      const targetOutcomes = summarizePrescriptionOutcomes(
+        observedSets.flatMap((set) => {
+          const occurrences = completedOccurrencesBySetId.get(set.id) ?? [];
+          const plannedOccurrences = occurrences.filter(
+            (occurrence) => occurrence.origin === "planned",
+          );
+          if (plannedOccurrences.length === 0) return [];
+          const occurrence = occurrences.length === 1 ? occurrences[0] : null;
+          const followup = followupBySessionExerciseId.get(
+            set.sessionExerciseId,
+          );
+          if (occurrence?.origin !== "planned" || !followup) return ["unknown"];
+          const semantics = classifySetMetricContainment({
+            recordedMetricType: set.metricType,
+            prescribedSemanticsVersion: followup.prescribedSemanticsVersion,
+            performedSemanticsVersion: set.performedSemanticsVersion,
+            performedLoadType: set.performedLoadType,
+            performedLoadSemantics: set.performedLoadSemantics,
+            currentExerciseMetricType: followup.exerciseMetricType,
+            loadType: followup.exerciseLoadType,
+            loadSemantics: followup.exerciseLoadSemantics,
+            loadEntryMeaning: set.loadEntryMeaning,
+            weight: set.weight,
+            reps: set.reps,
+            excludeFromAnalytics: set.excludeFromAnalytics,
+          });
+          return [classifyPrescriptionOutcome({
+            semantics,
+            reps: set.reps,
+            weight: set.weight,
+            weightUnit: set.weightUnit,
+            targetRepsMin: occurrence.plannedRepsMin,
+            targetRepsMax: occurrence.plannedRepsMax,
+            targetLoad: occurrence.plannedLoad,
+            targetLoadUnit: occurrence.plannedLoadUnit,
+            targetLoadPercent: occurrence.plannedLoadPercent,
+            targetLoadText: occurrence.plannedLoadText,
+          })];
+        }),
       );
       const rpes = observedSets
         .map((set) => set.rpe)
@@ -611,6 +821,7 @@ export async function getReviewDecisionData(db: Db, userId: string) {
         )
       );
       const observedPain = pains.filter((pain) => {
+        if (!isPositivePainEvidence(pain)) return false;
         if (pain.completedSetId) {
           return observedSetIds.has(pain.completedSetId);
         }
@@ -644,8 +855,9 @@ export async function getReviewDecisionData(db: Db, userId: string) {
           latestSessionName: latest.sessionName ?? "Completed workout",
           latestLocalDate: latest.localDate,
           workingSets: observedSets.length,
-          measurableSets: measurableSets.length,
-          targetsMet: measurableSets.filter((set) => set.targetMet).length,
+          measurableSets: targetOutcomes.supported,
+          targetsMet: targetOutcomes.at + targetOutcomes.above,
+          targetOutcomes,
           rpeCount: rpes.length,
           averageRpe:
             rpes.length > 0
@@ -654,13 +866,13 @@ export async function getReviewDecisionData(db: Db, userId: string) {
                     10
                 ) / 10
               : null,
-          painFlags: observedPain.length,
+          positivePainReports: observedPain.length,
           maxPainSeverity:
             observedPain.length > 0
               ? Math.max(...observedPain.map((pain) => pain.severity))
               : null,
           evidenceLimited:
-            measurableSets.length < observedSets.length ||
+            targetOutcomes.unknown > 0 ||
             rpes.length < observedSets.length,
         },
       ];
@@ -671,6 +883,7 @@ export async function getReviewDecisionData(db: Db, userId: string) {
   return {
     pending,
     recent,
+    recentExceptions,
     outcomes: outcomes.slice(0, 8),
     acceptedDecisionCount: activeAcceptedDecisionCount,
     outcomeSupportedDecisionCount,

@@ -153,9 +153,12 @@ test("adds a reviewed workout-only exercise without editing the Program", async 
   const addedCard = page.getByRole("region", { name: "Push-Up" });
   await expect(addedCard).toBeVisible();
   await expect(addedCard).toContainText("Workout only");
+  const currentCard = page.getByTestId("current-exercise-card");
   await expect(
     page.getByRole("region", { name: "Workout progress and upcoming work" }),
-  ).toContainText("Next: Barbell Back Squat, set 2");
+  ).not.toContainText("Next:");
+  await expect(currentCard).toContainText("Next action");
+  await expect(currentCard).toContainText("Barbell Back Squat, set 2");
   await expect(
     page.getByRole("complementary", { name: "Workout status" }),
   ).toContainText("Barbell Back Squat");
@@ -169,7 +172,7 @@ test("adds a reviewed workout-only exercise without editing the Program", async 
   await expect(addedCard).toContainText("Set 1");
   await expect(addedCard).toContainText("Set 2");
   await addedCard.getByRole("button", { name: "Log set", exact: true }).click();
-  await expect(addedCard).toContainText("1/2 performed");
+  await expect(addedCard).toContainText("1/2 workout-only performed");
   await expect(
     page.locator('section[aria-labelledby^="session-exercise-heading-"]'),
   ).toHaveCount(plannedHeadingsBefore + 1);
@@ -200,7 +203,7 @@ test("adds a reviewed workout-only exercise without editing the Program", async 
   await page.reload({ waitUntil: "domcontentloaded" });
   const restoredAddedCard = page.getByRole("region", { name: "Push-Up" });
   await expect(restoredAddedCard).toContainText("Workout only");
-  await expect(restoredAddedCard).toContainText("1/2 performed");
+  await expect(restoredAddedCard).toContainText("1/2 workout-only performed");
   await discardWorkout(page);
 
   await prefetches.settle();
@@ -275,23 +278,29 @@ test("refuses incomplete assistance, then preserves assisted work without false 
   await assisted
     .getByRole("button", { name: "Log set", exact: true })
     .click();
-  await expect(assisted.getByText("Save failed", { exact: true })).toBeVisible();
   await expect(
     page.getByText(
-      "Enter the amount of assistance, or add it as a note instead.",
+      "Enter the numeric assistance and unit for this set, or keep the observation in a note instead.",
       { exact: true },
     ),
   ).toBeVisible();
-  await assisted.getByRole("button", { name: "Discard", exact: true }).click();
+  await expect(assisted.getByText("Save failed", { exact: true })).toHaveCount(0);
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const raw = localStorage.getItem("workout-tracker:workout-set-outbox:v1");
+        if (!raw) return 0;
+        const parsed = JSON.parse(raw) as { entries?: unknown[] };
+        return parsed.entries?.length ?? 0;
+      }),
+    )
+    .toBe(0);
 
   await assisted.getByLabel("Assistance").fill("40");
   await assisted
     .getByRole("button", { name: "Log set", exact: true })
     .click();
-  await expect(assisted).toContainText("1/1 performed");
-  await expect(
-    assisted.getByText("Assistance: 40 lb · 8 reps", { exact: true }),
-  ).toBeVisible();
+  await expect(assisted).toContainText("1/1 workout-only performed");
 
   const workoutStatus = page.getByRole("complementary", {
     name: "Workout status",
@@ -320,12 +329,19 @@ test("refuses incomplete assistance, then preserves assisted work without false 
   });
   await expect(dismissRest).toBeVisible();
   const readyLayout = await workoutStatus.evaluate((element) => {
-    const navigationTop =
-      document.querySelector("nav.fixed")?.getBoundingClientRect().top ??
-      Number.POSITIVE_INFINITY;
+    const navigation = document.querySelector("nav.fixed");
+    const navigationRect = navigation?.getBoundingClientRect() ?? null;
+    const navigationVisible =
+      navigation != null &&
+      getComputedStyle(navigation).display !== "none" &&
+      (navigationRect?.height ?? 0) > 0;
+    const navigationTop = navigationVisible
+      ? navigationRect?.top ?? window.innerHeight
+      : window.innerHeight;
     return {
       dockBottom: element.getBoundingClientRect().bottom,
       navigationTop,
+      navigationVisible,
       buttons: Array.from(element.querySelectorAll("button"))
         .filter((button) =>
           ["Dismiss rest timer", "Finish"].includes(
@@ -345,6 +361,7 @@ test("refuses incomplete assistance, then preserves assisted work without false 
   expect(readyLayout.dockBottom).toBeLessThanOrEqual(
     readyLayout.navigationTop + 1,
   );
+  expect(readyLayout.navigationVisible).toBe(false);
   expect(readyLayout.buttons).toHaveLength(2);
   expect(
     readyLayout.buttons.every(
@@ -378,11 +395,15 @@ test("refuses incomplete assistance, then preserves assisted work without false 
 
   await page.goto("/history?view=exercises&range=all");
   const assistedProgress = page
-    .locator("article")
-    .filter({ hasText: "Assisted Push-Up" });
+    .getByRole("heading", {
+      level: 3,
+      name: "Assisted Push-Up",
+      exact: true,
+    })
+    .locator("../..");
   await expect(assistedProgress).toContainText("Not comparable");
   await expect(assistedProgress).toContainText("Assistance: 40 lb · 8 reps");
   await expect(
-    page.getByRole("link", { name: /Assisted Push-Up/ }),
+    assistedProgress.getByRole("link", { name: /Assisted Push-Up/ }),
   ).toHaveCount(0);
 });

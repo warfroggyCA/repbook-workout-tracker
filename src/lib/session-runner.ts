@@ -66,6 +66,9 @@ export function mergeSessionOutboxSets(
         weight: entry.weight,
         weightUnit: entry.weightUnit,
         reps: entry.reps,
+        metricType: entry.metricType,
+        distanceKm: entry.distanceKm,
+        durationSeconds: entry.durationSeconds,
         rpe: entry.rpe,
         note: entry.note,
         saveState,
@@ -166,7 +169,9 @@ export function exitRequiresDeviceCopyAcknowledgement(
   return (
     queues.unsyncedSetCount > 0 ||
     queues.quarantinedSetCount > 0 ||
-    queues.setHasError
+    queues.setHasError ||
+    queues.unsyncedOccurrenceCount > 0 ||
+    queues.occurrenceHasError
   );
 }
 

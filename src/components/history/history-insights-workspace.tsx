@@ -192,6 +192,122 @@ function InsightsOverview({
       <Card>
         <CardHeader>
           <CardTitle>
+            <h3>Training cadence</h3>
+          </CardTitle>
+          <CardDescription>
+            Completed workouts by calendar time. This is separate from how
+            individual planned sets turned out.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <dl className="grid gap-3 sm:grid-cols-3">
+            <div className="rounded-xl border bg-background/70 p-3">
+              <dt className="text-xs text-muted-foreground">
+                Per complete week
+              </dt>
+              <dd className="mt-1 font-semibold tabular-nums">
+                {report.cadence.averageSessionsPerCompleteWeek ?? "—"}
+              </dd>
+              <p className="mt-1 text-xs text-muted-foreground">
+                {report.cadence.completeWeeks} complete Monday–Sunday week
+                {report.cadence.completeWeeks === 1 ? "" : "s"}
+              </p>
+            </div>
+            <div className="rounded-xl border bg-background/70 p-3">
+              <dt className="text-xs text-muted-foreground">Median gap</dt>
+              <dd className="mt-1 font-semibold tabular-nums">
+                {report.cadence.medianGapDays == null
+                  ? "—"
+                  : `${report.cadence.medianGapDays} days`}
+              </dd>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Between completed workout dates
+              </p>
+            </div>
+            <div className="rounded-xl border bg-background/70 p-3">
+              <dt className="text-xs text-muted-foreground">Current gap</dt>
+              <dd className="mt-1 font-semibold tabular-nums">
+                {report.cadence.currentGapDays == null
+                  ? "—"
+                  : `${report.cadence.currentGapDays} ${report.cadence.currentGapDays === 1 ? "day" : "days"}`}
+              </dd>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Since the latest completed workout date
+              </p>
+            </div>
+          </dl>
+          <p className="text-sm text-muted-foreground">
+            Current preference: {report.cadence.currentPreference.sessionsPerWeek}
+            {" "}sessions per week. {report.cadence.currentPreference.limitation}
+          </p>
+          {report.cadence.programDayExposures.length > 0 ? (
+            <div>
+              <h4 className="text-sm font-medium">Program-day exposure</h4>
+              <ul className="mt-2 grid gap-2 sm:grid-cols-2">
+                {report.cadence.programDayExposures.map((exposure) => (
+                  <li
+                    key={exposure.lineageId}
+                    className="rounded-lg border px-3 py-2 text-sm"
+                  >
+                    <span className="font-medium">
+                      {exposure.labels.map((label) => label.label).join(" / ")}
+                    </span>
+                    <span className="ml-2 text-muted-foreground">
+                      {exposure.sessions} workout
+                      {exposure.sessions === 1 ? "" : "s"}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+          {report.cadence.unlinkedSessions > 0 ? (
+            <p className="text-xs text-muted-foreground">
+              {report.cadence.unlinkedSessions} completed workout
+              {report.cadence.unlinkedSessions === 1 ? " was" : "s were"} not
+              linked to a Program day and remain outside Program-day exposure.
+            </p>
+          ) : null}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>
+            <h3>Planned set outcomes</h3>
+          </CardTitle>
+          <CardDescription>
+            Performed working sets compared with their retained planned targets.
+            These results do not describe training frequency.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <dl className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            {([
+              ["Below", report.overview.targetOutcomes.below],
+              ["At", report.overview.targetOutcomes.at],
+              ["Above", report.overview.targetOutcomes.above],
+              ["Unknown", report.overview.targetOutcomes.unknown],
+            ] as const).map(([label, value]) => (
+              <div key={label} className="rounded-xl border p-3 text-center">
+                <dt className="text-xs text-muted-foreground">{label}</dt>
+                <dd className="mt-1 text-lg font-semibold tabular-nums">
+                  {value}
+                </dd>
+              </div>
+            ))}
+          </dl>
+          <p className="mt-3 text-xs text-muted-foreground">
+            {report.overview.targetOutcomes.atOrAboveRate == null
+              ? "No supported planned-set comparisons in this period."
+              : `${report.overview.targetOutcomes.atOrAboveRate}% of supported comparisons were at or above their retained target.`}
+          </p>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>
             <h3>Five questions</h3>
           </CardTitle>
           <CardDescription>
@@ -274,11 +390,13 @@ function InsightsOverview({
         </summary>
         <dl className="mt-3 grid gap-3 text-sm sm:grid-cols-2 lg:grid-cols-3">
           <div>
-            <dt className="text-xs text-muted-foreground">Sets at target</dt>
+            <dt className="text-xs text-muted-foreground">
+              Planned sets at or above target
+            </dt>
             <dd className="mt-1 font-medium tabular-nums">
-              {report.overview.targetHitRate == null
+              {report.overview.targetOutcomes.atOrAboveRate == null
                 ? "—"
-                : `${report.overview.targetHitRate}%`}
+                : `${report.overview.targetOutcomes.atOrAboveRate}%`}
             </dd>
           </div>
           <div>

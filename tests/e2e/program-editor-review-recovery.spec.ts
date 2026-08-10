@@ -120,13 +120,13 @@ test("opens the preserved draft and expires a pre-Phase-2 review on desktop and 
     .getByRole("button", { name: "Check Program", exact: true })
     .click();
   await expect(
-    page.getByRole("heading", { name: "Ready to activate", exact: true }),
+    page.getByRole("heading", { name: "Ready to publish", exact: true }),
   ).toBeVisible();
   await expect(
     page.getByText("Fresh review required", { exact: true }),
   ).toHaveCount(0);
   await expect(
-    page.getByRole("button", { name: "Activate new version", exact: true }),
+    page.getByRole("button", { name: "Publish future Program", exact: true }),
   ).toBeEnabled();
   await page.reload();
   await expect(page.getByLabel("Program name")).toHaveValue(

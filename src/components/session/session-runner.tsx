@@ -4,6 +4,7 @@ import {
   type ReactNode,
   useCallback,
   useEffect,
+  useId,
   useMemo,
   useRef,
   useState,
@@ -44,10 +45,17 @@ import { ContextualNoteScope } from "@/components/contextual-notes/contextual-no
 import { AddWorkoutExercise } from "./add-workout-exercise";
 import { openContextualNoteComposer, type ContextualNoteScopeValue } from "@/lib/contextual-note-ui";
 import { createClientUuid } from "@/lib/client-uuid";
+import {
+  buildPerformedSetMeasurement,
+  resolveFutureSetWriterMetricType,
+  type PerformedLoadSemantics,
+} from "@/lib/set-metric-semantics";
 import type {
+  LoggedSet,
   SessionRunnerProps,
   SessionExerciseData,
   SessionOccurrenceData,
+  SetAcknowledgementReceipt,
 } from "./types";
 import { toast } from "sonner";
 import {
@@ -82,7 +90,6 @@ import {
   type OccurrenceMutationOutboxClientEvent,
   type OccurrenceMutationOperation,
 } from "@/lib/occurrence-mutation-outbox";
-import type { LoggedSet } from "./types";
 import {
   equipmentSyncPending,
   finishBlockedByRecordedWork,
@@ -118,6 +125,7 @@ import {
   type RestAlertPreference,
 } from "@/lib/rest-alert-preference";
 import {
+  formatSessionGuidanceAction,
   projectSessionGuidance,
   sessionNonPerformedOutcomeParts,
   sessionEquipmentSetupMatchesExercise,
@@ -188,8 +196,9 @@ function WarmupPanel({
   );
 }
 
-function actionTargetId(action: SessionGuidanceFocusAction | null) {
+function actionTargetId(action: SessionGuidanceFocusAction | null): string {
   if (!action) return "finish-workout";
+  if (action.kind === "rest") return "workout-rest-status";
   if (action.kind !== "working_set" || !action.sessionExerciseId) {
     return `warmup-occurrence-${action.occurrenceId}`;
   }
@@ -198,10 +207,26 @@ function actionTargetId(action: SessionGuidanceFocusAction | null) {
   return `${prefix}-${action.sessionExerciseId}-${action.occurrenceId}`;
 }
 
+function actionIdentity(action: SessionGuidanceFocusAction | null) {
+  if (!action) return null;
+  return action.kind === "rest" ? action.actionId : action.occurrenceId;
+}
+
+function actionOccurrenceId(action: SessionGuidanceFocusAction | null) {
+  if (!action) return null;
+  return action.kind === "rest"
+    ? action.source?.occurrenceId ?? action.actionId
+    : action.occurrenceId;
+}
+
 export function SessionRunner(props: SessionRunnerProps) {
   const elapsed = useElapsed(props.startedAtISO);
+  const fatigueLabelId = useId();
   const [exercises, setExercises] = useState<SessionExerciseData[]>(
     props.exercises
+  );
+  const [historyRevision, setHistoryRevision] = useState(
+    props.historyRevision,
   );
   const [occurrences, setOccurrences] = useState<SessionOccurrenceData[]>(
     props.occurrences,
@@ -215,7 +240,13 @@ export function SessionRunner(props: SessionRunnerProps) {
     );
     return firstOpen?.id ?? null;
   });
+  const [skipRecoveryExerciseId, setSkipRecoveryExerciseId] = useState<
+    string | null
+  >(null);
   const previousCurrentActionIdRef = useRef<string | null>(null);
+  const previousCurrentActionKindRef = useRef<
+    SessionGuidanceFocusAction["kind"] | null
+  >(null);
   const [timer, setTimer] = useState<DurableRestTimer | null>(null);
   const [restTimerHydrated, setRestTimerHydrated] = useState(false);
   const [restNow, setRestNow] = useState(() => Date.now());
@@ -231,11 +262,6 @@ export function SessionRunner(props: SessionRunnerProps) {
     exerciseId: string;
     intent: ExerciseAdjustmentIntent;
   } | null>(null);
-  const [editSetRequest, setEditSetRequest] = useState<{
-    exerciseId: string;
-    setId: string;
-    token: number;
-  } | null>(null);
   const [occurrenceAction, setOccurrenceAction] = useState<{
     occurrenceId: string;
     mode: "skip" | "note";
@@ -246,12 +272,15 @@ export function SessionRunner(props: SessionRunnerProps) {
   const pendingSetAcknowledgementAnchorRef = useRef<{
     clientKey: string;
     elementId: string;
+    receiptElementId: string;
     viewportTop: number;
   } | null>(null);
   const pendingSetAcknowledgementFrameRef = useRef<number | null>(null);
   const [acknowledgedOccurrenceIds, setAcknowledgedOccurrenceIds] = useState<
     string[]
   >([]);
+  const [latestSetAcknowledgement, setLatestSetAcknowledgement] =
+    useState<SetAcknowledgementReceipt | null>(null);
   const [
     occurrenceRuntimeSaveStates,
     setOccurrenceRuntimeSaveStates,
@@ -401,27 +430,38 @@ export function SessionRunner(props: SessionRunnerProps) {
         exercises: shownExercises,
         exerciseGroups: props.exerciseGroups,
         equipmentSetups: safeEquipmentSetups,
-        selectedSessionExerciseId: expandedId,
+        restTimer: restTimerHydrated ? timer : null,
       }),
     [
-      expandedId,
       occurrences,
       props.exerciseGroups,
+      restTimerHydrated,
       safeEquipmentSetups,
       shownExercises,
+      timer,
     ],
   );
-  const currentActionId = guidance.currentAction?.occurrenceId ?? null;
+  const currentActionId = actionIdentity(guidance.currentAction);
   const currentActionKind = guidance.currentAction?.kind ?? null;
   const currentActionSequenceIdx = guidance.currentAction?.sequenceIdx ?? null;
   const currentActionSessionExerciseId =
     guidance.currentAction?.kind === "working_set"
       ? guidance.currentAction.sessionExerciseId
-      : null;
+      : guidance.currentAction?.kind === "rest"
+        ? guidance.current?.sessionExerciseId ?? null
+        : null;
   const currentActionTargetId = actionTargetId(guidance.currentAction);
+  const latestAcknowledgementTargetId = latestSetAcknowledgement
+    ? `active-set-save-receipt-${latestSetAcknowledgement.sessionExerciseId}-${latestSetAcknowledgement.set.setNo}`
+    : null;
   useEffect(() => {
     const previousActionId = previousCurrentActionIdRef.current;
+    const previousActionKind = previousCurrentActionKindRef.current;
     previousCurrentActionIdRef.current = currentActionId;
+    previousCurrentActionKindRef.current = currentActionKind;
+    if (skipRecoveryExerciseId != null) {
+      return;
+    }
     if (previousActionId == null || previousActionId === currentActionId) return;
 
     const previousOccurrence = occurrences.find(
@@ -432,9 +472,17 @@ export function SessionRunner(props: SessionRunnerProps) {
       currentActionSequenceIdx != null &&
       currentActionSequenceIdx < previousOccurrence.sequenceIdx;
     if (
-      !previousOccurrence ||
-      (previousOccurrence.outcome === "pending" && !restoredEarlierAction)
+      previousOccurrence?.outcome === "pending" &&
+      !restoredEarlierAction
     ) return;
+    const acknowledgementBelongsToPreviousAction =
+      previousOccurrence?.kind === "working_set" &&
+      latestAcknowledgementTargetId ===
+        `active-set-save-receipt-${previousOccurrence.sessionExerciseId}-${previousOccurrence.kindOrdinal + 1}`;
+    const shouldRevealLatestAcknowledgement =
+      currentActionKind === "rest" ||
+      previousActionKind === "rest" ||
+      acknowledgementBelongsToPreviousAction;
 
     let focusFrame = 0;
     let scrollFrame = 0;
@@ -448,12 +496,20 @@ export function SessionRunner(props: SessionRunnerProps) {
         "",
         `${window.location.pathname}${window.location.search}#${currentActionTargetId}`,
       );
-      if (currentActionKind === "working_set" && currentActionSessionExerciseId) {
+      if (currentActionSessionExerciseId) {
         setExpandedId(currentActionSessionExerciseId);
       }
       focusFrame = window.requestAnimationFrame(() => {
         const target = document.getElementById(currentActionTargetId);
-        target?.scrollIntoView({ behavior: "smooth", block: "center" });
+        const acknowledgement =
+          shouldRevealLatestAcknowledgement && latestAcknowledgementTargetId
+            ? document.getElementById(latestAcknowledgementTargetId)
+            : null;
+        if (acknowledgement) {
+          acknowledgement.scrollIntoView({ behavior: "auto", block: "center" });
+        } else if (currentActionKind !== "rest") {
+          target?.scrollIntoView({ behavior: "smooth", block: "center" });
+        }
         const focusTarget = target?.matches("[tabindex]")
           ? target
           : target?.querySelector<HTMLElement>("button, [href], input");
@@ -473,7 +529,9 @@ export function SessionRunner(props: SessionRunnerProps) {
     currentActionSequenceIdx,
     currentActionSessionExerciseId,
     currentActionTargetId,
+    latestAcknowledgementTargetId,
     occurrences,
+    skipRecoveryExerciseId,
   ]);
   const groupContextByExerciseId = useMemo(
     () =>
@@ -592,6 +650,8 @@ export function SessionRunner(props: SessionRunnerProps) {
           pendingSetAcknowledgementAnchorRef.current = {
             clientKey: detail.clientKey,
             elementId: acknowledgedRowId,
+            receiptElementId:
+              `active-set-save-receipt-${detail.entry.sessionExerciseId}-${detail.entry.setNo}`,
             viewportTop: bounds.top,
           };
           if (pendingSetAcknowledgementFrameRef.current != null) {
@@ -603,7 +663,9 @@ export function SessionRunner(props: SessionRunnerProps) {
           const keepAcknowledgementInPlace = () => {
             const anchor = pendingSetAcknowledgementAnchorRef.current;
             if (!anchor || anchor.clientKey !== detail.clientKey) return;
-            const row = document.getElementById(anchor.elementId);
+            const row =
+              document.getElementById(anchor.receiptElementId) ??
+              document.getElementById(anchor.elementId);
             if (row?.textContent?.includes("Saved")) {
               const offset =
                 row.getBoundingClientRect().top - anchor.viewportTop;
@@ -628,21 +690,34 @@ export function SessionRunner(props: SessionRunnerProps) {
             window.requestAnimationFrame(keepAcknowledgementInPlace);
         }
       }
+      const saved: LoggedSet = {
+        id: detail.setId,
+        clientKey: detail.clientKey,
+        setNo: detail.entry.setNo,
+        weight: detail.entry.weight,
+        weightUnit: detail.entry.weightUnit,
+        reps: detail.entry.reps,
+        distanceKm: detail.entry.distanceKm,
+        durationSeconds: detail.entry.durationSeconds,
+        metricType: detail.entry.metricType,
+        rpe: detail.entry.rpe,
+        rir: detail.entry.rir,
+        techniqueIssue: detail.entry.techniqueIssue,
+        limitationCause: detail.entry.limitationCause,
+        pain: detail.entry.pain,
+        note: detail.entry.note,
+        correctionCount: 0,
+        saveState: "saved",
+      };
+      setLatestSetAcknowledgement({
+        sessionExerciseId: detail.entry.sessionExerciseId,
+        exerciseName: detail.entry.exerciseName,
+        metricType: detail.entry.metricType,
+        set: saved,
+      });
       setExercises((current) =>
         current.map((exercise) => {
           if (exercise.id !== detail.entry.sessionExerciseId) return exercise;
-          const saved: LoggedSet = {
-            id: detail.setId,
-            clientKey: detail.clientKey,
-            setNo: detail.entry.setNo,
-            weight: detail.entry.weight,
-            weightUnit: detail.entry.weightUnit,
-            reps: detail.entry.reps,
-            metricType: exercise.metricType,
-            rpe: detail.entry.rpe,
-            note: detail.entry.note,
-            saveState: "saved",
-          };
           const withoutClientCopy = exercise.sets.filter(
             (set) => set.clientKey !== detail.clientKey
           );
@@ -760,6 +835,9 @@ export function SessionRunner(props: SessionRunnerProps) {
 
   const totalPlanned = guidance.totals.planned;
   const totalPerformed = guidance.totals.performed;
+  const plannedPerformed = guidance.totals.plannedPerformed;
+  const extraPerformed = guidance.totals.extraPerformed;
+  const workoutOnlyPerformed = guidance.totals.workoutOnlyPerformed;
   const pendingWorking = guidance.totals.pending;
   const nonPerformedSummary = sessionNonPerformedOutcomeParts(
     guidance.totals,
@@ -800,6 +878,20 @@ export function SessionRunner(props: SessionRunnerProps) {
   const finishBlocked = finishBlockedByRecordedWork(exitQueues);
   const equipmentGuidancePending = equipmentSyncPending(exitQueues);
 
+  function plannedExerciseNameForOccurrence(
+    occurrence: SessionOccurrenceData,
+  ): string | null {
+    if (!occurrence.sessionExerciseId) return null;
+    const exercise = shownExercises.find(
+      (candidate) => candidate.id === occurrence.sessionExerciseId,
+    );
+    if (!exercise) return null;
+    return occurrence.plannedExerciseId != null &&
+      occurrence.plannedExerciseId === exercise.substitutedForExerciseId
+      ? exercise.plannedExerciseName ?? exercise.name
+      : exercise.name;
+  }
+
   function equipmentConfirmationBlocks(
     occurrence: SessionOccurrenceData,
   ): boolean {
@@ -823,16 +915,26 @@ export function SessionRunner(props: SessionRunnerProps) {
   async function queueSet(
     exercise: SessionExerciseData,
     set: LoggedSet,
-    restAfterSec = exercise.restSec,
+    restAfterSec: number | null | undefined = exercise.restSec,
   ) {
     if (!set.clientKey) return false;
-    const setup = props.equipmentSetups[exercise.id];
-    if (setup && !sessionEquipmentSetupMatchesExercise(exercise, setup)) {
-      toast.error(
-        "Equipment guidance is updating for this exercise. Wait for the current setup before logging.",
-      );
+    const performed = buildPerformedSetMeasurement({
+      metricType: set.metricType ?? resolveFutureSetWriterMetricType({
+        metricType: exercise.metricType ?? "weight_reps",
+        loadSemantics: exercise.loadSemantics,
+      }),
+      loadSemantics: exercise.loadSemantics,
+      weight: set.weight,
+      weightUnit: set.weightUnit,
+      reps: set.reps,
+      distanceKm: set.distanceKm ?? null,
+      durationSeconds: set.durationSeconds ?? null,
+    });
+    if (!performed.ok) {
+      toast.error(performed.message);
       return false;
     }
+    const setup = safeEquipmentSetups[exercise.id];
     const pendingEquipmentSelection = equipmentSelectionOutbox.entries
       .filter((entry) =>
         entry.ownerId === props.ownerId && entry.sessionId === props.sessionId &&
@@ -842,17 +944,19 @@ export function SessionRunner(props: SessionRunnerProps) {
       setup?.options.find((option) =>
         option.equipmentItemId === pendingEquipmentSelection.equipmentItemId &&
         option.attachmentItemId === pendingEquipmentSelection.attachmentItemId) ?? null;
-    const decision = resolveSetLoggingEquipment({
-      hasSetup: setup != null,
-      hasSnapshot: setup?.currentSnapshotId != null,
-      hasPendingSelection: pendingEquipmentSelection != null,
-      optionCount: setup?.options.length ?? 0,
-      effectiveLoadMeaning: setup
-        ? (pendingEquipmentOption?.loadEntryMeaning ??
-            equipmentLoadMeanings[exercise.id] ??
-            setup.loadEntryMeaning) ?? null
-        : "legacy_unknown",
-    });
+    const decision = performed.measurement.weight == null
+      ? ({ status: "log_displayed_unknown" } as const)
+      : resolveSetLoggingEquipment({
+          hasSetup: setup != null,
+          hasSnapshot: setup?.currentSnapshotId != null,
+          hasPendingSelection: pendingEquipmentSelection != null,
+          optionCount: setup?.options.length ?? 0,
+          effectiveLoadMeaning: setup
+            ? (pendingEquipmentOption?.loadEntryMeaning ??
+                equipmentLoadMeanings[exercise.id] ??
+                setup.loadEntryMeaning) ?? null
+            : "legacy_unknown",
+        });
     if (decision.status === "choose_setup") {
       toast.error("Choose the physical equipment setup before logging this set.");
       return false;
@@ -864,20 +968,30 @@ export function SessionRunner(props: SessionRunnerProps) {
     // A resolvable setup carries its snapshot/selection; an unresolvable one
     // records the displayed load honestly with no snapshot so the workout is
     // never trapped by missing equipment information.
-    const useSnapshot = decision.status === "log_with_snapshot";
+    const useSnapshot =
+      decision.status === "log_with_snapshot" &&
+      performed.measurement.weight != null;
     const observedCompletedAtISO = new Date().toISOString();
+    if (restAfterSec != null && restAfterSec > 0) primeRestCue();
     const queued = await enqueueWorkoutSet({
       clientKey: set.clientKey,
       ownerId: props.ownerId,
       sessionId: props.sessionId,
       sessionExerciseId: exercise.id,
+      performedExerciseId: exercise.exerciseId,
+      performedSemanticsVersion: 1,
+      performedLoadType: exercise.loadType,
+      performedLoadSemantics:
+        exercise.loadSemantics as PerformedLoadSemantics,
       workoutName: props.templateName,
       exerciseName: exercise.name,
       setNo: set.setNo,
-      weight: set.weight,
-      weightUnit: set.weightUnit,
-      reps: set.reps,
+      ...performed.measurement,
       rpe: set.rpe,
+      rir: set.rir ?? null,
+      techniqueIssue: set.techniqueIssue ?? null,
+      limitationCause: set.limitationCause ?? null,
+      pain: set.pain ?? null,
       note: set.note,
       equipmentSnapshotId: useSnapshot ? setup?.currentSnapshotId ?? null : null,
       equipmentSelectionClientKey: useSnapshot
@@ -995,13 +1109,6 @@ export function SessionRunner(props: SessionRunnerProps) {
     setCoachExerciseId(sessionExerciseId);
     setCoachOpen(true);
   }
-
-  const handleEditSetOpenChange = useCallback(
-    (_exerciseId: string, open: boolean) => {
-      if (!open) setEditSetRequest(null);
-    },
-    [setEditSetRequest]
-  );
 
   const skipRest = useCallback(() => {
     if (!timer) return;
@@ -1332,7 +1439,6 @@ export function SessionRunner(props: SessionRunnerProps) {
         revision: 0,
         resolvedAt: null,
         completedSetId: null,
-        restAfterSec: result.occurrence.plannedRestSec,
       };
       setOccurrences((current) =>
         current.some((occurrence) => occurrence.id === appended.id)
@@ -1356,9 +1462,10 @@ export function SessionRunner(props: SessionRunnerProps) {
         (occurrence) => occurrence.id === guidance.current?.occurrenceId,
       ) ?? null
     : null;
-  const currentActionOccurrence = guidance.currentAction
+  const currentActionOccurrenceId = actionOccurrenceId(guidance.currentAction);
+  const currentActionOccurrence = currentActionOccurrenceId
     ? occurrences.find(
-        (occurrence) => occurrence.id === guidance.currentAction?.occurrenceId,
+        (occurrence) => occurrence.id === currentActionOccurrenceId,
       ) ?? null
     : null;
   const currentActionExercise = currentActionOccurrence?.sessionExerciseId
@@ -1517,24 +1624,50 @@ export function SessionRunner(props: SessionRunnerProps) {
       defaultAttachmentKey: attachments[0]?.key ?? "general",
     };
   })();
+  const currentWorkingAction =
+    guidance.currentAction?.kind === "working_set"
+      ? guidance.currentAction
+      : null;
+  const currentWorkingExercise =
+    currentWorkingAction
+      ? shownExercises.find(
+          (exercise) => exercise.id === currentWorkingAction.sessionExerciseId,
+        ) ?? null
+      : null;
+  const currentCardOwnsNextAction =
+    currentWorkingExercise != null &&
+    expandedId === currentWorkingExercise.id &&
+    !currentWorkingExercise.sets.some(
+      (set) => set.saveState != null && set.saveState !== "saved",
+    );
 
   return (
     <main className="mx-auto flex max-w-3xl flex-col gap-3 p-3 pb-[calc(12rem+env(safe-area-inset-bottom))] min-[360px]:pb-[calc(8rem+env(safe-area-inset-bottom))] sm:p-5 sm:pb-[calc(8rem+env(safe-area-inset-bottom))] lg:p-8 lg:pb-24">
       <ContextualNoteScope value={contextualNoteScope} />
-      <header className="flex flex-wrap items-center justify-between gap-2 px-1">
-        <div>
-          <h1 className="text-lg font-semibold">{props.templateName}</h1>
-          <p className="text-xs text-muted-foreground">
-            {elapsed} · {totalPerformed}/{totalPlanned || "?"} performed
+      <header className="flex flex-wrap items-center justify-between gap-2 px-1 max-[360px]:sr-only">
+        <div className="min-w-0 max-[360px]:w-full">
+          <h1 className="text-lg font-semibold">
+            {props.templateName}
+          </h1>
+          <p className="text-xs text-muted-foreground max-[360px]:hidden">
+            {elapsed} · {plannedPerformed}/{totalPlanned || "?"} planned
+            {extraPerformed > 0 ? ` · ${extraPerformed} extra` : ""}
+            {workoutOnlyPerformed > 0
+              ? ` · ${workoutOnlyPerformed} workout-only`
+              : ""}
           </p>
         </div>
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-1 max-[360px]:hidden">
           <WorkoutMeasurementsDrawer />
         </div>
       </header>
 
-      <div className="sticky top-[env(safe-area-inset-top)] z-20 -mx-1 bg-background/95 py-1 backdrop-blur">
-        <WorkoutGuidanceSummary guidance={guidance} compact />
+      <div className="sticky top-[env(safe-area-inset-top)] z-20 -mx-1 bg-background/95 py-1 backdrop-blur max-[360px]:py-0">
+        <WorkoutGuidanceSummary
+          guidance={guidance}
+          compact
+          deferNextActionToCurrentCard={currentCardOwnsNextAction}
+        />
       </div>
 
       <WarmupPanel
@@ -1543,10 +1676,20 @@ export function SessionRunner(props: SessionRunnerProps) {
         planned={guidance.warmups.planned}
         remaining={guidance.warmups.remaining}
       >
-        {props.dayWarmupNotes ? (
+        {props.dayWarmupNotes && hasStructuredWarmup ? (
+          <details className="mt-1 rounded-md border border-violet-300/50 bg-background/60 text-sm">
+            <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-2 rounded-md px-3 py-2 font-medium text-violet-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 dark:text-violet-200">
+              <span>Day guidance · reference only</span>
+              <span className="text-xs text-muted-foreground">Show</span>
+            </summary>
+            <p className="whitespace-pre-line border-t px-3 py-2 leading-6 text-muted-foreground">
+              {props.dayWarmupNotes}
+            </p>
+          </details>
+        ) : props.dayWarmupNotes ? (
           <>
             <p className="mt-1 text-xs font-medium text-violet-800 dark:text-violet-200">
-              Saved with this workout when it began
+              Day guidance · reference only
             </p>
             <p className="mt-1 whitespace-pre-line text-sm leading-6 text-muted-foreground">
               {props.dayWarmupNotes}
@@ -1561,15 +1704,39 @@ export function SessionRunner(props: SessionRunnerProps) {
           </p>
         ) : null}
         {hasStructuredWarmup && (
-          <ul className="mt-3 space-y-2">
+          <>
+            <p className="mt-3 text-xs font-medium text-violet-800 dark:text-violet-200">
+              Check off only the distinct actions below.
+            </p>
+            <ul className="mt-2 space-y-2">
               {occurrences
                 .filter((occurrence) => occurrence.kind !== "working_set")
                 .map((occurrence) => {
-                  const exerciseName = occurrence.sessionExerciseId
+                  const occurrenceExercise = occurrence.sessionExerciseId
                     ? shownExercises.find(
                         (exercise) => exercise.id === occurrence.sessionExerciseId,
-                      )?.name
+                      )
                     : null;
+                  const exerciseName = plannedExerciseNameForOccurrence(
+                    occurrence,
+                  );
+                  const aggregateRestoreBlocked =
+                    occurrenceExercise?.modificationType === "skipped" ||
+                    (occurrence.kind === "exercise_warmup" &&
+                      occurrence.plannedExerciseId != null &&
+                      occurrence.plannedExerciseId !==
+                        occurrenceExercise?.exerciseId) ||
+                    occurrence.outcomeReason?.startsWith("exercise:") === true;
+                  const aggregateRestoreDirection =
+                    occurrence.outcomeReason?.startsWith(
+                      "exercise:substituted:",
+                    ) ||
+                    (occurrence.kind === "exercise_warmup" &&
+                      occurrence.plannedExerciseId != null &&
+                      occurrence.plannedExerciseId !==
+                        occurrenceExercise?.exerciseId)
+                      ? "Undo the exercise alternative to restore this action."
+                      : "Un-skip the exercise to restore this action.";
                   const prescription = formatOccurrencePrescription(occurrence);
                   const equipmentChangePending = equipmentConfirmationBlocks(occurrence);
                   const occurrenceMutation =
@@ -1584,17 +1751,21 @@ export function SessionRunner(props: SessionRunnerProps) {
                       id={`warmup-occurrence-${occurrence.id}`}
                       tabIndex={-1}
                       aria-current={
-                        guidance.currentAction?.occurrenceId === occurrence.id
+                        actionOccurrenceId(guidance.currentAction) === occurrence.id
                           ? "step"
                           : undefined
                       }
                       className="scroll-mt-40 flex flex-wrap items-center justify-between gap-2 rounded-lg border bg-background/80 px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                     >
-                      <div>
+                      <div className="min-w-0 flex-1">
                         <p className="font-medium">
-                          {exerciseName ? `${exerciseName}: ` : ""}
                           {occurrence.label ?? "Warm-up item"}
                         </p>
+                        {exerciseName && (
+                          <p className="text-xs text-muted-foreground">
+                            For {exerciseName}
+                          </p>
+                        )}
                         {prescription && (
                           <p className="text-xs font-medium text-foreground">
                             {prescription}
@@ -1617,7 +1788,7 @@ export function SessionRunner(props: SessionRunnerProps) {
                         )}
                       </div>
                       {occurrence.outcome === "pending" ? (
-                        <div className="flex flex-wrap gap-2">
+                        <div className="flex w-full flex-wrap gap-2 sm:w-auto">
                           <Button
                             type="button"
                             size="sm"
@@ -1677,15 +1848,31 @@ export function SessionRunner(props: SessionRunnerProps) {
                       ) : (
                         <div className="flex flex-wrap gap-2">
                           {occurrence.outcome === "completed" && (
-                            <span
-                              role="checkbox"
-                              aria-checked="true"
-                              aria-label={`${occurrence.label ?? "Warm-up item"} complete`}
-                              className="inline-flex min-h-11 items-center gap-2 rounded-md border border-emerald-600/50 bg-emerald-500/10 px-3 text-sm font-medium text-emerald-900 dark:text-emerald-100"
-                            >
-                              <span aria-hidden className="flex size-4 items-center justify-center rounded border-2 border-current text-[10px] leading-none">✓</span>
-                              Complete
-                            </span>
+                            <>
+                              <span
+                                role="checkbox"
+                                aria-checked="true"
+                                aria-label={`${occurrence.label ?? "Warm-up item"} complete`}
+                                className="inline-flex min-h-11 items-center gap-2 rounded-md border border-emerald-600/50 bg-emerald-500/10 px-3 text-sm font-medium text-emerald-900 dark:text-emerald-100"
+                              >
+                                <span aria-hidden className="flex size-4 items-center justify-center rounded border-2 border-current text-[10px] leading-none">✓</span>
+                                Complete
+                              </span>
+                              {!aggregateRestoreBlocked && (
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  className="min-h-11"
+                                  variant="outline"
+                                  disabled={occurrenceMutation != null}
+                                  onClick={() =>
+                                    void applyOccurrenceMutation(occurrence, "restore")
+                                  }
+                                >
+                                  Undo completion
+                                </Button>
+                              )}
+                            </>
                           )}
                           <Button
                             type="button"
@@ -1702,7 +1889,8 @@ export function SessionRunner(props: SessionRunnerProps) {
                           >
                             {occurrence.outcomeNote ? "Edit note" : "Add note"}
                           </Button>
-                          {occurrence.outcome === "skipped" && (
+                          {occurrence.outcome === "skipped" &&
+                            !aggregateRestoreBlocked && (
                             <Button
                               type="button"
                               size="sm"
@@ -1715,6 +1903,11 @@ export function SessionRunner(props: SessionRunnerProps) {
                             >
                               Restore
                             </Button>
+                          )}
+                          {aggregateRestoreBlocked && (
+                            <p className="basis-full text-xs text-muted-foreground">
+                              {aggregateRestoreDirection}
+                            </p>
                           )}
                         </div>
                       )}
@@ -1737,7 +1930,8 @@ export function SessionRunner(props: SessionRunnerProps) {
                     </li>
                   );
                 })}
-          </ul>
+            </ul>
+          </>
         )}
       </WarmupPanel>
 
@@ -1777,12 +1971,9 @@ export function SessionRunner(props: SessionRunnerProps) {
             </p>
           ) : null}
           <ExerciseCard
-            key={`${exercise.id}:${
-              editSetRequest?.exerciseId === exercise.id
-                ? editSetRequest.token
-                : 0
-            }`}
+            key={`${exercise.id}:${exercise.exerciseId}:${exercise.metricType}:${exercise.loadType}:${exercise.loadSemantics}`}
             exercise={exercise}
+            historyRevision={historyRevision}
             progress={
               guidance.exercises.find(
                 (item) => item.sessionExerciseId === exercise.id,
@@ -1814,9 +2005,22 @@ export function SessionRunner(props: SessionRunnerProps) {
             )}
             occurrenceRuntimeSaveStates={occurrenceRuntimeSaveStates}
             acknowledgedOccurrenceIds={acknowledgedOccurrenceIds}
+            acknowledgementReceipt={
+              guidance.currentAction?.kind === "working_set" ||
+              guidance.currentAction?.kind === "rest"
+                ? latestSetAcknowledgement
+                : null
+            }
             isCurrentExercise={
-              guidance.currentAction?.kind === "working_set" &&
               currentOccurrence?.sessionExerciseId === exercise.id
+            }
+            nextActionLabel={
+              guidance.currentAction?.kind === "working_set" &&
+              guidance.currentAction.sessionExerciseId === exercise.id
+                ? guidance.nextAction
+                  ? formatSessionGuidanceAction(guidance.nextAction)
+                  : "No further unresolved work"
+                : null
             }
             warmupResolved={
               occurrences.some(
@@ -1831,12 +2035,6 @@ export function SessionRunner(props: SessionRunnerProps) {
                   occurrence.outcome !== "pending",
               )
             }
-            warmupSkipped={occurrences.some(
-              (occurrence) =>
-                occurrence.kind === "exercise_warmup" &&
-                occurrence.sessionExerciseId === exercise.id &&
-                occurrence.outcome === "skipped",
-            )}
             groupContext={groupContextByExerciseId[exercise.id] ?? null}
             occurrenceChangesBlocked={
               sessionEquipmentEntries.some(
@@ -1846,10 +2044,15 @@ export function SessionRunner(props: SessionRunnerProps) {
                 return occurrence ? equipmentConfirmationBlocks(occurrence) : false;
               })()
             }
-            onPrepareRestCue={primeRestCue}
             onPatch={(patch) => {
               patchExercise(exercise.id, patch);
+              const exerciseIdentityChanged = Object.hasOwn(
+                patch,
+                "exerciseId",
+              );
               if (patch.modificationType === "skipped") {
+                setSkipRecoveryExerciseId(exercise.id);
+                setExpandedId(exercise.id);
                 setOccurrences((current) => current.map((occurrence) =>
                   occurrence.sessionExerciseId === exercise.id &&
                   occurrence.outcome === "pending"
@@ -1863,18 +2066,84 @@ export function SessionRunner(props: SessionRunnerProps) {
                     : occurrence,
                 ));
               } else if (
-                patch.modificationType === "as_planned" ||
+                exerciseIdentityChanged &&
                 patch.modificationType === "substituted"
+              ) {
+                setSkipRecoveryExerciseId((current) =>
+                  current === exercise.id ? null : current,
+                );
+                setOccurrences((current) => current.map((occurrence) => {
+                  if (occurrence.sessionExerciseId !== exercise.id) {
+                    return occurrence;
+                  }
+                  if (
+                    occurrence.kind === "exercise_warmup" &&
+                    occurrence.outcome === "pending"
+                  ) {
+                    return {
+                      ...occurrence,
+                      outcome: "skipped",
+                      outcomeReason: "exercise:substituted:optimistic",
+                      revision: occurrence.revision + 1,
+                      resolvedAt: new Date().toISOString(),
+                    };
+                  }
+                  if (
+                    occurrence.kind === "working_set" &&
+                    occurrence.outcome === "skipped" &&
+                    occurrence.outcomeReason?.startsWith("exercise:") &&
+                    !occurrence.outcomeReason.startsWith(
+                      "exercise:substituted:",
+                    )
+                  ) {
+                    return {
+                      ...occurrence,
+                      outcome: "pending",
+                      outcomeReason: null,
+                      revision: occurrence.revision + 1,
+                      resolvedAt: null,
+                    };
+                  }
+                  return occurrence;
+                }));
+              } else if (
+                exerciseIdentityChanged &&
+                patch.modificationType === "as_planned"
               ) {
                 setOccurrences((current) => current.map((occurrence) =>
                   occurrence.sessionExerciseId === exercise.id &&
+                  occurrence.kind === "exercise_warmup" &&
                   occurrence.outcome === "skipped" &&
-                  occurrence.outcomeReason?.startsWith("exercise:")
+                  occurrence.outcomeReason?.startsWith(
+                    "exercise:substituted:",
+                  )
                     ? {
                         ...occurrence,
                         outcome: "pending",
                         outcomeReason: null,
-                        outcomeNote: null,
+                        revision: occurrence.revision + 1,
+                        resolvedAt: null,
+                      }
+                    : occurrence,
+                ));
+              } else if (
+                patch.modificationType === "as_planned" ||
+                patch.modificationType === "substituted"
+              ) {
+                setSkipRecoveryExerciseId((current) =>
+                  current === exercise.id ? null : current,
+                );
+                setOccurrences((current) => current.map((occurrence) =>
+                  occurrence.sessionExerciseId === exercise.id &&
+                  occurrence.outcome === "skipped" &&
+                  occurrence.outcomeReason?.startsWith("exercise:") &&
+                  !occurrence.outcomeReason.startsWith(
+                    "exercise:substituted:",
+                  )
+                    ? {
+                        ...occurrence,
+                        outcome: "pending",
+                        outcomeReason: null,
                         revision: occurrence.revision + 1,
                         resolvedAt: null,
                       }
@@ -1886,7 +2155,11 @@ export function SessionRunner(props: SessionRunnerProps) {
               queueSet(
                 exercise,
                 set,
-                occurrence?.restAfterSec ?? exercise.restSec,
+                occurrence
+                  ? guidance.actions.find(
+                      (action) => action.occurrenceId === occurrence.id,
+                    )?.restAfter.seconds ?? null
+                  : exercise.restSec,
               )
             }
             onAppendSet={(occurrenceId, expectedSetNo) =>
@@ -1911,8 +2184,14 @@ export function SessionRunner(props: SessionRunnerProps) {
             onDiscardOccurrenceMutation={discardOccurrenceEntry}
             onRetrySet={retrySet}
             onDiscardSet={discardSet}
+            onHistoryRevisionChange={setHistoryRevision}
             onOpenCoach={() => openCoach(exercise.id)}
-            onSkipComplete={() => advanceAfterExercise(exercise.id)}
+            onSkipComplete={() => {
+              setSkipRecoveryExerciseId((current) =>
+                current === exercise.id ? null : current,
+              );
+              advanceAfterExercise(exercise.id);
+            }}
             adjustIntent={
               adjustment?.exerciseId === exercise.id
                 ? adjustment.intent
@@ -1921,12 +2200,6 @@ export function SessionRunner(props: SessionRunnerProps) {
             onAdjustIntentChange={(intent) =>
               setAdjustment(intent ? { exerciseId: exercise.id, intent } : null)
             }
-            editSetRequest={
-              editSetRequest?.exerciseId === exercise.id
-                ? { setId: editSetRequest.setId, token: editSetRequest.token }
-                : null
-            }
-            onEditSetOpenChange={handleEditSetOpenChange}
           />
           </div>
         ))}
@@ -1966,7 +2239,13 @@ export function SessionRunner(props: SessionRunnerProps) {
           <DrawerHeader>
             <DrawerTitle>Finish workout</DrawerTitle>
             <DrawerDescription>
-              {totalPerformed} of {totalPlanned} planned sets done in {elapsed}.
+              {plannedPerformed} of {totalPlanned} planned sets done in {elapsed}.
+              {extraPerformed > 0
+                ? ` ${extraPerformed} extra set${extraPerformed === 1 ? "" : "s"} performed.`
+                : ""}
+              {workoutOnlyPerformed > 0
+                ? ` ${workoutOnlyPerformed} workout-only set${workoutOnlyPerformed === 1 ? "" : "s"} performed.`
+                : ""}
             </DrawerDescription>
           </DrawerHeader>
           <div className="flex flex-col gap-4 px-4">
@@ -2032,16 +2311,24 @@ export function SessionRunner(props: SessionRunnerProps) {
               rows={2}
             />
             <div>
-              <p className="mb-2 text-sm text-muted-foreground">
+              <p
+                id={fatigueLabelId}
+                className="mb-2 text-sm text-muted-foreground"
+              >
                 Overall fatigue
               </p>
-              <div className="flex gap-2">
+              <div
+                role="group"
+                aria-labelledby={fatigueLabelId}
+                className="flex gap-2"
+              >
                 {[1, 2, 3, 4, 5].map((n) => (
                   <Button
                     key={n}
                     variant={fatigue === n ? "default" : "outline"}
-                    size="sm"
+                    size="touch"
                     className="flex-1"
+                    aria-pressed={fatigue === n}
                     onClick={() => setFatigue(fatigue === n ? null : n)}
                   >
                     {n}
@@ -2104,11 +2391,11 @@ export function SessionRunner(props: SessionRunnerProps) {
             const currentAction = guidance.currentAction;
             if (!currentAction) return;
             const targetId = actionTargetId(currentAction);
-            if (
-              currentAction.kind === "working_set" &&
-              currentAction.sessionExerciseId
-            ) {
-              setExpandedId(currentAction.sessionExerciseId);
+            const occurrenceAction = currentAction.kind === "rest"
+              ? currentAction.source
+              : currentAction;
+            if (occurrenceAction?.kind === "working_set") {
+              setExpandedId(occurrenceAction.sessionExerciseId);
             }
             window.history.replaceState(
               window.history.state,
@@ -2134,11 +2421,7 @@ export function SessionRunner(props: SessionRunnerProps) {
           (candidate) => candidate.id === occurrenceAction.occurrenceId,
         );
         if (!occurrence) return null;
-        const exerciseName = occurrence.sessionExerciseId
-          ? shownExercises.find(
-              (exercise) => exercise.id === occurrence.sessionExerciseId,
-            )?.name
-          : null;
+        const exerciseName = plannedExerciseNameForOccurrence(occurrence);
         const itemLabel = [exerciseName, occurrence.label ?? "warm-up item"]
           .filter(Boolean)
           .join(": ");

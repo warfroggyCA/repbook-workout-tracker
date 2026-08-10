@@ -1,6 +1,7 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
 import {
   installNextDevelopmentRefreshControl,
+  openNativeDetails,
   waitForEquipmentSelectionsToSettle,
   waitForHydratedServerAction,
 } from "../helpers/react-readiness";
@@ -43,6 +44,9 @@ async function skipCurrentSet(page: Page) {
   });
   const showCurrent = workoutStatus.getByRole("button").first();
   const currentLabel = await showCurrent.innerText();
+  await openNativeDetails(card.locator("details", {
+    hasText: "Set exceptions",
+  }));
   await card.getByRole("button", { name: "Skip set", exact: true }).click();
   const dialog = page.getByRole("dialog", { name: /^Skip set / });
   await dialog.getByLabel("Reason").selectOption("time");
@@ -52,6 +56,11 @@ async function skipCurrentSet(page: Page) {
     .poll(() => showCurrent.innerText())
     .not.toBe(currentLabel);
   await showCurrent.click();
+  await openNativeDetails(
+    page.getByTestId("current-exercise-card").locator("details", {
+      hasText: "Set exceptions",
+    }),
+  );
   await expect(
     page
       .getByTestId("current-exercise-card")
@@ -109,6 +118,11 @@ async function expectReachableGroupSurface(
       };
     });
     const navigation = document.querySelector("nav.fixed");
+    const navigationRect = navigation?.getBoundingClientRect() ?? null;
+    const navigationVisible =
+      navigation != null &&
+      getComputedStyle(navigation).display !== "none" &&
+      (navigationRect?.height ?? 0) > 0;
     const status = document.querySelector('[aria-label="Workout status"]');
     const stickySummary = document.querySelector(
       '[aria-label="Workout progress and upcoming work"]',
@@ -125,7 +139,10 @@ async function expectReachableGroupSurface(
       stickySummaryBottom:
         stickySummary?.getBoundingClientRect().bottom ?? null,
       statusBottom: status?.getBoundingClientRect().bottom ?? null,
-      navigationTop: navigation?.getBoundingClientRect().top ?? null,
+      navigationTop: navigationVisible
+        ? navigationRect?.top ?? window.innerHeight
+        : window.innerHeight,
+      navigationVisible,
     };
   });
   expect(geometry.left).toBeGreaterThanOrEqual(0);
@@ -137,6 +154,7 @@ async function expectReachableGroupSurface(
     );
   }
   expect(geometry.links).toHaveLength(2);
+  expect(geometry.navigationVisible).toBe(width >= 360);
   expect(
     geometry.links.every(
       (link) =>
@@ -202,7 +220,7 @@ test("presents immutable superset order, truthful progress, and next-member equi
   await expect(group).toContainText("Round 1 of 2");
   await expect(group).toContainText("0 of 4 performed");
   await expect(group).toContainText(
-    "No planned rest is saved after the current set.",
+    "No rest is planned after the current set.",
   );
   await expect(group).toContainText("Prepare for Pallof Press");
   await expect(group).toContainText("Preparation is guidance only");
@@ -266,6 +284,9 @@ test("presents immutable superset order, truthful progress, and next-member equi
   const currentActionUrl = page.url();
   await page.reload({ waitUntil: "domcontentloaded" });
   await expect(page).toHaveURL(currentActionUrl);
+  await openNativeDetails(currentCard.locator("details", {
+    hasText: "Set exceptions",
+  }));
   await expect(
     currentCard.getByRole("button", { name: "Skip set", exact: true }),
   ).toBeVisible();
@@ -326,8 +347,10 @@ test("presents immutable superset order, truthful progress, and next-member equi
   await expect(advancedGuidance).toContainText(
     /Now: Superset, round 1, member 2 of 2: Pallof Press, set 1/,
   );
-  await expect(advancedGuidance).toContainText(
-    /Next: Superset, round 2, member 1 of 2: Dumbbell Lateral Raise, set 2/,
+  await expect(advancedGuidance).not.toContainText("Next:");
+  await expect(currentCard).toContainText("Next action");
+  await expect(currentCard).toContainText(
+    "Superset, round 2, member 1 of 2: Dumbbell Lateral Raise, set 2",
   );
   await page.unrouteAll({ behavior: "wait" });
 

@@ -3,6 +3,7 @@ import type { Db } from "@/db";
 import { resultRows } from "@/db/result";
 import { AI_USAGE_RETENTION_DAYS } from "@/services/ai-control";
 import { RAW_DATA_RETENTION_HOURS } from "@/lib/privacy-retention";
+import { ANALYSIS_PACKAGE_RETENTION_DAYS } from "@/lib/analysis-package";
 
 export type PrivacyRetentionResult = {
   expiredImports: number;
@@ -10,6 +11,7 @@ export type PrivacyRetentionResult = {
   redactedAiParses: number;
   minimizedCoachContexts: number;
   expiredUsageEvents: number;
+  expiredAnalysisPackageManifests: number;
 };
 
 /** One bounded maintenance statement; validated workout/program records are untouched. */
@@ -101,11 +103,16 @@ export async function runPrivacyRetention(
       WHERE usage.status <> 'running'
         AND usage.started_at <= ${now.toISOString()}::timestamptz - interval '90 days'
       RETURNING usage.id, usage.user_id
+    ), expired_analysis_manifests AS (
+      DELETE FROM analysis_package_manifests manifest
+      WHERE manifest.expires_at <= ${now.toISOString()}::timestamptz
+      RETURNING manifest.id, manifest.user_id
     ), affected_users AS (
       SELECT user_id FROM redacted_imports
       UNION SELECT user_id FROM redacted_parses
       UNION SELECT user_id FROM minimized_context
       UNION SELECT user_id FROM expired_usage
+      UNION SELECT user_id FROM expired_analysis_manifests
     ), recorded_audit AS (
       INSERT INTO audit_logs (
         user_id, actor_type, action, entity_type, summary, cause_ref
@@ -116,7 +123,8 @@ export async function runPrivacyRetention(
         jsonb_build_object(
           'runAt', ${now.toISOString()}::text,
           'rawRetentionHours', ${RAW_DATA_RETENTION_HOURS}::integer,
-          'usageRetentionDays', ${AI_USAGE_RETENTION_DAYS}::integer
+          'usageRetentionDays', ${AI_USAGE_RETENTION_DAYS}::integer,
+          'analysisPackageRetentionDays', ${ANALYSIS_PACKAGE_RETENTION_DAYS}::integer
         )
       FROM affected_users affected
       RETURNING id
@@ -127,6 +135,7 @@ export async function runPrivacyRetention(
       (SELECT count(*)::int FROM redacted_parses) AS redacted_ai_parses,
       (SELECT count(*)::int FROM minimized_context) AS minimized_coach_contexts,
       (SELECT count(*)::int FROM expired_usage) AS expired_usage_events,
+      (SELECT count(*)::int FROM expired_analysis_manifests) AS expired_analysis_package_manifests,
       (SELECT count(*)::int FROM recorded_audit) AS audits
   `;
   const row = resultRows(await db.execute(query))[0] ?? {};
@@ -136,5 +145,8 @@ export async function runPrivacyRetention(
     redactedAiParses: Number(row.redacted_ai_parses ?? 0),
     minimizedCoachContexts: Number(row.minimized_coach_contexts ?? 0),
     expiredUsageEvents: Number(row.expired_usage_events ?? 0),
+    expiredAnalysisPackageManifests: Number(
+      row.expired_analysis_package_manifests ?? 0,
+    ),
   };
 }

@@ -1,11 +1,10 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
-import { formatWarmupSetLine } from "@/lib/warmup";
 import { formatCompactPlateLoadGuidance } from "@/lib/exercise-card";
 
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
 vi.mock("@/app/actions/sessions", () => ({
-  updateSet: vi.fn(),
+  correctAcknowledgedSet: vi.fn(),
   archiveSet: vi.fn(),
   skipExercise: vi.fn(),
   unskipExercise: vi.fn(),
@@ -23,6 +22,7 @@ import { ExerciseCard } from "@/components/session/exercise-card";
 import type {
   SessionExerciseData,
   SessionOccurrenceData,
+  SetAcknowledgementReceipt,
 } from "@/components/session/types";
 import type { OccurrenceMutationOutboxEntry } from "@/lib/occurrence-mutation-outbox";
 
@@ -84,15 +84,22 @@ const exercise: SessionExerciseData = {
 };
 
 describe("ExerciseCard", () => {
-  it("renders total-load, shared warm-up, save-state, and note-cap presentation", () => {
+  it("renders total-load, reference guidance, save-state, and note-cap presentation", () => {
     const html = renderToStaticMarkup(
       <ExerciseCard
         exercise={exercise}
+        historyRevision={0}
         progress={{
           sessionExerciseId: exercise.id,
           exerciseName: exercise.name,
+          total: 3,
           planned: 3,
+          extra: 0,
+          workoutOnly: 0,
           performed: 0,
+          plannedPerformed: 0,
+          extraPerformed: 0,
+          workoutOnlyPerformed: 0,
           skipped: 0,
           abandoned: 0,
           pending: 3,
@@ -120,8 +127,6 @@ describe("ExerciseCard", () => {
         onOpenCoach={() => undefined}
         adjustIntent={null}
         onAdjustIntentChange={() => undefined}
-        editSetRequest={null}
-        onEditSetOpenChange={() => undefined}
       />
     );
 
@@ -136,16 +141,17 @@ describe("ExerciseCard", () => {
     expect(html).toContain(
       `id="logged-set-${exercise.id}-2"`,
     );
-    expect(html).toContain("0/3 performed · 2 saving");
-    expect(html).toContain(formatWarmupSetLine(warmupSet));
-    expect(html).toContain("Warm-up complete");
+    expect(html).toContain("0/3 planned performed · 2 saving");
+    expect(html).not.toContain("Ramp 1 · 45 lb · 5 reps");
+    expect(html).toContain("Warm-up guidance · reference");
+    expect(html).toContain("Move smoothly");
     expect(html).toContain("Show details");
     expect(html).toContain("<details");
     expect(html).toContain("Waiting for save acknowledgement");
     expect(html).not.toContain("Use the Next set dock");
     expect(html).toContain("Workout actions");
     expect(html).toContain("Add note");
-    expect(html).toContain("Flag pain");
+    expect(html).toContain("Pain / no issue");
     expect(html).toContain("Skip exercise");
   });
 
@@ -177,11 +183,18 @@ describe("ExerciseCard", () => {
     const html = renderToStaticMarkup(
       <ExerciseCard
         exercise={assistedExercise}
+        historyRevision={0}
         progress={{
           sessionExerciseId: assistedExercise.id,
           exerciseName: assistedExercise.name,
+          total: 2,
           planned: 2,
+          extra: 0,
+          workoutOnly: 0,
           performed: 1,
+          plannedPerformed: 1,
+          extraPerformed: 0,
+          workoutOnlyPerformed: 0,
           skipped: 0,
           abandoned: 0,
           pending: 1,
@@ -220,12 +233,10 @@ describe("ExerciseCard", () => {
           revision: 0,
           resolvedAt: null,
           completedSetId: null,
-          restAfterSec: 90,
         }}
         isCurrentExercise
         onPatch={() => undefined}
         onQueueSet={async () => true}
-        onPrepareRestCue={() => undefined}
         onSkipSet={async () => true}
         onRetrySet={async () => undefined}
         onDiscardSet={async () => undefined}
@@ -233,8 +244,6 @@ describe("ExerciseCard", () => {
         onOpenCoach={() => undefined}
         adjustIntent={null}
         onAdjustIntentChange={() => undefined}
-        editSetRequest={null}
-        onEditSetOpenChange={() => undefined}
       />,
     );
     expect(html).toContain("Assistance: 80 lb · 8 reps");
@@ -247,11 +256,18 @@ describe("ExerciseCard", () => {
     const html = renderToStaticMarkup(
       <ExerciseCard
         exercise={current}
+        historyRevision={0}
         progress={{
           sessionExerciseId: current.id,
           exerciseName: current.name,
+          total: 3,
           planned: 3,
+          extra: 0,
+          workoutOnly: 0,
           performed: 0,
+          plannedPerformed: 0,
+          extraPerformed: 0,
+          workoutOnlyPerformed: 0,
           skipped: 0,
           abandoned: 0,
           pending: 3,
@@ -296,12 +312,11 @@ describe("ExerciseCard", () => {
           revision: 0,
           resolvedAt: null,
           completedSetId: null,
-          restAfterSec: 90,
         }}
         isCurrentExercise
+        nextActionLabel="Barbell Squat, set 2"
         onPatch={() => undefined}
         onQueueSet={async () => true}
-        onPrepareRestCue={() => undefined}
         onSkipSet={async () => true}
         onRetrySet={async () => undefined}
         onDiscardSet={async () => undefined}
@@ -309,8 +324,6 @@ describe("ExerciseCard", () => {
         onOpenCoach={() => undefined}
         adjustIntent={null}
         onAdjustIntentChange={() => undefined}
-        editSetRequest={null}
-        onEditSetOpenChange={() => undefined}
       />
     );
 
@@ -324,7 +337,37 @@ describe("ExerciseCard", () => {
     expect(html).toContain("OK — RPE 7");
     expect(html).toContain("Hard — RPE 8");
     expect(html).toContain("Grind — RPE 9.5");
+    expect(html).toContain('role="group" aria-label="Effort shortcuts"');
+    for (const shortcut of ["Easy", "OK", "Hard", "Grind"]) {
+      expect(html).toMatch(
+        new RegExp(`aria-label="${shortcut}[^\"]*" aria-pressed="false"`),
+      );
+    }
     expect(html).toContain("Current exercise");
+    expect(html).toContain("Current action");
+    expect(html).toContain("Performed measure");
+    expect(html).toContain("Barbell Squat, set 2");
+    expect(html).toContain("Optional effort and set note");
+    expect(html).toContain("RIR (0–10)");
+    expect(html).toContain("Technique issue");
+    expect(html).toContain("What limited this set?");
+    expect(html).toContain("No flag means unknown, not “no pain.”");
+    expect(html).toContain("Record pain");
+    expect(html).not.toContain('aria-label="Pain severity 1"');
+    expect(html).toContain("Set exceptions");
+    expect(html.indexOf("Current action")).toBeLessThan(
+      html.indexOf("Performed measure"),
+    );
+    expect(html.indexOf("Performed measure")).toBeLessThan(
+      html.indexOf("Next action"),
+    );
+    expect(html.indexOf("Next action")).toBeLessThan(
+      html.indexOf("Set exceptions"),
+    );
+    expect(html.indexOf("Current action")).toBeLessThan(
+      html.indexOf("Warm-up guidance"),
+    );
+    expect(html.match(/Log set/g)).toHaveLength(1);
     expect(html).toContain("Ask Coach gives guidance");
     expect(html).toContain("Change exercise for this workout");
     expect(html).toContain("Compatible alternatives");
@@ -334,7 +377,7 @@ describe("ExerciseCard", () => {
     expect(html).toContain("Skip set");
     expect(html).toContain("Add extra set");
     expect(html).toContain(
-      "Finish or skip the sets above before adding an extra.",
+      "Adds ad-hoc work without changing the planned set order.",
     );
   });
 
@@ -345,14 +388,24 @@ describe("ExerciseCard", () => {
         { id: "saved-first", clientKey: "first-key", setNo: 1, weight: 95, weightUnit: "lb" as const, reps: 8, rpe: null, note: null, saveState: "saved" as const },
       ],
     };
-    const html = renderToStaticMarkup(
+    const renderCard = (
+      acknowledgementReceipt: SetAcknowledgementReceipt | null = null,
+      nextActionLabel: string | null = "Workout complete",
+    ) => renderToStaticMarkup(
       <ExerciseCard
         exercise={afterSkippedSecond}
+        historyRevision={0}
         progress={{
           sessionExerciseId: afterSkippedSecond.id,
           exerciseName: afterSkippedSecond.name,
+          total: 3,
           planned: 3,
+          extra: 0,
+          workoutOnly: 0,
           performed: 1,
+          plannedPerformed: 1,
+          extraPerformed: 0,
+          workoutOnlyPerformed: 0,
           skipped: 1,
           abandoned: 0,
           pending: 1,
@@ -391,9 +444,10 @@ describe("ExerciseCard", () => {
           revision: 0,
           resolvedAt: null,
           completedSetId: null,
-          restAfterSec: 90,
         }}
+        acknowledgementReceipt={acknowledgementReceipt}
         isCurrentExercise
+        nextActionLabel={nextActionLabel}
         onPatch={() => undefined}
         onQueueSet={async () => true}
         onSkipSet={async () => true}
@@ -403,16 +457,50 @@ describe("ExerciseCard", () => {
         onOpenCoach={() => undefined}
         adjustIntent={null}
         onAdjustIntentChange={() => undefined}
-        editSetRequest={null}
-        onEditSetOpenChange={() => undefined}
       />
     );
+    const html = renderCard();
 
     expect(html).toContain("Set 3 of 3");
+    expect(html).toContain(
+      `id="active-set-save-receipt-${afterSkippedSecond.id}-1"`,
+    );
+    expect(html).toContain("Saved · Set 1");
+    expect(html).toContain("Acknowledged by Repbook");
     expect(html).toContain(
       `id="set-entry-${afterSkippedSecond.id}-00000000-0000-4000-8000-000000000004"`,
     );
     expect(html).toContain("Set 2");
+
+    const sourceExerciseId = "00000000-0000-4000-8000-000000000030";
+    const crossExerciseHtml = renderCard(
+      {
+        sessionExerciseId: sourceExerciseId,
+        exerciseName: "Barbell Bench Press",
+        metricType: "weight_reps",
+        set: {
+          id: "acknowledged-third",
+          clientKey: "acknowledged-third-key",
+          setNo: 3,
+          weight: 135,
+          weightUnit: "lb",
+          reps: 8,
+          metricType: "weight_reps",
+          rpe: null,
+          note: null,
+          saveState: "saved",
+        },
+      },
+      null,
+    );
+    expect(crossExerciseHtml).toContain(
+      `id="active-set-save-receipt-${sourceExerciseId}-3"`,
+    );
+    expect(crossExerciseHtml).toContain(
+      "Saved · Barbell Bench Press · Set 3",
+    );
+    expect(crossExerciseHtml).toContain("135 lb × 8 reps");
+    expect(crossExerciseHtml).toContain("Acknowledged by Repbook");
   });
 
   it("keeps the exact working-set row visible while a skip saves and after it is acknowledged", () => {
@@ -443,7 +531,6 @@ describe("ExerciseCard", () => {
       revision: 0,
       resolvedAt: null,
       completedSetId: null,
-      restAfterSec: 90,
     } satisfies SessionOccurrenceData;
     const mutation = {
       clientKey: "00000000-0000-4000-8000-000000000022",
@@ -464,11 +551,18 @@ describe("ExerciseCard", () => {
     } satisfies OccurrenceMutationOutboxEntry;
     const common = {
       exercise: current,
+      historyRevision: 0,
       progress: {
         sessionExerciseId: current.id,
         exerciseName: current.name,
+        total: 3,
         planned: 3,
+        extra: 0,
+        workoutOnly: 0,
         performed: 0,
+        plannedPerformed: 0,
+        extraPerformed: 0,
+        workoutOnlyPerformed: 0,
         skipped: 0,
         abandoned: 0,
         pending: 3,
@@ -491,8 +585,6 @@ describe("ExerciseCard", () => {
       onOpenCoach: () => undefined,
       adjustIntent: null,
       onAdjustIntentChange: () => undefined,
-      editSetRequest: null,
-      onEditSetOpenChange: () => undefined,
     };
 
     const saving = renderToStaticMarkup(
@@ -558,16 +650,22 @@ describe("ExerciseCard", () => {
       revision: 0,
       resolvedAt: null,
       completedSetId: null,
-      restAfterSec: 90,
     };
     const html = renderToStaticMarkup(
       <ExerciseCard
         exercise={current}
+        historyRevision={0}
         progress={{
           sessionExerciseId: current.id,
           exerciseName: current.name,
+          total: 4,
           planned: 4,
+          extra: 0,
+          workoutOnly: 0,
           performed: 0,
+          plannedPerformed: 0,
+          extraPerformed: 0,
+          workoutOnlyPerformed: 0,
           skipped: 0,
           abandoned: 0,
           pending: 4,
@@ -589,15 +687,13 @@ describe("ExerciseCard", () => {
         onOpenCoach={() => undefined}
         adjustIntent={null}
         onAdjustIntentChange={() => undefined}
-        editSetRequest={null}
-        onEditSetOpenChange={() => undefined}
       />,
     );
 
     expect(html).not.toContain("Added to this workout");
     expect(html).toContain("Add extra set");
     expect(html).toContain(
-      "Finish or skip the sets above before adding an extra.",
+      "Adds ad-hoc work without changing the planned set order.",
     );
   });
 });

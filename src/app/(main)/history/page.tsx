@@ -11,6 +11,8 @@ import {
   parseHistoryCalendarDate,
   parseHistoryCalendarView,
   parseHistoryInsightLens,
+  parseHistoryExerciseEvidenceTier,
+  parseHistoryExerciseId,
   parseHistoryView,
   type SearchParamValue,
 } from "@/lib/history-navigation";
@@ -27,6 +29,8 @@ export default async function HistoryPage({
     lens?: SearchParamValue;
     calendarView?: SearchParamValue;
     calendarDate?: SearchParamValue;
+    exerciseId?: SearchParamValue;
+    evidenceTier?: SearchParamValue;
   }>;
 }) {
   const query = await searchParams;
@@ -35,6 +39,8 @@ export default async function HistoryPage({
   const lens = parseHistoryInsightLens(query.lens);
   const calendarView = parseHistoryCalendarView(query.calendarView);
   const calendarDate = parseHistoryCalendarDate(query.calendarDate);
+  const exerciseId = parseHistoryExerciseId(query.exerciseId);
+  const evidenceTier = parseHistoryExerciseEvidenceTier(query.evidenceTier);
   const user = await getCurrentUser();
   const db = await getDb();
   const ownerToday = workoutLocalDate(new Date(), user.profile.timezone);
@@ -47,7 +53,8 @@ export default async function HistoryPage({
       range,
       user.profile.weeklyFrequency,
       new Date(),
-      { timezone: user.profile.timezone, unit: user.profile.unit }
+      { timezone: user.profile.timezone, unit: user.profile.unit },
+      { exerciseId, tier: evidenceTier },
     ),
     view === "insights"
       ? getActivityReport(db, user.id, range)
@@ -71,6 +78,8 @@ export default async function HistoryPage({
       lens={lens}
       calendarView={calendarView}
       calendarDate={calendarDate}
+      exerciseId={exerciseId}
+      evidenceTier={evidenceTier}
       ownerToday={ownerToday}
       unit={user.profile.unit}
       testSessionCount={maintenance.testSessionCount}

@@ -48,11 +48,16 @@ import {
   type TestDatabase,
 } from "../helpers/database";
 import { createTotalSystemTestSnapshot } from "../helpers/set-semantics";
+import {
+  PROGRESSION_REVIEW_SOURCE_VERSION,
+  withRecommendationReviewEvidence,
+} from "@/lib/review-evidence";
 
 describe("versioned Program editor persistence", () => {
   let database: TestDatabase;
   let userId: string;
   let exerciseId: string;
+  let exerciseName: string;
 
   beforeEach(async () => {
     database = await createMigratedTestDatabase();
@@ -68,8 +73,9 @@ describe("versioned Program editor persistence", () => {
       movementPattern: "horizontal_push",
       primaryMuscles: ["chest"],
       loadType: "bodyweight",
-    }).returning({ id: exercises.id });
+    }).returning({ id: exercises.id, name: exercises.name });
     exerciseId = exercise.id;
+    exerciseName = exercise.name;
     const activated = await activateProgramAtomically(database.db, {
       userId,
       loadUnit: "lb",
@@ -219,6 +225,11 @@ describe("versioned Program editor persistence", () => {
       .values({
         sessionId: evidenceSession.id,
         exerciseId,
+        prescribedSemanticsVersion: 1,
+        prescribedExerciseName: exerciseName,
+        prescribedMetricType: "weight_reps",
+        prescribedLoadType: "barbell",
+        prescribedLoadSemantics: "total",
         plannedFromTemplateExerciseId: slot.id,
         sourceSlotLineageId: slot.lineageId,
         modificationType: "as_planned",
@@ -247,6 +258,9 @@ describe("versioned Program editor persistence", () => {
         weightUnit: "lb",
         reps: 12,
         metricType: "weight_reps",
+        performedSemanticsVersion: 1,
+        performedLoadType: "barbell",
+        performedLoadSemantics: "total",
         loadEntryMeaning: "total_system",
         equipmentSnapshotId,
       })
@@ -273,9 +287,32 @@ describe("versioned Program editor persistence", () => {
       exerciseId,
       payload,
       reason: "Load comparison regression fixture",
-      evidence: { signals: {}, setIds: [evidenceSet.id] },
+      evidence: withRecommendationReviewEvidence(
+        { signals: {}, setIds: [evidenceSet.id] },
+        {
+          payload,
+          producer: "progression_rules",
+          sourceVersion: PROGRESSION_REVIEW_SOURCE_VERSION,
+        },
+      ),
     }).returning();
     return recommendation;
+  }
+
+  function reviewSnapshotFor(recommendation: typeof recommendations.$inferSelect) {
+    return {
+      schemaVersion: "review-decision-v1" as const,
+      recommendationId: recommendation.id,
+      reviewRevision: recommendation.reviewRevision,
+      deferRevision: recommendation.deferRevision,
+      recordedAt: new Date().toISOString(),
+      evidenceState: "supported" as const,
+      source: recommendation.source,
+      ruleId: recommendation.ruleId,
+      payload: recommendation.payload,
+      reason: recommendation.reason,
+      evidence: recommendation.evidence,
+    };
   }
 
   it("loads a durable draft with an obsolete review without rewriting source data", async () => {
@@ -494,6 +531,135 @@ describe("versioned Program editor persistence", () => {
     })).toMatchObject({ name: "Day A" });
   });
 
+  it("publishes future intent without changing an active snapshot or imported History", async () => {
+    const programBefore = await database.db.query.programs.findFirst({
+      where: eq(programs.userId, userId),
+    });
+    if (!programBefore?.currentVersionId) throw new Error("Program missing");
+    const originalVersionId = programBefore.currentVersionId;
+    const originalDay = await database.db.query.workoutTemplates.findFirst({
+      where: eq(workoutTemplates.programVersionId, originalVersionId),
+    });
+    if (!originalDay) throw new Error("Program day missing");
+    const originalSlot = await database.db.query.workoutTemplateExercises.findFirst({
+      where: eq(workoutTemplateExercises.workoutTemplateId, originalDay.id),
+    });
+    if (!originalSlot) throw new Error("Program slot missing");
+
+    const active = await startWorkoutSession(database.db, userId, originalDay.id);
+    const [importedSession] = await database.db.insert(workoutSessions).values({
+      userId,
+      templateName: "Imported evidence — preserve exactly",
+      source: "strong_csv",
+      sourceWorkoutKey: "u03-imported-history-1",
+      status: "completed",
+      startedAt: new Date("2026-06-20T12:00:00.000Z"),
+      finishedAt: new Date("2026-06-20T13:00:00.000Z"),
+      timezone: "America/Toronto",
+      localDate: "2026-06-20",
+    }).returning();
+    const [importedExercise] = await database.db.insert(sessionExercises).values({
+      sessionId: importedSession.id,
+      exerciseId,
+      sourceExerciseKey: "imported-press",
+      sourceExerciseName: "Imported press",
+      modificationType: "as_planned",
+      orderIdx: 0,
+      targetSets: null,
+      targetRepsMin: null,
+      targetRepsMax: null,
+      targetLoad: null,
+      targetLoadUnit: null,
+    }).returning();
+    await database.db.insert(completedSets).values({
+      sessionExerciseId: importedExercise.id,
+      setNo: 1,
+      weight: 37.5,
+      weightUnit: "lb",
+      reps: 9,
+      metricType: "weight_reps",
+      loadEntryMeaning: "legacy_unknown",
+      sourceSetIndex: 0,
+      sourceRow: 2,
+      observedCompletedAt: new Date("2026-06-20T12:30:00.000Z"),
+      observedCompletionProvenance: "import_source",
+      observedCompletionQuality: "trustworthy",
+    });
+
+    const factSnapshot = async () => ({
+      activeSession: await database.db.query.workoutSessions.findFirst({
+        where: eq(workoutSessions.id, active.sessionId),
+      }),
+      activeExercises: await database.db.query.sessionExercises.findMany({
+        where: eq(sessionExercises.sessionId, active.sessionId),
+      }),
+      activeOccurrences: await database.db.query.sessionOccurrences.findMany({
+        where: eq(sessionOccurrences.sessionId, active.sessionId),
+      }),
+      importedSession: await database.db.query.workoutSessions.findFirst({
+        where: eq(workoutSessions.id, importedSession.id),
+      }),
+      importedExercises: await database.db.query.sessionExercises.findMany({
+        where: eq(sessionExercises.sessionId, importedSession.id),
+      }),
+      importedSets: await database.db.query.completedSets.findMany({
+        where: eq(completedSets.sessionExerciseId, importedExercise.id),
+      }),
+      originalVersion: await database.db.query.programVersions.findFirst({
+        where: eq(programVersions.id, originalVersionId),
+      }),
+      originalDays: await database.db.query.workoutTemplates.findMany({
+        where: eq(workoutTemplates.programVersionId, originalVersionId),
+      }),
+      originalSlots: await database.db.query.workoutTemplateExercises.findMany({
+        where: eq(workoutTemplateExercises.workoutTemplateId, originalDay.id),
+      }),
+      originalPrescriptions: await database.db.query.exercisePrescriptions.findMany({
+        where: eq(exercisePrescriptions.templateExerciseId, originalSlot.id),
+      }),
+    });
+    const before = await factSnapshot();
+
+    const edited = await reviewedEditedDraft(42, "Future Strength Plan");
+    const published = await publishProgramDraft(database.db, userId, {
+      draftId: edited.draftId,
+      expectedRevision: edited.revision,
+      reviewHash: edited.review.hash,
+    });
+    expect(published).toMatchObject({ ok: true, versionNo: 2 });
+    if (!published.ok) throw new Error(published.reason);
+
+    expect(await factSnapshot()).toEqual(before);
+    expect(await database.db.query.programs.findFirst({
+      where: eq(programs.userId, userId),
+    })).toMatchObject({
+      currentVersionId: published.programVersionId,
+      name: "Future Strength Plan",
+    });
+    expect(await database.db.query.workoutSessions.findFirst({
+      where: eq(workoutSessions.id, active.sessionId),
+    })).toMatchObject({
+      status: "in_progress",
+      sourceProgramVersionId: originalVersionId,
+      templateId: originalDay.id,
+    });
+
+    const publishedDay = await database.db.query.workoutTemplates.findFirst({
+      where: eq(workoutTemplates.programVersionId, published.programVersionId),
+    });
+    if (!publishedDay) throw new Error("Published day missing");
+    const publishedSlot = await database.db.query.workoutTemplateExercises.findFirst({
+      where: eq(workoutTemplateExercises.workoutTemplateId, publishedDay.id),
+    });
+    if (!publishedSlot) throw new Error("Published slot missing");
+    expect(await database.db.query.exercisePrescriptions.findFirst({
+      where: and(
+        eq(exercisePrescriptions.templateExerciseId, publishedSlot.id),
+        isNull(exercisePrescriptions.supersededById),
+      ),
+    })).toMatchObject({ targetLoad: 42 });
+  });
+
   it("reconnects a stale-base open draft after the active Program advanced", async () => {
     const originalProgram = await database.db.query.programs.findFirst({
       where: eq(programs.userId, userId),
@@ -568,6 +734,9 @@ describe("versioned Program editor persistence", () => {
       expectedPayload: recommendation.payload,
       appliedPayload: recommendation.payload,
       decision: "approve",
+      expectedReviewRevision: recommendation.reviewRevision,
+      expectedDeferRevision: recommendation.deferRevision,
+      reviewSnapshot: reviewSnapshotFor(recommendation),
     });
     if (!advanced.ok) throw new Error(advanced.reason);
     expect(advanced.programVersionId).not.toBe(originalVersionId);
@@ -952,11 +1121,13 @@ describe("versioned Program editor persistence", () => {
       where: eq(workoutSessions.id, started.sessionId),
     });
     expect(session?.dayWarmupNotes).toContain(legacyWarmup);
-    expect(session?.dayWarmupItems).toEqual([
-      expect.objectContaining({
-        label: expect.stringContaining(legacyWarmup),
-      }),
-    ]);
+    expect(session?.dayWarmupItems).toEqual([]);
+    expect(await database.db.query.sessionOccurrences.findMany({
+      where: and(
+        eq(sessionOccurrences.sessionId, started.sessionId),
+        eq(sessionOccurrences.kind, "day_warmup"),
+      ),
+    })).toEqual([]);
   });
 
   it("publishes exactly the reviewed warm-up and snapshots it into a new workout", async () => {
@@ -1031,13 +1202,15 @@ describe("versioned Program editor persistence", () => {
       where: eq(workoutSessions.id, started.sessionId),
     })).toMatchObject({
       dayWarmupNotes: "Two minutes easy\nShoulder circles\nTwo ramp-up sets",
-      dayWarmupItems: [
-        expect.objectContaining({
-          label: "Two minutes easy\nShoulder circles\nTwo ramp-up sets",
-        }),
-      ],
+      dayWarmupItems: [],
       sourceProgramVersionId: published.programVersionId,
     });
+    expect(await database.db.query.sessionOccurrences.findMany({
+      where: and(
+        eq(sessionOccurrences.sessionId, started.sessionId),
+        eq(sessionOccurrences.kind, "day_warmup"),
+      ),
+    })).toEqual([]);
   });
 
   it("normalizes a pre-migration draft before review and preserves its revision", async () => {
@@ -1235,6 +1408,11 @@ describe("versioned Program editor persistence", () => {
       .values({
         sessionId: evidenceSession.id,
         exerciseId,
+        prescribedSemanticsVersion: 1,
+        prescribedExerciseName: exerciseName,
+        prescribedMetricType: "weight_reps",
+        prescribedLoadType: "barbell",
+        prescribedLoadSemantics: "total",
         plannedFromTemplateExerciseId: slot.id,
         sourceSlotLineageId: slot.lineageId,
         modificationType: "as_planned",
@@ -1263,6 +1441,9 @@ describe("versioned Program editor persistence", () => {
         weightUnit: "lb",
         reps: 12,
         metricType: "weight_reps",
+        performedSemanticsVersion: 1,
+        performedLoadType: "barbell",
+        performedLoadSemantics: "total",
         loadEntryMeaning: "total_system",
         equipmentSnapshotId,
       })
@@ -1289,13 +1470,23 @@ describe("versioned Program editor persistence", () => {
       exerciseId,
       payload,
       reason: "Completed the target range",
-      evidence: { signals: {}, setIds: [evidenceSet.id] },
+      evidence: withRecommendationReviewEvidence(
+        { signals: {}, setIds: [evidenceSet.id] },
+        {
+          payload,
+          producer: "progression_rules",
+          sourceVersion: PROGRESSION_REVIEW_SOURCE_VERSION,
+        },
+      ),
     }).returning();
     const result = await publishRecommendationProgramVersion(database.db, userId, {
       recommendationId: recommendation.id,
       expectedPayload: payload,
       appliedPayload: payload,
       decision: "approve",
+      expectedReviewRevision: recommendation.reviewRevision,
+      expectedDeferRevision: recommendation.deferRevision,
+      reviewSnapshot: reviewSnapshotFor(recommendation),
     });
     expect(result).toMatchObject({ ok: true, versionNo: 2 });
     if (!result.ok) throw new Error(result.reason);

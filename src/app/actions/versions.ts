@@ -7,7 +7,10 @@ import { getDb } from "@/db";
 import { resultRows } from "@/db/result";
 import { recordVersions } from "@/db/schema";
 import { getCurrentUser } from "@/lib/user";
-import { logServerEvent } from "@/lib/server-log";
+import {
+  categorizeDiagnosticError,
+  logDiagnosticEvent,
+} from "@/lib/server-log";
 import {
   restoreRecordVersion,
 } from "@/services/record-versions";
@@ -121,12 +124,8 @@ export async function restoreEarlierVersion(
     revalidatePath("/program");
     return result;
   } catch (error) {
-    logServerEvent("error", "record_version.restore_failed", {
-      userId: user.id,
-      versionId: id,
-      entityType: version.entityType,
-      entityId: version.entityId,
-      errorName: error instanceof Error ? error.name : "UnknownError",
+    logDiagnosticEvent("record_version.restore_failed", {
+      errorCategory: categorizeDiagnosticError(error, "conflict"),
     });
     return {
       ok: false as const,

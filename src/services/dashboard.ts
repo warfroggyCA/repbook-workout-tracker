@@ -59,6 +59,7 @@ export async function getDashboardStats(
 ): Promise<DashboardStats> {
   const setSemantics = {
     recordedMetricType: sql`cs.metric_type`,
+    prescribedSemanticsVersion: sql`se.prescribed_semantics_version`,
     performedSemanticsVersion: sql`cs.performed_semantics_version`,
     performedLoadType: sql`cs.performed_load_type`,
     performedLoadSemantics: sql`cs.performed_load_semantics`,

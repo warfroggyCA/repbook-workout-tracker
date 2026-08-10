@@ -11,6 +11,8 @@ import {
   healthActivities,
   recordVersions,
   sessionExercises,
+  sessionOccurrenceMutations,
+  sessionOccurrences,
   users,
   workoutSessions,
 } from "@/db/schema";
@@ -26,6 +28,11 @@ import { captureUserSnapshot } from "@/services/snapshot-capture";
 import { createTotalSystemTestSnapshot } from "../helpers/set-semantics";
 
 describe("immutable record version history", () => {
+  const completedCorrectionEvidence = {
+    category: "measurement_entry",
+    reasonNote: null,
+    source: "workout_history",
+  } as const;
   let client: PGlite;
   let db: PgliteDatabase<typeof schema>;
   let userId: string;
@@ -44,10 +51,16 @@ describe("immutable record version history", () => {
           'snapshot_restore',
           true
         )
+      ), removed_occurrence AS (
+        DELETE FROM session_occurrences
+        WHERE completed_set_id = ${setId}::uuid
+          AND EXISTS (SELECT 1 FROM authorized)
+        RETURNING id
       )
       DELETE FROM completed_sets
       WHERE id = ${setId}::uuid
         AND EXISTS (SELECT 1 FROM authorized)
+        AND (SELECT count(*) FROM removed_occurrence) >= 0
     `);
   }
 
@@ -116,7 +129,7 @@ describe("immutable record version history", () => {
           loadType: "dumbbell",
         },
       ])
-      .returning({ id: exercises.id });
+      .returning({ id: exercises.id, name: exercises.name });
     exerciseId = exercise.id;
     alternateExerciseId = alternateExercise.id;
     const [session] = await db
@@ -137,6 +150,11 @@ describe("immutable record version history", () => {
       .values({
         sessionId: session.id,
         exerciseId: exercise.id,
+        prescribedSemanticsVersion: 1,
+        prescribedExerciseName: exercise.name,
+        prescribedMetricType: "weight_reps",
+        prescribedLoadType: "barbell",
+        prescribedLoadSemantics: "total",
         targetRepsMin: 5,
         targetLoad: 100,
         targetLoadUnit: "lb",
@@ -168,6 +186,24 @@ describe("immutable record version history", () => {
         loadEntryMeaning: "total_system",
       })
       .returning({ id: completedSets.id });
+    await db.insert(sessionOccurrences).values({
+      sessionId: session.id,
+      sessionExerciseId: sessionExercise.id,
+      kind: "working_set",
+      origin: "planned",
+      sequenceIdx: 0,
+      kindOrdinal: 0,
+      plannedExerciseId: exercise.id,
+      plannedRepsMin: 5,
+      plannedRepsMax: 8,
+      plannedLoad: 100,
+      plannedLoadUnit: "lb",
+      outcome: "completed",
+      revision: 1,
+      resolvedAt: new Date("2026-07-02T14:10:00.000Z"),
+      completedSetId: setId,
+      equipmentSnapshotId,
+    });
     [{ id: activityId }] = await db
       .insert(healthActivities)
       .values({ userId, ...originalActivity() })
@@ -324,7 +360,10 @@ describe("immutable record version history", () => {
     expect(retryChange).toMatchObject({ ok: true, changed: true });
     expect(await db.query.recordVersions.findMany()).toHaveLength(2);
 
-    const restored = await restoreRecordVersion(db, userId, edited.versionId);
+    const restored = await restoreRecordVersion(db, userId, edited.versionId, {
+      expectedHistoryRevision: 0,
+      clientMutationId: crypto.randomUUID(),
+    });
     expect(restored.ok).toBe(true);
     expect(
       await db.query.completedSets.findFirst({
@@ -477,6 +516,8 @@ describe("immutable record version history", () => {
       weight: 100,
       weightUnit: "lb" as const,
       reps: 8,
+      distanceKm: null,
+      durationSeconds: null,
       rpe: 8,
       note: "Original set note",
     };
@@ -485,6 +526,8 @@ describe("immutable record version history", () => {
       weight: 50,
       weightUnit: "lb" as const,
       reps: 3,
+      distanceKm: null,
+      durationSeconds: null,
       rpe: 8.5,
       note: "Reviewed correction",
     };
@@ -498,6 +541,7 @@ describe("immutable record version history", () => {
         expected,
         expectedHistoryRevision: 0,
         clientMutationId: correctionMutationId,
+        correctionEvidence: completedCorrectionEvidence,
       },
     );
     expect(corrected).toMatchObject({ ok: true, changed: true });
@@ -540,6 +584,7 @@ describe("immutable record version history", () => {
         expected,
         expectedHistoryRevision: 0,
         clientMutationId: correctionMutationId,
+        correctionEvidence: completedCorrectionEvidence,
       },
     )).resolves.toMatchObject({
       ok: true,
@@ -552,12 +597,13 @@ describe("immutable record version history", () => {
         db,
         userId,
         setId,
-        { reps: 9 },
+        { ...correctedValues, reps: 9 },
         "set.completed_correction",
         {
           expected,
           expectedHistoryRevision: 0,
           clientMutationId: crypto.randomUUID(),
+          correctionEvidence: completedCorrectionEvidence,
         },
       ),
     ).toEqual({
@@ -599,6 +645,8 @@ describe("immutable record version history", () => {
           weight: true,
           weightUnit: true,
           reps: true,
+          distanceKm: true,
+          durationSeconds: true,
           rpe: true,
           note: true,
           targetMet: true,
@@ -632,22 +680,46 @@ describe("immutable record version history", () => {
         loadEntryMeaning: "legacy_unknown",
       })
       .returning({ id: completedSets.id });
+    await db.insert(sessionOccurrences).values({
+      sessionId,
+      sessionExerciseId,
+      kind: "working_set",
+      origin: "planned",
+      sequenceIdx: 1,
+      kindOrdinal: 1,
+      plannedExerciseId: exerciseId,
+      outcome: "completed",
+      revision: 1,
+      resolvedAt: new Date("2026-07-02T14:20:00.000Z"),
+      completedSetId: legacySet.id,
+    });
     const corrected = await updateSetWithVersion(
       db,
       userId,
       legacySet.id,
-      { weight: 50, weightUnit: "lb", reps: 3 },
+      {
+        weight: 50,
+        weightUnit: "lb",
+        reps: 3,
+        distanceKm: null,
+        durationSeconds: null,
+        rpe: 8,
+        note: "Legacy set note",
+      },
       "set.completed_correction",
       {
         expected: {
           weight: 100,
           weightUnit: "lb",
           reps: 8,
+          distanceKm: null,
+          durationSeconds: null,
           rpe: 8,
           note: "Legacy set note",
         },
         expectedHistoryRevision: 0,
         clientMutationId: crypto.randomUUID(),
+        correctionEvidence: completedCorrectionEvidence,
       },
     );
     expect(corrected).toMatchObject({ ok: true });
@@ -872,6 +944,104 @@ describe("immutable record version history", () => {
     expect(
       await restoreRecordVersion(db, userId, restoredOriginal.versionId)
     ).toMatchObject({ ok: true, changed: true });
+  });
+
+  it("restores skipped working actions when the owner replaces that exercise", async () => {
+    await removeLoggedSetForFixture();
+    await db
+      .update(workoutSessions)
+      .set({ status: "in_progress", finishedAt: null })
+      .where(eq(workoutSessions.id, sessionId));
+    const [warmup, working] = await db
+      .insert(sessionOccurrences)
+      .values([
+        {
+          sessionId,
+          sessionExerciseId,
+          kind: "exercise_warmup",
+          origin: "planned",
+          sequenceIdx: 0,
+          kindOrdinal: 0,
+          label: "Replacement warm-up",
+          plannedExerciseId: exerciseId,
+          outcome: "pending",
+          revision: 0,
+        },
+        {
+          sessionId,
+          sessionExerciseId,
+          kind: "working_set",
+          origin: "planned",
+          sequenceIdx: 1,
+          kindOrdinal: 0,
+          plannedExerciseId: exerciseId,
+          plannedRepsMin: 5,
+          plannedRepsMax: 8,
+          plannedLoad: 100,
+          plannedLoadUnit: "lb",
+          outcome: "pending",
+          revision: 0,
+        },
+      ])
+      .returning({ id: sessionOccurrences.id });
+
+    await expect(updateSessionExerciseWithVersion(
+      db,
+      userId,
+      sessionExerciseId,
+      { modificationType: "skipped", skipReason: "equipment" },
+      "session_exercise.skip",
+      { activeOnly: true },
+    )).resolves.toMatchObject({ ok: true, changed: true });
+    expect(await db.query.sessionOccurrences.findFirst({
+      where: eq(sessionOccurrences.id, working.id),
+    })).toMatchObject({
+      outcome: "skipped",
+      outcomeReason: "exercise:equipment",
+    });
+
+    const versionId = crypto.randomUUID();
+    await expect(updateSessionExerciseWithVersion(
+      db,
+      userId,
+      sessionExerciseId,
+      {
+        exerciseId: alternateExerciseId,
+        modificationType: "substituted",
+        skipReason: null,
+        substitutedForExerciseId: exerciseId,
+        substitutionReason: "equipment_busy",
+        substitutedAt: new Date("2026-07-02T14:20:00.000Z"),
+        targetLoad: null,
+        targetLoadUnit: null,
+        notes: null,
+        warmupNotes: null,
+        warmupSets: [],
+        setNotes: [],
+      },
+      "session_exercise.substitute",
+      { activeOnly: true, versionId },
+    )).resolves.toMatchObject({ ok: true, changed: true, versionId });
+
+    expect(await db.query.sessionOccurrences.findFirst({
+      where: eq(sessionOccurrences.id, working.id),
+    })).toMatchObject({
+      outcome: "pending",
+      outcomeReason: null,
+      equipmentSnapshotId: null,
+      revision: 2,
+    });
+    expect(await db.query.sessionOccurrences.findFirst({
+      where: eq(sessionOccurrences.id, warmup.id),
+    })).toMatchObject({
+      outcome: "skipped",
+      outcomeReason: "exercise:equipment",
+      revision: 1,
+    });
+    expect((await db.select({ operation: sessionOccurrenceMutations.operation })
+      .from(sessionOccurrenceMutations))
+      .map((receipt) => receipt.operation)
+      .sort()).toEqual(["restore", "skip", "skip"]);
   });
 
   it("replaces only the prospective identity, clears stale guidance, and replays one mutation identity", async () => {

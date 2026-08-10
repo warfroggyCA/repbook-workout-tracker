@@ -144,6 +144,7 @@ export const actorTypeEnum = pgEnum("actor_type", [
 
 export const painSourceEnum = pgEnum("pain_source", [
   "set_flag",
+  "set_exception",
   "session_note",
   "checkin",
 ]);

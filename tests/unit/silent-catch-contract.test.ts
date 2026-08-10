@@ -35,7 +35,7 @@ function isHandledCatch(node: ts.CatchClause, source: ts.SourceFile): boolean {
     if (ts.isThrowStatement(child)) handled = true;
     if (
       ts.isCallExpression(child) &&
-      child.expression.getText(source) === "logServerEvent"
+      child.expression.getText(source) === "logDiagnosticEvent"
     ) {
       handled = true;
     }

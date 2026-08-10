@@ -218,7 +218,7 @@ describe("progression pain hold integration", () => {
       }),
     ).toMatchObject({
       status: "pending",
-      reason: expect.stringContaining("a 4/10 pain flag"),
+      reason: expect.stringContaining("a 4/10 positive pain report"),
       evidence: expect.objectContaining({
         painLogIds: [concurrentlyRestoredPainId],
       }),
@@ -301,7 +301,7 @@ describe("progression pain hold integration", () => {
           kind: "hold",
           templateExerciseId: slot.id,
         }),
-        reason: expect.stringContaining("a 4/10 pain flag"),
+        reason: expect.stringContaining("a 4/10 positive pain report"),
         evidence: expect.objectContaining({
           painLogIds: [secondPain.id, pain.id],
           sessionIds: [secondSession.id, session.id],
@@ -352,7 +352,7 @@ describe("progression pain hold integration", () => {
         where: (table, { eq }) => eq(table.id, firstHold.id),
       }),
     ).toMatchObject({
-      reason: expect.stringContaining("a 3/10 pain flag"),
+      reason: expect.stringContaining("a 3/10 positive pain report"),
       evidence: expect.objectContaining({
         painLogIds: [pain.id],
         sessionIds: [session.id],
@@ -374,7 +374,7 @@ describe("progression pain hold integration", () => {
         where: (table, { eq }) => eq(table.id, firstHold.id),
       }),
     ).toMatchObject({
-      reason: expect.stringContaining("a 4/10 pain flag"),
+      reason: expect.stringContaining("a 4/10 positive pain report"),
       evidence: expect.objectContaining({
         painLogIds: [secondPain.id, pain.id],
         sessionIds: [secondSession.id, session.id],

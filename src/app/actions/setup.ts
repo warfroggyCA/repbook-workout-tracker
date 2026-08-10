@@ -16,7 +16,7 @@ import type {
 } from "@/db/schema/user";
 import { getCurrentUser, type CurrentUser } from "@/lib/user";
 import { sanitizeAIProviderError } from "@/lib/ai-provider-error";
-import { logServerEvent } from "@/lib/server-log";
+import { logDiagnosticEvent } from "@/lib/server-log";
 import { MAX_STORED_LOAD, normalizeStoredLoad } from "@/lib/units";
 import {
   exerciseNameSimilarity,
@@ -157,8 +157,7 @@ export async function parseSetupEquipment(
   } catch (err) {
     if (err instanceof AIUnavailableError) return { ok: false, reason: err.message };
     if (err instanceof AIControlError) return { ok: false, reason: err.message };
-    logServerEvent("error", "ai.setup_equipment_parse_failed", {
-      userId: user.id,
+    logDiagnosticEvent("ai.setup_equipment_parse_failed", {
       ...sanitizeAIProviderError(err),
     });
     return {
@@ -777,16 +776,12 @@ async function buildRoutineDraft(
     if (err instanceof AIUnavailableError) return { ok: false, reason: err.message };
     if (err instanceof AIControlError) return { ok: false, reason: err.message };
     if (err instanceof RoutineBuildPartError) {
-      logServerEvent("error", "ai.setup_routine_build_failed", {
-        userId: user.id,
-        routinePart: err.part,
+      logDiagnosticEvent("ai.setup_routine_build_failed", {
         ...sanitizeAIProviderError(err.original),
       });
       return { ok: false, reason: routineBuildFailureReason(err) };
     }
-    logServerEvent("error", "ai.setup_routine_build_failed", {
-      userId: user.id,
-      routinePart: "this request",
+    logDiagnosticEvent("ai.setup_routine_build_failed", {
       ...sanitizeAIProviderError(err),
     });
     return {

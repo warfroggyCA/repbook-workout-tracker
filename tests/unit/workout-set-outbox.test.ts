@@ -30,22 +30,41 @@ class MemoryStorage implements WorkoutSetOutboxStorage {
   }
 }
 
-function setInput(index: number): NewWorkoutSetOutboxEntry {
+function setInput(
+  index: number,
+): Extract<NewWorkoutSetOutboxEntry, { metricType: "weight_reps" }> {
   return {
     clientKey: `10000000-0000-4000-8000-${String(index).padStart(12, "0")}`,
     ownerId: "20000000-0000-4000-8000-000000000001",
     sessionId: "30000000-0000-4000-8000-000000000001",
     sessionExerciseId: "40000000-0000-4000-8000-000000000001",
+    performedExerciseId: "50000000-0000-4000-8000-000000000001",
+    performedSemanticsVersion: 1,
+    performedLoadType: "barbell",
+    performedLoadSemantics: "total",
     exerciseName: "Bench Press",
     setNo: index,
+    metricType: "weight_reps",
     weight: 100 + index * 5,
     weightUnit: "lb",
     reps: 8,
+    distanceKm: null,
+    durationSeconds: null,
     rpe: 8,
     note: index === 1 ? "First set" : null,
     equipmentSnapshotId: null,
     loadEntryMeaning: "legacy_unknown",
     createdAtISO: new Date(Date.UTC(2026, 6, 13, 12, 0, index)).toISOString(),
+  };
+}
+
+function withUnknownExceptionContext<T extends object>(entry: T) {
+  return {
+    ...entry,
+    rir: null,
+    techniqueIssue: null,
+    limitationCause: null,
+    pain: null,
   };
 }
 
@@ -96,6 +115,34 @@ describe("workout set device queue", () => {
       equipmentSnapshotId: exact.equipmentSnapshotId,
       loadEntryMeaning: "total_system",
     });
+  });
+
+  it("keeps missing, explicitly unknown, and zero rest as distinct durable commands", () => {
+    const storage = new MemoryStorage();
+    const legacyMissing = setInput(1);
+    expect(enqueueWorkoutSetOutboxEntry(storage, legacyMissing)).toMatchObject({
+      ok: true,
+    });
+    expect(
+      enqueueWorkoutSetOutboxEntry(storage, {
+        ...legacyMissing,
+        restAfterSec: null,
+      }),
+    ).toMatchObject({ ok: false, reason: expect.stringContaining("different") });
+
+    const explicitlyUnknown = setInput(2);
+    expect(
+      enqueueWorkoutSetOutboxEntry(storage, {
+        ...explicitlyUnknown,
+        restAfterSec: null,
+      }),
+    ).toMatchObject({ ok: true });
+    expect(
+      enqueueWorkoutSetOutboxEntry(storage, {
+        ...explicitlyUnknown,
+        restAfterSec: 0,
+      }),
+    ).toMatchObject({ ok: false, reason: expect.stringContaining("different") });
   });
 
   it("rejects identity drift and a second queued identity for the same set number", () => {
@@ -317,7 +364,7 @@ describe("workout set device queue", () => {
     expect(storage.getItem(WORKOUT_SET_OUTBOX_STORAGE_KEY)).toBe("{not-json");
   });
 
-  it("migrates a valid version-one set to explicit legacy evidence without losing it", () => {
+  it("quarantines version-one sets instead of inventing performed evidence", () => {
     const current = {
       ...setInput(1),
       status: "queued" as const,
@@ -340,30 +387,34 @@ describe("workout set device queue", () => {
     );
 
     expect(readWorkoutSetOutbox(storage)).toMatchObject({
-      entries: [{
-        ...versionOne,
-        equipmentSnapshotId: null,
-        loadEntryMeaning: "legacy_unknown",
+      entries: [],
+      quarantined: [{
+        raw: versionOne,
+        reason: expect.stringContaining("older recording format"),
       }],
-      quarantined: [],
       error: null,
     });
 
-    markWorkoutSetTransientFailure(storage, current.clientKey, "Offline");
+    expect(enqueueWorkoutSetOutboxEntry(storage, setInput(2))).toMatchObject({
+      ok: true,
+    });
     const persisted = JSON.parse(
       storage.getItem(WORKOUT_SET_OUTBOX_STORAGE_KEY) ?? "null",
     );
     expect(persisted).toMatchObject({
-      version: 3,
-      entries: [expect.objectContaining({
-        clientKey: current.clientKey,
-        equipmentSnapshotId: null,
-        loadEntryMeaning: "legacy_unknown",
-      })],
+      version: 4,
+      entries: [
+        expect.objectContaining({ clientKey: setInput(2).clientKey }),
+        expect.objectContaining({
+          quarantine: "workout-set-outbox-entry-v1",
+          raw: versionOne,
+          reason: expect.stringContaining("older recording format"),
+        }),
+      ],
     });
   });
 
-  it("keeps version-two retries but leaves their observed completion unknown", () => {
+  it("quarantines version-two retries because their recording contract is incomplete", () => {
     const retained = {
       ...setInput(1),
       status: "queued" as const,
@@ -376,11 +427,11 @@ describe("workout set device queue", () => {
       version: 2,
       entries: [retained],
     }))).toMatchObject({
-      entries: [{
-        ...retained,
-        observedCompletedAtISO: null,
+      entries: [],
+      quarantined: [{
+        raw: retained,
+        reason: expect.stringContaining("older recording format"),
       }],
-      quarantined: [],
       error: null,
     });
   });
@@ -389,6 +440,7 @@ describe("workout set device queue", () => {
     const storage = new MemoryStorage();
     const first = {
       ...setInput(1),
+      observedCompletedAtISO: null,
       status: "queued",
       attemptCount: 0,
       nextAttemptAtISO: null,
@@ -398,20 +450,20 @@ describe("workout set device queue", () => {
     const corrupt = { clientKey: "not-a-uuid", untouched: { value: 7 } };
     storage.setItem(
       WORKOUT_SET_OUTBOX_STORAGE_KEY,
-      JSON.stringify({ version: 1, entries: [first, corrupt] })
+      JSON.stringify({ version: 4, entries: [first, corrupt] })
     );
 
     const snapshot = readWorkoutSetOutbox(storage);
-    expect(snapshot.entries).toEqual([
-      { ...first, observedCompletedAtISO: null },
-    ]);
+    expect(snapshot.entries).toEqual([withUnknownExceptionContext(first)]);
     expect(snapshot.quarantined).toEqual([
       expect.objectContaining({ quarantineKey: "entries:1", raw: corrupt }),
     ]);
-    expect(nextWorkoutSetOutboxEntry(snapshot.entries, first.ownerId)).toEqual({
-      ...first,
-      observedCompletedAtISO: null,
-    });
+    expect(nextWorkoutSetOutboxEntry(snapshot.entries, first.ownerId)).toEqual(
+      withUnknownExceptionContext({
+        ...first,
+        observedCompletedAtISO: null,
+      }),
+    );
 
     markWorkoutSetTransientFailure(
       storage,
@@ -437,6 +489,7 @@ describe("workout set device queue", () => {
   it("keeps the first set and quarantines only a later duplicate slot", () => {
     const first = {
       ...setInput(1),
+      observedCompletedAtISO: null,
       status: "queued",
       attemptCount: 0,
       nextAttemptAtISO: null,
@@ -450,11 +503,9 @@ describe("workout set device queue", () => {
     };
 
     const snapshot = parseWorkoutSetOutbox(
-      JSON.stringify({ version: 1, entries: [first, later] })
+      JSON.stringify({ version: 4, entries: [first, later] })
     );
-    expect(snapshot.entries).toEqual([
-      { ...first, observedCompletedAtISO: null },
-    ]);
+    expect(snapshot.entries).toEqual([withUnknownExceptionContext(first)]);
     expect(snapshot.quarantined).toEqual([
       expect.objectContaining({
         quarantineKey: "entries:1",
@@ -466,7 +517,7 @@ describe("workout set device queue", () => {
     const storage = new MemoryStorage();
     storage.setItem(
       WORKOUT_SET_OUTBOX_STORAGE_KEY,
-      JSON.stringify({ version: 1, entries: [first, later] })
+      JSON.stringify({ version: 4, entries: [first, later] })
     );
     expect(removeWorkoutSetOutboxEntry(storage, first.clientKey).ok).toBe(true);
     const afterFirstIsRemoved = readWorkoutSetOutbox(storage);
@@ -479,6 +530,7 @@ describe("workout set device queue", () => {
   it("quarantines the later duplicate identity even when its set number differs", () => {
     const first = {
       ...setInput(1),
+      observedCompletedAtISO: null,
       status: "queued",
       attemptCount: 0,
       nextAttemptAtISO: null,
@@ -487,11 +539,9 @@ describe("workout set device queue", () => {
     };
     const later = { ...first, setNo: 2 };
     const snapshot = parseWorkoutSetOutbox(
-      JSON.stringify({ version: 1, entries: [first, later] })
+      JSON.stringify({ version: 4, entries: [first, later] })
     );
-    expect(snapshot.entries).toEqual([
-      { ...first, observedCompletedAtISO: null },
-    ]);
+    expect(snapshot.entries).toEqual([withUnknownExceptionContext(first)]);
     expect(snapshot.quarantined).toEqual([
       expect.objectContaining({
         raw: later,
@@ -504,6 +554,7 @@ describe("workout set device queue", () => {
     const storage = new MemoryStorage();
     const valid = {
       ...setInput(1),
+      observedCompletedAtISO: null,
       status: "queued",
       attemptCount: 0,
       nextAttemptAtISO: null,
@@ -515,7 +566,7 @@ describe("workout set device queue", () => {
     storage.setItem(
       WORKOUT_SET_OUTBOX_STORAGE_KEY,
       JSON.stringify({
-        version: 1,
+        version: 4,
         entries: [firstCorrupt, valid, secondCorrupt],
       })
     );
@@ -528,18 +579,16 @@ describe("workout set device queue", () => {
       )
     ).toMatchObject({ ok: true });
     const snapshot = readWorkoutSetOutbox(storage);
-    expect(snapshot.entries).toEqual([
-      { ...valid, observedCompletedAtISO: null },
-    ]);
+    expect(snapshot.entries).toEqual([withUnknownExceptionContext(valid)]);
     expect(snapshot.quarantined).toEqual([
       expect.objectContaining({ raw: secondCorrupt }),
     ]);
     expect(
       JSON.parse(storage.getItem(WORKOUT_SET_OUTBOX_STORAGE_KEY) ?? "null")
     ).toEqual({
-      version: 3,
+      version: 4,
       entries: [
-        { ...valid, observedCompletedAtISO: null },
+        withUnknownExceptionContext(valid),
         {
           quarantine: "workout-set-outbox-entry-v1",
           raw: secondCorrupt,
@@ -599,7 +648,7 @@ describe("workout set device queue", () => {
     };
     storage.setItem(
       WORKOUT_SET_OUTBOX_STORAGE_KEY,
-      JSON.stringify({ version: 1, entries: [forgedWrapper] })
+      JSON.stringify({ version: 4, entries: [forgedWrapper] })
     );
 
     const snapshot = readWorkoutSetOutbox(storage);

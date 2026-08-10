@@ -75,6 +75,7 @@ type ContextRow = {
   session_id: string;
   exercise_id: string;
   load_type: string;
+  uses_prescribed_meaning: boolean;
   target_load: number | string | null;
   target_load_unit: "lb" | "kg" | null;
   status: string;
@@ -168,7 +169,11 @@ async function attachOccurrenceStates(
 export function sessionEquipmentSelectionSourceRevisionExpression(
   userId: string,
   exerciseId: string,
+  includeCurrentRequirements = true,
 ) {
+  if (!includeCurrentRequirements) {
+    return sql`md5(${inventoryRevisionExpression(userId)})`;
+  }
   return sql`md5(
     ${inventoryRevisionExpression(userId)}
     || coalesce((SELECT jsonb_agg(to_jsonb(requirement) ORDER BY requirement.id)::text
@@ -216,7 +221,16 @@ async function replayedReceipt(
 async function loadContext(db: Db, userId: string, sessionExerciseId: string) {
   const context = resultRows<Omit<ContextRow, "source_revision">>(await db.execute(sql`
     SELECT session_exercise.session_id, session_exercise.exercise_id,
-           catalog.load_type::text, session_exercise.target_load,
+           CASE
+             WHEN session_exercise.prescribed_semantics_version = 1
+               AND session_exercise.modification_type NOT IN ('substituted', 'added')
+             THEN session_exercise.prescribed_load_type
+             ELSE catalog.load_type
+           END::text AS load_type,
+           coalesce((session_exercise.prescribed_semantics_version = 1
+             AND session_exercise.modification_type NOT IN ('substituted', 'added')), false)
+             AS uses_prescribed_meaning,
+           session_exercise.target_load,
            session_exercise.target_load_unit::text, session.status,
            session.archived_at, session_exercise.current_equipment_snapshot_id
     FROM session_exercises session_exercise
@@ -228,7 +242,11 @@ async function loadContext(db: Db, userId: string, sessionExerciseId: string) {
   `))[0] ?? null;
   if (!context) return null;
   const revision = resultRows(await db.execute(sql`
-    SELECT ${sessionEquipmentSelectionSourceRevisionExpression(userId, context.exercise_id)} AS source_revision
+    SELECT ${sessionEquipmentSelectionSourceRevisionExpression(
+      userId,
+      context.exercise_id,
+      !context.uses_prescribed_meaning,
+    )} AS source_revision
   `))[0];
   if (!revision) return null;
   return { ...context, source_revision: String(revision.source_revision) };
@@ -238,6 +256,7 @@ export type SessionEquipmentAvailabilityResolution = {
   exerciseId: string;
   sourceRevision: string;
   availableOptionCount: number;
+  usesPrescribedMeaning: boolean;
 };
 
 /**
@@ -256,7 +275,9 @@ export async function resolveSessionEquipmentAvailability(
     const [{ items, plates }, profiles, requirements] = await Promise.all([
       loadLiveInventory(db, userId),
       loadEquipmentLoadProfiles(db, userId),
-      loadRequirements(db, context.exercise_id),
+      context.uses_prescribed_meaning
+        ? Promise.resolve({ broad: [], exact: null })
+        : loadRequirements(db, context.exercise_id),
     ]);
     const presentation = buildSessionEquipmentPresentation({
       exercise: {
@@ -287,6 +308,7 @@ export async function resolveSessionEquipmentAvailability(
       SELECT ${sessionEquipmentSelectionSourceRevisionExpression(
         userId,
         context.exercise_id,
+        !context.uses_prescribed_meaning,
       )} AS source_revision
     `))[0];
     if (
@@ -297,6 +319,7 @@ export async function resolveSessionEquipmentAvailability(
         exerciseId: context.exercise_id,
         sourceRevision: context.source_revision,
         availableOptionCount: presentation.setup?.options.length ?? 0,
+        usesPrescribedMeaning: context.uses_prescribed_meaning,
       };
     }
   }
@@ -535,7 +558,11 @@ async function applySelection(
       WHERE status = 'in_progress' AND archived_at IS NULL
         AND exercise_id = ${context.exercise_id}::uuid
         AND current_equipment_snapshot_id IS NOT DISTINCT FROM ${input.expectedCurrentSnapshotId}::uuid
-        AND ${sessionEquipmentSelectionSourceRevisionExpression(userId, context.exercise_id)} = ${context.source_revision}
+        AND ${sessionEquipmentSelectionSourceRevisionExpression(
+          userId,
+          context.exercise_id,
+          !context.uses_prescribed_meaning,
+        )} = ${context.source_revision}
         AND NOT EXISTS (SELECT 1 FROM existing)
       FOR UPDATE
     ), inserted_snapshot AS (
@@ -736,7 +763,9 @@ export async function mutateSessionEquipmentSelection(
   const [{ items, plates }, profiles, requirements] = await Promise.all([
     loadLiveInventory(db, userId),
     loadEquipmentLoadProfiles(db, userId),
-    loadRequirements(db, context.exercise_id),
+    context.uses_prescribed_meaning
+      ? Promise.resolve({ broad: [], exact: null })
+      : loadRequirements(db, context.exercise_id),
   ]);
   const itemMap = new Map(items.map((item) => [item.id, item]));
   const inventory: InventoryItem[] = items.map((item) => ({
@@ -744,7 +773,7 @@ export async function mutateSessionEquipmentSelection(
     available: item.available,
     attrs: item.attrs ?? {},
   }));
-  if (!exerciseIsAvailable(
+  if (!context.uses_prescribed_meaning && !exerciseIsAvailable(
     requirements.broad,
     buildEquipmentAvailability(
       inventory,
@@ -777,12 +806,42 @@ export async function mutateSessionEquipmentSelection(
     attrs: primaryItem.attrs ?? {},
   };
   if (
-    primaryBroadRequirements.length === 0 ||
+    (!context.uses_prescribed_meaning && primaryBroadRequirements.length === 0) ||
     !primaryBroadRequirements.every((requirement) =>
       requirementSatisfied(requirement, [primaryInventoryItem]),
     )
   ) {
     return { outcome: "invalid_setup" };
+  }
+
+  if (context.uses_prescribed_meaning) {
+    const presentation = buildSessionEquipmentPresentation({
+      exercise: {
+        id: input.sessionExerciseId,
+        exerciseId: context.exercise_id,
+        loadType: context.load_type,
+        targetLoad:
+          context.target_load == null ? null : Number(context.target_load),
+        targetLoadUnit: context.target_load_unit,
+        requirements: [],
+        exactRequirement: null,
+        currentSelection: null,
+      },
+      profiles,
+      inventory,
+      plates: plates.map((plate) => ({
+        id: plate.id,
+        denomination: Number(plate.denomination),
+        quantity: Number(plate.quantity),
+        unit: plate.unit,
+      })),
+    });
+    const selectedWasOffered = presentation.setup?.options.some(
+      (option) =>
+        option.equipmentItemId === input.equipmentItemId &&
+        option.attachmentItemId === input.attachmentItemId,
+    ) ?? false;
+    if (!selectedWasOffered) return { outcome: "invalid_setup" };
   }
 
   const selectedCandidate = exactCandidate(

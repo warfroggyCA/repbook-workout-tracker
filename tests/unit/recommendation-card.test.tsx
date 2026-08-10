@@ -7,8 +7,10 @@ vi.mock("next/navigation", () => ({
 
 vi.mock("@/app/actions/recommendations", () => ({
   approveRecommendation: vi.fn(),
+  deferRecommendation: vi.fn(),
   dismissRecommendationNotice: vi.fn(),
   rejectRecommendation: vi.fn(),
+  resumeRecommendation: vi.fn(),
 }));
 
 import {
@@ -30,9 +32,26 @@ const baseRecommendation: RecommendationCardData = {
   suggestedExercise: null,
   alternatives: [],
   evidence: [
-    { label: "Highest recorded pain flag", value: "4/10" },
+    { label: "Highest positive pain report", value: "4/10" },
     { label: "Evidence window", value: "14 days" },
   ],
+  reviewRevision: 1,
+  deferRevision: 0,
+  deferredAt: null,
+  revisitOn: null,
+  deferReason: null,
+  createdAt: "2026-08-07T12:00:00.000Z",
+  createdAtLabel: "Aug 7, 2026, 8:00 a.m.",
+  evidenceState: "supported",
+  evidenceExplanation: "The exact cited records remain current and owner-scoped.",
+  evidenceLinks: [],
+  actionable: false,
+  producer: "pain_consistency",
+  sourceVersion: "pain-evidence-v1",
+  generatedAt: "2026-08-07T12:00:00.000Z",
+  limitations: ["Missing observations remain unknown."],
+  proposedEffect: "No Program change.",
+  externalRequestedOutcome: null,
 };
 
 function render(rec: RecommendationCardData) {
@@ -52,7 +71,8 @@ describe("RecommendationCard", () => {
     expect(html).toContain("Dismiss notice");
     expect(html).not.toContain("Approve");
     expect(html).not.toContain(">Reject<");
-    expect(html).not.toContain("Confidence");
+    expect(html).toContain("Confidence");
+    expect(html).toContain("Review evidence");
   });
 
   it("keeps load-change and substitution proposals actionable", () => {
@@ -64,6 +84,8 @@ describe("RecommendationCard", () => {
       fromLoad: 105,
       toLoad: 110,
       loadUnit: "lb",
+      actionable: true,
+      proposedEffect: "Publish 110 lb in a new future Program version.",
     });
     const substitutionHtml = render({
       ...baseRecommendation,
@@ -71,6 +93,8 @@ describe("RecommendationCard", () => {
       kind: "substitution",
       reason: "Consider a different exercise.",
       suggestedExercise: "Dumbbell Bench Press",
+      actionable: true,
+      proposedEffect: "Publish the replacement in a new future Program version.",
     });
 
     for (const html of [loadHtml, substitutionHtml]) {

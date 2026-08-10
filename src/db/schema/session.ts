@@ -75,6 +75,10 @@ export const workoutSessions = pgTable(
       .default(false),
     status: sessionStatusEnum("status").notNull().default("in_progress"),
     timeBudgetMin: integer("time_budget_min"),
+    // Owner-scoped idempotency identity for an explicit Today Start intent.
+    // Legacy/imported/compiler sessions intentionally retain null here.
+    startRequestKey: text("start_request_key"),
+    startRequestHash: text("start_request_hash"),
     compilationAcceptanceKey: text("compilation_acceptance_key"),
     compilationSnapshot: jsonb("compilation_snapshot").$type<{
       proposalId: string;
@@ -105,6 +109,9 @@ export const workoutSessions = pgTable(
     uniqueIndex("workout_sessions_one_active_uq")
       .on(t.userId)
       .where(sql`${t.status} = 'in_progress' AND ${t.archivedAt} IS NULL`),
+    uniqueIndex("workout_sessions_start_request_uq")
+      .on(t.userId, t.startRequestKey)
+      .where(sql`${t.startRequestKey} IS NOT NULL`),
     uniqueIndex("workout_sessions_compilation_acceptance_uq")
       .on(t.userId, t.compilationAcceptanceKey)
       .where(sql`${t.compilationAcceptanceKey} IS NOT NULL`),
@@ -133,6 +140,10 @@ export const workoutSessions = pgTable(
     check(
       "workout_sessions_time_budget_check",
       sql`${t.timeBudgetMin} IS NULL OR ${t.timeBudgetMin} BETWEEN 5 AND 600`
+    ),
+    check(
+      "workout_sessions_start_request_identity_check",
+      sql`(${t.startRequestKey} IS NULL AND ${t.startRequestHash} IS NULL) OR (${t.startRequestKey} ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$' AND ${t.startRequestHash} ~ '^[0-9a-f]{64}$')`
     ),
     check(
       "workout_sessions_compilation_snapshot_check",
@@ -309,6 +320,14 @@ export const sessionExercises = pgTable(
       .references(() => exercises.id),
     sourceExerciseKey: text("source_exercise_key"),
     sourceExerciseName: text("source_exercise_name"),
+    // Immutable meaning captured when a Program prescription becomes a
+    // workout fact. Null means legacy/imported/otherwise unknown, never an
+    // invitation to infer from the mutable exercise catalog.
+    prescribedSemanticsVersion: integer("prescribed_semantics_version"),
+    prescribedExerciseName: text("prescribed_exercise_name"),
+    prescribedMetricType: metricTypeEnum("prescribed_metric_type"),
+    prescribedLoadType: text("prescribed_load_type"),
+    prescribedLoadSemantics: loadSemanticsEnum("prescribed_load_semantics"),
     plannedFromTemplateExerciseId: uuid("planned_from_template_exercise_id"),
     sourceSlotLineageId: uuid("source_slot_lineage_id"),
     modificationType: modificationTypeEnum("modification_type")
@@ -383,6 +402,10 @@ export const sessionExercises = pgTable(
       "session_exercises_warmup_load_unit_check",
       sql`NOT jsonb_path_exists(${t.warmupSets}, '$[*] ? ((@.load != null && (!exists(@.loadUnit) || @.loadUnit == null)) || (@.load == null && exists(@.loadUnit) && @.loadUnit != null))')`
     ),
+    check(
+      "session_exercises_prescribed_semantics_check",
+      sql`num_nonnulls(${t.prescribedSemanticsVersion}, ${t.prescribedExerciseName}, ${t.prescribedMetricType}, ${t.prescribedLoadType}, ${t.prescribedLoadSemantics}) IN (0, 5) AND (${t.prescribedSemanticsVersion} IS NULL OR (${t.prescribedSemanticsVersion} = 1 AND length(btrim(${t.prescribedExerciseName})) BETWEEN 1 AND 300 AND length(btrim(${t.prescribedLoadType})) BETWEEN 1 AND 50))`
+    ),
   ]
 );
 
@@ -414,6 +437,9 @@ export const completedSets = pgTable(
     distanceKm: real("distance_km"),
     durationSeconds: integer("duration_seconds"),
     rpe: real("rpe"), // ~6 easy / 7 ok / 8 hard / 9.5 grind
+    rir: real("rir"),
+    techniqueIssue: text("technique_issue"),
+    limitationCause: text("limitation_cause"),
     isWarmup: boolean("is_warmup").notNull().default(false),
     targetMet: boolean("target_met"),
     restTakenSec: integer("rest_taken_sec"),
@@ -494,6 +520,18 @@ export const completedSets = pgTable(
         OR
         (${t.performedSemanticsVersion} = 1 AND ${t.performedLoadType} IS NOT NULL AND length(btrim(${t.performedLoadType})) > 0 AND ${t.performedLoadSemantics} IS NOT NULL)
       )`,
+    ),
+    check(
+      "completed_sets_effort_measure_valid",
+      sql`${t.rir} IS NULL OR (${t.rir} BETWEEN 0 AND 10 AND ${t.rpe} IS NULL)`,
+    ),
+    check(
+      "completed_sets_technique_issue_valid",
+      sql`${t.techniqueIssue} IS NULL OR ${t.techniqueIssue} IN ('bracing', 'range_of_motion', 'control', 'balance', 'positioning', 'tempo', 'other')`,
+    ),
+    check(
+      "completed_sets_limitation_cause_valid",
+      sql`${t.limitationCause} IS NULL OR ${t.limitationCause} IN ('strength_fatigue', 'breathing_conditioning', 'grip', 'mobility', 'pain', 'technique', 'equipment_setup', 'time', 'other')`,
     ),
   ]
 );
@@ -794,6 +832,9 @@ export const painLogs = pgTable(
     index("pain_logs_active_session_idx")
       .on(t.sessionId)
       .where(sql`${t.archivedAt} IS NULL AND ${t.sessionId} IS NOT NULL`),
+    uniqueIndex("pain_logs_active_completed_set_uq")
+      .on(t.completedSetId)
+      .where(sql`${t.archivedAt} IS NULL AND ${t.completedSetId} IS NOT NULL`),
   ]
 );
 

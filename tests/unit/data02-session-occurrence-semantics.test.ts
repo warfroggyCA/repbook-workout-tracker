@@ -183,7 +183,7 @@ describe("DATA-02 durable workout occurrence semantics", () => {
       occurrence: {
         outcome: "pending",
         outcomeReason: null,
-        outcomeNote: null,
+        outcomeNote: "Stopped with form intact",
         revision: 3,
         resolvedAt: null,
       },

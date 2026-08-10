@@ -10,6 +10,49 @@ export type SetupExistingInventory = {
 
 export type DraftChecklistItem = ConfirmedEquipmentItem & { clientKey: string };
 
+const PAIRABLE_ENTRY_TYPES = new Set<ConfirmedEquipmentItem["type"]>([
+  "dumbbell",
+  "kettlebell",
+]);
+
+/**
+ * Quantity counts the selected logical unit. A paired row represents complete
+ * matched pairs, never the individual weights inside those pairs.
+ */
+export function equipmentQuantityLabel(
+  type: ConfirmedEquipmentItem["type"],
+  pair: boolean | null
+): string {
+  if (!PAIRABLE_ENTRY_TYPES.has(type)) return "How many";
+  if (pair === true) return "How many pairs";
+  if (pair === false) return "How many singles";
+  return "Choose pair or single first";
+}
+
+/**
+ * Repeated checklist entries need distinct default names because the atomic
+ * inventory save deliberately rejects duplicate type-and-label identities.
+ */
+export function nextChecklistItemLabel(
+  items: ReadonlyArray<Pick<DraftChecklistItem, "type" | "label">>,
+  type: ConfirmedEquipmentItem["type"],
+  baseLabel: string
+): string {
+  const sameType = items.filter((item) => item.type === type);
+  if (sameType.length === 0) return baseLabel;
+
+  const used = new Set(
+    sameType.map((item) => item.label.trim().toLocaleLowerCase())
+  );
+  let suffix = sameType.length + 1;
+  let candidate = `${baseLabel} ${suffix}`;
+  while (used.has(candidate.toLocaleLowerCase())) {
+    suffix += 1;
+    candidate = `${baseLabel} ${suffix}`;
+  }
+  return candidate;
+}
+
 const WEIGHTED_ENTRY_TYPES = new Set<ConfirmedEquipmentItem["type"]>([
   "barbell",
   "ez_bar",

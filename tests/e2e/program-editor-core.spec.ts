@@ -37,9 +37,96 @@ test("opens and operates the keyboard-accessible Program editor", async ({
   await signIn(page);
   await page.emulateMedia({ reducedMotion: "reduce" });
   await page.goto("/program");
-  await page.getByRole("button", { name: "Edit program", exact: true }).click();
+  await expect(
+    page.getByRole("tab", { name: "Day A — Squat", exact: true }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Edit this day", exact: true }).click();
   await expect(page.getByRole("heading", { name: /^Edit / })).toBeVisible();
   await expect(page.getByRole("status")).toContainText("All changes saved");
+  await expect(
+    page.getByRole("heading", { name: "How Program changes work", exact: true }),
+  ).toBeVisible();
+  const exerciseRows = page.locator(
+    'section[aria-label$=" exercises"] > [data-program-slot-index]',
+  );
+  expect(await exerciseRows.count()).toBeGreaterThan(1);
+  const initialNames = await exerciseRows
+    .locator('button[aria-expanded] span[id$="-label"]')
+    .allTextContents();
+  const firstExerciseName = initialNames[0]?.trim();
+  expect(firstExerciseName).toBeTruthy();
+  const firstHandle = page.getByRole("button", {
+    name: `Drag ${firstExerciseName} to reorder`,
+    exact: true,
+  });
+
+  await firstHandle.focus();
+  await page.keyboard.press("ArrowDown");
+  await expect(
+    exerciseRows.nth(1).locator('button[aria-expanded] span[id$="-label"]'),
+  ).toHaveText(firstExerciseName!);
+  await expect(page.getByRole("status")).toContainText("All changes saved");
+  await firstHandle.focus();
+  await page.keyboard.press("ArrowUp");
+  await expect(
+    exerciseRows.nth(0).locator('button[aria-expanded] span[id$="-label"]'),
+  ).toHaveText(firstExerciseName!);
+  await expect(page.getByRole("status")).toContainText("All changes saved");
+
+  const firstExerciseToggle = exerciseRows
+    .nth(0)
+    .locator('button[aria-controls^="editor-"]');
+  if ((await firstExerciseToggle.getAttribute("aria-expanded")) === "true") {
+    await firstExerciseToggle.click();
+    await expect(firstExerciseToggle).toHaveAttribute("aria-expanded", "false");
+  }
+  await page.setViewportSize({ width: 390, height: 844 });
+  await exerciseRows.nth(1).scrollIntoViewIfNeeded();
+  const firstHandleBox = await firstHandle.boundingBox();
+  const secondHandleBox = await exerciseRows
+    .nth(1)
+    .getByRole("button", { name: /^Drag / })
+    .boundingBox();
+  expect(firstHandleBox).not.toBeNull();
+  expect(secondHandleBox).not.toBeNull();
+  await page.mouse.move(
+    firstHandleBox!.x + firstHandleBox!.width / 2,
+    firstHandleBox!.y + firstHandleBox!.height / 2,
+  );
+  await page.mouse.down();
+  await expect(
+    page.locator('[data-program-reorder-active="true"]'),
+  ).toBeVisible();
+  await expect(
+    exerciseRows.nth(0).getByText("Moving", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    exerciseRows.nth(0).getByText("Drop here", { exact: true }),
+  ).toBeVisible();
+  await page.mouse.up();
+  await expect(
+    page.locator('[data-program-reorder-active="true"]'),
+  ).toHaveCount(0);
+  await expect(page.getByText("Drop here", { exact: true })).toHaveCount(0);
+  await firstHandle.dragTo(
+    exerciseRows.nth(1).getByRole("button", { name: /^Drag / }),
+  );
+  await expect(
+    exerciseRows.nth(1).locator('button[aria-expanded] span[id$="-label"]'),
+  ).toHaveText(firstExerciseName!);
+  await expect(page.getByRole("status")).toContainText("All changes saved");
+  await firstHandle.focus();
+  await page.keyboard.press("ArrowUp");
+  await expect(
+    exerciseRows.nth(0).locator('button[aria-expanded] span[id$="-label"]'),
+  ).toHaveText(firstExerciseName!);
+  await expect(page.getByRole("status")).toContainText("All changes saved");
+  await page.setViewportSize({ width: 1280, height: 720 });
+  await page.reload();
+  await expect(page.getByRole("heading", { name: /^Edit / })).toBeVisible();
+  await expect(
+    exerciseRows.nth(0).locator('button[aria-expanded] span[id$="-label"]'),
+  ).toHaveText(firstExerciseName!);
   const advancedOptions = page
     .locator("details")
     .filter({ hasText: "Advanced session options" });
@@ -62,7 +149,7 @@ test("opens and operates the keyboard-accessible Program editor", async ({
   await expect(reviewTab).toHaveAttribute("aria-selected", "true");
   await expect(
     page.getByRole("heading", {
-      name: /Check before activating|Ready to activate|No Program changes yet/,
+      name: /Review before publishing|Ready to publish|No Program changes yet/,
     }),
   ).toBeVisible();
   await page.keyboard.press("ArrowRight");
@@ -91,6 +178,9 @@ test("opens and operates the keyboard-accessible Program editor", async ({
 
   await page.setViewportSize({ width: 390, height: 844 });
   await page.waitForTimeout(300);
+  const handleBox = await firstHandle.boundingBox();
+  expect(handleBox?.width).toBeGreaterThanOrEqual(44);
+  expect(handleBox?.height).toBeGreaterThanOrEqual(44);
   const layout = await page.evaluate(() => ({
     scrollWidth: document.documentElement.scrollWidth,
     clientWidth: document.documentElement.clientWidth,
@@ -121,9 +211,11 @@ test("opens and operates the keyboard-accessible Program editor", async ({
     await expect(page.getByRole("status")).toContainText("All changes saved");
     await page.getByRole("tab", { name: "Review", exact: true }).click();
     await page.getByRole("button", { name: "Check Program", exact: true }).first().click();
-    await expect(page.getByRole("heading", { name: "Ready to activate" })).toBeVisible();
-    await page.getByRole("button", { name: "Activate new version", exact: true }).click();
-    await expect(page.getByText(/is now current/)).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Ready to publish" })).toBeVisible();
+    await page.getByRole("button", { name: "Publish future Program", exact: true }).click();
+    await expect(
+      page.getByText(/workouts started from this point forward/i),
+    ).toBeVisible();
     await page.getByRole("link", { name: "View active Program", exact: true }).click();
     await expect(page).toHaveURL(/\/program$/);
     compilerEntry = page.getByText("Build session proposal", { exact: true });

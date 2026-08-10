@@ -33,6 +33,7 @@ const snapshotA = "10000000-0000-4000-8000-000000000027";
 const snapshotB = "10000000-0000-4000-8000-000000000028";
 const secondExercise = "10000000-0000-4000-8000-000000000029";
 const occurrence = "10000000-0000-4000-8000-000000000030";
+const performedExercise = "10000000-0000-4000-8000-000000000033";
 
 describe("equipment and set command sync", () => {
   let storage: MemoryStorage;
@@ -68,7 +69,11 @@ describe("equipment and set command sync", () => {
     }, 1000);
     enqueueWorkoutSetOutboxEntry(storage, {
       clientKey: setA, ownerId: owner, sessionId: session, sessionExerciseId: exercise,
-      exerciseName: "Curl", setNo: 1, weight: 43, weightUnit: "lb", reps: 10,
+      performedExerciseId: performedExercise, performedSemanticsVersion: 1,
+      performedLoadType: "ez_bar", performedLoadSemantics: "total",
+      exerciseName: "Curl", setNo: 1, metricType: "weight_reps",
+      weight: 43, weightUnit: "lb", reps: 10,
+      distanceKm: null, durationSeconds: null,
       rpe: null, note: null, equipmentSnapshotId: null,
       equipmentSelectionClientKey: selectionA, loadEntryMeaning: "total_system",
       createdAtISO: new Date(1001).toISOString(),

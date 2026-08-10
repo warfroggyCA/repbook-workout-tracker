@@ -13,7 +13,10 @@ import {
   coachingInsights,
   sessionOccurrences,
   sessionEquipmentSnapshots,
+  recordVersions,
+  externalExerciseMappings,
 } from "@/db/schema";
+import { hevyMappingKey } from "@/services/exercise-map";
 import {
   captureUserSnapshot,
   snapshotRecordCounts,
@@ -22,6 +25,25 @@ import {
 } from "@/services/snapshot-capture";
 import { validateSnapshotPayload } from "@/services/snapshot-restore";
 import { workingSetDisplayPosition } from "@/lib/session-occurrences";
+import {
+  PRESCRIPTION_OUTCOME_ALGORITHM_VERSION,
+  classifyPrescriptionOutcome,
+  classifySetMetricContainment,
+} from "@/lib/set-metric-semantics";
+import { classifyPerformedSemanticFacet } from "@/lib/history-workout-evidence";
+import {
+  classifyExerciseEvidenceTier,
+  classifyExerciseIdentityScope,
+  EXERCISE_HISTORY_ALGORITHM_VERSION,
+  resolveReviewedExerciseMapping,
+  tierWithReviewedMapping,
+  type ReviewedExerciseMapping,
+  type ReviewedMappingStatus,
+} from "@/lib/history-exercise-evidence";
+import {
+  PAIN_EVIDENCE_ALGORITHM_VERSION,
+  classifyPainEvidence,
+} from "@/lib/pain-evidence";
 
 export const BACKUP_SCHEMA_VERSION = SNAPSHOT_SCHEMA_VERSION;
 export const USER_HELD_BACKUP_FORMAT = "workout-tracker-canonical-backup";
@@ -63,6 +85,32 @@ export function sinceDate(weeks: number | null): Date | null {
     : new Date(Date.now() - weeks * 7 * 24 * 60 * 60 * 1000);
 }
 
+function reviewedMappingContext(input: {
+  source: string;
+  sourceExerciseName: string | null;
+  performedExerciseId: string | null;
+  mappings: ReviewedExerciseMapping[];
+}): {
+  status: ReviewedMappingStatus;
+  mapping: ReviewedExerciseMapping | null;
+} {
+  if (input.source !== "hevy") {
+    return { status: "not_applicable", mapping: null };
+  }
+  if (input.performedExerciseId == null) {
+    return { status: "inconsistent", mapping: null };
+  }
+  return resolveReviewedExerciseMapping({
+    source: input.source,
+    performedExerciseId: input.performedExerciseId,
+    normalizedKey:
+      input.sourceExerciseName == null
+        ? null
+        : hevyMappingKey(input.sourceExerciseName),
+    mappings: input.mappings,
+  });
+}
+
 /** Set-level history — the spreadsheet-friendly core export (plan §16). */
 export async function buildSetsCsv(
   db: Db,
@@ -75,6 +123,7 @@ export async function buildSetsCsv(
       timezone: workoutSessions.timezone,
       localDate: workoutSessions.localDate,
       template: workoutSessions.templateName,
+      sessionStatus: workoutSessions.status,
       source: workoutSessions.source,
       sourceWorkoutKey: workoutSessions.sourceWorkoutKey,
       importBatchId: workoutSessions.importBatchId,
@@ -83,6 +132,8 @@ export async function buildSetsCsv(
       sourceProgramId: workoutSessions.sourceProgramId,
       sourceProgramVersionId: workoutSessions.sourceProgramVersionId,
       sourceDayLineageId: workoutSessions.sourceDayLineageId,
+      startRequestKey: workoutSessions.startRequestKey,
+      startRequestHash: workoutSessions.startRequestHash,
       sessionQualityFlags: workoutSessions.dataQualityFlags,
       durationExcluded: workoutSessions.excludeDurationFromAnalytics,
       compilerProposalId: sql<string | null>`${workoutSessions.compilationSnapshot} ->> 'proposalId'`,
@@ -90,10 +141,19 @@ export async function buildSetsCsv(
       compilerProgramVersionId: sql<string | null>`${workoutSessions.compilationSnapshot} #>> '{input,programVersionId}'`,
       compilerDayLineageId: sql<string | null>`${workoutSessions.compilationSnapshot} #>> '{input,day,lineageId}'`,
       exercise: exercises.name,
+      exerciseId: exercises.id,
+      exerciseOwnerId: exercises.userId,
+      exerciseFamilyId: exercises.familyId,
+      exerciseCreatedFromImportEventId: exercises.createdFromImportEventId,
       plannedExerciseId: sessionExercises.substitutedForExerciseId,
       sourceExerciseName: sessionExercises.sourceExerciseName,
       sourceExerciseKey: sessionExercises.sourceExerciseKey,
       sourceSlotLineageId: sessionExercises.sourceSlotLineageId,
+      prescribedSemanticsVersion: sessionExercises.prescribedSemanticsVersion,
+      prescribedExerciseName: sessionExercises.prescribedExerciseName,
+      prescribedMetricType: sessionExercises.prescribedMetricType,
+      prescribedLoadType: sessionExercises.prescribedLoadType,
+      prescribedLoadSemantics: sessionExercises.prescribedLoadSemantics,
       exerciseOrder: sessionExercises.orderIdx,
       supersetKey: sessionExercises.supersetKey,
       modification: sessionExercises.modificationType,
@@ -111,12 +171,17 @@ export async function buildSetsCsv(
       distanceKm: completedSets.distanceKm,
       durationSeconds: completedSets.durationSeconds,
       rpe: completedSets.rpe,
+      rir: completedSets.rir,
+      techniqueIssue: completedSets.techniqueIssue,
+      limitationCause: completedSets.limitationCause,
       isWarmup: completedSets.isWarmup,
       targetMet: completedSets.targetMet,
-      targetLoad: sessionExercises.targetLoad,
-      targetLoadUnit: sessionExercises.targetLoadUnit,
-      targetRepsMin: sessionExercises.targetRepsMin,
-      targetRepsMax: sessionExercises.targetRepsMax,
+      targetLoad: sessionOccurrences.plannedLoad,
+      targetLoadUnit: sessionOccurrences.plannedLoadUnit,
+      targetLoadPercent: sessionOccurrences.plannedLoadPercent,
+      targetLoadText: sessionOccurrences.plannedLoadText,
+      targetRepsMin: sessionOccurrences.plannedRepsMin,
+      targetRepsMax: sessionOccurrences.plannedRepsMax,
       note: completedSets.note,
       sourceSetIndex: completedSets.sourceSetIndex,
       sourceRow: completedSets.sourceRow,
@@ -154,7 +219,10 @@ export async function buildSetsCsv(
     .from(completedSets)
     .innerJoin(sessionExercises, eq(completedSets.sessionExerciseId, sessionExercises.id))
     .innerJoin(workoutSessions, eq(sessionExercises.sessionId, workoutSessions.id))
-    .innerJoin(exercises, eq(sessionExercises.exerciseId, exercises.id))
+    .innerJoin(exercises, and(
+      eq(sessionExercises.exerciseId, exercises.id),
+      or(isNull(exercises.userId), eq(exercises.userId, userId)),
+    ))
     .leftJoin(
       sessionOccurrences,
       eq(sessionOccurrences.completedSetId, completedSets.id),
@@ -166,7 +234,7 @@ export async function buildSetsCsv(
     .where(
       and(
         eq(workoutSessions.userId, userId),
-        eq(workoutSessions.status, "completed"),
+        inArray(workoutSessions.status, ["completed", "abandoned"]),
         isNull(workoutSessions.archivedAt),
         isNull(completedSets.archivedAt),
         ...(since ? [gte(workoutSessions.startedAt, since)] : [])
@@ -180,6 +248,7 @@ export async function buildSetsCsv(
       timezone: workoutSessions.timezone,
       localDate: workoutSessions.localDate,
       template: workoutSessions.templateName,
+      sessionStatus: workoutSessions.status,
       source: workoutSessions.source,
       sourceWorkoutKey: workoutSessions.sourceWorkoutKey,
       importBatchId: workoutSessions.importBatchId,
@@ -188,6 +257,8 @@ export async function buildSetsCsv(
       sourceProgramId: workoutSessions.sourceProgramId,
       sourceProgramVersionId: workoutSessions.sourceProgramVersionId,
       sourceDayLineageId: workoutSessions.sourceDayLineageId,
+      startRequestKey: workoutSessions.startRequestKey,
+      startRequestHash: workoutSessions.startRequestHash,
       sessionQualityFlags: workoutSessions.dataQualityFlags,
       durationExcluded: workoutSessions.excludeDurationFromAnalytics,
       compilerProposalId: sql<string | null>`${workoutSessions.compilationSnapshot} ->> 'proposalId'`,
@@ -195,20 +266,31 @@ export async function buildSetsCsv(
       compilerProgramVersionId: sql<string | null>`${workoutSessions.compilationSnapshot} #>> '{input,programVersionId}'`,
       compilerDayLineageId: sql<string | null>`${workoutSessions.compilationSnapshot} #>> '{input,day,lineageId}'`,
       exercise: exercises.name,
+      exerciseId: exercises.id,
+      exerciseOwnerId: exercises.userId,
+      exerciseFamilyId: exercises.familyId,
+      exerciseCreatedFromImportEventId: exercises.createdFromImportEventId,
       plannedExerciseId: sessionOccurrences.plannedExerciseId,
       sourceExerciseName: sessionExercises.sourceExerciseName,
       sourceExerciseKey: sessionExercises.sourceExerciseKey,
       sourceSlotLineageId: sessionExercises.sourceSlotLineageId,
+      prescribedSemanticsVersion: sessionExercises.prescribedSemanticsVersion,
+      prescribedExerciseName: sessionExercises.prescribedExerciseName,
+      prescribedMetricType: sessionExercises.prescribedMetricType,
+      prescribedLoadType: sessionExercises.prescribedLoadType,
+      prescribedLoadSemantics: sessionExercises.prescribedLoadSemantics,
       exerciseOrder: sessionExercises.orderIdx,
       supersetKey: sessionExercises.supersetKey,
       modification: sessionExercises.modificationType,
       skipReason: sessionExercises.skipReason,
       substitutionReason: sessionExercises.substitutionReason,
       substitutedAt: sessionExercises.substitutedAt,
-      targetLoad: sessionExercises.targetLoad,
-      targetLoadUnit: sessionExercises.targetLoadUnit,
-      targetRepsMin: sessionExercises.targetRepsMin,
-      targetRepsMax: sessionExercises.targetRepsMax,
+      targetLoad: sessionOccurrences.plannedLoad,
+      targetLoadUnit: sessionOccurrences.plannedLoadUnit,
+      targetLoadPercent: sessionOccurrences.plannedLoadPercent,
+      targetLoadText: sessionOccurrences.plannedLoadText,
+      targetRepsMin: sessionOccurrences.plannedRepsMin,
+      targetRepsMax: sessionOccurrences.plannedRepsMax,
       occurrenceId: sessionOccurrences.id,
       occurrenceSessionExerciseId: sessionOccurrences.sessionExerciseId,
       occurrenceKind: sessionOccurrences.kind,
@@ -236,19 +318,39 @@ export async function buildSetsCsv(
     .from(sessionOccurrences)
     .innerJoin(workoutSessions, eq(sessionOccurrences.sessionId, workoutSessions.id))
     .leftJoin(sessionExercises, eq(sessionOccurrences.sessionExerciseId, sessionExercises.id))
-    .leftJoin(exercises, eq(sessionExercises.exerciseId, exercises.id))
+    .leftJoin(exercises, and(
+      eq(sessionExercises.exerciseId, exercises.id),
+      or(isNull(exercises.userId), eq(exercises.userId, userId)),
+    ))
     .leftJoin(
       sessionEquipmentSnapshots,
       eq(sessionEquipmentSnapshots.id, sessionOccurrences.equipmentSnapshotId),
     )
     .where(and(
       eq(workoutSessions.userId, userId),
-      eq(workoutSessions.status, "completed"),
+      inArray(workoutSessions.status, ["completed", "abandoned"]),
       isNull(workoutSessions.archivedAt),
       isNull(sessionOccurrences.completedSetId),
       ...(since ? [gte(workoutSessions.startedAt, since)] : []),
     ))
     .orderBy(workoutSessions.startedAt, sessionOccurrences.sequenceIdx);
+
+  const ownerMappings: ReviewedExerciseMapping[] = (
+    await db.query.externalExerciseMappings.findMany({
+      where: and(
+        eq(externalExerciseMappings.userId, userId),
+        eq(externalExerciseMappings.source, "hevy"),
+      ),
+    })
+  ).map((mapping) => ({
+    id: mapping.id,
+    source: mapping.source,
+    normalizedKey: mapping.normalizedKey,
+    sourceName: mapping.sourceName,
+    sourceEquipment: mapping.sourceEquipment,
+    exerciseId: mapping.exerciseId,
+    confirmedAtISO: mapping.confirmedAt.toISOString(),
+  }));
 
   const plannedExerciseIds = [
     ...new Set(
@@ -257,9 +359,28 @@ export async function buildSetsCsv(
         .filter((value): value is string => value != null)
     ),
   ];
+  const completedSetIds = [
+    ...new Set(rows.map((row) => row.completedSetId).filter(Boolean)),
+  ] as string[];
+  const correctionVersions = completedSetIds.length
+    ? await db.query.recordVersions.findMany({
+        where: and(
+          eq(recordVersions.userId, userId),
+          eq(recordVersions.entityType, "completed_set"),
+          inArray(recordVersions.entityId, completedSetIds),
+        ),
+        columns: { entityId: true },
+      })
+    : [];
+  const correctedSetIds = new Set(
+    correctionVersions.map((version) => version.entityId),
+  );
   const plannedExercises = plannedExerciseIds.length
-    ? await db.query.exercises.findMany({
-        where: inArray(exercises.id, plannedExerciseIds),
+      ? await db.query.exercises.findMany({
+        where: and(
+          inArray(exercises.id, plannedExerciseIds),
+          or(isNull(exercises.userId), eq(exercises.userId, userId)),
+        ),
       })
     : [];
   const plannedExerciseNames = new Map(
@@ -288,28 +409,138 @@ export async function buildSetsCsv(
         : null,
     ]),
   );
+  const completedOccurrenceRowsBySetId = new Map<string, typeof rows>();
+  for (const row of rows) {
+    if (row.completedSetId == null || row.occurrenceId == null) continue;
+    const linked = completedOccurrenceRowsBySetId.get(row.completedSetId) ?? [];
+    linked.push(row);
+    completedOccurrenceRowsBySetId.set(row.completedSetId, linked);
+  }
   const exportedRows = [
-    ...rows.map((r) => ({
+    ...rows.map((r) => {
+      const semantics = classifySetMetricContainment({
+        recordedMetricType: r.metricType,
+        prescribedSemanticsVersion: r.prescribedSemanticsVersion,
+        performedSemanticsVersion: r.performedSemanticsVersion,
+        performedLoadType: r.performedLoadType,
+        performedLoadSemantics: r.performedLoadSemantics,
+        currentExerciseMetricType: r.prescribedMetricType,
+        loadType: r.prescribedLoadType,
+        loadSemantics: r.prescribedLoadSemantics,
+        loadEntryMeaning: r.loadEntryMeaning,
+        weight: r.weight,
+        reps: r.reps,
+        excludeFromAnalytics: r.excludedFromAnalytics,
+      });
+      const linkedOccurrenceRows =
+        completedOccurrenceRowsBySetId.get(r.completedSetId) ?? [];
+      const exactOccurrenceLinked =
+        linkedOccurrenceRows.length === 1 &&
+        r.occurrenceKind === "working_set" &&
+        r.occurrenceOutcome === "completed";
+      const identityScope = classifyExerciseIdentityScope({
+        ownerId: userId,
+        exerciseOwnerId: r.exerciseOwnerId,
+        createdFromImportEventId: r.exerciseCreatedFromImportEventId,
+      });
+      const mappingContext = reviewedMappingContext({
+        source: r.source,
+        sourceExerciseName: r.sourceExerciseName,
+        performedExerciseId: r.exerciseId,
+        mappings: ownerMappings,
+      });
+      const evidenceTier = tierWithReviewedMapping(
+        classifyExerciseEvidenceTier({
+          source: r.source,
+          importBatchId: r.importBatchId,
+          occurrenceOrigin: r.occurrenceOrigin,
+          performedSemanticFacet: classifyPerformedSemanticFacet({
+            performedSemanticsVersion: r.performedSemanticsVersion,
+            performedLoadType: r.performedLoadType,
+            performedLoadSemantics: r.performedLoadSemantics,
+          }),
+          calculationSupported: ![
+            "duration", "distance_duration", "activity",
+          ].includes(r.metricType),
+          exactOccurrenceLinked,
+          corrected: correctedSetIds.has(r.completedSetId),
+        }),
+        mappingContext.status,
+      );
+      const hasPlannedOccurrence = linkedOccurrenceRows.some(
+        (row) => row.occurrenceOrigin === "planned",
+      );
+      const targetOutcome =
+        r.modification !== "as_planned" ||
+        r.isWarmup ||
+        !hasPlannedOccurrence
+          ? null
+          : linkedOccurrenceRows.length !== 1 ||
+              r.occurrenceOrigin !== "planned" ||
+              r.occurrenceKind !== "working_set" ||
+              r.occurrenceOutcome !== "completed"
+            ? ("unknown" as const)
+            : classifyPrescriptionOutcome({
+                semantics,
+                reps: r.reps,
+                weight: r.weight,
+                weightUnit: r.weightUnit,
+                targetRepsMin: r.targetRepsMin,
+                targetRepsMax: r.targetRepsMax,
+                targetLoad: r.targetLoad,
+                targetLoadUnit: r.targetLoadUnit,
+                targetLoadPercent: r.targetLoadPercent,
+                targetLoadText: r.targetLoadText,
+              });
+      return {
       date: r.date,
       sequence: r.occurrenceSequence,
       exerciseOrder: r.exerciseOrder,
       setNo: r.setNo,
       values: [
-        r.date.toISOString(), r.timezone, r.localDate, r.template, r.source,
+        r.date.toISOString(), r.timezone, r.localDate, r.template,
+        r.sessionStatus, r.source,
         r.sourceWorkoutKey, r.importBatchId,
         r.historyRevision, r.performedTimePrecision, r.sourceProgramId,
         r.sourceProgramVersionId, r.sourceDayLineageId,
+        r.startRequestKey, r.startRequestHash,
         r.sessionQualityFlags.join(" | "), r.durationExcluded, r.exercise,
-        r.plannedExerciseId ? plannedExerciseNames.get(r.plannedExerciseId) : null,
+        r.exerciseId, identityScope, r.exerciseFamilyId,
+        r.exerciseCreatedFromImportEventId, evidenceTier,
+        EXERCISE_HISTORY_ALGORITHM_VERSION, exactOccurrenceLinked,
+        r.sourceExerciseKey || r.sourceExerciseName || mappingContext.mapping
+          ? JSON.stringify({
+              status: mappingContext.status,
+              frozenSourceOccurrence: {
+                key: r.sourceExerciseKey,
+                name: r.sourceExerciseName,
+              },
+              reviewedMapping: mappingContext.mapping,
+            })
+          : null,
+        r.plannedExerciseId
+          ? (r.prescribedExerciseName ?? plannedExerciseNames.get(r.plannedExerciseId))
+          : null,
         r.compilerProposalId, r.compilerProposalHash, r.compilerProgramVersionId, r.compilerDayLineageId,
         r.sourceExerciseName, r.sourceExerciseKey, r.sourceSlotLineageId,
+        r.prescribedSemanticsVersion, r.prescribedExerciseName,
+        r.prescribedMetricType, r.prescribedLoadType, r.prescribedLoadSemantics,
         r.exerciseOrder, r.supersetKey,
         r.modification, r.skipReason, r.substitutionReason,
         r.substitutedAt?.toISOString(), r.setNo, r.weight, r.weightUnit, r.reps,
         r.metricType, r.performedSemanticsVersion, r.performedLoadType,
         r.performedLoadSemantics, r.distanceKm, r.durationSeconds, r.rpe,
-        r.isWarmup, r.targetMet,
-        r.targetLoad, r.targetLoadUnit, r.targetRepsMin, r.targetRepsMax, r.note, r.sourceSetIndex,
+        r.rir, r.techniqueIssue, r.limitationCause,
+        r.isWarmup, r.occurrenceOrigin === "planned" ? r.targetMet : null,
+        targetOutcome,
+        targetOutcome == null ? null : PRESCRIPTION_OUTCOME_ALGORITHM_VERSION,
+        r.occurrenceOrigin === "planned" ? r.targetLoad : null,
+        r.occurrenceOrigin === "planned" ? r.targetLoadUnit : null,
+        r.occurrenceOrigin === "planned" ? r.targetLoadPercent : null,
+        r.occurrenceOrigin === "planned" ? r.targetLoadText : null,
+        r.occurrenceOrigin === "planned" ? r.targetRepsMin : null,
+        r.occurrenceOrigin === "planned" ? r.targetRepsMax : null,
+        r.note, r.sourceSetIndex,
         r.sourceRow, r.excludedFromAnalytics, r.loggedAt.toISOString(),
         r.observedCompletedAt?.toISOString(), r.observedCompletionProvenance,
         r.observedCompletionQuality,
@@ -326,26 +557,61 @@ export async function buildSetsCsv(
         r.attachmentLabel, r.equipmentConfigurationHash,
         r.equipmentGeometry == null ? null : JSON.stringify(r.equipmentGeometry),
       ],
-    })),
-    ...occurrenceOnlyRows.map((r) => ({
-      date: r.date,
-      sequence: r.occurrenceSequence,
-      exerciseOrder: r.exerciseOrder,
-      setNo: null,
-      values: [
-        r.date.toISOString(), r.timezone, r.localDate, r.template, r.source,
+      };
+    }),
+    ...occurrenceOnlyRows.map((r) => {
+      const mappingContext = reviewedMappingContext({
+        source: r.source,
+        sourceExerciseName: r.sourceExerciseName,
+        performedExerciseId: r.exerciseId,
+        mappings: ownerMappings,
+      });
+      return {
+        date: r.date,
+        sequence: r.occurrenceSequence,
+        exerciseOrder: r.exerciseOrder,
+        setNo: null,
+        values: [
+        r.date.toISOString(), r.timezone, r.localDate, r.template,
+        r.sessionStatus, r.source,
         r.sourceWorkoutKey, r.importBatchId,
         r.historyRevision, r.performedTimePrecision, r.sourceProgramId,
         r.sourceProgramVersionId, r.sourceDayLineageId,
+        r.startRequestKey, r.startRequestHash,
         r.sessionQualityFlags.join(" | "), r.durationExcluded, r.exercise,
-        r.plannedExerciseId ? plannedExerciseNames.get(r.plannedExerciseId) : null,
+        r.exerciseId,
+        r.exerciseId == null ? null : classifyExerciseIdentityScope({
+          ownerId: userId,
+          exerciseOwnerId: r.exerciseOwnerId,
+          createdFromImportEventId: r.exerciseCreatedFromImportEventId,
+        }),
+        r.exerciseFamilyId, r.exerciseCreatedFromImportEventId,
+        null, null, false,
+        r.sourceExerciseKey || r.sourceExerciseName || mappingContext.mapping
+          ? JSON.stringify({
+              status: mappingContext.status,
+              frozenSourceOccurrence: {
+                key: r.sourceExerciseKey,
+                name: r.sourceExerciseName,
+              },
+              reviewedMapping: mappingContext.mapping,
+            })
+          : null,
+        r.plannedExerciseId
+          ? (r.prescribedExerciseName ?? plannedExerciseNames.get(r.plannedExerciseId))
+          : null,
         r.compilerProposalId, r.compilerProposalHash, r.compilerProgramVersionId, r.compilerDayLineageId,
         r.sourceExerciseName, r.sourceExerciseKey, r.sourceSlotLineageId,
+        r.prescribedSemanticsVersion, r.prescribedExerciseName,
+        r.prescribedMetricType, r.prescribedLoadType, r.prescribedLoadSemantics,
         r.exerciseOrder, r.supersetKey,
         r.modification, r.skipReason, r.substitutionReason, r.substitutedAt?.toISOString(),
         null, null, null, null, null, null, null, null, null, null, null, null,
+        null, null, null,
         null,
-        r.targetLoad, r.targetLoadUnit, r.targetRepsMin, r.targetRepsMax, null,
+        null, null,
+        r.targetLoad, r.targetLoadUnit, r.targetLoadPercent, r.targetLoadText,
+        r.targetRepsMin, r.targetRepsMax, null,
         null, null, null, null, null, null, null,
         r.occurrenceId, r.occurrenceKind, r.occurrenceOrigin, r.occurrenceSequence,
         r.occurrenceKindOrdinal,
@@ -357,8 +623,9 @@ export async function buildSetsCsv(
         r.equipmentProfileKind, r.equipmentCertainty, r.equipmentUnit,
         r.attachmentLabel, r.equipmentConfigurationHash,
         r.equipmentGeometry == null ? null : JSON.stringify(r.equipmentGeometry),
-      ],
-    })),
+        ],
+      };
+    }),
   ].sort((left, right) =>
     left.date.getTime() - right.date.getTime()
     || (left.sequence ?? Number.MAX_SAFE_INTEGER) - (right.sequence ?? Number.MAX_SAFE_INTEGER)
@@ -368,18 +635,30 @@ export async function buildSetsCsv(
 
   return toCsv(
     [
-      "started_at", "timezone", "local_date", "template", "source", "source_workout_key", "import_batch_id",
+      "started_at", "timezone", "local_date", "template", "session_status",
+      "source", "source_workout_key", "import_batch_id",
       "history_revision", "performed_time_precision", "source_program_id",
       "source_program_version_id", "source_day_lineage_id",
-      "session_quality_flags", "duration_excluded", "exercise", "planned_exercise",
+      "start_request_key", "start_request_hash",
+      "session_quality_flags", "duration_excluded", "exercise",
+      "exercise_id", "exercise_scope", "exercise_family_id",
+      "exercise_created_from_import_event_id", "exercise_evidence_tier",
+      "exercise_history_algorithm_version", "exact_occurrence_linked",
+      "source_mapping_context_json", "planned_exercise",
       "compiler_proposal_id", "compiler_proposal_hash", "compiler_program_version_id", "compiler_day_lineage_id",
       "source_exercise_name", "source_exercise_key", "source_slot_lineage_id",
+      "prescribed_semantics_version", "prescribed_exercise_name",
+      "prescribed_metric_type", "prescribed_load_type", "prescribed_load_semantics",
       "exercise_order", "superset_key",
       "modification", "skip_reason", "substitution_reason", "substituted_at",
       "set_no", "weight", "weight_unit", "reps",
       "metric_type", "performed_semantics_version", "performed_load_type",
-      "performed_load_semantics", "distance_km", "duration_seconds", "rpe", "is_warmup",
-      "target_met", "target_load", "target_load_unit", "target_reps_min", "target_reps_max", "note",
+      "performed_load_semantics", "distance_km", "duration_seconds", "rpe",
+      "rir", "technique_issue", "limitation_cause", "is_warmup",
+      "legacy_target_met_projection", "calculated_target_outcome",
+      "target_outcome_algorithm_version", "target_load", "target_load_unit",
+      "target_load_percent", "target_load_text", "target_reps_min",
+      "target_reps_max", "note",
       "source_set_index", "source_row", "excluded_from_analytics", "logged_at",
       "observed_completed_at", "observed_completion_provenance",
       "observed_completion_quality",
@@ -406,13 +685,40 @@ export async function buildPainFatigueCsv(
     db
       .select({
         date: painLogs.createdAt,
+        sessionId: painLogs.sessionId,
+        completedSetId: painLogs.completedSetId,
         bodyPart: painLogs.bodyPart,
         severity: painLogs.severity,
+        source: painLogs.source,
+        performedExerciseId: sql<string | null>`coalesce(
+          ${sessionExercises.exerciseId}, ${painLogs.exerciseId}
+        )`,
         exercise: exercises.name,
+        plannedExerciseId: sql<string | null>`CASE
+          WHEN ${sessionExercises.modificationType} = 'added' THEN NULL
+          WHEN ${sessionExercises.modificationType} = 'substituted'
+            THEN ${sessionExercises.substitutedForExerciseId}
+          WHEN ${sessionExercises.id} IS NOT NULL
+            THEN ${sessionExercises.exerciseId}
+          ELSE NULL
+        END`,
+        plannedExercise: sql<string | null>`CASE
+          WHEN ${sessionExercises.modificationType} = 'added' THEN NULL
+          WHEN ${sessionExercises.prescribedSemanticsVersion} = 1
+            THEN ${sessionExercises.prescribedExerciseName}
+          ELSE NULL
+        END`,
+        modificationType: sessionExercises.modificationType,
+        substitutionReason: sessionExercises.substitutionReason,
         note: painLogs.note,
       })
       .from(painLogs)
       .leftJoin(exercises, eq(painLogs.exerciseId, exercises.id))
+      .leftJoin(completedSets, eq(painLogs.completedSetId, completedSets.id))
+      .leftJoin(
+        sessionExercises,
+        eq(completedSets.sessionExerciseId, sessionExercises.id),
+      )
       .leftJoin(workoutSessions, eq(painLogs.sessionId, workoutSessions.id))
       .where(
         and(
@@ -443,16 +749,31 @@ export async function buildPainFatigueCsv(
       ),
   ]);
 
+  const painRows = pain.map((entry) => ({
+    ...entry,
+    evidence: classifyPainEvidence(entry),
+  }));
+
   return toCsv(
-    ["date", "kind", "body_part", "severity", "exercise", "note"],
     [
-      ...pain.map((p) => [
-        p.date.toISOString().slice(0, 10), "pain", p.bodyPart, p.severity,
+      "date", "kind", "session_id", "completed_set_id", "body_part",
+      "severity", "source", "pain_meaning", "pain_algorithm_version",
+      "performed_exercise_id", "performed_exercise", "planned_exercise_id",
+      "planned_exercise", "modification_type", "substitution_reason",
+      "exercise", "note",
+    ],
+    [
+      ...painRows.map((p) => [
+        p.date.toISOString().slice(0, 10), "pain", p.sessionId,
+        p.completedSetId, p.bodyPart, p.severity, p.source,
+        p.evidence.meaning, PAIN_EVIDENCE_ALGORITHM_VERSION,
+        p.performedExerciseId, p.exercise, p.plannedExerciseId,
+        p.plannedExercise, p.modificationType, p.substitutionReason,
         p.exercise, p.note,
       ]),
       ...fatigue.map((f) => [
-        f.createdAt.toISOString().slice(0, 10), "fatigue", "", f.severity,
-        "", f.note,
+        f.createdAt.toISOString().slice(0, 10), "fatigue", "", "", "",
+        f.severity, "", "", "", "", "", "", "", "", "", "", f.note,
       ]),
     ]
   );

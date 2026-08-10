@@ -2,7 +2,10 @@ import { z } from "zod";
 import { getDb } from "@/db";
 import { sensitiveResponse } from "@/lib/http-security";
 import { getRouteUser } from "@/lib/route-auth";
-import { logServerEvent } from "@/lib/server-log";
+import {
+  categorizeDiagnosticError,
+  logDiagnosticEvent,
+} from "@/lib/server-log";
 import { readVerifiedDataSnapshot } from "@/services/snapshots";
 import { runExpensiveOperation } from "@/services/expensive-operations";
 
@@ -41,10 +44,8 @@ export async function GET(
       },
     });
   } catch (error) {
-    logServerEvent("warn", "snapshot.download_unavailable", {
-      userId: user.id,
-      snapshotId: parsed.data,
-      errorName: error instanceof Error ? error.name : "UnknownError",
+    logDiagnosticEvent("snapshot.download_unavailable", {
+      errorCategory: categorizeDiagnosticError(error, "storage"),
     });
     return sensitiveResponse("Verified snapshot is unavailable.", { status: 404 });
   }

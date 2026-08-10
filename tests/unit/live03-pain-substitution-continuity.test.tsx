@@ -31,10 +31,10 @@ const historyFixture = vi.hoisted(() => ({
   plannedName: "Barbell Bench Press",
   performedName: "Neutral-Grip Dumbbell Press",
   setNote: "Stable shoulder path after the swap.",
-  importedWarmupNote: "Imported warm-up result must not count.",
-  skippedResultNote: "Skipped working result must not appear.",
-  abandonedResultNote: "Abandoned working result must not appear.",
-  unlinkedResultNote: "Unlinked working result must not appear.",
+  importedWarmupNote: "Imported warm-up source row is retained separately.",
+  skippedResultNote: "Skipped source row is retained separately.",
+  abandonedResultNote: "Abandoned source row is retained separately.",
+  unlinkedResultNote: "Unlinked source row is retained separately.",
   painNote: "Sharp at the bottom before changing movements.",
 }));
 
@@ -189,6 +189,7 @@ vi.mock("@/db", async (importOriginal) => {
         exerciseId: historyFixture.performedExerciseId,
         bodyPart: "shoulder",
         severity: 5,
+        source: "set_flag",
         note: historyFixture.painNote,
       },
     ],
@@ -444,10 +445,13 @@ describe("LIVE-03 Coach context continuity", () => {
       plannedExercise: plannedName,
       substitutionReason: "discomfort",
     });
-    const painFlag = context.liveWorkout.painFlags.find(
+    const painFlag = context.liveWorkout.painEvidence.find(
       (entry) => entry.bodyPart === "shoulder" && entry.severity === 5
     );
-    expect(painFlag).toBeDefined();
+    expect(painFlag).toMatchObject({
+      meaning: "pain",
+      algorithmVersion: "pain-evidence-v1",
+    });
     expect(JSON.stringify(painFlag)).toContain(performedName);
   });
 });
@@ -467,7 +471,7 @@ describe("LIVE-03 History reconstruction", () => {
     expect(html).toContain(historyFixture.painNote);
     expect(html).toMatch(
       new RegExp(
-        `Pain flags[\\s\\S]*${historyFixture.performedName}[\\s\\S]*shoulder 5/10`
+        `Pain / no-issue evidence[\\s\\S]*${historyFixture.performedName}[\\s\\S]*Pain: shoulder 5/10`
       )
     );
   });
@@ -479,16 +483,27 @@ describe("LIVE-03 History reconstruction", () => {
     } as never);
     const html = renderToStaticMarkup(page);
 
-    expect(html).toContain("30 min · 1 sets");
+    expect(html).toContain("30 min · 1 performed working set · 1 completed warm-up");
     expect(html).not.toContain("at target");
     expect(html).toContain(
       "Comparable load calculation unavailable because required measurements are missing.",
     );
-    expect(html).toContain(historyFixture.setNote);
-    expect(html).not.toContain(historyFixture.importedWarmupNote);
-    expect(html).not.toContain(historyFixture.skippedResultNote);
-    expect(html).not.toContain(historyFixture.abandonedResultNote);
-    expect(html).not.toContain(historyFixture.unlinkedResultNote);
+    const whatYouDidStart = html.indexOf("What you did");
+    const planStart = html.indexOf("Plan and results");
+    const retainedStart = html.indexOf("Retained source records");
+    expect(whatYouDidStart).toBeGreaterThan(-1);
+    expect(planStart).toBeGreaterThan(whatYouDidStart);
+    expect(retainedStart).toBeGreaterThan(planStart);
+    const whatYouDid = html.slice(whatYouDidStart, planStart);
+    expect(whatYouDid).toContain(historyFixture.setNote);
+    expect(whatYouDid).not.toContain(historyFixture.importedWarmupNote);
+    expect(whatYouDid).not.toContain(historyFixture.skippedResultNote);
+    expect(whatYouDid).not.toContain(historyFixture.abandonedResultNote);
+    expect(whatYouDid).not.toContain(historyFixture.unlinkedResultNote);
+    expect(html.slice(retainedStart)).toContain(historyFixture.importedWarmupNote);
+    expect(html.slice(retainedStart)).toContain(historyFixture.skippedResultNote);
+    expect(html.slice(retainedStart)).toContain(historyFixture.abandonedResultNote);
+    expect(html.slice(retainedStart)).toContain(historyFixture.unlinkedResultNote);
     expect(html).toContain("Hevy warm-up");
     expect(html).toContain("Imported warm-up preserved");
     expect(html).toContain("skipped");

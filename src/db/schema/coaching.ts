@@ -1,6 +1,8 @@
 import {
   check,
+  date,
   index,
+  integer,
   jsonb,
   pgTable,
   text,
@@ -42,14 +44,75 @@ export type RecommendationPayload =
   | { kind: "deload"; scope: "program"; volumeFactor: number; loadFactor: number; durationSessionsPerTemplate: number }
   | { kind: "substitution"; templateExerciseId: string; fromExerciseId: string; toExerciseId: string }
   | { kind: "remove_exercise"; templateExerciseId: string }
-  | { kind: "hold"; templateExerciseId: string; reason: string };
+  | { kind: "hold"; templateExerciseId: string; reason: string }
+  | {
+      kind: "external_review";
+      targetKind:
+        | "program"
+        | "schedule"
+        | "recovery_constraint"
+        | "training_consistency"
+        | "general_review";
+      requestedOutcome: string;
+    };
+
+export type ExternalAnalysisRecommendationEvidence = {
+  schemaVersion: "external-analysis-evidence-v1";
+  importId: string;
+  packageId: string;
+  responseId: string;
+  responseDigest: string;
+  proposalId: string;
+  citedEvidenceIds: string[];
+};
 
 export type RecommendationEvidence = {
   signals: Record<string, unknown>;
   sessionIds?: string[];
   setIds?: string[];
   painLogIds?: string[];
+  review?: RecommendationReviewEvidence;
+  externalAnalysis?: ExternalAnalysisRecommendationEvidence;
 };
+
+export type RecommendationReviewEvidence = {
+  schemaVersion: "review-evidence-v1";
+  producer: "progression_rules" | "pain_consistency" | "external_analysis";
+  sourceVersion: string;
+  generatedAt: string;
+  quality:
+    | "supported"
+    | "contradictory"
+    | "unsupported"
+    | "unverified_external";
+  confidence: "not_scored";
+  limitations: string[];
+  proposedEffect: {
+    kind: "future_program_change" | "future_review_intent" | "none";
+    summary: string;
+  };
+};
+
+export type ReviewDecisionSnapshot =
+  | { schemaVersion: "legacy-unknown" }
+  | {
+      schemaVersion: "review-decision-v1";
+      recommendationId: string;
+      reviewRevision: number;
+      deferRevision: number;
+      recordedAt: string;
+      evidenceState:
+        | "supported"
+        | "contradictory"
+        | "unsupported"
+        | "stale"
+        | "external";
+      source: "rule" | "ai";
+      ruleId: string | null;
+      payload: RecommendationPayload;
+      reason: string;
+      evidence: RecommendationEvidence;
+    };
 
 export const recommendations = pgTable(
   "recommendations",
@@ -72,6 +135,11 @@ export const recommendations = pgTable(
     payload: jsonb("payload").$type<RecommendationPayload>().notNull(),
     reason: text("reason").notNull(),
     evidence: jsonb("evidence").$type<RecommendationEvidence>().notNull(),
+    reviewRevision: integer("review_revision").notNull().default(1),
+    deferRevision: integer("defer_revision").notNull().default(0),
+    deferredAt: timestamp("deferred_at", { withTimezone: true }),
+    revisitOn: date("revisit_on"),
+    deferReason: text("defer_reason"),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -112,6 +180,18 @@ export const recommendations = pgTable(
       "recommendations_reconciliation_reason_check",
       sql`${t.status} <> 'expired' OR (nullif(btrim(${t.reconciliationReason}), '') IS NOT NULL AND ${t.reconciledAt} IS NOT NULL)`
     ),
+    check(
+      "recommendations_review_revision_check",
+      sql`${t.reviewRevision} >= 0 AND ${t.deferRevision} >= 0`
+    ),
+    check(
+      "recommendations_defer_state_check",
+      sql`(${t.deferredAt} IS NULL AND ${t.revisitOn} IS NULL AND ${t.deferReason} IS NULL) OR (${t.deferredAt} IS NOT NULL AND ${t.status} = 'pending' AND ${t.archivedAt} IS NULL)`
+    ),
+    check(
+      "recommendations_defer_reason_check",
+      sql`${t.deferReason} IS NULL OR (nullif(btrim(${t.deferReason}), '') IS NOT NULL AND char_length(${t.deferReason}) <= 500)`
+    ),
   ]
 );
 
@@ -125,6 +205,10 @@ export const userDecisions = pgTable(
     decision: decisionEnum("decision").notNull(),
     editedPayload: jsonb("edited_payload").$type<RecommendationPayload>(),
     reason: text("reason"),
+    reviewSnapshot: jsonb("review_snapshot")
+      .$type<ReviewDecisionSnapshot>()
+      .notNull()
+      .default(sql`'{"schemaVersion":"legacy-unknown"}'::jsonb`),
     decidedAt: timestamp("decided_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -232,6 +316,11 @@ export const coachingInsights = pgTable(
       .where(
         sql`${t.kind} = 'live_assistant' AND ${t.responseStatus} IN ('pending', 'generating') AND ${t.replyToId} IS NOT NULL`
       ),
+    uniqueIndex("coaching_insights_external_response_uq")
+      .on(t.userId, t.clientKey)
+      .where(
+        sql`${t.kind} = 'external_analysis_import' AND ${t.clientKey} IS NOT NULL`
+      ),
     check(
       "coaching_insights_author_valid",
       sql`${t.author} IS NULL OR ${t.author} IN ('user', 'assistant')`
@@ -251,6 +340,10 @@ export const coachingInsights = pgTable(
     check(
       "coaching_insights_generation_lease_valid",
       sql`(${t.responseStatus} = 'generating' AND ${t.generationLeaseId} IS NOT NULL AND ${t.generationLeaseExpiresAt} IS NOT NULL AND ${t.generationStartedAt} IS NOT NULL) OR (${t.responseStatus} IS DISTINCT FROM 'generating' AND ${t.generationLeaseId} IS NULL AND ${t.generationLeaseExpiresAt} IS NULL)`
+    ),
+    check(
+      "coaching_insights_external_import_valid",
+      sql`${t.kind} <> 'external_analysis_import' OR (${t.clientKey} ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$' AND ${t.responseStatus} = 'completed' AND ${t.completedAt} IS NOT NULL AND ${t.dataDigest}->>'schemaVersion' = 'external-analysis-import/1' AND ${t.dataDigest}->'rawResponseRetained' = 'false'::jsonb)`
     ),
   ]
 );

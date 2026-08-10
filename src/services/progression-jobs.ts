@@ -7,7 +7,10 @@ import * as schema from "@/db/schema";
 import type { CoachingPrefs } from "@/db/schema";
 import { optionalEnv } from "@/lib/env";
 import { PROGRESSION_JOB_MAX_ATTEMPTS } from "@/lib/progression-job-contract";
-import { logServerEvent } from "@/lib/server-log";
+import {
+  categorizeDiagnosticError,
+  logDiagnosticEvent,
+} from "@/lib/server-log";
 import { evaluateSessionProgression } from "@/services/progression";
 import { acquireHistoryRevisionLock } from "@/services/history-revision-lock";
 
@@ -415,18 +418,11 @@ export async function processProgressionJob(
       return { status: "lease_lost" as const, jobId: job.id };
     }
     const released = await releaseFailedJob(db, job, error, now());
-    logServerEvent(
-      released.failedPermanently ? "error" : "warn",
-      "progression.job_failed",
-      {
-        jobId: job.id,
-        userId: job.userId,
-        sessionId: job.sessionId,
-        attempts: job.attempts,
-        retryScheduled: released.released && !released.failedPermanently,
-        errorName: error instanceof Error ? error.name : "UnknownError",
-      }
-    );
+    logDiagnosticEvent("progression.job_failed", {
+      attemptCount: job.attempts,
+      retryScheduled: released.released && !released.failedPermanently,
+      errorCategory: categorizeDiagnosticError(error, "persistence"),
+    });
     return {
       status: "failed" as const,
       jobId: job.id,

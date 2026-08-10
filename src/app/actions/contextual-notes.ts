@@ -10,7 +10,10 @@ import {
 } from "@/lib/contextual-note-contract";
 import { hashContextualNotePayload } from "@/lib/contextual-note-outbox";
 import { getCurrentUser } from "@/lib/user";
-import { logServerEvent } from "@/lib/server-log";
+import {
+  categorizeDiagnosticError,
+  logDiagnosticEvent,
+} from "@/lib/server-log";
 import {
   archiveContextualNote,
   createContextualNote,
@@ -92,9 +95,8 @@ export async function createContextualNoteAction(
       outcome: result.outcome,
     };
   } catch (error) {
-    logServerEvent("error", "contextual_note.save_failed", {
-      attachmentKind: parsed.data.attachmentKind,
-      errorType: error instanceof Error ? error.name : typeof error,
+    logDiagnosticEvent("contextual_note.save_failed", {
+      errorCategory: categorizeDiagnosticError(error, "persistence"),
     });
     return {
       ok: false,
@@ -172,8 +174,8 @@ export async function editContextualNoteAction(rawInput: ContextualNoteEditInput
     revalidateAllContextualNoteDestinations(result.note);
     return { ok: true as const, note: result.note };
   } catch (error) {
-    logServerEvent("error", "contextual_note.edit_failed", {
-      errorType: error instanceof Error ? error.name : typeof error,
+    logDiagnosticEvent("contextual_note.edit_failed", {
+      errorCategory: categorizeDiagnosticError(error, "persistence"),
     });
     return { ok: false as const, reason: "The server did not acknowledge this edit." };
   }
@@ -208,8 +210,8 @@ export async function archiveContextualNoteAction(rawInput: {
     revalidateAllContextualNoteDestinations();
     return { ok: true as const, operationId: result.operationId };
   } catch (error) {
-    logServerEvent("error", "contextual_note.archive_failed", {
-      errorType: error instanceof Error ? error.name : typeof error,
+    logDiagnosticEvent("contextual_note.archive_failed", {
+      errorCategory: categorizeDiagnosticError(error, "persistence"),
     });
     return { ok: false as const, reason: "The server did not acknowledge this archive action." };
   }

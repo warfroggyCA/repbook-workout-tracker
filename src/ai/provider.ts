@@ -11,7 +11,7 @@ import { createOpenAI } from "@ai-sdk/openai";
 import type { z } from "zod";
 import { optionalEnv } from "@/lib/env";
 import { isDisposableAcceptanceRuntime } from "@/lib/acceptance-runtime";
-import { logServerEvent } from "@/lib/server-log";
+import { logDiagnosticEvent } from "@/lib/server-log";
 import { sanitizeAIFinishReason } from "@/lib/ai-provider-error";
 import { buildBaRoutineChangeFixture } from "@/ai/acceptance-routine-change-fixture";
 import {
@@ -183,13 +183,8 @@ class SdkProvider implements AIProvider {
       value = result.output;
     } catch (error) {
       if (NoOutputGeneratedError.isInstance(error)) {
-        logServerEvent("error", "ai.structured_output_missing", {
-          task: opts.task,
-          model: resolved.name,
+        logDiagnosticEvent("ai.structured_output_missing", {
           finishReason: sanitizeAIFinishReason(result.finishReason),
-          inputTokens: usage.inputTokens ?? 0,
-          outputTokens: usage.outputTokens ?? 0,
-          reasoningTokens: usage.outputTokenDetails.reasoningTokens ?? 0,
         });
       }
       throw error;
@@ -356,18 +351,25 @@ class FakeProvider implements AIProvider {
           realSessionCount?: number;
         };
         trainingDigest?: {
-          adherence?: {
+          cadence?: {
             completedSessions?: number;
-            targetHitRate?: number | null;
+            averageSessionsPerCompleteWeek?: number | null;
+            completeWeeks?: number;
+            currentPreference?: { sessionsPerWeek?: number };
           };
+          targetOutcomes?: { atOrAboveRate?: number | null };
           fatigue?: unknown[];
           pain?: Array<{ severity?: number; bodyPart?: string }>;
           dataGaps?: string[];
         };
       };
       const digest = context.trainingDigest;
-      const sessionCount = digest?.adherence?.completedSessions ?? 0;
-      const targetHitRate = digest?.adherence?.targetHitRate;
+      const sessionCount = digest?.cadence?.completedSessions ?? 0;
+      const targetHitRate = digest?.targetOutcomes?.atOrAboveRate;
+      const cadenceAverage = digest?.cadence?.averageSessionsPerCompleteWeek;
+      const completeWeeks = digest?.cadence?.completeWeeks ?? 0;
+      const currentPreference =
+        digest?.cadence?.currentPreference?.sessionsPerWeek;
       const sampleCount = context.sampleData?.sessionCount ?? 0;
       const realCount = context.sampleData?.realSessionCount ?? 0;
       const fixture = {
@@ -375,7 +377,7 @@ class FakeProvider implements AIProvider {
           sampleCount > 0
             ? `This is a demonstration review of ${sampleCount} labelled sample workouts${realCount > 0 ? ` alongside ${realCount} real workouts` : ""}. The pattern is useful for exploring Coach, but sample results are not treated as your performance.`
             : sessionCount > 0
-              ? `Your recent training includes ${sessionCount} completed workouts. The clearest patterns are summarized below without changing your plan.`
+              ? `Your recent training includes ${sessionCount} completed workouts. Calendar cadence and planned set outcomes are summarized separately without changing your plan.`
               : "There is not enough completed training yet for a meaningful trend review. Coach will become more useful as workouts and recovery check-ins are logged.",
         overallTone: sessionCount > 0 ? "positive" : "neutral",
         highlights: [
@@ -394,9 +396,14 @@ class FakeProvider implements AIProvider {
               targetHitRate != null && targetHitRate < 60 ? "watch" : "neutral",
             evidence: [
               `${sessionCount} completed workout${sessionCount === 1 ? "" : "s"} in the 12-week review window`,
+              ...(cadenceAverage == null
+                ? []
+                : [
+                    `${cadenceAverage} sessions per complete calendar week across ${completeWeeks} complete weeks${currentPreference == null ? "" : `; current preference ${currentPreference}/week`}`,
+                  ]),
               ...(targetHitRate == null
                 ? []
-                : [`${targetHitRate}% target-hit rate on measurable working sets`]),
+                : [`${targetHitRate}% of supported planned-set comparisons landed at or above target`]),
             ],
           },
         ],
@@ -429,16 +436,17 @@ class FakeProvider implements AIProvider {
         context?: {
           sampleData?: { sessionCount?: number; realSessionCount?: number };
           trainingDigest?: {
-            adherence?: { completedSessions?: number; targetHitRate?: number | null };
+            cadence?: { completedSessions?: number };
+            targetOutcomes?: { atOrAboveRate?: number | null };
             dataGaps?: string[];
           };
         };
       };
       const sessionCount =
-        input.context?.trainingDigest?.adherence?.completedSessions ?? 0;
+        input.context?.trainingDigest?.cadence?.completedSessions ?? 0;
       const sampleCount = input.context?.sampleData?.sessionCount ?? 0;
       const targetHitRate =
-        input.context?.trainingDigest?.adherence?.targetHitRate;
+        input.context?.trainingDigest?.targetOutcomes?.atOrAboveRate;
       if (opts.task === "live_coaching") {
         const exercise = input.liveWorkout?.selectedExercise;
         const fixture = {
@@ -475,7 +483,7 @@ class FakeProvider implements AIProvider {
           `${sessionCount} completed workout${sessionCount === 1 ? "" : "s"} in the current review window`,
           ...(targetHitRate == null
             ? []
-            : [`${targetHitRate}% target-hit rate on measurable working sets`]),
+            : [`${targetHitRate}% of supported planned-set comparisons landed at or above target`]),
           ...(input.question ? [`Question reviewed: ${input.question}`] : []),
         ],
         dataGaps: input.context?.trainingDigest?.dataGaps ?? [],

@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import {
@@ -148,6 +149,9 @@ export default async function TodayPage({
   if (!today) redirect("/setup");
 
   const next = today.nextTemplate!;
+  // Server-issued identity keeps the HTML form, pre-hydration submission, and
+  // hydrated retries on one exact Start intent.
+  const startRequestKey = randomUUID();
   const previewTemplate = query.preview
     ? (today.allTemplates.find(
         ({ template }) => template.id === query.preview,
@@ -208,6 +212,17 @@ export default async function TodayPage({
           <AlertDescription>
             The workout could not be created completely. Nothing was saved — try
             again.
+          </AlertDescription>
+        </Alert>
+      )}
+
+      {query.start === "active" && (
+        <Alert>
+          <AlertCircle className="size-4" />
+          <AlertTitle>A workout is already active</AlertTitle>
+          <AlertDescription>
+            The workout you requested was not started. Resume or finish the
+            active workout first.
           </AlertDescription>
         </Alert>
       )}
@@ -330,6 +345,7 @@ export default async function TodayPage({
                 )}
                 <WorkoutStartForm
                   templateId={selectedTemplate.template.id}
+                  startRequestKey={startRequestKey}
                   fallbackTimezone={user.profile.timezone}
                   retryLabel={selectedTemplate.template.name}
                   buttonClassName="h-auto min-h-12 w-full whitespace-normal py-3 text-center text-base leading-tight"

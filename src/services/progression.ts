@@ -51,8 +51,13 @@ import { isPatternAllowedForSuggestions } from "@/engine/constraint-filter";
 import { audit } from "./audit";
 import { convertWeight } from "@/lib/units";
 import { PROGRESSION_JOB_MAX_ATTEMPTS } from "@/lib/progression-job-contract";
-import { eligibleTotalSystemLoadSql } from "@/lib/set-metric-semantics-sql";
+import { eligibleAutomaticProgressionSql } from "@/lib/set-metric-semantics-sql";
 import { reconcilePendingPainRecommendations } from "@/services/recommendation-evidence-eligibility";
+import { PAIN_EVIDENCE_ALGORITHM_VERSION } from "@/lib/pain-evidence";
+import {
+  PROGRESSION_REVIEW_SOURCE_VERSION,
+  withRecommendationReviewEvidence,
+} from "@/lib/review-evidence";
 
 type LoadSteppers = {
   nextLoadUp: (current: number) => number | null;
@@ -99,10 +104,24 @@ async function recordProgressionRecommendation(
   }
 ) {
   const recommendationId = randomUUID();
+  const painRule = input.ruleId === "pain_freeze" || input.ruleId === "pain_substitute";
+  const evidence = withRecommendationReviewEvidence(input.evidence, {
+    payload: input.payload,
+    producer: painRule ? "pain_consistency" : "progression_rules",
+    sourceVersion: painRule
+      ? PAIN_EVIDENCE_ALGORITHM_VERSION
+      : PROGRESSION_REVIEW_SOURCE_VERSION,
+    limitations: painRule
+      ? [
+          "Only explicit cited pain reports were evaluated. Missing pain fields remain unknown.",
+          "This deterministic status has no confidence score and never diagnoses an injury.",
+        ]
+      : undefined,
+  });
   const idempotencyKey = input.progressionJobId
     ? `progression:${input.progressionJobId}:${input.sourceSlotLineageId}:recommendation`
     : null;
-  const evidenceSetIds = input.evidence.setIds ?? [];
+  const evidenceSetIds = evidence.setIds ?? [];
   const evidenceSetIdsJson = JSON.stringify(evidenceSetIds);
   const requiresComparableLoadEvidence = input.payload.kind === "load_change";
   const query = sql`
@@ -128,8 +147,10 @@ async function recordProgressionRecommendation(
               OR session.archived_at IS NOT NULL
               OR session_exercise.modification_type <> 'as_planned'
               OR completed.archived_at IS NOT NULL
-              OR NOT ${eligibleTotalSystemLoadSql({
+              OR NOT ${eligibleAutomaticProgressionSql({
                 recordedMetricType: sql`completed.metric_type`,
+                prescribedSemanticsVersion:
+                  sql`session_exercise.prescribed_semantics_version`,
                 performedSemanticsVersion: sql`completed.performed_semantics_version`,
                 performedLoadType: sql`completed.performed_load_type`,
                 performedLoadSemantics: sql`completed.performed_load_semantics`,
@@ -160,7 +181,7 @@ async function recordProgressionRecommendation(
         ${input.sourceSlotLineageId}::uuid,
         ${JSON.stringify(input.payload)}::jsonb,
         ${input.reason}::text,
-        ${JSON.stringify(input.evidence)}::jsonb
+        ${JSON.stringify(evidence)}::jsonb
       FROM eligible_evidence
       ON CONFLICT (progression_job_id, source_slot_lineage_id)
         WHERE progression_job_id IS NOT NULL
@@ -438,6 +459,9 @@ export async function evaluateSessionProgression(
           eq(workoutSessions.status, "completed"),
           isNull(workoutSessions.archivedAt),
           isNull(painLogs.archivedAt),
+          gt(painLogs.severity, 0),
+          lte(painLogs.severity, 10),
+          sql`length(btrim(${painLogs.bodyPart})) BETWEEN 1 AND 50`,
           inArray(painLogs.exerciseId, painExerciseIds),
           gt(painLogs.createdAt, painWindowStart),
           lte(painLogs.createdAt, painWindowEnd)
@@ -504,8 +528,9 @@ export async function evaluateSessionProgression(
           AND se.exercise_id = requested.exercise_id
           AND cs.archived_at IS NULL
           AND NOT cs.is_warmup
-          AND ${eligibleTotalSystemLoadSql({
+          AND ${eligibleAutomaticProgressionSql({
             recordedMetricType: sql`cs.metric_type`,
+            prescribedSemanticsVersion: sql`se.prescribed_semantics_version`,
             performedSemanticsVersion: sql`cs.performed_semantics_version`,
             performedLoadType: sql`cs.performed_load_type`,
             performedLoadSemantics: sql`cs.performed_load_semantics`,

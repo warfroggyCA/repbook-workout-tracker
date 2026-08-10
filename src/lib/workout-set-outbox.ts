@@ -1,4 +1,19 @@
-import type { LoadUnit } from "@/lib/units";
+import {
+  PERFORMED_LOAD_SEMANTICS,
+  SUPPORTED_SET_WRITER_METRICS,
+  validateSetWriterShape,
+  type PerformedLoadSemantics,
+  type PerformedMetricType,
+  type PerformedSetMeasurement,
+} from "@/lib/set-metric-semantics";
+import {
+  LIMITATION_CAUSES,
+  PAIN_BODY_PARTS,
+  TECHNIQUE_ISSUES,
+  type LimitationCause,
+  type SetPainContext,
+  type TechniqueIssue,
+} from "@/lib/set-exception-context";
 
 export const WORKOUT_SET_OUTBOX_STORAGE_KEY =
   "workout-tracker:workout-set-outbox:v1";
@@ -34,25 +49,30 @@ export type WorkoutSetLoadEntryMeaning =
   | "combined_stacks"
   | "legacy_unknown";
 
-export type WorkoutSetOutboxEntry = {
+type WorkoutSetOutboxCommand = {
   clientKey: string;
   ownerId: string;
   sessionId: string;
   sessionExerciseId: string;
+  performedExerciseId: string;
+  performedSemanticsVersion: 1;
+  performedLoadType: string;
+  performedLoadSemantics: PerformedLoadSemantics;
   /** Human-readable workout context; older retained copies may not have it. */
   workoutName?: string;
   exerciseName: string;
   setNo: number;
-  weight: number | null;
-  weightUnit: LoadUnit | null;
-  reps: number;
   rpe: number | null;
+  rir: number | null;
+  techniqueIssue: TechniqueIssue | null;
+  limitationCause: LimitationCause | null;
+  pain: SetPainContext | null;
   note: string | null;
   equipmentSnapshotId: string | null;
   /** Pending local selection that must be acknowledged before this set. */
   equipmentSelectionClientKey?: string | null;
   /** Rest guidance starts only after this exact set is acknowledged. */
-  restAfterSec?: number;
+  restAfterSec?: number | null;
   loadEntryMeaning: WorkoutSetLoadEntryMeaning;
   /**
    * Device-observed completion time frozen with the durable command. Older
@@ -60,6 +80,9 @@ export type WorkoutSetOutboxEntry = {
    */
   observedCompletedAtISO: string | null;
   createdAtISO: string;
+} & PerformedSetMeasurement;
+
+export type WorkoutSetOutboxEntry = WorkoutSetOutboxCommand & {
   status: WorkoutSetOutboxStatus;
   attemptCount: number;
   nextAttemptAtISO: string | null;
@@ -67,7 +90,11 @@ export type WorkoutSetOutboxEntry = {
   lastError: string | null;
 };
 
-export type NewWorkoutSetOutboxEntry = Omit<
+type DistributiveOmit<T, K extends PropertyKey> = T extends unknown
+  ? Omit<T, K>
+  : never;
+
+export type NewWorkoutSetOutboxEntry = DistributiveOmit<
   WorkoutSetOutboxEntry,
   | "status"
   | "attemptCount"
@@ -75,7 +102,17 @@ export type NewWorkoutSetOutboxEntry = Omit<
   | "lastAttemptAtISO"
   | "lastError"
   | "observedCompletedAtISO"
-> & { observedCompletedAtISO?: string | null };
+  | "rir"
+  | "techniqueIssue"
+  | "limitationCause"
+  | "pain"
+> & {
+  observedCompletedAtISO?: string | null;
+  rir?: number | null;
+  techniqueIssue?: TechniqueIssue | null;
+  limitationCause?: LimitationCause | null;
+  pain?: SetPainContext | null;
+};
 
 export type WorkoutSetOutboxSnapshot = {
   entries: WorkoutSetOutboxEntry[];
@@ -157,13 +194,14 @@ type StoredQuarantinedWorkoutSetOutboxEntry = {
 };
 const WORKOUT_SET_QUARANTINE_REASONS = [
   "This saved workout set is incomplete or invalid.",
+  "This saved workout set uses an older recording format and needs review.",
   "This saved workout set repeats an earlier identity.",
   "This saved workout set repeats an earlier set number.",
 ] as const;
 type WorkoutSetQuarantineReason =
   (typeof WORKOUT_SET_QUARANTINE_REASONS)[number];
 type OutboxEnvelope = {
-  version: 3;
+  version: 4;
   entries: unknown[];
 };
 type MutationResult =
@@ -317,12 +355,80 @@ function isNullableNumber(value: unknown, min: number, max: number) {
     (typeof value === "number" && Number.isFinite(value) && value >= min && value <= max);
 }
 
-function isLegacyWorkoutSetOutboxEntry(value: unknown): value is Record<
-  string,
-  unknown
-> & Omit<WorkoutSetOutboxEntry, "equipmentSnapshotId" | "loadEntryMeaning" | "equipmentSelectionClientKey"> {
+function isPerformedLoadSemantics(
+  value: unknown,
+): value is PerformedLoadSemantics {
+  return typeof value === "string" && PERFORMED_LOAD_SEMANTICS.includes(
+    value as PerformedLoadSemantics,
+  );
+}
+
+function isWorkoutSetLoadEntryMeaning(
+  value: unknown,
+): value is WorkoutSetLoadEntryMeaning {
+  return value === "total_system" ||
+    value === "per_loading_point" ||
+    value === "displayed_stack" ||
+    value === "per_stack" ||
+    value === "combined_stacks" ||
+    value === "legacy_unknown";
+}
+
+function isWorkoutSetOutboxEntry(value: unknown): value is WorkoutSetOutboxEntry {
   if (!isRecord(value)) return false;
-  const weighted = value.weight !== null;
+  if (
+    typeof value.metricType !== "string" ||
+    !SUPPORTED_SET_WRITER_METRICS.includes(
+      value.metricType as (typeof SUPPORTED_SET_WRITER_METRICS)[number],
+    ) ||
+    typeof value.performedExerciseId !== "string" ||
+    !UUID_PATTERN.test(value.performedExerciseId) ||
+    value.performedSemanticsVersion !== 1 ||
+    typeof value.performedLoadType !== "string" ||
+    value.performedLoadType.trim().length === 0 ||
+    value.performedLoadType.length > 50 ||
+    !isPerformedLoadSemantics(value.performedLoadSemantics)
+  ) {
+    return false;
+  }
+  const weight = value.weight === null || typeof value.weight === "number"
+    ? value.weight
+    : undefined;
+  const weightUnit = value.weightUnit === null ||
+      value.weightUnit === "lb" || value.weightUnit === "kg"
+    ? value.weightUnit
+    : undefined;
+  const reps = value.reps === null || typeof value.reps === "number"
+    ? value.reps
+    : undefined;
+  const distanceKm = value.distanceKm === null || typeof value.distanceKm === "number"
+    ? value.distanceKm
+    : undefined;
+  const durationSeconds = value.durationSeconds === null ||
+      typeof value.durationSeconds === "number"
+    ? value.durationSeconds
+    : undefined;
+  if (
+    weight === undefined || weightUnit === undefined || reps === undefined ||
+    distanceKm === undefined || durationSeconds === undefined ||
+    !isNullableNumber(weight, 0, 2000) ||
+    !isNullableNumber(reps, 0, 100) ||
+    (reps != null && !Number.isInteger(reps)) ||
+    !isNullableNumber(distanceKm, 0, 10_000) ||
+    !isNullableNumber(durationSeconds, 0, 604_800) ||
+    (durationSeconds != null && !Number.isInteger(durationSeconds)) ||
+    !validateSetWriterShape({
+      metricType: value.metricType as PerformedMetricType,
+      loadSemantics: value.performedLoadSemantics,
+      weight,
+      weightUnit,
+      reps,
+      distanceKm,
+      durationSeconds,
+    }).ok
+  ) {
+    return false;
+  }
   return (
     typeof value.clientKey === "string" &&
     UUID_PATTERN.test(value.clientKey) &&
@@ -343,15 +449,22 @@ function isLegacyWorkoutSetOutboxEntry(value: unknown): value is Record<
     Number.isInteger(value.setNo) &&
     value.setNo >= 1 &&
     value.setNo <= 50 &&
-    isNullableNumber(value.weight, 0, 2000) &&
-    (weighted
-      ? value.weightUnit === "lb" || value.weightUnit === "kg"
-      : value.weightUnit === null) &&
-    typeof value.reps === "number" &&
-    Number.isInteger(value.reps) &&
-    value.reps >= 0 &&
-    value.reps <= 100 &&
     isNullableNumber(value.rpe, 1, 10) &&
+    isNullableNumber(value.rir, 0, 10) &&
+    (value.rpe === null || value.rir === null) &&
+    (value.techniqueIssue === null ||
+      TECHNIQUE_ISSUES.includes(value.techniqueIssue as TechniqueIssue)) &&
+    (value.limitationCause === null ||
+      LIMITATION_CAUSES.includes(value.limitationCause as LimitationCause)) &&
+    (value.pain === null || (
+      isRecord(value.pain) &&
+      PAIN_BODY_PARTS.includes(value.pain.bodyPart as SetPainContext["bodyPart"]) &&
+      Number.isInteger(value.pain.severity) &&
+      Number(value.pain.severity) >= 1 &&
+      Number(value.pain.severity) <= 10 &&
+      (value.pain.note === null ||
+        (typeof value.pain.note === "string" && value.pain.note.length <= 500))
+    )) &&
     (value.note === null ||
       (typeof value.note === "string" && value.note.length <= 500)) &&
     isDate(value.createdAtISO) &&
@@ -362,23 +475,7 @@ function isLegacyWorkoutSetOutboxEntry(value: unknown): value is Record<
     isNullableDate(value.nextAttemptAtISO) &&
     isNullableDate(value.lastAttemptAtISO) &&
     (value.lastError === null ||
-      (typeof value.lastError === "string" && value.lastError.length <= 500))
-  );
-}
-
-function isWorkoutSetLoadEntryMeaning(
-  value: unknown,
-): value is WorkoutSetLoadEntryMeaning {
-  return value === "total_system" ||
-    value === "per_loading_point" ||
-    value === "displayed_stack" ||
-    value === "per_stack" ||
-    value === "combined_stacks" ||
-    value === "legacy_unknown";
-}
-
-function isWorkoutSetOutboxEntry(value: unknown): value is WorkoutSetOutboxEntry {
-  return isLegacyWorkoutSetOutboxEntry(value) &&
+      (typeof value.lastError === "string" && value.lastError.length <= 500)) &&
     (value.equipmentSnapshotId === null ||
       (typeof value.equipmentSnapshotId === "string" &&
         UUID_PATTERN.test(value.equipmentSnapshotId))) &&
@@ -386,7 +483,7 @@ function isWorkoutSetOutboxEntry(value: unknown): value is WorkoutSetOutboxEntry
       value.equipmentSelectionClientKey === null ||
       (typeof value.equipmentSelectionClientKey === "string" &&
         UUID_PATTERN.test(value.equipmentSelectionClientKey))) &&
-    (value.restAfterSec === undefined ||
+    (value.restAfterSec === undefined || value.restAfterSec === null ||
       (Number.isInteger(value.restAfterSec) &&
         Number(value.restAfterSec) >= 0 && Number(value.restAfterSec) <= 1800)) &&
     isWorkoutSetLoadEntryMeaning(value.loadEntryMeaning) &&
@@ -396,7 +493,8 @@ function isWorkoutSetOutboxEntry(value: unknown): value is WorkoutSetOutboxEntry
       : ((value.equipmentSnapshotId === null &&
           value.loadEntryMeaning === "legacy_unknown") ||
         (value.equipmentSnapshotId !== null &&
-          value.loadEntryMeaning !== "legacy_unknown")));
+          value.loadEntryMeaning !== "legacy_unknown")))
+  );
 }
 
 function isStoredQuarantinedEntry(
@@ -435,7 +533,8 @@ export function parseWorkoutSetOutbox(raw: string | null): WorkoutSetOutboxSnaps
   }
   if (
     !isRecord(value) ||
-    (value.version !== 1 && value.version !== 2 && value.version !== 3) ||
+    (value.version !== 1 && value.version !== 2 &&
+      value.version !== 3 && value.version !== 4) ||
     !Array.isArray(value.entries)
   ) {
     return {
@@ -458,17 +557,24 @@ export function parseWorkoutSetOutbox(raw: string | null): WorkoutSetOutboxSnaps
       });
       continue;
     }
-    const migrated =
-      value.version === 1 && isLegacyWorkoutSetOutboxEntry(raw)
-        ? {
-            ...raw,
-            equipmentSnapshotId: null,
-            loadEntryMeaning: "legacy_unknown" as const,
-            observedCompletedAtISO: null,
-          }
-        : value.version === 2 && isRecord(raw)
-          ? { ...raw, observedCompletedAtISO: null }
-          : raw;
+    if (value.version !== 4) {
+      quarantined.push({
+        quarantineKey: `entries:${sourceIndex}`,
+        raw,
+        reason:
+          "This saved workout set uses an older recording format and needs review.",
+      });
+      continue;
+    }
+    const migrated = isRecord(raw)
+      ? {
+          ...raw,
+          rir: raw.rir ?? null,
+          techniqueIssue: raw.techniqueIssue ?? null,
+          limitationCause: raw.limitationCause ?? null,
+          pain: raw.pain ?? null,
+        }
+      : raw;
     if (!isWorkoutSetOutboxEntry(migrated)) {
       quarantined.push({
         quarantineKey: `entries:${sourceIndex}`,
@@ -521,7 +627,7 @@ function writeWorkoutSetOutbox(
   quarantined: QuarantinedWorkoutSetOutboxEntry[]
 ) {
   const envelope: OutboxEnvelope = {
-    version: 3,
+    version: 4,
     entries: [
       ...ordered(entries),
       ...quarantined.map(({ raw, reason }) => ({
@@ -542,16 +648,27 @@ function sameSet(
     entry.ownerId === input.ownerId &&
     entry.sessionId === input.sessionId &&
     entry.sessionExerciseId === input.sessionExerciseId &&
+    entry.performedExerciseId === input.performedExerciseId &&
+    entry.performedSemanticsVersion === input.performedSemanticsVersion &&
+    entry.performedLoadType === input.performedLoadType &&
+    entry.performedLoadSemantics === input.performedLoadSemantics &&
     entry.setNo === input.setNo &&
+    entry.metricType === input.metricType &&
     entry.weight === input.weight &&
     entry.weightUnit === input.weightUnit &&
     entry.reps === input.reps &&
+    entry.distanceKm === input.distanceKm &&
+    entry.durationSeconds === input.durationSeconds &&
     entry.rpe === input.rpe &&
+    entry.rir === (input.rir ?? null) &&
+    entry.techniqueIssue === (input.techniqueIssue ?? null) &&
+    entry.limitationCause === (input.limitationCause ?? null) &&
+    hasSameRawValue(entry.pain, input.pain ?? null) &&
     entry.note === input.note
     && entry.equipmentSnapshotId === input.equipmentSnapshotId
     && (entry.equipmentSelectionClientKey ?? null) ===
       (input.equipmentSelectionClientKey ?? null)
-    && (entry.restAfterSec ?? null) === (input.restAfterSec ?? null)
+    && entry.restAfterSec === input.restAfterSec
     && entry.loadEntryMeaning === input.loadEntryMeaning
     && entry.observedCompletedAtISO === (input.observedCompletedAtISO ?? null)
   );
@@ -604,6 +721,10 @@ export function enqueueWorkoutSetOutboxEntry(
   }
   const entry: WorkoutSetOutboxEntry = {
     ...input,
+    rir: input.rir ?? null,
+    techniqueIssue: input.techniqueIssue ?? null,
+    limitationCause: input.limitationCause ?? null,
+    pain: input.pain ?? null,
     observedCompletedAtISO: input.observedCompletedAtISO ?? null,
     status: "queued",
     attemptCount: 0,

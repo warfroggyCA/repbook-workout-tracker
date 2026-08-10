@@ -5,7 +5,7 @@ import { z } from "zod";
 import { getDb } from "@/db";
 import { getCurrentUser } from "@/lib/user";
 import { sanitizeAIProviderError } from "@/lib/ai-provider-error";
-import { logServerEvent } from "@/lib/server-log";
+import { logDiagnosticEvent } from "@/lib/server-log";
 import { AIUnavailableError, isAIAvailable } from "@/ai/provider";
 import {
   createCoachingAnswer,
@@ -61,8 +61,7 @@ export async function generateTrainingReview(): Promise<CoachActionResult> {
     revalidatePath("/coach");
     return { ok: true, insightId: insight.id };
   } catch (error) {
-    logServerEvent("error", "ai.coach_review_failed", {
-      userId: user.id,
+    logDiagnosticEvent("ai.coach_review_failed", {
       ...sanitizeAIProviderError(error),
     });
     return { ok: false, reason: friendlyCoachError(error) };
@@ -103,8 +102,7 @@ export async function askCoach(question: string): Promise<CoachActionResult> {
     revalidatePath("/coach");
     return { ok: true, insightId: insight.id };
   } catch (error) {
-    logServerEvent("error", "ai.coach_question_failed", {
-      userId: user.id,
+    logDiagnosticEvent("ai.coach_question_failed", {
       ...sanitizeAIProviderError(error),
     });
     return { ok: false, reason: friendlyCoachError(error) };

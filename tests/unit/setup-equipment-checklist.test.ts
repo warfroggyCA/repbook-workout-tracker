@@ -1,8 +1,36 @@
 import { describe, expect, it } from "vitest";
 import { amberFields } from "@/ai/tasks/equipment-parse/confirm";
-import { checklistFromExisting } from "@/lib/setup-equipment-checklist";
+import {
+  checklistFromExisting,
+  equipmentQuantityLabel,
+  nextChecklistItemLabel,
+} from "@/lib/setup-equipment-checklist";
 
 describe("first-time equipment checklist lossless revisit", () => {
+  it("labels quantity in complete pairs or individual singles", () => {
+    expect(equipmentQuantityLabel("dumbbell", true)).toBe("How many pairs");
+    expect(equipmentQuantityLabel("dumbbell", false)).toBe("How many singles");
+    expect(equipmentQuantityLabel("dumbbell", null)).toBe(
+      "Choose pair or single first"
+    );
+    expect(equipmentQuantityLabel("barbell", null)).toBe("How many");
+  });
+
+  it("gives repeated equipment a visible unique default label", () => {
+    const items = [
+      { type: "dumbbell" as const, label: "Adjustable pair" },
+      { type: "dumbbell" as const, label: "Dumbbells 2" },
+      { type: "bench" as const, label: "Bench" },
+    ];
+
+    expect(nextChecklistItemLabel([], "dumbbell", "Dumbbells")).toBe(
+      "Dumbbells"
+    );
+    expect(nextChecklistItemLabel(items, "dumbbell", "Dumbbells")).toBe(
+      "Dumbbells 3"
+    );
+  });
+
   it("keeps repeated and specialty rows as separate stable items", () => {
     const existing = {
       items: [

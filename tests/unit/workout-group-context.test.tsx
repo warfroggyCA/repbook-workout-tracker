@@ -80,7 +80,6 @@ function occurrence(
     revision: 0,
     resolvedAt: null,
     completedSetId: null,
-    restAfterSec: memberOrder === 0 ? 0 : 75,
   };
 }
 
@@ -142,7 +141,7 @@ describe("active workout group presentation", () => {
     expect(html).toContain("Round 1 of 2");
     expect(html).toContain("Current member:</span> 1 of 2 · Press");
     expect(html).toContain("Up next in group:</span> 2 of 2 · Row");
-    expect(html).toContain("No planned rest is saved after the current set.");
+    expect(html).toContain("No rest is planned after the current set.");
     expect(html).toContain('href="#exercise-press"');
     expect(html).toContain('aria-current="step"');
     expect(html).toContain("1. Press");
@@ -227,7 +226,7 @@ describe("active workout group presentation", () => {
       <WorkoutGroupContext guidance={guidance} />,
     );
 
-    expect(html).toContain("1 min 15 sec saved after the current set.");
+    expect(html).toContain("Round rest after this set: 1 min 15 sec.");
     expect(html).toContain("Later group work is already recorded.");
     expect(html).not.toContain("before the next member");
     expect(html).not.toContain("after this round");

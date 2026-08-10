@@ -47,6 +47,15 @@ import {
   AlertTitle,
 } from "@/components/ui/alert";
 import { CoachActivityContext } from "@/components/coach/activity-context";
+import {
+  LIMITATION_CAUSE_LABELS,
+  TECHNIQUE_ISSUE_LABELS,
+  type LimitationCause,
+  type TechniqueIssue,
+} from "@/lib/set-exception-context";
+import { formatPainEvidence } from "@/lib/pain-evidence";
+import { externalAnalysisImportDigestSchema } from "@/lib/external-analysis-import";
+import { getExternalAnalysisSourceBindingFreshness } from "@/services/external-analysis-validation";
 
 function Metric({
   label,
@@ -73,6 +82,7 @@ export default async function CoachPage() {
   const [
     review,
     insightRows,
+    externalImportRows,
     report,
     activityReport,
     testSessionCount,
@@ -86,6 +96,15 @@ export default async function CoachPage() {
       ),
       orderBy: desc(coachingInsights.createdAt),
       limit: 12,
+    }),
+    db.query.coachingInsights.findMany({
+      where: and(
+        eq(coachingInsights.userId, user.id),
+        eq(coachingInsights.kind, "external_analysis_import"),
+        isNull(coachingInsights.archivedAt),
+      ),
+      orderBy: desc(coachingInsights.createdAt),
+      limit: 20,
     }),
     getHistoryReport(
       db,
@@ -126,6 +145,36 @@ export default async function CoachPage() {
         question: string;
       } => item.answer !== null && item.question !== null
     );
+  const parsedExternalImports = externalImportRows.flatMap((row) => {
+    const parsed = externalAnalysisImportDigestSchema.safeParse(row.dataDigest);
+    if (!parsed.success) return [];
+    return [{ row, digest: parsed.data }];
+  });
+  const externalObservations = (
+    await Promise.all(
+      parsedExternalImports.map(async ({ row, digest }) => {
+        const freshness = await getExternalAnalysisSourceBindingFreshness(
+          db,
+          user.id,
+          digest.sourceBindings,
+          digest.package.sourceEvidenceRevision,
+        );
+        return digest.observations.map((observation) => ({
+          importId: row.id,
+          importedAt: row.createdAt,
+          packageId: digest.package.id,
+          responseId: digest.response.id,
+          observation,
+          current: freshness.ok,
+        }));
+      }),
+    )
+  ).flat();
+  const externalObservationDateFormatter = new Intl.DateTimeFormat("en-CA", {
+    dateStyle: "medium",
+    timeStyle: "short",
+    timeZone: user.profile.timezone,
+  });
 
   const toCardData = (
     recommendation: (typeof review.pending)[number]
@@ -157,6 +206,32 @@ export default async function CoachPage() {
           )
         : [],
       evidence: buildReviewEvidenceItems(recommendation.evidence, loadUnit),
+      reviewRevision: recommendation.reviewRevision,
+      deferRevision: recommendation.deferRevision,
+      deferredAt: recommendation.deferredAt?.toISOString() ?? null,
+      revisitOn: recommendation.revisitOn,
+      deferReason: recommendation.deferReason,
+      createdAt: recommendation.createdAt.toISOString(),
+      createdAtLabel: new Intl.DateTimeFormat("en-CA", {
+        dateStyle: "medium",
+        timeStyle: "short",
+        timeZone: user.profile.timezone,
+      }).format(recommendation.createdAt),
+      evidenceState: recommendation.reviewEvidence.state,
+      evidenceExplanation: recommendation.reviewEvidence.explanation,
+      evidenceLinks: recommendation.reviewEvidence.links,
+      actionable: recommendation.reviewEvidence.actionable,
+      producer: recommendation.reviewEvidence.metadata?.producer ?? null,
+      sourceVersion: recommendation.reviewEvidence.metadata?.sourceVersion ?? null,
+      generatedAt: recommendation.reviewEvidence.metadata?.generatedAt ?? null,
+      limitations: recommendation.reviewEvidence.metadata?.limitations ?? [
+        "The complete versioned evidence contract was not retained for this proposal.",
+      ],
+      proposedEffect:
+        recommendation.reviewEvidence.metadata?.proposedEffect.summary ??
+        "No supported future effect can be applied from this retained proposal.",
+      externalRequestedOutcome:
+        payload.kind === "external_review" ? payload.requestedOutcome : null,
     };
   };
 
@@ -178,6 +253,37 @@ export default async function CoachPage() {
         </p>
       </header>
 
+      {externalObservations.length > 0 ? (
+        <section className="flex flex-col gap-3" aria-labelledby="external-observations-heading">
+          <div>
+            <h2 id="external-observations-heading" className="font-medium">Imported external observations</h2>
+            <p className="text-xs text-muted-foreground">
+              These are selected external-AI observations, not performed facts, Repbook calculations, or accepted decisions.
+            </p>
+          </div>
+          <ul className="grid gap-3 sm:grid-cols-2">
+            {externalObservations.map(({ importId, importedAt, observation, current }) => (
+              <li key={`${importId}-${observation.id}`} className="rounded-xl border bg-card p-4 shadow-[var(--shadow-soft)]">
+                <Badge variant={current ? "outline" : "destructive"}>
+                  {current ? "External AI observation" : "Stale external observation"}
+                </Badge>
+                <p className="mt-2 text-sm font-medium leading-6">{observation.statement}</p>
+                <p className="mt-2 text-xs text-muted-foreground">Evidence: {observation.evidenceIds.join(", ")}</p>
+                <p className="mt-1 text-xs text-muted-foreground">Limits: {observation.limitations.join(" · ")}</p>
+                {!current ? (
+                  <p className="mt-2 text-xs font-medium text-destructive">
+                    The bound Repbook evidence changed after this was imported. Treat this as historical external context and prepare a new package before relying on it.
+                  </p>
+                ) : null}
+                <p className="mt-2 text-xs text-muted-foreground">
+                  Imported {externalObservationDateFormatter.format(importedAt)}
+                </p>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
+
       <section
         className="flex flex-col gap-3"
         aria-labelledby="pending-decisions-heading"
@@ -188,7 +294,8 @@ export default async function CoachPage() {
               Decisions needing review
             </h2>
             <p className="text-xs text-muted-foreground">
-              These are proposed Program changes, not informational coaching.
+              These are proposals awaiting your decision. External items are
+              future Review directions, not direct Program changes.
             </p>
           </div>
           <Badge variant={review.pending.length > 0 ? "default" : "outline"}>
@@ -210,7 +317,7 @@ export default async function CoachPage() {
         ) : (
           review.pending.map((recommendation) => (
             <RecommendationCard
-              key={recommendation.id}
+              key={`${recommendation.id}:${recommendation.reviewRevision}:${recommendation.deferRevision}`}
               rec={toCardData(recommendation)}
               loadStep={
                 recommendation.payload.kind === "load_change" &&
@@ -220,6 +327,73 @@ export default async function CoachPage() {
               }
             />
           ))
+        )}
+      </section>
+
+      <section
+        className="flex flex-col gap-3"
+        aria-labelledby="recent-exception-context-heading"
+      >
+        <div>
+          <h2 id="recent-exception-context-heading" className="font-medium">
+            Recent effort and issue context
+          </h2>
+          <p className="text-xs text-muted-foreground">
+            Recorded observations are evidence for Review. They do not change
+            your Program, approve a proposal, or create an adaptation.
+          </p>
+        </div>
+        {review.recentExceptions.length === 0 ? (
+          <p className="rounded-xl border border-dashed p-4 text-sm text-muted-foreground">
+            No optional effort or issue context is recorded. Ordinary completed
+            sets remain unknown for these fields.
+          </p>
+        ) : (
+          <ol className="grid gap-3 md:grid-cols-2" aria-label="Recent effort and issue context">
+            {review.recentExceptions.map((item) => {
+              const details = [
+                item.rir == null ? null : `RIR ${item.rir}`,
+                item.rpe == null ? null : `RPE ${item.rpe}`,
+                item.techniqueIssue != null && item.techniqueIssue in TECHNIQUE_ISSUE_LABELS
+                  ? `Technique: ${TECHNIQUE_ISSUE_LABELS[item.techniqueIssue as TechniqueIssue]}`
+                  : null,
+                item.limitationCause != null && item.limitationCause in LIMITATION_CAUSE_LABELS
+                  ? `Limited by: ${LIMITATION_CAUSE_LABELS[item.limitationCause as LimitationCause]}`
+                  : null,
+                item.painBodyPart == null || item.painSeverity == null
+                  ? null
+                  : formatPainEvidence({
+                      bodyPart: item.painBodyPart,
+                      severity: item.painSeverity,
+                      source: item.painSource,
+                    }),
+                item.modificationType === "substituted"
+                  ? `Performed ${item.performedExerciseName} instead of ${
+                      item.plannedExerciseName ?? "the retained planned exercise"
+                    }${item.substitutionReason ? ` · ${item.substitutionReason}` : ""}`
+                  : null,
+              ].filter((value): value is string => value != null);
+              return (
+                <li key={item.setId} className="rounded-xl border bg-card p-4">
+                  <p className="font-medium">
+                    {item.performedExerciseName} · set {item.setNo}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    {item.workoutName} · {formatRecordedLocalDate(item.localDate)}
+                  </p>
+                  <ul className="mt-2 space-y-1 text-sm">
+                    {details.map((detail) => <li key={detail}>{detail}</li>)}
+                  </ul>
+                  <Link
+                    href={`/history/${item.sessionId}`}
+                    className="mt-3 inline-flex min-h-8 items-center text-xs font-medium text-primary underline-offset-4 hover:underline focus-visible:rounded-sm focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+                  >
+                    Open supporting workout
+                  </Link>
+                </li>
+              );
+            })}
+          </ol>
         )}
       </section>
 
@@ -388,10 +562,10 @@ export default async function CoachPage() {
                   <div className="rounded-lg bg-muted/55 p-2">
                     <dt className="text-muted-foreground">Pain evidence</dt>
                     <dd className="mt-0.5 font-medium">
-                      {outcome.painFlags === 0
-                        ? "No pain flag recorded"
-                        : `${outcome.painFlags} flag${
-                            outcome.painFlags === 1 ? "" : "s"
+                      {outcome.positivePainReports === 0
+                        ? "No positive pain evidence recorded; absence remains unknown"
+                        : `${outcome.positivePainReports} positive report${
+                            outcome.positivePainReports === 1 ? "" : "s"
                           } · max ${outcome.maxPainSeverity}/10`}
                     </dd>
                   </div>
@@ -551,16 +725,20 @@ export default async function CoachPage() {
             <Metric
               label="Workouts"
               value={String(report.overview.completedSessions)}
-              hint={`${report.overview.workingSets} working sets`}
+              hint={
+                report.cadence.averageSessionsPerCompleteWeek == null
+                  ? `${report.overview.workingSets} working sets`
+                  : `${report.cadence.averageSessionsPerCompleteWeek} per complete week · current preference ${report.cadence.currentPreference.sessionsPerWeek}`
+              }
             />
             <Metric
-              label="Targets met"
+              label="Planned sets at or above"
               value={
-                report.overview.targetHitRate == null
+                report.overview.targetOutcomes.atOrAboveRate == null
                   ? "—"
-                  : `${report.overview.targetHitRate}%`
+                  : `${report.overview.targetOutcomes.atOrAboveRate}%`
               }
-              hint="Measurable sets"
+              hint={`${report.overview.targetOutcomes.below} below · ${report.overview.targetOutcomes.at} at · ${report.overview.targetOutcomes.above} above · ${report.overview.targetOutcomes.unknown} unknown`}
             />
             <Metric
               label="Avg. effort"

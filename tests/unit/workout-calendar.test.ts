@@ -19,8 +19,9 @@ function calendarWorkout(
     startedAt: new Date(startedAt),
     timezone,
     localDate,
-    finishedAt: null,
-    exercises: [],
+      finishedAt: null,
+      occurrences: [],
+      exercises: [],
     painLogs: [],
   };
 }

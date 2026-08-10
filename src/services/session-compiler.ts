@@ -15,6 +15,7 @@ import { loadProgramPreflightContext } from "@/services/program-preflight";
 import { runProgramPreflight } from "@/lib/program-preflight";
 import { canonicalJson, sha256Hex } from "@/services/snapshot-crypto";
 import {
+  hasGeneratedOverviewWarmupItems,
   projectIntentProgramDocumentV2,
   upgradeStoredProgramDocumentToV3,
 } from "@/lib/program-document";
@@ -55,7 +56,7 @@ function preflightEvidenceTokenQuery(userId: string, exerciseIds: string[]) {
         pain.source,
         pain.archived_at,
         pain.created_at
-      ) ORDER BY pain.id), '[]'::jsonb)::text FROM pain_logs pain WHERE pain.user_id = ${userId}::uuid),
+      ) ORDER BY pain.id), '[]'::jsonb)::text FROM pain_logs pain WHERE pain.user_id = ${userId}::uuid AND pain.source <> 'set_exception'::pain_source),
       (SELECT COALESCE(jsonb_agg(jsonb_build_array(session_row.id, session_row.template_id, session_row.started_at, session_row.finished_at, session_row.exclude_duration_from_analytics) ORDER BY session_row.id), '[]'::jsonb)::text FROM workout_sessions session_row WHERE session_row.user_id = ${userId}::uuid AND session_row.status = 'completed' AND session_row.archived_at IS NULL),
       (SELECT COALESCE(jsonb_agg(jsonb_build_array(exercise.id, exercise.movement_pattern) ORDER BY exercise.id), '[]'::jsonb)::text FROM exercises exercise WHERE exercise.id IN (${exerciseList})),
       (SELECT COALESCE(jsonb_agg(jsonb_build_array(requirement.id, requirement.exercise_id, requirement.equipment_type, requirement.equipment_definition_id, requirement.min_weight) ORDER BY requirement.id), '[]'::jsonb)::text FROM exercise_equipment_requirements requirement WHERE requirement.exercise_id IN (${exerciseList}))
@@ -114,6 +115,9 @@ export async function buildSessionCompilerInput(
       templateExerciseId: row.slot.id,
       exerciseId: slot.exerciseId,
       exerciseName: row.exercise.name,
+      metricType: row.exercise.metricType,
+      loadType: row.exercise.loadType,
+      loadSemantics: row.exercise.loadSemantics,
       orderIdx,
       supersetKey: slot.supersetKey,
       groupMemberOrderIdx: slot.groupMemberOrderIdx,
@@ -250,6 +254,10 @@ export async function acceptSessionCompilerProposal(
   const rowsJson = JSON.stringify(output.exercises.map((exercise) => ({
     slot_lineage_id: exercise.slotLineageId,
     exercise_id: exercise.exerciseId,
+    prescribed_exercise_name: exercise.exerciseName,
+    prescribed_metric_type: exercise.metricType,
+    prescribed_load_type: exercise.loadType,
+    prescribed_load_semantics: exercise.loadSemantics,
     template_exercise_id: exercise.templateExerciseId,
     order_idx: exercise.orderIdx,
     superset_key: exercise.supersetKey,
@@ -287,20 +295,10 @@ export async function acceptSessionCompilerProposal(
         : group.restAfterRoundSec,
     };
   }));
-  const dayWarmupItems = "warmupItems" in input.day && input.day.warmupItems.length > 0
+  const dayWarmupItems = "warmupItems" in input.day &&
+      !hasGeneratedOverviewWarmupItems(input.day, [input.templateId])
     ? input.day.warmupItems
-    : input.day.warmupNotes
-      ? [{
-          key: input.day.lineageId,
-          label: input.day.warmupNotes,
-          reps: null,
-          load: null,
-          loadUnit: null,
-          loadPercent: null,
-          loadText: null,
-          notes: null,
-        }]
-      : [];
+    : [];
   const dayWarmupsJson = JSON.stringify(dayWarmupItems);
   const snapshotJson = JSON.stringify(snapshot);
   const result = resultRows(await db.execute(sql`
@@ -394,6 +392,9 @@ export async function acceptSessionCompilerProposal(
       INSERT INTO session_exercises (
         session_id, exercise_id, planned_from_template_exercise_id, modification_type,
         source_slot_lineage_id,
+        prescribed_semantics_version, prescribed_exercise_name,
+        prescribed_metric_type, prescribed_load_type,
+        prescribed_load_semantics,
         order_idx, superset_key, group_snapshot_id, group_member_order_idx,
         rest_sec, target_sets, target_reps_min,
         target_reps_max, target_load, target_load_unit, notes, warmup_notes,
@@ -405,6 +406,11 @@ export async function acceptSessionCompilerProposal(
         row.template_exercise_id::uuid,
         'as_planned'::modification_type,
         row.slot_lineage_id::uuid,
+        1,
+        row.prescribed_exercise_name,
+        row.prescribed_metric_type::metric_type,
+        row.prescribed_load_type,
+        row.prescribed_load_semantics::load_semantics,
         row.order_idx,
         row.superset_key,
         session_group.id,
@@ -422,6 +428,8 @@ export async function acceptSessionCompilerProposal(
       FROM inserted_session session
       CROSS JOIN jsonb_to_recordset(${rowsJson}::jsonb) AS row(
         slot_lineage_id text, exercise_id text, template_exercise_id text, order_idx integer,
+        prescribed_exercise_name text, prescribed_metric_type text,
+        prescribed_load_type text, prescribed_load_semantics text,
         superset_key text, group_member_order_idx integer, rest_sec integer,
         sets integer, rep_min integer,
         rep_max integer, target_load numeric, target_load_unit text, notes text,
@@ -444,25 +452,7 @@ export async function acceptSessionCompilerProposal(
         exercise.session_id,
         exercise.exercise_id AS planned_exercise_id,
         exercise.order_idx,
-        0::integer AS local_order,
-        jsonb_build_object(
-          'label', exercise.warmup_notes,
-          'reps', NULL,
-          'load', NULL,
-          'loadUnit', NULL,
-          'loadPercent', NULL,
-          'loadText', NULL,
-          'notes', NULL
-        ) AS value
-      FROM inserted_exercises exercise
-      WHERE nullif(btrim(exercise.warmup_notes), '') IS NOT NULL
-      UNION ALL
-      SELECT
-        exercise.id,
-        exercise.session_id,
-        exercise.exercise_id,
-        exercise.order_idx,
-        item.ordinality::integer,
+        item.ordinality::integer - 1 AS local_order,
         item.value
       FROM inserted_exercises exercise
       CROSS JOIN LATERAL jsonb_array_elements(exercise.warmup_sets)

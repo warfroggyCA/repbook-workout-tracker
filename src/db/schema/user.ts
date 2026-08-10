@@ -5,6 +5,7 @@ import {
   text,
   integer,
   boolean,
+  bigint,
   timestamp,
   jsonb,
   uniqueIndex,
@@ -24,6 +25,11 @@ export const users = pgTable(
     updatedAt: timestamp("updated_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
+    analysisEvidenceRevision: bigint("analysis_evidence_revision", {
+      mode: "number",
+    })
+      .notNull()
+      .default(0),
   },
   (t) => [uniqueIndex("users_email_idx").on(t.email)]
 );

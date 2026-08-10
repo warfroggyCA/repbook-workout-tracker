@@ -15,4 +15,5 @@ export * from "./coaching";
 export * from "./events";
 export * from "./ai-control";
 export * from "./contextual-note";
+export * from "./analysis";
 export * from "./relations";

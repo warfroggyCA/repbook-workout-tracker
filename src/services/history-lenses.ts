@@ -378,7 +378,7 @@ function buildPainLens(input: BuildHistoryLensesInput): HistoryLens {
       label: context.exercise
         ? `${context.exercise} · ${titleCase(context.bodyPart)}`
         : `Session-level · ${titleCase(context.bodyPart)}`,
-      value: `${plural(context.events, "pain flag")} · max ${context.maxSeverity}/10`,
+      value: `${plural(context.events, "positive pain report")} · max ${context.maxSeverity}/10`,
       detail: context.exercise
         ? "The pain log names this exact exercise."
         : "No movement is attributed to this pain log.",
@@ -428,7 +428,7 @@ function buildPainLens(input: BuildHistoryLensesInput): HistoryLens {
         : "No pain or discomfort-linked exercise changes were recorded in this period.",
     tone: hasSignal ? "watch" : "neutral",
     evidence: evidence.slice(0, 5),
-    limitation: `${number.format(pain.attributedPainEvents)} of ${number.format(pain.painEvents)} pain flags name an exercise. These are recorded associations, not causes or a medical assessment; no pain record does not mean pain-free.`,
+    limitation: `${number.format(pain.attributedPainEvents)} of ${number.format(pain.painEvents)} positive pain reports name an exercise. These are recorded associations, not causes or a medical assessment; no pain record does not mean pain-free.`,
     decision:
       hasSignal || pain.constraints.some((constraint) => constraint.avoid)
         ? {

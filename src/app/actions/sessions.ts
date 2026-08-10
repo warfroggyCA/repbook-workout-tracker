@@ -25,7 +25,6 @@ import {
   updateSessionExerciseWithVersion,
   updateSetWithVersion,
   restoreRecordVersion,
-  type SetVersionUpdate,
 } from "@/services/record-versions";
 import {
   getExerciseAlternativeOptions,
@@ -44,7 +43,9 @@ import {
   mutateWorkoutOccurrence,
   IncompleteWorkoutCreationError,
   StaleWorkoutTemplateError,
+  buildWorkoutStartRequestHash,
   findOwnedActiveWorkout,
+  findOwnedWorkoutByStartRequest,
   startWorkoutSession,
 } from "@/services/session-lifecycle";
 import { addWorkoutExerciseInputSchema } from "@/lib/add-workout-exercise";
@@ -52,8 +53,10 @@ import { workoutReplacementUnavailableReason } from "@/lib/exercise-replacements
 import { processProgressionJob } from "@/services/progression-jobs";
 import { sessionTimeBudgetSchema } from "@/lib/session-time-budget";
 import { actionFailure } from "@/lib/action-results";
-import { logServerEvent } from "@/lib/server-log";
-import { safeErrorName } from "@/lib/safe-error-name";
+import {
+  categorizeDiagnosticError,
+  logDiagnosticEvent,
+} from "@/lib/server-log";
 import { acceptanceWorkoutNow } from "@/lib/acceptance-workout-clock";
 import type { WorkoutStartState } from "@/lib/workout-start";
 import { isPhase0StartDisposableAcceptanceRuntime } from "@/lib/acceptance-runtime";
@@ -61,9 +64,9 @@ import { mutateSessionEquipmentSelection } from "@/services/session-equipment-se
 import {
   logSetSchema,
   painSchema,
-  updateSetSchema,
   type LogSetInput,
 } from "@/lib/session-action-validation";
+import { SET_CORRECTION_CATEGORIES } from "@/lib/set-correction";
 
 const appendSetSchema = z.object({
   sessionExerciseId: z.string().uuid(),
@@ -110,31 +113,48 @@ export async function startSession(
       : undefined,
   );
   const parsedTemplateId = z.string().uuid().safeParse(templateId);
+  const parsedStartRequestKey = z.string().uuid().safeParse(
+    formData.get("startRequestKey"),
+  );
+  const submittedStartRequestKey = parsedStartRequestKey.success
+    ? parsedStartRequestKey.data.toLowerCase()
+    : null;
   const acceptanceFailure = isPhase0StartDisposableAcceptanceRuntime()
     ? formData.get("phase0StartFailure")
     : null;
-  if (!timezoneResult.success || !parsedTemplateId.success) {
-    logServerEvent("warn", "session.start_rejected", {
-      userId: user.id,
-      templateId: parsedTemplateId.success ? parsedTemplateId.data : null,
-      category: "invalid_request",
+  if (
+    !timezoneResult.success ||
+    !parsedTemplateId.success ||
+    !parsedStartRequestKey.success
+  ) {
+    logDiagnosticEvent("session.start_rejected", {
+      rejection: "invalid_request",
     });
     return {
       status: "error" as const,
       code: "not_created" as const,
       message: "No workout was created. Check your device settings and try again.",
       workoutCreated: false as const,
+      startRequestKey: submittedStartRequestKey,
     };
   }
+  const timeBudgetMin = sessionTimeBudgetSchema.parse(undefined);
+  const startRequestKey = submittedStartRequestKey!;
+  const startRequestHash = buildWorkoutStartRequestHash({
+    templateId: parsedTemplateId.data,
+    timezone: timezoneResult.data,
+    timeBudgetMin: timeBudgetMin ?? null,
+  });
   let result: Awaited<ReturnType<typeof startWorkoutSession>>;
   try {
     result = await startWorkoutSession(
       db,
       user.id,
       parsedTemplateId.data,
-      sessionTimeBudgetSchema.parse(undefined),
+      timeBudgetMin,
       {
         timezone: timezoneResult.data,
+        startRequestKey,
         now: acceptanceWorkoutNow("start"),
         ...(acceptanceFailure === "incomplete"
           ? { evaluateStartCounts: () => false }
@@ -152,10 +172,8 @@ export async function startSession(
     );
   } catch (error) {
     if (error instanceof StaleWorkoutTemplateError) {
-      logServerEvent("warn", "session.start_rejected", {
-        userId: user.id,
-        templateId: parsedTemplateId.data,
-        category: "program_updated",
+      logDiagnosticEvent("session.start_rejected", {
+        rejection: "program_updated",
       });
       revalidatePath("/today");
       return redirect("/today?program=updated", RedirectType.replace);
@@ -166,47 +184,94 @@ export async function startSession(
         code: "not_created" as const,
         message: "The workout was not created completely, so nothing was kept. Try again.",
         workoutCreated: false as const,
+        startRequestKey,
       };
     }
-    logServerEvent("error", "session.start_failed", {
-      userId: user.id,
-      templateId: parsedTemplateId.data,
-      category: "unexpected_creation_failure",
-      errorName: safeErrorName(error),
+    logDiagnosticEvent("session.start_failed", {
+      failure: "unexpected_creation_failure",
+      errorCategory: categorizeDiagnosticError(error, "persistence"),
     });
-    let active: Awaited<ReturnType<typeof findOwnedActiveWorkout>>;
+    let exact: Awaited<ReturnType<typeof findOwnedWorkoutByStartRequest>>;
     try {
-      active = await findOwnedActiveWorkout(db, user.id);
+      exact = await findOwnedWorkoutByStartRequest(
+        db,
+        user.id,
+        startRequestKey,
+      );
     } catch (reconciliationError) {
-      logServerEvent("error", "session.start_reconciliation_failed", {
-        userId: user.id,
-        templateId: parsedTemplateId.data,
-        category: "active_workout_status_unknown",
-        errorName: safeErrorName(reconciliationError),
+      logDiagnosticEvent("session.start_reconciliation_failed", {
+        reconciliation: "start_request_status_unknown",
+        errorCategory: categorizeDiagnosticError(
+          reconciliationError,
+          "persistence",
+        ),
       });
       return {
         status: "error" as const,
         code: "status_unknown" as const,
         message: "We could not confirm whether the workout was created. Check Today before trying again.",
         workoutCreated: null,
+        startRequestKey,
       };
     }
-    if (active) {
-      logServerEvent("warn", "session.start_reconciled", {
-        userId: user.id,
-        templateId: parsedTemplateId.data,
-        sessionId: active.id,
-        category: "active_workout_found",
+    if (exact?.startRequestHash === startRequestHash) {
+      logDiagnosticEvent("session.start_reconciled", {
+        reconciliation: "exact_start_request_found",
       });
       revalidatePath("/today");
-      return redirect(`/session/${active.id}`, RedirectType.push);
+      return redirect(`/session/${exact.id}`, RedirectType.push);
+    }
+    if (exact) {
+      return {
+        status: "error" as const,
+        code: "request_conflict" as const,
+        message: "This Start request no longer matches the workout you chose. Refresh Today and start again.",
+        workoutCreated: false as const,
+        startRequestKey,
+      };
+    }
+    try {
+      const active = await findOwnedActiveWorkout(db, user.id);
+      if (active) {
+        revalidatePath("/today");
+        return redirect("/today?start=active", RedirectType.replace);
+      }
+    } catch (reconciliationError) {
+      logDiagnosticEvent("session.start_reconciliation_failed", {
+        reconciliation: "active_workout_status_unknown",
+        errorCategory: categorizeDiagnosticError(
+          reconciliationError,
+          "persistence",
+        ),
+      });
+      return {
+        status: "error" as const,
+        code: "status_unknown" as const,
+        message: "We could not confirm whether the workout was created. Check Today before trying again.",
+        workoutCreated: null,
+        startRequestKey,
+      };
     }
     return {
       status: "error" as const,
       code: "not_created" as const,
       message: "This workout could not be started. No workout was created. Try again.",
       workoutCreated: false as const,
+      startRequestKey,
     };
+  }
+  if (result.outcome === "request_conflict") {
+    return {
+      status: "error" as const,
+      code: "request_conflict" as const,
+      message: "This Start request no longer matches the workout you chose. Refresh Today and start again.",
+      workoutCreated: false as const,
+      startRequestKey,
+    };
+  }
+  if (result.outcome === "active_workout_exists") {
+    revalidatePath("/today");
+    return redirect("/today?start=active", RedirectType.replace);
   }
   revalidatePath("/today");
   redirect(
@@ -276,69 +341,42 @@ export async function setSessionEquipmentSelection(
   return result;
 }
 
-export async function updateSet(input: z.infer<typeof updateSetSchema>) {
-  const parsed = updateSetSchema.parse(input);
-  const user = await getCurrentUser();
-  const db = await getDb();
-  const set = await db.query.completedSets.findFirst({
-    where: and(
-      eq(completedSets.id, parsed.setId),
-      isNull(completedSets.archivedAt)
-    ),
-    with: { sessionExercise: { with: { session: true } } },
-  });
-  if (
-    !set ||
-    set.sessionExercise.session.userId !== user.id ||
-    set.sessionExercise.session.archivedAt != null
-  ) {
-    return actionFailure("set_not_found", "That set could not be found.");
-  }
-  const fields: SetVersionUpdate = {};
-  if ("weight" in parsed) fields.weight = parsed.weight;
-  if ("weightUnit" in parsed) fields.weightUnit = parsed.weightUnit;
-  if ("reps" in parsed) fields.reps = parsed.reps;
-  if ("rpe" in parsed) fields.rpe = parsed.rpe;
-  if ("note" in parsed) fields.note = parsed.note;
-  const updated = await updateSetWithVersion(
-    db,
-    user.id,
-    set.id,
-    fields,
-    "set.update",
-    { activeOnly: true }
-  );
-  if (!updated.ok) return actionFailure("update_rejected", updated.reason);
-  revalidatePath(`/session/${set.sessionExercise.sessionId}`);
-  return updated;
-}
-
-const completedSetCorrectionSchema = z.object({
-  setId: z.string().uuid(),
-  weight: z.number().min(0).max(2000).nullable(),
+const correctedSetValuesSchema = z.object({
+  weight: z.number().finite().min(0).max(2000).nullable(),
   weightUnit: z.enum(["lb", "kg"]).nullable(),
   reps: z.number().int().min(0).max(100).nullable(),
-  rpe: z.number().min(1).max(10).nullable(),
+  distanceKm: z.number().finite().min(0).max(10_000).nullable(),
+  durationSeconds: z.number().int().min(0).max(604_800).nullable(),
+  rpe: z.number().finite().min(1).max(10).nullable(),
   note: z.string().max(500).nullable(),
-  expected: z.object({
-    weight: z.number().nullable(),
-    weightUnit: z.enum(["lb", "kg"]).nullable(),
-    reps: z.number().int().nullable(),
-    rpe: z.number().nullable(),
-    note: z.string().nullable(),
-  }),
-  expectedHistoryRevision: z.number().int().min(0),
-  clientMutationId: z.string().uuid(),
-  reviewed: z.literal(true),
 }).refine(
   (value) => (value.weight == null) === (value.weightUnit == null),
   { message: "A corrected load needs one explicit unit.", path: ["weightUnit"] },
 );
 
-export async function correctCompletedSet(
-  input: z.infer<typeof completedSetCorrectionSchema>,
+const acknowledgedSetCorrectionSchema = z.object({
+  setId: z.string().uuid(),
+  values: correctedSetValuesSchema,
+  expected: correctedSetValuesSchema,
+  expectedHistoryRevision: z.number().int().min(0),
+  clientMutationId: z.string().uuid(),
+  category: z.enum(SET_CORRECTION_CATEGORIES),
+  reasonNote: z.string().trim().max(240).nullable(),
+  source: z.enum(["active_workout", "workout_history"]),
+  reviewed: z.literal(true),
+});
+
+export async function correctAcknowledgedSet(
+  input: z.infer<typeof acknowledgedSetCorrectionSchema>,
 ) {
-  const parsed = completedSetCorrectionSchema.parse(input);
+  const validation = acknowledgedSetCorrectionSchema.safeParse(input);
+  if (!validation.success) {
+    return actionFailure(
+      "correction_invalid",
+      "Review the complete correction and try again. Nothing was changed.",
+    );
+  }
+  const parsed = validation.data;
   const user = await getCurrentUser();
   const db = await getDb();
   const set = await db.query.completedSets.findFirst({
@@ -351,12 +389,22 @@ export async function correctCompletedSet(
   if (
     !set ||
     set.sessionExercise.session.userId !== user.id ||
-    set.sessionExercise.session.status !== "completed" ||
     set.sessionExercise.session.archivedAt != null
   ) {
     return actionFailure(
       "set_not_found",
-      "Only a saved set from a completed, unarchived workout can be corrected here.",
+      "Only an acknowledged set from your unarchived workout can be corrected.",
+    );
+  }
+  const status = set.sessionExercise.session.status;
+  const sourceMatchesStatus =
+    (parsed.source === "active_workout" && status === "in_progress") ||
+    (parsed.source === "workout_history" &&
+      (status === "completed" || status === "abandoned"));
+  if (!sourceMatchesStatus) {
+    return actionFailure(
+      "correction_stale_context",
+      "The workout state changed after this correction opened. Reload and review the saved set again.",
     );
   }
   const performedOccurrence = await db.query.sessionOccurrences.findFirst({
@@ -380,18 +428,19 @@ export async function correctCompletedSet(
     db,
     user.id,
     set.id,
-    {
-      weight: parsed.weight,
-      weightUnit: parsed.weightUnit,
-      reps: parsed.reps,
-      rpe: parsed.rpe,
-      note: parsed.note?.trim() || null,
-    },
-    "set.completed_correction",
+    { ...parsed.values, note: parsed.values.note?.trim() || null },
+    status === "in_progress"
+      ? "set.active_correction"
+      : "set.completed_correction",
     {
       expected: parsed.expected,
       expectedHistoryRevision: parsed.expectedHistoryRevision,
       clientMutationId: parsed.clientMutationId,
+      correctionEvidence: {
+        category: parsed.category,
+        reasonNote: parsed.reasonNote?.trim() || null,
+        source: parsed.source,
+      },
     },
   );
   if (!corrected.ok) {
@@ -399,7 +448,9 @@ export async function correctCompletedSet(
   }
 
   const sessionId = set.sessionExercise.sessionId;
+  revalidatePath(`/session/${sessionId}`);
   revalidatePath(`/history/${sessionId}`);
+  revalidatePath("/today");
   revalidatePath("/history");
   revalidatePath("/coach");
   revalidatePath("/export");
@@ -689,6 +740,9 @@ export async function substituteExercise(input: {
       targetLoadUnit: null,
       // Exercise-specific plan cues do not carry to a different movement.
       notes: null,
+      warmupNotes: null,
+      warmupSets: [],
+      setNotes: [],
     },
     "session_exercise.substitute",
     { activeOnly: true }
@@ -854,6 +908,8 @@ export async function undoExerciseSubstitution(sessionExerciseId: string) {
     targetLoad: current.targetLoad,
     targetLoadUnit: current.targetLoadUnit,
     notes: current.notes,
+    warmupNotes: current.warmupNotes,
+    warmupSets: current.warmupSets,
     setNotes: current.setNotes,
   };
 }

@@ -560,7 +560,7 @@ test("classifies all sixteen prior workout observations", async ({
       { name: "Warm-up", visible: await dayAWarmup.isVisible() },
       { name: "Ask Coach", visible: await activeDock.getByRole("button", { name: "Ask Coach", exact: true }).isVisible() },
       { name: "Form guide", visible: await activeDock.getByRole("button", { name: "Form guide", exact: true }).isVisible() },
-      { name: "Direct workout actions", visible: await activeDock.getByRole("button", { name: "Add note", exact: true }).isVisible() && await activeDock.getByRole("button", { name: "Flag pain", exact: true }).isVisible() && await activeDock.getByRole("button", { name: "Skip exercise", exact: true }).isVisible() },
+      { name: "Direct workout actions", visible: await activeDock.getByRole("button", { name: "Add note", exact: true }).isVisible() && await activeDock.getByRole("button", { name: "Pain / no issue", exact: true }).isVisible() && await activeDock.getByRole("button", { name: "Skip exercise", exact: true }).isVisible() },
       { name: "Finish", visible: await page.getByRole("complementary", { name: "Workout status" }).getByRole("button", { name: "Finish", exact: true }).isVisible() },
     ];
     const formGuideButton = activeDock.getByRole("button", {

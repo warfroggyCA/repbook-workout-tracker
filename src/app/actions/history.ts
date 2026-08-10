@@ -22,8 +22,10 @@ import {
   type RetrospectiveWorkoutInput,
 } from "@/lib/retrospective-workout";
 import { createRetrospectiveWorkout } from "@/services/retrospective-workouts";
-import { logServerEvent } from "@/lib/server-log";
-import { safeErrorName } from "@/lib/safe-error-name";
+import {
+  categorizeDiagnosticError,
+  logDiagnosticEvent,
+} from "@/lib/server-log";
 import {
   workoutTimingCorrectionSchema,
   type WorkoutTimingCorrectionInput,
@@ -105,10 +107,8 @@ export async function recordRetrospectiveWorkout(
     if (error instanceof Error && safeMessages.has(error.message)) {
       return { ok: false, code: "invalid_request", reason: error.message };
     }
-    logServerEvent("error", "history.retrospective_create_failed", {
-      userId: user.id,
-      category: "unexpected_creation_failure",
-      errorName: safeErrorName(error),
+    logDiagnosticEvent("history.retrospective_create_failed", {
+      errorCategory: categorizeDiagnosticError(error, "persistence"),
     });
     return {
       ok: false,
@@ -163,13 +163,8 @@ export async function correctWorkoutTiming(
         reason: error.message,
       };
     }
-    logServerEvent("error", "history.timing_correction_failed", {
-      userId: user.id,
-      sessionId:
-        typeof input === "object" && input && "sessionId" in input
-          ? String(input.sessionId)
-          : null,
-      errorName: safeErrorName(error),
+    logDiagnosticEvent("history.timing_correction_failed", {
+      errorCategory: categorizeDiagnosticError(error, "persistence"),
     });
     return {
       ok: false as const,

@@ -36,6 +36,13 @@ export type WorkingSetDisplayPosition = {
   lowercaseLabel: string;
 };
 
+export type WorkingSetSemanticRole =
+  | "planned"
+  | "extra"
+  | "workout_only"
+  | "imported"
+  | "legacy";
+
 export function isAppendedExtraSetOccurrence(
   occurrence: WorkingSetLabelOccurrence,
 ) {
@@ -44,6 +51,20 @@ export function isAppendedExtraSetOccurrence(
     occurrence.origin === "ad_hoc" &&
     occurrence.plannedNote === ADDED_WORKOUT_SET_NOTE
   );
+}
+
+/**
+ * Names the durable role of working-set evidence without changing its stored
+ * origin or immutable execution ordinal.
+ */
+export function workingSetSemanticRole(
+  occurrence: WorkingSetLabelOccurrence,
+): WorkingSetSemanticRole {
+  if (occurrence.origin === "planned") return "planned";
+  if (isAppendedExtraSetOccurrence(occurrence)) return "extra";
+  if (occurrence.origin === "ad_hoc") return "workout_only";
+  if (occurrence.origin === "imported") return "imported";
+  return "legacy";
 }
 
 /**
@@ -278,11 +299,17 @@ function mutateOccurrence(
     throw new Error("legacy_unrecorded is a terminal occurrence outcome");
   }
 
-  if (mutation.operation !== "restore" && occurrence.outcome !== "pending") {
+  const canMutate =
+    (mutation.operation === "complete" && occurrence.outcome === "pending") ||
+    (mutation.operation === "skip" && occurrence.outcome === "pending") ||
+    (mutation.operation === "note" &&
+      ["pending", "completed", "skipped"].includes(occurrence.outcome)) ||
+    (mutation.operation === "restore" &&
+      (["skipped", "abandoned"].includes(occurrence.outcome) ||
+        (occurrence.kind !== "working_set" && occurrence.outcome === "completed")) &&
+      !occurrence.outcomeReason?.startsWith("exercise:"));
+  if (!canMutate) {
     throw new Error(`Cannot ${mutation.operation} an ${occurrence.outcome} occurrence`);
-  }
-  if (mutation.operation === "restore" && occurrence.outcome === "pending") {
-    throw new Error("Cannot restore a pending occurrence");
   }
 
   const next = { ...occurrence, revision: occurrence.revision + 1 };
@@ -314,7 +341,6 @@ function mutateOccurrence(
         ...next,
         outcome: "pending",
         outcomeReason: null,
-        outcomeNote: null,
         resolvedAt: null,
         completedSetId: null,
         performedExerciseId: null,

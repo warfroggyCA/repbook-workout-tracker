@@ -47,7 +47,6 @@ const occurrenceState: SessionOccurrenceData = {
   revision: 2,
   resolvedAt: null,
   completedSetId: null,
-  restAfterSec: 60,
 };
 
 const plateConfig = {

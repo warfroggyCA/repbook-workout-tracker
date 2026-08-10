@@ -6,6 +6,11 @@ import type { LoadUnit } from "@/lib/units";
 import type { WorkoutSetLoadEntryMeaning } from "@/lib/workout-set-outbox";
 import type { MachineLoadConfig } from "@/engine/machine-load-math";
 import type { PerformedMetricType } from "@/lib/set-metric-semantics";
+import type {
+  LimitationCause,
+  SetPainContext,
+  TechniqueIssue,
+} from "@/lib/set-exception-context";
 
 export type LoggedSet = {
   id: string;
@@ -13,12 +18,26 @@ export type LoggedSet = {
   setNo: number;
   weight: number | null;
   weightUnit: LoadUnit | null;
-  reps: number;
+  reps: number | null;
   metricType?: PerformedMetricType;
+  distanceKm?: number | null;
+  durationSeconds?: number | null;
   rpe: number | null;
+  rir?: number | null;
+  techniqueIssue?: TechniqueIssue | null;
+  limitationCause?: LimitationCause | null;
+  pain?: SetPainContext | null;
   note: string | null;
+  correctionCount?: number;
   saveState?: "pending" | "saving" | "retrying" | "failed" | "saved";
   lastError?: string | null;
+};
+
+export type SetAcknowledgementReceipt = {
+  sessionExerciseId: string;
+  exerciseName: string;
+  metricType: PerformedMetricType;
+  set: LoggedSet;
 };
 
 export type SessionExerciseData = {
@@ -122,7 +141,6 @@ export type SessionOccurrenceData = {
   revision: number;
   resolvedAt: string | null;
   completedSetId: string | null;
-  restAfterSec: number;
 };
 
 export type SessionExerciseGroupData = {
@@ -136,6 +154,7 @@ export type SessionExerciseGroupData = {
 export type SessionRunnerProps = {
   ownerId: string;
   sessionId: string;
+  historyRevision: number;
   templateName: string;
   dayWarmupNotes: string | null;
   occurrences: SessionOccurrenceData[];

@@ -120,7 +120,7 @@ describe("server action result contract", () => {
     // call-site check below vacuous.
     expect(resultReturningActions(ACTION_FILES[0])).toEqual(
       expect.arrayContaining([
-        "updateSet",
+        "correctAcknowledgedSet",
         "archiveSet",
         "skipExercise",
         "unskipExercise",

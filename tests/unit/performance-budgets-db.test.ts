@@ -21,6 +21,7 @@ import {
 import { buildSessionEquipmentConfigurationIdentity } from "@/lib/session-equipment-snapshot-contract";
 import { getDashboardStats } from "@/services/dashboard";
 import {
+  HISTORY_EXERCISE_EVIDENCE_LIMIT,
   getHistoryCalendarRecords,
   getHistoryReport,
 } from "@/services/history-report";
@@ -78,7 +79,7 @@ describe("production performance budgets", () => {
           primaryMuscles: ["quadriceps"],
           loadType: "barbell",
         })
-        .returning({ id: exercises.id });
+        .returning({ id: exercises.id, name: exercises.name });
       const end = new Date("2026-07-13T15:00:00.000Z");
       const baselineStart = new Date(end.getTime() - 249 * 86_400_000);
       await seedLargeWorkoutHistory(database.db, {
@@ -144,6 +145,12 @@ describe("production performance budgets", () => {
       expect(large.report.calendarSessions.length).toBeLessThanOrEqual(
         budgets.finalBudgets.historyPage.maxRecentSessions
       );
+      expect(
+        large.report.exerciseEvidence.reduce(
+          (total, exercise) => total + exercise.evidence.length,
+          0,
+        ),
+      ).toBeLessThanOrEqual(HISTORY_EXERCISE_EVIDENCE_LIMIT);
       expect(large.calendar).toHaveLength(baseline.calendar.length);
       expect(large.payloadBytes / baseline.payloadBytes).toBeLessThan(
         budgets.finalBudgets.largeHistoryFixture
@@ -234,7 +241,7 @@ describe("production performance budgets", () => {
             loadType: "barbell" as const,
           }))
         )
-        .returning({ id: exercises.id });
+        .returning({ id: exercises.id, name: exercises.name });
       const activated = await activateProgramAtomically(database.db, {
         userId: user.id,
         loadUnit: "lb",
@@ -297,6 +304,11 @@ describe("production performance budgets", () => {
             exerciseRows.map((exercise, index) => ({
               sessionId: session.id,
               exerciseId: exercise.id,
+              prescribedSemanticsVersion: 1,
+              prescribedExerciseName: exercise.name,
+              prescribedMetricType: "weight_reps" as const,
+              prescribedLoadType: "barbell",
+              prescribedLoadSemantics: "total" as const,
               plannedFromTemplateExerciseId: slots[index].id,
               sourceSlotLineageId: slots[index].lineageId,
               orderIdx: index,
@@ -411,6 +423,9 @@ describe("production performance budgets", () => {
             reps: 8,
             rpe: 7,
             metricType: "weight_reps" as const,
+            performedSemanticsVersion: 1,
+            performedLoadType: "barbell",
+            performedLoadSemantics: "total" as const,
             loadEntryMeaning: "total_system",
           }))
         )

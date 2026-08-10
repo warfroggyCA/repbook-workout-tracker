@@ -8,7 +8,7 @@ const mocks = vi.hoisted(() => ({
   createTrainingReview: vi.fn(),
   evaluateRecentProgression: vi.fn(),
   audit: vi.fn(),
-  logServerEvent: vi.fn(),
+  logDiagnosticEvent: vi.fn(),
   revalidatePath: vi.fn(),
 }));
 
@@ -29,7 +29,7 @@ vi.mock("@/services/audit", () => ({
   audit: mocks.audit,
 }));
 vi.mock("@/lib/server-log", () => ({
-  logServerEvent: mocks.logServerEvent,
+  logDiagnosticEvent: mocks.logDiagnosticEvent,
 }));
 vi.mock("next/cache", () => ({
   revalidatePath: mocks.revalidatePath,
@@ -78,18 +78,16 @@ describe("Coach provider failure logging", () => {
         "Coach could not finish that request. Your data is safe; please try again.",
     });
 
-    expect(mocks.logServerEvent).toHaveBeenCalledWith(
-      "error",
+    expect(mocks.logDiagnosticEvent).toHaveBeenCalledWith(
       "ai.coach_review_failed",
       {
-        userId: "11111111-1111-4111-8111-111111111111",
         errorKind: "provider_api",
         providerStatusCode: 503,
         providerRetryable: true,
         causeKind: "unknown_error",
       }
     );
-    expect(JSON.stringify(mocks.logServerEvent.mock.calls)).not.toContain(
+    expect(JSON.stringify(mocks.logDiagnosticEvent.mock.calls)).not.toContain(
       "WT_SENTINEL"
     );
   });
@@ -103,18 +101,16 @@ describe("Coach provider failure logging", () => {
         "Coach could not finish that request. Your data is safe; please try again.",
     });
 
-    expect(mocks.logServerEvent).toHaveBeenCalledWith(
-      "error",
+    expect(mocks.logDiagnosticEvent).toHaveBeenCalledWith(
       "ai.coach_question_failed",
       {
-        userId: "11111111-1111-4111-8111-111111111111",
         errorKind: "provider_api",
         providerStatusCode: 503,
         providerRetryable: true,
         causeKind: "unknown_error",
       }
     );
-    expect(JSON.stringify(mocks.logServerEvent.mock.calls)).not.toContain(
+    expect(JSON.stringify(mocks.logDiagnosticEvent.mock.calls)).not.toContain(
       "WT_SENTINEL"
     );
   });

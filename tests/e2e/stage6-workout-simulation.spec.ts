@@ -31,14 +31,16 @@ async function publishExactBaRoutineChange(page: Page) {
   await expect(page.getByRole("status")).toContainText("All changes saved");
   await page.getByRole("tab", { name: "Review", exact: true }).click();
   await page.getByRole("button", { name: "Check Program", exact: true }).first().click();
-  await expect(page.getByRole("heading", { name: "Ready to activate", exact: true })).toBeVisible();
-  await page.getByRole("button", { name: "Activate new version", exact: true }).click();
-  await expect(page.getByText(/Version 2 is now current/)).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Ready to publish", exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Publish future Program", exact: true }).click();
+  await expect(
+    page.getByText(/Version 2 is now used for workouts started from this point forward/i),
+  ).toBeVisible();
   await page.goto("/program");
   await expect(page.getByText("v2", { exact: true })).toBeVisible();
-  await page.getByRole("tab", { name: "Day 2", exact: true }).click();
+  await page.getByRole("tab", { name: /Day B.*Hinge/ }).click();
   await expect(page.getByText(/A: Cable Rear Delt Fly \+ Zottman Curl \+ Overhead Cable Triceps Extension/)).toBeVisible();
-  await page.getByRole("tab", { name: "Day 3", exact: true }).click();
+  await page.getByRole("tab", { name: /Day C.*Bench/ }).click();
   await expect(page.getByText(/A: Overhead Cable Triceps Extension \+ EZ-Bar Curl/)).toBeVisible();
 }
 

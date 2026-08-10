@@ -179,7 +179,7 @@ describe("Program editor split presentation panels", () => {
     expect(html).not.toMatch(/<details[^>]*\sopen(?:=|>)/);
   });
 
-  it("keeps the activation result concise while preserving cautions", () => {
+  it("shows the exact future publication while preserving cautions", () => {
     const review: ProgramReview = {
       status: "publishable",
       hash: "a".repeat(64),
@@ -217,18 +217,22 @@ describe("Program editor split presentation panels", () => {
       <ReviewDialog editor={editor} currentReview={review} canReview />
     );
 
-    expect(html).toContain("Ready to activate");
+    expect(html).toContain("Ready to publish");
     expect(html).toContain(
-      "Your changes are saved and Repbook found nothing that blocks activation.",
+      "Your changes are saved and Repbook found nothing that blocks publication.",
     );
     expect(html).toContain("Confirm the lower weekly set count.");
+    expect(html).toContain("What will change for future workouts");
+    expect(html).toContain("exact change list for saved draft revision 3");
+    expect(html).toContain("Remove Barbell Squat");
+    expect(html).toContain("Current Program");
+    expect(html).toContain("Future Program after publication");
     expect(html).not.toContain("How your weekly plan changes");
     expect(html).not.toContain("What happens to exercise history");
-    expect(html).not.toContain("Remove Barbell Squat");
     expect(html).not.toMatch(/<details[^>]*\sopen(?:=|>)/);
   });
 
-  it("shows the real blocked-review reason without exposing an activation path", () => {
+  it("shows the real blocked-review reason without exposing a publication path", () => {
     const review: ProgramReview = {
       status: "blocked",
       hash: null,
@@ -261,15 +265,15 @@ describe("Program editor split presentation panels", () => {
       <ReviewDialog editor={editor} currentReview={review} canReview />
     );
 
-    expect(html).toContain("Activation is paused");
+    expect(html).toContain("Publication is paused");
     expect(html).toContain(
       "The selected equipment cannot execute this exercise.",
     );
-    expect(html).toMatch(/<button[^>]*disabled[^>]*>[\s\S]*Activate new version/);
+    expect(html).toMatch(/<button[^>]*disabled[^>]*>[\s\S]*Publish future Program/);
     expect(html).not.toContain("The review response is incomplete");
   });
 
-  it("hides internal edit and older-Program comparisons after a successful check", () => {
+  it("shows exact owner changes but hides internal preparation details", () => {
     const review: ProgramReview = {
       status: "publishable",
       hash: "d".repeat(64),
@@ -324,17 +328,17 @@ describe("Program editor split presentation panels", () => {
       <ReviewDialog editor={editor} currentReview={review} canReview />,
     );
 
-    expect(html).toContain("Ready to activate");
+    expect(html).toContain("Ready to publish");
     expect(html).toContain(
-      "Your changes are saved and Repbook found nothing that blocks activation.",
+      "Your changes are saved and Repbook found nothing that blocks publication.",
     );
     expect(html).not.toContain("Changes you made");
     expect(html).not.toContain("compared with the current Program");
-    expect(html).not.toContain("Synthetic Day warm-up");
+    expect(html).toContain("Synthetic Day warm-up changed");
     expect(html).not.toContain("Repbook prepared older saved details");
     expect(html).not.toContain("See the warm-up text");
-    expect(html).not.toContain("Five minutes easy");
-    expect(html).not.toContain("Two minutes easy");
+    expect(html).toContain("Five minutes easy");
+    expect(html).toContain("Two minutes easy");
     expect(html).not.toContain("Training summary");
     expect(html).not.toContain("Program Preflight");
     expect(html).not.toContain("None");
@@ -494,15 +498,15 @@ describe("Program editor split presentation panels", () => {
       <ReviewDialog editor={editor} currentReview={review} canReview />,
     );
 
-    expect(html).toContain("Needs attention before activation");
+    expect(html).toContain("Needs attention before publishing");
     expect(html).not.toContain("changes compared with the current Program");
     expect(html).not.toContain(
       "Day 1 — Upper-body strength warm-up shortened",
     );
-    expect(html).not.toContain(
+    expect(html).toContain(
       "Replace Barbell Overhead Press with Single-Leg Bodyweight Calf Raise",
     );
-    expect(html).toContain("Fix the red items below before you activate.");
+    expect(html).toContain("Fix the red items below before you publish.");
     expect(html).toContain("8 exercises don&#x27;t match your saved equipment");
     expect(html).toContain("Show 8 affected exercises");
     expect(html).toContain("3 workout days may run longer than planned");

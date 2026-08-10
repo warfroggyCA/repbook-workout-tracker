@@ -1184,8 +1184,8 @@ function RetrospectiveWorkoutFields({
           <CardTitle>2. Was it from the Program?</CardTitle>
           <CardDescription>
             Link only when you performed a specific current Program day. A link
-            can affect adherence, Today rotation, and progression; it never
-            changes the Program.
+            can affect Program-day exposure, Today rotation, and progression;
+            it never changes the Program.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -1202,7 +1202,8 @@ function RetrospectiveWorkoutFields({
                 <span>
                   <span className="block font-medium">Not linked to Program</span>
                   <span className="mt-1 block text-xs text-muted-foreground">
-                    Counts in History, but not Program adherence or rotation.
+                    Counts in calendar cadence, but not Program-day exposure or
+                    rotation.
                   </span>
                 </span>
               </label>
