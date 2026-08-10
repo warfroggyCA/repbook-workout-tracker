@@ -33,6 +33,21 @@ async function applyEnlargedText(page: Page, enabled: boolean) {
   });
 }
 
+async function expectedCompleteWeekSummary(page: Page) {
+  const weekday = await page.evaluate(() =>
+    new Intl.DateTimeFormat("en-CA", {
+      timeZone: "America/Toronto",
+      weekday: "short",
+    }).format(new Date()),
+  );
+  // A four-week range that begins on Monday contains four complete weeks.
+  // Every other weekday has three complete Monday-Sunday weeks because the
+  // partial first and current weeks remain excluded by the product contract.
+  return weekday === "Mon"
+    ? { average: "1.25", weeks: "4 complete Monday–Sunday weeks" }
+    : { average: "1.33", weeks: "3 complete Monday–Sunday weeks" };
+}
+
 test("keeps calendar cadence and planned-set outcomes separate and trustworthy", async ({
   browserName,
   page,
@@ -51,7 +66,10 @@ test("keeps calendar cadence and planned-set outcomes separate and trustworthy",
   await applyEnlargedText(page, narrowMobile);
   await expect(page.getByRole("heading", { level: 2, name: "Insights" })).toBeVisible();
   await expect(page.getByRole("heading", { level: 3, name: "Training cadence" })).toBeVisible();
-  await expect(page.getByText("Per complete week").locator("..")).toContainText("1.33");
+  const expectedCadence = await expectedCompleteWeekSummary(page);
+  const cadenceSummary = page.getByText("Per complete week").locator("..");
+  await expect(cadenceSummary).toContainText(expectedCadence.average);
+  await expect(cadenceSummary).toContainText(expectedCadence.weeks);
   await expect(page.getByText("Median gap").locator("..")).toContainText("5.5 days");
   await expect(page.getByText("Current gap").locator("..")).toContainText("1 day");
   await expect(page.getByText(/Current preference: 3 sessions per week/)).toBeVisible();
