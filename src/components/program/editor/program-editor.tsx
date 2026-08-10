@@ -94,14 +94,15 @@ export function ProgramEditor({
               <ArrowLeft /> Back to Program
             </Button>
             <p className="text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">
-              Future Program draft
+              Program editor
             </p>
             <h1 className="mt-1 text-2xl font-semibold tracking-tight sm:text-3xl">
               Edit {document.name}
             </h1>
             <p className="mt-1 max-w-2xl text-sm leading-6 text-muted-foreground">
-              Changes save automatically as a draft. Nothing changes until you
-              review and publish a new version for future workouts.
+              You are editing a draft copied from the current Program. Changes
+              save automatically, but do not affect any workout until you
+              review and publish them.
             </p>
           </div>
           <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-[minmax(15rem,1fr)_auto_auto_auto]">
@@ -138,12 +139,12 @@ export function ProgramEditor({
         <Card className="mb-5 border-primary/30">
           <CardHeader>
             <CardTitle>
-              <h2 className="text-lg font-semibold">Future workouts only</h2>
+              <h2 className="text-lg font-semibold">How Program changes work</h2>
             </CardTitle>
             <CardDescription>
-              Publishing changes which Program version new workouts use. It
-              does not rewrite the active workout, completed or imported
-              History, or any earlier Program version.
+              Publishing makes this draft the Program for workouts started
+              afterward. It does not rewrite an active workout, completed or
+              imported History, or any earlier Program version.
             </CardDescription>
           </CardHeader>
           <CardContent className="grid gap-3 text-sm sm:grid-cols-3">

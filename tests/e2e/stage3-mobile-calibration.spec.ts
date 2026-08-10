@@ -139,7 +139,7 @@ test("keeps new Stage 3 controls usable at the saved iPhone calibration", async 
 
   await page.goto("/program/edit");
   await expectSaved(page);
-  await page.getByRole("tab", { name: "Day 2", exact: true }).click();
+  await page.getByRole("tab", { name: /Day B.*Hinge/ }).click();
   await page
     .locator("summary")
     .filter({ hasText: "Optional check-off steps" })
