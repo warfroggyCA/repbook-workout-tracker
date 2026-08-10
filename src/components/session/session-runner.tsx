@@ -614,6 +614,23 @@ export function SessionRunner(props: SessionRunnerProps) {
   const latestAcknowledgementTargetId = latestSetAcknowledgement
     ? `active-set-save-receipt-${latestSetAcknowledgement.sessionExerciseId}-${latestSetAcknowledgement.set.setNo}`
     : null;
+  const latestAcknowledgementIsWorkoutOnly =
+    latestSetAcknowledgement != null &&
+    shownExercises.some(
+      (exercise) =>
+        exercise.id === latestSetAcknowledgement.sessionExerciseId &&
+        exercise.modificationType === "added",
+    );
+  const acknowledgementPresentationExerciseId =
+    latestSetAcknowledgement != null &&
+    (guidance.currentAction?.kind === "working_set" ||
+      guidance.currentAction?.kind === "rest")
+      ? guidance.currentAction.kind === "rest" &&
+        latestAcknowledgementIsWorkoutOnly
+        ? latestSetAcknowledgement.sessionExerciseId
+        : currentActionSessionExerciseId ??
+          latestSetAcknowledgement.sessionExerciseId
+      : null;
   useEffect(() => {
     const previousActionId = previousCurrentActionIdRef.current;
     const previousActionKind = previousCurrentActionKindRef.current;
@@ -2262,8 +2279,7 @@ export function SessionRunner(props: SessionRunnerProps) {
             occurrenceRuntimeSaveStates={occurrenceRuntimeSaveStates}
             acknowledgedOccurrenceIds={acknowledgedOccurrenceIds}
             acknowledgementReceipt={
-              guidance.currentAction?.kind === "working_set" ||
-              guidance.currentAction?.kind === "rest"
+              acknowledgementPresentationExerciseId === exercise.id
                 ? latestSetAcknowledgement
                 : null
             }

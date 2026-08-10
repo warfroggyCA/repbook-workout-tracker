@@ -46,6 +46,11 @@ test("keeps pain, no-issue, exception identity, and proposals consistent", async
       document.documentElement.dataset.fontSize = "extra-large";
     });
   }
+  const currentCard = page.getByTestId("current-exercise-card");
+  await currentCard
+    .locator("details", { hasText: "More for this exercise" })
+    .locator(":scope > summary")
+    .click();
   await page.getByRole("button", { name: "Pain / no issue", exact: true }).click();
   const drawer = page.getByRole("dialog", { name: "Pain / no-issue evidence" });
   const slider = drawer.getByRole("slider");

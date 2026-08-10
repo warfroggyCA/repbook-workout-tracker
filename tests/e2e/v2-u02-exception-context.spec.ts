@@ -76,7 +76,8 @@ test("keeps ordinary completion minimal and makes exception evidence reversible,
   await expect(currentEntry.getByText("Technique issue", { exact: true }))
     .not.toBeVisible();
   await currentEntry.getByRole("button", { name: "Log set", exact: true }).click();
-  await expect(currentCard.getByText("Saved", { exact: true })).toBeVisible();
+  await expect(currentCard.getByTestId("active-set-save-receipt"))
+    .toContainText("Acknowledged by Repbook");
   await dismissRest(page);
 
   currentEntry = currentCard.getByTestId("current-set-entry");
@@ -167,11 +168,12 @@ test("keeps ordinary completion minimal and makes exception evidence reversible,
 
   await context.setOffline(false);
   await page.evaluate(() => window.dispatchEvent(new Event("online")));
-  await expect(currentCard.getByText("Saved", { exact: true })).toBeVisible();
-  await expect(currentCard).toContainText("RIR 2");
-  await expect(currentCard).toContainText("Technique: Bracing");
-  await expect(currentCard).toContainText("Limited by: Strength or fatigue");
-  await expect(currentCard).toContainText("Pain: back 4/10");
+  const receipt = currentCard.getByTestId("active-set-save-receipt");
+  await expect(receipt).toContainText("Acknowledged by Repbook");
+  await expect(receipt).toContainText("RIR 2");
+  await expect(receipt).toContainText("Technique: Bracing");
+  await expect(receipt).toContainText("Limited by: Strength or fatigue");
+  await expect(receipt).toContainText("Pain: back 4/10");
 
   const status = page.getByRole("complementary", { name: "Workout status" });
   await status.getByRole("button", { name: "Finish", exact: true }).click();
