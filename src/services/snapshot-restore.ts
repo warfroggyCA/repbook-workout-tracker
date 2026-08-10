@@ -59,6 +59,8 @@ import {
   externalAnalysisImportDigestSchema,
   externalAnalysisRecommendationEvidenceSchema,
 } from "@/lib/external-analysis-import";
+import { ANALYSIS_PACKAGE_SOURCE_REVISION_FIELDS } from "@/lib/analysis-package";
+import { analysisPackageOwnerNamespace } from "@/services/analysis-package";
 
 export type SnapshotRestoreScope = "history" | "full";
 
@@ -559,9 +561,11 @@ function validateSetExceptionContext(payload: CanonicalSnapshotPayload) {
 }
 
 function validIsoInstant(value: unknown) {
-  return typeof value === "string" &&
-    !Number.isNaN(new Date(value).getTime()) &&
-    new Date(value).toISOString() === value;
+  if (typeof value !== "string") return false;
+  const match = /^(\d{4}-\d{2}-\d{2})T(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d{1,6})?(Z|[+-](?:0\d|1[0-4]):[0-5]\d)$/.exec(value);
+  if (!match || !validCalendarDate(match[1])) return false;
+  if (/^[+-]14:(?!00$)/.test(match[2])) return false;
+  return !Number.isNaN(new Date(value).getTime());
 }
 
 function validCalendarDate(value: unknown) {
@@ -580,8 +584,32 @@ function validateReviewState(payload: CanonicalSnapshotPayload) {
   for (const insight of rows(payload, "coaching_insights")) {
     if (insight.kind !== "external_analysis_import") continue;
     const digest = externalAnalysisImportDigestSchema.safeParse(insight.data_digest);
-    if (!digest.success || insight.client_key !== digest.data.response.id) {
+    if (
+      !digest.success ||
+      insight.client_key !== digest.data.response.id ||
+      digest.data.package.namespace !==
+        analysisPackageOwnerNamespace(String(insight.user_id))
+    ) {
       throw new Error("Snapshot external-analysis import receipt is invalid.");
+    }
+    for (const binding of digest.data.sourceBindings) {
+      const sourceRows = new Map(
+        rows(payload, binding.entity).map((row) => [String(row.id), row]),
+      );
+      const revisionField = ANALYSIS_PACKAGE_SOURCE_REVISION_FIELDS[binding.entity];
+      if (
+        binding.ids.some((id) => !sourceRows.has(id)) ||
+        (binding.revisions ?? []).some((revision) =>
+          revisionField == null ||
+          (sourceRows.has(revision.id) &&
+            Number(sourceRows.get(revision.id)?.[revisionField]) <
+              revision.revision),
+        )
+      ) {
+        throw new Error(
+          "Snapshot external-analysis source bindings do not match retained owner evidence.",
+        );
+      }
     }
     externalImports.set(String(insight.id), digest.data);
   }
@@ -645,7 +673,11 @@ function validateReviewState(payload: CanonicalSnapshotPayload) {
         imported.package.id !== external.data.packageId ||
         imported.response.id !== external.data.responseId ||
         imported.response.digest !== external.data.responseDigest ||
-        !mapped
+        !mapped ||
+        external.data.citedEvidenceIds.some(
+          (id) =>
+            !imported.sourceBindings.some((binding) => binding.ids.includes(id)),
+        )
       ) {
         throw new Error("Snapshot external-analysis recommendation provenance is invalid.");
       }

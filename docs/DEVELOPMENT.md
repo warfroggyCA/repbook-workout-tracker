@@ -191,13 +191,16 @@ adaptation, or Program write.
 A05 activates explicit selective import into the existing Review lifecycle.
 Focused database proof covers owner scope, exact replay and conflict identity,
 atomic rollback, manifest consumption, durable defer, resume, reject, edit-and-
-accept, source-correction and Program staleness, snapshot privacy, and restore
-graph validation. Its disposable desktop and narrow WebKit journey imports one
+accept, closed-source freshness before and during import, stale historical
+observations after later correction, snapshot privacy, and restore graph
+validation. Its disposable desktop and narrow WebKit journey imports one
 observation and one proposal, preserves external labels and owner-decision copy,
 exercises acceptance or deferral, and checks overflow and page errors.
-Migration 0076 adds only receipt identity and invariant guards; snapshot schema
-30 stays fixed while recovery manifest 13 includes the durable provenance
-relationship. Acceptance records a future Review direction with
+Migration 0076 adds receipt identity and invariant guards. Migration 0077 adds
+the external-receipt-aware restore race check required by the existing privacy
+normalization. Migration 0078 adds the owner evidence epoch that closes new-row
+and collection-membership races across the source inventory. Snapshot schema 30 stays fixed while recovery manifest 13
+includes the durable provenance relationship. Acceptance records a future Review direction with
 `programChanged: false`; it does not publish a Program or rewrite history.
 A06 activates the synthetic provider-neutral adversarial corpus without adding
 a browser or runtime path. Its exact raw, response, and stateful import oracles

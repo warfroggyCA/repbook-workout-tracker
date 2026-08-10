@@ -2,14 +2,17 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { PGlite } from "@electric-sql/pglite";
 import { drizzle } from "drizzle-orm/pglite";
 import { migrate } from "drizzle-orm/pglite/migrator";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import * as schema from "@/db/schema";
+import { resultRows } from "@/db/result";
 import {
   adaptationEvents,
   analysisPackageManifests,
   auditLogs,
   coachingInsights,
+  constraints,
   exercises,
+  healthActivities,
   programs,
   programVersions,
   recommendations,
@@ -21,7 +24,11 @@ import {
 import { activateProgramAtomically } from "@/services/program-activation";
 import { createAnalysisPackage } from "@/services/analysis-package";
 import { importExternalAnalysisSelection } from "@/services/external-analysis-import";
-import type { ExternalAnalysisImportRequest } from "@/lib/external-analysis-import";
+import { getExternalAnalysisSourceBindingFreshness } from "@/services/external-analysis-validation";
+import {
+  externalAnalysisImportDigestSchema,
+  type ExternalAnalysisImportRequest,
+} from "@/lib/external-analysis-import";
 import { externalAnalysisResponseSchema } from "@/lib/external-analysis-response";
 import {
   approveRecommendationDecision,
@@ -31,7 +38,16 @@ import {
 } from "@/services/recommendation-decisions";
 import { resolveReviewEvidence } from "@/services/review-evidence";
 import { captureUserSnapshot } from "@/services/snapshot-capture";
-import { upgradeSnapshotPayload, validateSnapshotPayload } from "@/services/snapshot-restore";
+import {
+  getSnapshotRestorePreview,
+  restoreDataSnapshot,
+  upgradeSnapshotPayload,
+  validateSnapshotPayload,
+} from "@/services/snapshot-restore";
+import { buildJsonBackup } from "@/services/export";
+import { MemorySnapshotObjectStore } from "@/services/snapshot-store";
+import { createDataSnapshot, type SnapshotKeyring } from "@/services/snapshots";
+import { ANALYSIS_PACKAGE_SOURCE_BINDING_ENTITIES } from "@/lib/analysis-package";
 import validFixture from "../fixtures/v2/a03-typed-response.json";
 
 describe("A05 selective external-analysis Review bridge", () => {
@@ -118,16 +134,21 @@ describe("A05 selective external-analysis Review bridge", () => {
     await client.close();
   });
 
-  async function createImportRequest(): Promise<ExternalAnalysisImportRequest> {
+  async function createImportRequest(
+    questionId:
+      | "program_progress"
+      | "training_consistency"
+      | "recovery_constraints" = "program_progress",
+  ): Promise<ExternalAnalysisImportRequest> {
     packageNo += 1;
     const packageId = `55555555-5555-4555-8555-${String(packageNo).padStart(12, "0")}`;
     const responseId = `66666666-6666-4666-8666-${String(packageNo).padStart(12, "0")}`;
     const created = await createAnalysisPackage(
       db,
       ownerId,
-      { questionId: "program_progress", windowDays: 84 },
+      { questionId, windowDays: 84 },
       {
-        now: new Date(`2026-08-08T1${packageNo}:00:00.000Z`),
+        now: new Date(Date.UTC(2026, 7, 8, 10, packageNo)),
         packageId,
         appVersion: "a05-test",
       },
@@ -163,6 +184,20 @@ describe("A05 selective external-analysis Review bridge", () => {
       },
     };
   }
+
+  it("keeps the evidence-epoch trigger inventory closed over every source entity", async () => {
+    const triggerRows = resultRows(await db.execute(sql`
+      SELECT relation.relname AS entity
+      FROM pg_trigger trigger
+      JOIN pg_class relation ON relation.oid = trigger.tgrelid
+      WHERE trigger.tgname = 'analysis_evidence_revision_guard'
+        AND NOT trigger.tgisinternal
+      ORDER BY relation.relname
+    `));
+    expect(triggerRows.map((row) => String(row.entity))).toEqual(
+      [...ANALYSIS_PACKAGE_SOURCE_BINDING_ENTITIES].sort(),
+    );
+  });
 
   it("imports only selected allowlisted items, consumes the manifest, and replays idempotently", async () => {
     const request = await createImportRequest();
@@ -238,6 +273,278 @@ describe("A05 selective external-analysis Review bridge", () => {
     ).toHaveLength(0);
   }, 30_000);
 
+  it("rejects corrected evidence before import and at the atomic manifest claim", async () => {
+    const correctedBeforeImport = await createImportRequest();
+    await db
+      .update(workoutSessions)
+      .set({ historyRevision: 1 })
+      .where(eq(workoutSessions.id, completedSessionId));
+    await expect(
+      importExternalAnalysisSelection(db, ownerId, correctedBeforeImport),
+    ).resolves.toMatchObject({ ok: false, reason: "stale_evidence" });
+    expect(await db.select().from(coachingInsights)).toHaveLength(0);
+    expect(await db.select().from(recommendations)).toHaveLength(0);
+    expect(await db.select().from(analysisPackageManifests)).toHaveLength(1);
+
+    await db
+      .update(workoutSessions)
+      .set({ historyRevision: 0 })
+      .where(eq(workoutSessions.id, completedSessionId));
+    const correctedDuringImport = await createImportRequest();
+    await expect(
+      importExternalAnalysisSelection(db, ownerId, correctedDuringImport, {
+        beforeClaim: async () => {
+          await db
+            .update(workoutSessions)
+            .set({ historyRevision: 1 })
+            .where(eq(workoutSessions.id, completedSessionId));
+        },
+      }),
+    ).resolves.toMatchObject({ ok: false, reason: "stale_evidence" });
+    expect(await db.select().from(coachingInsights)).toHaveLength(0);
+    expect(await db.select().from(recommendations)).toHaveLength(0);
+    expect(await db.select().from(analysisPackageManifests)).toHaveLength(2);
+  }, 30_000);
+
+  it("stale-fences mutable constraints and archived activities across import", async () => {
+    const [constraint] = await db.insert(constraints).values({
+      userId: ownerId,
+      bodyPart: "synthetic shoulder",
+      affectedPatterns: ["horizontal_push"],
+      note: "Initial retained constraint",
+    }).returning({ id: constraints.id });
+    const beforeConstraintChange = await createImportRequest();
+    await db.update(constraints).set({
+      note: "Changed after package preview",
+    }).where(eq(constraints.id, constraint.id));
+    await expect(
+      importExternalAnalysisSelection(db, ownerId, beforeConstraintChange),
+    ).resolves.toMatchObject({ ok: false, reason: "stale_evidence" });
+
+    const duringConstraintChange = await createImportRequest();
+    await expect(
+      importExternalAnalysisSelection(db, ownerId, duringConstraintChange, {
+        beforeClaim: async () => {
+          await db.update(constraints).set({
+            note: "Changed during atomic import claim",
+          }).where(eq(constraints.id, constraint.id));
+        },
+      }),
+    ).resolves.toMatchObject({ ok: false, reason: "stale_evidence" });
+
+    const afterConstraintChange = await createImportRequest();
+    const constraintImport = await importExternalAnalysisSelection(
+      db,
+      ownerId,
+      afterConstraintChange,
+    );
+    if (!constraintImport.ok) throw new Error(constraintImport.message);
+    const constraintReceipt = await db.query.coachingInsights.findFirst({
+      where: eq(coachingInsights.id, constraintImport.importId),
+    });
+    const constraintDigest = externalAnalysisImportDigestSchema.parse(
+      constraintReceipt?.dataDigest,
+    );
+    await db.update(constraints).set({
+      note: "Changed after import",
+    }).where(eq(constraints.id, constraint.id));
+    await expect(getExternalAnalysisSourceBindingFreshness(
+      db,
+      ownerId,
+      constraintDigest.sourceBindings,
+      constraintDigest.package.sourceEvidenceRevision,
+    )).resolves.toEqual({ ok: false, reason: "stale_evidence" });
+
+    const [activity] = await db.insert(healthActivities).values({
+      userId: ownerId,
+      activityType: "walk",
+      title: "Synthetic context walk",
+      startedAt: new Date("2026-08-07T12:00:00.000Z"),
+      timezone: "America/Toronto",
+      durationSeconds: 1800,
+      fingerprint: `a05-${crypto.randomUUID()}`,
+    }).returning({ id: healthActivities.id });
+    const activityRequest = await createImportRequest("training_consistency");
+    const activityImport = await importExternalAnalysisSelection(
+      db,
+      ownerId,
+      activityRequest,
+    );
+    if (!activityImport.ok) throw new Error(activityImport.message);
+    const activityReceipt = await db.query.coachingInsights.findFirst({
+      where: eq(coachingInsights.id, activityImport.importId),
+    });
+    const activityDigest = externalAnalysisImportDigestSchema.parse(
+      activityReceipt?.dataDigest,
+    );
+    await db.update(healthActivities).set({
+      archivedAt: new Date("2026-08-08T20:00:00.000Z"),
+    }).where(eq(healthActivities.id, activity.id));
+    await expect(getExternalAnalysisSourceBindingFreshness(
+      db,
+      ownerId,
+      activityDigest.sourceBindings,
+      activityDigest.package.sourceEvidenceRevision,
+    )).resolves.toEqual({ ok: false, reason: "stale_evidence" });
+  }, 60_000);
+
+  it("stale-fences newly inserted safety and activity evidence across the import boundary", async () => {
+    const beforeFirstConstraint = await createImportRequest("recovery_constraints");
+    await db.insert(constraints).values({
+      userId: ownerId,
+      bodyPart: "synthetic elbow",
+      affectedPatterns: ["horizontal_push"],
+      note: "First constraint added after package preparation",
+    });
+    await expect(importExternalAnalysisSelection(
+      db,
+      ownerId,
+      beforeFirstConstraint,
+    )).resolves.toMatchObject({ ok: false, reason: "stale_evidence" });
+
+    const duringNewConstraint = await createImportRequest("recovery_constraints");
+    await expect(importExternalAnalysisSelection(
+      db,
+      ownerId,
+      duringNewConstraint,
+      {
+        beforeClaim: async () => {
+          await db.insert(constraints).values({
+            userId: ownerId,
+            bodyPart: "synthetic wrist",
+            affectedPatterns: ["horizontal_push"],
+            note: "Second constraint added during atomic claim",
+          });
+        },
+      },
+    )).resolves.toMatchObject({ ok: false, reason: "stale_evidence" });
+
+    const [archivedActivity] = await db.insert(healthActivities).values({
+      userId: ownerId,
+      activityType: "walk",
+      title: "Initially archived in-window activity",
+      startedAt: new Date("2026-08-07T15:00:00.000Z"),
+      timezone: "America/Toronto",
+      durationSeconds: 600,
+      fingerprint: `a05-reactivate-${crypto.randomUUID()}`,
+      archivedAt: new Date("2026-08-08T09:00:00.000Z"),
+    }).returning({ id: healthActivities.id });
+    const beforeReactivation = await createImportRequest("training_consistency");
+    await db.update(healthActivities).set({
+      archivedAt: null,
+    }).where(eq(healthActivities.id, archivedActivity.id));
+    await expect(importExternalAnalysisSelection(
+      db,
+      ownerId,
+      beforeReactivation,
+    )).resolves.toMatchObject({ ok: false, reason: "stale_evidence" });
+
+    const beforeNewActivity = await createImportRequest("training_consistency");
+    const imported = await importExternalAnalysisSelection(
+      db,
+      ownerId,
+      beforeNewActivity,
+    );
+    if (!imported.ok) throw new Error(imported.message);
+    const receipt = await db.query.coachingInsights.findFirst({
+      where: eq(coachingInsights.id, imported.importId),
+    });
+    const digest = externalAnalysisImportDigestSchema.parse(receipt?.dataDigest);
+    await expect(getExternalAnalysisSourceBindingFreshness(
+      db,
+      ownerId,
+      digest.sourceBindings,
+      digest.package.sourceEvidenceRevision,
+    )).resolves.toEqual({ ok: true });
+
+    await db.insert(healthActivities).values({
+      userId: ownerId,
+      activityType: "walk",
+      title: "New in-window activity after import",
+      startedAt: new Date("2026-08-07T16:00:00.000Z"),
+      timezone: "America/Toronto",
+      durationSeconds: 900,
+      fingerprint: `a05-insert-${crypto.randomUUID()}`,
+    });
+    await expect(getExternalAnalysisSourceBindingFreshness(
+      db,
+      ownerId,
+      digest.sourceBindings,
+      digest.package.sourceEvidenceRevision,
+    )).resolves.toEqual({ ok: false, reason: "stale_evidence" });
+  }, 60_000);
+
+  it("backs up and fully restores a legitimate stale external receipt", async () => {
+    const request = await createImportRequest();
+    const imported = await importExternalAnalysisSelection(db, ownerId, request);
+    if (!imported.ok) throw new Error(imported.message);
+    await db.update(workoutSessions).set({
+      historyRevision: 1,
+    }).where(eq(workoutSessions.id, completedSessionId));
+
+    await expect(buildJsonBackup(db, ownerId, undefined, {
+      now: new Date("2026-08-08T20:00:00.000Z"),
+      appVersion: "a05-stale-restore",
+    })).resolves.toMatchObject({ schemaVersion: "30" });
+
+    const store = new MemorySnapshotObjectStore();
+    const key = Buffer.alloc(32, 77);
+    const keyring: SnapshotKeyring = {
+      currentVersion: "v1",
+      resolve(version) {
+        if (version !== "v1") throw new Error("Unknown A05 snapshot key.");
+        return key;
+      },
+    };
+    const created = await createDataSnapshot(
+      db,
+      ownerId,
+      { name: "A05 stale receipt", reason: "manual", pinned: true },
+      { store, keyring, appVersion: "a05-stale-restore" },
+    );
+    if (!created.ok) throw new Error(created.reason);
+    await db.update(userProfiles).set({
+      goals: ["temporary post-snapshot goal"],
+    }).where(eq(userProfiles.userId, ownerId));
+    const preview = await getSnapshotRestorePreview(
+      db,
+      ownerId,
+      created.snapshotId,
+      "full",
+      { store, keyring },
+    );
+    const repeatedPreview = await getSnapshotRestorePreview(
+      db,
+      ownerId,
+      created.snapshotId,
+      "full",
+      { store, keyring },
+    );
+    expect(repeatedPreview.fingerprint).toBe(preview.fingerprint);
+    const restored = await restoreDataSnapshot(
+      db,
+      ownerId,
+      {
+        snapshotId: created.snapshotId,
+        scope: "full",
+        previewFingerprint: repeatedPreview.fingerprint,
+        confirmation: "RESTORE",
+      },
+      { store, keyring, appVersion: "a05-stale-restore" },
+    );
+    if (!restored.ok) throw new Error(restored.reason);
+    expect(restored).toMatchObject({ ok: true, scope: "full" });
+    expect(await db.query.workoutSessions.findFirst({
+      where: eq(workoutSessions.id, completedSessionId),
+    })).toMatchObject({ historyRevision: 1 });
+    expect(await db.query.coachingInsights.findFirst({
+      where: eq(coachingInsights.id, imported.importId),
+    })).toMatchObject({ kind: "external_analysis_import" });
+    expect(await db.query.userProfiles.findFirst({
+      where: eq(userProfiles.userId, ownerId),
+    })).toMatchObject({ goals: ["synthetic A05 Review"] });
+  }, 60_000);
+
   it("keeps defer and reject durable without creating an adaptation", async () => {
     const request = await createImportRequest();
     const imported = await importExternalAnalysisSelection(db, ownerId, request);
@@ -298,11 +605,57 @@ describe("A05 selective external-analysis Review bridge", () => {
     expect(await db.select().from(programVersions)).toHaveLength(1);
   }, 30_000);
 
+  it("atomically blocks new safety evidence after decision preflight", async () => {
+    const request = await createImportRequest("recovery_constraints");
+    const imported = await importExternalAnalysisSelection(db, ownerId, request);
+    if (!imported.ok) throw new Error(imported.message);
+    const recommendation = (await db.select().from(recommendations))[0]!;
+
+    await expect(approveRecommendationDecision(
+      db,
+      ownerId,
+      {
+        recommendationId: recommendation.id,
+        expectedReviewRevision: 1,
+        expectedDeferRevision: 0,
+      },
+      {
+        checkpoint: async (boundary) => {
+          if (boundary !== "recommendation-ready") return;
+          await db.insert(constraints).values({
+            userId: ownerId,
+            bodyPart: "synthetic shoulder",
+            affectedPatterns: ["horizontal_push"],
+            note: "New safety evidence after Review preflight",
+          });
+        },
+      },
+    )).resolves.toMatchObject({
+      ok: false,
+      reason: expect.stringContaining("became stale"),
+    });
+    expect((await db.select().from(recommendations))[0]).toMatchObject({
+      status: "pending",
+    });
+    expect(await db.select().from(userDecisions)).toHaveLength(0);
+    expect(await db.select().from(adaptationEvents)).toHaveLength(0);
+  }, 30_000);
+
   it("stale-fences evidence correction and Program drift while preserving the allowlisted receipt through snapshot validation", async () => {
     const request = await createImportRequest();
     const imported = await importExternalAnalysisSelection(db, ownerId, request);
     if (!imported.ok) throw new Error(imported.message);
     const recommendation = (await db.select().from(recommendations))[0]!;
+    const receipt = (await db.select().from(coachingInsights))[0]!;
+    const receiptDigest = externalAnalysisImportDigestSchema.parse(receipt.dataDigest);
+    await expect(
+      getExternalAnalysisSourceBindingFreshness(
+        db,
+        ownerId,
+        receiptDigest.sourceBindings,
+        receiptDigest.package.sourceEvidenceRevision,
+      ),
+    ).resolves.toEqual({ ok: true });
 
     const snapshot = await captureUserSnapshot(
       db,
@@ -317,6 +670,89 @@ describe("A05 selective external-analysis Review bridge", () => {
     const upgraded = upgradeSnapshotPayload(snapshot);
     expect(() => validateSnapshotPayload(upgraded, ownerId)).not.toThrow();
 
+    const missingSource = structuredClone(upgraded);
+    const missingReceipt = missingSource.tables.coaching_insights.find(
+      (row) => (row as Record<string, unknown>).kind === "external_analysis_import",
+    ) as Record<string, unknown>;
+    const missingDigest = missingReceipt.data_digest as {
+      sourceBindings: Array<{
+        entity: string;
+        ids: string[];
+        contentHashes: Array<{ id: string; hash: string }>;
+        versionTokens?: Array<{ id: string; token: string }>;
+      }>;
+    };
+    const profileBinding = missingDigest.sourceBindings.find(
+      (binding) => binding.entity === "user_profiles",
+    );
+    if (!profileBinding) throw new Error("Profile source binding missing.");
+    const substitutedSourceId = crypto.randomUUID();
+    profileBinding.ids[0] = substitutedSourceId;
+    profileBinding.contentHashes[0]!.id = substitutedSourceId;
+    if (profileBinding.versionTokens?.[0]) {
+      profileBinding.versionTokens[0].id = substitutedSourceId;
+    }
+    expect(() => validateSnapshotPayload(missingSource, ownerId)).toThrow(
+      "source bindings do not match retained owner evidence",
+    );
+
+    const changedRevision = structuredClone(upgraded);
+    const changedReceipt = changedRevision.tables.coaching_insights.find(
+      (row) => (row as Record<string, unknown>).kind === "external_analysis_import",
+    ) as Record<string, unknown>;
+    const changedDigest = changedReceipt.data_digest as {
+      sourceBindings: Array<{
+        entity: string;
+        revisions?: Array<{ id: string; revision: number }>;
+      }>;
+    };
+    const workoutBinding = changedDigest.sourceBindings.find(
+      (binding) => binding.entity === "workout_sessions",
+    );
+    if (!workoutBinding?.revisions?.[0]) {
+      throw new Error("Workout revision source binding missing.");
+    }
+    workoutBinding.revisions[0].revision += 1;
+    expect(() => validateSnapshotPayload(changedRevision, ownerId)).toThrow(
+      "source bindings do not match retained owner evidence",
+    );
+
+    const foreignNamespace = structuredClone(upgraded);
+    const foreignReceipt = foreignNamespace.tables.coaching_insights.find(
+      (row) => (row as Record<string, unknown>).kind === "external_analysis_import",
+    ) as Record<string, unknown>;
+    const foreignDigest = foreignReceipt.data_digest as {
+      package: { namespace: string };
+    };
+    foreignDigest.package.namespace = "repbook-owner/000000000000000000000000";
+    expect(() => validateSnapshotPayload(foreignNamespace, ownerId)).toThrow(
+      "import receipt is invalid",
+    );
+
+    const unknownBinding = structuredClone(upgraded);
+    const unknownReceipt = unknownBinding.tables.coaching_insights.find(
+      (row) => (row as Record<string, unknown>).kind === "external_analysis_import",
+    ) as Record<string, unknown>;
+    const unknownDigest = unknownReceipt.data_digest as {
+      sourceBindings: Array<{ entity: string }>;
+    };
+    unknownDigest.sourceBindings[0]!.entity = "untrusted_rows";
+    expect(() => validateSnapshotPayload(unknownBinding, ownerId)).toThrow(
+      "import receipt is invalid",
+    );
+
+    const unboundCitation = structuredClone(upgraded);
+    const citationReceipt = unboundCitation.tables.coaching_insights.find(
+      (row) => (row as Record<string, unknown>).kind === "external_analysis_import",
+    ) as Record<string, unknown>;
+    const citationDigest = citationReceipt.data_digest as {
+      observations: Array<{ evidenceIds: string[] }>;
+    };
+    citationDigest.observations[0]!.evidenceIds = [crypto.randomUUID()];
+    expect(() => validateSnapshotPayload(unboundCitation, ownerId)).toThrow(
+      "import receipt is invalid",
+    );
+
     await db
       .update(workoutSessions)
       .set({ historyRevision: 1 })
@@ -325,13 +761,21 @@ describe("A05 selective external-analysis Review bridge", () => {
       state: "stale",
       actionable: false,
     });
+    await expect(
+      getExternalAnalysisSourceBindingFreshness(
+        db,
+        ownerId,
+        receiptDigest.sourceBindings,
+        receiptDigest.package.sourceEvidenceRevision,
+      ),
+    ).resolves.toEqual({ ok: false, reason: "stale_evidence" });
     await db
       .update(workoutSessions)
       .set({ historyRevision: 0 })
       .where(eq(workoutSessions.id, completedSessionId));
     await expect(resolveReviewEvidence(db, ownerId, recommendation)).resolves.toMatchObject({
-      state: "external",
-      actionable: true,
+      state: "stale",
+      actionable: false,
     });
 
     const [nextVersion] = await db

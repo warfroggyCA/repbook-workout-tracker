@@ -55,6 +55,7 @@ import {
 } from "@/lib/set-exception-context";
 import { formatPainEvidence } from "@/lib/pain-evidence";
 import { externalAnalysisImportDigestSchema } from "@/lib/external-analysis-import";
+import { getExternalAnalysisSourceBindingFreshness } from "@/services/external-analysis-validation";
 
 function Metric({
   label,
@@ -144,17 +145,31 @@ export default async function CoachPage() {
         question: string;
       } => item.answer !== null && item.question !== null
     );
-  const externalObservations = externalImportRows.flatMap((row) => {
+  const parsedExternalImports = externalImportRows.flatMap((row) => {
     const parsed = externalAnalysisImportDigestSchema.safeParse(row.dataDigest);
     if (!parsed.success) return [];
-    return parsed.data.observations.map((observation) => ({
-      importId: row.id,
-      importedAt: row.createdAt,
-      packageId: parsed.data.package.id,
-      responseId: parsed.data.response.id,
-      observation,
-    }));
+    return [{ row, digest: parsed.data }];
   });
+  const externalObservations = (
+    await Promise.all(
+      parsedExternalImports.map(async ({ row, digest }) => {
+        const freshness = await getExternalAnalysisSourceBindingFreshness(
+          db,
+          user.id,
+          digest.sourceBindings,
+          digest.package.sourceEvidenceRevision,
+        );
+        return digest.observations.map((observation) => ({
+          importId: row.id,
+          importedAt: row.createdAt,
+          packageId: digest.package.id,
+          responseId: digest.response.id,
+          observation,
+          current: freshness.ok,
+        }));
+      }),
+    )
+  ).flat();
   const externalObservationDateFormatter = new Intl.DateTimeFormat("en-CA", {
     dateStyle: "medium",
     timeStyle: "short",
@@ -247,12 +262,19 @@ export default async function CoachPage() {
             </p>
           </div>
           <ul className="grid gap-3 sm:grid-cols-2">
-            {externalObservations.map(({ importId, importedAt, observation }) => (
+            {externalObservations.map(({ importId, importedAt, observation, current }) => (
               <li key={`${importId}-${observation.id}`} className="rounded-xl border bg-card p-4 shadow-[var(--shadow-soft)]">
-                <Badge variant="outline">External AI observation</Badge>
+                <Badge variant={current ? "outline" : "destructive"}>
+                  {current ? "External AI observation" : "Stale external observation"}
+                </Badge>
                 <p className="mt-2 text-sm font-medium leading-6">{observation.statement}</p>
                 <p className="mt-2 text-xs text-muted-foreground">Evidence: {observation.evidenceIds.join(", ")}</p>
                 <p className="mt-1 text-xs text-muted-foreground">Limits: {observation.limitations.join(" · ")}</p>
+                {!current ? (
+                  <p className="mt-2 text-xs font-medium text-destructive">
+                    The bound Repbook evidence changed after this was imported. Treat this as historical external context and prepare a new package before relying on it.
+                  </p>
+                ) : null}
                 <p className="mt-2 text-xs text-muted-foreground">
                   Imported {externalObservationDateFormatter.format(importedAt)}
                 </p>

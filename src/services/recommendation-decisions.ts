@@ -19,6 +19,7 @@ import {
   buildReviewDecisionSnapshot,
   resolveReviewEvidence,
 } from "@/services/review-evidence";
+import { ANALYSIS_PACKAGE_SOURCE_BINDING_ENTITIES } from "@/lib/analysis-package";
 
 export type RecommendationCheckpoint = (boundary: string) => void | Promise<void>;
 
@@ -288,15 +289,34 @@ export async function approveRecommendationDecision(
     const decisionId = randomUUID();
     const adaptationId = randomUUID();
     const reviewSnapshot = buildReviewDecisionSnapshot(recommendation, assessment);
+    const sourceVersionChecks = ANALYSIS_PACKAGE_SOURCE_BINDING_ENTITIES.map(
+      (entity) => sql`(
+        binding->>'entity' = ${entity}
+        AND EXISTS (
+          SELECT 1
+          FROM ${sql.raw(`"${entity}"`)} source
+          WHERE source.id = (source_version.value->>'id')::uuid
+            AND source.xmin::text = source_version.value->>'token'
+        )
+      )`,
+    );
     const applied = resultRows(await db.execute(sql`
-      WITH fresh_import AS (
+      WITH locked_owner AS MATERIALIZED (
+        SELECT owner.id, owner.analysis_evidence_revision
+        FROM users owner
+        WHERE owner.id = ${userId}::uuid
+        FOR UPDATE
+      ), fresh_import AS (
         SELECT insight.id
         FROM coaching_insights insight
+        JOIN locked_owner owner ON owner.id = insight.user_id
         WHERE insight.id = ${recommendation.insightId}::uuid
           AND insight.user_id = ${userId}::uuid
           AND insight.kind = 'external_analysis_import'
           AND insight.archived_at IS NULL
           AND insight.data_digest->>'schemaVersion' = 'external-analysis-import/1'
+          AND owner.analysis_evidence_revision::text =
+            insight.data_digest #>> '{package,sourceEvidenceRevision}'
           AND EXISTS (
             SELECT 1
             FROM jsonb_array_elements(insight.data_digest->'recommendationMap') item
@@ -341,6 +361,14 @@ export async function approveRecommendationDecision(
               )
               ELSE false
             END
+          )
+          AND NOT EXISTS (
+            SELECT 1
+            FROM jsonb_array_elements(insight.data_digest->'sourceBindings') binding
+            CROSS JOIN LATERAL jsonb_array_elements(
+              COALESCE(binding->'versionTokens', '[]'::jsonb)
+            ) AS source_version(value)
+            WHERE NOT (${sql.join(sourceVersionChecks, sql` OR `)})
           )
           AND (
             (

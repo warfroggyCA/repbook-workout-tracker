@@ -234,6 +234,8 @@ describe("versioned external-analysis package", () => {
     expect(created.serialized).not.toContain("analysis-private-");
     expect(created.serialized).not.toContain("Private owner identity");
     expect(created.serialized).toContain("raw_package_retention");
+    expect(created.serialized).not.toContain("contentHashes");
+    expect(created.serialized).not.toContain("versionTokens");
 
     const core = analysisPackageCoreSchema.strip().parse(created.package);
     expect(finalizeAnalysisPackage(core)).toEqual(created);
@@ -259,6 +261,10 @@ describe("versioned external-analysis package", () => {
     expect(manifests[0]!.expiresAt.toISOString()).toBe(
       "2026-09-07T16:00:00.000Z",
     );
+    expect(manifests[0]!.sourceBindings.every((binding) =>
+      binding.contentHashes.length === binding.ids.length &&
+      binding.versionTokens?.length === binding.ids.length,
+    )).toBe(true);
     expect(JSON.stringify(manifests[0])).not.toContain("Recovery walk");
     expect(JSON.stringify(manifests[0])).not.toContain("Analysis Program");
 

@@ -1,6 +1,6 @@
 import { z } from "zod";
 import {
-  analysisPackageSourceBindingSchema,
+  analysisPackageRetainedSourceBindingsSchema,
   analysisQuestionSchema,
 } from "@/lib/analysis-package";
 import {
@@ -66,6 +66,7 @@ export const externalAnalysisImportDigestSchema = z
         digest: z.string().regex(/^[0-9a-f]{64}$/),
         evidenceCutoff: z.string().datetime(),
         expiresAt: z.string().datetime(),
+        sourceEvidenceRevision: z.string().regex(/^\d+$/),
       })
       .strict(),
     response: z
@@ -83,7 +84,7 @@ export const externalAnalysisImportDigestSchema = z
         text: z.string().min(1).max(1_000),
       })
       .strict(),
-    sourceBindings: z.array(analysisPackageSourceBindingSchema).max(100),
+    sourceBindings: analysisPackageRetainedSourceBindingsSchema,
     selectedObservationIds: selectedItemIds,
     selectedProposalIds: selectedItemIds,
     observations: z.array(importedObservationSchema).max(25),
@@ -100,7 +101,79 @@ export const externalAnalysisImportDigestSchema = z
     importedAt: z.string().datetime(),
     rawResponseRetained: z.literal(false),
   })
-  .strict();
+  .strict()
+  .superRefine((value, context) => {
+    const selectedObservations = new Set(value.selectedObservationIds);
+    const observationIds = value.observations.map((item) => item.id);
+    const selectedProposals = new Set(value.selectedProposalIds);
+    const proposalIds = value.recommendationMap.map((item) => item.proposalId);
+    const recommendationIds = value.recommendationMap.map(
+      (item) => item.recommendationId,
+    );
+    const boundEvidenceIds = new Set(
+      value.sourceBindings.flatMap((binding) => binding.ids),
+    );
+    if (
+      value.sourceBindings.some((binding) =>
+        binding.entity === "programs"
+          ? binding.versionTokens != null
+          : binding.versionTokens == null,
+      )
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["sourceBindings"],
+        message:
+          "Imported source bindings must retain mutation tokens except for the Program row advanced by import.",
+      });
+    }
+    if (
+      value.selectedObservationIds.length === 0 &&
+      value.selectedProposalIds.length === 0
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["selectedObservationIds"],
+        message: "An external-analysis receipt must retain at least one selected item.",
+      });
+    }
+    if (
+      selectedObservations.size !== value.selectedObservationIds.length ||
+      new Set(observationIds).size !== observationIds.length ||
+      observationIds.length !== selectedObservations.size ||
+      observationIds.some((id) => !selectedObservations.has(id))
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["observations"],
+        message: "Imported observations must exactly match the selected observation IDs.",
+      });
+    }
+    if (
+      selectedProposals.size !== value.selectedProposalIds.length ||
+      new Set(proposalIds).size !== proposalIds.length ||
+      new Set(recommendationIds).size !== recommendationIds.length ||
+      proposalIds.length !== selectedProposals.size ||
+      proposalIds.some((id) => !selectedProposals.has(id))
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["recommendationMap"],
+        message: "Recommendation mappings must exactly match the selected proposal IDs.",
+      });
+    }
+    if (
+      value.observations.some((observation) =>
+        observation.evidenceIds.some((id) => !boundEvidenceIds.has(id)),
+      )
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["observations"],
+        message: "Imported observations may cite only bound source evidence.",
+      });
+    }
+  });
 
 export const externalAnalysisRecommendationEvidenceSchema = z
   .object({

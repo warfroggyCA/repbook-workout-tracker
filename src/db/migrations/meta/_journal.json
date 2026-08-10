@@ -540,6 +540,20 @@
       "when": 1786334400000,
       "tag": "0076_external_analysis_review_bridge",
       "breakpoints": true
+    },
+    {
+      "idx": 77,
+      "version": "7",
+      "when": 1786420800000,
+      "tag": "0077_external_analysis_restore_compat",
+      "breakpoints": true
+    },
+    {
+      "idx": 78,
+      "version": "7",
+      "when": 1786507200000,
+      "tag": "0078_analysis_evidence_epoch",
+      "breakpoints": true
     }
   ]
 }

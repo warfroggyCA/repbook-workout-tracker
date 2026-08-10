@@ -1,9 +1,10 @@
 import "server-only";
 
 import { createHash, randomUUID } from "node:crypto";
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, sql } from "drizzle-orm";
 import type { Db } from "@/db";
-import { analysisPackageManifests } from "@/db/schema";
+import { resultRows } from "@/db/result";
+import { analysisPackageManifests, users } from "@/db/schema";
 import {
   ANALYSIS_PACKAGE_CANONICALIZATION_VERSION,
   ANALYSIS_PACKAGE_FORMAT,
@@ -18,6 +19,7 @@ import {
   type AnalysisPackageCore,
   type AnalysisPackageManifestSummary,
   type AnalysisPackageRequest,
+  type AnalysisPackageSourceBindingEntity,
   type JsonValue,
 } from "@/lib/analysis-package";
 import {
@@ -177,7 +179,7 @@ function ids(rows: SnapshotRow[]): Set<string> {
 }
 
 function binding(
-  entity: string,
+  entity: AnalysisPackageSourceBindingEntity,
   rows: SnapshotRow[],
   revisionKey?: string,
 ) {
@@ -195,11 +197,78 @@ function binding(
   };
 }
 
-function digestOwnerNamespace(userId: string): string {
+export function analysisSourceRowContentHash(
+  entity: AnalysisPackageSourceBindingEntity,
+  row: unknown,
+): string {
+  const normalized =
+    entity === "programs" && row && typeof row === "object" && !Array.isArray(row)
+      ? Object.fromEntries(
+          Object.entries(row as Record<string, unknown>).filter(
+            ([key]) => key !== "recommendation_revision",
+          ),
+        )
+      : row;
+  return sha256Hex(Buffer.from(canonicalJson(normalized), "utf8"));
+}
+
+export type AnalysisSourceBindingState = {
+  entity: AnalysisPackageSourceBindingEntity;
+  id: string;
+  versionToken: string;
+  contentHash: string;
+};
+
+export async function loadAnalysisSourceBindingState(
+  db: Db,
+  bindings: Array<{
+    entity: AnalysisPackageSourceBindingEntity;
+    ids: string[];
+  }>,
+): Promise<AnalysisSourceBindingState[]> {
+  if (bindings.length === 0) return [];
+  const selects = bindings.map((sourceBinding) => sql`
+    SELECT ${sourceBinding.entity}::text AS entity,
+           source.id::text AS id,
+           source.xmin::text AS version_token,
+           to_jsonb(source) AS source_row
+    FROM ${sql.raw(`"${sourceBinding.entity}"`)} source
+    WHERE source.id IN (
+      SELECT value::uuid
+      FROM jsonb_array_elements_text(${JSON.stringify(sourceBinding.ids)}::jsonb)
+    )
+  `);
+  const loaded = resultRows(await db.execute(
+    sql.join(selects, sql` UNION ALL `),
+  )) as Array<Record<string, unknown>>;
+  return loaded.map((row) => ({
+    entity: row.entity as AnalysisPackageSourceBindingEntity,
+    id: String(row.id),
+    versionToken: String(row.version_token),
+    contentHash: analysisSourceRowContentHash(
+      row.entity as AnalysisPackageSourceBindingEntity,
+      row.source_row,
+    ),
+  }));
+}
+
+export function analysisPackageOwnerNamespace(userId: string): string {
   return `repbook-owner/${createHash("sha256")
     .update(`repbook-analysis-owner:${userId}`)
     .digest("hex")
     .slice(0, 24)}`;
+}
+
+export async function loadAnalysisEvidenceRevision(
+  db: Db,
+  userId: string,
+): Promise<string> {
+  const row = await db.query.users.findFirst({
+    columns: { analysisEvidenceRevision: true },
+    where: eq(users.id, userId),
+  });
+  if (!row) throw new Error("Analysis package owner was not found.");
+  return String(row.analysisEvidenceRevision);
 }
 
 function exerciseIdentityScope(row: SnapshotRow, userId: string) {
@@ -593,7 +662,7 @@ function buildCore(input: {
     schemaVersion: ANALYSIS_PACKAGE_SCHEMA_VERSION,
     semanticVersion: ANALYSIS_PACKAGE_SEMANTIC_VERSION,
     packageId,
-    packageNamespace: digestOwnerNamespace(userId),
+    packageNamespace: analysisPackageOwnerNamespace(userId),
     createdAt: now.toISOString(),
     evidenceCutoff: cutoff.toISOString(),
     expiresAt: expiresAt.toISOString(),
@@ -762,8 +831,67 @@ export async function createAnalysisPackage(
     dependencies.appVersion ?? process.env.VERCEL_GIT_COMMIT_SHA ?? "development",
     { normalizeProgramDrafts: false, retainCoachEvidenceIds: true },
   );
-  const core = buildCore({ snapshot, userId, request, now, packageId });
-  const finalized = finalizeAnalysisPackage(core);
+  const firstCore = buildCore({ snapshot, userId, request, now, packageId });
+  const sourceState = await loadAnalysisSourceBindingState(
+    db,
+    firstCore.sourceBindings,
+  );
+  const sourceEvidenceRevision = await loadAnalysisEvidenceRevision(db, userId);
+  const sourceStateById = new Map(
+    sourceState.map((item) => [`${item.entity}:${item.id}`, item]),
+  );
+  const confirmingSnapshot = await captureUserSnapshot(
+    db,
+    userId,
+    now,
+    dependencies.appVersion ?? process.env.VERCEL_GIT_COMMIT_SHA ?? "development",
+    { normalizeProgramDrafts: false, retainCoachEvidenceIds: true },
+  );
+  const confirmingCore = buildCore({
+    snapshot: confirmingSnapshot,
+    userId,
+    request,
+    now,
+    packageId,
+  });
+  const confirmingSourceEvidenceRevision =
+    await loadAnalysisEvidenceRevision(db, userId);
+  if (
+    canonicalJson(firstCore) !== canonicalJson(confirmingCore) ||
+    sourceEvidenceRevision !== confirmingSourceEvidenceRevision
+  ) {
+    throw new Error(
+      "Analysis evidence changed while the package was being prepared. Prepare it again.",
+    );
+  }
+  const finalized = finalizeAnalysisPackage(firstCore);
+  const manifestSourceBindings = finalized.package.sourceBindings.map(
+    (sourceBinding) => {
+      const contentHashes = sourceBinding.ids.map((sourceId) => {
+        const current = sourceStateById.get(
+          `${sourceBinding.entity}:${sourceId}`,
+        );
+        if (!current) {
+          throw new Error(
+            "Analysis evidence changed while the package was being prepared. Prepare it again.",
+          );
+        }
+        return { id: sourceId, hash: current.contentHash };
+      });
+      const versionTokens = sourceBinding.ids.map((sourceId) => {
+        const current = sourceStateById.get(
+          `${sourceBinding.entity}:${sourceId}`,
+        );
+        if (!current) {
+          throw new Error(
+            "Analysis evidence changed while the package was being prepared. Prepare it again.",
+          );
+        }
+        return { id: sourceId, token: current.versionToken };
+      });
+      return { ...sourceBinding, contentHashes, versionTokens };
+    },
+  );
   await db.insert(analysisPackageManifests).values({
     id: packageId,
     userId,
@@ -778,9 +906,10 @@ export async function createAnalysisPackage(
       windowStart: finalized.package.request.windowStart,
       evidenceCutoff: finalized.package.evidenceCutoff,
       timezone: finalized.package.timeSemantics.timezone,
+      sourceEvidenceRevision,
     },
     inventory: finalized.package.inventory,
-    sourceBindings: finalized.package.sourceBindings,
+    sourceBindings: manifestSourceBindings,
     createdAt: now,
     evidenceCutoff: now,
     expiresAt: new Date(finalized.package.expiresAt),
