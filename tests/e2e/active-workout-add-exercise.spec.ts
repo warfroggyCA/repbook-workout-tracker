@@ -380,6 +380,10 @@ test("refuses incomplete assistance, then preserves assisted work without false 
   await restoredAssisted
     .getByRole("button", { name: /Assisted Push-Up/ })
     .click();
+  await restoredAssisted
+    .locator("details", { hasText: "Exercise progress & extras" })
+    .locator(":scope > summary")
+    .click();
   await expect(
     restoredAssisted
       .getByText("Assistance: 40 lb · 8 reps", { exact: true }),

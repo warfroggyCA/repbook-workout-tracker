@@ -62,6 +62,7 @@ test("recovers offline and timeout-after-commit sets exactly, then reviews aband
   const pageErrors = observeGauntletPageErrors(page, browserName, [
     /Failed to fetch/i,
     /Load failed/i,
+    /Failed to load resource: WebKit encountered an internal error/i,
     /ERR_(?:FAILED|INTERNET_DISCONNECTED)/i,
     /NetworkError when attempting to fetch resource/i,
   ]);
