@@ -37,9 +37,60 @@ test("opens and operates the keyboard-accessible Program editor", async ({
   await signIn(page);
   await page.emulateMedia({ reducedMotion: "reduce" });
   await page.goto("/program");
-  await page.getByRole("button", { name: "Edit future Program", exact: true }).click();
+  await expect(
+    page.getByRole("tab", { name: "Day A — Squat", exact: true }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Edit this day", exact: true }).click();
   await expect(page.getByRole("heading", { name: /^Edit / })).toBeVisible();
   await expect(page.getByRole("status")).toContainText("All changes saved");
+  await expect(
+    page.getByRole("heading", { name: "How Program changes work", exact: true }),
+  ).toBeVisible();
+  const exerciseRows = page.locator(
+    'section[aria-label$=" exercises"] > [data-program-slot-index]',
+  );
+  expect(await exerciseRows.count()).toBeGreaterThan(1);
+  const initialNames = await exerciseRows
+    .locator('button[aria-expanded] span[id$="-label"]')
+    .allTextContents();
+  const firstExerciseName = initialNames[0]?.trim();
+  expect(firstExerciseName).toBeTruthy();
+  const firstHandle = page.getByRole("button", {
+    name: `Drag ${firstExerciseName} to reorder`,
+    exact: true,
+  });
+
+  await firstHandle.focus();
+  await page.keyboard.press("ArrowDown");
+  await expect(
+    exerciseRows.nth(1).locator('button[aria-expanded] span[id$="-label"]'),
+  ).toHaveText(firstExerciseName!);
+  await expect(page.getByRole("status")).toContainText("All changes saved");
+  await firstHandle.focus();
+  await page.keyboard.press("ArrowUp");
+  await expect(
+    exerciseRows.nth(0).locator('button[aria-expanded] span[id$="-label"]'),
+  ).toHaveText(firstExerciseName!);
+  await expect(page.getByRole("status")).toContainText("All changes saved");
+
+  await firstHandle.dragTo(
+    exerciseRows.nth(1).getByRole("button", { name: /^Drag / }),
+  );
+  await expect(
+    exerciseRows.nth(1).locator('button[aria-expanded] span[id$="-label"]'),
+  ).toHaveText(firstExerciseName!);
+  await expect(page.getByRole("status")).toContainText("All changes saved");
+  await firstHandle.focus();
+  await page.keyboard.press("ArrowUp");
+  await expect(
+    exerciseRows.nth(0).locator('button[aria-expanded] span[id$="-label"]'),
+  ).toHaveText(firstExerciseName!);
+  await expect(page.getByRole("status")).toContainText("All changes saved");
+  await page.reload();
+  await expect(page.getByRole("heading", { name: /^Edit / })).toBeVisible();
+  await expect(
+    exerciseRows.nth(0).locator('button[aria-expanded] span[id$="-label"]'),
+  ).toHaveText(firstExerciseName!);
   const advancedOptions = page
     .locator("details")
     .filter({ hasText: "Advanced session options" });
@@ -91,6 +142,9 @@ test("opens and operates the keyboard-accessible Program editor", async ({
 
   await page.setViewportSize({ width: 390, height: 844 });
   await page.waitForTimeout(300);
+  const handleBox = await firstHandle.boundingBox();
+  expect(handleBox?.width).toBeGreaterThanOrEqual(44);
+  expect(handleBox?.height).toBeGreaterThanOrEqual(44);
   const layout = await page.evaluate(() => ({
     scrollWidth: document.documentElement.scrollWidth,
     clientWidth: document.documentElement.clientWidth,

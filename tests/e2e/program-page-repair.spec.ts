@@ -520,7 +520,7 @@ test("repairs the saved Program compatibility, layout, and immediate day selecti
     fullPage: true,
   });
 
-  const edit = page.getByRole("button", { name: "Edit future Program", exact: true });
+  const edit = page.getByRole("button", { name: "Edit this day", exact: true });
   await waitForHydratedReactHandler(edit);
   await edit.click();
   await expect(page).toHaveURL(/\/program\/edit\?day=/);

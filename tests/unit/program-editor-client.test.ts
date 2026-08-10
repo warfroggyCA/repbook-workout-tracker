@@ -10,6 +10,7 @@ import {
   localProgramDraftKey,
   moveItem,
   moveProgramGroupMember,
+  moveProgramSlotUnit,
   moveProgramSlotToDay,
   normalizeDaySupersets,
   parseLocalProgramDraft,
@@ -47,6 +48,8 @@ const IDs = {
   group: "00000000-0000-4000-8000-000000000008",
   owner: "00000000-0000-4000-8000-000000000009",
   draft: "00000000-0000-4000-8000-000000000010",
+  slotC: "00000000-0000-4000-8000-000000000011",
+  exerciseC: "00000000-0000-4000-8000-000000000012",
 };
 
 function document(): ProgramDocumentV3 {
@@ -100,6 +103,33 @@ describe("Program editor client rules", () => {
       null,
     ]);
     expect(resizeSetNotes(["first", "second"], 1)).toEqual(["first"]);
+  });
+
+  it("moves a superset as one unit when an exercise is reordered", () => {
+    const grouped = document().days[0].exercises;
+    const standalone = createDefaultProgramSlot(IDs.exerciseC, IDs.slotC);
+    const source = [...grouped, standalone];
+
+    const movedDown = moveProgramSlotUnit(source, grouped[0].lineageId, 1);
+    expect(movedDown.map((slot) => slot.lineageId)).toEqual([
+      standalone.lineageId,
+      grouped[0].lineageId,
+      grouped[1].lineageId,
+    ]);
+    expect(source.map((slot) => slot.lineageId)).toEqual([
+      grouped[0].lineageId,
+      grouped[1].lineageId,
+      standalone.lineageId,
+    ]);
+
+    const restored = moveProgramSlotUnit(
+      movedDown,
+      grouped[1].lineageId,
+      -1,
+    );
+    expect(restored.map((slot) => slot.lineageId)).toEqual(
+      source.map((slot) => slot.lineageId),
+    );
   });
 
   it("resets lineage and superset membership on explicit replacement", () => {

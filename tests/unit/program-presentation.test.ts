@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   deriveProgramDayWarmupLines,
+  formatCompactProgramDayLabel,
   formatProgramDayLabel,
   projectProgramPresentation,
   type ProgramPresentationSource,
@@ -20,6 +21,16 @@ describe("saved Program presentation", () => {
   ])("formats %j without repeating its matching ordinal", (name, index, expected) => {
     expect(formatProgramDayLabel(name, index)).toBe(expected);
     expect(name).toBe(name);
+  });
+
+  it.each([
+    ["Day 1 — Strength", 0, "Day 1"],
+    ["day 2: Hinge", 1, "Day 2"],
+    ["Day A", 0, "Day A"],
+    ["Upper body", 1, "Upper body"],
+    ["", 2, "Day 3"],
+  ])("uses the saved name when an ordinal-only tab would be ambiguous", (name, index, expected) => {
+    expect(formatCompactProgramDayLabel(name, index)).toBe(expected);
   });
 
   it("formats one meaningful load, reps, and notes without empty values", () => {

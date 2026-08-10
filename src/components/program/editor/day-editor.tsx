@@ -1,12 +1,13 @@
 "use client";
 
 import { ArrowDown, ArrowUp, Check, CircleAlert, LoaderCircle, Trash2 } from "lucide-react";
-import { memo } from "react";
+import { memo, useState } from "react";
 import { ExercisePicker } from "@/components/exercises/exercise-picker";
 import { ExerciseFamilyIcon } from "@/components/exercises/exercise-family-icon";
 import { ProgramDayTabs } from "@/components/program/program-day-tabs";
 import { RestTimeControl } from "@/components/program/rest-time-control";
 import { DayWarmupEditor } from "@/components/program/editor/warmup-editor";
+import { ExerciseReorderHandle } from "@/components/program/editor/exercise-reorder-handle";
 import { SlotEditor } from "@/components/program/editor/slot-editor";
 import { SupersetControls } from "@/components/program/editor/superset-controls";
 import { Field } from "@/components/program/editor/editor-ui";
@@ -27,6 +28,7 @@ function displayLabel(value: string) { return value.replaceAll("_", " ").replace
 
 export const DayEditor = memo(function DayEditor({ editor, canReview = false }: { editor: ProgramEditorController; canReview?: boolean }) {
   const { document, revision, router, library, updateDocument, activeDayId, setActiveDayId, dayHeadingRefs, updateDay, addDay, addExercise, pairingDayId, setPairingDayId, pairingSlotIds, setPairingSlotIds, expandedSlotId, setExpandedSlotId, slotHeadingRefs, exerciseById, moveSlotToDay, requestReview, reviewing } = editor;
+  const [reorderAnnouncement, setReorderAnnouncement] = useState("");
   if (!document) return null;
   const documentValidation = programDocumentV3Schema.safeParse(document);
   return (
@@ -65,9 +67,6 @@ export const DayEditor = memo(function DayEditor({ editor, canReview = false }: 
                 <CardHeader className="border-b">
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                     <div>
-                      <p className="text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">
-                        Day {dayIndex + 1}
-                      </p>
                       <h2
                         ref={(node) => {
                           if (node)
@@ -75,7 +74,7 @@ export const DayEditor = memo(function DayEditor({ editor, canReview = false }: 
                           else dayHeadingRefs.current.delete(day.lineageId);
                         }}
                         tabIndex={-1}
-                        className="mt-1 text-lg font-semibold outline-none"
+                        className="text-lg font-semibold outline-none"
                       >
                         {day.name || "Unnamed day"}
                       </h2>
@@ -596,6 +595,16 @@ export const DayEditor = memo(function DayEditor({ editor, canReview = false }: 
                     className="space-y-3"
                     aria-label={`${day.name} exercises`}
                   >
+                    <p
+                      id={`program-exercise-reorder-instructions-${day.lineageId}`}
+                      className="sr-only"
+                    >
+                      Drag the handle to reorder exercises. With a keyboard,
+                      focus the handle and use the up or down arrow key.
+                    </p>
+                    <p className="sr-only" aria-live="polite">
+                      {reorderAnnouncement}
+                    </p>
                     {day.exercises.map((slot, slotIndex) => {
                       const pairing = slot.supersetKey
                         ? day.supersets.find(
@@ -620,16 +629,34 @@ export const DayEditor = memo(function DayEditor({ editor, canReview = false }: 
                           exerciseById.get(candidate.exerciseId)?.name ??
                           "Unavailable exercise",
                       );
+                      const reorderUnitId = pairing?.key ?? slot.lineageId;
+                      const canMoveUp = day.exercises
+                        .slice(0, slotIndex)
+                        .some(
+                          (candidate) =>
+                            (candidate.supersetKey ?? candidate.lineageId) !==
+                            reorderUnitId,
+                        );
+                      const canMoveDown = day.exercises
+                        .slice(slotIndex + 1)
+                        .some(
+                          (candidate) =>
+                            (candidate.supersetKey ?? candidate.lineageId) !==
+                            reorderUnitId,
+                        );
                       return (
-                      <div
-                        key={slot.lineageId}
-                        className={cn(
-                          "space-y-2",
-                          pairing && "border-l-4 border-violet-500 bg-violet-50/60 px-3 py-2 dark:bg-violet-950/20",
-                          pairing && pairingPosition === 0 && "rounded-t-xl pt-3",
-                          pairing && pairingPosition === pairingMembers.length - 1 && "rounded-b-xl pb-3",
-                        )}
-                      >
+                        <div
+                          key={slot.lineageId}
+                          data-program-day-lineage={day.lineageId}
+                          data-program-slot-index={slotIndex}
+                          data-program-slot-unit={reorderUnitId}
+                          className={cn(
+                            "space-y-2",
+                            pairing && "border-l-4 border-violet-500 bg-violet-50/60 px-3 py-2 dark:bg-violet-950/20",
+                            pairing && pairingPosition === 0 && "rounded-t-xl pt-3",
+                            pairing && pairingPosition === pairingMembers.length - 1 && "rounded-b-xl pb-3",
+                          )}
+                        >
                         {pairing && pairingPosition === 0 && (
                           <details className="rounded-lg border border-violet-300/70 bg-background/70 p-3">
                             <summary className="min-h-11 cursor-pointer font-medium">
@@ -773,14 +800,35 @@ export const DayEditor = memo(function DayEditor({ editor, canReview = false }: 
                               Select {exerciseById.get(slot.exerciseId)?.name ?? "exercise"}
                             </label>
                           )}
-                        <button
+                        <div className="flex items-stretch gap-2">
+                          <ExerciseReorderHandle
+                            dayLineageId={day.lineageId}
+                            descriptionId={`program-exercise-reorder-instructions-${day.lineageId}`}
+                            exerciseName={exerciseById.get(slot.exerciseId)?.name ?? "exercise"}
+                            reorderUnitId={reorderUnitId}
+                            slotIndex={slotIndex}
+                            canMoveUp={canMoveUp}
+                            canMoveDown={canMoveDown}
+                            onMove={(direction) =>
+                              updateDay(dayIndex, (current) => ({
+                                ...current,
+                                exercises: moveProgramSlotUnit(
+                                  current.exercises,
+                                  slot.lineageId,
+                                  direction,
+                                ),
+                              }))
+                            }
+                            onAnnounce={setReorderAnnouncement}
+                          />
+                          <button
                           ref={(node) => {
                             if (node)
                               slotHeadingRefs.current.set(slot.lineageId, node);
                             else slotHeadingRefs.current.delete(slot.lineageId);
                           }}
                           type="button"
-                          className="flex min-h-16 w-full items-center gap-3 rounded-xl border bg-background p-3 text-left hover:bg-muted/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                          className="flex min-h-16 min-w-0 flex-1 items-center gap-3 rounded-xl border bg-background p-3 text-left hover:bg-muted/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                           aria-expanded={expandedSlotId === slot.lineageId}
                           aria-controls={`editor-${slot.lineageId}`}
                           onClick={() =>
@@ -809,7 +857,8 @@ export const DayEditor = memo(function DayEditor({ editor, canReview = false }: 
                           <span className="text-sm font-medium text-primary">
                             {expandedSlotId === slot.lineageId ? "Close" : "Edit"}
                           </span>
-                        </button>
+                          </button>
+                        </div>
                         {expandedSlotId === slot.lineageId && <div id={`editor-${slot.lineageId}`}>
                         <SlotEditor
                         day={day}
@@ -901,7 +950,7 @@ export const DayEditor = memo(function DayEditor({ editor, canReview = false }: 
                         labelledBy={`editor-${slot.lineageId}-label`}
                         />
                         </div>}
-                      </div>
+                        </div>
                       );
                     })}
                   </section>

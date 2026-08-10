@@ -114,18 +114,6 @@ export function ProgramViewer({
           </div>
         </div>
         <div className="grid gap-2 [grid-template-columns:repeat(auto-fit,minmax(min(100%,10rem),1fr))]">
-          {editorEnabled && (
-            <Button
-              className="min-h-11 min-w-0 whitespace-normal"
-              variant="outline"
-              render={
-                <Link href={`/program/edit?day=${selected.lineageId}`} />
-              }
-              nativeButton={false}
-            >
-              <Pencil /> Edit future Program
-            </Button>
-          )}
           <Button
             className="min-h-11 min-w-0 whitespace-normal"
             variant="outline"
@@ -157,10 +145,23 @@ export function ProgramViewer({
 
       <section className="overflow-hidden rounded-2xl border bg-card shadow-[var(--shadow-soft)]">
         <header className="border-b px-4 py-4 sm:px-5">
-          <p className="text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">
-            Day {selectedIndex + 1}
-          </p>
-          <h2 className="mt-1 text-xl font-semibold">{selected.name}</h2>
+          <div className="flex items-start justify-between gap-3">
+            <h2 className="min-w-0 text-xl font-semibold [overflow-wrap:anywhere]">
+              {selected.name}
+            </h2>
+            {editorEnabled && (
+              <Button
+                className="min-h-11 shrink-0"
+                variant="outline"
+                render={
+                  <Link href={`/program/edit?day=${selected.lineageId}`} />
+                }
+                nativeButton={false}
+              >
+                <Pencil /> Edit this day
+              </Button>
+            )}
+          </div>
           {selected.notes && (
             <p className="mt-2 whitespace-pre-line text-sm leading-6 text-muted-foreground">
               {selected.notes}

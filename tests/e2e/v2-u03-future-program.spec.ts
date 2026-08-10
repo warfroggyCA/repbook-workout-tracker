@@ -43,9 +43,9 @@ test("reviews and publishes an exact future-only Program change with a recoverab
   await page.goto("/program");
   const currentName = (await page.getByRole("heading", { level: 1 }).textContent())?.trim();
   expect(currentName).toBeTruthy();
-  await page.getByRole("button", { name: "Edit future Program", exact: true }).click();
+  await page.getByRole("button", { name: "Edit this day", exact: true }).click();
 
-  await expect(page.getByRole("heading", { name: "Future workouts only", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "How Program changes work", exact: true })).toBeVisible();
   await expect(page.getByText("Your current Program stays active.", { exact: true })).toBeVisible();
   await expect(page.getByText("New workouts use the new version.", { exact: true })).toBeVisible();
   await expect(page.getByText("Active work and History stay unchanged.", { exact: true })).toBeVisible();
