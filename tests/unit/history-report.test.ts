@@ -13,7 +13,7 @@ function session(
   overrides: Partial<HistorySessionInput> & Pick<HistorySessionInput, "id">
 ): HistorySessionInput {
   const { id, startedAt = new Date("2026-03-10T12:00:00.000Z"), ...rest } = overrides;
-  return {
+  const built: HistorySessionInput = {
     id,
     templateName: "Day A",
     status: "completed",
@@ -22,12 +22,41 @@ function session(
     localDate: startedAt.toISOString().slice(0, 10),
     finishedAt: new Date("2026-03-10T13:00:00.000Z"),
     exercises: [],
+    occurrences: [],
     painLogs: [],
     ...rest,
   };
+  if (overrides.occurrences == null) {
+    built.occurrences = built.exercises.flatMap((exercise) =>
+      exercise.sets
+        .filter((set) => !set.isWarmup)
+        .map((set) => ({
+          kind: "working_set" as const,
+          origin: "planned" as const,
+          outcome: "completed" as const,
+          completedSetId: set.id,
+          plannedRepsMin:
+            set.targetMet == null || set.reps == null
+              ? null
+              : set.targetMet
+                ? set.reps
+                : set.reps + 1,
+          plannedRepsMax: set.reps,
+          plannedLoad: set.weight,
+          plannedLoadUnit: set.weightUnit,
+        })),
+    );
+  }
+  return built;
 }
 
-function benchExercise(sets: HistorySessionInput["exercises"][number]["sets"]) {
+function benchExercise(
+  sets: Array<
+    Omit<HistorySessionInput["exercises"][number]["sets"][number], "id"> & {
+      id?: string;
+    }
+  >,
+) {
   return {
     modificationType: "as_planned" as const,
     skipReason: null,
@@ -39,8 +68,9 @@ function benchExercise(sets: HistorySessionInput["exercises"][number]["sets"]) {
       loadSemantics: "total",
       primaryMuscles: ["chest", "triceps"],
     },
-    sets: sets.map((set) => ({
+    sets: sets.map((set, index) => ({
       ...set,
+      id: set.id ?? `bench-set-${index + 1}`,
       metricType: set.metricType ?? "weight_reps",
       loadEntryMeaning: set.loadEntryMeaning ?? "total_system",
     })),
@@ -174,7 +204,7 @@ describe("summarizeHistory", () => {
             },
           ]),
         ],
-        painLogs: [{ severity: 5 }],
+        painLogs: [{ severity: 5, bodyPart: "shoulder", source: "set_flag" }],
       }),
       session({
         id: "abandoned",
@@ -199,9 +229,21 @@ describe("summarizeHistory", () => {
       totalReps: 36,
       loadedVolume: 3780,
       averageDurationMin: 50,
-      planCompletionRate: 50,
       targetHitRate: 75,
       averageRpe: 7.7,
+    });
+    expect(report.cadence).toMatchObject({
+      completedSessions: 2,
+      completeWeeks: 3,
+      averageSessionsPerCompleteWeek: 0.67,
+      medianGapDays: 14,
+    });
+    expect(report.overview.targetOutcomes).toMatchObject({
+      below: 1,
+      at: 3,
+      above: 0,
+      unknown: 0,
+      atOrAboveRate: 75,
     });
     expect(report.muscles[0]).toEqual({
       muscle: "chest",
@@ -231,7 +273,7 @@ describe("summarizeHistory", () => {
       painEvents: 1,
       highPainEvents: 1,
     });
-    expect(report.insights.some((insight) => insight.title === "Pain flags deserve attention")).toBe(true);
+    expect(report.insights.some((insight) => insight.title === "Positive pain reports deserve attention")).toBe(true);
     expect(report.recentSessions[0].id).toBe("abandoned");
     expect(report.calendarSessions.map((entry) => entry.id)).toEqual([
       "abandoned",
@@ -244,6 +286,31 @@ describe("summarizeHistory", () => {
     const report = summarizeHistory([], [], 3, historyRangeStart("4w", now), now);
     expect(report.overview.completedSessions).toBe(0);
     expect(report.insights[0].title).toBe("No completed workouts in this period");
+  });
+
+  it("counts only supported positive pain while retaining zero as no-issue evidence", () => {
+    const report = summarizeHistory(
+      [
+        session({
+          id: "pain-meaning",
+          painLogs: [
+            { severity: 0, bodyPart: "shoulder", source: "set_flag" },
+            { severity: 4, bodyPart: "back", source: "set_exception" },
+            { severity: 12, bodyPart: "knee", source: "set_flag" },
+          ],
+        }),
+      ],
+      [],
+      3,
+      historyRangeStart("4w", now),
+      now,
+    );
+
+    expect(report.recovery).toMatchObject({
+      painEvents: 1,
+      highPainEvents: 1,
+    });
+    expect(report.calendarSessions[0]).toMatchObject({ painEvents: 1 });
   });
 
   it("converts kilogram sets to pounds before summing volume", () => {
@@ -336,6 +403,7 @@ describe("summarizeHistory", () => {
               },
               sets: [
                 {
+                  id: "assisted-set",
                   weight: 150,
                   weightUnit: "lb",
                   reps: 10,
@@ -359,6 +427,7 @@ describe("summarizeHistory", () => {
               },
               sets: [
                 {
+                  id: "plank-set",
                   weight: null,
                   reps: 999,
                   metricType: "duration",
@@ -382,6 +451,7 @@ describe("summarizeHistory", () => {
               },
               sets: [
                 {
+                  id: "band-row-set",
                   weight: null,
                   reps: 20,
                   metricType: "reps",
@@ -454,6 +524,7 @@ describe("summarizeHistory", () => {
       },
       sets: [
         {
+          id: `assisted-set-${weight}`,
           weight,
           weightUnit: "lb" as const,
           loadEntryMeaning: "displayed_stack" as const,

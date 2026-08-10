@@ -1,31 +1,33 @@
 import type { ExerciseDiscoveryItem } from "@/lib/exercise-discovery";
-
-export const SUPPORTED_WORKOUT_REPLACEMENT_METRICS = [
-  "weight_reps",
-  "reps",
-  "assisted_reps",
-] as const;
-
-export type SupportedWorkoutReplacementMetric =
-  (typeof SUPPORTED_WORKOUT_REPLACEMENT_METRICS)[number];
+import {
+  isSupportedSetWriterSemanticDefinition,
+  SUPPORTED_SET_WRITER_METRICS,
+  type PerformedMetricType,
+  type SupportedSetWriterMetric,
+} from "@/lib/set-metric-semantics";
 
 export function workoutReplacementUnavailableReason(
   item: ExerciseDiscoveryItem,
 ): string | null {
   if (
-    (item.activityClass != null && item.activityClass !== "strength") ||
-    ["conditioning", "locomotion", "mobility", "stretch"].includes(
-      item.movementPattern,
+    !SUPPORTED_SET_WRITER_METRICS.includes(
+      item.metricType as SupportedSetWriterMetric,
     )
   ) {
-    return "This workout runner does not yet support this exercise type truthfully.";
+    return "Independent activity-only observations use the activity flow rather than workout sets.";
   }
   if (
-    !SUPPORTED_WORKOUT_REPLACEMENT_METRICS.includes(
-      item.metricType as SupportedWorkoutReplacementMetric,
-    )
+    (item.metricType === "duration" || item.metricType === "distance_duration") &&
+    item.loadSemantics !== "none" &&
+    item.loadSemantics !== "bodyweight"
   ) {
-    return "This exercise uses duration, distance, or activity tracking that this workout runner does not yet support.";
+    return "This exercise needs load plus time or distance, a combined performed shape the workout runner cannot yet represent truthfully.";
+  }
+  if (!isSupportedSetWriterSemanticDefinition({
+    metricType: item.metricType as PerformedMetricType,
+    loadSemantics: item.loadSemantics,
+  })) {
+    return "This exercise has an inconsistent performed-measurement definition and cannot be recorded truthfully.";
   }
   if (item.constraintBlocked) {
     return "Blocked by your current safety constraints.";

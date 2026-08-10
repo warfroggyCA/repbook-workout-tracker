@@ -6,7 +6,6 @@ import {
   exercises,
   recommendations,
   userDecisions,
-  users,
 } from "@/db/schema";
 import {
   createTestDatabaseAtMigration,
@@ -26,10 +25,11 @@ describe("recommendation and quick-log contract migration safety", () => {
     database = await createTestDatabaseAtMigration(
       "0029_contract_progression_job_state"
     );
-    const [user] = await database.db
-      .insert(users)
-      .values({ email: `decision-migration-${crypto.randomUUID()}@example.com` })
-      .returning({ id: users.id });
+    const user = { id: crypto.randomUUID() };
+    await database.client.query(
+      "INSERT INTO users (id, email) VALUES ($1, $2)",
+      [user.id, `decision-migration-${crypto.randomUUID()}@example.com`],
+    );
     const [exercise] = await database.db
       .insert(exercises)
       .values({
@@ -109,13 +109,12 @@ describe("recommendation and quick-log contract migration safety", () => {
         }),
       ]
     );
-    const decisions = await database.db
-      .insert(userDecisions)
-      .values([
-        { recommendationId: recommendation.id, decision: "approve" },
-        { recommendationId: recommendation.id, decision: "reject" },
-      ])
-      .returning({ id: userDecisions.id });
+    const decisions = (await database.client.query<{ id: string }>(
+      `INSERT INTO user_decisions (recommendation_id, decision)
+       VALUES ($1, 'approve'), ($1, 'reject')
+       RETURNING id`,
+      [recommendation.id],
+    )).rows;
     const adaptations = await database.db
       .insert(adaptationEvents)
       .values([
@@ -163,7 +162,8 @@ describe("recommendation and quick-log contract migration safety", () => {
       migrateTestDatabaseThrough(database, CONTRACT)
     ).rejects.toThrow(/Failed query/);
     expect(await database.db.select().from(exercisePrescriptions)).toHaveLength(2);
-    expect(await database.db.select().from(userDecisions)).toHaveLength(2);
+    expect((await database.client.query(`SELECT id FROM user_decisions`)).rows)
+      .toHaveLength(2);
     expect(await database.db.select().from(adaptationEvents)).toHaveLength(2);
     expect((await database.client.query(`SELECT id FROM session_exercises`)).rows).toHaveLength(2);
 
@@ -197,12 +197,11 @@ describe("recommendation and quick-log contract migration safety", () => {
     ).toHaveLength(0);
     await migrateTestDatabaseThrough(database, CONTRACT);
 
-    await expect(
-      database.db.insert(userDecisions).values({
-        recommendationId: recommendation.id,
-        decision: "reject",
-      })
-    ).rejects.toThrow();
+    await expect(database.client.query(
+      `INSERT INTO user_decisions (recommendation_id, decision)
+       VALUES ($1, 'reject')`,
+      [recommendation.id],
+    )).rejects.toThrow();
     await expect(
       database.db.insert(adaptationEvents).values({
         userId: user.id,

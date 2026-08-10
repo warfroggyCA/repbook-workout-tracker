@@ -5,7 +5,10 @@ import { getRouteUser } from "@/lib/route-auth";
 import { sameOriginMutationFailure } from "@/lib/route-security";
 import { encodeLiveCoachStreamEvent } from "@/lib/live-coach-stream";
 import { sanitizeAIProviderError } from "@/lib/ai-provider-error";
-import { logServerEvent } from "@/lib/server-log";
+import {
+  categorizeDiagnosticError,
+  logDiagnosticEvent,
+} from "@/lib/server-log";
 import {
   readBoundedRequestBody,
   RequestBodyTooLargeError,
@@ -164,9 +167,7 @@ export async function POST(request: Request) {
         send({ type: "completed", response });
       } catch (error) {
         void prepared?.value.catch((valueError) => {
-          logServerEvent("warn", "live_coach.prepared_value_failed", {
-            userId: user.id,
-            responseId: parsed.data.responseId,
+          logDiagnosticEvent("live_coach.prepared_value_failed", {
             ...sanitizeAIProviderError(valueError),
           });
         });
@@ -199,19 +200,15 @@ export async function POST(request: Request) {
         } catch (failureWriteError) {
           // The saved user message and pending response still remain retryable
           // even if the failure-status write cannot complete.
-          logServerEvent("error", "live_coach.failure_write_failed", {
-            userId: user.id,
-            responseId: parsed.data.responseId,
-            errorName:
-              failureWriteError instanceof Error
-                ? failureWriteError.name
-                : "UnknownError",
+          logDiagnosticEvent("live_coach.failure_write_failed", {
+            errorCategory: categorizeDiagnosticError(
+              failureWriteError,
+              "persistence",
+            ),
           });
         }
 
-        logServerEvent("warn", "live_coach.response_failed", {
-          userId: user.id,
-          responseId: parsed.data.responseId,
+        logDiagnosticEvent("live_coach.response_failed", {
           disconnected,
           deadlineReached,
           ...sanitizeAIProviderError(error),

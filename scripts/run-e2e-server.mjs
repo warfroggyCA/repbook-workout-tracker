@@ -20,6 +20,13 @@ const optimizedRouteFixtures = process.argv.includes(
 const programEditorDisabled = process.argv.includes(
   "--program-editor-disabled",
 );
+const v2H01History = process.argv.includes("--v2-h01-history");
+const v2H02Cadence = process.argv.includes("--v2-h02-cadence-targets-time");
+const v2H03Evidence = process.argv.includes("--v2-h03-evidence-identity");
+const v2H04Pain = process.argv.includes("--v2-h04-pain-consistency");
+const v2H05Review = process.argv.includes("--v2-h05-evidence-linked-review");
+const v2GauntletBLiveWorkout = process.argv.includes("--v2-gauntlet-b-live-workout");
+const v2A01AnalysisPackage = process.argv.includes("--v2-a01-analysis-package");
 const port = Number.parseInt(process.env.E2E_PORT ?? "3100", 10);
 if (!Number.isInteger(port) || port < 1024 || port > 65535) {
   throw new Error("E2E_PORT must be an integer from 1024 through 65535.");
@@ -49,6 +56,44 @@ if (
 }
 if (stage6Simulation && !baRoutineChange) {
   throw new Error("Stage 6 simulation fixtures require BA routine-change mode.");
+}
+if (
+  (v2H01History || v2H02Cadence || v2H03Evidence || v2H04Pain || v2H05Review || v2GauntletBLiveWorkout || v2A01AnalysisPackage) &&
+  [
+    v2H01History && v2H02Cadence,
+    v2H01History && v2H03Evidence,
+    v2H02Cadence && v2H03Evidence,
+    v2H01History && v2H04Pain,
+    v2H02Cadence && v2H04Pain,
+    v2H03Evidence && v2H04Pain,
+    v2H01History && v2H05Review,
+    v2H02Cadence && v2H05Review,
+    v2H03Evidence && v2H05Review,
+    v2H04Pain && v2H05Review,
+    v2H01History && v2GauntletBLiveWorkout,
+    v2H02Cadence && v2GauntletBLiveWorkout,
+    v2H03Evidence && v2GauntletBLiveWorkout,
+    v2H04Pain && v2GauntletBLiveWorkout,
+    v2H05Review && v2GauntletBLiveWorkout,
+    v2H01History && v2A01AnalysisPackage,
+    v2H02Cadence && v2A01AnalysisPackage,
+    v2H03Evidence && v2A01AnalysisPackage,
+    v2H04Pain && v2A01AnalysisPackage,
+    v2H05Review && v2A01AnalysisPackage,
+    v2GauntletBLiveWorkout && v2A01AnalysisPackage,
+    baFixture,
+    baRoutineChange,
+    stage6Simulation,
+    stage7Ux,
+    phase0Start,
+    phase1Foundation,
+    baCalendar,
+    plateMachineGuidance,
+    optimizedRouteFixtures,
+    programEditorDisabled,
+  ].some(Boolean)
+) {
+  throw new Error("Dedicated v2 fixtures cannot be combined with another fixture mode.");
 }
 if (
   (baFixture || baRoutineChange || baCalendar) &&
@@ -101,14 +146,24 @@ const environment = {
   ...process.env,
   AI_FAKE: "1",
   ANTHROPIC_API_KEY: "",
-  ALLOWED_EMAILS: baFixture || baCalendar
+  ALLOWED_EMAILS: v2GauntletBLiveWorkout
     ? "ba.iphone.e2e@example.com"
-    : baRoutineChange
-      ? "ba.routine-change.e2e@example.com"
-      : "owner@example.com,second.e2e@example.com,program-page.e2e@example.com,today-empty.e2e@example.com,history-calendar.e2e@example.com,history-workspace-sparse.e2e@example.com,review-decisions.e2e@example.com",
+    : v2A01AnalysisPackage
+    ? "v2.h01.history.e2e@example.com"
+    : v2H05Review
+    ? "review-decisions.e2e@example.com"
+    : v2H02Cadence
+    ? "v2.h02.cadence.e2e@example.com"
+    : v2H01History || v2H03Evidence || v2H04Pain
+      ? "v2.h01.history.e2e@example.com"
+    : baFixture || baCalendar
+      ? "ba.iphone.e2e@example.com"
+      : baRoutineChange
+        ? "ba.routine-change.e2e@example.com"
+        : "owner@example.com,second.e2e@example.com,program-page.e2e@example.com,today-empty.e2e@example.com,history-calendar.e2e@example.com,history-workspace-sparse.e2e@example.com,review-decisions.e2e@example.com,equipment-onboarding.e2e@example.com",
   AUTH_SECRET: "local-e2e-secret-not-used-outside-this-process",
   AUTH_TRUST_HOST: "true",
-  BA_FIXTURE_MODE: baFixture || baRoutineChange || baCalendar ? "1" : "",
+  BA_FIXTURE_MODE: baFixture || baRoutineChange || baCalendar || v2GauntletBLiveWorkout ? "1" : "",
   BA_CALENDAR_MODE: baCalendar ? "1" : "",
   BA_ACCEPTANCE_START_AT: baCalendar
     ? process.env.BA_ACCEPTANCE_START_AT ?? ""
@@ -125,6 +180,7 @@ const environment = {
   PHASE0_START_FIXTURE: phase0Start ? "1" : "",
   PHASE1_FOUNDATION_FIXTURE: phase1Foundation ? "1" : "",
   PLATE_MACHINE_GUIDANCE_FIXTURE: plateMachineGuidance ? "1" : "",
+  V2_H05_REVIEW_FIXTURE: v2H05Review ? "1" : "",
   DATABASE_URL: "",
   E2E_DEV_LOGIN: "1",
   MAINTENANCE_SECRET: "local-e2e-maintenance-secret",
@@ -148,7 +204,7 @@ const serverScriptEnvironment = {
 
 const seeded = spawnSync(
   "npm",
-  baFixture || baRoutineChange || baCalendar
+  baFixture || baRoutineChange || baCalendar || v2H01History || v2H02Cadence || v2H03Evidence || v2H04Pain || v2GauntletBLiveWorkout || v2A01AnalysisPackage
     ? ["run", "db:seed"]
     : ["run", "db:seed", "--", "--demo"],
   {
@@ -170,7 +226,38 @@ if (seeded.status !== 0) {
   throw new Error(`E2E seed failed with status ${seeded.status}.`);
 }
 
-const fixtures = plateMachineGuidance
+const fixtures = v2A01AnalysisPackage
+  ? [{ label: "A01 analysis package", script: "tests/helpers/seed-v2-a01-analysis-package.ts" }]
+  : v2GauntletBLiveWorkout
+  ? [
+      { label: "BA workout", script: "tests/helpers/seed-ba-workout.ts" },
+      {
+        label: "Gauntlet B unavailable-equipment workout",
+        script: "tests/helpers/seed-v2-gauntlet-b-live-workout.ts",
+      },
+    ]
+  : v2H05Review
+  ? [{ label: "H05 evidence-linked Review", script: "tests/helpers/seed-review-decisions.ts" }]
+  : v2H04Pain
+  ? [
+      {
+        label: "H04 pain consistency",
+        script: "tests/helpers/seed-v2-h04-pain-consistency.ts",
+      },
+    ]
+  : v2H03Evidence
+  ? [{
+      label: "H03 exercise evidence",
+      script: "tests/helpers/seed-v2-h01-history.ts",
+    }]
+  : v2H02Cadence
+    ? [{
+      label: "H02 cadence and targets",
+      script: "tests/helpers/seed-v2-h02-cadence-targets-time.ts",
+    }]
+  : v2H01History
+    ? [{ label: "H01 performed-first History", script: "tests/helpers/seed-v2-h01-history.ts" }]
+  : plateMachineGuidance
   ? [{
       label: "Plate-machine guidance",
       script: "tests/helpers/seed-plate-machine-guidance.ts",

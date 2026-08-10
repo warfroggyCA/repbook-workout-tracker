@@ -43,14 +43,23 @@ import {
 import { isPatternAllowedForSuggestions } from "@/engine/constraint-filter";
 import { sortConversationMessages } from "@/lib/live-coach-order";
 import {
+  workingSetDisplayPosition,
+  workingSetSemanticRole,
+} from "@/lib/session-occurrences";
+import {
   claimLiveCoachGeneration,
   estimateAICostMicrousd,
   type AIUsageClaim,
 } from "@/services/ai-control";
 import {
+  classifyPrescriptionOutcome,
   classifySetMetricContainment,
   type SetMetricContainmentInput,
 } from "@/lib/set-metric-semantics";
+import {
+  PAIN_EVIDENCE_ALGORITHM_VERSION,
+  classifyPainEvidence,
+} from "@/lib/pain-evidence";
 
 export type LiveCoachMessageKind = "question" | "observation";
 export type LiveCoachInputMode = "text" | "dictation" | "realtime_voice";
@@ -461,7 +470,8 @@ function minimizeRecentTraining(
     windowDays: context.windowDays,
     sampleData: context.sampleData,
     trainingDigest: {
-      adherence: digest.adherence,
+      cadence: digest.cadence,
+      targetOutcomes: digest.targetOutcomes,
       trends: digest.trends.slice(-12).map((trend) => ({
         exercise: trend.exercise,
         topSets: trend.topSets.slice(-6),
@@ -617,6 +627,36 @@ export async function buildLiveCoachingContext(
       ...referencedExercises,
     ].map((exercise) => [exercise.id, exercise.name])
   );
+  const coachExerciseMeaning = (
+    exercise: (typeof session.exercises)[number],
+  ) => {
+    const usesPrescribedMeaning =
+      exercise.prescribedSemanticsVersion === 1 &&
+      exercise.modificationType !== "substituted" &&
+      exercise.modificationType !== "added";
+    return {
+      usesPrescribedMeaning,
+      prescribedSemanticsVersion: usesPrescribedMeaning ? 1 : null,
+      name: usesPrescribedMeaning
+        ? exercise.prescribedExerciseName!
+        : exercise.exercise.name,
+      metricType: usesPrescribedMeaning
+        ? exercise.prescribedMetricType!
+        : exercise.exercise.metricType,
+      loadType: usesPrescribedMeaning
+        ? exercise.prescribedLoadType!
+        : exercise.exercise.loadType,
+      loadSemantics: usesPrescribedMeaning
+        ? exercise.prescribedLoadSemantics!
+        : exercise.exercise.loadSemantics,
+    };
+  };
+  const coachExerciseNamesBySessionExerciseId = new Map(
+    session.exercises.map((exercise) => [
+      exercise.id,
+      coachExerciseMeaning(exercise).name,
+    ]),
+  );
   const completedWorkingSetIds = new Set(
     session.occurrences
       .filter(
@@ -627,56 +667,80 @@ export async function buildLiveCoachingContext(
       )
       .map((occurrence) => occurrence.completedSetId as string),
   );
+  const completedWorkingOccurrencesBySetId = new Map<
+    string,
+    typeof session.occurrences
+  >();
+  for (const occurrence of session.occurrences) {
+    if (
+      occurrence.kind !== "working_set" ||
+      occurrence.outcome !== "completed" ||
+      occurrence.completedSetId == null
+    ) {
+      continue;
+    }
+    const linked =
+      completedWorkingOccurrencesBySetId.get(occurrence.completedSetId) ?? [];
+    linked.push(occurrence);
+    completedWorkingOccurrencesBySetId.set(occurrence.completedSetId, linked);
+  }
   const workingSetsFor = (exercise: (typeof session.exercises)[number]) =>
     exercise.sets.filter(
       (set) => !set.isWarmup && completedWorkingSetIds.has(set.id),
     );
   const claimEligibleSetsFor = (
     exercise: (typeof session.exercises)[number],
-  ) =>
-    workingSetsFor(exercise).filter(
+  ) => {
+    const meaning = coachExerciseMeaning(exercise);
+    return workingSetsFor(exercise).filter(
       (set) =>
         liveCoachSetEvidenceEligible({
           recordedMetricType: set.metricType,
+          prescribedSemanticsVersion: meaning.prescribedSemanticsVersion,
           performedSemanticsVersion: set.performedSemanticsVersion,
           performedLoadType: set.performedLoadType,
           performedLoadSemantics: set.performedLoadSemantics,
-          currentExerciseMetricType: exercise.exercise.metricType,
-          loadType: exercise.exercise.loadType,
-          loadSemantics: exercise.exercise.loadSemantics,
+          currentExerciseMetricType: meaning.metricType,
+          loadType: meaning.loadType,
+          loadSemantics: meaning.loadSemantics,
           loadEntryMeaning: set.loadEntryMeaning,
           weight: set.weight,
           reps: set.reps,
           excludeFromAnalytics: set.excludeFromAnalytics,
         }),
     );
+  };
   const occurrenceOutcomeLimit = 100;
   const outcomeOccurrences = session.occurrences.filter(
     (occurrence) =>
-      occurrence.kind !== "working_set" || occurrence.outcome !== "completed",
+      occurrence.kind !== "working_set" ||
+      occurrence.outcome !== "completed" ||
+      occurrence.origin !== "planned",
   );
   const warmupResults = session.exercises
-    .flatMap((exercise) =>
-      exercise.sets
+    .flatMap((exercise) => {
+      const meaning = coachExerciseMeaning(exercise);
+      return exercise.sets
         .filter(
           (set) =>
             set.isWarmup &&
             liveCoachSetEvidenceEligible({
               recordedMetricType: set.metricType,
+              prescribedSemanticsVersion: meaning.prescribedSemanticsVersion,
               performedSemanticsVersion: set.performedSemanticsVersion,
               performedLoadType: set.performedLoadType,
               performedLoadSemantics: set.performedLoadSemantics,
-              currentExerciseMetricType: exercise.exercise.metricType,
-              loadType: exercise.exercise.loadType,
-              loadSemantics: exercise.exercise.loadSemantics,
+              currentExerciseMetricType: meaning.metricType,
+              loadType: meaning.loadType,
+              loadSemantics: meaning.loadSemantics,
               loadEntryMeaning: set.loadEntryMeaning,
               weight: set.weight,
               reps: set.reps,
               excludeFromAnalytics: set.excludeFromAnalytics,
             }),
         )
-        .map((set) => ({ exercise, set })),
-    )
+        .map((set) => ({ exercise, set }));
+    })
     .slice(-20);
 
   return {
@@ -698,12 +762,16 @@ export async function buildLiveCoachingContext(
       selectedExerciseId: selected?.id ?? null,
       selectedExercise: selected
         ? {
-            name: selected.exercise.name,
+            name: coachExerciseMeaning(selected).name,
             plannedExercise: selected.substitutedForExerciseId
-              ? (exerciseNames.get(selected.substitutedForExerciseId) ?? null)
+              ? (selected.prescribedExerciseName ??
+                exerciseNames.get(selected.substitutedForExerciseId) ??
+                null)
               : null,
             substitutionReason: selected.substitutionReason,
-            movementPattern: selected.exercise.movementPattern,
+            movementPattern: coachExerciseMeaning(selected).usesPrescribedMeaning
+              ? "unknown"
+              : selected.exercise.movementPattern,
             target: {
               sets: selected.targetSets,
               repsMin: selected.targetRepsMin,
@@ -713,16 +781,60 @@ export async function buildLiveCoachingContext(
               restSeconds: selected.restSec,
             },
             plannedNotes: boundedText(selected.notes),
-            setsLogged: claimEligibleSetsFor(selected).slice(-20).map((set) => ({
-              id: set.id,
-              setNo: set.setNo,
-              weight: set.weight,
-              unit: set.weightUnit,
-              reps: set.reps,
-              rpe: set.rpe,
-              note: boundedText(set.note, 500),
-              targetMet: set.targetMet,
-            })),
+            setsLogged: claimEligibleSetsFor(selected).slice(-20).map((set) => {
+              const occurrences =
+                completedWorkingOccurrencesBySetId.get(set.id) ?? [];
+              const plannedOccurrences = occurrences.filter(
+                (occurrence) => occurrence.origin === "planned",
+              );
+              const occurrence = occurrences.length === 1 ? occurrences[0] : null;
+              const meaning = coachExerciseMeaning(selected);
+              const semantics = classifySetMetricContainment({
+                recordedMetricType: set.metricType,
+                prescribedSemanticsVersion: meaning.prescribedSemanticsVersion,
+                performedSemanticsVersion: set.performedSemanticsVersion,
+                performedLoadType: set.performedLoadType,
+                performedLoadSemantics: set.performedLoadSemantics,
+                currentExerciseMetricType: meaning.metricType,
+                loadType: meaning.loadType,
+                loadSemantics: meaning.loadSemantics,
+                loadEntryMeaning: set.loadEntryMeaning,
+                weight: set.weight,
+                reps: set.reps,
+                excludeFromAnalytics: set.excludeFromAnalytics,
+              });
+              return {
+                id: set.id,
+                setNo: set.setNo,
+                displayLabel: occurrence
+                  ? workingSetDisplayPosition(occurrence, session.occurrences).label
+                  : `Recorded set ${set.setNo}`,
+                role: occurrence ? workingSetSemanticRole(occurrence) : "legacy",
+                weight: set.weight,
+                unit: set.weightUnit,
+                reps: set.reps,
+                rpe: set.rpe,
+                note: boundedText(set.note, 500),
+                targetOutcome:
+                  selected.modificationType !== "as_planned" ||
+                  plannedOccurrences.length === 0
+                    ? null
+                    : occurrence?.origin === "planned"
+                    ? classifyPrescriptionOutcome({
+                        semantics,
+                        reps: set.reps,
+                        weight: set.weight,
+                        weightUnit: set.weightUnit,
+                        targetRepsMin: occurrence.plannedRepsMin,
+                        targetRepsMax: occurrence.plannedRepsMax,
+                        targetLoad: occurrence.plannedLoad,
+                        targetLoadUnit: occurrence.plannedLoadUnit,
+                        targetLoadPercent: occurrence.plannedLoadPercent,
+                        targetLoadText: occurrence.plannedLoadText,
+                      })
+                    : "unknown",
+              };
+            }),
             setsSuppressedFromClaims:
               workingSetsFor(selected).length -
               claimEligibleSetsFor(selected).length,
@@ -730,24 +842,46 @@ export async function buildLiveCoachingContext(
         : null,
       allExercises: session.exercises.slice(0, 50).map((exercise) => ({
         id: exercise.id,
-        name: exercise.exercise.name,
+        name: coachExerciseMeaning(exercise).name,
         plannedExercise: exercise.substitutedForExerciseId
-          ? (exerciseNames.get(exercise.substitutedForExerciseId) ?? null)
+          ? (exercise.prescribedExerciseName ??
+            exerciseNames.get(exercise.substitutedForExerciseId) ??
+            null)
           : null,
         substitutionReason: exercise.substitutionReason,
         status: exercise.modificationType,
         targetSets: exercise.targetSets,
         setsLogged: workingSetsFor(exercise).length,
+        plannedSetsLogged: workingSetsFor(exercise).filter(
+          (set) => {
+            const occurrences =
+              completedWorkingOccurrencesBySetId.get(set.id) ?? [];
+            return occurrences.length === 1 && occurrences[0].origin === "planned";
+          },
+        ).length,
+        extraSetsLogged: workingSetsFor(exercise).filter((set) => {
+          const occurrences =
+            completedWorkingOccurrencesBySetId.get(set.id) ?? [];
+          const occurrence = occurrences.length === 1 ? occurrences[0] : null;
+          return occurrence ? workingSetSemanticRole(occurrence) === "extra" : false;
+        }).length,
       })),
       occurrenceOutcomes: outcomeOccurrences
         .slice(0, occurrenceOutcomeLimit)
         .map((occurrence) => ({
           sequence: occurrence.sequenceIdx + 1,
           kind: occurrence.kind,
+          origin: occurrence.origin,
+          role: occurrence.kind === "working_set"
+            ? workingSetSemanticRole(occurrence)
+            : occurrence.origin,
+          displayLabel: occurrence.kind === "working_set"
+            ? workingSetDisplayPosition(occurrence, session.occurrences).label
+            : null,
           exerciseName: occurrence.sessionExerciseId
-            ? session.exercises.find(
-                (exercise) => exercise.id === occurrence.sessionExerciseId,
-              )?.exercise.name ?? null
+            ? (coachExerciseNamesBySessionExerciseId.get(
+                occurrence.sessionExerciseId,
+              ) ?? null)
             : null,
           label: boundedText(occurrence.label, 120),
           outcome: occurrence.outcome,
@@ -757,7 +891,7 @@ export async function buildLiveCoachingContext(
       occurrenceOutcomesTruncated:
         outcomeOccurrences.length > occurrenceOutcomeLimit,
       performedWarmupResults: warmupResults.map(({ exercise, set }) => ({
-        exerciseName: exercise.exercise.name,
+        exerciseName: coachExerciseMeaning(exercise).name,
         setNo: set.setNo,
         weight: set.weight,
         unit: set.weightUnit,
@@ -765,15 +899,22 @@ export async function buildLiveCoachingContext(
         rpe: set.rpe,
         note: boundedText(set.note, 500),
       })),
-      painFlags: session.painLogs.slice(-10).map((pain) => ({
-        exerciseId: pain.exerciseId,
-        exerciseName: pain.exerciseId
-          ? (exerciseNames.get(pain.exerciseId) ?? null)
-          : null,
-        bodyPart: pain.bodyPart,
-        severity: pain.severity,
-        note: boundedText(pain.note, 500),
-      })),
+      painEvidence: session.painLogs.slice(-10).map((pain) => {
+        const evidence = classifyPainEvidence(pain);
+        return {
+          exerciseId: pain.exerciseId,
+          exerciseName: pain.exerciseId
+            ? (exerciseNames.get(pain.exerciseId) ?? null)
+            : null,
+          completedSetId: pain.completedSetId,
+          bodyPart: pain.bodyPart,
+          severity: pain.severity,
+          source: pain.source,
+          meaning: evidence.meaning,
+          algorithmVersion: PAIN_EVIDENCE_ALGORITHM_VERSION,
+          note: boundedText(pain.note, 500),
+        };
+      }),
       notes: session.notes.slice(-10).map((note) => boundedText(note.text)),
       contextualNotes: visibleContextualNotes.slice(-20).map((note) => ({
         id: note.id,
@@ -801,6 +942,7 @@ export async function buildLiveCoachingContext(
       noAutomaticChanges: true,
       substitutionsMustComeFromApprovedList: true,
       painRequiresExistingSafetyThresholds: true,
+      painAbsenceMeansUnknown: true,
     },
   };
 }

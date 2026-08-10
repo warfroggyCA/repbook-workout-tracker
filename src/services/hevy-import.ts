@@ -9,6 +9,7 @@ import {
 } from "@/lib/workout-duration-quality";
 import {
   extractExerciseIdentity,
+  hevyMappingKey,
   loadVisibleExercises,
   normalizeExerciseText,
   resolveExerciseNameFromLibrary,
@@ -321,20 +322,6 @@ function workoutSourceKey(title: string, start: string, end: string): string {
   return createHash("sha256")
     .update([title, start, end].join("\u001f"))
     .digest("hex");
-}
-
-export function hevyMappingKey(rawName: string): string {
-  const hints = extractExerciseIdentity(rawName);
-  // Preserve the complete source wording. Synonyms such as "pressdown" and
-  // "pushdown" may be equivalent candidates, but they are separate Hevy
-  // source entries and each must remain visible for explicit confirmation.
-  const sourceName = rawName
-    .toLowerCase()
-    .normalize("NFKD")
-    .replace(/[^a-z0-9]+/g, " ")
-    .trim()
-    .replace(/\s+/g, " ");
-  return [sourceName, hints.equipment ?? "", hints.assistance ?? ""].join("|");
 }
 
 // sourceRow is the real CSV line the record ends on (from the parser), so

@@ -139,7 +139,7 @@ test("keeps new Stage 3 controls usable at the saved iPhone calibration", async 
 
   await page.goto("/program/edit");
   await expectSaved(page);
-  await page.getByRole("tab", { name: "Day 2", exact: true }).click();
+  await page.getByRole("tab", { name: /Day B.*Hinge/ }).click();
   await page
     .locator("summary")
     .filter({ hasText: "Optional check-off steps" })
@@ -161,11 +161,11 @@ test("keeps new Stage 3 controls usable at the saved iPhone calibration", async 
     .getByRole("button", { name: "Check Program", exact: true })
     .first()
     .click();
-  await expect(page.getByRole("heading", { name: "Ready to activate" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Ready to publish" })).toBeVisible();
   await page
-    .getByRole("button", { name: "Activate new version", exact: true })
+    .getByRole("button", { name: "Publish future Program", exact: true })
     .click();
-  await expect(page.getByText("New Program version activated", { exact: true })).toBeVisible();
+  await expect(page.getByText("Future Program published", { exact: true })).toBeVisible();
 
   const todayLink = page.getByRole("link", { name: "Today", exact: true }).last();
   await todayLink.focus();
@@ -361,6 +361,11 @@ test("keeps new Stage 3 controls usable at the saved iPhone calibration", async 
     const tabs = document.querySelector<HTMLElement>(
       'nav[aria-label="Primary navigation"]',
     );
+    const tabsRect = tabs?.getBoundingClientRect() ?? null;
+    const tabsVisible =
+      tabs != null &&
+      getComputedStyle(tabs).display !== "none" &&
+      (tabsRect?.height ?? 0) > 0;
     const currentHeading = document.querySelector<HTMLElement>(
       '[data-testid="current-exercise-card"] h2',
     );
@@ -369,7 +374,9 @@ test("keeps new Stage 3 controls usable at the saved iPhone calibration", async 
     );
     return {
       dock: dock?.getBoundingClientRect().toJSON() ?? null,
-      tabs: tabs?.getBoundingClientRect().toJSON() ?? null,
+      tabs: tabsRect?.toJSON() ?? null,
+      tabsVisible,
+      viewportBottom: window.innerHeight,
       currentHeadingFits:
         currentHeading != null &&
         currentHeading.scrollWidth <= currentHeading.clientWidth + 1,
@@ -380,12 +387,13 @@ test("keeps new Stage 3 controls usable at the saved iPhone calibration", async 
   });
   expect(enlargedLayout.dock).not.toBeNull();
   expect(enlargedLayout.tabs).not.toBeNull();
+  expect(enlargedLayout.tabsVisible).toBe(false);
   expect(enlargedLayout.dock?.height ?? Number.POSITIVE_INFINITY).toBeLessThanOrEqual(
     210,
   );
   expect(
     (enlargedLayout.dock?.y ?? 0) + (enlargedLayout.dock?.height ?? 0),
-  ).toBeLessThanOrEqual(enlargedLayout.tabs?.y ?? 0);
+  ).toBeLessThanOrEqual(enlargedLayout.viewportBottom + 1);
   expect(enlargedLayout.currentHeadingFits).toBe(true);
   expect(enlargedLayout.nextIdentityFits).toBe(true);
   await screenshot(page, "05-extra-large-rest-dock.png");
@@ -415,8 +423,9 @@ test("keeps new Stage 3 controls usable at the saved iPhone calibration", async 
             (enlargedLayout.dock?.height ?? 0)) *
             10,
         ) / 10,
-      enlargedTabsTop:
-        Math.round((enlargedLayout.tabs?.y ?? 0) * 10) / 10,
+      enlargedNavigationVisible: enlargedLayout.tabsVisible,
+      enlargedViewportBottom:
+        Math.round(enlargedLayout.viewportBottom * 10) / 10,
     },
     expectedFrameworkRequestCancellations: requestFailures.filter(
       isExpectedFrameworkCancellation,

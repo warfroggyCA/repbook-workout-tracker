@@ -111,7 +111,17 @@ describe("Session Compiler durable review and acceptance", () => {
     const replay = await acceptSessionCompilerProposal(database.db, userId, proposal.id, acceptanceKey, "America/Toronto");
     expect(replay).toEqual({ outcome: "already_accepted", sessionId: first.sessionId });
     expect(await database.db.select().from(workoutSessions)).toHaveLength(1);
-    expect(await database.db.select().from(sessionExercises)).toHaveLength(2);
+    const compilerExercises = await database.db.select().from(sessionExercises);
+    expect(compilerExercises).toHaveLength(2);
+    expect(compilerExercises).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        prescribedSemanticsVersion: 1,
+        prescribedExerciseName: expect.any(String),
+        prescribedMetricType: expect.any(String),
+        prescribedLoadType: expect.any(String),
+        prescribedLoadSemantics: expect.any(String),
+      }),
+    ]));
     const session = await database.db.query.workoutSessions.findFirst({ where: eq(workoutSessions.id, first.sessionId) });
     expect(session).toMatchObject({ source: "compiler", compilationAcceptanceKey: acceptanceKey });
     expect(session?.compilationSnapshot).toMatchObject({ proposalId: proposal.id, proposalHash: proposal.contentHash });
@@ -144,7 +154,7 @@ describe("Session Compiler durable review and acceptance", () => {
     expect(csv).toContain(versionId);
     expect(csv).toContain(dayLineageId);
     const backup = await buildJsonBackup(database.db, userId);
-    expect(backup.schemaVersion).toBe("27");
+    expect(backup.schemaVersion).toBe("30");
     expect(backup.canonical.tables.session_compiler_proposals).toContainEqual(
       expect.objectContaining({ id: proposal.id, accepted_session_id: first.sessionId, content_hash: proposal.contentHash }),
     );
@@ -279,7 +289,6 @@ describe("Session Compiler durable review and acceptance", () => {
       "day_warmup",
       "day_warmup",
       "exercise_warmup",
-      "exercise_warmup",
       "working_set",
       "working_set",
       "working_set",
@@ -287,21 +296,24 @@ describe("Session Compiler durable review and acceptance", () => {
       "working_set",
       "working_set",
     ]);
-    expect(occurrences.slice(4).map((occurrence) => [
+    expect(occurrences.slice(3).map((occurrence) => [
       occurrence.groupRound,
       occurrence.groupMemberOrderIdx,
     ])).toEqual([
       [1, 0], [1, 1], [2, 0], [2, 1], [3, 0], [3, 1],
     ]);
-    expect(occurrences.slice(4).map((occurrence) => occurrence.plannedRestSec))
+    expect(occurrences.slice(3).map((occurrence) => occurrence.plannedRestSec))
       .toEqual([15, 75, 15, 75, 15, 0]);
   });
 
-  it("preserves the schema-3 overview fallback exactly like a normal workout start", async () => {
+  it("keeps a long legacy schema-3 overview as guidance instead of a checkable action", async () => {
     const [sourceTemplate] = await database.db.select().from(workoutTemplates);
     const sourceSlots = await database.db.select().from(workoutTemplateExercises);
     const sourcePrescriptions = await database.db.select().from(exercisePrescriptions);
-    const overview = "Five minutes easy, then rehearse the first movement.";
+    const overview =
+      "Five minutes easy, then rehearse the first movement with a controlled range. " +
+      "This retained legacy overview is intentionally longer than one hundred and twenty characters.";
+    const compatibilityTemplateId = crypto.randomUUID();
     await database.db.transaction(async (tx) => {
       const [version] = await tx.insert(programVersions).values({
         programId,
@@ -312,12 +324,22 @@ describe("Session Compiler durable review and acceptance", () => {
         publicationSource: "editor",
       }).returning({ id: programVersions.id });
       const [template] = await tx.insert(workoutTemplates).values({
+        id: compatibilityTemplateId,
         programVersionId: version.id,
         lineageId: dayLineageId,
         name: sourceTemplate.name,
         intent: sourceTemplate.intent,
         warmupNotes: overview,
-        warmupItems: [],
+        warmupItems: [{
+          key: compatibilityTemplateId,
+          label: overview.slice(0, 120),
+          reps: null,
+          load: null,
+          loadUnit: null,
+          loadPercent: null,
+          loadText: null,
+          notes: null,
+        }],
       }).returning({ id: workoutTemplates.id });
       for (const sourceSlot of sourceSlots) {
         const prescription = sourcePrescriptions.find(
@@ -366,19 +388,15 @@ describe("Session Compiler durable review and acceptance", () => {
     });
     expect(session).toMatchObject({
       dayWarmupNotes: overview,
-      dayWarmupItems: [expect.objectContaining({
-        key: dayLineageId,
-        label: overview,
-      })],
+      dayWarmupItems: [],
     });
     const warmups = await database.db.select().from(sessionOccurrences)
       .where(eq(sessionOccurrences.sessionId, accepted.sessionId))
       .orderBy(sessionOccurrences.sequenceIdx);
-    expect(warmups[0]).toMatchObject({
-      kind: "day_warmup",
-      label: overview,
-      outcome: "pending",
-    });
+    expect(warmups.some((occurrence) => occurrence.kind === "day_warmup"))
+      .toBe(false);
+    expect(warmups.some((occurrence) => occurrence.label === overview))
+      .toBe(false);
   });
 
   it("marks proposals from an older compiler algorithm stale before rebuilding their evidence", async () => {
@@ -455,7 +473,7 @@ describe("Session Compiler durable review and acceptance", () => {
       created.snapshotId,
       { store, keyring }
     );
-    expect(captured.payload.schemaVersion).toBe("27");
+    expect(captured.payload.schemaVersion).toBe("30");
     expect(captured.payload.tables.session_compiler_proposals).toContainEqual(
       expect.objectContaining({
         id: proposal.id,

@@ -2,7 +2,10 @@
 
 import Link from "next/link";
 import { useEffect, useRef, type MouseEvent } from "react";
-import { formatProgramDayLabel } from "@/lib/program-presentation";
+import {
+  formatCompactProgramDayLabel,
+  formatProgramDayLabel,
+} from "@/lib/program-presentation";
 import { cn } from "@/lib/utils";
 
 const programDayHistoryMarker = "__workoutTrackerProgramDay";
@@ -148,10 +151,12 @@ export function ProgramDayTabs({
             }}
           >
             {compact ? (
-              <>Day {index + 1}</>
+              <>{formatCompactProgramDayLabel(day.name, index)}</>
             ) : (
               <>
-                <span className="sm:hidden">Day {index + 1}</span>
+                <span className="sm:hidden">
+                  {formatCompactProgramDayLabel(day.name, index)}
+                </span>
                 <span className="hidden sm:inline">
                   {formatProgramDayLabel(day.name, index)}
                 </span>

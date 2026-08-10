@@ -279,9 +279,7 @@ test("shows live plates per side without changing total-load meaning", async ({
   await waitForEquipmentSelectionsToSettle(page);
   const reloadedCard = page.getByTestId("current-exercise-card");
   const reloadedInput = reloadedCard.getByLabel("Total machine resistance");
-  await expect(reloadedInput).toHaveValue("95");
-  await waitForHydratedReactChangeHandler(reloadedInput);
-  await reloadedInput.fill("100");
+  // The invalid 99 lb edit must not replace the last valid persisted value.
   await expect(reloadedInput).toHaveValue("100");
   await expect(reloadedCard).toContainText(
     "45 + 5 lb per side · 100 lb total resistance",

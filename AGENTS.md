@@ -32,6 +32,9 @@ Before application changes, read:
   derived conclusions where required.
 - Never add an automatic Program mutation. Recommendations remain
   approval-gated.
+- External-analysis packages are owner-selected, purpose-bounded, versioned,
+  previewable, and downloaded without automatic transmission. Package contents
+  never become performed facts, recommendations, decisions, or Program changes.
 - Schema work is additive. Never edit an applied migration or silently rewrite
   historical rows.
 
@@ -46,6 +49,11 @@ Before application changes, read:
   private operations repository. Do not recreate those workflows here.
 - Validate authorization at server boundaries. Do not expose secrets to client
   bundles, logs, exports, or error responses.
+- Production diagnostics must route through `src/lib/server-log.ts`. Event
+  names and fields are closed and versioned; do not log owner or record IDs,
+  raw error text, workout content, provider payloads, or arbitrary fields.
+  Any new event requires a manifest entry, a retention decision, and omission
+  tests before a call site may emit it.
 
 ## Architecture and implementation
 

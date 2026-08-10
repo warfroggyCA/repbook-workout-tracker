@@ -40,7 +40,7 @@ describe("progression load units", () => {
         primaryMuscles: ["quadriceps"],
         loadType: "barbell",
       })
-      .returning({ id: exercises.id });
+      .returning({ id: exercises.id, name: exercises.name });
     const activated = await activateProgramAtomically(database.db, {
       userId: user.id,
       loadUnit: "kg",
@@ -89,6 +89,11 @@ describe("progression load units", () => {
       .values({
         sessionId: session.id,
         exerciseId: exercise.id,
+        prescribedSemanticsVersion: 1,
+        prescribedExerciseName: exercise.name,
+        prescribedMetricType: "weight_reps",
+        prescribedLoadType: "barbell",
+        prescribedLoadSemantics: "total",
         plannedFromTemplateExerciseId: slot.id,
         sourceSlotLineageId: slot.lineageId,
         targetSets: 3,
@@ -116,6 +121,9 @@ describe("progression load units", () => {
         reps: 8,
         rpe: 7,
         metricType: "weight_reps" as const,
+        performedSemanticsVersion: 1,
+        performedLoadType: "barbell",
+        performedLoadSemantics: "total" as const,
         equipmentSnapshotId,
         loadEntryMeaning: "total_system",
       }))

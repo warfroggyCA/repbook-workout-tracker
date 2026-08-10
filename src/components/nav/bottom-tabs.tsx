@@ -56,6 +56,13 @@ export function navigationItemShouldPrefetch(
   return pathname !== href;
 }
 
+export function mobileNavigationUsesFocusedWorkoutMode(
+  pathname: string | null,
+) {
+  return pathname != null &&
+    (pathname === "/session" || pathname.startsWith("/session/"));
+}
+
 export function BottomTabs({
   userName,
   userEmail,
@@ -192,7 +199,11 @@ export function BottomTabs({
 
       <nav
         aria-label="Primary navigation"
-        className="fixed inset-x-0 bottom-0 z-40 border-t bg-background pb-[env(safe-area-inset-bottom)] lg:hidden"
+        className={cn(
+          "fixed inset-x-0 bottom-0 z-40 border-t bg-background pb-[env(safe-area-inset-bottom)] lg:hidden",
+          mobileNavigationUsesFocusedWorkoutMode(activePathname) &&
+            "max-[360px]:hidden",
+        )}
       >
         <div className="mx-auto flex max-w-lg items-stretch justify-around">
           {PRODUCT_NAVIGATION.map(({ href, label }) => {

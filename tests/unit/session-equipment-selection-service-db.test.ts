@@ -5,7 +5,7 @@ import {
   type TestDatabase,
 } from "../helpers/database";
 import { mutateSessionEquipmentSelection } from "@/services/session-equipment-selection";
-import { logWorkoutSet } from "@/services/session-lifecycle";
+import { logWorkoutSet } from "../helpers/log-workout-set";
 import {
   restoreRecordVersion,
   updateSessionExerciseWithVersion,
@@ -1053,7 +1053,13 @@ describe("session equipment selection service", () => {
         current_snapshot: snapshotId,
       }]);
     } else {
-      expect(logged.outcome).toBe("equipment_selection_conflict");
+      expect([
+        "equipment_selection_conflict",
+        "performed_evidence_conflict",
+      ]).toContain(logged.outcome);
+      if (logged.outcome === "performed_evidence_conflict") {
+        expect(logged.reason).toBe("exercise_changed");
+      }
       expect(substituted).toMatchObject({ ok: true, changed: true });
       expect(state.rows).toEqual([{
         exercise_id: ids.alternateExercise,

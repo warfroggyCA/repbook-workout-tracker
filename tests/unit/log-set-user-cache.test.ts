@@ -95,6 +95,7 @@ describe("logSet user-id cache", () => {
         movementPattern: "horizontal_push",
         primaryMuscles: ["chest"],
         loadType: "dumbbell",
+        loadSemantics: "total",
       })
       .returning({ id: exercises.id });
     const [session] = await database.db
@@ -112,16 +113,31 @@ describe("logSet user-id cache", () => {
       .insert(sessionExercises)
       .values({ sessionId: session.id, exerciseId: exercise.id, orderIdx: 0 })
       .returning({ id: sessionExercises.id });
-    return { userId: user.id, sessionExerciseId: sessionExercise.id };
+    return {
+      userId: user.id,
+      exerciseId: exercise.id,
+      sessionExerciseId: sessionExercise.id,
+    };
   }
 
-  function setInput(sessionExerciseId: string, setNo: number) {
+  function setInput(
+    sessionExerciseId: string,
+    setNo: number,
+    performedExerciseId = crypto.randomUUID(),
+  ) {
     return {
       sessionExerciseId,
+      performedExerciseId,
+      performedSemanticsVersion: 1 as const,
+      performedLoadType: "dumbbell",
+      performedLoadSemantics: "total" as const,
       setNo,
+      metricType: "weight_reps" as const,
       weight: 40,
       weightUnit: "lb" as const,
       reps: 8,
+      distanceKm: null,
+      durationSeconds: null,
       clientKey: crypto.randomUUID(),
       equipmentSnapshotId: null,
       loadEntryMeaning: "legacy_unknown" as const,
@@ -143,14 +159,22 @@ describe("logSet user-id cache", () => {
     const seeded = await seedOwnedExercise("cache-count@example.com");
 
     const coldStatements = vi.spyOn(database.client, "query");
-    await expect(logSet(setInput(seeded.sessionExerciseId, 1))).resolves.toMatchObject({
+    await expect(logSet(setInput(
+      seeded.sessionExerciseId,
+      1,
+      seeded.exerciseId,
+    ))).resolves.toMatchObject({
       outcome: "saved",
     });
     expect(coldStatements).toHaveBeenCalledTimes(2);
     coldStatements.mockRestore();
 
     const warmStatements = vi.spyOn(database.client, "query");
-    await expect(logSet(setInput(seeded.sessionExerciseId, 2))).resolves.toMatchObject({
+    await expect(logSet(setInput(
+      seeded.sessionExerciseId,
+      2,
+      seeded.exerciseId,
+    ))).resolves.toMatchObject({
       outcome: "saved",
     });
     expect(warmStatements).toHaveBeenCalledTimes(1);
@@ -164,7 +188,7 @@ describe("logSet user-id cache", () => {
     await getCurrentUserIdFast();
     const staleStatements = vi.spyOn(database.client, "query");
     await expect(
-      logSet(setInput(seeded.sessionExerciseId, 1))
+      logSet(setInput(seeded.sessionExerciseId, 1, seeded.exerciseId))
     ).resolves.toMatchObject({ outcome: "saved" });
     expect(staleStatements).toHaveBeenCalledTimes(3);
     expect(actionContext.authCalls).toBe(3);
@@ -172,10 +196,14 @@ describe("logSet user-id cache", () => {
 
   it("rechecks the allowlist on a warm cache hit", async () => {
     const seeded = await seedOwnedExercise("cache-auth@example.com");
-    await logSet(setInput(seeded.sessionExerciseId, 1));
+    await logSet(setInput(seeded.sessionExerciseId, 1, seeded.exerciseId));
     vi.stubEnv("ALLOWED_EMAILS", "somebody-else@example.com");
     const statements = vi.spyOn(database.client, "query");
-    await expect(logSet(setInput(seeded.sessionExerciseId, 2))).rejects.toThrow(
+    await expect(logSet(setInput(
+      seeded.sessionExerciseId,
+      2,
+      seeded.exerciseId,
+    ))).rejects.toThrow(
       "no longer authorized"
     );
     expect(statements).not.toHaveBeenCalled();

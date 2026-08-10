@@ -109,6 +109,49 @@ export async function evaluateApplicationIntegrity(
       WHERE e.id IS NULL OR (e.user_id IS NOT NULL AND e.user_id <> ${userId}::uuid)
 
       UNION ALL
+      SELECT 'workout_session.start_request_identity', 'error', 'workout_session', ws.id::text,
+        'A workout has incomplete, malformed, or reused Start request identity.',
+        jsonb_build_object(
+          'startRequestKey', ws.start_request_key,
+          'startRequestHash', ws.start_request_hash
+        )
+      FROM user_sessions ws
+      WHERE (ws.start_request_key IS NULL) <> (ws.start_request_hash IS NULL)
+        OR (ws.start_request_key IS NOT NULL AND (
+          ws.start_request_key !~ '^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
+          OR ws.start_request_hash !~ '^[0-9a-f]{64}$'
+          OR EXISTS (
+            SELECT 1 FROM user_sessions duplicate
+            WHERE duplicate.start_request_key = ws.start_request_key
+              AND duplicate.id <> ws.id
+          )
+        ))
+
+      UNION ALL
+      SELECT 'session_exercise.prescribed_semantics', 'error', 'session_exercise', se.id::text,
+        'A workout exercise has incomplete or invalid prescribed meaning.',
+        jsonb_build_object(
+          'version', se.prescribed_semantics_version,
+          'name', se.prescribed_exercise_name,
+          'metricType', se.prescribed_metric_type,
+          'loadType', se.prescribed_load_type,
+          'loadSemantics', se.prescribed_load_semantics
+        )
+      FROM user_session_exercises se
+      WHERE num_nonnulls(
+          se.prescribed_semantics_version,
+          se.prescribed_exercise_name,
+          se.prescribed_metric_type,
+          se.prescribed_load_type,
+          se.prescribed_load_semantics
+        ) NOT IN (0, 5)
+        OR (se.prescribed_semantics_version IS NOT NULL AND (
+          se.prescribed_semantics_version <> 1
+          OR length(btrim(se.prescribed_exercise_name)) NOT BETWEEN 1 AND 300
+          OR length(btrim(se.prescribed_load_type)) NOT BETWEEN 1 AND 50
+        ))
+
+      UNION ALL
       SELECT 'session_exercise.substitution', 'error', 'session_exercise', se.id::text,
         'A workout substitution points to an unavailable original exercise.',
         jsonb_build_object('exerciseId', se.substituted_for_exercise_id)
@@ -139,7 +182,10 @@ export async function evaluateApplicationIntegrity(
         'A logged set contains an invalid set number or measurement.',
         jsonb_build_object(
           'setNo', cs.set_no, 'weight', cs.weight, 'reps', cs.reps,
-          'rpe', cs.rpe, 'distanceKm', cs.distance_km,
+          'rpe', cs.rpe, 'rir', cs.rir,
+          'techniqueIssue', cs.technique_issue,
+          'limitationCause', cs.limitation_cause,
+          'distanceKm', cs.distance_km,
           'durationSeconds', cs.duration_seconds
         )
       FROM user_sets cs
@@ -147,6 +193,16 @@ export async function evaluateApplicationIntegrity(
         OR cs.weight < 0
         OR cs.reps < 0
         OR cs.rpe < 0 OR cs.rpe > 10
+        OR cs.rir < 0 OR cs.rir > 10
+        OR (cs.rir IS NOT NULL AND cs.rpe IS NOT NULL)
+        OR cs.technique_issue NOT IN (
+          'bracing', 'range_of_motion', 'control', 'balance', 'positioning',
+          'tempo', 'other'
+        )
+        OR cs.limitation_cause NOT IN (
+          'strength_fatigue', 'breathing_conditioning', 'grip', 'mobility',
+          'pain', 'technique', 'equipment_setup', 'time', 'other'
+        )
         OR cs.distance_km < 0
         OR cs.duration_seconds < 0
 
@@ -314,6 +370,43 @@ export async function evaluateApplicationIntegrity(
       WHERE p.user_id = ${userId}::uuid
         AND p.completed_set_id IS NOT NULL
         AND cs.id IS NULL
+
+      UNION ALL
+      SELECT 'pain_log.completed_set_context', 'error', 'pain_log', p.id::text,
+        'A set-linked pain record contradicts its completed set context.',
+        jsonb_build_object(
+          'completedSetId', p.completed_set_id,
+          'sessionId', p.session_id,
+          'exerciseId', p.exercise_id
+        )
+      FROM pain_logs p
+      JOIN user_sets cs ON cs.id = p.completed_set_id
+      JOIN user_session_exercises se ON se.id = cs.session_exercise_id
+      WHERE p.user_id = ${userId}::uuid
+        AND (
+          p.session_id IS DISTINCT FROM se.session_id
+          OR p.exercise_id IS DISTINCT FROM se.exercise_id
+          OR p.body_part NOT IN (
+            'shoulder', 'knee', 'back', 'elbow', 'wrist', 'hip', 'other'
+          )
+          OR p.severity NOT BETWEEN 1 AND 10
+          OR p.source NOT IN ('set_flag', 'set_exception')
+          OR length(coalesce(p.note, '')) > 500
+        )
+
+      UNION ALL
+      SELECT 'pain_log.completed_set_unique', 'error', 'completed_set', p.completed_set_id::text,
+        'A completed set has more than one active pain record.',
+        jsonb_build_object(
+          'completedSetId', p.completed_set_id,
+          'activeCount', count(*)
+        )
+      FROM pain_logs p
+      WHERE p.user_id = ${userId}::uuid
+        AND p.completed_set_id IS NOT NULL
+        AND p.archived_at IS NULL
+      GROUP BY p.completed_set_id
+      HAVING count(*) > 1
 
       UNION ALL
       SELECT 'pain_log.severity', 'error', 'pain_log', p.id::text,
@@ -796,7 +889,15 @@ export async function evaluateApplicationIntegrity(
           )
       ) chain
       WHERE chain.previous_id IS NOT NULL
-        AND chain.before_data IS DISTINCT FROM chain.previous_after_data
+        AND CASE
+          WHEN chain.entity_type = 'completed_set'
+            THEN chain.before_data - 'repbook_correction'
+          ELSE chain.before_data
+        END IS DISTINCT FROM CASE
+          WHEN chain.entity_type = 'completed_set'
+            THEN chain.previous_after_data - 'repbook_correction'
+          ELSE chain.previous_after_data
+        END
 
       UNION ALL
       SELECT 'progression_job.failed', 'error', 'progression_job', job.id::text,

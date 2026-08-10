@@ -1,0 +1,75 @@
+{
+  "schemaVersion": 1,
+  "expectedSuiteCount": 39,
+  "groups": [
+    {
+      "name": "baseline-history",
+      "scripts": [
+        "test:e2e",
+        "test:e2e:pain-hold",
+        "test:e2e:history-calendar",
+        "test:e2e:history-workspace"
+      ]
+    },
+    {
+      "name": "program",
+      "scripts": [
+        "test:e2e:program-editor",
+        "test:e2e:program-editor-cross-browser",
+        "test:e2e:program-editor-review-recovery",
+        "test:e2e:program-editor-disabled",
+        "test:e2e:production-headers"
+      ]
+    },
+    {
+      "name": "workout-remediation",
+      "scripts": [
+        "test:e2e:failed-set-recovery",
+        "test:e2e:plate-machine-guidance",
+        "test:e2e:replacement-mobile",
+        "test:e2e:current-action",
+        "test:e2e:compact-timer",
+        "test:e2e:superset-prep",
+        "test:e2e:active-workout-add-exercise"
+      ]
+    },
+    {
+      "name": "v2-recording",
+      "scripts": [
+        "test:e2e:v2-t01",
+        "test:e2e:v2-t02",
+        "test:e2e:v2-t03",
+        "test:e2e:v2-t04",
+        "test:e2e:v2-t05",
+        "test:e2e:v2-t06"
+      ]
+    },
+    {
+      "name": "v2-execution",
+      "scripts": [
+        "test:e2e:v2-u01",
+        "test:e2e:v2-u02",
+        "test:e2e:v2-u03",
+        "test:e2e:v2-gauntlet-a"
+      ]
+    },
+    {
+      "name": "v2-history-coaching",
+      "scripts": [
+        "test:e2e:v2-h01",
+        "test:e2e:v2-h02",
+        "test:e2e:v2-h03",
+        "test:e2e:v2-h04",
+        "test:e2e:v2-h05",
+        "test:e2e:v2-gauntlet-b",
+        "test:e2e:v2-a01",
+        "test:e2e:v2-a02",
+        "test:e2e:v2-a03",
+        "test:e2e:v2-a04",
+        "test:e2e:v2-a05",
+        "test:e2e:v2-d02",
+        "test:e2e:v2-r01"
+      ]
+    }
+  ]
+}

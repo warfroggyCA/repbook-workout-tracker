@@ -94,14 +94,15 @@ export function ProgramEditor({
               <ArrowLeft /> Back to Program
             </Button>
             <p className="text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">
-              Durable Program draft
+              Program editor
             </p>
             <h1 className="mt-1 text-2xl font-semibold tracking-tight sm:text-3xl">
               Edit {document.name}
             </h1>
             <p className="mt-1 max-w-2xl text-sm leading-6 text-muted-foreground">
-              Changes save automatically. Activation creates a new version;
-              active and completed workouts never change.
+              You are editing a draft copied from the current Program. Changes
+              save automatically, but do not affect any workout until you
+              review and publish them.
             </p>
           </div>
           <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-[minmax(15rem,1fr)_auto_auto_auto]">
@@ -134,6 +135,33 @@ export function ProgramEditor({
             </Button>
           </div>
         </header>
+
+        <Card className="mb-5 border-primary/30">
+          <CardHeader>
+            <CardTitle>
+              <h2 className="text-lg font-semibold">How Program changes work</h2>
+            </CardTitle>
+            <CardDescription>
+              Publishing makes this draft the Program for workouts started
+              afterward. It does not rewrite an active workout, completed or
+              imported History, or any earlier Program version.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="grid gap-3 text-sm sm:grid-cols-3">
+            <div className="rounded-lg bg-muted/50 p-3">
+              <p className="font-medium">While drafting</p>
+              <p className="mt-1 text-muted-foreground">Your current Program stays active.</p>
+            </div>
+            <div className="rounded-lg bg-muted/50 p-3">
+              <p className="font-medium">After publishing</p>
+              <p className="mt-1 text-muted-foreground">New workouts use the new version.</p>
+            </div>
+            <div className="rounded-lg bg-muted/50 p-3">
+              <p className="font-medium">Already recorded</p>
+              <p className="mt-1 text-muted-foreground">Active work and History stay unchanged.</p>
+            </div>
+          </CardContent>
+        </Card>
 
         {conflictDraft && (
           <Alert className="mb-5 border-destructive/40">
@@ -249,7 +277,7 @@ export function ProgramEditor({
             <AlertDescription>
               {draft.reviewState.reason} The durable draft and Program version
               history are unchanged; compare the draft with the current Program
-              again before activation.
+              again before publication.
             </AlertDescription>
           </Alert>
         )}
@@ -257,10 +285,11 @@ export function ProgramEditor({
         {publishedVersion != null && (
           <Alert className="mb-5 border-primary/40">
             <Check />
-            <AlertTitle>New Program version activated</AlertTitle>
+            <AlertTitle>Future Program published</AlertTitle>
             <AlertDescription>
-              Version {publishedVersion || "created"} is now current. Earlier
-              versions and workouts remain unchanged.{" "}
+              Version {publishedVersion || "created"} is now used for workouts
+              started from this point forward. Any workout already in progress,
+              History, and earlier versions remain unchanged.{" "}
               <Link className="font-medium underline" href="/program">
                 View active Program
               </Link>
@@ -310,7 +339,7 @@ export function ProgramEditor({
         open={confirmRestore != null}
         onOpenChange={(open) => !open && setConfirmRestore(null)}
         title={`Restore v${confirmRestore?.versionNo ?? ""} as a new draft?`}
-        description="Your active version remains unchanged. This replaces the open draft with a copy of the selected historical version; the discarded draft remains available through recovery. The restored copy must pass a fresh review before activation."
+        description="Your active version remains unchanged. This replaces the open draft with a copy of the selected historical version; the discarded draft remains available through recovery. The restored copy must pass a fresh review before publication."
         confirmLabel="Create restore draft"
         busy={restoringId != null}
         onConfirm={() => confirmRestore && void restoreVersion(confirmRestore)}

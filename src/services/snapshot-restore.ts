@@ -33,7 +33,9 @@ import { sessionCompilerInputSchema, sessionCompilerOutputSchema } from "@/lib/s
 import {
   assertCanonicalSnapshotTableCoverage,
   DIRECT_USER_OWNED_CAPTURE_TABLES,
+  FULL_RESTORE_MERGE_TABLES,
   FULL_RESTORE_TARGET_TABLES,
+  HISTORY_RESTORE_MERGE_TABLES,
   HISTORY_RESTORE_TARGET_TABLES,
   RECOVERY_MANIFEST_BY_TABLE,
 } from "@/services/recovery-manifest";
@@ -48,6 +50,17 @@ import {
   type PerformedMetricType,
 } from "@/lib/set-metric-semantics";
 import { analyzeHistoricalSemanticsPayload } from "@/services/historical-semantics-gate";
+import {
+  LIMITATION_CAUSES,
+  TECHNIQUE_ISSUES,
+} from "@/lib/set-exception-context";
+import { recommendationReviewEvidenceSchema } from "@/lib/review-evidence";
+import {
+  externalAnalysisImportDigestSchema,
+  externalAnalysisRecommendationEvidenceSchema,
+} from "@/lib/external-analysis-import";
+import { ANALYSIS_PACKAGE_SOURCE_REVISION_FIELDS } from "@/lib/analysis-package";
+import { analysisPackageOwnerNamespace } from "@/services/analysis-package";
 
 export type SnapshotRestoreScope = "history" | "full";
 
@@ -59,6 +72,9 @@ const OCCURRENCE_SNAPSHOT_SCHEMA_VERSION = "23";
 const PRE_CONTEXTUAL_NOTE_SNAPSHOT_SCHEMA_VERSION = "24";
 const PRE_HISTORY_IDENTITY_SNAPSHOT_SCHEMA_VERSION = "25";
 const PRE_PERFORMED_SEMANTICS_SNAPSHOT_SCHEMA_VERSION = "26";
+const PRE_START_SEMANTICS_SNAPSHOT_SCHEMA_VERSION = "27";
+const PRE_EXCEPTION_CONTEXT_SNAPSHOT_SCHEMA_VERSION = "28";
+const PRE_REVIEW_SNAPSHOT_SCHEMA_VERSION = "29";
 
 type SnapshotRow = Record<string, unknown>;
 type RestoreRows = Record<string, SnapshotRow[]>;
@@ -98,13 +114,32 @@ export function reconcileSnapshotCompletedSetOutcomes(
   const sessionExercises = new Map(
     rows(payload, "session_exercises").map((row) => [String(row.id), row]),
   );
+  const completedOccurrences = new Map<string, SnapshotRow[]>();
+  const occurrenceRows = payload.tables.session_occurrences === undefined
+    ? []
+    : rows(payload, "session_occurrences");
+  for (const occurrence of occurrenceRows) {
+    if (
+      occurrence.kind !== "working_set" ||
+      occurrence.outcome !== "completed" ||
+      typeof occurrence.completed_set_id !== "string"
+    ) {
+      continue;
+    }
+    const linked = completedOccurrences.get(occurrence.completed_set_id) ?? [];
+    linked.push(occurrence);
+    completedOccurrences.set(occurrence.completed_set_id, linked);
+  }
   for (const completed of rows(payload, "completed_sets")) {
     const sessionExercise = sessionExercises.get(
       String(completed.session_exercise_id),
     );
     const metricType = completed.metric_type;
+    const linkedOccurrences = completedOccurrences.get(String(completed.id)) ?? [];
     if (
       !sessionExercise ||
+      linkedOccurrences.length !== 1 ||
+      linkedOccurrences[0]?.origin !== "planned" ||
       typeof metricType !== "string" ||
       !PERFORMED_METRIC_TYPES.includes(metricType as PerformedMetricType)
     ) {
@@ -115,10 +150,11 @@ export function reconcileSnapshotCompletedSetOutcomes(
       completed.weight_unit === "lb" || completed.weight_unit === "kg"
         ? completed.weight_unit
         : null;
+    const plannedOccurrence = linkedOccurrences[0];
     const targetLoadUnit =
-      sessionExercise.target_load_unit === "lb" ||
-      sessionExercise.target_load_unit === "kg"
-        ? sessionExercise.target_load_unit
+      plannedOccurrence.planned_load_unit === "lb" ||
+      plannedOccurrence.planned_load_unit === "kg"
+        ? plannedOccurrence.planned_load_unit
         : null;
     completed.target_met = recomputeRestoredTargetMet({
       recordedMetricType: metricType as PerformedMetricType,
@@ -141,9 +177,15 @@ export function reconcileSnapshotCompletedSetOutcomes(
       weight: optionalNumber(completed.weight),
       weightUnit,
       reps: optionalNumber(completed.reps),
-      targetRepsMin: optionalNumber(sessionExercise.target_reps_min),
-      targetLoad: optionalNumber(sessionExercise.target_load),
+      targetRepsMin: optionalNumber(plannedOccurrence.planned_reps_min),
+      targetRepsMax: optionalNumber(plannedOccurrence.planned_reps_max),
+      targetLoad: optionalNumber(plannedOccurrence.planned_load),
       targetLoadUnit,
+      targetLoadPercent: optionalNumber(plannedOccurrence.planned_load_percent),
+      targetLoadText:
+        typeof plannedOccurrence.planned_load_text === "string"
+          ? plannedOccurrence.planned_load_text
+          : null,
       isWarmup: completed.is_warmup === true,
       modificationType:
         typeof sessionExercise.modification_type === "string"
@@ -386,6 +428,292 @@ function validateUnitAndCalendarIdentity(payload: CanonicalSnapshotPayload) {
   }
 }
 
+const START_REQUEST_KEY_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+const SHA256_PATTERN = /^[0-9a-f]{64}$/;
+const PRESCRIBED_METRIC_TYPES = new Set([
+  "weight_reps", "reps", "assisted_reps", "duration",
+  "distance_duration", "activity",
+]);
+const PRESCRIBED_LOAD_SEMANTICS = new Set([
+  "total", "per_implement", "bodyweight", "added_weight", "assistance",
+  "machine_stack", "resistance_band", "none",
+]);
+
+function validateStartAndPrescribedSemantics(payload: CanonicalSnapshotPayload) {
+  if (payload.schemaVersion !== SNAPSHOT_SCHEMA_VERSION) return;
+  const identities = new Set<string>();
+  for (const session of rows(payload, "workout_sessions")) {
+    for (const key of ["start_request_key", "start_request_hash"]) {
+      if (!Object.hasOwn(session, key)) {
+        throw new Error("Snapshot workout is missing Start request identity state.");
+      }
+    }
+    const requestKey = session.start_request_key;
+    const requestHash = session.start_request_hash;
+    if (requestKey == null && requestHash == null) continue;
+    if (
+      typeof requestKey !== "string" ||
+      !START_REQUEST_KEY_PATTERN.test(requestKey) ||
+      typeof requestHash !== "string" ||
+      !SHA256_PATTERN.test(requestHash)
+    ) {
+      throw new Error("Snapshot workout has invalid Start request identity.");
+    }
+    const ownerKey = `${String(session.user_id)}:${requestKey}`;
+    if (identities.has(ownerKey)) {
+      throw new Error("Snapshot reuses one owner Start request identity.");
+    }
+    identities.add(ownerKey);
+  }
+
+  const tupleKeys = [
+    "prescribed_semantics_version",
+    "prescribed_exercise_name",
+    "prescribed_metric_type",
+    "prescribed_load_type",
+    "prescribed_load_semantics",
+  ];
+  for (const exercise of rows(payload, "session_exercises")) {
+    if (tupleKeys.some((key) => !Object.hasOwn(exercise, key))) {
+      throw new Error("Snapshot workout exercise is missing prescribed meaning state.");
+    }
+    const values = tupleKeys.map((key) => exercise[key]);
+    if (values.every((value) => value == null)) continue;
+    if (
+      exercise.prescribed_semantics_version !== 1 ||
+      typeof exercise.prescribed_exercise_name !== "string" ||
+      exercise.prescribed_exercise_name.trim().length < 1 ||
+      exercise.prescribed_exercise_name.trim().length > 300 ||
+      !PRESCRIBED_METRIC_TYPES.has(String(exercise.prescribed_metric_type)) ||
+      typeof exercise.prescribed_load_type !== "string" ||
+      exercise.prescribed_load_type.trim().length < 1 ||
+      exercise.prescribed_load_type.trim().length > 50 ||
+      !PRESCRIBED_LOAD_SEMANTICS.has(String(exercise.prescribed_load_semantics))
+    ) {
+      throw new Error("Snapshot workout exercise has incoherent prescribed meaning.");
+    }
+  }
+}
+
+function validateSetExceptionContext(payload: CanonicalSnapshotPayload) {
+  if (payload.schemaVersion !== SNAPSHOT_SCHEMA_VERSION) return;
+  const sessionExercises = new Map(
+    rows(payload, "session_exercises").map((row) => [String(row.id), row]),
+  );
+  const sessions = new Map(
+    rows(payload, "workout_sessions").map((row) => [String(row.id), row]),
+  );
+  const completed = new Map(
+    rows(payload, "completed_sets").map((row) => [String(row.id), row]),
+  );
+  for (const set of completed.values()) {
+    for (const key of ["rir", "technique_issue", "limitation_cause"]) {
+      if (!Object.hasOwn(set, key)) {
+        throw new Error("Snapshot completed set is missing exception context state.");
+      }
+    }
+    if (
+      (set.rir != null && (
+        typeof set.rir !== "number" ||
+        !Number.isFinite(set.rir) ||
+        set.rir < 0 ||
+        set.rir > 10 ||
+        set.rpe != null
+      )) ||
+      (set.technique_issue != null &&
+        !TECHNIQUE_ISSUES.includes(set.technique_issue as never)) ||
+      (set.limitation_cause != null &&
+        !LIMITATION_CAUSES.includes(set.limitation_cause as never))
+    ) {
+      throw new Error("Snapshot completed set has invalid exception context.");
+    }
+  }
+
+  const activePainBySet = new Set<string>();
+  for (const pain of rows(payload, "pain_logs")) {
+    if (pain.completed_set_id == null) continue;
+    const setId = String(pain.completed_set_id);
+    const linkedSet = completed.get(setId);
+    const exercise = linkedSet == null
+      ? undefined
+      : sessionExercises.get(String(linkedSet.session_exercise_id));
+    const session = exercise == null
+      ? undefined
+      : sessions.get(String(exercise.session_id));
+    if (
+      !linkedSet || !exercise || !session ||
+      pain.session_id !== exercise.session_id ||
+      pain.exercise_id !== exercise.exercise_id ||
+      pain.user_id !== session.user_id
+    ) {
+      throw new Error(
+        "Snapshot set-linked pain evidence contradicts its owner, workout, or exercise.",
+      );
+    }
+    if (pain.archived_at == null) {
+      if (activePainBySet.has(setId)) {
+        throw new Error("Snapshot completed set has more than one active pain flag.");
+      }
+      activePainBySet.add(setId);
+    }
+  }
+}
+
+function validIsoInstant(value: unknown) {
+  if (typeof value !== "string") return false;
+  const match = /^(\d{4}-\d{2}-\d{2})T(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d{1,6})?(Z|[+-](?:0\d|1[0-4]):[0-5]\d)$/.exec(value);
+  if (!match || !validCalendarDate(match[1])) return false;
+  if (/^[+-]14:(?!00$)/.test(match[2])) return false;
+  return !Number.isNaN(new Date(value).getTime());
+}
+
+function validCalendarDate(value: unknown) {
+  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const parsed = new Date(`${value}T00:00:00.000Z`);
+  return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
+}
+
+function validNonnegativeRevision(value: unknown) {
+  return typeof value === "number" && Number.isInteger(value) && value >= 0;
+}
+
+function validateReviewState(payload: CanonicalSnapshotPayload) {
+  if (payload.schemaVersion !== SNAPSHOT_SCHEMA_VERSION) return;
+  const externalImports = new Map<string, ReturnType<typeof externalAnalysisImportDigestSchema.parse>>();
+  for (const insight of rows(payload, "coaching_insights")) {
+    if (insight.kind !== "external_analysis_import") continue;
+    const digest = externalAnalysisImportDigestSchema.safeParse(insight.data_digest);
+    if (
+      !digest.success ||
+      insight.client_key !== digest.data.response.id ||
+      digest.data.package.namespace !==
+        analysisPackageOwnerNamespace(String(insight.user_id))
+    ) {
+      throw new Error("Snapshot external-analysis import receipt is invalid.");
+    }
+    for (const binding of digest.data.sourceBindings) {
+      const sourceRows = new Map(
+        rows(payload, binding.entity).map((row) => [String(row.id), row]),
+      );
+      const revisionField = ANALYSIS_PACKAGE_SOURCE_REVISION_FIELDS[binding.entity];
+      if (
+        binding.ids.some((id) => !sourceRows.has(id)) ||
+        (binding.revisions ?? []).some((revision) =>
+          revisionField == null ||
+          (sourceRows.has(revision.id) &&
+            Number(sourceRows.get(revision.id)?.[revisionField]) <
+              revision.revision),
+        )
+      ) {
+        throw new Error(
+          "Snapshot external-analysis source bindings do not match retained owner evidence.",
+        );
+      }
+    }
+    externalImports.set(String(insight.id), digest.data);
+  }
+  const recommendationById = new Map(
+    rows(payload, "recommendations").map((recommendation) => [
+      String(recommendation.id),
+      recommendation,
+    ]),
+  );
+
+  for (const recommendation of recommendationById.values()) {
+    if (
+      !Object.hasOwn(recommendation, "review_revision") ||
+      !Object.hasOwn(recommendation, "defer_revision") ||
+      !Object.hasOwn(recommendation, "deferred_at") ||
+      !Object.hasOwn(recommendation, "revisit_on") ||
+      !Object.hasOwn(recommendation, "defer_reason") ||
+      !validNonnegativeRevision(recommendation.review_revision) ||
+      !validNonnegativeRevision(recommendation.defer_revision)
+    ) {
+      throw new Error("Snapshot recommendation is missing valid Review revision state.");
+    }
+    const deferred = recommendation.deferred_at != null;
+    const reason = recommendation.defer_reason;
+    if (
+      (!deferred && (recommendation.revisit_on != null || reason != null)) ||
+      (deferred && (
+        !validIsoInstant(recommendation.deferred_at) ||
+        recommendation.status !== "pending" ||
+        recommendation.archived_at != null ||
+        (recommendation.revisit_on != null && !validCalendarDate(recommendation.revisit_on)) ||
+        (reason != null && (
+          typeof reason !== "string" ||
+          reason.trim().length === 0 ||
+          reason.length > 500
+        ))
+      ))
+    ) {
+      throw new Error("Snapshot recommendation has incoherent deferred Review state.");
+    }
+    const evidence = recommendation.evidence as { review?: unknown } | null;
+    if (evidence?.review != null && !recommendationReviewEvidenceSchema.safeParse(evidence.review).success) {
+      throw new Error("Snapshot recommendation has invalid versioned Review evidence.");
+    }
+    if (recommendation.source === "ai" && recommendation.rule_id === "external_analysis") {
+      const external = externalAnalysisRecommendationEvidenceSchema.safeParse(
+        (recommendation.evidence as { externalAnalysis?: unknown } | null)?.externalAnalysis,
+      );
+      if (!external.success) {
+        throw new Error("Snapshot external-analysis recommendation provenance is invalid.");
+      }
+      const imported = externalImports.get(external.data.importId);
+      const mapped = imported?.recommendationMap.some(
+        (item) =>
+          item.proposalId === external.data.proposalId &&
+          item.recommendationId === recommendation.id,
+      );
+      if (
+        !imported ||
+        recommendation.insight_id !== external.data.importId ||
+        imported.package.id !== external.data.packageId ||
+        imported.response.id !== external.data.responseId ||
+        imported.response.digest !== external.data.responseDigest ||
+        !mapped ||
+        external.data.citedEvidenceIds.some(
+          (id) =>
+            !imported.sourceBindings.some((binding) => binding.ids.includes(id)),
+        )
+      ) {
+        throw new Error("Snapshot external-analysis recommendation provenance is invalid.");
+      }
+    }
+  }
+
+  for (const decision of rows(payload, "user_decisions")) {
+    if (!Object.hasOwn(decision, "review_snapshot")) {
+      throw new Error("Snapshot recommendation decision is missing its Review snapshot.");
+    }
+    const snapshot = decision.review_snapshot as SnapshotRow | null;
+    if (!snapshot || typeof snapshot !== "object" || Array.isArray(snapshot)) {
+      throw new Error("Snapshot recommendation decision has invalid Review evidence.");
+    }
+    if (snapshot.schemaVersion === "legacy-unknown") continue;
+    const embeddedEvidence = snapshot.evidence as { review?: unknown } | null;
+    if (
+      snapshot.schemaVersion !== "review-decision-v1" ||
+      snapshot.recommendationId !== decision.recommendation_id ||
+      !recommendationById.has(String(snapshot.recommendationId)) ||
+      !validNonnegativeRevision(snapshot.reviewRevision) ||
+      !validNonnegativeRevision(snapshot.deferRevision) ||
+      !validIsoInstant(snapshot.recordedAt) ||
+      !["supported", "contradictory", "unsupported", "stale", "external"].includes(String(snapshot.evidenceState)) ||
+      !["rule", "ai"].includes(String(snapshot.source)) ||
+      (snapshot.ruleId != null && typeof snapshot.ruleId !== "string") ||
+      typeof snapshot.reason !== "string" ||
+      !snapshot.payload || typeof snapshot.payload !== "object" || Array.isArray(snapshot.payload) ||
+      !embeddedEvidence || typeof embeddedEvidence !== "object" ||
+      !recommendationReviewEvidenceSchema.safeParse(embeddedEvidence.review).success
+    ) {
+      throw new Error("Snapshot recommendation decision has invalid versioned Review evidence.");
+    }
+  }
+}
+
 function isNonnegativeInteger(value: unknown) {
   return typeof value === "number" && Number.isInteger(value) && value >= 0;
 }
@@ -593,6 +921,9 @@ export function upgradeSnapshotPayload(
     PRE_CONTEXTUAL_NOTE_SNAPSHOT_SCHEMA_VERSION,
     PRE_HISTORY_IDENTITY_SNAPSHOT_SCHEMA_VERSION,
     PRE_PERFORMED_SEMANTICS_SNAPSHOT_SCHEMA_VERSION,
+    PRE_START_SEMANTICS_SNAPSHOT_SCHEMA_VERSION,
+    PRE_EXCEPTION_CONTEXT_SNAPSHOT_SCHEMA_VERSION,
+    PRE_REVIEW_SNAPSHOT_SCHEMA_VERSION,
     SNAPSHOT_SCHEMA_VERSION,
   ]);
   if (!supported.has(payload.schemaVersion)) {
@@ -606,7 +937,10 @@ export function upgradeSnapshotPayload(
     reconcileSnapshotCompletedSetOutcomes(upgraded);
     sanitizeSnapshotPrivacy(upgraded);
     validateUnitAndCalendarIdentity(upgraded);
+    validateStartAndPrescribedSemantics(upgraded);
+    validateSetExceptionContext(upgraded);
     validateHistoryIdentityAndTiming(upgraded);
+    validateReviewState(upgraded);
     return upgraded;
   }
 
@@ -665,6 +999,9 @@ export function upgradeSnapshotPayload(
       PRE_CONTEXTUAL_NOTE_SNAPSHOT_SCHEMA_VERSION,
       PRE_HISTORY_IDENTITY_SNAPSHOT_SCHEMA_VERSION,
       PRE_PERFORMED_SEMANTICS_SNAPSHOT_SCHEMA_VERSION,
+      PRE_START_SEMANTICS_SNAPSHOT_SCHEMA_VERSION,
+      PRE_EXCEPTION_CONTEXT_SNAPSHOT_SCHEMA_VERSION,
+      PRE_REVIEW_SNAPSHOT_SCHEMA_VERSION,
       SNAPSHOT_SCHEMA_VERSION,
     ].includes(upgraded.schemaVersion)
   ) {
@@ -770,6 +1107,8 @@ export function upgradeSnapshotPayload(
     );
     session.compilation_acceptance_key ??= null;
     session.compilation_snapshot ??= null;
+    session.start_request_key ??= null;
+    session.start_request_hash ??= null;
     let timezone =
       typeof session.timezone === "string" &&
       isValidIanaTimezone(session.timezone)
@@ -841,6 +1180,11 @@ export function upgradeSnapshotPayload(
   for (const exercise of rows(upgraded, "session_exercises")) {
     exercise.target_load_unit ??= null;
     exercise.current_equipment_snapshot_id ??= null;
+    exercise.prescribed_semantics_version ??= null;
+    exercise.prescribed_exercise_name ??= null;
+    exercise.prescribed_metric_type ??= null;
+    exercise.prescribed_load_type ??= null;
+    exercise.prescribed_load_semantics ??= null;
     if (
       exercise.source_slot_lineage_id == null &&
       exercise.planned_from_template_exercise_id != null
@@ -870,6 +1214,9 @@ export function upgradeSnapshotPayload(
     completed.performed_semantics_version ??= null;
     completed.performed_load_type ??= null;
     completed.performed_load_semantics ??= null;
+    completed.rir ??= null;
+    completed.technique_issue ??= null;
+    completed.limitation_cause ??= null;
   }
   for (const job of rows(upgraded, "progression_jobs")) {
     job.source_session_revision ??= 0;
@@ -894,6 +1241,14 @@ export function upgradeSnapshotPayload(
         ? "Expired before versioned Program reconciliation; the original reason was not recorded."
         : null;
     recommendation.reconciled_by_program_version_id ??= null;
+    recommendation.review_revision ??= 0;
+    recommendation.defer_revision ??= 0;
+    recommendation.deferred_at ??= null;
+    recommendation.revisit_on ??= null;
+    recommendation.defer_reason ??= null;
+  }
+  for (const decision of rows(upgraded, "user_decisions")) {
+    decision.review_snapshot ??= { schemaVersion: "legacy-unknown" };
   }
   for (const audit of rows(upgraded, "audit_logs")) {
     audit.idempotency_key ??= null;
@@ -925,7 +1280,10 @@ export function upgradeSnapshotPayload(
   reconcileSnapshotCompletedSetOutcomes(upgraded);
   upgraded.schemaVersion = SNAPSHOT_SCHEMA_VERSION;
   validateUnitAndCalendarIdentity(upgraded);
+  validateStartAndPrescribedSemantics(upgraded);
+  validateSetExceptionContext(upgraded);
   validateHistoryIdentityAndTiming(upgraded);
+  validateReviewState(upgraded);
   return upgraded;
 }
 
@@ -1363,9 +1721,54 @@ function validateVersionedProgramData(payload: CanonicalSnapshotPayload) {
       throw new Error("Snapshot recommendation source lineage does not match its Program slot.");
     }
     if (recommendation.status === "pending") {
+      const payloadKind =
+        (recommendation.payload as { kind?: unknown } | null)?.kind;
       const isProgramWide =
-        (recommendation.payload as { kind?: unknown } | null)?.kind === "deload";
-      if (isProgramWide) {
+        payloadKind === "deload";
+      const isExternalReview =
+        payloadKind === "external_review" &&
+        recommendation.source === "ai" &&
+        recommendation.rule_id === "external_analysis" &&
+        recommendation.insight_id != null;
+      if (isExternalReview) {
+        const importRow = rows(payload, "coaching_insights").find(
+          (insight) =>
+            String(insight.id) === String(recommendation.insight_id) &&
+            String(insight.user_id) === String(recommendation.user_id) &&
+            insight.kind === "external_analysis_import" &&
+            insight.archived_at == null,
+        );
+        const imported = externalAnalysisImportDigestSchema.safeParse(
+          importRow?.data_digest,
+        );
+        const programIds = imported.success
+          ? imported.data.sourceBindings.find(
+              (binding) => binding.entity === "programs",
+            )?.ids ?? []
+          : [];
+        const versionIds = imported.success
+          ? imported.data.sourceBindings.find(
+              (binding) => binding.entity === "program_versions",
+            )?.ids ?? []
+          : [];
+        if (
+          recommendation.source_template_exercise_id != null ||
+          recommendation.source_slot_lineage_id != null ||
+          !imported.success ||
+          programIds.length !== 1 ||
+          versionIds.length !== 1 ||
+          ![...programs.values()].some(
+            (program) =>
+              String(program.id) === programIds[0] &&
+              String(program.current_version_id) === versionIds[0] &&
+              String(program.user_id) === String(recommendation.user_id) &&
+              program.status === "active" &&
+              program.archived_at == null,
+          )
+        ) {
+          throw new Error("Snapshot external Review proposal is not tied to its owner current Program.");
+        }
+      } else if (isProgramWide) {
         if (
           recommendation.source_template_exercise_id != null ||
           recommendation.source_slot_lineage_id != null ||
@@ -1700,6 +2103,9 @@ export function validateSnapshotPayload(
       PRE_CONTEXTUAL_NOTE_SNAPSHOT_SCHEMA_VERSION,
       PRE_HISTORY_IDENTITY_SNAPSHOT_SCHEMA_VERSION,
       PRE_PERFORMED_SEMANTICS_SNAPSHOT_SCHEMA_VERSION,
+      PRE_START_SEMANTICS_SNAPSHOT_SCHEMA_VERSION,
+      PRE_EXCEPTION_CONTEXT_SNAPSHOT_SCHEMA_VERSION,
+      PRE_REVIEW_SNAPSHOT_SCHEMA_VERSION,
       SNAPSHOT_SCHEMA_VERSION,
     ].includes(payload.schemaVersion)
   ) {
@@ -1737,6 +2143,9 @@ export function validateSnapshotPayload(
       PRE_CONTEXTUAL_NOTE_SNAPSHOT_SCHEMA_VERSION,
       PRE_HISTORY_IDENTITY_SNAPSHOT_SCHEMA_VERSION,
       PRE_PERFORMED_SEMANTICS_SNAPSHOT_SCHEMA_VERSION,
+      PRE_START_SEMANTICS_SNAPSHOT_SCHEMA_VERSION,
+      PRE_EXCEPTION_CONTEXT_SNAPSHOT_SCHEMA_VERSION,
+      PRE_REVIEW_SNAPSHOT_SCHEMA_VERSION,
       SNAPSHOT_SCHEMA_VERSION,
     ].includes(payload.schemaVersion)
   ) {
@@ -1891,6 +2300,9 @@ export function validateSnapshotPayload(
       PRE_CONTEXTUAL_NOTE_SNAPSHOT_SCHEMA_VERSION,
       PRE_HISTORY_IDENTITY_SNAPSHOT_SCHEMA_VERSION,
       PRE_PERFORMED_SEMANTICS_SNAPSHOT_SCHEMA_VERSION,
+      PRE_START_SEMANTICS_SNAPSHOT_SCHEMA_VERSION,
+      PRE_EXCEPTION_CONTEXT_SNAPSHOT_SCHEMA_VERSION,
+      PRE_REVIEW_SNAPSHOT_SCHEMA_VERSION,
       SNAPSHOT_SCHEMA_VERSION,
     ].includes(payload.schemaVersion)
   ) {
@@ -2046,6 +2458,9 @@ export function validateSnapshotPayload(
   }
   if (payload.schemaVersion === SNAPSHOT_SCHEMA_VERSION) {
     validateUnitAndCalendarIdentity(payload);
+    validateStartAndPrescribedSemantics(payload);
+    validateSetExceptionContext(payload);
+    validateReviewState(payload);
     validateVersionedProgramData(payload);
     validateSessionCompilerIdentity(payload);
     validateSessionOccurrenceData(payload);
@@ -2060,7 +2475,9 @@ function targetRows(
   scope: SnapshotRestoreScope
 ): RestoreRows {
   const tableNames =
-    scope === "full" ? FULL_RESTORE_TARGET_TABLES : HISTORY_RESTORE_TARGET_TABLES;
+    scope === "full"
+      ? [...FULL_RESTORE_TARGET_TABLES, ...FULL_RESTORE_MERGE_TABLES]
+      : [...HISTORY_RESTORE_TARGET_TABLES, ...HISTORY_RESTORE_MERGE_TABLES];
   const result: RestoreRows = {};
   const customExerciseIds = new Set(
     rows(payload, "exercises")
@@ -2072,6 +2489,9 @@ function targetRows(
       .filter((row) => scope === "full" || row.session_id != null)
       .map((row) => String(row.id))
   );
+  const snapshotCompletedSetIds = new Set(
+    rows(payload, "completed_sets").map((row) => String(row.id)),
+  );
   for (const table of tableNames) {
     const tableRows = rows(payload, table);
     if (table === "contextual_notes" && scope === "history") {
@@ -2082,6 +2502,17 @@ function targetRows(
       );
     } else if (table === "exercises") {
       result[table] = tableRows.filter((row) => row.user_id === userId);
+    } else if (table === "record_versions") {
+      // T02 activates merge semantics only for performed-set version chains.
+      // Other version types keep the established preserve-at-destination
+      // behavior until their own restore packages define a bridge transition.
+      result[table] = tableRows.filter(
+        (row) =>
+          row.user_id === userId &&
+          row.entity_type === "completed_set" &&
+          (scope === "full" ||
+            snapshotCompletedSetIds.has(String(row.entity_id))),
+      );
     } else if (
       table === "exercise_aliases" ||
       table === "exercise_sources" ||
@@ -2188,6 +2619,196 @@ function compareRows(current: SnapshotRow[], target: SnapshotRow[]) {
   return { added, updated, removed, unchanged };
 }
 
+function compareMergedRows(current: SnapshotRow[], target: SnapshotRow[]) {
+  const compared = compareRows(current, target);
+  return { ...compared, removed: 0 };
+}
+
+function mergeImmutableHistoryRows(
+  current: SnapshotRow[],
+  source: SnapshotRow[],
+  label: string
+) {
+  const merged = new Map(current.map((row) => [String(row.id), row]));
+  for (const sourceRow of source) {
+    const id = String(sourceRow.id);
+    const currentRow = merged.get(id);
+    if (currentRow && canonicalJson(currentRow) !== canonicalJson(sourceRow)) {
+      throw new Error(
+        `Snapshot ${label} identity conflicts with retained history. Nothing was restored.`
+      );
+    }
+    merged.set(id, currentRow ?? sourceRow);
+  }
+  return [...merged.values()].sort((a, b) =>
+    String(a.id).localeCompare(String(b.id))
+  );
+}
+
+function mergeHistoryAdaptations(
+  current: SnapshotRow[],
+  source: SnapshotRow[]
+) {
+  const merged = new Map(current.map((row) => [String(row.id), row]));
+  for (const sourceRow of source) {
+    const id = String(sourceRow.id);
+    const currentRow = merged.get(id);
+    if (!currentRow) {
+      merged.set(id, sourceRow);
+      continue;
+    }
+    const currentCore = { ...currentRow, undone_at: null };
+    const sourceCore = { ...sourceRow, undone_at: null };
+    if (canonicalJson(currentCore) !== canonicalJson(sourceCore)) {
+      throw new Error(
+        "Snapshot adaptation identity conflicts with retained history. Nothing was restored."
+      );
+    }
+    if (currentRow.undone_at == null && sourceRow.undone_at != null) {
+      merged.set(id, sourceRow);
+    } else if (
+      currentRow.undone_at != null &&
+      sourceRow.undone_at != null &&
+      currentRow.undone_at !== sourceRow.undone_at
+    ) {
+      throw new Error(
+        "Snapshot adaptation undo identity conflicts with retained history. Nothing was restored."
+      );
+    }
+  }
+  return [...merged.values()].sort((a, b) =>
+    String(a.id).localeCompare(String(b.id))
+  );
+}
+
+const recommendationDecisionStatus = {
+  approve: "approved",
+  edit: "edited",
+  reject: "rejected",
+} as const;
+
+function recommendationTimestamp(row: SnapshotRow) {
+  for (const key of ["reconciled_at", "decided_at", "created_at"] as const) {
+    const parsed = Date.parse(String(row[key] ?? ""));
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return 0;
+}
+
+function mergeHistoryRecommendations(
+  current: SnapshotRow[],
+  source: SnapshotRow[],
+  decisions: SnapshotRow[],
+  adaptations: SnapshotRow[]
+) {
+  const currentById = new Map(current.map((row) => [String(row.id), row]));
+  const sourceById = new Map(source.map((row) => [String(row.id), row]));
+  const decisionByRecommendation = new Map(
+    decisions.map((row) => [String(row.recommendation_id), row])
+  );
+  const adaptedRecommendations = new Set(
+    adaptations.map((row) => String(row.recommendation_id))
+  );
+  const ids = new Set([...currentById.keys(), ...sourceById.keys()]);
+  const merged: SnapshotRow[] = [];
+
+  for (const id of [...ids].sort()) {
+    const currentRow = currentById.get(id);
+    const sourceRow = sourceById.get(id);
+    if (!currentRow) {
+      // Pending advice is derived state. A History-only restore may bring back
+      // its evidence, but must not resurrect an older proposal as actionable.
+      if (sourceRow?.status !== "pending") merged.push(sourceRow!);
+      continue;
+    }
+    if (!sourceRow || canonicalJson(currentRow) === canonicalJson(sourceRow)) {
+      merged.push(currentRow);
+      continue;
+    }
+
+    const decision = decisionByRecommendation.get(id);
+    const expectedStatus = decision
+      ? recommendationDecisionStatus[
+          String(decision.decision) as keyof typeof recommendationDecisionStatus
+        ]
+      : undefined;
+    if (expectedStatus) {
+      const currentMatches = currentRow.status === expectedStatus;
+      const sourceMatches = sourceRow.status === expectedStatus;
+      if (currentMatches !== sourceMatches) {
+        merged.push(currentMatches ? currentRow : sourceRow);
+        continue;
+      }
+      if (!currentMatches) {
+        throw new Error(
+          "Snapshot recommendation conflicts with its retained owner decision. Nothing was restored."
+        );
+      }
+    }
+
+    const currentTerminal = currentRow.status !== "pending";
+    const sourceTerminal = sourceRow.status !== "pending";
+    if (currentTerminal !== sourceTerminal) {
+      merged.push(currentTerminal ? currentRow : sourceRow);
+      continue;
+    }
+    if (!currentTerminal) {
+      merged.push(currentRow);
+      continue;
+    }
+
+    const currentTime = recommendationTimestamp(currentRow);
+    const sourceTime = recommendationTimestamp(sourceRow);
+    if (
+      currentRow.status !== sourceRow.status &&
+      currentTime === sourceTime
+    ) {
+      throw new Error(
+        "Snapshot recommendation terminal state conflicts with retained history. Nothing was restored."
+      );
+    }
+    merged.push(currentTime > sourceTime ? currentRow : sourceRow);
+  }
+
+  const keptIds = new Set(merged.map((row) => String(row.id)));
+  if (
+    [...decisionByRecommendation.keys(), ...adaptedRecommendations].some(
+      (id) => !keptIds.has(id)
+    )
+  ) {
+    throw new Error(
+      "Snapshot coaching history has no retained recommendation parent. Nothing was restored."
+    );
+  }
+  return merged;
+}
+
+function reconcileHistoryCoachingRows(
+  expectedCurrent: RestoreRows,
+  desired: RestoreRows
+): RestoreRows {
+  const decisions = mergeImmutableHistoryRows(
+    expectedCurrent.user_decisions,
+    desired.user_decisions,
+    "owner decision"
+  );
+  const adaptations = mergeHistoryAdaptations(
+    expectedCurrent.adaptation_events,
+    desired.adaptation_events
+  );
+  return {
+    ...desired,
+    recommendations: mergeHistoryRecommendations(
+      expectedCurrent.recommendations,
+      desired.recommendations,
+      decisions,
+      adaptations
+    ),
+    user_decisions: decisions,
+    adaptation_events: adaptations,
+  };
+}
+
 function buildPlan(
   currentPayload: CanonicalSnapshotPayload,
   sourcePayload: CanonicalSnapshotPayload,
@@ -2195,15 +2816,24 @@ function buildPlan(
   scope: SnapshotRestoreScope
 ) {
   const expectedCurrent = targetRows(currentPayload, userId, scope);
-  const desired = targetRows(sourcePayload, userId, scope);
+  const sourceDesired = targetRows(sourcePayload, userId, scope);
+  const desired =
+    scope === "history"
+      ? reconcileHistoryCoachingRows(expectedCurrent, sourceDesired)
+      : sourceDesired;
   const dependencies = dependencyRows(sourcePayload, userId, scope);
-  const tables = Object.keys(desired).map((table) => ({
-    table,
-    label: RECOVERY_MANIFEST_BY_TABLE[table]?.label ?? table,
-    current: expectedCurrent[table].length,
-    snapshot: desired[table].length,
-    ...compareRows(expectedCurrent[table], desired[table]),
-  }));
+  const tables = Object.keys(desired).map((table) => {
+    const restoreMode = RECOVERY_MANIFEST_BY_TABLE[table]?.restore[scope];
+    return {
+      table,
+      label: RECOVERY_MANIFEST_BY_TABLE[table]?.label ?? table,
+      current: expectedCurrent[table].length,
+      snapshot: desired[table].length,
+      ...(restoreMode === "merge"
+        ? compareMergedRows(expectedCurrent[table], desired[table])
+        : compareRows(expectedCurrent[table], desired[table])),
+    };
+  });
   const totals = tables.reduce(
     (sum, table) => ({
       added: sum.added + table.added,

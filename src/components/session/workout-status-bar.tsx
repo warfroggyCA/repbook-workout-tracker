@@ -58,7 +58,7 @@ export function WorkoutStatusBar({
           ? "Next set"
           : action
             ? "Warm-up"
-            : "Workout complete"
+            : "Ready to finish"
   );
   const setPosition = action?.kind === "working_set" ? action.position : null;
   const title = action
@@ -69,16 +69,22 @@ export function WorkoutStatusBar({
 
   return (
     <aside
+      id="workout-rest-status"
       aria-label="Workout status"
+      data-rest-state={
+        timerRunning ? "running" : timerReady ? "ready" : "inactive"
+      }
       className={cn(
-        "fixed inset-x-0 bottom-[calc(4rem+env(safe-area-inset-bottom))] z-30 border-t bg-background shadow-[0_-5px_18px_rgb(0_0_0/0.12)] lg:bottom-0 lg:left-[var(--main-sidebar-width)]",
+        "fixed inset-x-0 bottom-[calc(4rem+env(safe-area-inset-bottom))] z-30 border-t bg-background shadow-[0_-5px_18px_rgb(0_0_0/0.12)] max-[360px]:bottom-[env(safe-area-inset-bottom)] lg:bottom-0 lg:left-[var(--main-sidebar-width)]",
+        timerRunning &&
+          "border-amber-500 bg-amber-100 dark:border-amber-500 dark:bg-amber-950",
         timerReady &&
           "border-emerald-600 bg-emerald-50 dark:bg-emerald-950",
       )}
     >
       <div
         className={cn(
-          "mx-auto min-h-14 max-w-3xl items-center gap-1 px-2 py-1 sm:gap-2 sm:px-3",
+          "mx-auto min-h-14 max-w-3xl items-center gap-0.5 px-1 py-1 min-[400px]:gap-1 min-[400px]:px-2 sm:gap-2 sm:px-3",
           timerRunning
             ? "grid grid-cols-[minmax(0,1fr)_auto_auto] min-[520px]:flex"
             : timerReady
@@ -91,11 +97,13 @@ export function WorkoutStatusBar({
           onClick={onShowCurrent}
           className={cn(
             "min-w-0 flex-1 rounded-md px-1 py-1 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring",
-            timerRunning && "col-span-3 min-[520px]:col-span-1",
-            timerReady && "col-span-3 min-[520px]:col-span-1",
+            timerRunning &&
+              "col-span-2 col-start-1 row-start-1 min-[400px]:col-span-3 min-[520px]:col-span-1 min-[520px]:col-start-auto min-[520px]:row-start-auto",
+            timerReady &&
+              "col-span-2 col-start-1 row-start-1 min-[400px]:col-span-3 min-[520px]:col-span-1 min-[520px]:col-start-auto min-[520px]:row-start-auto",
           )}
         >
-          <span className="block break-words text-xs font-semibold leading-tight sm:text-sm">
+          <span className="block break-words text-xs font-semibold leading-tight max-[360px]:sr-only sm:text-sm">
             {title}
           </span>
           <span
@@ -104,6 +112,8 @@ export function WorkoutStatusBar({
             className={cn(
               "block break-words text-[11px] leading-tight text-muted-foreground",
               saving === "Failed" && "font-semibold text-destructive",
+              timerRunning &&
+                "font-semibold text-amber-950 dark:text-amber-100",
               timerReady &&
                 "font-semibold text-emerald-900 dark:text-emerald-100",
             )}
@@ -120,9 +130,9 @@ export function WorkoutStatusBar({
           <div
             role="region"
             aria-label="Rest timer"
-            className="flex min-w-0 w-full shrink-0 items-center justify-between gap-0.5 min-[520px]:w-auto min-[520px]:justify-start"
+            className="col-span-2 col-start-1 row-start-2 flex min-w-0 w-full shrink-0 items-center justify-between gap-0.5 min-[400px]:col-span-1 min-[400px]:col-start-auto min-[400px]:row-start-auto min-[400px]:w-auto min-[400px]:justify-start"
           >
-            <span className="min-w-10 text-center text-sm font-semibold tabular-nums">
+            <span className="min-w-10 text-center text-sm font-semibold tabular-nums text-amber-950 dark:text-amber-100">
               {Math.floor(restRemainingSec / 60)}:{String(restRemainingSec % 60).padStart(2, "0")}
             </span>
             <Button type="button" variant="ghost" size="icon-sm" className="min-h-11 min-w-11" onClick={() => onRestAdjust(-15)} aria-label="Decrease rest by 15 seconds">
@@ -141,7 +151,7 @@ export function WorkoutStatusBar({
           <Button
             type="button"
             size="sm"
-            className="min-h-11 w-full shrink-0 px-2 min-[520px]:w-auto"
+            className="col-span-2 col-start-1 row-start-2 min-h-11 w-full shrink-0 px-2 min-[400px]:col-span-1 min-[400px]:col-start-auto min-[400px]:row-start-auto min-[400px]:w-auto"
             onClick={onRestContinue}
           >
             Dismiss rest timer
@@ -155,14 +165,24 @@ export function WorkoutStatusBar({
           size="icon-sm"
           className={cn(
             "min-h-11 min-w-11 shrink-0",
-            (timerRunning || timerReady) && "justify-self-end",
+            (timerRunning || timerReady) &&
+              "col-start-3 row-start-1 justify-self-end min-[400px]:col-start-auto min-[400px]:row-start-auto",
           )}
           onClick={onAddNote}
           aria-label="Add training note"
         >
           <FilePenLine className="size-4" />
         </Button>
-        <Button type="button" size="sm" className="min-h-11 shrink-0 px-2" onClick={onFinish}>
+        <Button
+          type="button"
+          size="sm"
+          className={cn(
+            "min-h-11 shrink-0 px-2",
+            (timerRunning || timerReady) &&
+              "col-start-3 row-start-2 min-[400px]:col-start-auto min-[400px]:row-start-auto",
+          )}
+          onClick={onFinish}
+        >
           Finish
         </Button>
       </div>

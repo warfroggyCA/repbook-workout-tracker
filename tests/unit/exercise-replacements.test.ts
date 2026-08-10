@@ -34,7 +34,7 @@ describe("workout replacement contract", () => {
     await client.close();
   });
 
-  it("searches unrelated strength exercises, warns for missing equipment, and enforces hard metric and constraint boundaries", async () => {
+  it("searches unrelated exercises, warns for missing equipment, and enforces performed-shape and constraint boundaries", async () => {
     const fixtureTimezone = "America/Toronto";
     const fixtureStartedAt = new Date("2026-07-25T04:11:21.555Z");
     const fixtureLocalDate = workoutLocalDate(fixtureStartedAt, fixtureTimezone);
@@ -175,8 +175,8 @@ describe("workout replacement contract", () => {
       /Needs cable station.*will not invent or reuse an incompatible setup/i,
     );
     expect(byId.get(unsupported.id)).toMatchObject({
-      available: false,
-      unavailableReason: expect.stringMatching(/does not yet support/i),
+      available: true,
+      unavailableReason: null,
     });
     expect(byId.get(constrained.id)).toMatchObject({
       available: false,
@@ -186,7 +186,7 @@ describe("workout replacement contract", () => {
 });
 
 describe("replacement presentation rules", () => {
-  it("keeps unavailable equipment advisory while unsupported metrics stay blocked", () => {
+  it("keeps unavailable equipment advisory while unsupported performed shapes stay blocked", () => {
     expect(
       workoutReplacementEquipmentWarning({
         id: "missing",
@@ -223,6 +223,42 @@ describe("replacement presentation rules", () => {
         available: true,
         unavailableReason: null,
       }),
-    ).toMatch(/duration, distance, or activity/i);
+    ).toBeNull();
+    expect(
+      workoutReplacementUnavailableReason({
+        id: "loaded-duration",
+        name: "Loaded timed carry",
+        family: null,
+        movementPattern: "carry",
+        primaryMuscles: ["core"],
+        secondaryMuscles: [],
+        equipment: ["dumbbell"],
+        loadType: "external",
+        metricType: "duration",
+        loadSemantics: "added_weight",
+        variantAttributes: {},
+        cautionBodyParts: [],
+        available: true,
+        unavailableReason: null,
+      }),
+    ).toMatch(/load plus time or distance/i);
+    expect(
+      workoutReplacementUnavailableReason({
+        id: "activity",
+        name: "Independent activity",
+        family: null,
+        movementPattern: "conditioning",
+        primaryMuscles: ["whole body"],
+        secondaryMuscles: [],
+        equipment: [],
+        loadType: "bodyweight",
+        metricType: "activity",
+        loadSemantics: "none",
+        variantAttributes: {},
+        cautionBodyParts: [],
+        available: true,
+        unavailableReason: null,
+      }),
+    ).toMatch(/activity flow/i);
   });
 });

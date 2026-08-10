@@ -19,6 +19,42 @@ Application source, schema, migrations, and runtime tests otherwise come from
 the mapped private commit. Future public changes are reviewed normally through
 protected pull requests.
 
+Owner-generated analysis exports carry their own package, schema, semantic,
+canonicalization, and digest versions plus stable source IDs and revisions.
+These package-level bindings establish which retained facts were selected; they
+do not convert external or calculated material into performed evidence, an
+owner decision, or an accepted Program adaptation.
+
+Selected A05 external-analysis material retains a separate
+`external-analysis-import/1` receipt with the exact package and response
+digests, response identity, source bindings, selected IDs, and explicit
+proposal-to-recommendation mapping. Imported observations and proposals stay
+labelled external. The raw response and unselected content are not retained.
+Only a later explicit owner action creates a decision; accepting creates a
+future Review-direction adaptation with `programChanged: false`, not a
+performed fact or published Program version.
+
+The A06 adversarial corpus contains synthetic transformations of the public A03
+response fixture only. Its declared oracles are test evidence, not imported
+training evidence, model-quality claims, owner decisions, or release records.
+No real provider output or private operating chronology is included.
+
+The Gauntlet C workflow fixture contains independently generated synthetic
+chat-paste and file-upload responses bound at test time to a disposable A01
+package. It is public verification evidence only. It includes no provider or
+owner identity and does not assert that model advice is generally reliable.
+
+The D02 support-bundle fixture uses only synthetic problem selections, coarse
+browser categories, and an explicitly labelled synthetic owner-written note.
+No generated bundle, account identity, real diagnostic line, workout fact,
+provider output, or private support exchange is checked into the repository.
+
+The R01 lifecycle audit records public module paths, table and field names,
+package identifiers, and synthetic lifecycle contracts only. Its browser
+journey uses the established disposable synthetic owner. It includes no private
+programme chronology, real workout observation, owner identifier, diagnostic
+line, provider response, production row, deployment fact, or release claim.
+
 The first public `fix/pain-hold-truth` commit maps the application and test
 changes from private source commit
 `f308ead8c8ef27430707c5aa5651b97808ccfab6`. Private release-record and

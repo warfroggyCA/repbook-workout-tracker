@@ -95,7 +95,10 @@ async function main() {
     .update(sessionExercises)
     .set({
       exerciseId: exercise.id,
-      modificationType: "as_planned",
+      modificationType: "substituted",
+      substitutedForExerciseId: firstExercise.exerciseId,
+      substitutionReason: "other",
+      substitutedAt: new Date(),
       targetSets: 3,
       targetRepsMin: 8,
       targetRepsMax: 10,

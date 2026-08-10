@@ -3,6 +3,7 @@ import { mkdir } from "node:fs/promises";
 import { resolve } from "node:path";
 import {
   installNextDevelopmentRefreshControl,
+  openNativeDetails,
   waitForEquipmentSelectionsToSettle,
   waitForHydratedServerAction,
 } from "../helpers/react-readiness";
@@ -140,11 +141,11 @@ test("publishes and preserves durable warm-up and grouped workout outcomes", asy
     .getByRole("button", { name: "Check Program", exact: true })
     .first()
     .click();
-  await expect(page.getByRole("heading", { name: "Ready to activate" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Ready to publish" })).toBeVisible();
   await page
-    .getByRole("button", { name: "Activate new version", exact: true })
+    .getByRole("button", { name: "Publish future Program", exact: true })
     .click();
-  await expect(page.getByText("New Program version activated", { exact: true })).toBeVisible();
+  await expect(page.getByText("Future Program published", { exact: true })).toBeVisible();
 
   await page.goto("/today");
   await expect(page.getByRole("heading", { name: "Day B — Hinge" })).toBeVisible();
@@ -204,23 +205,25 @@ test("publishes and preserves durable warm-up and grouped workout outcomes", asy
   await context.setOffline(false);
   intentionallyOffline = false;
   await page.reload({ waitUntil: "domcontentloaded" });
+  await expect
+    .poll(
+      () =>
+        page.evaluate(
+          () =>
+            localStorage.getItem(
+              "workout-tracker:occurrence-mutation-outbox:v1",
+            ) ?? "",
+        ),
+      { timeout: 45_000 },
+    )
+    .not.toContain("Offline warm-up note survives reconnect.");
+  await page.reload({ waitUntil: "domcontentloaded" });
   const reloadedWarmupRow = page
     .locator("#workout-warmup li")
     .filter({ hasText: "Activation ramp" });
   await expect(reloadedWarmupRow).toContainText(
     "Note: Offline warm-up note survives reconnect.",
   );
-  await expect
-    .poll(() =>
-      page.evaluate(
-        () =>
-          localStorage.getItem(
-            "workout-tracker:occurrence-mutation-outbox:v1",
-          ) ?? "",
-      ),
-    )
-    .not.toContain("Offline warm-up note survives reconnect.");
-
   await reloadedWarmupRow.getByRole("button", { name: "Skip", exact: true }).click();
   const warmupSkip = page.getByRole("dialog", { name: "Skip Activation ramp?" });
   await warmupSkip.getByLabel("Reason").selectOption("fatigue");
@@ -259,8 +262,13 @@ test("publishes and preserves durable warm-up and grouped workout outcomes", asy
   await expect(workoutStatus.getByLabel("Rest timer")).toContainText(/0:1[0-5]/);
   await screenshot(page, "04-triset-next-action-and-member-rest.png");
   await workoutStatus.getByRole("button", { name: "Skip rest", exact: true }).click();
-  await workoutStatus.locator("button").first().click();
+  await workoutStatus
+    .getByRole("button", { name: "Dismiss rest timer", exact: true })
+    .click();
 
+  await openNativeDetails(nextSet.locator("details", {
+    hasText: "Set exceptions",
+  }));
   await nextSet.getByRole("button", { name: "Skip set", exact: true }).click();
   const workingSkip = page.getByRole("dialog", {
     name: "Skip set 1 of Barbell Overhead Press?",

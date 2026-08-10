@@ -86,7 +86,11 @@ export async function getExerciseAlternativeOptions(
   return {
     currentExerciseId: sessionExercise.exerciseId,
     plannedExerciseId,
-    plannedExerciseName: planned.name,
+    plannedExerciseName:
+      sessionExercise.prescribedSemanticsVersion === 1 &&
+      sessionExercise.prescribedExerciseName
+        ? sessionExercise.prescribedExerciseName
+        : planned.name,
     plannedExercise: planned,
     items,
     priorityIds: ranked

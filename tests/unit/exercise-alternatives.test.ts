@@ -20,6 +20,7 @@ import {
   rankExerciseAlternatives,
 } from "@/lib/exercise-alternatives";
 import { getExerciseAlternativeOptions } from "@/services/exercise-alternatives";
+import { getExerciseReplacementOptions } from "@/services/exercise-replacements";
 
 function exercise(
   id: string,
@@ -222,7 +223,15 @@ describe("server-approved exercise alternative options", () => {
       .returning({ id: workoutSessions.id });
     const [{ id: sessionExerciseId }] = await db
       .insert(sessionExercises)
-      .values({ sessionId, exerciseId: planned.id })
+      .values({
+        sessionId,
+        exerciseId: planned.id,
+        prescribedSemanticsVersion: 1,
+        prescribedExerciseName: planned.name,
+        prescribedMetricType: "weight_reps",
+        prescribedLoadType: "barbell",
+        prescribedLoadSemantics: "total",
+      })
       .returning({ id: sessionExercises.id });
 
     const options = await getExerciseAlternativeOptions(
@@ -261,5 +270,46 @@ describe("server-approved exercise alternative options", () => {
       available: false,
       unavailableReason: expect.stringContaining("cable"),
     });
+
+    const currentCatalogName = `Current catalog pull ${crypto.randomUUID()}`;
+    await db
+      .update(exercises)
+      .set({
+        name: currentCatalogName,
+        familyId: rowFamily.id,
+        movementPattern: "horizontal_pull",
+        primaryMuscles: ["back"],
+        secondaryMuscles: ["biceps"],
+      })
+      .where(eq(exercises.id, planned.id));
+
+    const reranked = await getExerciseAlternativeOptions(
+      db,
+      userId,
+      sessionExerciseId,
+    );
+    expect(reranked).toMatchObject({
+      plannedExerciseName: planned.name,
+      plannedExercise: { name: currentCatalogName },
+    });
+    expect(
+      reranked.items.find((item) => item.id === secondaryOnly.id),
+    ).toMatchObject({ available: true });
+    expect(
+      reranked.items.find((item) => item.id === familyAlternative.id),
+    ).toMatchObject({
+      available: false,
+      unavailableReason: "Not close enough to the planned exercise for this workout",
+    });
+
+    const replacements = await getExerciseReplacementOptions(
+      db,
+      userId,
+      sessionExerciseId,
+    );
+    expect(replacements.plannedExerciseName).toBe(planned.name);
+    expect(
+      replacements.items.find((item) => item.id === secondaryOnly.id),
+    ).toMatchObject({ available: true });
   });
 });

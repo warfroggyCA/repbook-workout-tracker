@@ -31,6 +31,7 @@ const ids = {
   owner: "10000000-0000-4000-8000-000000000001",
   session: "10000000-0000-4000-8000-000000000002",
   exercise: "10000000-0000-4000-8000-000000000003",
+  performedExercise: "10000000-0000-4000-8000-000000000010",
   equipmentA: "10000000-0000-4000-8000-000000000004",
   equipmentB: "10000000-0000-4000-8000-000000000005",
   selectionA: "10000000-0000-4000-8000-000000000006",
@@ -38,6 +39,36 @@ const ids = {
   selectionB: "10000000-0000-4000-8000-000000000008",
   snapshotA: "10000000-0000-4000-8000-000000000009",
 };
+
+function pendingSet(
+  overrides: { weight?: number; createdAtISO?: string } = {},
+): Parameters<typeof enqueueWorkoutSetOutboxEntry>[1] {
+  return {
+    clientKey: ids.setA,
+    ownerId: ids.owner,
+    sessionId: ids.session,
+    sessionExerciseId: ids.exercise,
+    performedExerciseId: ids.performedExercise,
+    performedSemanticsVersion: 1,
+    performedLoadType: "ez_bar",
+    performedLoadSemantics: "total",
+    exerciseName: "Curl",
+    setNo: 1,
+    metricType: "weight_reps",
+    weight: 38,
+    weightUnit: "lb",
+    reps: 10,
+    distanceKm: null,
+    durationSeconds: null,
+    rpe: null,
+    note: null,
+    equipmentSnapshotId: null,
+    equipmentSelectionClientKey: ids.selectionA,
+    loadEntryMeaning: "total_system",
+    createdAtISO: new Date(1001).toISOString(),
+    ...overrides,
+  };
+}
 
 function selection(
   clientKey: string,
@@ -68,13 +99,7 @@ describe("equipment selection browser outbox", () => {
   it("retains selection A, set A, selection B order and binds set A only to A", () => {
     const storage = new MemoryStorage();
     enqueueEquipmentSelectionOutboxEntry(storage, selection(ids.selectionA, ids.equipmentA, null), 1000);
-    enqueueWorkoutSetOutboxEntry(storage, {
-      clientKey: ids.setA, ownerId: ids.owner, sessionId: ids.session,
-      sessionExerciseId: ids.exercise, exerciseName: "Curl", setNo: 1,
-      weight: 43, weightUnit: "lb", reps: 10, rpe: null, note: null,
-      equipmentSnapshotId: null, equipmentSelectionClientKey: ids.selectionA,
-      loadEntryMeaning: "total_system", createdAtISO: new Date(1001).toISOString(),
-    });
+    enqueueWorkoutSetOutboxEntry(storage, pendingSet({ weight: 43 }));
     enqueueEquipmentSelectionOutboxEntry(storage, selection(ids.selectionB, ids.equipmentB, ids.selectionA), 1002);
 
     let selections = readEquipmentSelectionOutbox(storage).entries;
@@ -114,23 +139,7 @@ describe("equipment selection browser outbox", () => {
       ).ok,
     ).toBe(true);
     expect(
-      enqueueWorkoutSetOutboxEntry(storage, {
-        clientKey: ids.setA,
-        ownerId: ids.owner,
-        sessionId: ids.session,
-        sessionExerciseId: ids.exercise,
-        exerciseName: "Curl",
-        setNo: 1,
-        weight: 38,
-        weightUnit: "lb",
-        reps: 10,
-        rpe: null,
-        note: null,
-        equipmentSnapshotId: null,
-        equipmentSelectionClientKey: ids.selectionA,
-        loadEntryMeaning: "total_system",
-        createdAtISO: new Date(1001).toISOString(),
-      }),
+      enqueueWorkoutSetOutboxEntry(storage, pendingSet()),
     ).toMatchObject({
       ok: true,
       entry: {
@@ -159,23 +168,9 @@ describe("equipment selection browser outbox", () => {
       }],
     }));
 
-    expect(enqueueWorkoutSetOutboxEntry(storage, {
-      clientKey: ids.setA,
-      ownerId: ids.owner,
-      sessionId: ids.session,
-      sessionExerciseId: ids.exercise,
-      exerciseName: "Curl",
-      setNo: 1,
-      weight: 38,
-      weightUnit: "lb",
-      reps: 10,
-      rpe: null,
-      note: null,
-      equipmentSnapshotId: null,
-      equipmentSelectionClientKey: ids.selectionA,
-      loadEntryMeaning: "total_system",
+    expect(enqueueWorkoutSetOutboxEntry(storage, pendingSet({
       createdAtISO: "2026-07-22T12:00:00.000Z",
-    }, true)).toMatchObject({
+    }), true)).toMatchObject({
       ok: false,
       reason: expect.stringContaining("equipment choice changed"),
     });
@@ -183,23 +178,7 @@ describe("equipment selection browser outbox", () => {
 
   it("does not retain a set whose captured equipment dependency vanished without acknowledgement", () => {
     const storage = new MemoryStorage();
-    const result = enqueueWorkoutSetOutboxEntry(storage, {
-      clientKey: ids.setA,
-      ownerId: ids.owner,
-      sessionId: ids.session,
-      sessionExerciseId: ids.exercise,
-      exerciseName: "Curl",
-      setNo: 1,
-      weight: 38,
-      weightUnit: "lb",
-      reps: 10,
-      rpe: null,
-      note: null,
-      equipmentSnapshotId: null,
-      equipmentSelectionClientKey: ids.selectionA,
-      loadEntryMeaning: "total_system",
-      createdAtISO: new Date(1001).toISOString(),
-    }, true);
+    const result = enqueueWorkoutSetOutboxEntry(storage, pendingSet(), true);
 
     expect(result).toMatchObject({
       ok: false,
@@ -292,13 +271,7 @@ describe("equipment selection browser outbox", () => {
       selection(ids.selectionA, ids.equipmentA, null),
       1000,
     );
-    enqueueWorkoutSetOutboxEntry(storage, {
-      clientKey: ids.setA, ownerId: ids.owner, sessionId: ids.session,
-      sessionExerciseId: ids.exercise, exerciseName: "Curl", setNo: 1,
-      weight: 38, weightUnit: "lb", reps: 10, rpe: null, note: null,
-      equipmentSnapshotId: null, equipmentSelectionClientKey: ids.selectionA,
-      loadEntryMeaning: "total_system", createdAtISO: new Date(1001).toISOString(),
-    });
+    enqueueWorkoutSetOutboxEntry(storage, pendingSet());
 
     expect(removeEquipmentSelectionOutboxEntry(storage, ids.selectionA))
       .toMatchObject({ ok: false, reason: expect.stringContaining("saved set") });
@@ -328,13 +301,7 @@ describe("equipment selection browser outbox", () => {
       version: 1,
       entries: [raw],
     }));
-    enqueueWorkoutSetOutboxEntry(storage, {
-      clientKey: ids.setA, ownerId: ids.owner, sessionId: ids.session,
-      sessionExerciseId: ids.exercise, exerciseName: "Curl", setNo: 1,
-      weight: 38, weightUnit: "lb", reps: 10, rpe: null, note: null,
-      equipmentSnapshotId: null, equipmentSelectionClientKey: ids.selectionA,
-      loadEntryMeaning: "total_system", createdAtISO: new Date(1001).toISOString(),
-    });
+    enqueueWorkoutSetOutboxEntry(storage, pendingSet());
     const quarantined = readEquipmentSelectionOutbox(storage).quarantined[0];
 
     expect(discardQuarantinedEquipmentSelectionOutboxEntry(

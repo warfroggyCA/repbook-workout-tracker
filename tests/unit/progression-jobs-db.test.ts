@@ -21,9 +21,9 @@ import {
 } from "@/db/schema";
 import {
   completeWorkoutSession,
-  logWorkoutSet,
   startWorkoutSession,
 } from "@/services/session-lifecycle";
+import { logWorkoutSet } from "../helpers/log-workout-set";
 import {
   claimProgressionJob,
   drainProgressionJobs,
@@ -199,7 +199,7 @@ describe("durable progression job handoff", () => {
       }),
     ]);
     const backup = await buildJsonBackup(database.db, userId);
-    expect(backup.schemaVersion).toBe("27");
+    expect(backup.schemaVersion).toBe("30");
     expect(backup.canonical.tables.progression_jobs).toEqual([
       expect.objectContaining({ id: result.progressionJobId }),
     ]);

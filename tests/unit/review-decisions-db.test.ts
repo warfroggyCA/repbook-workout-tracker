@@ -32,6 +32,10 @@ import {
   type TestDatabase,
 } from "../helpers/database";
 import { createTotalSystemTestSnapshot } from "../helpers/set-semantics";
+import {
+  PROGRESSION_REVIEW_SOURCE_VERSION,
+  withRecommendationReviewEvidence,
+} from "@/lib/review-evidence";
 
 describe("Review and decisions presentation contracts", () => {
   it("presents stored evidence without inventing confidence or hidden signals", () => {
@@ -54,7 +58,7 @@ describe("Review and decisions presentation contracts", () => {
     ).toEqual([
       { label: "Linked completed workouts", value: "2" },
       { label: "Linked working sets", value: "3" },
-      { label: "Linked pain flags", value: "1" },
+      { label: "Linked positive pain reports", value: "1" },
       { label: "Clean completed workouts", value: "2" },
       { label: "Previous target", value: "100 lb" },
       { label: "Suggested target", value: "105 lb" },
@@ -219,17 +223,29 @@ describe("Review outcome readiness", () => {
         sourceSlotLineageId: slot.lineageId,
         payload,
         reason: "Exact follow-up fixture",
-        evidence: {
+        evidence: withRecommendationReviewEvidence({
           signals: { cleanExposures: 2, fromLoad, toLoad },
           sessionIds: [evidenceSessionId],
           setIds: evidenceSets.map((set) => set.id),
-        },
+        }, {
+          payload,
+          producer: "progression_rules",
+          sourceVersion: PROGRESSION_REVIEW_SOURCE_VERSION,
+        }),
       })
-      .returning({ id: recommendations.id });
+      .returning({
+        id: recommendations.id,
+        reviewRevision: recommendations.reviewRevision,
+        deferRevision: recommendations.deferRevision,
+      });
     const approved = await approveRecommendationDecision(
       database.db,
       userId,
-      { recommendationId: recommendation.id },
+      {
+        recommendationId: recommendation.id,
+        expectedReviewRevision: recommendation.reviewRevision,
+        expectedDeferRevision: recommendation.deferRevision,
+      },
       { publishProgramVersion: publishRecommendationProgramVersion }
     );
     if (!approved.ok) throw new Error(approved.reason);
@@ -247,6 +263,7 @@ describe("Review outcome readiness", () => {
     recordedMetricType?: "weight_reps" | "assisted_reps";
     performedExerciseId?: string;
     modificationType?: "as_planned" | "substituted";
+    omitPrescribedSemantics?: boolean;
     sets: Array<{ targetMet: boolean | null; rpe: number | null }>;
     painSeverity?: number;
     painLinkedToDuplicate?: boolean;
@@ -269,6 +286,15 @@ describe("Review outcome readiness", () => {
       columns: { lineageId: true },
     });
     if (!sourceSlot) throw new Error("Review fixture source slot missing");
+    const prescribedExercise = await database.db.query.exercises.findFirst({
+      where: eq(exercises.id, exerciseId),
+    });
+    const performedExercise = await database.db.query.exercises.findFirst({
+      where: eq(exercises.id, input.performedExerciseId ?? exerciseId),
+    });
+    if (!prescribedExercise || !performedExercise) {
+      throw new Error("Review fixture exercise meaning missing");
+    }
     const [sessionExercise] = await database.db
       .insert(sessionExercises)
       .values({
@@ -284,6 +310,15 @@ describe("Review outcome readiness", () => {
         targetRepsMax: 8,
         targetLoad: input.targetLoad,
         targetLoadUnit: "lb",
+        ...(input.omitPrescribedSemantics
+          ? {}
+          : {
+              prescribedSemanticsVersion: 1,
+              prescribedExerciseName: prescribedExercise.name,
+              prescribedMetricType: prescribedExercise.metricType,
+              prescribedLoadType: prescribedExercise.loadType,
+              prescribedLoadSemantics: prescribedExercise.loadSemantics,
+            }),
       })
       .returning({ id: sessionExercises.id });
     if (input.sets.length > 0) {
@@ -306,6 +341,9 @@ describe("Review outcome readiness", () => {
           targetMet: set.targetMet,
           rpe: set.rpe,
           metricType: input.recordedMetricType ?? ("weight_reps" as const),
+          performedSemanticsVersion: 1,
+          performedLoadType: performedExercise.loadType,
+          performedLoadSemantics: performedExercise.loadSemantics,
           equipmentSnapshotId,
           loadEntryMeaning: "total_system",
         }))
@@ -322,6 +360,12 @@ describe("Review outcome readiness", () => {
           outcome: "completed" as const,
           resolvedAt: input.startedAt,
           completedSetId: set.id,
+          plannedRepsMin: input.sets[index].targetMet == null ? null : 6,
+          plannedRepsMax: input.sets[index].targetMet == null ? null : 8,
+          plannedLoad:
+            input.sets[index].targetMet == null ? null : input.targetLoad,
+          plannedLoadUnit:
+            input.sets[index].targetMet == null ? null : ("lb" as const),
           equipmentSnapshotId,
         }))
       );
@@ -573,10 +617,10 @@ describe("Review outcome readiness", () => {
         followupSessions: 1,
         workingSets: 3,
         measurableSets: 3,
-        targetsMet: 2,
+        targetsMet: 3,
         rpeCount: 3,
         averageRpe: 8,
-        painFlags: 1,
+        positivePainReports: 1,
         maxPainSeverity: 3,
         evidenceLimited: false,
       }),
@@ -630,6 +674,29 @@ describe("Review outcome readiness", () => {
     );
   });
 
+  it("does not turn complete performed-v1 facts into Review outcomes without prescribed meaning", async () => {
+    const recommendationId = await approveLoad(100, 105);
+    await database.db
+      .update(adaptationEvents)
+      .set({ appliedAt: new Date("2026-01-01T12:00:00.000Z") })
+      .where(eq(adaptationEvents.recommendationId, recommendationId));
+    const current = await currentSlot();
+    await seedFollowup({
+      ownerId: userId,
+      slotId: current.slot.id,
+      templateId: current.template.id,
+      startedAt: new Date("2026-01-02T12:00:00.000Z"),
+      targetLoad: 105,
+      sets: [{ targetMet: true, rpe: 7 }],
+      omitPrescribedSemantics: true,
+    });
+
+    const review = await getReviewDecisionData(database.db, userId);
+    expect(review.acceptedDecisionCount).toBe(1);
+    expect(review.outcomeSupportedDecisionCount).toBe(1);
+    expect(review.outcomes).toEqual([]);
+  });
+
   it("hides and refuses a pending load change backed by assisted evidence", async () => {
     const current = await currentSlot();
     await database.db
@@ -676,21 +743,41 @@ describe("Review outcome readiness", () => {
         sourceSlotLineageId: current.slot.lineageId,
         payload,
         reason: "Unsafe assisted fixture",
-        evidence: {
+        evidence: withRecommendationReviewEvidence({
           sessionIds: [sessionId],
           setIds: [evidenceSet.id],
           signals: {},
-        },
+        }, {
+          payload,
+          producer: "progression_rules",
+          sourceVersion: PROGRESSION_REVIEW_SOURCE_VERSION,
+        }),
       })
-      .returning({ id: recommendations.id });
+      .returning({
+        id: recommendations.id,
+        reviewRevision: recommendations.reviewRevision,
+        deferRevision: recommendations.deferRevision,
+      });
 
-    expect((await getReviewDecisionData(database.db, userId)).pending).toEqual([]);
+    expect((await getReviewDecisionData(database.db, userId)).pending).toEqual([
+      expect.objectContaining({
+        id: recommendation.id,
+        reviewEvidence: expect.objectContaining({
+          state: "stale",
+          actionable: false,
+        }),
+      }),
+    ]);
     let publicationCalled = false;
     await expect(
       approveRecommendationDecision(
         database.db,
         userId,
-        { recommendationId: recommendation.id },
+        {
+          recommendationId: recommendation.id,
+          expectedReviewRevision: recommendation.reviewRevision,
+          expectedDeferRevision: recommendation.deferRevision,
+        },
         {
           publishProgramVersion: async () => {
             publicationCalled = true;
@@ -701,7 +788,7 @@ describe("Review outcome readiness", () => {
     ).resolves.toEqual({
       ok: false,
       reason:
-        "This load recommendation no longer has comparable completed-set evidence and cannot be applied.",
+        "The cited facts or current Program changed after this proposal was created. It cannot be applied without a fresh proposal.",
     });
     expect(publicationCalled).toBe(false);
   });
@@ -901,7 +988,7 @@ describe("Review outcome readiness", () => {
       expect.objectContaining({
         recommendationId,
         workingSets: 1,
-        painFlags: 0,
+        positivePainReports: 0,
         maxPainSeverity: null,
       }),
     ]);

@@ -1,0 +1,1957 @@
+{
+  "schemaVersion": 1,
+  "contractVersion": "repbook-semantic-contract/2.0.0",
+  "ratifiedAt": "2026-08-01",
+  "repositoryRole": "public application source",
+  "exactBaseCommit": "2c9ab1b9478502f1d08956a6c44dfb0850c8f168",
+  "fixtureCatalogue": "tests/fixtures/v2/semantic-scenarios.json",
+  "currentPackage": "R01",
+  "currentPackageBaseCommit": "ace9b3bf52c4435976cee78b425b895805809d56",
+  "productBehaviorImplementedByP02": false,
+  "implementedProductPackages": [
+    "T01",
+    "T02",
+    "T03",
+    "T04",
+    "T05",
+    "T06",
+    "U01",
+    "U02",
+    "U03",
+    "H01",
+    "H02",
+    "H03",
+    "H04",
+    "H05",
+    "A01",
+    "A02",
+    "A03",
+    "A04",
+    "A05",
+    "D01",
+    "D02",
+    "R01"
+  ],
+  "milestoneEvidence": {
+    "gauntletA": {
+      "status": "passed",
+      "exactBaseCommit": "96bee98b83edcb72ad072e3204fe18cec2e6f7e9",
+      "finalCandidateCommit": "4e0aa3e688d0345a473bdab96cb84b81a077596c",
+      "scenarioCommand": "npm run test:e2e:v2-gauntlet-a",
+      "scenarioPaths": [
+        "tests/e2e/replacement-mobile-keyboard.spec.ts",
+        "tests/e2e/v2-gauntlet-a-recovery.spec.ts",
+        "tests/e2e/v2-t03-planned-order.spec.ts",
+        "tests/e2e/v2-t04-warmup-occurrences.spec.ts",
+        "tests/e2e/v2-t05-execution-semantics.spec.ts",
+        "tests/e2e/v2-u01-active-workout-hierarchy.spec.ts",
+        "tests/e2e/v2-u02-exception-context.spec.ts"
+      ],
+      "semanticCommand": "npx vitest run tests/unit/v2-gauntlet-a-semantic-recovery.test.ts tests/unit/exercise-card-component.test.tsx",
+      "proves": "desktop Chromium, 440 by 956 mobile Chromium, and 320 by 700 enlarged-text mobile WebKit cover the complete real-workout scenario bar with exact acknowledgement, offline and timeout-after-commit recovery, bodyweight substitution, warm-up, group and rest, planned and extra work, exception-only context, finish and abandon, accessible selected state, overflow, page-error, History, CSV, snapshot, duplicate, and completed-calculation exclusion oracles"
+    }
+  },
+  "legend": {
+    "R": "required primary proof",
+    "C": "required consistency or round-trip proof",
+    "—": "not a primary proof for this concern"
+  },
+  "columns": [
+    "pureContract",
+    "databaseService",
+    "browser",
+    "exportImport",
+    "restoreRollback",
+    "adversarialPrivacy"
+  ],
+  "verifications": {
+    "A01-databaseService": {
+      "status": "current",
+      "implementingPackage": "A01",
+      "testPath": "tests/unit/analysis-package-db.test.ts",
+      "command": "npx vitest run tests/unit/analysis-package-db.test.ts tests/unit/recovery-manifest-db.test.ts --maxWorkers=1 --no-file-parallelism",
+      "proves": "one owner-selected question produces a versioned deterministic package from one canonical snapshot; stable source bindings, explicit unknowns and separated domains travel with a SHA-256 digest, while only a maximum-30-day owner-scoped receipt is retained and owner deletion removes it"
+    },
+    "A01-browser": {
+      "status": "current",
+      "implementingPackage": "A01",
+      "testPath": "tests/e2e/v2-a01-analysis-package.spec.ts",
+      "command": "npm run test:e2e:v2-a01",
+      "proves": "desktop Chromium and independent 320 by 700 WebKit at 145 percent text select one purpose, preview and download exact matching bytes, verify the canonical digest and privacy omissions, make no external request, delete the owner receipt, and retain accessible no-overflow layout"
+    },
+    "A01-exportImport": {
+      "status": "current",
+      "implementingPackage": "A01",
+      "testPath": "tests/unit/analysis-package-db.test.ts",
+      "command": "npx vitest run tests/unit/analysis-package-db.test.ts --maxWorkers=1 --no-file-parallelism",
+      "proves": "schema analysis-package/1 and semantic version repbook-v2/1 preserve exact definitions, provenance, units, time semantics, scope, inventory, source identity, evidence quality, owner context and a canonical digest without performing any provider transmission or import"
+    },
+    "A01-restoreRollback": {
+      "status": "current",
+      "implementingPackage": "A01",
+      "testPath": "tests/unit/recovery-manifest-db.test.ts",
+      "command": "npx vitest run tests/unit/recovery-manifest-db.test.ts --maxWorkers=1 --no-file-parallelism",
+      "proves": "recovery manifest 12 excludes operational analysis-package receipts from snapshot schema 30 and restore so recovery cannot revive an expired or owner-deleted trust boundary"
+    },
+    "A01-adversarialPrivacy": {
+      "status": "current",
+      "implementingPackage": "A01",
+      "testPath": "tests/unit/analysis-package-db.test.ts",
+      "command": "npx vitest run tests/unit/analysis-package-db.test.ts --maxWorkers=1 --no-file-parallelism",
+      "proves": "account identity, raw provider or AI material, private notes, operational data and raw package contents are omitted; manifests list and delete only for their owner, and unknown historical semantics are never inferred"
+    },
+    "A02-pureContract": {
+      "status": "current",
+      "implementingPackage": "A02",
+      "testPath": "tests/unit/v2-a02-external-ai-instructions.test.ts",
+      "command": "npx vitest run tests/unit/v2-a02-external-ai-instructions.test.ts",
+      "proves": "one deterministic provider-neutral instruction bundle binds the exact package and digest, preserves ratified meanings and unknowns, requires exact evidence citations and limitations, and forbids embedded instructions, guesses, external retrieval and mutation claims"
+    },
+    "A02-browser": {
+      "status": "current",
+      "implementingPackage": "A02",
+      "testPath": "tests/e2e/v2-a02-provider-neutral-instructions.spec.ts",
+      "command": "npm run test:e2e:v2-a02",
+      "proves": "desktop Chromium and independent narrow WebKit preview and download exact package-bound provider-neutral instructions without external transmission or horizontal overflow"
+    },
+    "A03-pureContract": {
+      "status": "current",
+      "implementingPackage": "A03",
+      "testPath": "tests/unit/v2-a03-external-analysis-response.test.ts",
+      "command": "npx vitest run tests/unit/v2-a03-external-analysis-response.test.ts",
+      "proves": "analysis-response/1 is closed, bounded and versioned; exact package, namespace, digest, cutoff, expiry and question binding, evidence IDs, units, stable item IDs, one review-only effect and deterministic duplicate classification fail closed"
+    },
+    "A03-browser": {
+      "status": "current",
+      "implementingPackage": "A03",
+      "testPath": "tests/e2e/v2-a03-typed-response-schema.spec.ts",
+      "command": "npm run test:e2e:v2-a03",
+      "proves": "desktop Chromium and independent narrow WebKit download the exact strict typed response contract bound to the previewed package without provider transmission or an import writer"
+    },
+    "P02-pureContract": {
+      "status": "current",
+      "implementingPackage": "P02",
+      "testPath": "tests/unit/v2-semantic-contract.test.ts",
+      "command": "npx vitest run tests/unit/v2-semantic-contract.test.ts",
+      "proves": "synthetic semantic oracle only; not released product behavior"
+    },
+    "H01-pureContract": {
+      "status": "current",
+      "implementingPackage": "H01",
+      "testPath": "tests/unit/v2-h01-history-workout-evidence.test.ts",
+      "command": "npx vitest run tests/unit/v2-h01-history-workout-evidence.test.ts",
+      "proves": "performed-first History classification keeps terminal state, linked working sets, structured warm-ups, provenance, correction lineage, performed semantics, and calculation eligibility explicit without inferring unknown evidence"
+    },
+    "H01-browser": {
+      "status": "current",
+      "implementingPackage": "H01",
+      "testPath": "tests/e2e/v2-h01-performed-first-history.spec.ts",
+      "command": "npx playwright test --config=playwright.v2-h01.config.ts tests/e2e/v2-h01-performed-first-history.spec.ts",
+      "proves": "desktop Chromium and 320 by 700 enlarged-text mobile WebKit present acknowledged performed evidence before plan and retained source rows, preserve exact completed, finished-early, abandoned, and active-session meaning, expose safe correction and source lineage, remain keyboard and touch usable without horizontal overflow, and make no post-login write"
+    },
+    "U01-browser": {
+      "status": "current",
+      "implementingPackage": "U01",
+      "testPath": "tests/e2e/v2-u01-active-workout-hierarchy.spec.ts",
+      "command": "npx playwright test --config=playwright.v2-u01.config.ts tests/e2e/v2-u01-active-workout-hierarchy.spec.ts",
+      "proves": "desktop Chromium, 440 by 956 mobile Chromium, and 320 by 700 mobile WebKit at extra-large text keep the current action and applicable performed measure first, expose one ordinary commit action, defer optional details and exceptions, retain reachable 44-pixel controls without horizontal overflow, and keep exact saved acknowledgement visible"
+    },
+    "T06-databaseService": {
+      "status": "current",
+      "implementingPackage": "T06",
+      "testPath": "tests/unit/v2-t06-preview-start-db.test.ts",
+      "command": "npx vitest run tests/unit/v2-t06-preview-start-db.test.ts tests/unit/live-coaching-db.test.ts",
+      "proves": "one owner-scoped canonical Start request creates once, exact retries replay before freshness, contradictory reuse and unrelated active workouts return distinct truthful outcomes, and new workouts freeze prescribed exercise meaning across active and Live Coach consumers while legacy rows remain explicit unknown"
+    },
+    "T06-browser": {
+      "status": "current",
+      "implementingPackage": "T06",
+      "testPath": "tests/e2e/v2-t06-preview-start.spec.ts",
+      "command": "npx playwright test --config=playwright.v2-t06.config.ts tests/e2e/v2-t06-preview-start.spec.ts",
+      "proves": "desktop Chromium and narrow mobile WebKit keep alternate preview read-only, retain one Start identity through failure and retry, reconcile ambiguous completion to the exact request, and report a different active workout without presenting the requested day as started"
+    },
+    "T06-exportImport": {
+      "status": "current",
+      "implementingPackage": "T06",
+      "testPath": "tests/unit/v2-t06-preview-start-portability.test.ts",
+      "command": "npx vitest run tests/unit/v2-t06-preview-start-portability.test.ts",
+      "proves": "snapshot schema 28, CSV, digest, and integrity consumers carry exact Start identity and nullable prescribed name, metric, load type, and load semantics without mutable-catalog reinterpretation"
+    },
+    "T06-restoreRollback": {
+      "status": "current",
+      "implementingPackage": "T06",
+      "testPath": "tests/unit/v2-t06-preview-start-restore.test.ts",
+      "command": "npx vitest run tests/unit/v2-t06-preview-start-restore.test.ts",
+      "proves": "full restore round-trips exact Start and prescribed-meaning evidence; schema 27 upgrades add explicit null unknowns without inference; malformed current tuples fail closed"
+    },
+    "T01-databaseService": {
+      "status": "current",
+      "implementingPackage": "T01",
+      "testPath": "tests/unit/v2-t01-recording-truth-db.test.ts",
+      "command": "npx vitest run tests/unit/v2-t01-recording-truth-db.test.ts",
+      "proves": "five supported performed-measurement shapes retain exact measurement, unit, identity, provenance, and replay meaning without mutating prescription"
+    },
+    "T01-browser": {
+      "status": "current",
+      "implementingPackage": "T01",
+      "testPath": "tests/e2e/v2-t01-recording-truth.spec.ts",
+      "command": "npx playwright test --config=playwright.v2-t01.config.ts tests/e2e/v2-t01-recording-truth.spec.ts",
+      "proves": "desktop Chromium and mobile WebKit enter, acknowledge, reload, and display duration and distance without invented repetitions or load in a dedicated fresh browser fixture"
+    },
+    "T01-exportImport": {
+      "status": "current",
+      "implementingPackage": "T01",
+      "testPath": "tests/unit/v2-t01-recording-truth-portability.test.ts",
+      "command": "npx vitest run tests/unit/v2-t01-recording-truth-portability.test.ts",
+      "proves": "History reporting, CSV, and canonical JSON preserve supported shapes, performed substitution identity, and explicit unknown legacy evidence"
+    },
+    "T01-restoreRollback": {
+      "status": "current",
+      "implementingPackage": "T01",
+      "testPath": "tests/unit/v2-t01-recording-truth-restore.test.ts",
+      "command": "npx vitest run tests/unit/v2-t01-recording-truth-restore.test.ts",
+      "proves": "encrypted snapshot restore retains raw performed facts, recomputes projections, and does not invent missing legacy semantics"
+    },
+    "T01-adversarialPrivacy": {
+      "status": "current",
+      "implementingPackage": "T01",
+      "testPath": "tests/unit/v2-t01-recording-truth-adversarial.test.ts",
+      "command": "npx vitest run tests/unit/v2-t01-recording-truth-adversarial.test.ts",
+      "proves": "contradictory, malformed, stale, unsupported, and retained older offline writes fail closed before evidence mutation"
+    },
+    "T02-databaseService": {
+      "status": "current",
+      "implementingPackage": "T02",
+      "testPath": "tests/unit/v2-t02-acknowledgement-correction-db.test.ts",
+      "command": "npx vitest run tests/unit/v2-t02-acknowledgement-correction-db.test.ts",
+      "proves": "duplicate or lost acknowledgements retain one performed fact, while reviewed active, completed, and abandoned corrections use exact assertions, stable mutation identity, complete shape validation, revisions, and retained before/after evidence"
+    },
+    "T02-browser": {
+      "status": "current",
+      "implementingPackage": "T02",
+      "testPath": "tests/e2e/v2-t02-acknowledgement-correction.spec.ts",
+      "command": "npx playwright test --config=playwright.v2-t02.config.ts tests/e2e/v2-t02-acknowledgement-correction.spec.ts",
+      "proves": "desktop Chromium and mobile WebKit keep delayed sets pending until acknowledgement, expose correction only afterward, require review, retain the corrected value across reload, show correction evidence, and quarantine unreadable older outbox commands"
+    },
+    "T02-exportImport": {
+      "status": "current",
+      "implementingPackage": "T02",
+      "testPath": "tests/unit/v2-t02-acknowledgement-correction-portability.test.ts",
+      "command": "npx vitest run tests/unit/v2-t02-acknowledgement-correction-portability.test.ts",
+      "proves": "CSV uses the current effective assertion while canonical JSON preserves original and corrected values, correction reason, provenance, and ordered revision evidence"
+    },
+    "T02-restoreRollback": {
+      "status": "current",
+      "implementingPackage": "T02",
+      "testPath": "tests/unit/v2-t02-acknowledgement-correction-restore.test.ts",
+      "command": "npx vitest run tests/unit/v2-t02-acknowledgement-correction-restore.test.ts",
+      "proves": "record-version restore creates a new superseding transition, and encrypted snapshot restore merges immutable correction lineage, preserves destination-only evidence, and appends a restore transition when the effective performed fact changes"
+    },
+    "T02-adversarialPrivacy": {
+      "status": "current",
+      "implementingPackage": "T02",
+      "testPath": "tests/unit/v2-t02-acknowledgement-correction-adversarial.test.ts",
+      "command": "npx vitest run tests/unit/v2-t02-acknowledgement-correction-adversarial.test.ts",
+      "proves": "stale revisions, cross-owner requests, unlinked rows, mutation-identity collisions, malformed correction evidence, and unsupported queued formats fail closed without rewriting facts; legacy unknown meaning stays explicitly unknown"
+    },
+    "T03-databaseService": {
+      "status": "current",
+      "implementingPackage": "T03",
+      "testPath": "tests/unit/v2-t03-planned-order-db.test.ts",
+      "command": "npx vitest run tests/unit/v2-t03-planned-order-db.test.ts",
+      "proves": "planned occurrences keep immutable order; same-exercise and grouped predecessors block out-of-order planned completion or skip; an extra can be recorded before or after the plan without gaining planned origin, ordinal, or target truth; exact retry and correction remain safe"
+    },
+    "T03-browser": {
+      "status": "current",
+      "implementingPackage": "T03",
+      "testPath": "tests/e2e/v2-t03-planned-order.spec.ts",
+      "command": "npx playwright test --config=playwright.v2-t03.config.ts tests/e2e/v2-t03-planned-order.spec.ts",
+      "proves": "desktop Chromium and mobile WebKit keep Set 1 current when an extra is performed first, retain Extra set 1 across reload, expose grouped member order, separate finish counts, and preserve the distinction in History"
+    },
+    "T03-exportImport": {
+      "status": "current",
+      "implementingPackage": "T03",
+      "testPath": "tests/unit/v2-t03-planned-order-portability.test.ts",
+      "command": "npx vitest run tests/unit/v2-t03-planned-order-portability.test.ts",
+      "proves": "CSV, History reports, deterministic Review digest, and coaching brief preserve planned versus extra origin, label, ordering, and target-adherence boundaries without excluding extra performed evidence"
+    },
+    "T03-restoreRollback": {
+      "status": "current",
+      "implementingPackage": "T03",
+      "testPath": "tests/unit/v2-t03-planned-order-restore.test.ts",
+      "command": "npx vitest run tests/unit/v2-t03-planned-order-restore.test.ts",
+      "proves": "encrypted history restore retains planned and extra occurrence identity, immutable order, and the extra marker while recomputing unsupported or non-planned target outcomes to unknown"
+    },
+    "T04-databaseService": {
+      "status": "current",
+      "implementingPackage": "T04",
+      "testPath": "tests/unit/v2-t04-warmup-occurrences-db.test.ts",
+      "command": "npx vitest run tests/unit/v2-t04-warmup-occurrences-db.test.ts",
+      "proves": "normal, compiled, and retrospective producers create exactly one occurrence per authored structured day or exercise warm-up action; reference overview prose is not a check-off; stable occurrence mutations retain notes, exact retry receipts, equipment identity, reversible completion or skip state, aggregate exercise decisions, and abandonment evidence"
+    },
+    "T04-browser": {
+      "status": "current",
+      "implementingPackage": "T04",
+      "testPath": "tests/e2e/v2-t04-warmup-occurrences.spec.ts",
+      "command": "npx playwright test --config=playwright.v2-t04.config.ts tests/e2e/v2-t04-warmup-occurrences.spec.ts",
+      "proves": "desktop Chromium and narrow mobile WebKit at extra-large text show one check-off control per structured action, keep overview guidance reference-only, preserve note and reversible completion or skip state across reload, retain 44-pixel controls without horizontal overflow, and require explicit removal of an unsynced occurrence copy before abandon"
+    },
+    "T04-exportImport": {
+      "status": "current",
+      "implementingPackage": "T04",
+      "testPath": "tests/unit/v2-t04-warmup-occurrences-portability.test.ts",
+      "command": "npx vitest run tests/unit/v2-t04-warmup-occurrences-portability.test.ts",
+      "proves": "CSV and the deterministic Review digest carry each warm-up action exactly once with its stable kind, label, outcome, reason, note, and prescription evidence while excluding overview prose from action evidence"
+    },
+    "T04-restoreRollback": {
+      "status": "current",
+      "implementingPackage": "T04",
+      "testPath": "tests/unit/v2-t04-warmup-occurrences-restore.test.ts",
+      "command": "npx vitest run tests/unit/v2-t04-warmup-occurrences-restore.test.ts",
+      "proves": "encrypted history restore preserves exact warm-up occurrence IDs, immutable prescription identity, outcomes, reasons, notes, equipment snapshots, revisions, and mutation receipts without synthesizing or duplicating actions"
+    },
+    "T05-databaseService": {
+      "status": "current",
+      "implementingPackage": "T05",
+      "testPath": "tests/unit/v2-t05-execution-semantics-db.test.ts",
+      "command": "npx vitest run tests/unit/v2-t05-execution-semantics-db.test.ts",
+      "proves": "the acknowledged occurrence ledger enforces group member and round order, retry identity, exact nullable rest, skip outcomes, mixed group completion, and ready-to-finish state without a second persisted execution state"
+    },
+    "T05-browser": {
+      "status": "current",
+      "implementingPackage": "T05",
+      "testPath": "tests/e2e/v2-t05-execution-semantics.spec.ts",
+      "command": "npx playwright test --config=playwright.v2-t05.config.ts tests/e2e/v2-t05-execution-semantics.spec.ts",
+      "proves": "desktop Chromium and narrow mobile WebKit keep ledger-order Now and Next independent from card expansion, retain the current set through failure and retry, bind round rest to its acknowledged source through background return, reload, skip, and resume, preserve extra work, and require explicit Finish after all actions resolve"
+    },
+    "T05-exportImport": {
+      "status": "current",
+      "implementingPackage": "T05",
+      "testPath": "tests/unit/v2-t05-execution-semantics-portability.test.ts",
+      "command": "npx vitest run tests/unit/v2-t05-execution-semantics-portability.test.ts",
+      "proves": "CSV and the deterministic Review digest preserve exact occurrence order, outcomes, group coordinates, and nullable saved rest from which current, next, group, and rest meaning can be reproduced"
+    },
+    "T05-restoreRollback": {
+      "status": "current",
+      "implementingPackage": "T05",
+      "testPath": "tests/unit/v2-t05-execution-semantics-restore.test.ts",
+      "command": "npx vitest run tests/unit/v2-t05-execution-semantics-restore.test.ts",
+      "proves": "encrypted history restore preserves exact occurrence identities, order, group coordinates, outcomes, nullable rest facts, resolved-with-changes completion, and ready-to-finish projection while immutable plan evidence rejects rewriting"
+    },
+    "H03-databaseService": {
+      "status": "current",
+      "implementingPackage": "H03",
+      "testPath": "tests/unit/v2-h03-evidence-identity-db.test.ts",
+      "command": "npx vitest run tests/unit/v2-h03-evidence-identity-db.test.ts",
+      "proves": "owner-scoped History retains exact performed exercise identities and every completed set fact while admitting only one-to-one completed working-set occurrence links to exercise calculations; owner-created and import-created scopes are explicit, and Hevy calculations require the owner's confirmed source mapping to the same performed exercise while missing or inconsistent mappings fail closed"
+    },
+    "H03-browser": {
+      "status": "current",
+      "implementingPackage": "H03",
+      "testPath": "tests/e2e/v2-h03-evidence-identity.spec.ts",
+      "command": "npx playwright test --config=playwright.v2-h03.config.ts tests/e2e/v2-h03-evidence-identity.spec.ts",
+      "proves": "desktop Chromium and 320 by 700 enlarged-text mobile WebKit expose exact IDs, scope, source mapping, evidence tiers, retained-only facts, substitution identity, versioned derived labels, URL-backed filters, and source-workout return context without post-login writes or horizontal overflow"
+    },
+    "H03-exportImport": {
+      "status": "current",
+      "implementingPackage": "H03",
+      "testPath": "tests/unit/v2-h03-evidence-identity-portability.test.ts",
+      "command": "npx vitest run tests/unit/v2-h03-evidence-identity-portability.test.ts",
+      "proves": "set CSV exports exact performed and prescribed identity, exercise scope, family and import-creation context, evidence tier, exact occurrence-link status, frozen source occurrence evidence separately from the owner-scoped reviewed mapping and confirmation provenance, and the derived algorithm version"
+    },
+    "H03-restoreRollback": {
+      "status": "current",
+      "implementingPackage": "H03",
+      "testPath": "tests/unit/v2-h03-evidence-identity-restore.test.ts",
+      "command": "npx vitest run tests/unit/v2-h03-evidence-identity-restore.test.ts",
+      "proves": "snapshot schema 29 already preserves owner-scoped exercises, import provenance, session exercise bindings, occurrences, completed sets, source rows, mappings, and record versions needed to recompute H03 without a schema or recovery-manifest change"
+    },
+    "H03-adversarialPrivacy": {
+      "status": "current",
+      "implementingPackage": "H03",
+      "testPath": "tests/unit/v2-h03-evidence-identity-adversarial.test.ts",
+      "command": "npx vitest run tests/unit/v2-h03-evidence-identity-adversarial.test.ts",
+      "proves": "cross-owner exercise and mapping identities fail closed, ambiguous or missing links cannot enter calculations, and unsupported, legacy, corrected, imported, missing-mapping, and inconsistent-mapping precedence remains conservative"
+    },
+    "H02-databaseService": {
+      "status": "current",
+      "implementingPackage": "H02",
+      "testPath": "tests/unit/v2-h02-cadence-targets-time-db.test.ts",
+      "command": "npx vitest run tests/unit/v2-h02-cadence-targets-time-db.test.ts",
+      "proves": "History and Coach derive versioned complete-week calendar cadence, local-calendar gaps, stable Program-day lineage exposure, and below, at, above, or unknown planned-set outcomes from owner-scoped completed evidence and immutable occurrence targets while ignoring stale legacy target flags"
+    },
+    "H02-browser": {
+      "status": "current",
+      "implementingPackage": "H02",
+      "testPath": "tests/e2e/v2-h02-cadence-targets-time.spec.ts",
+      "command": "npx playwright test --config=playwright.v2-h02.config.ts tests/e2e/v2-h02-cadence-targets-time.spec.ts",
+      "proves": "desktop Chromium and 320 by 700 enlarged-text mobile WebKit keep cadence distinct from planned-set outcomes, label current preference as a comparison rather than adherence, preserve date-only time as unknown, expose stable Program-day lineage, make no post-login write, and remain free of horizontal overflow and unexplained page errors"
+    },
+    "H02-exportImport": {
+      "status": "current",
+      "implementingPackage": "H02",
+      "testPath": "tests/unit/v2-h02-cadence-targets-time-portability.test.ts",
+      "command": "npx vitest run tests/unit/v2-h02-cadence-targets-time-portability.test.ts",
+      "proves": "CSV portability retains immutable occurrence targets, performed local date and timezone identity, the raw legacy projection, and additive calculated outcome plus algorithm version without presenting a stale stored target flag as current truth"
+    },
+    "H02-restoreRollback": {
+      "status": "current",
+      "implementingPackage": "H02",
+      "testPath": "tests/unit/v2-h02-cadence-targets-time-restore.test.ts",
+      "command": "npx vitest run tests/unit/v2-h02-cadence-targets-time-restore.test.ts",
+      "proves": "encrypted snapshot restore rehydrates performed and planned facts, then recomputes the legacy projection only from one exact frozen occurrence target while ambiguous, missing, unsupported, percentage, and text targets remain unknown"
+    },
+    "H02-adversarialPrivacy": {
+      "status": "current",
+      "implementingPackage": "H02",
+      "testPath": "tests/unit/v2-h02-cadence-targets-time-adversarial.test.ts",
+      "command": "npx vitest run tests/unit/v2-h02-cadence-targets-time-adversarial.test.ts",
+      "proves": "reviewed correction and record-version restore recompute current outcomes without changing planned targets; owner, archived, abandoned, unsupported-target, and partial-current-week boundaries remain explicit and current weekly preference never becomes an adherence claim"
+    },
+    "H04-databaseService": {
+      "status": "current",
+      "implementingPackage": "H04",
+      "testPath": "tests/unit/v2-h04-pain-consistency-db.test.ts",
+      "command": "npx vitest run tests/unit/v2-h04-pain-consistency.test.ts tests/unit/v2-h04-pain-consistency-db.test.ts tests/unit/v2-u02-exception-context-adversarial.test.ts",
+      "proves": "one versioned meaning keeps absence unknown, distinguishes explicit zero no-issue from positive pain, excludes unsupported evidence from History calculations, allows supported set_exception evidence into proposal-only holds, preserves substitution identity, and creates no recommendation, decision, adaptation, or Program write during capture"
+    },
+    "H04-browser": {
+      "status": "current",
+      "implementingPackage": "H04",
+      "testPath": "tests/e2e/v2-h04-pain-consistency.spec.ts",
+      "command": "npx playwright test --config=playwright.v2-h04.config.ts tests/e2e/v2-h04-pain-consistency.spec.ts --project=desktop-chromium && V2_H04_PORT=3146 npx playwright test --config=playwright.v2-h04.config.ts tests/e2e/v2-h04-pain-consistency.spec.ts --project=narrow-mobile-webkit",
+      "proves": "desktop Chromium and independent 320 by 700 enlarged-text mobile WebKit fixtures show optional no-issue capture, positive and explicit no-issue History, performed versus planned substitution identity, distinct technique and limitation evidence, Review context, zero post-login writes, no horizontal overflow, and no unexpected page errors"
+    },
+    "H04-exportImport": {
+      "status": "current",
+      "implementingPackage": "H04",
+      "testPath": "tests/unit/v2-h04-pain-consistency-db.test.ts",
+      "command": "npx vitest run tests/unit/v2-h04-pain-consistency-db.test.ts tests/unit/v2-u02-exception-context-portability.test.ts",
+      "proves": "pain CSV retains raw severity and source while adding pain-evidence-v1 meaning plus exact performed and planned exercise identity, modification, substitution, and completed-set context without same-name inference"
+    },
+    "H04-restoreRollback": {
+      "status": "current",
+      "implementingPackage": "H04",
+      "testPath": "tests/unit/v2-u02-exception-context-restore.test.ts",
+      "command": "npx vitest run tests/unit/v2-u02-exception-context-restore.test.ts",
+      "proves": "snapshot schema 29 restores the raw set-linked pain fact and recomputes pain-evidence-v1 meaning without restoring a recommendation, decision, adaptation, or stale derived conclusion"
+    },
+    "H04-adversarialPrivacy": {
+      "status": "current",
+      "implementingPackage": "H04",
+      "testPath": "tests/unit/v2-u02-exception-context-adversarial.test.ts",
+      "command": "npx vitest run tests/unit/v2-u02-exception-context-adversarial.test.ts tests/unit/v2-h04-pain-consistency.test.ts",
+      "proves": "changed retry identity, cross-owner or invented linkage, invalid severity, missing location, unsupported source, set_exception zero, duplicate occurrence, and missing evidence fail closed or remain unknown without changing another fact or decision"
+    },
+    "H05-databaseService": {
+      "status": "current",
+      "implementingPackage": "H05",
+      "testPath": "tests/unit/recommendation-decisions-characterization.test.ts",
+      "command": "npx vitest run tests/unit/recommendation-decisions-characterization.test.ts tests/unit/review-decisions-db.test.ts tests/unit/recommendation-card.test.tsx",
+      "proves": "versioned owner-scoped evidence is resolved at review and decision time; supported approval publishes one future Program version atomically, while contradictory, unsupported, stale, deferred, cross-owner, and changed-revision proposals remain visible but cannot mutate Program or performed facts"
+    },
+    "H05-browser": {
+      "status": "current",
+      "implementingPackage": "H05",
+      "testPath": "tests/e2e/v2-h05-evidence-linked-review.spec.ts",
+      "command": "npx playwright test --config=playwright.v2-h05.config.ts tests/e2e/v2-h05-evidence-linked-review.spec.ts --project=desktop-chromium && V2_H05_PORT=3148 npx playwright test --config=playwright.v2-h05.config.ts tests/e2e/v2-h05-evidence-linked-review.spec.ts --project=narrow-mobile-webkit",
+      "proves": "desktop Chromium and independent 320 by 700 enlarged-text mobile WebKit move from each material claim to exact workout and set evidence and back, expose source, version, limitations, confidence and future effect, keep unsupported approval disabled, persist defer and resume, and preserve performed evidence after future-only acceptance"
+    },
+    "H05-exportImport": {
+      "status": "current",
+      "implementingPackage": "H05",
+      "testPath": "tests/unit/v2-h05-review-portability.test.ts",
+      "command": "npx vitest run tests/unit/v2-h05-review-portability.test.ts tests/unit/json-backup-db.test.ts",
+      "proves": "canonical snapshot schema 30 retains versioned recommendation evidence, review and defer revisions, durable defer state, and immutable decision-time evidence while schema 29 upgrades explicitly to legacy-unknown without inventing meaning"
+    },
+    "H05-restoreRollback": {
+      "status": "current",
+      "implementingPackage": "H05",
+      "testPath": "tests/unit/v2-h05-review-portability.test.ts",
+      "command": "npx vitest run tests/unit/v2-h05-review-portability.test.ts tests/unit/snapshots-db.test.ts",
+      "proves": "restore validates coherent review, defer and decision snapshots before writes and rejects malformed state; full restore retains exact snapshot coaching state, while History-only restore uses the current Gauntlet B monotonic merge contract"
+    },
+    "H05-adversarialPrivacy": {
+      "status": "current",
+      "implementingPackage": "H05",
+      "testPath": "tests/unit/recommendation-decisions-characterization.test.ts",
+      "command": "npx vitest run tests/unit/recommendation-decisions-characterization.test.ts tests/unit/v2-h05-review-portability.test.ts",
+      "proves": "concurrent decisions, stale facts, contradictory or missing support, deferred state, invalid dates, revision races, failed audit or publication, lost acknowledgement, owner scoping, and malformed restore all fail closed without duplicate decisions, adaptations, or historical mutation"
+    },
+    "GauntletB-liveWorkout": {
+      "status": "current",
+      "implementingPackage": "Gauntlet B",
+      "testPath": "tests/e2e/v2-gauntlet-b-live-workout.spec.ts",
+      "command": "npm run test:e2e:v2-gauntlet-b",
+      "proves": "independent disposable desktop Chromium, 440 by 956 mobile Chromium, and 320 by 700 enlarged-text mobile WebKit complete warm-up, three ordinary set acknowledgements, a genuinely unavailable suspension-equipment skip, deliberate continuation, un-skip, focused replacement, replacement-set acknowledgement, and finish while preserving at least 280 CSS pixels between the sticky guidance and workout-status dock, clearing mobile navigation, exposing 44-pixel recovery targets, avoiding horizontal overflow, and reporting no unexpected page errors"
+    },
+    "GauntletB-historyRestore": {
+      "status": "current",
+      "implementingPackage": "Gauntlet B",
+      "testPath": "tests/unit/snapshots-db.test.ts",
+      "command": "npx vitest run tests/unit/snapshots-db.test.ts tests/unit/recovery-manifest-db.test.ts",
+      "proves": "History-only restore keeps the current accepted Program, immutable owner decision, decision-time snapshot, and accepted adaptation; an older pending recommendation cannot become actionable, and injected failure rolls back before a successful exact retry"
+    },
+    "A05-databaseService": {
+      "status": "current",
+      "implementingPackage": "A05",
+      "testPath": "tests/unit/v2-a05-selective-review-bridge.test.ts",
+      "command": "npx vitest run tests/unit/v2-a05-selective-review-bridge.test.ts --maxWorkers=1 --no-file-parallelism",
+      "proves": "the exact owner-selected import writes one sanitized external-analysis receipt and only selected future-only Review proposals atomically, advances the current recommendation revision once, and leaves Program intent, active work, performed facts, independent activities, metrics, prior decisions, and accepted adaptations unchanged"
+    },
+    "A05-browser": {
+      "status": "current",
+      "implementingPackage": "A05",
+      "testPath": "tests/e2e/v2-a05-selective-review-bridge.spec.ts",
+      "command": "npx playwright test --config=playwright.v2-a05.config.ts tests/e2e/v2-a05-selective-review-bridge.spec.ts",
+      "proves": "desktop Chromium and independent narrow WebKit keep exact external origin and evidence visible through selective import, Review preview, defer, reject, accept, and edit-and-accept without a silent Program or performed-fact change"
+    },
+    "A05-exportImport": {
+      "status": "current",
+      "implementingPackage": "A05",
+      "testPath": "tests/unit/v2-a05-selective-review-bridge.test.ts",
+      "command": "npx vitest run tests/unit/v2-a05-selective-review-bridge.test.ts --maxWorkers=1 --no-file-parallelism",
+      "proves": "only allowlisted selected observations and future-only proposals cross the import boundary; the raw response is not retained, duplicate identity is idempotent, changed replay conflicts, and the typed receipt remains owner scoped"
+    },
+    "A05-restoreRollback": {
+      "status": "current",
+      "implementingPackage": "A05",
+      "testPath": "tests/unit/v2-a05-selective-review-bridge.test.ts",
+      "command": "npx vitest run tests/unit/v2-a05-selective-review-bridge.test.ts --maxWorkers=1 --no-file-parallelism",
+      "proves": "injected import or decision failure rolls back the receipt, proposals, decisions, adaptations, and recommendation revision together, while recovery manifest 13 preserves the sanitized receipt without the raw response"
+    },
+    "A05-adversarialPrivacy": {
+      "status": "current",
+      "implementingPackage": "A05",
+      "testPath": "tests/unit/v2-a05-selective-review-bridge.test.ts",
+      "command": "npx vitest run tests/unit/v2-a05-selective-review-bridge.test.ts --maxWorkers=1 --no-file-parallelism",
+      "proves": "expired, stale, cross-owner, changed, unselected, unsupported, malicious, and replayed content fails closed without retaining a raw response or creating a fact, calculation, Program write, owner decision, or accepted adaptation"
+    },
+    "U02-databaseService": {
+      "status": "current",
+      "implementingPackage": "U02",
+      "testPath": "tests/unit/v2-u02-exception-context-db.test.ts",
+      "command": "npx vitest run tests/unit/v2-u02-exception-context-db.test.ts",
+      "proves": "ordinary completed sets retain null unknown exception fields, while one explicit RIR-or-RPE, technique issue, limitation cause, note, and set-linked pain flag save atomically with exact retry identity"
+    },
+    "U02-browser": {
+      "status": "current",
+      "implementingPackage": "U02",
+      "testPath": "tests/e2e/v2-u02-exception-context.spec.ts",
+      "command": "npx playwright test --config=playwright.v2-u02.config.ts tests/e2e/v2-u02-exception-context.spec.ts",
+      "proves": "desktop Chromium, 440 by 956 mobile Chromium, and 320 by 700 mobile WebKit at extra-large text keep ordinary logging collapsed, make pain and issue context clearable before save, retain the exact offline command, and expose saved evidence in History and Review without overflow"
+    },
+    "U02-exportImport": {
+      "status": "current",
+      "implementingPackage": "U02",
+      "testPath": "tests/unit/v2-u02-exception-context-portability.test.ts",
+      "command": "npx vitest run tests/unit/v2-u02-exception-context-portability.test.ts",
+      "proves": "set CSV, pain CSV, and snapshot schema 29 preserve exact nullable effort and issue fields plus the exact completed-set pain link"
+    },
+    "U02-restoreRollback": {
+      "status": "current",
+      "implementingPackage": "U02",
+      "testPath": "tests/unit/v2-u02-exception-context-restore.test.ts",
+      "command": "npx vitest run tests/unit/v2-u02-exception-context-restore.test.ts",
+      "proves": "history restore returns set exception and linked pain evidence together, while schema 28 upgrades add explicit null unknowns without inference"
+    },
+    "U02-adversarialPrivacy": {
+      "status": "current",
+      "implementingPackage": "U02",
+      "testPath": "tests/unit/v2-u02-exception-context-adversarial.test.ts",
+      "command": "npx vitest run tests/unit/v2-u02-exception-context-adversarial.test.ts",
+      "proves": "changed retry evidence conflicts, cross-owner and invented pain linkage fails closed, old offline commands upgrade with unknown context, capture itself writes no recommendation, decision, or adaptation, and durable set_exception pain remains Review-visible without entering automatic pain holds"
+    },
+    "U03-databaseService": {
+      "status": "current",
+      "implementingPackage": "U03",
+      "testPath": "tests/unit/program-editor-db.test.ts",
+      "command": "npx vitest run tests/unit/program-editor-db.test.ts",
+      "proves": "a reviewed Program draft publishes one new immutable future version while an already active session snapshot, completed or imported History, and every earlier Program version remain byte-for-byte unchanged"
+    },
+    "U03-browser": {
+      "status": "current",
+      "implementingPackage": "U03",
+      "testPath": "tests/e2e/v2-u03-future-program.spec.ts",
+      "command": "npx playwright test --config=playwright.v2-u03.config.ts tests/e2e/v2-u03-future-program.spec.ts",
+      "proves": "the editor labels draft, review, and publication as future-only; exposes the exact reviewed before and after values; remains operable at 320 pixels and extra-large text; and recovers truthfully from a publication failure"
+    },
+    "U03-exportImport": {
+      "status": "current",
+      "implementingPackage": "U03",
+      "testPath": "tests/unit/program-editor-db.test.ts",
+      "command": "npx vitest run tests/unit/program-editor-db.test.ts",
+      "proves": "draft and immutable Program-version documents retain exact authored intent and version identity through the existing canonical snapshot and version-export boundaries without reinterpreting workout facts"
+    },
+    "U03-restoreRollback": {
+      "status": "current",
+      "implementingPackage": "U03",
+      "testPath": "tests/unit/program-editor-db.test.ts",
+      "command": "npx vitest run tests/unit/program-editor-db.test.ts",
+      "proves": "injected publication failure rolls back without advancing the Program, while restore creates a new draft that requires a fresh exact review and publishes as a new future version rather than rewriting history"
+    },
+    "U03-adversarialPrivacy": {
+      "status": "current",
+      "implementingPackage": "U03",
+      "testPath": "tests/unit/program-editor-db.test.ts",
+      "command": "npx vitest run tests/unit/program-editor-db.test.ts",
+      "proves": "stale revisions, changed bases, conflicting tabs, obsolete review hashes, malformed drafts, and failed publication remain recoverable or fail closed without mutating active or historical workout facts"
+    },
+    "R01-databaseService": {
+      "status": "current",
+      "implementingPackage": "R01",
+      "testPath": "tests/unit/v2-r01-lifecycle-audit-db.test.ts",
+      "command": "npx vitest run tests/unit/v2-r01-lifecycle-audit-db.test.ts",
+      "proves": "the migrated database has exactly the 65 tables owned by recovery manifest 13, and every audited v2 table and semantic field exists under one complete lifecycle inventory"
+    },
+    "R01-browser": {
+      "status": "current",
+      "implementingPackage": "R01",
+      "testPath": "tests/e2e/v2-r01-lifecycle-audit.spec.ts",
+      "command": "npx playwright test --config=playwright.v2-r01.config.ts tests/e2e/v2-r01-lifecycle-audit.spec.ts",
+      "proves": "desktop Chromium and independent narrow WebKit keep canonical exports, external-analysis packages, local support diagnostics, Review decisions, and Coach visibly separate without an external request"
+    },
+    "R01-exportImport": {
+      "status": "current",
+      "implementingPackage": "R01",
+      "testPath": "tests/unit/v2-r01-lifecycle-audit-portability.test.ts",
+      "command": "npx vitest run tests/unit/v2-r01-lifecycle-audit-portability.test.ts",
+      "proves": "every implemented product package and audited field family has an exact portability owner or a bounded exclusion, including the privacy-minimal analysis receipt and the corrected live A05 import bridge evidence"
+    },
+    "R01-restoreRollback": {
+      "status": "current",
+      "implementingPackage": "R01",
+      "testPath": "tests/unit/v2-r01-lifecycle-audit-restore.test.ts",
+      "command": "npx vitest run tests/unit/v2-r01-lifecycle-audit-restore.test.ts",
+      "proves": "every database field family routes through recovery manifest 13, canonical snapshot capture, atomic restore, and rollback, while device work, diagnostics, analysis-package receipts, and local support artifacts retain their explicit different boundaries"
+    },
+    "R01-adversarialPrivacy": {
+      "status": "current",
+      "implementingPackage": "R01",
+      "testPath": "tests/unit/v2-r01-lifecycle-audit-adversarial.test.ts",
+      "command": "npx vitest run tests/unit/v2-r01-lifecycle-audit-adversarial.test.ts",
+      "proves": "duplicated identities, missing lifecycle consumers, empty field inventories, and unexplained exclusions are rejected deterministically before a field can be treated as covered"
+    },
+    "A04-databaseService": {
+      "status": "current",
+      "implementingPackage": "A04",
+      "testPath": "tests/unit/v2-a04-external-analysis-validation.test.ts",
+      "command": "npx vitest run tests/unit/v2-a04-external-analysis-validation.test.ts --maxWorkers=1 --no-file-parallelism",
+      "proves": "an authenticated owner can validate only against the exact active owner-scoped manifest; absent, expired, cross-owner, malformed, or stale-Program receipts fail closed without retaining a response or creating a recommendation, decision, adaptation, or Program write"
+    },
+    "A04-browser": {
+      "status": "current",
+      "implementingPackage": "A04",
+      "testPath": "tests/e2e/v2-a04-ai-response-validation.spec.ts",
+      "command": "npx playwright test --config=playwright.v2-a04.config.ts tests/e2e/v2-a04-ai-response-validation.spec.ts",
+      "proves": "desktop Chromium and independent narrow WebKit paste or upload JSON, preview exact plain text and future-only effects, reject active content, download the untouched original input, discard transient state, and retain accessible no-overflow layout"
+    },
+    "A04-exportImport": {
+      "status": "current",
+      "implementingPackage": "A04",
+      "testPath": "tests/unit/v2-a04-external-analysis-validation.test.ts",
+      "command": "npx vitest run tests/unit/v2-a04-external-analysis-validation.test.ts --maxWorkers=1 --no-file-parallelism",
+      "proves": "the minimal A01 manifest supplies exact versions, digest, question, evidence IDs, expiry, and current Program precondition for response validation without a retained raw package or any import side effect"
+    },
+    "A04-restoreRollback": {
+      "status": "current",
+      "implementingPackage": "A04",
+      "testPath": "tests/unit/v2-a04-external-analysis-validation.test.ts",
+      "command": "npx vitest run tests/unit/v2-a04-external-analysis-validation.test.ts --maxWorkers=1 --no-file-parallelism",
+      "proves": "validation creates no durable response to restore, the operational manifest remains excluded from snapshot schema 30, and the response identity is absent from captured recovery data"
+    },
+    "A04-adversarialPrivacy": {
+      "status": "current",
+      "implementingPackage": "A04",
+      "testPath": "tests/unit/v2-a04-external-analysis-validation.test.ts",
+      "command": "npx vitest run tests/unit/v2-a04-external-analysis-validation.test.ts --maxWorkers=1 --no-file-parallelism",
+      "proves": "wrong media, malformed UTF-8 or JSON, excessive nesting, active or display-unsafe text, cross-owner manifests, stale Programs, and invalid manifest metadata fail closed before a trusted preview"
+    },
+    "D02-databaseService": {
+      "status": "current",
+      "implementingPackage": "D02",
+      "testPath": "tests/unit/v2-d02-support-bundle.test.ts",
+      "command": "npx vitest run tests/unit/v2-d02-support-bundle.test.ts --maxWorkers=1 --no-file-parallelism",
+      "proves": "the support artifact is generated entirely from a closed client-local builder and adds no database, server action, API, persistence, retained-log, or owner-data read path"
+    },
+    "D02-browser": {
+      "status": "current",
+      "implementingPackage": "D02",
+      "testPath": "tests/e2e/v2-d02-support-bundle.spec.ts",
+      "command": "npx playwright test --config=playwright.v2-d02.config.ts tests/e2e/v2-d02-support-bundle.spec.ts",
+      "proves": "desktop Chromium and independent 320 by 700 WebKit select one problem, preview problem-specific coarse context, remove optional sections, deliberately download exact matching bytes, make no network request during preparation or download, and retain keyboard and no-overflow behavior"
+    },
+    "D02-exportImport": {
+      "status": "current",
+      "implementingPackage": "D02",
+      "testPath": "tests/unit/v2-d02-support-bundle.test.ts",
+      "command": "npx vitest run tests/unit/v2-d02-support-bundle.test.ts --maxWorkers=1 --no-file-parallelism",
+      "proves": "support-bundle/1 serializes one exact owner-previewed JSON byte sequence and a non-identifying filename for deliberate local export; it has no import, upload, provider, or AI-analysis reuse path"
+    },
+    "D02-restoreRollback": {
+      "status": "current",
+      "implementingPackage": "D02",
+      "testPath": "tests/unit/v2-d02-support-bundle.test.ts",
+      "command": "npx vitest run tests/unit/v2-d02-support-bundle.test.ts --maxWorkers=1 --no-file-parallelism",
+      "proves": "the transient bundle creates no durable entity or receipt to snapshot, restore, roll back, expire, or resurrect; collection failure degrades only to an allowlisted runtime category without raw error content"
+    },
+    "D02-adversarialPrivacy": {
+      "status": "current",
+      "implementingPackage": "D02",
+      "testPath": "tests/unit/v2-d02-support-bundle.test.ts",
+      "command": "npx vitest run tests/unit/v2-d02-support-bundle.test.ts --maxWorkers=1 --no-file-parallelism",
+      "proves": "unknown context fields, stable identities, weights, repetitions, unsafe owner text, incompatible problem outcomes, raw browser strings, logs, provider content, analysis packages, secrets, and database rows cannot pass the closed problem allowlists"
+    }
+  },
+  "concerns": [
+    {
+      "concernId": "plan-schedule-preview-start",
+      "label": "Plan/schedule/preview/start separation",
+      "cells": {
+        "pureContract": {
+          "level": "R",
+          "fixtures": [
+            "F11"
+          ],
+          "verificationId": "P02-pureContract"
+        },
+        "databaseService": {
+          "level": "R",
+          "fixtures": [
+            "F11"
+          ],
+          "verificationId": "T06-databaseService"
+        },
+        "browser": {
+          "level": "R",
+          "fixtures": [
+            "F11"
+          ],
+          "verificationId": "T06-browser"
+        },
+        "exportImport": {
+          "level": "C",
+          "fixtures": [
+            "F11"
+          ],
+          "verificationId": "T06-exportImport"
+        },
+        "restoreRollback": {
+          "level": "C",
+          "fixtures": [
+            "F11"
+          ],
+          "verificationId": "T06-restoreRollback"
+        },
+        "adversarialPrivacy": {
+          "level": "—"
+        }
+      }
+    },
+    {
+      "concernId": "prescribed-versus-performed",
+      "label": "Prescribed versus performed",
+      "cells": {
+        "pureContract": {
+          "level": "R",
+          "fixtures": [
+            "F01",
+            "F02",
+            "F08"
+          ],
+          "verificationId": "P02-pureContract"
+        },
+        "databaseService": {
+          "level": "R",
+          "fixtures": [
+            "F01",
+            "F02",
+            "F08"
+          ],
+          "verificationId": "T01-databaseService"
+        },
+        "browser": {
+          "level": "R",
+          "fixtures": [
+            "F01",
+            "F02",
+            "F08"
+          ],
+          "verificationId": "T01-browser"
+        },
+        "exportImport": {
+          "level": "R",
+          "fixtures": [
+            "F01",
+            "F02",
+            "F08"
+          ],
+          "verificationId": "T01-exportImport"
+        },
+        "restoreRollback": {
+          "level": "C",
+          "fixtures": [
+            "F01",
+            "F02",
+            "F08"
+          ],
+          "verificationId": "T01-restoreRollback"
+        },
+        "adversarialPrivacy": {
+          "level": "C",
+          "fixtures": [
+            "F01",
+            "F02",
+            "F08"
+          ],
+          "verificationId": "T01-adversarialPrivacy"
+        }
+      }
+    },
+    {
+      "concernId": "active-finish-abandon",
+      "label": "Active/finish-early/abandon evidence",
+      "cells": {
+        "pureContract": {
+          "level": "R",
+          "fixtures": [
+            "F01",
+            "F17"
+          ],
+          "verificationId": "P02-pureContract"
+        },
+        "databaseService": {
+          "level": "R",
+          "fixtures": [
+            "F01",
+            "F17"
+          ],
+          "verificationId": "T02-databaseService"
+        },
+        "browser": {
+          "level": "R",
+          "fixtures": [
+            "F01",
+            "F17"
+          ],
+          "verificationId": "T02-browser"
+        },
+        "exportImport": {
+          "level": "R",
+          "fixtures": [
+            "F01",
+            "F17"
+          ],
+          "verificationId": "T02-exportImport"
+        },
+        "restoreRollback": {
+          "level": "R",
+          "fixtures": [
+            "F01",
+            "F17"
+          ],
+          "verificationId": "T02-restoreRollback"
+        },
+        "adversarialPrivacy": {
+          "level": "C",
+          "fixtures": [
+            "F01",
+            "F17"
+          ],
+          "verificationId": "T02-adversarialPrivacy"
+        }
+      }
+    },
+    {
+      "concernId": "acknowledgement-retry-idempotency",
+      "label": "Acknowledgement/retry/idempotency",
+      "cells": {
+        "pureContract": {
+          "level": "R",
+          "fixtures": [
+            "F03",
+            "F05",
+            "F17"
+          ],
+          "verificationId": "P02-pureContract"
+        },
+        "databaseService": {
+          "level": "R",
+          "fixtures": [
+            "F03",
+            "F05",
+            "F17"
+          ],
+          "verificationId": "T02-databaseService"
+        },
+        "browser": {
+          "level": "R",
+          "fixtures": [
+            "F03",
+            "F05",
+            "F17"
+          ],
+          "verificationId": "T02-browser"
+        },
+        "exportImport": {
+          "level": "—"
+        },
+        "restoreRollback": {
+          "level": "C",
+          "fixtures": [
+            "F03",
+            "F05",
+            "F17"
+          ],
+          "verificationId": "T02-restoreRollback"
+        },
+        "adversarialPrivacy": {
+          "level": "C",
+          "fixtures": [
+            "F03",
+            "F05",
+            "F17"
+          ],
+          "verificationId": "T02-adversarialPrivacy"
+        }
+      }
+    },
+    {
+      "concernId": "planned-order-skip-extra",
+      "label": "Planned order/skip/extra occurrence",
+      "cells": {
+        "pureContract": {
+          "level": "R",
+          "fixtures": [
+            "F03"
+          ],
+          "verificationId": "P02-pureContract"
+        },
+        "databaseService": {
+          "level": "R",
+          "fixtures": [
+            "F03"
+          ],
+          "verificationId": "T03-databaseService"
+        },
+        "browser": {
+          "level": "R",
+          "fixtures": [
+            "F03"
+          ],
+          "verificationId": "T03-browser"
+        },
+        "exportImport": {
+          "level": "C",
+          "fixtures": [
+            "F03"
+          ],
+          "verificationId": "T03-exportImport"
+        },
+        "restoreRollback": {
+          "level": "C",
+          "fixtures": [
+            "F03"
+          ],
+          "verificationId": "T03-restoreRollback"
+        },
+        "adversarialPrivacy": {
+          "level": "—"
+        }
+      }
+    },
+    {
+      "concernId": "warmup-occurrence-truth",
+      "label": "Warm-up occurrence truth",
+      "cells": {
+        "pureContract": {
+          "level": "R",
+          "fixtures": [
+            "F04"
+          ],
+          "verificationId": "P02-pureContract"
+        },
+        "databaseService": {
+          "level": "R",
+          "fixtures": [
+            "F04"
+          ],
+          "verificationId": "T04-databaseService"
+        },
+        "browser": {
+          "level": "R",
+          "fixtures": [
+            "F04"
+          ],
+          "verificationId": "T04-browser"
+        },
+        "exportImport": {
+          "level": "C",
+          "fixtures": [
+            "F04"
+          ],
+          "verificationId": "T04-exportImport"
+        },
+        "restoreRollback": {
+          "level": "C",
+          "fixtures": [
+            "F04"
+          ],
+          "verificationId": "T04-restoreRollback"
+        },
+        "adversarialPrivacy": {
+          "level": "—"
+        }
+      }
+    },
+    {
+      "concernId": "superset-current-next-rest",
+      "label": "Superset/current/next/rest",
+      "cells": {
+        "pureContract": {
+          "level": "R",
+          "fixtures": [
+            "F03",
+            "F04"
+          ],
+          "verificationId": "P02-pureContract"
+        },
+        "databaseService": {
+          "level": "R",
+          "fixtures": [
+            "F03",
+            "F04"
+          ],
+          "verificationId": "T05-databaseService"
+        },
+        "browser": {
+          "level": "R",
+          "fixtures": [
+            "F03",
+            "F04"
+          ],
+          "verificationId": "T05-browser"
+        },
+        "exportImport": {
+          "level": "C",
+          "fixtures": [
+            "F03",
+            "F04"
+          ],
+          "verificationId": "T05-exportImport"
+        },
+        "restoreRollback": {
+          "level": "C",
+          "fixtures": [
+            "F03",
+            "F04"
+          ],
+          "verificationId": "T05-restoreRollback"
+        },
+        "adversarialPrivacy": {
+          "level": "—"
+        }
+      }
+    },
+    {
+      "concernId": "immutable-correction-lineage",
+      "label": "Immutable correction lineage",
+      "cells": {
+        "pureContract": {
+          "level": "R",
+          "fixtures": [
+            "F06",
+            "F14",
+            "F17"
+          ],
+          "verificationId": "P02-pureContract"
+        },
+        "databaseService": {
+          "level": "R",
+          "fixtures": [
+            "F06",
+            "F14",
+            "F17"
+          ],
+          "verificationId": "T02-databaseService"
+        },
+        "browser": {
+          "level": "R",
+          "fixtures": [
+            "F06",
+            "F14",
+            "F17"
+          ],
+          "verificationId": "T02-browser"
+        },
+        "exportImport": {
+          "level": "R",
+          "fixtures": [
+            "F06",
+            "F14",
+            "F17"
+          ],
+          "verificationId": "T02-exportImport"
+        },
+        "restoreRollback": {
+          "level": "R",
+          "fixtures": [
+            "F06",
+            "F14",
+            "F17"
+          ],
+          "verificationId": "T02-restoreRollback"
+        },
+        "adversarialPrivacy": {
+          "level": "C",
+          "fixtures": [
+            "F06",
+            "F14",
+            "F17"
+          ],
+          "verificationId": "T02-adversarialPrivacy"
+        }
+      }
+    },
+    {
+      "concernId": "exercise-slot-occurrence-identity",
+      "label": "Exercise/slot/occurrence identity",
+      "cells": {
+        "pureContract": {
+          "level": "R",
+          "fixtures": [
+            "F02",
+            "F07",
+            "F15"
+          ],
+          "verificationId": "P02-pureContract"
+        },
+        "databaseService": {
+          "level": "R",
+          "fixtures": [
+            "F02",
+            "F07",
+            "F15"
+          ],
+          "verificationId": "H03-databaseService"
+        },
+        "browser": {
+          "level": "C",
+          "fixtures": [
+            "F02",
+            "F07",
+            "F15"
+          ],
+          "verificationId": "H03-browser"
+        },
+        "exportImport": {
+          "level": "R",
+          "fixtures": [
+            "F02",
+            "F07",
+            "F15"
+          ],
+          "verificationId": "H03-exportImport"
+        },
+        "restoreRollback": {
+          "level": "R",
+          "fixtures": [
+            "F02",
+            "F07",
+            "F15"
+          ],
+          "verificationId": "H03-restoreRollback"
+        },
+        "adversarialPrivacy": {
+          "level": "C",
+          "fixtures": [
+            "F02",
+            "F07",
+            "F15"
+          ],
+          "verificationId": "H03-adversarialPrivacy"
+        }
+      }
+    },
+    {
+      "concernId": "measurement-unit-load",
+      "label": "Measurement/unit/load meaning",
+      "cells": {
+        "pureContract": {
+          "level": "R",
+          "fixtures": [
+            "F01",
+            "F02",
+            "F09"
+          ],
+          "verificationId": "P02-pureContract"
+        },
+        "databaseService": {
+          "level": "R",
+          "fixtures": [
+            "F01",
+            "F02",
+            "F09"
+          ],
+          "verificationId": "T01-databaseService"
+        },
+        "browser": {
+          "level": "C",
+          "fixtures": [
+            "F01",
+            "F02",
+            "F09"
+          ],
+          "verificationId": "T01-browser"
+        },
+        "exportImport": {
+          "level": "R",
+          "fixtures": [
+            "F01",
+            "F02",
+            "F09"
+          ],
+          "verificationId": "T01-exportImport"
+        },
+        "restoreRollback": {
+          "level": "C",
+          "fixtures": [
+            "F01",
+            "F02",
+            "F09"
+          ],
+          "verificationId": "T01-restoreRollback"
+        },
+        "adversarialPrivacy": {
+          "level": "C",
+          "fixtures": [
+            "F01",
+            "F02",
+            "F09"
+          ],
+          "verificationId": "T01-adversarialPrivacy"
+        }
+      }
+    },
+    {
+      "concernId": "time-local-date-timezone",
+      "label": "Time/local date/timezone",
+      "cells": {
+        "pureContract": {
+          "level": "R",
+          "fixtures": [
+            "F10"
+          ],
+          "verificationId": "P02-pureContract"
+        },
+        "databaseService": {
+          "level": "R",
+          "fixtures": [
+            "F10"
+          ],
+          "verificationId": "H02-databaseService"
+        },
+        "browser": {
+          "level": "R",
+          "fixtures": [
+            "F10"
+          ],
+          "verificationId": "H02-browser"
+        },
+        "exportImport": {
+          "level": "R",
+          "fixtures": [
+            "F10"
+          ],
+          "verificationId": "H02-exportImport"
+        },
+        "restoreRollback": {
+          "level": "R",
+          "fixtures": [
+            "F10"
+          ],
+          "verificationId": "H02-restoreRollback"
+        },
+        "adversarialPrivacy": {
+          "level": "C",
+          "fixtures": [
+            "F10"
+          ],
+          "verificationId": "H02-adversarialPrivacy"
+        }
+      }
+    },
+    {
+      "concernId": "provenance-evidence-tier",
+      "label": "Provenance/evidence tier",
+      "cells": {
+        "pureContract": {
+          "level": "R",
+          "fixtures": [
+            "F07",
+            "F08",
+            "F13"
+          ],
+          "verificationId": "P02-pureContract"
+        },
+        "databaseService": {
+          "level": "R",
+          "fixtures": [
+            "F07",
+            "F08",
+            "F13"
+          ],
+          "verificationId": "H03-databaseService"
+        },
+        "browser": {
+          "level": "C",
+          "fixtures": [
+            "F07",
+            "F08",
+            "F13"
+          ],
+          "verificationId": "H03-browser"
+        },
+        "exportImport": {
+          "level": "R",
+          "fixtures": [
+            "F07",
+            "F08",
+            "F13"
+          ],
+          "verificationId": "H03-exportImport"
+        },
+        "restoreRollback": {
+          "level": "R",
+          "fixtures": [
+            "F07",
+            "F08",
+            "F13"
+          ],
+          "verificationId": "H03-restoreRollback"
+        },
+        "adversarialPrivacy": {
+          "level": "C",
+          "fixtures": [
+            "F07",
+            "F08",
+            "F13"
+          ],
+          "verificationId": "H03-adversarialPrivacy"
+        }
+      }
+    },
+    {
+      "concernId": "missing-unknown-unsupported-na",
+      "label": "Missing/unknown/unsupported/N/A",
+      "cells": {
+        "pureContract": {
+          "level": "R",
+          "fixtures": [
+            "F05",
+            "F08",
+            "F17"
+          ],
+          "verificationId": "P02-pureContract"
+        },
+        "databaseService": {
+          "level": "R",
+          "fixtures": [
+            "F05",
+            "F08",
+            "F17"
+          ],
+          "verificationId": "H03-databaseService"
+        },
+        "browser": {
+          "level": "R",
+          "fixtures": [
+            "F05",
+            "F08",
+            "F17"
+          ],
+          "verificationId": "H03-browser"
+        },
+        "exportImport": {
+          "level": "R",
+          "fixtures": [
+            "F05",
+            "F08",
+            "F17"
+          ],
+          "verificationId": "H03-exportImport"
+        },
+        "restoreRollback": {
+          "level": "C",
+          "fixtures": [
+            "F05",
+            "F08",
+            "F17"
+          ],
+          "verificationId": "H03-restoreRollback"
+        },
+        "adversarialPrivacy": {
+          "level": "C",
+          "fixtures": [
+            "F05",
+            "F08",
+            "F17"
+          ],
+          "verificationId": "H03-adversarialPrivacy"
+        }
+      }
+    },
+    {
+      "concernId": "derived-invalidation-recompute",
+      "label": "Derived invalidation/recompute",
+      "cells": {
+        "pureContract": {
+          "level": "R",
+          "fixtures": [
+            "F06",
+            "F14",
+            "F17"
+          ],
+          "verificationId": "P02-pureContract"
+        },
+        "databaseService": {
+          "level": "R",
+          "fixtures": [
+            "F06",
+            "F14",
+            "F17"
+          ],
+          "verificationId": "H05-databaseService"
+        },
+        "browser": {
+          "level": "R",
+          "fixtures": [
+            "F06",
+            "F14",
+            "F17"
+          ],
+          "verificationId": "H05-browser"
+        },
+        "exportImport": {
+          "level": "C",
+          "fixtures": [
+            "F06",
+            "F14",
+            "F17"
+          ],
+          "verificationId": "H05-exportImport"
+        },
+        "restoreRollback": {
+          "level": "R",
+          "fixtures": [
+            "F06",
+            "F14",
+            "F17"
+          ],
+          "verificationId": "H05-restoreRollback"
+        },
+        "adversarialPrivacy": {
+          "level": "C",
+          "fixtures": [
+            "F06",
+            "F14",
+            "F17"
+          ],
+          "verificationId": "H05-adversarialPrivacy"
+        }
+      }
+    },
+    {
+      "concernId": "recommendation-decision-adaptation",
+      "label": "Recommendation/decision/adaptation",
+      "cells": {
+        "pureContract": {
+          "level": "R",
+          "fixtures": [
+            "F06",
+            "F12",
+            "F13"
+          ],
+          "verificationId": "P02-pureContract"
+        },
+        "databaseService": {
+          "level": "R",
+          "fixtures": [
+            "F06",
+            "F12",
+            "F13"
+          ],
+          "verificationId": "A05-databaseService"
+        },
+        "browser": {
+          "level": "R",
+          "fixtures": [
+            "F06",
+            "F12",
+            "F13"
+          ],
+          "verificationId": "A05-browser"
+        },
+        "exportImport": {
+          "level": "R",
+          "fixtures": [
+            "F06",
+            "F12",
+            "F13"
+          ],
+          "verificationId": "A05-exportImport"
+        },
+        "restoreRollback": {
+          "level": "R",
+          "fixtures": [
+            "F06",
+            "F12",
+            "F13"
+          ],
+          "verificationId": "A05-restoreRollback"
+        },
+        "adversarialPrivacy": {
+          "level": "R",
+          "fixtures": [
+            "F06",
+            "F12",
+            "F13"
+          ],
+          "verificationId": "A05-adversarialPrivacy"
+        }
+      }
+    },
+    {
+      "concernId": "exception-only-context",
+      "label": "Exception-only context",
+      "cells": {
+        "pureContract": {
+          "level": "R",
+          "fixtures": [
+            "F01",
+            "F16"
+          ],
+          "verificationId": "P02-pureContract"
+        },
+        "databaseService": {
+          "level": "R",
+          "fixtures": [
+            "F01",
+            "F16"
+          ],
+          "verificationId": "H04-databaseService"
+        },
+        "browser": {
+          "level": "R",
+          "fixtures": [
+            "F01",
+            "F16"
+          ],
+          "verificationId": "H04-browser"
+        },
+        "exportImport": {
+          "level": "C",
+          "fixtures": [
+            "F01",
+            "F16"
+          ],
+          "verificationId": "H04-exportImport"
+        },
+        "restoreRollback": {
+          "level": "C",
+          "fixtures": [
+            "F01",
+            "F16"
+          ],
+          "verificationId": "H04-restoreRollback"
+        },
+        "adversarialPrivacy": {
+          "level": "C",
+          "fixtures": [
+            "F01",
+            "F16"
+          ],
+          "verificationId": "H04-adversarialPrivacy"
+        }
+      }
+    },
+    {
+      "concernId": "future-write-program-editing",
+      "label": "Future-write Program editing",
+      "cells": {
+        "pureContract": {
+          "level": "R",
+          "fixtures": [
+            "F11",
+            "F12"
+          ],
+          "verificationId": "P02-pureContract"
+        },
+        "databaseService": {
+          "level": "R",
+          "fixtures": [
+            "F11",
+            "F12"
+          ],
+          "verificationId": "U03-databaseService"
+        },
+        "browser": {
+          "level": "R",
+          "fixtures": [
+            "F11",
+            "F12"
+          ],
+          "verificationId": "U03-browser"
+        },
+        "exportImport": {
+          "level": "C",
+          "fixtures": [
+            "F11",
+            "F12"
+          ],
+          "verificationId": "U03-exportImport"
+        },
+        "restoreRollback": {
+          "level": "R",
+          "fixtures": [
+            "F11",
+            "F12"
+          ],
+          "verificationId": "U03-restoreRollback"
+        },
+        "adversarialPrivacy": {
+          "level": "C",
+          "fixtures": [
+            "F11",
+            "F12"
+          ],
+          "verificationId": "U03-adversarialPrivacy"
+        }
+      }
+    },
+    {
+      "concernId": "owner-isolation",
+      "label": "Owner isolation",
+      "cells": {
+        "pureContract": {
+          "level": "R",
+          "fixtures": [
+            "F07",
+            "F13",
+            "F15",
+            "F16"
+          ],
+          "verificationId": "P02-pureContract"
+        },
+        "databaseService": {
+          "level": "R",
+          "fixtures": [
+            "F07",
+            "F13",
+            "F15",
+            "F16"
+          ],
+          "verificationId": "R01-databaseService"
+        },
+        "browser": {
+          "level": "R",
+          "fixtures": [
+            "F07",
+            "F13",
+            "F15",
+            "F16"
+          ],
+          "verificationId": "R01-browser"
+        },
+        "exportImport": {
+          "level": "R",
+          "fixtures": [
+            "F07",
+            "F13",
+            "F15",
+            "F16"
+          ],
+          "verificationId": "R01-exportImport"
+        },
+        "restoreRollback": {
+          "level": "R",
+          "fixtures": [
+            "F07",
+            "F13",
+            "F15",
+            "F16"
+          ],
+          "verificationId": "R01-restoreRollback"
+        },
+        "adversarialPrivacy": {
+          "level": "R",
+          "fixtures": [
+            "F07",
+            "F13",
+            "F15",
+            "F16"
+          ],
+          "verificationId": "R01-adversarialPrivacy"
+        }
+      }
+    },
+    {
+      "concernId": "external-ai-envelope-manifest-import",
+      "label": "External AI envelope/manifest/import",
+      "cells": {
+        "pureContract": {
+          "level": "R",
+          "fixtures": [
+            "F13",
+            "F15"
+          ],
+          "verificationId": "A03-pureContract"
+        },
+        "databaseService": {
+          "level": "R",
+          "fixtures": [
+            "F13",
+            "F15"
+          ],
+          "verificationId": "A04-databaseService"
+        },
+        "browser": {
+          "level": "R",
+          "fixtures": [
+            "F13",
+            "F15"
+          ],
+          "verificationId": "A04-browser"
+        },
+        "exportImport": {
+          "level": "R",
+          "fixtures": [
+            "F13",
+            "F15"
+          ],
+          "verificationId": "A04-exportImport"
+        },
+        "restoreRollback": {
+          "level": "C",
+          "fixtures": [
+            "F13",
+            "F15"
+          ],
+          "verificationId": "A04-restoreRollback"
+        },
+        "adversarialPrivacy": {
+          "level": "R",
+          "fixtures": [
+            "F13",
+            "F15"
+          ],
+          "verificationId": "A04-adversarialPrivacy"
+        }
+      }
+    },
+    {
+      "concernId": "diagnostic-redaction-preview",
+      "label": "Diagnostic redaction/preview",
+      "cells": {
+        "pureContract": {
+          "level": "R",
+          "fixtures": [
+            "F16"
+          ],
+          "verificationId": "P02-pureContract"
+        },
+        "databaseService": {
+          "level": "R",
+          "fixtures": [
+            "F16"
+          ],
+          "verificationId": "D02-databaseService"
+        },
+        "browser": {
+          "level": "R",
+          "fixtures": [
+            "F16"
+          ],
+          "verificationId": "D02-browser"
+        },
+        "exportImport": {
+          "level": "R",
+          "fixtures": [
+            "F16"
+          ],
+          "verificationId": "D02-exportImport"
+        },
+        "restoreRollback": {
+          "level": "C",
+          "fixtures": [
+            "F16"
+          ],
+          "verificationId": "D02-restoreRollback"
+        },
+        "adversarialPrivacy": {
+          "level": "R",
+          "fixtures": [
+            "F16"
+          ],
+          "verificationId": "D02-adversarialPrivacy"
+        }
+      }
+    },
+    {
+      "concernId": "lifecycle-inventory-completeness",
+      "label": "Lifecycle inventory completeness",
+      "cells": {
+        "pureContract": {
+          "level": "R",
+          "fixtures": [
+            "F05",
+            "F06",
+            "F07",
+            "F13",
+            "F14",
+            "F15",
+            "F16",
+            "F17"
+          ],
+          "verificationId": "P02-pureContract"
+        },
+        "databaseService": {
+          "level": "R",
+          "fixtures": [
+            "F05",
+            "F06",
+            "F07",
+            "F13",
+            "F14",
+            "F15",
+            "F16",
+            "F17"
+          ],
+          "verificationId": "R01-databaseService"
+        },
+        "browser": {
+          "level": "C",
+          "fixtures": [
+            "F05",
+            "F06",
+            "F07",
+            "F13",
+            "F14",
+            "F15",
+            "F16",
+            "F17"
+          ],
+          "verificationId": "R01-browser"
+        },
+        "exportImport": {
+          "level": "R",
+          "fixtures": [
+            "F05",
+            "F06",
+            "F07",
+            "F13",
+            "F14",
+            "F15",
+            "F16",
+            "F17"
+          ],
+          "verificationId": "R01-exportImport"
+        },
+        "restoreRollback": {
+          "level": "R",
+          "fixtures": [
+            "F05",
+            "F06",
+            "F07",
+            "F13",
+            "F14",
+            "F15",
+            "F16",
+            "F17"
+          ],
+          "verificationId": "R01-restoreRollback"
+        },
+        "adversarialPrivacy": {
+          "level": "R",
+          "fixtures": [
+            "F05",
+            "F06",
+            "F07",
+            "F13",
+            "F14",
+            "F15",
+            "F16",
+            "F17"
+          ],
+          "verificationId": "R01-adversarialPrivacy"
+        }
+      }
+    }
+  ],
+  "preservedV1Characterization": [
+    {
+      "concern": "occurrence outcomes, finish-early resolution, restore, and replay",
+      "testPath": "tests/unit/data02-session-occurrence-semantics.test.ts",
+      "command": "npx vitest run tests/unit/data02-session-occurrence-semantics.test.ts"
+    },
+    {
+      "concern": "group occurrence order",
+      "testPath": "tests/unit/data03-group-occurrence-sequencing.test.ts",
+      "command": "npx vitest run tests/unit/data03-group-occurrence-sequencing.test.ts"
+    },
+    {
+      "concern": "offline occurrence queue and retry",
+      "testPath": "tests/unit/occurrence-mutation-outbox.test.ts",
+      "command": "npx vitest run tests/unit/occurrence-mutation-outbox.test.ts"
+    },
+    {
+      "concern": "recorded equipment and load semantics",
+      "testPath": "tests/unit/session-equipment-snapshot-contract.test.ts",
+      "command": "npx vitest run tests/unit/session-equipment-snapshot-contract.test.ts"
+    },
+    {
+      "concern": "local-date timezone boundary",
+      "testPath": "tests/unit/dates.test.ts",
+      "command": "npx vitest run tests/unit/dates.test.ts"
+    },
+    {
+      "concern": "owner isolation and unsupported historical evidence",
+      "testPath": "tests/unit/historical-semantics-consequence-gate.test.ts",
+      "command": "npx vitest run tests/unit/historical-semantics-consequence-gate.test.ts"
+    },
+    {
+      "concern": "export and restore round trip",
+      "testPath": "tests/unit/json-backup-db.test.ts",
+      "command": "npx vitest run tests/unit/json-backup-db.test.ts"
+    },
+    {
+      "concern": "import provenance and timezone characterization",
+      "testPath": "tests/unit/hevy-staging-characterization.test.ts",
+      "command": "npx vitest run tests/unit/hevy-staging-characterization.test.ts"
+    }
+  ],
+  "gateRules": [
+    "Every R and C cell resolves to one or more F01-F17 fixtures.",
+    "P02 remains a pure semantic oracle and does not itself claim released product behavior.",
+    "T01 current status means its mapped implementation and activation evidence travel together; it does not imply release or deployment.",
+    "Every future cell names one exact activation test path, command, and implementing package.",
+    "A consequential package owns its required persistence, UI, portability, recovery, and adversarial activation evidence rather than deferring those obligations to a later audit.",
+    "No production owner data, production access, feature route, schema, migration, or deployment is part of P02.",
+    "No production owner data, production access, schema migration, or deployment is part of T01.",
+    "U01 current status means its presentation change and dedicated browser evidence travel together; it adds no schema, migration, persistence writer, or historical rewrite.",
+    "U02 current status means exception evidence, its set-linked pain identity, browser failure recovery, History and Review read paths, export, and restore evidence travel together; it does not imply release, deployment, recommendation approval, or Program adaptation.",
+    "U03 current status means exact future Program review and publication clarity travel with active-session, completed/imported History, earlier-version, conflict, failure, export, and restore isolation evidence; it adds no schema, migration, historical rewrite, release, or deployment.",
+    "H01 current status means performed-first completed and imported workout presentation travels with exact terminal, provenance, correction, semantic, calculation-eligibility, retained-source, accessibility, and zero-write evidence; it adds no schema, migration, writer, historical rewrite, release, or deployment.",
+    "H04 current status means pain-evidence-v1 meaning travels together across active workout, History, Review, Coach context, progression proposals, CSV, snapshot restore, and adversarial identity boundaries; absence remains unknown, explicit zero remains no-issue evidence, and no pain evidence silently changes Program intent.",
+    "H05 current status means every material Review proposal carries versioned exact evidence, visible limitations and a future-only effect; owner decisions and durable deferrals are revision-fenced, evidence-linked, snapshotted, and atomic, while unsupported, contradictory, stale, missing, or cross-owner facts never become Program changes.",
+    "Gauntlet B current status means the complete enlarged-text live-workout recovery journey and History-only restore monotonicity travel with their implementation; it does not authorize release, deployment, production mutation, historical repair, or Milestone 4.",
+    "A01 current status means one complete versioned, owner-selected analysis package travels with its deterministic digest, exact preview and download, privacy-minimal expiring receipt, owner deletion, omission inventory, cross-owner isolation and snapshot exclusion evidence; it does not authorize external transmission, analysis import, recommendation or Program mutation, release, deployment, production mutation, historical repair, or A02.",
+    "A02 current status means deterministic provider-neutral instructions bind the exact package and digest, preserve semantic distinctions and unknowns, forbid embedded instructions and guesses, and require evidence-linked limitations without provider transmission, response retention, import, or mutation.",
+    "A03 current status means the closed analysis-response/1 contract validates exact snapshot binding, identifiers, units, evidence citations, bounded content, one future-review-only effect, prohibited and unknown effects, and deterministic duplicate/conflict outcomes.",
+    "A04 current status means paste or JSON upload stays bounded and transient while the exact active owner manifest, Program precondition, schema, evidence, units, effects, and display-safe text are validated before an exact preview; it creates no durable response, recommendation, decision, adaptation, or Program write.",
+    "A05 current status means the exact owner-selected allowlist writes one sanitized external-analysis receipt and selected future-only Review proposals atomically, never retains the raw response, and keeps imported observations, proposals, decisions, and future adaptations separate from Program intent and performed facts.",
+    "D01 current status means only the closed versioned diagnostic vocabulary may emit coarse operational categories with episode-scoped expiring correlation; unknown fields and private training, provider, error, token, and owner content fail closed, and accepted events expire within 24 hours.",
+    "D02 current status means one problem-specific support-bundle/1 artifact is generated locally with support-redaction/1, random per-bundle correlation, removable optional sections, exact preview and download bytes, and no upload, persistence, retained-log read, AI reuse, Program write, or performed-fact mutation.",
+    "R01 current status means recovery manifest 13 owns every migrated database table, the v2 lifecycle audit owns every consequential semantic field family and explicit exclusion, device queues match the sign-out inventory, and omission or stale activation metadata fails closed before release field use."
+  ]
+}

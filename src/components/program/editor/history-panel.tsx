@@ -67,7 +67,7 @@ export function HistoryPanel({ editor }: { editor: ProgramEditorController }) {
               <CardContent>
                 {draft.history.length === 0 ? (
                   <p className="text-sm text-muted-foreground">
-                    No activated versions were returned.
+                    No published versions were returned.
                   </p>
                 ) : (
                   <ol className="space-y-3">
@@ -92,11 +92,11 @@ export function HistoryPanel({ editor }: { editor: ProgramEditorController }) {
                             </div>
                             <p className="mt-1 text-sm text-muted-foreground">
                               {entry.summary ??
-                                "No activation summary recorded."}
+                                "No publication summary recorded."}
                             </p>
                             {entry.activatedAt && (
                               <p className="mt-1 text-xs text-muted-foreground">
-                                Activated{" "}
+                                Published{" "}
                                 {new Date(entry.activatedAt).toLocaleString()}
                               </p>
                             )}
@@ -124,7 +124,7 @@ export function HistoryPanel({ editor }: { editor: ProgramEditorController }) {
                                 <span>Linked to reviewed import evidence</span>
                               )}
                               {entry.reviewHash && (
-                                <span>Activation review verified</span>
+                                <span>Publication review verified</span>
                               )}
                             </div>
                           </div>

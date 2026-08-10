@@ -4,8 +4,9 @@ import type { Db } from "@/db";
 import { resultRows } from "@/db/result";
 import { assertCanonicalSnapshotTableCoverage } from "@/services/recovery-manifest";
 import { canonicalizeProgramDraftIdentity } from "@/services/program-document-integrity";
+import { externalAnalysisImportDigestSchema } from "@/lib/external-analysis-import";
 
-export const SNAPSHOT_SCHEMA_VERSION = "27";
+export const SNAPSHOT_SCHEMA_VERSION = "30";
 
 export type CanonicalSnapshotPayload = {
   schemaVersion: string;
@@ -75,6 +76,18 @@ export function sanitizeSnapshotPrivacy(
   }
   for (const insight of payload.tables.coaching_insights ?? []) {
     const row = insight as Record<string, unknown>;
+    if (row.kind === "external_analysis_import") {
+      const imported = externalAnalysisImportDigestSchema.safeParse(row.data_digest);
+      if (!imported.success) {
+        throw new Error("An external-analysis import receipt is malformed.");
+      }
+      row.data_digest = imported.data;
+      row.content_md = "Selected external-analysis observations and proposal provenance.";
+      row.model = null;
+      row.provider_item_id = null;
+      row.failure_reason = null;
+      continue;
+    }
     const digest =
       row.data_digest && typeof row.data_digest === "object"
         ? (row.data_digest as Record<string, unknown>)

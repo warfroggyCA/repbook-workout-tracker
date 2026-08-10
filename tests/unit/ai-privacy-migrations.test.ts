@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
 import { resultRows } from "@/db/result";
-import { coachingInsights, importEvents, users } from "@/db/schema";
+import { coachingInsights, importEvents } from "@/db/schema";
 import {
   createTestDatabaseAtMigration,
   migrateTestDatabaseThrough,
@@ -19,10 +19,11 @@ describe("AI and privacy expand/preview/contract migrations", () => {
 
   it("previews ambiguous production rows and blocks the contract until explicitly repaired", async () => {
     database = await createTestDatabaseAtMigration(EXPAND);
-    const [user] = await database.db
-      .insert(users)
-      .values({ email: `ai-repair-${crypto.randomUUID()}@example.com` })
-      .returning({ id: users.id });
+    const user = { id: crypto.randomUUID() };
+    await database.client.query(
+      "INSERT INTO users (id, email) VALUES ($1, $2)",
+      [user.id, `ai-repair-${crypto.randomUUID()}@example.com`],
+    );
     const events = await database.db
       .insert(importEvents)
       .values([

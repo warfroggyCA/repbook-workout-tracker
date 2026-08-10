@@ -26,8 +26,10 @@ import {
 import { activateProgramAtomically } from "@/services/program-activation";
 import {
   approveRecommendationDecision,
+  deferRecommendationDecision,
   dismissAutomaticHoldNotice,
   rejectRecommendationDecision,
+  resumeRecommendationDecision,
   type RecommendationCheckpoint,
 } from "@/services/recommendation-decisions";
 import { publishRecommendationProgramVersion } from "@/services/program-publication";
@@ -41,6 +43,10 @@ import {
 } from "../helpers/database";
 import { KG_TO_LB, type LoadUnit } from "@/lib/units";
 import { createTotalSystemTestSnapshot } from "../helpers/set-semantics";
+import {
+  PROGRESSION_REVIEW_SOURCE_VERSION,
+  withRecommendationReviewEvidence,
+} from "@/lib/review-evidence";
 
 describe("recommendation decisions publish immutable Program versions", () => {
   let database: TestDatabase;
@@ -48,6 +54,7 @@ describe("recommendation decisions publish immutable Program versions", () => {
   let programId: string;
   let initialSlotId: string;
   let currentExerciseId: string;
+  let currentExerciseName: string;
   let targetExerciseId: string;
 
   beforeEach(async () => {
@@ -57,7 +64,7 @@ describe("recommendation decisions publish immutable Program versions", () => {
       .values({ email: `recommendation-${crypto.randomUUID()}@example.com` })
       .returning({ id: users.id });
     await database.db.insert(userProfiles).values({ userId, unit: "lb" });
-    [{ id: currentExerciseId }, { id: targetExerciseId }] = await database.db
+    const [currentExercise, targetExercise] = await database.db
       .insert(exercises)
       .values([
         {
@@ -79,7 +86,10 @@ describe("recommendation decisions publish immutable Program versions", () => {
           variantAttributes: { assistance: "none" },
         },
       ])
-      .returning({ id: exercises.id });
+      .returning({ id: exercises.id, name: exercises.name });
+    currentExerciseId = currentExercise.id;
+    currentExerciseName = currentExercise.name;
+    targetExerciseId = targetExercise.id;
     const activated = await activateProgramAtomically(database.db, {
       userId,
       loadUnit: "lb",
@@ -137,6 +147,7 @@ describe("recommendation decisions publish immutable Program versions", () => {
       signals: Record<string, unknown>;
       sessionIds?: string[];
       setIds?: string[];
+      painLogIds?: string[];
     } = { signals: {} },
     options: {
       source?: "rule" | "ai";
@@ -153,7 +164,15 @@ describe("recommendation decisions publish immutable Program versions", () => {
       sourceSlotLineageId: slot.lineageId,
       payload,
       reason: "Reviewed recommendation",
-      evidence,
+      evidence: withRecommendationReviewEvidence(evidence, {
+        payload,
+        producer: options.ruleId?.startsWith("pain_")
+          ? "pain_consistency"
+          : "progression_rules",
+        sourceVersion: options.ruleId?.startsWith("pain_")
+          ? "pain-evidence-v1"
+          : PROGRESSION_REVIEW_SOURCE_VERSION,
+      }),
     }).returning({ id: recommendations.id });
     return recommendation.id;
   }
@@ -185,6 +204,11 @@ describe("recommendation decisions publish immutable Program versions", () => {
       .values({
         sessionId: session.id,
         exerciseId: slot.exerciseId,
+        prescribedSemanticsVersion: 1,
+        prescribedExerciseName: currentExerciseName,
+        prescribedMetricType: "weight_reps",
+        prescribedLoadType: "barbell",
+        prescribedLoadSemantics: "total",
         plannedFromTemplateExerciseId: slot.id,
         sourceSlotLineageId: slot.lineageId,
         modificationType: "as_planned",
@@ -210,6 +234,9 @@ describe("recommendation decisions publish immutable Program versions", () => {
         weightUnit: options.loadUnit ?? prescription.targetLoadUnit ?? "lb",
         reps: 8,
         metricType: "weight_reps",
+        performedSemanticsVersion: 1,
+        performedLoadType: "barbell",
+        performedLoadSemantics: "total",
         equipmentSnapshotId: snapshotId,
         loadEntryMeaning: "total_system",
       })
@@ -277,16 +304,22 @@ describe("recommendation decisions publish immutable Program versions", () => {
 
   async function createSubstitutionRecommendation(targetId = targetExerciseId) {
     const { slot } = await currentState();
+    const pain = await createPainObservation({ severity: 5 });
     return createRecommendation({
       kind: "substitution",
       templateExerciseId: slot.id,
       fromExerciseId: slot.exerciseId,
       toExerciseId: targetId,
-    });
+    }, {
+      signals: {},
+      sessionIds: [pain.sessionId],
+      painLogIds: [pain.painId],
+    }, { ruleId: "pain_substitute" });
   }
 
   async function createHoldRecommendation() {
     const { slot } = await currentState();
+    const pain = await createPainObservation({ severity: 4 });
     return createRecommendation(
       {
         kind: "hold",
@@ -294,7 +327,11 @@ describe("recommendation decisions publish immutable Program versions", () => {
         reason:
           "A recent pain flag is keeping the load from going up until the evidence window clears.",
       },
-      { signals: {} },
+      {
+        signals: {},
+        sessionIds: [pain.sessionId],
+        painLogIds: [pain.painId],
+      },
       { ruleId: "pain_freeze" }
     );
   }
@@ -307,10 +344,11 @@ describe("recommendation decisions publish immutable Program versions", () => {
       checkpoint?: RecommendationCheckpoint;
     } = {}
   ) {
+    const fence = await recommendationFence(recommendationId);
     return approveRecommendationDecision(
       database.db,
       userId,
-      { recommendationId, editedToLoad: options.editedToLoad },
+      { recommendationId, editedToLoad: options.editedToLoad, ...fence },
       {
         checkpoint: options.checkpoint,
         publishProgramVersion: (publicationDb, publicationUserId, input) =>
@@ -319,6 +357,32 @@ describe("recommendation decisions publish immutable Program versions", () => {
             failureAt: options.failureAt,
           }),
       }
+    );
+  }
+
+  async function recommendationFence(recommendationId: string) {
+    const recommendation = await database.db.query.recommendations.findFirst({
+      where: eq(recommendations.id, recommendationId),
+      columns: { reviewRevision: true, deferRevision: true },
+    });
+    if (!recommendation) throw new Error("Recommendation fixture missing");
+    return {
+      expectedReviewRevision: recommendation.reviewRevision,
+      expectedDeferRevision: recommendation.deferRevision,
+    };
+  }
+
+  async function reject(
+    recommendationId: string,
+    reason: string,
+    dependencies: Parameters<typeof rejectRecommendationDecision>[3] = {}
+  ) {
+    const fence = await recommendationFence(recommendationId);
+    return rejectRecommendationDecision(
+      database.db,
+      userId,
+      { recommendationId, reason, ...fence },
+      dependencies
     );
   }
 
@@ -374,10 +438,9 @@ describe("recommendation decisions publish immutable Program versions", () => {
           if (boundary === "recommendation-ready") await ready();
         },
       }),
-      rejectRecommendationDecision(
-        database.db,
-        userId,
-        { recommendationId, reason: "Not now" },
+      reject(
+        recommendationId,
+        "Not now",
         { checkpoint: async (boundary) => {
           if (boundary === "recommendation-ready") await ready();
         } }
@@ -400,10 +463,9 @@ describe("recommendation decisions publish immutable Program versions", () => {
     const recommendationId = await createLoadRecommendation();
     const ready = createStartBarrier(6);
     const results = await runSimultaneously(6, () =>
-      rejectRecommendationDecision(
-        database.db,
-        userId,
-        { recommendationId, reason: "Not today" },
+      reject(
+        recommendationId,
+        "Not today",
         { checkpoint: async (boundary) => {
           if (boundary === "recommendation-ready") await ready();
         } }
@@ -449,7 +511,7 @@ describe("recommendation decisions publish immutable Program versions", () => {
       status: "expired",
       decidedAt: null,
       reconciliationReason:
-        "You dismissed this notice. The recorded pain flags still count, and your Program wasn’t changed.",
+        "You dismissed this notice. The recorded positive pain reports still count, and your Program wasn’t changed.",
     });
     expect(await database.db.select().from(userDecisions)).toHaveLength(0);
     expect(
@@ -679,20 +741,242 @@ describe("recommendation decisions publish immutable Program versions", () => {
 
   it("rolls back a rejected decision when its statement is forced to fail", async () => {
     const recommendationId = await createLoadRecommendation();
-    await expect(rejectRecommendationDecision(
-      database.db,
-      userId,
-      { recommendationId, reason: "Not now" },
+    await expect(reject(
+      recommendationId,
+      "Not now",
       { failureAt: "before-audit" }
     )).rejects.toThrow();
     expect(await database.db.query.recommendations.findFirst({
       where: eq(recommendations.id, recommendationId),
     })).toMatchObject({ status: "pending" });
     expect(await database.db.select().from(userDecisions)).toHaveLength(0);
+    await expect(reject(recommendationId, "Not now")).resolves.toEqual({ ok: true });
+  });
+
+  it("keeps unsupported and contradictory proposals visible but non-actionable", async () => {
+    const recommendationId = await createLoadRecommendation();
+    const recommendation = await database.db.query.recommendations.findFirst({
+      where: eq(recommendations.id, recommendationId),
+    });
+    if (!recommendation) throw new Error("Recommendation fixture missing");
+    await database.db.update(recommendations).set({
+      evidence: {
+        ...recommendation.evidence,
+        review: {
+          ...recommendation.evidence.review!,
+          quality: "contradictory",
+        },
+      },
+    }).where(eq(recommendations.id, recommendationId));
+
+    const contradictory = await database.db.query.recommendations.findFirst({
+      where: eq(recommendations.id, recommendationId),
+    });
+    if (!contradictory) throw new Error("Contradictory fixture missing");
+
+    const review = await getReviewDecisionData(database.db, userId);
+    expect(review.pending).toEqual([
+      expect.objectContaining({
+        id: recommendationId,
+        reviewEvidence: expect.objectContaining({
+          state: "contradictory",
+          actionable: false,
+        }),
+      }),
+    ]);
+    await expect(approve(recommendationId)).resolves.toEqual({
+      ok: false,
+      reason: "The cited evidence is explicitly contradictory. Review or reject the proposal; it cannot change the Program.",
+    });
+    await expect(publishRecommendationProgramVersion(database.db, userId, {
+      recommendationId,
+      expectedPayload: contradictory.payload,
+      appliedPayload: contradictory.payload,
+      decision: "approve",
+      expectedReviewRevision: contradictory.reviewRevision,
+      expectedDeferRevision: contradictory.deferRevision,
+      reviewSnapshot: {
+        schemaVersion: "review-decision-v1",
+        recommendationId,
+        reviewRevision: contradictory.reviewRevision,
+        deferRevision: contradictory.deferRevision,
+        recordedAt: new Date().toISOString(),
+        evidenceState: "supported",
+        source: contradictory.source,
+        ruleId: contradictory.ruleId,
+        payload: contradictory.payload,
+        reason: contradictory.reason,
+        evidence: contradictory.evidence,
+      },
+    })).resolves.toEqual({ ok: false, reason: "invalid" });
+    expect(await database.db.select().from(userDecisions)).toHaveLength(0);
+    expect(await database.db.select().from(adaptationEvents)).toHaveLength(0);
+  });
+
+  it("marks a proposal stale when cited performed evidence is corrected away", async () => {
+    const recommendationId = await createLoadRecommendation();
+    const recommendation = await database.db.query.recommendations.findFirst({
+      where: eq(recommendations.id, recommendationId),
+    });
+    const setId = recommendation?.evidence.setIds?.[0];
+    if (!setId) throw new Error("Evidence set fixture missing");
+    await database.db.update(completedSets).set({
+      archivedAt: new Date(),
+    }).where(eq(completedSets.id, setId));
+
+    const review = await getReviewDecisionData(database.db, userId);
+    expect(review.pending[0]?.reviewEvidence).toMatchObject({
+      state: "stale",
+      actionable: false,
+    });
+    await expect(approve(recommendationId)).resolves.toMatchObject({
+      ok: false,
+      reason: expect.stringContaining("cited records are no longer current"),
+    });
+  });
+
+  it("defers and resumes Review durably without a decision or Program change", async () => {
+    const recommendationId = await createLoadRecommendation();
+    const before = await decisionCounts();
+    const recommendation = await database.db.query.recommendations.findFirst({
+      where: eq(recommendations.id, recommendationId),
+    });
+    if (!recommendation) throw new Error("Recommendation fixture missing");
+
+    await expect(deferRecommendationDecision(database.db, userId, {
+      recommendationId,
+      expectedReviewRevision: recommendation.reviewRevision,
+      expectedDeferRevision: recommendation.deferRevision,
+      revisitOn: "2026-02-30",
+    })).resolves.toEqual({ ok: false, reason: "Choose a valid revisit date." });
+
+    await expect(deferRecommendationDecision(database.db, userId, {
+      recommendationId,
+      expectedReviewRevision: recommendation.reviewRevision,
+      expectedDeferRevision: recommendation.deferRevision,
+      revisitOn: "2026-08-21",
+      reason: "Review after two more workouts.",
+    }, { failureAt: "before-audit" })).rejects.toThrow();
+    expect(await database.db.query.recommendations.findFirst({
+      where: eq(recommendations.id, recommendationId),
+    })).toMatchObject({
+      deferredAt: null,
+      revisitOn: null,
+      deferReason: null,
+      deferRevision: recommendation.deferRevision,
+    });
+
+    await expect(deferRecommendationDecision(database.db, userId, {
+      recommendationId,
+      expectedReviewRevision: recommendation.reviewRevision,
+      expectedDeferRevision: recommendation.deferRevision,
+      revisitOn: "2026-08-21",
+      reason: "Review after two more workouts.",
+    })).resolves.toEqual({ ok: true });
+    const deferred = await database.db.query.recommendations.findFirst({
+      where: eq(recommendations.id, recommendationId),
+    });
+    expect(deferred).toMatchObject({
+      status: "pending",
+      reviewRevision: recommendation.reviewRevision,
+      deferRevision: recommendation.deferRevision + 1,
+      revisitOn: "2026-08-21",
+      deferReason: "Review after two more workouts.",
+    });
+    expect(deferred?.deferredAt).toBeInstanceOf(Date);
+    expect(await decisionCounts()).toEqual(before);
+    await expect(approve(recommendationId)).resolves.toEqual({
+      ok: false,
+      reason: "Resume this deferred review before making a decision.",
+    });
+
+    await expect(resumeRecommendationDecision(database.db, userId, {
+      recommendationId,
+      expectedReviewRevision: deferred!.reviewRevision,
+      expectedDeferRevision: deferred!.deferRevision,
+    }, { failureAt: "before-audit" })).rejects.toThrow();
+    expect(await database.db.query.recommendations.findFirst({
+      where: eq(recommendations.id, recommendationId),
+    })).toMatchObject({
+      deferredAt: deferred!.deferredAt,
+      revisitOn: deferred!.revisitOn,
+      deferReason: deferred!.deferReason,
+      deferRevision: deferred!.deferRevision,
+    });
+
+    await expect(resumeRecommendationDecision(database.db, userId, {
+      recommendationId,
+      expectedReviewRevision: deferred!.reviewRevision,
+      expectedDeferRevision: deferred!.deferRevision,
+    })).resolves.toEqual({ ok: true });
+    expect(await database.db.query.recommendations.findFirst({
+      where: eq(recommendations.id, recommendationId),
+    })).toMatchObject({
+      deferredAt: null,
+      revisitOn: null,
+      deferReason: null,
+      deferRevision: deferred!.deferRevision + 1,
+    });
+    expect(await decisionCounts()).toEqual(before);
+  });
+
+  it("preserves a deferred pain proposal when repeated Review reads find no new evidence", async () => {
+    const recommendationId = await createSubstitutionRecommendation();
+    await getReviewDecisionData(database.db, userId);
+    const current = await database.db.query.recommendations.findFirst({
+      where: eq(recommendations.id, recommendationId),
+    });
+    if (!current) throw new Error("Pain recommendation fixture missing");
+    await deferRecommendationDecision(database.db, userId, {
+      recommendationId,
+      expectedReviewRevision: current.reviewRevision,
+      expectedDeferRevision: current.deferRevision,
+      reason: "Revisit after recovery changes.",
+    });
+    const deferred = await database.db.query.recommendations.findFirst({
+      where: eq(recommendations.id, recommendationId),
+    });
+    await getReviewDecisionData(database.db, userId);
+    await getReviewDecisionData(database.db, userId);
+    expect(await database.db.query.recommendations.findFirst({
+      where: eq(recommendations.id, recommendationId),
+    })).toMatchObject({
+      reviewRevision: deferred!.reviewRevision,
+      deferRevision: deferred!.deferRevision,
+      deferredAt: deferred!.deferredAt,
+      deferReason: "Revisit after recovery changes.",
+    });
+  });
+
+  it("captures exact Review evidence when rejecting without changing Program facts", async () => {
+    const recommendationId = await createLoadRecommendation();
+    const recommendation = await database.db.query.recommendations.findFirst({
+      where: eq(recommendations.id, recommendationId),
+    });
+    if (!recommendation) throw new Error("Recommendation fixture missing");
+    const before = await decisionCounts();
     await expect(rejectRecommendationDecision(database.db, userId, {
       recommendationId,
-      reason: "Not now",
+      expectedReviewRevision: recommendation.reviewRevision,
+      expectedDeferRevision: recommendation.deferRevision,
+      reason: "Keep the current target.",
     })).resolves.toEqual({ ok: true });
+    const decision = await database.db.query.userDecisions.findFirst({
+      where: eq(userDecisions.recommendationId, recommendationId),
+    });
+    expect(decision?.reviewSnapshot).toMatchObject({
+      schemaVersion: "review-decision-v1",
+      recommendationId,
+      reviewRevision: recommendation.reviewRevision,
+      deferRevision: recommendation.deferRevision,
+      evidenceState: "supported",
+      payload: recommendation.payload,
+      evidence: recommendation.evidence,
+    });
+    expect(await database.db.select().from(adaptationEvents)).toHaveLength(before.adaptations);
+    expect(await database.db.select().from(programVersions).where(
+      eq(programVersions.programId, programId),
+    )).toHaveLength(before.versions);
   });
 
   it("rolls back every Program and decision row on an injected publication failure", async () => {
@@ -816,7 +1100,7 @@ describe("recommendation decisions publish immutable Program versions", () => {
     await expect(approve(painId)).resolves.toMatchObject({
       ok: false,
       reason: expect.stringContaining(
-        "comes off hold 14 days after the latest 3/10 or higher flag"
+        "comes off hold 14 days after the latest 3/10 or higher report"
       ),
     });
     expect(await database.db.select().from(userDecisions)).toHaveLength(0);
@@ -840,7 +1124,7 @@ describe("recommendation decisions publish immutable Program versions", () => {
     await expect(approve(repeatedRecommendation)).resolves.toMatchObject({
       ok: false,
       reason: expect.stringContaining(
-        "pain was flagged in 3 workouts in the last 14 days"
+        "positive pain was reported in 3 workouts in the last 14 days"
       ),
     });
   });
@@ -862,7 +1146,7 @@ describe("recommendation decisions publish immutable Program versions", () => {
     await expect(attempt()).resolves.toMatchObject({
       ok: false,
       reason: expect.stringContaining(
-        "comes off hold 14 days after the latest 3/10 or higher flag"
+        "comes off hold 14 days after the latest 3/10 or higher report"
       ),
     });
     expect((await currentState()).prescription.targetLoad).toBe(100);

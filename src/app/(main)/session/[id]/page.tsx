@@ -13,6 +13,8 @@ import {
   exerciseExecutionRequirements,
   constraints as constraintsTable,
   exercises as exercisesTable,
+  recordVersions,
+  painLogs,
 } from "@/db/schema";
 import { getCurrentUser } from "@/lib/user";
 import { getLastPerformances } from "@/services/today";
@@ -29,9 +31,38 @@ import { loadEquipmentLoadProfiles } from "@/services/equipment-load-profiles";
 import { buildSessionEquipmentPresentation } from "@/lib/session-equipment-presentation";
 import { sessionEquipmentGeometrySnapshotSchema } from "@/lib/session-equipment-snapshot-contract";
 import { isPhase0StartDisposableAcceptanceRuntime } from "@/lib/acceptance-runtime";
-import { logServerEvent } from "@/lib/server-log";
-import { safeErrorName } from "@/lib/safe-error-name";
+import {
+  categorizeDiagnosticError,
+  logDiagnosticEvent,
+} from "@/lib/server-log";
 import { Button } from "@/components/ui/button";
+import { actionableActiveSessionOccurrences } from "@/lib/warmup-occurrence-compatibility";
+import {
+  LIMITATION_CAUSES,
+  PAIN_BODY_PARTS,
+  TECHNIQUE_ISSUES,
+  type LimitationCause,
+  type PainBodyPart,
+  type TechniqueIssue,
+} from "@/lib/set-exception-context";
+
+function techniqueIssue(value: string | null): TechniqueIssue | null {
+  return TECHNIQUE_ISSUES.includes(value as TechniqueIssue)
+    ? value as TechniqueIssue
+    : null;
+}
+
+function limitationCause(value: string | null): LimitationCause | null {
+  return LIMITATION_CAUSES.includes(value as LimitationCause)
+    ? value as LimitationCause
+    : null;
+}
+
+function painBodyPart(value: string): PainBodyPart | null {
+  return PAIN_BODY_PARTS.includes(value as PainBodyPart)
+    ? value as PainBodyPart
+    : null;
+}
 
 function ConfirmedSessionLoadRecovery({ sessionId }: { sessionId: string }) {
   return (
@@ -64,22 +95,15 @@ function ConfirmedSessionLoadRecovery({ sessionId }: { sessionId: string }) {
 }
 
 export default async function SessionPage(props: PageProps<"/session/[id]">) {
-  let requestedId: string | null = null;
   try {
     const { id } = await props.params;
-    requestedId = id;
     const searchParams = await props.searchParams;
     return await renderSessionPage(id, searchParams);
   } catch (error) {
     unstable_rethrow(error);
-    logServerEvent("error", "session.render_failed", {
-      sessionId:
-        requestedId &&
-        /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(requestedId)
-          ? requestedId
-          : null,
-      category: "workout_status_unconfirmed",
-      errorName: safeErrorName(error),
+    logDiagnosticEvent("session.render_failed", {
+      routeState: "route_input",
+      errorCategory: categorizeDiagnosticError(error, "persistence"),
     });
     throw new Error("The workout status could not be confirmed.");
   }
@@ -183,9 +207,61 @@ async function renderSessionPage(
           })
         : Promise.resolve([]),
     ]);
+  const visibleSetIds = session.exercises.flatMap((exercise) =>
+    exercise.sets.filter((set) => !set.isWarmup).map((set) => set.id),
+  );
+  const [setCorrectionVersions, setPainLogs] = visibleSetIds.length > 0
+    ? await Promise.all([db.query.recordVersions.findMany({
+        where: and(
+          eq(recordVersions.userId, user.id),
+          eq(recordVersions.entityType, "completed_set"),
+          inArray(recordVersions.entityId, visibleSetIds),
+        ),
+        columns: { entityId: true, action: true },
+      }), db.query.painLogs.findMany({
+        where: and(
+          eq(painLogs.userId, user.id),
+          eq(painLogs.sessionId, session.id),
+          inArray(painLogs.completedSetId, visibleSetIds),
+          isNull(painLogs.archivedAt),
+        ),
+      })])
+    : [[], []];
+  const correctionCountBySetId = new Map<string, number>();
+  for (const version of setCorrectionVersions) {
+    if (
+      version.action !== "set.active_correction" &&
+      version.action !== "set.completed_correction"
+    ) continue;
+    correctionCountBySetId.set(
+      version.entityId,
+      (correctionCountBySetId.get(version.entityId) ?? 0) + 1,
+    );
+  }
+  const painBySetId = new Map(
+    setPainLogs.flatMap((pain) => {
+      const bodyPart = painBodyPart(pain.bodyPart);
+      return pain.completedSetId != null && bodyPart != null
+        ? [[pain.completedSetId, {
+            bodyPart,
+            severity: pain.severity,
+            note: pain.note,
+          }] as const]
+        : [];
+    }),
+  );
   const plannedExerciseNames = new Map(
     plannedExercises.map((exercise) => [exercise.id, exercise.name])
   );
+  const actionableOccurrences = actionableActiveSessionOccurrences({
+    sessionId: session.id,
+    templateId: session.templateId,
+    sourceDayLineageId: session.sourceDayLineageId,
+    dayWarmupNotes: session.dayWarmupNotes,
+    dayWarmupItems: session.dayWarmupItems,
+    exercises: session.exercises,
+    occurrences: session.occurrences,
+  });
 
   const exactByExercise = new Map(
     exactRequirements.map((requirement) => [requirement.exerciseId, requirement]),
@@ -193,18 +269,28 @@ async function renderSessionPage(
   const plateConfigs: Record<string, PlateMathConfig> = {};
   const equipmentSetups: SessionRunnerProps["equipmentSetups"] = {};
   for (const sessionExercise of session.exercises) {
-    const exact = exactByExercise.get(sessionExercise.exerciseId) ?? null;
+    const usesPrescribedMeaning =
+      sessionExercise.prescribedSemanticsVersion === 1 &&
+      sessionExercise.modificationType !== "substituted" &&
+      sessionExercise.modificationType !== "added";
+    const exact = usesPrescribedMeaning
+      ? null
+      : exactByExercise.get(sessionExercise.exerciseId) ?? null;
     const presentation = buildSessionEquipmentPresentation({
       exercise: {
         id: sessionExercise.id,
         exerciseId: sessionExercise.exerciseId,
-        loadType: sessionExercise.exercise.loadType,
+        loadType: usesPrescribedMeaning
+          ? sessionExercise.prescribedLoadType!
+          : sessionExercise.exercise.loadType,
         targetLoad: sessionExercise.targetLoad,
         targetLoadUnit: sessionExercise.targetLoadUnit,
-        requirements: sessionExercise.exercise.equipmentRequirements.map((requirement) => ({
-          equipmentType: requirement.equipmentType,
-          minWeight: requirement.minWeight,
-        })),
+        requirements: usesPrescribedMeaning
+          ? []
+          : sessionExercise.exercise.equipmentRequirements.map((requirement) => ({
+              equipmentType: requirement.equipmentType,
+              minWeight: requirement.minWeight,
+            })),
         exactRequirement: exact ? {
           requiredProfileKind: exact.requiredProfileKind,
           requiredEquipmentDefinitionId: exact.requiredEquipmentDefinitionId,
@@ -271,15 +357,29 @@ async function renderSessionPage(
     const last = se.plannedFromTemplateExerciseId
       ? lastPerformances[se.plannedFromTemplateExerciseId]
       : undefined;
+    const usesPrescribedMeaning =
+      se.prescribedSemanticsVersion === 1 &&
+      se.modificationType !== "substituted" &&
+      se.modificationType !== "added";
     return {
       id: se.id,
       exerciseId: se.exerciseId,
-      name: se.exercise.name,
-      family: se.exercise.family?.name ?? null,
-      loadType: se.exercise.loadType,
-      loadSemantics: se.exercise.loadSemantics,
-      metricType: se.exercise.metricType,
-      movementPattern: se.exercise.movementPattern,
+      name: usesPrescribedMeaning
+        ? se.prescribedExerciseName!
+        : se.exercise.name,
+      family: usesPrescribedMeaning ? null : se.exercise.family?.name ?? null,
+      loadType: usesPrescribedMeaning
+        ? se.prescribedLoadType!
+        : se.exercise.loadType,
+      loadSemantics: usesPrescribedMeaning
+        ? se.prescribedLoadSemantics!
+        : se.exercise.loadSemantics,
+      metricType: usesPrescribedMeaning
+        ? se.prescribedMetricType!
+        : se.exercise.metricType,
+      movementPattern: usesPrescribedMeaning
+        ? "unknown"
+        : se.exercise.movementPattern,
       orderIdx: se.orderIdx,
       supersetKey: se.supersetKey,
       restSec: se.restSec,
@@ -289,7 +389,9 @@ async function renderSessionPage(
       substitutionReason: se.substitutionReason,
       substitutedAt: se.substitutedAt?.toISOString() ?? null,
       plannedExerciseName: se.substitutedForExerciseId
-        ? (plannedExerciseNames.get(se.substitutedForExerciseId) ?? null)
+        ? (se.prescribedExerciseName ??
+          plannedExerciseNames.get(se.substitutedForExerciseId) ??
+          null)
         : null,
       targetSets: se.targetSets,
       targetRepsMin: se.targetRepsMin,
@@ -300,11 +402,14 @@ async function renderSessionPage(
       warmupNotes: se.warmupNotes,
       warmupSets: se.warmupSets,
       setNotes: se.setNotes,
-      cautionBodyParts:
-        flags.get(se.exercise.movementPattern)?.bodyParts ?? [],
-      media: mediaByExercise.get(se.exercise.id) ?? null,
+      cautionBodyParts: usesPrescribedMeaning
+        ? []
+        : flags.get(se.exercise.movementPattern)?.bodyParts ?? [],
+      media: usesPrescribedMeaning
+        ? null
+        : mediaByExercise.get(se.exercise.id) ?? null,
       sets: se.sets
-        .filter((s): s is typeof s & { reps: number } => !s.isWarmup && s.reps != null)
+        .filter((s) => !s.isWarmup)
         .map((s) => ({
           id: s.id,
           clientKey: s.clientKey,
@@ -313,8 +418,15 @@ async function renderSessionPage(
           weightUnit: s.weightUnit,
           reps: s.reps,
           metricType: s.metricType,
+          distanceKm: s.distanceKm,
+          durationSeconds: s.durationSeconds,
           rpe: s.rpe,
+          rir: s.rir,
+          techniqueIssue: techniqueIssue(s.techniqueIssue),
+          limitationCause: limitationCause(s.limitationCause),
+          pain: painBySetId.get(s.id) ?? null,
           note: s.note,
+          correctionCount: correctionCountBySetId.get(s.id) ?? 0,
         })),
       last: se.modificationType !== "substituted" && last
         ? { dateISO: last.date.toISOString(), sets: last.sets }
@@ -325,22 +437,10 @@ async function renderSessionPage(
   const runnerProps: SessionRunnerProps = {
     ownerId: user.id,
     sessionId: session.id,
+    historyRevision: session.historyRevision,
     templateName: session.templateName ?? "Workout",
     dayWarmupNotes: session.dayWarmupNotes,
-    occurrences: session.occurrences.map((occurrence, index, all) => {
-      const group = occurrence.groupSnapshotId
-        ? session.exerciseGroups.find(
-            (candidate) => candidate.id === occurrence.groupSnapshotId,
-          )
-        : null;
-      const next = all[index + 1];
-      const restAfterSec = group
-        ? next?.groupSnapshotId !== group.id
-          ? 0
-          : next.groupRound === occurrence.groupRound
-            ? group.restBetweenMembersSec ?? 0
-            : group.restBetweenRoundsSec ?? 0
-        : occurrence.plannedRestSec ?? 0;
+    occurrences: actionableOccurrences.map((occurrence) => {
       return {
         id: occurrence.id,
         sessionExerciseId: occurrence.sessionExerciseId,
@@ -367,7 +467,6 @@ async function renderSessionPage(
         revision: occurrence.revision,
         resolvedAt: occurrence.resolvedAt?.toISOString() ?? null,
         completedSetId: occurrence.completedSetId,
-        restAfterSec,
       };
     }),
     exerciseGroups: session.exerciseGroups.map((group) => ({
@@ -394,10 +493,9 @@ async function renderSessionPage(
     );
   } catch (error) {
     unstable_rethrow(error);
-    logServerEvent("error", "session.render_failed", {
-      sessionId: session.id,
-      category: "confirmed_active_render_failure",
-      errorName: safeErrorName(error),
+    logDiagnosticEvent("session.render_failed", {
+      routeState: "confirmed_active",
+      errorCategory: categorizeDiagnosticError(error, "runtime"),
     });
     return <ConfirmedSessionLoadRecovery sessionId={session.id} />;
   }

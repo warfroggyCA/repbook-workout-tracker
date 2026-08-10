@@ -3,7 +3,10 @@ import { getDb } from "@/db";
 import { sensitiveJson } from "@/lib/http-security";
 import { getRouteUser } from "@/lib/route-auth";
 import { sameOriginMutationFailure } from "@/lib/route-security";
-import { logServerEvent } from "@/lib/server-log";
+import {
+  categorizeDiagnosticError,
+  logDiagnosticEvent,
+} from "@/lib/server-log";
 import {
   liveCoachValidationIssue,
   startLiveCoachTurnSchema,
@@ -40,9 +43,8 @@ export async function POST(request: Request) {
   try {
     body = await request.json();
   } catch (error) {
-    logServerEvent("warn", "live_coach.saved_message_invalid_json", {
-      userId: user.id,
-      errorName: error instanceof Error ? error.name : "UnknownError",
+    logDiagnosticEvent("live_coach.saved_message_invalid_json", {
+      errorCategory: categorizeDiagnosticError(error, "validation"),
     });
     return sensitiveJson(
       { ok: false, reason: "Live Coach received an invalid saved message." },

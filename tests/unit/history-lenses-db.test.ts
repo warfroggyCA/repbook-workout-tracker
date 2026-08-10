@@ -181,6 +181,11 @@ describe("History lens database evidence", () => {
         {
           sessionId: firstSessionId,
           exerciseId: benchId,
+          prescribedSemanticsVersion: 1,
+          prescribedExerciseName: benchName,
+          prescribedMetricType: "weight_reps" as const,
+          prescribedLoadType: "barbell",
+          prescribedLoadSemantics: "total" as const,
           plannedFromTemplateExerciseId: slotByExerciseId.get(benchId),
           modificationType: "as_planned" as const,
           orderIdx: 0,
@@ -239,6 +244,9 @@ describe("History lens database evidence", () => {
         weight: 100,
         weightUnit: "lb",
         reps: 10,
+        performedSemanticsVersion: 1,
+        performedLoadType: "barbell",
+        performedLoadSemantics: "total",
         equipmentSnapshotId: firstBenchSnapshotId,
         loadEntryMeaning: "total_system",
       },
@@ -249,6 +257,9 @@ describe("History lens database evidence", () => {
         weightUnit: "lb",
         reps: 10,
         isWarmup: true,
+        performedSemanticsVersion: 1,
+        performedLoadType: "barbell",
+        performedLoadSemantics: "total",
         equipmentSnapshotId: firstBenchSnapshotId,
         loadEntryMeaning: "total_system",
       },
@@ -259,6 +270,9 @@ describe("History lens database evidence", () => {
         weightUnit: "lb",
         reps: 10,
         excludeFromAnalytics: true,
+        performedSemanticsVersion: 1,
+        performedLoadType: "barbell",
+        performedLoadSemantics: "total",
         equipmentSnapshotId: firstBenchSnapshotId,
         loadEntryMeaning: "total_system",
       },
@@ -276,6 +290,9 @@ describe("History lens database evidence", () => {
         weightUnit: "lb",
         reps: 10,
         metricType: "assisted_reps",
+        performedSemanticsVersion: 1,
+        performedLoadType: "machine",
+        performedLoadSemantics: "assistance",
         equipmentSnapshotId: assistedSnapshotId,
         loadEntryMeaning: "displayed_stack",
         targetMet: true,
@@ -293,6 +310,11 @@ describe("History lens database evidence", () => {
       .values({
         sessionId: secondSessionId,
         exerciseId: benchId,
+        prescribedSemanticsVersion: 1,
+        prescribedExerciseName: benchName,
+        prescribedMetricType: "weight_reps",
+        prescribedLoadType: "barbell",
+        prescribedLoadSemantics: "total",
         plannedFromTemplateExerciseId: slotByExerciseId.get(benchId),
         modificationType: "as_planned",
         orderIdx: 0,
@@ -313,6 +335,10 @@ describe("History lens database evidence", () => {
       weight: 105,
       weightUnit: "lb",
       reps: 10,
+      metricType: "weight_reps",
+      performedSemanticsVersion: 1,
+      performedLoadType: "barbell",
+      performedLoadSemantics: "total",
       equipmentSnapshotId: secondBenchSnapshotId,
       loadEntryMeaning: "total_system",
     });
@@ -349,6 +375,10 @@ describe("History lens database evidence", () => {
         weight: 200,
         weightUnit: "lb",
         reps: 1,
+        metricType: "weight_reps",
+        performedSemanticsVersion: 1,
+        performedLoadType: "barbell",
+        performedLoadSemantics: "total",
         equipmentSnapshotId: importedBenchSnapshotId,
         loadEntryMeaning: "total_system",
       })
@@ -477,7 +507,7 @@ describe("History lens database evidence", () => {
 
     expect(pain.answer).toContain(benchName);
     expect(pain.answer).toContain("Shoulder");
-    expect(pain.limitation).toContain("2 of 3 pain flags name an exercise");
+    expect(pain.limitation).toContain("2 of 3 positive pain reports name an exercise");
     expect(pain.evidence.some((item) => item.label === "Session-level · Knee")).toBe(
       true,
     );
@@ -551,7 +581,7 @@ describe("History lens database evidence", () => {
       (lens) => lens.key === "pain-constraints",
     )!;
     expect(archivedRecords.evidence[0].value).toBe("105 lb × 10");
-    expect(archivedPain.limitation).toContain("2 of 2 pain flags name an exercise");
+    expect(archivedPain.limitation).toContain("2 of 2 positive pain reports name an exercise");
 
     await database.db
       .update(completedSets)
@@ -570,6 +600,6 @@ describe("History lens database evidence", () => {
     ).toBe("200 lb × 1");
     expect(
       restored.lenses.find((lens) => lens.key === "pain-constraints")!.limitation,
-    ).toContain("2 of 3 pain flags name an exercise");
+    ).toContain("2 of 3 positive pain reports name an exercise");
   }, 30_000);
 });

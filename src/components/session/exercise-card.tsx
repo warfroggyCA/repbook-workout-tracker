@@ -4,7 +4,6 @@ import { useEffect, useId, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import {
-  updateSet,
   archiveSet,
   skipExercise,
   unskipExercise,
@@ -42,7 +41,6 @@ import {
 } from "@/components/ui/drawer";
 import { cn } from "@/lib/utils";
 import { formatRestTime } from "@/lib/rest-time";
-import { formatWarmupSetLine } from "@/lib/warmup";
 import {
   EXERCISE_NOTE_MAX_LENGTH,
   SET_NOTE_MAX_LENGTH,
@@ -52,7 +50,7 @@ import {
 } from "@/lib/exercise-card";
 import type { ExerciseDiscoveryItem } from "@/lib/exercise-discovery";
 import type { ExerciseAlternativeReason } from "@/lib/exercise-alternatives";
-import { convertWeight, requireLoadUnit, type LoadUnit } from "@/lib/units";
+import { convertWeight, type LoadUnit } from "@/lib/units";
 import {
   Check,
   ChevronDown,
@@ -63,7 +61,12 @@ import {
   MessageSquareText,
   PlayCircle,
 } from "lucide-react";
-import type { SessionExerciseData, SessionOccurrenceData, LoggedSet } from "./types";
+import type {
+  LoggedSet,
+  SessionExerciseData,
+  SessionOccurrenceData,
+  SetAcknowledgementReceipt,
+} from "./types";
 import type { ExerciseProgressProjection } from "@/lib/session-guidance";
 import type { MachineLoadConfig } from "@/engine/machine-load-math";
 import {
@@ -85,9 +88,28 @@ import {
   isAppendedExtraSetOccurrence,
   workingSetDisplayPosition,
 } from "@/lib/session-occurrences";
-import { resolveFutureSetWriterMetricType } from "@/lib/set-metric-semantics";
+import {
+  buildPerformedSetMeasurement,
+  isSupportedSetWriterSemanticDefinition,
+  PERFORMED_METRIC_TYPES,
+  resolveFutureSetWriterMetricType,
+  type PerformedMetricType,
+} from "@/lib/set-metric-semantics";
 import { createClientUuid } from "@/lib/client-uuid";
+import { formatPainEvidence } from "@/lib/pain-evidence";
 import type { OccurrenceMutationOutboxEntry } from "@/lib/occurrence-mutation-outbox";
+import { CompletedSetCorrection } from "@/components/history/completed-set-correction";
+import {
+  LIMITATION_CAUSES,
+  LIMITATION_CAUSE_LABELS,
+  PAIN_BODY_PARTS,
+  TECHNIQUE_ISSUES,
+  TECHNIQUE_ISSUE_LABELS,
+  type LimitationCause,
+  type PainBodyPart,
+  type SetPainContext,
+  type TechniqueIssue,
+} from "@/lib/set-exception-context";
 
 const RPE_CHIPS = EFFORT_CHOICES.map((choice) => ({
   label: choice.label,
@@ -96,13 +118,21 @@ const RPE_CHIPS = EFFORT_CHOICES.map((choice) => ({
   value: choice.legacyRpe,
 }));
 
-const BODY_PARTS = ["shoulder", "knee", "back", "elbow", "wrist", "hip", "other"];
-
 function formatLoggedSet(
   set: LoggedSet,
   fallbackMetricType: SessionExerciseData["metricType"],
 ) {
   const metricType = set.metricType ?? fallbackMetricType ?? "weight_reps";
+  if (metricType === "duration" && set.durationSeconds != null) {
+    return formatPerformedDuration(set.durationSeconds);
+  }
+  if (metricType === "distance_duration" && set.distanceKm != null) {
+    const duration = set.durationSeconds == null
+      ? ""
+      : ` · ${formatPerformedDuration(set.durationSeconds)}`;
+    return `${set.distanceKm} km${duration}`;
+  }
+  if (set.reps == null) return "No numeric result";
   const repetitions = `${set.reps} rep${set.reps === 1 ? "" : "s"}`;
   if (
     metricType === "assisted_reps" &&
@@ -116,6 +146,37 @@ function formatLoggedSet(
     : repetitions;
 }
 
+function formatPerformedDuration(durationSeconds: number) {
+  const minutes = Math.floor(durationSeconds / 60);
+  const seconds = durationSeconds % 60;
+  return minutes > 0
+    ? `${minutes}:${String(seconds).padStart(2, "0")}`
+    : `${seconds} sec`;
+}
+
+function formatLoggedExceptionContext(set: LoggedSet) {
+  const context: string[] = [];
+  if (set.rir != null) context.push(`RIR ${set.rir}`);
+  if (set.techniqueIssue != null) {
+    context.push(`Technique: ${TECHNIQUE_ISSUE_LABELS[set.techniqueIssue]}`);
+  }
+  if (set.limitationCause != null) {
+    context.push(`Limited by: ${LIMITATION_CAUSE_LABELS[set.limitationCause]}`);
+  }
+  if (set.pain != null) {
+    context.push(`Pain: ${set.pain.bodyPart} ${set.pain.severity}/10`);
+  }
+  return context;
+}
+
+function performedMetricTypeForLivePatch(
+  metricType: string,
+): PerformedMetricType | null {
+  return PERFORMED_METRIC_TYPES.includes(metricType as PerformedMetricType)
+    ? (metricType as PerformedMetricType)
+    : null;
+}
+
 const ALTERNATIVE_REASON_LABELS: Record<ExerciseAlternativeReason, string> = {
   variety: "Variety",
   equipment_busy: "Equipment busy",
@@ -123,16 +184,29 @@ const ALTERNATIVE_REASON_LABELS: Record<ExerciseAlternativeReason, string> = {
   other: "Another reason",
 };
 
+type SetPainDraft = {
+  bodyPart: PainBodyPart | null;
+  severity: number | null;
+  note: string | null;
+};
+
 type SetDraft = {
   weight: number | null;
   weightUnit: LoadUnit | null;
-  reps: number;
+  reps: number | null;
+  distanceKm: number | null;
+  durationSeconds: number | null;
   rpe: number | null;
+  rir: number | null;
+  techniqueIssue: TechniqueIssue | null;
+  limitationCause: LimitationCause | null;
+  pain: SetPainDraft | null;
   note: string;
 };
 
 type Props = {
   exercise: SessionExerciseData;
+  historyRevision: number;
   progress: ExerciseProgressProjection;
   expanded: boolean;
   onToggle: () => void;
@@ -154,16 +228,16 @@ type Props = {
   occurrenceMutationEntries?: OccurrenceMutationOutboxEntry[];
   occurrenceRuntimeSaveStates?: Record<string, "saving" | "retrying">;
   acknowledgedOccurrenceIds?: string[];
+  acknowledgementReceipt?: SetAcknowledgementReceipt | null;
   isCurrentExercise?: boolean;
+  nextActionLabel?: string | null;
   warmupResolved?: boolean;
-  warmupSkipped?: boolean;
   groupContext?: {
     name: string;
     memberOrder: number;
     memberCount: number;
   } | null;
   occurrenceChangesBlocked?: boolean;
-  onPrepareRestCue?: () => void;
   onSkipSet?: (
     input: { reason: string | null; note: string | null },
     occurrence?: SessionOccurrenceData | null,
@@ -176,12 +250,11 @@ type Props = {
   ) => void;
   onRetrySet: (clientKey: string) => Promise<void>;
   onDiscardSet: (clientKey: string) => Promise<void>;
+  onHistoryRevisionChange?: (historyRevision: number) => void;
   onOpenCoach: () => void;
   onSkipComplete: () => void;
   adjustIntent: ExerciseAdjustmentIntent | null;
   onAdjustIntentChange: (intent: ExerciseAdjustmentIntent | null) => void;
-  editSetRequest: { setId: string; token: number } | null;
-  onEditSetOpenChange: (exerciseId: string, open: boolean) => void;
 };
 
 type ReplacementOptions = Extract<
@@ -193,6 +266,7 @@ export type ExerciseAdjustmentIntent = "note" | "swap" | "replace" | "skip";
 
 export function ExerciseCard({
   exercise,
+  historyRevision,
   progress,
   expanded,
   onToggle,
@@ -208,23 +282,22 @@ export function ExerciseCard({
   occurrenceMutationEntries = [],
   occurrenceRuntimeSaveStates = {},
   acknowledgedOccurrenceIds = [],
+  acknowledgementReceipt = null,
   isCurrentExercise = false,
+  nextActionLabel = null,
   warmupResolved = false,
-  warmupSkipped = false,
   groupContext = null,
   occurrenceChangesBlocked = false,
-  onPrepareRestCue = () => undefined,
   onSkipSet = async () => false,
   onRetryOccurrenceMutation = () => undefined,
   onDiscardOccurrenceMutation = () => undefined,
   onRetrySet,
   onDiscardSet,
+  onHistoryRevisionChange = () => undefined,
   onOpenCoach,
   onSkipComplete,
   adjustIntent,
   onAdjustIntentChange,
-  editSetRequest,
-  onEditSetOpenChange,
 }: Props) {
   const router = useRouter();
   const plateConfig = plateConfigs[exercise.id];
@@ -241,11 +314,15 @@ export function ExerciseCard({
     : usesTotalBarLoad
       ? "Total load"
       : undefined;
-  const recordsNumericLoad =
-    exercise.metricType === "assisted_reps" ||
-    (exercise.loadType !== "bodyweight" && exercise.loadType !== "band");
   const performedMetricType = resolveFutureSetWriterMetricType({
     metricType: exercise.metricType ?? "weight_reps",
+    loadSemantics: exercise.loadSemantics,
+  });
+  const recordsNumericLoad =
+    performedMetricType === "weight_reps" ||
+    performedMetricType === "assisted_reps";
+  const metricSupported = isSupportedSetWriterSemanticDefinition({
+    metricType: performedMetricType,
     loadSemantics: exercise.loadSemantics,
   });
 
@@ -265,15 +342,6 @@ export function ExerciseCard({
           occurrence.outcome === "pending",
       )
       .sort((left, right) => right.kindOrdinal - left.kindOrdinal)[0] ?? null;
-  const unresolvedPlannedWorkingSet = workingOccurrences.some(
-    (occurrence) =>
-      occurrence.outcome === "pending" &&
-      !isAppendedExtraSetOccurrence(occurrence),
-  ) || (
-    activeOccurrence?.kind === "working_set" &&
-    activeOccurrence.outcome === "pending" &&
-    !isAppendedExtraSetOccurrence(activeOccurrence)
-  );
   const appendSetNo =
     Math.max(exercise.targetSets ?? 0, highestLoggedSetNo, highestOccurrenceSetNo) + 1;
   // Planned occurrences are the durable source of set identity. A skipped set
@@ -300,7 +368,11 @@ export function ExerciseCard({
         ? convertWeight(exercise.targetLoad, exercise.targetLoadUnit, unit)
         : null;
   const defaultReps =
-    prefillFrom?.reps ?? exercise.targetRepsMax ?? exercise.targetRepsMin ?? 8;
+    performedMetricType === "weight_reps" ||
+      performedMetricType === "reps" ||
+      performedMetricType === "assisted_reps"
+      ? prefillFrom?.reps ?? exercise.targetRepsMax ?? exercise.targetRepsMin ?? 8
+      : null;
   const appendedWeight =
     appendedOccurrence?.plannedLoad != null &&
     appendedOccurrence.plannedLoadUnit != null
@@ -319,38 +391,37 @@ export function ExerciseCard({
       ? ""
       : (exercise.setNotes[nextSetIdx] ?? "");
 
-  const requestedSet = editSetRequest
-    ? exercise.sets.find(
-        (candidate) =>
-          candidate.id === editSetRequest.setId &&
-          (candidate.saveState == null || candidate.saveState === "saved")
-      ) ?? null
-    : null;
-
   const [draft, setDraft] = useState<SetDraft>({
-    weight: requestedSet?.weight ?? defaultWeight,
-    weightUnit:
-      requestedSet?.weightUnit ??
-      (defaultWeight == null ? null : unit),
-    reps: requestedSet?.reps ?? defaultReps,
-    rpe: requestedSet?.rpe ?? null,
-    note:
-      requestedSet?.note ??
-      (requestedSet
-        ? exercise.setNotes[Math.max(0, requestedSet.setNo - 1)] ?? ""
-        : defaultSetNote),
+    weight: recordsNumericLoad ? defaultWeight : null,
+    weightUnit: recordsNumericLoad
+      ? defaultWeight == null ? null : unit
+      : null,
+    reps: defaultReps,
+    distanceKm: null,
+    durationSeconds: null,
+    rpe: null,
+    rir: null,
+    techniqueIssue: null,
+    limitationCause: null,
+    pain: null,
+    note: defaultSetNote,
   });
   const [appendedDraft, setAppendedDraft] = useState<SetDraft>({
-    weight: appendedWeight ?? defaultWeight,
-    weightUnit:
-      appendedWeight == null && defaultWeight == null ? null : unit,
+    weight: recordsNumericLoad ? appendedWeight ?? defaultWeight : null,
+    weightUnit: recordsNumericLoad &&
+        (appendedWeight != null || defaultWeight != null)
+      ? unit
+      : null,
     reps: appendedReps ?? defaultReps,
+    distanceKm: null,
+    durationSeconds: null,
     rpe: null,
+    rir: null,
+    techniqueIssue: null,
+    limitationCause: null,
+    pain: null,
     note: "",
   });
-  const [editingSetId, setEditingSetId] = useState<string | null>(
-    requestedSet?.id ?? null
-  );
   const [appendingSet, setAppendingSet] = useState(false);
   const appendRequestRef = useRef<string | null>(null);
   const appendFocusRequestRef = useRef<string | null>(null);
@@ -372,8 +443,7 @@ export function ExerciseCard({
     const requestedOccurrenceId = appendFocusRequestRef.current;
     if (
       requestedOccurrenceId == null ||
-      appendedOccurrence?.id !== requestedOccurrenceId ||
-      editingSetId != null
+      appendedOccurrence?.id !== requestedOccurrenceId
     ) {
       return;
     }
@@ -396,7 +466,7 @@ export function ExerciseCard({
       cancelAnimationFrame(scrollFrame);
       cancelAnimationFrame(focusFrame);
     };
-  }, [appendedOccurrence?.id, editingSetId, exercise.id]);
+  }, [appendedOccurrence?.id, exercise.id]);
 
   const isSkipped = exercise.modificationType === "skipped";
   const targetText =
@@ -435,7 +505,42 @@ export function ExerciseCard({
     if (exercise.sets.some((set) => set.saveState != null && set.saveState !== "saved")) {
       return;
     }
-    if (occurrence && occurrence.restAfterSec > 0) onPrepareRestCue();
+    if (!metricSupported) {
+      toast.error(
+        "This exercise needs a performed measurement shape that Repbook cannot record truthfully yet.",
+      );
+      return;
+    }
+    const performed = buildPerformedSetMeasurement({
+      metricType: performedMetricType,
+      loadSemantics: exercise.loadSemantics,
+      weight: submittedDraft.weight,
+      weightUnit: submittedDraft.weight == null
+        ? null
+        : (submittedDraft.weightUnit ?? unit),
+      reps: submittedDraft.reps,
+      distanceKm: submittedDraft.distanceKm,
+      durationSeconds: submittedDraft.durationSeconds,
+    });
+    if (!performed.ok) {
+      toast.error(performed.message);
+      return;
+    }
+    let pain: SetPainContext | null = null;
+    if (submittedDraft.pain != null) {
+      if (
+        submittedDraft.pain.bodyPart == null ||
+        submittedDraft.pain.severity == null
+      ) {
+        toast.error("Choose a pain location and severity, or clear the pain flag.");
+        return;
+      }
+      pain = {
+        bodyPart: submittedDraft.pain.bodyPart,
+        severity: submittedDraft.pain.severity,
+        note: submittedDraft.pain.note,
+      };
+    }
     let clientKey: string;
     try {
       clientKey = createClientUuid();
@@ -451,11 +556,12 @@ export function ExerciseCard({
       id: `optimistic-${clientKey}`,
       clientKey,
       setNo,
-      weight: submittedDraft.weight,
-      weightUnit: submittedDraft.weight == null ? null : unit,
-      reps: submittedDraft.reps,
-      metricType: performedMetricType,
+      ...performed.measurement,
       rpe: submittedDraft.rpe,
+      rir: submittedDraft.rir,
+      techniqueIssue: submittedDraft.techniqueIssue,
+      limitationCause: submittedDraft.limitationCause,
+      pain,
       note: cleanNote,
       saveState: "pending",
     };
@@ -482,7 +588,20 @@ export function ExerciseCard({
     });
     const resetSubmittedDraft = (current: SetDraft): SetDraft => ({
       ...current,
+      distanceKm:
+        performed.measurement.metricType === "distance_duration"
+          ? null
+          : current.distanceKm,
+      durationSeconds:
+        performed.measurement.metricType === "duration" ||
+          performed.measurement.metricType === "distance_duration"
+          ? null
+          : current.durationSeconds,
       rpe: null,
+      rir: null,
+      techniqueIssue: null,
+      limitationCause: null,
+      pain: null,
       note: exercise.setNotes[setNo] ?? "",
     });
     if (occurrence?.id === appendedOccurrence?.id) {
@@ -496,8 +615,7 @@ export function ExerciseCard({
     if (
       appendingSet ||
       appendRequestRef.current ||
-      appendedOccurrence ||
-      unresolvedPlannedWorkingSet
+      appendedOccurrence
     ) {
       return;
     }
@@ -526,77 +644,24 @@ export function ExerciseCard({
           appended.plannedRepsMax ??
           appended.plannedRepsMin ??
           defaultReps,
+        distanceKm: null,
+        durationSeconds: null,
         rpe: null,
+        rir: null,
+        techniqueIssue: null,
+        limitationCause: null,
+        pain: null,
         note: "",
       });
-      setEditingSetId(null);
     } finally {
       appendRequestRef.current = null;
       setAppendingSet(false);
     }
   }
 
-  function handleUpdate(set: LoggedSet) {
-    const cleanNote = draft.note.trim() || null;
-    const previousSets = exercise.sets;
-    onPatch({
-      sets: exercise.sets.map((s) =>
-        s.id === set.id
-          ? {
-              ...s,
-              weight: draft.weight,
-              weightUnit:
-                draft.weight == null ? null : requireLoadUnit(set.weightUnit),
-              reps: draft.reps,
-              rpe: draft.rpe,
-              note: cleanNote,
-            }
-          : s
-      ),
-    });
-    setEditingSetId(null);
-    onEditSetOpenChange(exercise.id, false);
-    startTransition(async () => {
-      try {
-        const result = await updateSet({
-          setId: set.id,
-          weight: draft.weight,
-          weightUnit:
-            draft.weight == null ? null : requireLoadUnit(set.weightUnit),
-          reps: draft.reps,
-          rpe: draft.rpe,
-          note: cleanNote,
-        });
-        if (!result.ok) {
-          onPatch({ sets: previousSets });
-          toast.error(result.message);
-          return;
-        }
-        {
-          const measurement = readActiveWorkoutMeasurements().find(
-            (record) =>
-              (set.clientKey != null && record.clientKey === set.clientKey) ||
-              record.setId === set.id
-          );
-          if (measurement) {
-            patchActiveWorkoutMeasurement(measurement.clientKey, {
-              corrections: measurement.corrections + 1,
-            });
-          }
-        }
-        toast.success("Set saved");
-      } catch {
-        onPatch({ sets: previousSets });
-        toast.error("The set update was not saved.");
-      }
-    });
-  }
-
   function handleDelete(set: LoggedSet) {
     const previousSets = exercise.sets;
     onPatch({ sets: exercise.sets.filter((s) => s.id !== set.id) });
-    setEditingSetId(null);
-    onEditSetOpenChange(exercise.id, false);
     startTransition(async () => {
       try {
         const result = await archiveSet(set.id);
@@ -635,31 +700,155 @@ export function ExerciseCard({
   const unconfirmedSet = exercise.sets.find(
     (set) => set.saveState != null && set.saveState !== "saved",
   );
+  const prioritizeCurrentAction = nextActionLabel != null;
+  const latestAcknowledgedSet = prioritizeCurrentAction
+    ? [...exercise.sets]
+        .filter(
+          (set) => set.saveState === "saved" && set.setNo < nextSetNo,
+        )
+        .sort((left, right) => right.setNo - left.setNo)[0] ?? null
+    : null;
+  const displayedAcknowledgementReceipt = isCurrentExercise
+    ? acknowledgementReceipt ??
+      (prioritizeCurrentAction && latestAcknowledgedSet
+        ? {
+            sessionExerciseId: exercise.id,
+            exerciseName: exercise.name,
+            metricType:
+              latestAcknowledgedSet.metricType ??
+              exercise.metricType ??
+              "weight_reps",
+            set: latestAcknowledgedSet,
+          }
+        : null)
+    : null;
+  const prioritizedRowIndex = prioritizeCurrentAction
+    ? nextSetIdx
+    : unconfirmedSet
+      ? unconfirmedSet.setNo - 1
+      : null;
+  const plannedRowOrder = Array.from(
+    { length: plannedRows },
+    (_, index) => index,
+  ).sort((left, right) => {
+    if (left === prioritizedRowIndex) return -1;
+    if (right === prioritizedRowIndex) return 1;
+    return left - right;
+  });
   const isCurrentPlannedSet =
     activeOccurrence?.sessionExerciseId === exercise.id &&
     activeOccurrence.kind === "working_set" &&
     activeOccurrence.kindOrdinal === nextSetIdx;
-  const hasWarmup =
+  const hasWarmupGuidance =
     exercise.modificationType !== "substituted" &&
-    (!!exercise.warmupNotes?.trim() || exercise.warmupSets.length > 0);
-  const warmupGuidance = hasWarmup ? (
-    <>
-      {exercise.warmupNotes && (
-        <p className="mt-1 text-muted-foreground">{exercise.warmupNotes}</p>
-      )}
-      {exercise.warmupSets.length > 0 && (
-        <ul className="mt-2 flex flex-col gap-1 text-muted-foreground">
-          {exercise.warmupSets.map((set, i) => (
-            <li key={`${set.label}-${i}`}>{formatWarmupSetLine(set)}</li>
-          ))}
-        </ul>
-      )}
-    </>
+    !!exercise.warmupNotes?.trim();
+  const warmupGuidance = hasWarmupGuidance ? (
+    <p className="mt-1 whitespace-pre-line text-muted-foreground">
+      {exercise.warmupNotes}
+    </p>
   ) : null;
 
   function plannedNote(index: number): string | null {
     if (exercise.modificationType === "substituted") return null;
     return exercise.setNotes[index]?.trim() || null;
+  }
+
+  function reconcileReplacement(
+    candidate: ExerciseDiscoveryItem,
+    state: ReplacementOptions["currentState"],
+    plannedExerciseName: string,
+  ) {
+    const metricType = performedMetricTypeForLivePatch(candidate.metricType);
+    if (!metricType) {
+      toast.error(
+        "This exercise measurement is not supported in the live workout.",
+      );
+      router.refresh();
+      return;
+    }
+    onPatch({
+      exerciseId: candidate.id,
+      name: candidate.name,
+      family: candidate.family,
+      loadType: candidate.loadType,
+      metricType,
+      loadSemantics: candidate.loadSemantics,
+      movementPattern: candidate.movementPattern,
+      cautionBodyParts: candidate.cautionBodyParts,
+      modificationType: state.modificationType,
+      skipReason: state.skipReason,
+      substitutedForExerciseId: state.substitutedForExerciseId,
+      substitutionReason: state.substitutionReason,
+      substitutedAt: state.substitutedAt,
+      plannedExerciseName:
+        state.substitutedForExerciseId == null ? null : plannedExerciseName,
+      targetLoad: state.targetLoad,
+      targetLoadUnit: state.targetLoadUnit,
+      notes: state.notes,
+      warmupNotes: state.warmupNotes,
+      warmupSets: state.warmupSets,
+      setNotes: state.setNotes,
+      last: null,
+      media: candidate.media ?? null,
+    });
+    setDraft((current) => ({
+      ...current,
+      weight:
+        state.targetLoad != null && state.targetLoadUnit != null
+          ? convertWeight(state.targetLoad, state.targetLoadUnit, unit)
+          : null,
+      weightUnit: state.targetLoad == null ? null : unit,
+      note: state.setNotes[exercise.sets.length] ?? "",
+    }));
+    setNote(state.notes ?? "");
+    router.refresh();
+  }
+
+  function applyReplacement(
+    candidate: ExerciseDiscoveryItem,
+    reason: ExerciseAlternativeReason,
+  ) {
+    const metricType = performedMetricTypeForLivePatch(candidate.metricType);
+    if (!metricType) {
+      toast.error(
+        "This exercise measurement is not supported in the live workout.",
+      );
+      router.refresh();
+      return;
+    }
+    onAdjustIntentChange(null);
+    onPatch({
+      exerciseId: candidate.id,
+      name: candidate.name,
+      family: candidate.family,
+      loadType: candidate.loadType,
+      metricType,
+      loadSemantics: candidate.loadSemantics,
+      movementPattern: candidate.movementPattern,
+      cautionBodyParts: candidate.cautionBodyParts,
+      modificationType: "substituted",
+      skipReason: null,
+      substitutedForExerciseId:
+        exercise.substitutedForExerciseId ?? exercise.exerciseId,
+      substitutionReason: reason,
+      substitutedAt: new Date().toISOString(),
+      plannedExerciseName: exercise.plannedExerciseName ?? exercise.name,
+      targetLoad: null,
+      targetLoadUnit: null,
+      notes: null,
+      warmupNotes: null,
+      warmupSets: [],
+      setNotes: [],
+      last: null,
+      media: candidate.media ?? null,
+    });
+    setDraft((current) => ({
+      ...current,
+      weight: null,
+      weightUnit: null,
+      note: "",
+    }));
+    setNote("");
   }
 
   return (
@@ -673,7 +862,7 @@ export function ExerciseCard({
         isCurrentExercise &&
           "border-2 border-foreground/70 bg-muted/25 shadow-[var(--shadow-soft)]",
         exercise.supersetKey && "border-l-4 border-l-primary/50",
-        isSkipped && "opacity-60"
+        isSkipped && "border-dashed bg-muted/20"
       )}
       onClickCapture={() => {
         if (isCurrentPlannedSet) tapsRef.current += 1;
@@ -685,6 +874,8 @@ export function ExerciseCard({
       <button
         type="button"
         onClick={onToggle}
+        aria-expanded={expanded}
+        aria-controls={`session-exercise-details-${exercise.id}`}
         className="flex w-full items-center justify-between gap-2 p-3 text-left"
       >
         <ExerciseFamilyIcon
@@ -719,8 +910,8 @@ export function ExerciseCard({
             {isSkipped
               ? `Skipped (${exercise.skipReason})`
               : exercise.modificationType === "added"
-                ? `${progress.performed}/${progress.planned || "–"} performed${devicePendingSets > 0 ? ` · ${devicePendingSets} saving` : ""} · Added to this workout · ${formatRestTime(exercise.restSec)} rest`
-                : `${progress.performed}/${progress.planned || "–"} performed${devicePendingSets > 0 ? ` · ${devicePendingSets} saving` : ""} · Planned: ${targetText} · ${formatRestTime(exercise.restSec)} rest`}
+                ? `${progress.workoutOnlyPerformed}/${progress.workoutOnly || "–"} workout-only performed${progress.extraPerformed > 0 ? ` · ${progress.extraPerformed} extra` : ""}${devicePendingSets > 0 ? ` · ${devicePendingSets} saving` : ""} · Added to this workout · ${formatRestTime(exercise.restSec)} rest`
+                : `${progress.plannedPerformed}/${progress.planned || "–"} planned performed${progress.extraPerformed > 0 ? ` · ${progress.extraPerformed} extra` : ""}${devicePendingSets > 0 ? ` · ${devicePendingSets} saving` : ""} · Planned: ${targetText} · ${formatRestTime(exercise.restSec)} rest`}
             {exercise.modificationType === "substituted" &&
               ` · instead of ${exercise.plannedExerciseName ?? "planned exercise"}`}
           </p>
@@ -747,64 +938,13 @@ export function ExerciseCard({
       </button>
 
       {expanded && !isSkipped && (
-        <div className="flex flex-col gap-3 border-t p-3">
-          {exercise.modificationType === "added" && (
-            <p className="rounded-md border border-primary/25 bg-primary/5 px-3 py-2 text-sm">
-              Added during this workout. It has no Program slot or progression
-              target, and your Program remains unchanged.
-            </p>
-          )}
-          {exercise.last && (
-            <p className="text-xs text-muted-foreground">
-              Last time:{" "}
-              {exercise.last.sets
-                .map(
-                  (s) =>
-                    `${s.weight != null && s.weightUnit != null ? `${s.weight} ${s.weightUnit}×` : ""}${s.reps}`
-                )
-                .join(", ")}
-            </p>
-          )}
-          {exercise.cautionBodyParts.length > 0 && (
-            <p className="rounded-md bg-amber-500/10 px-2 py-1 text-xs text-amber-700 dark:text-amber-400">
-              Take care of your {exercise.cautionBodyParts.join(" and ")} — stop
-              if pain goes above mild.
-            </p>
-          )}
-          {exercise.modificationType === "substituted" && (
-            <div className="rounded-md border border-primary/30 bg-primary/5 px-3 py-2 text-sm">
-              <p className="font-medium">
-                Using {exercise.name} instead of {exercise.plannedExerciseName ?? "the planned exercise"}
-              </p>
-              <p className="mt-1 text-xs text-muted-foreground">
-                Reason: {exercise.substitutionReason
-                  ? ALTERNATIVE_REASON_LABELS[exercise.substitutionReason]
-                  : "Not recorded"}. Exercise-specific loads, warm-ups, and cues from the plan do not carry over.
-              </p>
-            </div>
-          )}
-          {warmupGuidance && (
-            warmupResolved ? (
-              <details className="rounded-md border bg-muted/30 text-xs">
-                <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-2 px-3 py-2 font-medium text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
-                  <span>
-                    {warmupSkipped ? "Warm-up finished" : "Warm-up complete"}
-                  </span>
-                  <span className="text-muted-foreground">Show details</span>
-                </summary>
-                <div className="border-t px-3 pb-2">{warmupGuidance}</div>
-              </details>
-            ) : (
-              <div className="rounded-md border bg-muted/30 px-3 py-2 text-xs">
-                <p className="font-medium text-foreground">Warm-up</p>
-                {warmupGuidance}
-              </div>
-            )
-          )}
-
+        <div
+          id={`session-exercise-details-${exercise.id}`}
+          className="flex flex-col gap-3 border-t p-3"
+        >
           {/* Logged sets */}
           <div className="flex flex-col gap-1">
-            {Array.from({ length: plannedRows }).map((_, i) => {
+            {plannedRowOrder.map((i) => {
               const set = exercise.sets.find((candidate) => candidate.setNo === i + 1);
               const occurrenceForRow = workingOccurrences.find(
                 (occurrence) => occurrence.kindOrdinal === i,
@@ -826,7 +966,7 @@ export function ExerciseCard({
                       workingOccurrences,
                     );
               const noteForSet = plannedNote(i);
-              if (set && editingSetId !== set.id) {
+              if (set) {
                 const awaitingSave =
                   set.saveState != null && set.saveState !== "saved";
                 return (
@@ -835,22 +975,7 @@ export function ExerciseCard({
                     id={`logged-set-${exercise.id}-${set.setNo}`}
                     className="rounded-md bg-primary/5 px-3 py-2 text-sm"
                   >
-                    <button
-                      type="button"
-                      className="w-full text-left disabled:cursor-default"
-                      disabled={awaitingSave}
-                      onClick={() => {
-                        onEditSetOpenChange(exercise.id, true);
-                        setEditingSetId(set.id);
-                        setDraft({
-                          weight: set.weight,
-                          weightUnit: set.weightUnit,
-                          reps: set.reps,
-                          rpe: set.rpe,
-                          note: set.note ?? noteForSet ?? "",
-                        });
-                      }}
-                    >
+                    <div>
                       <div className="flex items-center justify-between gap-3">
                         <span className="text-muted-foreground">
                           {rowPosition?.label ?? `Set ${i + 1}`}
@@ -867,7 +992,15 @@ export function ExerciseCard({
                       {set.note && (
                         <p className="mt-1 text-xs text-muted-foreground">{set.note}</p>
                       )}
-                    </button>
+                      {formatLoggedExceptionContext(set).map((context) => (
+                        <p
+                          key={context}
+                          className="mt-1 text-xs text-muted-foreground"
+                        >
+                          {context}
+                        </p>
+                      ))}
+                    </div>
                     {set.saveState && (
                       <div className="mt-2 flex flex-wrap items-center justify-between gap-2 border-t pt-2 text-xs">
                         <span
@@ -911,50 +1044,81 @@ export function ExerciseCard({
                         )}
                       </div>
                     )}
-                  </div>
-                );
-              }
-              if (set && editingSetId === set.id) {
-                return (
-                  <div key={set.id} className="rounded-md border p-2">
-                    <SetEntry
-                      draft={draft}
-                      setDraft={setDraft}
-                      stepWeight={stepWeight}
-                      unit={set.weightUnit ?? "unit missing"}
-                      hasWeight={recordsNumericLoad}
-                      weightLabel={
-                        (set.metricType ?? exercise.metricType) === "assisted_reps"
-                          ? "Assistance"
-                          : usesTotalBarLoad
-                            ? "Total weight"
-                            : undefined
-                      }
-                    />
-                    <div className="mt-2 flex gap-2">
-                      <Button size="sm" className="flex-1" onClick={() => handleUpdate(set)}>
-                        Update
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => {
-                          setEditingSetId(null);
-                          onEditSetOpenChange(exercise.id, false);
-                        }}
-                      >
-                        Cancel
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        className="text-destructive"
-                        onClick={() => handleDelete(set)}
-                        aria-label="Archive set"
-                      >
-                        <Archive className="size-4" />
-                      </Button>
-                    </div>
+                    {!awaitingSave && (
+                      <div className="mt-2 flex flex-wrap items-center justify-between gap-2 border-t pt-2">
+                        <span className="text-xs text-muted-foreground">
+                          {(set.correctionCount ?? 0) > 0
+                            ? `${set.correctionCount} saved correction${
+                                set.correctionCount === 1 ? "" : "s"
+                              } · original retained in Edit history`
+                            : "Acknowledged by Repbook"}
+                        </span>
+                        <div className="flex flex-wrap gap-2">
+                          {(set.metricType ?? performedMetricType) === "activity" ? (
+                            <span className="self-center text-xs text-muted-foreground">
+                              Correction unavailable for this legacy shape
+                            </span>
+                          ) : (
+                            <CompletedSetCorrection
+                              setId={set.id}
+                              setNo={set.setNo}
+                              weight={set.weight}
+                              weightUnit={set.weightUnit}
+                              reps={set.reps}
+                              distanceKm={set.distanceKm ?? null}
+                              durationSeconds={set.durationSeconds ?? null}
+                              metricType={set.metricType ?? performedMetricType}
+                              rpe={set.rpe}
+                              note={set.note}
+                              historyRevision={historyRevision}
+                              source="active_workout"
+                              onAcknowledged={(result) => {
+                                onPatch({
+                                  sets: exercise.sets.map((candidate) =>
+                                    candidate.id === set.id
+                                      ? {
+                                          ...candidate,
+                                          ...result.values,
+                                          correctionCount:
+                                            (candidate.correctionCount ?? 0) + 1,
+                                        }
+                                      : candidate,
+                                  ),
+                                });
+                                onHistoryRevisionChange(
+                                  result.historyRevision,
+                                );
+                                const measurement =
+                                  readActiveWorkoutMeasurements().find(
+                                    (record) =>
+                                      (set.clientKey != null &&
+                                        record.clientKey === set.clientKey) ||
+                                      record.setId === set.id,
+                                  );
+                                if (measurement) {
+                                  patchActiveWorkoutMeasurement(
+                                    measurement.clientKey,
+                                    {
+                                      corrections:
+                                        measurement.corrections + 1,
+                                    },
+                                  );
+                                }
+                              }}
+                            />
+                          )}
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="text-destructive"
+                            onClick={() => handleDelete(set)}
+                            aria-label="Archive set"
+                          >
+                            <Archive className="size-4" />
+                          </Button>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 );
               }
@@ -994,10 +1158,7 @@ export function ExerciseCard({
                   </div>
                 );
               }
-              if (
-                appendedOccurrence?.kindOrdinal === i &&
-                editingSetId == null
-              ) {
+              if (appendedOccurrence?.kindOrdinal === i) {
                 return (
                   <div
                     key={appendedOccurrence.id}
@@ -1012,14 +1173,13 @@ export function ExerciseCard({
                       ).label} · Added to this workout
                     </p>
                     <SetEntry
+                      metricType={performedMetricType}
+                      supported={metricSupported}
                       draft={appendedDraft}
                       setDraft={setAppendedDraft}
                       stepWeight={stepWeight}
                       unit={unit}
-                      hasWeight={
-                        exercise.loadType !== "bodyweight" &&
-                        exercise.loadType !== "band"
-                      }
+                      hasWeight={recordsNumericLoad}
                       weightLabel={liveWeightLabel}
                       plateConfig={plateConfig}
                       machineLoadConfig={machineLoadConfig}
@@ -1031,6 +1191,7 @@ export function ExerciseCard({
                         }
                         disabled={
                           pending ||
+                          !metricSupported ||
                           Boolean(unconfirmedSet) ||
                           Boolean(occurrenceMutation)
                         }
@@ -1065,19 +1226,40 @@ export function ExerciseCard({
                   </div>
                 );
               }
-              if (i === nextSetIdx && editingSetId == null) {
+              if (i === nextSetIdx) {
                 if (isCurrentPlannedSet && !unconfirmedSet) {
                   return (
                     <div
                       key={`active-${i}`}
                       id={`set-entry-${exercise.id}-${activeOccurrence.id}`}
                       data-testid="current-set-entry"
-                      className="scroll-mt-24 rounded-md border border-primary/40 p-2"
+                      className={cn(
+                        "scroll-mt-24 p-2",
+                        prioritizeCurrentAction
+                          ? "rounded-lg border-2 border-primary/60 bg-background p-3 shadow-sm"
+                          : "rounded-md border border-primary/40",
+                      )}
                     >
-                      <p className="mb-2 px-1 text-sm font-medium">
-                        Set {i + 1} of {exercise.targetSets ?? "open"}
-                      </p>
+                      {prioritizeCurrentAction ? (
+                        <div className="mb-3">
+                          <p className="text-xs font-semibold uppercase tracking-[0.12em] text-primary">
+                            Current action
+                          </p>
+                          <p className="mt-1 break-words text-base font-semibold">
+                            {exercise.name} · Set {i + 1} of {exercise.targetSets ?? "open"}
+                          </p>
+                        </div>
+                      ) : (
+                        <p className="mb-2 px-1 text-sm font-medium">
+                          Set {i + 1} of {exercise.targetSets ?? "open"}
+                        </p>
+                      )}
+                      {prioritizeCurrentAction && (
+                        <p className="mb-2 text-sm font-semibold">Performed measure</p>
+                      )}
                       <SetEntry
+                        metricType={performedMetricType}
+                        supported={metricSupported}
                         draft={draft}
                         setDraft={setDraft}
                         stepWeight={stepWeight}
@@ -1086,27 +1268,39 @@ export function ExerciseCard({
                         weightLabel={liveWeightLabel}
                         plateConfig={plateConfig}
                         machineLoadConfig={machineLoadConfig}
+                        prioritizePerformedMeasure={prioritizeCurrentAction}
                       />
-                      <div className="mt-2 grid grid-cols-[1fr_auto] gap-2">
+                      <div
+                        className={cn(
+                          prioritizeCurrentAction
+                            ? "mt-3"
+                            : "mt-2 grid grid-cols-[1fr_auto] gap-2",
+                        )}
+                      >
                         <Button
+                          className={cn(prioritizeCurrentAction && "w-full")}
                           onClick={() => handleLog()}
-                          disabled={pending || Boolean(occurrenceMutation)}
+                          disabled={
+                            pending || !metricSupported || Boolean(occurrenceMutation)
+                          }
                         >
                           <Check className="size-4" /> Log set
                         </Button>
-                        <Button
-                          type="button"
-                          variant="outline"
-                          disabled={
-                            occurrenceChangesBlocked ||
-                            Boolean(occurrenceMutation)
-                          }
-                          onClick={() =>
-                            setSkipSetOccurrence(activeOccurrence)
-                          }
-                        >
-                          Skip set
-                        </Button>
+                        {!prioritizeCurrentAction && (
+                          <Button
+                            type="button"
+                            variant="outline"
+                            disabled={
+                              occurrenceChangesBlocked ||
+                              Boolean(occurrenceMutation)
+                            }
+                            onClick={() =>
+                              setSkipSetOccurrence(activeOccurrence)
+                            }
+                          >
+                            Skip set
+                          </Button>
+                        )}
                       </div>
                       <OccurrenceSaveStatus
                         entry={occurrenceMutation}
@@ -1121,6 +1315,71 @@ export function ExerciseCard({
                         onRetry={onRetryOccurrenceMutation}
                         onDiscard={onDiscardOccurrenceMutation}
                       />
+                      {displayedAcknowledgementReceipt && (
+                        <div
+                          id={`active-set-save-receipt-${displayedAcknowledgementReceipt.sessionExerciseId}-${displayedAcknowledgementReceipt.set.setNo}`}
+                          data-testid="active-set-save-receipt"
+                          role="status"
+                          className="mt-3 rounded-md border border-green-600/30 bg-green-600/10 px-3 py-2 text-sm"
+                        >
+                          <p className="font-semibold">
+                            Saved · {displayedAcknowledgementReceipt.sessionExerciseId !== exercise.id
+                              ? `${displayedAcknowledgementReceipt.exerciseName} · `
+                              : ""}
+                            Set {displayedAcknowledgementReceipt.set.setNo}
+                          </p>
+                          <p className="mt-0.5 text-xs text-muted-foreground">
+                            {formatLoggedSet(
+                              displayedAcknowledgementReceipt.set,
+                              displayedAcknowledgementReceipt.metricType,
+                            )} · Acknowledged by Repbook
+                          </p>
+                          {formatLoggedExceptionContext(
+                            displayedAcknowledgementReceipt.set,
+                          ).map((context) => (
+                            <p
+                              key={context}
+                              className="mt-0.5 text-xs text-muted-foreground"
+                            >
+                              {context}
+                            </p>
+                          ))}
+                        </div>
+                      )}
+                      {prioritizeCurrentAction && (
+                        <>
+                          <div className="mt-3 border-t pt-3">
+                            <p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+                              Next action
+                            </p>
+                            <p className="mt-1 break-words text-sm">
+                              {nextActionLabel}
+                            </p>
+                          </div>
+                          <details className="mt-3 rounded-md border border-dashed text-sm">
+                            <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-2 rounded-md px-3 py-2 font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
+                              <span>Set exceptions</span>
+                              <span className="text-xs text-muted-foreground">Skip set</span>
+                            </summary>
+                            <div className="border-t p-2">
+                              <Button
+                                type="button"
+                                variant="outline"
+                                className="w-full"
+                                disabled={
+                                  occurrenceChangesBlocked ||
+                                  Boolean(occurrenceMutation)
+                                }
+                                onClick={() =>
+                                  setSkipSetOccurrence(activeOccurrence)
+                                }
+                              >
+                                Skip set
+                              </Button>
+                            </div>
+                          </details>
+                        </>
+                      )}
                     </div>
                   );
                 }
@@ -1158,8 +1417,7 @@ export function ExerciseCard({
               disabled={
                 Boolean(unconfirmedSet) ||
                 appendingSet ||
-                Boolean(appendedOccurrence) ||
-                unresolvedPlannedWorkingSet
+                Boolean(appendedOccurrence)
               }
               aria-describedby={`add-set-description-${exercise.id}`}
               onClick={() => void handleAppendSet()}
@@ -1171,10 +1429,65 @@ export function ExerciseCard({
               id={`add-set-description-${exercise.id}`}
               className="px-1 text-xs text-muted-foreground"
             >
-              {unresolvedPlannedWorkingSet
-                ? "Finish or skip the sets above before adding an extra."
-                : "Adds another set after your planned sets. Finish or skip it before adding one more."}
+              Adds ad-hoc work without changing the planned set order. Finish
+              or skip this extra before adding one more.
             </p>
+          </div>
+
+          <div className="flex flex-col gap-2" data-testid="exercise-reference-context">
+            {exercise.modificationType === "added" && (
+              <p className="rounded-md border border-primary/25 bg-primary/5 px-3 py-2 text-sm">
+                Added during this workout. It has no Program slot or progression
+                target, and your Program remains unchanged.
+              </p>
+            )}
+            {exercise.last && (
+              <p className="text-xs text-muted-foreground">
+                Last time:{" "}
+                {exercise.last.sets
+                  .map(
+                    (set) =>
+                      `${set.weight != null && set.weightUnit != null ? `${set.weight} ${set.weightUnit}×` : ""}${set.reps}`,
+                  )
+                  .join(", ")}
+              </p>
+            )}
+            {exercise.cautionBodyParts.length > 0 && (
+              <p className="rounded-md bg-amber-500/10 px-2 py-1 text-xs text-amber-700 dark:text-amber-400">
+                Take care of your {exercise.cautionBodyParts.join(" and ")} — stop
+                if pain goes above mild.
+              </p>
+            )}
+            {exercise.modificationType === "substituted" && (
+              <div className="rounded-md border border-primary/30 bg-primary/5 px-3 py-2 text-sm">
+                <p className="font-medium">
+                  Using {exercise.name} instead of {exercise.plannedExerciseName ?? "the planned exercise"}
+                </p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Reason: {exercise.substitutionReason
+                    ? ALTERNATIVE_REASON_LABELS[exercise.substitutionReason]
+                    : "Not recorded"}. Exercise-specific loads, warm-ups, and cues from the plan do not carry over.
+                </p>
+              </div>
+            )}
+            {warmupGuidance && (
+              warmupResolved ? (
+                <details className="rounded-md border bg-muted/30 text-xs">
+                  <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-2 px-3 py-2 font-medium text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
+                    <span>Warm-up guidance · reference</span>
+                    <span className="text-muted-foreground">Show details</span>
+                  </summary>
+                  <div className="border-t px-3 pb-2">{warmupGuidance}</div>
+                </details>
+              ) : (
+                <div className="rounded-md border bg-muted/30 px-3 py-2 text-xs">
+                  <p className="font-medium text-foreground">
+                    Warm-up guidance · not a check-off item
+                  </p>
+                  {warmupGuidance}
+                </div>
+              )
+            )}
           </div>
 
           <section
@@ -1211,7 +1524,6 @@ export function ExerciseCard({
                 onDone={(reason) => {
                   onAdjustIntentChange(null);
                   onPatch({ modificationType: "skipped", skipReason: reason });
-                  onSkipComplete();
                 }}
               />
             </div>
@@ -1294,12 +1606,23 @@ export function ExerciseCard({
                         onAdjustIntentChange(open ? "swap" : null)
                       }
                       onDone={(candidate, reason) => {
+                        const metricType = performedMetricTypeForLivePatch(
+                          candidate.metricType,
+                        );
+                        if (!metricType) {
+                          toast.error(
+                            "This exercise measurement is not supported in the live workout.",
+                          );
+                          router.refresh();
+                          return;
+                        }
                         onAdjustIntentChange(null);
                         onPatch({
                           exerciseId: candidate.id,
                           name: candidate.name,
                           family: candidate.family,
                           loadType: candidate.loadType,
+                          metricType,
                           loadSemantics: candidate.loadSemantics,
                           movementPattern: candidate.movementPattern,
                           cautionBodyParts: candidate.cautionBodyParts,
@@ -1349,88 +1672,8 @@ export function ExerciseCard({
                       onOpenChange={(open) =>
                         onAdjustIntentChange(open ? "replace" : null)
                       }
-                      onReconcile={(candidate, state, plannedExerciseName) => {
-                        onPatch({
-                          exerciseId: candidate.id,
-                          name: candidate.name,
-                          family: candidate.family,
-                          loadType: candidate.loadType,
-                          loadSemantics: candidate.loadSemantics,
-                          movementPattern: candidate.movementPattern,
-                          cautionBodyParts: candidate.cautionBodyParts,
-                          modificationType: state.modificationType,
-                          skipReason: state.skipReason,
-                          substitutedForExerciseId:
-                            state.substitutedForExerciseId,
-                          substitutionReason: state.substitutionReason,
-                          substitutedAt: state.substitutedAt,
-                          plannedExerciseName:
-                            state.substitutedForExerciseId == null
-                              ? null
-                              : plannedExerciseName,
-                          targetLoad: state.targetLoad,
-                          targetLoadUnit: state.targetLoadUnit,
-                          notes: state.notes,
-                          warmupNotes: state.warmupNotes,
-                          warmupSets: state.warmupSets,
-                          setNotes: state.setNotes,
-                          last: null,
-                          media: candidate.media ?? null,
-                        });
-                        setDraft((current) => ({
-                          ...current,
-                          weight:
-                            state.targetLoad != null &&
-                            state.targetLoadUnit != null
-                              ? convertWeight(
-                                  state.targetLoad,
-                                  state.targetLoadUnit,
-                                  unit,
-                                )
-                              : null,
-                          weightUnit:
-                            state.targetLoad == null ? null : unit,
-                          note:
-                            state.setNotes[exercise.sets.length] ?? "",
-                        }));
-                        setNote(state.notes ?? "");
-                        router.refresh();
-                      }}
-                      onDone={(candidate, reason) => {
-                        onAdjustIntentChange(null);
-                        onPatch({
-                          exerciseId: candidate.id,
-                          name: candidate.name,
-                          family: candidate.family,
-                          loadType: candidate.loadType,
-                          loadSemantics: candidate.loadSemantics,
-                          movementPattern: candidate.movementPattern,
-                          cautionBodyParts: candidate.cautionBodyParts,
-                          modificationType: "substituted",
-                          skipReason: null,
-                          substitutedForExerciseId:
-                            exercise.substitutedForExerciseId ?? exercise.exerciseId,
-                          substitutionReason: reason,
-                          substitutedAt: new Date().toISOString(),
-                          plannedExerciseName:
-                            exercise.plannedExerciseName ?? exercise.name,
-                          targetLoad: null,
-                          targetLoadUnit: null,
-                          notes: null,
-                          warmupNotes: null,
-                          warmupSets: [],
-                          setNotes: [],
-                          last: null,
-                          media: candidate.media ?? null,
-                        });
-                        setDraft((current) => ({
-                          ...current,
-                          weight: null,
-                          weightUnit: null,
-                          note: "",
-                        }));
-                        setNote("");
-                      }}
+                      onReconcile={reconcileReplacement}
+                      onDone={applyReplacement}
                     />
                   </div>
                 </div>
@@ -1448,11 +1691,22 @@ export function ExerciseCard({
                             toast.error(restored.message);
                             return;
                           }
+                          const metricType = performedMetricTypeForLivePatch(
+                            restored.exercise.metricType,
+                          );
+                          if (!metricType) {
+                            toast.error(
+                              "This exercise measurement is not supported in the live workout.",
+                            );
+                            router.refresh();
+                            return;
+                          }
                           onPatch({
                             exerciseId: restored.exercise.id,
                             name: restored.exercise.name,
                             family: restored.exercise.family,
                             loadType: restored.exercise.loadType,
+                            metricType,
                             loadSemantics: restored.exercise.loadSemantics,
                             movementPattern: restored.exercise.movementPattern,
                             cautionBodyParts: restored.exercise.cautionBodyParts,
@@ -1468,6 +1722,8 @@ export function ExerciseCard({
                             targetLoad: restored.targetLoad,
                             targetLoadUnit: restored.targetLoadUnit,
                             notes: restored.notes,
+                            warmupNotes: restored.warmupNotes,
+                            warmupSets: restored.warmupSets,
                             setNotes: restored.setNotes,
                             media: restored.exercise.media ?? null,
                           });
@@ -1550,33 +1806,61 @@ export function ExerciseCard({
       )}
 
       {expanded && isSkipped && (
-        <div className="border-t p-3">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() =>
-              startTransition(async () => {
-                try {
-                  const result = await unskipExercise(exercise.id);
-                  if (!result.ok) {
-                    toast.error(result.message);
+        <div className="flex flex-col gap-3 border-t p-3">
+          <div
+            id={`skip-recovery-description-${exercise.id}`}
+            role="status"
+            className="rounded-lg border bg-background p-3"
+          >
+            <h3 className="text-sm font-semibold">Exercise skipped</h3>
+            <p className="mt-1 text-xs leading-5 text-muted-foreground">
+              Replace it for this workout, or deliberately continue. Your saved
+              Program is unchanged.
+            </p>
+          </div>
+          <div className="grid gap-2 sm:grid-cols-3">
+            <ReplacementDrawer
+              exerciseId={exercise.id}
+              describedBy={`skip-recovery-description-${exercise.id}`}
+              open={adjustIntent === "replace"}
+              onOpenChange={(open) =>
+                onAdjustIntentChange(open ? "replace" : null)
+              }
+              onReconcile={reconcileReplacement}
+              onDone={applyReplacement}
+            />
+            <Button type="button" onClick={onSkipComplete}>
+              Continue without replacement
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={pending}
+              onClick={() =>
+                startTransition(async () => {
+                  try {
+                    const result = await unskipExercise(exercise.id);
+                    if (!result.ok) {
+                      toast.error(result.message);
+                      return;
+                    }
+                  } catch {
+                    toast.error("The exercise could not be restored.");
                     return;
                   }
-                } catch {
-                  toast.error("The exercise could not be restored.");
-                  return;
-                }
-                onPatch({
-                  modificationType: exercise.substitutedForExerciseId
-                    ? "substituted"
-                    : "as_planned",
-                  skipReason: null,
-                });
-              })
-            }
-          >
-            Un-skip
-          </Button>
+                  onPatch({
+                    modificationType: exercise.substitutedForExerciseId
+                      ? "substituted"
+                      : "as_planned",
+                    skipReason: null,
+                  });
+                })
+              }
+            >
+              Un-skip
+            </Button>
+          </div>
         </div>
       )}
       <OccurrenceMutationDialog
@@ -1603,6 +1887,8 @@ export function ExerciseCard({
 }
 
 function SetEntry({
+  metricType,
+  supported,
   draft,
   setDraft,
   stepWeight,
@@ -1611,7 +1897,10 @@ function SetEntry({
   weightLabel,
   plateConfig,
   machineLoadConfig,
+  prioritizePerformedMeasure = false,
 }: {
+  metricType: PerformedMetricType;
+  supported: boolean;
   draft: SetDraft;
   setDraft: React.Dispatch<React.SetStateAction<SetDraft>>;
   stepWeight: (current: number | null, dir: 1 | -1) => number | null;
@@ -1620,9 +1909,13 @@ function SetEntry({
   weightLabel?: string;
   plateConfig?: PlateMathConfig;
   machineLoadConfig?: MachineLoadConfig | null;
+  prioritizePerformedMeasure?: boolean;
 }) {
   const weightInputId = useId();
+  const distanceInputId = useId();
+  const durationInputId = useId();
   const exactRpeId = useId();
+  const exactRirId = useId();
   const [exactOpen, setExactOpen] = useState(
     draft.rpe != null && !RPE_CHIPS.some((chip) => chip.value === draft.rpe),
   );
@@ -1635,7 +1928,283 @@ function SetEntry({
       ? formatMachineLoadGuidance(draft.weight, machineLoadConfig)
       : null;
   const selectedEffort = EFFORT_CHOICES.find(
-    (choice) => choice.legacyRpe === draft.rpe,
+    (choice) => draft.rir == null && choice.legacyRpe === draft.rpe,
+  );
+  if (!supported) {
+    return (
+      <p role="alert" className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-950 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-100">
+        Repbook cannot yet represent every applicable performed value for this
+        exercise, so it will not save a partial or misleading set.
+      </p>
+    );
+  }
+  const recordsRepetitions =
+    metricType === "weight_reps" ||
+    metricType === "reps" ||
+    metricType === "assisted_reps";
+  const optionalSetFields = (
+    <>
+      <p className="text-sm text-muted-foreground">
+        All fields below are optional. Record effort as either RIR or RPE;
+        leaving it blank keeps effort unknown.
+      </p>
+      {selectedEffort && !exactOpen && (
+        <p className="text-sm font-medium">
+          Selected: {selectedEffort.label} — RPE {selectedEffort.legacyRpe}
+        </p>
+      )}
+      <div
+        role="group"
+        aria-label="Effort shortcuts"
+        className="grid grid-cols-2 gap-1.5 sm:grid-cols-4"
+      >
+        {RPE_CHIPS.map((chip) => (
+          <Button
+            key={chip.value}
+            variant={draft.rpe === chip.value ? "default" : "outline"}
+            size="sm"
+            className="h-auto min-h-11 whitespace-normal text-xs"
+            aria-label={`${chip.shortcutLabel}; ${chip.meaning}`}
+            aria-pressed={draft.rpe === chip.value && draft.rir == null}
+            onClick={() =>
+              setDraft((d) => ({
+                ...d,
+                rpe: d.rpe === chip.value ? null : chip.value,
+                rir: null,
+              }))
+            }
+          >
+            {chip.shortcutLabel}
+          </Button>
+        ))}
+      </div>
+      <Button
+        type="button"
+        variant="ghost"
+        size="sm"
+        className="self-start"
+        aria-expanded={exactOpen}
+        onClick={() => setExactOpen((open) => !open)}
+      >
+        {exactOpen ? "Hide exact RPE" : "Enter exact RPE instead"}
+      </Button>
+      {exactOpen && (
+        <div className="max-w-48">
+          <label htmlFor={exactRpeId} className="text-sm font-medium">
+            Exact RPE (1–10)
+          </label>
+          <Input
+            id={exactRpeId}
+            type="number"
+            inputMode="decimal"
+            min={1}
+            max={10}
+            step={0.5}
+            value={draft.rpe ?? ""}
+            onChange={(event) =>
+              setDraft((current) => ({
+                ...current,
+                rpe:
+                  event.target.value === ""
+                    ? null
+                    : Math.min(10, Math.max(1, Number(event.target.value))),
+                rir: null,
+              }))
+            }
+          />
+        </div>
+      )}
+      <div className="max-w-48">
+        <label htmlFor={exactRirId} className="text-sm font-medium">
+          RIR (0–10)
+        </label>
+        <Input
+          id={exactRirId}
+          type="number"
+          inputMode="decimal"
+          min={0}
+          max={10}
+          step={0.5}
+          value={draft.rir ?? ""}
+          onChange={(event) =>
+            setDraft((current) => ({
+              ...current,
+              rir:
+                event.target.value === ""
+                  ? null
+                  : Math.min(10, Math.max(0, Number(event.target.value))),
+              rpe: null,
+            }))
+          }
+        />
+        <p className="mt-1 text-xs text-muted-foreground">
+          Reps you believe remained. Entering RIR clears RPE.
+        </p>
+      </div>
+      <fieldset className="space-y-2 rounded-md border p-2">
+        <legend className="px-1 text-sm font-medium">Technique issue</legend>
+        <p className="text-xs text-muted-foreground">
+          Select only if you noticed one. Select it again to clear it.
+        </p>
+        <div className="grid grid-cols-2 gap-1.5">
+          {TECHNIQUE_ISSUES.map((issue) => (
+            <Button
+              key={issue}
+              type="button"
+              variant={draft.techniqueIssue === issue ? "default" : "outline"}
+              size="sm"
+              className="h-auto min-h-11 whitespace-normal text-xs"
+              aria-pressed={draft.techniqueIssue === issue}
+              onClick={() => setDraft((current) => ({
+                ...current,
+                techniqueIssue:
+                  current.techniqueIssue === issue ? null : issue,
+              }))}
+            >
+              {TECHNIQUE_ISSUE_LABELS[issue]}
+            </Button>
+          ))}
+        </div>
+      </fieldset>
+      <fieldset className="space-y-2 rounded-md border p-2">
+        <legend className="px-1 text-sm font-medium">What limited this set?</legend>
+        <p className="text-xs text-muted-foreground">
+          Optional context, not a change to your Program or next workout.
+        </p>
+        <div className="grid grid-cols-2 gap-1.5">
+          {LIMITATION_CAUSES.map((cause) => (
+            <Button
+              key={cause}
+              type="button"
+              variant={draft.limitationCause === cause ? "default" : "outline"}
+              size="sm"
+              className="h-auto min-h-11 whitespace-normal text-xs"
+              aria-pressed={draft.limitationCause === cause}
+              onClick={() => setDraft((current) => ({
+                ...current,
+                limitationCause:
+                  current.limitationCause === cause ? null : cause,
+              }))}
+            >
+              {LIMITATION_CAUSE_LABELS[cause]}
+            </Button>
+          ))}
+        </div>
+      </fieldset>
+      <div className="space-y-2 rounded-md border p-2">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <p className="text-sm font-medium">Pain during this set</p>
+            <p className="text-xs text-muted-foreground">
+              No flag means unknown, not “no pain.”
+            </p>
+          </div>
+          <Button
+            type="button"
+            variant={draft.pain == null ? "outline" : "default"}
+            size="sm"
+            aria-expanded={draft.pain != null}
+            onClick={() => setDraft((current) => ({
+              ...current,
+              pain: current.pain == null
+                ? { bodyPart: null, severity: null, note: null }
+                : null,
+            }))}
+          >
+            {draft.pain == null ? "Record pain" : "Clear pain flag"}
+          </Button>
+        </div>
+        {draft.pain != null && (
+          <div className="space-y-3 border-t pt-3">
+            <div className="flex flex-wrap gap-1.5">
+              {PAIN_BODY_PARTS.map((part) => (
+                <Button
+                  key={part}
+                  type="button"
+                  variant={draft.pain?.bodyPart === part ? "default" : "outline"}
+                  size="sm"
+                  aria-pressed={draft.pain?.bodyPart === part}
+                  onClick={() => setDraft((current) => ({
+                    ...current,
+                    pain: current.pain == null
+                      ? null
+                      : { ...current.pain, bodyPart: part },
+                  }))}
+                >
+                  {part}
+                </Button>
+              ))}
+            </div>
+            <div>
+              <p className="mb-2 text-sm text-muted-foreground">
+                Pain severity: {draft.pain.severity == null ? (
+                  <span className="font-medium text-foreground">choose 1–10</span>
+                ) : (
+                  <span className="font-medium text-foreground">
+                    {draft.pain.severity}/10
+                  </span>
+                )}
+              </p>
+              <div
+                className="grid grid-cols-2 gap-1.5 min-[400px]:grid-cols-5"
+                role="group"
+                aria-label="Pain severity"
+              >
+                {Array.from({ length: 10 }, (_, index) => index + 1).map(
+                  (severity) => (
+                    <Button
+                      key={severity}
+                      type="button"
+                      variant={draft.pain?.severity === severity ? "default" : "outline"}
+                      size="sm"
+                      className="min-h-11 min-w-11"
+                      aria-label={`Pain severity ${severity}`}
+                      aria-pressed={draft.pain?.severity === severity}
+                      onClick={() => setDraft((current) => ({
+                        ...current,
+                        pain: current.pain == null
+                          ? null
+                          : { ...current.pain, severity },
+                      }))}
+                    >
+                      {severity}
+                    </Button>
+                  ),
+                )}
+              </div>
+            </div>
+            <Textarea
+              aria-label="Pain note (optional)"
+              value={draft.pain.note ?? ""}
+              maxLength={SET_NOTE_MAX_LENGTH}
+              onChange={(event) => setDraft((current) => ({
+                ...current,
+                pain: current.pain == null
+                  ? null
+                  : { ...current.pain, note: event.target.value || null },
+              }))}
+              placeholder="What did it feel like? (optional)"
+              rows={2}
+            />
+            {(draft.pain.severity ?? 0) >= 5 && (
+              <p className="rounded-md bg-destructive/10 px-3 py-2 text-xs text-destructive">
+                That is significant pain. Stop this movement today. If it
+                persists, seek a professional opinion rather than a workaround.
+              </p>
+            )}
+          </div>
+        )}
+      </div>
+      <Textarea
+        aria-label="Set note (optional)"
+        value={draft.note}
+        maxLength={SET_NOTE_MAX_LENGTH}
+        onChange={(e) => setDraft((d) => ({ ...d, note: e.target.value }))}
+        placeholder="Set note…"
+        rows={2}
+        className="min-h-14 text-sm"
+      />
+    </>
   );
   return (
     <div className="flex flex-col gap-2">
@@ -1696,11 +2265,15 @@ function SetEntry({
             </div>
           </div>
         )}
+        {recordsRepetitions && (
         <div className="flex min-w-[10.5rem] flex-1 items-center gap-1">
           <Button
             variant="outline"
             size="icon"
-            onClick={() => setDraft((d) => ({ ...d, reps: Math.max(0, d.reps - 1) }))}
+            onClick={() => setDraft((d) => ({
+              ...d,
+              reps: Math.max(0, (d.reps ?? 0) - 1),
+            }))}
             aria-label="Decrease reps"
           >
             <Minus className="size-4" />
@@ -1710,9 +2283,12 @@ function SetEntry({
               aria-label="Reps"
               inputMode="numeric"
               className="pr-10 text-center text-base font-medium"
-              value={draft.reps}
+              value={draft.reps ?? ""}
               onChange={(e) =>
-                setDraft((d) => ({ ...d, reps: Number(e.target.value) || 0 }))
+                setDraft((d) => ({
+                  ...d,
+                  reps: e.target.value === "" ? null : Number(e.target.value),
+                }))
               }
             />
             <span className="pointer-events-none absolute inset-y-0 right-2 flex items-center text-xs text-muted-foreground">
@@ -1722,87 +2298,81 @@ function SetEntry({
           <Button
             variant="outline"
             size="icon"
-            onClick={() => setDraft((d) => ({ ...d, reps: d.reps + 1 }))}
+            onClick={() => setDraft((d) => ({
+              ...d,
+              reps: (d.reps ?? 0) + 1,
+            }))}
             aria-label="Increase reps"
           >
             <Plus className="size-4" />
           </Button>
         </div>
+        )}
+        {metricType === "distance_duration" && (
+          <div className="flex min-w-[10.5rem] flex-1 flex-col gap-1">
+            <label htmlFor={distanceInputId} className="text-xs font-medium">
+              Distance
+            </label>
+            <div className="relative">
+              <Input
+                id={distanceInputId}
+                aria-label="Distance in kilometres"
+                inputMode="decimal"
+                className="pr-10 text-center text-base font-medium"
+                value={draft.distanceKm ?? ""}
+                onChange={(event) => setDraft((current) => ({
+                  ...current,
+                  distanceKm:
+                    event.target.value === "" ? null : Number(event.target.value),
+                }))}
+              />
+              <span className="pointer-events-none absolute inset-y-0 right-2 flex items-center text-xs text-muted-foreground">
+                km
+              </span>
+            </div>
+          </div>
+        )}
+        {(metricType === "duration" || metricType === "distance_duration") && (
+          <div className="flex min-w-[10.5rem] flex-1 flex-col gap-1">
+            <label htmlFor={durationInputId} className="text-xs font-medium">
+              Duration {metricType === "distance_duration" ? "(optional)" : ""}
+            </label>
+            <div className="relative">
+              <Input
+                id={durationInputId}
+                aria-label="Duration in seconds"
+                inputMode="numeric"
+                className="pr-10 text-center text-base font-medium"
+                value={draft.durationSeconds ?? ""}
+                onChange={(event) => setDraft((current) => ({
+                  ...current,
+                  durationSeconds:
+                    event.target.value === "" ? null : Number(event.target.value),
+                }))}
+              />
+              <span className="pointer-events-none absolute inset-y-0 right-2 flex items-center text-xs text-muted-foreground">
+                sec
+              </span>
+            </div>
+          </div>
+        )}
       </div>
-      <p className="text-sm text-muted-foreground">
-        Effort shortcuts are broad categories. Each shows the numeric RPE saved;
-        use exact entry when the number matters.
-      </p>
-      {selectedEffort && !exactOpen && (
-        <p className="text-sm font-medium">
-          Selected: {selectedEffort.label} — RPE {selectedEffort.legacyRpe}
-        </p>
-      )}
       {(machineLine ?? plateLine) && (
         <p className="rounded-md bg-muted/50 px-2 py-1.5 text-sm text-muted-foreground" aria-live="polite">
           {machineLine ?? plateLine}
         </p>
       )}
-      <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-4">
-        {RPE_CHIPS.map((chip) => (
-          <Button
-            key={chip.value}
-            variant={draft.rpe === chip.value ? "default" : "outline"}
-            size="sm"
-            className="h-auto min-h-11 whitespace-normal text-xs"
-            aria-label={`${chip.shortcutLabel}; ${chip.meaning}`}
-            onClick={() =>
-              setDraft((d) => ({ ...d, rpe: d.rpe === chip.value ? null : chip.value }))
-            }
-          >
-            {chip.shortcutLabel}
-          </Button>
-        ))}
-      </div>
-      <Button
-        type="button"
-        variant="ghost"
-        size="sm"
-        className="self-start"
-        aria-expanded={exactOpen}
-        onClick={() => setExactOpen((open) => !open)}
-      >
-        {exactOpen ? "Hide exact RPE" : "Enter exact RPE instead"}
-      </Button>
-      {exactOpen && (
-        <div className="max-w-48">
-          <label htmlFor={exactRpeId} className="text-sm font-medium">
-            Exact RPE (1–10)
-          </label>
-          <Input
-            id={exactRpeId}
-            type="number"
-            inputMode="decimal"
-            min={1}
-            max={10}
-            step={0.5}
-            value={draft.rpe ?? ""}
-            onChange={(event) =>
-              setDraft((current) => ({
-                ...current,
-                rpe:
-                  event.target.value === ""
-                    ? null
-                    : Math.min(10, Math.max(1, Number(event.target.value))),
-              }))
-            }
-          />
-        </div>
+      {prioritizePerformedMeasure ? (
+        <details className="rounded-md border border-dashed text-sm">
+          <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-2 rounded-md px-3 py-2 font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
+            <span>Optional effort and set note</span>
+            <span className="text-xs text-muted-foreground">Add details</span>
+          </summary>
+          <div className="space-y-2 border-t p-3">{optionalSetFields}</div>
+        </details>
+      ) : (
+        <div className="space-y-2">{optionalSetFields}</div>
       )}
-      <Textarea
-        aria-label="Set note (optional)"
-        value={draft.note}
-        maxLength={SET_NOTE_MAX_LENGTH}
-        onChange={(e) => setDraft((d) => ({ ...d, note: e.target.value }))}
-        placeholder="Set note…"
-        rows={2}
-        className="min-h-14 text-sm"
-      />
     </div>
   );
 }
@@ -1823,15 +2393,15 @@ function PainDrawer({
   return (
     <Drawer open={open} onOpenChange={setOpen}>
       <DrawerTrigger render={<Button variant="outline" size="sm" />}>
-        Flag pain
+        Pain / no issue
       </DrawerTrigger>
       <DrawerContent className="[&_button]:min-h-11 [&_button]:min-w-11 [&_textarea]:min-h-11">
         <DrawerHeader>
-          <DrawerTitle>Flag pain</DrawerTitle>
+          <DrawerTitle>Pain / no-issue evidence</DrawerTitle>
         </DrawerHeader>
         <div className="flex flex-col gap-4 px-4">
           <div className="flex flex-wrap gap-1.5">
-            {BODY_PARTS.map((part) => (
+            {PAIN_BODY_PARTS.map((part) => (
               <Button
                 key={part}
                 variant={bodyPart === part ? "default" : "outline"}
@@ -1844,7 +2414,11 @@ function PainDrawer({
           </div>
           <div>
             <p className="mb-2 text-sm text-muted-foreground">
-              Severity: <span className="font-medium text-foreground">{severity}/10</span>
+              <span className="font-medium text-foreground">
+                {severity === 0
+                  ? "No issue reported"
+                  : formatPainEvidence({ bodyPart, severity, source: "set_flag" })}
+              </span>
             </p>
             <Slider
               min={0}
@@ -1884,14 +2458,14 @@ function PainDrawer({
                     return;
                   }
                 } catch {
-                  toast.error("The pain flag could not be saved.");
+                  toast.error("The pain / no-issue report could not be saved.");
                   return;
                 }
                 setOpen(false);
               })
             }
           >
-            Save pain flag
+            {severity === 0 ? "Save no-issue report" : "Save pain report"}
           </Button>
         </DrawerFooter>
       </DrawerContent>
@@ -2191,7 +2765,7 @@ function ReplacementDrawer({
               itemWarnings={options.warnings}
               triggerLabel="Search exercise catalog"
               title="Replace exercise"
-              description="Search the authorized catalog without similarity ranking. Strength and repetition exercises are supported. Duration, distance, and activity tracking remain unavailable here."
+              description="Search the authorized catalog without similarity ranking. Repbook supports repetitions, assistance, duration, and distance when the full performed measurement can be retained; activity-only observations stay in Activity."
               confirmLabel="Replace in this workout"
               largeTouchTargets
               onSelect={async (candidate) => {

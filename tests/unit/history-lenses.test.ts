@@ -216,7 +216,7 @@ describe("question-driven History lenses", () => {
     ).find((candidate) => candidate.key === "pain-constraints")!;
 
     expect(lens.answer).toContain("Bench Press (Shoulder)");
-    expect(lens.limitation).toContain("2 of 3 pain flags name an exercise");
+    expect(lens.limitation).toContain("2 of 3 positive pain reports name an exercise");
     expect(lens.evidence.map((item) => item.label)).not.toContain("Squat");
     expect(lens.evidence.some((item) => item.label === "Session-level · Knee")).toBe(
       true,

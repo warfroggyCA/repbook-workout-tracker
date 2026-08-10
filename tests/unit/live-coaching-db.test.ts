@@ -359,7 +359,7 @@ describe("Live Coach durable workout conversation", () => {
         secondaryMuscles: ["glutes"],
         loadType: "barbell",
       })
-      .returning({ id: exercises.id });
+      .returning({ id: exercises.id, name: exercises.name });
     exerciseId = exercise.id;
     [{ id: sessionId }] = await db
       .insert(workoutSessions)
@@ -377,6 +377,11 @@ describe("Live Coach durable workout conversation", () => {
       .values({
         sessionId,
         exerciseId: exercise.id,
+        prescribedSemanticsVersion: 1,
+        prescribedExerciseName: exercise.name,
+        prescribedMetricType: "weight_reps",
+        prescribedLoadType: "barbell",
+        prescribedLoadSemantics: "total",
         orderIdx: 0,
         targetSets: 3,
         targetRepsMin: 5,
@@ -401,6 +406,9 @@ describe("Live Coach durable workout conversation", () => {
       rpe: 8,
       targetMet: true,
       metricType: "weight_reps",
+      performedSemanticsVersion: 1,
+      performedLoadType: "barbell",
+      performedLoadSemantics: "total",
       equipmentSnapshotId,
       loadEntryMeaning: "total_system",
     }).returning({ id: completedSets.id });
@@ -423,6 +431,232 @@ describe("Live Coach durable workout conversation", () => {
   afterAll(async () => {
     await client.close();
   });
+
+  it("uses frozen prescribed meaning and suppresses unknown legacy evidence", async () => {
+    const [{ id: isolatedUserId }] = await db
+      .insert(users)
+      .values({ email: `live-coach-t06-${crypto.randomUUID()}@example.com` })
+      .returning({ id: users.id });
+    await db.insert(userProfiles).values({ userId: isolatedUserId });
+    const [frozenExercise, legacyExercise] = await db
+      .insert(exercises)
+      .values([
+        {
+          name: "Catalog press before mutation",
+          movementPattern: "horizontal_push" as const,
+          primaryMuscles: ["chest"],
+          secondaryMuscles: ["triceps"],
+          metricType: "weight_reps" as const,
+          loadType: "barbell",
+          loadSemantics: "total" as const,
+        },
+        {
+          name: "Mutable legacy row",
+          movementPattern: "horizontal_push" as const,
+          primaryMuscles: ["chest"],
+          secondaryMuscles: ["triceps"],
+          metricType: "weight_reps" as const,
+          loadType: "barbell",
+          loadSemantics: "total" as const,
+        },
+      ])
+      .returning({ id: exercises.id });
+    const [{ id: isolatedSessionId }] = await db
+      .insert(workoutSessions)
+      .values({
+        userId: isolatedUserId,
+        templateName: "T06 Live Coach containment",
+        status: "in_progress",
+        startedAt: new Date("2026-07-12T18:00:00.000Z"),
+        timezone: "America/Toronto",
+        localDate: "2026-07-12",
+      })
+      .returning({ id: workoutSessions.id });
+    const [frozenSessionExercise, legacySessionExercise] = await db
+      .insert(sessionExercises)
+      .values([
+        {
+          sessionId: isolatedSessionId,
+          exerciseId: frozenExercise.id,
+          prescribedSemanticsVersion: 1,
+          prescribedExerciseName: "Frozen prescribed press",
+          prescribedMetricType: "weight_reps" as const,
+          prescribedLoadType: "barbell",
+          prescribedLoadSemantics: "total" as const,
+          orderIdx: 0,
+          targetSets: 1,
+          targetRepsMin: 5,
+          targetRepsMax: 8,
+          targetLoad: 135,
+          targetLoadUnit: "lb" as const,
+        },
+        {
+          sessionId: isolatedSessionId,
+          exerciseId: legacyExercise.id,
+          orderIdx: 1,
+          targetSets: 1,
+          targetRepsMin: 5,
+          targetRepsMax: 8,
+          targetLoad: 95,
+          targetLoadUnit: "lb" as const,
+        },
+      ])
+      .returning({ id: sessionExercises.id });
+    const frozenEquipmentSnapshotId = await createTotalSystemTestSnapshot(db, {
+      userId: isolatedUserId,
+      sessionId: isolatedSessionId,
+      sessionExerciseId: frozenSessionExercise.id,
+      unit: "lb",
+    });
+    const legacyEquipmentSnapshotId = await createTotalSystemTestSnapshot(db, {
+      userId: isolatedUserId,
+      sessionId: isolatedSessionId,
+      sessionExerciseId: legacySessionExercise.id,
+      unit: "lb",
+    });
+    const [frozenSet, legacySet] = await db
+      .insert(completedSets)
+      .values([
+        {
+          sessionExerciseId: frozenSessionExercise.id,
+          setNo: 1,
+          weight: 135,
+          weightUnit: "lb" as const,
+          reps: 6,
+          targetMet: true,
+          metricType: "weight_reps" as const,
+          equipmentSnapshotId: frozenEquipmentSnapshotId,
+          loadEntryMeaning: "total_system",
+        },
+        {
+          sessionExerciseId: legacySessionExercise.id,
+          setNo: 1,
+          weight: 95,
+          weightUnit: "lb" as const,
+          reps: 6,
+          targetMet: true,
+          metricType: "weight_reps" as const,
+          equipmentSnapshotId: legacyEquipmentSnapshotId,
+          loadEntryMeaning: "total_system",
+        },
+        {
+          sessionExerciseId: legacySessionExercise.id,
+          setNo: 2,
+          weight: 45,
+          weightUnit: "lb" as const,
+          reps: 8,
+          isWarmup: true,
+          metricType: "weight_reps" as const,
+          equipmentSnapshotId: legacyEquipmentSnapshotId,
+          loadEntryMeaning: "total_system",
+        },
+      ])
+      .returning({ id: completedSets.id });
+    await db.insert(sessionOccurrences).values([
+      {
+        sessionId: isolatedSessionId,
+        sessionExerciseId: frozenSessionExercise.id,
+        kind: "working_set" as const,
+        origin: "planned" as const,
+        sequenceIdx: 0,
+        kindOrdinal: 0,
+        plannedExerciseId: frozenExercise.id,
+        outcome: "completed" as const,
+        revision: 1,
+        resolvedAt: new Date("2026-07-12T18:05:00.000Z"),
+        completedSetId: frozenSet.id,
+        equipmentSnapshotId: frozenEquipmentSnapshotId,
+      },
+      {
+        sessionId: isolatedSessionId,
+        sessionExerciseId: legacySessionExercise.id,
+        kind: "working_set" as const,
+        origin: "planned" as const,
+        sequenceIdx: 1,
+        kindOrdinal: 0,
+        plannedExerciseId: legacyExercise.id,
+        outcome: "completed" as const,
+        revision: 1,
+        resolvedAt: new Date("2026-07-12T18:10:00.000Z"),
+        completedSetId: legacySet.id,
+        equipmentSnapshotId: legacyEquipmentSnapshotId,
+      },
+    ]);
+    await db
+      .update(exercises)
+      .set({
+        name: "Changed catalog press",
+        movementPattern: "vertical_push",
+        metricType: "reps",
+        loadType: "bodyweight",
+        loadSemantics: "none",
+      })
+      .where(eq(exercises.id, frozenExercise.id));
+
+    const frozenTurn = await startLiveCoachTurn(db, isolatedUserId, {
+      sessionId: isolatedSessionId,
+      sessionExerciseId: frozenSessionExercise.id,
+      completedSetId: null,
+      messageKind: "question",
+      inputMode: "text",
+      content: "Does the prescribed set still count?",
+      clientKey: crypto.randomUUID(),
+    });
+    const frozenContext = await buildLiveCoachingContext(
+      db,
+      isolatedUserId,
+      {
+        aggressiveness: "conservative",
+        deloadSuggestions: true,
+        substitutionSuggestions: true,
+        weeklyReview: false,
+      },
+      frozenTurn.pendingResponse!.id,
+      null,
+    );
+    expect(frozenContext.liveWorkout.selectedExercise).toMatchObject({
+      name: "Frozen prescribed press",
+      movementPattern: "unknown",
+      setsSuppressedFromClaims: 0,
+    });
+    expect(frozenContext.liveWorkout.selectedExercise?.setsLogged).toEqual([
+      expect.objectContaining({
+        weight: 135,
+        reps: 6,
+        targetOutcome: "unknown",
+      }),
+    ]);
+    expect(frozenContext.liveWorkout.allExercises[0]?.name).toBe(
+      "Frozen prescribed press",
+    );
+
+    const legacyTurn = await startLiveCoachTurn(db, isolatedUserId, {
+      sessionId: isolatedSessionId,
+      sessionExerciseId: legacySessionExercise.id,
+      completedSetId: null,
+      messageKind: "question",
+      inputMode: "text",
+      content: "Can unknown legacy meaning drive a claim?",
+      clientKey: crypto.randomUUID(),
+    });
+    const legacyContext = await buildLiveCoachingContext(
+      db,
+      isolatedUserId,
+      {
+        aggressiveness: "conservative",
+        deloadSuggestions: true,
+        substitutionSuggestions: true,
+        weeklyReview: false,
+      },
+      legacyTurn.pendingResponse!.id,
+      null,
+    );
+    expect(legacyContext.liveWorkout.selectedExercise?.setsLogged).toEqual([]);
+    expect(
+      legacyContext.liveWorkout.selectedExercise?.setsSuppressedFromClaims,
+    ).toBe(1);
+    expect(legacyContext.liveWorkout.performedWarmupResults).toEqual([]);
+  }, 30_000);
 
   it("saves before answering, retries safely, and follows the workout through recovery", async () => {
     const clientKey = crypto.randomUUID();
@@ -792,14 +1026,14 @@ describe("Live Coach durable workout conversation", () => {
     const coachingBrief = renderCoachingBrief(digest);
     expect(coachingBrief).toContain("My bracing felt better");
     expect(coachingBrief).toContain(
-      "100% of comparable planned sets with measurable targets met them.",
+      "No supported planned set target outcome is available.",
     );
     expect(coachingBrief).not.toContain(
       "100% of working sets met their target.",
     );
     expect(csv).toContain("The first set felt harder");
     expect(csv).toContain("Hold the load for the next set");
-    expect(backup.schemaVersion).toBe("27");
+    expect(backup.schemaVersion).toBe("30");
     expect(backup.canonical.tables.coaching_insights).toHaveLength(4);
     expect(snapshot.schemaVersion).toBe(SNAPSHOT_SCHEMA_VERSION);
     expect(snapshot.tables.coaching_insights).toHaveLength(4);

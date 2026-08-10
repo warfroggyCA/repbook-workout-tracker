@@ -3,6 +3,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import {
   installNextDevelopmentRefreshControl,
+  openNativeDetails,
   waitForEquipmentSelectionsToSettle,
   waitForHydratedReactHandler,
   waitForHydratedServerAction,
@@ -92,12 +93,31 @@ async function skipCurrentSet(dock: Locator) {
     name: "Skip set",
     exact: true,
   });
-  if ((await skipSet.count()) === 0) {
+  const exceptionDetails = currentCard.locator("details", {
+    hasText: "Set exceptions",
+  });
+  if ((await exceptionDetails.count()) === 0) {
     await dock.locator("button").first().click();
   }
-  await currentCard
-    .getByRole("button", { name: "Skip set", exact: true })
-    .click();
+  await openNativeDetails(exceptionDetails);
+  await waitForScrollToSettle(page);
+  await skipSet.evaluate((element) => {
+    element.scrollIntoView({ block: "center" });
+  });
+  await waitForScrollToSettle(page);
+  await expect
+    .poll(() =>
+      skipSet.evaluate((element) => {
+        const box = element.getBoundingClientRect();
+        const hit = document.elementFromPoint(
+          box.left + box.width / 2,
+          box.top + box.height / 2,
+        );
+        return hit === element || (hit != null && element.contains(hit));
+      }),
+    )
+    .toBe(true);
+  await skipSet.click();
   const dialog = page.getByRole("dialog", { name: /^Skip set / });
   await dialog.getByLabel("Reason").selectOption("time");
   await dialog.getByRole("button", { name: "Skip item", exact: true }).click();
@@ -105,6 +125,27 @@ async function skipCurrentSet(dock: Locator) {
   await expect
     .poll(async () => await progress.textContent())
     .not.toBe(before);
+  await waitForSetSkippedNoticesToSettle(page);
+  await waitForScrollToSettle(page);
+}
+
+async function waitForScrollToSettle(page: Page) {
+  await page.evaluate(
+    () =>
+      new Promise<void>((resolve) => {
+        let settleTimer = window.setTimeout(finish, 150);
+        function finish() {
+          window.removeEventListener("scroll", onScroll);
+          window.clearTimeout(settleTimer);
+          resolve();
+        }
+        function onScroll() {
+          window.clearTimeout(settleTimer);
+          settleTimer = window.setTimeout(finish, 150);
+        }
+        window.addEventListener("scroll", onScroll, { passive: true });
+      }),
+  );
 }
 
 async function expectNoHorizontalOverflow(page: Page) {
@@ -209,7 +250,9 @@ test("keeps Stage 5 guidance truthful, persistent, and usable on narrow mobile s
   await expect(statusBar).toContainText("Romanian Deadlift");
   await expect(statusBar).toContainText("Set 1 of 3");
   await expect(guidance).toContainText("Now: Romanian Deadlift, set 1");
-  await expect(guidance).toContainText("Next: Romanian Deadlift, set 2");
+  await expect(guidance).not.toContainText("Next:");
+  await expect(dock).toContainText("Next action");
+  await expect(dock).toContainText("Romanian Deadlift, set 2");
 
   let releaseSave!: () => void;
   const saveMayFinish = new Promise<void>((resolve) => {
@@ -244,8 +287,10 @@ test("keeps Stage 5 guidance truthful, persistent, and usable on narrow mobile s
   await expect(guidance).toContainText("Next: Romanian Deadlift, set 2");
   releaseSave();
   await expect(guidance).toContainText("1/14");
-  await expect(guidance).toContainText("Now: Romanian Deadlift, set 2");
-  await expect(guidance).toContainText("Next: Romanian Deadlift, set 3");
+  await expect(guidance).toContainText(
+    "Now: Rest after Romanian Deadlift, set 1",
+  );
+  await expect(guidance).toContainText("Next: Romanian Deadlift, set 2");
   await expect(statusBar).toContainText("Resting");
   await page.unrouteAll({ behavior: "wait" });
   await expect
@@ -273,6 +318,12 @@ test("keeps Stage 5 guidance truthful, persistent, and usable on narrow mobile s
 
   const rest = statusBar.getByLabel("Rest timer");
   await expect(rest).toBeVisible();
+  await expect(statusBar).toHaveAttribute("data-rest-state", "running");
+  const runningRestColors = await statusBar.evaluate((element) => ({
+    bar: getComputedStyle(element).backgroundColor,
+    page: getComputedStyle(document.body).backgroundColor,
+  }));
+  expect(runningRestColors.bar).not.toBe(runningRestColors.page);
   const decreaseRest = rest.getByRole("button", { name: "Decrease rest by 15 seconds", exact: true });
   for (let index = 0; index < 8; index += 1) await decreaseRest.click();
   await page.reload({ waitUntil: "domcontentloaded" });
@@ -291,6 +342,13 @@ test("keeps Stage 5 guidance truthful, persistent, and usable on narrow mobile s
   const persistentDock = page.getByRole("complementary", { name: "Workout status" });
   await expect(persistentDock).toContainText("Ready");
 
+  const compactNavigation = page.getByRole("navigation", {
+    name: "Primary navigation",
+  });
+  await page.setViewportSize({ width: 359, height: 700 });
+  await expect(compactNavigation).toBeHidden();
+  await page.setViewportSize({ width: 360, height: 700 });
+  await expect(compactNavigation).toBeVisible();
   await page.setViewportSize({ width: 320, height: 700 });
   await expectNoHorizontalOverflow(page);
   await expect(
@@ -301,14 +359,40 @@ test("keeps Stage 5 guidance truthful, persistent, and usable on narrow mobile s
   ).toBeVisible();
   await expect(
     page.getByRole("region", { name: "Workout progress and upcoming work" })
-      .getByText(/Now: Romanian Deadlift, set 2/),
+      .getByText(/Now: Rest complete after Romanian Deadlift, set 1/),
   ).toBeVisible();
-  await expect(
-    page.getByRole("region", { name: "Workout progress and upcoming work" })
-      .getByText(/Next: Romanian Deadlift, set 3/),
-  ).toBeVisible();
+  const compactNextGuidance = page
+    .getByRole("region", { name: "Workout progress and upcoming work" })
+    .getByText(/Next: Romanian Deadlift, set 2/);
+  await expect(compactNextGuidance).toHaveText(
+    /Next: Romanian Deadlift, set 2/,
+  );
+  await expect
+    .poll(() =>
+      compactNextGuidance.evaluate((element) => {
+        const style = getComputedStyle(element);
+        const box = element.getBoundingClientRect();
+        return {
+          clipPath: style.clipPath,
+          height: box.height,
+          position: style.position,
+          width: box.width,
+        };
+      }),
+    )
+    .toEqual({
+      clipPath: "inset(50%)",
+      height: 1,
+      position: "absolute",
+      width: 1,
+    });
   const collapsedMetrics = await persistentDock.evaluate((element) => {
     const navigation = document.querySelector("nav.fixed");
+    const navigationRect = navigation?.getBoundingClientRect() ?? null;
+    const navigationVisible =
+      navigation != null &&
+      getComputedStyle(navigation).display !== "none" &&
+      (navigationRect?.height ?? 0) > 0;
     const primary = Array.from(element.querySelectorAll("button")).filter(
       (button) =>
         button.textContent?.trim() === "Dismiss rest timer" ||
@@ -317,7 +401,10 @@ test("keeps Stage 5 guidance truthful, persistent, and usable on narrow mobile s
     return {
       dockBottom: element.getBoundingClientRect().bottom,
       navigationTop:
-        navigation?.getBoundingClientRect().top ?? Number.POSITIVE_INFINITY,
+        navigationVisible
+          ? navigationRect?.top ?? window.innerHeight
+          : window.innerHeight,
+      navigationVisible,
       primary: primary.map((button) => {
         const box = button.getBoundingClientRect();
         return {
@@ -329,6 +416,7 @@ test("keeps Stage 5 guidance truthful, persistent, and usable on narrow mobile s
       }),
     };
   });
+  expect(collapsedMetrics.navigationVisible).toBe(false);
   expect(collapsedMetrics.dockBottom).toBeLessThanOrEqual(
     collapsedMetrics.navigationTop + 1,
   );
@@ -449,6 +537,9 @@ test("keeps Stage 5 guidance truthful, persistent, and usable on narrow mobile s
   await startProgramDay(page, "Day A — Squat", false);
   const groupDock = page.getByTestId("current-exercise-card");
   await expect.poll(() => equipmentSelectionStarted).toBe(true);
+  await openNativeDetails(groupDock.locator("details", {
+    hasText: "Set exceptions",
+  }));
   await expect(
     groupDock.getByRole("button", { name: "Skip set", exact: true }),
   ).toBeDisabled();
@@ -461,8 +552,10 @@ test("keeps Stage 5 guidance truthful, persistent, and usable on narrow mobile s
   const groupGuidance = page.getByRole("region", {
     name: "Workout progress and upcoming work",
   });
-  await expect(groupGuidance).toContainText(
-    /Next: Superset, round 1, member 2 of 2: Pallof Press, set 1/,
+  await expect(groupGuidance).not.toContainText("Next:");
+  await expect(groupDock).toContainText("Next action");
+  await expect(groupDock).toContainText(
+    "Superset, round 1, member 2 of 2: Pallof Press, set 1",
   );
   await expect(groupGuidance).toContainText(
     /Now: Superset, round 1, member 1 of 2: Dumbbell Lateral Raise, set 1/,

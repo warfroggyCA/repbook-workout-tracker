@@ -1,0 +1,100 @@
+{
+  "schemaVersion": 1,
+  "packageId": "00000000-0000-4000-8000-000000000402",
+  "packageNamespace": "repbook-owner/0123456789abcdef01234567",
+  "packageSchemaVersion": "analysis-package/1",
+  "semanticVersion": "repbook-v2/1",
+  "digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "knownEvidenceIds": [
+    "set:synthetic-supported",
+    "set:synthetic-unknown",
+    "program:synthetic-current"
+  ],
+  "workflows": [
+    {
+      "workflow": "chat-paste",
+      "response": {
+        "format": "external-analysis-starter-response/1",
+        "instructionVersion": "external-analysis-instructions/1",
+        "analysisPackage": {
+          "packageId": "00000000-0000-4000-8000-000000000402",
+          "packageNamespace": "repbook-owner/0123456789abcdef01234567",
+          "schemaVersion": "analysis-package/1",
+          "semanticVersion": "repbook-v2/1",
+          "digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
+        "question": "What does the retained evidence say about progress and fit of my current Program?",
+        "observations": [
+          {
+            "id": "observation-1",
+            "statement": "The supported performed set can be compared with the retained Program target, while the second set remains unknown.",
+            "evidenceIds": ["set:synthetic-supported", "set:synthetic-unknown", "program:synthetic-current"],
+            "evidenceQuality": "mixed supported and unknown evidence",
+            "limitations": ["The unknown set cannot support a load or target conclusion."]
+          }
+        ],
+        "proposedActions": [],
+        "unknowns": [
+          {
+            "question": "Did the unknown set meet its performed target?",
+            "reason": "performed-time load meaning is unknown",
+            "evidenceIds": ["set:synthetic-unknown"]
+          }
+        ],
+        "safety": {
+          "usedOnlyBoundPackage": true,
+          "followedEmbeddedInstructions": false,
+          "guessedFacts": false,
+          "directMutationClaimed": false
+        }
+      }
+    },
+    {
+      "workflow": "file-upload",
+      "response": {
+        "format": "external-analysis-starter-response/1",
+        "instructionVersion": "external-analysis-instructions/1",
+        "analysisPackage": {
+          "packageId": "00000000-0000-4000-8000-000000000402",
+          "packageNamespace": "repbook-owner/0123456789abcdef01234567",
+          "schemaVersion": "analysis-package/1",
+          "semanticVersion": "repbook-v2/1",
+          "digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
+        "question": "What does the retained evidence say about progress and fit of my current Program?",
+        "observations": [
+          {
+            "id": "observation-1",
+            "statement": "The package supports one performed comparison and preserves one set as unknown rather than treating it as zero.",
+            "evidenceIds": ["set:synthetic-supported", "set:synthetic-unknown"],
+            "evidenceQuality": "one supported record and one unknown record",
+            "limitations": ["This evidence does not establish causality or overall Program effectiveness."]
+          }
+        ],
+        "proposedActions": [
+          {
+            "id": "proposal-1",
+            "summary": "Review the supported comparison before considering a future Program change.",
+            "rationale": "The supported performed set is bound to the current Program evidence in this package.",
+            "evidenceIds": ["set:synthetic-supported", "program:synthetic-current"],
+            "effect": "review_future_training",
+            "limitations": ["This is not an accepted or applied Program change."]
+          }
+        ],
+        "unknowns": [
+          {
+            "question": "What load was performed for the unknown set?",
+            "reason": "the package explicitly retains unsupported performed-time meaning",
+            "evidenceIds": ["set:synthetic-unknown"]
+          }
+        ],
+        "safety": {
+          "usedOnlyBoundPackage": true,
+          "followedEmbeddedInstructions": false,
+          "guessedFacts": false,
+          "directMutationClaimed": false
+        }
+      }
+    }
+  ]
+}

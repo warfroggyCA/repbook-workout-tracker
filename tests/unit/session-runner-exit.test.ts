@@ -63,9 +63,9 @@ describe("workout exit readiness", () => {
       unsyncedOccurrenceCount: 1,
     };
     expect(finishBlockedByRecordedWork(pendingOccurrence)).toBe(true);
-    // An occurrence change does not carry a device-only performed-set copy, so
-    // exiting does not need the set-copy acknowledgement for it alone.
-    expect(exitRequiresDeviceCopyAcknowledgement(pendingOccurrence)).toBe(false);
+    // A warm-up change is still an owner decision held only on this device, so
+    // terminalizing the workout requires retry or explicit discard.
+    expect(exitRequiresDeviceCopyAcknowledgement(pendingOccurrence)).toBe(true);
 
     const quarantinedSet: WorkoutExitQueues = {
       ...EMPTY,
@@ -208,7 +208,6 @@ describe("inline occurrence handoff", () => {
     revision: 0,
     resolvedAt: null,
     completedSetId: null,
-    restAfterSec: 0,
   });
 
   it("reveals the next exact working member and ignores warm-up controls", () => {

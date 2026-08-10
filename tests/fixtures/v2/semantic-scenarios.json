@@ -1,0 +1,769 @@
+{
+  "schemaVersion": 1,
+  "contractVersion": "repbook-semantic-contract/2.0.0",
+  "syntheticOnly": true,
+  "fixtures": [
+    {
+      "fixtureId": "F01",
+      "title": "Ordinary supported workout",
+      "contractVersion": "repbook-semantic-contract/2.0.0",
+      "concerns": [
+        "prescribed-performed",
+        "exception-context",
+        "lifecycle"
+      ],
+      "input": {
+        "syntheticOwnerIds": [
+          "owner-alpha"
+        ],
+        "events": [
+          {
+            "type": "ordinary_workout",
+            "id": "ordinary",
+            "measurement": "loaded_repetitions",
+            "restSeconds": 120
+          }
+        ]
+      },
+      "expected": {
+        "durableFacts": [
+          "ordinary:prescription_and_acknowledged_result_distinct",
+          "ordinary:performed_measure:loaded_repetitions",
+          "ordinary:rest_seconds:120"
+        ],
+        "derivedStates": [
+          "ordinary:completed_evidence_eligible",
+          "ordinary:exception_context:unknown"
+        ],
+        "prohibitedMutations": [
+          "ordinary:prescription_as_performance",
+          "ordinary:omitted_context_as_none"
+        ],
+        "lifecycleOutcomes": [
+          "ordinary:preview_read_only_start_snapshot_finish"
+        ]
+      }
+    },
+    {
+      "fixtureId": "F02",
+      "title": "Bodyweight substitution workout",
+      "contractVersion": "repbook-semantic-contract/2.0.0",
+      "concerns": [
+        "prescribed-performed",
+        "exercise-identity",
+        "measurement"
+      ],
+      "input": {
+        "syntheticOwnerIds": [
+          "owner-alpha"
+        ],
+        "events": [
+          {
+            "type": "bodyweight_substitution",
+            "id": "substitution",
+            "prescribedExercise": "shared-loaded-split-squat",
+            "performedExercise": "owner-bodyweight-split-squat",
+            "repetitions": 8
+          }
+        ]
+      },
+      "expected": {
+        "durableFacts": [
+          "substitution:prescribed:shared-loaded-split-squat",
+          "substitution:performed:owner-bodyweight-split-squat:repetitions_only",
+          "substitution:repetitions:8"
+        ],
+        "derivedStates": [
+          "substitution:supported_without_load"
+        ],
+        "prohibitedMutations": [
+          "substitution:invent_zero_load",
+          "substitution:collapse_exercise_identities"
+        ],
+        "lifecycleOutcomes": [
+          "substitution:substitution_retains_both_identities"
+        ]
+      }
+    },
+    {
+      "fixtureId": "F03",
+      "title": "Grouped workout with extra work",
+      "contractVersion": "repbook-semantic-contract/2.0.0",
+      "concerns": [
+        "planned-order",
+        "acknowledgement-retry",
+        "superset-navigation"
+      ],
+      "input": {
+        "syntheticOwnerIds": [
+          "owner-alpha"
+        ],
+        "events": [
+          {
+            "type": "grouped_extra_retry",
+            "id": "grouped",
+            "orderedOccurrences": [
+              "group-a",
+              "group-b"
+            ],
+            "extraOccurrence": "group-extra",
+            "nextOccurrence": "group-extra",
+            "rounds": 2,
+            "restSeconds": 90
+          }
+        ]
+      },
+      "expected": {
+        "durableFacts": [
+          "grouped:group_order:group-a,group-b",
+          "grouped:extra:group-extra:ad_hoc",
+          "grouped:rounds:2:rest_seconds:90"
+        ],
+        "derivedStates": [
+          "grouped:next_after_acknowledgement:group-extra"
+        ],
+        "prohibitedMutations": [
+          "grouped:skip_as_zero",
+          "grouped:retry_duplicate_fact",
+          "grouped:extra_as_planned_ordinal"
+        ],
+        "lifecycleOutcomes": [
+          "grouped:retry_idempotent_skip_and_extra_preserved"
+        ]
+      }
+    },
+    {
+      "fixtureId": "F04",
+      "title": "Warm-up lifecycle",
+      "contractVersion": "repbook-semantic-contract/2.0.0",
+      "concerns": [
+        "warmup-truth",
+        "superset-navigation",
+        "lifecycle"
+      ],
+      "input": {
+        "syntheticOwnerIds": [
+          "owner-alpha"
+        ],
+        "events": [
+          {
+            "type": "warmup_lifecycle",
+            "id": "warmup",
+            "note": "Synthetic mobility complete"
+          }
+        ]
+      },
+      "expected": {
+        "durableFacts": [
+          "warmup:day_and_exercise_occurrences_distinct",
+          "warmup:note:Synthetic mobility complete"
+        ],
+        "derivedStates": [
+          "warmup:restored_occurrence_current_again"
+        ],
+        "prohibitedMutations": [
+          "warmup:duplicate_actionable_warmup"
+        ],
+        "lifecycleOutcomes": [
+          "warmup:acknowledge_skip_restore"
+        ]
+      }
+    },
+    {
+      "fixtureId": "F05",
+      "title": "Interrupted and offline workout",
+      "contractVersion": "repbook-semantic-contract/2.0.0",
+      "concerns": [
+        "acknowledgement-retry",
+        "missing-unknown",
+        "lifecycle"
+      ],
+      "input": {
+        "syntheticOwnerIds": [
+          "owner-alpha"
+        ],
+        "events": [
+          {
+            "type": "interrupted_retry",
+            "id": "interrupted",
+            "states": [
+              "saving",
+              "failed",
+              "retry",
+              "acknowledged",
+              "resume"
+            ]
+          }
+        ]
+      },
+      "expected": {
+        "durableFacts": [
+          "interrupted:one_acknowledged_result"
+        ],
+        "derivedStates": [
+          "interrupted:same_session_resumed"
+        ],
+        "prohibitedMutations": [
+          "interrupted:advance_while_saving_or_failed",
+          "interrupted:unknown_commit_duplicate"
+        ],
+        "lifecycleOutcomes": [
+          "interrupted:saving_failed_retry_acknowledged_resume"
+        ]
+      }
+    },
+    {
+      "fixtureId": "F06",
+      "title": "Correction chain",
+      "contractVersion": "repbook-semantic-contract/2.0.0",
+      "concerns": [
+        "correction-lineage",
+        "derived-invalidation",
+        "recommendation-decision"
+      ],
+      "input": {
+        "syntheticOwnerIds": [
+          "owner-alpha"
+        ],
+        "events": [
+          {
+            "type": "correction",
+            "id": "corrected-result",
+            "correctionId": "correction-1"
+          }
+        ]
+      },
+      "expected": {
+        "durableFacts": [
+          "corrected-result:original_retained",
+          "corrected-result:correction:correction-1:effective",
+          "corrected-result:prior_decision_retained"
+        ],
+        "derivedStates": [
+          "corrected-result:dependent_conclusions_invalidated"
+        ],
+        "prohibitedMutations": [
+          "corrected-result:destructive_overwrite",
+          "corrected-result:rewrite_prior_decision"
+        ],
+        "lifecycleOutcomes": [
+          "corrected-result:corrected_with_lineage"
+        ]
+      }
+    },
+    {
+      "fixtureId": "F07",
+      "title": "Imported supported workout",
+      "contractVersion": "repbook-semantic-contract/2.0.0",
+      "concerns": [
+        "provenance",
+        "exercise-identity",
+        "owner-isolation"
+      ],
+      "input": {
+        "syntheticOwnerIds": [
+          "owner-alpha"
+        ],
+        "events": [
+          {
+            "type": "supported_import",
+            "id": "supported-import",
+            "source": "synthetic-provider",
+            "sourceVersion": "1",
+            "exerciseId": "owner-imported-row",
+            "unit": "kg",
+            "mappingReviewed": true
+          }
+        ]
+      },
+      "expected": {
+        "durableFacts": [
+          "supported-import:source:synthetic-provider:1",
+          "supported-import:exercise:owner:owner-imported-row",
+          "supported-import:recorded_unit:kg"
+        ],
+        "derivedStates": [
+          "supported-import:reviewed_mapping_supported"
+        ],
+        "prohibitedMutations": [
+          "supported-import:erase_import_provenance",
+          "supported-import:assume_shared_exercise"
+        ],
+        "lifecycleOutcomes": [
+          "supported-import:import_export_restore_round_trip"
+        ]
+      }
+    },
+    {
+      "fixtureId": "F08",
+      "title": "Legacy partial workout",
+      "contractVersion": "repbook-semantic-contract/2.0.0",
+      "concerns": [
+        "missing-unknown",
+        "provenance",
+        "measurement"
+      ],
+      "input": {
+        "syntheticOwnerIds": [
+          "owner-alpha"
+        ],
+        "events": [
+          {
+            "type": "legacy_partial",
+            "id": "legacy-partial",
+            "rawFields": [
+              "weight",
+              "repetitions",
+              "occurrence"
+            ]
+          }
+        ]
+      },
+      "expected": {
+        "durableFacts": [
+          "legacy-partial:raw_evidence_retained",
+          "legacy-partial:raw_fields:weight,repetitions,occurrence"
+        ],
+        "derivedStates": [
+          "legacy-partial:dependent_conclusion:unknown"
+        ],
+        "prohibitedMutations": [
+          "legacy-partial:infer_current_semantics",
+          "legacy-partial:invent_zero"
+        ],
+        "lifecycleOutcomes": [
+          "legacy-partial:unsupported_export_restore_preserved"
+        ]
+      }
+    },
+    {
+      "fixtureId": "F09",
+      "title": "Unit and load boundary",
+      "contractVersion": "repbook-semantic-contract/2.0.0",
+      "concerns": [
+        "measurement",
+        "missing-unknown",
+        "lifecycle"
+      ],
+      "input": {
+        "syntheticOwnerIds": [
+          "owner-alpha"
+        ],
+        "events": [
+          {
+            "type": "measurement_boundary",
+            "id": "measurement",
+            "kg": 100
+          }
+        ]
+      },
+      "expected": {
+        "durableFacts": [
+          "measurement:recorded:100:kg:total_bar_load",
+          "measurement:assistance_direction:decreases_resistance"
+        ],
+        "derivedStates": [
+          "measurement:display_lb:220.462",
+          "measurement:incompatible_conversion_refused"
+        ],
+        "prohibitedMutations": [
+          "measurement:rewrite_recorded_unit",
+          "measurement:coerce_assistance_to_external_load"
+        ],
+        "lifecycleOutcomes": [
+          "measurement:declared_meaning_controls_comparison"
+        ]
+      }
+    },
+    {
+      "fixtureId": "F10",
+      "title": "Timezone boundary",
+      "contractVersion": "repbook-semantic-contract/2.0.0",
+      "concerns": [
+        "time-local-date",
+        "provenance",
+        "lifecycle"
+      ],
+      "input": {
+        "syntheticOwnerIds": [
+          "owner-alpha"
+        ],
+        "events": [
+          {
+            "type": "timezone_boundary",
+            "id": "dst-repeat",
+            "zone": "America/Toronto",
+            "localDate": "2026-11-01",
+            "instant": "2026-11-01T05:30:00.000Z",
+            "boundary": "dst-repeat",
+            "viewerZone": "Europe/London"
+          },
+          {
+            "type": "timezone_boundary",
+            "id": "travel",
+            "zone": "America/Vancouver",
+            "localDate": "2026-03-08",
+            "instant": "2026-03-08T10:30:00.000Z",
+            "boundary": "dst-gap-travel",
+            "viewerZone": "America/Toronto"
+          }
+        ]
+      },
+      "expected": {
+        "durableFacts": [
+          "dst-repeat:zone:America/Toronto",
+          "dst-repeat:local_date:2026-11-01",
+          "dst-repeat:instant:2026-11-01T05:30:00.000Z",
+          "dst-repeat:boundary:dst-repeat",
+          "travel:zone:America/Vancouver",
+          "travel:local_date:2026-03-08",
+          "travel:instant:2026-03-08T10:30:00.000Z",
+          "travel:boundary:dst-gap-travel"
+        ],
+        "derivedStates": [
+          "dst-repeat:calendar_group:2026-11-01",
+          "travel:calendar_group:2026-03-08"
+        ],
+        "prohibitedMutations": [
+          "dst-repeat:regroup_by_viewer_zone",
+          "travel:regroup_by_viewer_zone"
+        ],
+        "lifecycleOutcomes": [
+          "dst-repeat:viewer:Europe/London:invariant",
+          "travel:viewer:America/Toronto:invariant"
+        ]
+      }
+    },
+    {
+      "fixtureId": "F11",
+      "title": "Program change around active work",
+      "contractVersion": "repbook-semantic-contract/2.0.0",
+      "concerns": [
+        "plan-start-separation",
+        "prescribed-performed",
+        "lifecycle"
+      ],
+      "input": {
+        "syntheticOwnerIds": [
+          "owner-alpha"
+        ],
+        "events": [
+          {
+            "type": "program_snapshot",
+            "id": "program-change",
+            "startedRevision": "program-rev-7",
+            "publishedRevision": "program-rev-8"
+          }
+        ]
+      },
+      "expected": {
+        "durableFacts": [
+          "program-change:active_snapshot:program-rev-7",
+          "program-change:later_program:program-rev-8"
+        ],
+        "derivedStates": [
+          "program-change:completion_uses_started_revision"
+        ],
+        "prohibitedMutations": [
+          "program-change:preview_create_session",
+          "program-change:later_program_rewrite_active_session"
+        ],
+        "lifecycleOutcomes": [
+          "program-change:preview_start_publish_finish"
+        ]
+      }
+    },
+    {
+      "fixtureId": "F12",
+      "title": "Review and adaptation",
+      "contractVersion": "repbook-semantic-contract/2.0.0",
+      "concerns": [
+        "recommendation-decision",
+        "derived-invalidation",
+        "lifecycle"
+      ],
+      "input": {
+        "syntheticOwnerIds": [
+          "owner-alpha"
+        ],
+        "events": [
+          {
+            "type": "recommendation_decision",
+            "id": "review",
+            "decisions": [
+              "accept",
+              "edit_and_accept",
+              "reject",
+              "defer"
+            ]
+          }
+        ]
+      },
+      "expected": {
+        "durableFacts": [
+          "review:decisions:accept,edit_and_accept,reject,defer",
+          "review:accepted_effect_future_only"
+        ],
+        "derivedStates": [
+          "review:defer_pending_no_adaptation",
+          "review:stale_prohibited_unknown_non_actionable"
+        ],
+        "prohibitedMutations": [
+          "review:silent_apply",
+          "review:history_or_active_snapshot_effect"
+        ],
+        "lifecycleOutcomes": [
+          "review:preview_freshness_explicit_decision"
+        ]
+      }
+    },
+    {
+      "fixtureId": "F13",
+      "title": "External AI round trip",
+      "contractVersion": "repbook-semantic-contract/2.0.0",
+      "concerns": [
+        "external-ai",
+        "recommendation-decision",
+        "owner-isolation"
+      ],
+      "input": {
+        "syntheticOwnerIds": [
+          "owner-alpha",
+          "owner-beta"
+        ],
+        "events": [
+          {
+            "type": "ai_exchange",
+            "id": "ai-package",
+            "ownerId": "owner-alpha",
+            "digest": "synthetic-digest-alpha",
+            "schemaVersion": "analysis-package/1",
+            "evidenceCutoff": "2026-08-01T12:00:00.000Z",
+            "includedDomains": [
+              "program",
+              "completed-workouts",
+              "corrections"
+            ],
+            "omittedDomains": [
+              "diagnostics",
+              "account-profile"
+            ],
+            "exerciseIdentities": [
+              "shared:exercise-row",
+              "owner:exercise-custom-row"
+            ],
+            "responseStates": [
+              "valid",
+              "duplicate",
+              "expired",
+              "stale",
+              "cross_owner",
+              "malicious"
+            ]
+          }
+        ]
+      },
+      "expected": {
+        "durableFacts": [
+          "ai-package:manifest_owner:owner-alpha",
+          "ai-package:digest:synthetic-digest-alpha:retention_days:30",
+          "ai-package:schema:analysis-package/1:cutoff:2026-08-01T12:00:00.000Z",
+          "ai-package:included:program,completed-workouts,corrections",
+          "ai-package:omitted:diagnostics,account-profile",
+          "ai-package:exercise_identities:shared:exercise-row,owner:exercise-custom-row",
+          "ai-package:validated_allowlisted_proposal"
+        ],
+        "derivedStates": [
+          "ai-package:duplicate_idempotent",
+          "ai-package:responses:valid,duplicate,expired,stale,cross_owner,malicious"
+        ],
+        "prohibitedMutations": [
+          "ai-package:retain_raw_training_copy",
+          "ai-package:automatic_fact_or_plan_change"
+        ],
+        "lifecycleOutcomes": [
+          "ai-package:export_validate_preview_explicit_accept"
+        ]
+      }
+    },
+    {
+      "fixtureId": "F14",
+      "title": "Snapshot and restore",
+      "contractVersion": "repbook-semantic-contract/2.0.0",
+      "concerns": [
+        "restore-rollback",
+        "correction-lineage",
+        "derived-invalidation"
+      ],
+      "input": {
+        "syntheticOwnerIds": [
+          "owner-alpha"
+        ],
+        "events": [
+          {
+            "type": "snapshot_restore",
+            "id": "snapshot",
+            "factIds": [
+              "corrected-result",
+              "program-rev-7"
+            ]
+          }
+        ]
+      },
+      "expected": {
+        "durableFacts": [
+          "snapshot:facts_restored_once:corrected-result,program-rev-7",
+          "snapshot:correction_lineage_restored"
+        ],
+        "derivedStates": [
+          "snapshot:derived_recomputed_or_unknown",
+          "snapshot:recommendations_expired"
+        ],
+        "prohibitedMutations": [
+          "snapshot:resurrect_stale_conclusions"
+        ],
+        "lifecycleOutcomes": [
+          "snapshot:snapshot_restore_record_version_round_trip"
+        ]
+      }
+    },
+    {
+      "fixtureId": "F15",
+      "title": "Ownership boundary",
+      "contractVersion": "repbook-semantic-contract/2.0.0",
+      "concerns": [
+        "owner-isolation",
+        "exercise-identity",
+        "external-ai"
+      ],
+      "input": {
+        "syntheticOwnerIds": [
+          "owner-alpha",
+          "owner-beta"
+        ],
+        "events": [
+          {
+            "type": "owner_boundary",
+            "id": "ownership",
+            "owners": [
+              "owner-alpha",
+              "owner-beta"
+            ],
+            "sharedExercise": "exercise-shared-row",
+            "ownerCreatedExercise": "exercise-owner-alpha-row",
+            "importCreatedExercise": "exercise-import-alpha-row"
+          }
+        ]
+      },
+      "expected": {
+        "durableFacts": [
+          "ownership:owners:owner-alpha,owner-beta",
+          "ownership:shared:exercise-shared-row",
+          "ownership:owner_created:exercise-owner-alpha-row",
+          "ownership:import_created:exercise-import-alpha-row"
+        ],
+        "derivedStates": [
+          "ownership:same_owner_allowed",
+          "ownership:cross_owner_rejected"
+        ],
+        "prohibitedMutations": [
+          "ownership:read_or_bind_cross_owner_record",
+          "ownership:cross_owner_ai_package"
+        ],
+        "lifecycleOutcomes": [
+          "ownership:two_owner_fail_closed"
+        ]
+      }
+    },
+    {
+      "fixtureId": "F16",
+      "title": "Diagnostic bundle",
+      "contractVersion": "repbook-semantic-contract/2.0.0",
+      "concerns": [
+        "diagnostic-redaction",
+        "owner-isolation",
+        "exception-context"
+      ],
+      "input": {
+        "syntheticOwnerIds": [
+          "owner-alpha"
+        ],
+        "events": [
+          {
+            "type": "diagnostic_bundle",
+            "id": "diagnostic",
+            "fields": [
+              "errorCode",
+              "appVersion",
+              "actualWeight",
+              "repetitions",
+              "freeText"
+            ],
+            "optInFields": [
+              "freeText"
+            ]
+          }
+        ]
+      },
+      "expected": {
+        "durableFacts": [
+          "diagnostic:preview_included:appVersion,errorCode,freeText",
+          "diagnostic:preview_omitted:actualWeight,repetitions"
+        ],
+        "derivedStates": [
+          "diagnostic:minimum_necessary"
+        ],
+        "prohibitedMutations": [
+          "diagnostic:automatic_upload",
+          "diagnostic:unknown_field_passthrough"
+        ],
+        "lifecycleOutcomes": [
+          "diagnostic:preview_then_explicit_local_export"
+        ]
+      }
+    },
+    {
+      "fixtureId": "F17",
+      "title": "Interrupted then abandoned",
+      "contractVersion": "repbook-semantic-contract/2.0.0",
+      "concerns": [
+        "active-abandon",
+        "acknowledgement-retry",
+        "restore-rollback"
+      ],
+      "input": {
+        "syntheticOwnerIds": [
+          "owner-alpha"
+        ],
+        "events": [
+          {
+            "type": "abandoned_session",
+            "id": "abandoned",
+            "acknowledgedResult": "result-1",
+            "unknownMutation": "mutation-2",
+            "unresolvedOccurrences": [
+              "occurrence-2",
+              "occurrence-3"
+            ]
+          }
+        ]
+      },
+      "expected": {
+        "durableFacts": [
+          "abandoned:acknowledged:result-1:retained_correctable",
+          "abandoned:unresolved:occurrence-2,occurrence-3:abandoned"
+        ],
+        "derivedStates": [
+          "abandoned:excluded_from_completed_progression_review_adaptation"
+        ],
+        "prohibitedMutations": [
+          "abandoned:delete_acknowledged_work",
+          "abandoned:unknown_commit:mutation-2:as_zero"
+        ],
+        "lifecycleOutcomes": [
+          "abandoned:abandon_preview_export_archive_restore"
+        ]
+      }
+    }
+  ]
+}

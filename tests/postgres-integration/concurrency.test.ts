@@ -56,10 +56,10 @@ import {
   addWorkoutExercise,
   appendWorkoutSetOccurrence,
   completeWorkoutSession,
-  logWorkoutSet,
   startWorkoutSession,
   StaleWorkoutTemplateError,
 } from "@/services/session-lifecycle";
+import { logWorkoutSet } from "../helpers/log-workout-set";
 import { createRetrospectiveWorkout } from "@/services/retrospective-workouts";
 import { getHistoryReport } from "@/services/history-report";
 import { getCurrentProgramDocument } from "@/services/program-documents";
@@ -309,6 +309,22 @@ async function insertLoadRecommendation(
     })
     .returning();
   return recommendation;
+}
+
+function reviewSnapshotFor(recommendation: typeof recommendations.$inferSelect) {
+  return {
+    schemaVersion: "review-decision-v1" as const,
+    recommendationId: recommendation.id,
+    reviewRevision: recommendation.reviewRevision,
+    deferRevision: recommendation.deferRevision,
+    recordedAt: new Date().toISOString(),
+    evidenceState: "supported" as const,
+    source: recommendation.source,
+    ruleId: recommendation.ruleId,
+    payload: recommendation.payload,
+    reason: recommendation.reason,
+    evidence: recommendation.evidence,
+  };
 }
 
 async function publishReviewedDraft(draft: ReviewedDraft, userId: string) {
@@ -830,7 +846,74 @@ describe.sequential("real PostgreSQL parallel invariants", () => {
     ).toEqual([expect.objectContaining({ status: "completed", attempts: 1 })]);
   });
 
-  it("refuses an out-of-order working set and an extra until planned work resolves", async () => {
+  it("converges same-key Start delivery on one created and replayed session", async () => {
+    const fixture = await createProgramFixture("keyed same Start");
+    const startRequestKey = crypto.randomUUID();
+    const starts = await Promise.all(
+      Array.from({ length: 12 }, () =>
+        startWorkoutSession(db, fixture.userId, fixture.templateId, 45, {
+          startRequestKey,
+          timezone: "America/Toronto",
+        }),
+      ),
+    );
+
+    expect(starts.filter((result) => result.outcome === "created")).toHaveLength(1);
+    expect(starts.filter((result) => result.outcome === "replayed")).toHaveLength(11);
+    expect(new Set(starts.map((result) => result.sessionId))).toHaveLength(1);
+    expect(await db.select().from(workoutSessions).where(
+      eq(workoutSessions.userId, fixture.userId),
+    )).toHaveLength(1);
+  });
+
+  it("returns conflict for concurrent same-key Start payloads without a second session", async () => {
+    const fixture = await createProgramFixture("keyed conflicting Start");
+    const startRequestKey = crypto.randomUUID();
+    const starts = await Promise.all([
+      startWorkoutSession(db, fixture.userId, fixture.templateId, 30, {
+        startRequestKey,
+        timezone: "America/Toronto",
+      }),
+      startWorkoutSession(db, fixture.userId, fixture.templateId, 45, {
+        startRequestKey,
+        timezone: "America/Toronto",
+      }),
+    ]);
+
+    expect(starts.filter((result) => result.outcome === "created")).toHaveLength(1);
+    expect(starts.filter((result) => result.outcome === "request_conflict"))
+      .toHaveLength(1);
+    expect(new Set(starts.map((result) => result.sessionId))).toHaveLength(1);
+    expect(await db.select().from(workoutSessions).where(
+      eq(workoutSessions.userId, fixture.userId),
+    )).toHaveLength(1);
+  });
+
+  it("admits one different-key Start and reports the remaining active collision", async () => {
+    const fixture = await createProgramFixture("keyed active Start");
+    const starts = await Promise.all(
+      Array.from({ length: 12 }, () =>
+        startWorkoutSession(db, fixture.userId, fixture.templateId, 45, {
+          startRequestKey: crypto.randomUUID(),
+          timezone: "America/Toronto",
+        }),
+      ),
+    );
+
+    expect(starts.filter((result) => result.outcome === "created")).toHaveLength(1);
+    expect(
+      starts.filter((result) => result.outcome === "active_workout_exists"),
+    ).toHaveLength(11);
+    expect(new Set(starts.map((result) => result.sessionId))).toHaveLength(1);
+    expect(await db.select().from(workoutSessions).where(
+      and(
+        eq(workoutSessions.userId, fixture.userId),
+        eq(workoutSessions.status, "in_progress"),
+      ),
+    )).toHaveLength(1);
+  });
+
+  it("refuses out-of-order planned work while preserving an extra before the plan", async () => {
     const fixture = await createProgramFixture("ordered set writer", { sets: 2 });
     const started = await startWorkoutSession(
       db,
@@ -851,11 +934,27 @@ describe.sequential("real PostgreSQL parallel invariants", () => {
       reps: 8,
       clientKey: "native-out-of-order-set-2",
     })).resolves.toEqual({ outcome: "set_order_conflict" });
+    const extraOccurrenceId = crypto.randomUUID();
     await expect(appendWorkoutSetOccurrence(db, fixture.userId, {
       sessionExerciseId: sessionExercise.id,
-      occurrenceId: crypto.randomUUID(),
+      occurrenceId: extraOccurrenceId,
       expectedSetNo: 3,
-    })).resolves.toEqual({ outcome: "stale" });
+    })).resolves.toMatchObject({
+      outcome: "appended",
+      occurrence: { id: extraOccurrenceId, kindOrdinal: 2 },
+    });
+    const extra = await logWorkoutSet(db, fixture.userId, {
+      sessionExerciseId: sessionExercise.id,
+      setNo: 3,
+      weight: 105,
+      weightUnit: "lb",
+      reps: 8,
+      clientKey: "native-extra-before-plan",
+    });
+    expect(extra).toMatchObject({
+      outcome: "saved",
+      occurrenceId: extraOccurrenceId,
+    });
 
     for (const setNo of [1, 2]) {
       await expect(logWorkoutSet(db, fixture.userId, {
@@ -881,7 +980,64 @@ describe.sequential("real PostgreSQL parallel invariants", () => {
         .select()
         .from(completedSets)
         .where(eq(completedSets.sessionExerciseId, sessionExercise.id)),
-    ).toHaveLength(2);
+    ).toHaveLength(3);
+    if (extra.outcome !== "saved") throw new Error(extra.outcome);
+    await expect(
+      db
+        .select({ targetMet: completedSets.targetMet })
+        .from(completedSets)
+        .where(eq(completedSets.id, extra.setId)),
+    ).resolves.toEqual([{ targetMet: null }]);
+  });
+
+  it("serializes a planned completion with an overlapping extra append", async () => {
+    const fixture = await createProgramFixture("parallel plan and extra");
+    const started = await startWorkoutSession(
+      db,
+      fixture.userId,
+      fixture.templateId,
+      45,
+    );
+    const [sessionExercise] = await db
+      .select({ id: sessionExercises.id })
+      .from(sessionExercises)
+      .where(eq(sessionExercises.sessionId, started.sessionId));
+    const extraOccurrenceId = crypto.randomUUID();
+    const [planned, appended] = await Promise.all([
+      logWorkoutSet(db, fixture.userId, {
+        sessionExerciseId: sessionExercise.id,
+        setNo: 1,
+        weight: 100,
+        weightUnit: "lb",
+        reps: 8,
+        clientKey: "parallel-planned-set",
+      }),
+      appendWorkoutSetOccurrence(db, fixture.userId, {
+        sessionExerciseId: sessionExercise.id,
+        occurrenceId: extraOccurrenceId,
+        expectedSetNo: 2,
+      }),
+    ]);
+
+    expect(planned).toMatchObject({ outcome: "saved" });
+    expect(appended).toMatchObject({
+      outcome: "appended",
+      occurrence: { id: extraOccurrenceId, kindOrdinal: 1 },
+    });
+    expect(
+      await db
+        .select({
+          origin: sessionOccurrences.origin,
+          outcome: sessionOccurrences.outcome,
+          kindOrdinal: sessionOccurrences.kindOrdinal,
+        })
+        .from(sessionOccurrences)
+        .where(eq(sessionOccurrences.sessionExerciseId, sessionExercise.id))
+        .orderBy(sessionOccurrences.kindOrdinal),
+    ).toEqual([
+      { origin: "planned", outcome: "completed", kindOrdinal: 0 },
+      { origin: "ad_hoc", outcome: "pending", kindOrdinal: 1 },
+    ]);
   });
 
   it("appends at most one next set under parallel distinct requests", async () => {
@@ -907,14 +1063,6 @@ describe.sequential("real PostgreSQL parallel invariants", () => {
       );
     const expectedSetNo =
       Math.max(...before.map((occurrence) => occurrence.kindOrdinal)) + 2;
-    await expect(logWorkoutSet(db, fixture.userId, {
-      sessionExerciseId: sessionExercise.id,
-      setNo: 1,
-      weight: 100,
-      weightUnit: "lb",
-      reps: 8,
-      clientKey: crypto.randomUUID(),
-    })).resolves.toMatchObject({ outcome: "saved" });
     const occurrenceIds = Array.from({ length: 16 }, () => crypto.randomUUID());
     const results = await Promise.all(
       occurrenceIds.map((occurrenceId) =>
@@ -1278,12 +1426,16 @@ describe.sequential("real PostgreSQL parallel invariants", () => {
       .where(eq(workoutSessions.id, started.sessionId));
     expect(startedWorkout).toMatchObject({
       warmupNotes: "Two minutes easy\nShoulder circles\nTwo ramp-up sets",
-      warmupItems: [
-        expect.objectContaining({
-          label: "Two minutes easy\nShoulder circles\nTwo ramp-up sets",
-        }),
-      ],
+      warmupItems: [],
     });
+    expect(await db
+      .select({ id: sessionOccurrences.id })
+      .from(sessionOccurrences)
+      .where(and(
+        eq(sessionOccurrences.sessionId, started.sessionId),
+        eq(sessionOccurrences.kind, "day_warmup"),
+      )))
+      .toEqual([]);
     const [originalDay] = await db
       .select({
         warmupNotes: workoutTemplates.warmupNotes,
@@ -1578,6 +1730,9 @@ describe.sequential("real PostgreSQL parallel invariants", () => {
         expectedPayload: recommendation.payload,
         appliedPayload: recommendation.payload,
         decision: "approve",
+        expectedReviewRevision: recommendation.reviewRevision,
+        expectedDeferRevision: recommendation.deferRevision,
+        reviewSnapshot: reviewSnapshotFor(recommendation),
       })
     ).resolves.toEqual({ ok: false, reason: "invalid" });
     expect(
@@ -2121,18 +2276,33 @@ describe.sequential("real PostgreSQL parallel invariants", () => {
       db,
       fixture.userId,
       set.id,
-      { reps: (set.reps ?? 0) + 1 },
+      {
+        weight: set.weight,
+        weightUnit: set.weightUnit,
+        reps: (set.reps ?? 0) + 1,
+        distanceKm: null,
+        durationSeconds: null,
+        rpe: set.rpe,
+        note: set.note,
+      },
       "set.completed_correction",
       {
         expected: {
           weight: set.weight,
           weightUnit: set.weightUnit,
           reps: set.reps,
+          distanceKm: null,
+          durationSeconds: null,
           rpe: set.rpe,
           note: set.note,
         },
         expectedHistoryRevision: 0,
         clientMutationId: crypto.randomUUID(),
+        correctionEvidence: {
+          category: "measurement_entry",
+          reasonNote: null,
+          source: "workout_history",
+        },
       },
     );
     releaseClaim();

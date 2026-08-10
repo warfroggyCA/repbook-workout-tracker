@@ -1,0 +1,136 @@
+{
+  "format": "repbook-adversarial-analysis-corpus",
+  "schemaVersion": "a06-corpus/1",
+  "syntheticOnly": true,
+  "baseResponseFixture": "a03-typed-response.json",
+  "items": [
+    {
+      "id": "a06-valid",
+      "category": "valid",
+      "stage": "import",
+      "mutation": "none",
+      "oracle": "accept",
+      "expectedCode": "new"
+    },
+    {
+      "id": "a06-partial",
+      "category": "partial",
+      "stage": "response",
+      "mutation": "unknowns_only",
+      "oracle": "non_actionable",
+      "expectedCode": "no_selectable_items"
+    },
+    {
+      "id": "a06-stale",
+      "category": "stale",
+      "stage": "import",
+      "mutation": "publish_later_program",
+      "oracle": "recovery",
+      "expectedCode": "stale_program"
+    },
+    {
+      "id": "a06-hallucinated",
+      "category": "hallucinated",
+      "stage": "response",
+      "mutation": "claim_guessed_fact",
+      "oracle": "reject",
+      "expectedCode": "invalid_schema"
+    },
+    {
+      "id": "a06-prompt-injected",
+      "category": "prompt_injected",
+      "stage": "response",
+      "mutation": "active_instruction_text",
+      "oracle": "reject",
+      "expectedCode": "unsafe_text"
+    },
+    {
+      "id": "a06-oversized",
+      "category": "oversized",
+      "stage": "raw",
+      "mutation": "exceed_response_bytes",
+      "oracle": "reject",
+      "expectedCode": "too_large"
+    },
+    {
+      "id": "a06-deeply-nested",
+      "category": "deeply_nested",
+      "stage": "raw",
+      "mutation": "exceed_json_depth",
+      "oracle": "reject",
+      "expectedCode": "too_deep"
+    },
+    {
+      "id": "a06-duplicate",
+      "category": "duplicate",
+      "stage": "import",
+      "mutation": "exact_replay",
+      "oracle": "accept",
+      "expectedCode": "idempotent_duplicate"
+    },
+    {
+      "id": "a06-conflicting",
+      "category": "conflicting",
+      "stage": "import",
+      "mutation": "reuse_response_id_with_changed_content",
+      "oracle": "reject",
+      "expectedCode": "conflict"
+    },
+    {
+      "id": "a06-cross-user",
+      "category": "cross_user",
+      "stage": "import",
+      "mutation": "submit_as_other_owner",
+      "oracle": "reject",
+      "expectedCode": "missing_manifest"
+    },
+    {
+      "id": "a06-unknown-exercise",
+      "category": "unknown_exercise",
+      "stage": "response",
+      "mutation": "cite_unknown_exercise",
+      "oracle": "reject",
+      "expectedCode": "unknown_evidence_id"
+    },
+    {
+      "id": "a06-wrong-unit",
+      "category": "wrong_unit",
+      "stage": "response",
+      "mutation": "unsupported_measurement_unit",
+      "oracle": "reject",
+      "expectedCode": "invalid_schema"
+    },
+    {
+      "id": "a06-unsupported-legacy",
+      "category": "unsupported_legacy",
+      "stage": "response",
+      "mutation": "legacy_unknown_only",
+      "oracle": "non_actionable",
+      "expectedCode": "no_selectable_items"
+    },
+    {
+      "id": "a06-mixed-version",
+      "category": "mixed_version",
+      "stage": "response",
+      "mutation": "incompatible_semantic_version",
+      "oracle": "reject",
+      "expectedCode": "invalid_schema"
+    },
+    {
+      "id": "a06-unknown-field",
+      "category": "unknown_field",
+      "stage": "response",
+      "mutation": "add_unknown_root_field",
+      "oracle": "reject",
+      "expectedCode": "invalid_schema"
+    },
+    {
+      "id": "a06-unknown-effect",
+      "category": "unknown_effect",
+      "stage": "response",
+      "mutation": "invent_effect_type",
+      "oracle": "reject",
+      "expectedCode": "unknown_effect"
+    }
+  ]
+}

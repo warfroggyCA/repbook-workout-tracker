@@ -360,9 +360,19 @@ test("autosaves, resolves tab conflicts, publishes v2, and restores v1 as v3", a
     .first()
     .click();
   await expect(
-    page.getByRole("heading", { name: "Ready to activate" }),
+    page.getByRole("heading", { name: "Ready to publish" }),
   ).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Before you activate" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Before you publish" })).toBeVisible();
+  const futureChanges = page
+    .getByRole("heading", { name: "What will change for future workouts" })
+    .locator("../../..");
+  await expect(futureChanges).toBeVisible();
+  await expect(page.getByText(/exact change list for saved draft revision/i)).toBeVisible();
+  await futureChanges.locator("details").first().locator("summary").click();
+  await expect(page.getByText("Current Program", { exact: true }).first()).toBeVisible();
+  await expect(
+    page.getByText("Future Program after publication", { exact: true }).first(),
+  ).toBeVisible();
   await expect(
     page
       .locator("details")
@@ -378,21 +388,23 @@ test("autosaves, resolves tab conflicts, publishes v2, and restores v1 as v3", a
     page.getByText(/changes? compared with the current Program/i),
   ).toHaveCount(0);
   await page
-    .getByRole("button", { name: "Activate new version", exact: true })
+    .getByRole("button", { name: "Publish future Program", exact: true })
     .click();
   await expect(
-    page.getByText("New Program version activated", { exact: true }),
+    page.getByText("Future Program published", { exact: true }),
   ).toBeVisible();
-  await expect(page.getByText(/Version 2 is now current/)).toBeVisible();
+  await expect(
+    page.getByText(/Version 2 is now used for workouts started from this point forward/i),
+  ).toBeVisible();
 
   await page.goto("/program");
   await expect(page.getByRole("heading", { name: "Program checks" })).toBeVisible();
   await expect(
-    page.getByRole("heading", { name: "When this version was activated" }),
+    page.getByRole("heading", { name: "When this version was published" }),
   ).toBeVisible();
   await expect(
     page.getByRole("heading", {
-      name: "What has changed since activation",
+      name: "What has changed since publication",
     }),
   ).toBeVisible();
   await page.screenshot({
@@ -505,12 +517,14 @@ test("autosaves, resolves tab conflicts, publishes v2, and restores v1 as v3", a
     .first()
     .click();
   await expect(
-    page.getByRole("heading", { name: "Ready to activate" }),
+    page.getByRole("heading", { name: "Ready to publish" }),
   ).toBeVisible();
   await page
-    .getByRole("button", { name: "Activate new version", exact: true })
+    .getByRole("button", { name: "Publish future Program", exact: true })
     .click();
-  await expect(page.getByText(/Version 3 is now current/)).toBeVisible();
+  await expect(
+    page.getByText(/Version 3 is now used for workouts started from this point forward/i),
+  ).toBeVisible();
   await page.goto("/program");
   await expect(page.getByText("v3", { exact: true })).toBeVisible();
   await expect(
@@ -551,7 +565,7 @@ test("a warm-up-only edit produces one clear review and stays reversible", async
     })
     .click();
   await expect(
-    page.getByRole("heading", { name: "Ready to activate", exact: true }),
+    page.getByRole("heading", { name: "Ready to publish", exact: true }),
   ).toBeVisible();
   await expect(
     page.getByText(/change compared with the current Program/i),
@@ -561,7 +575,7 @@ test("a warm-up-only edit produces one clear review and stays reversible", async
     page.getByRole("heading", { name: "Training summary" }),
   ).toHaveCount(0);
   await expect(
-    page.getByRole("button", { name: "Activate new version", exact: true }),
+    page.getByRole("button", { name: "Publish future Program", exact: true }),
   ).toBeEnabled();
 
   await page.getByRole("tab", { name: "Edit", exact: true }).click();
@@ -627,12 +641,14 @@ test("full replacement creates a reviewable Program proposal without auto-publis
     .first()
     .click();
   await expect(
-    page.getByRole("heading", { name: "Ready to activate" }),
+    page.getByRole("heading", { name: "Ready to publish" }),
   ).toBeVisible();
   await expect(
-    page.getByRole("button", { name: "Activate new version", exact: true }),
+    page.getByRole("button", { name: "Publish future Program", exact: true }),
   ).toBeVisible();
-  await expect(page.getByText(/Version 3 is now current/)).toHaveCount(0);
+  await expect(
+    page.getByText(/Version 3 is now used for workouts started from this point forward/i),
+  ).toHaveCount(0);
 
   await page.getByRole("button", { name: "Discard draft", exact: true }).click();
   await page.getByRole("button", { name: "Discard draft", exact: true }).last().click();
@@ -710,9 +726,11 @@ test("builds, reviews, and explicitly accepts one deterministic session proposal
   await expectSaved(page);
   await page.getByRole("tab", { name: "Review", exact: true }).click();
   await page.getByRole("button", { name: "Check Program", exact: true }).first().click();
-  await expect(page.getByRole("heading", { name: "Ready to activate" })).toBeVisible();
-  await page.getByRole("button", { name: "Activate new version", exact: true }).click();
-  await expect(page.getByText(/is now current/)).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Ready to publish" })).toBeVisible();
+  await page.getByRole("button", { name: "Publish future Program", exact: true }).click();
+  await expect(
+    page.getByText(/workouts started from this point forward/i),
+  ).toBeVisible();
   await page.goto("/program");
   const versionBefore = await page.locator("header").getByText(/^v\d+$/).textContent();
   await page.screenshot({ path: testInfo.outputPath("compiler-before.png"), fullPage: true });

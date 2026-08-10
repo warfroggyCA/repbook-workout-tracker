@@ -29,6 +29,7 @@ const [applied, tables, sentinels] = await Promise.all([
       to_regclass('public.recovery_runs') is not null as recovery,
       to_regclass('public.exercise_media_assets') is not null as media,
       to_regclass('public.program_drafts') is not null as program_drafts,
+      to_regclass('public.analysis_package_manifests') is not null as analysis_packages,
       to_regclass('public.production_data_repair_preview') is not null as production_data_preview,
       to_regclass('public.program_editor_repair_preview') is not null as program_editor_preview,
       exists (

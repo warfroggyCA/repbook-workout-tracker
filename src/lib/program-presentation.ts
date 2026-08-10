@@ -100,6 +100,17 @@ export function formatProgramDayLabel(name: string, index: number): string {
   return suffix ? `${base} — ${suffix}` : base;
 }
 
+export function formatCompactProgramDayLabel(
+  name: string,
+  index: number,
+): string {
+  const ordinal = index + 1;
+  const trimmed = name.trim();
+  const match = trimmed.match(/^day\s+(\d+)(?=$|[\s—–\-.:·])/i);
+  if (match && Number(match[1]) === ordinal) return `Day ${ordinal}`;
+  return trimmed || `Day ${ordinal}`;
+}
+
 export function deriveProgramDayWarmupLines(
   dayWarmupNotes: string | null,
   slots: Array<{

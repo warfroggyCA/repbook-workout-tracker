@@ -21,7 +21,7 @@ import {
 import { getDashboardStats } from "@/services/dashboard";
 import { buildTrainingDigest } from "@/services/digest";
 import { getLastPerformances } from "@/services/today";
-import { logWorkoutSet } from "@/services/session-lifecycle";
+import { logWorkoutSet } from "../helpers/log-workout-set";
 import { activateProgramAtomically } from "@/services/program-activation";
 import {
   createMigratedTestDatabase,
@@ -122,6 +122,11 @@ describe("unit, calendar, and backup production findings", () => {
       .values({
         sessionId: session.id,
         exerciseId,
+        prescribedSemanticsVersion: 1,
+        prescribedExerciseName: "Kilogram Squat",
+        prescribedMetricType: "weight_reps",
+        prescribedLoadType: "barbell",
+        prescribedLoadSemantics: "total",
         targetSets: 1,
         targetRepsMin: 8,
         targetRepsMax: 8,
@@ -187,6 +192,14 @@ describe("unit, calendar, and backup production findings", () => {
         localDate: "2025-12-31",
         finishedAt: new Date("2026-01-01T02:00:00.000Z"),
         excludeDurationFromAnalytics: false,
+        occurrences: [
+          {
+            kind: "working_set",
+            origin: "planned",
+            outcome: "completed",
+            completedSetId: stored.id,
+          },
+        ],
         exercises: [
           {
             modificationType: "as_planned",
@@ -197,6 +210,7 @@ describe("unit, calendar, and backup production findings", () => {
             },
             sets: [
               {
+                id: stored.id,
                 weight: stored.weight,
                 weightUnit: stored.weightUnit,
                 reps: stored.reps,
@@ -230,6 +244,7 @@ describe("unit, calendar, and backup production findings", () => {
         localDate: "2025-12-31",
         finishedAt: new Date("2026-01-01T02:00:00.000Z"),
         excludeDurationFromAnalytics: false,
+        occurrences: [],
         exercises: [],
         painLogs: [],
       },
@@ -266,6 +281,9 @@ describe("unit, calendar, and backup production findings", () => {
       reps: 8,
       targetMet: true,
       metricType: "weight_reps",
+      performedSemanticsVersion: 1,
+      performedLoadType: "barbell",
+      performedLoadSemantics: "total",
       loadEntryMeaning: "total_system",
       equipmentSnapshotId,
     }).returning({ id: completedSets.id });
@@ -397,7 +415,7 @@ describe("unit, calendar, and backup production findings", () => {
     expect(csv).toContain("weight_unit");
     expect(csv).toContain(",100,kg,8,");
     expect(csv).toContain("America/Toronto,2026-07-12");
-    expect(backup.schemaVersion).toBe("27");
+    expect(backup.schemaVersion).toBe("30");
     expect(backup.canonical.tables.workout_sessions[0]).toMatchObject({
       id: session.id,
       timezone: "America/Toronto",

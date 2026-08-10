@@ -20,17 +20,26 @@ class MemoryStorage implements WorkoutSetOutboxStorage {
   }
 }
 
-function input(index: number): NewWorkoutSetOutboxEntry {
+function input(
+  index: number,
+): Extract<NewWorkoutSetOutboxEntry, { metricType: "weight_reps" }> {
   return {
     clientKey: `10000000-0000-4000-8000-${String(index).padStart(12, "0")}`,
     ownerId: "20000000-0000-4000-8000-000000000001",
     sessionId: "30000000-0000-4000-8000-000000000001",
     sessionExerciseId: `40000000-0000-4000-8000-${String(index).padStart(12, "0")}`,
+    performedExerciseId: `50000000-0000-4000-8000-${String(index).padStart(12, "0")}`,
+    performedSemanticsVersion: 1,
+    performedLoadType: "barbell",
+    performedLoadSemantics: "total",
     exerciseName: `Exercise ${index}`,
     setNo: 1,
+    metricType: "weight_reps",
     weight: 100,
     weightUnit: "lb",
     reps: 8,
+    distanceKm: null,
+    durationSeconds: null,
     rpe: null,
     note: null,
     equipmentSnapshotId: null,
