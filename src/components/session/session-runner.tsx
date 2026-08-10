@@ -145,6 +145,7 @@ import {
 } from "@/lib/active-workout-measurements";
 import {
   classifyActiveSessionTiming,
+  validateOwnerReportedActiveMinutes,
   type ActiveSessionTiming,
 } from "@/lib/active-session-timing";
 
@@ -1107,17 +1108,14 @@ export function SessionRunner(props: SessionRunnerProps) {
   // setup ("awaiting information") is guidance and must never trap the workout.
   const finishBlocked = finishBlockedByRecordedWork(exitQueues);
   const equipmentGuidancePending = equipmentSyncPending(exitQueues);
-  const parsedOwnerReportedMinutes = Number(ownerReportedMinutes);
   const effectiveDurationChoice =
     timing.reviewRequired && durationChoice === "wall_clock_no_stale_signal"
       ? null
       : durationChoice;
-  const ownerReportedSeconds =
-    ownerReportedMinutes.trim() !== "" &&
-    Number.isInteger(parsedOwnerReportedMinutes) &&
-    parsedOwnerReportedMinutes > 0
-      ? parsedOwnerReportedMinutes * 60
-      : null;
+  const ownerReportedSeconds = validateOwnerReportedActiveMinutes(
+    ownerReportedMinutes,
+    timing.wallClockSeconds,
+  ).seconds;
   const durationReviewReady =
     effectiveDurationChoice === "interruption_unknown" ||
     (effectiveDurationChoice === "wall_clock_no_stale_signal" &&
@@ -2620,6 +2618,7 @@ export function SessionRunner(props: SessionRunnerProps) {
             )}
             <ActiveWorkoutTimingReview
               wallClockLabel={elapsed}
+              wallClockSeconds={timing.wallClockSeconds}
               reviewRequired={timing.reviewRequired}
               choice={effectiveDurationChoice}
               ownerReportedMinutes={ownerReportedMinutes}

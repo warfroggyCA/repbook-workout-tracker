@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import {
+  auditLogs,
   completedSets,
   exercisePrescriptions,
   exercises,
@@ -733,6 +734,256 @@ describe("completed workout timing correction", () => {
     expect(
       await evaluateApplicationIntegrity(database.db, userId),
     ).toEqual([]);
+  });
+
+  it("restores legacy timing without overwriting reviewed active-duration meaning", async () => {
+    const legacyVersionId = crypto.randomUUID();
+    const restoreMutationId = crypto.randomUUID();
+    await database.db.execute(sql`
+      INSERT INTO record_versions (
+        id, user_id, entity_type, entity_id, action,
+        before_data, after_data, changed_fields
+      )
+      SELECT
+        ${legacyVersionId}::uuid,
+        session.user_id,
+        'workout_session',
+        session.id,
+        'workout_session.timing_correction',
+        (
+          to_jsonb(session) || jsonb_build_object(
+            'started_at', '2026-07-02T10:00:00.000Z'::text,
+            'finished_at', '2026-07-02T14:00:00.000Z'::text,
+            'exclude_duration_from_analytics', true,
+            'data_quality_flags', jsonb_build_array(
+              'workout_duration_over_3h',
+              'legacy_timing_marker'
+            )
+          )
+        )
+          - 'active_duration_semantics_version'
+          - 'active_duration_seconds'
+          - 'active_duration_basis',
+        to_jsonb(session)
+          - 'active_duration_semantics_version'
+          - 'active_duration_seconds'
+          - 'active_duration_basis',
+        ARRAY[
+          'started_at',
+          'finished_at',
+          'exclude_duration_from_analytics',
+          'data_quality_flags'
+        ]::text[]
+      FROM workout_sessions session
+      WHERE session.id = ${sessionId}::uuid
+    `);
+    await database.db.update(workoutSessions).set({
+      activeDurationSemanticsVersion: 1,
+      activeDurationSeconds: 2_700,
+      activeDurationBasis: "owner_reported",
+      excludeDurationFromAnalytics: false,
+      dataQualityFlags: [],
+    }).where(eq(workoutSessions.id, sessionId));
+
+    const restored = await restoreRecordVersion(
+      database.db,
+      userId,
+      legacyVersionId,
+      {
+        clientMutationId: restoreMutationId,
+        expectedHistoryRevision: 0,
+      },
+    );
+    expect(restored).toMatchObject({ ok: true, changed: true });
+    await expect(restoreRecordVersion(
+      database.db,
+      userId,
+      legacyVersionId,
+      {
+        clientMutationId: restoreMutationId,
+        expectedHistoryRevision: 0,
+      },
+    )).resolves.toMatchObject({ ok: true, changed: false });
+    await expect(database.db.query.workoutSessions.findFirst({
+      where: eq(workoutSessions.id, sessionId),
+    })).resolves.toMatchObject({
+      startedAt: new Date("2026-07-02T10:00:00.000Z"),
+      finishedAt: new Date("2026-07-02T14:00:00.000Z"),
+      activeDurationSemanticsVersion: 1,
+      activeDurationSeconds: 2_700,
+      activeDurationBasis: "owner_reported",
+      excludeDurationFromAnalytics: false,
+      dataQualityFlags: [
+        "legacy_timing_marker",
+        "workout_elapsed_over_3h",
+      ],
+      historyRevision: 1,
+    });
+    const restoreVersion = await database.db.query.recordVersions.findFirst({
+      where: (version, { eq }) =>
+        eq(version.action, "workout_session.version_restore"),
+    });
+    expect(restoreVersion).toMatchObject({
+      sourceVersionId: legacyVersionId,
+      changedFields: expect.arrayContaining([
+        "data_quality_flags",
+        "finished_at",
+        "started_at",
+      ]),
+    });
+  });
+
+  it("atomically rejects a legacy timing restore shorter than retained reviewed active time", async () => {
+    const legacyVersionId = crypto.randomUUID();
+    const restoreMutationId = crypto.randomUUID();
+    await database.db.execute(sql`
+      INSERT INTO record_versions (
+        id, user_id, entity_type, entity_id, action,
+        before_data, after_data, changed_fields
+      )
+      SELECT
+        ${legacyVersionId}::uuid,
+        session.user_id,
+        'workout_session',
+        session.id,
+        'workout_session.timing_correction',
+        (
+          to_jsonb(session) || jsonb_build_object(
+            'started_at', '2026-07-02T13:30:00.000Z'::text,
+            'finished_at', '2026-07-02T14:00:00.000Z'::text
+          )
+        )
+          - 'active_duration_semantics_version'
+          - 'active_duration_seconds'
+          - 'active_duration_basis',
+        to_jsonb(session)
+          - 'active_duration_semantics_version'
+          - 'active_duration_seconds'
+          - 'active_duration_basis',
+        ARRAY['started_at', 'finished_at']::text[]
+      FROM workout_sessions session
+      WHERE session.id = ${sessionId}::uuid
+    `);
+    await database.db.update(workoutSessions).set({
+      activeDurationSemanticsVersion: 1,
+      activeDurationSeconds: 2_700,
+      activeDurationBasis: "owner_reported",
+      excludeDurationFromAnalytics: false,
+      dataQualityFlags: [],
+    }).where(eq(workoutSessions.id, sessionId));
+
+    const results = await Promise.all([
+      restoreRecordVersion(database.db, userId, legacyVersionId, {
+        clientMutationId: restoreMutationId,
+        expectedHistoryRevision: 0,
+      }),
+      restoreRecordVersion(database.db, userId, legacyVersionId, {
+        clientMutationId: restoreMutationId,
+        expectedHistoryRevision: 0,
+      }),
+    ]);
+    expect(results).toEqual([
+      expect.objectContaining({
+        ok: false,
+        code: "active_duration_conflict",
+        reason: expect.stringContaining(
+          "shorter than the reviewed active duration",
+        ),
+      }),
+      expect.objectContaining({
+        ok: false,
+        code: "active_duration_conflict",
+      }),
+    ]);
+    await expect(database.db.query.workoutSessions.findFirst({
+      where: eq(workoutSessions.id, sessionId),
+    })).resolves.toMatchObject({
+      startedAt: new Date("2026-07-02T14:00:00.000Z"),
+      finishedAt: new Date("2026-07-02T15:00:00.000Z"),
+      activeDurationSemanticsVersion: 1,
+      activeDurationSeconds: 2_700,
+      activeDurationBasis: "owner_reported",
+      excludeDurationFromAnalytics: false,
+      dataQualityFlags: [],
+      historyRevision: 0,
+    });
+    await expect(
+      database.db.query.recordVersions.findMany(),
+    ).resolves.toHaveLength(1);
+    await expect(database.db.query.auditLogs.findMany({
+      where: eq(auditLogs.entityId, sessionId),
+    })).resolves.toEqual([]);
+    await expect(database.db.query.progressionJobs.findMany({
+      where: eq(progressionJobs.sessionId, sessionId),
+    })).resolves.toEqual([]);
+    await expect(
+      evaluateApplicationIntegrity(database.db, userId),
+    ).resolves.toEqual([]);
+  });
+
+  it("restores legacy exclusion and quality flags when no reviewed active tuple is retained", async () => {
+    const legacyVersionId = crypto.randomUUID();
+    await database.db.execute(sql`
+      INSERT INTO record_versions (
+        id, user_id, entity_type, entity_id, action,
+        before_data, after_data, changed_fields
+      )
+      SELECT
+        ${legacyVersionId}::uuid,
+        session.user_id,
+        'workout_session',
+        session.id,
+        'workout_session.timing_correction',
+        (
+          to_jsonb(session) || jsonb_build_object(
+            'started_at', '2026-07-02T10:00:00.000Z'::text,
+            'finished_at', '2026-07-02T14:00:00.000Z'::text,
+            'exclude_duration_from_analytics', true,
+            'data_quality_flags', jsonb_build_array(
+              'workout_duration_over_3h',
+              'legacy_timing_marker'
+            )
+          )
+        )
+          - 'active_duration_semantics_version'
+          - 'active_duration_seconds'
+          - 'active_duration_basis',
+        to_jsonb(session)
+          - 'active_duration_semantics_version'
+          - 'active_duration_seconds'
+          - 'active_duration_basis',
+        ARRAY[
+          'started_at',
+          'finished_at',
+          'exclude_duration_from_analytics',
+          'data_quality_flags'
+        ]::text[]
+      FROM workout_sessions session
+      WHERE session.id = ${sessionId}::uuid
+    `);
+
+    await expect(restoreRecordVersion(
+      database.db,
+      userId,
+      legacyVersionId,
+      {
+        clientMutationId: crypto.randomUUID(),
+        expectedHistoryRevision: 0,
+      },
+    )).resolves.toMatchObject({ ok: true, changed: true });
+    await expect(database.db.query.workoutSessions.findFirst({
+      where: eq(workoutSessions.id, sessionId),
+    })).resolves.toMatchObject({
+      activeDurationSemanticsVersion: null,
+      activeDurationSeconds: null,
+      activeDurationBasis: null,
+      excludeDurationFromAnalytics: true,
+      dataQualityFlags: [
+        "workout_duration_over_3h",
+        "legacy_timing_marker",
+      ],
+      historyRevision: 1,
+    });
   });
 
   it("retains reviewed active duration through an authorized date-only correction", async () => {
