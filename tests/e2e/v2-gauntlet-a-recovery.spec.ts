@@ -84,6 +84,10 @@ test("recovers offline and timeout-after-commit sets exactly, then reviews aband
   await expectSetQueueLength(page, 0);
   await page.reload({ waitUntil: "domcontentloaded" });
   current = page.getByTestId("current-exercise-card");
+  await current
+    .locator("details", { hasText: "Exercise progress & extras" })
+    .locator(":scope > summary")
+    .click();
   await expect(
     current.locator('[id^="logged-set-"]').filter({ hasText: "Set 1" }),
   ).toBeVisible();

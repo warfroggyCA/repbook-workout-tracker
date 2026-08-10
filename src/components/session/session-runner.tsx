@@ -333,6 +333,8 @@ export function SessionRunner(props: SessionRunnerProps) {
   const previousCurrentActionKindRef = useRef<
     SessionGuidanceFocusAction["kind"] | null
   >(null);
+  const lastConsumedWorkoutHashRef = useRef<string | null>(null);
+  const staleWorkoutActionHashRef = useRef(false);
   const [timer, setTimer] = useState<DurableRestTimer | null>(null);
   const [restTimerHydrated, setRestTimerHydrated] = useState(false);
   const [restNow, setRestNow] = useState(() => Date.now());
@@ -543,18 +545,43 @@ export function SessionRunner(props: SessionRunnerProps) {
   useEffect(() => {
     const revealLinkedExercise = () => {
       const targetId = decodeURIComponent(window.location.hash.slice(1));
-      const linkedExercise = shownExercises.find((exercise) => {
-        if (targetId === `exercise-${exercise.id}`) return true;
-        return occurrences.some(
-          (occurrence) =>
-            occurrence.sessionExerciseId === exercise.id &&
-            (targetId ===
-              `set-entry-${exercise.id}-${occurrence.id}` ||
-              targetId ===
-                `added-set-entry-${exercise.id}-${occurrence.id}`),
-        );
-      });
+      if (!targetId || lastConsumedWorkoutHashRef.current === targetId) return;
+
+      const linkedOccurrence = occurrences.find(
+        (occurrence) =>
+          occurrence.sessionExerciseId != null &&
+          (targetId ===
+            `set-entry-${occurrence.sessionExerciseId}-${occurrence.id}` ||
+            targetId ===
+              `added-set-entry-${occurrence.sessionExerciseId}-${occurrence.id}`),
+      );
+      const explicitExercise = shownExercises.find(
+        (exercise) => targetId === `exercise-${exercise.id}`,
+      );
+      const linkedExercise =
+        explicitExercise ??
+        (linkedOccurrence
+          ? shownExercises.find(
+              (exercise) => exercise.id === linkedOccurrence.sessionExerciseId,
+            )
+          : null);
       if (!linkedExercise) return;
+
+      lastConsumedWorkoutHashRef.current = targetId;
+      if (linkedOccurrence) {
+        const firstPendingOccurrence = [...occurrences]
+          .filter((occurrence) => occurrence.outcome === "pending")
+          .sort((left, right) => left.sequenceIdx - right.sequenceIdx)[0];
+        if (
+          linkedOccurrence.outcome !== "pending" ||
+          linkedOccurrence.id !== firstPendingOccurrence?.id
+        ) {
+          staleWorkoutActionHashRef.current = true;
+          return;
+        }
+      }
+
+      staleWorkoutActionHashRef.current = false;
       setExpandedId(linkedExercise.id);
       requestAnimationFrame(() => {
         document
@@ -562,9 +589,14 @@ export function SessionRunner(props: SessionRunnerProps) {
           ?.scrollIntoView({ block: "start" });
       });
     };
+    const revealChangedHash = () => {
+      lastConsumedWorkoutHashRef.current = null;
+      staleWorkoutActionHashRef.current = false;
+      revealLinkedExercise();
+    };
     revealLinkedExercise();
-    window.addEventListener("hashchange", revealLinkedExercise);
-    return () => window.removeEventListener("hashchange", revealLinkedExercise);
+    window.addEventListener("hashchange", revealChangedHash);
+    return () => window.removeEventListener("hashchange", revealChangedHash);
   }, [occurrences, shownExercises]);
   const safeEquipmentSetups = useMemo(
     () =>
@@ -639,7 +671,14 @@ export function SessionRunner(props: SessionRunnerProps) {
     if (skipRecoveryExerciseId != null) {
       return;
     }
-    if (previousActionId == null || previousActionId === currentActionId) return;
+    const reconcileStaleHash = staleWorkoutActionHashRef.current;
+    if (
+      !reconcileStaleHash &&
+      (previousActionId == null || previousActionId === currentActionId)
+    ) {
+      return;
+    }
+    staleWorkoutActionHashRef.current = false;
 
     const previousOccurrence = occurrences.find(
       (occurrence) => occurrence.id === previousActionId,
@@ -668,6 +707,7 @@ export function SessionRunner(props: SessionRunnerProps) {
         scrollFrame = window.requestAnimationFrame(revealCurrentAction);
         return;
       }
+      lastConsumedWorkoutHashRef.current = currentActionTargetId;
       window.history.replaceState(
         window.history.state,
         "",
@@ -2693,6 +2733,8 @@ export function SessionRunner(props: SessionRunnerProps) {
             if (occurrenceAction?.kind === "working_set") {
               setExpandedId(occurrenceAction.sessionExerciseId);
             }
+            lastConsumedWorkoutHashRef.current = targetId;
+            staleWorkoutActionHashRef.current = false;
             window.history.replaceState(
               window.history.state,
               "",

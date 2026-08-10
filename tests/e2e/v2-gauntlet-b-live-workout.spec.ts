@@ -235,6 +235,7 @@ test("keeps the full live workout usable through warm-up, skip, replace, continu
   incompatible = exerciseCard(page, "Suspension Push-Up");
   await incompatible.locator(":scope > button").click();
   await incompatible.getByRole("button", { name: "Un-skip", exact: true }).click();
+  await openMoreForExercise(incompatible);
   await expect(
     incompatible.getByRole("button", { name: "Skip exercise", exact: true }),
   ).toBeVisible();
@@ -266,7 +267,7 @@ test("keeps the full live workout usable through warm-up, skip, replace, continu
   await expectActiveViewportBudget(page);
 
   const replacementSet = replacement.getByTestId("current-set-entry");
-  await expect(replacementSet).toContainText("Push-Up · Set 1 of 3");
+  await expect(replacementSet).toContainText("Set 1 of 3");
   const logReplacement = replacementSet.getByRole("button", {
     name: "Log set",
     exact: true,

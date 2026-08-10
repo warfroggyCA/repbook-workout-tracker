@@ -328,6 +328,10 @@ test("presents immutable superset order, truthful progress, and next-member equi
   await expect(currentCard.getByRole("heading", { level: 2 })).toHaveText(
     "Pallof Press",
   );
+  await expect(currentCard.locator(":scope > button")).toHaveAttribute(
+    "aria-expanded",
+    "true",
+  );
   await expect
     .poll(() =>
       page.evaluate(
