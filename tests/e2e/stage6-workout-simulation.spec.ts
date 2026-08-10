@@ -38,9 +38,9 @@ async function publishExactBaRoutineChange(page: Page) {
   ).toBeVisible();
   await page.goto("/program");
   await expect(page.getByText("v2", { exact: true })).toBeVisible();
-  await page.getByRole("tab", { name: "Day 2", exact: true }).click();
+  await page.getByRole("tab", { name: /Day B.*Hinge/ }).click();
   await expect(page.getByText(/A: Cable Rear Delt Fly \+ Zottman Curl \+ Overhead Cable Triceps Extension/)).toBeVisible();
-  await page.getByRole("tab", { name: "Day 3", exact: true }).click();
+  await page.getByRole("tab", { name: /Day C.*Bench/ }).click();
   await expect(page.getByText(/A: Overhead Cable Triceps Extension \+ EZ-Bar Curl/)).toBeVisible();
 }
 
