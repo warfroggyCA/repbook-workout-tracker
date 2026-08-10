@@ -9,6 +9,8 @@ import {
   V2_H02_IDS,
 } from "../helpers/v2-h02-cadence-targets-time-constants";
 
+const EXPECTED_FIXTURE_RSC_PATHS = new Set(["/activity/new"]);
+
 async function signIn(page: Page) {
   await installNextDevelopmentRefreshControl(page);
   await page.goto("/sign-in");
@@ -64,7 +66,12 @@ test("keeps calendar cadence and planned-set outcomes separate and trustworthy",
   page,
 }) => {
   await signIn(page);
-  const pageErrors = observeGauntletPageErrors(page, browserName);
+  const pageErrors = observeGauntletPageErrors(
+    page,
+    browserName,
+    [],
+    EXPECTED_FIXTURE_RSC_PATHS,
+  );
   const mutationRequests: string[] = [];
   page.on("request", (request) => {
     if (["POST", "PUT", "PATCH", "DELETE"].includes(request.method())) {
