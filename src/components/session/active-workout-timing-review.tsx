@@ -3,6 +3,10 @@
 import { Clock3 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import {
+  MAX_OWNER_REPORTED_ACTIVE_MINUTES,
+  validateOwnerReportedActiveMinutes,
+} from "@/lib/active-session-timing";
 import { cn } from "@/lib/utils";
 
 export type ActiveDurationChoice =
@@ -12,6 +16,7 @@ export type ActiveDurationChoice =
 
 type Props = {
   wallClockLabel: string;
+  wallClockSeconds: number;
   reviewRequired: boolean;
   choice: ActiveDurationChoice | null;
   ownerReportedMinutes: string;
@@ -56,6 +61,7 @@ function ChoiceRow({
 
 export function ActiveWorkoutTimingReview({
   wallClockLabel,
+  wallClockSeconds,
   reviewRequired,
   choice,
   ownerReportedMinutes,
@@ -65,6 +71,16 @@ export function ActiveWorkoutTimingReview({
   const name = "active-workout-duration-basis";
   const interruptionSelected =
     choice === "owner_reported" || choice === "interruption_unknown";
+  const ownerReportedValidation = validateOwnerReportedActiveMinutes(
+    ownerReportedMinutes,
+    wallClockSeconds,
+  );
+  const ownerReportedError =
+    ownerReportedValidation.error == null
+      ? null
+      : ownerReportedValidation.reason === "exceeds_wall_clock"
+        ? `Active time cannot exceed the recorded wall-clock time of ${wallClockLabel}.`
+        : ownerReportedValidation.error;
 
   return (
     <section
@@ -95,7 +111,8 @@ export function ActiveWorkoutTimingReview({
           <p className="mt-1 text-sm font-medium">
             {choice === "wall_clock_no_stale_signal"
               ? `Active time: ${wallClockLabel}`
-              : choice === "owner_reported" && ownerReportedMinutes.trim()
+              : choice === "owner_reported" &&
+                  ownerReportedValidation.status === "valid"
                 ? `Active time: ${ownerReportedMinutes.trim()} min · owner reported`
                 : "Active time unavailable"}
           </p>
@@ -180,7 +197,8 @@ export function ActiveWorkoutTimingReview({
               data-testid="owner-reported-active-minutes"
               inputMode="numeric"
               pattern="[0-9]*"
-              min="1"
+              min="0"
+              max={MAX_OWNER_REPORTED_ACTIVE_MINUTES}
               step="1"
               type="number"
               className="min-h-11"
@@ -188,7 +206,12 @@ export function ActiveWorkoutTimingReview({
               onChange={(event) =>
                 onOwnerReportedMinutesChange(event.currentTarget.value)
               }
-              aria-describedby="owner-reported-active-minutes-help"
+              aria-invalid={ownerReportedError == null ? undefined : true}
+              aria-describedby={
+                ownerReportedError == null
+                  ? "owner-reported-active-minutes-help"
+                  : "owner-reported-active-minutes-help owner-reported-active-minutes-error"
+              }
             />
             <span className="text-sm text-muted-foreground">min</span>
           </div>
@@ -196,8 +219,19 @@ export function ActiveWorkoutTimingReview({
             id="owner-reported-active-minutes-help"
             className="mt-1 text-xs leading-relaxed text-muted-foreground"
           >
-            Must not exceed the recorded wall-clock time.
+            Enter a whole number from 0 to{" "}
+            {MAX_OWNER_REPORTED_ACTIVE_MINUTES.toLocaleString("en-CA")}. Must
+            not exceed the recorded wall-clock time.
           </p>
+          {ownerReportedError && (
+            <p
+              id="owner-reported-active-minutes-error"
+              role="alert"
+              className="mt-1 text-xs leading-relaxed text-destructive"
+            >
+              {ownerReportedError}
+            </p>
+          )}
         </div>
       )}
     </section>

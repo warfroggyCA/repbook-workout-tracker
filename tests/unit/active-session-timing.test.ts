@@ -3,6 +3,8 @@ import {
   ACTIVE_SESSION_STALE_AFTER_SECONDS,
   classifyActiveSessionTiming,
   formatWallClockDuration,
+  parseOwnerReportedActiveSeconds,
+  validateOwnerReportedActiveMinutes,
 } from "@/lib/active-session-timing";
 
 const startedAt = new Date("2026-08-10T12:00:00.000Z");
@@ -48,5 +50,33 @@ describe("active session timing", () => {
     expect(formatWallClockDuration((6 * 24 + 2) * 60 * 60)).toBe(
       "6 days 2 hr",
     );
+  });
+
+  it("accepts a reviewed zero-minute duration within the global safety bound", () => {
+    expect(parseOwnerReportedActiveSeconds("0")).toBe(0);
+    expect(parseOwnerReportedActiveSeconds(" 0 ")).toBe(0);
+    expect(parseOwnerReportedActiveSeconds("10080")).toBe(604_800);
+    expect(parseOwnerReportedActiveSeconds("")).toBeNull();
+    expect(parseOwnerReportedActiveSeconds("-1")).toBeNull();
+    expect(parseOwnerReportedActiveSeconds("1.5")).toBeNull();
+    expect(parseOwnerReportedActiveSeconds("1e2")).toBeNull();
+    expect(parseOwnerReportedActiveSeconds("10081")).toBeNull();
+    expect(validateOwnerReportedActiveMinutes("1.5", 2_000_000)).toMatchObject({
+      status: "invalid",
+      reason: "not_whole",
+    });
+    expect(validateOwnerReportedActiveMinutes("10081", 2_000_000)).toMatchObject({
+      status: "invalid",
+      reason: "out_of_range",
+    });
+    expect(validateOwnerReportedActiveMinutes("43", 2_520)).toMatchObject({
+      status: "invalid",
+      reason: "exceeds_wall_clock",
+    });
+    expect(validateOwnerReportedActiveMinutes("10080", 604_800)).toEqual({
+      status: "valid",
+      seconds: 604_800,
+      error: null,
+    });
   });
 });

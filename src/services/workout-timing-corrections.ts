@@ -777,7 +777,10 @@ export async function restoreWorkoutTimingVersion(
           selected.after_data->>'timezone',
           (selected.after_data->>'local_date')::date,
           selected.after_data->>'performed_time_precision',
-          (selected.after_data->>'exclude_duration_from_analytics')::boolean,
+          CASE WHEN selected.after_data ? 'active_duration_semantics_version'
+            OR session.active_duration_semantics_version IS NULL
+            THEN (selected.after_data->>'exclude_duration_from_analytics')::boolean
+            ELSE session.exclude_duration_from_analytics END,
           CASE WHEN selected.after_data ? 'active_duration_semantics_version'
             THEN (selected.after_data->>'active_duration_semantics_version')::integer
             ELSE session.active_duration_semantics_version END,
@@ -813,6 +816,19 @@ export async function restoreWorkoutTimingVersion(
             (selected.before_data->>'finished_at')::timestamptz
         )
       LIMIT 1
+    ), active_duration_conflict AS MATERIALIZED (
+      SELECT 1 AS conflict
+      FROM current_record current
+      JOIN selected_version selected ON selected.entity_id = current.id
+      WHERE NOT (selected.before_data ? 'active_duration_semantics_version')
+        AND current.active_duration_semantics_version = 1
+        AND current.active_duration_seconds IS NOT NULL
+        AND selected.before_data->>'finished_at' IS NOT NULL
+        AND current.active_duration_seconds > floor(extract(epoch FROM (
+          (selected.before_data->>'finished_at')::timestamptz -
+          (selected.before_data->>'started_at')::timestamptz
+        )))
+      LIMIT 1
     ), restored AS (
       UPDATE workout_sessions session
       SET started_at = (selected.before_data->>'started_at')::timestamptz,
@@ -822,7 +838,10 @@ export async function restoreWorkoutTimingVersion(
           performed_time_precision =
             selected.before_data->>'performed_time_precision',
           exclude_duration_from_analytics =
-            (selected.before_data->>'exclude_duration_from_analytics')::boolean,
+            CASE WHEN selected.before_data ? 'active_duration_semantics_version'
+              OR current.active_duration_semantics_version IS NULL
+              THEN (selected.before_data->>'exclude_duration_from_analytics')::boolean
+              ELSE current.exclude_duration_from_analytics END,
           active_duration_semantics_version =
             CASE WHEN selected.before_data ? 'active_duration_semantics_version'
               THEN (selected.before_data->>'active_duration_semantics_version')::integer
@@ -835,13 +854,47 @@ export async function restoreWorkoutTimingVersion(
             CASE WHEN selected.before_data ? 'active_duration_basis'
               THEN selected.before_data->>'active_duration_basis'
               ELSE current.active_duration_basis END,
-          data_quality_flags =
-            coalesce(selected.before_data->'data_quality_flags', '[]'::jsonb),
+          data_quality_flags = CASE
+            WHEN selected.before_data ? 'active_duration_semantics_version'
+              OR current.active_duration_semantics_version IS NULL
+              THEN coalesce(
+                selected.before_data->'data_quality_flags',
+                '[]'::jsonb
+              )
+            ELSE
+              (
+                coalesce(
+                  selected.before_data->'data_quality_flags',
+                  '[]'::jsonb
+                )
+                  - ${LONG_WORKOUT_DURATION_FLAG}
+                  - ${LONG_WORKOUT_ELAPSED_FLAG}
+                  - ${UNKNOWN_ACTIVE_WORKOUT_DURATION_FLAG}
+              ) ||
+              CASE WHEN selected.before_data->>'finished_at' IS NOT NULL
+                AND floor(extract(epoch FROM (
+                  (selected.before_data->>'finished_at')::timestamptz -
+                  (selected.before_data->>'started_at')::timestamptz
+                ))) > ${ACTIVE_WORKOUT_REVIEW_THRESHOLD_SECONDS}
+                THEN jsonb_build_array(${LONG_WORKOUT_ELAPSED_FLAG}::text)
+                ELSE '[]'::jsonb END ||
+              CASE WHEN current.active_duration_basis = 'interruption_unknown'
+                OR current.active_duration_seconds IS NULL
+                THEN jsonb_build_array(
+                  ${UNKNOWN_ACTIVE_WORKOUT_DURATION_FLAG}::text
+                )
+                ELSE '[]'::jsonb END ||
+              CASE WHEN current.active_duration_seconds >
+                ${MAX_ANALYTICS_WORKOUT_DURATION_MINUTES * 60}
+                THEN jsonb_build_array(${LONG_WORKOUT_DURATION_FLAG}::text)
+                ELSE '[]'::jsonb END
+          END,
           history_revision = session.history_revision + 1
       FROM selected_version selected
       JOIN current_record current ON current.id = selected.entity_id
       WHERE session.id = current.id
         AND NOT EXISTS (SELECT 1 FROM observed_set_conflict)
+        AND NOT EXISTS (SELECT 1 FROM active_duration_conflict)
       RETURNING session.*
     ), versioned AS (
       INSERT INTO record_versions (
@@ -953,6 +1006,7 @@ export async function restoreWorkoutTimingVersion(
       coalesce(versioned.id, existing.id) AS version_id,
       (existing.id IS NOT NULL) AS replayed,
       (observed.conflict IS NOT NULL) AS observed_set_conflict,
+      (duration.conflict IS NOT NULL) AS active_duration_conflict,
       (
         existing.id IS NOT NULL
         AND NOT (
@@ -968,6 +1022,7 @@ export async function restoreWorkoutTimingVersion(
     LEFT JOIN versioned ON TRUE
     LEFT JOIN existing_restore existing ON TRUE
     LEFT JOIN observed_set_conflict observed ON TRUE
+    LEFT JOIN active_duration_conflict duration ON TRUE
   `;
   const row = resultRows(await db.execute(query))[0];
   if (!row) return { ok: false as const, reason: "Version not found." };
@@ -990,6 +1045,14 @@ export async function restoreWorkoutTimingVersion(
       ok: false as const,
       reason:
         "Nothing was restored because exact set-completion times would conflict with the earlier workout timing.",
+    };
+  }
+  if (row.active_duration_conflict) {
+    return {
+      ok: false as const,
+      code: "active_duration_conflict" as const,
+      reason:
+        "Nothing was restored because the earlier wall-clock range is shorter than the reviewed active duration. Correct active duration first, or choose a compatible timing version.",
     };
   }
   if (!row.id) {

@@ -44,7 +44,11 @@ export type VersionedEditResult =
       versionId: string | null;
       historyRevision?: number;
     }
-  | { ok: false; reason: string };
+  | {
+      ok: false;
+      reason: string;
+      code?: "active_duration_conflict";
+    };
 
 export type SetVersionUpdate = {
   weight?: number | null;

@@ -74,6 +74,7 @@ import {
   correctCompletedWorkoutActiveDuration,
   correctCompletedWorkoutTiming,
 } from "@/services/workout-timing-corrections";
+import { completeWorkoutSession } from "@/services/session-lifecycle";
 
 describe("verified off-database snapshots", () => {
   let client: PGlite;
@@ -343,6 +344,104 @@ describe("verified off-database snapshots", () => {
     expect(() => validateSnapshotPayload(nullableRevision, userId)).toThrow(
       /invalid History revision/
     );
+  });
+
+  it("resolves completion duration from the workout locked after a concurrent snapshot restore", async () => {
+    const restoredStartedAt = new Date("2026-07-20T12:00:00.000Z");
+    const recentStartedAt = new Date("2026-07-20T15:30:00.000Z");
+    const finishedAt = new Date("2026-07-20T16:00:00.000Z");
+    const [active] = await db.insert(workoutSessions).values({
+      userId,
+      templateName: "Restore-race active workout",
+      status: "in_progress",
+      startedAt: restoredStartedAt,
+      timezone: "America/Toronto",
+      localDate: "2026-07-20",
+    }).returning({ id: workoutSessions.id });
+    const source = await createDataSnapshot(
+      db,
+      userId,
+      { name: "Before active workout start correction", reason: "manual" },
+      {
+        store,
+        keyring,
+        now: new Date("2026-07-20T15:00:00.000Z"),
+        appVersion: "completion-restore-race",
+      },
+    );
+    if (!source.ok) throw new Error(source.reason);
+    await db.update(workoutSessions).set({
+      startedAt: recentStartedAt,
+    }).where(eq(workoutSessions.id, active.id));
+
+    let releaseCompletion!: () => void;
+    const completionRelease = new Promise<void>((resolve) => {
+      releaseCompletion = resolve;
+    });
+    let completionReachedBoundary!: () => void;
+    const atCompletionBoundary = new Promise<void>((resolve) => {
+      completionReachedBoundary = resolve;
+    });
+    const completion = completeWorkoutSession(
+      db,
+      {
+        id: userId,
+        coachingPrefs: {
+          aggressiveness: "moderate",
+          deloadSuggestions: true,
+          substitutionSuggestions: true,
+          weeklyReview: true,
+        },
+      },
+      { sessionId: active.id },
+      {
+        now: () => finishedAt,
+        checkpoint: async (boundary) => {
+          if (boundary !== "before-completion-statement") return;
+          completionReachedBoundary();
+          await completionRelease;
+        },
+      },
+    );
+    await atCompletionBoundary;
+    try {
+      const preview = await getSnapshotRestorePreview(
+        db,
+        userId,
+        source.snapshotId,
+        "history",
+        { store, keyring },
+      );
+      await expect(restoreDataSnapshot(
+        db,
+        userId,
+        {
+          snapshotId: source.snapshotId,
+          scope: "history",
+          previewFingerprint: preview.fingerprint,
+          confirmation: "RESTORE",
+        },
+        { store, keyring, appVersion: "completion-restore-race" },
+      )).resolves.toMatchObject({ ok: true, scope: "history" });
+    } finally {
+      releaseCompletion();
+    }
+
+    await expect(completion).resolves.toMatchObject({
+      outcome: "duration_review_required",
+      wallClockElapsedSeconds: 14_400,
+      reviewRequired: true,
+    });
+    await expect(db.query.workoutSessions.findFirst({
+      where: eq(workoutSessions.id, active.id),
+    })).resolves.toMatchObject({
+      status: "in_progress",
+      startedAt: restoredStartedAt,
+      finishedAt: null,
+      activeDurationSemanticsVersion: null,
+      activeDurationSeconds: null,
+      activeDurationBasis: null,
+    });
   });
 
   it("upgrades schema 30 active-duration evidence conservatively and validates versioned tuples", async () => {

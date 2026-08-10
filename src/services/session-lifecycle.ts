@@ -10,9 +10,9 @@ import {
   ACTIVE_WORKOUT_REVIEW_THRESHOLD_SECONDS,
   LONG_WORKOUT_ELAPSED_FLAG,
   LONG_WORKOUT_DURATION_FLAG,
+  MAX_ACTIVE_WORKOUT_DURATION_SECONDS,
   MAX_ANALYTICS_WORKOUT_DURATION_MINUTES,
   UNKNOWN_ACTIVE_WORKOUT_DURATION_FLAG,
-  resolveWorkoutCompletionDuration,
   type WorkoutCompletionDurationDecision,
 } from "@/lib/workout-duration-quality";
 import {
@@ -2668,41 +2668,20 @@ export async function completeWorkoutSession(
   const finishedAt = now();
   const progressionJobId = randomUUID();
   const note = input.note?.trim() || null;
-  const target = await db.query.workoutSessions.findFirst({
-    where: and(
-      eq(workoutSessions.id, input.sessionId),
-      eq(workoutSessions.userId, user.id),
-      isNull(workoutSessions.archivedAt),
-    ),
-    columns: { status: true, startedAt: true },
-  });
-  if (!target) throw new Error("Session not found");
-  const durationResolution =
-    target.status === "in_progress"
-      ? resolveWorkoutCompletionDuration({
-          startedAt: target.startedAt,
-          finishedAt,
-          decision: input.durationDecision,
-        })
+  const durationDecisionBasis = input.durationDecision?.basis ?? null;
+  const ownerReportedDurationInputValid =
+    input.durationDecision?.basis !== "owner_reported" ||
+    (
+      Number.isInteger(input.durationDecision.activeDurationSeconds) &&
+      input.durationDecision.activeDurationSeconds >= 0 &&
+      input.durationDecision.activeDurationSeconds <=
+        MAX_ACTIVE_WORKOUT_DURATION_SECONDS
+    );
+  const ownerReportedDurationSeconds =
+    input.durationDecision?.basis === "owner_reported" &&
+    ownerReportedDurationInputValid
+      ? input.durationDecision.activeDurationSeconds
       : null;
-  if (durationResolution && !durationResolution.ok) {
-    return {
-      outcome: durationResolution.code,
-      sessionId: input.sessionId,
-      alreadyFinished: false,
-      progressionJobId: null,
-      wallClockElapsedSeconds: durationResolution.wallClockElapsedSeconds,
-      reviewRequired: durationResolution.reviewRequired,
-      reason: durationResolution.reason,
-    } as const;
-  }
-  const activeDurationSemanticsVersion =
-    durationResolution?.activeDurationSemanticsVersion ?? null;
-  const activeDurationSeconds =
-    durationResolution?.activeDurationSeconds ?? null;
-  const activeDurationBasis = durationResolution?.activeDurationBasis ?? null;
-  const wallClockElapsedSeconds =
-    durationResolution?.wallClockElapsedSeconds ?? 0;
   const finishMutationHash = createHash("sha256")
     .update(JSON.stringify({ operation: "abandon", reason: "finished_early" }))
     .digest("hex");
@@ -2718,40 +2697,148 @@ export async function completeWorkoutSession(
         AND ws.user_id = ${user.id}::uuid
         AND ws.archived_at IS NULL
       FOR UPDATE
+    ), duration_context AS MATERIALIZED (
+      SELECT
+        owned.*,
+        LEAST(
+          2147483647,
+          GREATEST(
+            0,
+            floor(extract(epoch FROM (
+              ${finishedAt.toISOString()}::timestamptz - owned.started_at
+            )))
+          )
+        )::integer AS wall_clock_elapsed_seconds,
+        CASE
+          WHEN ${finishedAt.toISOString()}::timestamptz < owned.started_at
+            THEN 'clock_skew'
+          WHEN floor(extract(epoch FROM (
+            ${finishedAt.toISOString()}::timestamptz - owned.started_at
+          ))) > ${ACTIVE_WORKOUT_REVIEW_THRESHOLD_SECONDS}
+            THEN 'stale'
+          ELSE NULL
+        END AS duration_review_reason
+      FROM owned
+    ), duration_validation AS MATERIALIZED (
+      SELECT
+        context.*,
+        CASE
+          WHEN context.status <> 'in_progress' THEN NULL
+          WHEN context.duration_review_reason IS NOT NULL
+            AND ${durationDecisionBasis}::text IS NULL
+            THEN 'duration_review_required'
+          WHEN context.duration_review_reason IS NOT NULL
+            AND ${durationDecisionBasis}::text = 'wall_clock_no_stale_signal'
+            THEN 'duration_review_required'
+          WHEN ${durationDecisionBasis}::text = 'owner_reported'
+            AND (
+              NOT ${ownerReportedDurationInputValid}::boolean
+              OR ${ownerReportedDurationSeconds}::integer IS NULL
+              OR ${ownerReportedDurationSeconds}::integer >
+                context.wall_clock_elapsed_seconds
+            )
+            THEN 'invalid_duration_review'
+          WHEN ${durationDecisionBasis}::text IS NOT NULL
+            AND ${durationDecisionBasis}::text NOT IN (
+              'wall_clock_no_stale_signal',
+              'owner_reported',
+              'interruption_unknown'
+            )
+            THEN 'invalid_duration_review'
+          ELSE NULL
+        END AS duration_rejection_code,
+        CASE
+          WHEN context.status <> 'in_progress' THEN NULL
+          WHEN context.duration_review_reason IS NOT NULL
+            AND ${durationDecisionBasis}::text IS NULL
+            THEN CASE context.duration_review_reason
+              WHEN 'clock_skew' THEN
+                'The recorded start time is later than the server clock. Keep active time unknown or correct the source time before finishing.'
+              ELSE
+                'This workout may include an interruption. Review its active duration before finishing.'
+            END
+          WHEN context.duration_review_reason IS NOT NULL
+            AND ${durationDecisionBasis}::text = 'wall_clock_no_stale_signal'
+            THEN
+              'The recorded elapsed time includes a possible interruption. Report active time or keep it unknown.'
+          WHEN ${durationDecisionBasis}::text = 'owner_reported'
+            AND (
+              NOT ${ownerReportedDurationInputValid}::boolean
+              OR ${ownerReportedDurationSeconds}::integer IS NULL
+              OR ${ownerReportedDurationSeconds}::integer >
+                context.wall_clock_elapsed_seconds
+            )
+            THEN
+              'Active duration must be a whole number of seconds no longer than the recorded elapsed time.'
+          WHEN ${durationDecisionBasis}::text IS NOT NULL
+            AND ${durationDecisionBasis}::text NOT IN (
+              'wall_clock_no_stale_signal',
+              'owner_reported',
+              'interruption_unknown'
+            )
+            THEN 'The active-duration review choice is not supported.'
+          ELSE NULL
+        END AS duration_rejection_reason
+      FROM duration_context context
+    ), duration_resolution AS MATERIALIZED (
+      SELECT
+        validated.*,
+        CASE WHEN validated.status = 'in_progress'
+          AND validated.duration_rejection_code IS NULL
+          THEN 1 ELSE NULL END AS resolved_active_duration_semantics_version,
+        CASE
+          WHEN validated.status <> 'in_progress'
+            OR validated.duration_rejection_code IS NOT NULL THEN NULL
+          WHEN ${durationDecisionBasis}::text = 'interruption_unknown' THEN NULL
+          WHEN ${durationDecisionBasis}::text = 'owner_reported'
+            THEN ${ownerReportedDurationSeconds}::integer
+          ELSE validated.wall_clock_elapsed_seconds
+        END AS resolved_active_duration_seconds,
+        CASE
+          WHEN validated.status <> 'in_progress'
+            OR validated.duration_rejection_code IS NOT NULL THEN NULL
+          WHEN ${durationDecisionBasis}::text = 'interruption_unknown'
+            THEN 'interruption_unknown'
+          WHEN ${durationDecisionBasis}::text = 'owner_reported'
+            THEN 'owner_reported'
+          ELSE 'wall_clock_no_stale_signal'
+        END AS resolved_active_duration_basis
+      FROM duration_validation validated
     ), transitioned AS (
       UPDATE workout_sessions ws
       SET status = 'completed',
           finished_at = ${finishedAt.toISOString()}::timestamptz,
           active_duration_semantics_version =
-            ${activeDurationSemanticsVersion}::integer,
-          active_duration_seconds = ${activeDurationSeconds}::integer,
-          active_duration_basis = ${activeDurationBasis}::text,
+            resolved.resolved_active_duration_semantics_version,
+          active_duration_seconds = resolved.resolved_active_duration_seconds,
+          active_duration_basis = resolved.resolved_active_duration_basis,
           exclude_duration_from_analytics =
-            owned.exclude_duration_from_analytics OR
-            ${activeDurationSeconds}::integer IS NULL OR
-            ${activeDurationSeconds}::integer >
+            resolved.exclude_duration_from_analytics OR
+            resolved.resolved_active_duration_seconds IS NULL OR
+            resolved.resolved_active_duration_seconds >
               ${MAX_ANALYTICS_WORKOUT_DURATION_MINUTES * 60},
           data_quality_flags =
             (
-              owned.data_quality_flags
+              resolved.data_quality_flags
                 - ${LONG_WORKOUT_DURATION_FLAG}
                 - ${LONG_WORKOUT_ELAPSED_FLAG}
                 - ${UNKNOWN_ACTIVE_WORKOUT_DURATION_FLAG}
             ) ||
-            CASE WHEN ${wallClockElapsedSeconds}::integer >
+            CASE WHEN resolved.wall_clock_elapsed_seconds >
               ${ACTIVE_WORKOUT_REVIEW_THRESHOLD_SECONDS}
               THEN jsonb_build_array(${LONG_WORKOUT_ELAPSED_FLAG}::text)
               ELSE '[]'::jsonb END ||
-            CASE WHEN ${activeDurationSeconds}::integer IS NULL
+            CASE WHEN resolved.resolved_active_duration_seconds IS NULL
               THEN jsonb_build_array(${UNKNOWN_ACTIVE_WORKOUT_DURATION_FLAG}::text)
               ELSE '[]'::jsonb END ||
-            CASE WHEN ${activeDurationSeconds}::integer >
+            CASE WHEN resolved.resolved_active_duration_seconds >
               ${MAX_ANALYTICS_WORKOUT_DURATION_MINUTES * 60}
               THEN jsonb_build_array(${LONG_WORKOUT_DURATION_FLAG}::text)
               ELSE '[]'::jsonb END
-      FROM owned
-      WHERE ws.id = owned.id
-        AND owned.status = 'in_progress'
+      FROM duration_resolution resolved
+      WHERE ws.id = resolved.id
+        AND resolved.status = 'in_progress'
+        AND resolved.duration_rejection_code IS NULL
       RETURNING ws.*
     ), abandoned_occurrences AS (
       UPDATE session_occurrences occurrence
@@ -2796,15 +2883,17 @@ export async function completeWorkoutSession(
         'user',
         'session.complete',
         'workout_session',
-        id::text,
-        'Completed ' || coalesce(template_name, 'workout'),
+        transitioned.id::text,
+        'Completed ' || coalesce(transitioned.template_name, 'workout'),
         jsonb_build_object(
-          'activeDurationSemanticsVersion', active_duration_semantics_version,
-          'activeDurationSeconds', active_duration_seconds,
-          'activeDurationBasis', active_duration_basis,
-          'wallClockElapsedSeconds', ${wallClockElapsedSeconds}::integer
+          'activeDurationSemanticsVersion',
+            transitioned.active_duration_semantics_version,
+          'activeDurationSeconds', transitioned.active_duration_seconds,
+          'activeDurationBasis', transitioned.active_duration_basis,
+          'wallClockElapsedSeconds', wall_clock.wall_clock_elapsed_seconds
         )
       FROM transitioned
+      JOIN duration_resolution wall_clock ON wall_clock.id = transitioned.id
       RETURNING id
     ), reconciled_progression AS (
       UPDATE recommendations recommendation
@@ -2840,23 +2929,40 @@ export async function completeWorkoutSession(
       RETURNING id
     )
     SELECT
-      owned.id,
-      owned.status,
+      resolved.id,
+      resolved.status,
       EXISTS (SELECT 1 FROM transitioned) AS transitioned,
+      resolved.duration_rejection_code,
+      resolved.duration_rejection_reason,
+      resolved.wall_clock_elapsed_seconds,
+      (resolved.duration_review_reason IS NOT NULL) AS duration_review_required,
       coalesce(
         (SELECT id FROM queued_progression),
         (
           SELECT id
           FROM progression_jobs job
-          WHERE job.session_id = owned.id
-            AND job.source_session_revision = owned.history_revision
+          WHERE job.session_id = resolved.id
+            AND job.source_session_revision = resolved.history_revision
         )
       ) AS progression_job_id
-    FROM owned
+    FROM duration_resolution resolved
   `;
   const row = resultRows(await db.execute(query))[0];
   if (!row) throw new Error("Session not found");
   await checkpoint("after-completion-statement");
+  if (row.duration_rejection_code) {
+    return {
+      outcome: String(row.duration_rejection_code) as
+        | "duration_review_required"
+        | "invalid_duration_review",
+      sessionId: input.sessionId,
+      alreadyFinished: false,
+      progressionJobId: null,
+      wallClockElapsedSeconds: Number(row.wall_clock_elapsed_seconds),
+      reviewRequired: Boolean(row.duration_review_required),
+      reason: String(row.duration_rejection_reason),
+    } as const;
+  }
   return {
     outcome: Boolean(row.transitioned) ? "completed" : "already_finished",
     sessionId: String(row.id),

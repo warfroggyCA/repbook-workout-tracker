@@ -623,6 +623,49 @@ describe("workout lifecycle ownership and atomicity invariants", () => {
     });
   });
 
+  it("accepts a reviewed zero-minute active duration without changing source timestamps", async () => {
+    const startedAt = new Date("2026-07-20T15:30:00.000Z");
+    const finishedAt = new Date("2026-07-20T16:00:00.000Z");
+    const { sessionId } = await startWorkoutSession(
+      database.db,
+      userId,
+      templateId,
+      undefined,
+      { now: () => startedAt },
+    );
+
+    await expect(completeWorkoutSession(
+      database.db,
+      {
+        id: userId,
+        coachingPrefs: {
+          aggressiveness: "moderate",
+          deloadSuggestions: true,
+          substitutionSuggestions: true,
+          weeklyReview: true,
+        },
+      },
+      {
+        sessionId,
+        durationDecision: {
+          basis: "owner_reported",
+          activeDurationSeconds: 0,
+        },
+      },
+      { now: () => finishedAt },
+    )).resolves.toMatchObject({ outcome: "completed" });
+    await expect(database.db.query.workoutSessions.findFirst({
+      where: eq(workoutSessions.id, sessionId),
+    })).resolves.toMatchObject({
+      startedAt,
+      finishedAt,
+      activeDurationSemanticsVersion: 1,
+      activeDurationSeconds: 0,
+      activeDurationBasis: "owner_reported",
+      excludeDurationFromAnalytics: false,
+    });
+  });
+
   it("persists skip reasons and never reapplies an old skip after restore", async () => {
     const started = await startWorkoutSession(database.db, userId, templateId);
     const [occurrence] = await database.db
