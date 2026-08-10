@@ -43,9 +43,20 @@ async function expectedCompleteWeekSummary(page: Page) {
   // A four-week range that begins on Monday contains four complete weeks.
   // Every other weekday has three complete Monday-Sunday weeks because the
   // partial first and current weeks remain excluded by the product contract.
-  return weekday === "Mon"
-    ? { average: "1.25", weeks: "4 complete Monday–Sunday weeks" }
-    : { average: "1.33", weeks: "3 complete Monday–Sunday weeks" };
+  // Tuesday is distinct: the -23-day fixture session falls in the first
+  // partial week and the -1-day session falls in the current partial week.
+  const expectedByWeekday: Record<string, { average: string; weeks: string }> = {
+    Mon: { average: "1.25", weeks: "4 complete Monday–Sunday weeks" },
+    Tue: { average: "1", weeks: "3 complete Monday–Sunday weeks" },
+    Wed: { average: "1.33", weeks: "3 complete Monday–Sunday weeks" },
+    Thu: { average: "1.33", weeks: "3 complete Monday–Sunday weeks" },
+    Fri: { average: "1.33", weeks: "3 complete Monday–Sunday weeks" },
+    Sat: { average: "1.33", weeks: "3 complete Monday–Sunday weeks" },
+    Sun: { average: "1.33", weeks: "3 complete Monday–Sunday weeks" },
+  };
+  const expected = expectedByWeekday[weekday];
+  if (!expected) throw new Error(`Unsupported Toronto weekday: ${weekday}`);
+  return expected;
 }
 
 test("keeps calendar cadence and planned-set outcomes separate and trustworthy", async ({
