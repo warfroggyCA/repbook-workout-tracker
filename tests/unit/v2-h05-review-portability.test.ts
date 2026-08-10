@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import {
   recommendations,
   userDecisions,
@@ -22,8 +22,14 @@ import {
   upgradeSnapshotPayload,
   validateSnapshotPayload,
 } from "@/services/snapshot-restore";
+import { buildJsonBackup } from "@/services/export";
 import { MemorySnapshotObjectStore } from "@/services/snapshot-store";
 import { createDataSnapshot, type SnapshotKeyring } from "@/services/snapshots";
+import {
+  deferRecommendationDecision,
+  resumeRecommendationDecision,
+} from "@/services/recommendation-decisions";
+import { activateProgramAtomically } from "@/services/program-activation";
 import {
   createMigratedTestDatabase,
   type TestDatabase,
@@ -203,6 +209,118 @@ describe("Repbook v2 H05 Review portability", () => {
       }),
     ]);
     expect(() => validateSnapshotPayload(upgraded, userId)).not.toThrow();
+  }, 60_000);
+
+  it("round-trips a real deferred Review timestamp emitted with an offset", async () => {
+    const activation = await activateProgramAtomically(database.db, {
+      userId,
+      loadUnit: "kg",
+      programName: "H05 deferred Review Program",
+      days: [],
+      changeSummary: "Synthetic H05 defer fixture",
+      auditAction: "program.activate",
+      auditSummary: "Synthetic H05 defer fixture",
+    });
+    if (!activation.ok) throw new Error(activation.reason);
+
+    const payload: RecommendationPayload = {
+      kind: "deload",
+      scope: "program",
+      volumeFactor: 0.8,
+      loadFactor: 0.9,
+      durationSessionsPerTemplate: 1,
+    };
+    const evidence = withRecommendationReviewEvidence({ signals: {} }, {
+      payload,
+      producer: "progression_rules",
+      sourceVersion: PROGRESSION_REVIEW_SOURCE_VERSION,
+      quality: "unsupported",
+    });
+    const [recommendation] = await database.db.insert(recommendations).values({
+      userId,
+      status: "pending",
+      source: "rule",
+      ruleId: "h05_defer_offset",
+      payload,
+      reason: "Retained deferred proposal",
+      evidence,
+    }).returning();
+    await database.db.execute(sql`SET TIME ZONE 'America/Toronto'`);
+    await expect(deferRecommendationDecision(database.db, userId, {
+      recommendationId: recommendation.id,
+      expectedReviewRevision: recommendation.reviewRevision,
+      expectedDeferRevision: recommendation.deferRevision,
+      revisitOn: "2026-08-21",
+      reason: "Revisit after another training week.",
+    })).resolves.toEqual({ ok: true });
+
+    const captured = await captureUserSnapshot(
+      database.db,
+      userId,
+      new Date("2026-08-09T12:00:00.000Z"),
+      "v2-h05-offset",
+    );
+    expect(captured.tables.recommendations).toContainEqual(
+      expect.objectContaining({
+        deferred_at: expect.stringMatching(/[+-]\d{2}:\d{2}$/),
+        revisit_on: "2026-08-21",
+        defer_reason: "Revisit after another training week.",
+      }),
+    );
+    expect(() => validateSnapshotPayload(captured, userId)).not.toThrow();
+    await expect(buildJsonBackup(database.db, userId, undefined, {
+      now: new Date("2026-08-09T12:01:00.000Z"),
+      appVersion: "v2-h05-offset",
+    })).resolves.toMatchObject({ schemaVersion: SNAPSHOT_SCHEMA_VERSION });
+
+    const store = new MemorySnapshotObjectStore();
+    const key = Buffer.alloc(32, 76);
+    const keyring: SnapshotKeyring = {
+      currentVersion: "v1",
+      resolve(versionName) {
+        if (versionName !== "v1") throw new Error("Unknown H05 snapshot key.");
+        return key;
+      },
+    };
+    const created = await createDataSnapshot(
+      database.db,
+      userId,
+      { name: "H05 deferred offset", reason: "manual", pinned: true },
+      { store, keyring, appVersion: "v2-h05-offset" },
+    );
+    if (!created.ok) throw new Error(created.reason);
+    await expect(resumeRecommendationDecision(database.db, userId, {
+      recommendationId: recommendation.id,
+      expectedReviewRevision: recommendation.reviewRevision,
+      expectedDeferRevision: recommendation.deferRevision + 1,
+    })).resolves.toEqual({ ok: true });
+
+    const preview = await getSnapshotRestorePreview(
+      database.db,
+      userId,
+      created.snapshotId,
+      "full",
+      { store, keyring },
+    );
+    const restored = await restoreDataSnapshot(
+      database.db,
+      userId,
+      {
+        snapshotId: created.snapshotId,
+        scope: "full",
+        previewFingerprint: preview.fingerprint,
+        confirmation: "RESTORE",
+      },
+      { store, keyring, appVersion: "v2-h05-offset" },
+    );
+    expect(restored).toMatchObject({ ok: true, scope: "full" });
+    expect(await database.db.query.recommendations.findFirst({
+      where: eq(recommendations.id, recommendation.id),
+    })).toMatchObject({
+      deferredAt: expect.any(Date),
+      revisitOn: "2026-08-21",
+      deferReason: "Revisit after another training week.",
+    });
   }, 60_000);
 
   it("rejects incoherent deferred Review state before restore", async () => {

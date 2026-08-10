@@ -17,12 +17,15 @@ export type AnalysisPackageScope = {
   windowStart: string;
   evidenceCutoff: string;
   timezone: string;
+  sourceEvidenceRevision: string;
 };
 
 export type AnalysisPackageSourceBinding = {
   entity: string;
   ids: string[];
   revisions?: Array<{ id: string; revision: number }>;
+  contentHashes: Array<{ id: string; hash: string }>;
+  versionTokens?: Array<{ id: string; token: string }>;
 };
 
 export type AnalysisPackageInventory = {

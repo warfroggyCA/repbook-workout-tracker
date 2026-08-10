@@ -3,7 +3,6 @@ import { eq, sql } from "drizzle-orm";
 import {
   aiParsingEvents,
   auditLogs,
-  users,
   workoutSessions,
 } from "@/db/schema";
 import {
@@ -22,10 +21,11 @@ describe("quick-log result identity migration", () => {
 
   it("backfills one proven result and exposes ambiguous history without guessing", async () => {
     database = await createTestDatabaseAtMigration(PREVIOUS);
-    const [user] = await database.db
-      .insert(users)
-      .values({ email: `quick-log-migration-${crypto.randomUUID()}@example.com` })
-      .returning({ id: users.id });
+    const user = { id: crypto.randomUUID() };
+    await database.client.query(
+      "INSERT INTO users (id, email) VALUES ($1, $2)",
+      [user.id, `quick-log-migration-${crypto.randomUUID()}@example.com`],
+    );
     const sessions = await Promise.all(["2026-07-10", "2026-07-11", "2026-07-12"].map(async (localDate) => {
       const id = crypto.randomUUID();
       await database!.client.query(

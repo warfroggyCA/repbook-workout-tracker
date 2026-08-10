@@ -61,7 +61,9 @@ export async function POST(request: Request) {
         ? 404
         : result.reason === "expired_manifest"
           ? 410
-          : result.reason === "stale_program" || result.reason === "conflict"
+          : result.reason === "stale_program" ||
+              result.reason === "stale_evidence" ||
+              result.reason === "conflict"
             ? 409
             : 422;
     return sensitiveJson({ error: result.message, code: result.reason }, { status });

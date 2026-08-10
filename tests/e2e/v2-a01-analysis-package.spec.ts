@@ -9,6 +9,9 @@ import {
 import { observeGauntletPageErrors } from "../helpers/v2-gauntlet-a-errors";
 
 const EMAIL = "v2.h01.history.e2e@example.com";
+const EXPECTED_FIXTURE_RSC_PATHS = new Set([
+  "/session/00000000-0000-4000-8000-000000000318",
+]);
 
 async function waitForReactHandler(locator: Locator) {
   await expect.poll(async () => {
@@ -40,7 +43,12 @@ test("previews and downloads one complete owner-controlled package without trans
   page,
 }) => {
   await signIn(page);
-  const pageErrors = observeGauntletPageErrors(page, browserName);
+  const pageErrors = observeGauntletPageErrors(
+    page,
+    browserName,
+    [],
+    EXPECTED_FIXTURE_RSC_PATHS,
+  );
   const narrow = (page.viewportSize()?.width ?? 0) <= 320;
   const requestedUrls: string[] = [];
   page.on("request", (request) => requestedUrls.push(request.url()));

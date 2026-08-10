@@ -8,6 +8,49 @@ export const ANALYSIS_PACKAGE_CANONICALIZATION_VERSION =
 export const ANALYSIS_PACKAGE_RETENTION_DAYS = 30 as const;
 export const ANALYSIS_PACKAGE_MAX_BYTES = 5 * 1024 * 1024;
 
+export const ANALYSIS_PACKAGE_SOURCE_BINDING_ENTITIES = [
+  "user_profiles",
+  "constraints",
+  "equipment_items",
+  "plate_inventory",
+  "barbell_configs",
+  "plate_loaded_machine_profiles",
+  "cable_machine_profiles",
+  "cable_stack_steps",
+  "cable_attachment_profiles",
+  "programs",
+  "program_versions",
+  "workout_templates",
+  "workout_template_exercises",
+  "exercise_prescriptions",
+  "exercises",
+  "workout_sessions",
+  "session_exercise_groups",
+  "session_exercises",
+  "session_occurrences",
+  "completed_sets",
+  "pain_logs",
+  "fatigue_logs",
+  "contextual_notes",
+  "record_versions",
+  "health_activities",
+  "recommendations",
+  "user_decisions",
+  "adaptation_events",
+] as const;
+
+export type AnalysisPackageSourceBindingEntity =
+  (typeof ANALYSIS_PACKAGE_SOURCE_BINDING_ENTITIES)[number];
+
+export const ANALYSIS_PACKAGE_SOURCE_REVISION_FIELDS: Partial<
+  Record<AnalysisPackageSourceBindingEntity, string>
+> = {
+  workout_sessions: "history_revision",
+  session_occurrences: "revision",
+  contextual_notes: "revision",
+  recommendations: "review_revision",
+};
+
 export const analysisQuestionSchema = z.enum([
   "program_progress",
   "recovery_constraints",
@@ -105,20 +148,154 @@ const proposalRecordSchema = z
 
 export const analysisPackageSourceBindingSchema = z
   .object({
-    entity: z.string().min(1),
-    ids: z.array(z.string().min(1)),
+    entity: z.enum(ANALYSIS_PACKAGE_SOURCE_BINDING_ENTITIES),
+    ids: z.array(z.string().uuid()).min(1),
     revisions: z
       .array(
         z
           .object({
-            id: z.string().min(1),
+            id: z.string().uuid(),
             revision: z.number().int().nonnegative(),
           })
           .strict(),
       )
       .optional(),
   })
-  .strict();
+  .strict()
+  .superRefine((value, context) => {
+    if (new Set(value.ids).size !== value.ids.length) {
+      context.addIssue({
+        code: "custom",
+        path: ["ids"],
+        message: "Source-binding IDs must be unique.",
+      });
+    }
+    const revisionIds = value.revisions?.map((revision) => revision.id) ?? [];
+    if (new Set(revisionIds).size !== revisionIds.length) {
+      context.addIssue({
+        code: "custom",
+        path: ["revisions"],
+        message: "Source-binding revision IDs must be unique.",
+      });
+    }
+    const revisionField = ANALYSIS_PACKAGE_SOURCE_REVISION_FIELDS[value.entity];
+    if (
+      revisionIds.some((id) => !value.ids.includes(id)) ||
+      (revisionField == null && revisionIds.length > 0) ||
+      (revisionField != null && revisionIds.length !== value.ids.length)
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["revisions"],
+        message: "Source-binding revisions must belong to a supported bound entity.",
+      });
+    }
+  });
+
+export const analysisPackageSourceBindingsSchema = z
+  .array(analysisPackageSourceBindingSchema)
+  .max(100)
+  .superRefine((value, context) => {
+    const entities = value.map((binding) => binding.entity);
+    if (new Set(entities).size !== entities.length) {
+      context.addIssue({
+        code: "custom",
+        message: "Source-binding entities must be unique.",
+      });
+    }
+  });
+
+export const analysisPackageRetainedSourceBindingSchema = z
+  .object({
+    entity: z.enum(ANALYSIS_PACKAGE_SOURCE_BINDING_ENTITIES),
+    ids: z.array(z.string().uuid()).min(1),
+    revisions: z
+      .array(
+        z
+          .object({
+            id: z.string().uuid(),
+            revision: z.number().int().nonnegative(),
+          })
+          .strict(),
+      )
+      .optional(),
+    contentHashes: z.array(
+      z.object({
+        id: z.string().uuid(),
+        hash: z.string().regex(/^[0-9a-f]{64}$/),
+      }).strict(),
+    ),
+    versionTokens: z.array(
+      z.object({
+        id: z.string().uuid(),
+        token: z.string().regex(/^\d+$/),
+      }).strict(),
+    ).optional(),
+  })
+  .strict()
+  .superRefine((value, context) => {
+    const revisionIds = value.revisions?.map((revision) => revision.id) ?? [];
+    const contentHashIds = value.contentHashes.map((item) => item.id);
+    const versionTokenIds = value.versionTokens?.map((item) => item.id) ?? [];
+    if (
+      new Set(value.ids).size !== value.ids.length ||
+      new Set(revisionIds).size !== revisionIds.length
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["ids"],
+        message: "Retained source-binding IDs and revisions must be unique.",
+      });
+    }
+    const revisionField = ANALYSIS_PACKAGE_SOURCE_REVISION_FIELDS[value.entity];
+    if (
+      revisionIds.some((id) => !value.ids.includes(id)) ||
+      (revisionField == null && revisionIds.length > 0) ||
+      (revisionField != null && revisionIds.length !== value.ids.length)
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["revisions"],
+        message: "Retained source-binding revisions are incoherent.",
+      });
+    }
+    if (
+      new Set(contentHashIds).size !== contentHashIds.length ||
+      contentHashIds.length !== value.ids.length ||
+      contentHashIds.some((id) => !value.ids.includes(id))
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["contentHashes"],
+        message: "Retained source-binding content hashes must exactly cover the bound IDs.",
+      });
+    }
+    if (
+      value.versionTokens != null &&
+      (new Set(versionTokenIds).size !== versionTokenIds.length ||
+        versionTokenIds.length !== value.ids.length ||
+        versionTokenIds.some((id) => !value.ids.includes(id)))
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["versionTokens"],
+        message: "Retained source-binding version tokens must exactly cover the bound IDs.",
+      });
+    }
+  });
+
+export const analysisPackageRetainedSourceBindingsSchema = z
+  .array(analysisPackageRetainedSourceBindingSchema)
+  .max(100)
+  .superRefine((value, context) => {
+    const entities = value.map((binding) => binding.entity);
+    if (new Set(entities).size !== entities.length) {
+      context.addIssue({
+        code: "custom",
+        message: "Retained source-binding entities must be unique.",
+      });
+    }
+  });
 
 export const analysisPackageCoreSchema = z
   .object({
@@ -203,7 +380,7 @@ export const analysisPackageCoreSchema = z
     recommendationProposals: z.array(proposalRecordSchema),
     ownerDecisions: z.array(proposalRecordSchema),
     acceptedAdaptations: z.array(proposalRecordSchema),
-    sourceBindings: z.array(analysisPackageSourceBindingSchema),
+    sourceBindings: analysisPackageSourceBindingsSchema,
   })
   .strict();
 

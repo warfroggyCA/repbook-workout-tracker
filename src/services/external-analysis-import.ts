@@ -16,12 +16,16 @@ import {
   type ExternalAnalysisImportDigest,
   type ExternalAnalysisImportRequest,
 } from "@/lib/external-analysis-import";
+import { ANALYSIS_PACKAGE_SOURCE_BINDING_ENTITIES } from "@/lib/analysis-package";
 import {
   validateExternalAnalysisResponse,
   type ExternalAnalysisResponseBinding,
 } from "@/lib/external-analysis-response";
 import { buildRecommendationReviewEvidence } from "@/lib/review-evidence";
-import { getExternalAnalysisResponseBinding } from "@/services/external-analysis-validation";
+import {
+  getExternalAnalysisResponseBinding,
+  getExternalAnalysisSourceBindingFreshness,
+} from "@/services/external-analysis-validation";
 
 export type ExternalAnalysisImportResult =
   | {
@@ -39,6 +43,7 @@ export type ExternalAnalysisImportResult =
         | "missing_manifest"
         | "expired_manifest"
         | "stale_program"
+        | "stale_evidence"
         | "invalid_manifest"
         | "conflict";
       message: string;
@@ -47,6 +52,7 @@ export type ExternalAnalysisImportResult =
 export type ExternalAnalysisImportDependencies = {
   now?: Date;
   failureAt?: string;
+  beforeClaim?: () => Promise<void>;
 };
 
 function responseDigest(canonicalResponse: string) {
@@ -201,6 +207,7 @@ export async function importExternalAnalysisSelection(
       not_found: ["missing_manifest", "The matching owner-scoped package manifest was not found."],
       expired: ["expired_manifest", "The matching package manifest has expired. Prepare a new package."],
       stale_program: ["stale_program", "The current Program changed after this package was prepared."],
+      stale_evidence: ["stale_evidence", "Bound evidence changed after this package was prepared. Prepare a new package."],
       invalid_manifest: ["invalid_manifest", "The retained package manifest cannot safely support import."],
     } as const;
     const [reason, message] = messages[manifest.reason];
@@ -233,6 +240,9 @@ export async function importExternalAnalysisSelection(
     recommendationId: randomUUID(),
   }));
   const importedAt = now.toISOString();
+  const postImportSourceEvidenceRevision = (
+    BigInt(manifest.sourceEvidenceRevision) + BigInt(recommendationMap.length * 2)
+  ).toString();
   const importDigest: ExternalAnalysisImportDigest =
     externalAnalysisImportDigestSchema.parse({
       schemaVersion: "external-analysis-import/1",
@@ -244,6 +254,7 @@ export async function importExternalAnalysisSelection(
         digest: manifest.binding.digest,
         evidenceCutoff: manifest.binding.evidenceCutoff,
         expiresAt: manifest.binding.expiresAt,
+        sourceEvidenceRevision: postImportSourceEvidenceRevision,
       },
       response: {
         id: validation.response.responseId,
@@ -308,16 +319,111 @@ export async function importExternalAnalysisSelection(
       evidence,
     };
   });
+  const boundProgramId = idsFor(manifest.sourceBindings, "programs").values().next().value ?? null;
+  const boundVersionId = idsFor(manifest.sourceBindings, "program_versions").values().next().value ?? null;
+  const expectedRevisions = manifest.sourceBindings.flatMap((binding) =>
+    (binding.revisions ?? []).map((revision) => ({
+      entity: binding.entity,
+      id: revision.id,
+      revision: revision.revision,
+    })),
+  );
+  const sourceVersionChecks = ANALYSIS_PACKAGE_SOURCE_BINDING_ENTITIES.map(
+    (entity) => sql`(
+      expected.entity = ${entity}
+      AND EXISTS (
+        SELECT 1
+        FROM ${sql.raw(`"${entity}"`)} source
+        WHERE source.id = expected.id
+          AND source.xmin::text = expected.token
+      )
+    )`,
+  );
+
+  await dependencies.beforeClaim?.();
 
   let applied = false;
   try {
     applied = resultRows(await db.execute(sql`
-    WITH claimed_manifest AS (
+    WITH locked_owner AS (
+      SELECT owner.id
+      FROM users owner
+      WHERE owner.id = ${userId}::uuid
+        AND owner.analysis_evidence_revision::text = ${manifest.sourceEvidenceRevision}
+      FOR UPDATE
+    ), claimed_manifest AS (
       DELETE FROM analysis_package_manifests manifest
+      USING locked_owner owner
       WHERE manifest.id = ${manifest.binding.packageId}::uuid
         AND manifest.user_id = ${userId}::uuid
+        AND owner.id = manifest.user_id
         AND manifest.digest = ${manifest.binding.digest}
         AND manifest.expires_at > ${now}
+        AND (
+          SELECT count(*)::int
+          FROM programs program
+          WHERE program.user_id = ${userId}::uuid
+            AND program.status = 'active'
+            AND program.archived_at IS NULL
+        ) = ${boundProgramId == null ? 0 : 1}::int
+        AND (
+          ${boundProgramId == null}::boolean
+          OR EXISTS (
+            SELECT 1
+            FROM programs program
+            WHERE program.user_id = ${userId}::uuid
+              AND program.status = 'active'
+              AND program.archived_at IS NULL
+              AND program.id = ${boundProgramId}::uuid
+              AND program.current_version_id = ${boundVersionId}::uuid
+          )
+        )
+        AND NOT EXISTS (
+          SELECT 1
+          FROM jsonb_to_recordset(${JSON.stringify(expectedRevisions)}::jsonb)
+            AS expected(entity text, id uuid, revision int)
+          WHERE NOT CASE expected.entity
+            WHEN 'workout_sessions' THEN EXISTS (
+              SELECT 1 FROM workout_sessions session
+              WHERE session.id = expected.id
+                AND session.user_id = ${userId}::uuid
+                AND session.status IN ('completed', 'abandoned')
+                AND session.archived_at IS NULL
+                AND session.history_revision = expected.revision
+            )
+            WHEN 'session_occurrences' THEN EXISTS (
+              SELECT 1
+              FROM session_occurrences occurrence
+              JOIN workout_sessions session ON session.id = occurrence.session_id
+              WHERE occurrence.id = expected.id
+                AND session.user_id = ${userId}::uuid
+                AND session.archived_at IS NULL
+                AND occurrence.revision = expected.revision
+            )
+            WHEN 'contextual_notes' THEN EXISTS (
+              SELECT 1 FROM contextual_notes note
+              WHERE note.id = expected.id
+                AND note.user_id = ${userId}::uuid
+                AND note.archived_at IS NULL
+                AND note.revision = expected.revision
+            )
+            WHEN 'recommendations' THEN EXISTS (
+              SELECT 1 FROM recommendations recommendation
+              WHERE recommendation.id = expected.id
+                AND recommendation.user_id = ${userId}::uuid
+                AND recommendation.archived_at IS NULL
+                AND recommendation.review_revision = expected.revision
+            )
+            ELSE false
+          END
+        )
+        AND NOT EXISTS (
+          SELECT 1
+          FROM jsonb_to_recordset(
+            ${JSON.stringify(manifest.sourceVersionTokens)}::jsonb
+          ) AS expected(entity text, id uuid, token text)
+          WHERE NOT (${sql.join(sourceVersionChecks, sql` OR `)})
+        )
       RETURNING manifest.id
     ), imported AS (
       INSERT INTO coaching_insights (
@@ -430,6 +536,24 @@ export async function importExternalAnalysisSelection(
         importId: concurrent.row.id,
         observationCount: concurrent.digest.observations.length,
         proposalCount: concurrent.digest.recommendationMap.length,
+      };
+    }
+    const freshness = await getExternalAnalysisSourceBindingFreshness(
+      db,
+      userId,
+      manifest.sourceBindings,
+      manifest.sourceEvidenceRevision,
+    );
+    if (!freshness.ok) {
+      const messages = {
+        stale_program: "The current Program changed while this response was being imported. Prepare a new package.",
+        stale_evidence: "Bound evidence changed while this response was being imported. Prepare a new package.",
+        invalid_manifest: "The retained package manifest became invalid while this response was being imported.",
+      } as const;
+      return {
+        ok: false,
+        reason: freshness.reason,
+        message: messages[freshness.reason],
       };
     }
     return {

@@ -6,7 +6,6 @@ import {
   exercises,
   recommendations,
   userDecisions,
-  users,
 } from "@/db/schema";
 import {
   createTestDatabaseAtMigration,
@@ -26,10 +25,11 @@ describe("recommendation and quick-log contract migration safety", () => {
     database = await createTestDatabaseAtMigration(
       "0029_contract_progression_job_state"
     );
-    const [user] = await database.db
-      .insert(users)
-      .values({ email: `decision-migration-${crypto.randomUUID()}@example.com` })
-      .returning({ id: users.id });
+    const user = { id: crypto.randomUUID() };
+    await database.client.query(
+      "INSERT INTO users (id, email) VALUES ($1, $2)",
+      [user.id, `decision-migration-${crypto.randomUUID()}@example.com`],
+    );
     const [exercise] = await database.db
       .insert(exercises)
       .values({

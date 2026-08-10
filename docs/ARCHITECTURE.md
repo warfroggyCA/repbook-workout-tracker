@@ -686,15 +686,31 @@ Import identity is owner-scoped and idempotent by response UUID plus canonical
 response digest and exact selections. Reusing the identity with changed content
 or selections is a conflict. Another owner, a missing or expired manifest, a
 stale Program, and an interrupted transaction fail without partial writes.
-Later Program publication or correction of revision-bearing source evidence
-makes a pending external proposal stale before acceptance.
+The owner manifest privately binds every included source row with a canonical
+content hash and PostgreSQL mutation token; those internal tokens are not part
+of the provider-facing package. An owner evidence epoch covers insertions and
+collection-membership changes, including an initially empty source class; its
+trigger inventory is checked against the same 28-entity allowlist. Validation
+and the atomic import claim both fail closed if any allowlisted evidence
+changes, disappears, or newly enters scope. After import, the receipt retains
+the same bounded evidence state while accounting exactly for the new Review
+proposal and its own Program Review-revision transition.
+Later Program publication or any bound evidence mutation makes observations
+visibly historical and pending proposals non-actionable.
 
 Migration `0076_external_analysis_review_bridge` adds the external-import
 identity index, validates the minimal receipt shape, and preserves the pending-
 recommendation Program revision guard through a narrow external-proposal path.
 Snapshot schema 30 is unchanged. Recovery manifest 13 adds the durable receipt
 relationship; privacy sanitization retains only its typed allowlist and restore
-validates the full receipt, proposal, owner, and current-Program graph.
+validates the full receipt, proposal, owner, and source graph. A stale but
+legitimate receipt remains recoverable as historical context; current
+actionability still requires exact live evidence. Migration
+`0077_external_analysis_restore_compat` preserves the existing stale-preview
+race check while bridging the older generic Coach privacy normalization to the
+bounded external receipt shape. Migration `0078_analysis_evidence_epoch` adds
+the account-root epoch without adding owner data to snapshots or the
+provider-facing package.
 
 ## A06 adversarial evaluation corpus
 

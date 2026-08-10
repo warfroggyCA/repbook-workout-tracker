@@ -7,6 +7,8 @@ const historyRanges = new Set(["4w", "12w", "6m", "1y", "all"]);
 const historyCalendarViews = new Set(["month", "week", "year"]);
 const activityEditPath =
   /^\/activity\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\/edit$/;
+const webKitRscNavigationFallback =
+  /^Failed to fetch RSC payload for (http:\/\/127\.0\.0\.1:\d+\/[^ ]*)\. Falling back to browser navigation\. TypeError: Load failed$/;
 
 function isValidDateKey(value: string) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
@@ -144,4 +146,18 @@ export function isExpectedWebKitRscHistoryLinkCancellation(
   if (!url || !hasOnlyValidHistoryContext(url)) return false;
 
   return url.pathname === "/history" || activityEditPath.test(url.pathname);
+}
+
+export function isExpectedWebKitRscNavigationFallback(
+  message: string,
+  browserName: string,
+  expectedPath: string,
+) {
+  if (browserName !== "webkit") return false;
+
+  const match = webKitRscNavigationFallback.exec(message);
+  if (!match) return false;
+
+  const url = new URL(match[1]);
+  return url.pathname === expectedPath && url.search === "" && url.hash === "";
 }

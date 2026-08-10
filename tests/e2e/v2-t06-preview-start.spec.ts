@@ -8,10 +8,11 @@ import {
 import {
   isCorrelatedWebKitRscPrefetchCancellation,
   isExpectedWebKitRscLinkCancellation,
+  isExpectedWebKitRscNavigationFallback,
   observeNextRscPrefetches,
 } from "../helpers/webkit-rsc-prefetch-errors";
 
-const EXPECTED_APP_SHELL_PREFETCHES = new Set(["/history"]);
+const EXPECTED_APP_SHELL_RSC_PATHS = new Set(["/history", "/today"]);
 
 async function signIn(page: Page) {
   await installNextDevelopmentRefreshControl(page);
@@ -227,7 +228,14 @@ test("keeps preview read-only and Start replay-safe with truthful active collisi
       !isExpectedWebKitRscLinkCancellation(
         message,
         browserName,
-        EXPECTED_APP_SHELL_PREFETCHES,
+        EXPECTED_APP_SHELL_RSC_PATHS,
+      ) &&
+      // The final Today assertion above proves that WebKit's document fallback
+      // recovered. Only that exact same-origin route/message is expected here.
+      !isExpectedWebKitRscNavigationFallback(
+        message,
+        browserName,
+        "/today",
       ) &&
       !isCorrelatedWebKitRscPrefetchCancellation(
         message,

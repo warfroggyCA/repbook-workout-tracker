@@ -80,6 +80,10 @@ export async function POST(request: Request) {
         status: 409,
         error: "The current Program changed after this package was prepared. Prepare a new package before using the response.",
       },
+      stale_evidence: {
+        status: 409,
+        error: "Bound evidence changed after this package was prepared. Prepare a new package before using the response.",
+      },
       invalid_manifest: {
         status: 409,
         error: "The retained package manifest cannot safely validate this response.",
