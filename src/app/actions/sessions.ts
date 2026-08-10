@@ -67,6 +67,8 @@ import {
   type LogSetInput,
 } from "@/lib/session-action-validation";
 import { SET_CORRECTION_CATEGORIES } from "@/lib/set-correction";
+import { correctCompletedWorkoutActiveDuration } from "@/services/workout-timing-corrections";
+import { ACTIVE_WORKOUT_DURATION_BASES } from "@/lib/workout-duration-quality";
 
 const appendSetSchema = z.object({
   sessionExerciseId: z.string().uuid(),
@@ -951,6 +953,16 @@ const completeSchema = z.object({
   sessionId: z.string().uuid(),
   note: z.string().max(2000).optional(),
   fatigue: z.number().int().min(1).max(5).optional(),
+  durationDecision: z
+    .discriminatedUnion("basis", [
+      z.object({ basis: z.literal("wall_clock_no_stale_signal") }),
+      z.object({
+        basis: z.literal("owner_reported"),
+        activeDurationSeconds: z.number().int().min(0).max(604_800),
+      }),
+      z.object({ basis: z.literal("interruption_unknown") }),
+    ])
+    .optional(),
 });
 
 export async function completeSession(input: z.infer<typeof completeSchema>) {
@@ -963,6 +975,12 @@ export async function completeSession(input: z.infer<typeof completeSchema>) {
     parsed,
     { now: acceptanceWorkoutNow("finish") },
   );
+  if (
+    result.outcome === "duration_review_required" ||
+    result.outcome === "invalid_duration_review"
+  ) {
+    return actionFailure(result.outcome, result.reason);
+  }
   if (!result.alreadyFinished && result.progressionJobId) {
     const progressionJobId = result.progressionJobId;
     after(async () => {
@@ -973,6 +991,52 @@ export async function completeSession(input: z.infer<typeof completeSchema>) {
   if (result.alreadyFinished) redirect(`/history/${result.sessionId}`);
   revalidatePath("/today");
   redirect(`/history/${result.sessionId}?finished=1`);
+}
+
+const activeDurationCorrectionSchema = z.object({
+  sessionId: z.string().uuid(),
+  clientMutationId: z.string().uuid(),
+  expectedHistoryRevision: z.number().int().nonnegative(),
+  expected: z.object({
+    activeDurationSemanticsVersion: z.number().int().nullable().refine(
+      (value) => value == null || value === 1,
+      "Active-duration semantics changed. Reload this workout.",
+    ),
+    activeDurationSeconds: z.number().int().min(0).max(604_800).nullable(),
+    activeDurationBasis: z.string().max(50).nullable().refine(
+      (value) =>
+        value == null || ACTIVE_WORKOUT_DURATION_BASES.some(
+          (basis) => basis === value,
+        ),
+      "Active-duration evidence changed. Reload this workout.",
+    ),
+  }),
+  decision: z.discriminatedUnion("basis", [
+    z.object({
+      basis: z.literal("owner_reported"),
+      activeDurationSeconds: z.number().int().min(0).max(604_800),
+    }),
+    z.object({ basis: z.literal("interruption_unknown") }),
+  ]),
+});
+
+export async function correctWorkoutActiveDuration(
+  input: z.input<typeof activeDurationCorrectionSchema>,
+) {
+  const parsed = activeDurationCorrectionSchema.parse(input);
+  const user = await getCurrentUser();
+  const db = await getDb();
+  const result = await correctCompletedWorkoutActiveDuration(
+    db,
+    user.id,
+    parsed,
+  );
+  if (!result.ok) {
+    return actionFailure("duration_correction_rejected", result.reason);
+  }
+  revalidatePath(`/history/${result.sessionId}`);
+  revalidatePath("/history");
+  return result;
 }
 
 export async function abandonSession(sessionId: string) {

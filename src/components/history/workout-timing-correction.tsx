@@ -65,7 +65,7 @@ function timingSummary(input: {
   durationSeconds: number | null;
 }) {
   if (input.precision === "date_only") {
-    return `${input.localDate} · Date only · time and duration unknown · ${input.timezone}`;
+    return `${input.localDate} · Date only · wall-clock start and elapsed span unknown · ${input.timezone}`;
   }
   const duration =
     input.durationSeconds == null
@@ -229,7 +229,7 @@ export function WorkoutTimingCorrection(props: Props) {
                       }))
                     }
                   />
-                  Date only — time and duration unknown
+                  Date only — wall-clock start and elapsed span unknown
                 </label>
               </fieldset>
               {draft.precision === "instant" && (
@@ -332,6 +332,10 @@ export function WorkoutTimingCorrection(props: Props) {
                 <p className="mt-1 text-muted-foreground">
                   {props.sourceLabel} · {props.programLinkLabel}. Logged sets
                   and earlier Coach output remain historical records.
+                </p>
+                <p className="mt-2 text-muted-foreground">
+                  Active-duration evidence—and whether it is available for
+                  analytics—remains unchanged by this source-timing correction.
                 </p>
                 <p className="mt-2 text-muted-foreground">
                   Calendar placement, current reports, Today rotation, and new

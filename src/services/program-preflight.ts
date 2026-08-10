@@ -20,10 +20,15 @@ export async function loadProgramPreflightContext(
     db.execute(sql`
       WITH eligible AS (
         SELECT template.lineage_id,
-               EXTRACT(EPOCH FROM (session.finished_at - session.started_at)) / 60.0 AS minutes,
+               CASE
+                 WHEN session.active_duration_semantics_version = 1
+                   THEN session.active_duration_seconds / 60.0
+                 ELSE NULL::numeric
+               END AS minutes,
                row_number() OVER (
                  PARTITION BY template.lineage_id
-                 ORDER BY session.finished_at DESC, session.id DESC
+                 ORDER BY session.local_date DESC, session.started_at DESC,
+                   session.id DESC
                ) AS recency
         FROM workout_sessions session
         JOIN workout_templates template ON template.id = session.template_id
@@ -34,10 +39,16 @@ export async function loadProgramPreflightContext(
           AND session.status = 'completed'
           AND session.archived_at IS NULL
           AND NOT session.exclude_duration_from_analytics
-          AND session.finished_at IS NOT NULL
-          AND session.finished_at > session.started_at
-          AND EXTRACT(EPOCH FROM (session.finished_at - session.started_at)) / 60.0 <=
-            ${MAX_ANALYTICS_WORKOUT_DURATION_MINUTES}
+          AND CASE
+            WHEN session.active_duration_semantics_version = 1
+              THEN session.active_duration_seconds / 60.0
+            ELSE NULL::numeric
+          END > 0
+          AND CASE
+            WHEN session.active_duration_semantics_version = 1
+              THEN session.active_duration_seconds / 60.0
+            ELSE NULL::numeric
+          END <= ${MAX_ANALYTICS_WORKOUT_DURATION_MINUTES}
           AND template.lineage_id IN (${sql.join(dayLineages.map((id) => sql`${id}::uuid`), sql`, `)})
       )
       SELECT lineage_id, minutes

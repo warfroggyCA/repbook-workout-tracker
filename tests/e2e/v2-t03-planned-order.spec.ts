@@ -72,6 +72,9 @@ test("keeps planned work authoritative around extra-before-plan and grouped work
   await expect(first).toContainText("Barbell Back Squat");
   await expect(first.getByTestId("current-set-entry")).toContainText("Set 1");
 
+  await first.locator("details", {
+    hasText: "Exercise progress & extras",
+  }).locator(":scope > summary").click();
   const addExtra = first.getByRole("button", {
     name: "Add extra set",
     exact: true,

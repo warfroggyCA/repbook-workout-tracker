@@ -55,13 +55,18 @@ vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 vi.mock("next/navigation", () => ({ redirect: vi.fn() }));
 vi.mock("next/server", () => ({ after: vi.fn() }));
 
-import { correctAcknowledgedSet, skipExercise } from "@/app/actions/sessions";
+import {
+  correctAcknowledgedSet,
+  correctWorkoutActiveDuration,
+  skipExercise,
+} from "@/app/actions/sessions";
 
 describe("session action named results", () => {
   let database: TestDatabase;
   let ownerId: string;
   let otherUserId: string;
   let activeExerciseId: string;
+  let completedSessionId: string;
   let completedExerciseId: string;
   let activeSetId: string;
   let completedSetId: string;
@@ -167,6 +172,7 @@ describe("session action named results", () => {
       ])
       .returning({ id: sessionExercises.id });
     activeExerciseId = insertedExercises[0].id;
+    completedSessionId = completedSession.id;
     completedExerciseId = insertedExercises[1].id;
     const [activeSet, completedSet] = await database.db
       .insert(completedSets)
@@ -255,6 +261,46 @@ describe("session action named results", () => {
     await expect(
       skipExercise({ sessionExerciseId: rows[0].id, reason: "time" })
     ).resolves.toMatchObject({ ok: false, code: "not_active" });
+  });
+
+  it("routes a date-only reviewed active-duration correction through the owner action", async () => {
+    await database.db.update(workoutSessions).set({
+      finishedAt: null,
+      performedTimePrecision: "date_only",
+      activeDurationSemanticsVersion: 1,
+      activeDurationSeconds: 2_700,
+      activeDurationBasis: "owner_reported",
+      excludeDurationFromAnalytics: false,
+      dataQualityFlags: ["unknown_time"],
+    }).where(eq(workoutSessions.id, completedSessionId));
+
+    await expect(correctWorkoutActiveDuration({
+      sessionId: completedSessionId,
+      clientMutationId: crypto.randomUUID(),
+      expectedHistoryRevision: 0,
+      expected: {
+        activeDurationSemanticsVersion: 1,
+        activeDurationSeconds: 2_700,
+        activeDurationBasis: "owner_reported",
+      },
+      decision: { basis: "interruption_unknown" },
+    })).resolves.toMatchObject({
+      ok: true,
+      outcome: "corrected",
+      sessionId: completedSessionId,
+      historyRevision: 1,
+    });
+    await expect(database.db.query.workoutSessions.findFirst({
+      where: eq(workoutSessions.id, completedSessionId),
+    })).resolves.toMatchObject({
+      finishedAt: null,
+      performedTimePrecision: "date_only",
+      activeDurationSemanticsVersion: 1,
+      activeDurationSeconds: null,
+      activeDurationBasis: "interruption_unknown",
+      excludeDurationFromAnalytics: true,
+      historyRevision: 1,
+    });
   });
 
   it("corrects an acknowledged active-workout set only after review", async () => {

@@ -155,7 +155,10 @@ export function classifyHistoryCorrectionFacet(
   actions: string[],
 ): HistoryCorrectionFacet {
   for (const action of actions) {
-    if (action === "set.snapshot_restore") return "snapshot_restored";
+    if (
+      action === "set.snapshot_restore" ||
+      action === "workout_session.snapshot_restore"
+    ) return "snapshot_restored";
     if (
       action === "set.version_restore" ||
       action === "workout_session.version_restore"
@@ -165,7 +168,8 @@ export function classifyHistoryCorrectionFacet(
     if (
       action === "set.active_correction" ||
       action === "set.completed_correction" ||
-      action === "workout_session.timing_correction"
+      action === "workout_session.timing_correction" ||
+      action === "workout_session.duration_correction"
     ) {
       return "corrected";
     }

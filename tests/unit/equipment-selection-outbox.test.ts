@@ -4,6 +4,7 @@ import {
   discardQuarantinedEquipmentSelectionOutboxEntry,
   EQUIPMENT_SELECTION_OUTBOX_STORAGE_KEY,
   enqueueEquipmentSelectionOutboxEntry,
+  equipmentSelectionComparisonState,
   hasPendingEquipmentSelection,
   markEquipmentSelectionTransientFailure,
   nextWorkoutCommand,
@@ -85,6 +86,49 @@ function selection(
 }
 
 describe("equipment selection browser outbox", () => {
+  it("withholds a same-meaning comparison through different-equipment delayed or failed acknowledgement", () => {
+    const storage = new MemoryStorage();
+    const identity = {
+      ownerId: ids.owner,
+      sessionId: ids.session,
+      sessionExerciseId: ids.exercise,
+    };
+    expect(equipmentSelectionComparisonState(
+      readEquipmentSelectionOutbox(storage),
+      identity,
+    )).toBe("safe");
+
+    enqueueEquipmentSelectionOutboxEntry(
+      storage,
+      selection(ids.selectionA, ids.equipmentB, null),
+      1000,
+    );
+    expect(equipmentSelectionComparisonState(
+      readEquipmentSelectionOutbox(storage),
+      identity,
+    )).toBe("pending_or_failed");
+
+    markEquipmentSelectionTransientFailure(
+      storage,
+      ids.selectionA,
+      "Delayed acknowledgement",
+      new Date(2000),
+    );
+    expect(equipmentSelectionComparisonState(
+      readEquipmentSelectionOutbox(storage),
+      identity,
+    )).toBe("pending_or_failed");
+
+    acknowledgeEquipmentSelectionOutboxEntry(
+      storage,
+      ids.selectionA,
+      ids.snapshotA,
+    );
+    expect(equipmentSelectionComparisonState(
+      readEquipmentSelectionOutbox(storage),
+      identity,
+    )).toBe("safe");
+  });
   it("keeps corrupt local data quarantined instead of silently deleting it", () => {
     const snapshot = parseEquipmentSelectionOutbox(JSON.stringify({
       version: 1,

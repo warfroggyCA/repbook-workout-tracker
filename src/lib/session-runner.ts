@@ -207,6 +207,16 @@ export function workoutSaveQueueMessage(input: {
   return `${input.setCount} set${input.setCount === 1 ? " is" : "s are"} still saving. Try again or remove ${input.setCount === 1 ? "it" : "them"} before finishing.`;
 }
 
+export function previousComparableIsTemporarilyUnavailable(input: {
+  equipmentOutboxHydrated: boolean;
+  equipmentState: "safe" | "pending_or_failed" | "unreadable";
+  awaitingServerRefresh: boolean;
+}) {
+  return !input.equipmentOutboxHydrated ||
+    input.equipmentState !== "safe" ||
+    input.awaitingServerRefresh;
+}
+
 export type SetLoggingEquipmentDecision =
   | { status: "log_with_snapshot"; loadEntryMeaning: WorkoutSetLoadEntryMeaning }
   | { status: "log_displayed_unknown" }

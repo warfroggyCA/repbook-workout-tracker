@@ -22,7 +22,7 @@ import {
 } from "../helpers/database";
 
 const PRODUCTION_MIGRATION = "0018_brave_timeslip";
-const LATEST_MIGRATION = "0078_analysis_evidence_epoch";
+const LATEST_MIGRATION = "0079_active_workout_duration_evidence";
 
 const previewBoundaries = [
   {
@@ -922,6 +922,9 @@ describe("current production schema upgrade", () => {
       source_set_index: number;
       source_row: number;
       day_warmup_notes: string | null;
+      active_duration_semantics_version: number | null;
+      active_duration_seconds: number | null;
+      active_duration_basis: string | null;
     }>(
       `SELECT
          owner.email,
@@ -936,7 +939,10 @@ describe("current production schema upgrade", () => {
          completed_set.reps,
          completed_set.source_set_index,
          completed_set.source_row,
-         session.day_warmup_notes
+         session.day_warmup_notes,
+         session.active_duration_semantics_version,
+         session.active_duration_seconds,
+         session.active_duration_basis
        FROM users owner
        JOIN user_profiles profile ON profile.user_id = owner.id
        JOIN import_events import ON import.user_id = owner.id
@@ -961,6 +967,9 @@ describe("current production schema upgrade", () => {
         source_set_index: 0,
         source_row: 2,
         day_warmup_notes: null,
+        active_duration_semantics_version: null,
+        active_duration_seconds: null,
+        active_duration_basis: null,
       },
     ]);
 
@@ -971,7 +980,7 @@ describe("current production schema upgrade", () => {
     });
     expect(backup).toMatchObject({
       format: "workout-tracker-canonical-backup",
-      schemaVersion: "30",
+      schemaVersion: "31",
       recordCounts: {
         users: 1,
         user_profiles: 1,

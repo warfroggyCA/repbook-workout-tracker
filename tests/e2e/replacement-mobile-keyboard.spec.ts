@@ -188,6 +188,8 @@ test("keeps unrestricted replacement truthful and reachable through mobile keybo
   await startWorkout(page);
 
   const card = page.getByTestId("current-exercise-card");
+  const draftIdentity = await card.getAttribute("data-draft-identity");
+  expect(draftIdentity).not.toBeNull();
   const weight = card.getByLabel(/^(Weight|Total load|Displayed load)/);
   const reps = card.getByLabel("Reps", { exact: true });
   await waitForHydratedReactChangeHandler(weight);
@@ -197,6 +199,103 @@ test("keeps unrestricted replacement truthful and reachable through mobile keybo
   await expect(weight).toHaveValue("77");
   await expect(reps).toHaveValue("9");
 
+  const setOptions = card.locator("details", { hasText: "Set options" });
+  const setOptionsSummary = setOptions.locator(":scope > summary");
+  const withSetOptionsOpen = async (action: () => Promise<void>) => {
+    await expect(async () => {
+      if ((await setOptions.getAttribute("open")) == null) {
+        await setOptionsSummary.focus({ timeout: 3_000 });
+        await setOptionsSummary.press("Enter", { timeout: 3_000 });
+      }
+      await expect(setOptions).toHaveAttribute("open", "", {
+        timeout: 3_000,
+      });
+      await action();
+    }).toPass({ timeout: 20_000 });
+  };
+  const selectSetOption = async (option: Locator) => {
+    await withSetOptionsOpen(async () => {
+      if ((await option.getAttribute("aria-pressed")) !== "true") {
+        await option.focus({ timeout: 3_000 });
+        await option.press("Enter", { timeout: 3_000 });
+      }
+      await expect(option).toHaveAttribute("aria-pressed", "true", {
+        timeout: 3_000,
+      });
+    });
+  };
+  const rir = setOptions.getByLabel("RIR (0–10)");
+  // Use DOM-state locators so preservation remains inspectable while the
+  // replacement drawer correctly makes the background card inaccessible.
+  const technique = setOptions
+    .locator("button[aria-pressed]")
+    .filter({ hasText: /^Bracing$/ });
+  const limitation = setOptions
+    .locator("button[aria-pressed]")
+    .filter({ hasText: /^Grip$/ });
+  await withSetOptionsOpen(async () => {
+    await rir.fill("2", { timeout: 3_000 });
+    await expect(rir).toHaveValue("2", { timeout: 3_000 });
+  });
+  await selectSetOption(technique);
+  await selectSetOption(limitation);
+  const recordPain = setOptions.getByRole("button", {
+    name: "Record pain",
+    exact: true,
+  });
+  await withSetOptionsOpen(async () => {
+    await recordPain.focus({ timeout: 3_000 });
+    await recordPain.press("Enter", { timeout: 3_000 });
+    await expect(recordPain).toHaveCount(0, { timeout: 3_000 });
+  });
+  const knee = setOptions
+    .locator("button[aria-pressed]")
+    .filter({ hasText: /^knee$/ });
+  const painSeverity = setOptions.locator(
+    'button[aria-label="Pain severity 3"]',
+  );
+  const painNote = setOptions.getByLabel("Pain note (optional)");
+  const setNote = setOptions.getByLabel("Set note (optional)");
+  await selectSetOption(knee);
+  await selectSetOption(painSeverity);
+  await withSetOptionsOpen(async () => {
+    await painNote.fill("Front of knee felt tight", { timeout: 3_000 });
+    await expect(painNote).toHaveValue("Front of knee felt tight", {
+      timeout: 3_000,
+    });
+  });
+  await withSetOptionsOpen(async () => {
+    await setNote.fill("Keep torso tall", { timeout: 3_000 });
+    await expect(setNote).toHaveValue("Keep torso tall", {
+      timeout: 3_000,
+    });
+  });
+
+  const expectDraftPreserved = async () => {
+    await expect(card).toHaveAttribute("data-draft-identity", draftIdentity!);
+    await expect(weight).toHaveValue("77");
+    await expect(reps).toHaveValue("9");
+    await expect(rir).toHaveValue("2");
+    await expect(technique).toHaveAttribute("aria-pressed", "true");
+    await expect(limitation).toHaveAttribute("aria-pressed", "true");
+    await expect(knee).toHaveAttribute("aria-pressed", "true");
+    await expect(painSeverity).toHaveAttribute("aria-pressed", "true");
+    await expect(painNote).toHaveValue("Front of knee felt tight");
+    await expect(setNote).toHaveValue("Keep torso tall");
+  };
+
+  await expectDraftPreserved();
+  if ((await setOptions.getAttribute("open")) != null) {
+    await setOptionsSummary.focus();
+    await setOptionsSummary.press("Enter");
+    await expect(setOptions).not.toHaveAttribute("open", "");
+  }
+
+  const moreForExercise = card.locator("details", {
+    hasText: "More for this exercise",
+  });
+  await moreForExercise.locator(":scope > summary").click();
+  await expect(moreForExercise).toHaveAttribute("open", "");
   const replaceTrigger = card.getByRole("button", {
     name: "Replace exercise",
     exact: true,
@@ -284,8 +383,7 @@ test("keeps unrestricted replacement truthful and reachable through mobile keybo
   await page.keyboard.press("Escape");
   await expect(picker).toHaveCount(0);
   await expect(catalogTrigger).toBeFocused();
-  await expect(weight).toHaveValue("77");
-  await expect(reps).toHaveValue("9");
+  await expectDraftPreserved();
 
   await catalogTrigger.click();
   picker = page.getByRole("dialog", { name: "Replace exercise", exact: true });
@@ -295,6 +393,7 @@ test("keeps unrestricted replacement truthful and reachable through mobile keybo
   await page.keyboard.press("Escape");
   await expect(drawer).toHaveCount(0);
   await expect(replaceTrigger).toBeFocused();
+  await expectDraftPreserved();
 
   await replaceTrigger.click();
   const reopenedDrawer = page.getByRole("dialog", {

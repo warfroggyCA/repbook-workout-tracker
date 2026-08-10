@@ -3,11 +3,12 @@ import { PGlite } from "@electric-sql/pglite";
 import { drizzle } from "drizzle-orm/pglite";
 import type { PgliteDatabase } from "drizzle-orm/pglite";
 import { migrate } from "drizzle-orm/pglite/migrator";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import * as schema from "@/db/schema";
 import {
   adaptationEvents,
   aiParsingEvents,
+  auditLogs,
   coachingInsights,
   completedSets,
   dataSnapshots,
@@ -69,6 +70,10 @@ import {
 import { evaluateApplicationIntegrity } from "@/services/recovery-health";
 import { createContextualNote, editContextualNote } from "@/services/contextual-notes";
 import { updateSetWithVersion } from "@/services/record-versions";
+import {
+  correctCompletedWorkoutActiveDuration,
+  correctCompletedWorkoutTiming,
+} from "@/services/workout-timing-corrections";
 
 describe("verified off-database snapshots", () => {
   let client: PGlite;
@@ -288,10 +293,13 @@ describe("verified off-database snapshots", () => {
 
     const upgraded = upgradeSnapshotPayload(legacy);
 
-    expect(upgraded.schemaVersion).toBe("30");
+    expect(upgraded.schemaVersion).toBe("31");
     expect(upgraded.tables.workout_sessions[0]).toMatchObject({
       history_revision: 0,
       performed_time_precision: "instant",
+      active_duration_semantics_version: null,
+      active_duration_seconds: null,
+      active_duration_basis: null,
       source_program_id: null,
       source_program_version_id: null,
       source_day_lineage_id: null,
@@ -336,6 +344,890 @@ describe("verified off-database snapshots", () => {
       /invalid History revision/
     );
   });
+
+  it("upgrades schema 30 active-duration evidence conservatively and validates versioned tuples", async () => {
+    const current = await captureUserSnapshot(
+      db,
+      userId,
+      new Date("2026-08-10T16:00:00.000Z"),
+      "schema-30-active-duration",
+    );
+    const legacy = structuredClone(current);
+    legacy.schemaVersion = "30";
+    for (const workout of legacy.tables.workout_sessions as Array<Record<string, unknown>>) {
+      delete workout.active_duration_semantics_version;
+      delete workout.active_duration_seconds;
+      delete workout.active_duration_basis;
+    }
+
+    const upgraded = upgradeSnapshotPayload(legacy);
+    expect(upgraded.schemaVersion).toBe("31");
+    expect(upgraded.tables.workout_sessions[0]).toMatchObject({
+      active_duration_semantics_version: null,
+      active_duration_seconds: null,
+      active_duration_basis: null,
+    });
+    expect(() => validateSnapshotPayload(upgraded, userId)).not.toThrow();
+
+    await db.update(workoutSessions).set({
+      activeDurationSemanticsVersion: 1,
+      activeDurationSeconds: 3_600,
+      activeDurationBasis: "owner_reported",
+    }).where(eq(workoutSessions.id, sessionId));
+    const versioned = await captureUserSnapshot(
+      db,
+      userId,
+      new Date("2026-08-10T16:01:00.000Z"),
+      "schema-31-active-duration",
+    );
+    expect(versioned.tables.workout_sessions[0]).toMatchObject({
+      active_duration_semantics_version: 1,
+      active_duration_seconds: 3_600,
+      active_duration_basis: "owner_reported",
+    });
+    expect(() => validateSnapshotPayload(versioned, userId)).not.toThrow();
+
+    const incoherent = structuredClone(versioned);
+    (incoherent.tables.workout_sessions[0] as Record<string, unknown>)
+      .active_duration_seconds = null;
+    expect(() => validateSnapshotPayload(incoherent, userId)).toThrow(
+      /incoherent active-duration evidence/,
+    );
+  });
+
+  it("requires and restores the immutable audit chain for corrected active duration", async () => {
+    const sourceStartedAt = new Date("2026-07-01T14:00:00.000Z");
+    const sourceFinishedAt = new Date("2026-07-01T15:00:00.000Z");
+    const mutationId = crypto.randomUUID();
+    const corrected = await correctCompletedWorkoutActiveDuration(
+      db,
+      userId,
+      {
+        sessionId,
+        clientMutationId: mutationId,
+        expectedHistoryRevision: 0,
+        expected: {
+          activeDurationSemanticsVersion: null,
+          activeDurationSeconds: null,
+          activeDurationBasis: null,
+        },
+        decision: { basis: "owner_reported", activeDurationSeconds: 2_700 },
+      },
+      new Date("2026-08-10T16:00:00.000Z"),
+    );
+    expect(corrected).toMatchObject({
+      ok: true,
+      outcome: "corrected",
+      versionId: mutationId,
+      historyRevision: 1,
+    });
+
+    const captured = await captureUserSnapshot(
+      db,
+      userId,
+      new Date("2026-08-10T16:01:00.000Z"),
+      "active-duration-audit-chain",
+    );
+    const capturedVersions = captured.tables.record_versions as Array<
+      Record<string, unknown>
+    >;
+    const capturedAudits = captured.tables.audit_logs as Array<
+      Record<string, unknown>
+    >;
+    const sourceVersion = capturedVersions.find(
+      (row) => row.id === mutationId,
+    );
+    const sourceAudit = capturedAudits.find((row) => {
+      const cause = row.cause_ref as Record<string, unknown> | null;
+      return cause?.versionId === mutationId;
+    }) as Record<string, unknown> | undefined;
+    expect(sourceVersion).toMatchObject({
+      entity_type: "workout_session",
+      entity_id: sessionId,
+      action: "workout_session.duration_correction",
+    });
+    expect(sourceAudit).toMatchObject({
+      action: "workout_session.duration_correction",
+      entity_id: sessionId,
+    });
+    expect(() => validateSnapshotPayload(captured, userId)).not.toThrow();
+
+    const missingAudit = structuredClone(captured);
+    missingAudit.tables.audit_logs = (
+      missingAudit.tables.audit_logs as Array<Record<string, unknown>>
+    ).filter((row) => row.id !== sourceAudit?.id);
+    expect(() => validateSnapshotPayload(missingAudit, userId)).toThrow(
+      /missing its exact immutable audit evidence/,
+    );
+    const missingVersion = structuredClone(captured);
+    missingVersion.tables.record_versions = (
+      missingVersion.tables.record_versions as Array<Record<string, unknown>>
+    ).filter((row) => row.id !== mutationId);
+    expect(() => validateSnapshotPayload(missingVersion, userId)).toThrow(
+      /audit is missing its exact immutable version evidence/,
+    );
+
+    const created = await createDataSnapshot(
+      db,
+      userId,
+      { name: "Corrected active duration", reason: "manual" },
+      {
+        store,
+        keyring,
+        now: new Date("2026-08-10T16:02:00.000Z"),
+        appVersion: "active-duration-audit-chain",
+      },
+    );
+    if (!created.ok) throw new Error(created.reason);
+
+    await db.transaction(async (tx) => {
+      await tx.execute(
+        sql`SELECT set_config('workout_tracker.authorized_delete', 'snapshot_restore', true)`,
+      );
+      await tx.delete(auditLogs).where(eq(auditLogs.id, String(sourceAudit?.id)));
+      await tx.delete(recordVersions).where(eq(recordVersions.id, mutationId));
+    });
+    await db.update(workoutSessions).set({
+      activeDurationSemanticsVersion: 1,
+      activeDurationSeconds: null,
+      activeDurationBasis: "interruption_unknown",
+    }).where(eq(workoutSessions.id, sessionId));
+
+    const preview = await getSnapshotRestorePreview(
+      db,
+      userId,
+      created.snapshotId,
+      "history",
+      { store, keyring },
+    );
+    expect(preview.tables.find((table) => table.table === "record_versions"))
+      .toMatchObject({ added: 1 });
+    expect(preview.tables.find((table) => table.table === "audit_logs"))
+      .toMatchObject({ added: 1 });
+
+    const restored = await restoreDataSnapshot(
+      db,
+      userId,
+      {
+        snapshotId: created.snapshotId,
+        scope: "history",
+        previewFingerprint: preview.fingerprint,
+        confirmation: "RESTORE",
+      },
+      { store, keyring, appVersion: "active-duration-audit-chain" },
+    );
+    expect(restored).toMatchObject({ ok: true, scope: "history" });
+    expect(await db.query.workoutSessions.findFirst({
+      where: eq(workoutSessions.id, sessionId),
+    })).toMatchObject({
+      startedAt: sourceStartedAt,
+      finishedAt: sourceFinishedAt,
+      activeDurationSemanticsVersion: 1,
+      activeDurationSeconds: 2_700,
+      activeDurationBasis: "owner_reported",
+      historyRevision: 2,
+    });
+    expect(await db.query.recordVersions.findFirst({
+      where: eq(recordVersions.id, mutationId),
+    })).toMatchObject({
+      entityType: "workout_session",
+      entityId: sessionId,
+      action: "workout_session.duration_correction",
+    });
+    expect(await db.query.auditLogs.findFirst({
+      where: eq(auditLogs.id, String(sourceAudit?.id)),
+    })).toMatchObject({
+      action: "workout_session.duration_correction",
+      entityId: sessionId,
+      causeRef: expect.objectContaining({ versionId: mutationId }),
+    });
+  }, 30_000);
+
+  it.each(["history", "full"] as const)(
+    "appends a monotonic snapshot transition when an earlier active duration becomes effective (%s)",
+    async (scope) => {
+    const sourceStartedAt = new Date("2026-07-01T14:00:00.000Z");
+    const sourceFinishedAt = new Date("2026-07-01T15:00:00.000Z");
+    const firstCorrectionId = crypto.randomUUID();
+    const first = await correctCompletedWorkoutActiveDuration(
+      db,
+      userId,
+      {
+        sessionId,
+        clientMutationId: firstCorrectionId,
+        expectedHistoryRevision: 0,
+        expected: {
+          activeDurationSemanticsVersion: null,
+          activeDurationSeconds: null,
+          activeDurationBasis: null,
+        },
+        decision: { basis: "owner_reported", activeDurationSeconds: 2_700 },
+      },
+      new Date("2026-08-10T17:00:00.000Z"),
+    );
+    expect(first).toMatchObject({ ok: true, historyRevision: 1 });
+
+    const source = await createDataSnapshot(
+      db,
+      userId,
+      { name: "Earlier reviewed duration", reason: "manual" },
+      {
+        store,
+        keyring,
+        now: new Date("2026-08-10T17:01:00.000Z"),
+        appVersion: "active-duration-monotonic-restore",
+      },
+    );
+    if (!source.ok) throw new Error(source.reason);
+
+    const secondCorrectionId = crypto.randomUUID();
+    const second = await correctCompletedWorkoutActiveDuration(
+      db,
+      userId,
+      {
+        sessionId,
+        clientMutationId: secondCorrectionId,
+        expectedHistoryRevision: 1,
+        expected: {
+          activeDurationSemanticsVersion: 1,
+          activeDurationSeconds: 2_700,
+          activeDurationBasis: "owner_reported",
+        },
+        decision: { basis: "interruption_unknown" },
+      },
+      new Date("2026-08-10T17:02:00.000Z"),
+    );
+    expect(second).toMatchObject({ ok: true, historyRevision: 2 });
+
+    const preview = await getSnapshotRestorePreview(
+      db,
+      userId,
+      source.snapshotId,
+      scope,
+      { store, keyring },
+    );
+    const confirmationPreview = await getSnapshotRestorePreview(
+      db,
+      userId,
+      source.snapshotId,
+      scope,
+      { store, keyring },
+    );
+    expect(confirmationPreview.fingerprint).toBe(preview.fingerprint);
+    const restored = await restoreDataSnapshot(
+      db,
+      userId,
+      {
+        snapshotId: source.snapshotId,
+        scope,
+        previewFingerprint: preview.fingerprint,
+        confirmation: "RESTORE",
+      },
+      { store, keyring, appVersion: "active-duration-monotonic-restore" },
+    );
+    if (!restored.ok) throw new Error(restored.reason);
+    expect(restored).toMatchObject({ ok: true, scope });
+
+    expect(await db.query.workoutSessions.findFirst({
+      where: eq(workoutSessions.id, sessionId),
+    })).toMatchObject({
+      startedAt: sourceStartedAt,
+      finishedAt: sourceFinishedAt,
+      activeDurationSemanticsVersion: 1,
+      activeDurationSeconds: 2_700,
+      activeDurationBasis: "owner_reported",
+      historyRevision: 3,
+    });
+    const timingVersions = (
+      await db.query.recordVersions.findMany({
+        where: eq(recordVersions.userId, userId),
+      })
+    ).filter((version) =>
+      version.entityType === "workout_session" && version.entityId === sessionId
+    );
+    expect(timingVersions.map((version) => version.id)).toEqual(
+      expect.arrayContaining([firstCorrectionId, secondCorrectionId]),
+    );
+    const restoreVersions = timingVersions.filter(
+      (version) => version.action === "workout_session.snapshot_restore",
+    );
+    expect(restoreVersions).toHaveLength(1);
+    expect(restoreVersions[0]).toMatchObject({
+      sourceVersionId: firstCorrectionId,
+      beforeData: expect.objectContaining({
+        history_revision: 2,
+        active_duration_basis: "interruption_unknown",
+        active_duration_seconds: null,
+      }),
+      afterData: expect.objectContaining({
+        history_revision: 3,
+        active_duration_basis: "owner_reported",
+        active_duration_seconds: 2_700,
+      }),
+      changedFields: expect.arrayContaining([
+        "active_duration_basis",
+        "active_duration_seconds",
+        "history_revision",
+      ]),
+    });
+    expect(new Date(String(restoreVersions[0].afterData.started_at))).toEqual(
+      sourceStartedAt,
+    );
+    expect(new Date(String(restoreVersions[0].afterData.finished_at))).toEqual(
+      sourceFinishedAt,
+    );
+    expect(
+      (await db.query.auditLogs.findMany({
+        where: eq(auditLogs.userId, userId),
+      })).find((audit) =>
+        (audit.causeRef as Record<string, unknown> | null)?.versionId ===
+          restoreVersions[0].id
+      ),
+    ).toMatchObject({
+      actorType: "user",
+      action: "workout_session.snapshot_restore",
+      entityId: sessionId,
+      causeRef: expect.objectContaining({
+        sourceVersionId: firstCorrectionId,
+        sourceSnapshotId: source.snapshotId,
+        sourceHistoryRevision: 2,
+        resultHistoryRevision: 3,
+      }),
+    });
+    expect(await db.query.progressionJobs.findFirst({
+      where: (job, { and, eq }) => and(
+        eq(job.sessionId, sessionId),
+        eq(job.sourceSessionRevision, 3),
+      ),
+    })).toBeDefined();
+    const recaptured = await captureUserSnapshot(
+      db,
+      userId,
+      new Date("2026-08-10T17:02:30.000Z"),
+      "active-duration-monotonic-restore",
+    );
+    expect(() => validateSnapshotPayload(recaptured, userId)).not.toThrow();
+    expect((recaptured.tables.record_versions as Array<Record<string, unknown>>)
+      .find((version) => version.id === restoreVersions[0].id)).toMatchObject({
+        action: "workout_session.snapshot_restore",
+        source_version_id: firstCorrectionId,
+      });
+    expect((recaptured.tables.audit_logs as Array<Record<string, unknown>>)
+      .find((audit) => {
+        const cause = audit.cause_ref as Record<string, unknown> | null;
+        return cause?.versionId === restoreVersions[0].id;
+      })).toMatchObject({ action: "workout_session.snapshot_restore" });
+    const transitionSnapshot = await createDataSnapshot(
+      db,
+      userId,
+      { name: "Restored duration evidence", reason: "manual" },
+      {
+        store,
+        keyring,
+        now: new Date("2026-08-10T17:02:45.000Z"),
+        appVersion: "active-duration-monotonic-restore",
+      },
+    );
+    if (!transitionSnapshot.ok) throw new Error(transitionSnapshot.reason);
+
+    const repeatedPreview = await getSnapshotRestorePreview(
+      db,
+      userId,
+      source.snapshotId,
+      scope,
+      { store, keyring },
+    );
+    const repeated = await restoreDataSnapshot(
+      db,
+      userId,
+      {
+        snapshotId: source.snapshotId,
+        scope,
+        previewFingerprint: repeatedPreview.fingerprint,
+        confirmation: "RESTORE",
+      },
+      { store, keyring, appVersion: "active-duration-monotonic-restore" },
+    );
+    expect(repeated).toMatchObject({ ok: true, scope });
+    expect(await db.query.workoutSessions.findFirst({
+      where: eq(workoutSessions.id, sessionId),
+    })).toMatchObject({ historyRevision: 3, activeDurationSeconds: 2_700 });
+    expect((await db.query.recordVersions.findMany({
+      where: eq(recordVersions.userId, userId),
+    })).filter(
+      (version) => version.action === "workout_session.snapshot_restore",
+    )).toHaveLength(1);
+    expect(await db.query.progressionJobs.findFirst({
+      where: (job, { and, eq }) => and(
+        eq(job.sessionId, sessionId),
+        eq(job.sourceSessionRevision, 3),
+      ),
+    })).toBeDefined();
+
+    const stalePreview = await getSnapshotRestorePreview(
+      db,
+      userId,
+      source.snapshotId,
+      scope,
+      { store, keyring },
+    );
+    const third = await correctCompletedWorkoutActiveDuration(
+      db,
+      userId,
+      {
+        sessionId,
+        clientMutationId: crypto.randomUUID(),
+        expectedHistoryRevision: 3,
+        expected: {
+          activeDurationSemanticsVersion: 1,
+          activeDurationSeconds: 2_700,
+          activeDurationBasis: "owner_reported",
+        },
+        decision: { basis: "interruption_unknown" },
+      },
+      new Date("2026-08-10T17:03:00.000Z"),
+    );
+    expect(third).toMatchObject({ ok: true, historyRevision: 4 });
+    const stale = await restoreDataSnapshot(
+      db,
+      userId,
+      {
+        snapshotId: source.snapshotId,
+        scope,
+        previewFingerprint: stalePreview.fingerprint,
+        confirmation: "RESTORE",
+      },
+      { store, keyring, appVersion: "active-duration-monotonic-restore" },
+    );
+    expect(stale).toMatchObject({ ok: false });
+    expect(stale.ok ? "" : stale.reason).toContain("changed after this preview");
+    expect(await db.query.workoutSessions.findFirst({
+      where: eq(workoutSessions.id, sessionId),
+    })).toMatchObject({
+      historyRevision: 4,
+      activeDurationBasis: "interruption_unknown",
+      activeDurationSeconds: null,
+    });
+
+    const transitionPreview = await getSnapshotRestorePreview(
+      db,
+      userId,
+      transitionSnapshot.snapshotId,
+      scope,
+      { store, keyring },
+    );
+    const transitionRestored = await restoreDataSnapshot(
+      db,
+      userId,
+      {
+        snapshotId: transitionSnapshot.snapshotId,
+        scope,
+        previewFingerprint: transitionPreview.fingerprint,
+        confirmation: "RESTORE",
+      },
+      { store, keyring, appVersion: "active-duration-monotonic-restore" },
+    );
+    if (!transitionRestored.ok) throw new Error(transitionRestored.reason);
+    expect(await db.query.workoutSessions.findFirst({
+      where: eq(workoutSessions.id, sessionId),
+    })).toMatchObject({
+      startedAt: sourceStartedAt,
+      finishedAt: sourceFinishedAt,
+      historyRevision: 5,
+      activeDurationBasis: "owner_reported",
+      activeDurationSeconds: 2_700,
+    });
+    const roundTrippedRestoreVersions = (
+      await db.query.recordVersions.findMany({
+        where: eq(recordVersions.userId, userId),
+      })
+    ).filter(
+      (version) => version.action === "workout_session.snapshot_restore",
+    );
+    expect(roundTrippedRestoreVersions).toHaveLength(2);
+    expect(roundTrippedRestoreVersions).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: restoreVersions[0].id }),
+      expect.objectContaining({
+        sourceVersionId: restoreVersions[0].id,
+        beforeData: expect.objectContaining({ history_revision: 4 }),
+        afterData: expect.objectContaining({ history_revision: 5 }),
+      }),
+    ]));
+    const roundTrippedRestoreVersion = roundTrippedRestoreVersions.find(
+      (version) => version.id !== restoreVersions[0].id,
+    );
+    expect(roundTrippedRestoreVersion).toBeDefined();
+    expect((await db.query.auditLogs.findMany({
+      where: eq(auditLogs.userId, userId),
+    })).find((audit) =>
+      (audit.causeRef as Record<string, unknown> | null)?.versionId ===
+        roundTrippedRestoreVersion?.id
+    )).toMatchObject({
+      actorType: "user",
+      action: "workout_session.snapshot_restore",
+      entityId: sessionId,
+      causeRef: expect.objectContaining({
+        sourceVersionId: restoreVersions[0].id,
+        sourceSnapshotId: transitionSnapshot.snapshotId,
+        sourceHistoryRevision: 4,
+        resultHistoryRevision: 5,
+      }),
+    });
+    },
+    30_000,
+  );
+
+  it.each(["history", "full"] as const)(
+    "appends a monotonic snapshot transition when earlier corrected timestamps become effective (%s)",
+    async (scope) => {
+      const firstCorrectionId = crypto.randomUUID();
+      const first = await correctCompletedWorkoutTiming(
+        db,
+        userId,
+        {
+          sessionId,
+          clientMutationId: firstCorrectionId,
+          expectedHistoryRevision: 0,
+          reviewed: true,
+          expected: {
+            startedAtISO: "2026-07-01T14:00:00.000Z",
+            finishedAtISO: "2026-07-01T15:00:00.000Z",
+            timezone: "America/Toronto",
+            localDate: "2026-07-01",
+            precision: "instant",
+            excludeDurationFromAnalytics: false,
+          },
+          proposed: {
+            timezone: "America/Toronto",
+            localDate: "2026-07-01",
+            timing: {
+              precision: "instant",
+              localStartTime: "09:30:00",
+              ambiguityChoice: null,
+              durationSeconds: 3_600,
+            },
+          },
+        },
+        new Date("2026-08-10T18:00:00.000Z"),
+      );
+      expect(first).toMatchObject({ ok: true, historyRevision: 1 });
+
+      const source = await createDataSnapshot(
+        db,
+        userId,
+        { name: "Earlier corrected source timestamps", reason: "manual" },
+        {
+          store,
+          keyring,
+          now: new Date("2026-08-10T18:01:00.000Z"),
+          appVersion: "workout-timing-monotonic-restore",
+        },
+      );
+      if (!source.ok) throw new Error(source.reason);
+
+      const secondCorrectionId = crypto.randomUUID();
+      const second = await correctCompletedWorkoutTiming(
+        db,
+        userId,
+        {
+          sessionId,
+          clientMutationId: secondCorrectionId,
+          expectedHistoryRevision: 1,
+          reviewed: true,
+          expected: {
+            startedAtISO: "2026-07-01T13:30:00.000Z",
+            finishedAtISO: "2026-07-01T14:30:00.000Z",
+            timezone: "America/Toronto",
+            localDate: "2026-07-01",
+            precision: "instant",
+            excludeDurationFromAnalytics: false,
+          },
+          proposed: {
+            timezone: "America/Toronto",
+            localDate: "2026-06-30",
+            timing: {
+              precision: "instant",
+              localStartTime: "10:00:00",
+              ambiguityChoice: null,
+              durationSeconds: 3_600,
+            },
+          },
+        },
+        new Date("2026-08-10T18:02:00.000Z"),
+      );
+      expect(second).toMatchObject({ ok: true, historyRevision: 2 });
+
+      const preview = await getSnapshotRestorePreview(
+        db,
+        userId,
+        source.snapshotId,
+        scope,
+        { store, keyring },
+      );
+      const restored = await restoreDataSnapshot(
+        db,
+        userId,
+        {
+          snapshotId: source.snapshotId,
+          scope,
+          previewFingerprint: preview.fingerprint,
+          confirmation: "RESTORE",
+        },
+        { store, keyring, appVersion: "workout-timing-monotonic-restore" },
+      );
+      if (!restored.ok) throw new Error(restored.reason);
+      expect(await db.query.workoutSessions.findFirst({
+        where: eq(workoutSessions.id, sessionId),
+      })).toMatchObject({
+        startedAt: new Date("2026-07-01T13:30:00.000Z"),
+        finishedAt: new Date("2026-07-01T14:30:00.000Z"),
+        timezone: "America/Toronto",
+        localDate: "2026-07-01",
+        performedTimePrecision: "instant",
+        historyRevision: 3,
+      });
+
+      const timingVersions = (
+        await db.query.recordVersions.findMany({
+          where: eq(recordVersions.userId, userId),
+        })
+      ).filter((version) =>
+        version.entityType === "workout_session" &&
+        version.entityId === sessionId
+      );
+      expect(timingVersions.map((version) => version.id)).toEqual(
+        expect.arrayContaining([firstCorrectionId, secondCorrectionId]),
+      );
+      const restoreVersions = timingVersions.filter(
+        (version) => version.action === "workout_session.snapshot_restore",
+      );
+      expect(restoreVersions).toHaveLength(1);
+      expect(restoreVersions[0]).toMatchObject({
+        sourceVersionId: firstCorrectionId,
+        beforeData: expect.objectContaining({
+          local_date: "2026-06-30",
+          history_revision: 2,
+        }),
+        afterData: expect.objectContaining({
+          local_date: "2026-07-01",
+          history_revision: 3,
+        }),
+        changedFields: expect.arrayContaining([
+          "started_at",
+          "finished_at",
+          "local_date",
+          "history_revision",
+        ]),
+      });
+      expect(new Date(String(restoreVersions[0].beforeData.started_at))).toEqual(
+        new Date("2026-06-30T14:00:00.000Z"),
+      );
+      expect(new Date(String(restoreVersions[0].beforeData.finished_at))).toEqual(
+        new Date("2026-06-30T15:00:00.000Z"),
+      );
+      expect(new Date(String(restoreVersions[0].afterData.started_at))).toEqual(
+        new Date("2026-07-01T13:30:00.000Z"),
+      );
+      expect(new Date(String(restoreVersions[0].afterData.finished_at))).toEqual(
+        new Date("2026-07-01T14:30:00.000Z"),
+      );
+      expect(
+        (await db.query.auditLogs.findMany({
+          where: eq(auditLogs.userId, userId),
+        })).find((audit) =>
+          (audit.causeRef as Record<string, unknown> | null)?.versionId ===
+            restoreVersions[0].id
+        ),
+      ).toMatchObject({
+        actorType: "user",
+        action: "workout_session.snapshot_restore",
+        entityId: sessionId,
+        causeRef: expect.objectContaining({
+          sourceVersionId: firstCorrectionId,
+          sourceSnapshotId: source.snapshotId,
+          sourceHistoryRevision: 2,
+          resultHistoryRevision: 3,
+        }),
+      });
+      expect(await db.query.progressionJobs.findFirst({
+        where: (job, { and, eq }) => and(
+          eq(job.sessionId, sessionId),
+          eq(job.sourceSessionRevision, 3),
+        ),
+      })).toBeDefined();
+
+      const recursiveSnapshot = await createDataSnapshot(
+        db,
+        userId,
+        { name: "Recaptured source timestamp transition", reason: "manual" },
+        {
+          store,
+          keyring,
+          now: new Date("2026-08-10T18:02:30.000Z"),
+          appVersion: "workout-timing-monotonic-restore",
+        },
+      );
+      if (!recursiveSnapshot.ok) throw new Error(recursiveSnapshot.reason);
+
+      const repeatedPreview = await getSnapshotRestorePreview(
+        db,
+        userId,
+        source.snapshotId,
+        scope,
+        { store, keyring },
+      );
+      const repeated = await restoreDataSnapshot(
+        db,
+        userId,
+        {
+          snapshotId: source.snapshotId,
+          scope,
+          previewFingerprint: repeatedPreview.fingerprint,
+          confirmation: "RESTORE",
+        },
+        { store, keyring, appVersion: "workout-timing-monotonic-restore" },
+      );
+      expect(repeated).toMatchObject({ ok: true, scope });
+      expect(await db.query.workoutSessions.findFirst({
+        where: eq(workoutSessions.id, sessionId),
+      })).toMatchObject({
+        startedAt: new Date("2026-07-01T13:30:00.000Z"),
+        finishedAt: new Date("2026-07-01T14:30:00.000Z"),
+        historyRevision: 3,
+      });
+      expect((await db.query.recordVersions.findMany({
+        where: eq(recordVersions.userId, userId),
+      })).filter(
+        (version) => version.action === "workout_session.snapshot_restore",
+      )).toHaveLength(1);
+
+      const stalePreview = await getSnapshotRestorePreview(
+        db,
+        userId,
+        recursiveSnapshot.snapshotId,
+        scope,
+        { store, keyring },
+      );
+      const thirdCorrectionId = crypto.randomUUID();
+      const third = await correctCompletedWorkoutTiming(
+        db,
+        userId,
+        {
+          sessionId,
+          clientMutationId: thirdCorrectionId,
+          expectedHistoryRevision: 3,
+          reviewed: true,
+          expected: {
+            startedAtISO: "2026-07-01T13:30:00.000Z",
+            finishedAtISO: "2026-07-01T14:30:00.000Z",
+            timezone: "America/Toronto",
+            localDate: "2026-07-01",
+            precision: "instant",
+            excludeDurationFromAnalytics: false,
+          },
+          proposed: {
+            timezone: "America/Toronto",
+            localDate: "2026-06-29",
+            timing: {
+              precision: "instant",
+              localStartTime: "10:00:00",
+              ambiguityChoice: null,
+              durationSeconds: 3_600,
+            },
+          },
+        },
+        new Date("2026-08-10T18:03:00.000Z"),
+      );
+      expect(third).toMatchObject({ ok: true, historyRevision: 4 });
+      const stale = await restoreDataSnapshot(
+        db,
+        userId,
+        {
+          snapshotId: recursiveSnapshot.snapshotId,
+          scope,
+          previewFingerprint: stalePreview.fingerprint,
+          confirmation: "RESTORE",
+        },
+        { store, keyring, appVersion: "workout-timing-monotonic-restore" },
+      );
+      expect(stale).toMatchObject({ ok: false });
+      expect(stale.ok ? "" : stale.reason).toContain("changed after this preview");
+      expect(await db.query.workoutSessions.findFirst({
+        where: eq(workoutSessions.id, sessionId),
+      })).toMatchObject({
+        startedAt: new Date("2026-06-29T14:00:00.000Z"),
+        finishedAt: new Date("2026-06-29T15:00:00.000Z"),
+        historyRevision: 4,
+      });
+
+      const recursivePreview = await getSnapshotRestorePreview(
+        db,
+        userId,
+        recursiveSnapshot.snapshotId,
+        scope,
+        { store, keyring },
+      );
+      const recursiveRestored = await restoreDataSnapshot(
+        db,
+        userId,
+        {
+          snapshotId: recursiveSnapshot.snapshotId,
+          scope,
+          previewFingerprint: recursivePreview.fingerprint,
+          confirmation: "RESTORE",
+        },
+        { store, keyring, appVersion: "workout-timing-monotonic-restore" },
+      );
+      if (!recursiveRestored.ok) throw new Error(recursiveRestored.reason);
+      expect(await db.query.workoutSessions.findFirst({
+        where: eq(workoutSessions.id, sessionId),
+      })).toMatchObject({
+        startedAt: new Date("2026-07-01T13:30:00.000Z"),
+        finishedAt: new Date("2026-07-01T14:30:00.000Z"),
+        localDate: "2026-07-01",
+        historyRevision: 5,
+      });
+      const recursiveRestoreVersions = (
+        await db.query.recordVersions.findMany({
+          where: eq(recordVersions.userId, userId),
+        })
+      ).filter(
+        (version) => version.action === "workout_session.snapshot_restore",
+      );
+      expect(recursiveRestoreVersions).toHaveLength(2);
+      expect(recursiveRestoreVersions).toEqual(expect.arrayContaining([
+        expect.objectContaining({ id: restoreVersions[0].id }),
+        expect.objectContaining({
+          sourceVersionId: restoreVersions[0].id,
+          beforeData: expect.objectContaining({ history_revision: 4 }),
+          afterData: expect.objectContaining({ history_revision: 5 }),
+        }),
+      ]));
+      expect((await db.query.recordVersions.findMany({
+        where: eq(recordVersions.userId, userId),
+      })).map((version) => version.id)).toEqual(
+        expect.arrayContaining([
+          firstCorrectionId,
+          secondCorrectionId,
+          thirdCorrectionId,
+        ]),
+      );
+
+      const finalCapture = await captureUserSnapshot(
+        db,
+        userId,
+        new Date("2026-08-10T18:04:00.000Z"),
+        "workout-timing-monotonic-restore",
+      );
+      expect(() => validateSnapshotPayload(finalCapture, userId)).not.toThrow();
+      expect((
+        finalCapture.tables.record_versions as Array<Record<string, unknown>>
+      ).filter(
+        (version) => version.action === "workout_session.snapshot_restore",
+      )).toHaveLength(2);
+    },
+    30_000,
+  );
 
   it("refuses restored lineage when a retained source Program ID belongs to another account", async () => {
     const sourceProgramId = crypto.randomUUID();
@@ -734,6 +1626,11 @@ describe("verified off-database snapshots", () => {
     if (linkedNote.outcome !== "saved") {
       throw new Error("Exact-link contextual note fixture failed.");
     }
+    await db.update(workoutSessions).set({
+      activeDurationSemanticsVersion: 1,
+      activeDurationSeconds: 3_600,
+      activeDurationBasis: "owner_reported",
+    }).where(eq(workoutSessions.id, sessionId));
 
     const canonical = await captureUserSnapshot(
       db,
@@ -788,6 +1685,11 @@ describe("verified off-database snapshots", () => {
     if (!created.ok) throw new Error(created.reason);
 
     await db.update(completedSets).set({ reps: 4 }).where(eq(completedSets.id, setId));
+    await db.update(workoutSessions).set({
+      activeDurationSemanticsVersion: 1,
+      activeDurationSeconds: null,
+      activeDurationBasis: "interruption_unknown",
+    }).where(eq(workoutSessions.id, sessionId));
     await db
       .update(painLogs)
       .set({
@@ -867,6 +1769,15 @@ describe("verified off-database snapshots", () => {
         ),
       })
     ).toMatchObject({ resultingSnapshotId: equipmentSnapshot.id });
+    expect(
+      await db.query.workoutSessions.findFirst({
+        where: eq(workoutSessions.id, sessionId),
+      })
+    ).toMatchObject({
+      activeDurationSemanticsVersion: 1,
+      activeDurationSeconds: 3_600,
+      activeDurationBasis: "owner_reported",
+    });
   }, 30_000);
 
   it("restores populated schema-22 warm-up text into structured items and captures it again", async () => {
@@ -1893,7 +2804,7 @@ describe("verified off-database snapshots", () => {
     }));
 
     const upgraded = upgradeSnapshotPayload(legacy);
-    expect(upgraded.schemaVersion).toBe("30");
+    expect(upgraded.schemaVersion).toBe("31");
     expect(upgraded.tables.program_drafts).toEqual([]);
     expect(upgraded.tables.programs[0]).toMatchObject({
       current_version_id: versionIds[1],
@@ -1968,7 +2879,7 @@ describe("verified off-database snapshots", () => {
 
     const upgraded = upgradeSnapshotPayload(legacy);
 
-    expect(upgraded.schemaVersion).toBe("30");
+    expect(upgraded.schemaVersion).toBe("31");
     expect(upgraded.tables.barbell_configs[0]).toMatchObject({
       bar_weight: 20.3,
       collar_weight: 2.3,
@@ -2039,7 +2950,7 @@ describe("verified off-database snapshots", () => {
 
     const upgraded = upgradeSnapshotPayload(legacy);
 
-    expect(upgraded.schemaVersion).toBe("30");
+    expect(upgraded.schemaVersion).toBe("31");
     expect(upgraded.tables.plate_inventory[0]).toMatchObject({ unit: "kg" });
     expect(upgraded.tables.session_exercises).toEqual(
       expect.arrayContaining([
@@ -2143,7 +3054,7 @@ describe("verified off-database snapshots", () => {
         if (!exercise) throw new Error("Snapshot exercise fixture is missing.");
         exercise.target_load = Math.fround(32.3);
         const upgraded = upgradeSnapshotPayload(payload);
-        expect(upgraded.schemaVersion).toBe("30");
+        expect(upgraded.schemaVersion).toBe("31");
         expect(upgraded.tables.session_exercises).toEqual(
           expect.arrayContaining([
             expect.objectContaining({
@@ -2456,7 +3367,7 @@ describe("verified off-database snapshots", () => {
     ];
 
     const upgraded = upgradeSnapshotPayload(legacy);
-    expect(upgraded.schemaVersion).toBe("30");
+    expect(upgraded.schemaVersion).toBe("31");
     expect(upgraded.tables.user_profiles[0]).toMatchObject({
       timezone: "America/Toronto",
     });

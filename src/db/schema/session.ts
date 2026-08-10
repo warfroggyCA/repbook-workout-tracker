@@ -73,6 +73,13 @@ export const workoutSessions = pgTable(
     excludeDurationFromAnalytics: boolean("exclude_duration_from_analytics")
       .notNull()
       .default(false),
+    // Versioned active-time evidence. Null tuple means legacy/unsupported;
+    // source started_at and finished_at remain the wall-clock record.
+    activeDurationSemanticsVersion: integer(
+      "active_duration_semantics_version",
+    ),
+    activeDurationSeconds: integer("active_duration_seconds"),
+    activeDurationBasis: text("active_duration_basis"),
     status: sessionStatusEnum("status").notNull().default("in_progress"),
     timeBudgetMin: integer("time_budget_min"),
     // Owner-scoped idempotency identity for an explicit Today Start intent.
@@ -140,6 +147,27 @@ export const workoutSessions = pgTable(
     check(
       "workout_sessions_time_budget_check",
       sql`${t.timeBudgetMin} IS NULL OR ${t.timeBudgetMin} BETWEEN 5 AND 600`
+    ),
+    check(
+      "workout_sessions_active_duration_tuple_check",
+      sql`(
+        ${t.activeDurationSemanticsVersion} IS NULL
+        AND ${t.activeDurationSeconds} IS NULL
+        AND ${t.activeDurationBasis} IS NULL
+      ) OR (
+        ${t.activeDurationSemanticsVersion} = 1
+        AND ${t.activeDurationBasis} IS NOT NULL
+        AND (
+          (
+            ${t.activeDurationBasis} IN ('wall_clock_no_stale_signal', 'owner_reported')
+            AND ${t.activeDurationSeconds} IS NOT NULL
+            AND ${t.activeDurationSeconds} BETWEEN 0 AND 604800
+          ) OR (
+            ${t.activeDurationBasis} = 'interruption_unknown'
+            AND ${t.activeDurationSeconds} IS NULL
+          )
+        )
+      )`
     ),
     check(
       "workout_sessions_start_request_identity_check",

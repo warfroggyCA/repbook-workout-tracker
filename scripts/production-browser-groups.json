@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "expectedSuiteCount": 39,
+  "expectedSuiteCount": 40,
   "groups": [
     {
       "name": "baseline-history",
@@ -48,6 +48,7 @@
       "name": "v2-execution",
       "scripts": [
         "test:e2e:v2-u01",
+        "test:e2e:post-v2-p1-timing",
         "test:e2e:v2-u02",
         "test:e2e:v2-u03",
         "test:e2e:v2-gauntlet-a"

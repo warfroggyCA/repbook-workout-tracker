@@ -572,6 +572,7 @@ export async function buildTrainingDigest(
         s.startedAt,
         s.finishedAt,
         s.excludeDurationFromAnalytics,
+        s,
       );
       return {
         date: s.localDate,

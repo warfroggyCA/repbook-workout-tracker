@@ -757,6 +757,46 @@ immutable Program versions, active work, completed sets, and occurrence facts.
 Gauntlet C adds no provider call, schema, migration, snapshot or recovery
 version, Program publication, historical repair, or production action.
 
+## Post-v2 interruption-aware active workout
+
+Migration `0079_active_workout_duration_evidence` adds one nullable, constrained
+active-duration tuple to `workout_sessions`: semantic version, seconds, and
+basis. It does not backfill legacy workouts. `started_at` and `finished_at`
+remain the source wall-clock evidence; a normal completion records matching
+active time, while a session beyond the three-hour review threshold must record
+either owner-reported active seconds or an explicit unknown. A rejected or
+incomplete review performs no completion write.
+
+Completed-workout active-duration corrections use the existing owner-scoped
+history-revision lock, idempotent mutation identity, record-version and audit
+evidence, recommendation reconciliation, and progression reprocessing. They
+never change the source timestamps. History, digest, preflight, compiler,
+analysis, and export consumers use reviewed active time when present. Legacy
+rows and explicit unknown decisions remain unavailable to active-duration
+analytics; their elapsed source timestamps are retained only as labelled
+wall-clock evidence. Snapshot schema 31 captures and restores the tuple and
+upgrades schema 30 rows to explicit nulls. Recovery manifest 14 keeps the same
+durable-table inventory while extending the narrow merge contract so restored
+duration corrections retain their linked record-version and audit evidence.
+
+The active logging page gets previous-set evidence from
+`getPreviousComparableSets`, not the legacy Program-slot projection. A result
+is available only for the same stable exercise ID with complete compatible v1
+performed semantics, compatible units and load-entry meaning, one exact linked
+working occurrence, and retained machine/cable configuration when required.
+Imported Hevy evidence additionally requires the current owner-reviewed
+mapping. Unsafe evidence renders an explicit unavailable state; display names
+and fabricated fallback values are never used. The exact source workout and
+set provenance remain attached to the projection.
+
+The mobile active-exercise card keeps the current set, previous comparable
+evidence, required inputs, save/retry state, acknowledgement correction, and
+next action primary. Ordinary completed/upcoming rows and extra work live in
+`Exercise progress & extras`; notes, coaching, form, and replacement controls
+live in `More for this exercise`. Pending or failed writes and skipped recovery
+remain exposed, and the existing fixed workout-status bar remains the sole
+rest/ready/finish authority.
+
 ## D01 structured redacted diagnostics
 
 D01 replaces arbitrary server log events with one server-only diagnostic

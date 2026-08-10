@@ -167,6 +167,17 @@ describe("H01 performed-first History evidence", () => {
     ).toBe("corrected");
     expect(
       classifyHistoryCorrectionFacet([
+        "workout_session.duration_correction",
+      ]),
+    ).toBe("corrected");
+    expect(
+      classifyHistoryCorrectionFacet([
+        "workout_session.snapshot_restore",
+        "workout_session.duration_correction",
+      ]),
+    ).toBe("snapshot_restored");
+    expect(
+      classifyHistoryCorrectionFacet([
         "workout_session.version_restore",
         "workout_session.timing_correction",
       ]),

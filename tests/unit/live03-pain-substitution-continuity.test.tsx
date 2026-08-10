@@ -36,6 +36,14 @@ const historyFixture = vi.hoisted(() => ({
   abandonedResultNote: "Abandoned source row is retained separately.",
   unlinkedResultNote: "Unlinked source row is retained separately.",
   painNote: "Sharp at the bottom before changing movements.",
+  durationScenario: {
+    performedTimePrecision: "instant" as "instant" | "date_only",
+    finishedAt: new Date("2026-07-21T14:30:00.000Z") as Date | null,
+    activeDurationSemanticsVersion: null as number | null,
+    activeDurationSeconds: null as number | null,
+    activeDurationBasis: null as string | null,
+    excludeDurationFromAnalytics: false,
+  },
 }));
 
 vi.mock("next/navigation", () => ({
@@ -74,6 +82,14 @@ vi.mock("@/components/history/live-coach-history", () => ({
 }));
 vi.mock("@/components/history/completed-set-correction", () => ({
   CompletedSetCorrection: () => null,
+}));
+vi.mock("@/components/history/workout-active-duration-correction", () => ({
+  WorkoutActiveDurationCorrection: (props: { finishedAtISO: string | null }) => (
+    <span>
+      Active duration correction available · wall clock{" "}
+      {props.finishedAtISO == null ? "unavailable" : "available"}
+    </span>
+  ),
 }));
 vi.mock("@/db", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/db")>();
@@ -295,7 +311,12 @@ vi.mock("@/db", async (importOriginal) => {
   };
   const fakeDb = {
     query: {
-      workoutSessions: { findFirst: vi.fn(async () => session) },
+      workoutSessions: {
+        findFirst: vi.fn(async () => ({
+          ...session,
+          ...historyFixture.durationScenario,
+        })),
+      },
       exercises: {
         findMany: vi.fn(async () => [
           { id: historyFixture.plannedExerciseId, name: historyFixture.plannedName },
@@ -483,7 +504,9 @@ describe("LIVE-03 History reconstruction", () => {
     } as never);
     const html = renderToStaticMarkup(page);
 
-    expect(html).toContain("30 min · 1 performed working set · 1 completed warm-up");
+    expect(html).toContain(
+      "Active time unavailable · wall clock 30 min · legacy timing evidence · 1 performed working set · 1 completed warm-up",
+    );
     expect(html).not.toContain("at target");
     expect(html).toContain(
       "Comparable load calculation unavailable because required measurements are missing.",
@@ -508,5 +531,41 @@ describe("LIVE-03 History reconstruction", () => {
     expect(html).toContain("Imported warm-up preserved");
     expect(html).toContain("skipped");
     expect(html).toContain("not completed before finish");
+  });
+
+  it("shows reviewed active time when date-only source timing has no finish", async () => {
+    Object.assign(historyFixture.durationScenario, {
+      performedTimePrecision: "date_only",
+      finishedAt: null,
+      activeDurationSemanticsVersion: 1,
+      activeDurationSeconds: 2_700,
+      activeDurationBasis: "owner_reported",
+      excludeDurationFromAnalytics: false,
+    });
+    try {
+      const page = await SessionDetailPage({
+        params: Promise.resolve({ id: historyFixture.sessionId }),
+        searchParams: Promise.resolve({}),
+      } as never);
+      const html = renderToStaticMarkup(page);
+
+      expect(html).toContain(
+        "Time unknown · Active 45 min · wall clock unavailable · owner reported",
+      );
+      expect(html).not.toContain("Time and duration unknown");
+      expect(html).not.toContain("excluded from duration insights");
+      expect(html).toContain(
+        "Active duration correction available · wall clock unavailable",
+      );
+    } finally {
+      Object.assign(historyFixture.durationScenario, {
+        performedTimePrecision: "instant",
+        finishedAt: new Date("2026-07-21T14:30:00.000Z"),
+        activeDurationSemanticsVersion: null,
+        activeDurationSeconds: null,
+        activeDurationBasis: null,
+        excludeDurationFromAnalytics: false,
+      });
+    }
   });
 });

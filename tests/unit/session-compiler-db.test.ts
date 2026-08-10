@@ -22,6 +22,7 @@ import { createSuggestedDayIntent, createSuggestedSlotIntent } from "@/lib/progr
 import { runProgramPreflight } from "@/lib/program-preflight";
 import { acceptSessionCompilerProposal, createSessionCompilerProposal, discardSessionCompilerProposal } from "@/services/session-compiler";
 import { getCurrentProgramDocument } from "@/services/program-documents";
+import { loadProgramPreflightContext } from "@/services/program-preflight";
 import { createMigratedTestDatabase, type TestDatabase } from "../helpers/database";
 import { buildJsonBackup, buildSetsCsv } from "@/services/export";
 import { archiveWorkoutRecord, restoreArchiveOperation } from "@/services/archive";
@@ -154,7 +155,7 @@ describe("Session Compiler durable review and acceptance", () => {
     expect(csv).toContain(versionId);
     expect(csv).toContain(dayLineageId);
     const backup = await buildJsonBackup(database.db, userId);
-    expect(backup.schemaVersion).toBe("30");
+    expect(backup.schemaVersion).toBe("31");
     expect(backup.canonical.tables.session_compiler_proposals).toContainEqual(
       expect.objectContaining({ id: proposal.id, accepted_session_id: first.sessionId, content_hash: proposal.contentHash }),
     );
@@ -473,7 +474,7 @@ describe("Session Compiler durable review and acceptance", () => {
       created.snapshotId,
       { store, keyring }
     );
-    expect(captured.payload.schemaVersion).toBe("30");
+    expect(captured.payload.schemaVersion).toBe("31");
     expect(captured.payload.tables.session_compiler_proposals).toContainEqual(
       expect.objectContaining({
         id: proposal.id,
@@ -580,5 +581,88 @@ describe("Session Compiler durable review and acceptance", () => {
     expect(await discardSessionCompilerProposal(database.db, userId, staleProposal.id)).toBe(true);
     expect(await database.db.query.sessionCompilerProposals.findFirst({ where: eq(sessionCompilerProposals.id, staleProposal.id) })).toMatchObject({ status: "discarded" });
     await expect(createSessionCompilerProposal(database.db, userId, { dayLineageId: legacyDayLineageId, requestedMinutes: 60, energy: "usual", clientMutationId: crypto.randomUUID() })).rejects.toThrow(/schema-2/i);
+  });
+
+  it("uses active-duration evidence for preflight and invalidates proposals when it changes", async () => {
+    const document = await getCurrentProgramDocument(database.db, userId);
+    if (!document) throw new Error("Current Program fixture is missing.");
+    if (document.schemaVersion !== "2") {
+      throw new Error("Schema-2 compiler fixture is required.");
+    }
+    const template = await database.db.query.workoutTemplates.findFirst({
+      where: eq(workoutTemplates.lineageId, dayLineageId),
+    });
+    if (!template) throw new Error("Compiler template fixture is missing.");
+    const [evidenceSession] = await database.db.insert(workoutSessions).values({
+      userId,
+      templateId: template.id,
+      templateName: template.name,
+      status: "completed",
+      startedAt: new Date("2026-07-18T10:00:00.000Z"),
+      finishedAt: null,
+      performedTimePrecision: "date_only",
+      activeDurationSemanticsVersion: 1,
+      activeDurationSeconds: 3_600,
+      activeDurationBasis: "owner_reported",
+      excludeDurationFromAnalytics: false,
+      dataQualityFlags: ["unknown_time"],
+      timezone: "America/Toronto",
+      localDate: "2026-07-18",
+    }).returning({ id: workoutSessions.id });
+    await database.db.insert(workoutSessions).values([
+      {
+        userId,
+        templateId: template.id,
+        templateName: template.name,
+        status: "completed",
+        startedAt: new Date("2026-07-17T16:00:00.000Z"),
+        finishedAt: null,
+        performedTimePrecision: "date_only",
+        activeDurationSemanticsVersion: 1,
+        activeDurationSeconds: null,
+        activeDurationBasis: "interruption_unknown",
+        excludeDurationFromAnalytics: true,
+        dataQualityFlags: ["unknown_time", "workout_active_duration_unknown"],
+        timezone: "America/Toronto",
+        localDate: "2026-07-17",
+      },
+      {
+        userId,
+        templateId: template.id,
+        templateName: template.name,
+        status: "completed",
+        startedAt: new Date("2026-07-16T16:00:00.000Z"),
+        finishedAt: null,
+        performedTimePrecision: "date_only",
+        excludeDurationFromAnalytics: true,
+        dataQualityFlags: ["unknown_time"],
+        timezone: "America/Toronto",
+        localDate: "2026-07-16",
+      },
+    ]);
+
+    const context = await loadProgramPreflightContext(
+      database.db,
+      userId,
+      document,
+    );
+    expect(context.comparableDurationsByDay?.[dayLineageId]).toEqual([60]);
+
+    const proposal = await createSessionCompilerProposal(database.db, userId, {
+      dayLineageId,
+      requestedMinutes: 60,
+      energy: "usual",
+      clientMutationId: crypto.randomUUID(),
+    });
+    await database.db.update(workoutSessions).set({
+      activeDurationSeconds: 3_000,
+    }).where(eq(workoutSessions.id, evidenceSession.id));
+    await expect(acceptSessionCompilerProposal(
+      database.db,
+      userId,
+      proposal.id,
+      crypto.randomUUID(),
+      "America/Toronto",
+    )).resolves.toEqual({ outcome: "stale" });
   });
 });

@@ -26,6 +26,17 @@ function session(
     painLogs: [],
     ...rest,
   };
+  if (
+    !Object.hasOwn(overrides, "activeDurationSemanticsVersion") &&
+    built.finishedAt
+  ) {
+    built.activeDurationSemanticsVersion = 1;
+    built.activeDurationSeconds = Math.max(
+      0,
+      Math.floor((built.finishedAt.getTime() - built.startedAt.getTime()) / 1_000),
+    );
+    built.activeDurationBasis = "wall_clock_no_stale_signal";
+  }
   if (overrides.occurrences == null) {
     built.occurrences = built.exercises.flatMap((exercise) =>
       exercise.sets
@@ -135,6 +146,9 @@ describe("summarizeHistory", () => {
           id: "left-open",
           startedAt: new Date("2026-03-11T12:00:00.000Z"),
           finishedAt: new Date("2026-03-13T15:46:00.000Z"),
+          activeDurationSemanticsVersion: null,
+          activeDurationSeconds: null,
+          activeDurationBasis: null,
         }),
       ],
       [],
@@ -151,6 +165,124 @@ describe("summarizeHistory", () => {
       durationMin: null,
       durationExcluded: true,
     });
+  });
+
+  it("keeps a short legacy workout's active time explicitly unavailable", () => {
+    const report = summarizeHistory(
+      [session({
+        id: "legacy-short",
+        startedAt: new Date("2026-03-10T12:00:00.000Z"),
+        finishedAt: new Date("2026-03-10T13:00:00.000Z"),
+        activeDurationSemanticsVersion: null,
+        activeDurationSeconds: null,
+        activeDurationBasis: null,
+      })],
+      [],
+      3,
+      historyRangeStart("4w", now),
+      now,
+    );
+
+    expect(report.overview).toMatchObject({
+      averageDurationMin: null,
+      excludedDurationSessions: 1,
+    });
+    expect(report.calendarSessions[0]).toMatchObject({
+      durationMin: null,
+      durationExcluded: true,
+    });
+  });
+
+  it("uses reviewed active time without rewriting an interrupted workout's wall-clock history", () => {
+    const startedAt = new Date("2026-03-11T12:00:00.000Z");
+    const finishedAt = new Date("2026-03-13T15:46:00.000Z");
+    const report = summarizeHistory(
+      [
+        session({
+          id: "reviewed-interruption",
+          startedAt,
+          finishedAt,
+          activeDurationSemanticsVersion: 1,
+          activeDurationSeconds: 3_300,
+          activeDurationBasis: "owner_reported",
+        }),
+        session({
+          id: "unknown-interruption",
+          startedAt,
+          finishedAt,
+          activeDurationSemanticsVersion: 1,
+          activeDurationSeconds: null,
+          activeDurationBasis: "interruption_unknown",
+        }),
+      ],
+      [],
+      3,
+      historyRangeStart("4w", now),
+      now,
+    );
+
+    expect(report.overview).toMatchObject({
+      averageDurationMin: 55,
+      excludedDurationSessions: 1,
+    });
+    expect(report.calendarSessions.find(
+      (entry) => entry.id === "reviewed-interruption",
+    )).toMatchObject({ durationMin: 55, durationExcluded: false });
+    expect(report.calendarSessions.find(
+      (entry) => entry.id === "unknown-interruption",
+    )).toMatchObject({ durationMin: null, durationExcluded: true });
+  });
+
+  it("uses reviewed active time when date-only source timing has no finish", () => {
+    const report = summarizeHistory(
+      [
+        session({
+          id: "date-only-reviewed",
+          finishedAt: null,
+          activeDurationSemanticsVersion: 1,
+          activeDurationSeconds: 2_700,
+          activeDurationBasis: "owner_reported",
+          excludeDurationFromAnalytics: false,
+        }),
+        session({
+          id: "date-only-unknown",
+          finishedAt: null,
+          activeDurationSemanticsVersion: 1,
+          activeDurationSeconds: null,
+          activeDurationBasis: "interruption_unknown",
+          excludeDurationFromAnalytics: true,
+        }),
+        session({
+          id: "date-only-legacy",
+          finishedAt: null,
+          activeDurationSemanticsVersion: null,
+          activeDurationSeconds: null,
+          activeDurationBasis: null,
+          excludeDurationFromAnalytics: true,
+        }),
+      ],
+      [],
+      3,
+      historyRangeStart("4w", now),
+      now,
+    );
+
+    expect(report.overview).toMatchObject({
+      averageDurationMin: 45,
+      excludedDurationSessions: 2,
+    });
+    expect(report.recentSessions.find(
+      (entry) => entry.id === "date-only-reviewed",
+    )).toMatchObject({ durationMin: 45, durationExcluded: false });
+    expect(report.calendarSessions.find(
+      (entry) => entry.id === "date-only-reviewed",
+    )).toMatchObject({ durationMin: 45, durationExcluded: false });
+    for (const id of ["date-only-unknown", "date-only-legacy"]) {
+      expect(report.recentSessions.find((entry) => entry.id === id))
+        .toMatchObject({ durationMin: null, durationExcluded: true });
+      expect(report.calendarSessions.find((entry) => entry.id === id))
+        .toMatchObject({ durationMin: null, durationExcluded: true });
+    }
   });
 
   it("builds workload, progress, recovery, and plan insights from logged data", () => {

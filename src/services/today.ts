@@ -15,6 +15,10 @@ import {
 import { localDateDifference, workoutLocalDate } from "@/lib/workout-calendar";
 import { getDashboardStats } from "./dashboard";
 import { filterRecommendationsEligibleForAction } from "./recommendation-evidence-eligibility";
+import {
+  classifyActiveSessionTiming,
+  type ActiveSessionTiming,
+} from "@/lib/active-session-timing";
 
 export type TodayData = {
   programName: string;
@@ -34,6 +38,7 @@ export type TodayData = {
   inProgressSessionId: string | null;
   inProgressSessionName: string | null;
   inProgressSessionStartedAtISO: string | null;
+  inProgressTiming: ActiveSessionTiming | null;
   inProgressOccurrences: Array<{
     id: string;
     kind: string;
@@ -82,7 +87,8 @@ export function pickNextTemplateId(
 export async function getTodayData(
   db: Db,
   userId: string,
-  timezone: string
+  timezone: string,
+  now = new Date(),
 ): Promise<TodayData | null> {
   const [active, inProgress, recent] = await Promise.all([
     getActiveProgramVersion(db, userId),
@@ -111,7 +117,7 @@ export async function getTodayData(
     }),
   ]);
   if (!active) return null;
-  const currentLocalDate = workoutLocalDate(new Date(), timezone);
+  const currentLocalDate = workoutLocalDate(now, timezone);
 
   const historicalTemplateIds = [
     ...new Set(
@@ -208,6 +214,9 @@ export async function getTodayData(
     inProgressSessionId: inProgress?.id ?? null,
     inProgressSessionName: inProgress?.templateName ?? null,
     inProgressSessionStartedAtISO: inProgress?.startedAt.toISOString() ?? null,
+    inProgressTiming: inProgress
+      ? classifyActiveSessionTiming(inProgress.startedAt, now)
+      : null,
     inProgressOccurrences: (inProgress?.occurrences ?? []).map((occurrence) => ({
       id: occurrence.id,
       kind: occurrence.kind,
@@ -232,10 +241,11 @@ export async function getTodayData(
 export async function getTodayPageData(
   db: Db,
   userId: string,
-  timezone: string
+  timezone: string,
+  now = new Date(),
 ) {
   const [today, pendingRows, recentSessions, stats] = await Promise.all([
-    getTodayData(db, userId, timezone),
+    getTodayData(db, userId, timezone, now),
     db.query.recommendations.findMany({
       where: and(
         eq(recommendations.userId, userId),

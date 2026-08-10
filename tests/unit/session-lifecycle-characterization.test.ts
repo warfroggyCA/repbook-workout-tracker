@@ -402,6 +402,11 @@ describe("workout lifecycle ownership and atomicity invariants", () => {
     });
     expect(saved.outcome).toBe("saved");
 
+    await database.db.update(workoutSessions).set({
+      startedAt: new Date("2026-07-21T16:00:00.000Z"),
+      localDate: "2026-07-21",
+    }).where(eq(workoutSessions.id, started.sessionId));
+
     await completeWorkoutSession(
       database.db,
       {
@@ -442,10 +447,24 @@ describe("workout lifecycle ownership and atomicity invariants", () => {
         .from(sessionOccurrenceMutations),
     ).toHaveLength(3);
     const csv = await buildSetsCsv(database.db, userId, null);
-    expect(csv.split("\n")[0]).toContain("occurrence_kind");
-    expect(csv.split("\n")[0]).toContain(
+    const csvHeader = csv.split("\n")[0];
+    expect(csvHeader).toContain("started_at,finished_at,timezone");
+    expect(csvHeader).toContain(
+      "session_quality_flags,active_duration_semantics_version,active_duration_seconds,active_duration_basis,duration_excluded",
+    );
+    expect(csvHeader).toContain("occurrence_kind");
+    expect(csvHeader).toContain(
       "metric_type,performed_semantics_version,performed_load_type,performed_load_semantics",
     );
+    const exportedRows = parse(csv, {
+      columns: true,
+      skip_empty_lines: true,
+    }) as Array<Record<string, string>>;
+    expect(exportedRows[0]).toMatchObject({
+      active_duration_semantics_version: "1",
+      active_duration_basis: "wall_clock_no_stale_signal",
+    });
+    expect(exportedRows[0].finished_at).not.toBe("");
     expect(csv).toContain(",weight_reps,1,dumbbell,total,");
     expect(csv.split("\n")).toHaveLength(4);
     expect(csv).not.toContain("day_warmup");
@@ -523,7 +542,7 @@ describe("workout lifecycle ownership and atomicity invariants", () => {
     })).resolves.toEqual({ outcome: "invalid_observed_completion" });
   });
 
-  it("preserves a long-running completed workout but excludes its duration from analytics", async () => {
+  it("requires stale-session review and preserves source timestamps when active time is reported", async () => {
     const { sessionId } = await startWorkoutSession(
       database.db,
       userId,
@@ -537,7 +556,7 @@ describe("workout lifecycle ownership and atomicity invariants", () => {
       })
       .where(eq(workoutSessions.id, sessionId));
 
-    await completeWorkoutSession(
+    const rejected = await completeWorkoutSession(
       database.db,
       {
         id: userId,
@@ -549,16 +568,58 @@ describe("workout lifecycle ownership and atomicity invariants", () => {
         },
       },
       { sessionId },
-      { now: () => new Date("2026-07-20T15:00:00.001Z") },
+      { now: () => new Date("2026-07-20T16:00:00.000Z") },
     );
+    expect(rejected).toMatchObject({
+      outcome: "duration_review_required",
+      wallClockElapsedSeconds: 14_400,
+      reviewRequired: true,
+    });
+    await expect(database.db.query.workoutSessions.findFirst({
+      where: eq(workoutSessions.id, sessionId),
+    })).resolves.toMatchObject({
+      status: "in_progress",
+      startedAt: new Date("2026-07-20T12:00:00.000Z"),
+      finishedAt: null,
+      activeDurationSemanticsVersion: null,
+      activeDurationSeconds: null,
+      activeDurationBasis: null,
+    });
+
+    const accepted = await completeWorkoutSession(
+      database.db,
+      {
+        id: userId,
+        coachingPrefs: {
+          aggressiveness: "moderate",
+          deloadSuggestions: true,
+          substitutionSuggestions: true,
+          weeklyReview: true,
+        },
+      },
+      {
+        sessionId,
+        durationDecision: {
+          basis: "owner_reported",
+          activeDurationSeconds: 3_600,
+        },
+      },
+      { now: () => new Date("2026-07-20T16:00:00.000Z") },
+    );
+    expect(accepted).toMatchObject({ outcome: "completed" });
 
     const completed = await database.db.query.workoutSessions.findFirst({
       where: eq(workoutSessions.id, sessionId),
     });
     expect(completed).toMatchObject({
       status: "completed",
-      excludeDurationFromAnalytics: true,
-      dataQualityFlags: ["workout_duration_over_3h"],
+      startedAt: new Date("2026-07-20T12:00:00.000Z"),
+      finishedAt: new Date("2026-07-20T16:00:00.000Z"),
+      activeDurationSemanticsVersion: 1,
+      activeDurationSeconds: 3_600,
+      activeDurationBasis: "owner_reported",
+      excludeDurationFromAnalytics: false,
+      dataQualityFlags: ["workout_elapsed_over_3h"],
     });
   });
 

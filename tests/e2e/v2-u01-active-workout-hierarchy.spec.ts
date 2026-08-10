@@ -7,7 +7,10 @@ import {
 } from "../helpers/react-readiness";
 import { observeGauntletPageErrors } from "../helpers/v2-gauntlet-a-errors";
 
-async function signInAndStartDayA(page: Page) {
+async function signInAndStartDayA(
+  page: Page,
+  options: { extraLarge?: boolean } = {},
+) {
   await installNextDevelopmentRefreshControl(page);
   await page.goto("/sign-in");
   await page.waitForLoadState("networkidle");
@@ -18,12 +21,14 @@ async function signInAndStartDayA(page: Page) {
   await expect(page).toHaveURL(/\/today$/);
 
   await page.goto("/settings");
-  const extraLarge = page.getByRole("radio", { name: /Extra large/ });
-  await waitForHydratedReactHandler(extraLarge);
-  await extraLarge.click();
+  const fontSize = options.extraLarge === false
+    ? page.getByRole("radio", { name: /^Default/ })
+    : page.getByRole("radio", { name: /Extra large/ });
+  await waitForHydratedReactHandler(fontSize);
+  await fontSize.click();
   await expect.poll(() =>
     page.evaluate(() => document.documentElement.dataset.fontSize),
-  ).toBe("extra-large");
+  ).toBe(options.extraLarge === false ? "default" : "extra-large");
 
   await page.goto("/today");
   const alternateDays = page.getByTestId("alternate-program-days");
@@ -64,6 +69,85 @@ async function expectFullyInViewport(locator: Locator) {
   })).toBe(true);
 }
 
+async function revealCurrentFromStatusBar(page: Page) {
+  const workoutStatus = page.getByRole("complementary", {
+    name: "Workout status",
+  });
+  const reveal = workoutStatus.locator("button").first();
+  await waitForHydratedReactHandler(reveal);
+  await expectReachableTarget(reveal);
+  await reveal.click();
+  await expect.poll(() => page.evaluate(() => {
+    const log = document.querySelector<HTMLElement>(
+      '[data-testid="active-log-set"]',
+    );
+    const dock = document.querySelector<HTMLElement>(
+      '[aria-label="Workout status"]',
+    );
+    if (!log || !dock) return false;
+    return log.getBoundingClientRect().bottom <=
+      dock.getBoundingClientRect().top - 8;
+  })).toBe(true);
+}
+
+async function compactGeometry(page: Page) {
+  return page.evaluate(() => {
+    const primaryElement = document.querySelector<HTMLElement>(
+      '[data-testid="active-workout-primary"]',
+    );
+    const previousElement = document.querySelector<HTMLElement>(
+      '[data-testid="previous-comparable-set"]',
+    );
+    const logElement = document.querySelector<HTMLElement>(
+      '[data-testid="active-log-set"]',
+    );
+    const dockElement = document.querySelector<HTMLElement>(
+      '[aria-label="Workout status"]',
+    );
+    const cardElement = document.querySelector<HTMLElement>(
+      '[data-testid="current-exercise-card"]',
+    );
+    if (!primaryElement || !previousElement || !logElement || !dockElement || !cardElement) {
+      throw new Error("The compact active-workout geometry is incomplete.");
+    }
+    const primaryRect = primaryElement.getBoundingClientRect();
+    const previousRect = previousElement.getBoundingClientRect();
+    const firstInput = primaryElement.querySelector<HTMLElement>("input");
+    const inputWidths = [...primaryElement.querySelectorAll<HTMLElement>("input")]
+      .map((input) => input.getBoundingClientRect().width);
+    const logRect = logElement.getBoundingClientRect();
+    return {
+      primaryHeight: primaryRect.height,
+      cardHeight: cardElement.getBoundingClientRect().height,
+      previousBeforeInput:
+        firstInput != null && previousRect.bottom <= firstInput.getBoundingClientRect().top,
+      inputBeforeLog:
+        firstInput != null && firstInput.getBoundingClientRect().bottom <= logRect.top,
+      logClearsDock: logRect.bottom <= dockElement.getBoundingClientRect().top - 8,
+      logBottom: logRect.bottom,
+      dockTop: dockElement.getBoundingClientRect().top,
+      primaryTop: primaryRect.top,
+      primaryBottom: primaryRect.bottom,
+      minimumInputWidth:
+        inputWidths.length > 0 ? Math.min(...inputWidths) : 0,
+      horizontalOverflow:
+        document.documentElement.scrollWidth -
+        document.documentElement.clientWidth,
+      cardChildren: [...cardElement.children].map((child) => ({
+        tag: child.tagName,
+        height: child.getBoundingClientRect().height,
+      })),
+      disclosures: [...cardElement.querySelectorAll("details")].map(
+        (details) => ({
+          summary: details.querySelector("summary")?.textContent?.trim() ?? "",
+          open: details.open,
+          height: details.getBoundingClientRect().height,
+        }),
+      ),
+    };
+  });
+}
+
 async function discardWorkout(page: Page) {
   if (!/\/session\/[0-9a-f-]+(?:#.*)?$/.test(page.url())) return;
   const finish = page.getByRole("button", { name: "Finish", exact: true });
@@ -96,21 +180,15 @@ test("keeps the ordinary active set current-first, unobstructed, and acknowledge
     const currentEntry = currentCard.getByTestId("current-set-entry");
     await expect(currentEntry).toBeVisible();
     await expect(currentEntry).toContainText("Current action");
-    await expect(currentEntry).toContainText(
-      "Barbell Back Squat · Set 1 of 3",
-    );
+    await expect(currentEntry).toContainText("Set 1 of 3");
     await expect(currentEntry).toContainText("Performed measure");
     await expect(currentEntry).toContainText("Next action");
     await expect(currentEntry).toContainText("Barbell Back Squat, set 2");
 
-    const optionalDetails = currentEntry.locator("details", {
-      hasText: "Optional effort and set note",
+    const setOptions = currentEntry.locator("details", {
+      hasText: "Set options",
     });
-    const exceptionDetails = currentEntry.locator("details", {
-      hasText: "Set exceptions",
-    });
-    await expect(optionalDetails).not.toHaveAttribute("open", "");
-    await expect(exceptionDetails).not.toHaveAttribute("open", "");
+    await expect(setOptions).not.toHaveAttribute("open", "");
     await expect(
       currentEntry.getByRole("button", { name: "Log set", exact: true }),
     ).toHaveCount(1);
@@ -120,10 +198,11 @@ test("keeps the ordinary active set current-first, unobstructed, and acknowledge
 
     const orderedVisibleActions = [
       currentEntry.getByText("Current action", { exact: true }),
+      currentEntry.getByTestId("previous-comparable-set"),
       currentEntry.getByText("Performed measure", { exact: true }),
       currentEntry.getByRole("button", { name: "Log set", exact: true }),
       currentEntry.getByText("Next action", { exact: true }),
-      exceptionDetails.locator(":scope > summary"),
+      setOptions.locator(":scope > summary"),
     ];
     for (const action of orderedVisibleActions) await expect(action).toBeVisible();
     const actionBounds = await Promise.all(
@@ -138,8 +217,7 @@ test("keeps the ordinary active set current-first, unobstructed, and acknowledge
       currentEntry.getByLabel("Total load", { exact: true }),
       currentEntry.getByRole("textbox", { name: "Reps", exact: true }),
       currentEntry.getByRole("button", { name: "Log set", exact: true }),
-      optionalDetails.locator("summary"),
-      exceptionDetails.locator("summary"),
+      setOptions.locator("summary"),
     ];
     for (const target of primaryTargets) await expectReachableTarget(target);
 
@@ -156,13 +234,12 @@ test("keeps the ordinary active set current-first, unobstructed, and acknowledge
       exact: true,
     });
     await logSet.click();
-    await expect(currentCard.getByText("Saved", { exact: true })).toBeVisible();
-    await expect(
-      currentCard.getByText("Acknowledged by Repbook", { exact: true }),
-    ).toBeVisible();
     const receipt = currentCard.getByTestId("active-set-save-receipt");
     await expect(receipt).toContainText("Saved · Set 1");
     await expect(receipt).toContainText("Acknowledged by Repbook");
+    await expect(
+      receipt.getByRole("button", { name: "Correct set", exact: true }),
+    ).toBeVisible();
     await expect(receipt).toBeVisible();
     await expectFullyInViewport(receipt);
     const workoutStatus = page.getByRole("complementary", {
@@ -180,6 +257,125 @@ test("keeps the ordinary active set current-first, unobstructed, and acknowledge
         () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
       ),
     ).toBeLessThanOrEqual(1);
+  } finally {
+    await discardWorkout(page);
+  }
+  await pageErrors.expectNoUnexpected();
+});
+
+test("fits the complete primary logging action at 390x844 with keyboard disclosures", async ({
+  browserName,
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  const pageErrors = observeGauntletPageErrors(page, browserName);
+  try {
+    await signInAndStartDayA(page, { extraLarge: false });
+    const currentCard = page.getByTestId("current-exercise-card");
+    const currentEntry = currentCard.getByTestId("current-set-entry");
+    const primary = currentEntry.getByTestId("active-workout-primary");
+    const previous = primary.getByTestId("previous-comparable-set");
+    const log = primary.getByRole("button", { name: "Log set", exact: true });
+
+    await expect(previous).toBeVisible();
+    let terminalComparison:
+      | { state: "available"; href: string }
+      | { state: "unavailable" }
+      | null = null;
+    await expect(async () => {
+      const snapshot = await previous.evaluate((element) => {
+        const sourceLinks = element.querySelectorAll<HTMLAnchorElement>(
+          'a[aria-label="View source workout"]',
+        );
+        return {
+          state: element.getAttribute("data-comparison-state"),
+          text: element.textContent?.trim() ?? "",
+          sourceCount: sourceLinks.length,
+          href: sourceLinks[0]?.getAttribute("href") ?? null,
+        };
+      });
+      if (snapshot.state === "available") {
+        expect(snapshot.sourceCount).toBe(1);
+        expect(snapshot.href).toMatch(/^\/history\/[0-9a-f-]+$/);
+        terminalComparison = {
+          state: "available",
+          href: snapshot.href!,
+        };
+        return;
+      }
+      if (snapshot.state === "unavailable") {
+        expect(snapshot.sourceCount).toBe(0);
+        expect(snapshot.text).toBe("Previous comparable set unavailable");
+        terminalComparison = { state: "unavailable" };
+        return;
+      }
+      throw new Error("Previous comparable evidence is still loading.");
+    }).toPass({ timeout: 25_000 });
+    expect(terminalComparison).not.toBeNull();
+    await expect(log).toBeVisible();
+    await revealCurrentFromStatusBar(page);
+
+    const geometry = await compactGeometry(page);
+    expect(geometry, JSON.stringify(geometry)).toMatchObject({
+      previousBeforeInput: true,
+      inputBeforeLog: true,
+      logClearsDock: true,
+    });
+    expect(geometry.primaryHeight).toBeLessThanOrEqual(420);
+    expect(geometry.cardHeight, JSON.stringify(geometry)).toBeLessThanOrEqual(680);
+    expect(geometry.minimumInputWidth).toBeGreaterThanOrEqual(44);
+    expect(geometry.horizontalOverflow).toBeLessThanOrEqual(1);
+    await expect(page.getByRole("button", { name: "Log set", exact: true })).toHaveCount(1);
+
+    const setOptions = currentEntry.locator("details", {
+      hasText: "Set options",
+    });
+    const setOptionsSummary = setOptions.locator(":scope > summary");
+    await setOptionsSummary.focus();
+    await page.keyboard.press("Enter");
+    await expect(setOptions).toHaveAttribute("open", "");
+    await expect(setOptions.getByLabel("RIR (0–10)")).toBeVisible();
+    await expect(
+      setOptions.getByRole("button", { name: "Skip set", exact: true }),
+    ).toBeVisible();
+    await page.keyboard.press("Space");
+    await expect(setOptions).not.toHaveAttribute("open", "");
+
+    const progress = currentCard.locator("details", {
+      hasText: "Exercise progress & extras",
+    });
+    const progressSummary = progress.locator(":scope > summary");
+    await progressSummary.focus();
+    await page.keyboard.press("Enter");
+    await expect(progress).toHaveAttribute("open", "");
+    await page.keyboard.press("Space");
+    await expect(progress).not.toHaveAttribute("open", "");
+
+    const more = currentCard.locator("details", {
+      hasText: "More for this exercise",
+    });
+    const moreSummary = more.locator(":scope > summary");
+    await moreSummary.focus();
+    await page.keyboard.press("Enter");
+    await expect(more).toHaveAttribute("open", "");
+    await page.keyboard.press("Space");
+    await expect(more).not.toHaveAttribute("open", "");
+
+    await discardWorkout(page);
+    await signInAndStartDayA(page, { extraLarge: true });
+    await revealCurrentFromStatusBar(page);
+    const extraLargeGeometry = await compactGeometry(page);
+    expect(
+      extraLargeGeometry,
+      JSON.stringify(extraLargeGeometry),
+    ).toMatchObject({
+      previousBeforeInput: true,
+      inputBeforeLog: true,
+      logClearsDock: true,
+    });
+    expect(extraLargeGeometry.cardHeight).toBeLessThanOrEqual(900);
+    expect(extraLargeGeometry.minimumInputWidth).toBeGreaterThanOrEqual(44);
+    expect(extraLargeGeometry.horizontalOverflow).toBeLessThanOrEqual(1);
   } finally {
     await discardWorkout(page);
   }
