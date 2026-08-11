@@ -30,7 +30,7 @@ npm run audit:check
 The migration-free PII-01A Program-intake gate is:
 
 ```bash
-npx vitest run tests/unit/ai-import-contracts.test.ts tests/unit/routine-import-resilience.test.ts tests/unit/routine-import-stage.test.ts tests/unit/routine-import-confirm-db.test.ts tests/unit/routine-import-component.test.tsx
+npx vitest run tests/unit/ai-import-contracts.test.ts tests/unit/routine-import-resilience.test.ts tests/unit/routine-import-stage.test.ts tests/unit/routine-import-confirm-db.test.ts tests/unit/routine-import-component.test.tsx tests/unit/program-text-import-feature.test.ts
 npx vitest run tests/unit/program-document.test.ts tests/unit/session-occurrences-data01.test.ts tests/unit/v2-t04-warmup-occurrences-db.test.ts tests/unit/session-compiler-db.test.ts tests/unit/setup-safety-db.test.ts
 npx vitest run tests/unit/snapshots-db.test.ts -t "round-trips a current lift-anchored warm-up through snapshot restore"
 npm run test:e2e:pii01
@@ -54,6 +54,16 @@ PII-01A changes no SQL migration, snapshot schema, or recovery manifest. Do not
 start the owner-specific equipment-incompatibility relation until its additive
 migration and complete recovery/export/Coach/alternatives inventory are
 separately authorized.
+
+`PROGRAM_TEXT_IMPORT_ENABLED=false` is the server-enforced PII-01A rollback
+switch. It removes the Program paste review from the Import page and rejects
+new parse and publication Server Actions before any durable write. It does not
+remove Hevy History import, discard stored reviews, or downgrade the
+anchor-aware Program, editor, workout, export, snapshot, and restore readers.
+The variable is enabled when absent; use the exact lowercase value `false` only
+on a retained emergency deployment. A pre-PII application build is not a safe
+rollback after an anchored lift warm-up has been published because it would
+silently treat that ramp-up as day-start preparation.
 
 The Repbook v2 semantic foundation and current T01/T02/T03/T04/T05/T06/U01/U02/U03/H01/H02/H03/H04/A01/A02/A03/A04/A05/A06/Gauntlet C/D01/D02 activation
 packages have focused gates:

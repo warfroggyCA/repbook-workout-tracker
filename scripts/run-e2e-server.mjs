@@ -188,6 +188,8 @@ const environment = {
   OPENAI_API_KEY: "",
   PGLITE_DIR: pgliteDir,
   PROGRAM_EDITOR_ENABLED: programEditorDisabled ? "false" : "true",
+  PROGRAM_TEXT_IMPORT_ENABLED:
+    process.env.PROGRAM_TEXT_IMPORT_ENABLED ?? "",
   SESSION_COMPILER_ENABLED: programEditorDisabled ? "false" : "true",
   SETTINGS_MANAGEMENT_ENABLED: "true",
   SNAPSHOT_ENCRYPTION_KEY_V1: Buffer.alloc(32, 17).toString("base64"),
