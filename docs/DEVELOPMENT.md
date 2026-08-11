@@ -62,8 +62,9 @@ remove Hevy History import, discard stored reviews, or downgrade the
 anchor-aware Program, editor, workout, export, snapshot, and restore readers.
 The variable is enabled when absent; use the exact lowercase value `false` only
 on a retained emergency deployment. A pre-PII application build is not a safe
-rollback after an anchored lift warm-up has been published because it would
-silently treat that ramp-up as day-start preparation.
+rollback once a PII-01A review may have been staged: its old review path can
+drop the new structured warm-up contract before publication, and its old
+Program path would silently treat an anchored ramp-up as day-start preparation.
 
 The Repbook v2 semantic foundation and current T01/T02/T03/T04/T05/T06/U01/U02/U03/H01/H02/H03/H04/A01/A02/A03/A04/A05/A06/Gauntlet C/D01/D02 activation
 packages have focused gates:
