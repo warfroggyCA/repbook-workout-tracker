@@ -26,4 +26,11 @@ describe("OpenAI provider retention", () => {
     expect(structuredOutputTokenLimit("equipment_parse")).toBe(2_000);
     expect(structuredOutputTokenLimit("routine_build")).toBe(6_000);
   });
+
+  it("keeps a bounded adaptive allowance for routine parsing", () => {
+    expect(structuredOutputTokenLimit("routine_parse", "Day 1")).toBe(2_003);
+    expect(
+      structuredOutputTokenLimit("routine_parse", "x".repeat(20_000)),
+    ).toBe(8_000);
+  });
 });

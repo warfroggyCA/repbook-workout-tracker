@@ -72,6 +72,19 @@ export type DiagnosticEventFields = {
   "routine_import.exercise_map_degraded": ProviderFields & {
     candidateCount: number;
   };
+  "routine_import.parse_failed": {
+    failureCategory:
+      | "output_incomplete"
+      | "persistence_failure"
+      | "provider_failure"
+      | "timeout"
+      | "unknown"
+      | "usage_control";
+    inputCharacterCount: number;
+    detectedDayCount: number;
+    detectedExerciseCount: number;
+    durationMs: number;
+  };
   "session.render_failed": ErrorFields & {
     routeState: "confirmed_active" | "route_input";
   };
@@ -368,6 +381,26 @@ const DIAGNOSTIC_EVENT_MANIFEST = {
     "exercise_map",
     "degraded",
     { ...PROVIDER_FIELDS, candidateCount: boundedCountRule },
+  ),
+  "routine_import.parse_failed": definition(
+    "routine_import",
+    "warn",
+    "parse",
+    "failed",
+    {
+      failureCategory: enumRule([
+        "output_incomplete",
+        "persistence_failure",
+        "provider_failure",
+        "timeout",
+        "unknown",
+        "usage_control",
+      ]),
+      inputCharacterCount: boundedCountRule,
+      detectedDayCount: boundedCountRule,
+      detectedExerciseCount: boundedCountRule,
+      durationMs: boundedCountRule,
+    },
   ),
   "session.render_failed": definition(
     "session",

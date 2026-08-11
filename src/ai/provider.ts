@@ -19,6 +19,7 @@ import {
   createBaRoutineBuildFailure,
   parseBaRoutineFailureMode,
 } from "@/ai/acceptance-routine-failure-fixture";
+import { inspectRoutineTextStructure } from "@/ai/tasks/routine-parse/deterministic";
 
 /**
  * Provider abstraction (plan §9). Prompts, schemas, and model choice live in
@@ -69,8 +70,17 @@ export const OPENAI_NO_STORAGE_OPTIONS = {
 
 export const DEFAULT_OPENAI_MODEL = "gpt-5.4-mini";
 
-export function structuredOutputTokenLimit(task: AITask): number {
+export function structuredOutputTokenLimit(task: AITask, input = ""): number {
   if (task === "routine_build") return 6_000;
+  if (task === "routine_parse") {
+    const structure = inspectRoutineTextStructure(input);
+    const structuralAllowance = structure.exerciseCount * 300;
+    const textAllowance = Math.ceil(structure.characterCount / 2);
+    return Math.min(
+      8_000,
+      Math.max(2_000, 2_000 + Math.max(structuralAllowance, textAllowance)),
+    );
+  }
   if (task === "weekly_review" || task === "coaching_qa") return 4_000;
   return 2_000;
 }
@@ -162,6 +172,7 @@ class SdkProvider implements AIProvider {
     if (!resolved) throw new AIUnavailableError();
     const started = Date.now();
     const isRoutineBuild = opts.task === "routine_build";
+    const isRoutineParse = opts.task === "routine_parse";
     // No sampling params — defaults on both providers (Sonnet 5 rejects them).
     const result = await generateText({
       model: resolved.model,
@@ -169,11 +180,11 @@ class SdkProvider implements AIProvider {
       system: opts.system,
       prompt: opts.input,
       abortSignal: opts.abortSignal,
-      maxOutputTokens: structuredOutputTokenLimit(opts.task),
+      maxOutputTokens: structuredOutputTokenLimit(opts.task, opts.input),
       maxRetries: 1,
       timeout: {
-        totalMs: isRoutineBuild ? 110_000 : 30_000,
-        stepMs: isRoutineBuild ? 105_000 : 25_000,
+        totalMs: isRoutineBuild ? 110_000 : isRoutineParse ? 85_000 : 30_000,
+        stepMs: isRoutineBuild ? 105_000 : isRoutineParse ? 80_000 : 25_000,
       },
       providerOptions: resolved.providerOptions,
     });

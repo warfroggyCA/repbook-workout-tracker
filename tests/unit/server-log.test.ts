@@ -78,6 +78,39 @@ describe("structured redacted diagnostic logger", () => {
     expect(write).not.toHaveBeenCalled();
   });
 
+  it("records only bounded routine-import failure metadata", () => {
+    const write = vi.spyOn(console, "log").mockImplementation(() => undefined);
+
+    expect(
+      logDiagnosticEvent(
+        "routine_import.parse_failed",
+        {
+          failureCategory: "output_incomplete",
+          inputCharacterCount: 1_104,
+          detectedDayCount: 3,
+          detectedExerciseCount: 20,
+          durationMs: 30_001,
+        },
+        { now: NOW, randomId: () => CORRELATION_ID },
+      ),
+    ).toBe("written");
+
+    const output = String(write.mock.calls[0]?.[0]);
+    expect(JSON.parse(output)).toMatchObject({
+      event: "routine_import.parse_failed",
+      component: "routine_import",
+      operation: "parse",
+      state: "failed",
+      failureCategory: "output_incomplete",
+      inputCharacterCount: 1_104,
+      detectedDayCount: 3,
+      detectedExerciseCount: 20,
+      durationMs: 30_001,
+    });
+    expect(output).not.toContain("Private routine text");
+    expect(output).not.toContain("userId");
+  });
+
   it("reuses correlation only inside a valid short-lived episode", () => {
     const write = vi.spyOn(console, "log").mockImplementation(() => undefined);
     const episode = createDiagnosticEpisode({
