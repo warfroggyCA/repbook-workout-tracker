@@ -13,6 +13,7 @@ import type { RoutineParseResponse } from "@/app/actions/import";
 import { getLatestStagedHevyImport } from "@/services/hevy-import";
 import { getImportBatchArchivePreview } from "@/services/archive";
 import { getApprovedExerciseMedia } from "@/services/exercise-media";
+import { isProgramTextImportEnabled } from "@/lib/program-text-import-feature";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 120;
@@ -20,11 +21,14 @@ export const maxDuration = 120;
 export default async function ImportPage() {
   const user = await getCurrentUser();
   const db = await getDb();
+  const textImportEnabled = isProgramTextImportEnabled();
 
   // Resume a staged parse if one is waiting for review (plan §5: raw and
   // parsed data live on the ImportEvent until confirmed or discarded).
   const [staged, stagedHevy, library, families, batches] = await Promise.all([
-    getLatestStagedImport(db, user.id),
+    textImportEnabled
+      ? getLatestStagedImport(db, user.id)
+      : Promise.resolve(null),
     getLatestStagedHevyImport(db, user.id),
     getLibraryWithAvailability(db, user.id),
     db.query.exerciseFamilies.findMany({
@@ -84,15 +88,33 @@ export default async function ImportPage() {
           archivePreview: batchPreviews[index],
         }))}
       />
-      <section className="flex flex-col gap-3 rounded-xl border p-3">
-        <header>
-          <h2 className="font-medium">Routine from text</h2>
-          <p className="text-xs text-muted-foreground">
-            Paste → review every row → confirm. Nothing becomes your program until you confirm.
+      {textImportEnabled ? (
+        <section className="flex flex-col gap-3 rounded-xl border p-3">
+          <header>
+            <h2 className="font-medium">Routine from text</h2>
+            <p className="text-xs text-muted-foreground">
+              Paste → review every row → confirm. Nothing becomes your program until you confirm.
+            </p>
+          </header>
+          <RoutineImport
+            aiAvailable={isAIAvailable()}
+            initialParse={initialParse}
+          />
+        </section>
+      ) : (
+        <section
+          className="rounded-xl border p-3"
+          aria-labelledby="routine-import-unavailable"
+        >
+          <h2 id="routine-import-unavailable" className="font-medium">
+            Routine from text is temporarily unavailable
+          </h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Existing Programs, staged reviews, workouts, and History are
+            unchanged.
           </p>
-        </header>
-      <RoutineImport aiAvailable={isAIAvailable()} initialParse={initialParse} />
-      </section>
+        </section>
+      )}
     </main>
   );
 }

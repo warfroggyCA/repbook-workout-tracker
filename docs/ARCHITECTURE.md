@@ -326,6 +326,15 @@ linked legacy actions after any newly anchored items for that same exercise.
 The Program editor may retime the item only to another slot in that day and
 does not copy an anchored item across days.
 
+Program paste publication has a server-side emergency stop independent of the
+anchor-aware readers. `PROGRAM_TEXT_IMPORT_ENABLED=false` blocks new parse and
+confirm operations before durable mutation while existing Programs remain
+readable and staged reviews remain preserved. Rollback deployments must retain
+the anchor-aware schema, normal and compiled occurrence ordering,
+editor/recommendation publication, export, and recovery paths. A build that predates
+`beforeSlotLineageId` is compatible only before the first anchored Program is
+published; it is not a truthful general rollback afterward.
+
 Each warm-up occurrence keeps its immutable session, planned-exercise,
 prescription, order, and equipment identity. Note, complete, skip, and restore
 are revision-fenced, replay-safe mutations with immutable receipts. A user may

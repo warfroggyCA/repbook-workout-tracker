@@ -54,6 +54,7 @@ describe("reviewed Program import confirmation", () => {
   let exerciseId: string;
 
   beforeEach(async () => {
+    delete process.env.PROGRAM_TEXT_IMPORT_ENABLED;
     client = new PGlite();
     db = drizzle(client, { schema });
     mocked.db = db;
@@ -81,6 +82,7 @@ describe("reviewed Program import confirmation", () => {
   }, 30_000);
 
   afterEach(async () => {
+    delete process.env.PROGRAM_TEXT_IMPORT_ENABLED;
     await client.close();
   });
 
@@ -169,6 +171,35 @@ Ramp-up: Empty bar | reps=10`)!;
     };
     return { input, eventId: event.id, day, row };
   }
+
+  it("fails closed before staging or publication when Program text import is disabled", async () => {
+    process.env.PROGRAM_TEXT_IMPORT_ENABLED = "false";
+    await expect(
+      parseRoutineText({
+        text: "Program: Disabled import\nDay 1 — Strength\nBench Press 3x8",
+        clientImportId: crypto.randomUUID(),
+      }),
+    ).resolves.toEqual({
+      ok: false,
+      reason:
+        "Routine text imports are temporarily unavailable. Your existing Programs and workouts are unchanged.",
+    });
+    expect(await db.query.importEvents.findMany()).toHaveLength(0);
+
+    const staged = await stageReview();
+    await expect(confirmImport(staged.input)).resolves.toEqual({
+      ok: false,
+      reason:
+        "Routine text imports are temporarily unavailable. Your staged review is preserved and no Program was changed.",
+    });
+    expect(await db.query.programVersions.findMany()).toHaveLength(0);
+    expect(mocked.createSafetySnapshot).not.toHaveBeenCalled();
+    await expect(
+      db.query.importEvents.findFirst({
+        where: eq(importEvents.id, staged.eventId),
+      }),
+    ).resolves.toMatchObject({ status: "parsed" });
+  });
 
   it("rejects malformed and oversized paste input without durable staging", async () => {
     await expect(parseRoutineText({

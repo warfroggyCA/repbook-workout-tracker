@@ -76,6 +76,7 @@ import {
 import { canonicalJson } from "@/services/snapshot-crypto";
 import { runExpensiveOperation } from "@/services/expensive-operations";
 import { resultRows } from "@/db/result";
+import { isProgramTextImportEnabled } from "@/lib/program-text-import-feature";
 
 export type RoutineParseResponse =
   | {
@@ -182,6 +183,13 @@ async function failRoutineParse(
 export async function parseRoutineText(
   input: RoutineParseRequest,
 ): Promise<RoutineParseResponse> {
+  if (!isProgramTextImportEnabled()) {
+    return {
+      ok: false,
+      reason:
+        "Routine text imports are temporarily unavailable. Your existing Programs and workouts are unchanged.",
+    };
+  }
   const validated = routineParseRequestSchema.safeParse(input);
   if (!validated.success) {
     const text =
@@ -757,8 +765,15 @@ async function readExactConfirmedImport(
  * moves the ImportEvent to `confirmed`.
  */
 export async function confirmImport(
-  input: ConfirmImportInput
+  input: ConfirmImportInput,
 ): Promise<{ ok: true; programVersionId: string } | { ok: false; reason: string }> {
+  if (!isProgramTextImportEnabled()) {
+    return {
+      ok: false,
+      reason:
+        "Routine text imports are temporarily unavailable. Your staged review is preserved and no Program was changed.",
+    };
+  }
   const validation = confirmSchema.safeParse(input);
   if (!validation.success) {
     return {
