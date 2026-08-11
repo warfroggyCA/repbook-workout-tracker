@@ -11,6 +11,7 @@ import {
 } from "@/db/schema";
 import { startWorkoutSession } from "@/services/session-lifecycle";
 import { mutateSessionEquipmentSelection } from "@/services/session-equipment-selection";
+import { updateSessionExerciseWithVersion } from "@/services/record-versions";
 
 const OWNER_EMAIL = "owner@example.com";
 
@@ -91,19 +92,32 @@ async function main() {
   });
   if (!firstExercise) throw new Error("The fixture session has no first exercise.");
 
-  await db
-    .update(sessionExercises)
-    .set({
+  const substituted = await updateSessionExerciseWithVersion(
+    db,
+    owner.id,
+    firstExercise.id,
+    {
       exerciseId: exercise.id,
       modificationType: "substituted",
       substitutedForExerciseId: firstExercise.exerciseId,
       substitutionReason: "other",
       substitutedAt: new Date(),
+      targetLoad: 100,
+      targetLoadUnit: "lb",
+    },
+    "session_exercise.substitute",
+    { activeOnly: true, expectedExerciseId: firstExercise.exerciseId },
+  );
+  if (!substituted.ok) {
+    throw new Error(`The plate-machine exercise was not substituted (${substituted.reason}).`);
+  }
+
+  await db
+    .update(sessionExercises)
+    .set({
       targetSets: 3,
       targetRepsMin: 8,
       targetRepsMax: 10,
-      targetLoad: 100,
-      targetLoadUnit: "lb",
       restSec: 90,
     })
     .where(eq(sessionExercises.id, firstExercise.id));

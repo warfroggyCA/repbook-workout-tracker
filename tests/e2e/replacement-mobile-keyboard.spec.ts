@@ -188,6 +188,11 @@ test("keeps unrestricted replacement truthful and reachable through mobile keybo
   await startWorkout(page);
 
   const card = page.getByTestId("current-exercise-card");
+  const originalExerciseName = await card
+    .getByRole("heading", { level: 2 })
+    .innerText();
+  const preparation = page.getByTestId("session-preparation-panel");
+  await expect(preparation).toContainText(originalExerciseName);
   const draftIdentity = await card.getAttribute("data-draft-identity");
   expect(draftIdentity).not.toBeNull();
   const weight = card.getByLabel(/^(Weight|Total load|Displayed load)/);
@@ -466,12 +471,17 @@ test("keeps unrestricted replacement truthful and reachable through mobile keybo
   ).toBeVisible();
   await expect(confirm).toBeVisible();
   await page.unrouteAll({ behavior: "wait" });
+  await expect(preparation).toContainText(originalExerciseName);
 
   await confirm.click();
   await expect(picker).toHaveCount(0);
   await expect(reopenedDrawer).toHaveCount(0);
   await expect(card.getByRole("heading", { level: 2 })).toHaveText(
     "Bodyweight Bulgarian Split Squat",
+  );
+  await expect(preparation).not.toContainText(originalExerciseName);
+  await expect(preparation).not.toContainText(
+    "Updating equipment after workout change.",
   );
   await expect(card).toContainText("Reason: Variety");
   await expect(card).not.toContainText("Last time:");
@@ -512,6 +522,9 @@ test("keeps unrestricted replacement truthful and reachable through mobile keybo
     "Last time:",
   );
   await expect(page.getByText("Old implement and plate details are withheld.")).toHaveCount(0);
+  await expect(page.getByTestId("session-preparation-panel")).not.toContainText(
+    originalExerciseName,
+  );
   expectedRejectedRequest = false;
   await nextRscPrefetches.settle();
   expect(

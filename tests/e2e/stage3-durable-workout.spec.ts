@@ -310,6 +310,13 @@ test("publishes and preserves durable warm-up and grouped workout outcomes", asy
   await picker.getByRole("button", { name: "Use for this workout", exact: true }).click();
   await expect(alternatives).toHaveCount(0);
   await expect(nextSet.getByRole("heading", { level: 2 })).toHaveText(performedExercise);
+  await expect(nextSet.locator(":scope > button")).toHaveAttribute(
+    "aria-expanded",
+    "true",
+  );
+  await expect(workoutGuidance).not.toContainText("Next:");
+  await expect(nextSet).toContainText("Next action");
+  await expect(nextSet).toContainText("Romanian Deadlift");
   await nextSet.getByRole("button", { name: "Log set", exact: true }).click();
   await expect(alternatives).toHaveCount(0);
   await expect(nextSet.getByRole("heading", { level: 2 })).toHaveText("Romanian Deadlift");

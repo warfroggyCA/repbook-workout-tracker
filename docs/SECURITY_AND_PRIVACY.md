@@ -29,6 +29,16 @@ server. User-specific responses are not shared-cacheable. Logs and client error
 messages are redacted. Imports, exports, snapshots, restore, archive, and
 permanent deletion validate authorization and preserve audit boundaries.
 
+Active-workout equipment preparation is also owner-scoped. New workout
+exercise rows retain the reviewed equipment-requirement identities needed to
+interpret that workout later; they do not record whether equipment was
+physically gathered. Current inventory supplies availability only and cannot
+replace missing retained meaning. Legacy and malformed evidence stays unknown,
+cross-owner sessions are indistinguishable from missing sessions, and a
+concurrent workout revision withholds stale preparation rows. Snapshot schema
+32 and record-version restore preserve this tuple under the existing private
+owner backup boundary; public tests use synthetic identities and inventory.
+
 Versioned analysis packages are prepared only after an authenticated,
 same-origin owner request. The server allowlists purpose-bounded fields and
 omits account identity, raw provider or AI material, private contextual notes,
@@ -38,8 +48,9 @@ retention. Repbook stores only a digest-and-source receipt with a maximum
 30-day trust window; owner deletion physically removes it. These operational
 receipts are excluded from snapshots and restore, and the existing privacy-
 retention job deletes them at expiry. The question-specific allowlist omits
-unneeded domains, and session-equipment snapshots stay outside the package
-until their separate semantic preparation is complete.
+unneeded domains, and retained session-equipment requirements and performed
+equipment snapshots stay outside the package unless a separately versioned
+analysis allowlist deliberately adds them.
 
 Provider-neutral model instructions are generated locally from the exact
 previewed package identity and digest. They treat every package value as data,

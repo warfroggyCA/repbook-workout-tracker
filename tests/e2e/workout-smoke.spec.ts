@@ -133,24 +133,7 @@ async function signInAndStartWorkout(page: import("@playwright/test").Page) {
   await waitForReactHandler(startWorkout);
   await startWorkout.click();
   await expect(page).toHaveURL(/\/session\/[0-9a-f-]+$/);
-  await expect(
-    page
-      .getByRole("region", { name: "Workout equipment setup" })
-      .filter({ hasText: "Using " })
-      .first()
-  ).toBeVisible();
-  await expect
-    .poll(() =>
-      page.evaluate(() => {
-        const raw = localStorage.getItem(
-          "workout-tracker:equipment-selection-outbox:v1"
-        );
-        if (!raw) return 0;
-        const parsed = JSON.parse(raw) as { entries?: unknown[] };
-        return parsed.entries?.length ?? 0;
-      })
-    )
-    .toBe(0);
+  await waitForEquipmentSelectionsToSettle(page);
   return signInResponse;
 }
 
@@ -1922,7 +1905,16 @@ test("keeps every active-workout route reachable with one scroll surface", async
     .locator('input[inputmode="numeric"]')
     .inputValue();
   await page.reload();
-  const refreshedCard = page.locator('[id^="exercise-"]').first();
+  await expect(
+    page.getByTestId("current-exercise-card").getByRole("heading", { level: 2 }),
+  ).not.toHaveText(plannedExerciseName);
+  const refreshedCard = page.getByRole("region", {
+    name: plannedExerciseName,
+  });
+  const refreshedCardToggle = refreshedCard.locator(":scope > button");
+  await expect(refreshedCardToggle).toHaveAttribute("aria-expanded", "false");
+  await refreshedCardToggle.click();
+  await expect(refreshedCardToggle).toHaveAttribute("aria-expanded", "true");
   await expect(refreshedCard.getByTestId("added-set-entry")).toContainText(
     "Extra set 1 · Added to this workout",
   );
@@ -2504,7 +2496,7 @@ test("downloads one canonical full backup with intact workout relationships", as
     canonical: { tables: Record<string, Array<Record<string, unknown>>> };
   };
   expect(backup.format).toBe("workout-tracker-canonical-backup");
-  expect(backup.schemaVersion).toBe("31");
+  expect(backup.schemaVersion).toBe("32");
   expect(backup.canonical.tables.users).toHaveLength(1);
   expect(backup.canonical.tables.workout_sessions.length).toBeGreaterThan(0);
   expect(backup.recordCounts.workout_sessions).toBe(

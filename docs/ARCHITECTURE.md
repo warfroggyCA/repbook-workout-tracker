@@ -563,9 +563,9 @@ independent activity context while omitting detailed sets, recovery notes,
 equipment, and recommendation state. Every such omission is counted and
 explained. Legacy `target_met` projections live only in the calculated-metrics
 domain and are explicitly labelled as legacy or unknown, never as performed
-set evidence. Performed session-equipment snapshots remain omitted until their
-separate semantic preparation is complete; A01 does not export dangling
-equipment-snapshot identifiers.
+set evidence. Retained session-equipment requirements and performed equipment
+snapshots remain omitted unless a later versioned analysis allowlist adds them;
+A01 does not export dangling equipment-snapshot identifiers.
 
 The package uses schema `analysis-package/1`, semantic version `repbook-v2/1`,
 and canonicalization `repbook-canonical-json/1`. The SHA-256 digest covers the
@@ -796,6 +796,57 @@ next action primary. Ordinary completed/upcoming rows and extra work live in
 live in `More for this exercise`. Pending or failed writes and skipped recovery
 remain exposed, and the existing fixed workout-status bar remains the sole
 rest/ready/finish authority.
+
+## Post-v2 retained workout-equipment preparation
+
+Migration `0080_session_equipment_requirements_snapshot` adds one nullable,
+versioned equipment-requirements snapshot to each `session_exercises` row. New
+planned, compiled, added, and substituted workout exercises retain the exact
+source exercise and requirement identities, broad equipment type and minimum,
+reviewed definition identity and label, and exact profile, attachment, and
+geometry predicates. Existing rows remain null and explicitly unknown; there
+is no backfill from the mutable exercise catalogue and no completed-history
+rewrite. Substitution versions the old and new requirement meaning, and undo
+restores the corresponding retained snapshot with the exercise identity.
+Ordinary updates cannot mutate a retained tuple for an unchanged exercise;
+owner-authorized snapshot and record-version restores are the audited
+exceptions.
+
+The active-workout preparation projection is owner-scoped and reads only that
+retained requirement meaning. Current saved inventory and reviewed equipment
+profiles may answer availability, but display names never establish identity.
+Availability is green only when every retained session exercise has one
+coherent executable setup: all broad requirements are present, one primary
+item satisfies every same-type predicate, and its exact profile, geometry, and
+compatible attachment predicates also match. Independently available but
+mutually incompatible items therefore remain attention as `No compatible
+saved setup`, not false coverage or a false claim that the saved items are
+missing.
+
+The projection is fenced to the expected workout history revision and to an
+evidence digest covering the retained exercise rows and saved inventory/profile
+tables before and after its reads. A concurrent add, substitution, restore, or
+inventory change returns an explicit updating state and withholds straddled
+requirements. Legacy, malformed, unsupported, or partially retained evidence
+remains visibly unknown.
+
+Before warm-up, the runner shows one compact, stable-ID-deduplicated equipment
+list. It describes saved inventory coverage, not whether the owner physically
+gathered anything, and creates no preparation-complete fact. Unknown,
+unavailable, and incompatible rows stay visible and never block the workout.
+Exact load, plate, stack, attachment, and geometry guidance remains
+exercise-local; only the current exercise and unknown, unavailable,
+incompatible, pending, failed, or stale setup evidence stays expanded,
+while ordinary future setup panels use keyboard-native disclosure.
+
+Snapshot schema 32 round-trips the retained tuple and upgrades schema 31 rows
+to explicit null evidence. Recovery manifest 14 keeps the same durable-table
+inventory while extending the existing `session_exercises` lifecycle field
+contract. Restore and record-version paths validate exercise identity and do
+not infer missing meaning. A pre-0080 exercise version that omits the tuple
+retains the current frozen tuple only when the exercise identity is unchanged;
+if it restores a different exercise identity, the equipment meaning becomes
+explicitly unknown.
 
 ## D01 structured redacted diagnostics
 

@@ -2,6 +2,7 @@ import { and, desc, eq } from "drizzle-orm";
 import { createHash, randomUUID } from "node:crypto";
 import { sql } from "drizzle-orm";
 import type { Db } from "@/db";
+import { sessionEquipmentRequirementsSnapshotExpression } from "@/services/session-equipment-requirements";
 import { resultRows } from "@/db/result";
 import { recordVersions } from "@/db/schema";
 import type { RoutineWarmupSet } from "@/db/schema/user";
@@ -919,6 +920,18 @@ export async function updateSessionExerciseWithVersion(
         current.*,
         CASE WHEN ${hasNotes}::boolean THEN ${values.notes ?? null}::text ELSE current.notes END AS next_notes,
         CASE WHEN ${hasExerciseId}::boolean THEN ${values.exerciseId ?? null}::uuid ELSE current.exercise_id END AS next_exercise_id,
+        CASE
+          WHEN ${hasExerciseId}::boolean
+            AND ${values.exerciseId ?? null}::uuid IS DISTINCT FROM current.exercise_id
+          THEN 1
+          ELSE current.equipment_requirements_semantics_version
+        END AS next_equipment_requirements_semantics_version,
+        CASE
+          WHEN ${hasExerciseId}::boolean
+            AND ${values.exerciseId ?? null}::uuid IS DISTINCT FROM current.exercise_id
+          THEN ${sessionEquipmentRequirementsSnapshotExpression(sql`${values.exerciseId ?? null}::uuid`)}
+          ELSE current.equipment_requirements_snapshot
+        END AS next_equipment_requirements_snapshot,
         CASE WHEN ${hasModificationType}::boolean THEN ${values.modificationType ?? null}::modification_type ELSE current.modification_type END AS next_modification_type,
         CASE WHEN ${hasSkipReason}::boolean THEN ${values.skipReason ?? null}::skip_reason ELSE current.skip_reason END AS next_skip_reason,
         CASE WHEN ${hasSubstitutedFor}::boolean THEN ${values.substitutedForExerciseId ?? null}::uuid ELSE current.substituted_for_exercise_id END AS next_substituted_for_exercise_id,
@@ -993,6 +1006,10 @@ export async function updateSessionExerciseWithVersion(
       UPDATE session_exercises se
       SET notes = next.next_notes,
           exercise_id = next.next_exercise_id,
+          equipment_requirements_semantics_version =
+            next.next_equipment_requirements_semantics_version,
+          equipment_requirements_snapshot =
+            next.next_equipment_requirements_snapshot,
           modification_type = next.next_modification_type,
           skip_reason = next.next_skip_reason,
           substituted_for_exercise_id = next.next_substituted_for_exercise_id,
@@ -1012,6 +1029,8 @@ export async function updateSessionExerciseWithVersion(
         AND ROW(
           next.notes,
           next.exercise_id,
+          next.equipment_requirements_semantics_version,
+          next.equipment_requirements_snapshot,
           next.modification_type,
           next.skip_reason,
           next.substituted_for_exercise_id,
@@ -1025,6 +1044,8 @@ export async function updateSessionExerciseWithVersion(
         ) IS DISTINCT FROM ROW(
           next.next_notes,
           next.next_exercise_id,
+          next.next_equipment_requirements_semantics_version,
+          next.next_equipment_requirements_snapshot,
           next.next_modification_type,
           next.next_skip_reason,
           next.next_substituted_for_exercise_id,
@@ -1038,6 +1059,13 @@ export async function updateSessionExerciseWithVersion(
         )
         AND NOT EXISTS (SELECT 1 FROM existing_version)
       RETURNING se.*
+    ), revised_session AS (
+      UPDATE workout_sessions session
+      SET history_revision = session.history_revision + 1
+      FROM updated
+      WHERE ${action === "session_exercise.substitute"}::boolean
+        AND session.id = updated.session_id
+      RETURNING session.history_revision
     ), cleared_equipment_occurrences AS (
       UPDATE session_occurrences occurrence
       SET equipment_snapshot_id = NULL,
@@ -1208,7 +1236,8 @@ export async function updateSessionExerciseWithVersion(
       ) AS expected_exercise_matches,
       (updated.id IS NOT NULL) AS changed,
       COALESCE(versioned.id, (SELECT id FROM existing_version)) AS version_id,
-      (SELECT count(*)::integer FROM occurrence_receipts) AS occurrence_changes
+      (SELECT count(*)::integer FROM occurrence_receipts) AS occurrence_changes,
+      (SELECT history_revision FROM revised_session) AS result_history_revision
     FROM current_record current
     LEFT JOIN updated ON updated.id = current.id
     LEFT JOIN versioned ON TRUE
@@ -1236,6 +1265,9 @@ export async function updateSessionExerciseWithVersion(
     id: String(row.id),
     changed: Boolean(row.changed),
     versionId: row.version_id ? String(row.version_id) : null,
+    ...(row.result_history_revision == null
+      ? {}
+      : { historyRevision: Number(row.result_history_revision) }),
   };
 }
 
@@ -1861,6 +1893,8 @@ async function restoreSessionExerciseVersion(
             - ARRAY[
                 'notes',
                 'exercise_id',
+                'equipment_requirements_semantics_version',
+                'equipment_requirements_snapshot',
                 'modification_type',
                 'skip_reason',
                 'substituted_for_exercise_id',
@@ -1878,6 +1912,8 @@ async function restoreSessionExerciseVersion(
             - ARRAY[
                 'notes',
                 'exercise_id',
+                'equipment_requirements_semantics_version',
+                'equipment_requirements_snapshot',
                 'modification_type',
                 'skip_reason',
                 'substituted_for_exercise_id',
@@ -1902,10 +1938,45 @@ async function restoreSessionExerciseVersion(
           ((version.before_data->>'target_load') IS NULL AND (version.before_data->>'target_load_unit') IS NULL)
           OR ((version.before_data->>'target_load') IS NOT NULL AND (version.before_data->>'target_load_unit') IS NOT NULL)
         )
+        AND (
+          (
+            version.before_data ? 'equipment_requirements_semantics_version'
+            AND version.before_data ? 'equipment_requirements_snapshot'
+          )
+          OR (
+            NOT version.before_data ? 'equipment_requirements_semantics_version'
+            AND NOT version.before_data ? 'equipment_requirements_snapshot'
+          )
+        )
+    ), authorized_restore AS MATERIALIZED (
+      SELECT set_config(
+        'workout_tracker.authorized_delete',
+        'record_version_restore',
+        true
+      )
+      FROM compatible
+      LIMIT 1
     ), restored AS (
       UPDATE session_exercises se
       SET notes = version.before_data->>'notes',
           exercise_id = (version.before_data->>'exercise_id')::uuid,
+          equipment_requirements_semantics_version = CASE
+            WHEN version.before_data ? 'equipment_requirements_semantics_version'
+              THEN (version.before_data->>'equipment_requirements_semantics_version')::integer
+            WHEN current.exercise_id = (version.before_data->>'exercise_id')::uuid
+              THEN current.equipment_requirements_semantics_version
+            ELSE NULL
+          END,
+          equipment_requirements_snapshot = CASE
+            WHEN version.before_data ? 'equipment_requirements_snapshot'
+              THEN NULLIF(
+                version.before_data->'equipment_requirements_snapshot',
+                'null'::jsonb
+              )
+            WHEN current.exercise_id = (version.before_data->>'exercise_id')::uuid
+              THEN current.equipment_requirements_snapshot
+            ELSE NULL
+          END,
           modification_type = (version.before_data->>'modification_type')::modification_type,
           skip_reason = (version.before_data->>'skip_reason')::skip_reason,
           substituted_for_exercise_id = (version.before_data->>'substituted_for_exercise_id')::uuid,
@@ -1923,10 +1994,13 @@ async function restoreSessionExerciseVersion(
           END
       FROM selected_version version
       JOIN compatible current ON current.id = version.entity_id
+      JOIN authorized_restore ON TRUE
       WHERE se.id = current.id
         AND ROW(
           current.notes,
           current.exercise_id,
+          current.equipment_requirements_semantics_version,
+          current.equipment_requirements_snapshot,
           current.modification_type,
           current.skip_reason,
           current.substituted_for_exercise_id,
@@ -1940,6 +2014,23 @@ async function restoreSessionExerciseVersion(
         ) IS DISTINCT FROM ROW(
           version.before_data->>'notes',
           (version.before_data->>'exercise_id')::uuid,
+          CASE
+            WHEN version.before_data ? 'equipment_requirements_semantics_version'
+              THEN (version.before_data->>'equipment_requirements_semantics_version')::integer
+            WHEN current.exercise_id = (version.before_data->>'exercise_id')::uuid
+              THEN current.equipment_requirements_semantics_version
+            ELSE NULL
+          END,
+          CASE
+            WHEN version.before_data ? 'equipment_requirements_snapshot'
+              THEN NULLIF(
+                version.before_data->'equipment_requirements_snapshot',
+                'null'::jsonb
+              )
+            WHEN current.exercise_id = (version.before_data->>'exercise_id')::uuid
+              THEN current.equipment_requirements_snapshot
+            ELSE NULL
+          END,
           (version.before_data->>'modification_type')::modification_type,
           (version.before_data->>'skip_reason')::skip_reason,
           (version.before_data->>'substituted_for_exercise_id')::uuid,
@@ -1952,6 +2043,14 @@ async function restoreSessionExerciseVersion(
           version.before_data->'set_notes'
         )
       RETURNING se.*
+    ), revised_session AS (
+      UPDATE workout_sessions session
+      SET history_revision = session.history_revision + 1
+      FROM compatible current
+      JOIN restored ON restored.id = current.id
+      WHERE session.id = restored.session_id
+        AND current.exercise_id IS DISTINCT FROM restored.exercise_id
+      RETURNING session.history_revision
     ), cleared_equipment_occurrences AS (
       UPDATE session_occurrences occurrence
       SET equipment_snapshot_id = NULL,
@@ -2042,6 +2141,7 @@ async function restoreSessionExerciseVersion(
       selected.entity_id AS id,
       (restored.id IS NOT NULL) AS changed,
       versioned.id AS version_id,
+      (SELECT history_revision FROM revised_session) AS result_history_revision,
       EXISTS (SELECT 1 FROM owned_record) AS record_found,
       EXISTS (SELECT 1 FROM current_record) AS active_found,
       EXISTS (SELECT 1 FROM compatible) AS compatible_found
@@ -2075,6 +2175,9 @@ async function restoreSessionExerciseVersion(
     id: String(row.id),
     changed: true,
     versionId: String(row.version_id),
+    ...(row.result_history_revision == null
+      ? {}
+      : { historyRevision: Number(row.result_history_revision) }),
   };
 }
 

@@ -22,7 +22,7 @@ import {
 } from "../helpers/database";
 
 const PRODUCTION_MIGRATION = "0018_brave_timeslip";
-const LATEST_MIGRATION = "0079_active_workout_duration_evidence";
+const LATEST_MIGRATION = "0080_session_equipment_requirements_snapshot";
 
 const previewBoundaries = [
   {
@@ -980,7 +980,7 @@ describe("current production schema upgrade", () => {
     });
     expect(backup).toMatchObject({
       format: "workout-tracker-canonical-backup",
-      schemaVersion: "31",
+      schemaVersion: "32",
       recordCounts: {
         users: 1,
         user_profiles: 1,

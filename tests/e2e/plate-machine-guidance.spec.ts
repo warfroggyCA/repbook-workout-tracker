@@ -252,7 +252,9 @@ test("shows live plates per side without changing total-load meaning", async ({
   });
   await waitForHydratedReactHandler(resumeWorkout);
   await resumeWorkout.click();
-  await expect(page).toHaveURL(/\/session\/[0-9a-f-]+$/);
+  await expect(page).toHaveURL(
+    /\/session\/[0-9a-f-]+(?:#set-entry-[0-9a-f-]+-[0-9a-f-]+)?$/,
+  );
   const currentCard = page.getByTestId("current-exercise-card");
   await expect(currentCard).toContainText("Plate-Loaded Lat Pulldown");
   await waitForEquipmentSelectionsToSettle(page);

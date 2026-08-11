@@ -136,9 +136,12 @@ export async function waitForEquipmentSelectionsToSettle(page: Page) {
   await expect
     .poll(
       async () => {
-        const regions = page.getByRole("region", {
-          name: "Workout equipment setup",
-        });
+        // Exact future-exercise setup remains mounted inside a closed native
+        // disclosure so its durable automatic selection can settle without
+        // lengthening the initial workout surface.
+        const regions = page.locator(
+          'section[aria-label^="Equipment setup for "]',
+        );
         if ((await regions.count()) === 0) return false;
         const texts = await regions.allTextContents();
         return texts.every(

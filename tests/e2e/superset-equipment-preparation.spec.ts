@@ -1,8 +1,10 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
+import { resolve } from "node:path";
 import {
   installNextDevelopmentRefreshControl,
   openNativeDetails,
   waitForEquipmentSelectionsToSettle,
+  waitForHydratedReactHandler,
   waitForHydratedServerAction,
 } from "../helpers/react-readiness";
 import {
@@ -93,6 +95,171 @@ async function expectNoHorizontalOverflow(page: Page) {
     )
     .toBeLessThanOrEqual(1);
 }
+
+async function chooseFontSize(
+  page: Page,
+  name: RegExp,
+  key: string,
+  returnUrl = "/today",
+) {
+  await page.goto("/settings");
+  const choice = page.getByRole("radio", { name });
+  await waitForHydratedReactHandler(choice);
+  await choice.click();
+  await expect(choice).toHaveAttribute("aria-checked", "true");
+  await expect(
+    page.getByText("Saved to your profile.", { exact: true }),
+  ).toBeVisible();
+  await expect.poll(() =>
+    page.evaluate(() => document.documentElement.dataset.fontSize),
+  ).toBe(key);
+  await page.goto(returnUrl);
+}
+
+test("puts truthful saved-equipment preparation before warm-up at phone sizes", async ({
+  page,
+}, testInfo) => {
+  await signIn(page);
+  await chooseFontSize(page, /^Default/, "default");
+  await startDayA(page);
+
+  const preparation = page.getByTestId("session-preparation-panel");
+  const warmup = page.locator("#workout-warmup");
+  const sticky = page.getByTestId("active-workout-sticky-summary");
+  await expect(preparation).toBeVisible();
+  await expect(preparation).toContainText("Before warm-up");
+  await expect(preparation).toContainText("Prepare workout");
+  await expect(preparation).toContainText("In saved equipment");
+  await expect(preparation.locator("li")).not.toHaveCount(0);
+  await expect(preparation).not.toContainText(/\b\d+(?:\.\d+)?\s*(?:lb|kg)\b/i);
+  await expect(preparation.getByRole("checkbox")).toHaveCount(0);
+  await expect
+    .poll(() => preparation.evaluate((element) => {
+      const warmupElement = document.querySelector("#workout-warmup");
+      return warmupElement != null && Boolean(
+        element.compareDocumentPosition(warmupElement) &
+          Node.DOCUMENT_POSITION_FOLLOWING,
+      );
+    }))
+    .toBe(true);
+  await expect
+    .poll(() => sticky.evaluate((element) =>
+      element.nextElementSibling?.getAttribute("data-testid"),
+    ))
+    .toBe("session-preparation-panel");
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await preparation.scrollIntoViewIfNeeded();
+  const defaultGeometry = await preparation.evaluate((element) => {
+    const box = element.getBoundingClientRect();
+    const continueLink = element.querySelector("a");
+    const continueBox = continueLink?.getBoundingClientRect() ?? null;
+    return {
+      height: box.height,
+      left: box.left,
+      right: box.right,
+      viewportWidth: window.innerWidth,
+      rootFontSize: Number.parseFloat(
+        getComputedStyle(document.documentElement).fontSize,
+      ),
+      continueWidth: continueBox?.width ?? 0,
+      continueHeight: continueBox?.height ?? 0,
+    };
+  });
+  expect(defaultGeometry.height).toBeLessThanOrEqual(460);
+  expect(defaultGeometry.left).toBeGreaterThanOrEqual(0);
+  expect(defaultGeometry.right).toBeLessThanOrEqual(
+    defaultGeometry.viewportWidth + 1,
+  );
+  expect(defaultGeometry.rootFontSize).toBeCloseTo(18.4, 1);
+  expect(defaultGeometry.continueWidth).toBeGreaterThanOrEqual(44);
+  expect(defaultGeometry.continueHeight).toBeGreaterThanOrEqual(44);
+  await expectNoHorizontalOverflow(page);
+  await page.screenshot({
+    path: resolve(
+      "output/playwright/superset-prep",
+      `${testInfo.project.name}-preparation-390-default.png`,
+    ),
+    fullPage: true,
+  });
+
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await expect(page.getByTestId("session-preparation-panel")).toBeVisible();
+  await expect(page.getByTestId("session-preparation-panel")).toContainText(
+    "Before warm-up",
+  );
+
+  const activeWorkoutUrl = page.url();
+  await chooseFontSize(
+    page,
+    /^Extra large/,
+    "extra-large",
+    activeWorkoutUrl,
+  );
+  await expect(page.getByTestId("session-preparation-panel")).toBeVisible();
+  await page.setViewportSize({ width: 320, height: 700 });
+  await expect
+    .poll(() => page.evaluate(() =>
+      Number.parseFloat(getComputedStyle(document.documentElement).fontSize),
+    ))
+    .toBeCloseTo(23.2, 1);
+  await expectNoHorizontalOverflow(page);
+  await expect(warmup).toContainText(
+    "A checkable warm-up sequence is not available yet.",
+  );
+  const continueLink = page
+    .getByTestId("session-preparation-panel")
+    .getByRole("link", { name: "Go to first exercise", exact: true });
+  const continueTarget = (await continueLink.getAttribute("href"))?.slice(1);
+  expect(continueTarget).toMatch(/^set-entry-/);
+  const continueBox = await continueLink.boundingBox();
+  expect(continueBox?.width ?? 0).toBeGreaterThanOrEqual(44);
+  expect(continueBox?.height ?? 0).toBeGreaterThanOrEqual(44);
+  await page.screenshot({
+    path: resolve(
+      "output/playwright/superset-prep",
+      `${testInfo.project.name}-preparation-320-xl.png`,
+    ),
+    fullPage: true,
+  });
+
+  await continueLink.focus();
+  await page.keyboard.press("Enter");
+  await expect
+    .poll(() => page.evaluate((targetId) => {
+      return document.activeElement?.closest(
+        `#${CSS.escape(targetId)}`,
+      ) != null;
+    }, continueTarget!))
+    .toBe(true);
+  await expect(page).toHaveURL(/#set-entry-/);
+
+  const currentCard = page.getByTestId("current-exercise-card");
+  await currentCard
+    .getByRole("button", { name: "Log set", exact: true })
+    .click();
+  const receipt = page.getByTestId("active-set-save-receipt");
+  await expect(receipt).toHaveCount(1);
+  await expect(receipt).toContainText("Acknowledged by Repbook");
+  await expect(page.getByTestId("active-workout-sticky-summary")).toContainText(
+    "1/13 planned",
+  );
+  await page.reload({ waitUntil: "networkidle" });
+  const collapsedPreparation = page.locator(
+    'details[data-testid="session-preparation-panel"]',
+  );
+  await expect(collapsedPreparation).toBeVisible();
+  await expect(collapsedPreparation).not.toHaveAttribute("open", "");
+  await expect(collapsedPreparation).toContainText("Workout equipment");
+
+  const showCurrent = page.getByRole("complementary", {
+    name: "Workout status",
+  }).getByRole("button").first();
+  await expect(showCurrent).toBeVisible();
+  await expect(showCurrent).toContainText(/Set 2 of 3|Resting/);
+
+  await discardWorkout(page);
+});
 
 async function expectReachableGroupSurface(
   page: Page,
