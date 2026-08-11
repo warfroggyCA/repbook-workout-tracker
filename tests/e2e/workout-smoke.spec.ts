@@ -1905,7 +1905,16 @@ test("keeps every active-workout route reachable with one scroll surface", async
     .locator('input[inputmode="numeric"]')
     .inputValue();
   await page.reload();
-  const refreshedCard = page.locator('[id^="exercise-"]').first();
+  await expect(
+    page.getByTestId("current-exercise-card").getByRole("heading", { level: 2 }),
+  ).not.toHaveText(plannedExerciseName);
+  const refreshedCard = page.getByRole("region", {
+    name: plannedExerciseName,
+  });
+  const refreshedCardToggle = refreshedCard.locator(":scope > button");
+  await expect(refreshedCardToggle).toHaveAttribute("aria-expanded", "false");
+  await refreshedCardToggle.click();
+  await expect(refreshedCardToggle).toHaveAttribute("aria-expanded", "true");
   await expect(refreshedCard.getByTestId("added-set-entry")).toContainText(
     "Extra set 1 · Added to this workout",
   );
