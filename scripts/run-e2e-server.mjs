@@ -27,6 +27,7 @@ const v2H04Pain = process.argv.includes("--v2-h04-pain-consistency");
 const v2H05Review = process.argv.includes("--v2-h05-evidence-linked-review");
 const v2GauntletBLiveWorkout = process.argv.includes("--v2-gauntlet-b-live-workout");
 const v2A01AnalysisPackage = process.argv.includes("--v2-a01-analysis-package");
+const pii01bEquipmentFit = process.argv.includes("--pii01b-equipment-fit");
 const port = Number.parseInt(process.env.E2E_PORT ?? "3100", 10);
 if (!Number.isInteger(port) || port < 1024 || port > 65535) {
   throw new Error("E2E_PORT must be an integer from 1024 through 65535.");
@@ -160,7 +161,7 @@ const environment = {
       ? "ba.iphone.e2e@example.com"
       : baRoutineChange
         ? "ba.routine-change.e2e@example.com"
-        : "owner@example.com,second.e2e@example.com,program-page.e2e@example.com,today-empty.e2e@example.com,history-calendar.e2e@example.com,history-workspace-sparse.e2e@example.com,review-decisions.e2e@example.com,equipment-onboarding.e2e@example.com",
+        : "owner@example.com,second.e2e@example.com,program-page.e2e@example.com,today-empty.e2e@example.com,history-calendar.e2e@example.com,history-workspace-sparse.e2e@example.com,review-decisions.e2e@example.com,equipment-onboarding.e2e@example.com,pii01b.setup@example.com",
   AUTH_SECRET: "local-e2e-secret-not-used-outside-this-process",
   AUTH_TRUST_HOST: "true",
   BA_FIXTURE_MODE: baFixture || baRoutineChange || baCalendar || v2GauntletBLiveWorkout ? "1" : "",
@@ -273,6 +274,8 @@ const fixtures = v2A01AnalysisPackage
           ? [{ label: "Stage 6 simulation equipment", script: "tests/helpers/seed-stage6-simulation-equipment.ts" }]
           : []),
       ]
+  : pii01bEquipmentFit
+  ? [{ label: "PII-01B setup review", script: "tests/helpers/seed-pii01b-setup-review.ts" }]
   : [
       ...(stage7Ux
         ? [{ label: "Stage 7 UX", script: "tests/helpers/seed-stage7-ux.ts" }]

@@ -331,7 +331,14 @@ export function RoutineImport({
   const compatibleDiscoveryLibrary = useMemo(
     () =>
       (parsed?.library ?? [])
-        .filter((exercise) => exercise.available)
+        .filter(
+          (exercise) =>
+            exercise.available
+            && (
+              exercise.equipmentFitStatus === "compatible"
+              || exercise.equipmentFitStatus === "not_required"
+            ),
+        )
         .map((exercise) =>
           exerciseDiscoveryItemFromLibrary(exercise, {
             media: exercise.media ?? null,
@@ -645,6 +652,7 @@ export function RoutineImport({
         stageDigest: parsed.stageDigest,
         baseProgramVersionId: parsed.baseProgramVersionId,
         equipmentFitReviewed: true,
+        equipmentFitReviewRevision: parsed.equipmentFitReviewRevision,
         programName: programName.trim(),
         days: days
           .map((day) => ({
@@ -964,9 +972,9 @@ export function RoutineImport({
                       <>
                         {row.unsupportedPerSetReps && <p role="alert" className="mt-3 rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-xs leading-5 text-destructive">Authored set targets: {row.unsupportedPerSetReps.join(" / ")}. Repbook cannot store different rep targets for individual sets in a Program without changing their meaning. Discard this review, rewrite the exercise as one exact target or range, and parse it again.</p>}
                         {(mapping?.candidates.length ?? 0) > 0 && (
-                          <label className="mt-3 block text-xs font-medium">Suggested compatible match<select aria-label={`${day.name || `Day ${dayIndex + 1}`}, ${row.rawName}, suggested compatible match`} className="mt-1 h-11 w-full rounded-lg border border-input bg-background px-3 text-sm" value={row.exerciseId ?? ""} onChange={(event) => updateRow(dayIndex, rowIndex, { exerciseId: event.target.value || null })}><option value="">Choose a match</option>{mapping!.candidates.map((candidate) => { const option = libraryById.get(candidate.id); return <option key={candidate.id} value={candidate.id} disabled={!option?.available}>{candidate.name}{candidate.why ? ` — ${candidate.why}` : ""}{option && !option.available ? " — unavailable" : ""}</option>; })}</select></label>
+                          <label className="mt-3 block text-xs font-medium">Suggested compatible match<select aria-label={`${day.name || `Day ${dayIndex + 1}`}, ${row.rawName}, suggested compatible match`} className="mt-1 h-11 w-full rounded-lg border border-input bg-background px-3 text-sm" value={row.exerciseId ?? ""} onChange={(event) => updateRow(dayIndex, rowIndex, { exerciseId: event.target.value || null })}><option value="">Choose a match</option>{mapping!.candidates.map((candidate) => { const option = libraryById.get(candidate.id); const proven = option?.equipmentFitStatus === "compatible" || option?.equipmentFitStatus === "not_required"; return <option key={candidate.id} value={candidate.id} disabled={!option?.available || !proven}>{candidate.name}{candidate.why ? ` — ${candidate.why}` : ""}{option && !option.available ? " — unavailable" : option && !proven ? " — equipment review required" : ""}</option>; })}</select></label>
                         )}
-                        <div className="mt-3"><ExercisePicker items={compatibleDiscoveryLibrary} selectedId={row.exerciseId} triggerLabel={chosen ? `${day.name || `Day ${dayIndex + 1}`}: change ${chosen.name}` : `${day.name || `Day ${dayIndex + 1}`}: browse compatible exercises for ${row.rawName}`} title={`Match “${row.rawName}”`} description="Only choices that pass current inventory-category and movement-constraint checks are selectable here. You still confirm the exact physical setup below." confirmLabel="Use this match" onSelect={(exercise) => updateRow(dayIndex, rowIndex, { exerciseId: exercise.id })} /></div>
+                        <div className="mt-3"><ExercisePicker items={compatibleDiscoveryLibrary} selectedId={row.exerciseId} triggerLabel={chosen ? `${day.name || `Day ${dayIndex + 1}`}: change ${chosen.name}` : `${day.name || `Day ${dayIndex + 1}`}: browse compatible exercises for ${row.rawName}`} title={`Match “${row.rawName}”`} description="Only choices with current positive exact-pair evidence, current inventory, and permitted movement constraints are offered. Repbook never substitutes one automatically." confirmLabel="Use this match" onSelect={(exercise) => updateRow(dayIndex, rowIndex, { exerciseId: exercise.id })} /></div>
                         {chosen && !chosen.available && <p role="alert" className="mt-2 flex items-start gap-2 text-xs text-destructive"><AlertTriangle className="mt-0.5 size-4 shrink-0" />{chosen.name}: {chosen.unavailableReason ?? "not available"}. Replace or remove it.</p>}
                         <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
                           <label className="text-xs font-medium">Planned sets<Input aria-label={`${day.name || `Day ${dayIndex + 1}`}, ${row.rawName}, planned sets`} className="mt-1 min-h-11" type="number" inputMode="numeric" min={1} max={20} value={row.sets ?? ""} onChange={(event) => updateRow(dayIndex, rowIndex, { sets: nullableNumber(event.target.value) })} /></label>
@@ -1024,7 +1032,7 @@ export function RoutineImport({
         </p>
         <label className="mt-3 flex min-h-11 items-start gap-3 rounded-lg border bg-muted/30 p-3 text-sm">
           <input type="checkbox" className="mt-0.5 size-5 shrink-0" checked={equipmentFitReviewed} onChange={(event) => setEquipmentFitReviewed(event.target.checked)} />
-          <span><span className="font-medium">I confirmed every retained exercise works with my exact equipment setup.</span><span className="mt-1 block text-xs leading-5 text-muted-foreground">This blocks the import from guessing. This check applies only to this review; Repbook does not yet remember setup-specific incompatibilities for future recommendations.</span></span>
+          <span><span className="font-medium">I confirmed every retained exercise works with my exact equipment setup.</span><span className="mt-1 block text-xs leading-5 text-muted-foreground">This blocks the import from guessing and applies only to this publication. Repbook remembers an exact pair only when you record it in Equipment settings; this check never creates or changes that retained evidence.</span></span>
         </label>
       </section>
 

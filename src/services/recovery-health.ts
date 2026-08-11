@@ -109,6 +109,51 @@ export async function evaluateApplicationIntegrity(
       WHERE e.id IS NULL OR (e.user_id IS NOT NULL AND e.user_id <> ${userId}::uuid)
 
       UNION ALL
+      SELECT
+        'exercise_equipment_fit_assertion.integrity',
+        'error',
+        'exercise_equipment_fit_assertion',
+        assertion.id::text,
+        'An exercise-equipment fit assertion has invalid ownership, references, or reviewed meaning.',
+        jsonb_build_object(
+          'verdict', assertion.verdict,
+          'reasonCode', assertion.reason_code,
+          'provenance', assertion.provenance,
+          'semanticsVersion', assertion.semantics_version,
+          'evidenceRevisionValid', assertion.evidence_revision ~ '^[0-9a-f]{32}$',
+          'revision', assertion.revision
+        )
+      FROM exercise_equipment_fit_assertions assertion
+      LEFT JOIN exercises exercise ON exercise.id = assertion.exercise_id
+      LEFT JOIN equipment_items item ON item.id = assertion.equipment_item_id
+      WHERE assertion.user_id = ${userId}::uuid
+        AND (
+          exercise.id IS NULL
+          OR (exercise.user_id IS NOT NULL AND exercise.user_id <> assertion.user_id)
+          OR item.id IS NULL
+          OR item.user_id <> assertion.user_id
+          OR assertion.verdict NOT IN ('compatible', 'incompatible')
+          OR assertion.reason_code NOT IN (
+            'owner_verified', 'geometry_limit', 'missing_capability',
+            'attachment_limit', 'range_of_motion_limit', 'space_limit',
+            'safety_constraint', 'other'
+          )
+          OR (assertion.verdict = 'compatible' AND assertion.reason_code <> 'owner_verified')
+          OR (assertion.verdict = 'incompatible' AND assertion.reason_code = 'owner_verified')
+          OR (assertion.reason_code = 'other' AND assertion.reason_note IS NULL)
+          OR (
+            assertion.reason_note IS NOT NULL
+            AND length(btrim(assertion.reason_note)) NOT BETWEEN 1 AND 500
+          )
+          OR assertion.provenance <> 'owner_review'
+          OR assertion.semantics_version <> 1
+          OR assertion.evidence_revision !~ '^[0-9a-f]{32}$'
+          OR assertion.revision < 1
+          OR assertion.created_at > assertion.updated_at
+          OR assertion.reviewed_at > assertion.updated_at
+        )
+
+      UNION ALL
       SELECT 'workout_session.start_request_identity', 'error', 'workout_session', ws.id::text,
         'A workout has incomplete, malformed, or reused Start request identity.',
         jsonb_build_object(

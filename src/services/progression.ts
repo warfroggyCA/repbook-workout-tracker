@@ -58,6 +58,11 @@ import {
   PROGRESSION_REVIEW_SOURCE_VERSION,
   withRecommendationReviewEvidence,
 } from "@/lib/review-evidence";
+import { isExerciseEquipmentFitRecommendationSafe } from "@/lib/exercise-equipment-fit";
+import {
+  loadExerciseEquipmentFitSettings,
+  resolveExerciseEquipmentFitFromSettings,
+} from "@/services/exercise-equipment-fit";
 
 type LoadSteppers = {
   nextLoadUp: (current: number) => number | null;
@@ -564,6 +569,11 @@ export async function evaluateSessionProgression(
       with: { equipmentRequirements: true },
     }),
   ]);
+  const alternativeFitSettings = await loadExerciseEquipmentFitSettings(
+    db,
+    userId,
+    alternatives.map((exercise) => exercise.id),
+  );
   const availabilityInventory = buildEquipmentAvailability(equipment, plates);
   observeRead?.({ stage: "bars", rows: bars.length });
   observeRead?.({ stage: "plates", rows: plates.length });
@@ -757,6 +767,14 @@ export async function evaluateSessionProgression(
           c.id !== se.exercise.id &&
           (c.userId == null || c.userId === userId) &&
           exerciseIsAvailable(c.equipmentRequirements, availabilityInventory) &&
+          isExerciseEquipmentFitRecommendationSafe(
+            resolveExerciseEquipmentFitFromSettings({
+              exerciseId: c.id,
+              requirements: c.equipmentRequirements,
+              equipmentItems: equipment,
+              settings: alternativeFitSettings,
+            }),
+          ) &&
           isPatternAllowedForSuggestions(c.movementPattern, userConstraints)
       );
       legal.sort((a, b) => {

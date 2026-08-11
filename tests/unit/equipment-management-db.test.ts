@@ -29,6 +29,7 @@ import {
   previewInventoryDocumentChanges,
 } from "@/services/equipment-inventory";
 import { activateProgramAtomically } from "@/services/program-activation";
+import { saveExerciseEquipmentFitAssertion } from "@/services/exercise-equipment-fit-management";
 import {
   EQUIPMENT_TYPE_VALUES,
   validateEquipmentInventoryDocument,
@@ -721,7 +722,7 @@ describe("returning-user equipment management boundary", () => {
         { exerciseId: benchExercise.id, equipmentType: "bench", minWeight: null },
         { exerciseId: benchExercise.id, equipmentType: "dumbbell", minWeight: null },
       ]);
-      await db.insert(equipmentItems).values([
+      const insertedItems = await db.insert(equipmentItems).values([
         { userId, type: "cable", label: "Cable stack", quantity: 1, attrs: {}, available: true },
         {
           userId,
@@ -731,7 +732,18 @@ describe("returning-user equipment management boundary", () => {
           attrs: { unit: "lb", maxWeight: 50, adjustable: false, pair: true },
           available: true,
         },
-      ]);
+      ]).returning();
+      const cableItemForReview = insertedItems.find((item) => item.type === "cable")!;
+      expect(await saveExerciseEquipmentFitAssertion(db, userId, {
+        mutationId: crypto.randomUUID(),
+        assertionId: null,
+        exerciseId: cableExercise.id,
+        equipmentItemId: cableItemForReview.id,
+        verdict: "compatible",
+        reasonCode: "owner_verified",
+        reasonNote: null,
+        expectedRevision: null,
+      })).toMatchObject({ ok: true, changed: true });
       const activated = await activateProgramAtomically(db, {
         userId,
         loadUnit: "lb",

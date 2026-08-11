@@ -51,7 +51,10 @@ import {
 } from "@/engine/equipment-filter";
 import { isPatternAllowedForSuggestions } from "@/engine/constraint-filter";
 import { createAutomaticSafetySnapshot } from "@/services/snapshots";
-import { activateProgramAtomically } from "@/services/program-activation";
+import {
+  activateProgramAtomically,
+  REVIEWED_EQUIPMENT_FIT_STALE_REASON,
+} from "@/services/program-activation";
 import { getApprovedExerciseMedia } from "@/services/exercise-media";
 import {
   rawDataExpiresAt,
@@ -77,6 +80,11 @@ import { canonicalJson } from "@/services/snapshot-crypto";
 import { runExpensiveOperation } from "@/services/expensive-operations";
 import { resultRows } from "@/db/result";
 import { isProgramTextImportEnabled } from "@/lib/program-text-import-feature";
+import {
+  loadExerciseEquipmentFitSettings,
+  resolveExerciseEquipmentFitFromSettings,
+} from "@/services/exercise-equipment-fit";
+import { loadOwnerEquipmentFitReviewRevision } from "@/services/equipment-fit-review-revision";
 
 export type RoutineParseResponse =
   | {
@@ -91,6 +99,8 @@ export type RoutineParseResponse =
       stageDigest: string;
       /** Active Program version observed when parsing began; null means none. */
       baseProgramVersionId: string | null;
+      /** Complete equipment-fit semantics shown for the one-publication review. */
+      equipmentFitReviewRevision: string;
     }
   | { ok: false; reason: string };
 
@@ -110,7 +120,13 @@ async function routineParseSuccess(
   importEventId: string,
   payload: NonNullable<ReturnType<typeof readRoutineImportStagePayload>>,
 ): Promise<Extract<RoutineParseResponse, { ok: true }>> {
-  const library = await getLibraryWithAvailability(db, userId);
+  const [library, equipmentFitReviewRevision] = await Promise.all([
+    getLibraryWithAvailability(db, userId),
+    loadOwnerEquipmentFitReviewRevision(db, userId),
+  ]);
+  if (!equipmentFitReviewRevision) {
+    throw new Error("The equipment-fit evidence could not be loaded for review.");
+  }
   const mediaByExercise = await getApprovedExerciseMedia(db, library);
   return {
     ok: true,
@@ -123,6 +139,7 @@ async function routineParseSuccess(
     })),
     stageDigest: payload.stageDigest,
     baseProgramVersionId: payload.baseProgramVersionId,
+    equipmentFitReviewRevision,
   };
 }
 
@@ -726,6 +743,7 @@ const confirmSchema = z
     stageDigest: z.string().regex(/^[a-f0-9]{64}$/u),
     baseProgramVersionId: z.string().uuid().nullable(),
     equipmentFitReviewed: z.literal(true),
+    equipmentFitReviewRevision: z.string().regex(/^[a-f0-9]{32}$/u),
     programName: z.string().trim().min(1).max(120),
     days: z.array(confirmDaySchema).min(1).max(PROGRAM_INPUT_MAX_DAYS),
   })
@@ -888,7 +906,7 @@ export async function confirmImport(
   const exerciseIds = [
     ...new Set(parsed.days.flatMap((d) => d.exercises.map((e) => e.exerciseId))),
   ];
-  const [exerciseRows, equipmentRows, plateRows, constraintRows] = await Promise.all([
+  const [exerciseRows, equipmentRows, plateRows, constraintRows, currentFitReviewRevision] = await Promise.all([
     db.query.exercises.findMany({
       where: (t, { inArray }) => inArray(t.id, exerciseIds),
       with: { equipmentRequirements: true },
@@ -903,9 +921,27 @@ export async function confirmImport(
     db.query.constraints.findMany({
       where: eq(constraints.userId, user.id),
     }),
+    loadOwnerEquipmentFitReviewRevision(db, user.id),
   ]);
+  if (!currentFitReviewRevision) {
+    return { ok: false, reason: "Reload this import before publishing." };
+  }
+  if (currentFitReviewRevision !== parsed.equipmentFitReviewRevision) {
+    return {
+      ok: false,
+      reason: REVIEWED_EQUIPMENT_FIT_STALE_REASON,
+    };
+  }
   const inventory = buildEquipmentAvailability(equipmentRows, plateRows);
   const exerciseById = new Map(exerciseRows.map((e) => [e.id, e]));
+  // Re-read durable stable-ID fit evidence immediately before publication.
+  // The PII-01A review checkbox may resolve unknown for this publication only;
+  // it cannot override current incompatible or missing evidence.
+  const fitSettings = await loadExerciseEquipmentFitSettings(
+    db,
+    user.id,
+    exerciseIds,
+  );
   for (const id of exerciseIds) {
     const ex = exerciseById.get(id);
     if (!ex || (ex.userId != null && ex.userId !== user.id)) {
@@ -924,6 +960,21 @@ export async function confirmImport(
       return {
         ok: false,
         reason: `${ex.name} is blocked by your current movement constraints. Substitute or remove it.`,
+      };
+    }
+    const equipmentFit = resolveExerciseEquipmentFitFromSettings({
+      exerciseId: ex.id,
+      requirements: ex.equipmentRequirements,
+      equipmentItems: equipmentRows,
+      settings: fitSettings,
+    });
+    if (
+      equipmentFit.status === "incompatible"
+      || equipmentFit.status === "missing"
+    ) {
+      return {
+        ok: false,
+        reason: `${ex.name} cannot be published from this review: ${equipmentFit.reason} Record or change the exact equipment fit in Equipment settings, then review this staged import again.`,
       };
     }
   }
@@ -982,6 +1033,11 @@ export async function confirmImport(
     confirmedPayload: parsed,
     expectedCurrentProgramVersionId: parsed.baseProgramVersionId,
     structuredIntentReviewed: true,
+    // program-input/1 already requires the literal one-time exact-fit review.
+    // Durable unknown may use that review for this publication only; it never
+    // creates or relabels a retained exercise/item assertion.
+    allowReviewedUnknownEquipmentFit: true,
+    expectedEquipmentFitReviewRevision: parsed.equipmentFitReviewRevision,
   });
   if (!activated.ok) {
     // Two identical deliveries can both finish validation before activation

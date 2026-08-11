@@ -20,6 +20,7 @@ describe("equipment exact-profile review", () => {
           impact: {
             exercisesBecomingUnavailable: [], exercisesBecomingAvailable: [],
             affectedProgramSlots: [],
+            fitReviewsRequiringReview: [],
           },
           requiresConfirmation: true,
           noChanges: false,

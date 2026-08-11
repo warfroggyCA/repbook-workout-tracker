@@ -1,9 +1,9 @@
 import Link from "next/link";
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray, notInArray } from "drizzle-orm";
 import { getDb } from "@/db";
 import {
   constraints as constraintsTable,
-  equipmentItems,
+  exerciseEquipmentRequirements,
 } from "@/db/schema";
 import { getCurrentUser } from "@/lib/user";
 import { GOALS, PATTERN_LABELS } from "@/lib/setup-steps";
@@ -13,6 +13,9 @@ import {
   createSuggestedDayIntent,
   createSuggestedSlotIntent,
 } from "@/lib/program-document";
+import { loadEquipmentInventoryDocument } from "@/services/equipment-inventory";
+import { createSetupEquipmentFitReviewToken } from "@/services/setup-equipment-fit-review";
+import { loadOwnerEquipmentFitReviewRevision } from "@/services/equipment-fit-review-revision";
 
 function Section({
   title,
@@ -42,18 +45,31 @@ export async function ReviewStep() {
   const db = await getDb();
   const profile = user.profile;
 
-  const [equipment, constraintRows] = await Promise.all([
-    db.query.equipmentItems.findMany({
-      where: and(
-        eq(equipmentItems.userId, user.id),
-        eq(equipmentItems.available, true)
-      ),
-    }),
+  const draft = profile.setupState.routineDraft;
+  const draftExerciseIds = [...new Set(
+    draft?.days.flatMap((day) => day.exercises.map((exercise) => exercise.exerciseId)) ?? [],
+  )];
+  const [inventory, constraintRows, itemFitRequirements, equipmentFitReviewRevision] = await Promise.all([
+    loadEquipmentInventoryDocument(db, user.id),
     db.query.constraints.findMany({
       where: eq(constraintsTable.userId, user.id),
     }),
+    draftExerciseIds.length === 0
+      ? Promise.resolve([])
+      : db.select({ exerciseId: exerciseEquipmentRequirements.exerciseId })
+        .from(exerciseEquipmentRequirements)
+        .where(and(
+          inArray(exerciseEquipmentRequirements.exerciseId, draftExerciseIds),
+          notInArray(exerciseEquipmentRequirements.equipmentType, ["bodyweight", "plates"]),
+        )),
+    loadOwnerEquipmentFitReviewRevision(db, user.id),
   ]);
-  const draft = profile.setupState.routineDraft;
+  if (!inventory || !equipmentFitReviewRevision) return null;
+  const equipment = inventory.document.items;
+  const equipmentFitReviewToken = createSetupEquipmentFitReviewToken({
+    routineDraft: draft,
+    equipmentFitReviewRevision,
+  });
   const goalLabels = profile.goals.map(
     (g) => GOALS.find((x) => x.id === g)?.label ?? g
   );
@@ -171,7 +187,11 @@ export async function ReviewStep() {
         </p>
       </Section>
 
-      <ActivateButton disabled={!draft?.days.length} />
+      <ActivateButton
+        disabled={!draft?.days.length}
+        requiresEquipmentFitReview={itemFitRequirements.length > 0}
+        equipmentFitReviewToken={equipmentFitReviewToken}
+      />
     </div>
   );
 }

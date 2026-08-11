@@ -11,7 +11,7 @@ import {
   validateEquipmentInventoryDocument,
 } from "@/lib/equipment-inventory-contract";
 import {
-  inventoryRevisionExpression,
+  inventoryRevisionAfterOwnerLockExpression,
   loadEquipmentInventoryDocument,
   validateBarDraftAgainstCurrent,
 } from "@/services/equipment-inventory";
@@ -187,7 +187,7 @@ async function executeInventorySave(
 
   const query = sql`
     WITH target_profile AS MATERIALIZED (
-      SELECT id, setup_state
+      SELECT id, user_id, setup_state
       FROM user_profiles
       WHERE user_id = ${userId}::uuid
       FOR UPDATE
@@ -200,7 +200,8 @@ async function executeInventorySave(
         AND confirmed = false
       FOR UPDATE
     ), current_revision AS MATERIALIZED (
-      SELECT ${inventoryRevisionExpression(userId)} AS revision
+      SELECT ${inventoryRevisionAfterOwnerLockExpression(sql`profile.user_id`)} AS revision
+      FROM target_profile profile
     ), equipment_input AS MATERIALIZED (
       SELECT * FROM jsonb_to_recordset(${JSON.stringify(equipmentInput)}::jsonb) AS x(
         input_id uuid, candidate_id uuid, requested_id uuid,

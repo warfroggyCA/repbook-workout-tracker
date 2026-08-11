@@ -19,6 +19,8 @@ import {
 } from "@/lib/program-document";
 import { runProgramPreflight } from "@/lib/program-preflight";
 import { loadProgramPreflightContext } from "@/services/program-preflight";
+import { exerciseEquipmentFitEvidenceRevisionExpression } from "@/services/exercise-equipment-fit-evidence";
+import { ownerEquipmentFitReviewRevisionExpression } from "@/services/equipment-fit-review-revision";
 
 export type ProgramActivationExercise = {
   lineageId?: string;
@@ -65,11 +67,22 @@ export type AtomicProgramActivationInput = {
   completeSetup?: boolean;
   /** True only when the immediately preceding user-facing review showed or edited the structured intent. */
   structuredIntentReviewed?: boolean;
+  /**
+   * A one-publication owner review may resolve durable unknown fit for this
+   * activation only. It never creates or relabels a retained fit assertion;
+   * missing equipment and current explicit incompatibility still block.
+   */
+  allowReviewedUnknownEquipmentFit?: boolean;
+  /** Atomic stale fence for all equipment-fit semantics shown in one review. */
+  expectedEquipmentFitReviewRevision?: string | null;
 };
 
 export type AtomicProgramActivationResult =
   | { ok: true; programId: string; programVersionId: string; replacedPrograms: number }
   | { ok: false; reason: string };
+
+export const REVIEWED_EQUIPMENT_FIT_STALE_REASON =
+  "Your equipment or retained movement compatibility changed after the final review. Nothing was published; reload this review and check the exact setup again.";
 
 /**
  * Build, activate, version the replaced program, confirm its source event,
@@ -88,6 +101,10 @@ export async function activateProgramAtomically(
   const intentDays: ProgramDocumentDay[] = [];
   const explicitIntentDays: ProgramDocumentDayV3[] = [];
   const structuredIntentReviewed = input.structuredIntentReviewed === true;
+  const allowReviewedUnknownEquipmentFit =
+    input.allowReviewedUnknownEquipmentFit === true;
+  const expectedEquipmentFitReviewRevision =
+    input.expectedEquipmentFitReviewRevision ?? null;
   const explicitIntentRequested = input.days.some(
     (day) =>
       day.lineageId !== undefined ||
@@ -405,7 +422,12 @@ export async function activateProgramAtomically(
       )
     : null;
   const blockingFinding = publicationPreflight?.findings.find(
-    (finding) => finding.severity === "blocking",
+    (finding) =>
+      finding.severity === "blocking"
+      && !(
+        allowReviewedUnknownEquipmentFit
+        && finding.code === "equipment_fit_unknown"
+      ),
   );
   if (blockingFinding) {
     return { ok: false, reason: blockingFinding.reason };
@@ -450,7 +472,7 @@ export async function activateProgramAtomically(
         target_load_unit unit
       )
     ), target_profile AS MATERIALIZED (
-      SELECT id, setup_state, setup_completed_at
+      SELECT id, user_id, setup_state, setup_completed_at
       FROM user_profiles
       WHERE user_id = ${input.userId}::uuid
       FOR UPDATE
@@ -486,6 +508,10 @@ export async function activateProgramAtomically(
           ${expectedSetupDraft === null}::boolean
           OR profile.setup_state->'routineDraft' = ${JSON.stringify(expectedSetupDraft)}::jsonb
         )
+        AND (
+          ${expectedEquipmentFitReviewRevision}::text IS NULL
+          OR ${ownerEquipmentFitReviewRevisionExpression(sql`profile.user_id`)} = ${expectedEquipmentFitReviewRevision}::text
+        )
         AND (SELECT count(*) FROM valid_ai_events) = ${aiEventIds.length}::int
         AND (
           ${!currentProgramExpectationProvided}::boolean
@@ -505,6 +531,90 @@ export async function activateProgramAtomically(
           LEFT JOIN exercises exercise ON exercise.id = slot.exercise_id
           WHERE exercise.id IS NULL
              OR (exercise.user_id IS NOT NULL AND exercise.user_id <> ${input.userId}::uuid)
+        )
+        AND NOT EXISTS (
+          SELECT 1
+          FROM slot_input slot
+          JOIN exercise_equipment_requirements requirement
+            ON requirement.exercise_id = slot.exercise_id
+          WHERE requirement.equipment_type <> 'bodyweight'::equipment_type
+            AND NOT EXISTS (
+              SELECT 1
+              WHERE (
+                requirement.equipment_type = 'plates'::equipment_type
+                AND EXISTS (
+                  SELECT 1 FROM plate_inventory plate
+                  WHERE plate.user_id = ${input.userId}::uuid
+                )
+              ) OR (
+                requirement.equipment_type <> 'plates'::equipment_type
+                AND EXISTS (
+                  SELECT 1
+                  FROM equipment_items item
+                  JOIN exercise_equipment_fit_assertions fit
+                    ON fit.user_id = item.user_id
+                   AND fit.exercise_id = slot.exercise_id
+                   AND fit.equipment_item_id = item.id
+                   AND fit.verdict = 'compatible'
+                   AND fit.reason_code = 'owner_verified'
+                   AND fit.provenance = 'owner_review'
+                   AND fit.semantics_version = 1
+                   AND fit.revision >= 1
+                   AND fit.evidence_revision = ${exerciseEquipmentFitEvidenceRevisionExpression(
+                     input.userId,
+                     sql`slot.exercise_id`,
+                     sql`item.id`,
+                   )}
+                  WHERE item.user_id = ${input.userId}::uuid
+                    AND item.available
+                    AND item.type = requirement.equipment_type
+                    AND (
+                      requirement.equipment_definition_id IS NULL
+                      OR item.definition_id = requirement.equipment_definition_id
+                    )
+                    AND (
+                      requirement.min_weight IS NULL
+                      OR COALESCE((item.attrs->>'maxWeight')::double precision, -1)
+                        >= requirement.min_weight
+                    )
+                )
+              ) OR (
+                ${allowReviewedUnknownEquipmentFit}::boolean
+                AND requirement.equipment_type <> 'plates'::equipment_type
+                AND EXISTS (
+                  SELECT 1
+                  FROM equipment_items item
+                  WHERE item.user_id = ${input.userId}::uuid
+                    AND item.available
+                    AND item.type = requirement.equipment_type
+                    AND (
+                      requirement.equipment_definition_id IS NULL
+                      OR item.definition_id = requirement.equipment_definition_id
+                    )
+                    AND (
+                      requirement.min_weight IS NULL
+                      OR COALESCE((item.attrs->>'maxWeight')::double precision, -1)
+                        >= requirement.min_weight
+                    )
+                    AND NOT EXISTS (
+                      SELECT 1
+                      FROM exercise_equipment_fit_assertions fit
+                      WHERE fit.user_id = item.user_id
+                        AND fit.exercise_id = slot.exercise_id
+                        AND fit.equipment_item_id = item.id
+                        AND fit.verdict = 'incompatible'
+                        AND fit.provenance = 'owner_review'
+                        AND fit.semantics_version = 1
+                        AND fit.revision >= 1
+                        AND fit.evidence_revision = ${exerciseEquipmentFitEvidenceRevisionExpression(
+                          input.userId,
+                          sql`slot.exercise_id`,
+                          sql`item.id`,
+                        )}
+                    )
+                )
+              )
+            )
         )
     ), new_program AS (
       INSERT INTO programs (id, user_id, name, status, current_version_id)
@@ -719,7 +829,13 @@ export async function activateProgramAtomically(
       (SELECT count(*)::int FROM updated_import) AS imports,
       (SELECT count(*)::int FROM updated_ai_events) AS ai_events,
       (SELECT count(*)::int FROM updated_profile) AS profiles,
-      (SELECT count(*)::int FROM inserted_audit) AS audits
+      (SELECT count(*)::int FROM inserted_audit) AS audits,
+      COALESCE((
+        SELECT
+          ${expectedEquipmentFitReviewRevision}::text IS NULL
+          OR ${ownerEquipmentFitReviewRevisionExpression(sql`profile.user_id`)} = ${expectedEquipmentFitReviewRevision}::text
+        FROM target_profile profile
+      ), false) AS equipment_fit_review_revision_matches
   `;
   const row = resultRows(await db.execute(query))[0];
   const expectedImportUpdates = importEventId ? 1 : 0;
@@ -738,6 +854,16 @@ export async function activateProgramAtomically(
     Number(row.profiles) !== expectedProfileUpdates ||
     Number(row.audits) !== 1
   ) {
+    if (
+      expectedEquipmentFitReviewRevision !== null
+      && row?.equipment_fit_review_revision_matches !== true
+      && row?.equipment_fit_review_revision_matches !== "t"
+    ) {
+      return {
+        ok: false,
+        reason: REVIEWED_EQUIPMENT_FIT_STALE_REASON,
+      };
+    }
     return {
       ok: false,
       reason: importEventId

@@ -250,11 +250,14 @@ describe("server-approved exercise alternative options", () => {
       available: false,
       unavailableReason: "Not close enough to the planned exercise for this workout",
     });
-    expect(byId.get(unavailable.id)?.available).toBe(true);
+    expect(byId.get(unavailable.id)).toMatchObject({
+      available: false,
+      equipmentFitStatus: "unknown",
+      unavailableReason: expect.stringContaining("owner-reviewed"),
+    });
 
     // This represents a drawer left open while equipment changes elsewhere.
-    // The confirmation path calls this service again, so retiring the cable
-    // makes the previously executable choice fail closed on the next read.
+    // It remains blocked and the next read exposes the now-missing candidate.
     await db
       .update(equipmentItems)
       .set({ available: false })

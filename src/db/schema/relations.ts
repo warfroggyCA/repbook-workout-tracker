@@ -12,6 +12,7 @@ import {
   cableAttachmentProfiles,
   cableAttachmentCompatibilities,
 } from "./equipment";
+import { exerciseEquipmentFitAssertions } from "./exercise-equipment-fit";
 import {
   exerciseFamilies,
   exercises,
@@ -69,6 +70,7 @@ export const usersRelations = relations(users, ({ one, many }) => ({
   }),
   constraints: many(constraints),
   equipmentItems: many(equipmentItems),
+  exerciseEquipmentFitAssertions: many(exerciseEquipmentFitAssertions),
   plateInventory: many(plateInventory),
   barbellConfigs: many(barbellConfigs),
   programs: many(programs),
@@ -256,7 +258,29 @@ export const exercisesRelations = relations(exercises, ({ one, many }) => ({
   mediaAssociations: many(exerciseMediaAssociations),
   externalMappings: many(externalExerciseMappings),
   equipmentRequirements: many(exerciseEquipmentRequirements),
+  equipmentFitAssertions: many(exerciseEquipmentFitAssertions),
 }));
+
+export const exerciseEquipmentFitAssertionsRelations = relations(
+  exerciseEquipmentFitAssertions,
+  ({ one }) => ({
+    user: one(users, {
+      fields: [exerciseEquipmentFitAssertions.userId],
+      references: [users.id],
+    }),
+    exercise: one(exercises, {
+      fields: [exerciseEquipmentFitAssertions.exerciseId],
+      references: [exercises.id],
+    }),
+    equipmentItem: one(equipmentItems, {
+      fields: [
+        exerciseEquipmentFitAssertions.equipmentItemId,
+        exerciseEquipmentFitAssertions.userId,
+      ],
+      references: [equipmentItems.id, equipmentItems.userId],
+    }),
+  }),
+);
 
 export const exerciseMediaAssetsRelations = relations(
   exerciseMediaAssets,
@@ -314,7 +338,7 @@ export const equipmentDefinitionsRelations = relations(
 
 export const equipmentItemsRelations = relations(
   equipmentItems,
-  ({ one }) => ({
+  ({ one, many }) => ({
     user: one(users, {
       fields: [equipmentItems.userId],
       references: [users.id],
@@ -323,6 +347,7 @@ export const equipmentItemsRelations = relations(
     machineProfile: one(plateLoadedMachineProfiles),
     cableProfile: one(cableMachineProfiles),
     attachmentProfile: one(cableAttachmentProfiles),
+    exerciseFitAssertions: many(exerciseEquipmentFitAssertions),
   }),
 );
 

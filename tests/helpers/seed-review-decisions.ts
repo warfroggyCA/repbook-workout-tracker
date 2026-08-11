@@ -1,5 +1,6 @@
-import { eq, inArray } from "drizzle-orm";
+import { eq, inArray, sql } from "drizzle-orm";
 import { getDb, type Db } from "@/db";
+import { resultRows } from "@/db/result";
 import {
   adaptationEvents,
   barbellConfigs,
@@ -31,6 +32,9 @@ import {
   withRecommendationReviewEvidence,
 } from "@/lib/review-evidence";
 import { PAIN_EVIDENCE_ALGORITHM_VERSION } from "@/lib/pain-evidence";
+import { saveExerciseEquipmentFitAssertion } from "@/services/exercise-equipment-fit-management";
+import { sessionEquipmentRequirementsSnapshotExpression } from "@/services/session-equipment-requirements";
+import { sessionEquipmentRequirementsSnapshotSchema } from "@/lib/session-equipment-requirements";
 
 export const REVIEW_DECISIONS_EMAIL = "review-decisions.e2e@example.com";
 
@@ -117,6 +121,64 @@ async function main() {
         quantity: 4,
       }))
     );
+    const retainedRequirementRows = resultRows(await tx.execute(sql`
+      SELECT
+        ${sessionEquipmentRequirementsSnapshotExpression(sql`${squat.id}::uuid`)}
+          AS squat_snapshot,
+        ${sessionEquipmentRequirementsSnapshotExpression(sql`${bench.id}::uuid`)}
+          AS bench_snapshot
+    `));
+    const retainedRequirements = retainedRequirementRows[0];
+    if (!retainedRequirements) {
+      throw new Error("The Review decision requirement evidence was not retained.");
+    }
+    const squatRequirements = sessionEquipmentRequirementsSnapshotSchema.parse(
+      retainedRequirements.squat_snapshot,
+    );
+    const benchRequirements = sessionEquipmentRequirementsSnapshotSchema.parse(
+      retainedRequirements.bench_snapshot,
+    );
+    const equipmentByType = new Map(
+      seededEquipment.map((equipment) => [equipment.type, equipment]),
+    );
+    for (const [exercise, requirements] of [
+      [squat, squatRequirements],
+      [bench, benchRequirements],
+    ] as const) {
+      for (const requirement of requirements.broad) {
+        if (
+          requirement.equipmentType === "bodyweight" ||
+          requirement.equipmentType === "plates"
+        ) {
+          continue;
+        }
+        const equipment = equipmentByType.get(requirement.equipmentType);
+        if (!equipment) {
+          throw new Error(
+            `The Review decision ${requirement.equipmentType} was not seeded.`,
+          );
+        }
+        const reviewedFit = await saveExerciseEquipmentFitAssertion(
+          tx,
+          user.id,
+          {
+            mutationId: crypto.randomUUID(),
+            assertionId: null,
+            exerciseId: exercise.id,
+            equipmentItemId: equipment.id,
+            verdict: "compatible",
+            reasonCode: "owner_verified",
+            reasonNote: "Synthetic Review fixture owner verified this exact setup.",
+            expectedRevision: null,
+          },
+        );
+        if (!reviewedFit.ok) {
+          throw new Error(
+            `The Review decision fit evidence was not retained (${reviewedFit.code}).`,
+          );
+        }
+      }
+    }
 
     const [program] = await tx
       .insert(programs)
@@ -220,6 +282,8 @@ async function main() {
             prescribedMetricType: squat.metricType,
             prescribedLoadType: squat.loadType,
             prescribedLoadSemantics: squat.loadSemantics,
+            equipmentRequirementsSemanticsVersion: 1,
+            equipmentRequirementsSnapshot: squatRequirements,
             plannedFromTemplateExerciseId: squatSlot.id,
             sourceSlotLineageId: squatSlot.lineageId,
             orderIdx: 0,
@@ -237,6 +301,8 @@ async function main() {
             prescribedMetricType: bench.metricType,
             prescribedLoadType: bench.loadType,
             prescribedLoadSemantics: bench.loadSemantics,
+            equipmentRequirementsSemanticsVersion: 1,
+            equipmentRequirementsSnapshot: benchRequirements,
             plannedFromTemplateExerciseId: benchSlot.id,
             sourceSlotLineageId: benchSlot.lineageId,
             orderIdx: 1,

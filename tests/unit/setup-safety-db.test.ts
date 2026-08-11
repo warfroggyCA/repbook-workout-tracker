@@ -11,6 +11,7 @@ import {
   barbellConfigs,
   constraints,
   equipmentItems,
+  exerciseEquipmentRequirements,
   exercises,
   importEvents,
   plateInventory,
@@ -31,6 +32,7 @@ import {
 import { activateProgramAtomically } from "@/services/program-activation";
 import { getOwnedProgramVersionDocument } from "@/services/program-documents";
 import { startWorkoutSession } from "@/services/session-lifecycle";
+import { loadOwnerEquipmentFitReviewRevision } from "@/services/equipment-fit-review-revision";
 
 function item(
   type: ConfirmedEquipmentItem["type"],
@@ -262,6 +264,18 @@ describe("setup overwrite safety", () => {
         loadType: "barbell",
       })
       .returning({ id: exercises.id });
+    await db.insert(exerciseEquipmentRequirements).values({
+      exerciseId: exercise.id,
+      equipmentType: "barbell",
+    });
+    await db.insert(equipmentItems).values({
+      userId,
+      type: "barbell",
+      label: "Guided-setup barbell",
+      quantity: 1,
+      attrs: { unit: "kg", maxWeight: 500 },
+      available: true,
+    });
     const [oldProgram] = await db
       .insert(programs)
       .values({ userId, name: "Old program", status: "archived", archivedAt: new Date() })
@@ -302,7 +316,9 @@ describe("setup overwrite safety", () => {
       .set({ setupState: { completedSteps: ["routine"], routineDraft: draft } })
       .where(eq(userProfiles.id, profileId));
 
-    const result = await activateProgramAtomically(db, {
+    const reviewedFitRevision = await loadOwnerEquipmentFitReviewRevision(db, userId);
+    expect(reviewedFitRevision).not.toBeNull();
+    const activationInput: Parameters<typeof activateProgramAtomically>[1] = {
       userId,
       loadUnit: "kg",
       programName: "My program",
@@ -329,6 +345,38 @@ describe("setup overwrite safety", () => {
       expectedSetupDraft: draft,
       completeSetup: true,
       structuredIntentReviewed: true,
+      allowReviewedUnknownEquipmentFit: false,
+    };
+    await expect(activateProgramAtomically(db, {
+      ...activationInput,
+      expectedEquipmentFitReviewRevision: "0".repeat(32),
+    })).resolves.toMatchObject({ ok: false });
+    await db.update(exerciseEquipmentRequirements)
+      .set({ minWeight: 100 })
+      .where(eq(exerciseEquipmentRequirements.exerciseId, exercise.id));
+    await expect(activateProgramAtomically(db, {
+      ...activationInput,
+      allowReviewedUnknownEquipmentFit: true,
+      expectedEquipmentFitReviewRevision: reviewedFitRevision!,
+    })).resolves.toMatchObject({
+      ok: false,
+      reason:
+        "Your equipment or retained movement compatibility changed after the final review. Nothing was published; reload this review and check the exact setup again.",
+    });
+    const refreshedFitRevision = await loadOwnerEquipmentFitReviewRevision(db, userId);
+    expect(refreshedFitRevision).not.toBe(reviewedFitRevision);
+    await expect(activateProgramAtomically(db, {
+      ...activationInput,
+      expectedEquipmentFitReviewRevision: refreshedFitRevision!,
+    })).resolves.toMatchObject({
+      ok: false,
+      reason:
+        "Saved equipment candidates exist, but no current owner-reviewed or exact stable-item fit proves that this exercise can use them.",
+    });
+    const result = await activateProgramAtomically(db, {
+      ...activationInput,
+      allowReviewedUnknownEquipmentFit: true,
+      expectedEquipmentFitReviewRevision: refreshedFitRevision!,
     });
     expect(result).toMatchObject({ ok: true, replacedPrograms: 0, programId: oldProgram.id });
     if (!result.ok) throw new Error(result.reason);

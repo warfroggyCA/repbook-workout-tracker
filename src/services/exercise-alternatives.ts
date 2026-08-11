@@ -8,6 +8,7 @@ import {
   type ExerciseAlternativeAnnotation,
 } from "@/lib/exercise-alternatives";
 import { getExerciseDiscoveryLibrary } from "@/services/exercise-discovery";
+import { isExerciseEquipmentFitRecommendationSafe } from "@/lib/exercise-equipment-fit";
 
 export type ExerciseAlternativeOptions = {
   currentExerciseId: string;
@@ -64,6 +65,8 @@ export async function getExerciseAlternativeOptions(
     const selectable =
       Boolean(candidate) &&
       item.available &&
+      Boolean(item.equipmentFit) &&
+      isExerciseEquipmentFitRecommendationSafe(item.equipmentFit!) &&
       trackingCompatible &&
       !isCurrent &&
       !isPlanned;
@@ -75,6 +78,9 @@ export async function getExerciseAlternativeOptions(
           ? "Not close enough to the planned exercise for this workout"
           : !trackingCompatible
             ? "Uses a different tracking method from the planned exercise"
+          : item.equipmentFit &&
+              !isExerciseEquipmentFitRecommendationSafe(item.equipmentFit)
+            ? item.equipmentFit.reason
           : item.unavailableReason;
     return {
       ...item,
@@ -97,6 +103,8 @@ export async function getExerciseAlternativeOptions(
       .filter(
         (candidate) =>
           candidate.item.available &&
+          Boolean(candidate.item.equipmentFit) &&
+          isExerciseEquipmentFitRecommendationSafe(candidate.item.equipmentFit!) &&
           candidate.item.metricType === planned.metricType
       )
       .map((candidate) => candidate.item.id),

@@ -92,6 +92,12 @@ function source(
             equipmentOptions: [],
             painGuidance: [],
             loadType: "dumbbell",
+            equipmentFit: {
+              semanticsVersion: 1,
+              status: "compatible",
+              reason: "Synthetic owner-reviewed compatible fit.",
+              equipmentItemIds: ["synthetic-item"],
+            },
           },
         ],
       },

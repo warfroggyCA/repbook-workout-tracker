@@ -431,7 +431,9 @@ test("keeps unrestricted replacement truthful and reachable through mobile keybo
   await returnToSearchResults(picker);
 
   await inspectSearchResult(picker, "Cable Face Pull");
-  await expect(picker).toContainText("Required equipment is unavailable");
+  await expect(picker).toContainText(
+    "No currently available saved equipment item satisfies this exercise requirement (cable).",
+  );
   await returnToSearchResults(picker);
 
   await inspectSearchResult(picker, "Bodyweight Bulgarian Split Squat");

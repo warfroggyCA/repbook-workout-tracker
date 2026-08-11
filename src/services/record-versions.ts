@@ -20,6 +20,7 @@ import {
 import type { NormalizedActivity } from "@/services/activities";
 import { historyRevisionLockSql } from "@/services/history-revision-lock";
 import { restoreWorkoutTimingVersion } from "@/services/workout-timing-corrections";
+import { exerciseEquipmentRequirementFitSatisfiedExpression } from "@/services/exercise-equipment-fit";
 
 export const VERSIONED_ENTITY_TYPES = [
   "health_activity",
@@ -32,6 +33,7 @@ export const VERSIONED_ENTITY_TYPES = [
   "constraint",
   "program",
   "external_exercise_mapping",
+  "exercise_equipment_fit_assertion",
   "user_profile",
 ] as const;
 
@@ -978,6 +980,22 @@ export async function updateSessionExerciseWithVersion(
           )
         )
         AND (candidate.next_target_load IS NULL) = (candidate.next_target_load_unit IS NULL)
+        AND (
+          NOT ${hasExerciseId}::boolean
+          OR candidate.next_exercise_id = candidate.exercise_id
+          OR NOT EXISTS (
+            SELECT 1
+            FROM exercise_equipment_requirements fit_requirement
+            WHERE fit_requirement.exercise_id = candidate.next_exercise_id
+              AND NOT ${exerciseEquipmentRequirementFitSatisfiedExpression({
+                userId,
+                exerciseId: sql`candidate.next_exercise_id`,
+                equipmentType: sql`fit_requirement.equipment_type`,
+                equipmentDefinitionId: sql`fit_requirement.equipment_definition_id`,
+                minWeight: sql`fit_requirement.min_weight`,
+              })}
+          )
+        )
         AND (
           NOT ${action === "session_exercise.skip"}::boolean
           OR NOT EXISTS (
@@ -1932,6 +1950,22 @@ async function restoreSessionExerciseVersion(
           OR NOT EXISTS (
             SELECT 1 FROM completed_sets cs
             WHERE cs.session_exercise_id = current.id
+          )
+        )
+        AND (
+          current.exercise_id = (version.before_data->>'exercise_id')::uuid
+          OR NOT EXISTS (
+            SELECT 1
+            FROM exercise_equipment_requirements fit_requirement
+            WHERE fit_requirement.exercise_id =
+                (version.before_data->>'exercise_id')::uuid
+              AND NOT ${exerciseEquipmentRequirementFitSatisfiedExpression({
+                userId,
+                exerciseId: sql`(version.before_data->>'exercise_id')::uuid`,
+                equipmentType: sql`fit_requirement.equipment_type`,
+                equipmentDefinitionId: sql`fit_requirement.equipment_definition_id`,
+                minWeight: sql`fit_requirement.min_weight`,
+              })}
           )
         )
         AND (

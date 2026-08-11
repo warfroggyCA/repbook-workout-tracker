@@ -34,6 +34,18 @@ const equipmentOptionSchema = z.object({
   guidance: z.string().max(1_000).nullable(),
 });
 
+const equipmentFitSchema = z.object({
+  semanticsVersion: z.literal(1),
+  status: z.enum(["compatible", "incompatible", "unknown", "missing", "not_required"]),
+  reason: z.string().min(1).max(1_000),
+  equipmentItemIds: z.array(sourceId).max(200),
+}).default({
+  semanticsVersion: 1,
+  status: "unknown",
+  reason: "This older simulation source has no retained stable-ID equipment-fit evidence.",
+  equipmentItemIds: [],
+});
+
 const referenceMediaSchema = z.object({
   thumbnailUrl: z.string().max(2_000).nullable().optional(),
   kind: z.enum(["image", "video"]).nullable().optional(),
@@ -57,6 +69,7 @@ const alternativeSchema = z.object({
   equipmentOptions: z.array(equipmentOptionSchema).max(100).optional(),
   painGuidance: z.array(z.string().min(1).max(1_000)).max(50).optional(),
   media: referenceMediaSchema.nullable().optional(),
+  equipmentFit: equipmentFitSchema,
 });
 
 const sourceExerciseSchema = z.object({
@@ -79,6 +92,7 @@ const sourceExerciseSchema = z.object({
   painGuidance: z.array(z.string().min(1).max(1_000)).max(50),
   media: referenceMediaSchema.nullable().optional(),
   loadType: z.string().min(1).max(100),
+  equipmentFit: equipmentFitSchema,
 }).refine((value) => (value.targetLoad == null) === (value.targetLoadUnit == null), {
   message: "A simulated target load and unit must be supplied together.",
   path: ["targetLoadUnit"],
@@ -120,6 +134,20 @@ export const simulationSourceSnapshotSchema = z.object({
 export type SimulationSourceSnapshot = z.infer<typeof simulationSourceSnapshotSchema>;
 export type SimulationSourceExercise = SimulationSourceSnapshot["days"][number]["exercises"][number];
 export type SimulationLoadUnit = z.infer<typeof loadUnitSchema>;
+
+function equipmentFitIsSafe(
+  status: SimulationSourceExercise["equipmentFit"]["status"],
+) {
+  return status === "compatible" || status === "not_required";
+}
+
+export function simulationDayEquipmentFitBlockers(
+  day: SimulationSourceSnapshot["days"][number],
+) {
+  return day.exercises.filter(
+    (exercise) => !equipmentFitIsSafe(exercise.equipmentFit.status),
+  );
+}
 
 const simulationExerciseSchema = z.object({
   id: simulationIdSchema,
@@ -325,6 +353,12 @@ export function startSimulationWorkout(workspace: SimulationWorkspace, dayIndex:
   if (workspace.activeWorkout) throw new Error("A simulated workout is already active.");
   const day = workspace.source.days[dayIndex];
   if (!day) throw new Error("That simulated Program day is unavailable.");
+  const equipmentFitBlockers = simulationDayEquipmentFitBlockers(day);
+  if (equipmentFitBlockers.length > 0) {
+    throw new Error(
+      `Simulation is blocked because ${equipmentFitBlockers[0].name} has no current compatible equipment fit. ${equipmentFitBlockers[0].equipmentFit.reason}`,
+    );
+  }
   const createId = dependencies.createId ?? defaultId;
   const updatedAtISO = now(dependencies);
   const workoutId = prefixedId("workout", createId);
@@ -549,6 +583,9 @@ export function substituteSimulationExercise(workspace: SimulationWorkspace, exe
   const { next } = updateExercise(workspace, exerciseId, updatedAtISO, (exercise, workout) => {
     const alternative = exercise.alternatives.find((item) => item.exerciseId === alternativeExerciseId);
     if (!alternative) throw new Error("That simulation alternative is unavailable.");
+    if (!equipmentFitIsSafe(alternative.equipmentFit.status)) {
+      throw new Error("That simulation alternative has no current compatible equipment fit.");
+    }
     if (workout.sets.some((set) => set.simulationExerciseId === exerciseId)) throw new Error("A simulated exercise cannot be substituted after a set is completed.");
     const equipmentOptions = alternative.equipmentOptions ?? [];
     return {

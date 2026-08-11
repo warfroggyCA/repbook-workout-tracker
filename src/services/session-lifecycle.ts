@@ -19,6 +19,7 @@ import {
   resolveSessionEquipmentAvailability,
   sessionEquipmentSelectionSourceRevisionExpression,
 } from "@/services/session-equipment-selection";
+import { exerciseEquipmentRequirementFitSatisfiedExpression } from "@/services/exercise-equipment-fit";
 import { sessionEquipmentRequirementsSnapshotExpression } from "@/services/session-equipment-requirements";
 import { historyRevisionLockSql } from "@/services/history-revision-lock";
 import {
@@ -482,6 +483,18 @@ export async function addWorkoutExercise(
         FROM exercises exercise
         WHERE exercise.id = ${parsed.exerciseId}::uuid
           AND (exercise.user_id IS NULL OR exercise.user_id = ${userId}::uuid)
+          AND NOT EXISTS (
+            SELECT 1
+            FROM exercise_equipment_requirements fit_requirement
+            WHERE fit_requirement.exercise_id = exercise.id
+              AND NOT ${exerciseEquipmentRequirementFitSatisfiedExpression({
+                userId,
+                exerciseId: sql`exercise.id`,
+                equipmentType: sql`fit_requirement.equipment_type`,
+                equipmentDefinitionId: sql`fit_requirement.equipment_definition_id`,
+                minWeight: sql`fit_requirement.min_weight`,
+              })}
+          )
       ), insertion AS MATERIALIZED (
         SELECT eligible.id AS session_id,
                coalesce((
@@ -1880,7 +1893,14 @@ export async function logWorkoutSet(
     userId,
     input.sessionExerciseId,
   );
-  if (!availability || availability.availableOptionCount > 0) return initial;
+  if (
+    !availability ||
+    availability.availableOptionCount > 0 ||
+    (availability.equipmentFitStatus !== "compatible" &&
+      availability.equipmentFitStatus !== "not_required")
+  ) {
+    return initial;
+  }
   return logWorkoutSetAttempt(db, userId, input, dependencies, availability);
 }
 
@@ -2210,8 +2230,7 @@ async function logWorkoutSetAttempt(
                  AND ${sessionEquipmentSelectionSourceRevisionExpression(
                    userId,
                    equipmentExerciseId,
-                   equipmentAvailability?.requirementsEvidence === "legacy_unknown"
-                     && !(equipmentAvailability?.usesPrescribedMeaning ?? false),
+                   true,
                    sql`se.equipment_requirements_snapshot`,
                  )} = ${equipmentSourceRevision}
                )

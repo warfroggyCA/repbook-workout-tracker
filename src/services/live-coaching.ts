@@ -15,8 +15,6 @@ import {
   completedSets,
   contextualNotes,
   constraints,
-  equipmentItems,
-  plateInventory,
   exercises,
   painLogs,
   sessionExercises,
@@ -36,11 +34,6 @@ import {
 } from "@/ai/tasks/coaching-qa/schema";
 import { liveCoachingSystemPrompt } from "@/ai/tasks/live-coaching/prompt";
 import { buildCoachingContext } from "@/services/coaching";
-import {
-  buildEquipmentAvailability,
-  exerciseIsAvailable,
-} from "@/engine/equipment-filter";
-import { isPatternAllowedForSuggestions } from "@/engine/constraint-filter";
 import { sortConversationMessages } from "@/lib/live-coach-order";
 import {
   workingSetDisplayPosition,
@@ -60,6 +53,8 @@ import {
   PAIN_EVIDENCE_ALGORITHM_VERSION,
   classifyPainEvidence,
 } from "@/lib/pain-evidence";
+import { getLibraryWithAvailability } from "@/services/routine-import";
+import { isExerciseEquipmentFitRecommendationSafe } from "@/lib/exercise-equipment-fit";
 
 export type LiveCoachMessageKind = "question" | "observation";
 export type LiveCoachInputMode = "text" | "dictation" | "realtime_voice";
@@ -422,31 +417,16 @@ async function approvedSubstitutions(
   enabled: boolean
 ) {
   if (!selectedExerciseId || !enabled) return [];
-  const current = await db.query.exercises.findFirst({
-    where: eq(exercises.id, selectedExerciseId),
-  });
+  const library = await getLibraryWithAvailability(db, userId);
+  const current = library.find((exercise) => exercise.id === selectedExerciseId);
   if (!current) return [];
-  const [candidates, equipmentRows, plateRows, userConstraints] = await Promise.all([
-    db.query.exercises.findMany({
-      where: eq(exercises.movementPattern, current.movementPattern),
-      with: { equipmentRequirements: true },
-      orderBy: asc(exercises.name),
-    }),
-    db.query.equipmentItems.findMany({ where: eq(equipmentItems.userId, userId) }),
-    db.query.plateInventory.findMany({
-      where: eq(plateInventory.userId, userId),
-      columns: { denomination: true },
-    }),
-    db.query.constraints.findMany({ where: eq(constraints.userId, userId) }),
-  ]);
-  const inventory = buildEquipmentAvailability(equipmentRows, plateRows);
-  return candidates
+  return library
     .filter(
       (candidate) =>
         candidate.id !== current.id &&
-        (candidate.userId == null || candidate.userId === userId) &&
-        exerciseIsAvailable(candidate.equipmentRequirements, inventory) &&
-        isPatternAllowedForSuggestions(candidate.movementPattern, userConstraints)
+        candidate.movementPattern === current.movementPattern &&
+        candidate.available &&
+        isExerciseEquipmentFitRecommendationSafe(candidate.equipmentFit)
     )
     .slice(0, 12)
     .map((candidate) => ({

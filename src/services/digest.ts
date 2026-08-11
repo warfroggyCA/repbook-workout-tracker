@@ -863,6 +863,7 @@ export function renderCoachingBrief(digest: TrainingDigest): string {
       (c) => `- Constraint: ${c.bodyPart} (${c.patterns.join(", ")})${c.note ? ` — ${c.note}` : ""}`
     ),
     `- Equipment: ${digest.equipmentSummary.join("; ")}.`,
+    "- Equipment-use rule: the broad inventory list does not prove that any exercise works with an item. This brief intentionally omits owner-specific fit reviews; treat every exercise/item pairing as unknown and do not infer compatibility from a display name or category.",
     "",
     "## What this brief does NOT contain",
     ...digest.dataGaps.map((g) => `- ${g}`),

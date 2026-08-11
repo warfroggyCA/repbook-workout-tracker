@@ -34,7 +34,7 @@ describe("workout replacement contract", () => {
     await client.close();
   });
 
-  it("searches unrelated exercises, warns for missing equipment, and enforces performed-shape and constraint boundaries", async () => {
+  it("searches unrelated exercises and fail-closes missing fit, performed-shape, and constraint boundaries", async () => {
     const fixtureTimezone = "America/Toronto";
     const fixtureStartedAt = new Date("2026-07-25T04:11:21.555Z");
     const fixtureLocalDate = workoutLocalDate(fixtureStartedAt, fixtureTimezone);
@@ -167,13 +167,11 @@ describe("workout replacement contract", () => {
       unavailableReason: null,
     });
     expect(byId.get(missingEquipment.id)).toMatchObject({
-      available: true,
-      unavailableReason: null,
+      available: false,
+      unavailableReason: expect.stringContaining("cable"),
       missingEquipment: ["cable"],
     });
-    expect(options.warnings[missingEquipment.id]).toMatch(
-      /Needs cable station.*will not invent or reuse an incompatible setup/i,
-    );
+    expect(options.warnings[missingEquipment.id]).toBeUndefined();
     expect(byId.get(unsupported.id)).toMatchObject({
       available: true,
       unavailableReason: null,
@@ -186,7 +184,7 @@ describe("workout replacement contract", () => {
 });
 
 describe("replacement presentation rules", () => {
-  it("keeps unavailable equipment advisory while unsupported performed shapes stay blocked", () => {
+  it("keeps unavailable fit blocked while unsupported performed shapes stay blocked", () => {
     expect(
       workoutReplacementEquipmentWarning({
         id: "missing",
@@ -205,7 +203,7 @@ describe("replacement presentation rules", () => {
         unavailableReason: "Needs cable station.",
         missingEquipment: ["cable"],
       }),
-    ).toMatch(/You can still replace/);
+    ).toBeNull();
     expect(
       workoutReplacementUnavailableReason({
         id: "duration",
@@ -222,6 +220,7 @@ describe("replacement presentation rules", () => {
         cautionBodyParts: [],
         available: true,
         unavailableReason: null,
+        equipmentFitStatus: "not_required",
       }),
     ).toBeNull();
     expect(

@@ -5,6 +5,7 @@ import { eq } from "drizzle-orm";
 import {
   completedSets,
   exerciseEquipmentRequirements,
+  equipmentItems,
   exercises,
   sessionExercises,
   sessionOccurrences,
@@ -67,6 +68,13 @@ describe("unit, calendar, and backup production findings", () => {
       exerciseId,
       equipmentType: "barbell",
     });
+    await database.db.insert(equipmentItems).values({
+      userId,
+      type: "barbell",
+      label: "Data characterization barbell",
+      attrs: { maxWeight: 500, unit: "kg" },
+      available: true,
+    });
     const activated = await activateProgramAtomically(database.db, {
       userId,
       loadUnit: "kg",
@@ -87,6 +95,10 @@ describe("unit, calendar, and backup production findings", () => {
       changeSummary: "Data characterization fixture",
       auditAction: "program.activate",
       auditSummary: "Activated data characterization fixture",
+      // This characterization fixture is not an owner recommendation flow;
+      // it supplies the physical item and explicitly exercises the bounded
+      // one-publication unknown review path.
+      allowReviewedUnknownEquipmentFit: true,
     });
     if (!activated.ok) throw new Error(activated.reason);
     const [template] = await database.db.query.workoutTemplates.findMany({
@@ -415,7 +427,7 @@ describe("unit, calendar, and backup production findings", () => {
     expect(csv).toContain("weight_unit");
     expect(csv).toContain(",100,kg,8,");
     expect(csv).toContain("America/Toronto,2026-07-12");
-    expect(backup.schemaVersion).toBe("32");
+    expect(backup.schemaVersion).toBe("33");
     expect(backup.canonical.tables.workout_sessions[0]).toMatchObject({
       id: session.id,
       timezone: "America/Toronto",

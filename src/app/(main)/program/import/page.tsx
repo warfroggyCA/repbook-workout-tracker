@@ -14,6 +14,7 @@ import { getLatestStagedHevyImport } from "@/services/hevy-import";
 import { getImportBatchArchivePreview } from "@/services/archive";
 import { getApprovedExerciseMedia } from "@/services/exercise-media";
 import { isProgramTextImportEnabled } from "@/lib/program-text-import-feature";
+import { loadOwnerEquipmentFitReviewRevision } from "@/services/equipment-fit-review-revision";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 120;
@@ -25,7 +26,7 @@ export default async function ImportPage() {
 
   // Resume a staged parse if one is waiting for review (plan §5: raw and
   // parsed data live on the ImportEvent until confirmed or discarded).
-  const [staged, stagedHevy, library, families, batches] = await Promise.all([
+  const [staged, stagedHevy, library, families, batches, equipmentFitReviewRevision] = await Promise.all([
     textImportEnabled
       ? getLatestStagedImport(db, user.id)
       : Promise.resolve(null),
@@ -42,13 +43,14 @@ export default async function ImportPage() {
       ),
       orderBy: desc(historyImportBatches.confirmedAt),
     }),
+    loadOwnerEquipmentFitReviewRevision(db, user.id),
   ]);
   const mediaByExercise = await getApprovedExerciseMedia(db, library);
   const routineLibrary = library.map((exercise) => ({
     ...exercise,
     media: mediaByExercise.get(exercise.id) ?? null,
   }));
-  const initialParse: Extract<RoutineParseResponse, { ok: true }> | null = staged
+  const initialParse: Extract<RoutineParseResponse, { ok: true }> | null = staged && equipmentFitReviewRevision
     ? {
         ok: true,
         importEventId: staged.importEventId,
@@ -57,6 +59,7 @@ export default async function ImportPage() {
         library: routineLibrary,
         stageDigest: staged.stageDigest,
         baseProgramVersionId: staged.baseProgramVersionId,
+        equipmentFitReviewRevision,
       }
     : null;
   const batchPreviews = await Promise.all(

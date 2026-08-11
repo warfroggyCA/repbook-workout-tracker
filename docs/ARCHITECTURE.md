@@ -85,7 +85,8 @@ rewrite instruction; it is never widened silently into a range. A matching retry
 returns the first publication; changed reuse conflicts. A stale Program,
 malformed review, unavailable exercise, or failed publication leaves the stage
 reviewable and creates no Program version. Exact equipment-fit review is a
-server-required durable attestation, not a browser-only gate. Discard is
+server-required one-publication attestation, not a browser-only gate or a
+durable exercise-and-item compatibility record. Discard is
 owner-scoped, replay-safe, and clears raw and normalized paste content plus
 linked unconfirmed provider parse records.
 
@@ -104,13 +105,79 @@ multiple-Program library.
 
 Current equipment availability proves only catalog requirements against broad
 inventory and movement constraints. Import therefore requires the owner to
-confirm that every retained exercise fits the exact physical setup and offers
-only catalog choices that pass current availability checks. A reusable
-owner-specific exercise/equipment incompatibility—such as a cable movement
-that cannot use the owner's pulley geometry—needs a new additive relation plus
-snapshot, restore, export, Coach, alternatives, and audit participation. That
-schema/recovery tranche is deliberately separate; this contract never infers
-physical compatibility from display names or from “cable station” alone.
+confirm that every retained exercise fits the exact physical setup. That
+PII-01A attestation may resolve an otherwise unknown pair for the immediately
+reviewed publication only. It never creates, updates, or backfills retained fit
+evidence, and it cannot override a current incompatible or missing result. The
+review payload retains the complete owner-visible equipment-fit revision shown
+to the owner: physical inventory and fit assertions plus the visible broad and
+exact exercise requirements and their definition semantics. Confirmation
+compares it before the safety snapshot and repeats the same revision fence after
+the owner publication lock, so an overlapping equipment, assertion, or exercise
+requirement change leaves the staged import unpublished.
+
+PII-01B adds the current owner-scoped
+`exercise_equipment_fit_assertions` relation for one stable exercise and one
+stable owned equipment item. It stores only `compatible` or `incompatible`;
+absence and removal both mean unknown, never compatible. Compatible rows require
+an explicit owner verification. Incompatible rows retain a closed physical
+reason, an optional bounded owner note, owner-review provenance, semantic
+version, optimistic revision, and a deterministic revision of the exact
+exercise/item capability evidence reviewed. A capability change makes the row
+stale and therefore unknown until the owner reviews it again. Mutable display
+names and broad categories are never evidence, so two items named “Cable
+station” remain independent. Migration 0081 creates empty tables and performs
+no backfill from labels, types, Programs, sessions, catalog metadata, or the
+PII-01A attestation.
+
+One resolver owns this meaning for import review, Program preflight and
+publication, Session Compiler, Coach and progression proposals, workout
+alternatives and replacements, simulation, and current equipment selection.
+Only a current positive assertion can make an item a proposal candidate;
+incompatible, unknown, missing, malformed, or stale evidence fails closed.
+Alternatives remain proposals requiring owner review and are never substituted
+or omitted automatically. The owner records, changes, re-reviews, or removes a
+pair in Equipment settings. Every mutation is owner-authorized, revision-fenced,
+retry-safe, and atomic with record-version and coarse audit evidence. These are
+prospective controls only: existing Programs, active-session snapshots,
+completed or imported History, and earlier Program versions stay immutable.
+
+Guided setup has the same narrowly bounded publication exception as PII-01A:
+when the final Review contains equipment-required exercises, activation stays
+disabled until the owner attests that each exact item/setup was checked. The
+attestation is bound to a server-generated digest of the reviewed routine and
+the complete owner-visible equipment-fit revision. The atomic publication gate
+rejects a changed routine, item/profile topology, retained fit assertion, or
+broad/exact exercise requirement. It is one activation only, creates no durable
+compatibility row, and never overrides a current incompatibility or missing
+item. The browser sends a positive attestation only after the owner selects the
+visible checkbox; a no-checkbox review never manufactures one.
+
+Snapshot schema 33 and recovery manifest 15 include the current assertion
+relation. Full JSON and full snapshot restore round-trip it exactly; a schema-32
+snapshot upgrades with an empty relation, preserving unknown rather than
+inventing a backfill. Full restore replaces the owner's current assertions
+under the existing owner lock, while History-only restore preserves destination
+setup truth. CSV and historical Markdown exports remain workout evidence and do
+not relabel current compatibility as performed fact. The established audit and
+record-version ledgers retain their existing restore boundary.
+
+### Exercise and equipment fit decision matrix
+
+| Current pair evidence | Prospective interpretation |
+| --- | --- |
+| Current explicit `compatible` assertion; item active; broad requirement satisfied | Eligible to be shown as a proposal or published after the normal owner review |
+| Current explicit `incompatible` assertion | Blocked; its retained reason is shown and no automatic omission or substitution occurs |
+| No assertion | Unknown and blocked for recommendations; only the literal PII-01A import or final guided-setup attestation can resolve it for that one reviewed publication |
+| Item missing or retired, or broad requirement no longer satisfied | Missing and blocked, regardless of a retained row |
+| Assertion evidence revision differs from current exercise/item capability evidence | Stale, interpreted as unknown, and requires a new owner review |
+| Schema-32 or other legacy input | Empty relation after upgrade, therefore unknown; no inferred backfill |
+| Duplicate display names | Independent stable item IDs; only the reviewed ID participates |
+| Malformed or cross-owner identity | Rejected without a write or identity enumeration |
+| Same mutation identity and payload retried | Replays the first result without another row, version, or audit event |
+| Same mutation identity with changed payload | Conflicts without a write |
+| Two writes from one expected revision | Owner lock and revision comparison allow one result; the other is stale |
+| Assertion removed | The pair becomes unknown; removal is versioned and audited atomically |
 
 ## Persisted evidence
 

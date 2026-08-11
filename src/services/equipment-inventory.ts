@@ -1,4 +1,4 @@
-import { sql, and, asc, eq, isNull, or } from "drizzle-orm";
+import { sql, and, asc, eq, isNull, or, type SQL } from "drizzle-orm";
 import type { Db } from "@/db";
 import { resultRows } from "@/db/result";
 import {
@@ -55,7 +55,14 @@ export function inventoryRevisionExpression(userId: string) {
               FROM cable_attachment_profiles a WHERE a.user_id = ${userId}::uuid), '[]')
     || coalesce((SELECT jsonb_agg(to_jsonb(ca) ORDER BY ca.cable_profile_id, ca.attachment_profile_id)::text
               FROM cable_attachment_compatibilities ca WHERE ca.user_id = ${userId}::uuid), '[]')
+    || coalesce((SELECT jsonb_agg(to_jsonb(fit) ORDER BY fit.exercise_id, fit.equipment_item_id)::text
+              FROM exercise_equipment_fit_assertions fit WHERE fit.user_id = ${userId}::uuid), '[]')
   )`;
+}
+
+/** Call only from a query path that depends on an owner-profile FOR UPDATE row. */
+export function inventoryRevisionAfterOwnerLockExpression(userId: string | SQL) {
+  return sql`equipment_inventory_revision_after_owner_lock(${userId}::uuid)`;
 }
 
 export type LoadedInventoryDefinition = {
@@ -343,6 +350,12 @@ export type InventoryImpact = {
   exercisesBecomingAvailable: Array<{ id: string; name: string }>;
   /** Current-Program slots whose exercise would become unavailable. */
   affectedProgramSlots: Array<{ dayName: string; exerciseName: string }>;
+  /** Retained exact-pair reviews whose current capability evidence will change. */
+  fitReviewsRequiringReview: Array<{
+    assertionId: string;
+    exerciseName: string;
+    equipmentLabel: string;
+  }>;
 };
 
 export type InventoryChangePreview = {
@@ -689,14 +702,59 @@ export async function previewInventoryDocumentChanges(
     });
   }
 
-  const impact = await calculateAvailabilityImpact(
-    db,
-    userId,
-    current.document.items,
-    document.items,
-    current.document.plates,
-    document.plates
-  );
+  const semanticItemIds = new Set([
+    ...changed
+      .filter((item) => item.changedFields.some((field) => field !== "label"))
+      .map((item) => item.id),
+    ...removed.map((item) => item.id),
+  ]);
+  const reviewAllFitAssertions =
+    plateChanges.length > 0
+    || loadProfileChanges.length > 0
+    || barChanges.some(
+      (change) =>
+        change.added
+        || change.removed
+        || change.changedFields.some((field) => field !== "label"),
+    );
+  const affectedFitRows =
+    reviewAllFitAssertions || semanticItemIds.size > 0
+      ? resultRows(await db.execute(sql`
+          SELECT
+            assertion.id AS assertion_id,
+            exercise.name AS exercise_name,
+            item.label AS equipment_label
+          FROM exercise_equipment_fit_assertions assertion
+          JOIN exercises exercise ON exercise.id = assertion.exercise_id
+          JOIN equipment_items item
+            ON item.id = assertion.equipment_item_id
+           AND item.user_id = assertion.user_id
+          WHERE assertion.user_id = ${userId}::uuid
+            AND (
+              ${reviewAllFitAssertions}::boolean
+              OR assertion.equipment_item_id IN (
+                SELECT value::uuid
+                FROM jsonb_array_elements_text(${JSON.stringify([...semanticItemIds])}::jsonb)
+              )
+            )
+          ORDER BY exercise.name, item.label, assertion.id
+        `))
+      : [];
+  const impact: InventoryImpact = {
+    ...(await calculateAvailabilityImpact(
+      db,
+      userId,
+      current.document.items,
+      document.items,
+      current.document.plates,
+      document.plates,
+    )),
+    fitReviewsRequiringReview: affectedFitRows.map((row) => ({
+      assertionId: String(row.assertion_id),
+      exerciseName: String(row.exercise_name),
+      equipmentLabel: String(row.equipment_label),
+    })),
+  };
 
   const loadRangeReduced = document.items.some((item) => {
     if (item.id == null) return false;
@@ -715,7 +773,8 @@ export async function previewInventoryDocumentChanges(
     barChanges.some((change) => change.removed) ||
     loadRangeReduced ||
     loadProfileChanges.some((change) => change.reducesGuidance) ||
-    impact.exercisesBecomingUnavailable.length > 0;
+    impact.exercisesBecomingUnavailable.length > 0 ||
+    impact.fitReviewsRequiringReview.length > 0;
 
   const noChanges =
     added.length === 0 &&
@@ -808,5 +867,6 @@ async function calculateAvailabilityImpact(
     affectedProgramSlots: programSlots
       .filter((slot) => unavailableIds.has(slot.exerciseId))
       .map((slot) => ({ dayName: slot.dayName, exerciseName: slot.exerciseName })),
+    fitReviewsRequiringReview: [],
   };
 }

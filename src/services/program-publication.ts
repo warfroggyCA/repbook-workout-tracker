@@ -33,6 +33,7 @@ import { canonicalJson, sha256Hex } from "@/services/snapshot-crypto";
 import { loadProgramPreflightContext } from "@/services/program-preflight";
 import { eligibleAutomaticProgressionSql } from "@/lib/set-metric-semantics-sql";
 import { resolveReviewEvidence } from "@/services/review-evidence";
+import { exerciseEquipmentRequirementFitSatisfiedExpression } from "@/services/exercise-equipment-fit";
 
 type PublicationMode = "editor" | "restore" | "recommendation";
 
@@ -479,30 +480,13 @@ async function publishDocumentAtomically(
         AND NOT EXISTS (
           SELECT 1 FROM exercise_equipment_requirements requirement
           WHERE requirement.exercise_id = exercise.id
-            AND requirement.equipment_type <> 'bodyweight'::equipment_type
-            AND NOT EXISTS (
-              SELECT 1
-              WHERE (
-                requirement.equipment_type = 'plates'::equipment_type
-                AND EXISTS (
-                  SELECT 1 FROM plate_inventory plate
-                  WHERE plate.user_id = ${userId}::uuid
-                )
-              ) OR (
-                requirement.equipment_type <> 'plates'::equipment_type
-                AND EXISTS (
-                  SELECT 1 FROM equipment_items item
-                  WHERE item.user_id = ${userId}::uuid
-                    AND item.available
-                    AND item.type = requirement.equipment_type
-                    AND item.type <> 'bodyweight'::equipment_type
-                    AND (
-                      requirement.min_weight IS NULL
-                      OR COALESCE((item.attrs->>'maxWeight')::double precision, -1) >= requirement.min_weight
-                    )
-                )
-              )
-            )
+            AND NOT ${exerciseEquipmentRequirementFitSatisfiedExpression({
+              userId,
+              exerciseId: sql`exercise.id`,
+              equipmentType: sql`requirement.equipment_type`,
+              equipmentDefinitionId: sql`requirement.equipment_definition_id`,
+              minWeight: sql`requirement.min_weight`,
+            })}
         )
     ), new_version AS (
       INSERT INTO program_versions (

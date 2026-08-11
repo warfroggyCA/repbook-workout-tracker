@@ -14,6 +14,11 @@ import {
   type InventoryChangePreview,
 } from "@/services/equipment-inventory";
 import {
+  removeExerciseEquipmentFitAssertion,
+  saveExerciseEquipmentFitAssertion,
+  type ExerciseEquipmentFitMutationResult,
+} from "@/services/exercise-equipment-fit-management";
+import {
   saveInventoryDocumentForManagement,
   type ManagementInventorySaveResult,
 } from "@/services/setup-persistence";
@@ -176,5 +181,59 @@ export async function saveEquipmentInventory(
   revalidatePath("/settings/setup");
   revalidatePath("/today");
   revalidatePath("/program");
+  return result;
+}
+
+/**
+ * Prospective owner control for one stable exercise and stable owned item.
+ * The service repeats ownership, stable-identity, revision, and retry checks
+ * inside the same atomic statement that writes version and audit evidence.
+ */
+export async function saveExerciseEquipmentFitReview(
+  input: unknown,
+): Promise<ExerciseEquipmentFitMutationResult> {
+  if (!isSettingsManagementEnabled()) {
+    return { ok: false, code: "failed", reason: DISABLED_REASON };
+  }
+  const user = await getCurrentUser();
+  const db = await getDb();
+  let result: ExerciseEquipmentFitMutationResult;
+  try {
+    result = await saveExerciseEquipmentFitAssertion(db, user.id, input);
+  } catch (error) {
+    logDiagnosticEvent("equipment.inventory_save_failed", {
+      errorCategory: categorizeDiagnosticError(error, "persistence"),
+    });
+    return {
+      ok: false,
+      code: "failed",
+      reason: "The retained review could not be saved. Nothing changed.",
+    };
+  }
+  return result;
+}
+
+/** Removing the relation returns this exact pair to unknown. */
+export async function removeExerciseEquipmentFitReview(
+  input: unknown,
+): Promise<ExerciseEquipmentFitMutationResult> {
+  if (!isSettingsManagementEnabled()) {
+    return { ok: false, code: "failed", reason: DISABLED_REASON };
+  }
+  const user = await getCurrentUser();
+  const db = await getDb();
+  let result: ExerciseEquipmentFitMutationResult;
+  try {
+    result = await removeExerciseEquipmentFitAssertion(db, user.id, input);
+  } catch (error) {
+    logDiagnosticEvent("equipment.inventory_save_failed", {
+      errorCategory: categorizeDiagnosticError(error, "persistence"),
+    });
+    return {
+      ok: false,
+      code: "failed",
+      reason: "The retained review could not be removed. Nothing changed.",
+    };
+  }
   return result;
 }
