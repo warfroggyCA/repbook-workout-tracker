@@ -332,8 +332,10 @@ confirm operations before durable mutation while existing Programs remain
 readable and staged reviews remain preserved. Rollback deployments must retain
 the anchor-aware schema, normal and compiled occurrence ordering,
 editor/recommendation publication, export, and recovery paths. A build that predates
-`beforeSlotLineageId` is compatible only before the first anchored Program is
-published; it is not a truthful general rollback afterward.
+the PII-01A staged-review contract is compatible only before any new-format
+review may have been staged. It is not a truthful general rollback afterward:
+the old review reader can strip warm-up timing before publication, and the old
+Program reader can strip or misplace it after publication.
 
 Each warm-up occurrence keeps its immutable session, planned-exercise,
 prescription, order, and equipment identity. Note, complete, skip, and restore
