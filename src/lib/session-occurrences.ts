@@ -161,24 +161,28 @@ type WarmupInput = {
   note: string | null;
 };
 
+type DayWarmupInput = WarmupInput & {
+  beforeSlotLineageId?: string | null;
+};
+
 type ExerciseWarmupInput = WarmupInput & { restSec: number | null };
 
 export function buildWarmupOccurrences(input: {
   sessionId: string;
   createdAt: string;
   startingSequenceIdx: number;
-  dayWarmups: WarmupInput[];
+  dayWarmups: DayWarmupInput[];
   exercises: Array<{
+    slotLineageId?: string;
     sessionExerciseId: string;
     exerciseId: string;
     orderIdx: number;
     warmupSets: ExerciseWarmupInput[];
   }>;
+  workingOccurrences?: SessionOccurrence[];
   createOccurrenceId: (sequenceIdx: number) => string;
 }): SessionOccurrence[] {
   let sequenceIdx = input.startingSequenceIdx;
-  let dayOrdinal = 0;
-  let exerciseOrdinal = 0;
 
   const build = (
     item: WarmupInput,
@@ -221,29 +225,114 @@ export function buildWarmupOccurrences(input: {
     return occurrence;
   };
 
-  const occurrences = [...input.dayWarmups]
-    .sort((left, right) => left.orderIdx - right.orderIdx)
-    .map((item) => build(item, "day_warmup", null, null, null, dayOrdinal++));
-
-  for (const exercise of [...input.exercises].sort(
+  const orderedExercises = [...input.exercises].sort(
+    (left, right) => left.orderIdx - right.orderIdx,
+  );
+  const exerciseByLineage = new Map(
+    orderedExercises.flatMap((exercise) =>
+      exercise.slotLineageId
+        ? [[exercise.slotLineageId, exercise] as const]
+        : [],
+    ),
+  );
+  const anchoredByExercise = new Map<string, DayWarmupInput[]>();
+  const generalWarmups: DayWarmupInput[] = [];
+  for (const item of [...input.dayWarmups].sort(
     (left, right) => left.orderIdx - right.orderIdx,
   )) {
-    for (const item of [...exercise.warmupSets].sort(
-      (left, right) => left.orderIdx - right.orderIdx,
-    )) {
-      occurrences.push(
-        build(
-          item,
-          "exercise_warmup",
-          exercise.sessionExerciseId,
-          exercise.exerciseId,
-          item.restSec,
-          exerciseOrdinal++,
-        ),
-      );
+    if (item.beforeSlotLineageId == null) {
+      generalWarmups.push(item);
+      continue;
     }
+    const exercise = exerciseByLineage.get(item.beforeSlotLineageId);
+    if (!exercise) {
+      throw new Error("An exercise warm-up must refer to an exercise in this day.");
+    }
+    const anchored = anchoredByExercise.get(exercise.sessionExerciseId) ?? [];
+    anchored.push(item);
+    anchoredByExercise.set(exercise.sessionExerciseId, anchored);
   }
 
+  type WarmupPlan = {
+    item: WarmupInput;
+    kind: "day_warmup" | "exercise_warmup";
+    sessionExerciseId: string | null;
+    plannedExerciseId: string | null;
+    plannedRestSec: number | null;
+    kindOrdinal: number;
+  };
+  const generalPlans: WarmupPlan[] = generalWarmups.map((item, kindOrdinal) => ({
+    item,
+    kind: "day_warmup",
+    sessionExerciseId: null,
+    plannedExerciseId: null,
+    plannedRestSec: null,
+    kindOrdinal,
+  }));
+  const exercisePlans = new Map<string, WarmupPlan[]>();
+  for (const exercise of orderedExercises) {
+    const anchored = anchoredByExercise.get(exercise.sessionExerciseId) ?? [];
+    const legacy = [...exercise.warmupSets].sort(
+      (left, right) => left.orderIdx - right.orderIdx,
+    );
+    exercisePlans.set(
+      exercise.sessionExerciseId,
+      [
+        ...anchored.map((item) => ({ item, plannedRestSec: null })),
+        ...legacy.map((item) => ({ item, plannedRestSec: item.restSec })),
+      ].map(({ item, plannedRestSec }, kindOrdinal) => ({
+        item,
+        kind: "exercise_warmup" as const,
+        sessionExerciseId: exercise.sessionExerciseId,
+        plannedExerciseId: exercise.exerciseId,
+        plannedRestSec,
+        kindOrdinal,
+      })),
+    );
+  }
+
+  const buildPlan = (plan: WarmupPlan) =>
+    build(
+      plan.item,
+      plan.kind,
+      plan.sessionExerciseId,
+      plan.plannedExerciseId,
+      plan.plannedRestSec,
+      plan.kindOrdinal,
+    );
+  if (!input.workingOccurrences) {
+    return [
+      ...generalPlans,
+      ...orderedExercises.flatMap(
+        (exercise) => exercisePlans.get(exercise.sessionExerciseId) ?? [],
+      ),
+    ].map(buildPlan);
+  }
+
+  const occurrences = generalPlans.map(buildPlan);
+  const emittedExerciseWarmups = new Set<string>();
+  for (const working of [...input.workingOccurrences].sort(
+    (left, right) => left.sequenceIdx - right.sequenceIdx,
+  )) {
+    const sessionExerciseId = working.sessionExerciseId;
+    if (
+      sessionExerciseId != null &&
+      !emittedExerciseWarmups.has(sessionExerciseId)
+    ) {
+      for (const plan of exercisePlans.get(sessionExerciseId) ?? []) {
+        occurrences.push(buildPlan(plan));
+      }
+      emittedExerciseWarmups.add(sessionExerciseId);
+    }
+    occurrences.push({ ...working, sequenceIdx });
+    sequenceIdx += 1;
+  }
+  for (const exercise of orderedExercises) {
+    if (emittedExerciseWarmups.has(exercise.sessionExerciseId)) continue;
+    for (const plan of exercisePlans.get(exercise.sessionExerciseId) ?? []) {
+      occurrences.push(buildPlan(plan));
+    }
+  }
   return occurrences;
 }
 

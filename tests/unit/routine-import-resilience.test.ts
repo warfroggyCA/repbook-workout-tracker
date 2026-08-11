@@ -1,10 +1,15 @@
 import { describe, expect, it } from "vitest";
 import { structuredOutputTokenLimit } from "@/ai/provider";
 import {
-  collectSupersetRoundRestSeconds,
+  collectSupersetRestTimings,
   inspectRoutineTextStructure,
   parseCanonicalRoutineText,
 } from "@/ai/tasks/routine-parse/deterministic";
+import { normalizeRoutineParseDraftEnvelope } from "@/ai/tasks/routine-parse/normalize";
+import {
+  PROGRAM_INPUT_MAX_WARMUP_ITEMS_PER_DAY,
+  routineParseDraftSchema,
+} from "@/ai/tasks/routine-parse/schema";
 import {
   routineImportFailureCategory,
   routineImportFailureMessage,
@@ -50,6 +55,7 @@ describe("routine import resilience", () => {
     expect(parsed?.data.programName).toBe(
       "Synthetic Full Routine — 3-Day Recomposition",
     );
+    expect(parsed?.data.schemaVersion).toBe("program-input/1");
     expect(parsed?.data.days.map((day) => day.exercises.length)).toEqual([
       7, 6, 7,
     ]);
@@ -67,13 +73,189 @@ describe("routine import resilience", () => {
     ).toEqual(["A", "A", "B", "B"]);
     expect(
       Object.fromEntries(
-        collectSupersetRoundRestSeconds(
+        collectSupersetRestTimings(
           parsed?.data.days[0]?.exercises ?? [],
         ),
       ),
-    ).toEqual({ A: 60, B: 60 });
+    ).toEqual({
+      A: { betweenMembersSec: 30, afterRoundSec: 60 },
+      B: { betweenMembersSec: 30, afterRoundSec: 60 },
+    });
     expect(parsed?.unparsed).toEqual([]);
     expect(parsed?.clarifyingQuestions).toEqual([]);
+  });
+
+  it("keeps general preparation and first/later lift ramps as distinct ordered actions", () => {
+    const source = `Program: Synthetic Warm-up Routine
+Day 1 — Ordered preparation
+Warm-up: Elliptical easy | load=2 min easy | notes=Raise body temperature
+Warm-up: Bodyweight Squat | reps=10
+Barbell Bench Press 3x6-8 @ 135 lb, rest 120 sec
+Ramp-up: Empty bar | reps=10 | load=45 lb
+Ramp-up: Fifty-five percent | reps=5 | load=55% of working load
+Romanian Deadlift 3x8-10 @ 115 lb, rest 120 sec
+Ramp-up: Lighter hinge prep | reps=5 | load=one lighter set`;
+
+    const parsed = parseCanonicalRoutineText(source);
+    expect(parsed).not.toBeNull();
+    const day = parsed?.data.days[0];
+    expect(day?.warmupItems).toEqual([
+      expect.objectContaining({
+        label: "Elliptical easy",
+        beforeSlotLineageId: null,
+        loadText: "2 min easy",
+        notes: "Raise body temperature",
+      }),
+      expect.objectContaining({
+        label: "Bodyweight Squat",
+        reps: 10,
+        beforeSlotLineageId: null,
+      }),
+      expect.objectContaining({
+        label: "Empty bar",
+        reps: 10,
+        load: 45,
+        loadUnit: "lb",
+        beforeSlotLineageId: day?.exercises[0]?.lineageId,
+      }),
+      expect.objectContaining({
+        label: "Fifty-five percent",
+        reps: 5,
+        loadPercent: 55,
+        loadText: null,
+        beforeSlotLineageId: day?.exercises[0]?.lineageId,
+      }),
+      expect.objectContaining({
+        label: "Lighter hinge prep",
+        reps: 5,
+        loadText: "one lighter set",
+        beforeSlotLineageId: day?.exercises[1]?.lineageId,
+      }),
+    ]);
+    expect(day?.exercises.every((exercise) => exercise.notes === null)).toBe(
+      true,
+    );
+    expect(inspectRoutineTextStructure(source).exerciseCount).toBe(2);
+  });
+
+  it("preserves explicitly unknown warm-up values as null with review ambiguities", () => {
+    const parsed = parseCanonicalRoutineText(`Program: Synthetic Unknowns
+Day 1 — Review
+Warm-up: Owner decides during review | reps=? | load=? | notes=?
+Goblet Squat 2x8-10, rest 60 sec`);
+
+    expect(parsed?.confidence).toBeLessThan(0.9);
+    expect(parsed?.data.days[0]?.warmupItems[0]).toMatchObject({
+      label: "Owner decides during review",
+      reps: null,
+      load: null,
+      loadUnit: null,
+      loadPercent: null,
+      loadText: null,
+      notes: null,
+    });
+    expect(parsed?.ambiguities.map((ambiguity) => ambiguity.field)).toEqual([
+      "days[0].warmupItems[0].reps",
+      "days[0].warmupItems[0].load",
+      "days[0].warmupItems[0].notes",
+    ]);
+  });
+
+  it("derives identical lineage from the normalized source, never provider IDs", () => {
+    const makeDraft = (labels: { day: string; exercise: string; warmup: string }) =>
+      routineParseDraftSchema.parse({
+        data: {
+          programName: "Synthetic Identity",
+          days: [
+            {
+              name: labels.day,
+              order: 0,
+              warmupItems: [warmup(labels.warmup)],
+              exercises: [exercise(labels.exercise)],
+            },
+          ],
+        },
+        confidence: 1,
+        ambiguities: [],
+        clarifyingQuestions: [],
+        unparsed: [],
+      });
+    const source = "Program: Synthetic Identity\nDay 1\nSquat 3x8";
+    const first = normalizeRoutineParseDraftEnvelope(
+      makeDraft({ day: "Day 1", exercise: "Squat", warmup: "Easy bike" }),
+      source,
+    );
+    const providerVariation = normalizeRoutineParseDraftEnvelope(
+      makeDraft({
+        day: "Day one",
+        exercise: "Back squat",
+        warmup: "Easy cycling",
+      }),
+      `  Program: Synthetic Identity\r\nDay 1\r\nSquat   3x8  `,
+    );
+
+    expect(providerVariation.data.days[0]?.lineageId).toBe(
+      first.data.days[0]?.lineageId,
+    );
+    expect(providerVariation.data.days[0]?.warmupItems[0]?.key).toBe(
+      first.data.days[0]?.warmupItems[0]?.key,
+    );
+    expect(providerVariation.data.days[0]?.exercises[0]?.lineageId).toBe(
+      first.data.days[0]?.exercises[0]?.lineageId,
+    );
+  });
+
+  it("rejects duplicated warm-up notes and malformed or oversized draft contracts", () => {
+    const duplicate = draftEnvelope({
+      warmupItems: [warmup("Easy bike")],
+      exercises: [{ ...exercise("Squat"), notes: "Easy bike" }],
+    });
+    expect(routineParseDraftSchema.safeParse(duplicate).success).toBe(false);
+
+    const duplicatedRamp = draftEnvelope({
+      exercises: [
+        {
+          ...exercise("Squat"),
+          notes: "Empty bar",
+          rampUps: [warmup("Empty bar")],
+        },
+      ],
+    });
+    expect(routineParseDraftSchema.safeParse(duplicatedRamp).success).toBe(
+      false,
+    );
+
+    const omittedUnknowns = draftEnvelope({
+      warmupItems: [{ label: "Missing explicit fields" }],
+    });
+    expect(routineParseDraftSchema.safeParse(omittedUnknowns).success).toBe(
+      false,
+    );
+
+    const contradictoryLoad = draftEnvelope({
+      warmupItems: [
+        {
+          ...warmup("Contradictory loading"),
+          load: 45,
+          loadUnit: "lb",
+          loadPercent: 50,
+        },
+      ],
+    });
+    expect(routineParseDraftSchema.safeParse(contradictoryLoad).success).toBe(
+      false,
+    );
+
+    const oversized = draftEnvelope({
+      warmupItems: Array.from(
+        { length: PROGRAM_INPUT_MAX_WARMUP_ITEMS_PER_DAY + 1 },
+        (_, index) => warmup(`Step ${index + 1}`, index),
+      ),
+    });
+    expect(routineParseDraftSchema.safeParse(oversized).success).toBe(false);
+
+    const unknownField = draftEnvelope({ extra: "not in program-input/1" });
+    expect(routineParseDraftSchema.safeParse(unknownField).success).toBe(false);
   });
 
   it("supports explicit load and minute rest in the canonical format", () => {
@@ -131,6 +313,7 @@ A1 Barbell Bench Press 3x6-8, rest 120 sec`),
       "output_incomplete",
       "provider_failure",
       "persistence_failure",
+      "unsupported_rep_sequence",
       "usage_control",
       "unknown",
     ] as const) {
@@ -139,5 +322,58 @@ A1 Barbell Bench Press 3x6-8, rest 120 sec`),
       expect(message).toContain("failed paste was discarded");
       expect(message).not.toContain("Synthetic Full Routine");
     }
+    expect(routineImportFailureMessage("unsupported_rep_sequence")).toContain(
+      "different rep targets for individual sets",
+    );
   });
 });
+
+function warmup(label: string, sourceOrder = 0) {
+  return {
+    sourceOrder,
+    label,
+    reps: null,
+    load: null,
+    loadUnit: null,
+    loadPercent: null,
+    loadText: null,
+    notes: null,
+  };
+}
+
+function exercise(rawName: string) {
+  return {
+    rawName,
+    sets: 3,
+    reps: { kind: "range" as const, min: 8, max: 10 },
+    load: null,
+    loadUnit: null,
+    restSec: 90,
+    supersetKey: null,
+    notes: null,
+    rampUps: [],
+  };
+}
+
+function draftEnvelope(
+  dayOverrides: Record<string, unknown>,
+): Record<string, unknown> {
+  return {
+    data: {
+      programName: "Synthetic Contract",
+      days: [
+        {
+          name: "Day 1",
+          order: 0,
+          warmupItems: [],
+          exercises: [exercise("Squat")],
+          ...dayOverrides,
+        },
+      ],
+    },
+    confidence: 1,
+    ambiguities: [],
+    clarifyingQuestions: [],
+    unparsed: [],
+  };
+}

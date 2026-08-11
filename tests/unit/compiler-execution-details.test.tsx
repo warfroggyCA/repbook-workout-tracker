@@ -44,6 +44,7 @@ function proposal() {
     day: {
       warmupItems: [{
         key: "00000000-0000-4000-8000-000000000050",
+        beforeSlotLineageId: "00000000-0000-4000-8000-000000000021",
         label: "Raise temperature",
         reps: null,
         load: null,
@@ -88,6 +89,7 @@ describe("CompilerExecutionDetails", () => {
       <CompilerExecutionDetails input={input} output={output} />,
     );
     expect(html).toContain("Raise temperature</span> · Easy pace · Keep nasal breathing");
+    expect(html).toContain("Before Bench press");
     expect(html).toContain("Preparation note</span> · Rehearse the pause");
     expect(html).toContain("Empty bar</span> · 5 reps · 45 lb · Controlled");
     expect(html).toContain("Ramp</span> · 6 reps · 60% of working load");

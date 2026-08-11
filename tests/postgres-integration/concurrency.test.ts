@@ -75,6 +75,10 @@ import { getCurrentProgramDocument } from "@/services/program-documents";
 import { createStartBarrier } from "../helpers/database";
 import { createTotalSystemTestSnapshot } from "../helpers/set-semantics";
 import validExternalAnalysisFixture from "../fixtures/v2/a03-typed-response.json";
+import {
+  createSuggestedDayIntent,
+  createSuggestedSlotIntent,
+} from "@/lib/program-document";
 
 const url = process.env.TEST_DATABASE_URL;
 if (!url) throw new Error("TEST_DATABASE_URL is required for PostgreSQL integration tests.");
@@ -855,6 +859,110 @@ describe.sequential("real PostgreSQL parallel invariants", () => {
         profileId: initial.profile.id,
       });
     }
+  });
+
+  it("materializes general and lift-anchored warm-ups in exact PostgreSQL workout order", async () => {
+    const account = await bootstrapUserAccount(db, {
+      email: `pii01-warmups-${crypto.randomUUID()}@example.com`,
+      name: "PII-01 PostgreSQL",
+    });
+    const createdExercises = await db
+      .insert(exercises)
+      .values(["first", "second"].map((suffix) => ({
+        name: `PII-01 ${suffix} lift ${crypto.randomUUID()}`,
+        movementPattern: "squat" as const,
+        primaryMuscles: ["other"],
+        loadType: "external" as const,
+      })))
+      .returning({ id: exercises.id });
+    const dayLineageId = crypto.randomUUID();
+    const slotLineages = [crypto.randomUUID(), crypto.randomUUID()];
+    const slotIntents = slotLineages.map((_, index) => ({
+      ...createSuggestedSlotIntent(1, index),
+      idealDose: { unit: "sets" as const, value: 1 },
+      substitutionPolicy: "no_substitution" as const,
+      omissionPolicy: "never" as const,
+      calibrationEligible: false,
+    }));
+    const dayIntent = createSuggestedDayIntent(slotLineages.map((lineageId) => ({
+      lineageId,
+      sets: 1,
+      restSec: 60,
+    })));
+    const activated = await activateProgramAtomically(db, {
+      userId: account.id,
+      loadUnit: "lb",
+      programName: "PII-01 PostgreSQL order",
+      days: [{
+        lineageId: dayLineageId,
+        name: "Ordered warm-ups",
+        warmupItems: [
+          {
+            key: crypto.randomUUID(),
+            beforeSlotLineageId: null,
+            label: "General preparation",
+            reps: null,
+            load: null,
+            loadUnit: null,
+            loadPercent: null,
+            loadText: null,
+            notes: null,
+          },
+          ...slotLineages.map((beforeSlotLineageId, index) => ({
+            key: crypto.randomUUID(),
+            beforeSlotLineageId,
+            label: `Ramp ${index + 1}`,
+            reps: 5,
+            load: null,
+            loadUnit: null,
+            loadPercent: null,
+            loadText: null,
+            notes: null,
+          })),
+        ],
+        intent: dayIntent,
+        exercises: createdExercises.map((exercise, index) => ({
+          lineageId: slotLineages[index],
+          exerciseId: exercise.id,
+          sets: 1,
+          repMin: 5,
+          repMax: 5,
+          targetLoad: 10,
+          targetLoadUnit: "lb" as const,
+          restSec: 60,
+          supersetKey: null,
+          notes: null,
+          intent: slotIntents[index],
+        })),
+      }],
+      changeSummary: "PII-01 native PostgreSQL fixture",
+      auditAction: "program.activate",
+      auditSummary: "PII-01 native PostgreSQL fixture",
+      expectedCurrentProgramVersionId: null,
+      structuredIntentReviewed: true,
+    });
+    if (!activated.ok) throw new Error(activated.reason);
+    const [template] = await db
+      .select({ id: workoutTemplates.id })
+      .from(workoutTemplates)
+      .where(eq(workoutTemplates.programVersionId, activated.programVersionId));
+    const started = await startWorkoutSession(db, account.id, template.id);
+    const occurrences = await db
+      .select({
+        kind: sessionOccurrences.kind,
+        label: sessionOccurrences.label,
+        sequenceIdx: sessionOccurrences.sequenceIdx,
+      })
+      .from(sessionOccurrences)
+      .where(eq(sessionOccurrences.sessionId, started.sessionId))
+      .orderBy(sessionOccurrences.sequenceIdx);
+    expect(occurrences).toEqual([
+      expect.objectContaining({ sequenceIdx: 0, kind: "day_warmup", label: "General preparation" }),
+      expect.objectContaining({ sequenceIdx: 1, kind: "exercise_warmup", label: "Ramp 1" }),
+      expect.objectContaining({ sequenceIdx: 2, kind: "working_set", label: null }),
+      expect.objectContaining({ sequenceIdx: 3, kind: "exercise_warmup", label: "Ramp 2" }),
+      expect.objectContaining({ sequenceIdx: 4, kind: "working_set", label: null }),
+    ]);
   });
 
   it("keeps one active session and one idempotent set under parallel requests", async () => {

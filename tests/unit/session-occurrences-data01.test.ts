@@ -9,8 +9,10 @@ import {
 const SESSION_ID = "10000000-0000-4000-8000-000000000001";
 const BENCH_SESSION_EXERCISE_ID = "20000000-0000-4000-8000-000000000001";
 const ROW_SESSION_EXERCISE_ID = "20000000-0000-4000-8000-000000000002";
+const PRESS_SESSION_EXERCISE_ID = "20000000-0000-4000-8000-000000000003";
 const BENCH_EXERCISE_ID = "30000000-0000-4000-8000-000000000001";
 const ROW_EXERCISE_ID = "30000000-0000-4000-8000-000000000002";
+const PRESS_EXERCISE_ID = "30000000-0000-4000-8000-000000000003";
 const CREATED_AT = "2026-07-21T12:00:00.000Z";
 
 function occurrence(
@@ -184,7 +186,7 @@ describe("DATA-01 durable warm-up occurrences", () => {
         id: "occurrence-4",
         kind: "exercise_warmup",
         sequenceIdx: 4,
-        kindOrdinal: 2,
+        kindOrdinal: 0,
         sessionExerciseId: ROW_SESSION_EXERCISE_ID,
         plannedExerciseId: ROW_EXERCISE_ID,
         label: "Row rehearsal",
@@ -218,6 +220,84 @@ describe("DATA-01 durable warm-up occurrences", () => {
     source.exercises[1].warmupSets[1].note = "Changed Program note";
     expect(built[0].label).toBe("Shoulder circles");
     expect(built[3].plannedNote).toBe("Match work-set grip");
+  });
+
+  it("interleaves anchored and legacy ramps immediately before each exercise's first working occurrence", () => {
+    const slotLineages = {
+      bench: "50000000-0000-4000-8000-000000000001",
+      row: "50000000-0000-4000-8000-000000000002",
+      press: "50000000-0000-4000-8000-000000000003",
+    };
+    const groupId = "60000000-0000-4000-8000-000000000001";
+    const work = [
+      occurrence({ id: "bench-work-1", sessionExerciseId: BENCH_SESSION_EXERCISE_ID, plannedExerciseId: BENCH_EXERCISE_ID, sequenceIdx: 0 }),
+      occurrence({ id: "row-work-1", sessionExerciseId: ROW_SESSION_EXERCISE_ID, plannedExerciseId: ROW_EXERCISE_ID, sequenceIdx: 1, groupSnapshotId: groupId, groupRound: 1, groupMemberOrderIdx: 0 }),
+      occurrence({ id: "press-work-1", sessionExerciseId: PRESS_SESSION_EXERCISE_ID, plannedExerciseId: PRESS_EXERCISE_ID, sequenceIdx: 2, groupSnapshotId: groupId, groupRound: 1, groupMemberOrderIdx: 1 }),
+      occurrence({ id: "row-work-2", sessionExerciseId: ROW_SESSION_EXERCISE_ID, plannedExerciseId: ROW_EXERCISE_ID, sequenceIdx: 3, kindOrdinal: 1, groupSnapshotId: groupId, groupRound: 2, groupMemberOrderIdx: 0 }),
+      occurrence({ id: "press-work-2", sessionExerciseId: PRESS_SESSION_EXERCISE_ID, plannedExerciseId: PRESS_EXERCISE_ID, sequenceIdx: 4, kindOrdinal: 1, groupSnapshotId: groupId, groupRound: 2, groupMemberOrderIdx: 1 }),
+    ];
+    const warmup = (
+      sourceId: string,
+      orderIdx: number,
+      label: string,
+      beforeSlotLineageId?: string,
+    ) => ({
+      sourceId,
+      orderIdx,
+      label,
+      beforeSlotLineageId,
+      reps: null,
+      load: null,
+      loadUnit: null,
+      loadPercent: null,
+      loadText: null,
+      note: null,
+    });
+    const built = buildWarmupOccurrences({
+      sessionId: SESSION_ID,
+      createdAt: CREATED_AT,
+      startingSequenceIdx: 0,
+      dayWarmups: [
+        warmup("general", 0, "General preparation"),
+        warmup("bench-anchor", 1, "Bench ramp", slotLineages.bench),
+        warmup("press-anchor-1", 2, "Press ramp one", slotLineages.press),
+        warmup("press-anchor-2", 3, "Press ramp two", slotLineages.press),
+      ],
+      exercises: [
+        { slotLineageId: slotLineages.bench, sessionExerciseId: BENCH_SESSION_EXERCISE_ID, exerciseId: BENCH_EXERCISE_ID, orderIdx: 0, warmupSets: [] },
+        {
+          slotLineageId: slotLineages.row,
+          sessionExerciseId: ROW_SESSION_EXERCISE_ID,
+          exerciseId: ROW_EXERCISE_ID,
+          orderIdx: 1,
+          warmupSets: [{ ...warmup("row-legacy", 0, "Row legacy ramp"), restSec: 30 }],
+        },
+        { slotLineageId: slotLineages.press, sessionExerciseId: PRESS_SESSION_EXERCISE_ID, exerciseId: PRESS_EXERCISE_ID, orderIdx: 2, warmupSets: [] },
+      ],
+      workingOccurrences: work,
+      createOccurrenceId: (sequenceIdx) => `warmup-${sequenceIdx}`,
+    });
+
+    expect(built.map((item) => ({
+      kind: item.kind,
+      label: item.label,
+      sessionExerciseId: item.sessionExerciseId,
+      sequenceIdx: item.sequenceIdx,
+      kindOrdinal: item.kindOrdinal,
+      groupRound: item.groupRound,
+      memberOrder: item.groupMemberOrderIdx,
+    }))).toEqual([
+      { kind: "day_warmup", label: "General preparation", sessionExerciseId: null, sequenceIdx: 0, kindOrdinal: 0, groupRound: null, memberOrder: null },
+      { kind: "exercise_warmup", label: "Bench ramp", sessionExerciseId: BENCH_SESSION_EXERCISE_ID, sequenceIdx: 1, kindOrdinal: 0, groupRound: null, memberOrder: null },
+      { kind: "working_set", label: null, sessionExerciseId: BENCH_SESSION_EXERCISE_ID, sequenceIdx: 2, kindOrdinal: 0, groupRound: null, memberOrder: null },
+      { kind: "exercise_warmup", label: "Row legacy ramp", sessionExerciseId: ROW_SESSION_EXERCISE_ID, sequenceIdx: 3, kindOrdinal: 0, groupRound: null, memberOrder: null },
+      { kind: "working_set", label: null, sessionExerciseId: ROW_SESSION_EXERCISE_ID, sequenceIdx: 4, kindOrdinal: 0, groupRound: 1, memberOrder: 0 },
+      { kind: "exercise_warmup", label: "Press ramp one", sessionExerciseId: PRESS_SESSION_EXERCISE_ID, sequenceIdx: 5, kindOrdinal: 0, groupRound: null, memberOrder: null },
+      { kind: "exercise_warmup", label: "Press ramp two", sessionExerciseId: PRESS_SESSION_EXERCISE_ID, sequenceIdx: 6, kindOrdinal: 1, groupRound: null, memberOrder: null },
+      { kind: "working_set", label: null, sessionExerciseId: PRESS_SESSION_EXERCISE_ID, sequenceIdx: 7, kindOrdinal: 0, groupRound: 1, memberOrder: 1 },
+      { kind: "working_set", label: null, sessionExerciseId: ROW_SESSION_EXERCISE_ID, sequenceIdx: 8, kindOrdinal: 1, groupRound: 2, memberOrder: 0 },
+      { kind: "working_set", label: null, sessionExerciseId: PRESS_SESSION_EXERCISE_ID, sequenceIdx: 9, kindOrdinal: 1, groupRound: 2, memberOrder: 1 },
+    ]);
   });
 
   it("applies note, completion, skip, and restore as revisioned transitions without changing the plan", () => {

@@ -322,4 +322,49 @@ describe("Program document v3 durable workout structure", () => {
     }));
     expect(programDocumentV3Schema.safeParse(upgraded).success).toBe(false);
   });
+
+  it("accepts only same-day exercise anchors for structured warm-up items", () => {
+    const upgraded = upgradeStoredProgramDocumentToV3(
+      programDocumentSchema.parse(documentWithWarmup({})),
+    );
+    const sameDaySlot = upgraded.days[0].exercises[0].lineageId;
+    upgraded.days[0].warmupItems = [{
+      key: crypto.randomUUID(),
+      beforeSlotLineageId: sameDaySlot,
+      label: "Bench ramp",
+      reps: 5,
+      load: null,
+      loadUnit: null,
+      loadPercent: 60,
+      loadText: null,
+      notes: null,
+    }];
+    expect(programDocumentV3Schema.safeParse(upgraded).success).toBe(true);
+
+    const unknownAnchor = structuredClone(upgraded);
+    unknownAnchor.days[0].warmupItems[0].beforeSlotLineageId =
+      crypto.randomUUID();
+    const unknown = programDocumentV3Schema.safeParse(unknownAnchor);
+    expect(unknown.success).toBe(false);
+    if (!unknown.success) {
+      expect(unknown.error.issues).toEqual(expect.arrayContaining([
+        expect.objectContaining({
+          path: ["days", 0, "warmupItems", 0, "beforeSlotLineageId"],
+          message: "An exercise warm-up must refer to an exercise in this day.",
+        }),
+      ]));
+    }
+
+    const crossDay = structuredClone(upgraded);
+    const secondDay = structuredClone(crossDay.days[0]);
+    secondDay.lineageId = crypto.randomUUID();
+    secondDay.exercises[0].lineageId = crypto.randomUUID();
+    secondDay.exercises[0].exerciseId = crypto.randomUUID();
+    secondDay.warmupItems = [];
+    secondDay.intent = createSuggestedDayIntent(secondDay.exercises);
+    crossDay.days.push(secondDay);
+    crossDay.days[0].warmupItems[0].beforeSlotLineageId =
+      secondDay.exercises[0].lineageId;
+    expect(programDocumentV3Schema.safeParse(crossDay).success).toBe(false);
+  });
 });

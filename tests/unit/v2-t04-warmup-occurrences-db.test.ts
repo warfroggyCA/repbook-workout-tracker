@@ -35,6 +35,7 @@ describe("V2 T04 warm-up occurrence truth", () => {
   let userId: string;
   let programId: string;
   let templateId: string;
+  let slotLineageId: string;
   let exerciseId: string;
   let alternateExerciseId: string;
 
@@ -76,6 +77,7 @@ describe("V2 T04 warm-up occurrence truth", () => {
       .returning({ id: exercises.id });
     exerciseId = definitions[0].id;
     alternateExerciseId = definitions[1].id;
+    slotLineageId = crypto.randomUUID();
 
     await database.db.transaction(async (tx) => {
       const [program] = await tx
@@ -114,6 +116,17 @@ describe("V2 T04 warm-up occurrence truth", () => {
               loadText: null,
               notes: "Comfortable range",
             },
+            {
+              key: crypto.randomUUID(),
+              beforeSlotLineageId: slotLineageId,
+              label: "Exercise-specific setup",
+              reps: 5,
+              load: null,
+              loadUnit: null,
+              loadPercent: 40,
+              loadText: null,
+              notes: "Before the first work set",
+            },
           ],
         })
         .returning({ id: workoutTemplates.id });
@@ -122,6 +135,7 @@ describe("V2 T04 warm-up occurrence truth", () => {
         .values({
           workoutTemplateId: templateId,
           exerciseId,
+          lineageId: slotLineageId,
           orderIdx: 0,
           warmupNotes: exerciseOverview,
           warmupSets: [
@@ -180,7 +194,13 @@ describe("V2 T04 warm-up occurrence truth", () => {
 
     expect(session).toMatchObject({
       dayWarmupNotes: overview,
-      dayWarmupItems: [expect.objectContaining({ label: "Dynamic mobility" })],
+      dayWarmupItems: [
+        expect.objectContaining({ label: "Dynamic mobility" }),
+        expect.objectContaining({
+          label: "Exercise-specific setup",
+          beforeSlotLineageId: slotLineageId,
+        }),
+      ],
     });
     expect(
       occurrences.map((occurrence) => ({
@@ -192,13 +212,18 @@ describe("V2 T04 warm-up occurrence truth", () => {
       { kind: "day_warmup", label: "Dynamic mobility", ordinal: 0 },
       {
         kind: "exercise_warmup",
-        label: "Empty bar rehearsal",
+        label: "Exercise-specific setup",
         ordinal: 0,
       },
       {
         kind: "exercise_warmup",
-        label: "Controlled ramp",
+        label: "Empty bar rehearsal",
         ordinal: 1,
+      },
+      {
+        kind: "exercise_warmup",
+        label: "Controlled ramp",
+        ordinal: 2,
       },
       { kind: "working_set", label: null, ordinal: 0 },
       { kind: "working_set", label: null, ordinal: 1 },
@@ -209,6 +234,154 @@ describe("V2 T04 warm-up occurrence truth", () => {
       occurrences.some((occurrence) => occurrence.label === exerciseOverview),
     ).toBe(false);
 
+  });
+
+  it("keeps a three-slot day in general, anchored ramp, and working order", async () => {
+    const [baseSlot] = await database.db
+      .select()
+      .from(workoutTemplateExercises)
+      .where(eq(workoutTemplateExercises.workoutTemplateId, templateId));
+    const baseTemplate = await database.db.query.workoutTemplates.findFirst({
+      where: eq(workoutTemplates.id, templateId),
+    });
+    const basePrescription = await database.db.query.exercisePrescriptions.findFirst({
+      where: eq(exercisePrescriptions.templateExerciseId, baseSlot.id),
+    });
+    if (!baseTemplate || !basePrescription) throw new Error("Missing base Program rows.");
+    const slot2LineageId = crypto.randomUUID();
+    const slot3LineageId = crypto.randomUUID();
+    const [thirdExercise] = await database.db.insert(exercises).values({
+      name: "T04 synthetic press",
+      movementPattern: "vertical_push",
+      primaryMuscles: ["shoulders"],
+      loadType: "dumbbell",
+      metricType: "weight_reps",
+      loadSemantics: "per_implement",
+    }).returning({ id: exercises.id });
+    let threeSlotTemplateId = "";
+    await database.db.transaction(async (tx) => {
+      const [version] = await tx.insert(programVersions).values({
+        programId,
+        versionNo: 2,
+        name: "T04 three-slot order",
+        parentVersionId: baseTemplate.programVersionId,
+        documentSchemaVersion: 3,
+        publicationSource: "editor",
+      }).returning({ id: programVersions.id });
+      const [threeSlotTemplate] = await tx.insert(workoutTemplates).values({
+        programVersionId: version.id,
+        lineageId: baseTemplate.lineageId,
+        name: "T04 three-slot order",
+        warmupNotes: overview,
+        warmupItems: [
+          {
+            key: crypto.randomUUID(), label: "General preparation",
+            reps: null, load: null, loadUnit: null, loadPercent: null,
+            loadText: "Easy movement", notes: null,
+          },
+          {
+            key: crypto.randomUUID(), beforeSlotLineageId: slotLineageId,
+            label: "Slot one anchor", reps: 5, load: null, loadUnit: null,
+            loadPercent: 40, loadText: null, notes: null,
+          },
+          {
+            key: crypto.randomUUID(), beforeSlotLineageId: slot3LineageId,
+            label: "Slot three anchor one", reps: 6, load: null,
+            loadUnit: null, loadPercent: null, loadText: "light",
+            notes: null,
+          },
+          {
+            key: crypto.randomUUID(), beforeSlotLineageId: slot3LineageId,
+            label: "Slot three anchor two", reps: 3, load: 15,
+            loadUnit: "lb", loadPercent: null, loadText: null,
+            notes: "Final rehearsal",
+          },
+        ],
+      }).returning({ id: workoutTemplates.id });
+      threeSlotTemplateId = threeSlotTemplate.id;
+      const insertedSlots = await tx.insert(workoutTemplateExercises).values([
+        {
+          workoutTemplateId: threeSlotTemplateId,
+          exerciseId,
+          lineageId: slotLineageId,
+          orderIdx: 0,
+          restSec: baseSlot.restSec,
+          warmupNotes: baseSlot.warmupNotes,
+          warmupSets: [],
+          setNotes: [null, null],
+        },
+        {
+          workoutTemplateId: threeSlotTemplateId,
+          exerciseId: alternateExerciseId,
+          lineageId: slot2LineageId,
+          orderIdx: 1,
+          warmupSets: [{
+            label: "Slot two legacy ramp", reps: 8, load: null,
+            loadUnit: null, loadPercent: 50, loadText: null, notes: null,
+          }],
+          setNotes: [null],
+        },
+        {
+          workoutTemplateId: threeSlotTemplateId,
+          exerciseId: thirdExercise.id,
+          lineageId: slot3LineageId,
+          orderIdx: 2,
+          warmupSets: [],
+          setNotes: [null],
+        },
+      ]).returning({ id: workoutTemplateExercises.id });
+      await tx.insert(exercisePrescriptions).values([
+        {
+          templateExerciseId: insertedSlots[0].id,
+          sets: basePrescription.sets,
+          repRangeMin: basePrescription.repRangeMin,
+          repRangeMax: basePrescription.repRangeMax,
+          targetLoad: basePrescription.targetLoad,
+          targetLoadUnit: basePrescription.targetLoadUnit,
+        },
+        ...insertedSlots.slice(1).map((slot) => ({
+          templateExerciseId: slot.id,
+          sets: 1,
+          repRangeMin: 8,
+          repRangeMax: 10,
+        })),
+      ]);
+      await tx.update(programs).set({ currentVersionId: version.id })
+        .where(eq(programs.id, programId));
+    });
+
+    const started = await startWorkoutSession(
+      database.db,
+      userId,
+      threeSlotTemplateId,
+    );
+    const sessionExerciseRows = await database.db.select()
+      .from(sessionExercises)
+      .where(eq(sessionExercises.sessionId, started.sessionId))
+      .orderBy(asc(sessionExercises.orderIdx));
+    const occurrences = await database.db.select()
+      .from(sessionOccurrences)
+      .where(eq(sessionOccurrences.sessionId, started.sessionId))
+      .orderBy(asc(sessionOccurrences.sequenceIdx));
+
+    expect(occurrences.map((occurrence) => ({
+      kind: occurrence.kind,
+      label: occurrence.label,
+      link: occurrence.sessionExerciseId,
+      plannedExerciseId: occurrence.plannedExerciseId,
+      sequence: occurrence.sequenceIdx,
+      ordinal: occurrence.kindOrdinal,
+    }))).toEqual([
+      { kind: "day_warmup", label: "General preparation", link: null, plannedExerciseId: null, sequence: 0, ordinal: 0 },
+      { kind: "exercise_warmup", label: "Slot one anchor", link: sessionExerciseRows[0].id, plannedExerciseId: exerciseId, sequence: 1, ordinal: 0 },
+      { kind: "working_set", label: null, link: sessionExerciseRows[0].id, plannedExerciseId: exerciseId, sequence: 2, ordinal: 0 },
+      { kind: "working_set", label: null, link: sessionExerciseRows[0].id, plannedExerciseId: exerciseId, sequence: 3, ordinal: 1 },
+      { kind: "exercise_warmup", label: "Slot two legacy ramp", link: sessionExerciseRows[1].id, plannedExerciseId: alternateExerciseId, sequence: 4, ordinal: 0 },
+      { kind: "working_set", label: null, link: sessionExerciseRows[1].id, plannedExerciseId: alternateExerciseId, sequence: 5, ordinal: 0 },
+      { kind: "exercise_warmup", label: "Slot three anchor one", link: sessionExerciseRows[2].id, plannedExerciseId: thirdExercise.id, sequence: 6, ordinal: 0 },
+      { kind: "exercise_warmup", label: "Slot three anchor two", link: sessionExerciseRows[2].id, plannedExerciseId: thirdExercise.id, sequence: 7, ordinal: 1 },
+      { kind: "working_set", label: null, link: sessionExerciseRows[2].id, plannedExerciseId: thirdExercise.id, sequence: 8, ordinal: 0 },
+    ]);
   });
 
   it("saves note, complete, retry, and undo against one stable occurrence without losing the note", async () => {

@@ -1,8 +1,10 @@
 import { describe, it, expect } from "vitest";
 import {
+  routineParseDraftSchema,
   routineParseSchema,
-  repSpecToRange,
+  repSpecRequiresExactPerSetSupport,
 } from "@/ai/tasks/routine-parse/schema";
+import { normalizeRoutineParseDraftEnvelope } from "@/ai/tasks/routine-parse/normalize";
 import { exerciseMapSchema } from "@/ai/tasks/exercise-map/schema";
 import { sanitizeExerciseMappings } from "@/ai/tasks/exercise-map/validate";
 import { missingRequirements } from "@/engine/equipment-filter";
@@ -22,13 +24,14 @@ describe("routine_parse schema (plan §13 contract 3)", () => {
   it("accepts a canonical pasted routine with supersets, ranges, and nulls", () => {
     // "PPL — Day 1 Push: Bench press 3x8 @ 135, DB shoulder press 3x8-10,
     //  A1 lateral raise / A2 face pull 2x15, rest not stated anywhere"
-    const parsed = routineParseSchema.safeParse({
+    const draft = routineParseDraftSchema.safeParse({
       data: {
         programName: "PPL",
         days: [
           {
             name: "Day 1 Push",
             order: 0,
+            warmupItems: [],
             exercises: [
               {
                 rawName: "Bench press",
@@ -39,6 +42,7 @@ describe("routine_parse schema (plan §13 contract 3)", () => {
                 restSec: null,
                 supersetKey: null,
                 notes: null,
+                rampUps: [],
               },
               {
                 rawName: "DB shoulder press",
@@ -49,6 +53,7 @@ describe("routine_parse schema (plan §13 contract 3)", () => {
                 restSec: null,
                 supersetKey: null,
                 notes: null,
+                rampUps: [],
               },
               {
                 rawName: "lateral raise",
@@ -59,6 +64,7 @@ describe("routine_parse schema (plan §13 contract 3)", () => {
                 restSec: null,
                 supersetKey: "A",
                 notes: null,
+                rampUps: [],
               },
               {
                 rawName: "face pull",
@@ -69,6 +75,7 @@ describe("routine_parse schema (plan §13 contract 3)", () => {
                 restSec: null,
                 supersetKey: "A",
                 notes: null,
+                rampUps: [],
               },
             ],
           },
@@ -81,7 +88,18 @@ describe("routine_parse schema (plan §13 contract 3)", () => {
       clarifyingQuestions: ["Rest times weren't given — what do you use?"],
       unparsed: [],
     });
-    expect(parsed.success).toBe(true);
+    expect(draft.success).toBe(true);
+    if (!draft.success) return;
+    const parsed = normalizeRoutineParseDraftEnvelope(
+      draft.data,
+      "Program: PPL\nDay 1 Push\nsynthetic rows",
+    );
+    expect(routineParseSchema.safeParse(parsed).success).toBe(true);
+    expect(parsed.data.schemaVersion).toBe("program-input/1");
+    expect(parsed.data.days[0]?.lineageId).toMatch(/^[0-9a-f-]{36}$/u);
+    expect(parsed.data.days[0]?.exercises.every((row) =>
+      /^[0-9a-f-]{36}$/u.test(row.lineageId),
+    )).toBe(true);
   });
 
   it("rejects invented units, zero sets, and non-integer reps", () => {
@@ -94,17 +112,21 @@ describe("routine_parse schema (plan §13 contract 3)", () => {
       restSec: 90,
       supersetKey: null,
       notes: null,
+      rampUps: [],
     };
     const day = (ex: object) => ({
-      data: { programName: null, days: [{ name: "Day 1", order: 0, exercises: [ex] }] },
+      data: {
+        programName: null,
+        days: [{ name: "Day 1", order: 0, warmupItems: [], exercises: [ex] }],
+      },
       ...cleanEnvelope,
     });
-    expect(routineParseSchema.safeParse(day(exercise)).success).toBe(false);
+    expect(routineParseDraftSchema.safeParse(day(exercise)).success).toBe(false);
     expect(
-      routineParseSchema.safeParse(day({ ...exercise, loadUnit: "lb", sets: 0 })).success
+      routineParseDraftSchema.safeParse(day({ ...exercise, loadUnit: "lb", sets: 0 })).success
     ).toBe(false);
     expect(
-      routineParseSchema.safeParse(
+      routineParseDraftSchema.safeParse(
         day({ ...exercise, loadUnit: "lb", reps: { kind: "range", min: 8.5, max: 10 } })
       ).success
     ).toBe(false);
@@ -112,14 +134,27 @@ describe("routine_parse schema (plan §13 contract 3)", () => {
 
   it("rejects payloads missing the envelope", () => {
     expect(
-      routineParseSchema.safeParse({ data: { programName: null, days: [] } }).success
+      routineParseDraftSchema.safeParse({ data: { programName: null, days: [] } }).success
     ).toBe(false);
   });
 
-  it("collapses rep specs to prescription ranges", () => {
-    expect(repSpecToRange({ kind: "range", min: 8, max: 10 })).toEqual({ min: 8, max: 10 });
-    expect(repSpecToRange({ kind: "perSet", perSet: [8, 8, 6] })).toEqual({ min: 6, max: 8 });
-    expect(repSpecToRange(null)).toBeNull();
+  it("fails closed when exact per-set reps cannot fit one Program range", () => {
+    expect(repSpecRequiresExactPerSetSupport(
+      { kind: "range", min: 8, max: 10 },
+      3,
+    )).toBe(false);
+    expect(repSpecRequiresExactPerSetSupport(
+      { kind: "perSet", perSet: [8, 8, 6] },
+      3,
+    )).toBe(true);
+    expect(repSpecRequiresExactPerSetSupport(
+      { kind: "perSet", perSet: [8, 8, 8] },
+      3,
+    )).toBe(false);
+    expect(repSpecRequiresExactPerSetSupport(
+      { kind: "perSet", perSet: [8, 8, 8] },
+      4,
+    )).toBe(true);
   });
 });
 

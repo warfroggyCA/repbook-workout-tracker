@@ -6,6 +6,7 @@ export type RoutineImportFailureCategory =
   | "provider_failure"
   | "timeout"
   | "unknown"
+  | "unsupported_rep_sequence"
   | "usage_control";
 
 export function routineImportFailureCategory(
@@ -54,6 +55,11 @@ export function routineImportFailureMessage(
       return "Repbook could not safely stage the parsed routine for review. Retry later." + unchanged;
     case "usage_control":
       return "AI parsing is temporarily limited. Wait, then retry, or use the canonical routine format, which works without AI." + unchanged;
+    case "unsupported_rep_sequence":
+      return (
+        "This paste uses different rep targets for individual sets, which this importer cannot publish exactly. Rewrite each affected exercise as one exact target or range, then parse it again." +
+        unchanged
+      );
     case "unknown":
       return "Repbook could not safely parse this routine. Retry with canonical Day and exercise lines." + unchanged;
   }

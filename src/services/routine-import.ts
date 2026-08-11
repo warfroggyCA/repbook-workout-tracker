@@ -14,9 +14,14 @@ import {
   buildEquipmentAvailability,
 } from "@/engine/equipment-filter";
 import { patternFlags } from "@/engine/constraint-filter";
-import { routineParseSchema } from "@/ai/tasks/routine-parse/schema";
+import {
+  PROGRAM_INPUT_MAX_DAYS,
+  PROGRAM_INPUT_MAX_EXERCISES_PER_DAY,
+  routineParseSchema,
+} from "@/ai/tasks/routine-parse/schema";
 import type { ExerciseMediaPreview } from "@/lib/exercise-discovery";
-import type { z } from "zod";
+import { canonicalJson, sha256Hex } from "@/services/snapshot-crypto";
+import { z } from "zod";
 
 /**
  * One library exercise with its equipment verdict against the user's
@@ -108,19 +113,85 @@ export async function getLibraryWithAvailability(
 }
 
 /** Review-table mapping for one rawName (deterministic tier + AI tier merged). */
-export type ImportMapping = {
-  rawName: string;
-  exerciseId: string | null;
-  exerciseName: string | null;
-  /** ✓ exact/alias · ~ fuzzy (AI-chosen) · ? none — plan §5 badges. */
-  matchType: "exact" | "alias" | "fuzzy" | "none";
-  candidates: Array<{ id: string; name: string; why?: string }>;
-};
+export const importMappingSchema = z
+  .object({
+    rawName: z.string().trim().min(1).max(240),
+    exerciseId: z.string().uuid().nullable(),
+    exerciseName: z.string().trim().min(1).max(300).nullable(),
+    /** ✓ exact/alias · ~ fuzzy (AI-chosen) · ? none — plan §5 badges. */
+    matchType: z.enum(["exact", "alias", "fuzzy", "none"]),
+    candidates: z
+      .array(
+        z
+          .object({
+            id: z.string().uuid(),
+            name: z.string().trim().min(1).max(300),
+            why: z.string().trim().min(1).max(500).optional(),
+          })
+          .strict(),
+      )
+      .max(20),
+  })
+  .strict();
+
+export type ImportMapping = z.infer<typeof importMappingSchema>;
+
+export const ROUTINE_IMPORT_STAGE_SCHEMA_VERSION =
+  "routine-import-stage/1" as const;
+
+const routineImportStageContentSchema = z
+  .object({
+    schemaVersion: z.literal(ROUTINE_IMPORT_STAGE_SCHEMA_VERSION),
+    envelope: routineParseSchema,
+    mappings: z
+      .array(importMappingSchema)
+      .max(PROGRAM_INPUT_MAX_DAYS * PROGRAM_INPUT_MAX_EXERCISES_PER_DAY),
+    parserVersion: z.string().trim().min(1).max(120),
+    aiEventIds: z
+      .object({
+        routineParse: z.string().uuid().nullable(),
+        exerciseMap: z.string().uuid().nullable(),
+      })
+      .strict(),
+    baseProgramVersionId: z.string().uuid().nullable(),
+  })
+  .strict();
+
+export const routineImportStagePayloadSchema =
+  routineImportStageContentSchema.extend({
+    stageDigest: z.string().regex(/^[a-f0-9]{64}$/u),
+  });
+
+export type RoutineImportStagePayload = z.infer<
+  typeof routineImportStagePayloadSchema
+>;
+
+export function buildRoutineImportStagePayload(
+  input: z.input<typeof routineImportStageContentSchema>,
+): RoutineImportStagePayload {
+  const content = routineImportStageContentSchema.parse(input);
+  return routineImportStagePayloadSchema.parse({
+    ...content,
+    stageDigest: sha256Hex(Buffer.from(canonicalJson(content), "utf8")),
+  });
+}
+
+export function readRoutineImportStagePayload(
+  value: unknown,
+): RoutineImportStagePayload | null {
+  const parsed = routineImportStagePayloadSchema.safeParse(value);
+  if (!parsed.success) return null;
+  const { stageDigest, ...content } = parsed.data;
+  const expected = sha256Hex(Buffer.from(canonicalJson(content), "utf8"));
+  return expected === stageDigest ? parsed.data : null;
+}
 
 export type StagedImport = {
   importEventId: string;
   envelope: z.infer<typeof routineParseSchema>;
   mappings: ImportMapping[];
+  stageDigest: string;
+  baseProgramVersionId: string | null;
 };
 
 /**
@@ -141,12 +212,13 @@ export async function getLatestStagedImport(
     orderBy: desc(importEvents.createdAt),
   });
   if (!event?.parsedPayload) return null;
-  const payload = event.parsedPayload as { envelope?: unknown; mappings?: unknown };
-  const envelope = routineParseSchema.safeParse(payload.envelope);
-  if (!envelope.success || !Array.isArray(payload.mappings)) return null;
+  const payload = readRoutineImportStagePayload(event.parsedPayload);
+  if (!payload) return null;
   return {
     importEventId: event.id,
-    envelope: envelope.data,
-    mappings: payload.mappings as ImportMapping[],
+    envelope: payload.envelope,
+    mappings: payload.mappings,
+    stageDigest: payload.stageDigest,
+    baseProgramVersionId: payload.baseProgramVersionId,
   };
 }

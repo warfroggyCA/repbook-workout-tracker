@@ -166,6 +166,7 @@ export const programWarmupSetSchema = z
 
 export const programDayWarmupItemSchema = programWarmupSetSchema.extend({
   key: z.string().uuid(),
+  beforeSlotLineageId: z.string().uuid().nullable().optional(),
 });
 
 export const programExerciseGroupV3Schema = z.object({
@@ -347,6 +348,9 @@ export const programDayV3Schema = z
   .superRefine((day, context) => {
     refineProgramDay(day, context);
     const warmupKeys = new Set<string>();
+    const slotLineages = new Set(
+      day.exercises.map((slot) => slot.lineageId),
+    );
     for (const [itemIndex, item] of day.warmupItems.entries()) {
       if (warmupKeys.has(item.key)) {
         context.addIssue({
@@ -356,6 +360,16 @@ export const programDayV3Schema = z
         });
       }
       warmupKeys.add(item.key);
+      if (
+        item.beforeSlotLineageId != null &&
+        !slotLineages.has(item.beforeSlotLineageId)
+      ) {
+        context.addIssue({
+          code: "custom",
+          path: ["warmupItems", itemIndex, "beforeSlotLineageId"],
+          message: "An exercise warm-up must refer to an exercise in this day.",
+        });
+      }
     }
     const groupByKey = new Map(day.supersets.map((group) => [group.key, group]));
     for (const [groupIndex, group] of day.supersets.entries()) {
@@ -530,6 +544,7 @@ export function hasGeneratedOverviewWarmupItems(
     return false;
   }
   const hasOnlyPlainItems = day.warmupItems.every((item) =>
+    item.beforeSlotLineageId == null &&
     item.reps == null &&
     item.load == null &&
     item.loadUnit == null &&

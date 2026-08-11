@@ -51,6 +51,8 @@ export default async function ImportPage() {
         envelope: staged.envelope,
         mappings: staged.mappings,
         library: routineLibrary,
+        stageDigest: staged.stageDigest,
+        baseProgramVersionId: staged.baseProgramVersionId,
       }
     : null;
   const batchPreviews = await Promise.all(

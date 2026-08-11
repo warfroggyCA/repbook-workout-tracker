@@ -75,6 +75,10 @@ import {
   correctCompletedWorkoutTiming,
 } from "@/services/workout-timing-corrections";
 import { completeWorkoutSession } from "@/services/session-lifecycle";
+import {
+  createSuggestedDayIntent,
+  createSuggestedSlotIntent,
+} from "@/lib/program-document";
 
 describe("verified off-database snapshots", () => {
   let client: PGlite;
@@ -2047,6 +2051,142 @@ describe("verified off-database snapshots", () => {
       expect.arrayContaining([
         expect.objectContaining({ id: sessionId, day_warmup_items: [expectedSessionItem] }),
       ])
+    );
+  }, 30_000);
+
+  it("round-trips a current lift-anchored warm-up through snapshot restore", async () => {
+    const dayLineageId = crypto.randomUUID();
+    const slotLineageId = crypto.randomUUID();
+    const warmupItems = [{
+      key: crypto.randomUUID(),
+      beforeSlotLineageId: slotLineageId,
+      label: "Empty bar before squat",
+      reps: 10,
+      load: null,
+      loadUnit: null,
+      loadPercent: null,
+      loadText: "Empty bar",
+      notes: null,
+    }];
+    const slotIntent = {
+      ...createSuggestedSlotIntent(3, 0),
+      idealDose: { unit: "sets" as const, value: 3 },
+      substitutionPolicy: "no_substitution" as const,
+      omissionPolicy: "never" as const,
+      calibrationEligible: false,
+    };
+    const dayIntent = createSuggestedDayIntent([{
+      lineageId: slotLineageId,
+      sets: 3,
+      restSec: 120,
+    }]);
+    const activated = await activateProgramAtomically(db, {
+      userId,
+      loadUnit: "kg",
+      programName: "Anchored snapshot Program",
+      days: [{
+        lineageId: dayLineageId,
+        name: "Day A",
+        warmupItems,
+        intent: dayIntent,
+        exercises: [{
+          lineageId: slotLineageId,
+          exerciseId,
+          sets: 3,
+          repMin: 5,
+          repMax: 5,
+          targetLoad: 60,
+          targetLoadUnit: "kg",
+          restSec: 120,
+          supersetKey: null,
+          notes: null,
+          intent: slotIntent,
+        }],
+      }],
+      changeSummary: "Snapshot anchored warm-up fixture",
+      auditAction: "program.activate",
+      auditSummary: "Snapshot anchored warm-up fixture",
+      expectedCurrentProgramVersionId: null,
+      structuredIntentReviewed: true,
+    });
+    if (!activated.ok) throw new Error(activated.reason);
+
+    const payload = await captureUserSnapshot(
+      db,
+      userId,
+      new Date("2026-08-11T16:00:00.000Z"),
+      "pii01-anchored-warmup-source",
+    );
+    expect(payload.tables.workout_templates).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ warmup_items: warmupItems }),
+      ]),
+    );
+    const plaintext = Buffer.from(canonicalJson(payload), "utf8");
+    const encrypted = encryptSnapshotBytes(
+      plaintext,
+      key,
+      "v1",
+      Buffer.alloc(12, 23),
+    );
+    const snapshotId = crypto.randomUUID();
+    const objectPath = `snapshots/${userId}/${snapshotId}.wtbk`;
+    const stored = await store.put(objectPath, encrypted);
+    await db.insert(dataSnapshots).values({
+      id: snapshotId,
+      userId,
+      name: "Anchored warm-up round trip",
+      reason: "compatibility-test",
+      status: "verified",
+      objectPath,
+      objectEtag: stored.etag,
+      appVersion: payload.appVersion,
+      schemaVersion: payload.schemaVersion,
+      sizeBytes: encrypted.length,
+      recordCounts: snapshotRecordCounts(payload),
+      plaintextChecksum: sha256Hex(plaintext),
+      ciphertextChecksum: sha256Hex(encrypted),
+      encryptionAlgorithm: SNAPSHOT_ENCRYPTION_ALGORITHM,
+      encryptionKeyVersion: "v1",
+      snapshotKind: "user",
+      verifiedAt: new Date("2026-08-11T16:01:00.000Z"),
+    });
+
+    const preview = await getSnapshotRestorePreview(
+      db,
+      userId,
+      snapshotId,
+      "full",
+      { store, keyring },
+    );
+    const restored = await restoreDataSnapshot(
+      db,
+      userId,
+      {
+        snapshotId,
+        scope: "full",
+        previewFingerprint: preview.fingerprint,
+        confirmation: "RESTORE",
+      },
+      { store, keyring, appVersion: "pii01-anchored-warmup-restore" },
+    );
+    expect(restored).toMatchObject({ ok: true, scope: "full" });
+    expect(await db.query.workoutTemplates.findFirst({
+      where: eq(workoutTemplates.programVersionId, activated.programVersionId),
+    })).toMatchObject({
+      lineageId: dayLineageId,
+      warmupItems,
+    });
+    const recaptured = await captureUserSnapshot(
+      db,
+      userId,
+      new Date("2026-08-11T16:05:00.000Z"),
+      "pii01-anchored-warmup-round-trip",
+    );
+    expect(recaptured.tables.workout_templates).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ warmup_items: warmupItems }),
+      ]),
     );
   }, 30_000);
 

@@ -8,17 +8,26 @@ import {
   createSuggestedDayIntent,
   createSuggestedSlotIntent,
   programDocumentSchema,
+  programDocumentV3Schema,
+  projectIntentProgramDocumentV2,
+  type ProgramDayIntent,
+  type ProgramDayWarmupItem,
   type ProgramDocumentDay,
+  type ProgramDocumentDayV3,
+  type ProgramDocumentV3,
+  type ProgramSlotIntent,
 } from "@/lib/program-document";
 import { runProgramPreflight } from "@/lib/program-preflight";
 import { loadProgramPreflightContext } from "@/services/program-preflight";
 
 export type ProgramActivationExercise = {
+  lineageId?: string;
   exerciseId: string;
   sets: number;
   repMin: number;
   repMax: number;
   targetLoad: number | null;
+  targetLoadUnit?: LoadUnit | null;
   restSec: number;
   supersetKey: string | null;
   supersetRestAfterRoundSec?: number;
@@ -26,12 +35,16 @@ export type ProgramActivationExercise = {
   warmupNotes?: string | null;
   warmupSets?: RoutineWarmupSet[];
   setNotes?: Array<string | null>;
+  intent?: ProgramSlotIntent;
 };
 
 export type ProgramActivationDay = {
+  lineageId?: string;
   name: string;
   notes?: string | null;
   warmupNotes?: string | null;
+  warmupItems?: ProgramDayWarmupItem[];
+  intent?: ProgramDayIntent;
   exercises: ProgramActivationExercise[];
 };
 
@@ -47,8 +60,10 @@ export type AtomicProgramActivationInput = {
   aiEventIds?: string[];
   confirmedPayload?: unknown;
   expectedSetupDraft?: unknown;
+  /** The active Program version captured for review; null means no active Program existed. */
+  expectedCurrentProgramVersionId?: string | null;
   completeSetup?: boolean;
-  /** True only when the immediately preceding user-facing review showed the structured suggestions. */
+  /** True only when the immediately preceding user-facing review showed or edited the structured intent. */
   structuredIntentReviewed?: boolean;
 };
 
@@ -71,11 +86,78 @@ export async function activateProgramAtomically(
   const slots: Array<Record<string, unknown>> = [];
   const prescriptions: Array<Record<string, unknown>> = [];
   const intentDays: ProgramDocumentDay[] = [];
+  const explicitIntentDays: ProgramDocumentDayV3[] = [];
   const structuredIntentReviewed = input.structuredIntentReviewed === true;
+  const explicitIntentRequested = input.days.some(
+    (day) =>
+      day.lineageId !== undefined ||
+      day.warmupItems !== undefined ||
+      day.intent !== undefined ||
+      day.exercises.some(
+        (exercise) =>
+          exercise.lineageId !== undefined || exercise.intent !== undefined,
+      ),
+  );
+  const explicitIntentComplete = input.days.every(
+    (day) =>
+      day.lineageId !== undefined &&
+      day.warmupItems !== undefined &&
+      day.intent !== undefined &&
+      day.exercises.every(
+        (exercise) =>
+          exercise.lineageId !== undefined && exercise.intent !== undefined,
+      ),
+  );
+  if (
+    explicitIntentRequested &&
+    (!structuredIntentReviewed || !explicitIntentComplete)
+  ) {
+    return {
+      ok: false,
+      reason: "The reviewed Program intent is incomplete. Review every day and exercise before publishing.",
+    };
+  }
+  if (explicitIntentRequested) {
+    for (const day of input.days) {
+      const groupedExercises = new Map<string, ProgramActivationExercise[]>();
+      for (const exercise of day.exercises) {
+        if (!exercise.supersetKey) continue;
+        const members = groupedExercises.get(exercise.supersetKey) ?? [];
+        members.push(exercise);
+        groupedExercises.set(exercise.supersetKey, members);
+      }
+      if (
+        [...groupedExercises.values()].some(
+          (members) =>
+            members.length < 2 ||
+            new Set(members.map((member) => member.sets)).size !== 1,
+        )
+      ) {
+        return {
+          ok: false,
+          reason:
+            "A reviewed paired group needs at least two exercises with the same planned set count.",
+        };
+      }
+      if (
+        [...groupedExercises.values()].some(
+          (members) =>
+            new Set(members.slice(0, -1).map((member) => member.restSec))
+              .size > 1,
+        )
+      ) {
+        return {
+          ok: false,
+          reason:
+            "A reviewed paired group needs one shared rest time before the next paired exercise.",
+        };
+      }
+    }
+  }
 
   for (const [dayIndex, day] of input.days.entries()) {
     const templateId = randomUUID();
-    const dayLineageId = randomUUID();
+    const dayLineageId = explicitIntentRequested ? day.lineageId! : randomUUID();
     const templateRow: Record<string, unknown> = {
       id: templateId,
       program_version_id: programVersionId,
@@ -84,6 +166,7 @@ export async function activateProgramAtomically(
       order_idx: dayIndex,
       notes: day.notes ?? null,
       warmup_notes: day.warmupNotes ?? null,
+      warmup_items: explicitIntentRequested ? day.warmupItems! : [],
       intent: null,
     };
     templates.push(templateRow);
@@ -91,10 +174,24 @@ export async function activateProgramAtomically(
     const groupIdByKey = new Map<string, string>();
     const groupLineageByKey = new Map<string, string>();
     const documentGroups: ProgramDocumentDay["supersets"] = [];
+    const explicitDocumentGroups: ProgramDocumentDayV3["supersets"] = [];
     for (const exercise of day.exercises) {
       if (!exercise.supersetKey || groupIdByKey.has(exercise.supersetKey)) continue;
       const groupId = randomUUID();
       const groupLineageId = randomUUID();
+      const groupMembers = day.exercises.filter(
+        (candidate) => candidate.supersetKey === exercise.supersetKey,
+      );
+      const groupSetCounts = new Set(groupMembers.map((candidate) => candidate.sets));
+      const plannedRounds = groupSetCounts.size === 1
+        ? (groupMembers[0]?.sets ?? null)
+        : null;
+      const restBetweenMembersSec = explicitIntentRequested
+        ? (groupMembers[0]?.restSec ?? 0)
+        : null;
+      const restBetweenRoundsSec = explicitIntentRequested
+        ? (groupMembers.at(-1)?.restSec ?? 90)
+        : (exercise.supersetRestAfterRoundSec ?? 90);
       groupIdByKey.set(exercise.supersetKey, groupId);
       groupLineageByKey.set(exercise.supersetKey, groupLineageId);
       groups.push({
@@ -103,17 +200,42 @@ export async function activateProgramAtomically(
         lineage_id: groupLineageId,
         name: `Superset ${groupIdByKey.size}`,
         order_idx: groupIdByKey.size - 1,
-        rest_after_round_sec: exercise.supersetRestAfterRoundSec ?? 90,
+        rest_after_round_sec: restBetweenRoundsSec,
+        planned_rounds: explicitIntentRequested ? plannedRounds : null,
+        rest_between_members_sec: restBetweenMembersSec,
       });
       documentGroups.push({
         key: groupLineageId,
         name: `Superset ${groupIdByKey.size}`,
-        restAfterRoundSec: exercise.supersetRestAfterRoundSec ?? 90,
+        restAfterRoundSec: restBetweenRoundsSec,
+      });
+      explicitDocumentGroups.push({
+        key: groupLineageId,
+        name: `Superset ${groupIdByKey.size}`,
+        structureStatus: plannedRounds == null ? "legacy_unequal" : "canonical",
+        plannedRounds,
+        restBetweenMembersSec: restBetweenMembersSec ?? 0,
+        restBetweenRoundsSec,
+        restAfterRoundSec: restBetweenRoundsSec,
       });
     }
 
     const documentSlots: ProgramDocumentDay["exercises"] = [];
+    const explicitDocumentSlots: ProgramDocumentDayV3["exercises"] = [];
+    const nextGroupMemberOrder = new Map<string, number>();
     for (const [exerciseIndex, exercise] of day.exercises.entries()) {
+      if (
+        explicitIntentRequested &&
+        (exercise.targetLoad == null) !== (exercise.targetLoadUnit == null)
+      ) {
+        return {
+          ok: false,
+          reason: "A reviewed target load is missing its recorded unit.",
+        };
+      }
+      const targetLoadUnit = exercise.targetLoad == null
+        ? null
+        : (exercise.targetLoadUnit ?? input.loadUnit);
       const warmupSets = exercise.warmupSets ?? [];
       if (
         warmupSets.some(
@@ -126,14 +248,24 @@ export async function activateProgramAtomically(
         };
       }
       const slotId = randomUUID();
-      const slotLineageId = randomUUID();
+      const slotLineageId = explicitIntentRequested
+        ? exercise.lineageId!
+        : randomUUID();
       const normalizedSetNotes = Array.from(
         { length: exercise.sets },
         (_, index) => exercise.setNotes?.[index] ?? null,
       );
-      const slotIntent = structuredIntentReviewed
-        ? createSuggestedSlotIntent(exercise.sets, exerciseIndex)
+      const slotIntent = explicitIntentRequested
+        ? exercise.intent!
+        : structuredIntentReviewed
+          ? createSuggestedSlotIntent(exercise.sets, exerciseIndex)
+          : null;
+      const groupMemberOrderIdx = exercise.supersetKey
+        ? (nextGroupMemberOrder.get(exercise.supersetKey) ?? 0)
         : null;
+      if (exercise.supersetKey) {
+        nextGroupMemberOrder.set(exercise.supersetKey, groupMemberOrderIdx! + 1);
+      }
       slots.push({
         id: slotId,
         workout_template_id: templateId,
@@ -142,6 +274,9 @@ export async function activateProgramAtomically(
         order_idx: exerciseIndex,
         superset_group_id: exercise.supersetKey
           ? (groupIdByKey.get(exercise.supersetKey) ?? null)
+          : null,
+        group_member_order_idx: explicitIntentRequested
+          ? groupMemberOrderIdx
           : null,
         rest_sec: exercise.restSec,
         notes: exercise.notes,
@@ -157,18 +292,17 @@ export async function activateProgramAtomically(
         rep_range_min: exercise.repMin,
         rep_range_max: exercise.repMax,
         target_load: exercise.targetLoad,
-        target_load_unit:
-          exercise.targetLoad == null ? null : input.loadUnit,
+        target_load_unit: targetLoadUnit,
       });
       if (structuredIntentReviewed) {
-        documentSlots.push({
+        const documentSlot = {
           lineageId: slotLineageId,
           exerciseId: exercise.exerciseId,
           sets: exercise.sets,
           repMin: exercise.repMin,
           repMax: exercise.repMax,
           targetLoad: exercise.targetLoad,
-          targetLoadUnit: exercise.targetLoad == null ? null : input.loadUnit,
+          targetLoadUnit,
           progressionRuleId: "double_progression",
           restSec: exercise.restSec,
           supersetKey: exercise.supersetKey
@@ -179,25 +313,49 @@ export async function activateProgramAtomically(
           warmupSets,
           setNotes: normalizedSetNotes,
           intent: slotIntent!,
-        });
+        };
+        if (explicitIntentRequested) {
+          explicitDocumentSlots.push({
+            ...documentSlot,
+            groupMemberOrderIdx,
+          });
+        } else {
+          documentSlots.push(documentSlot);
+        }
       }
     }
     if (structuredIntentReviewed) {
-      const dayIntent = createSuggestedDayIntent(documentSlots);
+      const dayIntent = explicitIntentRequested
+        ? day.intent!
+        : createSuggestedDayIntent(documentSlots);
       templateRow.intent = dayIntent;
-      intentDays.push({
-        lineageId: dayLineageId,
-        name: day.name,
-        notes: day.notes ?? null,
-        warmupNotes: day.warmupNotes ?? null,
-        intent: dayIntent,
-        supersets: documentGroups,
-        exercises: documentSlots,
-      });
+      if (explicitIntentRequested) {
+        explicitIntentDays.push({
+          lineageId: dayLineageId,
+          name: day.name,
+          notes: day.notes ?? null,
+          warmupNotes: day.warmupNotes ?? null,
+          warmupItems: day.warmupItems!,
+          intent: dayIntent,
+          supersets: explicitDocumentGroups,
+          exercises: explicitDocumentSlots,
+        });
+      } else {
+        intentDays.push({
+          lineageId: dayLineageId,
+          name: day.name,
+          notes: day.notes ?? null,
+          warmupNotes: day.warmupNotes ?? null,
+          intent: dayIntent,
+          supersets: documentGroups,
+          exercises: documentSlots,
+        });
+      }
     }
   }
 
-  const intentDocument = structuredIntentReviewed
+  let intentDocument: ProgramDocumentV3 | null = null;
+  let preflightDocument = structuredIntentReviewed && !explicitIntentRequested
     ? programDocumentSchema.parse({
         schemaVersion: "2",
         programId,
@@ -206,10 +364,44 @@ export async function activateProgramAtomically(
         days: intentDays,
       })
     : null;
-  const publicationPreflight = intentDocument
+  if (explicitIntentRequested) {
+    const parsed = programDocumentV3Schema.safeParse({
+      schemaVersion: "3",
+      programId,
+      baseVersionId: programVersionId,
+      name: input.programName,
+      days: explicitIntentDays,
+    });
+    if (!parsed.success) {
+      return {
+        ok: false,
+        reason: "The reviewed Program structure is invalid. Review it and try again.",
+      };
+    }
+    intentDocument = parsed.data;
+    let canonicalSlotIndex = 0;
+    for (const [dayIndex, day] of intentDocument.days.entries()) {
+      templates[dayIndex].warmup_items = day.warmupItems;
+      templates[dayIndex].intent = day.intent;
+      for (const slot of day.exercises) {
+        slots[canonicalSlotIndex].warmup_sets = slot.warmupSets;
+        slots[canonicalSlotIndex].intent = slot.intent;
+        canonicalSlotIndex += 1;
+      }
+    }
+    try {
+      preflightDocument = projectIntentProgramDocumentV2(intentDocument);
+    } catch {
+      return {
+        ok: false,
+        reason: "The reviewed Program intent is invalid. Review it and try again.",
+      };
+    }
+  }
+  const publicationPreflight = preflightDocument
     ? runProgramPreflight(
-        intentDocument,
-        await loadProgramPreflightContext(db, input.userId, intentDocument),
+        preflightDocument,
+        await loadProgramPreflightContext(db, input.userId, preflightDocument),
       )
     : null;
   const blockingFinding = publicationPreflight?.findings.find(
@@ -222,24 +414,33 @@ export async function activateProgramAtomically(
   const importEventId = input.importEventId ?? null;
   const aiEventIds = [...new Set(input.aiEventIds ?? [])];
   const expectedSetupDraft = input.expectedSetupDraft ?? null;
+  const expectedCurrentProgramVersionId =
+    input.expectedCurrentProgramVersionId ?? null;
+  const currentProgramExpectationProvided =
+    input.expectedCurrentProgramVersionId !== undefined;
   const completeSetup = input.completeSetup ?? false;
+  const documentSchemaVersion = explicitIntentRequested
+    ? 3
+    : structuredIntentReviewed
+      ? 2
+      : 1;
   const query = sql`
     WITH publish_authorization AS MATERIALIZED (
       SELECT set_config('workout_tracker.program_publish', 'authorized', true) AS allowed
     ), template_input AS MATERIALIZED (
       SELECT * FROM jsonb_to_recordset(${JSON.stringify(templates)}::jsonb) AS x(
         id uuid, program_version_id uuid, lineage_id uuid, name text, order_idx integer, notes text,
-        warmup_notes text, intent jsonb
+        warmup_notes text, warmup_items jsonb, intent jsonb
       )
     ), group_input AS MATERIALIZED (
       SELECT * FROM jsonb_to_recordset(${JSON.stringify(groups)}::jsonb) AS x(
         id uuid, workout_template_id uuid, lineage_id uuid, name text, order_idx integer,
-        rest_after_round_sec integer
+        rest_after_round_sec integer, planned_rounds integer, rest_between_members_sec integer
       )
     ), slot_input AS MATERIALIZED (
       SELECT * FROM jsonb_to_recordset(${JSON.stringify(slots)}::jsonb) AS x(
         id uuid, workout_template_id uuid, exercise_id uuid, lineage_id uuid, order_idx integer,
-        superset_group_id uuid, rest_sec integer, notes text,
+        superset_group_id uuid, group_member_order_idx integer, rest_sec integer, notes text,
         warmup_notes text, warmup_sets jsonb, set_notes jsonb, intent jsonb
       )
     ), prescription_input AS MATERIALIZED (
@@ -268,6 +469,14 @@ export async function activateProgramAtomically(
           SELECT value::uuid
           FROM jsonb_array_elements_text(${JSON.stringify(aiEventIds)}::jsonb)
         )
+    ), current_programs AS MATERIALIZED (
+      SELECT program.*, version.version_no, to_jsonb(program) AS before_data
+      FROM programs program
+      JOIN program_versions version ON version.id = program.current_version_id
+      WHERE program.user_id = ${input.userId}::uuid
+        AND program.status = 'active'
+        AND program.archived_at IS NULL
+      FOR UPDATE OF program
     ), activation_gate AS MATERIALIZED (
       SELECT profile.id
       FROM target_profile profile
@@ -278,6 +487,18 @@ export async function activateProgramAtomically(
           OR profile.setup_state->'routineDraft' = ${JSON.stringify(expectedSetupDraft)}::jsonb
         )
         AND (SELECT count(*) FROM valid_ai_events) = ${aiEventIds.length}::int
+        AND (
+          ${!currentProgramExpectationProvided}::boolean
+          OR (
+            ${expectedCurrentProgramVersionId}::uuid IS NULL
+            AND NOT EXISTS (SELECT 1 FROM current_programs)
+          )
+          OR EXISTS (
+            SELECT 1
+            FROM current_programs current
+            WHERE current.current_version_id = ${expectedCurrentProgramVersionId}::uuid
+          )
+        )
         AND NOT EXISTS (
           SELECT 1
           FROM slot_input slot
@@ -285,14 +506,6 @@ export async function activateProgramAtomically(
           WHERE exercise.id IS NULL
              OR (exercise.user_id IS NOT NULL AND exercise.user_id <> ${input.userId}::uuid)
         )
-    ), current_programs AS MATERIALIZED (
-      SELECT program.*, version.version_no, to_jsonb(program) AS before_data
-      FROM programs program
-      JOIN program_versions version ON version.id = program.current_version_id
-      WHERE program.user_id = ${input.userId}::uuid
-        AND program.status = 'active'
-        AND program.archived_at IS NULL
-      FOR UPDATE OF program
     ), new_program AS (
       INSERT INTO programs (id, user_id, name, status, current_version_id)
       SELECT ${programId}::uuid, ${input.userId}::uuid, ${input.programName}, 'active', ${programVersionId}::uuid
@@ -316,38 +529,39 @@ export async function activateProgramAtomically(
         ${input.programName}, target.current_version_id,
         ${importEventId ? "import" : "setup"}, now(),
         ${importEventId}::uuid, ${input.changeSummary},
-        ${structuredIntentReviewed ? 2 : 1}::int,
+        ${documentSchemaVersion}::int,
         ${publicationPreflight ? JSON.stringify(publicationPreflight) : null}::jsonb
       FROM target_program target CROSS JOIN publish_authorization
       WHERE EXISTS (SELECT 1 FROM activation_gate)
       RETURNING *
     ), inserted_templates AS (
       INSERT INTO workout_templates (
-        id, program_version_id, lineage_id, name, order_idx, notes, warmup_notes, intent
+        id, program_version_id, lineage_id, name, order_idx, notes, warmup_notes, warmup_items, intent
       )
-      SELECT input.id, input.program_version_id, input.lineage_id, input.name, input.order_idx, input.notes, input.warmup_notes, input.intent
+      SELECT input.id, input.program_version_id, input.lineage_id, input.name, input.order_idx, input.notes, input.warmup_notes, input.warmup_items, input.intent
       FROM template_input input CROSS JOIN publish_authorization
       WHERE EXISTS (SELECT 1 FROM new_version)
       RETURNING id
     ), inserted_groups AS (
       INSERT INTO superset_groups (
-        id, workout_template_id, lineage_id, name, order_idx, rest_after_round_sec
+        id, workout_template_id, lineage_id, name, order_idx, rest_after_round_sec,
+        planned_rounds, rest_between_members_sec
       )
       SELECT
         input.id, input.workout_template_id, input.lineage_id, input.name, input.order_idx,
-        input.rest_after_round_sec
+        input.rest_after_round_sec, input.planned_rounds, input.rest_between_members_sec
       FROM group_input input CROSS JOIN publish_authorization
       WHERE EXISTS (SELECT 1 FROM new_version)
       RETURNING id
     ), inserted_slots AS (
       INSERT INTO workout_template_exercises (
         id, workout_template_id, exercise_id, lineage_id, order_idx,
-        superset_group_id, rest_sec, notes, warmup_notes,
+        superset_group_id, group_member_order_idx, rest_sec, notes, warmup_notes,
         warmup_sets, set_notes, intent
       )
       SELECT
         input.id, input.workout_template_id, input.exercise_id, input.lineage_id,
-        input.order_idx, input.superset_group_id, input.rest_sec,
+        input.order_idx, input.superset_group_id, input.group_member_order_idx, input.rest_sec,
         input.notes, input.warmup_notes, input.warmup_sets, input.set_notes, input.intent
       FROM slot_input input CROSS JOIN publish_authorization
       WHERE EXISTS (SELECT 1 FROM new_version)
