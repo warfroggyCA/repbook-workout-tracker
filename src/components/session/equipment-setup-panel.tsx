@@ -16,6 +16,12 @@ import {
   subscribeToEquipmentSelectionOutboxStatus,
 } from "@/lib/equipment-selection-outbox";
 
+// A saved selection can clear its durable outbox entry just before the
+// refreshed server component tree exposes the resulting snapshot. Keep the
+// automatic attempt claimed across that short remount window so a future
+// exercise cannot enqueue the same expected-null command twice.
+const automaticSelectionAttempts = new Set<string>();
+
 type Props = {
   sessionExerciseId: string;
   exerciseName: string;
@@ -36,10 +42,29 @@ export function EquipmentSetupPanel({
   onLoadEntryMeaningChange,
 }: Props) {
   const router = useRouter();
+  const automaticOption = setup.status === "available" && setup.options.length === 1
+    ? setup.options[0]
+    : null;
+  const automatic = automaticOption != null && setup.currentSnapshotId == null;
+  const automaticAttemptKey = automaticOption == null
+    ? null
+    : [
+        ownerId,
+        sessionId,
+        sessionExerciseId,
+        setup.sourceExerciseId,
+        automaticOption.key,
+      ].join(":");
   const [choice, setChoice] = useState("");
   const [message, setMessage] = useState<string | null>(null);
-  const automaticStarted = useRef(false);
-  const [automaticAttempted, setAutomaticAttempted] = useState(false);
+  const automaticStarted = useRef<string | null>(null);
+  const [automaticAttemptedKey, setAutomaticAttemptedKey] = useState<
+    string | null
+  >(() =>
+    automaticAttemptKey != null && automaticSelectionAttempts.has(automaticAttemptKey)
+      ? automaticAttemptKey
+      : null,
+  );
   const outbox = useSyncExternalStore(
     subscribeToEquipmentSelectionOutbox,
     getEquipmentSelectionOutboxSnapshot,
@@ -54,9 +79,8 @@ export function EquipmentSetupPanel({
   const latestPending = pendingEntries.at(-1) ?? null;
   const pending = pendingEntries.some((entry) => entry.status === "queued");
   const failed = pendingEntries.find((entry) => entry.status === "needs_attention") ?? null;
-  const automatic = setup.status === "available" &&
-    setup.currentSnapshotId == null && setup.options.length === 1;
-  const automaticRetryAvailable = automatic && automaticAttempted &&
+  const automaticRetryAvailable = automatic &&
+    automaticAttemptedKey === automaticAttemptKey &&
     pendingEntries.length === 0;
   const selectedOption = useMemo(
     () => setup.options.find((option) => option.key === choice) ?? null,
@@ -89,19 +113,34 @@ export function EquipmentSetupPanel({
   }), [router, sessionExerciseId]);
 
   useEffect(() => {
+    if (setup.currentSnapshotId != null) {
+      if (automaticAttemptKey != null) {
+        automaticSelectionAttempts.delete(automaticAttemptKey);
+      }
+      automaticStarted.current = null;
+      return;
+    }
     // Read storage again at effect time: the hydration snapshot can briefly be
     // empty even though a command from this page is already durable locally.
     const alreadyQueued = hasPendingEquipmentSelection(
       getEquipmentSelectionOutboxSnapshot(),
       { ownerId, sessionId, sessionExerciseId },
     );
-    if (!automatic || pending || alreadyQueued || automaticStarted.current) return;
-    automaticStarted.current = true;
-    setAutomaticAttempted(true);
-    void apply(setup.options[0], "auto_unique");
+    if (!automatic || automaticAttemptKey == null || pending || alreadyQueued) return;
+    if (
+      automaticStarted.current === automaticAttemptKey ||
+      automaticSelectionAttempts.has(automaticAttemptKey)
+    ) {
+      setAutomaticAttemptedKey(automaticAttemptKey);
+      return;
+    }
+    automaticStarted.current = automaticAttemptKey;
+    automaticSelectionAttempts.add(automaticAttemptKey);
+    setAutomaticAttemptedKey(automaticAttemptKey);
+    void apply(automaticOption, "auto_unique");
     // The snapshot id changes after the refresh, preventing a second request.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [automatic, setup.currentSnapshotId]);
+  }, [automatic, automaticAttemptKey, setup.currentSnapshotId]);
 
   const pendingLabel = latestPending?.operation === "select" && latestPending.equipmentLabel
     ? `${latestPending.equipmentLabel}${latestPending.attachmentLabel ? ` · ${latestPending.attachmentLabel}` : ""}`
@@ -187,7 +226,7 @@ export function EquipmentSetupPanel({
           type="button"
           className="mt-3 min-h-11"
           variant="outline"
-          onClick={() => void apply(setup.options[0], "auto_unique")}
+          onClick={() => automaticOption && void apply(automaticOption, "auto_unique")}
         >
           Confirm the only available setup
         </Button>

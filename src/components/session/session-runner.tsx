@@ -2344,6 +2344,10 @@ export function SessionRunner(props: SessionRunnerProps) {
               entry.sessionExerciseId === exercise.id &&
               (entry.status === "queued" || entry.status === "needs_attention"),
           );
+          const equipmentSetupForcedOpen =
+            equipmentSetupIsCurrent ||
+            equipmentSetupNeedsAttention ||
+            !equipmentSetupMatches;
           const equipmentPanel = equipmentSetupMatches ? (
             <EquipmentSetupPanel
               sessionExerciseId={exercise.id}
@@ -2375,13 +2379,17 @@ export function SessionRunner(props: SessionRunnerProps) {
           guidance.activeGroup ? (
             <WorkoutGroupContext guidance={guidance} />
           ) : null}
-          {equipmentPanel && (
-            equipmentSetupIsCurrent ||
-            equipmentSetupNeedsAttention ||
-            !equipmentSetupMatches
-          ) ? equipmentPanel : equipmentPanel ? (
-            <details className="rounded-xl border bg-muted/20">
-              <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 rounded-xl px-3 py-2 text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
+          {equipmentPanel ? (
+            <details
+              className={equipmentSetupForcedOpen
+                ? undefined
+                : "rounded-xl border bg-muted/20"}
+              open={equipmentSetupForcedOpen ? true : undefined}
+            >
+              <summary
+                hidden={equipmentSetupForcedOpen}
+                className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 rounded-xl px-3 py-2 text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+              >
                 <span className="min-w-0 break-words">
                   Equipment setup for {exercise.name}
                 </span>
@@ -2389,7 +2397,9 @@ export function SessionRunner(props: SessionRunnerProps) {
                   Show
                 </span>
               </summary>
-              <div className="border-t p-2">{equipmentPanel}</div>
+              <div className={equipmentSetupForcedOpen ? undefined : "border-t p-2"}>
+                {equipmentPanel}
+              </div>
             </details>
           ) : null}
           <ExerciseCard
