@@ -55,6 +55,63 @@ Every change to weekly work-set totals must be accounted for internally by an
 add, removal, replacement, or target change. If the review cannot account for a
 set total, publication fails closed.
 
+## Program paste intake contract
+
+Program paste intake is an untrusted, owner-scoped staging workflow. Provider
+output is accepted only through the strict draft schema; it cannot supply
+durable identities. The server normalizes the result to `program-input/1` and
+derives stable day, slot, and warm-up UUIDs from a private in-memory digest of
+canonical source text plus entity ordinals. The raw paste is bounded to 20,000
+characters, retained only under the existing short privacy window, and removed
+on discard, parse failure, or successful publication. The normalized package,
+mapping decisions, parser version, AI-event references, and active Program
+version are bound by a canonical stage digest.
+
+Confirmation sends `program-input-review/1`. It must identify the exact staged
+digest and the active Program version seen when parsing began. The server
+revalidates owner scope, catalog identity, current equipment availability,
+prescription bounds, warm-up anchors, load units, note duplication, and every
+day and slot intent before one atomic schema-3 publication. Fresh paired groups
+must retain at least two exercises with the same planned set count so complete
+round reductions match the reviewed minimums. Authored group order also owns
+rest meaning: every non-final member's rest is the shared pause before the next
+member, while the final member's rest is the pause after the complete round.
+Those exact values publish to the Program group and are copied into normal or
+compiled session snapshots; unrepresentable mixed between-member rests fail
+review. The parser preserves authored per-set rep sequences, but the current
+Program prescription stores one exact target or range per exercise. A sequence
+with different per-set targets therefore fails closed and is discarded with a
+rewrite instruction; it is never widened silently into a range. A matching retry
+returns the first publication; changed reuse conflicts. A stale Program,
+malformed review, unavailable exercise, or failed publication leaves the stage
+reviewable and creates no Program version. Exact equipment-fit review is a
+server-required durable attestation, not a browser-only gate. Discard is
+owner-scoped, replay-safe, and clears raw and normalized paste content plus
+linked unconfirmed provider parse records.
+
+The review displays and edits every retained warm-up and the compiler-relevant
+minimum, priority, and protection choices in ordinary workout language.
+Generated starting values are based only on pasted row structure and are not
+presented as owner-goal or History evidence. The current compiler preserves
+exercises, order, and pairings; it reduces only complete sets or complete group
+rounds from eligible work, never below the reviewed minimum, and does not
+invent substitutions or omissions. Other versioned intent remains context for
+a separately reviewed future compiler.
+
+`program-input/1` is also the contract foundation for a later validated
+external-assistant package. This tranche adds no external exchange UI or
+multiple-Program library.
+
+Current equipment availability proves only catalog requirements against broad
+inventory and movement constraints. Import therefore requires the owner to
+confirm that every retained exercise fits the exact physical setup and offers
+only catalog choices that pass current availability checks. A reusable
+owner-specific exercise/equipment incompatibility—such as a cable movement
+that cannot use the owner's pulley geometry—needs a new additive relation plus
+snapshot, restore, export, Coach, alternatives, and audit participation. That
+schema/recovery tranche is deliberately separate; this contract never infers
+physical compatibility from display names or from “cable station” alone.
+
 ## Persisted evidence
 
 Completed workouts, session exercises, sets, pain observations, local dates,
@@ -257,6 +314,17 @@ Known pending projections retained by the conservative legacy backfill are
 excluded from active controls and rejected at the mutation boundary without
 rewriting the stored row; independently authored structured actions remain
 actionable.
+
+For schema-3 Program days, `beforeSlotLineageId` gives a structured item its
+execution position. Null or absent means general day preparation at the workout
+start; a same-day slot lineage means lift-specific preparation immediately
+before that exercise's first working occurrence. Unknown and cross-day anchors
+are invalid. Normal Start and Session Compiler materialize anchored items as
+linked `exercise_warmup` occurrences and interleave them with working
+occurrences, including group member order. Older slot-level warm-up sets remain
+linked legacy actions after any newly anchored items for that same exercise.
+The Program editor may retime the item only to another slot in that day and
+does not copy an anchored item across days.
 
 Each warm-up occurrence keeps its immutable session, planned-exercise,
 prescription, order, and equipment identity. Note, complete, skip, and restore

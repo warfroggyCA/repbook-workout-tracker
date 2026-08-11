@@ -27,6 +27,34 @@ npm run docs:check
 npm run audit:check
 ```
 
+The migration-free PII-01A Program-intake gate is:
+
+```bash
+npx vitest run tests/unit/ai-import-contracts.test.ts tests/unit/routine-import-resilience.test.ts tests/unit/routine-import-stage.test.ts tests/unit/routine-import-confirm-db.test.ts tests/unit/routine-import-component.test.tsx
+npx vitest run tests/unit/program-document.test.ts tests/unit/session-occurrences-data01.test.ts tests/unit/v2-t04-warmup-occurrences-db.test.ts tests/unit/session-compiler-db.test.ts tests/unit/setup-safety-db.test.ts
+npx vitest run tests/unit/snapshots-db.test.ts -t "round-trips a current lift-anchored warm-up through snapshot restore"
+npm run test:e2e:pii01
+```
+
+The focused browser gate owns one fresh disposable database per browser project
+so Chromium and mobile WebKit cannot inherit each other's Program rotation or
+workout state. It covers a
+multi-day paste through reviewed schema-3 publication, 390×844 layout,
+keyboard operation, ordered warm-up acknowledgement, a working set, History,
+JSON export, enlarged text, ambiguity, and discard. PGlite tests cover malformed
+and oversized input, unsupported equipment, exact retry, changed replay, stale
+review, unrepresentable per-set rep sequences, atomic publication, snapshot
+restore, and both normal and compiled
+occurrence order, including distinct between-member and after-round rest. The
+native PostgreSQL suite includes the same general/ramp/
+working sequence and remains required in CI; it needs a guarded local
+`TEST_DATABASE_URL` or explicitly approved ephemeral test branch.
+
+PII-01A changes no SQL migration, snapshot schema, or recovery manifest. Do not
+start the owner-specific equipment-incompatibility relation until its additive
+migration and complete recovery/export/Coach/alternatives inventory are
+separately authorized.
+
 The Repbook v2 semantic foundation and current T01/T02/T03/T04/T05/T06/U01/U02/U03/H01/H02/H03/H04/A01/A02/A03/A04/A05/A06/Gauntlet C/D01/D02 activation
 packages have focused gates:
 

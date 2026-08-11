@@ -29,6 +29,26 @@ server. User-specific responses are not shared-cacheable. Logs and client error
 messages are redacted. Imports, exports, snapshots, restore, archive, and
 permanent deletion validate authorization and preserve audit boundaries.
 
+Program paste intake accepts at most 20,000 characters and treats both parser
+output and browser review state as untrusted. The provider-facing schema has no
+identity fields. Server normalization derives package-local UUIDs from an
+in-memory source digest, stages the exact normalized package under a canonical
+digest and owner scope, and fences publication to the active Program version
+captured at parse time. Logs retain only bounded structural counts and a closed
+failure category, never paste text, exercise text, provider output, owner IDs,
+or record IDs. Parse failure, explicit discard, and successful publication
+clear raw and normalized paste content and linked provider input/output
+records; the existing automatic retention window remains the fallback if
+immediate cleanup fails.
+
+The review can change prescriptions and mappings only through server-validated
+catalog identities and bounds. Publication also requires a server-validated,
+durably retained owner attestation that every selected movement works with the
+exact physical setup. Exact matching retry is idempotent, changed
+identity reuse conflicts, and the Program write plus import receipt is atomic.
+No external structured package upload or automatic provider transmission is
+introduced by the `program-input/1` exchange foundation.
+
 Active-workout equipment preparation is also owner-scoped. New workout
 exercise rows retain the reviewed equipment-requirement identities needed to
 interpret that workout later; they do not record whether equipment was

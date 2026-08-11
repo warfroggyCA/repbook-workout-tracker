@@ -37,6 +37,12 @@ Before application changes, read:
   never become performed facts, recommendations, decisions, or Program changes.
 - Schema work is additive. Never edit an applied migration or silently rewrite
   historical rows.
+- Program paste input is untrusted and owner-scoped. Keep its raw claim,
+  normalized `program-input/1` package, staged-review digest, reviewed choices,
+  publication result, and retry identity distinct. General day preparation has
+  no exercise anchor; lift ramp-ups use the owning same-day slot lineage. Never
+  duplicate either item as exercise guidance or infer equipment compatibility
+  from an exercise or equipment display name.
 
 ## Privacy and security
 
