@@ -50,6 +50,13 @@ import {
 } from "@/lib/set-exception-context";
 import { classifyActiveSessionTiming } from "@/lib/active-session-timing";
 import { acceptanceWorkoutNow } from "@/lib/acceptance-workout-clock";
+import {
+  parseSessionEquipmentRequirementsEvidence,
+  retainedPrimaryEquipmentCandidateMatchesBroad,
+} from "@/lib/session-equipment-requirements";
+import {
+  resolveSessionPreparationEquipmentProjection,
+} from "@/services/session-equipment-requirements";
 
 function techniqueIssue(value: string | null): TechniqueIssue | null {
   return TECHNIQUE_ISSUES.includes(value as TechniqueIssue)
@@ -180,6 +187,7 @@ async function renderSessionPage(
     userConstraints,
     coachMessages,
     plannedExercises,
+    sessionPreparation,
   ] =
     await Promise.all([
       db.query.plateInventory.findMany({
@@ -206,7 +214,14 @@ async function renderSessionPage(
             where: inArray(exercisesTable.id, plannedExerciseIds),
           })
         : Promise.resolve([]),
+      resolveSessionPreparationEquipmentProjection(
+        db,
+        user.id,
+        session.id,
+        session.historyRevision,
+      ),
     ]);
+  if (sessionPreparation == null) notFound();
   const visibleSetIds = session.exercises.flatMap((exercise) =>
     exercise.sets.filter((set) => !set.isWarmup).map((set) => set.id),
   );
@@ -268,14 +283,24 @@ async function renderSessionPage(
   );
   const plateConfigs: Record<string, PlateMathConfig> = {};
   const equipmentSetups: SessionRunnerProps["equipmentSetups"] = {};
+  const equipmentById = new Map(equipment.map((item) => [item.id, item]));
   for (const sessionExercise of session.exercises) {
     const usesPrescribedMeaning =
       sessionExercise.prescribedSemanticsVersion === 1 &&
       sessionExercise.modificationType !== "substituted" &&
       sessionExercise.modificationType !== "added";
-    const exact = usesPrescribedMeaning
+    const retainedRequirements = parseSessionEquipmentRequirementsEvidence(
+      sessionExercise.equipmentRequirementsSemanticsVersion,
+      sessionExercise.equipmentRequirementsSnapshot,
+      sessionExercise.exerciseId,
+    );
+    const retainedSnapshot = retainedRequirements.state === "retained"
+      ? retainedRequirements.snapshot
+      : null;
+    const legacyExact = usesPrescribedMeaning
       ? null
       : exactByExercise.get(sessionExercise.exerciseId) ?? null;
+    const exact = retainedSnapshot?.exact ?? legacyExact;
     const presentation = buildSessionEquipmentPresentation({
       exercise: {
         id: sessionExercise.id,
@@ -285,17 +310,28 @@ async function renderSessionPage(
           : sessionExercise.exercise.loadType,
         targetLoad: sessionExercise.targetLoad,
         targetLoadUnit: sessionExercise.targetLoadUnit,
-        requirements: usesPrescribedMeaning
-          ? []
-          : sessionExercise.exercise.equipmentRequirements.map((requirement) => ({
+        requirements: retainedSnapshot
+          ? retainedSnapshot.broad.map((requirement) => ({
               equipmentType: requirement.equipmentType,
               minWeight: requirement.minWeight,
-            })),
+            }))
+          : usesPrescribedMeaning
+            ? []
+            : sessionExercise.exercise.equipmentRequirements.map((requirement) => ({
+                equipmentType: requirement.equipmentType,
+                minWeight: requirement.minWeight,
+              })),
         exactRequirement: exact ? {
           requiredProfileKind: exact.requiredProfileKind,
-          requiredEquipmentDefinitionId: exact.requiredEquipmentDefinitionId,
+          requiredEquipmentDefinitionId:
+            "requiredEquipmentDefinition" in exact
+              ? exact.requiredEquipmentDefinition?.id ?? null
+              : exact.requiredEquipmentDefinitionId,
           requiredAttachmentKind: exact.requiredAttachmentKind,
-          requiredAttachmentDefinitionId: exact.requiredAttachmentDefinitionId,
+          requiredAttachmentDefinitionId:
+            "requiredAttachmentDefinition" in exact
+              ? exact.requiredAttachmentDefinition?.id ?? null
+              : exact.requiredAttachmentDefinitionId,
           requiresKnownGeometry: exact.requiresKnownGeometry,
         } : null,
         currentSelection: sessionExercise.currentEquipmentSnapshot ? {
@@ -321,6 +357,19 @@ async function renderSessionPage(
         quantity: plate.quantity,
         unit: plate.unit,
       })),
+      optionAllowed: retainedSnapshot
+        ? (option) => {
+            const item = equipmentById.get(option.equipmentItemId);
+            return item != null && retainedPrimaryEquipmentCandidateMatchesBroad(
+              retainedSnapshot.broad,
+              {
+                equipmentType: item.type,
+                equipmentDefinitionId: item.definitionId,
+                attrs: { maxWeight: item.attrs.maxWeight },
+              },
+            );
+          }
+        : undefined,
     });
     if (presentation.setup) equipmentSetups[sessionExercise.id] = presentation.setup;
     if (presentation.plateConfig) plateConfigs[sessionExercise.id] = presentation.plateConfig;
@@ -498,6 +547,7 @@ async function renderSessionPage(
     exercises,
     plateConfigs,
     equipmentSetups,
+    sessionPreparation,
     incrementals,
     unit: user.profile.unit,
     coachMessages,

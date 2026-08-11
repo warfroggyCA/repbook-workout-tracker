@@ -32,6 +32,7 @@ import type { RoutineWarmupSet } from "./user";
 import { supersetGroups, workoutTemplates } from "./program";
 import type { SessionCompilerInput, SessionCompilerOutput } from "@/lib/session-compiler";
 import type { ProgramDayWarmupItem } from "@/lib/program-document";
+import type { SessionEquipmentRequirementsSnapshot } from "@/lib/session-equipment-requirements";
 import { exercises } from "./exercise";
 import { historyImportBatches } from "./events";
 import { archiveOperations } from "./archive";
@@ -356,6 +357,13 @@ export const sessionExercises = pgTable(
     prescribedMetricType: metricTypeEnum("prescribed_metric_type"),
     prescribedLoadType: text("prescribed_load_type"),
     prescribedLoadSemantics: loadSemanticsEnum("prescribed_load_semantics"),
+    // Retained requirement meaning for pre-session preparation and later set
+    // validation. Null/null is an explicit legacy or unsupported state.
+    equipmentRequirementsSemanticsVersion: integer(
+      "equipment_requirements_semantics_version",
+    ),
+    equipmentRequirementsSnapshot: jsonb("equipment_requirements_snapshot")
+      .$type<SessionEquipmentRequirementsSnapshot>(),
     plannedFromTemplateExerciseId: uuid("planned_from_template_exercise_id"),
     sourceSlotLineageId: uuid("source_slot_lineage_id"),
     modificationType: modificationTypeEnum("modification_type")
@@ -433,6 +441,10 @@ export const sessionExercises = pgTable(
     check(
       "session_exercises_prescribed_semantics_check",
       sql`num_nonnulls(${t.prescribedSemanticsVersion}, ${t.prescribedExerciseName}, ${t.prescribedMetricType}, ${t.prescribedLoadType}, ${t.prescribedLoadSemantics}) IN (0, 5) AND (${t.prescribedSemanticsVersion} IS NULL OR (${t.prescribedSemanticsVersion} = 1 AND length(btrim(${t.prescribedExerciseName})) BETWEEN 1 AND 300 AND length(btrim(${t.prescribedLoadType})) BETWEEN 1 AND 50))`
+    ),
+    check(
+      "session_exercises_equipment_requirements_snapshot_check",
+      sql`(${t.equipmentRequirementsSemanticsVersion} IS NULL AND ${t.equipmentRequirementsSnapshot} IS NULL) OR (${t.equipmentRequirementsSemanticsVersion} = 1 AND jsonb_typeof(${t.equipmentRequirementsSnapshot}) = 'object' AND ${t.equipmentRequirementsSnapshot}->>'sourceExerciseId' = ${t.exerciseId}::text AND jsonb_typeof(${t.equipmentRequirementsSnapshot}->'broad') = 'array' AND ${t.equipmentRequirementsSnapshot} ? 'exact' AND (${t.equipmentRequirementsSnapshot}->'exact' = 'null'::jsonb OR jsonb_typeof(${t.equipmentRequirementsSnapshot}->'exact') = 'object'))`,
     ),
   ]
 );

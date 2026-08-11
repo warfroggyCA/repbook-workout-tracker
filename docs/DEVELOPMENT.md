@@ -255,6 +255,30 @@ secondary exercise tools into keyboard-accessible native disclosures without
 hiding pending writes, retry, skipped recovery, rest, finish, or saved-set
 correction.
 
+The retained equipment-preparation tranche adds migration 0080 and snapshot
+schema 32 without backfilling older workouts. Start, Session Compiler
+acceptance, workout-only add, substitution, version restore, snapshot capture,
+and snapshot restore must keep the `session_exercises` requirement tuple
+complete and exercise-identity matched. Focused tests must cover stable-ID
+deduplication, same-label/different-identity evidence, legacy and malformed
+unknowns, owner scope, saved-inventory and exact attachment/geometry
+availability, contradictory same-type and broad-versus-exact identities,
+truthful missing-versus-saved-but-incompatible row and aggregate copy,
+history-revision and inventory-evidence races, retained-only
+setup/log validation, and schema 31 upgrade plus restore omission. Recovery
+manifest 14 and the durable
+table count stay unchanged.
+
+`test:e2e:superset-prep` owns the 390 by 844 default-text and 320 by 700
+enlarged-text preparation journey, including DOM order before warm-up,
+keyboard focus, target size, overflow, pre/post-acknowledgement reload, and
+screenshots. `test:e2e:replacement-mobile` proves a substitution cannot leave
+old requirements visible, while `test:e2e:active-workout-add-exercise` proves
+a bodyweight addition does not fabricate equipment. Exact exercise setup and
+retry remain covered by their established local-equipment suites. Automated
+WebKit is required but does not replace an installed-iPhone PWA and VoiceOver
+field check before release.
+
 `audit:check` requires a clean production dependency audit and also reviews the
 complete development-tool tree. Any temporary development-only exception is
 bound to exact lockfile nodes, carries a written reason and expiry date, and

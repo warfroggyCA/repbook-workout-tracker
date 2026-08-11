@@ -61,6 +61,7 @@ import {
 } from "@/lib/external-analysis-import";
 import { ANALYSIS_PACKAGE_SOURCE_REVISION_FIELDS } from "@/lib/analysis-package";
 import { analysisPackageOwnerNamespace } from "@/services/analysis-package";
+import { parseSessionEquipmentRequirementsEvidence } from "@/lib/session-equipment-requirements";
 
 export type SnapshotRestoreScope = "history" | "full";
 
@@ -76,6 +77,7 @@ const PRE_START_SEMANTICS_SNAPSHOT_SCHEMA_VERSION = "27";
 const PRE_EXCEPTION_CONTEXT_SNAPSHOT_SCHEMA_VERSION = "28";
 const PRE_REVIEW_SNAPSHOT_SCHEMA_VERSION = "29";
 const PRE_ACTIVE_DURATION_SNAPSHOT_SCHEMA_VERSION = "30";
+const PRE_SESSION_EQUIPMENT_REQUIREMENTS_SNAPSHOT_SCHEMA_VERSION = "31";
 
 type SnapshotRow = Record<string, unknown>;
 type RestoreRows = Record<string, SnapshotRow[]>;
@@ -535,6 +537,63 @@ function validateStartAndPrescribedSemantics(payload: CanonicalSnapshotPayload) 
       !PRESCRIBED_LOAD_SEMANTICS.has(String(exercise.prescribed_load_semantics))
     ) {
       throw new Error("Snapshot workout exercise has incoherent prescribed meaning.");
+    }
+  }
+}
+
+function validateSessionEquipmentRequirements(
+  payload: CanonicalSnapshotPayload,
+) {
+  if (payload.schemaVersion !== SNAPSHOT_SCHEMA_VERSION) return;
+
+  const validateTuple = (
+    row: SnapshotRow,
+    expectedExerciseId: string,
+    label: string,
+    requireKeys: boolean,
+  ) => {
+    const versionKey = "equipment_requirements_semantics_version";
+    const snapshotKey = "equipment_requirements_snapshot";
+    const hasVersion = Object.hasOwn(row, versionKey);
+    const hasSnapshot = Object.hasOwn(row, snapshotKey);
+    if (requireKeys && (!hasVersion || !hasSnapshot)) {
+      throw new Error(`${label} is missing retained equipment requirement state.`);
+    }
+    if (!hasVersion && !hasSnapshot) return;
+    if (!hasVersion || !hasSnapshot) {
+      throw new Error(`${label} has an incomplete equipment requirement tuple.`);
+    }
+    const version = row[versionKey];
+    const evidence = parseSessionEquipmentRequirementsEvidence(
+      version == null ? null : Number(version),
+      row[snapshotKey],
+      expectedExerciseId,
+    );
+    if (evidence.state === "invalid" || evidence.state === "unsupported") {
+      throw new Error(`${label} has invalid retained equipment requirements.`);
+    }
+  };
+
+  for (const exercise of rows(payload, "session_exercises")) {
+    validateTuple(
+      exercise,
+      String(exercise.exercise_id),
+      "Snapshot workout exercise",
+      true,
+    );
+  }
+  for (const version of rows(payload, "record_versions")) {
+    if (version.entity_type !== "session_exercise") continue;
+    for (const [key, label] of [
+      ["before_data", "Earlier workout exercise version"],
+      ["after_data", "Later workout exercise version"],
+    ] as const) {
+      const value = version[key];
+      if (!value || typeof value !== "object" || Array.isArray(value)) {
+        throw new Error(`${label} is malformed.`);
+      }
+      const row = value as SnapshotRow;
+      validateTuple(row, String(row.exercise_id), label, false);
     }
   }
 }
@@ -1153,6 +1212,7 @@ export function upgradeSnapshotPayload(
     PRE_EXCEPTION_CONTEXT_SNAPSHOT_SCHEMA_VERSION,
     PRE_REVIEW_SNAPSHOT_SCHEMA_VERSION,
     PRE_ACTIVE_DURATION_SNAPSHOT_SCHEMA_VERSION,
+    PRE_SESSION_EQUIPMENT_REQUIREMENTS_SNAPSHOT_SCHEMA_VERSION,
     SNAPSHOT_SCHEMA_VERSION,
   ]);
   if (!supported.has(payload.schemaVersion)) {
@@ -1167,6 +1227,7 @@ export function upgradeSnapshotPayload(
     sanitizeSnapshotPrivacy(upgraded);
     validateUnitAndCalendarIdentity(upgraded);
     validateStartAndPrescribedSemantics(upgraded);
+    validateSessionEquipmentRequirements(upgraded);
     validateSetExceptionContext(upgraded);
     validateHistoryIdentityAndTiming(upgraded);
     validateWorkoutTimingVersionEvidence(upgraded);
@@ -1233,6 +1294,7 @@ export function upgradeSnapshotPayload(
       PRE_EXCEPTION_CONTEXT_SNAPSHOT_SCHEMA_VERSION,
       PRE_REVIEW_SNAPSHOT_SCHEMA_VERSION,
       PRE_ACTIVE_DURATION_SNAPSHOT_SCHEMA_VERSION,
+      PRE_SESSION_EQUIPMENT_REQUIREMENTS_SNAPSHOT_SCHEMA_VERSION,
       SNAPSHOT_SCHEMA_VERSION,
     ].includes(upgraded.schemaVersion)
   ) {
@@ -1419,6 +1481,10 @@ export function upgradeSnapshotPayload(
     exercise.prescribed_metric_type ??= null;
     exercise.prescribed_load_type ??= null;
     exercise.prescribed_load_semantics ??= null;
+    // Older formats cannot prove what equipment requirements meant when the
+    // workout exercise was created. Never backfill from the current catalog.
+    exercise.equipment_requirements_semantics_version = null;
+    exercise.equipment_requirements_snapshot = null;
     if (
       exercise.source_slot_lineage_id == null &&
       exercise.planned_from_template_exercise_id != null
@@ -1515,6 +1581,7 @@ export function upgradeSnapshotPayload(
   upgraded.schemaVersion = SNAPSHOT_SCHEMA_VERSION;
   validateUnitAndCalendarIdentity(upgraded);
   validateStartAndPrescribedSemantics(upgraded);
+  validateSessionEquipmentRequirements(upgraded);
   validateSetExceptionContext(upgraded);
   validateHistoryIdentityAndTiming(upgraded);
   validateWorkoutTimingVersionEvidence(upgraded);
@@ -2342,6 +2409,7 @@ export function validateSnapshotPayload(
       PRE_EXCEPTION_CONTEXT_SNAPSHOT_SCHEMA_VERSION,
       PRE_REVIEW_SNAPSHOT_SCHEMA_VERSION,
       PRE_ACTIVE_DURATION_SNAPSHOT_SCHEMA_VERSION,
+      PRE_SESSION_EQUIPMENT_REQUIREMENTS_SNAPSHOT_SCHEMA_VERSION,
       SNAPSHOT_SCHEMA_VERSION,
     ].includes(payload.schemaVersion)
   ) {
@@ -2383,6 +2451,7 @@ export function validateSnapshotPayload(
       PRE_EXCEPTION_CONTEXT_SNAPSHOT_SCHEMA_VERSION,
       PRE_REVIEW_SNAPSHOT_SCHEMA_VERSION,
       PRE_ACTIVE_DURATION_SNAPSHOT_SCHEMA_VERSION,
+      PRE_SESSION_EQUIPMENT_REQUIREMENTS_SNAPSHOT_SCHEMA_VERSION,
       SNAPSHOT_SCHEMA_VERSION,
     ].includes(payload.schemaVersion)
   ) {
@@ -2541,6 +2610,7 @@ export function validateSnapshotPayload(
       PRE_EXCEPTION_CONTEXT_SNAPSHOT_SCHEMA_VERSION,
       PRE_REVIEW_SNAPSHOT_SCHEMA_VERSION,
       PRE_ACTIVE_DURATION_SNAPSHOT_SCHEMA_VERSION,
+      PRE_SESSION_EQUIPMENT_REQUIREMENTS_SNAPSHOT_SCHEMA_VERSION,
       SNAPSHOT_SCHEMA_VERSION,
     ].includes(payload.schemaVersion)
   ) {
@@ -2697,6 +2767,7 @@ export function validateSnapshotPayload(
   if (payload.schemaVersion === SNAPSHOT_SCHEMA_VERSION) {
     validateUnitAndCalendarIdentity(payload);
     validateStartAndPrescribedSemantics(payload);
+    validateSessionEquipmentRequirements(payload);
     validateSetExceptionContext(payload);
     validateReviewState(payload);
     validateVersionedProgramData(payload);

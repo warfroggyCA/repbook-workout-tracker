@@ -53,7 +53,9 @@ test("keeps warm-up actions singular, reversible, durable, and usable with minim
   const pageErrors = observeGauntletPageErrors(page, browserName);
   await signInAndStart(page);
   const sessionId = page.url().split("/").at(-1)!;
-  const panel = page.locator("#workout-warmup");
+  const originalViewport = page.viewportSize();
+  await page.setViewportSize({ width: 320, height: 700 });
+  const panel = page.getByRole("region", { name: "Warm-up", exact: true });
   const actions = panel.locator("li");
 
   await expect(panel).toContainText("Check off only the distinct actions below.");
@@ -68,6 +70,43 @@ test("keeps warm-up actions singular, reversible, durable, and usable with minim
       }),
     ).toHaveCount(1);
   }
+
+  const firstWarmupLabel = PRODUCTION_WORKOUT_START_WARMUP[0].label;
+  const firstWarmupCheckbox = warmupRow(panel, firstWarmupLabel).getByRole(
+    "checkbox",
+    { name: `Mark ${firstWarmupLabel} complete`, exact: true },
+  );
+  const firstWarmupId = await warmupRow(panel, firstWarmupLabel)
+    .getAttribute("id");
+  expect(firstWarmupId).toMatch(/^warmup-occurrence-/);
+  const preparationCta = page
+    .getByTestId("session-preparation-panel")
+    .getByRole("link", { name: "Go to warm-up", exact: true });
+  await expect(preparationCta).toHaveAttribute("href", `#${firstWarmupId}`);
+  await preparationCta.focus();
+  await page.keyboard.press("Enter");
+  await expect(firstWarmupCheckbox).toBeFocused();
+  await expect(page).toHaveURL(new RegExp(`#${firstWarmupId}$`));
+  await expect.poll(() => firstWarmupCheckbox.evaluate((element) => {
+    const bounds = element.getBoundingClientRect();
+    const dock = document.querySelector<HTMLElement>(
+      '[aria-label="Workout status"]',
+    );
+    const dockTop = dock?.getBoundingClientRect().top ?? window.innerHeight;
+    return bounds.top >= 0 && bounds.bottom <= dockTop - 8;
+  })).toBe(true);
+  const focusClearance = await firstWarmupCheckbox.evaluate((element) => {
+    const bounds = element.getBoundingClientRect();
+    return {
+      height: bounds.height,
+      overflow:
+        document.documentElement.scrollWidth -
+        document.documentElement.clientWidth,
+    };
+  });
+  expect(focusClearance.height).toBeGreaterThanOrEqual(44);
+  expect(focusClearance.overflow).toBeLessThanOrEqual(1);
+  if (originalViewport) await page.setViewportSize(originalViewport);
 
   const dayOverview = BA_WORKOUT_FIXTURE.program.days[0].warmupNotes;
   await expect(page.getByText(dayOverview, { exact: true })).toHaveCount(1);

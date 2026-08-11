@@ -56,6 +56,36 @@ describe("active-workout equipment presentation", () => {
     expect(result.plateConfig).toBeNull();
   });
 
+  it("lets retained evidence withhold an otherwise plausible setup option", () => {
+    const allowed = ezProfile(
+      "00000000-0000-4000-8000-000000000001",
+      "Retained EZ bar",
+    );
+    const wrong = ezProfile(
+      "00000000-0000-4000-8000-000000000002",
+      "Wrong same-type EZ bar",
+    );
+    const result = buildSessionEquipmentPresentation({
+      exercise,
+      profiles: [allowed, wrong],
+      inventory: [allowed, wrong].map((profile) => ({
+        type: profile.itemType,
+        available: true,
+        attrs: {},
+      })),
+      plates,
+      optionAllowed: (option) =>
+        option.equipmentItemId === allowed.equipmentItemId,
+    });
+
+    expect(result.setup).toMatchObject({
+      status: "available",
+      selectionRequired: false,
+    });
+    expect(result.setup?.options.map((option) => option.equipmentLabel))
+      .toEqual(["Retained EZ bar"]);
+  });
+
   it("uses the exact 18 lb EZ bar and every owned plate denomination in balanced pairs", () => {
     const profile = ezProfile("00000000-0000-4000-8000-000000000001", "18 lb EZ-curl bar");
     const result = buildSessionEquipmentPresentation({

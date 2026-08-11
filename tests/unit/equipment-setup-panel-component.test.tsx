@@ -1,5 +1,14 @@
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { EquipmentSelectionOutboxSnapshot } from "@/lib/equipment-selection-outbox";
+
+const outboxState = vi.hoisted(() => ({
+  snapshot: {
+    entries: [],
+    quarantined: [],
+    error: null,
+  } as EquipmentSelectionOutboxSnapshot,
+}));
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ refresh: vi.fn() }),
@@ -7,14 +16,28 @@ vi.mock("next/navigation", () => ({
 vi.mock("@/app/actions/sessions", () => ({
   setSessionEquipmentSelection: vi.fn(),
 }));
+vi.mock("@/lib/equipment-selection-outbox", () => ({
+  enqueueEquipmentSelection: vi.fn(),
+  getEquipmentSelectionOutboxServerSnapshot: () => outboxState.snapshot,
+  getEquipmentSelectionOutboxSnapshot: () => outboxState.snapshot,
+  hasPendingEquipmentSelection: vi.fn(() => false),
+  retryEquipmentSelection: vi.fn(),
+  subscribeToEquipmentSelectionOutbox: () => () => undefined,
+  subscribeToEquipmentSelectionOutboxStatus: () => () => undefined,
+}));
 
 import { EquipmentSetupPanel } from "@/components/session/equipment-setup-panel";
 
 describe("EquipmentSetupPanel", () => {
+  beforeEach(() => {
+    outboxState.snapshot = { entries: [], quarantined: [], error: null };
+  });
+
   it("renders an accessible physical chooser and independent-stack meaning", () => {
     const html = renderToStaticMarkup(
       <EquipmentSetupPanel
         sessionExerciseId="00000000-0000-4000-8000-000000000001"
+        exerciseName="Cable Row"
         ownerId="00000000-0000-4000-8000-000000000010"
         sessionId="00000000-0000-4000-8000-000000000011"
         setup={{
@@ -59,7 +82,7 @@ describe("EquipmentSetupPanel", () => {
       />,
     );
 
-    expect(html).toContain('aria-label="Workout equipment setup"');
+    expect(html).toContain('aria-label="Equipment setup for Cable Row"');
     expect(html).toContain("Using <span");
     expect(html).toContain("Dual cable tower · Rope");
     expect(html).toContain("Physical setup");
@@ -67,5 +90,63 @@ describe("EquipmentSetupPanel", () => {
     expect(html).toContain("Load shown for each stack");
     expect(html).toContain("Combined load across all stacks");
     expect(html).toContain("effective load remains unknown");
+  });
+
+  it("keeps a failed setup retry touch-sized and names the exercise context", () => {
+    outboxState.snapshot = {
+      entries: [{
+        clientKey: "00000000-0000-4000-8000-000000000020",
+        ownerId: "00000000-0000-4000-8000-000000000010",
+        sessionId: "00000000-0000-4000-8000-000000000011",
+        sessionExerciseId: "00000000-0000-4000-8000-000000000001",
+        operation: "select",
+        equipmentItemId: "00000000-0000-4000-8000-000000000003",
+        attachmentItemId: null,
+        expectedCurrentSnapshotId: null,
+        predecessorSelectionClientKey: null,
+        provenance: "user_selected",
+        equipmentLabel: "Cable tower",
+        attachmentLabel: null,
+        createdAtISO: "2026-08-10T12:00:00.000Z",
+        status: "needs_attention",
+        attemptCount: 1,
+        nextAttemptAtISO: null,
+        lastAttemptAtISO: "2026-08-10T12:00:01.000Z",
+        lastError: "Equipment setup needs attention.",
+      }],
+      quarantined: [],
+      error: null,
+    };
+
+    const html = renderToStaticMarkup(
+      <EquipmentSetupPanel
+        sessionExerciseId="00000000-0000-4000-8000-000000000001"
+        exerciseName="Cable Row"
+        ownerId="00000000-0000-4000-8000-000000000010"
+        sessionId="00000000-0000-4000-8000-000000000011"
+        setup={{
+          sourceExerciseId: "00000000-0000-4000-8000-000000000012",
+          sourceTargetLoad: null,
+          sourceTargetLoadUnit: null,
+          exact: true,
+          status: "available",
+          selectionRequired: true,
+          currentSnapshotId: null,
+          currentEquipmentLabel: null,
+          currentAttachmentLabel: null,
+          currentGuidance: null,
+          currentGuidanceByLoadEntryMeaning: {},
+          currentSelectionAvailable: false,
+          loadEntryMeaning: null,
+          loadEntryMeaningChoices: [],
+          options: [],
+        }}
+        loadEntryMeaning="legacy_unknown"
+        onLoadEntryMeaningChange={() => undefined}
+      />,
+    );
+
+    expect(html).toContain('aria-label="Equipment setup for Cable Row"');
+    expect(html).toMatch(/class="[^"]*min-h-11[^"]*"[^>]*>Retry setup/);
   });
 });

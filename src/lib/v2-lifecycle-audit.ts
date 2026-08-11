@@ -277,20 +277,22 @@ export const REPBOOK_V2_FIELD_FAMILIES = [
           "prescribed_metric_type",
           "prescribed_load_type",
           "prescribed_load_semantics",
+          "equipment_requirements_semantics_version",
+          "equipment_requirements_snapshot",
         ],
       },
     ],
     lifecycle: serverDurableLifecycle({
       creation: owned(
         "src/services/session-lifecycle.ts",
-        "Explicit Start owns idempotent workout creation and immutable plan snapshots.",
+        "Explicit Start, accepted compilation, and workout-only additions retain immutable plan and equipment-requirement snapshots.",
       ),
       reads: owned(
         "src/services/session-lifecycle.ts",
         "Active-workout readers project current and next plan items without claiming performance.",
       ),
       correction: notApplicable(
-        "Start identity and prescribed semantics are immutable; supported workout changes append explicit session state instead.",
+        "Start identity and prescribed semantics are immutable; substitution and version restore atomically replace or restore the retained requirement tuple with the exercise identity.",
       ),
       review: owned(
         "src/services/review-decisions.ts",

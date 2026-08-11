@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { sql } from "drizzle-orm";
+import { sql, type SQL } from "drizzle-orm";
 import type { Db } from "@/db";
 import { resultRows } from "@/db/result";
 import {
@@ -27,6 +27,12 @@ import {
   type LoadedEquipmentLoadProfile,
 } from "@/services/equipment-load-profiles";
 import { inventoryRevisionExpression } from "@/services/equipment-inventory";
+import {
+  parseSessionEquipmentRequirementsEvidence,
+  retainedPrimaryEquipmentCandidateMatchesBroad,
+  type RetainedBroadEquipmentRequirement,
+  type SessionEquipmentRequirementsSnapshot,
+} from "@/lib/session-equipment-requirements";
 
 export type SessionEquipmentSelectionInput =
   | {
@@ -81,8 +87,17 @@ type ContextRow = {
   status: string;
   archived_at: Date | string | null;
   current_equipment_snapshot_id: string | null;
+  equipment_requirements_semantics_version: number | null;
+  equipment_requirements_snapshot: unknown;
+  retained_requirements: SessionEquipmentRequirementsSnapshot | null;
+  uses_retained_requirements: boolean;
   source_revision: string;
 };
+
+type RawContextRow = Omit<
+  ContextRow,
+  "source_revision" | "retained_requirements" | "uses_retained_requirements"
+>;
 
 type ItemRow = {
   id: string;
@@ -170,18 +185,20 @@ export function sessionEquipmentSelectionSourceRevisionExpression(
   userId: string,
   exerciseId: string,
   includeCurrentRequirements = true,
+  retainedRequirementsSnapshot: SQL = sql`NULL::jsonb`,
 ) {
-  if (!includeCurrentRequirements) {
-    return sql`md5(${inventoryRevisionExpression(userId)})`;
-  }
   return sql`md5(
     ${inventoryRevisionExpression(userId)}
-    || coalesce((SELECT jsonb_agg(to_jsonb(requirement) ORDER BY requirement.id)::text
+    || coalesce((${retainedRequirementsSnapshot})::text, 'legacy_unknown')
+    || CASE WHEN ${includeCurrentRequirements}::boolean THEN
+      coalesce((SELECT jsonb_agg(to_jsonb(requirement) ORDER BY requirement.id)::text
                  FROM exercise_equipment_requirements requirement
                  WHERE requirement.exercise_id = ${exerciseId}::uuid), '[]')
-    || coalesce((SELECT jsonb_agg(to_jsonb(requirement) ORDER BY requirement.id)::text
+      || coalesce((SELECT jsonb_agg(to_jsonb(requirement) ORDER BY requirement.id)::text
                  FROM exercise_execution_requirements requirement
                  WHERE requirement.exercise_id = ${exerciseId}::uuid), '[]')
+      ELSE ''
+    END
   )`;
 }
 
@@ -219,7 +236,7 @@ async function replayedReceipt(
 }
 
 async function loadContext(db: Db, userId: string, sessionExerciseId: string) {
-  const context = resultRows<Omit<ContextRow, "source_revision">>(await db.execute(sql`
+  const raw = resultRows<RawContextRow>(await db.execute(sql`
     SELECT session_exercise.session_id, session_exercise.exercise_id,
            CASE
              WHEN session_exercise.prescribed_semantics_version = 1
@@ -232,7 +249,9 @@ async function loadContext(db: Db, userId: string, sessionExerciseId: string) {
              AS uses_prescribed_meaning,
            session_exercise.target_load,
            session_exercise.target_load_unit::text, session.status,
-           session.archived_at, session_exercise.current_equipment_snapshot_id
+           session.archived_at, session_exercise.current_equipment_snapshot_id,
+           session_exercise.equipment_requirements_semantics_version,
+           session_exercise.equipment_requirements_snapshot
     FROM session_exercises session_exercise
     JOIN workout_sessions session ON session.id = session_exercise.session_id
     JOIN exercises catalog ON catalog.id = session_exercise.exercise_id
@@ -240,12 +259,30 @@ async function loadContext(db: Db, userId: string, sessionExerciseId: string) {
       AND session.user_id = ${userId}::uuid
     LIMIT 1
   `))[0] ?? null;
-  if (!context) return null;
+  if (!raw) return null;
+  const evidence = parseSessionEquipmentRequirementsEvidence(
+    raw.equipment_requirements_semantics_version == null
+      ? null
+      : Number(raw.equipment_requirements_semantics_version),
+    raw.equipment_requirements_snapshot,
+    raw.exercise_id,
+  );
+  const usesRetainedRequirements = evidence.state === "retained";
+  const context: Omit<ContextRow, "source_revision"> = {
+    ...raw,
+    retained_requirements: usesRetainedRequirements ? evidence.snapshot : null,
+    uses_retained_requirements: usesRetainedRequirements,
+  };
+  const includeCurrentRequirements =
+    !usesRetainedRequirements && !context.uses_prescribed_meaning;
   const revision = resultRows(await db.execute(sql`
     SELECT ${sessionEquipmentSelectionSourceRevisionExpression(
       userId,
       context.exercise_id,
-      !context.uses_prescribed_meaning,
+      includeCurrentRequirements,
+      sql`${context.equipment_requirements_snapshot == null
+        ? null
+        : JSON.stringify(context.equipment_requirements_snapshot)}::jsonb`,
     )} AS source_revision
   `))[0];
   if (!revision) return null;
@@ -257,6 +294,7 @@ export type SessionEquipmentAvailabilityResolution = {
   sourceRevision: string;
   availableOptionCount: number;
   usesPrescribedMeaning: boolean;
+  requirementsEvidence: "retained" | "legacy_unknown";
 };
 
 /**
@@ -275,9 +313,7 @@ export async function resolveSessionEquipmentAvailability(
     const [{ items, plates }, profiles, requirements] = await Promise.all([
       loadLiveInventory(db, userId),
       loadEquipmentLoadProfiles(db, userId),
-      context.uses_prescribed_meaning
-        ? Promise.resolve({ broad: [], exact: null })
-        : loadRequirements(db, context.exercise_id),
+      loadRequirementsForContext(db, context),
     ]);
     const presentation = buildSessionEquipmentPresentation({
       exercise: {
@@ -304,12 +340,32 @@ export async function resolveSessionEquipmentAvailability(
         unit: plate.unit,
       })),
     });
+    const availableOptions = presentation.setup?.options.filter((option) => {
+      if (!context.retained_requirements) return true;
+      const item = items.find(
+        (candidate) => candidate.id === option.equipmentItemId,
+      );
+      return item != null && retainedPrimaryEquipmentCandidateMatchesBroad(
+        context.retained_requirements.broad,
+        {
+          equipmentType: item.type,
+          equipmentDefinitionId: item.definition_id,
+          attrs: item.attrs,
+        },
+      );
+    }) ?? [];
     const currentRevision = resultRows(await db.execute(sql`
       SELECT ${sessionEquipmentSelectionSourceRevisionExpression(
         userId,
         context.exercise_id,
-        !context.uses_prescribed_meaning,
+        !context.uses_retained_requirements && !context.uses_prescribed_meaning,
+        sql`session_exercise.equipment_requirements_snapshot`,
       )} AS source_revision
+      FROM session_exercises session_exercise
+      JOIN workout_sessions session ON session.id = session_exercise.session_id
+      WHERE session_exercise.id = ${sessionExerciseId}::uuid
+        AND session_exercise.exercise_id = ${context.exercise_id}::uuid
+        AND session.user_id = ${userId}::uuid
     `))[0];
     if (
       currentRevision &&
@@ -318,8 +374,11 @@ export async function resolveSessionEquipmentAvailability(
       return {
         exerciseId: context.exercise_id,
         sourceRevision: context.source_revision,
-        availableOptionCount: presentation.setup?.options.length ?? 0,
+        availableOptionCount: availableOptions.length,
         usesPrescribedMeaning: context.uses_prescribed_meaning,
+        requirementsEvidence: context.uses_retained_requirements
+          ? "retained"
+          : "legacy_unknown",
       };
     }
   }
@@ -385,6 +444,64 @@ async function loadRequirements(db: Db, exerciseId: string) {
       }
     : null;
   return { broad, exact };
+}
+
+function requirementsFromSnapshot(
+  snapshot: SessionEquipmentRequirementsSnapshot,
+) {
+  return {
+    broad: snapshot.broad.map((requirement) => ({
+      equipmentType: requirement.equipmentType,
+      minWeight: requirement.minWeight,
+    })) satisfies EquipmentRequirement[],
+    exact: snapshot.exact == null
+      ? null
+      : {
+          requiredProfileKind: snapshot.exact.requiredProfileKind,
+          requiredEquipmentDefinitionId:
+            snapshot.exact.requiredEquipmentDefinition?.id ?? null,
+          requiredAttachmentKind: snapshot.exact.requiredAttachmentKind,
+          requiredAttachmentDefinitionId:
+            snapshot.exact.requiredAttachmentDefinition?.id ?? null,
+          requiresKnownGeometry: snapshot.exact.requiresKnownGeometry,
+        } satisfies ExactExecutionRequirement,
+  };
+}
+
+async function loadRequirementsForContext(db: Db, context: ContextRow) {
+  if (context.retained_requirements) {
+    return requirementsFromSnapshot(context.retained_requirements);
+  }
+  if (context.uses_prescribed_meaning) {
+    return { broad: [], exact: null };
+  }
+  // Compatibility only for workouts created before retained requirement
+  // evidence existed. This is never labelled or projected as retained truth.
+  return loadRequirements(db, context.exercise_id);
+}
+
+function retainedBroadRequirementSatisfied(
+  requirement: RetainedBroadEquipmentRequirement,
+  items: ItemRow[],
+  plates: PlateRow[],
+) {
+  if (requirement.equipmentType === "bodyweight") return true;
+  if (requirement.equipmentType === "plates") {
+    return requirement.equipmentDefinition == null && plates.some(
+      (plate) => Number(plate.quantity) > 0 && Number(plate.denomination) > 0,
+    );
+  }
+  return items.some((item) =>
+    item.available &&
+    item.type === requirement.equipmentType &&
+    (requirement.equipmentDefinition == null ||
+      item.definition_id === requirement.equipmentDefinition.id) &&
+    (requirement.minWeight == null || (
+      typeof item.attrs.maxWeight === "number" &&
+      Number.isFinite(item.attrs.maxWeight) &&
+      item.attrs.maxWeight >= requirement.minWeight
+    )),
+  );
 }
 
 function profileCertainty(profile: LoadedEquipmentLoadProfile["profile"]) {
@@ -561,7 +678,8 @@ async function applySelection(
         AND ${sessionEquipmentSelectionSourceRevisionExpression(
           userId,
           context.exercise_id,
-          !context.uses_prescribed_meaning,
+          !context.uses_retained_requirements && !context.uses_prescribed_meaning,
+          sql`visible.equipment_requirements_snapshot`,
         )} = ${context.source_revision}
         AND NOT EXISTS (SELECT 1 FROM existing)
       FOR UPDATE
@@ -763,9 +881,7 @@ export async function mutateSessionEquipmentSelection(
   const [{ items, plates }, profiles, requirements] = await Promise.all([
     loadLiveInventory(db, userId),
     loadEquipmentLoadProfiles(db, userId),
-    context.uses_prescribed_meaning
-      ? Promise.resolve({ broad: [], exact: null })
-      : loadRequirements(db, context.exercise_id),
+    loadRequirementsForContext(db, context),
   ]);
   const itemMap = new Map(items.map((item) => [item.id, item]));
   const inventory: InventoryItem[] = items.map((item) => ({
@@ -773,13 +889,21 @@ export async function mutateSessionEquipmentSelection(
     available: item.available,
     attrs: item.attrs ?? {},
   }));
-  if (!context.uses_prescribed_meaning && !exerciseIsAvailable(
-    requirements.broad,
-    buildEquipmentAvailability(
-      inventory,
-      plates.map((plate) => ({ denomination: Number(plate.denomination) })),
-    ),
-  )) {
+  const broadRequirementsAvailable = context.retained_requirements
+    ? context.retained_requirements.broad.every((requirement) =>
+        retainedBroadRequirementSatisfied(requirement, items, plates),
+      )
+    : exerciseIsAvailable(
+        requirements.broad,
+        buildEquipmentAvailability(
+          inventory,
+          plates.map((plate) => ({ denomination: Number(plate.denomination) })),
+        ),
+      );
+  if (
+    (context.uses_retained_requirements || !context.uses_prescribed_meaning) &&
+    !broadRequirementsAvailable
+  ) {
     return { outcome: "invalid_setup" };
   }
 
@@ -806,7 +930,17 @@ export async function mutateSessionEquipmentSelection(
     attrs: primaryItem.attrs ?? {},
   };
   if (
-    (!context.uses_prescribed_meaning && primaryBroadRequirements.length === 0) ||
+    (context.retained_requirements != null &&
+      !retainedPrimaryEquipmentCandidateMatchesBroad(
+        context.retained_requirements.broad,
+        {
+          equipmentType: primaryItem.type,
+          equipmentDefinitionId: primaryItem.definition_id,
+          attrs: primaryItem.attrs,
+        },
+      )) ||
+    (context.retained_requirements == null &&
+      requirements.broad.length > 0 && primaryBroadRequirements.length === 0) ||
     !primaryBroadRequirements.every((requirement) =>
       requirementSatisfied(requirement, [primaryInventoryItem]),
     )
@@ -823,8 +957,8 @@ export async function mutateSessionEquipmentSelection(
         targetLoad:
           context.target_load == null ? null : Number(context.target_load),
         targetLoadUnit: context.target_load_unit,
-        requirements: [],
-        exactRequirement: null,
+        requirements: requirements.broad,
+        exactRequirement: requirements.exact,
         currentSelection: null,
       },
       profiles,

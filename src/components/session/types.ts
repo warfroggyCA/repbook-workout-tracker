@@ -12,6 +12,7 @@ import type {
   TechniqueIssue,
 } from "@/lib/set-exception-context";
 import type { PreviousComparableSetResult } from "@/services/previous-comparable-sets";
+import type { SessionPreparationEquipmentProjection } from "@/lib/session-equipment-requirements";
 
 export type LoggedSet = {
   id: string;
@@ -170,6 +171,8 @@ export type SessionRunnerProps = {
   /** keyed by session exercise id; never by broad load type. */
   plateConfigs: Record<string, PlateMathConfig>;
   equipmentSetups: Record<string, SessionEquipmentSetup>;
+  /** Server-derived from retained exercise requirements and saved inventory. */
+  sessionPreparation: SessionPreparationEquipmentProjection;
   /** keyed by loadType: "dumbbell" | "kettlebell" */
   incrementals: Record<string, IncrementalLoadConfig>;
   unit: LoadUnit;

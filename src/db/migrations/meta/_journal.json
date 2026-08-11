@@ -561,6 +561,13 @@
       "when": 1786593600000,
       "tag": "0079_active_workout_duration_evidence",
       "breakpoints": true
+    },
+    {
+      "idx": 80,
+      "version": "7",
+      "when": 1786680000000,
+      "tag": "0080_session_equipment_requirements_snapshot",
+      "breakpoints": true
     }
   ]
 }

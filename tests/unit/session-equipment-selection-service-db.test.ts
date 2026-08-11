@@ -41,6 +41,8 @@ const ids = {
   machine: "60000000-0000-4000-8000-000000000078",
   machineProfile: "61000000-0000-4000-8000-000000000078",
   secondaryPlate: "70000000-0000-4000-8000-000000000079",
+  barDefinition: "62000000-0000-4000-8000-000000000070",
+  wrongBarDefinition: "62000000-0000-4000-8000-000000000071",
 };
 
 async function seed(
@@ -48,10 +50,50 @@ async function seed(
   options: {
     loadType?: "barbell" | "ez_bar" | "trap_bar";
     reviewedExact?: boolean;
+    retainedRequirements?: boolean;
+    retainedDefinitionSpecific?: boolean;
   } = {},
 ) {
   const loadType = options.loadType ?? "barbell";
   const reviewedExact = options.reviewedExact ?? true;
+  const retainedDefinitionSpecific = options.retainedDefinitionSpecific ?? false;
+  const retainedColumns = options.retainedRequirements
+    ? ", equipment_requirements_semantics_version, equipment_requirements_snapshot"
+    : "";
+  const retainedValues = options.retainedRequirements
+    ? `, 1, jsonb_build_object(
+        'sourceExerciseId', '${ids.exercise}',
+        'broad', (
+          SELECT jsonb_agg(jsonb_build_object(
+            'sourceRequirementId', requirement.id::text,
+            'equipmentType', requirement.equipment_type::text,
+            'equipmentDefinition', CASE WHEN definition.id IS NULL THEN NULL
+              ELSE jsonb_build_object(
+                'id', definition.id::text,
+                'key', definition.key,
+                'label', definition.label
+              ) END,
+            'minWeight', requirement.min_weight
+          ) ORDER BY requirement.id)
+          FROM exercise_equipment_requirements requirement
+          LEFT JOIN equipment_definitions definition
+            ON definition.id = requirement.equipment_definition_id
+          WHERE requirement.exercise_id = '${ids.exercise}'
+        ),
+        'exact', (
+          SELECT jsonb_build_object(
+            'sourceRequirementId', requirement.id::text,
+            'requiredProfileKind', requirement.required_profile_kind,
+            'requiredEquipmentDefinition', NULL,
+            'requiredAttachmentKind', requirement.required_attachment_kind,
+            'requiredAttachmentDefinition', NULL,
+            'requiresKnownGeometry', requirement.requires_known_geometry
+          )
+          FROM exercise_execution_requirements requirement
+          WHERE requirement.exercise_id = '${ids.exercise}'
+        )
+      )`
+    : "";
   await database.client.exec(`
     INSERT INTO users (id, email) VALUES
       ('${ids.user}', 'selection-owner@example.test'),
@@ -64,11 +106,19 @@ async function seed(
       '${ids.exercise}', 'Exact Selection Bench', 'horizontal_push',
       '["chest"]'::jsonb, '${loadType}', true
     );
+    ${retainedDefinitionSpecific ? `INSERT INTO equipment_definitions (
+      id, key, label, category
+    ) VALUES
+      ('${ids.barDefinition}', 'retained-correct-bar', 'Correct retained bar', '${loadType}'),
+      ('${ids.wrongBarDefinition}', 'retained-wrong-bar', 'Wrong same-type bar', '${loadType}');` : ""}
     INSERT INTO exercise_equipment_requirements (
       exercise_id, equipment_type
     ) VALUES
       ('${ids.exercise}', '${loadType}'),
       ('${ids.exercise}', 'plates');
+    ${retainedDefinitionSpecific ? `UPDATE exercise_equipment_requirements
+      SET equipment_definition_id = '${ids.barDefinition}'
+      WHERE exercise_id = '${ids.exercise}' AND equipment_type = '${loadType}';` : ""}
     ${reviewedExact ? `INSERT INTO exercise_execution_requirements (
       exercise_id, required_profile_kind, requires_known_geometry, reviewed_at
     ) VALUES (
@@ -81,8 +131,8 @@ async function seed(
       '2026-07-21T17:00:00Z', 'in_progress'
     );
     INSERT INTO session_exercises (
-      id, session_id, exercise_id, order_idx
-    ) VALUES ('${ids.sessionExercise}', '${ids.session}', '${ids.exercise}', 0);
+      id, session_id, exercise_id, order_idx${retainedColumns}
+    ) VALUES ('${ids.sessionExercise}', '${ids.session}', '${ids.exercise}', 0${retainedValues});
     INSERT INTO session_occurrences (
       id, session_id, session_exercise_id, kind, origin, sequence_idx,
       kind_ordinal, planned_exercise_id, outcome
@@ -92,6 +142,8 @@ async function seed(
     );
     INSERT INTO equipment_items (id, user_id, type, label) VALUES
       ('${ids.bar}', '${ids.user}', '${loadType}', 'Owner exact bar');
+    ${retainedDefinitionSpecific ? `UPDATE equipment_items
+      SET definition_id = '${ids.barDefinition}' WHERE id = '${ids.bar}';` : ""}
     INSERT INTO plate_inventory (
       id, user_id, denomination, unit, quantity
     ) VALUES ('${ids.plate}', '${ids.user}', 2.5, 'lb', 4);
@@ -325,6 +377,234 @@ describe("session equipment selection service", () => {
       SELECT count(*)::int AS completed FROM completed_sets
     `);
     expect(counts.rows).toEqual([{ completed: 1 }]);
+  });
+
+  it("selects and logs from retained requirements after the mutable catalog changes", async () => {
+    database = await createMigratedTestDatabase();
+    await seed(database, {
+      retainedRequirements: true,
+      retainedDefinitionSpecific: true,
+    });
+    await database.client.exec(`
+      INSERT INTO equipment_items (
+        id, user_id, type, definition_id, label
+      ) VALUES (
+        '${ids.secondBar}', '${ids.user}', 'barbell',
+        '${ids.wrongBarDefinition}', 'Wrong same-type bar'
+      );
+      INSERT INTO barbell_configs (
+        user_id, bar_type, equipment_item_id, unit, loading_kind,
+        shared_plate_pool_compatible, bar_weight, collar_weight, label
+      ) VALUES (
+        '${ids.user}', 'olympic', '${ids.secondBar}', 'lb', 'olympic',
+        true, 45, 1, 'Wrong same-type bar'
+      );
+    `);
+    await expect(mutateSessionEquipmentSelection(
+      database.db,
+      ids.user,
+      {
+        operation: "select",
+        sessionExerciseId: ids.sessionExercise,
+        equipmentItemId: ids.secondBar,
+        attachmentItemId: null,
+        expectedCurrentSnapshotId: null,
+        clientKey: ids.invalidKey,
+        provenance: "user_selected",
+      },
+    )).resolves.toEqual({ outcome: "invalid_setup" });
+    await database.client.exec(`
+      DELETE FROM exercise_execution_requirements
+      WHERE exercise_id = '${ids.exercise}';
+      DELETE FROM exercise_equipment_requirements
+      WHERE exercise_id = '${ids.exercise}';
+      INSERT INTO exercise_equipment_requirements (exercise_id, equipment_type)
+      VALUES ('${ids.exercise}', 'bodyweight');
+    `);
+
+    const selected = await mutateSessionEquipmentSelection(
+      database.db,
+      ids.user,
+      {
+        operation: "select",
+        sessionExerciseId: ids.sessionExercise,
+        equipmentItemId: ids.bar,
+        attachmentItemId: null,
+        expectedCurrentSnapshotId: null,
+        clientKey: ids.selectKey,
+        provenance: "user_selected",
+      },
+    );
+    expect(selected).toMatchObject({ outcome: "applied" });
+    if (!("snapshotId" in selected) || selected.snapshotId == null) {
+      throw new Error("Retained selection did not produce a snapshot.");
+    }
+    await expect(logWorkoutSet(database.db, ids.user, {
+      sessionExerciseId: ids.sessionExercise,
+      setNo: 1,
+      weight: 50,
+      weightUnit: "lb",
+      reps: 8,
+      clientKey: "retained-requirement-set",
+      equipmentSnapshotId: selected.snapshotId,
+      loadEntryMeaning: "total_system",
+    })).resolves.toMatchObject({ outcome: "saved" });
+  });
+
+  it("rejects a retained primary that does not satisfy every same-type definition", async () => {
+    database = await createMigratedTestDatabase();
+    await seed(database, {
+      retainedRequirements: true,
+      retainedDefinitionSpecific: true,
+    });
+    const selected = await mutateSessionEquipmentSelection(
+      database.db,
+      ids.user,
+      {
+        operation: "select",
+        sessionExerciseId: ids.sessionExercise,
+        equipmentItemId: ids.bar,
+        attachmentItemId: null,
+        expectedCurrentSnapshotId: null,
+        clientKey: ids.selectKey,
+        provenance: "user_selected",
+      },
+    );
+    if (!("snapshotId" in selected) || selected.snapshotId == null) {
+      throw new Error("Retained selection did not produce a snapshot.");
+    }
+    await database.client.exec(`
+      INSERT INTO equipment_items (
+        id, user_id, type, definition_id, label
+      ) VALUES (
+        '${ids.secondBar}', '${ids.user}', 'barbell',
+        '${ids.wrongBarDefinition}', 'Wrong same-type bar'
+      );
+      INSERT INTO barbell_configs (
+        user_id, bar_type, equipment_item_id, unit, loading_kind,
+        shared_plate_pool_compatible, bar_weight, collar_weight, label
+      ) VALUES (
+        '${ids.user}', 'olympic', '${ids.secondBar}', 'lb', 'olympic',
+        true, 45, 1, 'Wrong same-type bar'
+      );
+      BEGIN;
+      SELECT set_config(
+        'workout_tracker.authorized_delete', 'snapshot_restore', true
+      );
+      UPDATE session_exercises
+      SET equipment_requirements_snapshot = jsonb_set(
+        equipment_requirements_snapshot,
+        '{broad}',
+        equipment_requirements_snapshot->'broad' || jsonb_build_array(
+          jsonb_build_object(
+            'sourceRequirementId', '90000000-0000-4000-8000-000000000070',
+            'equipmentType', 'barbell',
+            'equipmentDefinition', jsonb_build_object(
+              'id', '${ids.wrongBarDefinition}',
+              'key', 'retained-wrong-bar',
+              'label', 'Wrong same-type bar'
+            ),
+            'minWeight', NULL
+          )
+        )
+      )
+      WHERE id = '${ids.sessionExercise}';
+      COMMIT;
+    `);
+
+    await expect(logWorkoutSet(database.db, ids.user, {
+      sessionExerciseId: ids.sessionExercise,
+      setNo: 1,
+      weight: 50,
+      weightUnit: "lb",
+      reps: 8,
+      clientKey: "retained-conflicting-definition-set",
+      equipmentSnapshotId: selected.snapshotId,
+      loadEntryMeaning: "total_system",
+    })).resolves.toEqual({ outcome: "equipment_selection_conflict" });
+  });
+
+  it("rejects definition-specific retained plates in selection and the set writer", async () => {
+    database = await createMigratedTestDatabase();
+    await seed(database, {
+      retainedRequirements: true,
+      retainedDefinitionSpecific: true,
+    });
+    const selected = await mutateSessionEquipmentSelection(
+      database.db,
+      ids.user,
+      {
+        operation: "select",
+        sessionExerciseId: ids.sessionExercise,
+        equipmentItemId: ids.bar,
+        attachmentItemId: null,
+        expectedCurrentSnapshotId: null,
+        clientKey: ids.selectKey,
+        provenance: "user_selected",
+      },
+    );
+    if (!("snapshotId" in selected) || selected.snapshotId == null) {
+      throw new Error("Retained selection did not produce a snapshot.");
+    }
+    await database.client.exec(`
+      BEGIN;
+      SELECT set_config(
+        'workout_tracker.authorized_delete', 'snapshot_restore', true
+      );
+      UPDATE session_exercises
+      SET equipment_requirements_snapshot = jsonb_set(
+        equipment_requirements_snapshot,
+        '{broad}',
+        (
+          SELECT jsonb_agg(
+            CASE WHEN requirement.value->>'equipmentType' = 'plates'
+              THEN jsonb_set(
+                requirement.value,
+                '{equipmentDefinition}',
+                jsonb_build_object(
+                  'id', '${ids.barDefinition}',
+                  'key', 'retained-correct-bar',
+                  'label', 'Definition-specific plates'
+                )
+              )
+              ELSE requirement.value
+            END
+            ORDER BY requirement.ordinality
+          )
+          FROM jsonb_array_elements(
+            equipment_requirements_snapshot->'broad'
+          ) WITH ORDINALITY requirement(value, ordinality)
+        )
+      )
+      WHERE id = '${ids.sessionExercise}';
+      COMMIT;
+    `);
+
+    await expect(logWorkoutSet(database.db, ids.user, {
+      sessionExerciseId: ids.sessionExercise,
+      setNo: 1,
+      weight: 50,
+      weightUnit: "lb",
+      reps: 8,
+      clientKey: "retained-definition-plates-set",
+      equipmentSnapshotId: selected.snapshotId,
+      loadEntryMeaning: "total_system",
+    })).resolves.toEqual({ outcome: "equipment_selection_conflict" });
+    await expect(mutateSessionEquipmentSelection(database.db, ids.user, {
+      operation: "clear",
+      sessionExerciseId: ids.sessionExercise,
+      expectedCurrentSnapshotId: selected.snapshotId,
+      clientKey: ids.clearKey,
+    })).resolves.toMatchObject({ outcome: "applied", snapshotId: null });
+    await expect(mutateSessionEquipmentSelection(database.db, ids.user, {
+      operation: "select",
+      sessionExerciseId: ids.sessionExercise,
+      equipmentItemId: ids.bar,
+      attachmentItemId: null,
+      expectedCurrentSnapshotId: null,
+      clientKey: ids.invalidKey,
+      provenance: "user_selected",
+    })).resolves.toEqual({ outcome: "invalid_setup" });
   });
 
   it("records displayed load with unknown setup when no reviewed matching setup exists", async () => {
