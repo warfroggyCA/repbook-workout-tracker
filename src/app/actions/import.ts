@@ -767,13 +767,6 @@ async function readExactConfirmedImport(
 export async function confirmImport(
   input: ConfirmImportInput,
 ): Promise<{ ok: true; programVersionId: string } | { ok: false; reason: string }> {
-  if (!isProgramTextImportEnabled()) {
-    return {
-      ok: false,
-      reason:
-        "Routine text imports are temporarily unavailable. Your staged review is preserved and no Program was changed.",
-    };
-  }
   const validation = confirmSchema.safeParse(input);
   if (!validation.success) {
     return {
@@ -785,6 +778,15 @@ export async function confirmImport(
   const parsed = validation.data;
   const user = await getCurrentUser();
   const db = await getDb();
+  if (!isProgramTextImportEnabled()) {
+    const completed = await readExactConfirmedImport(db, user.id, parsed);
+    if (completed) return completed;
+    return {
+      ok: false,
+      reason:
+        "Routine text imports are temporarily unavailable. Your staged review is preserved and no Program was changed.",
+    };
+  }
   const controlled = await runExpensiveOperation<
     | { ok: true; programVersionId: string }
     | { ok: false; reason: string }
