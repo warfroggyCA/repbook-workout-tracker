@@ -679,8 +679,13 @@ export function SessionRunner(props: SessionRunnerProps) {
       return;
     }
     const reconcileStaleHash = staleWorkoutActionHashRef.current;
+    const reconcileInitialCurrentAction =
+      previousActionId == null &&
+      currentActionSessionExerciseId != null &&
+      lastConsumedWorkoutHashRef.current == null;
     if (
       !reconcileStaleHash &&
+      !reconcileInitialCurrentAction &&
       (previousActionId == null || previousActionId === currentActionId)
     ) {
       return;
@@ -714,12 +719,14 @@ export function SessionRunner(props: SessionRunnerProps) {
         scrollFrame = window.requestAnimationFrame(revealCurrentAction);
         return;
       }
-      lastConsumedWorkoutHashRef.current = currentActionTargetId;
-      window.history.replaceState(
-        window.history.state,
-        "",
-        `${window.location.pathname}${window.location.search}#${currentActionTargetId}`,
-      );
+      if (!reconcileInitialCurrentAction) {
+        lastConsumedWorkoutHashRef.current = currentActionTargetId;
+        window.history.replaceState(
+          window.history.state,
+          "",
+          `${window.location.pathname}${window.location.search}#${currentActionTargetId}`,
+        );
+      }
       if (currentActionSessionExerciseId) {
         setExpandedId(currentActionSessionExerciseId);
       }
