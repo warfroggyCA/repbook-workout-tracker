@@ -167,6 +167,13 @@ async function createProgramFixture(
       exerciseId: exercise.id,
       equipmentType: "barbell",
     });
+    await db.insert(schema.equipmentItems).values({
+      userId: account.id,
+      type: "barbell",
+      label: `${label} synthetic barbell`,
+      attrs: {},
+      available: true,
+    });
   }
   const activated = await activateProgramAtomically(db, {
     userId: account.id,
@@ -834,16 +841,33 @@ describe.sequential("real PostgreSQL parallel invariants", () => {
       FOR EACH ROW EXECUTE FUNCTION pii01b_reject_fit_audit()
     `);
     try {
-      await expect(saveExerciseEquipmentFitAssertion(db, owner.id, {
-        mutationId: crypto.randomUUID(),
-        assertionId: null,
-        exerciseId: exercise.id,
-        equipmentItemId: collidingStation.id,
-        verdict: "incompatible",
-        reasonCode: "missing_capability",
-        reasonNote: "Synthetic failure must roll everything back",
-        expectedRevision: null,
-      })).rejects.toThrow(/synthetic PII-01B audit failure/u);
+      let injectedFailure: unknown;
+      try {
+        await saveExerciseEquipmentFitAssertion(db, owner.id, {
+          mutationId: crypto.randomUUID(),
+          assertionId: null,
+          exerciseId: exercise.id,
+          equipmentItemId: collidingStation.id,
+          verdict: "incompatible",
+          reasonCode: "missing_capability",
+          reasonNote: "Synthetic failure must roll everything back",
+          expectedRevision: null,
+        });
+      } catch (error) {
+        injectedFailure = error;
+      }
+      const failureMessages: string[] = [];
+      let currentFailure: unknown = injectedFailure;
+      for (let depth = 0; currentFailure !== undefined && currentFailure !== null && depth < 5; depth += 1) {
+        failureMessages.push(
+          currentFailure instanceof Error ? currentFailure.message : String(currentFailure),
+        );
+        currentFailure =
+          typeof currentFailure === "object" && "cause" in currentFailure
+            ? (currentFailure as { cause?: unknown }).cause
+            : undefined;
+      }
+      expect(failureMessages.join("\n")).toMatch(/synthetic PII-01B audit failure/u);
     } finally {
       await db.execute(sql`DROP TRIGGER pii01b_reject_fit_audit ON audit_logs`);
       await db.execute(sql`DROP FUNCTION pii01b_reject_fit_audit()`);
