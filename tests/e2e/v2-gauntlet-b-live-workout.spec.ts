@@ -69,6 +69,14 @@ async function expectReachableTarget(locator: Locator) {
 }
 
 async function expectActiveViewportBudget(page: Page) {
+  await expect(
+    page.getByRole("region", {
+      name: "Workout progress and upcoming work",
+    }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("complementary", { name: "Workout status" }),
+  ).toBeVisible();
   const budget = await page.evaluate(() => {
     const guidance = document.querySelector<HTMLElement>(
       'section[aria-label="Workout progress and upcoming work"]',
