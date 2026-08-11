@@ -1,8 +1,11 @@
 import { defineConfig, devices } from "@playwright/test";
 
 const port = Number.parseInt(process.env.POST_V2_P1_TIMING_PORT ?? "3173", 10);
-const startAt = "2026-08-04T16:00:00.000Z";
-const finishAt = "2026-08-10T16:00:00.000Z";
+const fixtureFinishAt = new Date();
+const startAt = new Date(
+  fixtureFinishAt.getTime() - 6 * 24 * 60 * 60 * 1000,
+).toISOString();
+const finishAt = fixtureFinishAt.toISOString();
 
 export default defineConfig({
   testDir: "./tests/e2e",
