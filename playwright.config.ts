@@ -45,6 +45,7 @@ export default defineConfig({
     "v2-a05-selective-review-bridge.spec.ts",
     "v2-d02-support-bundle.spec.ts",
     "v2-r01-lifecycle-audit.spec.ts",
+    "pii01-program-import.spec.ts",
   ],
   outputDir: "./output/playwright/test-results",
   fullyParallel: false,

@@ -79,6 +79,7 @@ export type DiagnosticEventFields = {
       | "provider_failure"
       | "timeout"
       | "unknown"
+      | "unsupported_rep_sequence"
       | "usage_control";
     inputCharacterCount: number;
     detectedDayCount: number;
@@ -394,6 +395,7 @@ const DIAGNOSTIC_EVENT_MANIFEST = {
         "provider_failure",
         "timeout",
         "unknown",
+        "unsupported_rep_sequence",
         "usage_control",
       ]),
       inputCharacterCount: boundedCountRule,

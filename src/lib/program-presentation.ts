@@ -114,6 +114,7 @@ export function formatCompactProgramDayLabel(
 export function deriveProgramDayWarmupLines(
   dayWarmupNotes: string | null,
   slots: Array<{
+    slotLineageId?: string;
     exerciseName: string;
     warmupNotes: string | null;
     warmupSets: WarmupSetDisplayInput[];
@@ -133,8 +134,23 @@ export function deriveProgramDayWarmupLines(
       ? []
       : dayWarmupItems;
   if (effectiveWarmupItems.length > 0) {
+    const exerciseNameByLineage = new Map(
+      slots.flatMap((slot) =>
+        slot.slotLineageId
+          ? [[slot.slotLineageId, slot.exerciseName] as const]
+          : [],
+      ),
+    );
     for (const item of effectiveWarmupItems) {
-      addUniqueLine(lines, seen, formatWarmupSetLine(item));
+      const step = formatWarmupSetLine(item);
+      const exerciseName = item.beforeSlotLineageId
+        ? exerciseNameByLineage.get(item.beforeSlotLineageId)
+        : null;
+      addUniqueLine(
+        lines,
+        seen,
+        exerciseName ? `Before ${exerciseName}: ${step}` : step,
+      );
     }
   } else {
     for (const line of dayWarmupNotes?.split(/\r?\n/) ?? []) {
@@ -188,6 +204,7 @@ export function projectProgramPresentation(
         warmupLines: deriveProgramDayWarmupLines(
           day.warmupNotes,
           slots.map((slot) => ({
+            slotLineageId: slot.lineageId,
             exerciseName: slot.exercise.name,
             warmupNotes: slot.warmupNotes,
             warmupSets: slot.warmupSets,

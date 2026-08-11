@@ -202,7 +202,7 @@ describe("Session Compiler durable review and acceptance", () => {
         warmupNotes: "Compatibility warm-up",
         warmupItems: [
           { key: crypto.randomUUID(), label: "Raise temperature", reps: null, load: null, loadUnit: null, loadPercent: null, loadText: "Easy pace", notes: null },
-          { key: crypto.randomUUID(), label: "Shoulder circles", reps: 10, load: null, loadUnit: null, loadPercent: null, loadText: null, notes: "Each direction" },
+          { key: crypto.randomUUID(), beforeSlotLineageId: sourceSlots[1].lineageId, label: "Shoulder circles", reps: 10, load: null, loadUnit: null, loadPercent: null, loadText: null, notes: "Each direction" },
         ],
       }).returning({ id: workoutTemplates.id });
       const [group] = await tx.insert(supersetGroups).values({
@@ -296,22 +296,33 @@ describe("Session Compiler durable review and acceptance", () => {
       .orderBy(sessionOccurrences.sequenceIdx);
     expect(occurrences.map((occurrence) => occurrence.kind)).toEqual([
       "day_warmup",
-      "day_warmup",
+      "exercise_warmup",
+      "working_set",
       "exercise_warmup",
       "working_set",
       "working_set",
       "working_set",
       "working_set",
       "working_set",
-      "working_set",
     ]);
-    expect(occurrences.slice(3).map((occurrence) => [
+    expect(occurrences.filter((occurrence) => occurrence.kind === "exercise_warmup").map((occurrence) => ({
+      label: occurrence.label,
+      sessionExerciseId: occurrence.sessionExerciseId,
+      kindOrdinal: occurrence.kindOrdinal,
+    }))).toEqual([
+      { label: "Primer", sessionExerciseId: acceptedExercises[0].id, kindOrdinal: 0 },
+      { label: "Shoulder circles", sessionExerciseId: acceptedExercises[1].id, kindOrdinal: 0 },
+    ]);
+    const workingOccurrences = occurrences.filter(
+      (occurrence) => occurrence.kind === "working_set",
+    );
+    expect(workingOccurrences.map((occurrence) => [
       occurrence.groupRound,
       occurrence.groupMemberOrderIdx,
     ])).toEqual([
       [1, 0], [1, 1], [2, 0], [2, 1], [3, 0], [3, 1],
     ]);
-    expect(occurrences.slice(3).map((occurrence) => occurrence.plannedRestSec))
+    expect(workingOccurrences.map((occurrence) => occurrence.plannedRestSec))
       .toEqual([15, 75, 15, 75, 15, 0]);
   });
 

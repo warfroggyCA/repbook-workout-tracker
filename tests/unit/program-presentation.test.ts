@@ -92,10 +92,16 @@ describe("saved Program presentation", () => {
   });
 
   it("shows structured warm-up steps instead of a stale overview", () => {
+    const benchLineageId = "10000000-0000-4000-8000-000000000003";
     expect(
       deriveProgramDayWarmupLines(
         "Old overview that no longer controls the workout",
-        [],
+        [{
+          slotLineageId: benchLineageId,
+          exerciseName: "Bench Press",
+          warmupNotes: null,
+          warmupSets: [],
+        }],
         [
           {
             key: "10000000-0000-4000-8000-000000000001",
@@ -109,6 +115,7 @@ describe("saved Program presentation", () => {
           },
           {
             key: "10000000-0000-4000-8000-000000000002",
+            beforeSlotLineageId: benchLineageId,
             label: "Two smooth ramp-up sets",
             reps: null,
             load: null,
@@ -119,7 +126,10 @@ describe("saved Program presentation", () => {
           },
         ],
       ),
-    ).toEqual(["Two minutes easy", "Two smooth ramp-up sets"]);
+    ).toEqual([
+      "Two minutes easy",
+      "Before Bench Press: Two smooth ramp-up sets",
+    ]);
   });
 
   it("shows the full legacy overview instead of its generated 120-character prefix", () => {

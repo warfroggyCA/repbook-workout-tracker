@@ -4,6 +4,7 @@ import type {
 } from "@/lib/session-compiler";
 
 type WarmupStep = {
+  beforeSlotLineageId?: string | null;
   label: string;
   reps: number | null;
   load: number | null;
@@ -42,6 +43,12 @@ export function CompilerExecutionDetails({
 }) {
   if (output.status !== "ready") return null;
   const dayWarmups = "warmupItems" in input.day ? input.day.warmupItems : [];
+  const exerciseNameByLineage = new Map(
+    output.exercises.map((exercise) => [
+      exercise.slotLineageId,
+      exercise.exerciseName,
+    ]),
+  );
   const exerciseWarmups = output.exercises.filter(
     (exercise) => Boolean(exercise.warmupNotes?.trim()) || exercise.warmupSets.length > 0,
   );
@@ -61,9 +68,20 @@ export function CompilerExecutionDetails({
     <div className="mt-4 space-y-3">
       {dayWarmups.length > 0 && (
         <section className="rounded-xl border p-3" aria-labelledby="compiler-day-warmup-heading">
-          <h3 id="compiler-day-warmup-heading" className="text-sm font-medium">Day warm-up</h3>
+          <h3 id="compiler-day-warmup-heading" className="text-sm font-medium">Warm-up timeline</h3>
           <ol className="mt-2 space-y-1 text-sm text-muted-foreground">
-            {dayWarmups.map((item) => <WarmupStepLine key={item.key} step={item} />)}
+            {dayWarmups.map((item) => (
+              <li key={item.key}>
+                <span className="font-medium text-foreground">
+                  {item.beforeSlotLineageId
+                    ? `Before ${exerciseNameByLineage.get(item.beforeSlotLineageId) ?? "exercise"}`
+                    : "At workout start"}
+                </span>
+                <ul className="ml-4 list-disc">
+                  <WarmupStepLine step={item} />
+                </ul>
+              </li>
+            ))}
           </ol>
         </section>
       )}

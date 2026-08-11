@@ -62,6 +62,7 @@ describe("Program editor split presentation panels", () => {
       warmupNotes: "Move smoothly",
       warmupItems: [{
         key: "10000000-0000-4000-8000-000000000013",
+        beforeSlotLineageId: slot.lineageId,
         label: "Shoulder circles",
         reps: 10,
         load: null,
@@ -87,7 +88,10 @@ describe("Program editor split presentation panels", () => {
     expect(html).toContain("Shoulder circles");
     expect(html).toContain("Add warm-up step");
     expect(html).toContain("Loading method");
-    expect(html).toContain("Move warm-up step 1 up");
+    expect(html).toContain("When it happens");
+    expect(html).toContain("Before exercise 1");
+    expect(html).toContain("Lift-timed steps cannot be copied to another day");
+    expect(html).toContain("Move warm-up step 1 earlier at this point");
     expect(html).toContain("Remove warm-up step 1");
     expect(html).toContain("Warm-up instructions (optional)");
     expect(html).toContain("Optional check-off steps");

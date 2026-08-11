@@ -8,7 +8,6 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { ConfirmDialog, Field } from "@/components/program/editor/editor-ui";
 import {
-  moveItem,
   setWarmupLoadPercent,
   setWarmupLoadText,
   setWarmupNumericLoad,
@@ -26,6 +25,30 @@ function loadingMode(item: ProgramDayWarmupItem) {
   if (item.loadPercent != null) return "percent" as const;
   if (item.loadText != null) return "instruction" as const;
   return "none" as const;
+}
+
+function matchingTimingIndexes(
+  items: ProgramDayWarmupItem[],
+  index: number,
+) {
+  const anchor = items[index]?.beforeSlotLineageId ?? null;
+  return items
+    .map((item, itemIndex) => ({ item, itemIndex }))
+    .filter(({ item }) => (item.beforeSlotLineageId ?? null) === anchor)
+    .map(({ itemIndex }) => itemIndex);
+}
+
+function moveWarmupAtSameTiming(
+  items: ProgramDayWarmupItem[],
+  index: number,
+  direction: -1 | 1,
+) {
+  const indexes = matchingTimingIndexes(items, index);
+  const target = indexes[indexes.indexOf(index) + direction];
+  if (target == null) return items;
+  const next = [...items];
+  [next[index], next[target]] = [next[target]!, next[index]!];
+  return next;
 }
 
 export function DayWarmupEditor({
@@ -50,6 +73,9 @@ export function DayWarmupEditor({
   const [pendingTargets, setPendingTargets] = useState<string[] | null>(null);
   const value = day.warmupNotes ?? null;
   const hasWarmup = Boolean(value) || day.warmupItems.length > 0;
+  const hasLiftTimedSteps = day.warmupItems.some(
+    (item) => item.beforeSlotLineageId != null,
+  );
   const requestApply = (targetIds: string[]) => {
     const differentNonEmpty = days.some((candidate) =>
       targetIds.includes(candidate.lineageId) &&
@@ -73,11 +99,19 @@ export function DayWarmupEditor({
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <Button type="button" variant="outline" onClick={() => setCopyOpen(true)} disabled={!hasWarmup || days.length < 2}>Copy to days</Button>
-          <Button type="button" variant="outline" onClick={() => requestApply(days.map((candidate) => candidate.lineageId))} disabled={!hasWarmup || days.length < 2}>Apply to all</Button>
+          <Button type="button" variant="outline" onClick={() => setCopyOpen(true)} disabled={!hasWarmup || days.length < 2 || hasLiftTimedSteps}>Copy to days</Button>
+          <Button type="button" variant="outline" onClick={() => requestApply(days.map((candidate) => candidate.lineageId))} disabled={!hasWarmup || days.length < 2 || hasLiftTimedSteps}>Apply to all</Button>
           <Button type="button" variant="ghost" onClick={() => { onChange(null); onItemsChange([]); }} disabled={!hasWarmup}>Clear this day</Button>
         </div>
       </div>
+
+      {hasLiftTimedSteps && (
+        <p className="mt-2 text-xs leading-5 text-muted-foreground">
+          Lift-timed steps cannot be copied to another day because their exercise
+          identities are different. Change them to workout-start steps first, or
+          recreate them against the intended exercises on the other day.
+        </p>
+      )}
 
       <Field
         id={`day-${day.lineageId}-warmup-overview`}
@@ -106,8 +140,8 @@ export function DayWarmupEditor({
             <div className="flex items-center justify-between gap-3">
               <h4 className="font-medium">Step {index + 1}</h4>
               <div className="flex gap-2">
-                <Button type="button" size="icon" variant="outline" aria-label={`Move warm-up step ${index + 1} up`} disabled={index === 0} onClick={() => onItemsChange(moveItem(day.warmupItems, index, index - 1))}><ArrowUp /></Button>
-                <Button type="button" size="icon" variant="outline" aria-label={`Move warm-up step ${index + 1} down`} disabled={index === day.warmupItems.length - 1} onClick={() => onItemsChange(moveItem(day.warmupItems, index, index + 1))}><ArrowDown /></Button>
+                <Button type="button" size="icon" variant="outline" aria-label={`Move warm-up step ${index + 1} earlier at this point`} disabled={matchingTimingIndexes(day.warmupItems, index).indexOf(index) === 0} onClick={() => onItemsChange(moveWarmupAtSameTiming(day.warmupItems, index, -1))}><ArrowUp /></Button>
+                <Button type="button" size="icon" variant="outline" aria-label={`Move warm-up step ${index + 1} later at this point`} disabled={matchingTimingIndexes(day.warmupItems, index).indexOf(index) === matchingTimingIndexes(day.warmupItems, index).length - 1} onClick={() => onItemsChange(moveWarmupAtSameTiming(day.warmupItems, index, 1))}><ArrowDown /></Button>
                 <Button type="button" size="icon" variant="destructive" aria-label={`Remove warm-up step ${index + 1}`} onClick={() => onItemsChange(day.warmupItems.filter((_, itemIndex) => itemIndex !== index))}><Trash2 /></Button>
               </div>
             </div>
@@ -117,6 +151,26 @@ export function DayWarmupEditor({
               </Field>
               <Field id={`${item.key}-reps`} label="Repetitions (optional)">
                 <Input id={`${item.key}-reps`} type="number" min={0} max={1000} value={item.reps ?? ""} onChange={(event) => updateItem(index, { ...item, reps: nullableNumber(event.target.value) })} />
+              </Field>
+              <Field id={`${item.key}-timing`} label="When it happens">
+                <select
+                  id={`${item.key}-timing`}
+                  className="h-11 w-full rounded-lg border border-input bg-background px-3 text-sm"
+                  value={item.beforeSlotLineageId ?? ""}
+                  onChange={(event) =>
+                    updateItem(index, {
+                      ...item,
+                      beforeSlotLineageId: event.target.value || null,
+                    })
+                  }
+                >
+                  <option value="">At the start of the workout</option>
+                  {day.exercises.map((slot, slotIndex) => (
+                    <option key={slot.lineageId} value={slot.lineageId}>
+                      Before exercise {slotIndex + 1}
+                    </option>
+                  ))}
+                </select>
               </Field>
               <Field id={`${item.key}-load-mode`} label="Loading method">
                 <select
@@ -152,7 +206,7 @@ export function DayWarmupEditor({
         <Button
           type="button"
           variant="outline"
-          onClick={() => onItemsChange([...day.warmupItems, { key: crypto.randomUUID(), label: "New warm-up step", reps: null, load: null, loadUnit: null, loadPercent: null, loadText: null, notes: null }])}
+          onClick={() => onItemsChange([...day.warmupItems, { key: crypto.randomUUID(), beforeSlotLineageId: null, label: "New warm-up step", reps: null, load: null, loadUnit: null, loadPercent: null, loadText: null, notes: null }])}
           disabled={day.warmupItems.length >= 24}
         >
           <Plus /> Add warm-up step

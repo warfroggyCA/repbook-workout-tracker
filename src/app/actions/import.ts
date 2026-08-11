@@ -1,6 +1,6 @@
 "use server";
 
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { getDb, type Db } from "@/db";
@@ -19,13 +19,15 @@ import { audit } from "@/services/audit";
 import { isAIAvailable, AIUnavailableError } from "@/ai/provider";
 import type { AIEnvelope } from "@/ai/envelope";
 import {
-  routineParseSchema,
+  PROGRAM_INPUT_MAX_DAYS,
+  programInputRequiresExactPerSetSupport,
+  routineParseDraftSchema,
   type RoutineParseData,
 } from "@/ai/tasks/routine-parse/schema";
+import { normalizeRoutineParseDraftEnvelope } from "@/ai/tasks/routine-parse/normalize";
 import { ROUTINE_PARSE_SYSTEM } from "@/ai/tasks/routine-parse/prompt";
 import {
   CANONICAL_ROUTINE_PARSER_VERSION,
-  collectSupersetRoundRestSeconds,
   inspectRoutineTextStructure,
   parseCanonicalRoutineText,
 } from "@/ai/tasks/routine-parse/deterministic";
@@ -38,6 +40,8 @@ import { sanitizeExerciseMappings } from "@/ai/tasks/exercise-map/validate";
 import { resolveExerciseName } from "@/services/exercise-map";
 import {
   getLibraryWithAvailability,
+  buildRoutineImportStagePayload,
+  readRoutineImportStagePayload,
   type ImportMapping,
   type LibraryExerciseOption,
 } from "@/services/routine-import";
@@ -63,6 +67,15 @@ import {
   type RoutineImportFailureCategory,
 } from "@/lib/routine-import-error";
 import { discardFailedRoutineImport } from "@/services/routine-import-failure";
+import { getActiveProgramVersion } from "@/services/program";
+import {
+  programDayIntentSchema,
+  programDayWarmupItemSchema,
+  programSlotIntentSchema,
+} from "@/lib/program-document";
+import { canonicalJson } from "@/services/snapshot-crypto";
+import { runExpensiveOperation } from "@/services/expensive-operations";
+import { resultRows } from "@/db/result";
 
 export type RoutineParseResponse =
   | {
@@ -73,10 +86,44 @@ export type RoutineParseResponse =
       mappings: ImportMapping[];
       /** Full pickable library with equipment verdicts for the review table. */
       library: LibraryExerciseOption[];
+      /** Binds confirmation to the exact staged package shown for review. */
+      stageDigest: string;
+      /** Active Program version observed when parsing began; null means none. */
+      baseProgramVersionId: string | null;
     }
   | { ok: false; reason: string };
 
 const routineTextSchema = z.string().trim().min(1).max(20_000);
+const routineParseRequestSchema = z
+  .object({
+    text: routineTextSchema,
+    clientImportId: z.string().uuid(),
+  })
+  .strict();
+
+export type RoutineParseRequest = z.infer<typeof routineParseRequestSchema>;
+
+async function routineParseSuccess(
+  db: Db,
+  userId: string,
+  importEventId: string,
+  payload: NonNullable<ReturnType<typeof readRoutineImportStagePayload>>,
+): Promise<Extract<RoutineParseResponse, { ok: true }>> {
+  const library = await getLibraryWithAvailability(db, userId);
+  const mediaByExercise = await getApprovedExerciseMedia(db, library);
+  return {
+    ok: true,
+    importEventId,
+    envelope: payload.envelope,
+    mappings: payload.mappings,
+    library: library.map((exercise) => ({
+      ...exercise,
+      media: mediaByExercise.get(exercise.id) ?? null,
+    })),
+    stageDigest: payload.stageDigest,
+    baseProgramVersionId: payload.baseProgramVersionId,
+  };
+}
 
 function logRoutineParseFailure(
   text: string,
@@ -133,19 +180,23 @@ async function failRoutineParse(
  * confirmImport.
  */
 export async function parseRoutineText(
-  input: string
+  input: RoutineParseRequest,
 ): Promise<RoutineParseResponse> {
-  const validated = routineTextSchema.safeParse(input);
+  const validated = routineParseRequestSchema.safeParse(input);
   if (!validated.success) {
+    const text =
+      input && typeof input === "object" && "text" in input
+        ? input.text
+        : null;
     return {
       ok: false,
       reason:
-        typeof input === "string" && input.trim().length === 0
+        typeof text === "string" && text.trim().length === 0
           ? "Paste a routine before parsing."
           : "Routine text must be 20,000 characters or fewer.",
     };
   }
-  const text = validated.data;
+  const { text, clientImportId } = validated.data;
   const deterministicEnvelope = parseCanonicalRoutineText(text);
   const user = await getCurrentUser();
   const db = await getDb();
@@ -159,22 +210,87 @@ export async function parseRoutineText(
   }
 
   const parseStartedAt = Date.now();
+  const payloadSha256 = sensitiveTextSha256(text);
+  const activeAtParse = await getActiveProgramVersion(db, user.id);
+  let baseProgramVersionId = activeAtParse?.version.id ?? null;
   // Stage the raw text first so a successful review has durable provenance.
+  // The caller-generated identity makes network retries converge on this row.
   // Failed parses are immediately discarded by failRoutineParse below.
   let event: typeof importEvents.$inferSelect;
   try {
     const [stagedEvent] = await db
       .insert(importEvents)
       .values({
+        id: clientImportId,
         userId: user.id,
         source: "paste",
         rawPayload: text,
-        payloadSha256: sensitiveTextSha256(text),
+        payloadSha256,
+        parsedPayload: {
+          schemaVersion: "routine-import-claim/1",
+          baseProgramVersionId,
+        },
         retentionExpiresAt: rawDataExpiresAt(),
       })
+      .onConflictDoNothing({ target: importEvents.id })
       .returning();
-    if (!stagedEvent) throw new Error("Routine import was not staged");
-    event = stagedEvent;
+    if (stagedEvent) {
+      event = stagedEvent;
+    } else {
+      const existing = await db.query.importEvents.findFirst({
+        where: and(
+          eq(importEvents.id, clientImportId),
+          eq(importEvents.userId, user.id),
+          eq(importEvents.source, "paste"),
+        ),
+      });
+      if (!existing || existing.payloadSha256 !== payloadSha256) {
+        throw new Error("Routine import retry identity was reused");
+      }
+      const existingPayload = readRoutineImportStagePayload(
+        existing.parsedPayload,
+      );
+      if (existing.status === "parsed" && existingPayload) {
+        return routineParseSuccess(
+          db,
+          user.id,
+          existing.id,
+          existingPayload,
+        );
+      }
+      if (existing.status === "confirmed") {
+        return {
+          ok: false,
+          reason: "This paste was already published as a Program version.",
+        };
+      }
+      if (existing.status === "discarded") {
+        return {
+          ok: false,
+          reason:
+            "This paste attempt was discarded. Retry it as a new review.",
+        };
+      }
+      const claim = existing.parsedPayload as {
+        schemaVersion?: unknown;
+        baseProgramVersionId?: unknown;
+      } | null;
+      if (
+        claim?.schemaVersion === "routine-import-claim/1" &&
+        (claim.baseProgramVersionId === null ||
+          typeof claim.baseProgramVersionId === "string")
+      ) {
+        baseProgramVersionId = claim.baseProgramVersionId;
+      }
+      if (Date.now() - existing.createdAt.getTime() < 3 * 60_000) {
+        return {
+          ok: false,
+          reason:
+            "This paste is still being parsed. Wait a moment, then retry without changing it.",
+        };
+      }
+      event = existing;
+    }
   } catch {
     logRoutineParseFailure(text, parseStartedAt, "persistence_failure");
     return {
@@ -190,6 +306,15 @@ export async function parseRoutineText(
   if (deterministicEnvelope) {
     envelope = deterministicEnvelope;
     parserVersion = CANONICAL_ROUTINE_PARSER_VERSION;
+    if (programInputRequiresExactPerSetSupport(envelope.data)) {
+      return failRoutineParse(db, {
+        userId: user.id,
+        importEventId: event.id,
+        text,
+        startedAt: parseStartedAt,
+        category: "unsupported_rep_sequence",
+      });
+    }
   } else {
     let result;
     try {
@@ -197,7 +322,7 @@ export async function parseRoutineText(
         task: "routine_parse",
         system: ROUTINE_PARSE_SYSTEM,
         input: text,
-        schema: routineParseSchema,
+        schema: routineParseDraftSchema,
         deadlineMs: 90_000,
       });
     } catch (error) {
@@ -216,7 +341,26 @@ export async function parseRoutineText(
         category,
       });
     }
-    envelope = result.value;
+    try {
+      envelope = normalizeRoutineParseDraftEnvelope(result.value, text);
+    } catch {
+      return failRoutineParse(db, {
+        userId: user.id,
+        importEventId: event.id,
+        text,
+        startedAt: parseStartedAt,
+        category: "output_incomplete",
+      });
+    }
+    if (programInputRequiresExactPerSetSupport(envelope.data)) {
+      return failRoutineParse(db, {
+        userId: user.id,
+        importEventId: event.id,
+        text,
+        startedAt: parseStartedAt,
+        category: "unsupported_rep_sequence",
+      });
+    }
     parserVersion = "ai-structured-output/1";
     if (!envelope.data.days.some((day) => day.exercises.length > 0)) {
       return failRoutineParse(db, {
@@ -370,21 +514,18 @@ export async function parseRoutineText(
 
   try {
     const mappings = rawNames.map((rawName) => mappingByRaw.get(rawName)!);
-    const library = await getLibraryWithAvailability(db, user.id);
-    const mediaByExercise = await getApprovedExerciseMedia(db, library);
-    const routineLibrary = library.map((exercise) => ({
-      ...exercise,
-      media: mediaByExercise.get(exercise.id) ?? null,
-    }));
+    const stagedPayload = buildRoutineImportStagePayload({
+      schemaVersion: "routine-import-stage/1",
+      envelope,
+      mappings,
+      parserVersion,
+      aiEventIds: { routineParse: parseEventId, exerciseMap: mapEventId },
+      baseProgramVersionId,
+    });
     const updatedEvents = await db
       .update(importEvents)
       .set({
-        parsedPayload: {
-          envelope,
-          mappings,
-          parserVersion,
-          aiEventIds: { routineParse: parseEventId, exerciseMap: mapEventId },
-        },
+        parsedPayload: stagedPayload,
         status: "parsed",
       })
       .where(
@@ -395,17 +536,23 @@ export async function parseRoutineText(
         ),
       )
       .returning({ id: importEvents.id });
-    if (updatedEvents.length !== 1) {
-      throw new Error("Routine import was not available to stage for review");
+    if (updatedEvents.length === 1) {
+      return routineParseSuccess(db, user.id, event.id, stagedPayload);
     }
-
-    return {
-      ok: true,
-      importEventId: event.id,
-      envelope,
-      mappings,
-      library: routineLibrary,
-    };
+    const persisted = await db.query.importEvents.findFirst({
+      where: and(
+        eq(importEvents.id, event.id),
+        eq(importEvents.userId, user.id),
+        eq(importEvents.status, "parsed"),
+      ),
+    });
+    const persistedPayload = readRoutineImportStagePayload(
+      persisted?.parsedPayload,
+    );
+    if (persistedPayload) {
+      return routineParseSuccess(db, user.id, event.id, persistedPayload);
+    }
+    throw new Error("Routine import was not available to stage for review");
   } catch {
     return failRoutineParse(db, {
       userId: user.id,
@@ -422,6 +569,7 @@ export async function parseRoutineText(
 
 const confirmExerciseSchema = z
   .object({
+    lineageId: z.string().uuid(),
     exerciseId: z.string().uuid(),
     sets: z.number().int().min(1).max(20),
     repMin: z.number().int().min(1).max(100),
@@ -433,29 +581,173 @@ const confirmExerciseSchema = z
       .max(MAX_STORED_LOAD)
       .transform(normalizeStoredLoad)
       .nullable(),
+    loadUnit: z.enum(["lb", "kg"]).nullable(),
     restSec: z.number().int().min(0).max(1800),
-    supersetKey: z.string().min(1).max(20).nullable(),
-    notes: z.string().max(500).nullable(),
+    supersetKey: z.string().trim().min(1).max(80).nullable(),
+    notes: z.string().trim().min(1).max(2000).nullable(),
+    intent: programSlotIntentSchema,
   })
-  .refine((e) => e.repMax >= e.repMin, {
-    message: "repMax must be ≥ repMin",
+  .strict()
+  .superRefine((exercise, context) => {
+    if (exercise.repMax < exercise.repMin) {
+      context.addIssue({
+        code: "custom",
+        path: ["repMax"],
+        message: "Maximum reps must be at least minimum reps.",
+      });
+    }
+    if ((exercise.load == null) !== (exercise.loadUnit == null)) {
+      context.addIssue({
+        code: "custom",
+        path: ["loadUnit"],
+        message: "A measured load needs an explicit unit.",
+      });
+    }
+    if (
+      exercise.intent.minimumDose.unit !== "sets" ||
+      exercise.intent.idealDose.unit !== "sets" ||
+      exercise.intent.idealDose.value !== exercise.sets ||
+      exercise.intent.minimumDose.value > exercise.sets
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["intent", "idealDose"],
+        message:
+          "Shortened-session intent must use reviewed set minimums and the published set count as the full-session target.",
+      });
+    }
   });
 
-const confirmSchema = z.object({
-  importEventId: z.string().uuid(),
-  programName: z.string().min(1).max(120),
-  days: z
-    .array(
-      z.object({
-        name: z.string().min(1).max(120),
-        exercises: z.array(confirmExerciseSchema).min(1),
-      })
-    )
-    .min(1)
-    .max(14),
-});
+const comparableInstruction = (value: string) =>
+  value
+    .normalize("NFKC")
+    .toLocaleLowerCase("en-CA")
+    .replace(/^warm[ -]?up\s*:\s*/u, "")
+    .replace(/[\s.!]+$/gu, "")
+    .replace(/\s+/gu, " ")
+    .trim();
+
+const confirmDaySchema = z
+  .object({
+    lineageId: z.string().uuid(),
+    name: z.string().trim().min(1).max(120),
+    warmupItems: z.array(programDayWarmupItemSchema).max(24),
+    intent: programDayIntentSchema,
+    exercises: z.array(confirmExerciseSchema).min(1).max(60),
+  })
+  .strict()
+  .superRefine((day, context) => {
+    const slotLineages = new Set(
+      day.exercises.map((exercise) => exercise.lineageId),
+    );
+    if (slotLineages.size !== day.exercises.length) {
+      context.addIssue({
+        code: "custom",
+        path: ["exercises"],
+        message: "Exercise identities must be unique within a day.",
+      });
+    }
+    const groupedExercises = new Map<string, typeof day.exercises>();
+    for (const exercise of day.exercises) {
+      if (!exercise.supersetKey) continue;
+      const members = groupedExercises.get(exercise.supersetKey) ?? [];
+      members.push(exercise);
+      groupedExercises.set(exercise.supersetKey, members);
+    }
+    for (const [groupKey, members] of groupedExercises) {
+      if (members.length < 2) {
+        context.addIssue({
+          code: "custom",
+          path: ["exercises"],
+          message: `Paired group ${groupKey} must retain at least two exercises or be cleared.`,
+        });
+      }
+      if (new Set(members.map((member) => member.sets)).size > 1) {
+        context.addIssue({
+          code: "custom",
+          path: ["exercises"],
+          message: `Paired group ${groupKey} must use the same planned set count for every exercise or be cleared.`,
+        });
+      }
+      if (
+        new Set(members.slice(0, -1).map((member) => member.restSec)).size > 1
+      ) {
+        context.addIssue({
+          code: "custom",
+          path: ["exercises"],
+          message: `Paired group ${groupKey} must use one shared rest time before the next paired exercise.`,
+        });
+      }
+    }
+    for (const [index, item] of day.warmupItems.entries()) {
+      if (
+        item.beforeSlotLineageId &&
+        !slotLineages.has(item.beforeSlotLineageId)
+      ) {
+        context.addIssue({
+          code: "custom",
+          path: ["warmupItems", index, "beforeSlotLineageId"],
+          message: "A lift ramp must refer to an exercise retained in this day.",
+        });
+      }
+    }
+    const warmupLabels = new Set(
+      day.warmupItems.map((item) => comparableInstruction(item.label)),
+    );
+    for (const [index, exercise] of day.exercises.entries()) {
+      if (!exercise.notes) continue;
+      const fragments = exercise.notes
+        .split(/[;\r\n]+/u)
+        .map(comparableInstruction)
+        .filter(Boolean);
+      if (fragments.some((fragment) => warmupLabels.has(fragment))) {
+        context.addIssue({
+          code: "custom",
+          path: ["exercises", index, "notes"],
+          message:
+            "A structured warm-up instruction cannot also be published as an exercise note.",
+        });
+      }
+    }
+  });
+
+const confirmSchema = z
+  .object({
+    schemaVersion: z.literal("program-input-review/1"),
+    importEventId: z.string().uuid(),
+    stageDigest: z.string().regex(/^[a-f0-9]{64}$/u),
+    baseProgramVersionId: z.string().uuid().nullable(),
+    equipmentFitReviewed: z.literal(true),
+    programName: z.string().trim().min(1).max(120),
+    days: z.array(confirmDaySchema).min(1).max(PROGRAM_INPUT_MAX_DAYS),
+  })
+  .strict();
 
 export type ConfirmImportInput = z.infer<typeof confirmSchema>;
+
+async function readExactConfirmedImport(
+  db: Db,
+  userId: string,
+  parsed: ConfirmImportInput,
+): Promise<{ ok: true; programVersionId: string } | null> {
+  const completed = await db.query.importEvents.findFirst({
+    where: and(
+      eq(importEvents.id, parsed.importEventId),
+      eq(importEvents.userId, userId),
+    ),
+  });
+  if (
+    completed?.status !== "confirmed" ||
+    !completed.resultProgramVersionId ||
+    canonicalJson(completed.confirmedPayload) !== canonicalJson(parsed)
+  ) {
+    return null;
+  }
+  return {
+    ok: true,
+    programVersionId: completed.resultProgramVersionId,
+  };
+}
 
 /**
  * The confirmation gate (plan §5/§13): the ONLY writer of imported program
@@ -467,9 +759,25 @@ export type ConfirmImportInput = z.infer<typeof confirmSchema>;
 export async function confirmImport(
   input: ConfirmImportInput
 ): Promise<{ ok: true; programVersionId: string } | { ok: false; reason: string }> {
-  const parsed = confirmSchema.parse(input);
+  const validation = confirmSchema.safeParse(input);
+  if (!validation.success) {
+    return {
+      ok: false,
+      reason:
+        "The reviewed Program has an invalid or incomplete field. Check every warm-up, exercise, and shortened-session choice.",
+    };
+  }
+  const parsed = validation.data;
   const user = await getCurrentUser();
   const db = await getDb();
+  const controlled = await runExpensiveOperation<
+    | { ok: true; programVersionId: string }
+    | { ok: false; reason: string }
+  >(
+    db,
+    user.id,
+    "import",
+    async () => {
 
   const event = await db.query.importEvents.findFirst({
     where: and(
@@ -478,10 +786,85 @@ export async function confirmImport(
     ),
   });
   if (!event) return { ok: false, reason: "Import not found." };
-  if (event.status === "confirmed")
-    return { ok: false, reason: "This import was already confirmed." };
+  if (event.status === "confirmed") {
+    if (
+      event.resultProgramVersionId &&
+      canonicalJson(event.confirmedPayload) === canonicalJson(parsed)
+    ) {
+      return {
+        ok: true,
+        programVersionId: event.resultProgramVersionId,
+      };
+    }
+    return {
+      ok: false,
+      reason: "This import was already published with different reviewed choices.",
+    };
+  }
   if (event.status !== "parsed")
     return { ok: false, reason: "This import isn't ready to confirm." };
+
+  const stagedPayload = readRoutineImportStagePayload(event.parsedPayload);
+  if (
+    !stagedPayload ||
+    stagedPayload.stageDigest !== parsed.stageDigest ||
+    stagedPayload.baseProgramVersionId !== parsed.baseProgramVersionId
+  ) {
+    return {
+      ok: false,
+      reason:
+        "This review no longer matches the staged paste. Discard it and parse again.",
+    };
+  }
+  if (programInputRequiresExactPerSetSupport(stagedPayload.envelope.data)) {
+    return {
+      ok: false,
+      reason:
+        "This staged paste contains different rep targets for individual sets, which this importer cannot publish exactly. Nothing was published; discard it and rewrite each affected exercise as one exact target or range.",
+    };
+  }
+  const stagedDays = stagedPayload.envelope.data.days;
+  const stagedIdentityMatches =
+    parsed.days.length === stagedDays.length &&
+    parsed.days.every((day, dayIndex) => {
+      const stagedDay = stagedDays[dayIndex];
+      if (!stagedDay || day.lineageId !== stagedDay.lineageId) return false;
+      const stagedSlotIndexes = new Map(
+        stagedDay.exercises.map((exercise, index) => [exercise.lineageId, index]),
+      );
+      let previousIndex = -1;
+      const seen = new Set<string>();
+      return day.exercises.every((exercise) => {
+        const stagedIndex = stagedSlotIndexes.get(exercise.lineageId);
+        if (
+          stagedIndex == null ||
+          stagedIndex <= previousIndex ||
+          seen.has(exercise.lineageId)
+        ) {
+          return false;
+        }
+        previousIndex = stagedIndex;
+        seen.add(exercise.lineageId);
+        return true;
+      });
+    });
+  if (!stagedIdentityMatches) {
+    return {
+      ok: false,
+      reason:
+        "This review no longer matches the staged days and exercises. Nothing was published; discard it and parse again.",
+    };
+  }
+  const currentProgram = await getActiveProgramVersion(db, user.id);
+  if ((currentProgram?.version.id ?? null) !== parsed.baseProgramVersionId) {
+    const duplicateResult = await readExactConfirmedImport(db, user.id, parsed);
+    if (duplicateResult) return duplicateResult;
+    return {
+      ok: false,
+      reason:
+        "Your active Program changed after this review began. Nothing was published; discard this review and parse again against the current Program.",
+    };
+  }
 
   // Re-validate mappings: every exercise must exist, be visible to this
   // user, and pass the equipment filter. Client state is not trusted.
@@ -541,12 +924,9 @@ export async function confirmImport(
     };
   }
 
-  const payload = event.parsedPayload as {
-    aiEventIds?: { routineParse?: string | null; exerciseMap?: string | null };
-  } | null;
   const aiEventIds = [
-    payload?.aiEventIds?.routineParse,
-    payload?.aiEventIds?.exerciseMap,
+    stagedPayload.aiEventIds.routineParse,
+    stagedPayload.aiEventIds.exerciseMap,
   ].filter((id): id is string => Boolean(id));
   const exerciseCount = parsed.days.reduce(
     (count, day) => count + day.exercises.length,
@@ -557,21 +937,23 @@ export async function confirmImport(
     loadUnit: user.profile.unit,
     programName: parsed.programName,
     days: parsed.days.map((day) => {
-      const supersetRoundRest = collectSupersetRoundRestSeconds(day.exercises);
       return {
+        lineageId: day.lineageId,
         name: day.name,
+        warmupItems: day.warmupItems,
+        intent: day.intent,
         exercises: day.exercises.map((exercise) => ({
+          lineageId: exercise.lineageId,
           exerciseId: exercise.exerciseId,
           sets: exercise.sets,
           repMin: exercise.repMin,
           repMax: exercise.repMax,
           targetLoad: exercise.load,
+          targetLoadUnit: exercise.loadUnit,
           restSec: exercise.restSec,
           supersetKey: exercise.supersetKey,
-          supersetRestAfterRoundSec: exercise.supersetKey
-            ? supersetRoundRest.get(exercise.supersetKey)
-            : undefined,
           notes: exercise.notes,
+          intent: exercise.intent,
         })),
       };
     }),
@@ -581,37 +963,96 @@ export async function confirmImport(
     importEventId: event.id,
     aiEventIds,
     confirmedPayload: parsed,
+    expectedCurrentProgramVersionId: parsed.baseProgramVersionId,
     structuredIntentReviewed: true,
   });
-  if (!activated.ok) return activated;
+  if (!activated.ok) {
+    // Two identical deliveries can both finish validation before activation
+    // serializes on the ImportEvent row. The winner stores the exact reviewed
+    // receipt; the loser must converge on that same success without treating a
+    // changed payload as idempotent.
+    const duplicateResult = await readExactConfirmedImport(db, user.id, parsed);
+    if (duplicateResult) return duplicateResult;
+    return activated;
+  }
 
   revalidatePath("/program");
   revalidatePath("/today");
   return { ok: true, programVersionId: activated.programVersionId };
+    },
+  );
+  if (!controlled.ok) {
+    const duplicateResult = await readExactConfirmedImport(db, user.id, parsed);
+    if (duplicateResult) return duplicateResult;
+    return { ok: false, reason: controlled.reason };
+  }
+  return controlled.value;
 }
 
 /** Review-screen "start over": the staged parse is kept but marked discarded. */
 export async function discardImport(
   importEventId: string
 ): Promise<{ ok: boolean }> {
-  const id = z.string().uuid().parse(importEventId);
+  const validated = z.string().uuid().safeParse(importEventId);
+  if (!validated.success) return { ok: false };
+  const id = validated.data;
   const user = await getCurrentUser();
   const db = await getDb();
-  await db
-    .update(importEvents)
-    .set({
-      status: "discarded",
-      rawPayload: "",
-      parsedPayload: null,
-      rawRedactedAt: new Date(),
-      retentionExpiresAt: null,
-    })
-    .where(
-      and(
+  const controlled = await runExpensiveOperation(db, user.id, "import", async () => {
+    const event = await db.query.importEvents.findFirst({
+      where: and(
         eq(importEvents.id, id),
         eq(importEvents.userId, user.id),
-        eq(importEvents.status, "parsed")
+      ),
+    });
+    if (!event) return { ok: false };
+    if (event.status === "discarded") return { ok: true };
+    if (event.status !== "parsed") return { ok: false };
+    const staged = readRoutineImportStagePayload(event.parsedPayload);
+    const aiEventIds = staged
+      ? [staged.aiEventIds.routineParse, staged.aiEventIds.exerciseMap].filter(
+          (aiEventId): aiEventId is string => Boolean(aiEventId),
+        )
+      : [];
+    const [row] = resultRows(await db.execute(sql`
+      WITH target_import AS MATERIALIZED (
+        SELECT id
+        FROM import_events
+        WHERE id = ${id}::uuid
+          AND user_id = ${user.id}::uuid
+          AND status = 'parsed'
+        FOR UPDATE
+      ), redacted_ai_events AS (
+        UPDATE ai_parsing_events
+        SET raw_input = '',
+            raw_output = NULL,
+            parsed_json = NULL,
+            ambiguities = '[]'::jsonb,
+            raw_redacted_at = now(),
+            retention_expires_at = NULL
+        WHERE user_id = ${user.id}::uuid
+          AND confirmed = false
+          AND id IN (
+            SELECT value::uuid
+            FROM jsonb_array_elements_text(${JSON.stringify(aiEventIds)}::jsonb)
+          )
+          AND EXISTS (SELECT 1 FROM target_import)
+        RETURNING id
+      ), discarded_import AS (
+        UPDATE import_events
+        SET status = 'discarded',
+            raw_payload = '',
+            parsed_payload = NULL,
+            raw_redacted_at = now(),
+            retention_expires_at = NULL
+        WHERE id IN (SELECT id FROM target_import)
+        RETURNING id
       )
-    );
-  return { ok: true };
+      SELECT
+        (SELECT count(*)::int FROM discarded_import) AS imports,
+        (SELECT count(*)::int FROM redacted_ai_events) AS ai_events
+    `));
+    return { ok: Number(row?.imports ?? 0) === 1 };
+  });
+  return controlled.ok ? controlled.value : { ok: false };
 }
