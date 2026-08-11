@@ -4,6 +4,7 @@ import {
   installNextDevelopmentRefreshControl,
   openNativeDetails,
   waitForEquipmentSelectionsToSettle,
+  waitForHydratedReactHandler,
   waitForHydratedServerAction,
 } from "../helpers/react-readiness";
 import {
@@ -95,14 +96,24 @@ async function expectNoHorizontalOverflow(page: Page) {
     .toBeLessThanOrEqual(1);
 }
 
-async function chooseFontSize(page: Page, name: RegExp, key: string) {
+async function chooseFontSize(
+  page: Page,
+  name: RegExp,
+  key: string,
+  returnUrl = "/today",
+) {
   await page.goto("/settings");
   const choice = page.getByRole("radio", { name });
+  await waitForHydratedReactHandler(choice);
   await choice.click();
+  await expect(choice).toHaveAttribute("aria-checked", "true");
+  await expect(
+    page.getByText("Saved to your profile.", { exact: true }),
+  ).toBeVisible();
   await expect.poll(() =>
     page.evaluate(() => document.documentElement.dataset.fontSize),
   ).toBe(key);
-  await page.goto("/today");
+  await page.goto(returnUrl);
 }
 
 test("puts truthful saved-equipment preparation before warm-up at phone sizes", async ({
@@ -178,9 +189,14 @@ test("puts truthful saved-equipment preparation before warm-up at phone sizes", 
     "Before warm-up",
   );
 
-  await page.evaluate(() => {
-    document.documentElement.dataset.fontSize = "extra-large";
-  });
+  const activeWorkoutUrl = page.url();
+  await chooseFontSize(
+    page,
+    /^Extra large/,
+    "extra-large",
+    activeWorkoutUrl,
+  );
+  await expect(page.getByTestId("session-preparation-panel")).toBeVisible();
   await page.setViewportSize({ width: 320, height: 700 });
   await expect
     .poll(() => page.evaluate(() =>
