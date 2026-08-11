@@ -133,24 +133,7 @@ async function signInAndStartWorkout(page: import("@playwright/test").Page) {
   await waitForReactHandler(startWorkout);
   await startWorkout.click();
   await expect(page).toHaveURL(/\/session\/[0-9a-f-]+$/);
-  await expect(
-    page
-      .getByRole("region", { name: "Workout equipment setup" })
-      .filter({ hasText: "Using " })
-      .first()
-  ).toBeVisible();
-  await expect
-    .poll(() =>
-      page.evaluate(() => {
-        const raw = localStorage.getItem(
-          "workout-tracker:equipment-selection-outbox:v1"
-        );
-        if (!raw) return 0;
-        const parsed = JSON.parse(raw) as { entries?: unknown[] };
-        return parsed.entries?.length ?? 0;
-      })
-    )
-    .toBe(0);
+  await waitForEquipmentSelectionsToSettle(page);
   return signInResponse;
 }
 

@@ -3,6 +3,9 @@ import { eq } from "drizzle-orm";
 import {
   auditLogs,
   completedSets,
+  equipmentDefinitions,
+  equipmentItems,
+  exerciseEquipmentRequirements,
   exercisePrescriptions,
   exercises,
   programs,
@@ -121,6 +124,11 @@ describe("Session Compiler durable review and acceptance", () => {
         prescribedMetricType: expect.any(String),
         prescribedLoadType: expect.any(String),
         prescribedLoadSemantics: expect.any(String),
+        equipmentRequirementsSemanticsVersion: 1,
+        equipmentRequirementsSnapshot: expect.objectContaining({
+          sourceExerciseId: expect.any(String),
+          broad: expect.any(Array),
+        }),
       }),
     ]));
     const session = await database.db.query.workoutSessions.findFirst({ where: eq(workoutSessions.id, first.sessionId) });
@@ -155,7 +163,7 @@ describe("Session Compiler durable review and acceptance", () => {
     expect(csv).toContain(versionId);
     expect(csv).toContain(dayLineageId);
     const backup = await buildJsonBackup(database.db, userId);
-    expect(backup.schemaVersion).toBe("31");
+    expect(backup.schemaVersion).toBe("32");
     expect(backup.canonical.tables.session_compiler_proposals).toContainEqual(
       expect.objectContaining({ id: proposal.id, accepted_session_id: first.sessionId, content_hash: proposal.contentHash }),
     );
@@ -433,6 +441,52 @@ describe("Session Compiler durable review and acceptance", () => {
     expect(await database.db.select().from(workoutSessions)).toHaveLength(0);
   });
 
+  it("invalidates a reviewed proposal when a retained definition label changes", async () => {
+    const [sourceExercise] = await database.db.select().from(exercises);
+    const [definition] = await database.db.insert(equipmentDefinitions).values({
+      key: `compiler-definition-${crypto.randomUUID()}`,
+      label: "Reviewed compiler bar",
+      category: "barbell",
+    }).returning({ id: equipmentDefinitions.id });
+    await database.db.insert(exerciseEquipmentRequirements).values({
+      exerciseId: sourceExercise.id,
+      equipmentType: "barbell",
+      equipmentDefinitionId: definition.id,
+    });
+    await database.db.insert(equipmentItems).values({
+      userId,
+      type: "barbell",
+      definitionId: definition.id,
+      label: "Reviewed compiler bar",
+    });
+    const proposal = await createSessionCompilerProposal(database.db, userId, {
+      dayLineageId,
+      requestedMinutes: 60,
+      energy: "usual",
+      clientMutationId: crypto.randomUUID(),
+    });
+    expect(proposal.status).toBe("ready");
+
+    await expect(acceptSessionCompilerProposal(
+      database.db,
+      userId,
+      proposal.id,
+      crypto.randomUUID(),
+      "America/Toronto",
+      {
+        checkpoint: async () => {
+          await database.db.update(equipmentDefinitions)
+            .set({ label: "Renamed during acceptance" })
+            .where(eq(equipmentDefinitions.id, definition.id));
+        },
+      },
+    )).resolves.toEqual({ outcome: "stale" });
+    expect(await database.db.select().from(workoutSessions)).toHaveLength(0);
+    expect(await database.db.query.sessionCompilerProposals.findFirst({
+      where: eq(sessionCompilerProposals.id, proposal.id),
+    })).toMatchObject({ status: "stale" });
+  });
+
   it("restores accepted compiler evidence and workout provenance from a schema-22 snapshot", async () => {
     const proposal = await createSessionCompilerProposal(database.db, userId, {
       dayLineageId,
@@ -474,7 +528,7 @@ describe("Session Compiler durable review and acceptance", () => {
       created.snapshotId,
       { store, keyring }
     );
-    expect(captured.payload.schemaVersion).toBe("31");
+    expect(captured.payload.schemaVersion).toBe("32");
     expect(captured.payload.tables.session_compiler_proposals).toContainEqual(
       expect.objectContaining({
         id: proposal.id,

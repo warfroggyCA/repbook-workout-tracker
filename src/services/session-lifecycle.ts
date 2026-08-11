@@ -19,6 +19,7 @@ import {
   resolveSessionEquipmentAvailability,
   sessionEquipmentSelectionSourceRevisionExpression,
 } from "@/services/session-equipment-selection";
+import { sessionEquipmentRequirementsSnapshotExpression } from "@/services/session-equipment-requirements";
 import { historyRevisionLockSql } from "@/services/history-revision-lock";
 import {
   addWorkoutExerciseInputSchema,
@@ -498,6 +499,8 @@ export async function addWorkoutExercise(
         INSERT INTO session_exercises (
           id, session_id, exercise_id, planned_from_template_exercise_id,
           source_slot_lineage_id, modification_type, skip_reason,
+          equipment_requirements_semantics_version,
+          equipment_requirements_snapshot,
           substituted_for_exercise_id, substitution_reason, substituted_at,
           order_idx, superset_key, group_snapshot_id, group_member_order_idx,
           rest_sec, target_sets, target_reps_min, target_reps_max,
@@ -514,6 +517,8 @@ export async function addWorkoutExercise(
           NULL::uuid,
           'added',
           NULL::skip_reason,
+          1,
+          ${sessionEquipmentRequirementsSnapshotExpression(sql`target.id`)},
           NULL::uuid,
           NULL::substitution_reason,
           NULL::timestamptz,
@@ -1354,6 +1359,8 @@ export async function startWorkoutSession(
         prescribed_semantics_version, prescribed_exercise_name,
         prescribed_metric_type, prescribed_load_type,
         prescribed_load_semantics,
+        equipment_requirements_semantics_version,
+        equipment_requirements_snapshot,
         order_idx, superset_key, group_snapshot_id, group_member_order_idx,
         rest_sec, target_sets, target_reps_min,
         target_reps_max, target_load, target_load_unit, notes,
@@ -1369,6 +1376,8 @@ export async function startWorkoutSession(
         catalog.metric_type,
         catalog.load_type,
         catalog.load_semantics,
+        1,
+        ${sessionEquipmentRequirementsSnapshotExpression(sql`slot.exercise_id`)},
         slot.order_idx,
         slot.superset_group_id::text,
         session_group.id,
@@ -1861,6 +1870,10 @@ async function logWorkoutSetAttempt(
     se.prescribed_semantics_version = 1
     AND se.modification_type NOT IN ('substituted', 'added')
   ), false)`;
+  const usesRetainedEquipmentRequirements = sql`coalesce((
+    se.equipment_requirements_semantics_version = 1
+    AND se.equipment_requirements_snapshot IS NOT NULL
+  ), false)`;
   const authoritativeMetricType = sql`CASE
     WHEN ${usesPrescribedMeaning} THEN se.prescribed_metric_type
     ELSE exercise.metric_type
@@ -1878,6 +1891,148 @@ async function logWorkoutSetAttempt(
       AND ${authoritativeLoadSemantics}::text = 'resistance_band'
       THEN 'reps'::metric_type
     ELSE ${authoritativeMetricType}
+  END`;
+  const retainedBroadRequirementsValid = sql`NOT EXISTS (
+    SELECT 1
+    FROM jsonb_array_elements(
+      se.equipment_requirements_snapshot->'broad'
+    ) requirement(value)
+    WHERE requirement.value->>'equipmentType' <> 'bodyweight'
+      AND NOT (
+        (
+          requirement.value->>'equipmentType' = 'plates'
+          AND requirement.value #>> '{equipmentDefinition,id}' IS NULL
+          AND EXISTS (
+            SELECT 1 FROM plate_inventory plate
+            WHERE plate.user_id = ws.user_id
+              AND plate.quantity > 0
+              AND plate.denomination > 0
+          )
+        ) OR (
+          requirement.value->>'equipmentType' <> 'plates'
+          AND EXISTS (
+          SELECT 1 FROM equipment_items available_item
+          WHERE available_item.user_id = ws.user_id
+            AND available_item.available
+            AND available_item.type::text = requirement.value->>'equipmentType'
+            AND (
+              requirement.value #>> '{equipmentDefinition,id}' IS NULL
+              OR requirement.value #>> '{equipmentDefinition,id}' =
+                available_item.definition_id::text
+            )
+            AND (
+              requirement.value->'minWeight' = 'null'::jsonb
+              OR (
+                available_item.attrs->>'maxWeight' ~ '^[0-9]+([.][0-9]+)?$'
+                AND (available_item.attrs->>'maxWeight')::numeric >=
+                  (requirement.value->>'minWeight')::numeric
+              )
+            )
+          )
+        )
+      )
+  )`;
+  const retainedSelectedPrimaryMatchesBroad = sql`(
+    NOT EXISTS (
+      SELECT 1
+      FROM jsonb_array_elements(
+        se.equipment_requirements_snapshot->'broad'
+      ) requirement(value)
+      WHERE requirement.value->>'equipmentType' <> 'bodyweight'
+    ) OR (
+      EXISTS (
+      SELECT 1
+      FROM jsonb_array_elements(
+        se.equipment_requirements_snapshot->'broad'
+      ) requirement(value)
+      WHERE requirement.value->>'equipmentType' = selected_item.type::text
+        AND (
+          requirement.value #>> '{equipmentDefinition,id}' IS NULL
+          OR requirement.value #>> '{equipmentDefinition,id}' =
+            selected_item.definition_id::text
+        )
+        AND (
+          requirement.value->'minWeight' = 'null'::jsonb
+          OR (
+            selected_item.attrs->>'maxWeight' ~ '^[0-9]+([.][0-9]+)?$'
+            AND (selected_item.attrs->>'maxWeight')::numeric >=
+              (requirement.value->>'minWeight')::numeric
+          )
+        )
+      )
+      AND NOT EXISTS (
+        SELECT 1
+        FROM jsonb_array_elements(
+          se.equipment_requirements_snapshot->'broad'
+        ) requirement(value)
+        WHERE requirement.value->>'equipmentType' = selected_item.type::text
+          AND NOT (
+            (
+              requirement.value #>> '{equipmentDefinition,id}' IS NULL
+              OR requirement.value #>> '{equipmentDefinition,id}' =
+                selected_item.definition_id::text
+            )
+            AND (
+              requirement.value->'minWeight' = 'null'::jsonb
+              OR (
+                selected_item.attrs->>'maxWeight' ~ '^[0-9]+([.][0-9]+)?$'
+                AND (selected_item.attrs->>'maxWeight')::numeric >=
+                  (requirement.value->>'minWeight')::numeric
+              )
+            )
+          )
+      )
+    )
+  )`;
+  const retainedSelectedProfileMatchesExact = sql`CASE
+    WHEN se.equipment_requirements_snapshot->'exact' = 'null'::jsonb THEN true
+    ELSE
+      (
+        se.equipment_requirements_snapshot #>> '{exact,requiredProfileKind}' IS NULL
+        OR se.equipment_requirements_snapshot #>> '{exact,requiredProfileKind}' =
+          snapshot.profile_kind
+      )
+      AND (
+        se.equipment_requirements_snapshot #>>
+          '{exact,requiredEquipmentDefinition,id}' IS NULL
+        OR se.equipment_requirements_snapshot #>>
+          '{exact,requiredEquipmentDefinition,id}' = selected_item.definition_id::text
+      )
+      AND (
+        coalesce((se.equipment_requirements_snapshot #>>
+          '{exact,requiresKnownGeometry}')::boolean, false) = false
+        OR snapshot.geometry_certainty = 'known'
+      )
+      AND (
+        (
+          se.equipment_requirements_snapshot #>>
+            '{exact,requiredAttachmentKind}' IS NULL
+          AND se.equipment_requirements_snapshot #>>
+            '{exact,requiredAttachmentDefinition,id}' IS NULL
+        ) OR (
+          selected_attachment.available
+          AND (
+            se.equipment_requirements_snapshot #>>
+              '{exact,requiredAttachmentKind}' IS NULL
+            OR se.equipment_requirements_snapshot #>>
+              '{exact,requiredAttachmentKind}' =
+                selected_attachment_profile.attachment_kind
+          )
+          AND (
+            se.equipment_requirements_snapshot #>>
+              '{exact,requiredAttachmentDefinition,id}' IS NULL
+            OR se.equipment_requirements_snapshot #>>
+              '{exact,requiredAttachmentDefinition,id}' =
+                selected_attachment.definition_id::text
+          )
+          AND EXISTS (
+            SELECT 1 FROM cable_attachment_compatibilities compatibility
+            WHERE compatibility.cable_profile_id = snapshot.load_profile_id
+              AND compatibility.attachment_profile_id = snapshot.attachment_profile_id
+              AND compatibility.user_id = ws.user_id
+          )
+        )
+      )
   END`;
   await checkpoint("before-set-statement");
   const query = sql`
@@ -1956,8 +2111,13 @@ async function logWorkoutSetAttempt(
                (
                  ${authoritativeLoadType}::text IN ('barbell', 'ez_bar', 'trap_bar')
                  OR (
-                   NOT ${usesPrescribedMeaning}
-                   AND exact_requirement.exercise_id IS NOT NULL
+                   (${usesRetainedEquipmentRequirements}
+                     AND se.equipment_requirements_snapshot->'exact' <> 'null'::jsonb)
+                   OR (
+                     NOT ${usesRetainedEquipmentRequirements}
+                     AND NOT ${usesPrescribedMeaning}
+                     AND exact_requirement.exercise_id IS NOT NULL
+                   )
                  )
                )
                AND (
@@ -1973,13 +2133,17 @@ async function logWorkoutSetAttempt(
                  AND ${sessionEquipmentSelectionSourceRevisionExpression(
                    userId,
                    equipmentExerciseId,
-                   !(equipmentAvailability?.usesPrescribedMeaning ?? false),
+                   equipmentAvailability?.requirementsEvidence === "legacy_unknown"
+                     && !(equipmentAvailability?.usesPrescribedMeaning ?? false),
+                   sql`se.equipment_requirements_snapshot`,
                  )} = ${equipmentSourceRevision}
                )
              ) AS equipment_source_current,
              snapshot.profile_kind AS selected_profile_kind,
              snapshot.geometry_snapshot AS selected_geometry_snapshot,
-             (${usesPrescribedMeaning}) OR NOT EXISTS (
+             CASE WHEN ${usesRetainedEquipmentRequirements}
+             THEN ${retainedBroadRequirementsValid}
+             ELSE (${usesPrescribedMeaning}) OR NOT EXISTS (
                SELECT 1
                FROM exercise_equipment_requirements requirement
                WHERE requirement.exercise_id = se.exercise_id
@@ -2008,8 +2172,10 @@ async function logWorkoutSetAttempt(
                        )
                    )
                  )
-             ) AS broad_requirements_valid,
-             (${usesPrescribedMeaning}) OR EXISTS (
+             ) END AS broad_requirements_valid,
+             CASE WHEN ${usesRetainedEquipmentRequirements}
+             THEN ${retainedSelectedPrimaryMatchesBroad}
+             ELSE (${usesPrescribedMeaning}) OR EXISTS (
                SELECT 1
                FROM exercise_equipment_requirements primary_requirement
                WHERE primary_requirement.exercise_id = se.exercise_id
@@ -2022,7 +2188,7 @@ async function logWorkoutSetAttempt(
                        >= primary_requirement.min_weight
                    )
                  )
-             ) AS selected_primary_matches_broad,
+             ) END AS selected_primary_matches_broad,
              CASE ${authoritativeLoadType}::text
                WHEN 'barbell' THEN snapshot.profile_kind = 'plate_loaded_implement'
                  AND snapshot.geometry_snapshot->>'loadingKind' = 'olympic'
@@ -2032,7 +2198,9 @@ async function logWorkoutSetAttempt(
                  AND snapshot.geometry_snapshot->>'loadingKind' = 'trap_hex'
                ELSE true
              END AS selected_profile_matches_load_type,
-             CASE WHEN ${usesPrescribedMeaning} THEN true
+             CASE WHEN ${usesRetainedEquipmentRequirements}
+             THEN ${retainedSelectedProfileMatchesExact}
+             WHEN ${usesPrescribedMeaning} THEN true
              WHEN exact_requirement.exercise_id IS NULL THEN true ELSE
                (exact_requirement.required_profile_kind IS NULL
                  OR exact_requirement.required_profile_kind = snapshot.profile_kind)

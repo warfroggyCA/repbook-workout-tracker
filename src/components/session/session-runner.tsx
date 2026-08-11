@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  type MouseEvent as ReactMouseEvent,
   type ReactNode,
   useCallback,
   useEffect,
@@ -46,6 +47,7 @@ import {
 import { OccurrenceSaveStatus } from "./occurrence-save-status";
 import { WorkoutMeasurementsDrawer } from "./workout-measurements-drawer";
 import { EquipmentSetupPanel } from "./equipment-setup-panel";
+import { SessionPreparationPanel } from "./session-preparation-panel";
 import { ContextualNoteScope } from "@/components/contextual-notes/contextual-note-scope";
 import { AddWorkoutExercise } from "./add-workout-exercise";
 import { openContextualNoteComposer, type ContextualNoteScopeValue } from "@/lib/contextual-note-ui";
@@ -148,6 +150,7 @@ import {
   validateOwnerReportedActiveMinutes,
   type ActiveSessionTiming,
 } from "@/lib/active-session-timing";
+import { createUpdatingSessionEquipmentProjection } from "@/lib/session-equipment-requirements";
 
 function useActiveTiming(
   startedAtISO: string,
@@ -190,6 +193,7 @@ function WarmupPanel({
     return (
       <details
         id="workout-warmup"
+        tabIndex={-1}
         className="scroll-mt-4 rounded-xl border border-violet-300/60 bg-violet-50/60 dark:bg-violet-950/20"
       >
         <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 rounded-xl px-4 py-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
@@ -209,9 +213,11 @@ function WarmupPanel({
   return (
     <section
       id="workout-warmup"
+      tabIndex={-1}
+      aria-labelledby="workout-warmup-heading"
       className="scroll-mt-4 rounded-xl border border-violet-300/60 bg-violet-50/60 p-4 dark:bg-violet-950/20"
     >
-      <h2 className="font-semibold">Warm-up</h2>
+      <h2 id="workout-warmup-heading" className="font-semibold">Warm-up</h2>
       {children}
     </section>
   );
@@ -1913,6 +1919,85 @@ export function SessionRunner(props: SessionRunnerProps) {
     !currentWorkingExercise.sets.some(
       (set) => set.saveState != null && set.saveState !== "saved",
     );
+  const hasAcknowledgedWork = occurrences.some(
+    (occurrence) =>
+      occurrence.outcome === "completed" ||
+      occurrence.outcome === "skipped" ||
+      occurrence.outcome === "abandoned",
+  );
+  const sessionPreparationChangedOptimistically = shownExercises.some(
+    (exercise) =>
+      props.exercises.find((source) => source.id === exercise.id)?.exerciseId !==
+        exercise.exerciseId,
+  ) || shownExercises.length !== props.exercises.length;
+  const sessionPreparation = sessionPreparationChangedOptimistically
+    ? createUpdatingSessionEquipmentProjection()
+    : props.sessionPreparation;
+  const preparationWarmupAction =
+    guidance.currentAction?.kind === "day_warmup" ||
+    guidance.currentAction?.kind === "exercise_warmup"
+      ? guidance.currentAction
+      : guidance.nextAction?.kind === "day_warmup" ||
+          guidance.nextAction?.kind === "exercise_warmup"
+        ? guidance.nextAction
+        : null;
+  const preparationTargetId = preparationWarmupAction
+    ? actionTargetId(preparationWarmupAction)
+    : currentActionTargetId;
+  const preparationContinueLabel = preparationWarmupAction
+    ? "Go to warm-up"
+    : guidance.currentAction?.kind === "rest"
+      ? "Go to rest"
+      : guidance.currentAction?.kind === "working_set"
+        ? hasAcknowledgedWork
+          ? "Go to current exercise"
+          : "Go to first exercise"
+        : guidance.currentAction
+          ? "Go to warm-up"
+          : "Go to finish workout";
+  const continueFromPreparation = useCallback(
+    (event: ReactMouseEvent<HTMLAnchorElement>) => {
+      event.preventDefault();
+      if (
+        preparationTargetId !== "workout-warmup" &&
+        currentActionSessionExerciseId
+      ) {
+        setExpandedId(currentActionSessionExerciseId);
+      }
+      lastConsumedWorkoutHashRef.current = preparationTargetId;
+      window.history.replaceState(
+        window.history.state,
+        "",
+        `${window.location.pathname}${window.location.search}#${preparationTargetId}`,
+      );
+      window.requestAnimationFrame(() => {
+        window.requestAnimationFrame(() => {
+          const target = document.getElementById(preparationTargetId);
+          if (!target) return;
+          const behavior = window.matchMedia("(prefers-reduced-motion: reduce)").matches
+            ? "auto"
+            : "smooth";
+          revealWorkoutTarget(target, behavior);
+          const pendingWarmupControl = preparationWarmupAction
+            ? target.querySelector<HTMLElement>(
+                '[role="checkbox"][aria-checked="false"]',
+              )
+            : null;
+          const focusTarget = pendingWarmupControl ?? (
+            target.matches("[tabindex]")
+              ? target
+              : target.querySelector<HTMLElement>("button, [href], input")
+          );
+          focusTarget?.focus({ preventScroll: true });
+        });
+      });
+    }, [
+      currentActionSessionExerciseId,
+      preparationWarmupAction,
+      preparationTargetId,
+      setExpandedId,
+    ],
+  );
 
   return (
     <main className="mx-auto flex max-w-3xl flex-col gap-3 p-3 pb-[calc(12rem+env(safe-area-inset-bottom))] min-[360px]:pb-[calc(8rem+env(safe-area-inset-bottom))] sm:p-5 sm:pb-[calc(8rem+env(safe-area-inset-bottom))] lg:p-8 lg:pb-24">
@@ -1972,6 +2057,14 @@ export function SessionRunner(props: SessionRunnerProps) {
           </Button>
         </section>
       )}
+
+      <SessionPreparationPanel
+        projection={sessionPreparation}
+        hasAcknowledgedWork={hasAcknowledgedWork}
+        continueTargetId={preparationTargetId}
+        continueLabel={preparationContinueLabel}
+        onContinue={continueFromPreparation}
+      />
 
       <WarmupPanel
         completed={guidance.warmups.completed}
@@ -2239,25 +2332,28 @@ export function SessionRunner(props: SessionRunnerProps) {
       </WarmupPanel>
 
       <div className="flex flex-col gap-3">
-        {shownExercises.map((exercise) => (
-          <div key={exercise.id} className="flex flex-col gap-2">
-          {currentOccurrence?.sessionExerciseId === exercise.id &&
-          guidance.activeGroup ? (
-            <WorkoutGroupContext guidance={guidance} />
-          ) : null}
-          {props.equipmentSetups[exercise.id] &&
-          sessionEquipmentSetupMatchesExercise(
-            exercise,
-            props.equipmentSetups[exercise.id],
-          ) ? (
+        {shownExercises.map((exercise) => {
+          const equipmentSetup = props.equipmentSetups[exercise.id] ?? null;
+          const equipmentSetupMatches = equipmentSetup != null &&
+            sessionEquipmentSetupMatchesExercise(exercise, equipmentSetup);
+          const equipmentSetupIsCurrent =
+            currentActionOccurrence?.sessionExerciseId === exercise.id ||
+            currentOccurrence?.sessionExerciseId === exercise.id;
+          const equipmentSetupNeedsAttention = sessionEquipmentEntries.some(
+            (entry) =>
+              entry.sessionExerciseId === exercise.id &&
+              (entry.status === "queued" || entry.status === "needs_attention"),
+          );
+          const equipmentPanel = equipmentSetupMatches ? (
             <EquipmentSetupPanel
               sessionExerciseId={exercise.id}
+              exerciseName={exercise.name}
               ownerId={props.ownerId}
               sessionId={props.sessionId}
-              setup={props.equipmentSetups[exercise.id]}
+              setup={equipmentSetup}
               loadEntryMeaning={
                 equipmentLoadMeanings[exercise.id] ??
-                props.equipmentSetups[exercise.id].loadEntryMeaning ??
+                equipmentSetup.loadEntryMeaning ??
                 "legacy_unknown"
               }
               onLoadEntryMeaningChange={(meaning) =>
@@ -2267,11 +2363,34 @@ export function SessionRunner(props: SessionRunnerProps) {
                 }))
               }
             />
-          ) : props.equipmentSetups[exercise.id] ? (
+          ) : equipmentSetup ? (
             <p className="rounded-xl border border-dashed bg-muted/30 p-3 text-sm text-muted-foreground">
               Updating equipment guidance… Old implement and plate details are
               withheld.
             </p>
+          ) : null;
+          return (
+          <div key={exercise.id} className="flex flex-col gap-2">
+          {currentOccurrence?.sessionExerciseId === exercise.id &&
+          guidance.activeGroup ? (
+            <WorkoutGroupContext guidance={guidance} />
+          ) : null}
+          {equipmentPanel && (
+            equipmentSetupIsCurrent ||
+            equipmentSetupNeedsAttention ||
+            !equipmentSetupMatches
+          ) ? equipmentPanel : equipmentPanel ? (
+            <details className="rounded-xl border bg-muted/20">
+              <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 rounded-xl px-3 py-2 text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
+                <span className="min-w-0 break-words">
+                  Equipment setup for {exercise.name}
+                </span>
+                <span className="shrink-0 text-xs text-muted-foreground">
+                  Show
+                </span>
+              </summary>
+              <div className="border-t p-2">{equipmentPanel}</div>
+            </details>
           ) : null}
           <ExerciseCard
             key={`${exercise.id}:${exercise.exerciseId}:${exercise.metricType}:${exercise.loadType}:${exercise.loadSemantics}`}
@@ -2512,7 +2631,8 @@ export function SessionRunner(props: SessionRunnerProps) {
             }
           />
           </div>
-        ))}
+          );
+        })}
       </div>
 
       <AddWorkoutExercise

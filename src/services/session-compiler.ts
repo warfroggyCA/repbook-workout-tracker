@@ -1,7 +1,7 @@
 import "server-only";
 
 import { randomUUID } from "node:crypto";
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, sql, type SQL } from "drizzle-orm";
 import type { Db } from "@/db";
 import { resultRows } from "@/db/result";
 import { sessionCompilerProposals } from "@/db/schema";
@@ -19,6 +19,7 @@ import {
   projectIntentProgramDocumentV2,
   upgradeStoredProgramDocumentToV3,
 } from "@/lib/program-document";
+import { sessionEquipmentRequirementsSnapshotExpression } from "@/services/session-equipment-requirements";
 
 export class SessionCompilerIneligibleError extends Error {
   constructor(message: string) {
@@ -38,8 +39,15 @@ function proposalContentHash(input: SessionCompilerInput, output: ReturnType<typ
   });
 }
 
-function preflightEvidenceTokenQuery(userId: string, exerciseIds: string[]) {
-  const exerciseList = sql.join(exerciseIds.map((id) => sql`${id}::uuid`), sql`, `);
+function preflightEvidenceTokenQuery(
+  userId: string,
+  exerciseIds: string[] | SQL,
+) {
+  const exerciseList = Array.isArray(exerciseIds)
+    ? exerciseIds.length === 0
+      ? sql`NULL::uuid`
+      : sql.join(exerciseIds.map((id) => sql`${id}::uuid`), sql`, `)
+    : exerciseIds;
   return sql`
     SELECT md5(concat_ws('|',
       (SELECT COALESCE(jsonb_agg(jsonb_build_array(item.id, item.type, item.definition_id, item.quantity, item.attrs, item.available, item.updated_at) ORDER BY item.id), '[]'::jsonb)::text FROM equipment_items item WHERE item.user_id = ${userId}::uuid),
@@ -59,7 +67,26 @@ function preflightEvidenceTokenQuery(userId: string, exerciseIds: string[]) {
       ) ORDER BY pain.id), '[]'::jsonb)::text FROM pain_logs pain WHERE pain.user_id = ${userId}::uuid AND pain.source <> 'set_exception'::pain_source),
       (SELECT COALESCE(jsonb_agg(jsonb_build_array(session_row.id, session_row.template_id, session_row.started_at, session_row.finished_at, session_row.active_duration_semantics_version, session_row.active_duration_seconds, session_row.active_duration_basis, session_row.exclude_duration_from_analytics) ORDER BY session_row.id), '[]'::jsonb)::text FROM workout_sessions session_row WHERE session_row.user_id = ${userId}::uuid AND session_row.status = 'completed' AND session_row.archived_at IS NULL),
       (SELECT COALESCE(jsonb_agg(jsonb_build_array(exercise.id, exercise.movement_pattern) ORDER BY exercise.id), '[]'::jsonb)::text FROM exercises exercise WHERE exercise.id IN (${exerciseList})),
-      (SELECT COALESCE(jsonb_agg(jsonb_build_array(requirement.id, requirement.exercise_id, requirement.equipment_type, requirement.equipment_definition_id, requirement.min_weight) ORDER BY requirement.id), '[]'::jsonb)::text FROM exercise_equipment_requirements requirement WHERE requirement.exercise_id IN (${exerciseList}))
+      (SELECT COALESCE(jsonb_agg(jsonb_build_array(requirement.id, requirement.exercise_id, requirement.equipment_type, requirement.equipment_definition_id, requirement.min_weight) ORDER BY requirement.id), '[]'::jsonb)::text FROM exercise_equipment_requirements requirement WHERE requirement.exercise_id IN (${exerciseList})),
+      (SELECT COALESCE(jsonb_agg(jsonb_build_array(requirement.id, requirement.exercise_id, requirement.required_profile_kind, requirement.required_equipment_definition_id, requirement.required_attachment_kind, requirement.required_attachment_definition_id, requirement.requires_known_geometry, requirement.updated_at) ORDER BY requirement.id), '[]'::jsonb)::text FROM exercise_execution_requirements requirement WHERE requirement.exercise_id IN (${exerciseList})),
+      (SELECT COALESCE(jsonb_agg(jsonb_build_array(definition.id, definition.key, definition.label) ORDER BY definition.id), '[]'::jsonb)::text
+         FROM equipment_definitions definition
+        WHERE definition.id IN (
+          SELECT requirement.equipment_definition_id
+          FROM exercise_equipment_requirements requirement
+          WHERE requirement.exercise_id IN (${exerciseList})
+            AND requirement.equipment_definition_id IS NOT NULL
+          UNION
+          SELECT requirement.required_equipment_definition_id
+          FROM exercise_execution_requirements requirement
+          WHERE requirement.exercise_id IN (${exerciseList})
+            AND requirement.required_equipment_definition_id IS NOT NULL
+          UNION
+          SELECT requirement.required_attachment_definition_id
+          FROM exercise_execution_requirements requirement
+          WHERE requirement.exercise_id IN (${exerciseList})
+            AND requirement.required_attachment_definition_id IS NOT NULL
+        ))
     )) AS token
   `;
 }
@@ -199,12 +226,17 @@ export type AcceptCompilerResult =
   | { outcome: "accepted" | "already_accepted"; sessionId: string }
   | { outcome: "stale" | "active_workout_exists" | "not_ready" };
 
+export type SessionCompilerAcceptDependencies = {
+  checkpoint?: (name: "before-accept-statement") => void | Promise<void>;
+};
+
 export async function acceptSessionCompilerProposal(
   db: Db,
   userId: string,
   proposalId: string,
   acceptanceKey: string,
   timezone: string,
+  dependencies: SessionCompilerAcceptDependencies = {},
 ): Promise<AcceptCompilerResult> {
   if (!isSessionCompilerEnabled()) return { outcome: "not_ready" };
   if (!isValidIanaTimezone(timezone)) throw new Error("A valid timezone is required.");
@@ -301,6 +333,7 @@ export async function acceptSessionCompilerProposal(
     : [];
   const dayWarmupsJson = JSON.stringify(dayWarmupItems);
   const snapshotJson = JSON.stringify(snapshot);
+  await dependencies.checkpoint?.("before-accept-statement");
   const result = resultRows(await db.execute(sql`
     WITH replay AS MATERIALIZED (
       SELECT ws.id
@@ -325,6 +358,15 @@ export async function acceptSessionCompilerProposal(
         AND program.current_version_id = version.id
         AND version.document_schema_version = ${input.documentSchemaVersion}
         AND template.program_version_id = version.id
+        AND (${preflightEvidenceTokenQuery(
+          userId,
+          sql`SELECT DISTINCT slot.exercise_id
+              FROM workout_template_exercises slot
+              JOIN workout_templates evidence_template
+                ON evidence_template.id = slot.workout_template_id
+              WHERE evidence_template.program_version_id =
+                ${input.programVersionId}::uuid`,
+        )}) = ${input.preflightEvidenceToken}
       FOR UPDATE OF proposal
     ), active_other AS MATERIALIZED (
       SELECT id FROM workout_sessions
@@ -395,6 +437,8 @@ export async function acceptSessionCompilerProposal(
         prescribed_semantics_version, prescribed_exercise_name,
         prescribed_metric_type, prescribed_load_type,
         prescribed_load_semantics,
+        equipment_requirements_semantics_version,
+        equipment_requirements_snapshot,
         order_idx, superset_key, group_snapshot_id, group_member_order_idx,
         rest_sec, target_sets, target_reps_min,
         target_reps_max, target_load, target_load_unit, notes, warmup_notes,
@@ -411,6 +455,8 @@ export async function acceptSessionCompilerProposal(
         row.prescribed_metric_type::metric_type,
         row.prescribed_load_type,
         row.prescribed_load_semantics::load_semantics,
+        1,
+        ${sessionEquipmentRequirementsSnapshotExpression(sql`row.exercise_id::uuid`)},
         row.order_idx,
         row.superset_key,
         session_group.id,
@@ -625,7 +671,15 @@ export async function acceptSessionCompilerProposal(
     LIMIT 1
   `));
   const row = result[0];
-  if (!row) return { outcome: "stale" };
+  if (!row) {
+    await db.update(sessionCompilerProposals)
+      .set({ status: "stale", updatedAt: new Date() })
+      .where(and(
+        eq(sessionCompilerProposals.id, proposal.id),
+        eq(sessionCompilerProposals.status, "ready"),
+      ));
+    return { outcome: "stale" };
+  }
   if (row.outcome === "active_workout_exists") return { outcome: "active_workout_exists" };
   return { outcome: row.outcome === "accepted" ? "accepted" : "already_accepted", sessionId: String(row.id) };
 }

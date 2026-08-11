@@ -18,6 +18,7 @@ import {
 
 type Props = {
   sessionExerciseId: string;
+  exerciseName: string;
   ownerId: string;
   sessionId: string;
   setup: SessionEquipmentSetup;
@@ -27,6 +28,7 @@ type Props = {
 
 export function EquipmentSetupPanel({
   sessionExerciseId,
+  exerciseName,
   ownerId,
   sessionId,
   setup,
@@ -115,7 +117,7 @@ export function EquipmentSetupPanel({
 
   return (
     <section
-      aria-label="Workout equipment setup"
+      aria-label={`Equipment setup for ${exerciseName}`}
       className="rounded-xl border bg-muted/30 p-3 text-sm"
     >
       <div className="flex flex-wrap items-start justify-between gap-2">
@@ -219,7 +221,13 @@ export function EquipmentSetupPanel({
       {failed && (
         <div className="mt-2 flex flex-wrap items-center gap-2" role="alert">
           <span className="text-destructive">{failed.lastError ?? "Equipment setup needs attention."}</span>
-          <Button type="button" size="sm" variant="outline" onClick={() => void retryEquipmentSelection(failed.clientKey)}>
+          <Button
+            type="button"
+            size="sm"
+            className="min-h-11"
+            variant="outline"
+            onClick={() => void retryEquipmentSelection(failed.clientKey)}
+          >
             Retry setup
           </Button>
         </div>

@@ -24,7 +24,10 @@ import type { SessionEquipmentGeometrySnapshot } from "@/lib/session-equipment-s
 import { resolveProspectiveMachinePlates } from "@/lib/machine-plate-compatibility";
 import { convertWeight, type LoadUnit } from "@/lib/units";
 import type { LoadedEquipmentLoadProfile } from "@/services/equipment-load-profiles";
-import type { SessionEquipmentSetup } from "@/components/session/types";
+import type {
+  SessionEquipmentOption,
+  SessionEquipmentSetup,
+} from "@/components/session/types";
 
 export type EquipmentPresentationPlate = {
   id: string;
@@ -357,6 +360,8 @@ export function buildSessionEquipmentPresentation(input: {
   profiles: LoadedEquipmentLoadProfile[];
   inventory: InventoryItem[];
   plates: EquipmentPresentationPlate[];
+  /** Optional retained-evidence fence for primary equipment candidates. */
+  optionAllowed?: (option: SessionEquipmentOption) => boolean;
 }): { setup: SessionEquipmentSetup | null; plateConfig: PlateMathConfig | null } {
   const { exercise, profiles, plates } = input;
   const primaries = profiles.filter((entry) => entry.profile.kind !== "attachment");
@@ -439,7 +444,7 @@ export function buildSessionEquipmentPresentation(input: {
       loadEntryMeaning: load.meaning,
       loadEntryMeaningChoices: load.choices,
     }));
-  });
+  }).filter((option) => input.optionAllowed?.(option) ?? true);
 
   const current = exercise.currentSelection;
   const currentGuidance = current
