@@ -201,6 +201,17 @@ Ramp-up: Empty bar | reps=10`)!;
     ).resolves.toMatchObject({ status: "parsed" });
   });
 
+  it("returns an exact prior publication when the switch is disabled before retry", async () => {
+    const staged = await stageReview();
+    const published = await confirmImport(staged.input);
+    expect(published.ok).toBe(true);
+
+    process.env.PROGRAM_TEXT_IMPORT_ENABLED = "false";
+    await expect(confirmImport(staged.input)).resolves.toEqual(published);
+    expect(await db.query.programVersions.findMany()).toHaveLength(1);
+    expect(mocked.createSafetySnapshot).toHaveBeenCalledTimes(1);
+  });
+
   it("rejects malformed and oversized paste input without durable staging", async () => {
     await expect(parseRoutineText({
       text: "x".repeat(20_001),
