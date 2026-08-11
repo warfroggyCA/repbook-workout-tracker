@@ -248,7 +248,10 @@ describe("0069 bodyweight Bulgarian split-squat performed variant", () => {
 
     // The 0069 result is now proven. Bring the same preserved rows through
     // the remaining additive migrations before exercising current services.
-    await migrateTestDatabaseThrough(database, "0079_active_workout_duration_evidence");
+    await migrateTestDatabaseThrough(
+      database,
+      "0080_session_equipment_requirements_snapshot",
+    );
 
     const options = await getExerciseReplacementOptions(
       db,
