@@ -335,7 +335,7 @@ export async function runControlledStructuredGeneration<T>(
   }
 ): Promise<AIResult<T>> {
   const inputTokens = Math.max(1, Math.ceil(opts.input.length / 4));
-  const outputTokens = structuredOutputTokenLimit(opts.task);
+  const outputTokens = structuredOutputTokenLimit(opts.task, opts.input);
   const reservedUsage = {
     inputTokens,
     outputTokens,

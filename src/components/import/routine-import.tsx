@@ -235,8 +235,8 @@ export function RoutineImport({
         </p>
         {!aiAvailable && (
           <p className="mt-2 rounded-md bg-amber-500/10 px-2 py-1.5 text-xs text-amber-700 dark:text-amber-400">
-            AI parsing isn&apos;t configured on this deployment, so paste import is
-            unavailable.
+            Canonical Day and exercise lines still import without AI. Free-form
+            notes need AI parsing, which is not configured on this deployment.
           </p>
         )}
         {error && (
@@ -247,7 +247,7 @@ export function RoutineImport({
         <Button
           size="sm"
           className="mt-2"
-          disabled={pending || !input.trim() || !aiAvailable}
+          disabled={pending || !input.trim()}
           onClick={handleParse}
         >
           {pending ? "Parsing…" : "Parse routine"}

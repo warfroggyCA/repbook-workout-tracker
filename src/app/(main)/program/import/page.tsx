@@ -15,6 +15,7 @@ import { getImportBatchArchivePreview } from "@/services/archive";
 import { getApprovedExerciseMedia } from "@/services/exercise-media";
 
 export const dynamic = "force-dynamic";
+export const maxDuration = 120;
 
 export default async function ImportPage() {
   const user = await getCurrentUser();

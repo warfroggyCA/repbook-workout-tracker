@@ -1,4 +1,11 @@
 {
+  "src/app/actions/import.ts": [
+    "A failed immediate privacy discard is converted to persistence-safe user copy and a bounded parse-failure diagnostic.",
+    "A failed import-event insert cannot retain the paste and is returned as a sanitized staging failure.",
+    "A failed routine parsing-event insert discards the staged import instead of exposing the database error.",
+    "A failed deterministic exercise-library lookup discards staged import and parsing data instead of retaining partial review state.",
+    "A failed final review-stage write discards and redacts every staged routine artifact instead of returning a partial success."
+  ],
   "src/services/activities.ts": [
     "Intl throws for an invalid timezone; the Zod refinement intentionally converts that into a validation failure."
   ],

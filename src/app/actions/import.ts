@@ -3,7 +3,7 @@
 import { and, eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { getDb } from "@/db";
+import { getDb, type Db } from "@/db";
 import {
   aiParsingEvents,
   constraints,
@@ -23,6 +23,12 @@ import {
   type RoutineParseData,
 } from "@/ai/tasks/routine-parse/schema";
 import { ROUTINE_PARSE_SYSTEM } from "@/ai/tasks/routine-parse/prompt";
+import {
+  CANONICAL_ROUTINE_PARSER_VERSION,
+  collectSupersetRoundRestSeconds,
+  inspectRoutineTextStructure,
+  parseCanonicalRoutineText,
+} from "@/ai/tasks/routine-parse/deterministic";
 import {
   exerciseMapSchema,
   type ExerciseMapRequest,
@@ -51,6 +57,12 @@ import {
   AIControlError,
   runControlledStructuredGeneration,
 } from "@/services/ai-control";
+import {
+  routineImportFailureCategory,
+  routineImportFailureMessage,
+  type RoutineImportFailureCategory,
+} from "@/lib/routine-import-error";
+import { discardFailedRoutineImport } from "@/services/routine-import-failure";
 
 export type RoutineParseResponse =
   | {
@@ -64,6 +76,55 @@ export type RoutineParseResponse =
     }
   | { ok: false; reason: string };
 
+const routineTextSchema = z.string().trim().min(1).max(20_000);
+
+function logRoutineParseFailure(
+  text: string,
+  startedAt: number,
+  failureCategory: RoutineImportFailureCategory,
+) {
+  const structure = inspectRoutineTextStructure(text);
+  logDiagnosticEvent("routine_import.parse_failed", {
+    failureCategory,
+    inputCharacterCount: structure.characterCount,
+    detectedDayCount: structure.dayCount,
+    detectedExerciseCount: structure.exerciseCount,
+    durationMs: Math.min(1_000_000, Math.max(0, Date.now() - startedAt)),
+  });
+}
+
+async function failRoutineParse(
+  db: Db,
+  input: {
+    userId: string;
+    importEventId: string;
+    text: string;
+    startedAt: number;
+    category: RoutineImportFailureCategory;
+    parsingEventIds?: readonly string[];
+  },
+): Promise<Extract<RoutineParseResponse, { ok: false }>> {
+  let discarded = true;
+  try {
+    await discardFailedRoutineImport(
+      db,
+      input.userId,
+      input.importEventId,
+      input.parsingEventIds,
+    );
+  } catch {
+    discarded = false;
+  }
+  const category = discarded ? input.category : "persistence_failure";
+  logRoutineParseFailure(input.text, input.startedAt, category);
+  return {
+    ok: false,
+    reason: discarded
+      ? routineImportFailureMessage(category)
+      : "Your current Program was not changed. Repbook could not immediately discard the failed paste; automatic privacy retention will remove it. Retry later.",
+  };
+}
+
 /**
  * Plan §5 pipeline, first two states: ImportEvent(raw) → parsed. Contract 3
  * (routine_parse) runs first with rawNames verbatim; contract 4
@@ -74,75 +135,126 @@ export type RoutineParseResponse =
 export async function parseRoutineText(
   input: string
 ): Promise<RoutineParseResponse> {
-  const text = z.string().min(1).max(20000).parse(input).trim();
+  const validated = routineTextSchema.safeParse(input);
+  if (!validated.success) {
+    return {
+      ok: false,
+      reason:
+        typeof input === "string" && input.trim().length === 0
+          ? "Paste a routine before parsing."
+          : "Routine text must be 20,000 characters or fewer.",
+    };
+  }
+  const text = validated.data;
+  const deterministicEnvelope = parseCanonicalRoutineText(text);
   const user = await getCurrentUser();
   const db = await getDb();
 
-  if (!isAIAvailable()) {
+  if (!deterministicEnvelope && !isAIAvailable()) {
     return {
       ok: false,
       reason:
-        "AI parsing isn't configured (no ANTHROPIC_API_KEY). Routine import needs it — manual program editing still works.",
+        "Free-form AI parsing isn't configured. Use canonical Day and exercise lines with sets x reps and rest, or edit the Program manually.",
     };
   }
 
-  // Stage the raw text first so a failed parse still leaves an audit trail.
-  const [event] = await db
-    .insert(importEvents)
-    .values({
-      userId: user.id,
-      source: "paste",
-      rawPayload: text,
-      payloadSha256: sensitiveTextSha256(text),
-      retentionExpiresAt: rawDataExpiresAt(),
-    })
-    .returning();
-
-  let envelope: AIEnvelope<RoutineParseData>;
-  let parseEventId: string;
+  const parseStartedAt = Date.now();
+  // Stage the raw text first so a successful review has durable provenance.
+  // Failed parses are immediately discarded by failRoutineParse below.
+  let event: typeof importEvents.$inferSelect;
   try {
-    const result = await runControlledStructuredGeneration(db, user.id, {
-      task: "routine_parse",
-      system: ROUTINE_PARSE_SYSTEM,
-      input: text,
-      schema: routineParseSchema,
-    });
-    envelope = result.value;
-    const [row] = await db
-      .insert(aiParsingEvents)
+    const [stagedEvent] = await db
+      .insert(importEvents)
       .values({
         userId: user.id,
-        scope: "import",
-        task: "routine_parse",
-        rawInput: text,
-        inputSha256: sensitiveTextSha256(text),
-        rawOutput: result.rawText,
-        parsedJson: envelope,
-        confidence: envelope.confidence,
-        ambiguities: envelope.ambiguities,
-        model: result.model,
-        latencyMs: result.latencyMs,
+        source: "paste",
+        rawPayload: text,
+        payloadSha256: sensitiveTextSha256(text),
         retentionExpiresAt: rawDataExpiresAt(),
       })
       .returning();
-    parseEventId = row.id;
-  } catch (err) {
-    if (err instanceof AIUnavailableError) {
-      return { ok: false, reason: err.message };
-    }
-    if (err instanceof AIControlError) return { ok: false, reason: err.message };
-    return {
-      ok: false,
-      reason: "The parser had trouble with that text. Trim it down or try again.",
-    };
-  }
-
-  if (!envelope.data.days.some((d) => d.exercises.length > 0)) {
+    if (!stagedEvent) throw new Error("Routine import was not staged");
+    event = stagedEvent;
+  } catch {
+    logRoutineParseFailure(text, parseStartedAt, "persistence_failure");
     return {
       ok: false,
       reason:
-        "No exercises could be read from that text. Paste the routine itself (days, exercises, sets × reps).",
+        "Your current Program was not changed, and the paste was not retained. Repbook could not safely stage the routine for review. Retry later.",
     };
+  }
+
+  let envelope: AIEnvelope<RoutineParseData>;
+  let parseEventId: string | null = null;
+  let parserVersion: string;
+  if (deterministicEnvelope) {
+    envelope = deterministicEnvelope;
+    parserVersion = CANONICAL_ROUTINE_PARSER_VERSION;
+  } else {
+    let result;
+    try {
+      result = await runControlledStructuredGeneration(db, user.id, {
+        task: "routine_parse",
+        system: ROUTINE_PARSE_SYSTEM,
+        input: text,
+        schema: routineParseSchema,
+        deadlineMs: 90_000,
+      });
+    } catch (error) {
+      const sanitized = sanitizeAIProviderError(error);
+      const category =
+        error instanceof AIUnavailableError
+          ? "provider_failure"
+          : error instanceof AIControlError
+            ? "usage_control"
+            : routineImportFailureCategory(sanitized.errorKind);
+      return failRoutineParse(db, {
+        userId: user.id,
+        importEventId: event.id,
+        text,
+        startedAt: parseStartedAt,
+        category,
+      });
+    }
+    envelope = result.value;
+    parserVersion = "ai-structured-output/1";
+    if (!envelope.data.days.some((day) => day.exercises.length > 0)) {
+      return failRoutineParse(db, {
+        userId: user.id,
+        importEventId: event.id,
+        text,
+        startedAt: parseStartedAt,
+        category: "output_incomplete",
+      });
+    }
+    try {
+      const [row] = await db
+        .insert(aiParsingEvents)
+        .values({
+          userId: user.id,
+          scope: "import",
+          task: "routine_parse",
+          rawInput: text,
+          inputSha256: sensitiveTextSha256(text),
+          rawOutput: result.rawText,
+          parsedJson: envelope,
+          confidence: envelope.confidence,
+          ambiguities: envelope.ambiguities,
+          model: result.model,
+          latencyMs: result.latencyMs,
+          retentionExpiresAt: rawDataExpiresAt(),
+        })
+        .returning();
+      parseEventId = row.id;
+    } catch {
+      return failRoutineParse(db, {
+        userId: user.id,
+        importEventId: event.id,
+        text,
+        startedAt: parseStartedAt,
+        category: "persistence_failure",
+      });
+    }
   }
 
   // Deterministic tier of contract 4: exact → alias → fuzzy candidates.
@@ -153,24 +265,35 @@ export async function parseRoutineText(
   ];
   const mappingByRaw = new Map<string, ImportMapping>();
   const mapRequest: ExerciseMapRequest = [];
-  for (const rawName of rawNames) {
-    const res = await resolveExerciseName(db, rawName, user.id);
-    mappingByRaw.set(rawName, {
-      rawName,
-      exerciseId: res.exerciseId,
-      exerciseName: res.exerciseName,
-      matchType: res.matchType,
-      candidates: res.candidates,
-    });
-    if (res.matchType === "none" && res.candidates.length > 0) {
-      mapRequest.push({
+  try {
+    for (const rawName of rawNames) {
+      const res = await resolveExerciseName(db, rawName, user.id);
+      mappingByRaw.set(rawName, {
         rawName,
-        candidates: res.candidates.map((c) => ({
-          exerciseId: c.id,
-          name: c.name,
-        })),
+        exerciseId: res.exerciseId,
+        exerciseName: res.exerciseName,
+        matchType: res.matchType,
+        candidates: res.candidates,
       });
+      if (res.matchType === "none" && res.candidates.length > 0) {
+        mapRequest.push({
+          rawName,
+          candidates: res.candidates.map((candidate) => ({
+            exerciseId: candidate.id,
+            name: candidate.name,
+          })),
+        });
+      }
     }
+  } catch {
+    return failRoutineParse(db, {
+      userId: user.id,
+      importEventId: event.id,
+      text,
+      startedAt: parseStartedAt,
+      category: "persistence_failure",
+      parsingEventIds: parseEventId ? [parseEventId] : [],
+    });
   }
 
   // AI tier of contract 4 — batch, candidates only. A failure here degrades
@@ -245,33 +368,56 @@ export async function parseRoutineText(
     }
   }
 
-  const mappings = rawNames.map((r) => mappingByRaw.get(r)!);
-  const library = await getLibraryWithAvailability(db, user.id);
-  const mediaByExercise = await getApprovedExerciseMedia(db, library);
-  const routineLibrary = library.map((exercise) => ({
-    ...exercise,
-    media: mediaByExercise.get(exercise.id) ?? null,
-  }));
+  try {
+    const mappings = rawNames.map((rawName) => mappingByRaw.get(rawName)!);
+    const library = await getLibraryWithAvailability(db, user.id);
+    const mediaByExercise = await getApprovedExerciseMedia(db, library);
+    const routineLibrary = library.map((exercise) => ({
+      ...exercise,
+      media: mediaByExercise.get(exercise.id) ?? null,
+    }));
+    const updatedEvents = await db
+      .update(importEvents)
+      .set({
+        parsedPayload: {
+          envelope,
+          mappings,
+          parserVersion,
+          aiEventIds: { routineParse: parseEventId, exerciseMap: mapEventId },
+        },
+        status: "parsed",
+      })
+      .where(
+        and(
+          eq(importEvents.id, event.id),
+          eq(importEvents.userId, user.id),
+          eq(importEvents.status, "raw"),
+        ),
+      )
+      .returning({ id: importEvents.id });
+    if (updatedEvents.length !== 1) {
+      throw new Error("Routine import was not available to stage for review");
+    }
 
-  await db
-    .update(importEvents)
-    .set({
-      parsedPayload: {
-        envelope,
-        mappings,
-        aiEventIds: { routineParse: parseEventId, exerciseMap: mapEventId },
-      },
-      status: "parsed",
-    })
-    .where(eq(importEvents.id, event.id));
-
-  return {
-    ok: true,
-    importEventId: event.id,
-    envelope,
-    mappings,
-    library: routineLibrary,
-  };
+    return {
+      ok: true,
+      importEventId: event.id,
+      envelope,
+      mappings,
+      library: routineLibrary,
+    };
+  } catch {
+    return failRoutineParse(db, {
+      userId: user.id,
+      importEventId: event.id,
+      text,
+      startedAt: parseStartedAt,
+      category: "persistence_failure",
+      parsingEventIds: [parseEventId, mapEventId].filter(
+        (id): id is string => Boolean(id),
+      ),
+    });
+  }
 }
 
 const confirmExerciseSchema = z
@@ -410,20 +556,25 @@ export async function confirmImport(
     userId: user.id,
     loadUnit: user.profile.unit,
     programName: parsed.programName,
-    days: parsed.days.map((day) => ({
-      name: day.name,
-      exercises: day.exercises.map((exercise) => ({
-        exerciseId: exercise.exerciseId,
-        sets: exercise.sets,
-        repMin: exercise.repMin,
-        repMax: exercise.repMax,
-        targetLoad: exercise.load,
-        restSec: exercise.restSec,
-        supersetKey: exercise.supersetKey,
-        supersetRestAfterRoundSec: exercise.restSec,
-        notes: exercise.notes,
-      })),
-    })),
+    days: parsed.days.map((day) => {
+      const supersetRoundRest = collectSupersetRoundRestSeconds(day.exercises);
+      return {
+        name: day.name,
+        exercises: day.exercises.map((exercise) => ({
+          exerciseId: exercise.exerciseId,
+          sets: exercise.sets,
+          repMin: exercise.repMin,
+          repMax: exercise.repMax,
+          targetLoad: exercise.load,
+          restSec: exercise.restSec,
+          supersetKey: exercise.supersetKey,
+          supersetRestAfterRoundSec: exercise.supersetKey
+            ? supersetRoundRest.get(exercise.supersetKey)
+            : undefined,
+          notes: exercise.notes,
+        })),
+      };
+    }),
     changeSummary: "Imported from pasted routine (confirmed in review)",
     auditAction: "import.confirm",
     auditSummary: `Program "${parsed.programName}" activated with reviewed structured intent from confirmed routine import (${parsed.days.length} day${parsed.days.length > 1 ? "s" : ""}, ${exerciseCount} exercises); previous version preserved`,
