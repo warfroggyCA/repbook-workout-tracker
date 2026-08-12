@@ -302,7 +302,7 @@ test("edits Olympic and EZ empty weights beside their items and reviews exact to
   await expect(page.getByText("Empty bar weight: 18 lb → 25 lb", { exact: true })).toBeVisible();
   await expect(page.getByText("Empty assembled load: 18 lb → 26 lb", { exact: true })).toBeVisible();
   await expect(page.getByText(/Future plate guidance and progression steps will use/)).toBeVisible();
-  await saveFromReview(page);
+  await saveFromReview(page, true);
 
   await openManager(page);
   await expect(page.getByText("Empty bar 44 lb · collars 1 lb total", { exact: true })).toBeVisible();
@@ -318,7 +318,7 @@ test("edits Olympic and EZ empty weights beside their items and reviews exact to
   await restoredEz.getByLabel("Both collars, total").fill("0");
   await saveDrawer(restoredEz);
   await reviewChanges(page);
-  await saveFromReview(page);
+  await saveFromReview(page, true);
 });
 
 test("cancel confirms before discarding a dirty draft and leaves the inventory unchanged", async ({
@@ -457,7 +457,7 @@ test("a stale tab cannot save over newer inventory and offers explicit recovery"
     .click();
   await saveDrawer(otherRopeDrawer);
   await reviewChanges(other);
-  await saveFromReview(other);
+  await saveFromReview(other, true);
   await other.close();
   staleRefreshControl.resume();
 
@@ -486,7 +486,7 @@ test("a stale tab cannot save over newer inventory and offers explicit recovery"
     .click();
   await saveDrawer(restoredRopeDrawer);
   await reviewChanges(page);
-  await saveFromReview(page);
+  await saveFromReview(page, true);
 });
 
 test("removing Program-relevant equipment warns truthfully, requires confirmation, and never rewrites the Program", async ({
