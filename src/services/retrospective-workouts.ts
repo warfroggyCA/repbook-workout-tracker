@@ -7,8 +7,6 @@ import {
 } from "@/lib/retrospective-workout";
 import { historyRevisionLockSql } from "@/services/history-revision-lock";
 import { canonicalJson, sha256Hex } from "@/services/snapshot-crypto";
-import { workoutReplacementUnavailableReason } from "@/lib/exercise-replacements";
-import { getExerciseDiscoveryLibrary } from "@/services/exercise-discovery";
 import { actionableProgramDayWarmupItemsSql } from "@/services/program-warmup-compatibility";
 
 export type RetrospectiveWorkoutDependencies = {
@@ -98,23 +96,6 @@ export async function createRetrospectiveWorkout(
     hash,
   );
   if (existingIdentity) return existingIdentity;
-  const discoveryLibrary = await getExerciseDiscoveryLibrary(db, userId);
-  const discoveryById = new Map(
-    discoveryLibrary.map((exercise) => [exercise.id, exercise]),
-  );
-  const unsupportedSubstitution = parsed.exercises.find((exercise) => {
-    if (!exercise.substitutionReason) return false;
-    const performed = discoveryById.get(exercise.exerciseId);
-    return !performed || workoutReplacementUnavailableReason(performed) != null;
-  });
-  if (unsupportedSubstitution) {
-    return {
-      ok: false,
-      code: "invalid_reference",
-      reason:
-        "That performed substitution is not supported by the workout exercise-entry contract.",
-    };
-  }
   const exercises: PreparedExercise[] = parsed.exercises.map((exercise) => ({
     id: exercise.id,
     exerciseId: exercise.exerciseId,
@@ -274,6 +255,36 @@ export async function createRetrospectiveWorkout(
               )
             )
         ) AS set_metrics_valid,
+        NOT EXISTS (
+          SELECT 1
+          FROM reviewed_exercises reviewed
+          JOIN exercises exercise
+            ON exercise.id = (reviewed.value->>'exerciseId')::uuid
+          LEFT JOIN workout_template_exercises semantic_slot
+            ON semantic_slot.id =
+               (reviewed.value->>'sourceTemplateExerciseId')::uuid
+           AND semantic_slot.workout_template_id =
+               ${link?.templateId ?? null}::uuid
+          WHERE
+            (
+              reviewed.value->>'sourceTemplateExerciseId' IS NULL
+              OR semantic_slot.id IS NULL
+              OR semantic_slot.exercise_id <> exercise.id
+              OR EXISTS (
+                SELECT 1
+                FROM jsonb_array_elements(reviewed.value->'outcomes') outcome(value)
+                WHERE outcome.value->>'outcome' = 'completed'
+              )
+            )
+            AND (
+              (exercise.metric_type = 'assisted_reps')
+                IS DISTINCT FROM (exercise.load_semantics = 'assistance')
+              OR (
+                exercise.metric_type IN ('duration', 'distance_duration')
+                AND exercise.load_semantics NOT IN ('none', 'bodyweight')
+              )
+            )
+        ) AS semantic_definitions_valid,
         (
           ${link == null}
           OR NOT EXISTS (
@@ -404,6 +415,7 @@ export async function createRetrospectiveWorkout(
         AND validation.program_valid
         AND validation.exercises_valid
         AND validation.set_metrics_valid
+        AND validation.semantic_definitions_valid
         AND validation.slots_valid
         AND validation.substitutions_valid
         AND validation.slot_set_valid
@@ -422,6 +434,7 @@ export async function createRetrospectiveWorkout(
         AND validation.program_valid
         AND validation.exercises_valid
         AND validation.set_metrics_valid
+        AND validation.semantic_definitions_valid
         AND validation.slots_valid
         AND validation.substitutions_valid
         AND validation.slot_set_valid
@@ -997,6 +1010,7 @@ export async function createRetrospectiveWorkout(
         WHEN NOT EXISTS (SELECT 1 FROM profile) THEN 'invalid_reference'
         WHEN NOT (SELECT exercises_valid FROM validation)
           OR NOT (SELECT set_metrics_valid FROM validation)
+          OR NOT (SELECT semantic_definitions_valid FROM validation)
           OR NOT (SELECT slots_valid FROM validation)
           OR NOT (SELECT substitutions_valid FROM validation)
           THEN 'invalid_reference'
@@ -1096,6 +1110,8 @@ export async function createRetrospectiveWorkout(
     reason:
       outcome === "count_mismatch"
         ? "Nothing was saved because the reviewed workout graph is incomplete."
-        : "Nothing was saved because the reviewed workout no longer matches current owned evidence.",
+        : outcome === "invalid_reference"
+          ? "Nothing was saved because an exercise, performed-measurement definition, or Program substitution is no longer valid. Return to the workout facts and review the exercise choice."
+          : "Nothing was saved because the database write did not complete.",
   };
 }
