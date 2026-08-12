@@ -336,7 +336,13 @@ export function ContextualNoteProvider({
 
   return (
     <>
-      <div className="flex min-h-14 flex-wrap items-center justify-end gap-2 px-4 py-2">
+      <div
+        className={
+          pathname.startsWith("/session/")
+            ? "hidden"
+            : "flex min-h-14 flex-wrap items-center justify-end gap-2 px-4 py-2"
+        }
+      >
         {outbox.error ? (
           <StateNotice
             className="mr-auto flex-1"
@@ -406,14 +412,14 @@ export function ContextualNoteProvider({
       {children}
 
       <Drawer open={open} onOpenChange={setOpen} showSwipeHandle>
-        <DrawerContent className="[--drawer-content-max-height:calc(100dvh-1rem)] [&_button]:min-h-11 [&_textarea]:min-h-24">
+        <DrawerContent className="[--drawer-content-max-height:calc(100dvh-1rem)] [&_[data-slot=drawer-content]]:overflow-y-auto [&_button]:min-h-11 [&_textarea]:min-h-24">
           <DrawerHeader>
             <DrawerTitle>Add a training note</DrawerTitle>
             <DrawerDescription>
               This is your observation, not a diagnosis. It is saved before any optional Coach use.
             </DrawerDescription>
           </DrawerHeader>
-          <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4">
+          <div className="shrink-0 space-y-4 p-4">
             <label className="block text-sm font-medium">
               Attach to
               <select
