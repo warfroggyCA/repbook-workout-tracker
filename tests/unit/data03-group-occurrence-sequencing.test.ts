@@ -5,6 +5,7 @@ import {
   nextActionableOccurrence,
   restAfterOccurrence,
   summarizeGroupRounds,
+  workingSetOccurrenceOrderIsEligible,
   type SessionExerciseGroupSnapshot,
   type SessionOccurrence,
 } from "@/lib/session-occurrences";
@@ -110,6 +111,44 @@ function resolve(
 }
 
 describe("DATA-03 group occurrence sequencing", () => {
+  it("offers only group sets that the server order contract can accept", () => {
+    const occurrences = buildSequence();
+
+    expect(
+      workingSetOccurrenceOrderIsEligible(occurrences[0], occurrences),
+    ).toBe(true);
+    expect(
+      workingSetOccurrenceOrderIsEligible(occurrences[1], occurrences),
+    ).toBe(false);
+
+    const afterFirstMember = resolve(
+      occurrences,
+      occurrences[0].id,
+      "completed",
+    );
+    expect(
+      workingSetOccurrenceOrderIsEligible(
+        afterFirstMember[1],
+        afterFirstMember,
+      ),
+    ).toBe(true);
+
+    const independentExercise = {
+      ...occurrences[1],
+      id: "00000000-0000-4000-8000-000000000399",
+      sessionExerciseId: "00000000-0000-4000-8000-000000000398",
+      groupSnapshotId: null,
+      groupRound: null,
+      groupMemberOrderIdx: null,
+    };
+    expect(
+      workingSetOccurrenceOrderIsEligible(independentExercise, [
+        ...occurrences,
+        independentExercise,
+      ]),
+    ).toBe(true);
+  });
+
   it("builds all three members in each round and applies the two explicit rest rules", () => {
     const occurrences = buildSequence();
 

@@ -1780,7 +1780,7 @@ test("keeps every active-workout route reachable with one scroll surface", async
       const statusBox = await statusBar.boundingBox();
       const bottomNavBox = await page.locator("nav.fixed").boundingBox();
       expect(statusBox).not.toBeNull();
-      expect(bottomNavBox == null).toBe(width < 360);
+      expect(bottomNavBox).toBeNull();
       if (!statusBox) throw new Error("Fixed workout controls were not measurable.");
       const lowerBoundary = bottomNavBox?.y ?? 844;
       expect(statusBox.y + statusBox.height).toBeLessThanOrEqual(
@@ -3260,6 +3260,74 @@ test("opens failed-set recovery from Settings at 145 percent on iPhone WebKit", 
   });
 
   await context.setOffline(false);
+  const finishTrigger = page.getByRole("button", {
+    name: "Finish",
+    exact: true,
+  });
+  await finishTrigger.click();
+  const finishRecovery = page.getByRole("dialog", {
+    name: "Finish workout",
+  });
+  await expect(finishRecovery).toBeVisible();
+  await expect
+    .poll(() =>
+      finishRecovery.evaluate(
+        (dialog) =>
+          dialog.getBoundingClientRect().bottom <= window.innerHeight + 1,
+      ),
+    )
+    .toBe(true);
+  await expect(finishRecovery).toContainText(
+    "1 set failed to save. Your recorded attempt is still on this device.",
+  );
+  await expect(finishRecovery).toContainText(retained.exerciseName);
+  await expect(finishRecovery).toContainText("Set 1");
+  await expect(finishRecovery).toContainText(
+    "No reviewed matching setup exists. The displayed load can be saved with setup unknown.",
+  );
+  await expect(finishRecovery).toContainText(
+    "Workout order currently requires",
+  );
+  await expect(
+    finishRecovery.getByRole("button", { name: "Try saving again" }),
+  ).toBeVisible();
+  await expect(
+    finishRecovery.getByRole("button", { name: "Review saved attempt" }),
+  ).toBeVisible();
+  const finishRecoveryGeometry = await finishRecovery.evaluate((dialog) => {
+    const footer = dialog.querySelector<HTMLElement>(
+      '[data-slot="drawer-footer"]',
+    );
+    const scrollRegion = dialog.querySelector<HTMLElement>(
+      '[data-testid="finish-workout-scroll"]',
+    );
+    if (!footer || !scrollRegion) {
+      throw new Error("Finish recovery regions are missing.");
+    }
+    const footerRect = footer.getBoundingClientRect();
+    return {
+      overflowY: getComputedStyle(scrollRegion).overflowY,
+      footerTop: footerRect.top,
+      footerBottom: footerRect.bottom,
+      viewportHeight: window.innerHeight,
+    };
+  });
+  expect(finishRecoveryGeometry.overflowY).toBe("auto");
+  expect(finishRecoveryGeometry.footerTop).toBeGreaterThanOrEqual(0);
+  expect(finishRecoveryGeometry.footerBottom).toBeLessThanOrEqual(
+    finishRecoveryGeometry.viewportHeight + 1,
+  );
+  await finishRecovery
+    .getByRole("button", { name: "Review saved attempt" })
+    .click();
+  await expect(finishRecovery).toHaveCount(0);
+  await expect(page).toHaveURL(
+    new RegExp(`#exercise-${retained.sessionExerciseId}$`),
+  );
+  await expect(
+    page.locator(`#exercise-${retained.sessionExerciseId}`),
+  ).toBeInViewport();
+
   await expect
     .poll(() =>
       page.evaluate(() =>
