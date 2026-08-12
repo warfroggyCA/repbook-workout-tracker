@@ -77,6 +77,13 @@ async function expectActiveViewportBudget(page: Page) {
   await expect(
     page.getByRole("complementary", { name: "Workout status" }),
   ).toBeVisible();
+  await expect(page.getByTestId("contextual-note-trigger")).toBeHidden();
+  await expect(
+    page.getByRole("button", { name: "Review notes", exact: true }),
+  ).toBeHidden();
+  await expect(
+    page.getByRole("link", { name: "Back to Today", exact: true }),
+  ).toBeVisible();
   await expect(async () => {
     const budget = await page.evaluate(() => {
       const guidance = document.querySelector<HTMLElement>(
@@ -92,6 +99,10 @@ async function expectActiveViewportBudget(page: Page) {
         'nav[aria-label="Primary navigation"]',
       );
       const navigationRect = navigation?.getBoundingClientRect() ?? null;
+      const backControl = document.querySelector<HTMLElement>(
+        'a[aria-label="Back to Today"]',
+      );
+      const backControlRect = backControl?.getBoundingClientRect() ?? null;
       const intrusions = [...document.querySelectorAll<HTMLElement>("body *")]
         .filter((element) =>
           element !== dock &&
@@ -122,12 +133,19 @@ async function expectActiveViewportBudget(page: Page) {
         horizontalOverflow:
           document.documentElement.scrollWidth -
           document.documentElement.clientWidth,
+        backControlInsideViewport:
+          backControlRect != null &&
+          backControlRect.left >= 0 &&
+          backControlRect.top >= 0 &&
+          backControlRect.right <= window.innerWidth + 1 &&
+          backControlRect.bottom <= window.innerHeight + 1,
       };
     });
     expect(budget.usableHeight).toBeGreaterThanOrEqual(280);
     expect(budget.dockClearsNavigation).toBe(true);
     expect(budget.intrusions).toEqual([]);
     expect(budget.horizontalOverflow).toBeLessThanOrEqual(1);
+    expect(budget.backControlInsideViewport).toBe(true);
   }).toPass();
 }
 
@@ -187,6 +205,32 @@ test("keeps the full live workout usable through warm-up, skip, replace, continu
   expect(await warmup.evaluate((element) => getComputedStyle(element).position))
     .not.toMatch(/fixed|sticky/);
   await expectActiveViewportBudget(page);
+
+  if ((page.viewportSize()?.width ?? Number.POSITIVE_INFINITY) <= 320) {
+    const originalViewport = page.viewportSize();
+    await page
+      .getByRole("complementary", { name: "Workout status" })
+      .getByRole("button", { name: "Add training note", exact: true })
+      .click();
+    const noteDialog = page.getByRole("dialog", {
+      name: "Add a training note",
+    });
+    await expect(noteDialog).toBeVisible();
+    await noteDialog
+      .getByRole("textbox", { name: "Your observation" })
+      .fill("Keyboard viewport acceptance draft");
+    await page.setViewportSize({ width: 320, height: 400 });
+    const closeDraft = noteDialog.getByRole("button", {
+      name: "Close · keep draft",
+      exact: true,
+    });
+    await closeDraft.scrollIntoViewIfNeeded();
+    await expectReachableTarget(closeDraft);
+    await closeDraft.click();
+    await expect(noteDialog).toHaveCount(0);
+    if (originalViewport) await page.setViewportSize(originalViewport);
+    await expectActiveViewportBudget(page);
+  }
 
   for (const [index, action] of PRODUCTION_WORKOUT_START_WARMUP.entries()) {
     const checkbox = warmup.getByRole("checkbox", {
