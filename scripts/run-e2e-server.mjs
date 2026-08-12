@@ -161,6 +161,8 @@ const environment = {
       ? "ba.iphone.e2e@example.com"
       : baRoutineChange
         ? "ba.routine-change.e2e@example.com"
+        : pii01bEquipmentFit
+          ? "owner@example.com,pii01b.setup@example.com"
         : "owner@example.com,second.e2e@example.com,program-page.e2e@example.com,today-empty.e2e@example.com,history-calendar.e2e@example.com,history-workspace-sparse.e2e@example.com,review-decisions.e2e@example.com,equipment-onboarding.e2e@example.com",
   AUTH_SECRET: "local-e2e-secret-not-used-outside-this-process",
   AUTH_TRUST_HOST: "true",
