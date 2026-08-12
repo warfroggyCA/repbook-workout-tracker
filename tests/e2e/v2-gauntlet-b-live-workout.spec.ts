@@ -298,10 +298,11 @@ test("keeps the full live workout usable through warm-up, skip, replace, continu
   await expect
     .poll(() =>
       finishDialog.evaluate(
-        (dialog) => dialog.getBoundingClientRect().bottom,
+        (dialog) =>
+          dialog.getBoundingClientRect().bottom <= window.innerHeight + 1,
       ),
     )
-    .toBeLessThanOrEqual(701);
+    .toBe(true);
   const finishGeometry = await finishDialog.evaluate((dialog) => {
     const scrollRegion = dialog.querySelector<HTMLElement>(
       '[data-testid="finish-workout-scroll"]',
