@@ -2423,11 +2423,13 @@ function SetEntry({
         All fields below are optional. Record effort as either RIR or RPE;
         leaving it blank keeps effort unknown.
       </p>
-      {selectedEffort && !exactOpen && (
-        <p className="text-sm font-medium">
-          Selected: {selectedEffort.label} — RPE {selectedEffort.legacyRpe}
-        </p>
-      )}
+      <div aria-live="polite" aria-atomic="true">
+        {selectedEffort && !exactOpen && (
+          <p className="text-sm font-medium">
+            Selected: {selectedEffort.label} — RPE {selectedEffort.legacyRpe}
+          </p>
+        )}
+      </div>
       <div
         role="group"
         aria-label="Effort shortcuts"

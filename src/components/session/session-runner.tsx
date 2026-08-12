@@ -2770,7 +2770,7 @@ export function SessionRunner(props: SessionRunnerProps) {
       </section>
 
       <Drawer open={finishOpen} onOpenChange={setFinishOpen}>
-        <DrawerContent className="data-[swipe-axis=y]:[--drawer-content-max-height:calc(100dvh-1rem)] [&_button]:min-h-11 [&_button]:min-w-11 [&_textarea]:min-h-11">
+        <DrawerContent className="data-[swipe-axis=y]:[--drawer-content-max-height:calc(min(100dvh,100svh)-1rem)] [&_button]:min-h-11 [&_button]:min-w-11 [&_textarea]:min-h-11">
           <DrawerHeader className="pb-3">
             <DrawerTitle>Finish workout</DrawerTitle>
             <DrawerDescription>
