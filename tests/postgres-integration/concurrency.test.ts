@@ -1339,12 +1339,14 @@ describe.sequential("real PostgreSQL parallel invariants", () => {
       equipmentRequirementsSemanticsVersion: 1,
       equipmentRequirementsSnapshot: {
         sourceExerciseId: exercise.id,
-        broad: requirements.map((requirement) => ({
-          sourceRequirementId: requirement.id,
-          equipmentType: requirement.equipmentType,
-          equipmentDefinition: null,
-          minWeight: null,
-        })),
+        broad: requirements
+          .toSorted((left, right) => left.id.localeCompare(right.id))
+          .map((requirement) => ({
+            sourceRequirementId: requirement.id,
+            equipmentType: requirement.equipmentType,
+            equipmentDefinition: null,
+            minWeight: null,
+          })),
         exact: null,
       },
     }).returning({ id: sessionExercises.id });
