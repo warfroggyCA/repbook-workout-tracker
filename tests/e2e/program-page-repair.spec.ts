@@ -265,20 +265,28 @@ test("repairs the saved Program compatibility, layout, and immediate day selecti
   );
   expect(switchMs).toBeLessThan(250);
 
-  const warmup = page.getByRole("region", { name: "Warm-up", exact: true });
+  const warmup = page.locator("details").filter({
+    has: page.getByText("Warm-up", { exact: true }),
+  });
   await expect(warmup).toHaveCount(1);
-  await expect(warmup).toContainText(
+  const warmupSummary = warmup.locator(":scope > summary");
+  await expect(warmupSummary).toContainText("4 instructions");
+  await expect(warmup).not.toHaveAttribute("open", "");
+  await expect(
+    warmup.getByText("Five minutes easy, then shoulder circles.", {
+      exact: true,
+    }),
+  ).toBeHidden();
+  await warmupSummary.click();
+  await expect(warmup).toHaveAttribute("open", "");
+  for (const instruction of [
     "Five minutes easy, then shoulder circles.",
-  );
-  await expect(warmup).toContainText(
     "Before Barbell Bench Press: Empty bar · 10 reps",
-  );
-  await expect(warmup).toContainText(
     "Before Barbell Bench Press: First ramp · 55% of work weight · 5 reps · Move smoothly",
-  );
-  await expect(warmup).toContainText(
     "Before Barbell Bench Press: Second ramp · 85 lb · 3 reps",
-  );
+  ]) {
+    await expect(warmup.getByText(instruction, { exact: true })).toBeVisible();
+  }
   await expect(page.getByText(/Legacy exercise warm-up retained/i)).toHaveCount(
     0,
   );
