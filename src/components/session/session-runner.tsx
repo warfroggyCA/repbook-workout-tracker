@@ -76,6 +76,7 @@ import {
   subscribeToWorkoutSetOutboxStatus,
   WORKOUT_SET_OUTBOX_CHANGE_EVENT,
   type WorkoutSetOutboxClientEvent,
+  type WorkoutSetOutboxEntry,
   type WorkoutSetLoadEntryMeaning,
 } from "@/lib/workout-set-outbox";
 import {
@@ -140,7 +141,10 @@ import {
   sessionEquipmentSetupMatchesExercise,
   type SessionGuidanceFocusAction,
 } from "@/lib/session-guidance";
-import { workingSetDisplayPosition } from "@/lib/session-occurrences";
+import {
+  workingSetDisplayPosition,
+  workingSetOccurrenceOrderIsEligible,
+} from "@/lib/session-occurrences";
 import {
   patchActiveWorkoutMeasurement,
   readActiveWorkoutMeasurements,
@@ -469,6 +473,10 @@ export function SessionRunner(props: SessionRunnerProps) {
           entry.ownerId === props.ownerId && entry.sessionId === props.sessionId
       ),
     [outbox.entries, props.ownerId, props.sessionId]
+  );
+  const failedSetEntries = useMemo(
+    () => sessionEntries.filter((entry) => entry.status === "needs_attention"),
+    [sessionEntries],
   );
   const equipmentSelectionOutbox = useSyncExternalStore(
     subscribeToEquipmentSelectionOutbox,
@@ -1770,6 +1778,58 @@ export function SessionRunner(props: SessionRunnerProps) {
     ) ?? null;
   }
 
+  function nextLoggableOccurrenceForExercise(exerciseId: string) {
+    const occurrence = nextPendingOccurrenceForExercise(exerciseId);
+    return occurrence &&
+      workingSetOccurrenceOrderIsEligible(occurrence, occurrences)
+      ? occurrence
+      : null;
+  }
+
+  function revealCurrentWorkoutAction() {
+    const currentAction = guidance.currentAction;
+    if (!currentAction) return;
+    const targetId = actionTargetId(currentAction);
+    const occurrenceAction = currentAction.kind === "rest"
+      ? currentAction.source
+      : currentAction;
+    if (occurrenceAction?.kind === "working_set") {
+      setExpandedId(occurrenceAction.sessionExerciseId);
+    }
+    setFinishOpen(false);
+    lastConsumedWorkoutHashRef.current = targetId;
+    staleWorkoutActionHashRef.current = false;
+    window.history.replaceState(
+      window.history.state,
+      "",
+      `${window.location.pathname}${window.location.search}#${targetId}`,
+    );
+    requestAnimationFrame(() => {
+      const target = document.getElementById(targetId);
+      if (target) revealWorkoutTarget(target, "smooth");
+    });
+  }
+
+  function revealUnsavedSet(entry: WorkoutSetOutboxEntry) {
+    const targetId = `exercise-${entry.sessionExerciseId}`;
+    setFinishOpen(false);
+    setExpandedId(entry.sessionExerciseId);
+    window.history.replaceState(
+      window.history.state,
+      "",
+      `${window.location.pathname}${window.location.search}#${targetId}`,
+    );
+    requestAnimationFrame(() => {
+      const target = document.getElementById(targetId);
+      if (!target) return;
+      revealWorkoutTarget(target, "smooth");
+      const focusTarget = target.querySelector<HTMLElement>(
+        "button, [href], input",
+      );
+      focusTarget?.focus({ preventScroll: true });
+    });
+  }
+
   function adjustRest(delta: number) {
     if (!timer) return;
     const preference = readRestAlertPreference(window.localStorage);
@@ -2436,7 +2496,9 @@ export function SessionRunner(props: SessionRunnerProps) {
               safeEquipmentSetups[exercise.id]?.loadEntryMeaning ??
               null
             }
-            activeOccurrence={nextPendingOccurrenceForExercise(exercise.id)}
+            activeOccurrence={
+              nextLoggableOccurrenceForExercise(exercise.id)
+            }
             workingOccurrences={occurrences.filter(
               (occurrence) =>
                 occurrence.sessionExerciseId === exercise.id &&
@@ -2684,8 +2746,8 @@ export function SessionRunner(props: SessionRunnerProps) {
       </section>
 
       <Drawer open={finishOpen} onOpenChange={setFinishOpen}>
-        <DrawerContent className="[&_button]:min-h-11 [&_button]:min-w-11 [&_textarea]:min-h-11">
-          <DrawerHeader>
+        <DrawerContent className="data-[swipe-axis=y]:[--drawer-content-max-height:calc(100dvh-1rem)] [&_button]:min-h-11 [&_button]:min-w-11 [&_textarea]:min-h-11">
+          <DrawerHeader className="pb-3">
             <DrawerTitle>Finish workout</DrawerTitle>
             <DrawerDescription>
               {plannedPerformed} of {totalPlanned} planned sets done. Wall clock {elapsed}.
@@ -2697,7 +2759,11 @@ export function SessionRunner(props: SessionRunnerProps) {
                 : ""}
             </DrawerDescription>
           </DrawerHeader>
-          <div className="flex flex-col gap-4 px-4">
+          <div
+            data-testid="finish-workout-scroll"
+            className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-4"
+          >
+            <div className="flex flex-col gap-4">
             <div className="rounded-md border bg-muted/30 p-3 text-sm">
               <p>
                 {nonPerformedSummary || "All planned sets are accounted for."}
@@ -2730,21 +2796,90 @@ export function SessionRunner(props: SessionRunnerProps) {
               )}
             </div>
             {finishBlocked && (
-              <p role="alert" className="rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-sm text-amber-900 dark:text-amber-200">
-                {workoutSaveQueueMessage({
-                  // Equipment guidance no longer blocks finishing, so it is
-                  // excluded from this blocking message and shown separately.
-                  equipmentError: null,
-                  occurrenceError: occurrenceOutbox.error,
-                  setError: outbox.error,
-                  occurrenceCount: sessionOccurrenceEntries.length,
-                  occurrenceQuarantineCount: 0,
-                  equipmentCount: 0,
-                  equipmentQuarantineCount: 0,
-                  setCount: sessionEntries.length,
-                  setQuarantineCount: outbox.quarantined.length,
-                })}
-              </p>
+              <div
+                role="region"
+                aria-label="Unsaved workout recovery"
+                className="rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-sm text-amber-950 dark:text-amber-100"
+              >
+                <p role="alert" className="font-medium">
+                  {failedSetEntries.length > 0
+                    ? `${failedSetEntries.length} ${failedSetEntries.length === 1 ? "set failed" : "sets failed"} to save. Your recorded ${failedSetEntries.length === 1 ? "attempt is" : "attempts are"} still on this device.`
+                    : workoutSaveQueueMessage({
+                        // Equipment guidance no longer blocks finishing, so it is
+                        // excluded from this blocking message and shown separately.
+                        equipmentError: null,
+                        occurrenceError: occurrenceOutbox.error,
+                        setError: outbox.error,
+                        occurrenceCount: sessionOccurrenceEntries.length,
+                        occurrenceQuarantineCount: 0,
+                        equipmentCount: 0,
+                        equipmentQuarantineCount: 0,
+                        setCount: sessionEntries.length,
+                        setQuarantineCount: outbox.quarantined.length,
+                      })}
+                </p>
+                {guidance.currentAction && sessionEntries.length > 0 && (
+                  <div className="mt-3 rounded-md border border-amber-700/25 bg-background/70 p-3 text-foreground">
+                    <p className="text-xs font-semibold uppercase tracking-[0.1em] text-muted-foreground">
+                      Workout order currently requires
+                    </p>
+                    <p className="mt-1 font-medium">
+                      {formatSessionGuidanceAction(guidance.currentAction)}
+                    </p>
+                    <Button
+                      type="button"
+                      className="mt-3 w-full"
+                      onClick={revealCurrentWorkoutAction}
+                    >
+                      Go to required action
+                    </Button>
+                  </div>
+                )}
+                {sessionEntries.length > 0 && (
+                  <ul className="mt-3 flex flex-col gap-2">
+                    {sessionEntries.map((entry) => (
+                      <li
+                        key={entry.clientKey}
+                        className="rounded-md border border-amber-700/25 bg-background/70 p-3 text-foreground"
+                      >
+                        <p className="font-medium">
+                          {entry.exerciseName} · Set {entry.setNo}
+                        </p>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          {entry.status === "needs_attention"
+                            ? "Save failed — attempt retained"
+                            : "Waiting for save acknowledgement"}
+                        </p>
+                        {entry.lastError && (
+                          <p className="mt-2 text-sm text-destructive">
+                            {entry.lastError}
+                          </p>
+                        )}
+                        <div className="mt-3 flex flex-col gap-2 min-[420px]:flex-row">
+                          {entry.status === "needs_attention" && (
+                            <Button
+                              type="button"
+                              variant="outline"
+                              className="flex-1"
+                              onClick={() => void retrySet(entry.clientKey)}
+                            >
+                              Try saving again
+                            </Button>
+                          )}
+                          <Button
+                            type="button"
+                            variant="outline"
+                            className="flex-1"
+                            onClick={() => revealUnsavedSet(entry)}
+                          >
+                            Review saved attempt
+                          </Button>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
             )}
             {equipmentGuidancePending && (
               <p className="rounded-md border border-muted-foreground/25 bg-muted/40 p-3 text-sm text-muted-foreground">
@@ -2811,8 +2946,9 @@ export function SessionRunner(props: SessionRunnerProps) {
                 1 = fresh · 5 = wiped out
               </p>
             </div>
+            </div>
           </div>
-          <DrawerFooter>
+          <DrawerFooter className="border-t bg-popover pt-3 pb-[max(1rem,env(safe-area-inset-bottom))]">
             <Button
               onClick={handleFinish}
               disabled={finishing || finishBlocked || !durationReviewReady}
@@ -2860,26 +2996,7 @@ export function SessionRunner(props: SessionRunnerProps) {
           timer={timer}
           restRemainingSec={restRemainingSec}
           onShowCurrent={() => {
-            const currentAction = guidance.currentAction;
-            if (!currentAction) return;
-            const targetId = actionTargetId(currentAction);
-            const occurrenceAction = currentAction.kind === "rest"
-              ? currentAction.source
-              : currentAction;
-            if (occurrenceAction?.kind === "working_set") {
-              setExpandedId(occurrenceAction.sessionExerciseId);
-            }
-            lastConsumedWorkoutHashRef.current = targetId;
-            staleWorkoutActionHashRef.current = false;
-            window.history.replaceState(
-              window.history.state,
-              "",
-              `${window.location.pathname}${window.location.search}#${targetId}`,
-            );
-            requestAnimationFrame(() => {
-              const target = document.getElementById(targetId);
-              if (target) revealWorkoutTarget(target, "smooth");
-            });
+            revealCurrentWorkoutAction();
           }}
           onRestAdjust={adjustRest}
           onRestSkip={skipRest}

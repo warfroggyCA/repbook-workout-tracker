@@ -294,6 +294,37 @@ test("keeps the full live workout usable through warm-up, skip, replace, continu
   await expectReachableTarget(finish);
   await finish.click();
   const finishDialog = page.getByRole("dialog", { name: "Finish workout" });
+  await expect(finishDialog).toBeVisible();
+  await expect
+    .poll(() =>
+      finishDialog.evaluate(
+        (dialog) => dialog.getBoundingClientRect().bottom,
+      ),
+    )
+    .toBeLessThanOrEqual(701);
+  const finishGeometry = await finishDialog.evaluate((dialog) => {
+    const scrollRegion = dialog.querySelector<HTMLElement>(
+      '[data-testid="finish-workout-scroll"]',
+    );
+    const footer = dialog.querySelector<HTMLElement>(
+      '[data-slot="drawer-footer"]',
+    );
+    if (!scrollRegion || !footer) {
+      throw new Error("Finish workout scroll or action region is missing.");
+    }
+    const footerRect = footer.getBoundingClientRect();
+    return {
+      overflowY: getComputedStyle(scrollRegion).overflowY,
+      footerTop: footerRect.top,
+      footerBottom: footerRect.bottom,
+      viewportHeight: window.innerHeight,
+    };
+  });
+  expect(finishGeometry.overflowY).toBe("auto");
+  expect(finishGeometry.footerTop).toBeGreaterThanOrEqual(0);
+  expect(finishGeometry.footerBottom).toBeLessThanOrEqual(
+    finishGeometry.viewportHeight + 1,
+  );
   const save = finishDialog.getByRole("button", {
     name: "Save workout",
     exact: true,

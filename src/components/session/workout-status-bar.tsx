@@ -75,7 +75,7 @@ export function WorkoutStatusBar({
         timerRunning ? "running" : timerReady ? "ready" : "inactive"
       }
       className={cn(
-        "fixed inset-x-0 bottom-[calc(4rem+env(safe-area-inset-bottom))] z-30 border-t bg-background shadow-[0_-5px_18px_rgb(0_0_0/0.12)] max-[360px]:bottom-[env(safe-area-inset-bottom)] lg:bottom-0 lg:left-[var(--main-sidebar-width)]",
+        "fixed inset-x-0 bottom-[env(safe-area-inset-bottom)] z-30 border-t bg-background shadow-[0_-5px_18px_rgb(0_0_0/0.12)] lg:bottom-0 lg:left-[var(--main-sidebar-width)]",
         timerRunning &&
           "border-amber-500 bg-amber-100 dark:border-amber-500 dark:bg-amber-950",
         timerReady &&

@@ -41,7 +41,7 @@ describe("BottomTabs hydration", () => {
     expect(navigationItemShouldPrefetch(null, "/today")).toBe(true);
   });
 
-  it("reserves extreme-width focused mode for an active workout route", () => {
+  it("uses focused mode for an active workout route", () => {
     expect(mobileNavigationUsesFocusedWorkoutMode("/session/session-id")).toBe(true);
     expect(mobileNavigationUsesFocusedWorkoutMode("/session")).toBe(true);
     expect(mobileNavigationUsesFocusedWorkoutMode("/sessions")).toBe(false);

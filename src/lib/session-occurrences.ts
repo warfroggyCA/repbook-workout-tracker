@@ -29,6 +29,12 @@ type WorkingSetLabelOccurrence = {
   plannedNote: string | null;
 };
 
+type WorkingSetOrderOccurrence = WorkingSetLabelOccurrence & {
+  sequenceIdx: number;
+  outcome: SessionOccurrenceOutcome;
+  groupSnapshotId: string | null;
+};
+
 export type WorkingSetDisplayPosition = {
   kind: "set" | "extra";
   number: number;
@@ -50,6 +56,40 @@ export function isAppendedExtraSetOccurrence(
     occurrence.kind === "working_set" &&
     occurrence.origin === "ad_hoc" &&
     occurrence.plannedNote === ADDED_WORKOUT_SET_NOTE
+  );
+}
+
+/**
+ * Mirrors the deterministic order checks enforced by the set-save service.
+ * The server remains authoritative; this keeps the client from offering an
+ * action that is already known to be ineligible.
+ */
+export function workingSetOccurrenceOrderIsEligible(
+  candidate: WorkingSetOrderOccurrence,
+  occurrences: WorkingSetOrderOccurrence[],
+) {
+  if (candidate.kind !== "working_set" || candidate.outcome !== "pending") {
+    return false;
+  }
+
+  const earlierSetForExerciseIsPending = occurrences.some(
+    (earlier) =>
+      earlier.sessionExerciseId === candidate.sessionExerciseId &&
+      earlier.kind === "working_set" &&
+      earlier.kindOrdinal < candidate.kindOrdinal &&
+      earlier.outcome === "pending" &&
+      (!isAppendedExtraSetOccurrence(candidate) ||
+        isAppendedExtraSetOccurrence(earlier)),
+  );
+  if (earlierSetForExerciseIsPending) return false;
+
+  return !occurrences.some(
+    (earlier) =>
+      candidate.groupSnapshotId != null &&
+      earlier.groupSnapshotId === candidate.groupSnapshotId &&
+      earlier.kind === "working_set" &&
+      earlier.sequenceIdx < candidate.sequenceIdx &&
+      earlier.outcome === "pending",
   );
 }
 

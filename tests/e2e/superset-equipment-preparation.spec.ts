@@ -321,7 +321,7 @@ async function expectReachableGroupSurface(
     );
   }
   expect(geometry.links).toHaveLength(2);
-  expect(geometry.navigationVisible).toBe(width >= 360);
+  expect(geometry.navigationVisible).toBe(false);
   expect(
     geometry.links.every(
       (link) =>
@@ -399,6 +399,34 @@ test("presents immutable superset order, truthful progress, and next-member equi
   for (const width of [320, 375, 390, 440]) {
     await expectReachableGroupSurface(page, group, width);
   }
+
+  const laterMemberCard = page.locator('section[id^="exercise-"]').filter({
+    has: page.getByRole("heading", {
+      level: 2,
+      name: "Pallof Press",
+      exact: true,
+    }),
+  }).first();
+  const laterMemberToggle = laterMemberCard.locator(":scope > button");
+  await laterMemberToggle.click();
+  await expect(laterMemberToggle).toHaveAttribute("aria-expanded", "true");
+  await expect(laterMemberCard).toContainText(
+    "Reach this set in the workout flow",
+  );
+  await expect(
+    laterMemberCard.getByRole("button", { name: "Log set", exact: true }),
+  ).toHaveCount(0);
+  await page
+    .getByRole("complementary", { name: "Workout status" })
+    .getByRole("button")
+    .first()
+    .click();
+  await expect(
+    page.getByTestId("current-exercise-card").getByRole("button", {
+      name: "Log set",
+      exact: true,
+    }),
+  ).toBeVisible();
 
   const firstMember = group.getByRole("link", {
     name: /1\. Dumbbell Lateral Raise/,

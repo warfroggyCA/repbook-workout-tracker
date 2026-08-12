@@ -50,8 +50,9 @@ describe("WorkoutStatusBar", () => {
     expect(html).toContain("Finish");
     expect(html).toContain("min-h-11 min-w-0 flex-1");
     expect(html).toContain("max-[360px]:sr-only");
-    expect(html).toContain(
-      "max-[360px]:bottom-[env(safe-area-inset-bottom)]",
+    expect(html).toContain("bottom-[env(safe-area-inset-bottom)]");
+    expect(html).not.toContain(
+      "bottom-[calc(4rem+env(safe-area-inset-bottom))]",
     );
     expect(html).not.toContain("overflow-y-auto");
     expect(html).not.toContain("truncate");
