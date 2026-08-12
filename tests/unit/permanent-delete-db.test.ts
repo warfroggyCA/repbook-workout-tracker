@@ -756,6 +756,32 @@ describe("Archive-only permanent deletion", () => {
         createdFromImportEventId: importEventId,
       })
       .returning({ id: schema.exercises.id });
+    await db.insert(schema.exerciseEquipmentRequirements).values({
+      exerciseId: customExerciseId,
+      equipmentType: "cable",
+    });
+    const [{ id: equipmentItemId }] = await db
+      .insert(schema.equipmentItems)
+      .values({
+        userId,
+        type: "cable",
+        label: "Synthetic exclusive cable station",
+        attrs: {},
+        available: true,
+      })
+      .returning({ id: schema.equipmentItems.id });
+    const [{ id: fitAssertionId }] = await db
+      .insert(schema.exerciseEquipmentFitAssertions)
+      .values({
+        userId,
+        exerciseId: customExerciseId,
+        equipmentItemId,
+        verdict: "incompatible",
+        reasonCode: "missing_capability",
+        reasonNote: "Synthetic exclusive custom-exercise relation",
+        evidenceRevision: "a".repeat(32),
+      })
+      .returning({ id: schema.exerciseEquipmentFitAssertions.id });
     const sourceName = `Exclusive source ${crypto.randomUUID()}`;
     const [{ id: mappingId }] = await db
       .insert(schema.externalExerciseMappings)
@@ -832,6 +858,7 @@ describe("Archive-only permanent deletion", () => {
       importEvents: 1,
       externalExerciseMappings: 1,
       customExercises: 1,
+      exerciseEquipmentFitAssertions: 1,
       workoutSessions: 1,
       sessionExercises: 1,
       completedSets: 1,
@@ -847,6 +874,22 @@ describe("Archive-only permanent deletion", () => {
     );
     if (!grant.ok) throw new Error(grant.reason);
     const snapshotId = await verifiedSafetySnapshot(archived.operationId);
+    expect(
+      await permanentlyDeleteArchiveOperation(
+        db,
+        userId,
+        archived.operationId,
+        grant.token,
+        PERMANENT_DELETE_CONFIRMATION,
+        snapshotId,
+        "exercise_equipment_fit_assertions"
+      )
+    ).toMatchObject({ ok: false });
+    expect(
+      await db.query.exerciseEquipmentFitAssertions.findFirst({
+        where: eq(schema.exerciseEquipmentFitAssertions.id, fitAssertionId),
+      })
+    ).toBeDefined();
     expect(
       await permanentlyDeleteArchiveOperation(
         db,
@@ -880,6 +923,11 @@ describe("Archive-only permanent deletion", () => {
     expect(
       await db.query.externalExerciseMappings.findFirst({
         where: eq(schema.externalExerciseMappings.id, mappingId),
+      })
+    ).toBeUndefined();
+    expect(
+      await db.query.exerciseEquipmentFitAssertions.findFirst({
+        where: eq(schema.exerciseEquipmentFitAssertions.id, fitAssertionId),
       })
     ).toBeUndefined();
   });

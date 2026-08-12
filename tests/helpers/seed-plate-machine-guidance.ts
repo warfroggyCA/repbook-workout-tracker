@@ -12,6 +12,7 @@ import {
 import { startWorkoutSession } from "@/services/session-lifecycle";
 import { mutateSessionEquipmentSelection } from "@/services/session-equipment-selection";
 import { updateSessionExerciseWithVersion } from "@/services/record-versions";
+import { saveExerciseEquipmentFitAssertion } from "@/services/exercise-equipment-fit-management";
 
 const OWNER_EMAIL = "owner@example.com";
 
@@ -77,6 +78,22 @@ async function main() {
     })
     .returning({ id: plateLoadedMachineProfiles.id });
   if (!profile) throw new Error("The fixture machine profile was not created.");
+
+  const reviewedFit = await saveExerciseEquipmentFitAssertion(db, owner.id, {
+    mutationId: crypto.randomUUID(),
+    assertionId: null,
+    exerciseId: exercise.id,
+    equipmentItemId: machine.id,
+    verdict: "compatible",
+    reasonCode: "owner_verified",
+    reasonNote: "Synthetic fixture owner verified this exact exercise and machine.",
+    expectedRevision: null,
+  });
+  if (!reviewedFit.ok) {
+    throw new Error(
+      `The plate-machine equipment fit review failed (${reviewedFit.code}).`,
+    );
+  }
 
   const { sessionId } = await startWorkoutSession(
     db,

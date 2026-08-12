@@ -77,6 +77,9 @@ export type ExerciseDiscoveryItem = {
   unavailableReason: string | null;
   missingEquipment?: string[];
   constraintBlocked?: boolean;
+  equipmentFitStatus?: import("@/lib/exercise-equipment-fit").ExerciseEquipmentFitStatus;
+  equipmentFitReason?: string;
+  equipmentFit?: import("@/lib/exercise-equipment-fit").ExerciseEquipmentFitResolution;
   inCurrentProgram?: boolean;
   recentRank?: number | null;
   useCount?: number;
@@ -118,6 +121,9 @@ type DiscoveryLibraryRecord = Pick<
   | "unavailableReason"
   | "missingEquipment"
   | "constraintBlocked"
+  | "equipmentFitStatus"
+  | "equipmentFitReason"
+  | "equipmentFit"
 >;
 
 /** Explicit projection keeps source, rights, and provenance bookkeeping out. */
@@ -148,6 +154,9 @@ export function exerciseDiscoveryItemFromLibrary(
     unavailableReason: exercise.unavailableReason,
     missingEquipment: exercise.missingEquipment,
     constraintBlocked: exercise.constraintBlocked,
+    equipmentFitStatus: exercise.equipmentFitStatus,
+    equipmentFitReason: exercise.equipmentFitReason,
+    equipmentFit: exercise.equipmentFit,
     ...signals,
   };
 }

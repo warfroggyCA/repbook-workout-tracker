@@ -78,6 +78,7 @@ const PRE_EXCEPTION_CONTEXT_SNAPSHOT_SCHEMA_VERSION = "28";
 const PRE_REVIEW_SNAPSHOT_SCHEMA_VERSION = "29";
 const PRE_ACTIVE_DURATION_SNAPSHOT_SCHEMA_VERSION = "30";
 const PRE_SESSION_EQUIPMENT_REQUIREMENTS_SNAPSHOT_SCHEMA_VERSION = "31";
+const PRE_EXERCISE_EQUIPMENT_FIT_ASSERTIONS_SNAPSHOT_SCHEMA_VERSION = "32";
 
 type SnapshotRow = Record<string, unknown>;
 type RestoreRows = Record<string, SnapshotRow[]>;
@@ -108,6 +109,71 @@ function stringArray(value: unknown): string[] {
   return Array.isArray(value)
     ? value.filter((item): item is string => typeof item === "string")
     : [];
+}
+
+function validateExerciseEquipmentFitAssertions(
+  payload: CanonicalSnapshotPayload,
+) {
+  const owners = rows(payload, "users");
+  const ownerId = owners.length === 1 ? String(owners[0].id) : null;
+  const exercisesById = new Map(
+    rows(payload, "exercises").map((exercise) => [String(exercise.id), exercise]),
+  );
+  const itemsById = new Map(
+    rows(payload, "equipment_items").map((item) => [String(item.id), item]),
+  );
+  const identities = new Set<string>();
+  const ids = new Set<string>();
+  const incompatibleReasons = new Set([
+    "geometry_limit",
+    "missing_capability",
+    "attachment_limit",
+    "range_of_motion_limit",
+    "space_limit",
+    "safety_constraint",
+    "other",
+  ]);
+
+  for (const assertion of rows(payload, "exercise_equipment_fit_assertions")) {
+    const id = String(assertion.id ?? "");
+    const userId = String(assertion.user_id ?? "");
+    const exerciseId = String(assertion.exercise_id ?? "");
+    const equipmentItemId = String(assertion.equipment_item_id ?? "");
+    const exercise = exercisesById.get(exerciseId);
+    const item = itemsById.get(equipmentItemId);
+    const verdict = String(assertion.verdict ?? "");
+    const reasonCode = String(assertion.reason_code ?? "");
+    const reasonNote = assertion.reason_note;
+    const createdAt = Date.parse(String(assertion.created_at ?? ""));
+    const updatedAt = Date.parse(String(assertion.updated_at ?? ""));
+    const reviewedAt = Date.parse(String(assertion.reviewed_at ?? ""));
+    const identity = `${userId}:${exerciseId}:${equipmentItemId}`;
+
+    if (
+      !id || ids.has(id) || !ownerId || userId !== ownerId ||
+      !exercise || (exercise.user_id !== null && exercise.user_id !== ownerId) ||
+      !item || item.user_id !== ownerId || identities.has(identity) ||
+      !Number.isInteger(Number(assertion.revision)) || Number(assertion.revision) < 1 ||
+      Number(assertion.semantics_version) !== 1 ||
+      typeof assertion.evidence_revision !== "string" ||
+      !/^[0-9a-f]{32}$/.test(assertion.evidence_revision) ||
+      assertion.provenance !== "owner_review" ||
+      !Number.isFinite(createdAt) || !Number.isFinite(updatedAt) ||
+      !Number.isFinite(reviewedAt) || createdAt > updatedAt || reviewedAt > updatedAt ||
+      (reasonNote !== null && (
+        typeof reasonNote !== "string" ||
+        reasonNote.trim().length < 1 || reasonNote.length > 500
+      )) ||
+      (verdict === "compatible" && reasonCode !== "owner_verified") ||
+      (verdict === "incompatible" && !incompatibleReasons.has(reasonCode)) ||
+      !["compatible", "incompatible"].includes(verdict) ||
+      (reasonCode === "other" && reasonNote === null)
+    ) {
+      throw new Error("Snapshot exercise-equipment fit assertion is invalid.");
+    }
+    ids.add(id);
+    identities.add(identity);
+  }
 }
 
 function isWorkoutTimingVersion(row: SnapshotRow): boolean {
@@ -1213,6 +1279,7 @@ export function upgradeSnapshotPayload(
     PRE_REVIEW_SNAPSHOT_SCHEMA_VERSION,
     PRE_ACTIVE_DURATION_SNAPSHOT_SCHEMA_VERSION,
     PRE_SESSION_EQUIPMENT_REQUIREMENTS_SNAPSHOT_SCHEMA_VERSION,
+    PRE_EXERCISE_EQUIPMENT_FIT_ASSERTIONS_SNAPSHOT_SCHEMA_VERSION,
     SNAPSHOT_SCHEMA_VERSION,
   ]);
   if (!supported.has(payload.schemaVersion)) {
@@ -1228,6 +1295,7 @@ export function upgradeSnapshotPayload(
     validateUnitAndCalendarIdentity(upgraded);
     validateStartAndPrescribedSemantics(upgraded);
     validateSessionEquipmentRequirements(upgraded);
+    validateExerciseEquipmentFitAssertions(upgraded);
     validateSetExceptionContext(upgraded);
     validateHistoryIdentityAndTiming(upgraded);
     validateWorkoutTimingVersionEvidence(upgraded);
@@ -1295,6 +1363,7 @@ export function upgradeSnapshotPayload(
       PRE_REVIEW_SNAPSHOT_SCHEMA_VERSION,
       PRE_ACTIVE_DURATION_SNAPSHOT_SCHEMA_VERSION,
       PRE_SESSION_EQUIPMENT_REQUIREMENTS_SNAPSHOT_SCHEMA_VERSION,
+      PRE_EXERCISE_EQUIPMENT_FIT_ASSERTIONS_SNAPSHOT_SCHEMA_VERSION,
       SNAPSHOT_SCHEMA_VERSION,
     ].includes(upgraded.schemaVersion)
   ) {
@@ -1470,6 +1539,9 @@ export function upgradeSnapshotPayload(
   upgraded.tables.contextual_notes ??= [];
   upgraded.tables.contextual_note_revisions ??= [];
   upgraded.tables.progression_job_input_sessions ??= [];
+  // Schema 32 had no durable owner-specific fit relation. Absence remains
+  // unknown; never infer rows from mutable exercise or equipment metadata.
+  upgraded.tables.exercise_equipment_fit_assertions = [];
   for (const prescription of rows(upgraded, "exercise_prescriptions")) {
     prescription.target_load_unit ??= null;
   }
@@ -1582,6 +1654,7 @@ export function upgradeSnapshotPayload(
   validateUnitAndCalendarIdentity(upgraded);
   validateStartAndPrescribedSemantics(upgraded);
   validateSessionEquipmentRequirements(upgraded);
+  validateExerciseEquipmentFitAssertions(upgraded);
   validateSetExceptionContext(upgraded);
   validateHistoryIdentityAndTiming(upgraded);
   validateWorkoutTimingVersionEvidence(upgraded);
@@ -2410,6 +2483,7 @@ export function validateSnapshotPayload(
       PRE_REVIEW_SNAPSHOT_SCHEMA_VERSION,
       PRE_ACTIVE_DURATION_SNAPSHOT_SCHEMA_VERSION,
       PRE_SESSION_EQUIPMENT_REQUIREMENTS_SNAPSHOT_SCHEMA_VERSION,
+      PRE_EXERCISE_EQUIPMENT_FIT_ASSERTIONS_SNAPSHOT_SCHEMA_VERSION,
       SNAPSHOT_SCHEMA_VERSION,
     ].includes(payload.schemaVersion)
   ) {
@@ -2452,6 +2526,7 @@ export function validateSnapshotPayload(
       PRE_REVIEW_SNAPSHOT_SCHEMA_VERSION,
       PRE_ACTIVE_DURATION_SNAPSHOT_SCHEMA_VERSION,
       PRE_SESSION_EQUIPMENT_REQUIREMENTS_SNAPSHOT_SCHEMA_VERSION,
+      PRE_EXERCISE_EQUIPMENT_FIT_ASSERTIONS_SNAPSHOT_SCHEMA_VERSION,
       SNAPSHOT_SCHEMA_VERSION,
     ].includes(payload.schemaVersion)
   ) {
@@ -2577,6 +2652,18 @@ export function validateSnapshotPayload(
   requireReferences(payload, "external_exercise_mappings", "exercise_id", "exercises");
   requireReferences(payload, "workout_template_exercises", "exercise_id", "exercises");
   requireReferences(payload, "session_exercises", "exercise_id", "exercises");
+  requireReferences(
+    payload,
+    "exercise_equipment_fit_assertions",
+    "exercise_id",
+    "exercises",
+  );
+  requireReferences(
+    payload,
+    "exercise_equipment_fit_assertions",
+    "equipment_item_id",
+    "equipment_items",
+  );
   requireOptionalReferences(
     payload,
     "session_exercises",
@@ -2611,6 +2698,7 @@ export function validateSnapshotPayload(
       PRE_REVIEW_SNAPSHOT_SCHEMA_VERSION,
       PRE_ACTIVE_DURATION_SNAPSHOT_SCHEMA_VERSION,
       PRE_SESSION_EQUIPMENT_REQUIREMENTS_SNAPSHOT_SCHEMA_VERSION,
+      PRE_EXERCISE_EQUIPMENT_FIT_ASSERTIONS_SNAPSHOT_SCHEMA_VERSION,
       SNAPSHOT_SCHEMA_VERSION,
     ].includes(payload.schemaVersion)
   ) {
@@ -2768,6 +2856,7 @@ export function validateSnapshotPayload(
     validateUnitAndCalendarIdentity(payload);
     validateStartAndPrescribedSemantics(payload);
     validateSessionEquipmentRequirements(payload);
+    validateExerciseEquipmentFitAssertions(payload);
     validateSetExceptionContext(payload);
     validateReviewState(payload);
     validateVersionedProgramData(payload);

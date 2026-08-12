@@ -1,6 +1,7 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { CompilerExecutionDetails } from "@/components/session/compiler-execution-details";
+import { CompilerResultAlert } from "@/components/session/compiler-result-alert";
 import type {
   SessionCompilerInput,
   SessionCompilerOutput,
@@ -83,6 +84,18 @@ function proposal() {
 }
 
 describe("CompilerExecutionDetails", () => {
+  it("renders compiler acceptance failure as a focusable live alert", () => {
+    const html = renderToStaticMarkup(
+      <CompilerResultAlert>
+        Equipment evidence changed. No workout was started.
+      </CompilerResultAlert>,
+    );
+    expect(html).toContain('role="alert"');
+    expect(html).toContain('aria-atomic="true"');
+    expect(html).toContain('tabindex="-1"');
+    expect(html).toContain("No workout was started.");
+  });
+
   it("renders every warm-up loading detail and the exact canonical round timeline", () => {
     const { input, output } = proposal();
     const html = renderToStaticMarkup(

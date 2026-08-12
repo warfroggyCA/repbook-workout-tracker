@@ -4,6 +4,7 @@ import type { Db } from "@/db";
 import {
   dataSnapshots,
   equipmentDefinitions,
+  equipmentItems,
   exerciseEquipmentRequirements,
   exerciseExecutionRequirements,
   exercises,
@@ -37,6 +38,7 @@ import {
   SNAPSHOT_ENCRYPTION_ALGORITHM,
 } from "@/services/snapshot-crypto";
 import { seedT06PreviewStart } from "../helpers/v2-t06-preview-start";
+import { saveExerciseEquipmentFitAssertion } from "@/services/exercise-equipment-fit-management";
 import {
   createMigratedTestDatabase,
   createTestDatabaseAtMigration,
@@ -117,6 +119,24 @@ describe("retained session equipment requirements persistence", () => {
     await database.db.update(exerciseEquipmentRequirements)
       .set({ minWeight: 70 })
       .where(eq(exerciseEquipmentRequirements.id, sourceRequirement.id));
+    const [sourceItem] = await database.db.insert(equipmentItems).values({
+      userId: fixture.userId,
+      type: "dumbbell",
+      definitionId: definition.id,
+      label: "Current adjustable dumbbell",
+      attrs: { maxWeight: 100 },
+      available: true,
+    }).returning({ id: equipmentItems.id });
+    await expect(saveExerciseEquipmentFitAssertion(database.db, fixture.userId, {
+      mutationId: crypto.randomUUID(),
+      assertionId: null,
+      exerciseId: fixture.exerciseId,
+      equipmentItemId: sourceItem.id,
+      verdict: "compatible",
+      reasonCode: "owner_verified",
+      reasonNote: null,
+      expectedRevision: null,
+    })).resolves.toMatchObject({ ok: true, changed: true });
     expect(await database.db.query.sessionExercises.findFirst({
       where: eq(sessionExercises.id, planned.id),
     })).toMatchObject({
@@ -169,6 +189,22 @@ describe("retained session equipment requirements persistence", () => {
       .insert(exerciseEquipmentRequirements)
       .values({ exerciseId: alternate.id, equipmentType: "bands" })
       .returning({ id: exerciseEquipmentRequirements.id });
+    const [bandItem] = await database.db.insert(equipmentItems).values({
+      userId: fixture.userId,
+      type: "bands",
+      label: "Reviewed resistance bands",
+      available: true,
+    }).returning({ id: equipmentItems.id });
+    await expect(saveExerciseEquipmentFitAssertion(database.db, fixture.userId, {
+      mutationId: crypto.randomUUID(),
+      assertionId: null,
+      exerciseId: alternate.id,
+      equipmentItemId: bandItem.id,
+      verdict: "compatible",
+      reasonCode: "owner_verified",
+      reasonNote: null,
+      expectedRevision: null,
+    })).resolves.toMatchObject({ ok: true, changed: true });
     const substituted = await updateSessionExerciseWithVersion(
       database.db,
       fixture.userId,
@@ -273,7 +309,7 @@ describe("retained session equipment requirements persistence", () => {
       new Date("2026-08-10T13:00:00.000Z"),
       "retained-requirement-test",
     );
-    expect(captured.schemaVersion).toBe("32");
+    expect(captured.schemaVersion).toBe("33");
     expect(captured.tables.session_exercises).toContainEqual(
       expect.objectContaining({
         id: planned.id,
@@ -288,7 +324,7 @@ describe("retained session equipment requirements persistence", () => {
       delete row.equipment_requirements_snapshot;
     }
     const upgraded = upgradeSnapshotPayload(schema31);
-    expect(upgraded.schemaVersion).toBe("32");
+    expect(upgraded.schemaVersion).toBe("33");
     expect(upgraded.tables.session_exercises).toContainEqual(
       expect.objectContaining({
         id: planned.id,
@@ -398,6 +434,23 @@ describe("retained session equipment requirements persistence", () => {
         minWeight: 40,
       })
       .returning({ id: exerciseEquipmentRequirements.id });
+    const [sourceItem] = await database.db.insert(equipmentItems).values({
+      userId: fixture.userId,
+      type: "dumbbell",
+      label: "Legacy restore dumbbells",
+      attrs: { maxWeight: 100 },
+      available: true,
+    }).returning({ id: equipmentItems.id });
+    await expect(saveExerciseEquipmentFitAssertion(database.db, fixture.userId, {
+      mutationId: crypto.randomUUID(),
+      assertionId: null,
+      exerciseId: fixture.exerciseId,
+      equipmentItemId: sourceItem.id,
+      verdict: "compatible",
+      reasonCode: "owner_verified",
+      reasonNote: null,
+      expectedRevision: null,
+    })).resolves.toMatchObject({ ok: true, changed: true });
     const started = await startWorkoutSession(
       database.db,
       fixture.userId,

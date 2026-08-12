@@ -83,16 +83,38 @@ export async function loadProgramPreflightContext(
     resultRows(painResult).map((row) => [String(row.exercise_id), Number(row.evidence_count)]),
   );
   const painEvidenceBySlot: Record<string, number> = {};
+  const equipmentFitBySlot: NonNullable<
+    ProgramPreflightContext["equipmentFitBySlot"]
+  > = {};
 
   for (const day of document.days) {
     for (const slot of day.exercises) {
       const exercise = libraryById.get(slot.exerciseId);
       if (!exercise) {
         unavailableSlotLineageIds.add(slot.lineageId);
-      } else if (!exercise.available) {
-        if (exercise.unavailableReason === "blocked by current constraints") {
+      } else {
+        if (
+          exercise.equipmentFitStatus === "incompatible" ||
+          exercise.equipmentFitStatus === "unknown" ||
+          exercise.equipmentFitStatus === "missing"
+        ) {
+          equipmentFitBySlot[slot.lineageId] = {
+            status: exercise.equipmentFitStatus,
+            reason: exercise.equipmentFitReason,
+            equipmentItemIds:
+              exercise.equipmentFitStatus === "incompatible"
+                ? exercise.equipmentFit.incompatibleEquipmentItemIds
+                : exercise.equipmentFit.candidateEquipmentItemIds,
+          };
+        }
+        if (exercise.constraintBlocked) {
           avoidedSlotLineageIds.add(slot.lineageId);
-        } else {
+        } else if (
+          !exercise.available &&
+          exercise.equipmentFitStatus !== "incompatible" &&
+          exercise.equipmentFitStatus !== "unknown" &&
+          exercise.equipmentFitStatus !== "missing"
+        ) {
           unavailableSlotLineageIds.add(slot.lineageId);
         }
       }
@@ -118,6 +140,7 @@ export async function loadProgramPreflightContext(
     avoidedSlotLineageIds,
     cautiousSlotLineageIds,
     painEvidenceBySlot,
+    equipmentFitBySlot,
     equipmentEvidenceCount: library.length,
     constraintEvidenceCount:
       avoidedSlotLineageIds.size + cautiousSlotLineageIds.size,

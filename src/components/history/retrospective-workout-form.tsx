@@ -28,8 +28,11 @@ import { StateNotice } from "@/components/ui/state-notice";
 import { Textarea } from "@/components/ui/textarea";
 import type { ExerciseDiscoveryItem } from "@/lib/exercise-discovery";
 import { ALTERNATIVE_REASONS } from "@/lib/exercise-alternatives";
-import { workoutReplacementUnavailableReason } from "@/lib/exercise-replacements";
 import type { ProgramPresentation } from "@/lib/program-presentation";
+import {
+  isSupportedSetWriterSemanticDefinition,
+  type PerformedMetricType,
+} from "@/lib/set-metric-semantics";
 import {
   buildWorkoutHistoryHref,
   type HistoryContext,
@@ -134,6 +137,57 @@ function supportedMetricType(metricType: string) {
     "distance_duration",
     "activity",
   ].includes(metricType);
+}
+
+function historicalExerciseSemanticUnavailableReason(item: ExerciseDiscoveryItem) {
+  if (!supportedMetricType(item.metricType)) {
+    return "This exercise uses a performed measurement that retrospective workout entry does not support.";
+  }
+  if (
+    (item.metricType === "assisted_reps") !==
+    (item.loadSemantics === "assistance")
+  ) {
+    return "This exercise has a contradictory assistance definition and cannot be recorded truthfully.";
+  }
+  if (
+    (item.metricType === "duration" ||
+      item.metricType === "distance_duration") &&
+    item.loadSemantics !== "none" &&
+    item.loadSemantics !== "bodyweight"
+  ) {
+    return "This exercise requires load plus time or distance, a combined performed measurement this form cannot record truthfully.";
+  }
+  return null;
+}
+
+function programSubstitutionUnavailableReason(item: ExerciseDiscoveryItem) {
+  const semanticReason = historicalExerciseSemanticUnavailableReason(item);
+  if (semanticReason) return semanticReason;
+  if (item.activityClass !== "strength") {
+    return "Program substitutions must remain strength exercises; record independent activities outside this Program slot.";
+  }
+  if (![
+    "weight_reps",
+    "reps",
+    "assisted_reps",
+  ].includes(item.metricType)) {
+    return "This performed measurement cannot replace a strength set in a Program-linked historical workout.";
+  }
+  if ([
+    "conditioning",
+    "locomotion",
+    "mobility",
+    "stretch",
+  ].includes(item.movementPattern)) {
+    return "This movement cannot replace a strength set in a Program-linked historical workout.";
+  }
+  if (!isSupportedSetWriterSemanticDefinition({
+    metricType: item.metricType as PerformedMetricType,
+    loadSemantics: item.loadSemantics,
+  })) {
+    return "This exercise has a contradictory performed-measurement definition and cannot be recorded truthfully.";
+  }
+  return null;
 }
 
 function programTargetLabel(
@@ -669,11 +723,31 @@ function RetrospectiveWorkoutFields({
       ),
     [exerciseLibrary],
   );
-  const replacementPickerContract = useMemo(() => {
+  const historicalSemanticReasonByExerciseId = useMemo(
+    () =>
+      new Map(
+        exerciseLibrary.flatMap((exercise) => {
+          const reason = historicalExerciseSemanticUnavailableReason(exercise);
+          return reason ? [[exercise.id, reason] as const] : [];
+        }),
+      ),
+    [exerciseLibrary],
+  );
+  const performedExercisePickerContract = useMemo(() => {
     const allowedIds: string[] = [];
     const disabledReasons: Record<string, string> = {};
     for (const exercise of exerciseLibrary) {
-      const reason = workoutReplacementUnavailableReason(exercise);
+      const reason = programSubstitutionUnavailableReason(exercise);
+      if (reason) disabledReasons[exercise.id] = reason;
+      else allowedIds.push(exercise.id);
+    }
+    return { allowedIds, disabledReasons };
+  }, [exerciseLibrary]);
+  const historicalExercisePickerContract = useMemo(() => {
+    const allowedIds: string[] = [];
+    const disabledReasons: Record<string, string> = {};
+    for (const exercise of exerciseLibrary) {
+      const reason = historicalExerciseSemanticUnavailableReason(exercise);
       if (reason) disabledReasons[exercise.id] = reason;
       else allowedIds.push(exercise.id);
     }
@@ -740,6 +814,19 @@ function RetrospectiveWorkoutFields({
   }
 
   function review() {
+    const blockedCompletion = draft.exercises.find(
+      (exercise) =>
+        historicalSemanticReasonByExerciseId.has(exercise.exerciseId) &&
+        exercise.outcomes.some((outcome) => outcome.outcome === "completed"),
+    );
+    if (blockedCompletion) {
+      setNotice({
+        state: "needs_attention",
+        title: "Completed evidence needs a supported performed exercise",
+        description: `${blockedCompletion.name}: ${historicalSemanticReasonByExerciseId.get(blockedCompletion.exerciseId)} Choose a supported performed exercise if you completed something different; otherwise keep this planned slot Unknown or Skipped.`,
+      });
+      return;
+    }
     try {
       buildInput(draft, program, unit);
       setDraft((current) => ({ ...current, step: "review" }));
@@ -758,6 +845,20 @@ function RetrospectiveWorkoutFields({
   }
 
   function save() {
+    const blockedCompletion = draft.exercises.find(
+      (exercise) =>
+        historicalSemanticReasonByExerciseId.has(exercise.exerciseId) &&
+        exercise.outcomes.some((outcome) => outcome.outcome === "completed"),
+    );
+    if (blockedCompletion) {
+      setDraft((current) => ({ ...current, step: "facts" }));
+      setNotice({
+        state: "needs_attention",
+        title: "Completed evidence needs a supported performed exercise",
+        description: `${blockedCompletion.name}: ${historicalSemanticReasonByExerciseId.get(blockedCompletion.exerciseId)} Choose a supported performed exercise if you completed something different; otherwise keep this planned slot Unknown or Skipped.`,
+      });
+      return;
+    }
     let input: RetrospectiveWorkoutInput;
     try {
       input = buildInput(draft, program, unit);
@@ -1257,14 +1358,14 @@ function RetrospectiveWorkoutFields({
         <CardContent className="space-y-4">
           {draft.linkKind === "unlinked" && (
             <ExercisePicker
-              items={exerciseLibrary.filter((item) =>
-                supportedMetricType(item.metricType),
-              )}
+              items={exerciseLibrary}
+              allowedIds={historicalExercisePickerContract.allowedIds}
+              disabledReasons={historicalExercisePickerContract.disabledReasons}
               initialAvailability="all"
               allowUnavailableSelection
               triggerLabel="Add performed exercise"
               title="Choose the performed exercise"
-              description="Choose the exact supported variant. Current equipment availability is guidance only for this historical record."
+              description="Choose the exact variant you performed. Current equipment fit does not change a remembered historical fact; the measurement still has to fit this form."
               confirmLabel="Add to workout"
               largeTouchTargets
               onSelect={(exercise) => {
@@ -1346,14 +1447,14 @@ function RetrospectiveWorkoutFields({
                         items={exerciseLibrary}
                         selectedId={exercise.exerciseId}
                         allowedIds={[
-                          ...replacementPickerContract.allowedIds,
+                          ...performedExercisePickerContract.allowedIds,
                           ...(exercise.plannedExerciseId
                             ? [exercise.plannedExerciseId]
                             : []),
                         ]}
                         disabledReasons={Object.fromEntries(
                           Object.entries(
-                            replacementPickerContract.disabledReasons,
+                            performedExercisePickerContract.disabledReasons,
                           ).filter(
                             ([exerciseId]) =>
                               exerciseId !== exercise.plannedExerciseId,
@@ -1367,7 +1468,7 @@ function RetrospectiveWorkoutFields({
                             : `Performed: ${exercise.name}`
                         }
                         title="Choose the performed exercise"
-                        description={`Keep ${exercise.plannedExerciseName ?? "the Program exercise"} as the planned intent, or choose the exact supported catalog exercise actually performed.`}
+                        description={`Keep ${exercise.plannedExerciseName ?? "the Program exercise"} as the planned intent, or choose the exact supported catalog exercise actually performed. Current equipment-fit evidence does not change a remembered historical fact.`}
                         confirmLabel="Use as performed exercise"
                         largeTouchTargets
                         onSelect={(performed) =>
@@ -1407,6 +1508,23 @@ function RetrospectiveWorkoutFields({
                   </div>
                 )}
 
+                {historicalSemanticReasonByExerciseId.has(
+                  exercise.exerciseId,
+                ) && (
+                  <p
+                    id={`${exercise.id}-completion-limit`}
+                    className="text-sm text-muted-foreground"
+                  >
+                    Completed is unavailable for this measurement: {" "}
+                    {historicalSemanticReasonByExerciseId.get(
+                      exercise.exerciseId,
+                    )} {" "}
+                    Choose a supported performed exercise if you completed
+                    something different. Unknown and Skipped remain available
+                    for this planned evidence.
+                  </p>
+                )}
+
                 {exercise.outcomes.map((outcome, outcomeIndex) => (
                   <div
                     key={outcome.occurrenceId}
@@ -1433,6 +1551,13 @@ function RetrospectiveWorkoutFields({
                             : `set ${outcomeIndex + 1}`
                         } outcome`}
                         className="min-h-11 rounded-lg border border-input bg-background px-3 py-2 text-sm"
+                        aria-describedby={
+                          historicalSemanticReasonByExerciseId.has(
+                            exercise.exerciseId,
+                          )
+                            ? `${exercise.id}-completion-limit`
+                            : undefined
+                        }
                         value={outcome.outcome}
                         onChange={(event) =>
                           updateExercise(exerciseIndex, (current) => ({
@@ -1450,7 +1575,14 @@ function RetrospectiveWorkoutFields({
                         }
                       >
                         <option value="legacy_unrecorded">Unknown</option>
-                        <option value="completed">Completed</option>
+                        <option
+                          value="completed"
+                          disabled={historicalSemanticReasonByExerciseId.has(
+                            exercise.exerciseId,
+                          )}
+                        >
+                          Completed
+                        </option>
                         <option value="skipped">Skipped</option>
                       </select>
                     </div>

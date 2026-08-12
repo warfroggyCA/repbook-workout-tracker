@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { LibraryExerciseOption } from "@/services/routine-import";
 import { searchExerciseLibrary } from "@/services/exercise-library-search";
+import { resolveExerciseEquipmentFit } from "@/lib/exercise-equipment-fit";
 
 function exercise(
   id: string,
@@ -9,6 +10,34 @@ function exercise(
   family = "Lunge",
   muscles = family === "Bench Press" ? ["chest"] : ["quads"]
 ): LibraryExerciseOption {
+  const itemBacked = equipment.filter((type) => type !== "bodyweight" && type !== "plates");
+  const items = itemBacked.map((type, index) => ({
+    id: `${id}-item-${index}`,
+    type,
+    available: true,
+    attrs: {},
+  }));
+  const evidenceRevision = "a".repeat(32);
+  const equipmentFit = resolveExerciseEquipmentFit({
+    exerciseId: id,
+    requirements: equipment.map((equipmentType) => ({ equipmentType, minWeight: null })),
+    items,
+    assertions: items.map((item, index) => ({
+      id: `${id}-assertion-${index}`,
+      exerciseId: id,
+      equipmentItemId: item.id,
+      verdict: "compatible" as const,
+      reasonCode: "owner_verified" as const,
+      reasonNote: null,
+      provenance: "owner_review" as const,
+      semanticsVersion: 1,
+      evidenceRevision,
+      revision: 1,
+    })),
+    currentEvidenceRevisions: new Map(
+      items.map((item) => [item.id, evidenceRevision]),
+    ),
+  });
   return {
     id,
     familyId: "bench-press-family",
@@ -28,6 +57,9 @@ function exercise(
     constraintBlocked: false,
     unavailableReason: null,
     cautionBodyParts: [],
+    equipmentFitStatus: equipmentFit.status,
+    equipmentFitReason: equipmentFit.reason,
+    equipmentFit,
   };
 }
 

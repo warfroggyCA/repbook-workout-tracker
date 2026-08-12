@@ -11,7 +11,10 @@ import {
   setSaveStateLabel,
   targetResultLabel,
 } from "@/lib/exercise-card";
-import { exercisePickerSelectionState } from "@/lib/exercise-picker";
+import {
+  exercisePickerSelectionState,
+  reconcileExercisePickerInspection,
+} from "@/lib/exercise-picker";
 import { canCreateSuperset } from "@/lib/program-editor-client";
 import { fitRoutineSetNotes, moveRoutineItem } from "@/lib/routine-builder";
 import {
@@ -95,6 +98,19 @@ function exercise(
 }
 
 describe("exercise-card presentation rules", () => {
+  it("reconciles inspected replacement detail against refreshed stable identities", () => {
+    const inspected = { id: "candidate", available: true, label: "stale" };
+    const refreshed = { id: "candidate", available: false, label: "current" };
+    expect(reconcileExercisePickerInspection([refreshed], inspected)).toEqual({
+      display: refreshed,
+      current: refreshed,
+    });
+    expect(reconcileExercisePickerInspection([], inspected)).toEqual({
+      display: inspected,
+      current: null,
+    });
+  });
+
   it("keeps comparison unavailable after equipment ack until the server projection refreshes", () => {
     expect(previousComparableIsTemporarilyUnavailable({
       equipmentOutboxHydrated: false,

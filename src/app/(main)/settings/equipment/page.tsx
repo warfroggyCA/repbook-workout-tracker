@@ -3,7 +3,9 @@ import { getDb } from "@/db";
 import { getCurrentUser } from "@/lib/user";
 import { isSettingsManagementEnabled } from "@/lib/settings-management-feature";
 import { loadEquipmentInventoryDocument } from "@/services/equipment-inventory";
+import { loadExerciseEquipmentFitManagementDocument } from "@/services/exercise-equipment-fit-management";
 import { EquipmentManager } from "@/components/equipment/equipment-manager";
+import { ExerciseEquipmentFitManager } from "@/components/equipment/exercise-equipment-fit-manager";
 
 /**
  * Returning-user equipment management (UI-005). Loads the complete lossless
@@ -13,7 +15,10 @@ export default async function ManageEquipmentPage() {
   if (!isSettingsManagementEnabled()) notFound();
   const user = await getCurrentUser();
   const db = await getDb();
-  const loaded = await loadEquipmentInventoryDocument(db, user.id);
+  const [loaded, fitDocument] = await Promise.all([
+    loadEquipmentInventoryDocument(db, user.id),
+    loadExerciseEquipmentFitManagementDocument(db, user.id),
+  ]);
   if (!loaded) notFound();
 
   return (
@@ -29,6 +34,7 @@ export default async function ManageEquipmentPage() {
         definitions={loaded.definitions}
         ambiguousBarTypes={loaded.ambiguousBarTypes}
       />
+      <ExerciseEquipmentFitManager document={fitDocument} />
     </main>
   );
 }

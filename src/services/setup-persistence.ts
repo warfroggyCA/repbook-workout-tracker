@@ -11,7 +11,7 @@ import {
   validateEquipmentInventoryDocument,
 } from "@/lib/equipment-inventory-contract";
 import {
-  inventoryRevisionExpression,
+  inventoryRevisionAfterOwnerLockExpression,
   loadEquipmentInventoryDocument,
   validateBarDraftAgainstCurrent,
 } from "@/services/equipment-inventory";
@@ -187,7 +187,7 @@ async function executeInventorySave(
 
   const query = sql`
     WITH target_profile AS MATERIALIZED (
-      SELECT id, setup_state
+      SELECT id, user_id, setup_state
       FROM user_profiles
       WHERE user_id = ${userId}::uuid
       FOR UPDATE
@@ -200,7 +200,8 @@ async function executeInventorySave(
         AND confirmed = false
       FOR UPDATE
     ), current_revision AS MATERIALIZED (
-      SELECT ${inventoryRevisionExpression(userId)} AS revision
+      SELECT ${inventoryRevisionAfterOwnerLockExpression(sql`profile.user_id`)} AS revision
+      FROM target_profile profile
     ), equipment_input AS MATERIALIZED (
       SELECT * FROM jsonb_to_recordset(${JSON.stringify(equipmentInput)}::jsonb) AS x(
         input_id uuid, candidate_id uuid, requested_id uuid,
@@ -600,6 +601,7 @@ async function executeInventorySave(
       FROM bar_input input
       JOIN bar_matches matched ON matched.input_id = input.input_id
       JOIN current_bars current ON current.id = matched.current_id
+      CROSS JOIN equipment_type_writes_finished
       WHERE target.id = current.id
         AND EXISTS (SELECT 1 FROM save_gate)
         AND ROW(
@@ -633,6 +635,7 @@ async function executeInventorySave(
         coalesce(input.collar_weight, 0), input.quantity, input.label
       FROM bar_input input
       JOIN bar_matches matched ON matched.input_id = input.input_id
+      CROSS JOIN equipment_type_writes_finished
       WHERE matched.current_id IS NULL
         AND EXISTS (SELECT 1 FROM save_gate)
       RETURNING *
@@ -1292,7 +1295,8 @@ export async function saveInventoryDocumentForManagement(
   const association = associateBarConfigurations(document.items, document.bars);
   const barItemByIndex = new Map(
     association.matched.flatMap(({ itemIndex, barIndex }) => {
-      const itemId = document.items[itemIndex]?.id;
+      const item = document.items[itemIndex];
+      const itemId = item?.id ?? item?.draftId;
       return itemId ? [[barIndex, itemId] as const] : [];
     }),
   );

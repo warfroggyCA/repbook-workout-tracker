@@ -95,7 +95,7 @@ describe("Repbook v2 H05 Review portability", () => {
       new Date("2026-08-07T13:00:00.000Z"),
       "v2-h05-test",
     );
-    expect(SNAPSHOT_SCHEMA_VERSION).toBe("32");
+    expect(SNAPSHOT_SCHEMA_VERSION).toBe("33");
     expect(current.tables.recommendations).toEqual([
       expect.objectContaining({
         review_revision: 1,
@@ -193,7 +193,7 @@ describe("Repbook v2 H05 Review portability", () => {
       delete (value as Record<string, unknown>).review_snapshot;
     }
     const upgraded = upgradeSnapshotPayload(legacy);
-    expect(upgraded.schemaVersion).toBe("32");
+    expect(upgraded.schemaVersion).toBe("33");
     expect(upgraded.tables.recommendations).toEqual([
       expect.objectContaining({
         review_revision: 0,

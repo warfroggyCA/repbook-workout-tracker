@@ -5,16 +5,20 @@ import { resultRows } from "@/db/result";
 import {
   completedSets,
   exerciseAliases,
+  exerciseEquipmentFitAssertions,
   exerciseEquipmentRequirements,
   exerciseFamilies,
+  equipmentItems,
   exercises,
   exerciseSources,
   recordVersions,
   sessionExercises,
   sessionOccurrences,
+  userProfiles,
 } from "@/db/schema";
 import { buildJsonBackup } from "@/services/export";
 import { getExerciseReplacementOptions } from "@/services/exercise-replacements";
+import { exerciseEquipmentFitEvidenceRevisionExpression } from "@/services/exercise-equipment-fit-evidence";
 import {
   restoreRecordVersion,
   updateSessionExerciseWithVersion,
@@ -250,8 +254,36 @@ describe("0069 bodyweight Bulgarian split-squat performed variant", () => {
     // the remaining additive migrations before exercising current services.
     await migrateTestDatabaseThrough(
       database,
-      "0080_session_equipment_requirements_snapshot",
+      "0081_exercise_equipment_fit_assertions",
     );
+    await db.insert(userProfiles).values({ userId });
+    const benchId = crypto.randomUUID();
+    await db.insert(equipmentItems).values({
+      id: benchId,
+      userId,
+      type: "bench",
+      label: "Synthetic owner bench",
+      attrs: {},
+      available: true,
+    });
+    const [{ evidenceRevision }] = resultRows<{ evidenceRevision: string }>(
+      await db.execute(sql`
+        SELECT ${exerciseEquipmentFitEvidenceRevisionExpression(
+          userId,
+          bodyweight!.id,
+          benchId,
+        )} AS "evidenceRevision"
+      `),
+    );
+    await db.insert(exerciseEquipmentFitAssertions).values({
+      userId,
+      exerciseId: bodyweight!.id,
+      equipmentItemId: benchId,
+      verdict: "compatible",
+      reasonCode: "owner_verified",
+      reasonNote: null,
+      evidenceRevision,
+    });
 
     const options = await getExerciseReplacementOptions(
       db,
@@ -271,7 +303,7 @@ describe("0069 bodyweight Bulgarian split-squat performed variant", () => {
       metricType: "reps",
       loadSemantics: "bodyweight",
       available: true,
-      missingEquipment: ["bench"],
+      missingEquipment: [],
     });
 
     const firstVersionId = crypto.randomUUID();

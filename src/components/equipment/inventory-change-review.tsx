@@ -55,6 +55,7 @@ export function InventoryChangeReview({
   const unavailable = preview.impact.exercisesBecomingUnavailable;
   const nowAvailable = preview.impact.exercisesBecomingAvailable;
   const affectedSlots = preview.impact.affectedProgramSlots;
+  const fitReviews = preview.impact.fitReviewsRequiringReview;
 
   return (
     <div className="flex flex-col gap-3 [&_button]:min-h-11 [&_button]:min-w-11">
@@ -176,6 +177,26 @@ export function InventoryChangeReview({
         </Section>
       )}
 
+      {fitReviews.length > 0 && (
+        <Section title="Movement reviews to revisit">
+          <p className="text-sm">
+            This save changes capability evidence used by these exact exercise-and-item
+            reviews. They will be treated as unknown until you review and save them again:
+          </p>
+          <ul className="mt-2 list-inside list-disc text-sm text-muted-foreground">
+            {fitReviews.map((review) => (
+              <li key={review.assertionId}>
+                {review.exerciseName} with {review.equipmentLabel}
+              </li>
+            ))}
+          </ul>
+          <p className="mt-2 text-xs leading-5 text-muted-foreground">
+            Existing Programs, active-session snapshots, completed workouts, imported
+            History, and earlier Program versions are not rewritten.
+          </p>
+        </Section>
+      )}
+
       <Section title="Training impact">
         {unavailable.length === 0 && nowAvailable.length === 0 ? (
           <p className="text-sm text-muted-foreground">
@@ -233,14 +254,13 @@ export function InventoryChangeReview({
           </div>
         )}
         <p className="mt-2 text-xs leading-5 text-muted-foreground">
-          Availability here uses the same rules the app enforces: broad
-          equipment type, whether it is active, your constraints, and an
-          optional maximum-weight requirement. Exercise discovery and workout
-          alternatives use the saved inventory on their next server read; an
-          already-open alternatives list may look stale, but every choice is
-          rechecked on the server before it applies. Active, current, and
-          historical workouts remain unchanged, the current Program is not
-          rewritten, and Coach reassessment is separate future work.
+          Broad availability here reports equipment type, active status,
+          constraints, and an optional maximum-weight requirement. It is not
+          proof that an exact exercise-and-item pair works. Exercise discovery,
+          Coach, and workout alternatives also require current positive exact-pair
+          evidence, and every choice is rechecked on the server before it applies.
+          Active, current, and historical workouts remain unchanged, and the
+          current Program is not rewritten.
         </p>
       </Section>
 
@@ -255,8 +275,10 @@ export function InventoryChangeReview({
             htmlFor="confirm-capability-reduction"
             className="text-sm leading-5"
           >
-            I understand this save removes equipment or reduces what I can
-            lift, and the changes listed above are what I want.
+            I understand this save removes equipment, reduces what I can lift,
+            makes future loading guidance less precise, or makes the listed
+            movement reviews unknown until I review them again, and these are
+            the changes I want.
           </Label>
         </div>
       )}

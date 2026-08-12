@@ -3,6 +3,7 @@ import { eq } from "drizzle-orm";
 import {
   auditLogs,
   completedSets,
+  exerciseEquipmentFitAssertions,
   exercisePrescriptions,
   exercises,
   progressionJobs,
@@ -876,6 +877,7 @@ describe("retrospective workout service", () => {
         movementPattern: "core",
         primaryMuscles: ["core"],
         metricType: "duration",
+        loadSemantics: "none",
       })
       .returning({ id: exercises.id });
     const invalid: RetrospectiveWorkoutInput = input();
@@ -985,6 +987,194 @@ describe("retrospective workout service", () => {
           .where(eq(workoutSessions.id, reviewed.sessionId)),
       ).toHaveLength(0);
     }
+  });
+
+  it("records a supported performed substitution when current equipment fit is unknown", async () => {
+    const [{ id: performedExerciseId }] = await database.db
+      .insert(exercises)
+      .values({
+        name: "Remembered cable extension",
+        movementPattern: "isolation_arms",
+        primaryMuscles: ["triceps"],
+        metricType: "weight_reps",
+      })
+      .returning({ id: exercises.id });
+    const reviewed = input();
+    reviewed.link = {
+      kind: "program_day",
+      programId,
+      programVersionId: versionId,
+      templateId,
+      dayLineageId,
+    };
+    reviewed.exercises[0].sourceTemplateExerciseId = slotId;
+    reviewed.exercises[0].exerciseId = performedExerciseId;
+    reviewed.exercises[0].substitutionReason = "other";
+
+    expect(
+      await createRetrospectiveWorkout(database.db, userId, reviewed, {
+        now: () => now,
+      }),
+    ).toMatchObject({ ok: true, outcome: "created" });
+    expect(
+      await database.db.select().from(exerciseEquipmentFitAssertions),
+    ).toHaveLength(0);
+    expect(
+      await database.db
+        .select({ exerciseId: sessionExercises.exerciseId })
+        .from(sessionExercises)
+        .where(eq(sessionExercises.sessionId, reviewed.sessionId)),
+    ).toEqual([{ exerciseId: performedExerciseId }]);
+  });
+
+  it("atomically rejects an unlinked performed exercise with contradictory set semantics", async () => {
+    const [{ id: malformedExerciseId }] = await database.db
+      .insert(exercises)
+      .values({
+        name: "Malformed assisted substitution",
+        movementPattern: "isolation_arms",
+        primaryMuscles: ["triceps"],
+        metricType: "assisted_reps",
+        loadSemantics: "total",
+      })
+      .returning({ id: exercises.id });
+    const reviewed = input();
+    reviewed.exercises[0].exerciseId = malformedExerciseId;
+
+    expect(
+      await createRetrospectiveWorkout(database.db, userId, reviewed, {
+        now: () => now,
+      }),
+    ).toMatchObject({ ok: false, code: "invalid_reference" });
+    expect(
+      await database.db
+        .select()
+        .from(workoutSessions)
+        .where(eq(workoutSessions.id, reviewed.sessionId)),
+    ).toHaveLength(0);
+    expect(
+      await database.db
+        .select()
+        .from(completedSets)
+        .where(eq(completedSets.id, reviewed.setId)),
+    ).toHaveLength(0);
+    expect(
+      await database.db
+        .select()
+        .from(auditLogs)
+        .where(eq(auditLogs.entityId, reviewed.requestId)),
+    ).toHaveLength(0);
+  });
+
+  it("preserves an unsupported planned slot with unknown evidence while recording another slot", async () => {
+    const [{ id: legacyPlannedExerciseId }] = await database.db
+      .insert(exercises)
+      .values({
+        name: "Legacy weighted hold",
+        movementPattern: "core",
+        primaryMuscles: ["core"],
+        metricType: "duration",
+        loadSemantics: "added_weight",
+      })
+      .returning({ id: exercises.id });
+    let linkedProgramId = "";
+    let linkedVersionId = "";
+    let linkedTemplateId = "";
+    let linkedDayLineageId = "";
+    let recordedSlotId = "";
+    let legacySlotId = "";
+    await database.db.transaction(async (tx) => {
+      [{ id: linkedProgramId }] = await tx
+        .insert(programs)
+        .values({
+          userId,
+          name: "Legacy History Program",
+          status: "archived",
+          archivedAt: new Date(),
+        })
+        .returning({ id: programs.id });
+      [{ id: linkedVersionId }] = await tx
+        .insert(programVersions)
+        .values({ programId: linkedProgramId, name: "Legacy History Program" })
+        .returning({ id: programVersions.id });
+      [{ id: linkedTemplateId, lineageId: linkedDayLineageId }] = await tx
+        .insert(workoutTemplates)
+        .values({ programVersionId: linkedVersionId, name: "Legacy Day" })
+        .returning({
+          id: workoutTemplates.id,
+          lineageId: workoutTemplates.lineageId,
+        });
+      [{ id: recordedSlotId }] = await tx
+        .insert(workoutTemplateExercises)
+        .values({
+          workoutTemplateId: linkedTemplateId,
+          exerciseId,
+          orderIdx: 0,
+        })
+        .returning({ id: workoutTemplateExercises.id });
+      [{ id: legacySlotId }] = await tx
+        .insert(workoutTemplateExercises)
+        .values({
+          workoutTemplateId: linkedTemplateId,
+          exerciseId: legacyPlannedExerciseId,
+          orderIdx: 1,
+        })
+        .returning({ id: workoutTemplateExercises.id });
+      await tx.insert(exercisePrescriptions).values([{
+        templateExerciseId: recordedSlotId,
+        sets: 1,
+        repRangeMin: 8,
+        repRangeMax: 10,
+      }, {
+        templateExerciseId: legacySlotId,
+        sets: 1,
+        repRangeMin: 1,
+        repRangeMax: 1,
+      }]);
+      await tx
+        .update(programs)
+        .set({ status: "archived", archivedAt: new Date() })
+        .where(eq(programs.id, programId));
+      await tx
+        .update(programs)
+        .set({
+          status: "active",
+          archivedAt: null,
+          currentVersionId: linkedVersionId,
+        })
+        .where(eq(programs.id, linkedProgramId));
+    });
+    const reviewed = input();
+    reviewed.link = {
+      kind: "program_day",
+      programId: linkedProgramId,
+      programVersionId: linkedVersionId,
+      templateId: linkedTemplateId,
+      dayLineageId: linkedDayLineageId,
+    };
+    reviewed.exercises[0].sourceTemplateExerciseId = recordedSlotId;
+    reviewed.exercises.push({
+      id: crypto.randomUUID(),
+      exerciseId: legacyPlannedExerciseId,
+      sourceTemplateExerciseId: legacySlotId,
+      outcomes: [{
+        occurrenceId: crypto.randomUUID(),
+        ordinal: 0,
+        outcome: "legacy_unrecorded",
+      }],
+    });
+
+    expect(
+      await createRetrospectiveWorkout(database.db, userId, reviewed, {
+        now: () => now,
+      }),
+    ).toMatchObject({ ok: true, outcome: "created" });
+    expect(
+      await database.db
+        .select({ id: completedSets.id })
+        .from(completedSets)
+        .where(eq(completedSets.id, reviewed.setId)),
+    ).toEqual([{ id: reviewed.setId }]);
   });
 
   it("reports a linked skipped-only exercise as skipped rather than as planned", async () => {

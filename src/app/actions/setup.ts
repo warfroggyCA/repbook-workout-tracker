@@ -64,6 +64,8 @@ import {
   AIControlError,
   runControlledStructuredGeneration,
 } from "@/services/ai-control";
+import { createSetupEquipmentFitReviewToken } from "@/services/setup-equipment-fit-review";
+import { loadOwnerEquipmentFitReviewRevision } from "@/services/equipment-fit-review-revision";
 
 /** Append a completed step to the profile's setup state (idempotent). */
 async function markStepComplete(
@@ -947,9 +949,16 @@ export async function saveCoachingPrefs(
  * Turns the confirmed routine draft into ProgramVersion v1 (plan §4 step 6).
  * Archives any previously active program so exactly one is active.
  */
-export async function activateSetupProgram(): Promise<
+export async function activateSetupProgram(input: unknown): Promise<
   { ok: true } | { ok: false; reason: string }
 > {
+  const activationReview = z.object({
+    equipmentFitReviewed: z.boolean(),
+    equipmentFitReviewToken: z.string().regex(/^[0-9a-f]{64}$/),
+  }).safeParse(input);
+  if (!activationReview.success) {
+    return { ok: false, reason: "Confirm the final equipment-fit review before activating." };
+  }
   const user = await getCurrentUser();
   const db = await getDb();
 
@@ -967,6 +976,24 @@ export async function activateSetupProgram(): Promise<
   const draft = routineDraftSchema.safeParse(user.profile.setupState.routineDraft);
   if (!draft.success) {
     return { ok: false, reason: "Build your routine (step 4) before activating." };
+  }
+  const equipmentFitReviewRevision = await loadOwnerEquipmentFitReviewRevision(
+    db,
+    user.id,
+  );
+  if (!equipmentFitReviewRevision) {
+    return { ok: false, reason: "Reload setup before activating." };
+  }
+  const currentEquipmentFitReviewToken = createSetupEquipmentFitReviewToken({
+    routineDraft: user.profile.setupState.routineDraft,
+    equipmentFitReviewRevision,
+  });
+  if (activationReview.data.equipmentFitReviewToken !== currentEquipmentFitReviewToken) {
+    return {
+      ok: false,
+      reason:
+        "The routine or equipment changed after your final review. Reload this step and review the exact setup again.",
+    };
   }
 
   const safety = await createAutomaticSafetySnapshot(
@@ -1026,6 +1053,11 @@ export async function activateSetupProgram(): Promise<
     expectedSetupDraft: user.profile.setupState.routineDraft,
     completeSetup: true,
     structuredIntentReviewed: true,
+    // Guided setup reviewed this routine against the just-saved inventory.
+    // Unknown fit is resolved for this activation only; no durable assertion
+    // is inferred from broad type ownership.
+    allowReviewedUnknownEquipmentFit: activationReview.data.equipmentFitReviewed,
+    expectedEquipmentFitReviewRevision: equipmentFitReviewRevision,
   });
   if (!activated.ok) return activated;
 

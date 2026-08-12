@@ -19,6 +19,7 @@ import {
   resolveSessionEquipmentAvailability,
   sessionEquipmentSelectionSourceRevisionExpression,
 } from "@/services/session-equipment-selection";
+import { exerciseEquipmentRequirementFitSatisfiedExpression } from "@/services/exercise-equipment-fit";
 import { sessionEquipmentRequirementsSnapshotExpression } from "@/services/session-equipment-requirements";
 import { historyRevisionLockSql } from "@/services/history-revision-lock";
 import {
@@ -29,6 +30,10 @@ import { getExerciseDiscoveryLibrary } from "@/services/exercise-discovery";
 import { actionableProgramDayWarmupItemsSql } from "@/services/program-warmup-compatibility";
 import { workoutReplacementUnavailableReason } from "@/lib/exercise-replacements";
 import { isValidIanaTimezone } from "@/lib/workout-calendar";
+import {
+  loadOwnerEquipmentFitReviewRevision,
+  ownerEquipmentFitReviewRevisionExpression,
+} from "@/services/equipment-fit-review-revision";
 import {
   buildPerformedSetMeasurement,
   PERFORMED_LOAD_SEMANTICS,
@@ -451,10 +456,28 @@ export async function addWorkoutExercise(
         "That exercise is not available with the current equipment and constraints.",
     };
   }
+  const expectedEquipmentFitReviewRevision =
+    await loadOwnerEquipmentFitReviewRevision(db, userId);
+  if (!expectedEquipmentFitReviewRevision) {
+    return {
+      outcome: "exercise_unavailable",
+      reason: "Current equipment-fit evidence is unavailable. Reload the workout before adding an exercise.",
+    };
+  }
 
   try {
     const row = resultRows(await db.execute(sql`
-      WITH existing AS MATERIALIZED (
+      WITH target_profile AS MATERIALIZED (
+        SELECT profile.user_id
+        FROM user_profiles profile
+        WHERE profile.user_id = ${userId}::uuid
+        FOR UPDATE
+      ), equipment_fit_gate AS MATERIALIZED (
+        SELECT profile.user_id
+        FROM target_profile profile
+        WHERE ${ownerEquipmentFitReviewRevisionExpression(sql`profile.user_id`)}
+          = ${expectedEquipmentFitReviewRevision}::text
+      ), existing AS MATERIALIZED (
         SELECT entity_id, cause_ref
         FROM audit_logs
         WHERE user_id = ${userId}::uuid
@@ -470,6 +493,7 @@ export async function addWorkoutExercise(
       ), eligible_session AS MATERIALIZED (
         SELECT session.id, session.history_revision
         FROM workout_sessions session
+        JOIN equipment_fit_gate fit_gate ON true
         WHERE session.id = ${parsed.sessionId}::uuid
           AND session.user_id = ${userId}::uuid
           AND session.status = 'in_progress'
@@ -482,6 +506,18 @@ export async function addWorkoutExercise(
         FROM exercises exercise
         WHERE exercise.id = ${parsed.exerciseId}::uuid
           AND (exercise.user_id IS NULL OR exercise.user_id = ${userId}::uuid)
+          AND NOT EXISTS (
+            SELECT 1
+            FROM exercise_equipment_requirements fit_requirement
+            WHERE fit_requirement.exercise_id = exercise.id
+              AND NOT ${exerciseEquipmentRequirementFitSatisfiedExpression({
+                userId,
+                exerciseId: sql`exercise.id`,
+                equipmentType: sql`fit_requirement.equipment_type`,
+                equipmentDefinitionId: sql`fit_requirement.equipment_definition_id`,
+                minWeight: sql`fit_requirement.min_weight`,
+              })}
+          )
       ), insertion AS MATERIALIZED (
         SELECT eligible.id AS session_id,
                coalesce((
@@ -1880,7 +1916,14 @@ export async function logWorkoutSet(
     userId,
     input.sessionExerciseId,
   );
-  if (!availability || availability.availableOptionCount > 0) return initial;
+  if (
+    !availability ||
+    availability.availableOptionCount > 0 ||
+    (availability.equipmentFitStatus !== "compatible" &&
+      availability.equipmentFitStatus !== "not_required")
+  ) {
+    return initial;
+  }
   return logWorkoutSetAttempt(db, userId, input, dependencies, availability);
 }
 
@@ -2210,8 +2253,7 @@ async function logWorkoutSetAttempt(
                  AND ${sessionEquipmentSelectionSourceRevisionExpression(
                    userId,
                    equipmentExerciseId,
-                   equipmentAvailability?.requirementsEvidence === "legacy_unknown"
-                     && !(equipmentAvailability?.usesPrescribedMeaning ?? false),
+                   true,
                    sql`se.equipment_requirements_snapshot`,
                  )} = ${equipmentSourceRevision}
                )

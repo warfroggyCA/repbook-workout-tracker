@@ -7,6 +7,7 @@ import { FlaskConical, Play, RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   createSimulationWorkspace,
+  simulationDayEquipmentFitBlockers,
   type SimulationSourceSnapshot,
   type SimulationWorkspace,
 } from "@/lib/workout-simulation";
@@ -128,7 +129,9 @@ export function SimulationLauncher({
           Start a new simulation
         </h2>
         <div className="grid gap-3 sm:grid-cols-2">
-          {source.days.map((day, index) => (
+          {source.days.map((day, index) => {
+            const fitBlockers = simulationDayEquipmentFitBlockers(day);
+            return (
             <article key={day.id} className="rounded-2xl border bg-card p-4 shadow-sm">
               <FlaskConical aria-hidden="true" className="size-5 text-amber-700 dark:text-amber-300" />
               <h3 className="mt-2 font-semibold">{day.name}</h3>
@@ -136,16 +139,23 @@ export function SimulationLauncher({
                 {day.exercises.length} exercises · {day.warmups.length} day warm-up step
                 {day.warmups.length === 1 ? "" : "s"}
               </p>
+              {fitBlockers.length > 0 && (
+                <p role="status" className="mt-3 rounded-lg border border-amber-600/50 bg-amber-50 p-2 text-sm dark:bg-amber-950/30">
+                  Equipment review required for {fitBlockers[0].name}: {fitBlockers[0].equipmentFit.reason}
+                </p>
+              )}
               <Button
                 className="mt-4 w-full"
                 size="touch"
                 variant="outline"
+                disabled={fitBlockers.length > 0}
                 onClick={() => start(index)}
               >
                 Start {day.name} simulation
               </Button>
             </article>
-          ))}
+            );
+          })}
         </div>
       </section>
     </main>

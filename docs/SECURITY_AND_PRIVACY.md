@@ -42,12 +42,37 @@ records; the existing automatic retention window remains the fallback if
 immediate cleanup fails.
 
 The review can change prescriptions and mappings only through server-validated
-catalog identities and bounds. Publication also requires a server-validated,
-durably retained owner attestation that every selected movement works with the
-exact physical setup. Exact matching retry is idempotent, changed
+catalog identities and bounds. Publication also requires a server-validated
+owner attestation that every selected movement works with the exact physical
+setup. That PII-01A attestation applies only to the reviewed publication; it is
+not durable exercise-and-item evidence and cannot override a current retained
+incompatibility or missing item. Exact matching retry is idempotent, changed
 identity reuse conflicts, and the Program write plus import receipt is atomic.
+The reviewed revision covers current owner inventory and fit assertions plus
+owner-visible broad/exact exercise requirements and definition semantics, and
+is repeated after the owner publication lock so a concurrent semantic change
+cannot reuse the earlier attestation.
 No external structured package upload or automatic provider transmission is
 introduced by the `program-input/1` exchange foundation.
+
+PII-01B retained fit assertions are authenticated owner data bound to one
+stable exercise ID and one exact owner-scoped equipment-item ID. Server writes
+repeat ownership, global-or-same-owner exercise scope, current revision,
+semantic evidence, and idempotency checks inside the atomic mutation. A
+cross-owner or missing identity shares the same non-enumerating stale boundary.
+Display labels and broad equipment categories are presentation only. Optional
+owner reason notes are bounded, remain inside the private owner data boundary,
+and are never included in diagnostic logs; logs use only the established coarse
+equipment failure categories.
+
+Full JSON and snapshot schema 33 contain the current relation because they are
+owner backups. Recovery validates owner scope, references, closed verdict and
+reason semantics, provenance, evidence shape, and revision before restoring it.
+Schema 32 restores as an empty relation, and History-only restore preserves the
+destination owner's current setup truth. Workout CSV, historical Markdown, and
+purpose-limited analysis packages do not expose these current owner notes or
+misstate them as performed workout evidence. Account deletion cascades the
+owner relation; deleting or archiving workout History does not touch it.
 
 Active-workout equipment preparation is also owner-scoped. New workout
 exercise rows retain the reviewed equipment-requirement identities needed to

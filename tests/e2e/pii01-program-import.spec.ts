@@ -180,6 +180,7 @@ test("reviews and publishes a multi-day Program into an ordered active workout",
   await expect(easyBike.getByText("Saved", { exact: true })).toBeVisible();
   const emptyBar = warmup.locator("li").filter({ hasText: "Empty bar" }).first();
   const emptyBarCheck = emptyBar.getByRole("checkbox", { name: "Mark Empty bar complete", exact: true });
+  await expect(emptyBarCheck).toBeEnabled();
   await emptyBarCheck.focus();
   await page.keyboard.press("Enter");
   await expect(emptyBar.getByRole("button", { name: "Undo completion", exact: true })).toBeVisible();

@@ -142,4 +142,29 @@ describe("Program Preflight", () => {
         ?.reason,
     ).toContain("does not prove");
   });
+
+  it("surfaces stable-item equipment fit as its own blocking evidence", () => {
+    const document = fixture();
+    const slotId = document.days[0].exercises[0].lineageId;
+    const equipmentItemId = crypto.randomUUID();
+    const result = runProgramPreflight(document, {
+      equipmentFitBySlot: {
+        [slotId]: {
+          status: "incompatible",
+          reason: "The reviewed cable station cannot reach the required pulley position.",
+          equipmentItemIds: [equipmentItemId],
+        },
+      },
+    });
+
+    expect(result.findings).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        severity: "blocking",
+        code: "equipment_fit_incompatible",
+        reason: expect.stringContaining("pulley position"),
+        evidenceCount: 1,
+        slotLineageId: slotId,
+      }),
+    ]));
+  });
 });

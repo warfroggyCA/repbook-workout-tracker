@@ -7,6 +7,8 @@ import { eq } from "drizzle-orm";
 import * as schema from "@/db/schema";
 import {
   exercises,
+  equipmentItems,
+  exerciseEquipmentFitAssertions,
   exerciseEquipmentRequirements,
   aiParsingEvents,
   importEvents,
@@ -23,6 +25,8 @@ import {
 } from "@/lib/program-document";
 import { buildRoutineImportStagePayload } from "@/services/routine-import";
 import { activateProgramAtomically } from "@/services/program-activation";
+import { saveExerciseEquipmentFitAssertion } from "@/services/exercise-equipment-fit-management";
+import { loadOwnerEquipmentFitReviewRevision } from "@/services/equipment-fit-review-revision";
 
 const mocked = vi.hoisted(() => ({
   db: null as unknown,
@@ -142,12 +146,15 @@ Ramp-up: Empty bar | reps=10`)!;
       orderingPolicy: "preserve" as const,
       pairingPolicy: "preserve" as const,
     };
+    const equipmentFitReviewRevision = await loadOwnerEquipmentFitReviewRevision(db, userId);
+    if (!equipmentFitReviewRevision) throw new Error("Synthetic import fit review was missing.");
     const input: ConfirmImportInput = {
       schemaVersion: "program-input-review/1",
       importEventId: event.id,
       stageDigest: stage.stageDigest,
       baseProgramVersionId,
       equipmentFitReviewed: true,
+      equipmentFitReviewRevision,
       programName: "Reviewed import",
       days: [{
         lineageId: day.lineageId,
@@ -300,7 +307,7 @@ Ramp-up: Empty bar | reps=10`;
     expect(await db.query.programVersions.findMany()).toHaveLength(1);
   }, 30_000);
 
-  it("requires a durable exact-equipment-fit attestation", async () => {
+  it("requires the one-publication exact-equipment-fit review attestation", async () => {
     const staged = await stageReview();
     const result = await confirmImport({
       ...staged.input,
@@ -312,6 +319,83 @@ Ramp-up: Empty bar | reps=10`;
     expect(await db.query.importEvents.findFirst({
       where: eq(importEvents.id, staged.eventId),
     })).toMatchObject({ status: "parsed" });
+  }, 30_000);
+
+  it("uses the PII-01A attestation for durable unknown once without inventing a retained fit", async () => {
+    await db.insert(exerciseEquipmentRequirements).values({
+      exerciseId,
+      equipmentType: "barbell",
+    });
+    await db.insert(equipmentItems).values({
+      userId,
+      type: "barbell",
+      label: "Owner bar",
+      attrs: { maxWeight: 300 },
+    });
+    const staged = await stageReview();
+    const result = await confirmImport(staged.input);
+    expect(result.ok).toBe(true);
+    expect(await db.select().from(exerciseEquipmentFitAssertions)).toEqual([]);
+  }, 30_000);
+
+  it("rejects an import when exercise equipment requirements change after the one-publication review", async () => {
+    await db.insert(exerciseEquipmentRequirements).values({
+      exerciseId,
+      equipmentType: "barbell",
+    });
+    await db.insert(equipmentItems).values({
+      userId,
+      type: "barbell",
+      label: "Reviewed owner bar",
+      attrs: { maxWeight: 300 },
+    });
+    const staged = await stageReview();
+
+    await db.update(exerciseEquipmentRequirements)
+      .set({ minWeight: 100 })
+      .where(eq(exerciseEquipmentRequirements.exerciseId, exerciseId));
+
+    await expect(confirmImport(staged.input)).resolves.toEqual({
+      ok: false,
+      reason:
+        "Your equipment or retained movement compatibility changed after the final review. Nothing was published; reload this review and check the exact setup again.",
+    });
+    expect(mocked.createSafetySnapshot).not.toHaveBeenCalled();
+    expect(await db.query.programVersions.findMany()).toHaveLength(0);
+    expect(await db.query.importEvents.findFirst({
+      where: eq(importEvents.id, staged.eventId),
+    })).toMatchObject({ status: "parsed" });
+  }, 30_000);
+
+  it("lets a current exact incompatibility override the PII-01A attestation", async () => {
+    await db.insert(exerciseEquipmentRequirements).values({
+      exerciseId,
+      equipmentType: "barbell",
+    });
+    const [item] = await db.insert(equipmentItems).values({
+      userId,
+      type: "barbell",
+      label: "Owner bar",
+      attrs: { maxWeight: 300 },
+    }).returning({ id: equipmentItems.id });
+    const saved = await saveExerciseEquipmentFitAssertion(db, userId, {
+      mutationId: crypto.randomUUID(),
+      assertionId: null,
+      exerciseId,
+      equipmentItemId: item.id,
+      verdict: "incompatible",
+      reasonCode: "safety_constraint",
+      reasonNote: "This exact setup is not usable for the reviewed movement.",
+      expectedRevision: null,
+    });
+    expect(saved.ok).toBe(true);
+
+    const staged = await stageReview();
+    const result = await confirmImport(staged.input);
+    expect(result).toMatchObject({ ok: false });
+    if (result.ok) throw new Error("Expected retained incompatibility to block publication.");
+    expect(result.reason).toContain("explicitly incompatible");
+    expect(await db.query.programVersions.findMany()).toHaveLength(0);
   }, 30_000);
 
   it("rejects forged staged identities and one-member pairing groups", async () => {

@@ -1,6 +1,9 @@
 import { and, eq } from "drizzle-orm";
 import { getDb } from "@/db";
 import {
+  equipmentItems,
+  exerciseEquipmentFitAssertions,
+  exercises,
   programs,
   progressionJobs,
   programVersions,
@@ -16,7 +19,10 @@ import {
 } from "@/services/session-lifecycle";
 import { logWorkoutSet } from "./log-workout-set";
 import { loadEquipmentLoadProfiles } from "@/services/equipment-load-profiles";
-import { mutateSessionEquipmentSelection } from "@/services/session-equipment-selection";
+import {
+  mutateSessionEquipmentSelection,
+} from "@/services/session-equipment-selection";
+import { saveExerciseEquipmentFitAssertion } from "@/services/exercise-equipment-fit-management";
 
 const ownerEmail = "owner@example.com";
 const targetTemplateName = "Day A — Squat";
@@ -80,7 +86,6 @@ async function main() {
   ) {
     throw new Error("The progression recovery exercise target is incomplete.");
   }
-
   const profiles = await loadEquipmentLoadProfiles(db, owner.userId);
   const olympicBar = profiles.find(
     (entry) =>
@@ -90,6 +95,165 @@ async function main() {
   );
   if (!olympicBar) {
     throw new Error("The progression recovery Olympic-bar profile was not seeded.");
+  }
+  const existingBarFit = await db.query.exerciseEquipmentFitAssertions.findFirst({
+    where: and(
+      eq(exerciseEquipmentFitAssertions.userId, owner.userId),
+      eq(exerciseEquipmentFitAssertions.exerciseId, targetExercise.exerciseId),
+      eq(
+        exerciseEquipmentFitAssertions.equipmentItemId,
+        olympicBar.equipmentItemId,
+      ),
+    ),
+  });
+  if (existingBarFit?.verdict !== "compatible") {
+    const reviewedFit = await saveExerciseEquipmentFitAssertion(db, owner.userId, {
+      mutationId: crypto.randomUUID(),
+      assertionId: existingBarFit?.id ?? null,
+      exerciseId: targetExercise.exerciseId,
+      equipmentItemId: olympicBar.equipmentItemId,
+      verdict: "compatible",
+      reasonCode: "owner_verified",
+      reasonNote: "Synthetic fixture owner verified this exact setup.",
+      expectedRevision: existingBarFit?.revision ?? null,
+    });
+    if (!reviewedFit.ok) {
+      throw new Error(`The progression recovery equipment fit review failed (${reviewedFit.code}).`);
+    }
+  }
+  const rackItem = await db.query.equipmentItems.findFirst({
+    where: and(
+      eq(equipmentItems.userId, owner.userId),
+      eq(equipmentItems.type, "rack"),
+      eq(equipmentItems.available, true),
+    ),
+  });
+  if (!rackItem) {
+    throw new Error("The progression recovery rack was not seeded.");
+  }
+  const existingRackFit = await db.query.exerciseEquipmentFitAssertions.findFirst({
+    where: and(
+      eq(exerciseEquipmentFitAssertions.userId, owner.userId),
+      eq(exerciseEquipmentFitAssertions.exerciseId, targetExercise.exerciseId),
+      eq(exerciseEquipmentFitAssertions.equipmentItemId, rackItem.id),
+    ),
+  });
+  if (existingRackFit?.verdict !== "compatible") {
+    const reviewedRackFit = await saveExerciseEquipmentFitAssertion(
+      db,
+      owner.userId,
+      {
+        mutationId: crypto.randomUUID(),
+        assertionId: existingRackFit?.id ?? null,
+        exerciseId: targetExercise.exerciseId,
+        equipmentItemId: rackItem.id,
+        verdict: "compatible",
+        reasonCode: "owner_verified",
+        reasonNote: "Synthetic fixture owner verified this exact setup.",
+        expectedRevision: existingRackFit?.revision ?? null,
+      },
+    );
+    if (!reviewedRackFit.ok) {
+      throw new Error(
+        `The progression recovery rack fit review failed (${reviewedRackFit.code}).`,
+      );
+    }
+  }
+  const dumbbellCurl = await db.query.exercises.findFirst({
+    where: eq(exercises.name, "Dumbbell Curl"),
+  });
+  const dumbbellItem = await db.query.equipmentItems.findFirst({
+    where: and(
+      eq(equipmentItems.userId, owner.userId),
+      eq(equipmentItems.type, "dumbbell"),
+      eq(equipmentItems.available, true),
+    ),
+  });
+  if (!dumbbellCurl || !dumbbellItem) {
+    throw new Error("The replacement keyboard fit fixture is incomplete.");
+  }
+  const reviewedDumbbellCurl = await saveExerciseEquipmentFitAssertion(
+    db,
+    owner.userId,
+    {
+      mutationId: crypto.randomUUID(),
+      assertionId: null,
+      exerciseId: dumbbellCurl.id,
+      equipmentItemId: dumbbellItem.id,
+      verdict: "compatible",
+      reasonCode: "owner_verified",
+      reasonNote: "Synthetic fixture owner verified this exact setup.",
+      expectedRevision: null,
+    },
+  );
+  if (!reviewedDumbbellCurl.ok) {
+    throw new Error(
+      `The replacement keyboard fit review failed (${reviewedDumbbellCurl.code}).`,
+    );
+  }
+  const jumpRope = await db.query.exercises.findFirst({
+    where: eq(exercises.name, "Jump Rope"),
+  });
+  const jumpRopeItem = await db.query.equipmentItems.findFirst({
+    where: and(
+      eq(equipmentItems.userId, owner.userId),
+      eq(equipmentItems.type, "jump_rope"),
+      eq(equipmentItems.available, true),
+    ),
+  });
+  if (!jumpRope || !jumpRopeItem) {
+    throw new Error("The jump-rope replacement fit fixture is incomplete.");
+  }
+  const reviewedJumpRope = await saveExerciseEquipmentFitAssertion(
+    db,
+    owner.userId,
+    {
+      mutationId: crypto.randomUUID(),
+      assertionId: null,
+      exerciseId: jumpRope.id,
+      equipmentItemId: jumpRopeItem.id,
+      verdict: "compatible",
+      reasonCode: "owner_verified",
+      reasonNote: "Synthetic fixture owner verified this exact setup.",
+      expectedRevision: null,
+    },
+  );
+  if (!reviewedJumpRope.ok) {
+    throw new Error(
+      `The jump-rope replacement fit review failed (${reviewedJumpRope.code}).`,
+    );
+  }
+  const bodyweightBulgarianSplitSquat = await db.query.exercises.findFirst({
+    where: eq(exercises.name, "Bodyweight Bulgarian Split Squat"),
+  });
+  const benchItem = await db.query.equipmentItems.findFirst({
+    where: and(
+      eq(equipmentItems.userId, owner.userId),
+      eq(equipmentItems.type, "bench"),
+      eq(equipmentItems.available, true),
+    ),
+  });
+  if (!bodyweightBulgarianSplitSquat || !benchItem) {
+    throw new Error("The bodyweight split-squat fit fixture is incomplete.");
+  }
+  const reviewedSplitSquatBench = await saveExerciseEquipmentFitAssertion(
+    db,
+    owner.userId,
+    {
+      mutationId: crypto.randomUUID(),
+      assertionId: null,
+      exerciseId: bodyweightBulgarianSplitSquat.id,
+      equipmentItemId: benchItem.id,
+      verdict: "compatible",
+      reasonCode: "owner_verified",
+      reasonNote: "Synthetic fixture owner verified this exact setup.",
+      expectedRevision: null,
+    },
+  );
+  if (!reviewedSplitSquatBench.ok) {
+    throw new Error(
+      `The split-squat bench fit review failed (${reviewedSplitSquatBench.code}).`,
+    );
   }
   const selected = await mutateSessionEquipmentSelection(db, owner.userId, {
     operation: "select",

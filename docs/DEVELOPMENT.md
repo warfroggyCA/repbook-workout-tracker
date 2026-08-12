@@ -50,10 +50,58 @@ native PostgreSQL suite includes the same general/ramp/
 working sequence and remains required in CI; it needs a guarded local
 `TEST_DATABASE_URL` or explicitly approved ephemeral test branch.
 
-PII-01A changes no SQL migration, snapshot schema, or recovery manifest. Do not
-start the owner-specific equipment-incompatibility relation until its additive
-migration and complete recovery/export/Coach/alternatives inventory are
-separately authorized.
+PII-01A changes no SQL migration, snapshot schema, or recovery manifest. Its
+exact-fit checkbox is a one-publication review receipt only and must never be
+used as durable exercise-and-item compatibility evidence. Keep the complete
+owner-visible equipment-fit revision in `program-input-review/1` and pass it to
+the post-owner-lock atomic publication gate. That revision includes current
+inventory and assertions plus visible broad/exact exercise requirements and
+definition semantics; the literal checkbox is not safe by itself when any of
+that evidence changes concurrently.
+
+The equivalent guided-setup checkbox is bound to the exact reviewed routine and
+the same complete equipment-fit review revision
+(`setup-equipment-fit-review/1`). Keep both the server token comparison and the
+atomic semantics fence when changing setup activation; a boolean alone is not a
+safe stale/concurrent contract.
+
+Keep the same owner-profile lock and complete fit-review revision fence on every
+prospective write that can make an exercise/item pairing consequential:
+editor/recommendation/restore publication, Session Compiler acceptance,
+active-workout add/substitute/undo, and exact setup selection. A read-side
+availability check or an ordinary SQL statement snapshot is not sufficient
+after waiting on another row lock; the post-owner-lock comparison must remain in
+the final atomic write path. Session Compiler acceptance must also lock and
+recheck the active Program version after that owner lock.
+
+The PII-01B development gate covers the additive current-fit relation and every
+prospective consumer:
+
+```bash
+npx vitest run tests/unit/exercise-equipment-fit.test.ts tests/unit/exercise-equipment-fit-management-db.test.ts tests/unit/exercise-equipment-fit-recovery-db.test.ts --maxWorkers=1 --no-file-parallelism
+npx vitest run tests/unit/routine-import-confirm-db.test.ts tests/unit/program-preflight.test.ts tests/unit/session-compiler-db.test.ts tests/unit/session-equipment-selection-service-db.test.ts tests/unit/exercise-alternatives.test.ts tests/unit/exercise-replacements.test.ts tests/unit/live-coaching-db.test.ts tests/unit/progression-jobs-db.test.ts
+npx vitest run tests/unit/workout-simulation.test.ts tests/unit/workout-simulation-source.test.ts tests/unit/workout-simulation-storage.test.ts
+npm run db:verify
+npm run db:verify-production-upgrade
+npm run test:integration:postgres
+npm run test:e2e:pii01b
+```
+
+The PostgreSQL command is required in protected CI and runs only against the
+guarded empty local test database or an explicitly approved ephemeral test
+branch. It proves two concurrent reviews cannot both overwrite the same
+revision, exact retry does not duplicate evidence, remove returns the pair to
+unknown, display-name collisions stay independent, and an injected audit
+failure rolls the entire mutation back.
+
+Migration 0081 is additive and empty: it contains no label-, type-, Program-,
+session-, catalog-, or PII-01A-derived backfill. Applying it to production is a
+separate owner-authorized release action; production remains on migration 0080,
+snapshot schema 32, and recovery manifest 14 until that gate is completed.
+After 0081 is applied, a pre-PII-01B binary is not a safe portability rollback
+because it cannot preserve snapshot schema 33 or enforce the new relation.
+Disable new control surfaces if necessary, but retain relation-aware readers
+and gates; do not use a down migration or rewrite historical records.
 
 `PROGRAM_TEXT_IMPORT_ENABLED=false` is the server-enforced PII-01A rollback
 switch. It removes the Program paste review from the Import page and rejects
@@ -379,7 +427,7 @@ R01 lifecycle verification is split across
 `tests/unit/v2-r01-lifecycle-audit-db.test.ts`, portability, restore, and
 adversarial omission tests plus the dedicated browser journey. The database
 test uses a disposable fully migrated database and must continue to match the
-65-table recovery manifest exactly. The browser spec is dedicated and excluded
+66-table recovery manifest exactly. The browser spec is dedicated and excluded
 from the general Playwright configuration so its authenticated page loads
 cannot consume another suite's background-job fixtures.
 

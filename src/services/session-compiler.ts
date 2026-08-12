@@ -20,6 +20,11 @@ import {
   upgradeStoredProgramDocumentToV3,
 } from "@/lib/program-document";
 import { sessionEquipmentRequirementsSnapshotExpression } from "@/services/session-equipment-requirements";
+import { inventoryRevisionExpression } from "@/services/equipment-inventory";
+import {
+  loadOwnerEquipmentFitReviewRevision,
+  ownerEquipmentFitReviewRevisionExpression,
+} from "@/services/equipment-fit-review-revision";
 
 export class SessionCompilerIneligibleError extends Error {
   constructor(message: string) {
@@ -50,6 +55,7 @@ function preflightEvidenceTokenQuery(
     : exerciseIds;
   return sql`
     SELECT md5(concat_ws('|',
+      ${inventoryRevisionExpression(userId)},
       (SELECT COALESCE(jsonb_agg(jsonb_build_array(item.id, item.type, item.definition_id, item.quantity, item.attrs, item.available, item.updated_at) ORDER BY item.id), '[]'::jsonb)::text FROM equipment_items item WHERE item.user_id = ${userId}::uuid),
       (SELECT COALESCE(jsonb_agg(jsonb_build_array(plate.id, plate.denomination, plate.quantity) ORDER BY plate.id), '[]'::jsonb)::text FROM plate_inventory plate WHERE plate.user_id = ${userId}::uuid),
       (SELECT COALESCE(jsonb_agg(jsonb_build_array(barbell.id, barbell.bar_type, barbell.bar_weight, barbell.collar_weight, barbell.quantity) ORDER BY barbell.id), '[]'::jsonb)::text FROM barbell_configs barbell WHERE barbell.user_id = ${userId}::uuid),
@@ -69,6 +75,10 @@ function preflightEvidenceTokenQuery(
       (SELECT COALESCE(jsonb_agg(jsonb_build_array(exercise.id, exercise.movement_pattern) ORDER BY exercise.id), '[]'::jsonb)::text FROM exercises exercise WHERE exercise.id IN (${exerciseList})),
       (SELECT COALESCE(jsonb_agg(jsonb_build_array(requirement.id, requirement.exercise_id, requirement.equipment_type, requirement.equipment_definition_id, requirement.min_weight) ORDER BY requirement.id), '[]'::jsonb)::text FROM exercise_equipment_requirements requirement WHERE requirement.exercise_id IN (${exerciseList})),
       (SELECT COALESCE(jsonb_agg(jsonb_build_array(requirement.id, requirement.exercise_id, requirement.required_profile_kind, requirement.required_equipment_definition_id, requirement.required_attachment_kind, requirement.required_attachment_definition_id, requirement.requires_known_geometry, requirement.updated_at) ORDER BY requirement.id), '[]'::jsonb)::text FROM exercise_execution_requirements requirement WHERE requirement.exercise_id IN (${exerciseList})),
+      (SELECT COALESCE(jsonb_agg(jsonb_build_array(fit.id, fit.exercise_id, fit.equipment_item_id, fit.verdict, fit.reason_code, fit.reason_note, fit.provenance, fit.semantics_version, fit.evidence_revision, fit.revision, fit.updated_at) ORDER BY fit.exercise_id, fit.equipment_item_id), '[]'::jsonb)::text
+         FROM exercise_equipment_fit_assertions fit
+        WHERE fit.user_id = ${userId}::uuid
+          AND fit.exercise_id IN (${exerciseList})),
       (SELECT COALESCE(jsonb_agg(jsonb_build_array(definition.id, definition.key, definition.label) ORDER BY definition.id), '[]'::jsonb)::text
          FROM equipment_definitions definition
         WHERE definition.id IN (
@@ -333,9 +343,32 @@ export async function acceptSessionCompilerProposal(
     : [];
   const dayWarmupsJson = JSON.stringify(dayWarmupItems);
   const snapshotJson = JSON.stringify(snapshot);
+  const expectedEquipmentFitReviewRevision =
+    await loadOwnerEquipmentFitReviewRevision(db, userId);
+  if (!expectedEquipmentFitReviewRevision) return { outcome: "stale" };
   await dependencies.checkpoint?.("before-accept-statement");
   const result = resultRows(await db.execute(sql`
-    WITH replay AS MATERIALIZED (
+    WITH target_profile AS MATERIALIZED (
+      SELECT profile.user_id
+      FROM user_profiles profile
+      WHERE profile.user_id = ${userId}::uuid
+      FOR UPDATE
+    ), equipment_fit_gate AS MATERIALIZED (
+      SELECT profile.user_id
+      FROM target_profile profile
+      WHERE ${ownerEquipmentFitReviewRevisionExpression(sql`profile.user_id`)}
+        = ${expectedEquipmentFitReviewRevision}::text
+    ), current_program AS MATERIALIZED (
+      SELECT program.id, program.current_version_id
+      FROM programs program
+      JOIN equipment_fit_gate fit_gate ON fit_gate.user_id = program.user_id
+      WHERE program.id = ${proposal.programId}::uuid
+        AND program.user_id = ${userId}::uuid
+        AND program.status = 'active'
+        AND program.archived_at IS NULL
+        AND program.current_version_id = ${input.programVersionId}::uuid
+      FOR UPDATE OF program
+    ), replay AS MATERIALIZED (
       SELECT ws.id
       FROM workout_sessions ws
       WHERE ws.user_id = ${userId}::uuid
@@ -344,17 +377,15 @@ export async function acceptSessionCompilerProposal(
     ), owned_proposal AS MATERIALIZED (
       SELECT proposal.*
       FROM session_compiler_proposals proposal
-      JOIN programs program ON program.id = proposal.program_id
+      JOIN current_program program ON program.id = proposal.program_id
       JOIN program_versions version ON version.id = proposal.program_version_id
       JOIN workout_templates template ON template.id = proposal.workout_template_id
+      JOIN equipment_fit_gate fit_gate ON true
       WHERE proposal.id = ${proposal.id}::uuid
         AND proposal.user_id = ${userId}::uuid
         AND proposal.status = 'ready'
         AND proposal.algorithm_version = ${SESSION_COMPILER_ALGORITHM_VERSION}
         AND proposal.content_hash = ${currentHash}
-        AND program.user_id = ${userId}::uuid
-        AND program.status = 'active'
-        AND program.archived_at IS NULL
         AND program.current_version_id = version.id
         AND version.document_schema_version = ${input.documentSchemaVersion}
         AND template.program_version_id = version.id

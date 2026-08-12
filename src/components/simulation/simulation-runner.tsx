@@ -22,6 +22,7 @@ import {
   selectSimulationEquipment,
   skipSimulationOccurrence,
   skipSimulationRest,
+  simulationDayEquipmentFitBlockers,
   startSimulationWorkout,
   substituteSimulationExercise,
   undoSimulationSubstitution,
@@ -171,6 +172,12 @@ export function SimulationRunner({
   }, [commit, workspace?.activeWorkout?.rest]);
 
   function start(dayIndex: number) {
+    const day = workspace?.source.days[dayIndex];
+    const blocker = day ? simulationDayEquipmentFitBlockers(day)[0] : null;
+    if (blocker) {
+      setError(`Equipment review required for ${blocker.name}: ${blocker.equipmentFit.reason}`);
+      return;
+    }
     commit((value) => startSimulationWorkout(value, dayIndex));
   }
 
@@ -237,6 +244,9 @@ export function SimulationRunner({
 
   if (!workout) {
     const nextDay = workspace.source.days[workspace.selectedDayIndex];
+    const nextDayFitBlockers = nextDay
+      ? simulationDayEquipmentFitBlockers(nextDay)
+      : [];
     const exportDownload = buildSimulationExportDownload(workspace);
     return (
       <main className="mx-auto flex min-w-0 max-w-3xl flex-col gap-5 overflow-x-clip p-4 sm:p-6">
@@ -257,7 +267,12 @@ export function SimulationRunner({
           <section className="rounded-2xl border bg-card p-5">
             <h2 className="font-semibold">Next simulated Program day</h2>
             <p className="mt-1 text-sm text-muted-foreground">{nextDay.name}</p>
-            <Button className="mt-4" onClick={() => start(workspace.selectedDayIndex)}>
+            {nextDayFitBlockers.length > 0 && (
+              <p role="status" className="mt-3 rounded-lg border border-amber-600/50 bg-amber-50 p-2 text-sm dark:bg-amber-950/30">
+                Equipment review required for {nextDayFitBlockers[0].name}: {nextDayFitBlockers[0].equipmentFit.reason}
+              </p>
+            )}
+            <Button className="mt-4" disabled={nextDayFitBlockers.length > 0} onClick={() => start(workspace.selectedDayIndex)}>
               Start {nextDay.name} simulation
             </Button>
           </section>

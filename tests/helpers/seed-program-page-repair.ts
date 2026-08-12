@@ -1,7 +1,15 @@
 import { inArray } from "drizzle-orm";
 import { getDb } from "@/db";
-import { exercises, userProfiles, users } from "@/db/schema";
+import {
+  equipmentItems,
+  exerciseEquipmentRequirements,
+  exercises,
+  plateInventory,
+  userProfiles,
+  users,
+} from "@/db/schema";
 import { activateProgramAtomically } from "@/services/program-activation";
+import { saveExerciseEquipmentFitAssertion } from "@/services/exercise-equipment-fit-management";
 
 export const PROGRAM_PAGE_REPAIR_EMAIL = "program-page.e2e@example.com";
 
@@ -46,6 +54,52 @@ async function main() {
     setupCompletedAt: new Date(),
     fontSize: "default",
   });
+
+  const requirements = await db.select({
+    exerciseId: exerciseEquipmentRequirements.exerciseId,
+    equipmentType: exerciseEquipmentRequirements.equipmentType,
+    equipmentDefinitionId: exerciseEquipmentRequirements.equipmentDefinitionId,
+  }).from(exerciseEquipmentRequirements).where(inArray(
+    exerciseEquipmentRequirements.exerciseId,
+    exerciseRows.map((exercise) => exercise.id),
+  ));
+  if (requirements.some((requirement) => requirement.equipmentType === "plates")) {
+    await db.insert(plateInventory).values({
+      userId: user.id,
+      denomination: 45,
+      quantity: 8,
+    });
+  }
+  const reviewedItems = new Map<string, string>();
+  for (const requirement of requirements) {
+    if (["bodyweight", "plates"].includes(requirement.equipmentType)) continue;
+    const itemKey = `${requirement.equipmentType}:${requirement.equipmentDefinitionId ?? "broad"}`;
+    if (!reviewedItems.has(itemKey)) {
+      const [item] = await db.insert(equipmentItems).values({
+        userId: user.id,
+        type: requirement.equipmentType,
+        definitionId: requirement.equipmentDefinitionId,
+        label: `Reviewed ${requirement.equipmentType.replaceAll("_", " ")}`,
+        attrs: { maxWeight: 500 },
+        available: true,
+      }).returning({ id: equipmentItems.id });
+      reviewedItems.set(itemKey, item.id);
+    }
+    const equipmentItemId = reviewedItems.get(itemKey)!;
+    const retained = await saveExerciseEquipmentFitAssertion(db, user.id, {
+      mutationId: crypto.randomUUID(),
+      assertionId: null,
+      exerciseId: requirement.exerciseId,
+      equipmentItemId,
+      verdict: "compatible",
+      reasonCode: "owner_verified",
+      reasonNote: null,
+      expectedRevision: null,
+    });
+    if (!retained.ok) {
+      throw new Error(`Program page fit fixture failed: ${retained.reason}`);
+    }
+  }
 
   const result = await activateProgramAtomically(db, {
     userId: user.id,

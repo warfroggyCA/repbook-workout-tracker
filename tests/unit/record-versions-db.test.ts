@@ -13,6 +13,7 @@ import {
   sessionExercises,
   sessionOccurrenceMutations,
   sessionOccurrences,
+  userProfiles,
   users,
   workoutSessions,
 } from "@/db/schema";
@@ -113,6 +114,7 @@ describe("immutable record version history", () => {
       .insert(users)
       .values({ email: `versions-${crypto.randomUUID()}@example.com` })
       .returning({ id: users.id });
+    await db.insert(userProfiles).values({ userId });
     const [exercise, alternateExercise] = await db
       .insert(exercises)
       .values([
@@ -1158,6 +1160,31 @@ describe("immutable record version history", () => {
         where: eq(recordVersions.entityId, sessionExerciseId),
       }),
     ).toHaveLength(1);
+
+    expect(
+      await updateSessionExerciseWithVersion(
+        db,
+        userId,
+        sessionExerciseId,
+        {
+          exerciseId: alternateExerciseId,
+          modificationType: "substituted",
+          substitutedForExerciseId: exerciseId,
+          substitutionReason: "other",
+          targetLoad: null,
+        },
+        "session_exercise.substitute",
+        {
+          activeOnly: true,
+          expectedExerciseId: alternateExerciseId,
+          versionId,
+        },
+      ),
+    ).toEqual({
+      ok: false,
+      reason:
+        "That replacement request identity was already used for a different choice.",
+    });
 
     expect(
       await updateSessionExerciseWithVersion(

@@ -5,6 +5,7 @@ import {
   barbellConfigs,
   coachingInsights,
   constraints,
+  exerciseEquipmentRequirements,
   equipmentItems,
   exercises,
   plateInventory,
@@ -14,6 +15,7 @@ import {
   users,
   workoutSessions,
 } from "@/db/schema";
+import { saveExerciseEquipmentFitAssertion } from "@/services/exercise-equipment-fit-management";
 import { activateProgramAtomically } from "@/services/program-activation";
 import {
   BA_WORKOUT_EMAIL,
@@ -97,20 +99,59 @@ export async function seedBaWorkoutFixture(db: Db) {
         affectedPatterns: [...constraint.affectedPatterns],
       })),
     );
-    await tx.insert(equipmentItems).values(
+    const savedFixtureEquipment = await tx.insert(equipmentItems).values(
       BA_WORKOUT_FIXTURE.equipment.items.map((item) => ({
         userId: user.id,
         type: item.type,
         label: item.label,
         attrs: { ...item.attrs },
       })),
-    );
+    ).returning({ id: equipmentItems.id, type: equipmentItems.type });
     await tx.insert(plateInventory).values(
       BA_WORKOUT_FIXTURE.equipment.plates.map((plate) => ({ userId: user.id, ...plate })),
     );
     await tx.insert(barbellConfigs).values(
       BA_WORKOUT_FIXTURE.equipment.bars.map((bar) => ({ userId: user.id, ...bar })),
     );
+
+    // This disposable acceptance owner explicitly reviewed each stable
+    // exercise/item pair. Keep the production fail-closed gate intact instead
+    // of treating broad equipment ownership as proof of compatibility.
+    const itemIdByType = new Map(
+      savedFixtureEquipment.map((item) => [item.type, item.id]),
+    );
+    const fixtureRequirements = await tx.select({
+      exerciseId: exerciseEquipmentRequirements.exerciseId,
+      equipmentType: exerciseEquipmentRequirements.equipmentType,
+    }).from(exerciseEquipmentRequirements).where(inArray(
+      exerciseEquipmentRequirements.exerciseId,
+      [...new Set(exerciseNames)].map((name) => exerciseIdByName.get(name)!),
+    ));
+    for (const requirement of fixtureRequirements) {
+      if (
+        requirement.equipmentType === "bodyweight"
+        || requirement.equipmentType === "plates"
+      ) continue;
+      const equipmentItemId = itemIdByType.get(requirement.equipmentType);
+      if (!equipmentItemId) {
+        throw new Error(
+          `The BA workout fixture has no reviewed ${requirement.equipmentType} item.`,
+        );
+      }
+      const retained = await saveExerciseEquipmentFitAssertion(tx, user.id, {
+        mutationId: crypto.randomUUID(),
+        assertionId: null,
+        exerciseId: requirement.exerciseId,
+        equipmentItemId,
+        verdict: "compatible",
+        reasonCode: "owner_verified",
+        reasonNote: "Synthetic BA acceptance owner reviewed this exact pair",
+        expectedRevision: null,
+      });
+      if (!retained.ok) {
+        throw new Error(`The BA workout fit review could not be retained: ${retained.reason}`);
+      }
+    }
 
     const activation = await activateProgramAtomically(tx, {
       userId: user.id,

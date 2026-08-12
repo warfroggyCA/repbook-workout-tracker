@@ -174,6 +174,28 @@ test("calendar-first History opens a recoverable retrospective entry flow", asyn
   });
   await substitutionPicker
     .getByLabel("Search exercise library")
+    .fill("Plank");
+  await substitutionPicker
+    .getByRole("button", {
+      name: "View details for Plank",
+      exact: true,
+    })
+    .click();
+  await expect(
+    substitutionPicker.getByText(
+      "This performed measurement cannot replace a strength set in a Program-linked historical workout.",
+    ),
+  ).toBeVisible();
+  await expect(
+    substitutionPicker.getByRole("button", {
+      name: "Use as performed exercise",
+    }),
+  ).toBeDisabled();
+  await substitutionPicker
+    .getByRole("button", { name: "Back to results" })
+    .click();
+  await substitutionPicker
+    .getByLabel("Search exercise library")
     .fill("Overhead Cable Triceps Extension");
   await substitutionPicker
     .getByRole("button", {
@@ -181,9 +203,11 @@ test("calendar-first History opens a recoverable retrospective entry flow", asyn
       exact: true,
     })
     .click();
-  await substitutionPicker
-    .getByRole("button", { name: "Use as performed exercise" })
-    .click();
+  const usePerformedExercise = substitutionPicker.getByRole("button", {
+    name: "Use as performed exercise",
+  });
+  await expect(usePerformedExercise).toBeEnabled();
+  await usePerformedExercise.click();
   await page.getByLabel("Substitution reason").selectOption("other");
   await page
     .getByLabel(/set 1 outcome/i)
@@ -487,7 +511,27 @@ test("an unconfirmed save keeps the exact draft and safely retries", async ({
   const picker = page.getByRole("dialog", {
     name: "Choose the performed exercise",
   });
-  await picker.getByLabel("Search exercise library").fill("Barbell Back Squat");
+  await picker.getByLabel("Search exercise library").fill("Weighted Plank");
+  await picker
+    .getByRole("button", {
+      name: "View details for Weighted Plank",
+      exact: true,
+    })
+    .click();
+  await expect(
+    picker.getByText(
+      "This exercise requires load plus time or distance, a combined performed measurement this form cannot record truthfully.",
+    ),
+  ).toBeVisible();
+  await expect(
+    picker.getByRole("button", { name: "Add to workout" }),
+  ).toBeDisabled();
+  await picker.getByRole("button", { name: "Back to results" }).click();
+  const exerciseSearch = picker.getByLabel("Search exercise library");
+  await picker.getByRole("button", { name: "Clear exercise search" }).click();
+  await expect(exerciseSearch).toHaveValue("");
+  await exerciseSearch.fill("Barbell Back Squat");
+  await expect(exerciseSearch).toHaveValue("Barbell Back Squat");
   await picker
     .getByRole("button", { name: "View details for Barbell Back Squat" })
     .click();

@@ -8,9 +8,9 @@ import {
   RotateCcw,
   Settings2,
 } from "lucide-react";
-import { inArray } from "drizzle-orm";
+import { and, eq, inArray, isNull, or } from "drizzle-orm";
 import { getDb } from "@/db";
-import { exercises } from "@/db/schema";
+import { equipmentItems, exercises } from "@/db/schema";
 import { getCurrentUser } from "@/lib/user";
 import {
   listRecordVersions,
@@ -83,9 +83,20 @@ const FIELD_LABELS: Record<string, string> = {
   session_length_min: "Session length",
   weekly_frequency: "Weekly frequency",
   coaching_prefs: "Coaching preferences",
+  verdict: "Fit result",
+  reason_code: "Physical reason",
+  reason_note: "Owner note",
+  equipment_item_id: "Exact equipment item",
+  provenance: "Reviewed by",
+  reviewed_at: "Reviewed at",
 };
 
-const HIDDEN_TECHNICAL_FIELDS = new Set(["fingerprint", "source_metadata"]);
+const HIDDEN_TECHNICAL_FIELDS = new Set([
+  "fingerprint",
+  "source_metadata",
+  "evidence_revision",
+  "semantics_version",
+]);
 
 function fieldLabel(entityType: string, field: string) {
   if (field === "note") {
@@ -107,12 +118,23 @@ function displayValue(
   field: string,
   value: unknown,
   exerciseNames: Map<string, string>,
+  equipmentNames: Map<string, string>,
   timezone = "America/Toronto",
 ) {
   if (value == null || value === "") return "Not recorded";
   if (field === "exercise_id" || field === "substituted_for_exercise_id") {
     return exerciseNames.get(String(value)) ?? "Exercise no longer available";
   }
+  if (field === "equipment_item_id") {
+    return equipmentNames.get(String(value)) ?? "Equipment item no longer available";
+  }
+  if (field === "verdict") {
+    return value === "compatible" ? "Compatible" : "Incompatible";
+  }
+  if (field === "reason_code") {
+    return String(value).replaceAll("_", " ").replace(/^./u, (letter) => letter.toUpperCase());
+  }
+  if (field === "provenance") return "Owner review";
   if (field === "modification_type") {
     return {
       as_planned: "As planned",
@@ -175,7 +197,8 @@ function recordLabel(
   entityType: string,
   before: Record<string, unknown>,
   after: Record<string, unknown>,
-  exerciseNames: Map<string, string>
+  exerciseNames: Map<string, string>,
+  equipmentNames: Map<string, string>,
 ) {
   if (entityType === "health_activity") {
     return String(after.title || before.title || after.activity_type || "Activity");
@@ -204,6 +227,13 @@ function recordLabel(
     return String(after.source_name || before.source_name || "Exercise mapping");
   }
   if (entityType === "user_profile") return "Training profile";
+  if (entityType === "exercise_equipment_fit_assertion") {
+    const exerciseId = String(after.exercise_id || before.exercise_id || "");
+    const equipmentItemId = String(
+      after.equipment_item_id || before.equipment_item_id || "",
+    );
+    return `${exerciseNames.get(exerciseId) ?? "Exercise"} with ${equipmentNames.get(equipmentItemId) ?? "saved equipment"}`;
+  }
   const setNo = after.set_no ?? before.set_no ?? "?";
   return `Set ${setNo}`;
 }
@@ -240,6 +270,9 @@ function entityLabel(entityType: string) {
   if (entityType === "program") return "Program";
   if (entityType === "external_exercise_mapping") return "Exercise mapping";
   if (entityType === "user_profile") return "Profile & coaching";
+  if (entityType === "exercise_equipment_fit_assertion") {
+    return "Movement compatibility";
+  }
   return "Set";
 }
 
@@ -275,11 +308,28 @@ export default async function EditHistoryPage(
   );
   const exerciseRows = exerciseIds.length
     ? await db.query.exercises.findMany({
-        where: inArray(exercises.id, exerciseIds),
+        where: and(
+          inArray(exercises.id, exerciseIds),
+          or(isNull(exercises.userId), eq(exercises.userId, user.id)),
+        ),
         columns: { id: true, name: true },
       })
     : [];
   const exerciseNames = new Map(exerciseRows.map((exercise) => [exercise.id, exercise.name]));
+  const equipmentItemIds = Array.from(new Set(versions.flatMap((version) => [
+    version.beforeData.equipment_item_id,
+    version.afterData.equipment_item_id,
+  ].filter((id): id is string => typeof id === "string"))));
+  const equipmentRows = equipmentItemIds.length
+    ? await db.query.equipmentItems.findMany({
+        where: and(
+          inArray(equipmentItems.id, equipmentItemIds),
+          eq(equipmentItems.userId, user.id),
+        ),
+        columns: { id: true, label: true },
+      })
+    : [];
+  const equipmentNames = new Map(equipmentRows.map((item) => [item.id, item.label]));
 
   return (
     <main className="mx-auto flex max-w-4xl flex-col gap-4 p-4 sm:p-6 lg:p-8">
@@ -323,6 +373,9 @@ export default async function EditHistoryPage(
         <Button render={<Link href="/recovery/versions?type=equipment_item" />} nativeButton={false} size="sm" variant={type === "equipment_item" ? "default" : "outline"}>
           <Settings2 className="size-3.5" /> Equipment
         </Button>
+        <Button render={<Link href="/recovery/versions?type=exercise_equipment_fit_assertion" />} nativeButton={false} size="sm" variant={type === "exercise_equipment_fit_assertion" ? "default" : "outline"}>
+          Movement compatibility
+        </Button>
         <Button render={<Link href="/recovery/versions?type=constraint" />} nativeButton={false} size="sm" variant={type === "constraint" ? "default" : "outline"}>
           Constraints
         </Button>
@@ -347,7 +400,13 @@ export default async function EditHistoryPage(
         versions.map((version) => {
           const before = version.beforeData;
           const after = version.afterData;
-          const label = recordLabel(version.entityType, before, after, exerciseNames);
+          const label = recordLabel(
+            version.entityType,
+            before,
+            after,
+            exerciseNames,
+            equipmentNames,
+          );
           const visibleFields = version.changedFields.filter(
             (field) => !HIDDEN_TECHNICAL_FIELDS.has(field)
           );
@@ -404,8 +463,8 @@ export default async function EditHistoryPage(
                     {visibleFields.map((field) => (
                       <div key={field} className="grid gap-1 sm:grid-cols-[10rem_1fr_1fr] sm:gap-3">
                         <dt className="font-medium">{fieldLabel(version.entityType, field)}</dt>
-                        <dd className="text-muted-foreground"><span className="sm:hidden">Before: </span>{displayValue(field, before[field], exerciseNames, String(before.timezone || "America/Toronto"))}</dd>
-                        <dd><span className="sm:hidden">After: </span>{displayValue(field, after[field], exerciseNames, String(after.timezone || "America/Toronto"))}</dd>
+                        <dd className="text-muted-foreground"><span className="sm:hidden">Before: </span>{displayValue(field, before[field], exerciseNames, equipmentNames, String(before.timezone || "America/Toronto"))}</dd>
+                        <dd><span className="sm:hidden">After: </span>{displayValue(field, after[field], exerciseNames, equipmentNames, String(after.timezone || "America/Toronto"))}</dd>
                       </div>
                     ))}
                   </dl>

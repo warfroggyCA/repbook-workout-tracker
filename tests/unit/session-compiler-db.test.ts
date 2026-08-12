@@ -26,6 +26,7 @@ import { runProgramPreflight } from "@/lib/program-preflight";
 import { acceptSessionCompilerProposal, createSessionCompilerProposal, discardSessionCompilerProposal } from "@/services/session-compiler";
 import { getCurrentProgramDocument } from "@/services/program-documents";
 import { loadProgramPreflightContext } from "@/services/program-preflight";
+import { saveExerciseEquipmentFitAssertion } from "@/services/exercise-equipment-fit-management";
 import { createMigratedTestDatabase, type TestDatabase } from "../helpers/database";
 import { buildJsonBackup, buildSetsCsv } from "@/services/export";
 import { archiveWorkoutRecord, restoreArchiveOperation } from "@/services/archive";
@@ -163,7 +164,7 @@ describe("Session Compiler durable review and acceptance", () => {
     expect(csv).toContain(versionId);
     expect(csv).toContain(dayLineageId);
     const backup = await buildJsonBackup(database.db, userId);
-    expect(backup.schemaVersion).toBe("32");
+    expect(backup.schemaVersion).toBe("33");
     expect(backup.canonical.tables.session_compiler_proposals).toContainEqual(
       expect.objectContaining({ id: proposal.id, accepted_session_id: first.sessionId, content_hash: proposal.contentHash }),
     );
@@ -464,12 +465,22 @@ describe("Session Compiler durable review and acceptance", () => {
       equipmentType: "barbell",
       equipmentDefinitionId: definition.id,
     });
-    await database.db.insert(equipmentItems).values({
+    const [item] = await database.db.insert(equipmentItems).values({
       userId,
       type: "barbell",
       definitionId: definition.id,
       label: "Reviewed compiler bar",
-    });
+    }).returning({ id: equipmentItems.id });
+    await expect(saveExerciseEquipmentFitAssertion(database.db, userId, {
+      mutationId: crypto.randomUUID(),
+      assertionId: null,
+      exerciseId: sourceExercise.id,
+      equipmentItemId: item.id,
+      verdict: "compatible",
+      reasonCode: "owner_verified",
+      reasonNote: null,
+      expectedRevision: null,
+    })).resolves.toMatchObject({ ok: true, changed: true });
     const proposal = await createSessionCompilerProposal(database.db, userId, {
       dayLineageId,
       requestedMinutes: 60,
@@ -489,6 +500,43 @@ describe("Session Compiler durable review and acceptance", () => {
           await database.db.update(equipmentDefinitions)
             .set({ label: "Renamed during acceptance" })
             .where(eq(equipmentDefinitions.id, definition.id));
+        },
+      },
+    )).resolves.toEqual({ outcome: "stale" });
+    expect(await database.db.select().from(workoutSessions)).toHaveLength(0);
+    expect(await database.db.query.sessionCompilerProposals.findFirst({
+      where: eq(sessionCompilerProposals.id, proposal.id),
+    })).toMatchObject({ status: "stale" });
+  });
+
+  it("rejects acceptance when the active Program advances during the final check", async () => {
+    const proposal = await createSessionCompilerProposal(database.db, userId, {
+      dayLineageId,
+      requestedMinutes: 60,
+      energy: "usual",
+      clientMutationId: crypto.randomUUID(),
+    });
+    expect(proposal.status).toBe("ready");
+
+    await expect(acceptSessionCompilerProposal(
+      database.db,
+      userId,
+      proposal.id,
+      crypto.randomUUID(),
+      "America/Toronto",
+      {
+        checkpoint: async () => {
+          const [next] = await database.db.insert(programVersions).values({
+            programId,
+            versionNo: 2,
+            name: "Compiler Program published while accepting",
+            parentVersionId: versionId,
+            documentSchemaVersion: 2,
+            publicationSource: "editor",
+          }).returning({ id: programVersions.id });
+          await database.db.update(programs)
+            .set({ currentVersionId: next.id })
+            .where(eq(programs.id, programId));
         },
       },
     )).resolves.toEqual({ outcome: "stale" });
@@ -539,7 +587,7 @@ describe("Session Compiler durable review and acceptance", () => {
       created.snapshotId,
       { store, keyring }
     );
-    expect(captured.payload.schemaVersion).toBe("32");
+    expect(captured.payload.schemaVersion).toBe("33");
     expect(captured.payload.tables.session_compiler_proposals).toContainEqual(
       expect.objectContaining({
         id: proposal.id,

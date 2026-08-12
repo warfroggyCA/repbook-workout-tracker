@@ -51,6 +51,11 @@ export type ProgramPreflightContext = {
   avoidedSlotLineageIds?: Set<string>;
   cautiousSlotLineageIds?: Set<string>;
   painEvidenceBySlot?: Record<string, number>;
+  equipmentFitBySlot?: Record<string, {
+    status: "incompatible" | "unknown" | "missing";
+    reason: string;
+    equipmentItemIds: string[];
+  }>;
   equipmentEvidenceCount?: number;
   constraintEvidenceCount?: number;
 };
@@ -181,7 +186,19 @@ export function runProgramPreflight(
   for (const day of document.days) {
     for (const slot of day.exercises) {
       const editPath = `slots.${slot.lineageId}.intent`;
-      if (context.unavailableSlotLineageIds?.has(slot.lineageId)) {
+      const equipmentFit = context.equipmentFitBySlot?.[slot.lineageId];
+      if (equipmentFit) {
+        findings.push({
+          id: `equipment-fit:${slot.lineageId}`,
+          severity: "blocking",
+          code: `equipment_fit_${equipmentFit.status}`,
+          reason: equipmentFit.reason,
+          dayLineageId: day.lineageId,
+          slotLineageId: slot.lineageId,
+          evidenceCount: equipmentFit.equipmentItemIds.length,
+          editPath,
+        });
+      } else if (context.unavailableSlotLineageIds?.has(slot.lineageId)) {
         findings.push({
           id: `equipment:${slot.lineageId}`,
           severity: "blocking",

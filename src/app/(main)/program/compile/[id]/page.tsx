@@ -8,6 +8,7 @@ import { isSessionCompilerEnabled } from "@/lib/session-compiler-feature";
 import { getOwnedSessionCompilerProposal } from "@/services/session-compiler";
 import { CompilerAcceptForm } from "@/components/session/compiler-accept-form";
 import { CompilerExecutionDetails } from "@/components/session/compiler-execution-details";
+import { CompilerResultAlert } from "@/components/session/compiler-result-alert";
 import { discardCompilerProposal } from "@/app/actions/session-compiler";
 import { Button } from "@/components/ui/button";
 
@@ -44,8 +45,8 @@ export default async function ReviewCompilerProposalPage(props: PageProps<"/prog
           <h1 className="mt-1 text-2xl font-semibold tracking-tight sm:text-3xl">{input.day.name} proposal</h1>
           <p className="mt-2 text-sm leading-6 text-muted-foreground">Program v{input.programVersionNo} · {input.requestedMinutes} minutes available · {input.energy} energy recorded · deterministic algorithm {input.algorithmVersion}</p>
         </header>
-        {query.status === "stale" && <div className="rounded-xl border border-amber-500/50 bg-amber-50 p-3 text-sm dark:bg-amber-950/20">The Program or current evidence changed after this review. Build a fresh proposal.</div>}
-        {query.status === "not_ready" && <div className="rounded-xl border border-amber-500/50 bg-amber-50 p-3 text-sm dark:bg-amber-950/20">This proposal is no longer available to accept.</div>}
+        {query.status === "stale" && <CompilerResultAlert>The Program or current equipment evidence changed after this review. No workout was started. Build a fresh proposal.</CompilerResultAlert>}
+        {query.status === "not_ready" && <CompilerResultAlert>This proposal is no longer available to accept. No workout was started.</CompilerResultAlert>}
         {output.status === "unable" ? (
           <section className="rounded-2xl border border-amber-500/50 bg-card p-5">
             <AlertTriangle className="size-5 text-amber-700" />

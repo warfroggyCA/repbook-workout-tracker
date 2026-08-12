@@ -20,6 +20,14 @@ import {
   routineParseSchema,
 } from "@/ai/tasks/routine-parse/schema";
 import type { ExerciseMediaPreview } from "@/lib/exercise-discovery";
+import type {
+  ExerciseEquipmentFitResolution,
+  ExerciseEquipmentFitStatus,
+} from "@/lib/exercise-equipment-fit";
+import {
+  loadExerciseEquipmentFitSettings,
+  resolveExerciseEquipmentFitFromSettings,
+} from "@/services/exercise-equipment-fit";
 import { canonicalJson, sha256Hex } from "@/services/snapshot-crypto";
 import { z } from "zod";
 
@@ -51,6 +59,10 @@ export type LibraryExerciseOption = {
   constraintBlocked: boolean;
   unavailableReason: string | null;
   cautionBodyParts: string[];
+  /** Stable-ID owner evidence. Absence remains `unknown`, never compatible. */
+  equipmentFitStatus: ExerciseEquipmentFitStatus;
+  equipmentFitReason: string;
+  equipmentFit: ExerciseEquipmentFitResolution;
   /** Training-only reviewed media; internal rights evidence is never included. */
   media?: ExerciseMediaPreview | null;
 };
@@ -78,17 +90,30 @@ export async function getLibraryWithAvailability(
     }),
   ]);
   const inventory = buildEquipmentAvailability(equipmentRows, plateRows);
+  const fitSettings = await loadExerciseEquipmentFitSettings(
+    db,
+    userId,
+    rows.map((exercise) => exercise.id),
+  );
 
   const flags = patternFlags(constraintRows);
 
   return rows.map((ex) => {
     const missing = missingRequirements(ex.equipmentRequirements, inventory);
     const constraint = flags.get(ex.movementPattern);
+    const equipmentFit = resolveExerciseEquipmentFitFromSettings({
+      exerciseId: ex.id,
+      requirements: ex.equipmentRequirements,
+      equipmentItems: equipmentRows,
+      settings: fitSettings,
+    });
     const unavailableReason = missing.length > 0
       ? missingRequirementsSummary(missing)
       : constraint?.avoid
         ? "blocked by current constraints"
-        : null;
+        : equipmentFit.status === "incompatible" || equipmentFit.status === "missing"
+          ? equipmentFit.reason
+          : null;
     return {
       id: ex.id,
       familyId: ex.familyId,
@@ -108,6 +133,9 @@ export async function getLibraryWithAvailability(
       constraintBlocked: constraint?.avoid ?? false,
       unavailableReason,
       cautionBodyParts: constraint?.cautious ? constraint.bodyParts : [],
+      equipmentFitStatus: equipmentFit.status,
+      equipmentFitReason: equipmentFit.reason,
+      equipmentFit,
     };
   });
 }

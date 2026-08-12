@@ -30,6 +30,7 @@ const [applied, tables, sentinels] = await Promise.all([
       to_regclass('public.exercise_media_assets') is not null as media,
       to_regclass('public.program_drafts') is not null as program_drafts,
       to_regclass('public.analysis_package_manifests') is not null as analysis_packages,
+      to_regclass('public.exercise_equipment_fit_assertions') is not null as exercise_equipment_fit_assertions,
       to_regclass('public.production_data_repair_preview') is not null as production_data_preview,
       to_regclass('public.program_editor_repair_preview') is not null as program_editor_preview,
       exists (
@@ -60,6 +61,14 @@ const [applied, tables, sentinels] = await Promise.all([
         where tgname = 'pending_recommendation_revision_guard'
           and not tgisinternal
       ) as recommendation_revision_guard,
+      exists (
+        select 1 from information_schema.columns
+        where table_schema = current_schema()
+          and table_name = 'exercise_equipment_fit_assertions'
+          and column_name = 'evidence_revision'
+          and data_type = 'text'
+          and is_nullable = 'NO'
+      ) as exercise_equipment_fit_evidence_revision,
       (
         select count(*) = 6
         from information_schema.columns column_info

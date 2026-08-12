@@ -18,6 +18,7 @@ import type { EquipmentRequirement, InventoryItem } from "@/engine/equipment-fil
 import type { ExactExecutionRequirement } from "@/engine/exact-equipment-availability";
 import { rankExerciseAlternatives } from "@/lib/exercise-alternatives";
 import type { ExerciseDiscoveryItem } from "@/lib/exercise-discovery";
+import { isExerciseEquipmentFitRecommendationSafe } from "@/lib/exercise-equipment-fit";
 import { formatWarmupSetLine } from "@/lib/warmup";
 import {
   buildSessionEquipmentPresentation,
@@ -121,6 +122,28 @@ function inventoryFor(items: SourceEquipmentItem[]): InventoryItem[] {
       available: item.available,
       attrs: item.maxWeight == null ? {} : { maxWeight: item.maxWeight },
     }));
+}
+
+function simulationEquipmentFit(exercise: ExerciseDiscoveryItem) {
+  const fit = exercise.equipmentFit;
+  if (!fit || !exercise.equipmentFitStatus || !exercise.equipmentFitReason) {
+    return {
+      semanticsVersion: 1 as const,
+      status: "unknown" as const,
+      reason: "No retained stable-ID equipment-fit evidence is available for this exercise.",
+      equipmentItemIds: [] as string[],
+    };
+  }
+  return {
+    semanticsVersion: 1 as const,
+    status: fit.status,
+    reason: fit.reason,
+    equipmentItemIds: fit.status === "compatible"
+      ? fit.compatibleEquipmentItemIds
+      : fit.status === "incompatible"
+        ? fit.incompatibleEquipmentItemIds
+        : fit.candidateEquipmentItemIds,
+  };
 }
 
 function equipmentOptions(input: {
@@ -254,7 +277,12 @@ export function buildSimulationSourceSnapshot(
             planned,
             library.filter((candidate) => candidate.id !== planned.id),
           )
-            .filter((candidate) => candidate.item.available && candidate.item.metricType === planned.metricType)
+            .filter((candidate) =>
+              candidate.item.available &&
+              candidate.item.metricType === planned.metricType &&
+              Boolean(candidate.item.equipmentFit) &&
+              isExerciseEquipmentFitRecommendationSafe(candidate.item.equipmentFit!),
+            )
             .flatMap((candidate) => {
               const exactAlternativeRequirement =
                 input.exactRequirementsByExerciseId[candidate.item.id] ?? null;
@@ -280,6 +308,7 @@ export function buildSimulationSourceSnapshot(
                 exerciseId: candidate.item.id,
                 name: candidate.item.name,
                 loadType: candidate.item.loadType,
+                equipmentFit: simulationEquipmentFit(candidate.item),
                 equipmentOptions: candidateEquipmentOptions,
                 painGuidance: painGuidance({
                   exercise: candidate.item,
@@ -326,6 +355,7 @@ export function buildSimulationSourceSnapshot(
             painGuidance: painGuidance({ exercise: planned, constraints, recentPainEvidenceCount }),
             media: planned.media ?? null,
             loadType: planned.loadType,
+            equipmentFit: simulationEquipmentFit(planned),
           };
         });
       const groupIds = sortedUnique(exercises.flatMap((exercise) => exercise.groupId ? [exercise.groupId] : []));

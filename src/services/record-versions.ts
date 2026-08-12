@@ -20,6 +20,11 @@ import {
 import type { NormalizedActivity } from "@/services/activities";
 import { historyRevisionLockSql } from "@/services/history-revision-lock";
 import { restoreWorkoutTimingVersion } from "@/services/workout-timing-corrections";
+import { exerciseEquipmentRequirementFitSatisfiedExpression } from "@/services/exercise-equipment-fit";
+import {
+  loadOwnerEquipmentFitReviewRevision,
+  ownerEquipmentFitReviewRevisionExpression,
+} from "@/services/equipment-fit-review-revision";
 
 export const VERSIONED_ENTITY_TYPES = [
   "health_activity",
@@ -32,6 +37,7 @@ export const VERSIONED_ENTITY_TYPES = [
   "constraint",
   "program",
   "external_exercise_mapping",
+  "exercise_equipment_fit_assertion",
   "user_profile",
 ] as const;
 
@@ -897,15 +903,45 @@ export async function updateSessionExerciseWithVersion(
         : action === "session_exercise.unskip"
           ? "Returned a skipped workout exercise and retained the previous state"
           : "Substituted a workout exercise and retained the previous state";
+  const expectedEquipmentFitReviewRevision = hasExerciseId
+    ? await loadOwnerEquipmentFitReviewRevision(db, userId)
+    : null;
+  if (hasExerciseId && !expectedEquipmentFitReviewRevision) {
+    return {
+      ok: false,
+      reason: "Current equipment-fit evidence is unavailable. Reload the workout and review the replacement again.",
+    };
+  }
   const query = sql`
-    WITH existing_version AS MATERIALIZED (
-      SELECT rv.id, rv.after_data
+    WITH target_profile AS MATERIALIZED (
+      SELECT profile.user_id
+      FROM user_profiles profile
+      WHERE ${hasExerciseId}::boolean
+        AND profile.user_id = ${userId}::uuid
+      FOR UPDATE
+    ), equipment_fit_gate AS MATERIALIZED (
+      SELECT profile.user_id
+      FROM target_profile profile
+      WHERE ${ownerEquipmentFitReviewRevisionExpression(sql`profile.user_id`)}
+        = ${expectedEquipmentFitReviewRevision}::text
+    ), existing_version AS MATERIALIZED (
+      SELECT rv.id, rv.before_data, rv.after_data
       FROM record_versions rv
       WHERE rv.id = ${versionId}::uuid
         AND rv.user_id = ${userId}::uuid
         AND rv.entity_type = 'session_exercise'
         AND rv.entity_id = ${sessionExerciseId}::uuid
         AND rv.action = ${action}
+        AND NOT ${hasExerciseId}::boolean
+      UNION ALL
+      SELECT existing.id, existing.before_data, existing.after_data
+      FROM target_profile profile
+      CROSS JOIN LATERAL session_exercise_record_version_after_owner_lock(
+        profile.user_id,
+        ${versionId}::uuid,
+        ${sessionExerciseId}::uuid,
+        ${action}::text
+      ) existing
     ), current_record AS MATERIALIZED (
       SELECT se.*, to_jsonb(se) AS before_data
       FROM session_exercises se
@@ -914,6 +950,7 @@ export async function updateSessionExerciseWithVersion(
         AND ws.user_id = ${userId}::uuid
         AND ws.archived_at IS NULL
         AND (NOT ${options.activeOnly ?? false}::boolean OR ws.status = 'in_progress')
+        AND (NOT ${hasExerciseId}::boolean OR EXISTS (SELECT 1 FROM equipment_fit_gate))
       FOR UPDATE OF se, ws
     ), candidate AS (
       SELECT
@@ -963,7 +1000,12 @@ export async function updateSessionExerciseWithVersion(
           OR EXISTS (
             SELECT 1
             FROM existing_version
-            WHERE candidate.exercise_id =
+            WHERE (
+                ${options.expectedExerciseId ?? null}::uuid IS NULL
+                OR existing_version.before_data->>'exercise_id' =
+                  ${options.expectedExerciseId ?? null}::text
+              )
+              AND candidate.exercise_id =
               (existing_version.after_data->>'exercise_id')::uuid
               AND (
                 ${values.exerciseId ?? null}::uuid IS NULL
@@ -978,6 +1020,22 @@ export async function updateSessionExerciseWithVersion(
           )
         )
         AND (candidate.next_target_load IS NULL) = (candidate.next_target_load_unit IS NULL)
+        AND (
+          NOT ${hasExerciseId}::boolean
+          OR candidate.next_exercise_id = candidate.exercise_id
+          OR NOT EXISTS (
+            SELECT 1
+            FROM exercise_equipment_requirements fit_requirement
+            WHERE fit_requirement.exercise_id = candidate.next_exercise_id
+              AND NOT ${exerciseEquipmentRequirementFitSatisfiedExpression({
+                userId,
+                exerciseId: sql`candidate.next_exercise_id`,
+                equipmentType: sql`fit_requirement.equipment_type`,
+                equipmentDefinitionId: sql`fit_requirement.equipment_definition_id`,
+                minWeight: sql`fit_requirement.min_weight`,
+              })}
+          )
+        )
         AND (
           NOT ${action === "session_exercise.skip"}::boolean
           OR NOT EXISTS (
@@ -1202,10 +1260,15 @@ export async function updateSessionExerciseWithVersion(
         SELECT 1
         FROM existing_version
         WHERE (
-          ${values.exerciseId ?? null}::uuid IS NULL
-          OR existing_version.after_data->>'exercise_id' =
-            ${values.exerciseId ?? null}::text
-        )
+            ${options.expectedExerciseId ?? null}::uuid IS NULL
+            OR existing_version.before_data->>'exercise_id' =
+              ${options.expectedExerciseId ?? null}::text
+          )
+          AND (
+            ${values.exerciseId ?? null}::uuid IS NULL
+            OR existing_version.after_data->>'exercise_id' =
+              ${values.exerciseId ?? null}::text
+          )
           AND (
             ${values.substitutionReason ?? null}::text IS NULL
             OR existing_version.after_data->>'substitution_reason' =
@@ -1237,13 +1300,24 @@ export async function updateSessionExerciseWithVersion(
       (updated.id IS NOT NULL) AS changed,
       COALESCE(versioned.id, (SELECT id FROM existing_version)) AS version_id,
       (SELECT count(*)::integer FROM occurrence_receipts) AS occurrence_changes,
-      (SELECT history_revision FROM revised_session) AS result_history_revision
-    FROM current_record current
+      (SELECT history_revision FROM revised_session) AS result_history_revision,
+      (NOT ${hasExerciseId}::boolean
+        OR EXISTS (SELECT 1 FROM equipment_fit_gate)) AS equipment_fit_revision_matches
+    FROM (SELECT 1) result
+    LEFT JOIN current_record current ON true
     LEFT JOIN updated ON updated.id = current.id
     LEFT JOIN versioned ON TRUE
   `;
   const row = resultRows(await db.execute(query))[0];
   if (!row) return { ok: false, reason: "Workout exercise not found." };
+  if (hasExerciseId && !row.equipment_fit_revision_matches) {
+    return {
+      ok: false,
+      reason:
+        "Your equipment or retained movement compatibility changed after replacement opened. Nothing was replaced; review the refreshed choices and try again.",
+    };
+  }
+  if (!row.id) return { ok: false, reason: "Workout exercise not found." };
   if (!row.candidate_valid) {
     return {
       ok: false,
@@ -1844,8 +1918,26 @@ async function restoreSessionExerciseVersion(
       sourceVersionId: versionId,
     }))
     .digest("hex");
+  const expectedEquipmentFitReviewRevision =
+    await loadOwnerEquipmentFitReviewRevision(db, userId);
+  if (!expectedEquipmentFitReviewRevision) {
+    return {
+      ok: false,
+      reason: "Current equipment-fit evidence is unavailable. Reload the workout before restoring this edit.",
+    };
+  }
   const query = sql`
-    WITH selected_version AS MATERIALIZED (
+    WITH target_profile AS MATERIALIZED (
+      SELECT profile.user_id
+      FROM user_profiles profile
+      WHERE profile.user_id = ${userId}::uuid
+      FOR UPDATE
+    ), equipment_fit_gate AS MATERIALIZED (
+      SELECT profile.user_id
+      FROM target_profile profile
+      WHERE ${ownerEquipmentFitReviewRevisionExpression(sql`profile.user_id`)}
+        = ${expectedEquipmentFitReviewRevision}::text
+    ), selected_version AS MATERIALIZED (
       SELECT *
       FROM record_versions
       WHERE id = ${versionId}::uuid
@@ -1869,6 +1961,7 @@ async function restoreSessionExerciseVersion(
       FROM session_exercises se
       JOIN workout_sessions ws ON ws.id = se.session_id
       JOIN owned_record owned ON owned.id = se.id
+      JOIN equipment_fit_gate fit_gate ON true
       WHERE ws.archived_at IS NULL
         AND (NOT ${options.activeOnly ?? false}::boolean OR ws.status = 'in_progress')
       FOR UPDATE OF se, ws
@@ -1932,6 +2025,22 @@ async function restoreSessionExerciseVersion(
           OR NOT EXISTS (
             SELECT 1 FROM completed_sets cs
             WHERE cs.session_exercise_id = current.id
+          )
+        )
+        AND (
+          current.exercise_id = (version.before_data->>'exercise_id')::uuid
+          OR NOT EXISTS (
+            SELECT 1
+            FROM exercise_equipment_requirements fit_requirement
+            WHERE fit_requirement.exercise_id =
+                (version.before_data->>'exercise_id')::uuid
+              AND NOT ${exerciseEquipmentRequirementFitSatisfiedExpression({
+                userId,
+                exerciseId: sql`(version.before_data->>'exercise_id')::uuid`,
+                equipmentType: sql`fit_requirement.equipment_type`,
+                equipmentDefinitionId: sql`fit_requirement.equipment_definition_id`,
+                minWeight: sql`fit_requirement.min_weight`,
+              })}
           )
         )
         AND (
@@ -2144,13 +2253,21 @@ async function restoreSessionExerciseVersion(
       (SELECT history_revision FROM revised_session) AS result_history_revision,
       EXISTS (SELECT 1 FROM owned_record) AS record_found,
       EXISTS (SELECT 1 FROM current_record) AS active_found,
-      EXISTS (SELECT 1 FROM compatible) AS compatible_found
+      EXISTS (SELECT 1 FROM compatible) AS compatible_found,
+      EXISTS (SELECT 1 FROM equipment_fit_gate) AS equipment_fit_revision_matches
     FROM selected_version selected
     LEFT JOIN restored ON restored.id = selected.entity_id
     LEFT JOIN versioned ON TRUE
   `;
   const row = resultRows(await db.execute(query))[0];
   if (!row) return { ok: false, reason: "Version not found." };
+  if (!row.equipment_fit_revision_matches) {
+    return {
+      ok: false,
+      reason:
+        "Your equipment or retained movement compatibility changed while the previous exercise was being restored. Nothing was changed; reload the workout and review the current choices.",
+    };
+  }
   if (!row.record_found || !row.active_found) {
     return {
       ok: false,

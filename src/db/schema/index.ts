@@ -6,6 +6,7 @@ export * from "./version";
 export * from "./recovery";
 export * from "./equipment";
 export * from "./exercise";
+export * from "./exercise-equipment-fit";
 export * from "./execution-requirement";
 export * from "./program";
 export * from "./session";

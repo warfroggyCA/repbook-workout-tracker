@@ -6,7 +6,7 @@ import { assertCanonicalSnapshotTableCoverage } from "@/services/recovery-manife
 import { canonicalizeProgramDraftIdentity } from "@/services/program-document-integrity";
 import { externalAnalysisImportDigestSchema } from "@/lib/external-analysis-import";
 
-export const SNAPSHOT_SCHEMA_VERSION = "32";
+export const SNAPSHOT_SCHEMA_VERSION = "33";
 
 export type CanonicalSnapshotPayload = {
   schemaVersion: string;
@@ -322,6 +322,7 @@ export async function captureUserSnapshot(
         'user_profiles', (SELECT COALESCE(jsonb_agg(to_jsonb(r) ORDER BY r.id), '[]'::jsonb) FROM user_profiles r WHERE r.user_id = ${userId}::uuid),
         'constraints', (SELECT COALESCE(jsonb_agg(to_jsonb(r) ORDER BY r.id), '[]'::jsonb) FROM constraints r WHERE r.user_id = ${userId}::uuid),
         'equipment_items', (SELECT COALESCE(jsonb_agg(to_jsonb(r) ORDER BY r.id), '[]'::jsonb) FROM equipment_items r WHERE r.user_id = ${userId}::uuid),
+        'exercise_equipment_fit_assertions', (SELECT COALESCE(jsonb_agg(to_jsonb(r) ORDER BY r.id), '[]'::jsonb) FROM exercise_equipment_fit_assertions r WHERE r.user_id = ${userId}::uuid),
         'plate_inventory', (SELECT COALESCE(jsonb_agg(to_jsonb(r) ORDER BY r.id), '[]'::jsonb) FROM plate_inventory r WHERE r.user_id = ${userId}::uuid),
         'barbell_configs', (SELECT COALESCE(jsonb_agg(to_jsonb(r) ORDER BY r.id), '[]'::jsonb) FROM barbell_configs r WHERE r.user_id = ${userId}::uuid),
         'plate_loaded_machine_profiles', (SELECT COALESCE(jsonb_agg(to_jsonb(r) ORDER BY r.id), '[]'::jsonb) FROM plate_loaded_machine_profiles r WHERE r.user_id = ${userId}::uuid),

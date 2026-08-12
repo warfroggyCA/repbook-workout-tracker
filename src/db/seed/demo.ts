@@ -13,6 +13,7 @@ import {
   workoutTemplates,
   supersetGroups,
   workoutTemplateExercises,
+  exerciseEquipmentRequirements,
   exercisePrescriptions,
   workoutSessions,
   sessionExercises,
@@ -22,6 +23,7 @@ import {
   sessionNotes,
   auditLogs,
 } from "@/db/schema";
+import { saveExerciseEquipmentFitAssertion } from "@/services/exercise-equipment-fit-management";
 import {
   addLocalDays,
   workoutLocalDate,
@@ -306,6 +308,13 @@ export async function seedDemo(db: Db): Promise<string> {
   for (const t of templateSpecs) for (const s of t.slots) names.add(s.exercise);
   for (const h of historySpecs)
     for (const p of h.perfs) if (p.substitute) names.add(p.substitute);
+  // The disposable browser owner explicitly reviews each deterministic
+  // alternative exercised by the substitution-lineage acceptance flow.
+  // Listing stable catalog identities here is synthetic fixture intent, not a
+  // name-derived production backfill.
+  names.add("Barbell Front Squat");
+  names.add("Barbell Glute Bridge");
+  names.add("Barbell Floor Press");
   const exRows = await db
     .select({
       id: exercises.id,
@@ -320,6 +329,52 @@ export async function seedDemo(db: Db): Promise<string> {
   const exSemanticsById = new Map(exRows.map((r) => [r.id, r]));
   for (const n of names)
     if (!exByName.has(n)) throw new Error(`Seed exercise missing from library: ${n}`);
+
+  // Disposable demo truth is explicit stable-ID evidence, not a backfill from
+  // labels or broad categories. Each supported requirement is deliberately
+  // paired to the exact synthetic item the demo owner reviewed.
+  const fitItemByRequirement = new Map<string, string>([
+    ["rack", requiredEquipmentId("Squat rack")],
+    ["bench", requiredEquipmentId("Adjustable bench")],
+    ["barbell", requiredEquipmentId("Olympic barbell (45 lb)")],
+    ["ez_bar", requiredEquipmentId("EZ curl bar (18 lb)")],
+    ["dumbbell", requiredEquipmentId("Adjustable dumbbells (5–35 lb pair)")],
+    ["kettlebell", requiredEquipmentId("Adjustable kettlebell (18–35 lb)")],
+    ["bands", requiredEquipmentId("Bodylastics resistance bands")],
+    ["jump_rope", requiredEquipmentId("Skipping rope")],
+    ["elliptical", requiredEquipmentId("Elliptical")],
+  ]);
+  const demoRequirements = await db.select({
+    exerciseId: exerciseEquipmentRequirements.exerciseId,
+    equipmentType: exerciseEquipmentRequirements.equipmentType,
+  }).from(exerciseEquipmentRequirements).where(inArray(
+    exerciseEquipmentRequirements.exerciseId,
+    exRows.map((exercise) => exercise.id),
+  ));
+  for (const requirement of demoRequirements) {
+    if (requirement.equipmentType === "plates" || requirement.equipmentType === "bodyweight") {
+      continue;
+    }
+    const equipmentItemId = fitItemByRequirement.get(requirement.equipmentType);
+    if (!equipmentItemId) {
+      throw new Error(
+        `Demo fit review has no explicit stable item for ${requirement.equipmentType}.`,
+      );
+    }
+    const retained = await saveExerciseEquipmentFitAssertion(db, user.id, {
+      mutationId: crypto.randomUUID(),
+      assertionId: null,
+      exerciseId: requirement.exerciseId,
+      equipmentItemId,
+      verdict: "compatible",
+      reasonCode: "owner_verified",
+      reasonNote: "Synthetic demo owner reviewed this exact exercise and item",
+      expectedRevision: null,
+    });
+    if (!retained.ok) {
+      throw new Error(`Demo fit review failed: ${retained.reason}`);
+    }
+  }
 
   // Demo seeding builds the same immutable tree in several readable steps.
   // Authorize only this disposable seed connection and keep the Program

@@ -25,6 +25,7 @@ import { loadEquipmentInventoryDocument } from "@/services/equipment-inventory";
 import { getLibraryWithAvailability } from "@/services/routine-import";
 import { achievableLoads, solvePlates } from "@/engine/plate-math";
 import { platePairsPerSide } from "@/lib/equipment-inventory-contract";
+import { saveExerciseEquipmentFitAssertion } from "@/services/exercise-equipment-fit-management";
 
 /**
  * Stage 3 downstream consistency: after a management save, exercise
@@ -77,10 +78,21 @@ describe("equipment management downstream consistency", () => {
         { exerciseId: cableExercise.id, equipmentType: "cable", minWeight: null },
         { exerciseId: benchExercise.id, equipmentType: "bench", minWeight: null },
       ]);
-      await db.insert(equipmentItems).values([
+      const [cableItem] = await db.insert(equipmentItems).values([
         { userId, type: "cable", label: "Cable stack", quantity: 1, attrs: {}, available: true },
         { userId, type: "barbell", label: "Olympic bar", quantity: 1, attrs: { unit: "lb" }, available: true },
-      ]);
+      ]).returning({ id: equipmentItems.id, type: equipmentItems.type });
+      if (cableItem.type !== "cable") throw new Error("Cable fixture order changed.");
+      await expect(saveExerciseEquipmentFitAssertion(db, userId, {
+        mutationId: crypto.randomUUID(),
+        assertionId: null,
+        exerciseId: cableExercise.id,
+        equipmentItemId: cableItem.id,
+        verdict: "compatible",
+        reasonCode: "owner_verified",
+        reasonNote: null,
+        expectedRevision: null,
+      })).resolves.toMatchObject({ ok: true, changed: true });
       await db.insert(plateInventory).values([
         { userId, denomination: 45, quantity: 4 },
         { userId, denomination: 25, quantity: 2 },

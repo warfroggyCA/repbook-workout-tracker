@@ -87,6 +87,44 @@ export function sessionEquipmentRequirementsSnapshotExpression(
   )`;
 }
 
+/**
+ * A current exercise/item fit review is evidence for the catalog requirement
+ * semantics reviewed with it. It must not be reused to approve a different
+ * immutable requirement snapshot retained by an older active session.
+ */
+export async function loadSessionEquipmentRequirementsCurrency(
+  db: Db,
+  userId: string,
+  sessionExerciseIds: string[],
+) {
+  const uniqueIds = [...new Set(sessionExerciseIds)];
+  if (uniqueIds.length === 0) return new Map<string, boolean>();
+  const rows = resultRows(await db.execute(sql`
+    SELECT session_exercise.id,
+           coalesce(
+             session_exercise.equipment_requirements_semantics_version = 1
+             AND session_exercise.equipment_requirements_snapshot IS NOT NULL
+             AND session_exercise.equipment_requirements_snapshot =
+               ${sessionEquipmentRequirementsSnapshotExpression(
+                 sql`session_exercise.exercise_id`,
+               )},
+             false
+           ) AS requirements_current
+    FROM session_exercises session_exercise
+    JOIN workout_sessions session
+      ON session.id = session_exercise.session_id
+    WHERE session.user_id = ${userId}::uuid
+      AND session_exercise.id IN (${sql.join(
+        uniqueIds.map((id) => sql`${id}::uuid`),
+        sql`, `,
+      )})
+  `));
+  return new Map(rows.map((row) => [
+    String(row.id),
+    Boolean(row.requirements_current),
+  ]));
+}
+
 type PreparationExerciseRow = {
   session_exercise_id: string;
   exercise_id: string;

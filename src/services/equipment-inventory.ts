@@ -1,4 +1,4 @@
-import { sql, and, asc, eq, isNull, or } from "drizzle-orm";
+import { sql, and, asc, eq, isNull, or, type SQL } from "drizzle-orm";
 import type { Db } from "@/db";
 import { resultRows } from "@/db/result";
 import {
@@ -55,7 +55,14 @@ export function inventoryRevisionExpression(userId: string) {
               FROM cable_attachment_profiles a WHERE a.user_id = ${userId}::uuid), '[]')
     || coalesce((SELECT jsonb_agg(to_jsonb(ca) ORDER BY ca.cable_profile_id, ca.attachment_profile_id)::text
               FROM cable_attachment_compatibilities ca WHERE ca.user_id = ${userId}::uuid), '[]')
+    || coalesce((SELECT jsonb_agg(to_jsonb(fit) ORDER BY fit.exercise_id, fit.equipment_item_id)::text
+              FROM exercise_equipment_fit_assertions fit WHERE fit.user_id = ${userId}::uuid), '[]')
   )`;
+}
+
+/** Call only from a query path that depends on an owner-profile FOR UPDATE row. */
+export function inventoryRevisionAfterOwnerLockExpression(userId: string | SQL) {
+  return sql`equipment_inventory_revision_after_owner_lock(${userId}::uuid)`;
 }
 
 export type LoadedInventoryDefinition = {
@@ -343,6 +350,12 @@ export type InventoryImpact = {
   exercisesBecomingAvailable: Array<{ id: string; name: string }>;
   /** Current-Program slots whose exercise would become unavailable. */
   affectedProgramSlots: Array<{ dayName: string; exerciseName: string }>;
+  /** Retained exact-pair reviews whose current capability evidence will change. */
+  fitReviewsRequiringReview: Array<{
+    assertionId: string;
+    exerciseName: string;
+    equipmentLabel: string;
+  }>;
 };
 
 export type InventoryChangePreview = {
@@ -650,6 +663,61 @@ export async function previewInventoryDocumentChanges(
     }
   }
 
+  const currentBarAssociation = associateBarConfigurations(
+    current.document.items,
+    current.document.bars,
+  );
+  const proposedBarAssociation = associateBarConfigurations(
+    document.items,
+    document.bars,
+  );
+  const currentBarItemById = new Map(
+    currentBarAssociation.matched.flatMap(({ itemIndex, barIndex }) => {
+      const itemId = current.document.items[itemIndex]?.id;
+      const barId = current.document.bars[barIndex]?.id;
+      return itemId && barId ? [[barId, itemId] as const] : [];
+    }),
+  );
+  const proposedBarItemById = new Map(
+    proposedBarAssociation.matched.flatMap(({ itemIndex, barIndex }) => {
+      const item = document.items[itemIndex];
+      const barId = document.bars[barIndex]?.id;
+      const itemId = item?.id ?? item?.draftId;
+      return itemId && barId ? [[barId, itemId] as const] : [];
+    }),
+  );
+  const currentBarById = new Map(
+    current.document.bars.flatMap((bar) => (bar.id ? [[bar.id, bar] as const] : [])),
+  );
+  const proposedBarById = new Map(
+    document.bars.flatMap((bar) => (bar.id ? [[bar.id, bar] as const] : [])),
+  );
+  const semanticBarItemIds = new Set<string>();
+  for (const barId of new Set([...currentBarById.keys(), ...proposedBarById.keys()])) {
+    const before = currentBarById.get(barId);
+    const after = proposedBarById.get(barId);
+    const semanticsChanged =
+      before == null
+      || after == null
+      || before.barType !== after.barType
+      || before.barWeight !== after.barWeight
+      || before.collarWeight !== after.collarWeight
+      || before.quantity !== after.quantity
+      || currentBarItemById.get(barId) !== proposedBarItemById.get(barId);
+    if (!semanticsChanged) continue;
+    const beforeItemId = currentBarItemById.get(barId);
+    const afterItemId = proposedBarItemById.get(barId);
+    if (beforeItemId) semanticBarItemIds.add(beforeItemId);
+    if (afterItemId) semanticBarItemIds.add(afterItemId);
+  }
+  for (const { itemIndex, barIndex } of proposedBarAssociation.matched) {
+    const bar = document.bars[barIndex];
+    const item = document.items[itemIndex];
+    if (bar?.id != null) continue;
+    const itemId = item?.id ?? item?.draftId;
+    if (itemId) semanticBarItemIds.add(itemId);
+  }
+
   const currentProfiles = new Map(
     (current.document.loadProfiles ?? []).map((entry) => [entry.equipmentItemId, entry.profile]),
   );
@@ -689,14 +757,126 @@ export async function previewInventoryDocumentChanges(
     });
   }
 
-  const impact = await calculateAvailabilityImpact(
-    db,
-    userId,
-    current.document.items,
-    document.items,
-    current.document.plates,
-    document.plates
+  const changedPlateIds = new Set(
+    current.document.plates.flatMap((before) => {
+      if (!before.id) return [];
+      const after = submittedPlatesById.get(before.id);
+      return after == null
+        || after.denomination !== before.denomination
+        || after.quantity !== before.quantity
+        ? [before.id]
+        : [];
+    }),
   );
+  const plateProfileItemIds = new Set<string>();
+  if (changedPlateIds.size > 0) {
+    for (const profiles of [currentProfiles, proposedProfiles]) {
+      for (const [equipmentItemId, profile] of profiles) {
+        if (
+          profile.kind === "plate_loaded_machine"
+          && profile.compatiblePlateIds.some((id) => changedPlateIds.has(id))
+        ) {
+          plateProfileItemIds.add(equipmentItemId);
+        }
+      }
+    }
+  }
+
+  const itemSemanticChangeIds = new Set([
+    ...changed
+      .filter((item) => item.changedFields.some((field) => field !== "label"))
+      .map((item) => item.id),
+    ...removed.map((item) => item.id),
+  ]);
+  const topologyItemChangeIds = new Set([
+    ...changed
+      .filter((item) => item.changedFields.some((field) =>
+        field === "type" || field === "details"
+      ))
+      .map((item) => item.id),
+    ...removed.map((item) => item.id),
+  ]);
+  const semanticItemIds = new Set([
+    ...itemSemanticChangeIds,
+    ...loadProfileChanges.map((change) => change.equipmentItemId),
+    ...semanticBarItemIds,
+    ...plateProfileItemIds,
+  ]);
+
+  const topologyEndpointChangeIds = new Set(topologyItemChangeIds);
+  for (const change of loadProfileChanges) {
+    const before = currentProfiles.get(change.equipmentItemId);
+    const after = proposedProfiles.get(change.equipmentItemId);
+    if (before?.kind === "attachment" || after?.kind === "attachment") {
+      topologyEndpointChangeIds.add(change.equipmentItemId);
+    }
+    const beforeAttachmentIds = before?.kind === "cable_machine"
+      ? new Set(before.compatibleAttachmentItemIds)
+      : new Set<string>();
+    const afterAttachmentIds = after?.kind === "cable_machine"
+      ? new Set(after.compatibleAttachmentItemIds)
+      : new Set<string>();
+    for (const attachmentId of new Set([
+      ...beforeAttachmentIds,
+      ...afterAttachmentIds,
+    ])) {
+      if (beforeAttachmentIds.has(attachmentId) !== afterAttachmentIds.has(attachmentId)) {
+        semanticItemIds.add(attachmentId);
+      }
+    }
+  }
+  for (const profiles of [currentProfiles, proposedProfiles]) {
+    for (const [cableItemId, profile] of profiles) {
+      if (profile.kind !== "cable_machine") continue;
+      if (topologyEndpointChangeIds.has(cableItemId)) {
+        for (const attachmentId of profile.compatibleAttachmentItemIds) {
+          semanticItemIds.add(attachmentId);
+        }
+      }
+      if (
+        profile.compatibleAttachmentItemIds.some((attachmentId) =>
+          topologyEndpointChangeIds.has(attachmentId)
+        )
+      ) {
+        semanticItemIds.add(cableItemId);
+      }
+    }
+  }
+  const affectedFitRows =
+    semanticItemIds.size > 0
+      ? resultRows(await db.execute(sql`
+          SELECT
+            assertion.id AS assertion_id,
+            exercise.name AS exercise_name,
+            item.label AS equipment_label
+          FROM exercise_equipment_fit_assertions assertion
+          JOIN exercises exercise ON exercise.id = assertion.exercise_id
+          JOIN equipment_items item
+            ON item.id = assertion.equipment_item_id
+           AND item.user_id = assertion.user_id
+          WHERE assertion.user_id = ${userId}::uuid
+            AND assertion.equipment_item_id IN (
+              SELECT value::uuid
+              FROM jsonb_array_elements_text(${JSON.stringify([...semanticItemIds])}::jsonb)
+            )
+          ORDER BY exercise.name, item.label, assertion.id
+        `))
+      : [];
+  const impact: InventoryImpact = {
+    ...(await calculateAvailabilityImpact(
+      db,
+      userId,
+      current.document.items,
+      document.items,
+      current.document.plates,
+      document.plates,
+    )),
+    fitReviewsRequiringReview: affectedFitRows.map((row) => ({
+      assertionId: String(row.assertion_id),
+      exerciseName: String(row.exercise_name),
+      equipmentLabel: String(row.equipment_label),
+    })),
+  };
 
   const loadRangeReduced = document.items.some((item) => {
     if (item.id == null) return false;
@@ -715,7 +895,8 @@ export async function previewInventoryDocumentChanges(
     barChanges.some((change) => change.removed) ||
     loadRangeReduced ||
     loadProfileChanges.some((change) => change.reducesGuidance) ||
-    impact.exercisesBecomingUnavailable.length > 0;
+    impact.exercisesBecomingUnavailable.length > 0 ||
+    impact.fitReviewsRequiringReview.length > 0;
 
   const noChanges =
     added.length === 0 &&
@@ -808,5 +989,6 @@ async function calculateAvailabilityImpact(
     affectedProgramSlots: programSlots
       .filter((slot) => unavailableIds.has(slot.exerciseId))
       .map((slot) => ({ dayName: slot.dayName, exerciseName: slot.exerciseName })),
+    fitReviewsRequiringReview: [],
   };
 }

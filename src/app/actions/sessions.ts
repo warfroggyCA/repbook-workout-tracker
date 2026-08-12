@@ -879,10 +879,14 @@ export async function undoExerciseSubstitution(sessionExerciseId: string) {
   }
   const library = await getExerciseDiscoveryLibrary(db, user.id);
   const previousExercise = library.find((item) => item.id === previousExerciseId);
-  if (!previousExercise?.available) {
+  const previousExerciseUnavailableReason = previousExercise
+    ? workoutReplacementUnavailableReason(previousExercise)
+    : null;
+  if (!previousExercise || previousExerciseUnavailableReason) {
     return actionFailure(
       "previous_exercise_unavailable",
-      previousExercise?.unavailableReason ??
+      previousExerciseUnavailableReason ??
+        previousExercise?.unavailableReason ??
         "The previous exercise is not available with your current equipment and constraints."
     );
   }
@@ -890,7 +894,14 @@ export async function undoExerciseSubstitution(sessionExerciseId: string) {
   const restored = await restoreRecordVersion(db, user.id, version.id, {
     activeOnly: true,
   });
-  if (!restored.ok) return actionFailure("restore_rejected", restored.reason);
+  if (!restored.ok) {
+    return actionFailure(
+      restored.reason.includes("equipment or retained movement compatibility changed")
+        ? "replacement_stale"
+        : "restore_rejected",
+      restored.reason,
+    );
+  }
   const current = await db.query.sessionExercises.findFirst({
     where: eq(sessionExercises.id, sessionExercise.id),
   });

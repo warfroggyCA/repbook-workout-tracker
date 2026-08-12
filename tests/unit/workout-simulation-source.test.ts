@@ -44,6 +44,21 @@ function exercise(overrides: Partial<ExerciseDiscoveryItem> = {}): ExerciseDisco
     cautionBodyParts: [],
     available: true,
     unavailableReason: null,
+    equipmentFitStatus: "compatible",
+    equipmentFitReason: "Synthetic owner-reviewed compatible fit.",
+    equipmentFit: {
+      semanticsVersion: 1,
+      exerciseId: "ez-curl",
+      status: "compatible",
+      reason: "Synthetic owner-reviewed compatible fit.",
+      candidateEquipmentItemIds: ["ez-item"],
+      compatibleEquipmentItemIds: ["ez-item"],
+      incompatibleEquipmentItemIds: [],
+      unknownEquipmentItemIds: [],
+      staleEquipmentItemIds: [],
+      requirements: [],
+      assertions: [],
+    },
     ...overrides,
   };
 }

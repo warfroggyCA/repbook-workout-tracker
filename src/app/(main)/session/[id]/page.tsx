@@ -10,7 +10,6 @@ import {
   sessionOccurrences,
   equipmentItems,
   plateInventory,
-  exerciseExecutionRequirements,
   constraints as constraintsTable,
   exercises as exercisesTable,
   recordVersions,
@@ -55,8 +54,14 @@ import {
   retainedPrimaryEquipmentCandidateMatchesBroad,
 } from "@/lib/session-equipment-requirements";
 import {
+  loadSessionEquipmentRequirementsCurrency,
   resolveSessionPreparationEquipmentProjection,
 } from "@/services/session-equipment-requirements";
+import {
+  loadExerciseEquipmentFitSettings,
+  resolveExerciseEquipmentFitFromSettings,
+} from "@/services/exercise-equipment-fit";
+import { isExerciseEquipmentItemFitRecommendationSafe } from "@/lib/exercise-equipment-fit";
 
 function techniqueIssue(value: string | null): TechniqueIssue | null {
   return TECHNIQUE_ISSUES.includes(value as TechniqueIssue)
@@ -183,11 +188,12 @@ async function renderSessionPage(
     plates,
     equipment,
     equipmentProfiles,
-    exactRequirements,
     userConstraints,
     coachMessages,
     plannedExercises,
     sessionPreparation,
+    equipmentFitSettings,
+    equipmentRequirementsCurrency,
   ] =
     await Promise.all([
       db.query.plateInventory.findMany({
@@ -197,14 +203,6 @@ async function renderSessionPage(
         where: eq(equipmentItems.userId, user.id),
       }),
       loadEquipmentLoadProfiles(db, user.id),
-      exerciseIds.length > 0
-        ? db.query.exerciseExecutionRequirements.findMany({
-            where: inArray(
-              exerciseExecutionRequirements.exerciseId,
-              exerciseIds,
-            ),
-          })
-        : Promise.resolve([]),
       db.query.constraints.findMany({
         where: eq(constraintsTable.userId, user.id),
       }),
@@ -219,6 +217,12 @@ async function renderSessionPage(
         user.id,
         session.id,
         session.historyRevision,
+      ),
+      loadExerciseEquipmentFitSettings(db, user.id, exerciseIds),
+      loadSessionEquipmentRequirementsCurrency(
+        db,
+        user.id,
+        session.exercises.map((exercise) => exercise.id),
       ),
     ]);
   if (sessionPreparation == null) notFound();
@@ -278,9 +282,6 @@ async function renderSessionPage(
     occurrences: session.occurrences,
   });
 
-  const exactByExercise = new Map(
-    exactRequirements.map((requirement) => [requirement.exerciseId, requirement]),
-  );
   const plateConfigs: Record<string, PlateMathConfig> = {};
   const equipmentSetups: SessionRunnerProps["equipmentSetups"] = {};
   const equipmentById = new Map(equipment.map((item) => [item.id, item]));
@@ -297,10 +298,30 @@ async function renderSessionPage(
     const retainedSnapshot = retainedRequirements.state === "retained"
       ? retainedRequirements.snapshot
       : null;
-    const legacyExact = usesPrescribedMeaning
+    const exact = retainedSnapshot?.exact ?? null;
+    const fitRequirements = retainedSnapshot
+      ? retainedSnapshot.broad.map((requirement) => ({
+          id: requirement.sourceRequirementId,
+          equipmentType: requirement.equipmentType,
+          equipmentDefinitionId: requirement.equipmentDefinition?.id ?? null,
+          minWeight: requirement.minWeight,
+        }))
+      : null;
+    const equipmentFit = fitRequirements == null ||
+        equipmentRequirementsCurrency.get(sessionExercise.id) !== true
       ? null
-      : exactByExercise.get(sessionExercise.exerciseId) ?? null;
-    const exact = retainedSnapshot?.exact ?? legacyExact;
+      : resolveExerciseEquipmentFitFromSettings({
+          exerciseId: sessionExercise.exerciseId,
+          requirements: fitRequirements,
+          equipmentItems: equipment.map((item) => ({
+            id: item.id,
+            type: item.type,
+            definitionId: item.definitionId,
+            available: item.available,
+            attrs: item.attrs,
+          })),
+          settings: equipmentFitSettings,
+        });
     const presentation = buildSessionEquipmentPresentation({
       exercise: {
         id: sessionExercise.id,
@@ -315,23 +336,14 @@ async function renderSessionPage(
               equipmentType: requirement.equipmentType,
               minWeight: requirement.minWeight,
             }))
-          : usesPrescribedMeaning
-            ? []
-            : sessionExercise.exercise.equipmentRequirements.map((requirement) => ({
-                equipmentType: requirement.equipmentType,
-                minWeight: requirement.minWeight,
-              })),
+          : [],
         exactRequirement: exact ? {
           requiredProfileKind: exact.requiredProfileKind,
           requiredEquipmentDefinitionId:
-            "requiredEquipmentDefinition" in exact
-              ? exact.requiredEquipmentDefinition?.id ?? null
-              : exact.requiredEquipmentDefinitionId,
+            exact.requiredEquipmentDefinition?.id ?? null,
           requiredAttachmentKind: exact.requiredAttachmentKind,
           requiredAttachmentDefinitionId:
-            "requiredAttachmentDefinition" in exact
-              ? exact.requiredAttachmentDefinition?.id ?? null
-              : exact.requiredAttachmentDefinitionId,
+            exact.requiredAttachmentDefinition?.id ?? null,
           requiresKnownGeometry: exact.requiresKnownGeometry,
         } : null,
         currentSelection: sessionExercise.currentEquipmentSnapshot ? {
@@ -357,19 +369,28 @@ async function renderSessionPage(
         quantity: plate.quantity,
         unit: plate.unit,
       })),
-      optionAllowed: retainedSnapshot
-        ? (option) => {
-            const item = equipmentById.get(option.equipmentItemId);
-            return item != null && retainedPrimaryEquipmentCandidateMatchesBroad(
-              retainedSnapshot.broad,
-              {
-                equipmentType: item.type,
-                equipmentDefinitionId: item.definitionId,
-                attrs: { maxWeight: item.attrs.maxWeight },
-              },
-            );
-          }
-        : undefined,
+      optionAllowed: (option) => {
+        const item = equipmentById.get(option.equipmentItemId);
+        if (
+          item == null ||
+          equipmentFit == null ||
+          !isExerciseEquipmentItemFitRecommendationSafe(
+            equipmentFit,
+            option.equipmentItemId,
+          )
+        ) {
+          return false;
+        }
+        return retainedSnapshot == null ||
+          retainedPrimaryEquipmentCandidateMatchesBroad(
+            retainedSnapshot.broad,
+            {
+              equipmentType: item.type,
+              equipmentDefinitionId: item.definitionId,
+              attrs: { maxWeight: item.attrs.maxWeight },
+            },
+          );
+      },
     });
     if (presentation.setup) equipmentSetups[sessionExercise.id] = presentation.setup;
     if (presentation.plateConfig) plateConfigs[sessionExercise.id] = presentation.plateConfig;

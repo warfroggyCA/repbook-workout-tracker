@@ -23,6 +23,12 @@ import { logSetSchema, painSchema } from "@/lib/session-action-validation";
 import { continueSimulationRest } from "@/lib/workout-simulation";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const COMPATIBLE_FIT = {
+  semanticsVersion: 1 as const,
+  status: "compatible" as const,
+  reason: "Synthetic owner-reviewed compatible fit.",
+  equipmentItemIds: ["synthetic-item"],
+};
 
 function source(): SimulationSourceSnapshot {
   return {
@@ -43,27 +49,27 @@ function source(): SimulationSourceSnapshot {
             groupId: null, groupMemberOrderIdx: null, sets: 2, repsMin: 5, repsMax: 8,
             targetLoad: 115, targetLoadUnit: "lb", restSec: 90, note: null,
             warmups: [{ id: "bench-warmup", label: "Ramp bench", orderIdx: 0, note: null }],
-            alternatives: [{ exerciseId: "incline", name: "Incline Press", loadType: "barbell" }],
+            alternatives: [{ exerciseId: "incline", name: "Incline Press", loadType: "barbell", equipmentFit: COMPATIBLE_FIT }],
             equipmentOptions: [{ key: "bench-bar", label: "Olympic bar", guidance: "45 lb bar" }],
-            painGuidance: ["Stop if shoulder pain increases."], loadType: "barbell",
+            painGuidance: ["Stop if shoulder pain increases."], loadType: "barbell", equipmentFit: COMPATIBLE_FIT,
           },
           {
             id: "rear-slot", exerciseId: "rear", name: "Rear Delt Fly", orderIdx: 1,
             groupId: "tri", groupMemberOrderIdx: 0, sets: 2, repsMin: 15, repsMax: 20,
             targetLoad: 15, targetLoadUnit: "lb", restSec: 15, note: null,
-            warmups: [], alternatives: [], equipmentOptions: [], painGuidance: [], loadType: "cable",
+            warmups: [], alternatives: [], equipmentOptions: [], painGuidance: [], loadType: "cable", equipmentFit: COMPATIBLE_FIT,
           },
           {
             id: "curl-slot", exerciseId: "curl", name: "Zottman Curl", orderIdx: 2,
             groupId: "tri", groupMemberOrderIdx: 1, sets: 2, repsMin: 10, repsMax: 12,
             targetLoad: 20, targetLoadUnit: "lb", restSec: 15, note: null,
-            warmups: [], alternatives: [], equipmentOptions: [], painGuidance: [], loadType: "dumbbell",
+            warmups: [], alternatives: [], equipmentOptions: [], painGuidance: [], loadType: "dumbbell", equipmentFit: COMPATIBLE_FIT,
           },
           {
             id: "triceps-slot", exerciseId: "triceps", name: "Overhead Triceps Extension", orderIdx: 3,
             groupId: "tri", groupMemberOrderIdx: 2, sets: 2, repsMin: 10, repsMax: 15,
             targetLoad: 25, targetLoadUnit: "lb", restSec: 60, note: null,
-            warmups: [], alternatives: [], equipmentOptions: [], painGuidance: [], loadType: "cable",
+            warmups: [], alternatives: [], equipmentOptions: [], painGuidance: [], loadType: "cable", equipmentFit: COMPATIBLE_FIT,
           },
         ],
       },
@@ -75,7 +81,7 @@ function source(): SimulationSourceSnapshot {
           targetLoad: 38, targetLoadUnit: "lb", restSec: 75, note: null,
           warmups: [], alternatives: [],
           equipmentOptions: [{ key: "ez-18", label: "18 lb EZ curl bar", guidance: "10 lb per side" }],
-          painGuidance: [], loadType: "barbell",
+          painGuidance: [], loadType: "barbell", equipmentFit: COMPATIBLE_FIT,
         }],
       },
     ],
@@ -88,6 +94,26 @@ function ids() {
 }
 
 describe("workout simulation local model", () => {
+  it("fails closed before rehearsing a planned exercise with unknown or incompatible exact fit", () => {
+    for (const status of ["unknown", "incompatible"] as const) {
+      const blocked = source();
+      blocked.days[0]!.exercises[0]!.equipmentFit = {
+        semanticsVersion: 1,
+        status,
+        reason: "Synthetic exact station evidence does not prove this setup.",
+        equipmentItemIds: ["synthetic-station"],
+      };
+      const workspace = createSimulationWorkspace(blocked, {
+        createId: ids(),
+        nowISO: "2026-07-22T12:01:00.000Z",
+      });
+      expect(() => startSimulationWorkout(workspace, 0)).toThrow(
+        /no current compatible equipment fit/u,
+      );
+      expect(workspace.activeWorkout).toBeNull();
+    }
+  });
+
   it("uses unmistakable non-UUID identities and orders warm-ups, ordinary work, then group rounds", () => {
     const createId = ids();
     let workspace = createSimulationWorkspace(source(), { createId, nowISO: "2026-07-22T12:01:00.000Z" });

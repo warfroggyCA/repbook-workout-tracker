@@ -724,6 +724,8 @@ test("builds, reviews, and explicitly accepts one deterministic session proposal
   await signIn(page);
   await page.goto("/program/edit");
   await expectSaved(page);
+  await page.getByLabel("Program name").fill("Compiler acceptance verification");
+  await expectSaved(page);
   await page.getByRole("tab", { name: "Review", exact: true }).click();
   await page.getByRole("button", { name: "Check Program", exact: true }).first().click();
   await expect(page.getByRole("heading", { name: "Ready to publish" })).toBeVisible();
@@ -749,6 +751,13 @@ test("builds, reviews, and explicitly accepts one deterministic session proposal
   await page.screenshot({ path: testInfo.outputPath("compiler-after-review.png"), fullPage: true });
 
   const proposalPath = new URL(page.url()).pathname;
+  await page.goto(`${proposalPath}?status=stale`);
+  const staleAcceptanceAlert = page.getByRole("alert").filter({
+    hasText: /No workout was started\. Build a fresh proposal\./,
+  });
+  await expect(staleAcceptanceAlert).toBeVisible();
+  await expect(staleAcceptanceAlert).toBeFocused();
+  await page.goto(proposalPath);
   const recoveryPage = await context.newPage();
   await recoveryPage.goto("/program");
   await expect(recoveryPage.getByRole("heading", { name: "Resume session proposal", exact: true })).toBeVisible();
