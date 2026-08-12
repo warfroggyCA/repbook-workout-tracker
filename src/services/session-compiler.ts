@@ -21,6 +21,10 @@ import {
 } from "@/lib/program-document";
 import { sessionEquipmentRequirementsSnapshotExpression } from "@/services/session-equipment-requirements";
 import { inventoryRevisionExpression } from "@/services/equipment-inventory";
+import {
+  loadOwnerEquipmentFitReviewRevision,
+  ownerEquipmentFitReviewRevisionExpression,
+} from "@/services/equipment-fit-review-revision";
 
 export class SessionCompilerIneligibleError extends Error {
   constructor(message: string) {
@@ -339,9 +343,32 @@ export async function acceptSessionCompilerProposal(
     : [];
   const dayWarmupsJson = JSON.stringify(dayWarmupItems);
   const snapshotJson = JSON.stringify(snapshot);
+  const expectedEquipmentFitReviewRevision =
+    await loadOwnerEquipmentFitReviewRevision(db, userId);
+  if (!expectedEquipmentFitReviewRevision) return { outcome: "stale" };
   await dependencies.checkpoint?.("before-accept-statement");
   const result = resultRows(await db.execute(sql`
-    WITH replay AS MATERIALIZED (
+    WITH target_profile AS MATERIALIZED (
+      SELECT profile.user_id
+      FROM user_profiles profile
+      WHERE profile.user_id = ${userId}::uuid
+      FOR UPDATE
+    ), equipment_fit_gate AS MATERIALIZED (
+      SELECT profile.user_id
+      FROM target_profile profile
+      WHERE ${ownerEquipmentFitReviewRevisionExpression(sql`profile.user_id`)}
+        = ${expectedEquipmentFitReviewRevision}::text
+    ), current_program AS MATERIALIZED (
+      SELECT program.id, program.current_version_id
+      FROM programs program
+      JOIN equipment_fit_gate fit_gate ON fit_gate.user_id = program.user_id
+      WHERE program.id = ${proposal.programId}::uuid
+        AND program.user_id = ${userId}::uuid
+        AND program.status = 'active'
+        AND program.archived_at IS NULL
+        AND program.current_version_id = ${input.programVersionId}::uuid
+      FOR UPDATE OF program
+    ), replay AS MATERIALIZED (
       SELECT ws.id
       FROM workout_sessions ws
       WHERE ws.user_id = ${userId}::uuid
@@ -350,17 +377,15 @@ export async function acceptSessionCompilerProposal(
     ), owned_proposal AS MATERIALIZED (
       SELECT proposal.*
       FROM session_compiler_proposals proposal
-      JOIN programs program ON program.id = proposal.program_id
+      JOIN current_program program ON program.id = proposal.program_id
       JOIN program_versions version ON version.id = proposal.program_version_id
       JOIN workout_templates template ON template.id = proposal.workout_template_id
+      JOIN equipment_fit_gate fit_gate ON true
       WHERE proposal.id = ${proposal.id}::uuid
         AND proposal.user_id = ${userId}::uuid
         AND proposal.status = 'ready'
         AND proposal.algorithm_version = ${SESSION_COMPILER_ALGORITHM_VERSION}
         AND proposal.content_hash = ${currentHash}
-        AND program.user_id = ${userId}::uuid
-        AND program.status = 'active'
-        AND program.archived_at IS NULL
         AND program.current_version_id = version.id
         AND version.document_schema_version = ${input.documentSchemaVersion}
         AND template.program_version_id = version.id

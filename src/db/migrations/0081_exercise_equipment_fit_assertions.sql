@@ -101,6 +101,66 @@ END;
 $$;
 --> statement-breakpoint
 
+-- A statement that waits for the owner-profile serialization lock keeps its
+-- original READ COMMITTED snapshot. This volatile lookup deliberately obtains
+-- a fresh snapshot after that lock is acquired so an overlapping retry can see
+-- the first request's immutable receipt and replay instead of duplicating the
+-- setup mutation or colliding with its unique client key.
+CREATE OR REPLACE FUNCTION session_equipment_selection_receipt_after_owner_lock(
+  p_user_id uuid,
+  p_session_exercise_id uuid,
+  p_client_key uuid
+)
+RETURNS TABLE (
+  operation text,
+  canonical_payload_hash text,
+  resulting_snapshot_id uuid
+)
+LANGUAGE sql
+VOLATILE
+SET search_path = public
+AS $$
+  SELECT receipt.operation,
+         receipt.canonical_payload_hash,
+         receipt.resulting_snapshot_id
+  FROM session_equipment_selection_receipts receipt
+  JOIN workout_sessions session ON session.id = receipt.session_id
+  WHERE receipt.session_exercise_id = p_session_exercise_id
+    AND receipt.client_key = p_client_key
+    AND session.user_id = p_user_id
+  LIMIT 1
+$$;
+--> statement-breakpoint
+
+-- Active replacement reuses its record-version id as the durable client
+-- mutation identity. Read it through a volatile function after the same owner
+-- lock so an overlapping exact retry sees the winner's committed version.
+CREATE OR REPLACE FUNCTION session_exercise_record_version_after_owner_lock(
+  p_user_id uuid,
+  p_version_id uuid,
+  p_session_exercise_id uuid,
+  p_action text
+)
+RETURNS TABLE (
+  id uuid,
+  before_data jsonb,
+  after_data jsonb
+)
+LANGUAGE sql
+VOLATILE
+SET search_path = public
+AS $$
+  SELECT version.id, version.before_data, version.after_data
+  FROM record_versions version
+  WHERE version.id = p_version_id
+    AND version.user_id = p_user_id
+    AND version.entity_type = 'session_exercise'
+    AND version.entity_id = p_session_exercise_id
+    AND version.action = p_action
+  LIMIT 1
+$$;
+--> statement-breakpoint
+
 -- This volatile lookup is intentionally invoked only after the owner-profile
 -- row lock. Under PostgreSQL Read Committed it takes a fresh command snapshot,
 -- so an overlapping exact retry sees the first request's committed receipt

@@ -27,6 +27,10 @@ import {
 } from "@/services/equipment-load-profiles";
 import { inventoryRevisionExpression } from "@/services/equipment-inventory";
 import {
+  loadOwnerEquipmentFitReviewRevision,
+  ownerEquipmentFitReviewRevisionExpression,
+} from "@/services/equipment-fit-review-revision";
+import {
   parseSessionEquipmentRequirementsEvidence,
   retainedPrimaryEquipmentCandidateMatchesBroad,
   type RetainedBroadEquipmentRequirement,
@@ -678,9 +682,20 @@ async function applySelection(
   input: Extract<SessionEquipmentSelectionInput, { operation: "select" }>,
   hash: string,
   snapshot: SnapshotCandidate,
+  expectedEquipmentFitReviewRevision: string,
 ): Promise<SessionEquipmentSelectionResult> {
   const row = resultRows(await db.execute(sql`
-    WITH visible AS MATERIALIZED (
+    WITH target_profile AS MATERIALIZED (
+      SELECT profile.user_id
+      FROM user_profiles profile
+      WHERE profile.user_id = ${userId}::uuid
+      FOR UPDATE
+    ), equipment_fit_gate AS MATERIALIZED (
+      SELECT profile.user_id
+      FROM target_profile profile
+      WHERE ${ownerEquipmentFitReviewRevisionExpression(sql`profile.user_id`)}
+        = ${expectedEquipmentFitReviewRevision}::text
+    ), visible AS MATERIALIZED (
       SELECT exercise.*, session.user_id, session.status, session.archived_at,
              current_snapshot.configuration_hash AS current_hash
       FROM session_exercises exercise
@@ -691,11 +706,15 @@ async function applySelection(
         AND session.user_id = ${userId}::uuid
     ), existing AS MATERIALIZED (
       SELECT receipt.*
-      FROM session_equipment_selection_receipts receipt
-      JOIN visible ON visible.id = receipt.session_exercise_id
-      WHERE receipt.client_key = ${input.clientKey}::uuid
+      FROM target_profile profile
+      CROSS JOIN LATERAL session_equipment_selection_receipt_after_owner_lock(
+        profile.user_id,
+        ${input.sessionExerciseId}::uuid,
+        ${input.clientKey}::uuid
+      ) receipt
     ), eligible AS MATERIALIZED (
-      SELECT * FROM visible
+      SELECT visible.* FROM visible
+      JOIN equipment_fit_gate fit_gate ON true
       WHERE status = 'in_progress' AND archived_at IS NULL
         AND exercise_id = ${context.exercise_id}::uuid
         AND current_equipment_snapshot_id IS NOT DISTINCT FROM ${input.expectedCurrentSnapshotId}::uuid
@@ -802,16 +821,25 @@ async function applyClear(
   hash: string,
 ): Promise<SessionEquipmentSelectionResult> {
   const row = resultRows(await db.execute(sql`
-    WITH visible AS MATERIALIZED (
+    WITH target_profile AS MATERIALIZED (
+      SELECT profile.user_id
+      FROM user_profiles profile
+      WHERE profile.user_id = ${userId}::uuid
+      FOR UPDATE
+    ), visible AS MATERIALIZED (
       SELECT exercise.*, session.user_id, session.status, session.archived_at
       FROM session_exercises exercise
       JOIN workout_sessions session ON session.id = exercise.session_id
       WHERE exercise.id = ${input.sessionExerciseId}::uuid
         AND session.user_id = ${userId}::uuid
     ), existing AS MATERIALIZED (
-      SELECT receipt.* FROM session_equipment_selection_receipts receipt
-      JOIN visible ON visible.id = receipt.session_exercise_id
-      WHERE receipt.client_key = ${input.clientKey}::uuid
+      SELECT receipt.*
+      FROM target_profile profile
+      CROSS JOIN LATERAL session_equipment_selection_receipt_after_owner_lock(
+        profile.user_id,
+        ${input.sessionExerciseId}::uuid,
+        ${input.clientKey}::uuid
+      ) receipt
     ), eligible AS MATERIALIZED (
       SELECT * FROM visible
       WHERE status = 'in_progress' AND archived_at IS NULL
@@ -1144,11 +1172,22 @@ export async function mutateSessionEquipmentSelection(
       Buffer.from(canonicalJson(configurationIdentity), "utf8"),
     ),
   };
+  const expectedEquipmentFitReviewRevision =
+    await loadOwnerEquipmentFitReviewRevision(db, userId);
+  if (!expectedEquipmentFitReviewRevision) return { outcome: "stale" };
   await dependencies.checkpoint?.("before-selection-statement");
   return attachOccurrenceStates(
     db,
     userId,
     input.sessionExerciseId,
-    await applySelection(db, userId, context, input, hash, snapshot),
+    await applySelection(
+      db,
+      userId,
+      context,
+      input,
+      hash,
+      snapshot,
+      expectedEquipmentFitReviewRevision,
+    ),
   );
 }

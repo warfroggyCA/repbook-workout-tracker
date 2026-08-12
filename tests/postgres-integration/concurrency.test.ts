@@ -49,7 +49,10 @@ import {
   claimProgressionJob,
   processProgressionJob,
 } from "@/services/progression-jobs";
-import { updateSetWithVersion } from "@/services/record-versions";
+import {
+  updateSessionExerciseWithVersion,
+  updateSetWithVersion,
+} from "@/services/record-versions";
 import {
   createLiveCoachRetry,
   markLiveCoachResponseFailed,
@@ -84,6 +87,11 @@ import { getHistoryReport } from "@/services/history-report";
 import { getCurrentProgramDocument } from "@/services/program-documents";
 import { createStartBarrier } from "../helpers/database";
 import { createTotalSystemTestSnapshot } from "../helpers/set-semantics";
+import {
+  acceptSessionCompilerProposal,
+  createSessionCompilerProposal,
+} from "@/services/session-compiler";
+import { mutateSessionEquipmentSelection } from "@/services/session-equipment-selection";
 import validExternalAnalysisFixture from "../fixtures/v2/a03-typed-response.json";
 import {
   createSuggestedDayIntent,
@@ -167,13 +175,26 @@ async function createProgramFixture(
       exerciseId: exercise.id,
       equipmentType: "barbell",
     });
-    await db.insert(schema.equipmentItems).values({
+    const [barbell] = await db.insert(schema.equipmentItems).values({
       userId: account.id,
       type: "barbell",
       label: `${label} synthetic barbell`,
       attrs: {},
       available: true,
+    }).returning({ id: schema.equipmentItems.id });
+    const reviewedFit = await saveExerciseEquipmentFitAssertion(db, account.id, {
+      mutationId: crypto.randomUUID(),
+      assertionId: null,
+      exerciseId: exercise.id,
+      equipmentItemId: barbell.id,
+      verdict: "compatible",
+      reasonCode: "owner_verified",
+      reasonNote: "Synthetic owner verified this exact barbell pairing",
+      expectedRevision: null,
     });
+    if (!reviewedFit.ok) {
+      throw new Error(`Comparable barbell fit fixture failed: ${reviewedFit.code}`);
+    }
   }
   const activated = await activateProgramAtomically(db, {
     userId: account.id,
@@ -199,10 +220,6 @@ async function createProgramFixture(
     changeSummary: "PostgreSQL concurrency fixture",
     auditAction: "program.activate",
     auditSummary: "Activated PostgreSQL concurrency fixture",
-    // This synthetic helper predates PII-01B. Tests concerned with its other
-    // invariants opt into the same explicit one-publication unknown boundary
-    // instead of manufacturing durable fit assertions unrelated to the case.
-    allowReviewedUnknownEquipmentFit: true,
   });
   if (!activated.ok) throw new Error(activated.reason);
   const [template] = await db
@@ -1051,6 +1068,361 @@ describe.sequential("real PostgreSQL parallel invariants", () => {
     const results = await Promise.all(saves);
     expect(results.filter((result) => result.ok && result.changed)).toHaveLength(1);
     expect(results.filter((result) => !result.ok && result.code === "stale")).toHaveLength(1);
+  }, 60_000);
+
+  it("rechecks reviewed Program publication after an overlapping fit removal", async () => {
+    const fixture = await createProgramFixture(
+      "reviewed publication equipment race",
+      { comparableBarbell: true },
+    );
+    const draft = await prepareReviewedDraft(
+      fixture,
+      "must not publish stale equipment truth",
+    );
+    const fitLock = await lockUserProfile(fixture.userId);
+    await fitLock.client.query(
+      `DELETE FROM exercise_equipment_fit_assertions
+       WHERE user_id = $1 AND exercise_id = $2`,
+      [fixture.userId, fixture.exerciseId],
+    );
+
+    const publication = publishReviewedDraft(draft, fixture.userId);
+    await releaseWhenContended(fitLock, [publication], 1);
+    await expect(publication).resolves.toEqual({ ok: false, reason: "invalid" });
+    await expect(db.query.programs.findFirst({
+      where: eq(programs.id, fixture.programId),
+    })).resolves.toMatchObject({ currentVersionId: fixture.versionId });
+    await expect(db.query.programDrafts.findFirst({
+      where: eq(programDrafts.id, draft.draftId),
+    })).resolves.toMatchObject({ status: "open", publishedVersionId: null });
+  }, 60_000);
+
+  it("rejects Session Compiler acceptance after an overlapping Program publication", async () => {
+    const priorEditor = process.env.PROGRAM_EDITOR_ENABLED;
+    const priorCompiler = process.env.SESSION_COMPILER_ENABLED;
+    process.env.PROGRAM_EDITOR_ENABLED = "true";
+    process.env.SESSION_COMPILER_ENABLED = "true";
+    try {
+      const owner = await bootstrapUserAccount(db, {
+        email: `compiler-program-race-${crypto.randomUUID()}@example.com`,
+        name: "Compiler Program race owner",
+      });
+      const [exercise] = await db.insert(exercises).values({
+        name: `Compiler bodyweight movement ${crypto.randomUUID()}`,
+        movementPattern: "squat",
+        primaryMuscles: ["quadriceps"],
+        loadType: "bodyweight",
+        metricType: "reps",
+        loadSemantics: "none",
+        variantAttributes: { assistance: "none" },
+      }).returning({ id: exercises.id });
+      const dayLineageId = crypto.randomUUID();
+      const slotLineageId = crypto.randomUUID();
+      const slotIntent = createSuggestedSlotIntent(3, 0);
+      const dayIntent = createSuggestedDayIntent([
+        { lineageId: slotLineageId, sets: 3, restSec: 90 },
+      ]);
+      const activated = await activateProgramAtomically(db, {
+        userId: owner.id,
+        loadUnit: "lb",
+        programName: "Compiler race Program",
+        days: [{
+          lineageId: dayLineageId,
+          name: "Compiler race day",
+          warmupItems: [],
+          intent: dayIntent,
+          exercises: [{
+            lineageId: slotLineageId,
+            exerciseId: exercise.id,
+            sets: 3,
+            repMin: 8,
+            repMax: 12,
+            targetLoad: null,
+            restSec: 90,
+            supersetKey: null,
+            notes: null,
+            warmupSets: [],
+            intent: slotIntent,
+          }],
+        }],
+        changeSummary: "Create compiler publication race fixture",
+        auditAction: "program.activate",
+        auditSummary: "Created compiler publication race fixture",
+        structuredIntentReviewed: true,
+      });
+      if (!activated.ok) throw new Error(activated.reason);
+      const [template] = await db.select({ id: workoutTemplates.id })
+        .from(workoutTemplates)
+        .where(eq(workoutTemplates.programVersionId, activated.programVersionId));
+      const [slot] = await db.select({
+        id: workoutTemplateExercises.id,
+        lineageId: workoutTemplateExercises.lineageId,
+      }).from(workoutTemplateExercises)
+        .where(eq(workoutTemplateExercises.workoutTemplateId, template.id));
+      const fixture: ProgramFixture = {
+        userId: owner.id,
+        programId: activated.programId,
+        versionId: activated.programVersionId,
+        exerciseId: exercise.id,
+        templateId: template.id,
+        slotId: slot.id,
+        slotLineageId: slot.lineageId,
+        comparableBarbell: false,
+      };
+      const proposal = await createSessionCompilerProposal(db, owner.id, {
+        dayLineageId,
+        requestedMinutes: 30,
+        energy: "usual",
+        clientMutationId: crypto.randomUUID(),
+      });
+      expect(proposal.status).toBe("ready");
+      const draft = await prepareReviewedDraft(
+        fixture,
+        "published before compiler acceptance",
+      );
+
+      const profileLock = await lockUserProfile(owner.id);
+      const publication = publishReviewedDraft(draft, owner.id);
+      await waitForLockWaiters(profileLock.backendPid, 1);
+      const acceptance = acceptSessionCompilerProposal(
+        db,
+        owner.id,
+        proposal.id,
+        crypto.randomUUID(),
+        "America/Toronto",
+      );
+      await releaseWhenContended(profileLock, [publication, acceptance], 2);
+      const [published, accepted] = await Promise.all([publication, acceptance]);
+      expect(published).toMatchObject({ ok: true });
+      expect(accepted).toEqual({ outcome: "stale" });
+      expect(await db.select().from(workoutSessions)
+        .where(eq(workoutSessions.userId, owner.id))).toHaveLength(0);
+    } finally {
+      if (priorEditor === undefined) delete process.env.PROGRAM_EDITOR_ENABLED;
+      else process.env.PROGRAM_EDITOR_ENABLED = priorEditor;
+      if (priorCompiler === undefined) delete process.env.SESSION_COMPILER_ENABLED;
+      else process.env.SESSION_COMPILER_ENABLED = priorCompiler;
+    }
+  }, 60_000);
+
+  it("replays overlapping identical exact setup selections after the owner lock", async () => {
+    const owner = await bootstrapUserAccount(db, {
+      email: `equipment-selection-retry-${crypto.randomUUID()}@example.com`,
+      name: "Equipment selection retry owner",
+    });
+    const [exercise] = await db.insert(exercises).values({
+      name: `Equipment selection retry bench ${crypto.randomUUID()}`,
+      movementPattern: "horizontal_push",
+      primaryMuscles: ["chest"],
+      loadType: "barbell",
+      metricType: "weight_reps",
+      loadSemantics: "total",
+      variantAttributes: { assistance: "none" },
+    }).returning({ id: exercises.id });
+    const requirements = await db.insert(exerciseEquipmentRequirements).values([
+      { exerciseId: exercise.id, equipmentType: "barbell" },
+      { exerciseId: exercise.id, equipmentType: "plates" },
+    ]).returning({
+      id: exerciseEquipmentRequirements.id,
+      equipmentType: exerciseEquipmentRequirements.equipmentType,
+    });
+    const [barbell] = await db.insert(schema.equipmentItems).values({
+      userId: owner.id,
+      type: "barbell",
+      label: "Retry-safe owner barbell",
+      attrs: {},
+      available: true,
+    }).returning({ id: schema.equipmentItems.id });
+    await db.insert(schema.plateInventory).values({
+      userId: owner.id,
+      denomination: 2.5,
+      unit: "lb",
+      quantity: 4,
+    });
+    await db.insert(schema.barbellConfigs).values({
+      userId: owner.id,
+      equipmentItemId: barbell.id,
+      barType: "olympic",
+      unit: "lb",
+      loadingKind: "olympic",
+      sharedPlatePoolCompatible: true,
+      barWeight: 45,
+      collarWeight: 1,
+      label: "Retry-safe owner barbell",
+    });
+    const fit = await saveExerciseEquipmentFitAssertion(db, owner.id, {
+      mutationId: crypto.randomUUID(),
+      assertionId: null,
+      exerciseId: exercise.id,
+      equipmentItemId: barbell.id,
+      verdict: "compatible",
+      reasonCode: "owner_verified",
+      reasonNote: "Synthetic exact setup review",
+      expectedRevision: null,
+    });
+    if (!fit.ok) throw new Error(fit.reason);
+
+    const [session] = await db.insert(workoutSessions).values({
+      userId: owner.id,
+      status: "in_progress",
+      timezone: "America/Toronto",
+      localDate: "2026-08-11",
+      startedAt: new Date("2026-08-11T16:00:00.000Z"),
+    }).returning({ id: workoutSessions.id });
+    const [sessionExercise] = await db.insert(sessionExercises).values({
+      sessionId: session.id,
+      exerciseId: exercise.id,
+      orderIdx: 0,
+      equipmentRequirementsSemanticsVersion: 1,
+      equipmentRequirementsSnapshot: {
+        sourceExerciseId: exercise.id,
+        broad: requirements.map((requirement) => ({
+          sourceRequirementId: requirement.id,
+          equipmentType: requirement.equipmentType,
+          equipmentDefinition: null,
+          minWeight: null,
+        })),
+        exact: null,
+      },
+    }).returning({ id: sessionExercises.id });
+    await db.insert(sessionOccurrences).values({
+      sessionId: session.id,
+      sessionExerciseId: sessionExercise.id,
+      kind: "working_set",
+      origin: "planned",
+      sequenceIdx: 0,
+      kindOrdinal: 0,
+      plannedExerciseId: exercise.id,
+      outcome: "pending",
+    });
+
+    const input = {
+      operation: "select" as const,
+      sessionExerciseId: sessionExercise.id,
+      equipmentItemId: barbell.id,
+      attachmentItemId: null,
+      expectedCurrentSnapshotId: null,
+      clientKey: crypto.randomUUID(),
+      provenance: "user_selected" as const,
+    };
+    const ready = createStartBarrier(2);
+    const results = await Promise.all([
+      mutateSessionEquipmentSelection(db, owner.id, input, {
+        checkpoint: async () => ready(),
+      }),
+      mutateSessionEquipmentSelection(db, owner.id, input, {
+        checkpoint: async () => ready(),
+      }),
+    ]);
+
+    expect(results.map((result) => result.outcome).sort())
+      .toEqual(["applied", "replayed"]);
+    const receipts = await db.select()
+      .from(schema.sessionEquipmentSelectionReceipts)
+      .where(eq(
+        schema.sessionEquipmentSelectionReceipts.sessionExerciseId,
+        sessionExercise.id,
+      ));
+    expect(receipts).toHaveLength(1);
+    expect(await db.select()
+      .from(schema.sessionEquipmentSnapshots)
+      .where(eq(
+        schema.sessionEquipmentSnapshots.sessionExerciseId,
+        sessionExercise.id,
+      ))).toHaveLength(1);
+  }, 60_000);
+
+  it("replays overlapping identical active replacements after the owner lock", async () => {
+    const owner = await bootstrapUserAccount(db, {
+      email: `replacement-retry-${crypto.randomUUID()}@example.com`,
+      name: "Replacement retry owner",
+    });
+    const insertedExercises = await db.insert(exercises).values([
+      {
+        name: `Replacement retry original ${crypto.randomUUID()}`,
+        movementPattern: "squat",
+        primaryMuscles: ["quadriceps"],
+        loadType: "bodyweight",
+        metricType: "reps",
+        loadSemantics: "none",
+        variantAttributes: { assistance: "none" },
+      },
+      {
+        name: `Replacement retry target ${crypto.randomUUID()}`,
+        movementPattern: "squat",
+        primaryMuscles: ["quadriceps"],
+        loadType: "bodyweight",
+        metricType: "reps",
+        loadSemantics: "none",
+        variantAttributes: { assistance: "none" },
+      },
+    ]).returning({ id: exercises.id });
+    const [original, target] = insertedExercises;
+    const [session] = await db.insert(workoutSessions).values({
+      userId: owner.id,
+      status: "in_progress",
+      timezone: "America/Toronto",
+      localDate: "2026-08-11",
+      startedAt: new Date("2026-08-11T16:00:00.000Z"),
+    }).returning({ id: workoutSessions.id });
+    const [sessionExercise] = await db.insert(sessionExercises).values({
+      sessionId: session.id,
+      exerciseId: original.id,
+      orderIdx: 0,
+    }).returning({ id: sessionExercises.id });
+    await db.insert(sessionOccurrences).values({
+      sessionId: session.id,
+      sessionExerciseId: sessionExercise.id,
+      kind: "working_set",
+      origin: "planned",
+      sequenceIdx: 0,
+      kindOrdinal: 0,
+      plannedExerciseId: original.id,
+      outcome: "pending",
+    });
+
+    const versionId = crypto.randomUUID();
+    const substitutedAt = new Date("2026-08-11T16:05:00.000Z");
+    const replace = () => updateSessionExerciseWithVersion(
+      db,
+      owner.id,
+      sessionExercise.id,
+      {
+        exerciseId: target.id,
+        modificationType: "substituted",
+        skipReason: null,
+        substitutedForExerciseId: original.id,
+        substitutionReason: "other",
+        substitutedAt,
+        targetLoad: null,
+        targetLoadUnit: null,
+        notes: null,
+        warmupNotes: null,
+        warmupSets: [],
+        setNotes: [],
+      },
+      "session_exercise.substitute",
+      {
+        activeOnly: true,
+        expectedExerciseId: original.id,
+        versionId,
+      },
+    );
+    const profileLock = await lockUserProfile(owner.id);
+    const replacements = [replace(), replace()];
+    await releaseWhenContended(profileLock, replacements, 2);
+    const results = await Promise.all(replacements);
+
+    expect(results).toEqual(expect.arrayContaining([
+      expect.objectContaining({ ok: true, changed: true, versionId }),
+      expect.objectContaining({ ok: true, changed: false, versionId }),
+    ]));
+    expect(await db.select().from(schema.recordVersions)
+      .where(eq(schema.recordVersions.id, versionId))).toHaveLength(1);
+    expect(await db.select({ exerciseId: sessionExercises.exerciseId })
+      .from(sessionExercises)
+      .where(eq(sessionExercises.id, sessionExercise.id)))
+      .toEqual([{ exerciseId: target.id }]);
   }, 60_000);
 
   it("enforces the History timing, revision, uniqueness, and owner constraints", async () => {

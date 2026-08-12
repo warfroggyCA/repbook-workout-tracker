@@ -2,6 +2,7 @@ import { and, eq } from "drizzle-orm";
 import { getDb } from "@/db";
 import {
   equipmentItems,
+  exerciseEquipmentFitAssertions,
   exercises,
   programs,
   progressionJobs,
@@ -95,18 +96,30 @@ async function main() {
   if (!olympicBar) {
     throw new Error("The progression recovery Olympic-bar profile was not seeded.");
   }
-  const reviewedFit = await saveExerciseEquipmentFitAssertion(db, owner.userId, {
-    mutationId: crypto.randomUUID(),
-    assertionId: null,
-    exerciseId: targetExercise.exerciseId,
-    equipmentItemId: olympicBar.equipmentItemId,
-    verdict: "compatible",
-    reasonCode: "owner_verified",
-    reasonNote: "Synthetic fixture owner verified this exact setup.",
-    expectedRevision: null,
+  const existingBarFit = await db.query.exerciseEquipmentFitAssertions.findFirst({
+    where: and(
+      eq(exerciseEquipmentFitAssertions.userId, owner.userId),
+      eq(exerciseEquipmentFitAssertions.exerciseId, targetExercise.exerciseId),
+      eq(
+        exerciseEquipmentFitAssertions.equipmentItemId,
+        olympicBar.equipmentItemId,
+      ),
+    ),
   });
-  if (!reviewedFit.ok) {
-    throw new Error(`The progression recovery equipment fit review failed (${reviewedFit.code}).`);
+  if (existingBarFit?.verdict !== "compatible") {
+    const reviewedFit = await saveExerciseEquipmentFitAssertion(db, owner.userId, {
+      mutationId: crypto.randomUUID(),
+      assertionId: existingBarFit?.id ?? null,
+      exerciseId: targetExercise.exerciseId,
+      equipmentItemId: olympicBar.equipmentItemId,
+      verdict: "compatible",
+      reasonCode: "owner_verified",
+      reasonNote: "Synthetic fixture owner verified this exact setup.",
+      expectedRevision: existingBarFit?.revision ?? null,
+    });
+    if (!reviewedFit.ok) {
+      throw new Error(`The progression recovery equipment fit review failed (${reviewedFit.code}).`);
+    }
   }
   const rackItem = await db.query.equipmentItems.findFirst({
     where: and(
@@ -118,24 +131,33 @@ async function main() {
   if (!rackItem) {
     throw new Error("The progression recovery rack was not seeded.");
   }
-  const reviewedRackFit = await saveExerciseEquipmentFitAssertion(
-    db,
-    owner.userId,
-    {
-      mutationId: crypto.randomUUID(),
-      assertionId: null,
-      exerciseId: targetExercise.exerciseId,
-      equipmentItemId: rackItem.id,
-      verdict: "compatible",
-      reasonCode: "owner_verified",
-      reasonNote: "Synthetic fixture owner verified this exact setup.",
-      expectedRevision: null,
-    },
-  );
-  if (!reviewedRackFit.ok) {
-    throw new Error(
-      `The progression recovery rack fit review failed (${reviewedRackFit.code}).`,
+  const existingRackFit = await db.query.exerciseEquipmentFitAssertions.findFirst({
+    where: and(
+      eq(exerciseEquipmentFitAssertions.userId, owner.userId),
+      eq(exerciseEquipmentFitAssertions.exerciseId, targetExercise.exerciseId),
+      eq(exerciseEquipmentFitAssertions.equipmentItemId, rackItem.id),
+    ),
+  });
+  if (existingRackFit?.verdict !== "compatible") {
+    const reviewedRackFit = await saveExerciseEquipmentFitAssertion(
+      db,
+      owner.userId,
+      {
+        mutationId: crypto.randomUUID(),
+        assertionId: existingRackFit?.id ?? null,
+        exerciseId: targetExercise.exerciseId,
+        equipmentItemId: rackItem.id,
+        verdict: "compatible",
+        reasonCode: "owner_verified",
+        reasonNote: "Synthetic fixture owner verified this exact setup.",
+        expectedRevision: existingRackFit?.revision ?? null,
+      },
     );
+    if (!reviewedRackFit.ok) {
+      throw new Error(
+        `The progression recovery rack fit review failed (${reviewedRackFit.code}).`,
+      );
+    }
   }
   const dumbbellCurl = await db.query.exercises.findFirst({
     where: eq(exercises.name, "Dumbbell Curl"),

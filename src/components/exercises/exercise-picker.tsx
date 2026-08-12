@@ -27,7 +27,10 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
-import { exercisePickerSelectionState } from "@/lib/exercise-picker";
+import {
+  exercisePickerSelectionState,
+  reconcileExercisePickerInspection,
+} from "@/lib/exercise-picker";
 import { ExerciseReferenceMedia } from "@/components/exercises/exercise-reference-media";
 import { ExerciseFamilyIcon } from "@/components/exercises/exercise-family-icon";
 import type { ExerciseAlternativeAnnotation } from "@/lib/exercise-alternatives";
@@ -220,7 +223,7 @@ function ExerciseDetail({
 
   useEffect(() => {
     titleRef.current?.focus();
-  }, [item.id]);
+  }, [item.id, canAdd]);
 
   return (
     <div className="mx-auto flex min-h-full w-full max-w-3xl flex-col">
@@ -248,6 +251,7 @@ function ExerciseDetail({
             <h3
               ref={titleRef}
               tabIndex={-1}
+              aria-describedby={!canAdd ? `selection-blocked-${item.id}` : undefined}
               className="text-2xl font-semibold tracking-tight outline-none sm:text-3xl"
             >
               {item.name}
@@ -357,7 +361,11 @@ function ExerciseDetail({
         )}
 
         {!canAdd && (
-          <div className="flex gap-3 rounded-xl border border-amber-500/40 bg-amber-500/10 p-3 text-sm text-amber-900 dark:text-amber-200">
+          <div
+            id={`selection-blocked-${item.id}`}
+            role="alert"
+            className="flex gap-3 rounded-xl border border-amber-500/40 bg-amber-500/10 p-3 text-sm text-amber-900 dark:text-amber-200"
+          >
             <CircleAlert className="mt-0.5 size-4 shrink-0" />
             <div>
               <p className="font-medium">This variant cannot be selected here.</p>
@@ -436,6 +444,7 @@ export function ExercisePicker({
     offsetTop: number;
   } | null>(null);
   const resultsScrollRef = useRef<HTMLDivElement>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
   const savedScrollTop = useRef(0);
   const variantButtons = useRef(new Map<string, HTMLButtonElement>());
   const allowed = useMemo(() => (allowedIds ? new Set(allowedIds) : null), [allowedIds]);
@@ -464,6 +473,10 @@ export function ExercisePicker({
       });
   }, [filters, items, priorityIds]);
   const equipmentFilters = useMemo(() => visibleEquipmentFilters(items), [items]);
+  const {
+    display: inspectedForDisplay,
+    current: currentInspected,
+  } = reconcileExercisePickerInspection(items, inspected);
   const activeCount = activeAdvancedExerciseFilterCount(filters);
   const hasResettableFilters =
     activeCount > 0 ||
@@ -530,7 +543,11 @@ export function ExercisePicker({
     setInspected(null);
     requestAnimationFrame(() => {
       resultsScrollRef.current?.scrollTo({ top: savedScrollTop.current });
-      if (inspectedId) variantButtons.current.get(inspectedId)?.focus();
+      const priorResult = inspectedId
+        ? variantButtons.current.get(inspectedId)
+        : null;
+      if (priorResult) priorResult.focus();
+      else searchInputRef.current?.focus();
     });
   }
 
@@ -661,6 +678,7 @@ export function ExercisePicker({
             <div className="relative">
               <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
               <Input
+                ref={searchInputRef}
                 value={filters.query}
                 onChange={(event) => {
                   const query = event.target.value;
@@ -807,21 +825,31 @@ export function ExercisePicker({
         )}
 
         <div className="px-4 pb-5 sm:px-5">
-          {inspected ? (
+          {inspectedForDisplay ? (
             <ExerciseDetail
-              item={inspected}
-              available={allowUnavailableSelection || inspected.available}
-              permitted={!allowed || allowed.has(inspected.id)}
+              item={inspectedForDisplay}
+              available={
+                currentInspected != null &&
+                (allowUnavailableSelection || currentInspected.available)
+              }
+              permitted={
+                currentInspected != null &&
+                (!allowed || allowed.has(currentInspected.id))
+              }
               unavailableReason={
-                !inspected.available && !allowUnavailableSelection
-                  ? inspected.unavailableReason
-                  : (disabledReasons[inspected.id] ?? null)
+                currentInspected == null
+                  ? "This option is no longer in the refreshed replacement choices. Return to the results and review the current options."
+                  : !currentInspected.available && !allowUnavailableSelection
+                    ? currentInspected.unavailableReason
+                    : (disabledReasons[currentInspected.id] ?? null)
               }
               confirmLabel={confirmLabel}
-              annotation={itemAnnotations[inspected.id]}
-              warning={itemWarnings[inspected.id]}
+              annotation={itemAnnotations[inspectedForDisplay.id]}
+              warning={itemWarnings[inspectedForDisplay.id]}
               onBack={returnToResults}
-              onConfirm={() => void confirmPick(inspected)}
+              onConfirm={() => {
+                if (currentInspected) void confirmPick(currentInspected);
+              }}
             />
           ) : (
             <>

@@ -2159,6 +2159,9 @@ export function ExerciseCard({
                           const restored = await undoExerciseSubstitution(exercise.id);
                           if (!restored.ok) {
                             toast.error(restored.message);
+                            if (restored.code === "replacement_stale") {
+                              router.refresh();
+                            }
                             return;
                           }
                           const metricType = performedMetricTypeForLivePatch(

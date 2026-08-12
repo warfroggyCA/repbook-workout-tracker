@@ -14,6 +14,7 @@ import {
   recordVersions,
   sessionExercises,
   sessionOccurrences,
+  userProfiles,
 } from "@/db/schema";
 import { buildJsonBackup } from "@/services/export";
 import { getExerciseReplacementOptions } from "@/services/exercise-replacements";
@@ -255,6 +256,7 @@ describe("0069 bodyweight Bulgarian split-squat performed variant", () => {
       database,
       "0081_exercise_equipment_fit_assertions",
     );
+    await db.insert(userProfiles).values({ userId });
     const benchId = crypto.randomUUID();
     await db.insert(equipmentItems).values({
       id: benchId,

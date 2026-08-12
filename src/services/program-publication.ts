@@ -34,6 +34,10 @@ import { loadProgramPreflightContext } from "@/services/program-preflight";
 import { eligibleAutomaticProgressionSql } from "@/lib/set-metric-semantics-sql";
 import { resolveReviewEvidence } from "@/services/review-evidence";
 import { exerciseEquipmentRequirementFitSatisfiedExpression } from "@/services/exercise-equipment-fit";
+import {
+  loadOwnerEquipmentFitReviewRevision,
+  ownerEquipmentFitReviewRevisionExpression,
+} from "@/services/equipment-fit-review-revision";
 
 type PublicationMode = "editor" | "restore" | "recommendation";
 
@@ -278,6 +282,11 @@ async function publishDocumentAtomically(
   if (publicationPreflight?.findings.some((finding) => finding.severity === "blocking")) {
     return { ok: false, reason: "invalid" };
   }
+  const expectedEquipmentFitReviewRevision =
+    await loadOwnerEquipmentFitReviewRevision(db, userId);
+  if (!expectedEquipmentFitReviewRevision) {
+    return { ok: false, reason: "invalid" };
+  }
 
   const rows = resultRows(await db.execute(sql`
     WITH publish_authorization AS MATERIALIZED (
@@ -307,10 +316,21 @@ async function publishDocumentAtomically(
         rep_range_min integer, rep_range_max integer, target_load numeric(7,2),
         target_load_unit unit, progression_rule_id text
       )
+    ), target_profile AS MATERIALIZED (
+      SELECT profile.user_id
+      FROM user_profiles profile
+      WHERE profile.user_id = ${userId}::uuid
+      FOR UPDATE
+    ), equipment_fit_gate AS MATERIALIZED (
+      SELECT profile.user_id
+      FROM target_profile profile
+      WHERE ${ownerEquipmentFitReviewRevisionExpression(sql`profile.user_id`)}
+        = ${expectedEquipmentFitReviewRevision}::text
     ), current_program AS MATERIALIZED (
       SELECT program.*, version.version_no, to_jsonb(program) AS before_data
       FROM programs program
       JOIN program_versions version ON version.id = program.current_version_id
+      JOIN equipment_fit_gate fit_gate ON fit_gate.user_id = program.user_id
       WHERE program.id = ${document.programId}::uuid
         AND program.user_id = ${userId}::uuid
         AND program.status = 'active'

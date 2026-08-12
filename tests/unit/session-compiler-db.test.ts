@@ -509,6 +509,43 @@ describe("Session Compiler durable review and acceptance", () => {
     })).toMatchObject({ status: "stale" });
   });
 
+  it("rejects acceptance when the active Program advances during the final check", async () => {
+    const proposal = await createSessionCompilerProposal(database.db, userId, {
+      dayLineageId,
+      requestedMinutes: 60,
+      energy: "usual",
+      clientMutationId: crypto.randomUUID(),
+    });
+    expect(proposal.status).toBe("ready");
+
+    await expect(acceptSessionCompilerProposal(
+      database.db,
+      userId,
+      proposal.id,
+      crypto.randomUUID(),
+      "America/Toronto",
+      {
+        checkpoint: async () => {
+          const [next] = await database.db.insert(programVersions).values({
+            programId,
+            versionNo: 2,
+            name: "Compiler Program published while accepting",
+            parentVersionId: versionId,
+            documentSchemaVersion: 2,
+            publicationSource: "editor",
+          }).returning({ id: programVersions.id });
+          await database.db.update(programs)
+            .set({ currentVersionId: next.id })
+            .where(eq(programs.id, programId));
+        },
+      },
+    )).resolves.toEqual({ outcome: "stale" });
+    expect(await database.db.select().from(workoutSessions)).toHaveLength(0);
+    expect(await database.db.query.sessionCompilerProposals.findFirst({
+      where: eq(sessionCompilerProposals.id, proposal.id),
+    })).toMatchObject({ status: "stale" });
+  });
+
   it("restores accepted compiler evidence and workout provenance from a schema-22 snapshot", async () => {
     const proposal = await createSessionCompilerProposal(database.db, userId, {
       dayLineageId,

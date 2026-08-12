@@ -142,6 +142,18 @@ retry-safe, and atomic with record-version and coarse audit evidence. These are
 prospective controls only: existing Programs, active-session snapshots,
 completed or imported History, and earlier Program versions stay immutable.
 
+Every consequential prospective write captures the complete fit-review
+revision after its read-side validation, then takes the owner-profile equipment
+lock and compares that revision again before writing. This applies to Program
+activation and editor/recommendation/restore publication, Session Compiler
+acceptance, active-workout add/substitute/undo, and exact setup selection. An
+equipment, assertion, or requirement writer that overlaps the final statement
+therefore wins or waits as one serialized change; the other action returns
+stale/invalid without a Program version, session mutation, or setup snapshot.
+Session Compiler then locks and rechecks the active Program row after the owner
+lock, so a publication that wins the queue cannot leave a superseded proposal
+eligible. Exact retries retain their existing receipt/replay behavior.
+
 Guided setup has the same narrowly bounded publication exception as PII-01A:
 when the final Review contains equipment-required exercises, activation stays
 disabled until the owner attests that each exact item/setup was checked. The

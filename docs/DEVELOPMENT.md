@@ -65,6 +65,15 @@ the same complete equipment-fit review revision
 atomic semantics fence when changing setup activation; a boolean alone is not a
 safe stale/concurrent contract.
 
+Keep the same owner-profile lock and complete fit-review revision fence on every
+prospective write that can make an exercise/item pairing consequential:
+editor/recommendation/restore publication, Session Compiler acceptance,
+active-workout add/substitute/undo, and exact setup selection. A read-side
+availability check or an ordinary SQL statement snapshot is not sufficient
+after waiting on another row lock; the post-owner-lock comparison must remain in
+the final atomic write path. Session Compiler acceptance must also lock and
+recheck the active Program version after that owner lock.
+
 The PII-01B development gate covers the additive current-fit relation and every
 prospective consumer:
 

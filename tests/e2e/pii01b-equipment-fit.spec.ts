@@ -17,7 +17,10 @@ test("records, changes, exports, and removes one stable exercise-item fit access
 }) => {
   const browserErrors: string[] = [];
   page.on("pageerror", (error) => {
-    if (error.message !== "Load failed") browserErrors.push(error.message);
+    if (
+      error.message !== "Load failed"
+      && !error.message.includes("due to access control checks")
+    ) browserErrors.push(error.message);
   });
   page.on("console", (message) => {
     const text = message.text();

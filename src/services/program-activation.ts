@@ -20,7 +20,10 @@ import {
 import { runProgramPreflight } from "@/lib/program-preflight";
 import { loadProgramPreflightContext } from "@/services/program-preflight";
 import { exerciseEquipmentFitEvidenceRevisionExpression } from "@/services/exercise-equipment-fit-evidence";
-import { ownerEquipmentFitReviewRevisionExpression } from "@/services/equipment-fit-review-revision";
+import {
+  loadOwnerEquipmentFitReviewRevision,
+  ownerEquipmentFitReviewRevisionExpression,
+} from "@/services/equipment-fit-review-revision";
 
 export type ProgramActivationExercise = {
   lineageId?: string;
@@ -103,7 +106,7 @@ export async function activateProgramAtomically(
   const structuredIntentReviewed = input.structuredIntentReviewed === true;
   const allowReviewedUnknownEquipmentFit =
     input.allowReviewedUnknownEquipmentFit === true;
-  const expectedEquipmentFitReviewRevision =
+  let expectedEquipmentFitReviewRevision =
     input.expectedEquipmentFitReviewRevision ?? null;
   const explicitIntentRequested = input.days.some(
     (day) =>
@@ -431,6 +434,11 @@ export async function activateProgramAtomically(
   );
   if (blockingFinding) {
     return { ok: false, reason: blockingFinding.reason };
+  }
+  expectedEquipmentFitReviewRevision ??=
+    await loadOwnerEquipmentFitReviewRevision(db, input.userId);
+  if (!expectedEquipmentFitReviewRevision) {
+    return { ok: false, reason: REVIEWED_EQUIPMENT_FIT_STALE_REASON };
   }
 
   const importEventId = input.importEventId ?? null;

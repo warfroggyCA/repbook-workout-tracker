@@ -31,6 +31,10 @@ import { actionableProgramDayWarmupItemsSql } from "@/services/program-warmup-co
 import { workoutReplacementUnavailableReason } from "@/lib/exercise-replacements";
 import { isValidIanaTimezone } from "@/lib/workout-calendar";
 import {
+  loadOwnerEquipmentFitReviewRevision,
+  ownerEquipmentFitReviewRevisionExpression,
+} from "@/services/equipment-fit-review-revision";
+import {
   buildPerformedSetMeasurement,
   PERFORMED_LOAD_SEMANTICS,
   type PerformedMetricType,
@@ -452,10 +456,28 @@ export async function addWorkoutExercise(
         "That exercise is not available with the current equipment and constraints.",
     };
   }
+  const expectedEquipmentFitReviewRevision =
+    await loadOwnerEquipmentFitReviewRevision(db, userId);
+  if (!expectedEquipmentFitReviewRevision) {
+    return {
+      outcome: "exercise_unavailable",
+      reason: "Current equipment-fit evidence is unavailable. Reload the workout before adding an exercise.",
+    };
+  }
 
   try {
     const row = resultRows(await db.execute(sql`
-      WITH existing AS MATERIALIZED (
+      WITH target_profile AS MATERIALIZED (
+        SELECT profile.user_id
+        FROM user_profiles profile
+        WHERE profile.user_id = ${userId}::uuid
+        FOR UPDATE
+      ), equipment_fit_gate AS MATERIALIZED (
+        SELECT profile.user_id
+        FROM target_profile profile
+        WHERE ${ownerEquipmentFitReviewRevisionExpression(sql`profile.user_id`)}
+          = ${expectedEquipmentFitReviewRevision}::text
+      ), existing AS MATERIALIZED (
         SELECT entity_id, cause_ref
         FROM audit_logs
         WHERE user_id = ${userId}::uuid
@@ -471,6 +493,7 @@ export async function addWorkoutExercise(
       ), eligible_session AS MATERIALIZED (
         SELECT session.id, session.history_revision
         FROM workout_sessions session
+        JOIN equipment_fit_gate fit_gate ON true
         WHERE session.id = ${parsed.sessionId}::uuid
           AND session.user_id = ${userId}::uuid
           AND session.status = 'in_progress'
