@@ -2081,9 +2081,9 @@ export function SessionRunner(props: SessionRunnerProps) {
       >
         <ArrowLeft aria-hidden="true" className="size-5" />
       </Link>
-      <header className="flex flex-wrap items-center justify-between gap-2 px-1 max-[360px]:hidden">
-        <div className="min-w-0">
-          <h1 className="text-lg font-semibold">
+      <header className="flex flex-wrap items-center justify-between gap-2 px-1">
+        <div className="min-w-0 max-[360px]:w-full">
+          <h1 className="text-lg font-semibold max-[360px]:sr-only">
             {props.templateName}
           </h1>
           <p className="text-xs text-muted-foreground max-[360px]:hidden">
@@ -2096,7 +2096,7 @@ export function SessionRunner(props: SessionRunnerProps) {
               : ""}
           </p>
         </div>
-        <div className="ml-auto flex items-center gap-1">
+        <div className="ml-auto flex items-center gap-1 max-[360px]:hidden">
           <Link
             href="/today"
             className={buttonVariants({
