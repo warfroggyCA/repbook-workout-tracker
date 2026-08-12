@@ -88,7 +88,15 @@ async function returnToSearchResults(picker: Locator) {
   });
   await waitForHydratedReactHandler(back);
   await back.click();
-  await expect(picker.getByLabel("Search exercise library")).toBeEditable();
+  const search = picker.getByLabel("Search exercise library");
+  await expect(search).toBeEditable();
+  await search.evaluate(
+    () => new Promise<void>((resolve) => {
+      requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+    }),
+  );
+  await expect(picker).toBeVisible();
+  await expect(search).toBeEditable();
 }
 
 async function expectKeyboardGeometry(page: Page, picker: Locator) {
@@ -340,6 +348,10 @@ test("keeps unrestricted replacement truthful and reachable through mobile keybo
   await expect(search).toBeFocused();
   await expect(filterToggle).toHaveAttribute("aria-expanded", "false");
 
+  const initialViewport = page.viewportSize();
+  if (!initialViewport) {
+    throw new Error("The replacement keyboard test requires a fixed viewport.");
+  }
   for (const width of [320, 375, 390, 440]) {
     await page.setViewportSize({ width, height: 420 });
     await expect(search).toBeFocused();
@@ -378,12 +390,19 @@ test("keeps unrestricted replacement truthful and reachable through mobile keybo
   await expectKeyboardGeometry(page, picker);
   await page.evaluate(() => {
     if (!window.visualViewport) throw new Error("visualViewport is unavailable");
-    Object.defineProperty(window.visualViewport, "height", {
-      configurable: true,
-      value: 420,
-    });
+    if (!Reflect.deleteProperty(window.visualViewport, "height")) {
+      throw new Error("The simulated visualViewport height could not be restored.");
+    }
     window.visualViewport.dispatchEvent(new Event("resize"));
   });
+  await page.setViewportSize(initialViewport);
+  await expect
+    .poll(() => page.evaluate(
+      () => Math.round(window.visualViewport?.height ?? 0),
+    ))
+    .toBe(initialViewport.height);
+  await expect(search).toBeFocused();
+  await expectKeyboardGeometry(page, picker);
 
   await page.keyboard.press("Escape");
   await expect(picker).toHaveCount(0);

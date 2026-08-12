@@ -96,6 +96,13 @@ test("keeps ordinary completion minimal and makes exception evidence reversible,
   await expect(hard).toBeFocused();
   await hard.press("Space");
   await expect(hard).toHaveAttribute("aria-pressed", "true");
+  await hard.evaluate(
+    () => new Promise<void>((resolve) => {
+      requestAnimationFrame(() => resolve());
+    }),
+  );
+  await waitForHydratedReactHandler(hard);
+  await expect(hard).toBeFocused();
   await hard.press("Space");
   await expect(hard).toHaveAttribute("aria-pressed", "false");
   await expectTouchTarget(optional.locator("summary"));
