@@ -2409,6 +2409,14 @@ function SetEntry({
     effortButtons.current.get(effortValue)?.focus({ preventScroll: true });
     effortFocusAfterToggle.current = null;
   }, [draft.rir, draft.rpe]);
+  const toggleEffort = (effortValue: number) => {
+    effortFocusAfterToggle.current = effortValue;
+    setDraft((current) => ({
+      ...current,
+      rpe: current.rpe === effortValue ? null : effortValue,
+      rir: null,
+    }));
+  };
   const plateLine =
     (unit === "lb" || unit === "kg")
       ? formatCompactPlateLoadGuidance(draft.weight, plateConfig, unit)
@@ -2462,14 +2470,15 @@ function SetEntry({
             className="h-auto min-h-11 whitespace-normal text-xs"
             aria-label={`${chip.shortcutLabel}; ${chip.meaning}`}
             aria-pressed={draft.rpe === chip.value && draft.rir == null}
-            onClick={() => {
-              effortFocusAfterToggle.current = chip.value;
-              setDraft((d) => ({
-                ...d,
-                rpe: d.rpe === chip.value ? null : chip.value,
-                rir: null,
-              }));
+            onKeyDown={(event) => {
+              if (event.key === " ") event.preventDefault();
             }}
+            onKeyUp={(event) => {
+              if (event.key !== " ") return;
+              event.preventDefault();
+              toggleEffort(chip.value);
+            }}
+            onClick={() => toggleEffort(chip.value)}
           >
             {chip.shortcutLabel}
           </Button>
