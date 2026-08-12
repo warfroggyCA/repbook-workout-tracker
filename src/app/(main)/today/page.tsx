@@ -7,7 +7,6 @@ import {
   CheckCircle2,
   ChevronDown,
   ChevronRight,
-  FlaskConical,
   Footprints,
   Play,
 } from "lucide-react";
@@ -525,22 +524,6 @@ export default async function TodayPage({
             )}
           </div>
         )}
-      </section>
-
-      <section className="rounded-2xl border border-amber-500/50 bg-amber-50/60 p-4 dark:bg-amber-950/15">
-        <h2 className="font-semibold">Want to rehearse first?</h2>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Simulation is a separate local practice space. It cannot record a
-          workout or advance your Program.
-        </p>
-        <Button
-          className="mt-3 min-h-10"
-          variant="outline"
-          render={<Link href="/simulation" />}
-          nativeButton={false}
-        >
-          <FlaskConical aria-hidden="true" /> Open simulation lab
-        </Button>
       </section>
 
       <section aria-labelledby="supporting-actions-heading" className="pt-1">

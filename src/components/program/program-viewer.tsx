@@ -2,7 +2,7 @@
 
 import { useCallback, useMemo, useState } from "react";
 import Link from "next/link";
-import { Pencil, Play, Upload } from "lucide-react";
+import { ChevronDown, Pencil, Play, Upload } from "lucide-react";
 import { ExerciseFamilyIcon } from "@/components/exercises/exercise-family-icon";
 import { ProgramDayTabs } from "@/components/program/program-day-tabs";
 import { Badge } from "@/components/ui/badge";
@@ -154,7 +154,10 @@ export function ProgramViewer({
                 className="min-h-11 shrink-0"
                 variant="outline"
                 render={
-                  <Link href={`/program/edit?day=${selected.lineageId}`} />
+                  <Link
+                    href={`/program/edit?day=${selected.lineageId}`}
+                    prefetch={false}
+                  />
                 }
                 nativeButton={false}
               >
@@ -170,22 +173,26 @@ export function ProgramViewer({
         </header>
 
         {selected.warmupLines.length > 0 && (
-          <section
-            aria-labelledby={`warmup-${selected.lineageId}`}
-            className="border-b bg-violet-50/60 px-4 py-4 dark:bg-violet-950/20 sm:px-5"
-          >
-            <h3
-              id={`warmup-${selected.lineageId}`}
-              className="font-semibold"
-            >
-              Warm-up
-            </h3>
-            <ul className="mt-2 space-y-1 text-sm leading-6 text-muted-foreground">
+          <details className="group border-b bg-violet-50/60 dark:bg-violet-950/20">
+            <summary className="flex min-h-12 cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring [&::-webkit-details-marker]:hidden sm:px-5">
+              <span>
+                <span className="font-semibold">Warm-up</span>
+                <span className="ml-2 text-sm text-muted-foreground">
+                  {selected.warmupLines.length}{" "}
+                  {selected.warmupLines.length === 1 ? "instruction" : "instructions"}
+                </span>
+              </span>
+              <ChevronDown
+                className="size-4 shrink-0 transition-transform group-open:rotate-180"
+                aria-hidden="true"
+              />
+            </summary>
+            <ul className="space-y-1 border-t px-4 py-3 text-sm leading-6 text-muted-foreground sm:px-5">
               {selected.warmupLines.map((line) => (
                 <li key={line}>{line}</li>
               ))}
             </ul>
-          </section>
+          </details>
         )}
 
         <div className="space-y-3 p-3 sm:p-4">
