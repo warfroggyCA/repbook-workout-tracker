@@ -1,6 +1,7 @@
 import { eq, inArray } from "drizzle-orm";
 import { getDb } from "@/db";
-import { exercises, users } from "@/db/schema";
+import { equipmentItems, exercises, users } from "@/db/schema";
+import { saveExerciseEquipmentFitAssertion } from "@/services/exercise-equipment-fit-management";
 import { activateProgramAtomically } from "@/services/program-activation";
 import {
   BA_WORKOUT_EMAIL,
@@ -30,6 +31,32 @@ async function main() {
     if (!exerciseIdByName.has(name)) {
       throw new Error(`The Gauntlet B exercise library is missing: ${name}`);
     }
+  }
+
+  // Publish from truthful current evidence, then retire the reviewed item so
+  // the immutable Program exercises the intended unavailable-equipment path.
+  const [suspensionItem] = await db.insert(equipmentItems).values({
+    userId: owner.id,
+    type: "suspension",
+    label: "Disposable suspension trainer",
+    available: true,
+  }).returning({ id: equipmentItems.id });
+  const reviewedSuspensionFit = await saveExerciseEquipmentFitAssertion(
+    db,
+    owner.id,
+    {
+      mutationId: crypto.randomUUID(),
+      assertionId: null,
+      exerciseId: exerciseIdByName.get("Suspension Push-Up")!,
+      equipmentItemId: suspensionItem.id,
+      verdict: "compatible",
+      reasonCode: "owner_verified",
+      reasonNote: "Synthetic Gauntlet B owner reviewed this exact pair before retirement",
+      expectedRevision: null,
+    },
+  );
+  if (!reviewedSuspensionFit.ok) {
+    throw new Error(`The Gauntlet B fit review could not be retained: ${reviewedSuspensionFit.reason}`);
   }
 
   const activation = await activateProgramAtomically(db, {
@@ -73,6 +100,10 @@ async function main() {
     })),
   });
   if (!activation.ok) throw new Error(activation.reason);
+
+  await db.update(equipmentItems).set({ available: false }).where(
+    eq(equipmentItems.id, suspensionItem.id),
+  );
 
   const client = (db as { $client?: { close?: () => Promise<void> } }).$client;
   await client?.close?.();

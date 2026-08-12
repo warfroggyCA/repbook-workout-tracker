@@ -308,6 +308,13 @@ export async function seedDemo(db: Db): Promise<string> {
   for (const t of templateSpecs) for (const s of t.slots) names.add(s.exercise);
   for (const h of historySpecs)
     for (const p of h.perfs) if (p.substitute) names.add(p.substitute);
+  // The disposable browser owner explicitly reviews each deterministic
+  // alternative exercised by the substitution-lineage acceptance flow.
+  // Listing stable catalog identities here is synthetic fixture intent, not a
+  // name-derived production backfill.
+  names.add("Barbell Front Squat");
+  names.add("Barbell Glute Bridge");
+  names.add("Barbell Floor Press");
   const exRows = await db
     .select({
       id: exercises.id,
