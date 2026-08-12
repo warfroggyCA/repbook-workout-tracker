@@ -1,13 +1,6 @@
 "use client";
 
-import {
-  useEffect,
-  useId,
-  useLayoutEffect,
-  useRef,
-  useState,
-  useTransition,
-} from "react";
+import { useEffect, useId, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { toast } from "sonner";
@@ -2401,22 +2394,6 @@ function SetEntry({
   const [exactOpen, setExactOpen] = useState(
     draft.rpe != null && !RPE_CHIPS.some((chip) => chip.value === draft.rpe),
   );
-  const effortButtons = useRef(new Map<number, HTMLButtonElement>());
-  const effortFocusAfterToggle = useRef<number | null>(null);
-  useLayoutEffect(() => {
-    const effortValue = effortFocusAfterToggle.current;
-    if (effortValue == null) return;
-    effortButtons.current.get(effortValue)?.focus({ preventScroll: true });
-    effortFocusAfterToggle.current = null;
-  }, [draft.rir, draft.rpe]);
-  const toggleEffort = (effortValue: number) => {
-    effortFocusAfterToggle.current = effortValue;
-    setDraft((current) => ({
-      ...current,
-      rpe: current.rpe === effortValue ? null : effortValue,
-      rir: null,
-    }));
-  };
   const plateLine =
     (unit === "lb" || unit === "kg")
       ? formatCompactPlateLoadGuidance(draft.weight, plateConfig, unit)
@@ -2461,24 +2438,18 @@ function SetEntry({
         {RPE_CHIPS.map((chip) => (
           <Button
             key={chip.value}
-            ref={(node) => {
-              if (node) effortButtons.current.set(chip.value, node);
-              else effortButtons.current.delete(chip.value);
-            }}
             variant={draft.rpe === chip.value ? "default" : "outline"}
             size="sm"
             className="h-auto min-h-11 whitespace-normal text-xs"
             aria-label={`${chip.shortcutLabel}; ${chip.meaning}`}
             aria-pressed={draft.rpe === chip.value && draft.rir == null}
-            onKeyDown={(event) => {
-              if (event.key === " ") event.preventDefault();
-            }}
-            onKeyUp={(event) => {
-              if (event.key !== " ") return;
-              event.preventDefault();
-              toggleEffort(chip.value);
-            }}
-            onClick={() => toggleEffort(chip.value)}
+            onClick={() =>
+              setDraft((d) => ({
+                ...d,
+                rpe: d.rpe === chip.value ? null : chip.value,
+                rir: null,
+              }))
+            }
           >
             {chip.shortcutLabel}
           </Button>
