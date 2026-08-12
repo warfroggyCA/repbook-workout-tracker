@@ -161,7 +161,7 @@ const environment = {
       ? "ba.iphone.e2e@example.com"
       : baRoutineChange
         ? "ba.routine-change.e2e@example.com"
-        : "owner@example.com,second.e2e@example.com,program-page.e2e@example.com,today-empty.e2e@example.com,history-calendar.e2e@example.com,history-workspace-sparse.e2e@example.com,review-decisions.e2e@example.com,equipment-onboarding.e2e@example.com,pii01b.setup@example.com",
+        : "owner@example.com,second.e2e@example.com,program-page.e2e@example.com,today-empty.e2e@example.com,history-calendar.e2e@example.com,history-workspace-sparse.e2e@example.com,review-decisions.e2e@example.com,equipment-onboarding.e2e@example.com",
   AUTH_SECRET: "local-e2e-secret-not-used-outside-this-process",
   AUTH_TRUST_HOST: "true",
   BA_FIXTURE_MODE: baFixture || baRoutineChange || baCalendar || v2GauntletBLiveWorkout ? "1" : "",
@@ -290,10 +290,6 @@ const fixtures = v2A01AnalysisPackage
       },
       { label: "Empty Today", script: "tests/helpers/seed-today-empty.ts" },
       { label: "Review decision", script: "tests/helpers/seed-review-decisions.ts" },
-      {
-        label: "PII-01B setup review",
-        script: "tests/helpers/seed-pii01b-setup-review.ts",
-      },
     ];
 
 for (const fixture of fixtures) {

@@ -317,6 +317,14 @@ test("publishes and preserves durable warm-up and grouped workout outcomes", asy
   await expect(workoutGuidance).not.toContainText("Next:");
   await expect(nextSet).toContainText("Next action");
   await expect(nextSet).toContainText("Romanian Deadlift");
+  const alternativeLoad = nextSet.locator(
+    'input[aria-label*="load" i], input[aria-label*="weight" i]',
+  ).first();
+  if (await alternativeLoad.isVisible()) {
+    // A proven-compatible alternative may use a weighted metric. Record the
+    // performed fact instead of assuming the first safe proposal is reps-only.
+    await alternativeLoad.fill("20");
+  }
   await nextSet.getByRole("button", { name: "Log set", exact: true }).click();
   await expect(alternatives).toHaveCount(0);
   await expect(nextSet.getByRole("heading", { level: 2 })).toHaveText("Romanian Deadlift");

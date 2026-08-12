@@ -1,11 +1,12 @@
 {
   "schemaVersion": 1,
-  "expectedSuiteCount": 40,
+  "expectedSuiteCount": 41,
   "groups": [
     {
       "name": "baseline-history",
       "scripts": [
         "test:e2e",
+        "test:e2e:pii01b",
         "test:e2e:pain-hold",
         "test:e2e:history-calendar",
         "test:e2e:history-workspace"
