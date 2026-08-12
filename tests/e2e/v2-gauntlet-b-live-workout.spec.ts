@@ -77,50 +77,58 @@ async function expectActiveViewportBudget(page: Page) {
   await expect(
     page.getByRole("complementary", { name: "Workout status" }),
   ).toBeVisible();
-  const budget = await page.evaluate(() => {
-    const guidance = document.querySelector<HTMLElement>(
-      'section[aria-label="Workout progress and upcoming work"]',
-    );
-    const dock = document.querySelector<HTMLElement>("#workout-rest-status");
-    if (!guidance || !dock) throw new Error("Active workout boundaries are missing.");
-    const guidanceRect = guidance.getBoundingClientRect();
-    const dockRect = dock.getBoundingClientRect();
-    const navigation = document.querySelector<HTMLElement>(
-      'nav[aria-label="Primary navigation"]',
-    );
-    const navigationRect = navigation?.getBoundingClientRect() ?? null;
-    const intrusions = [...document.querySelectorAll<HTMLElement>("body *")]
-      .filter((element) =>
-        element !== dock &&
-        element !== navigation &&
-        !element.contains(guidance) &&
-        !dock.contains(element) &&
-        !(navigation?.contains(element) ?? false)
-      )
-      .filter((element) => {
-        const style = getComputedStyle(element);
-        if (style.position !== "fixed" && style.position !== "sticky") return false;
-        const rect = element.getBoundingClientRect();
-        return rect.width >= window.innerWidth * 0.7 &&
-          rect.bottom > guidanceRect.bottom + 1 &&
-          rect.top < dockRect.top - 1;
-      })
-      .map((element) => element.id || element.getAttribute("aria-label") || element.tagName);
-    return {
-      usableHeight: Math.max(0, dockRect.top - guidanceRect.bottom),
-      dockClearsNavigation:
-        navigationRect == null || navigationRect.height === 0 ||
-        dockRect.bottom <= navigationRect.top + 1,
-      intrusions,
-      horizontalOverflow:
-        document.documentElement.scrollWidth -
-        document.documentElement.clientWidth,
-    };
-  });
-  expect(budget.usableHeight).toBeGreaterThanOrEqual(280);
-  expect(budget.dockClearsNavigation).toBe(true);
-  expect(budget.intrusions).toEqual([]);
-  expect(budget.horizontalOverflow).toBeLessThanOrEqual(1);
+  await expect(async () => {
+    const budget = await page.evaluate(() => {
+      const guidance = document.querySelector<HTMLElement>(
+        'section[aria-label="Workout progress and upcoming work"]',
+      );
+      const dock = document.querySelector<HTMLElement>("#workout-rest-status");
+      if (!guidance || !dock) {
+        throw new Error("Active workout boundaries are missing.");
+      }
+      const guidanceRect = guidance.getBoundingClientRect();
+      const dockRect = dock.getBoundingClientRect();
+      const navigation = document.querySelector<HTMLElement>(
+        'nav[aria-label="Primary navigation"]',
+      );
+      const navigationRect = navigation?.getBoundingClientRect() ?? null;
+      const intrusions = [...document.querySelectorAll<HTMLElement>("body *")]
+        .filter((element) =>
+          element !== dock &&
+          element !== navigation &&
+          !element.contains(guidance) &&
+          !dock.contains(element) &&
+          !(navigation?.contains(element) ?? false)
+        )
+        .filter((element) => {
+          const style = getComputedStyle(element);
+          if (style.position !== "fixed" && style.position !== "sticky") {
+            return false;
+          }
+          const rect = element.getBoundingClientRect();
+          return rect.width >= window.innerWidth * 0.7 &&
+            rect.bottom > guidanceRect.bottom + 1 &&
+            rect.top < dockRect.top - 1;
+        })
+        .map((element) =>
+          element.id || element.getAttribute("aria-label") || element.tagName
+        );
+      return {
+        usableHeight: Math.max(0, dockRect.top - guidanceRect.bottom),
+        dockClearsNavigation:
+          navigationRect == null || navigationRect.height === 0 ||
+          dockRect.bottom <= navigationRect.top + 1,
+        intrusions,
+        horizontalOverflow:
+          document.documentElement.scrollWidth -
+          document.documentElement.clientWidth,
+      };
+    });
+    expect(budget.usableHeight).toBeGreaterThanOrEqual(280);
+    expect(budget.dockClearsNavigation).toBe(true);
+    expect(budget.intrusions).toEqual([]);
+    expect(budget.horizontalOverflow).toBeLessThanOrEqual(1);
+  }).toPass();
 }
 
 async function dismissRest(page: Page) {
