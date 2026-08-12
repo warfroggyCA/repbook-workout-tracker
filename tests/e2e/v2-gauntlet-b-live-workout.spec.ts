@@ -161,6 +161,14 @@ test("keeps the full live workout usable through warm-up, skip, replace, continu
 }) => {
   const pageErrors = observeGauntletPageErrors(page, browserName);
   await signInAndStart(page);
+  if ((page.viewportSize()?.width ?? Number.POSITIVE_INFINITY) <= 440) {
+    const workoutExit = page.getByRole("link", {
+      name: "Back to Today",
+      exact: true,
+    });
+    await expect(workoutExit).toHaveCount(1);
+    await expect(workoutExit).toBeVisible();
+  }
 
   const warmup = page.locator("#workout-warmup");
   await expect(warmup).toContainText("Check off only the distinct actions below.");

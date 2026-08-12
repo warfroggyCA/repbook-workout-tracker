@@ -27,7 +27,7 @@ import {
   DrawerTitle,
 } from "@/components/ui/drawer";
 import { Textarea } from "@/components/ui/textarea";
-import { CheckCircle2, MessageSquareText } from "lucide-react";
+import { ArrowLeft, CheckCircle2, MessageSquareText } from "lucide-react";
 import {
   ExerciseCard,
   type ExerciseAdjustmentIntent,
@@ -2070,8 +2070,19 @@ export function SessionRunner(props: SessionRunnerProps) {
   return (
     <main className="mx-auto flex max-w-3xl flex-col gap-3 p-3 pb-[calc(12rem+env(safe-area-inset-bottom))] min-[360px]:pb-[calc(8rem+env(safe-area-inset-bottom))] sm:p-5 sm:pb-[calc(8rem+env(safe-area-inset-bottom))] lg:p-8 lg:pb-24">
       <ContextualNoteScope value={contextualNoteScope} />
-      <header className="flex flex-wrap items-center justify-between gap-2 px-1">
-        <div className="min-w-0 max-[360px]:sr-only">
+      <Link
+        href="/today"
+        aria-label="Back to Today"
+        className={buttonVariants({
+          variant: "outline",
+          size: "sm",
+          className: "fixed right-2 top-[max(.5rem,env(safe-area-inset-top))] z-30 min-h-[44px] min-w-[44px] bg-background p-0 shadow-sm min-[361px]:hidden",
+        })}
+      >
+        <ArrowLeft aria-hidden="true" className="size-5" />
+      </Link>
+      <header className="flex flex-wrap items-center justify-between gap-2 px-1 max-[360px]:hidden">
+        <div className="min-w-0">
           <h1 className="text-lg font-semibold">
             {props.templateName}
           </h1>
