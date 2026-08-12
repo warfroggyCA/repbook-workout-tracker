@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { and, desc, eq, sql } from "drizzle-orm";
-import { FlaskConical, WandSparkles } from "lucide-react";
+import { WandSparkles } from "lucide-react";
 import { ProgramViewer } from "@/components/program/program-viewer";
 import { Button } from "@/components/ui/button";
 import { getDb } from "@/db";
@@ -74,22 +74,6 @@ export default async function ProgramPage(props: PageProps<"/program">) {
             initialSelectedId={selected.lineageId}
             editorEnabled={isProgramEditorEnabled()}
           />
-
-          <section className="mt-4 rounded-2xl border border-amber-500/50 bg-amber-50/60 p-4 dark:bg-amber-950/15">
-            <h2 className="font-semibold">Rehearse without recording</h2>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Simulation uses a separate local workspace and does not change
-              Today, History, Coach, progress, or records.
-            </p>
-            <Button
-              className="mt-3 min-h-10"
-              variant="outline"
-              render={<Link href="/simulation" />}
-              nativeButton={false}
-            >
-              <FlaskConical aria-hidden="true" /> Open simulation lab
-            </Button>
-          </section>
 
           {compilerEnabled && selected.intent && (
             <div className="mt-4">

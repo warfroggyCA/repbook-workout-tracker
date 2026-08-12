@@ -28,6 +28,24 @@ async function signInAndStart(page: Page) {
   ).toBe("extra-large");
 
   await page.goto("/today");
+  await expect(page.locator('a[href="/simulation"]')).toHaveCount(0);
+  await page.goto("/program");
+  await expect(page.locator('a[href="/simulation"]')).toHaveCount(0);
+  const warmupDetails = page.locator("details").filter({
+    has: page.getByText("Warm-up", { exact: true }),
+  });
+  const warmupSummary = warmupDetails.locator(":scope > summary");
+  await expect(warmupSummary).toContainText(/\d+ instructions?/);
+  await expect(warmupDetails).not.toHaveAttribute("open", "");
+  await warmupSummary.click();
+  await expect(warmupDetails).toHaveAttribute("open", "");
+  await expect(
+    warmupDetails.getByText(
+      BA_WORKOUT_FIXTURE.program.days[0].warmupNotes,
+      { exact: true },
+    ),
+  ).toBeVisible();
+  await page.goto("/today");
   const start = page.getByRole("button", {
     name: "Train as planned",
     exact: true,
@@ -222,14 +240,31 @@ test("keeps the full live workout usable through warm-up, skip, replace, continu
       name: "Add a training note",
     });
     await expect(noteDialog).toBeVisible();
-    await noteDialog
-      .getByRole("textbox", { name: "Your observation" })
-      .fill("Keyboard viewport acceptance draft");
+    const observation = noteDialog.getByRole("textbox", {
+      name: "Your observation",
+    });
+    await observation.fill("Keyboard viewport acceptance draft");
+    const noteActions = noteDialog.getByRole("group", {
+      name: "Note actions",
+    });
+    const saveNote = noteActions.getByRole("button", {
+      name: "Save note",
+      exact: true,
+    });
+    await expect(noteActions).toBeVisible();
     await page.setViewportSize({ width: 320, height: 400 });
-    const closeDraft = noteDialog.getByRole("button", {
+    await expect(observation).toBeFocused();
+    await expect(saveNote).toBeInViewport();
+    await expectReachableTarget(saveNote);
+    const closeDraft = noteActions.getByRole("button", {
       name: "Close · keep draft",
       exact: true,
     });
+    await expect(closeDraft).toBeInViewport();
+    await expectReachableTarget(closeDraft);
+    await noteDialog.getByRole("button", { name: "Start dictation" }).scrollIntoViewIfNeeded();
+    await expect(saveNote).toBeInViewport();
+    await expectReachableTarget(saveNote);
     await closeDraft.scrollIntoViewIfNeeded();
     await expectReachableTarget(closeDraft);
     await closeDraft.click();
