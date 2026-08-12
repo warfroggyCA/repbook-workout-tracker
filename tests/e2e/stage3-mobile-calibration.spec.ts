@@ -219,8 +219,10 @@ test("keeps new Stage 3 controls usable at the saved iPhone calibration", async 
   const dockBox = await statusBar.boundingBox();
   const tabsBox = await bottomTabs.boundingBox();
   expect(dockBox).not.toBeNull();
-  expect(tabsBox).not.toBeNull();
-  expect(boxBottom(dockBox)).toBeLessThanOrEqual(tabsBox?.y ?? 0);
+  expect(tabsBox).toBeNull();
+  expect(boxBottom(dockBox)).toBeLessThanOrEqual(
+    calibration.viewport.height + 1,
+  );
   await screenshot(page, "01-extra-large-warmup-controls.png");
 
   await addNote.focus();
@@ -261,11 +263,11 @@ test("keeps new Stage 3 controls usable at the saved iPhone calibration", async 
   const queueBox = await queueButton.boundingBox();
   const offlineTabsBox = await bottomTabs.boundingBox();
   expect(queueBox).not.toBeNull();
-  expect(offlineTabsBox).not.toBeNull();
+  expect(offlineTabsBox).toBeNull();
   expect(boxBottom(queueBox)).toBeLessThanOrEqual(
-    offlineTabsBox?.y ?? 0,
+    calibration.viewport.height + 1,
   );
-  await screenshot(page, "03-offline-queue-above-mobile-tabs.png");
+  await screenshot(page, "03-offline-queue-in-focused-workout.png");
 
   await context.setOffline(false);
   await page.evaluate(() => window.dispatchEvent(new Event("online")));
@@ -278,7 +280,10 @@ test("keeps new Stage 3 controls usable at the saved iPhone calibration", async 
   ).toContainText("Note: Mobile offline note from the calibrated profile.");
   await page.waitForLoadState("networkidle");
 
-  const returnToToday = page.getByRole("link", { name: "Today", exact: true }).last();
+  const returnToToday = page.getByRole("link", {
+    name: "Back to Today",
+    exact: true,
+  });
   await returnToToday.click();
   await expect(page).toHaveURL(/\/today$/);
   const resume = page.getByRole("button", { name: "Resume workout", exact: true });
@@ -410,9 +415,9 @@ test("keeps new Stage 3 controls usable at the saved iPhone calibration", async 
     ],
     layout: {
       dockBottom: Math.round(boxBottom(dockBox) * 10) / 10,
-      tabsTop: Math.round((tabsBox?.y ?? 0) * 10) / 10,
+      navigationVisible: tabsBox !== null,
       queueBottom: Math.round(boxBottom(queueBox) * 10) / 10,
-      offlineTabsTop: Math.round((offlineTabsBox?.y ?? 0) * 10) / 10,
+      offlineNavigationVisible: offlineTabsBox !== null,
       horizontalOverflowPixels:
         initialLayout.scrollWidth - initialLayout.viewportWidth,
       enlargedRestDockHeight:
