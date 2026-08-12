@@ -55,15 +55,15 @@ test("records, changes, exports, and removes one stable exercise-item fit access
   const exercise = form.getByRole("combobox", { name: "Exercise", exact: true });
   const equipment = form.getByRole("combobox", { name: "Owned equipment item", exact: true });
   const verdict = form.getByRole("combobox", { name: "Does this exact pair work?", exact: true });
-  await exerciseSearch.fill("Dumbbell Row");
+  await exerciseSearch.fill("Dumbbell Front Raise");
   await expect(form.locator("#movement-compatibility-search-status"))
     .toHaveText(/matching exercises?/);
-  const dumbbellRowValue = await exercise.locator("option").evaluateAll((options) =>
-    options.find((option) => option.textContent?.trim() === "Dumbbell Row")?.getAttribute("value")
+  const dumbbellFrontRaiseValue = await exercise.locator("option").evaluateAll((options) =>
+    options.find((option) => option.textContent?.trim() === "Dumbbell Front Raise")?.getAttribute("value")
       ?? null,
   );
-  expect(dumbbellRowValue).not.toBeNull();
-  await exercise.selectOption(dumbbellRowValue!);
+  expect(dumbbellFrontRaiseValue).not.toBeNull();
+  await exercise.selectOption(dumbbellFrontRaiseValue!);
   await expect(equipment).toContainText("Adjustable dumbbells");
   const adjustableDumbbellValue = await equipment.locator("option")
     .filter({ hasText: "Adjustable dumbbells" })
@@ -80,7 +80,7 @@ test("records, changes, exports, and removes one stable exercise-item fit access
   await expect(save).toBeFocused();
   await page.keyboard.press("Enter");
 
-  const retained = section.getByRole("article").filter({ hasText: "Dumbbell Row" });
+  const retained = section.getByRole("article").filter({ hasText: "Dumbbell Front Raise" });
   await expect(retained).toContainText("Adjustable dumbbells");
   await expect(retained.getByText("Incompatible", { exact: true })).toBeVisible();
   await expect(retained).toContainText("Handle geometry prevents the reviewed movement.");
@@ -106,7 +106,7 @@ test("records, changes, exports, and removes one stable exercise-item fit access
   await editSave.focus();
   await page.keyboard.press("Enter");
 
-  const changed = section.getByRole("article").filter({ hasText: "Dumbbell Row" });
+  const changed = section.getByRole("article").filter({ hasText: "Dumbbell Front Raise" });
   await expect(changed.getByText("Compatible", { exact: true })).toBeVisible();
   await expect(changed).toContainText("revision 2");
   await expect(changed).not.toContainText("Handle geometry prevents the reviewed movement.");
@@ -151,7 +151,9 @@ test("records, changes, exports, and removes one stable exercise-item fit access
   await confirm.focus();
   await page.keyboard.press("Enter");
 
-  await expect(section.getByText(/Every exercise-and-item pair is unknown/)).toBeVisible();
+  await expect(
+    section.getByRole("article").filter({ hasText: "Dumbbell Front Raise" }),
+  ).toHaveCount(0);
   const removeStatus = section.locator("#movement-compatibility-status");
   await expect(removeStatus).toHaveText(/unknown again, not compatible/);
   await expect(removeStatus).toBeFocused();

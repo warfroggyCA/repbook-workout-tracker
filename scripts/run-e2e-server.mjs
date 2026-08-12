@@ -290,6 +290,10 @@ const fixtures = v2A01AnalysisPackage
       },
       { label: "Empty Today", script: "tests/helpers/seed-today-empty.ts" },
       { label: "Review decision", script: "tests/helpers/seed-review-decisions.ts" },
+      {
+        label: "PII-01B setup review",
+        script: "tests/helpers/seed-pii01b-setup-review.ts",
+      },
     ];
 
 for (const fixture of fixtures) {
