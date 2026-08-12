@@ -276,8 +276,9 @@ export function InventoryChangeReview({
             className="text-sm leading-5"
           >
             I understand this save removes equipment, reduces what I can lift,
-            or makes the listed movement reviews unknown until I review them
-            again, and these are the changes I want.
+            makes future loading guidance less precise, or makes the listed
+            movement reviews unknown until I review them again, and these are
+            the changes I want.
           </Label>
         </div>
       )}

@@ -29,6 +29,9 @@ describe("equipment exact-profile review", () => {
     );
     expect(html).toContain("Exact setup changes");
     expect(html).toContain("future loading guidance becomes less precise");
+    expect(html).toContain(
+      "I understand this save removes equipment, reduces what I can lift, makes future loading guidance less precise",
+    );
     expect(html).toContain("Saved workouts keep the exact equipment snapshot");
   });
 });

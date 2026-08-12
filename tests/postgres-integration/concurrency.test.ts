@@ -1097,6 +1097,69 @@ describe.sequential("real PostgreSQL parallel invariants", () => {
     })).resolves.toMatchObject({ status: "open", publishedVersionId: null });
   }, 60_000);
 
+  it("persists a new exact bar profile after its same-save equipment parent", async () => {
+    const owner = await bootstrapUserAccount(db, {
+      email: `pii01b-new-bar-${crypto.randomUUID()}@example.com`,
+      name: "PII-01B new bar owner",
+    });
+    const loaded = await loadEquipmentInventoryDocument(db, owner.id);
+    if (!loaded) throw new Error("PII-01B new-bar inventory was missing.");
+    const barItemId = crypto.randomUUID();
+    const saved = await saveInventoryDocumentForManagement(db, owner.id, {
+      ...loaded.document,
+      items: [
+        ...loaded.document.items,
+        {
+          id: null,
+          draftId: barItemId,
+          type: "barbell",
+          label: "Native PostgreSQL exact bar",
+          quantity: 1,
+          attrs: {},
+        },
+      ],
+      bars: [
+        ...loaded.document.bars,
+        {
+          id: null,
+          barType: "olympic",
+          barWeight: 45,
+          collarWeight: 5,
+          quantity: 1,
+          label: "Native PostgreSQL exact bar",
+        },
+      ],
+      loadProfiles: [
+        ...(loaded.document.loadProfiles ?? []),
+        {
+          equipmentItemId: barItemId,
+          profile: {
+            kind: "plate_loaded_implement",
+            id: null,
+            loadingKind: "olympic",
+            emptyWeight: 45,
+            collarWeight: 5,
+            unit: "lb",
+            sharedPlatePoolCompatible: true,
+          },
+        },
+      ],
+    });
+    expect(saved).toMatchObject({ ok: true, changed: true });
+    await expect(db.query.barbellConfigs.findFirst({
+      where: and(
+        eq(schema.barbellConfigs.userId, owner.id),
+        eq(schema.barbellConfigs.equipmentItemId, barItemId),
+      ),
+    })).resolves.toMatchObject({
+      loadingKind: "olympic",
+      barWeight: 45,
+      collarWeight: 5,
+      unit: "lb",
+      sharedPlatePoolCompatible: true,
+    });
+  }, 60_000);
+
   it("rejects Session Compiler acceptance after an overlapping Program publication", async () => {
     const priorEditor = process.env.PROGRAM_EDITOR_ENABLED;
     const priorCompiler = process.env.SESSION_COMPILER_ENABLED;

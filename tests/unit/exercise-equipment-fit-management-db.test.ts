@@ -7,6 +7,9 @@ import { eq } from "drizzle-orm";
 import * as schema from "@/db/schema";
 import {
   auditLogs,
+  cableAttachmentCompatibilities,
+  cableAttachmentProfiles,
+  cableMachineProfiles,
   equipmentItems,
   exerciseEquipmentFitAssertions,
   exerciseEquipmentRequirements,
@@ -24,6 +27,7 @@ import {
   loadEquipmentInventoryDocument,
   previewInventoryDocumentChanges,
 } from "@/services/equipment-inventory";
+import { saveInventoryDocumentForManagement } from "@/services/setup-persistence";
 
 describe("owner exercise-equipment fit management", () => {
   let client: PGlite;
@@ -357,6 +361,43 @@ describe("owner exercise-equipment fit management", () => {
   }, 60_000);
 
   it("warns before an inventory save makes a retained exact-pair review stale", async () => {
+    const [{ id: attachmentItemId }] = await db
+      .insert(equipmentItems)
+      .values({
+        userId,
+        type: "other",
+        label: "Rope attachment",
+        attrs: {},
+      })
+      .returning({ id: equipmentItems.id });
+    const [{ id: cableProfileId }] = await db
+      .insert(cableMachineProfiles)
+      .values({
+        userId,
+        equipmentItemId: firstCableId,
+        geometryCertainty: "partial",
+        stackCount: 1,
+        topology: "shared_selection",
+        displayedUnit: "lb",
+        ratioStatus: "unknown",
+      })
+      .returning({ id: cableMachineProfiles.id });
+    const [{ id: attachmentProfileId }] = await db
+      .insert(cableAttachmentProfiles)
+      .values({
+        userId,
+        equipmentItemId: attachmentItemId,
+        attachmentKind: "rope",
+        connectionStandard: null,
+        status: "unknown",
+      })
+      .returning({ id: cableAttachmentProfiles.id });
+    await db.insert(cableAttachmentCompatibilities).values({
+      userId,
+      cableProfileId,
+      attachmentProfileId,
+    });
+
     const created = await saveExerciseEquipmentFitAssertion(db, userId, {
       mutationId: crypto.randomUUID(),
       assertionId: null,
@@ -381,6 +422,139 @@ describe("owner exercise-equipment fit management", () => {
     if (!labelOnly.ok) return;
     expect(labelOnly.preview.impact.fitReviewsRequiringReview).toEqual([]);
 
+    const linkedAttachmentQuantityOnly = await previewInventoryDocumentChanges(
+      db,
+      userId,
+      {
+        ...loaded.document,
+        items: loaded.document.items.map((item) =>
+          item.id === attachmentItemId
+            ? { ...item, quantity: item.quantity + 1 }
+            : item,
+        ),
+      },
+    );
+    expect(linkedAttachmentQuantityOnly.ok).toBe(true);
+    if (!linkedAttachmentQuantityOnly.ok) return;
+    expect(
+      linkedAttachmentQuantityOnly.preview.impact.fitReviewsRequiringReview,
+    ).toEqual([]);
+    expect(linkedAttachmentQuantityOnly.preview.requiresConfirmation).toBe(false);
+
+    const linkedAttachmentChange = await previewInventoryDocumentChanges(db, userId, {
+      ...loaded.document,
+      loadProfiles: (loaded.document.loadProfiles ?? []).map((entry) =>
+        entry.equipmentItemId === attachmentItemId
+        && entry.profile.kind === "attachment"
+          ? {
+              ...entry,
+              profile: {
+                ...entry.profile,
+                status: "known" as const,
+                connectionStandard: "carabiner",
+              },
+            }
+          : entry,
+      ),
+    });
+    expect(linkedAttachmentChange.ok).toBe(true);
+    if (!linkedAttachmentChange.ok) return;
+    expect(linkedAttachmentChange.preview.impact.fitReviewsRequiringReview).toEqual([
+      {
+        assertionId: created.assertionId,
+        exerciseName: expect.stringContaining("Cable Face Pull"),
+        equipmentLabel: "Cable station",
+      },
+    ]);
+    expect(linkedAttachmentChange.preview.requiresConfirmation).toBe(true);
+
+    const unrelatedBarId = crypto.randomUUID();
+    const unrelatedPlateAndBar = await previewInventoryDocumentChanges(db, userId, {
+      ...loaded.document,
+      items: [
+        ...loaded.document.items,
+        {
+          id: null,
+          draftId: unrelatedBarId,
+          type: "barbell",
+          label: "Unrelated Olympic bar",
+          quantity: 1,
+          attrs: {},
+        },
+      ],
+      plates: [
+        ...loaded.document.plates,
+        { id: null, denomination: 37.5, quantity: 2 },
+      ],
+      bars: [
+        ...loaded.document.bars,
+        {
+          id: null,
+          barType: "olympic",
+          barWeight: 45,
+          collarWeight: 0,
+          quantity: 1,
+          label: "Unrelated Olympic bar",
+        },
+      ],
+      loadProfiles: [
+        ...(loaded.document.loadProfiles ?? []),
+        {
+          equipmentItemId: unrelatedBarId,
+          profile: {
+            kind: "plate_loaded_implement",
+            id: null,
+            loadingKind: "olympic",
+            emptyWeight: 45,
+            collarWeight: 0,
+            unit: "lb",
+            sharedPlatePoolCompatible: true,
+          },
+        },
+      ],
+    });
+    expect(unrelatedPlateAndBar.ok).toBe(true);
+    if (!unrelatedPlateAndBar.ok) return;
+    expect(unrelatedPlateAndBar.preview.impact.fitReviewsRequiringReview).toEqual([]);
+    expect(unrelatedPlateAndBar.preview.requiresConfirmation).toBe(false);
+
+    const unrelatedMachineId = crypto.randomUUID();
+    const unrelatedProfile = await previewInventoryDocumentChanges(db, userId, {
+      ...loaded.document,
+      items: [
+        ...loaded.document.items,
+        {
+          id: null,
+          draftId: unrelatedMachineId,
+          type: "machine",
+          label: "Unrelated plate-loaded machine",
+          quantity: 1,
+          attrs: {},
+        },
+      ],
+      loadProfiles: [
+        ...(loaded.document.loadProfiles ?? []),
+        {
+          equipmentItemId: unrelatedMachineId,
+          profile: {
+            kind: "plate_loaded_machine",
+            id: null,
+            geometryCertainty: "known",
+            startingResistance: 0,
+            startingResistanceUnit: "lb",
+            loadingPointCount: 2,
+            balancingRule: "identical_each_point",
+            targetEntryMeaning: "total_system",
+            compatiblePlateIds: [],
+          },
+        },
+      ],
+    });
+    expect(unrelatedProfile.ok).toBe(true);
+    if (!unrelatedProfile.ok) return;
+    expect(unrelatedProfile.preview.impact.fitReviewsRequiringReview).toEqual([]);
+    expect(unrelatedProfile.preview.requiresConfirmation).toBe(false);
+
     const capabilityChange = await previewInventoryDocumentChanges(db, userId, {
       ...loaded.document,
       items: loaded.document.items.map((item) =>
@@ -399,5 +573,72 @@ describe("owner exercise-equipment fit management", () => {
       },
     ]);
     expect(capabilityChange.preview.requiresConfirmation).toBe(true);
+  }, 60_000);
+
+  it("retains a new exact bar profile through its same-save draft identity", async () => {
+    await db
+      .update(equipmentItems)
+      .set({ label: "Spare cable station" })
+      .where(eq(equipmentItems.id, secondCableId));
+    const loaded = await loadEquipmentInventoryDocument(db, userId);
+    if (!loaded) throw new Error("Expected owner inventory.");
+    const barItemId = crypto.randomUUID();
+    const document = {
+      ...loaded.document,
+      items: [
+        ...loaded.document.items,
+        {
+          id: null,
+          draftId: barItemId,
+          type: "barbell" as const,
+          label: "Reviewed Olympic bar",
+          quantity: 1,
+          attrs: {},
+        },
+      ],
+      bars: [
+        ...loaded.document.bars,
+        {
+          id: null,
+          barType: "olympic" as const,
+          barWeight: 45,
+          collarWeight: 5,
+          quantity: 1,
+          label: "Reviewed Olympic bar",
+        },
+      ],
+      loadProfiles: [
+        ...(loaded.document.loadProfiles ?? []),
+        {
+          equipmentItemId: barItemId,
+          profile: {
+            kind: "plate_loaded_implement" as const,
+            id: null,
+            loadingKind: "olympic" as const,
+            emptyWeight: 45,
+            collarWeight: 5,
+            unit: "lb" as const,
+            sharedPlatePoolCompatible: true,
+          },
+        },
+      ],
+    };
+
+    const saved = await saveInventoryDocumentForManagement(db, userId, document);
+    if (!saved.ok) throw new Error(saved.reason);
+    expect(saved).toMatchObject({ ok: true, changed: true });
+    const reloaded = await loadEquipmentInventoryDocument(db, userId);
+    const retained = reloaded?.document.loadProfiles?.find(
+      (entry) => entry.equipmentItemId === barItemId,
+    );
+    expect(retained?.profile).toEqual({
+      kind: "plate_loaded_implement",
+      id: expect.any(String),
+      loadingKind: "olympic",
+      emptyWeight: 45,
+      collarWeight: 5,
+      unit: "lb",
+      sharedPlatePoolCompatible: true,
+    });
   }, 60_000);
 });

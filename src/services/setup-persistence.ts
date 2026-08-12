@@ -601,6 +601,7 @@ async function executeInventorySave(
       FROM bar_input input
       JOIN bar_matches matched ON matched.input_id = input.input_id
       JOIN current_bars current ON current.id = matched.current_id
+      CROSS JOIN equipment_type_writes_finished
       WHERE target.id = current.id
         AND EXISTS (SELECT 1 FROM save_gate)
         AND ROW(
@@ -634,6 +635,7 @@ async function executeInventorySave(
         coalesce(input.collar_weight, 0), input.quantity, input.label
       FROM bar_input input
       JOIN bar_matches matched ON matched.input_id = input.input_id
+      CROSS JOIN equipment_type_writes_finished
       WHERE matched.current_id IS NULL
         AND EXISTS (SELECT 1 FROM save_gate)
       RETURNING *
@@ -1293,7 +1295,8 @@ export async function saveInventoryDocumentForManagement(
   const association = associateBarConfigurations(document.items, document.bars);
   const barItemByIndex = new Map(
     association.matched.flatMap(({ itemIndex, barIndex }) => {
-      const itemId = document.items[itemIndex]?.id;
+      const item = document.items[itemIndex];
+      const itemId = item?.id ?? item?.draftId;
       return itemId ? [[barIndex, itemId] as const] : [];
     }),
   );
