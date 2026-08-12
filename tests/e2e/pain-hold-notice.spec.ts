@@ -11,6 +11,7 @@ import {
 // The setup visits Today, Settings, and Coach. Validate that phase separately
 // so its legitimate link prefetches cannot be confused with dismissal refresh.
 const expectedSetupPrefetchPaths = new Set([
+  "/activity/new",
   "/today",
   "/history",
   "/coach",
