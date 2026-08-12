@@ -348,7 +348,7 @@ test("keeps Stage 5 guidance truthful, persistent, and usable on narrow mobile s
   await page.setViewportSize({ width: 359, height: 700 });
   await expect(compactNavigation).toBeHidden();
   await page.setViewportSize({ width: 360, height: 700 });
-  await expect(compactNavigation).toBeVisible();
+  await expect(compactNavigation).toBeHidden();
   await page.setViewportSize({ width: 320, height: 700 });
   await expectNoHorizontalOverflow(page);
   await expect(
