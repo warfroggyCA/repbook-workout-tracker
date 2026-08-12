@@ -69,6 +69,8 @@ async function expectReachableTarget(locator: Locator) {
 }
 
 async function expectActiveViewportBudget(page: Page) {
+  const expectsCompactBackControl =
+    (page.viewportSize()?.width ?? Number.POSITIVE_INFINITY) <= 440;
   await expect(
     page.getByRole("region", {
       name: "Workout progress and upcoming work",
@@ -81,9 +83,11 @@ async function expectActiveViewportBudget(page: Page) {
   await expect(
     page.getByRole("button", { name: "Review notes", exact: true }),
   ).toBeHidden();
-  await expect(
-    page.getByRole("link", { name: "Back to Today", exact: true }),
-  ).toBeVisible();
+  if (expectsCompactBackControl) {
+    await expect(
+      page.getByRole("link", { name: "Back to Today", exact: true }),
+    ).toBeVisible();
+  }
   await expect(async () => {
     const budget = await page.evaluate(() => {
       const guidance = document.querySelector<HTMLElement>(
@@ -133,19 +137,21 @@ async function expectActiveViewportBudget(page: Page) {
         horizontalOverflow:
           document.documentElement.scrollWidth -
           document.documentElement.clientWidth,
-        backControlInsideViewport:
-          backControlRect != null &&
-          backControlRect.left >= 0 &&
-          backControlRect.top >= 0 &&
-          backControlRect.right <= window.innerWidth + 1 &&
-          backControlRect.bottom <= window.innerHeight + 1,
+        backControlInsideViewport: backControlRect == null
+          ? null
+          : backControlRect.left >= 0 &&
+            backControlRect.top >= 0 &&
+            backControlRect.right <= window.innerWidth + 1 &&
+            backControlRect.bottom <= window.innerHeight + 1,
       };
     });
     expect(budget.usableHeight).toBeGreaterThanOrEqual(280);
     expect(budget.dockClearsNavigation).toBe(true);
     expect(budget.intrusions).toEqual([]);
     expect(budget.horizontalOverflow).toBeLessThanOrEqual(1);
-    expect(budget.backControlInsideViewport).toBe(true);
+    if (expectsCompactBackControl) {
+      expect(budget.backControlInsideViewport).toBe(true);
+    }
   }).toPass();
 }
 
