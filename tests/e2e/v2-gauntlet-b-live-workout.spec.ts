@@ -366,7 +366,7 @@ test("keeps the full live workout usable through warm-up, skip, replace, continu
     (page.viewportSize()?.width ?? Number.POSITIVE_INFINITY) <= 440
       ? page.getByRole("link", { name: "Back to Today", exact: true })
       : page
-          .getByRole("navigation", { name: "Primary navigation" })
+          .getByRole("navigation", { name: "Main navigation" })
           .getByRole("link", { name: "Today", exact: true });
   await expect(interruptedWorkoutExit).toBeVisible();
   await interruptedWorkoutExit.click();

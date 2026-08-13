@@ -288,9 +288,6 @@ test("publishes and preserves durable warm-up and grouped workout outcomes", asy
   await expect(nextSet.getByRole("heading", { level: 2 })).toHaveText("Band Lat Pulldown");
   await expect(page.getByRole("button", { name: "Open unsaved workout changes" })).toHaveCount(0);
   const currentExerciseToggle = nextSet.locator(":scope > button");
-  if ((await currentExerciseToggle.getAttribute("aria-expanded")) !== "true") {
-    await currentExerciseToggle.click();
-  }
   await expect(currentExerciseToggle).toHaveAttribute("aria-expanded", "true");
 
   await openNativeDetails(nextSet.locator("details", {
