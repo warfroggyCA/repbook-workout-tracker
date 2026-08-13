@@ -98,6 +98,7 @@ describe("ExerciseCard", () => {
     expect(source).toContain("const result = await confirmExerciseUnskipped({");
     expect(source).toContain("expectedHistoryRevision: historyRevision");
     expect(source).toContain("onHistoryRevisionChange(result.historyRevision)");
+    expect(source).toContain("if (reportDeploymentMismatch(error)) return");
     expect(source).not.toContain("await unskipExercise(");
   });
 

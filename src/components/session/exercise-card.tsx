@@ -79,6 +79,7 @@ import {
   effortChoiceForLegacyRpe,
 } from "@/lib/active-workout-language";
 import { activeWorkoutScrollBehavior } from "@/lib/active-workout-motion";
+import { reportDeploymentMismatch } from "@/lib/deployment-recovery";
 import {
   patchActiveWorkoutMeasurement,
   readActiveWorkoutMeasurements,
@@ -2644,7 +2645,8 @@ export function ExerciseCard({
                       return;
                     }
                     onHistoryRevisionChange(result.historyRevision);
-                  } catch {
+                  } catch (error) {
+                    if (reportDeploymentMismatch(error)) return;
                     toast.error("The exercise could not be restored.");
                     return;
                   }
