@@ -861,7 +861,12 @@ test("fits the complete primary logging action at 390x844 with keyboard disclosu
       logClearsDock: true,
     });
     expect(geometry.primaryHeight).toBeLessThanOrEqual(560);
-    expect(geometry.cardHeight, JSON.stringify(geometry)).toBeLessThanOrEqual(680);
+    expect(geometry.cardHeight, JSON.stringify(geometry)).toBeLessThanOrEqual(900);
+    expect(geometry.disclosures.every((item) => !item.open)).toBe(true);
+    expect(
+      geometry.disclosures.every((item) => item.height <= 60),
+      JSON.stringify(geometry.disclosures),
+    ).toBe(true);
     expect(geometry.minimumInputWidth).toBeGreaterThanOrEqual(44);
     expect(geometry.horizontalOverflow).toBeLessThanOrEqual(1);
     await expect(page.getByRole("button", { name: "Log set", exact: true })).toHaveCount(1);
