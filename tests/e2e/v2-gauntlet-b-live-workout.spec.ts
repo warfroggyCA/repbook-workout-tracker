@@ -666,15 +666,21 @@ test("keeps the full live workout usable through warm-up, skip, replace, continu
     return {
       overflowY: getComputedStyle(scrollRegion).overflowY,
       footerTop: footerRect.top,
-      footerBottom: footerRect.bottom,
-      viewportHeight: window.innerHeight,
     };
   });
   expect(finishGeometry.overflowY).toBe("auto");
   expect(finishGeometry.footerTop).toBeGreaterThanOrEqual(0);
-  expect(finishGeometry.footerBottom).toBeLessThanOrEqual(
-    finishGeometry.viewportHeight + 1,
-  );
+  await expect
+    .poll(() =>
+      finishDialog.evaluate((dialog) => {
+        const footer = dialog.querySelector<HTMLElement>(
+          '[data-slot="drawer-footer"]',
+        );
+        return footer != null &&
+          footer.getBoundingClientRect().bottom <= window.innerHeight + 1;
+      }),
+    )
+    .toBe(true);
   const save = finishDialog.getByRole("button", {
     name: "Save workout",
     exact: true,

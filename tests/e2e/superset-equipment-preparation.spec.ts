@@ -517,14 +517,14 @@ test("presents immutable superset order, truthful progress, and next-member equi
   const groupSkipMayFinish = new Promise<void>((resolve) => {
     releaseGroupSkip = resolve;
   });
+  let groupSkipArmed = false;
   let groupSkipStarted = false;
   await page.route("**/session/**", async (route) => {
-    const postData = route.request().postData() ?? "";
     if (
+      groupSkipArmed &&
       !groupSkipStarted &&
       route.request().method() === "POST" &&
-      route.request().headers()["next-action"] &&
-      postData.includes('"operation":"skip"')
+      route.request().headers()["next-action"]
     ) {
       groupSkipStarted = true;
       await groupSkipMayFinish;
@@ -536,11 +536,15 @@ test("presents immutable superset order, truthful progress, and next-member equi
     .click();
   const groupSkip = page.getByRole("dialog", { name: /^Skip set / });
   await groupSkip.getByLabel("Reason").selectOption("time");
+  groupSkipArmed = true;
   await groupSkip
     .getByRole("button", { name: "Skip item", exact: true })
     .click();
   await expect(groupSkip).toHaveCount(0);
   await expect.poll(() => groupSkipStarted).toBe(true);
+  await expect(
+    page.getByRole("button", { name: "Open unsaved workout changes" }),
+  ).toBeVisible();
   await expect(currentCard.getByRole("heading", { level: 2 })).toHaveText(
     "Dumbbell Lateral Raise",
   );
