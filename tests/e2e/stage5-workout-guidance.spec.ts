@@ -1,6 +1,7 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
 import { mkdir, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
+import { getWorkoutFinishButton } from "../helpers/active-workout-controls";
 import {
   installNextDevelopmentRefreshControl,
   openNativeDetails,
@@ -177,7 +178,7 @@ async function waitForSetSkippedNoticesToSettle(page: Page) {
 }
 
 async function discardWorkout(page: Page) {
-  await page.getByRole("button", { name: "Finish", exact: true }).click();
+  await getWorkoutFinishButton(page).click();
   const finish = page.getByRole("dialog", { name: "Finish workout" });
   await finish
     .getByRole("button", { name: "Discard workout", exact: true })
@@ -575,8 +576,8 @@ test("keeps Stage 5 guidance truthful, persistent, and usable on narrow mobile s
     name: "Workout progress and upcoming work",
   });
   await expect(durableGroupGuidance).toContainText("9 skipped");
-  await expect(durableGroupGuidance).toContainText(
-    /Next: Superset, round 1, member 2 of 2: Pallof Press, set 1/,
+  await expect(page.getByTestId("current-exercise-card")).toContainText(
+    "Superset, round 1, member 2 of 2: Pallof Press, set 1",
   );
   await expect(durableGroupGuidance).toContainText(
     /Now: Superset, round 1, member 1 of 2: Dumbbell Lateral Raise, set 1/,

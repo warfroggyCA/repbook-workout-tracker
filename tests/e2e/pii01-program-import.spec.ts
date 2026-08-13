@@ -1,5 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
+import { getWorkoutFinishButton } from "../helpers/active-workout-controls";
 import {
+  openNativeDetails,
   waitForEquipmentSelectionsToSettle,
   waitForHydratedServerAction,
 } from "../helpers/react-readiness";
@@ -170,6 +172,7 @@ test("reviews and publishes a multi-day Program into an ordered active workout",
   await waitForEquipmentSelectionsToSettle(page);
 
   const warmup = page.getByRole("region", { name: "Warm-up", exact: true });
+  await warmup.getByRole("button", { name: "Review full plan" }).click();
   const labels = await warmup.locator("li").allTextContents();
   expect(labels.join("\n")).toMatch(/Easy bike warm-up[\s\S]*Hip circles[\s\S]*Empty bar[\s\S]*Half of working load/);
   const easyBike = warmup.locator("li").filter({ hasText: "Easy bike warm-up" });
@@ -186,13 +189,18 @@ test("reviews and publishes a multi-day Program into an ordered active workout",
   await expect(emptyBar.getByText("Saved", { exact: true })).toBeVisible();
 
   const current = page.getByTestId("current-exercise-card");
-  await expect(current).toContainText("3×5–5 @ 60 kg");
+  await expect(current).toContainText("Target");
+  await expect(current).toContainText("5 reps · 60 kg");
   await current.getByLabel("Total load").fill("60");
   await current.getByRole("textbox", { name: "Reps", exact: true }).fill("5");
   await current.getByRole("button", { name: "Log set", exact: true }).click();
   await expect(page.locator('[id^="logged-set-"]').first()).toContainText("60 lb");
 
-  await page.getByRole("button", { name: "Finish", exact: true }).click();
+  await getWorkoutFinishButton(page).click();
+  const finish = page.getByRole("dialog", { name: "Finish workout" });
+  await openNativeDetails(
+    finish.locator("details", { hasText: "Optional note and fatigue" }),
+  );
   await page.getByPlaceholder("Session note (optional) — how did it go?").fill("PII-01 synthetic journey");
   await page.getByRole("button", { name: "Save workout", exact: true }).click();
   await expect(page).toHaveURL(/\/history\/[0-9a-f-]+\?finished=1$/);

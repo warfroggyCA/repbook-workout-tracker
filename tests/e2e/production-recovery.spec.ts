@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { readFile } from "node:fs/promises";
+import { getWorkoutFinishButton } from "../helpers/active-workout-controls";
 import { installLocalAuthSession } from "../helpers/browser-security";
 // Next ships this production action encoder without a public declaration file.
 // @ts-expect-error -- the runtime export is verified by the optimized build test.
@@ -125,7 +126,7 @@ if (!process.env.PLAYWRIGHT_PRODUCTION_BASE_URL) {
     });
     await expect(staleAlternatives).toBeVisible();
 
-    await page.getByRole("button", { name: "Finish", exact: true }).click();
+    await getWorkoutFinishButton(page).click();
     await page
       .getByRole("button", { name: "Discard workout", exact: true })
       .click();

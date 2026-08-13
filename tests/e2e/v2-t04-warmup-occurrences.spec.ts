@@ -58,7 +58,12 @@ test("keeps warm-up actions singular, reversible, durable, and usable with minim
   const panel = page.getByRole("region", { name: "Warm-up", exact: true });
   const actions = panel.locator("li");
 
-  await expect(panel).toContainText("Check off only the distinct actions below.");
+  await expect(panel).toContainText("Complete the current warm-up action below.");
+  const reviewFullPlan = panel.getByRole("button", {
+    name: "Review full plan",
+  });
+  await expect(reviewFullPlan).toBeVisible();
+  await reviewFullPlan.click();
   await expect(actions).toHaveCount(PRODUCTION_WORKOUT_START_WARMUP.length);
   for (const action of PRODUCTION_WORKOUT_START_WARMUP) {
     const row = warmupRow(panel, action.label);
@@ -134,14 +139,15 @@ test("keeps warm-up actions singular, reversible, durable, and usable with minim
   await waitForSaved(completedRow);
 
   await page.reload({ waitUntil: "networkidle" });
-  completedRow = warmupRow(page.locator("#workout-warmup"), completedLabel);
+  const reloadedPanel = page.locator("#workout-warmup");
+  await reloadedPanel
+    .getByRole("button", { name: "Review full plan" })
+    .click();
+  completedRow = warmupRow(reloadedPanel, completedLabel);
   await expect(completedRow).toContainText("Note: Setup felt stable");
-  await expect(
-    completedRow.getByRole("checkbox", {
-      name: `${completedLabel} complete`,
-      exact: true,
-    }),
-  ).toHaveAttribute("aria-checked", "true");
+  await expect(completedRow).toContainText("completed");
+  await expect(completedRow.getByRole("button", { name: "Undo completion" }))
+    .toBeVisible();
   await completedRow.getByRole("button", { name: "Undo completion" }).click();
   await expect(
     completedRow.getByRole("checkbox", {
@@ -164,7 +170,11 @@ test("keeps warm-up actions singular, reversible, durable, and usable with minim
   await waitForSaved(skippedRow);
 
   await page.reload({ waitUntil: "networkidle" });
-  skippedRow = warmupRow(page.locator("#workout-warmup"), skippedLabel);
+  const restoredPanel = page.locator("#workout-warmup");
+  await restoredPanel
+    .getByRole("button", { name: "Review full plan" })
+    .click();
+  skippedRow = warmupRow(restoredPanel, skippedLabel);
   await expect(skippedRow).toContainText("Note: Short session today");
   await expect(skippedRow).toContainText("skipped");
   await skippedRow.getByRole("button", { name: "Restore" }).click();

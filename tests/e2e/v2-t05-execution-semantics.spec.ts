@@ -1,4 +1,5 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
+import { getWorkoutFinishButton } from "../helpers/active-workout-controls";
 import {
   installNextDevelopmentRefreshControl,
   openNativeDetails,
@@ -129,11 +130,10 @@ async function clickCentered(page: Page, locator: Locator) {
 
 async function skipCurrentSet(page: Page) {
   const current = page.getByTestId("current-exercise-card");
-  const showCurrent = page
-    .getByRole("complementary", { name: "Workout status" })
-    .getByRole("button")
-    .first();
-  await showCurrent.click();
+  const currentHeader = current.locator(":scope > button").first();
+  if ((await currentHeader.getAttribute("aria-expanded")) !== "true") {
+    await currentHeader.click();
+  }
   await expect(current.locator(":scope > button").first()).toHaveAttribute(
     "aria-expanded",
     "true",
@@ -184,7 +184,7 @@ async function skipCurrentSet(page: Page) {
 }
 
 async function discardWorkout(page: Page) {
-  await page.getByRole("button", { name: "Finish", exact: true }).click();
+  await getWorkoutFinishButton(page).click();
   const finish = page.getByRole("dialog", { name: "Finish workout" });
   await finish.getByRole("button", { name: "Discard workout", exact: true }).click();
   const confirmation = page.getByRole("dialog", { name: /^Discard .+\?$/ });
@@ -224,8 +224,8 @@ test("keeps one ledger-driven current/next/group/rest state through retry, inter
   const otherExercise = page.getByRole("region", { name: "Dumbbell Bench Press" });
   await otherExercise.locator(":scope > button").click();
   await expect(guidance).toContainText("Now: Barbell Back Squat, set 1");
-  await expect(guidance).toContainText("Next: Barbell Back Squat, set 2");
-  await status.getByRole("button").first().click();
+  await expect(first).toContainText("Next action");
+  await expect(first).toContainText("Barbell Back Squat, set 2");
 
   for (let count = 0; count < 20; count += 1) {
     if ((await currentExerciseName(page)) === "Dumbbell Lateral Raise") break;
@@ -272,9 +272,7 @@ test("keeps one ledger-driven current/next/group/rest state through retry, inter
   await expect(guidance).toContainText(
     /Now: Superset, round 1, member 1 of 2: Dumbbell Lateral Raise, set 1/,
   );
-  await expect(guidance).toContainText(
-    /Next: Superset, round 1, member 2 of 2: Pallof Press, set 1/,
-  );
+  await expect(group).toContainText("Up next in group: 2 of 2 · Pallof Press");
   await expect(status.getByLabel("Rest timer")).toHaveCount(0);
 
   const background = await context.newPage();
@@ -341,7 +339,7 @@ test("keeps one ledger-driven current/next/group/rest state through retry, inter
   await expect(
     page.getByRole("region", { name: "Workout progress and upcoming work" }),
   ).toContainText("All actions resolved");
-  await expect(page.getByRole("button", { name: "Finish", exact: true })).toBeVisible();
+  await expect(getWorkoutFinishButton(page)).toBeVisible();
   expect(
     await page.evaluate(
       () => document.documentElement.scrollWidth - document.documentElement.clientWidth,

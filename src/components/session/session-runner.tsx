@@ -337,6 +337,18 @@ function firstVisibleFocusable(target: HTMLElement) {
   )].find(focusableIsWithinUsableViewport) ?? null;
 }
 
+function firstRenderedFocusable(target: HTMLElement) {
+  return [...target.querySelectorAll<HTMLElement>(
+    "input:not([type='hidden']):not([disabled]), button:not([disabled]), [href], [tabindex]:not([tabindex='-1'])",
+  )].find((candidate) => {
+    const bounds = candidate.getBoundingClientRect();
+    const style = getComputedStyle(candidate);
+    return bounds.width > 0 && bounds.height > 0 &&
+      style.display !== "none" && style.visibility !== "hidden" &&
+      candidate.getAttribute("aria-hidden") !== "true";
+  }) ?? null;
+}
+
 function actionIdentity(action: SessionGuidanceFocusAction | null) {
   if (!action) return null;
   return action.kind === "rest" ? action.actionId : action.occurrenceId;
@@ -394,6 +406,7 @@ export function SessionRunner(props: SessionRunnerProps) {
   const previousCurrentActionKindRef = useRef<
     SessionGuidanceFocusAction["kind"] | null
   >(null);
+  const mountedCurrentActionFocusIdRef = useRef<string | null>(null);
   const lastConsumedWorkoutHashRef = useRef<string | null>(null);
   const staleWorkoutActionHashRef = useRef(false);
   const [timer, setTimer] = useState<DurableRestTimer | null>(null);
@@ -801,7 +814,28 @@ export function SessionRunner(props: SessionRunnerProps) {
     (node: HTMLButtonElement | null) => {
       if (!node || currentActionId == null) return;
       const focusMountedCurrentAction = (framesRemaining: number) => {
-        if (document.activeElement !== document.body) return;
+        if (mountedCurrentActionFocusIdRef.current === currentActionId) return;
+        const activeElement = document.activeElement;
+        if (
+          activeElement !== document.body &&
+          activeElement?.closest('[role="dialog"]') &&
+          framesRemaining > 0
+        ) {
+          // Occurrence actions advance while their confirmation dialog is
+          // closing. Wait for that temporary focus owner to leave before
+          // handing focus to the newly current workout action.
+          window.requestAnimationFrame(() =>
+            focusMountedCurrentAction(framesRemaining - 1)
+          );
+          return;
+        }
+        if (activeElement !== document.body) {
+          // A deliberate user focus already owns the viewport. Count this
+          // action as handed off so a same-action React remount cannot steal
+          // focus after an effort, note, or other secondary control rerenders.
+          mountedCurrentActionFocusIdRef.current = currentActionId;
+          return;
+        }
         const dockPrimary = document.querySelector<HTMLElement>(
           '[data-testid="active-workout-dock-primary"]',
         );
@@ -811,6 +845,7 @@ export function SessionRunner(props: SessionRunnerProps) {
           : dockPrimary;
         if (focusTarget) {
           focusTarget.focus({ preventScroll: true });
+          mountedCurrentActionFocusIdRef.current = currentActionId;
           return;
         }
         if (framesRemaining > 0) {
@@ -2140,7 +2175,7 @@ export function SessionRunner(props: SessionRunnerProps) {
         ? "auto"
         : "smooth";
       revealWorkoutTarget(target, behavior);
-      const focusTarget = firstVisibleFocusable(target);
+      const focusTarget = firstRenderedFocusable(target);
       (focusTarget ?? target).focus({ preventScroll: true });
     });
   }
@@ -2396,7 +2431,7 @@ export function SessionRunner(props: SessionRunnerProps) {
               )
             : null;
           const focusTarget = pendingWarmupControl ??
-            firstVisibleFocusable(target) ??
+            firstRenderedFocusable(target) ??
             (target.matches("[tabindex]") ? target : null);
           focusTarget?.focus({ preventScroll: true });
         });
