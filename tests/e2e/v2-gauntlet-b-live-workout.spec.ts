@@ -340,7 +340,7 @@ test("keeps the full live workout usable through warm-up, skip, replace, continu
     rejectReplayedSkip = resolve;
   });
   let interruptedSkipRequests = 0;
-  await page.route("**/session/**", async (route) => {
+  await page.context().route("**/*", async (route) => {
     const request = route.request();
     const postData = request.postData() ?? "";
     if (
@@ -395,7 +395,7 @@ test("keeps the full live workout usable through warm-up, skip, replace, continu
     interruptedSkipSettled,
     interruptedSkipTransportSettled,
   ]);
-  await page.unrouteAll({ behavior: "wait" });
+  await page.context().unrouteAll({ behavior: "wait" });
   await page.route("**/session/**", async (route) => {
     const request = route.request();
     const postData = request.postData() ?? "";

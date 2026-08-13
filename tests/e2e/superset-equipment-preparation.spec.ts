@@ -138,6 +138,7 @@ test("keeps truthful saved-equipment preparation compact beside the current acti
   const equipmentList = preparation.locator("details").filter({
     hasText: "Review equipment list",
   });
+  await expect(warmup).toHaveCount(0);
   await expect(equipmentList).not.toHaveAttribute("open", "");
   await expect(
     preparation.getByText("Review equipment list", { exact: true }),
@@ -222,9 +223,7 @@ test("keeps truthful saved-equipment preparation compact beside the current acti
     ))
     .toBeCloseTo(23.2, 1);
   await expectNoHorizontalOverflow(page);
-  await expect(warmup).toContainText(
-    "A checkable warm-up sequence is not available yet.",
-  );
+  await expect(warmup).toHaveCount(0);
   const continueLink = page
     .getByTestId("session-preparation-panel")
     .getByRole("link", { name: "Go to first exercise", exact: true });
