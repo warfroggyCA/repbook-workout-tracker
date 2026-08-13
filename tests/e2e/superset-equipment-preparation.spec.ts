@@ -39,8 +39,19 @@ async function startDayA(page: Page) {
   await waitForEquipmentSelectionsToSettle(page);
 }
 
-async function skipCurrentSet(page: Page) {
+async function openCurrentExerciseCard(page: Page) {
   const card = page.getByTestId("current-exercise-card");
+  const toggle = card.locator(":scope > button");
+  await waitForHydratedReactHandler(toggle);
+  if ((await toggle.getAttribute("aria-expanded")) !== "true") {
+    await toggle.click();
+  }
+  await expect(toggle).toHaveAttribute("aria-expanded", "true");
+  return card;
+}
+
+async function skipCurrentSet(page: Page) {
+  let card = await openCurrentExerciseCard(page);
   const workoutStatus = page.getByRole("complementary", {
     name: "Workout status",
   });
@@ -57,16 +68,14 @@ async function skipCurrentSet(page: Page) {
   await expect
     .poll(() => showCurrent.innerText())
     .not.toBe(currentLabel);
-  await showCurrent.click();
+  card = await openCurrentExerciseCard(page);
   await openNativeDetails(
-    page.getByTestId("current-exercise-card").locator("details", {
+    card.locator("details", {
       hasText: "Set exceptions",
     }),
   );
   await expect(
-    page
-      .getByTestId("current-exercise-card")
-      .getByRole("button", { name: "Skip set", exact: true }),
+    card.getByRole("button", { name: "Skip set", exact: true }),
   ).toBeEnabled();
 }
 

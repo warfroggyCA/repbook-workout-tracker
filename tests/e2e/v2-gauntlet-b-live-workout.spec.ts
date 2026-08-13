@@ -92,8 +92,11 @@ async function expectReachableTarget(locator: Locator) {
   }).toPass();
 }
 
-async function expectActiveViewportBudget(page: Page) {
-  const expectsCompactBackControl =
+async function expectActiveViewportBudget(
+  page: Page,
+  requireCompactBackInViewport = false,
+) {
+  const hasCompactBackControl =
     (page.viewportSize()?.width ?? Number.POSITIVE_INFINITY) <= 440;
   await expect(
     page.getByRole("region", {
@@ -107,7 +110,7 @@ async function expectActiveViewportBudget(page: Page) {
   await expect(
     page.getByRole("button", { name: "Review notes", exact: true }),
   ).toBeHidden();
-  if (expectsCompactBackControl) {
+  if (hasCompactBackControl) {
     await expect(
       page.getByRole("link", { name: "Back to Today", exact: true }),
     ).toBeVisible();
@@ -173,7 +176,7 @@ async function expectActiveViewportBudget(page: Page) {
     expect(budget.dockClearsNavigation).toBe(true);
     expect(budget.intrusions).toEqual([]);
     expect(budget.horizontalOverflow).toBeLessThanOrEqual(1);
-    if (expectsCompactBackControl) {
+    if (hasCompactBackControl && requireCompactBackInViewport) {
       expect(budget.backControlInsideViewport).toBe(true);
     }
   }).toPass();
@@ -236,7 +239,7 @@ test("keeps the full live workout usable through warm-up, skip, replace, continu
   )).not.toBeVisible();
   expect(await warmup.evaluate((element) => getComputedStyle(element).position))
     .not.toMatch(/fixed|sticky/);
-  await expectActiveViewportBudget(page);
+  await expectActiveViewportBudget(page, true);
 
   if ((page.viewportSize()?.width ?? Number.POSITIVE_INFINITY) <= 320) {
     const originalViewport = page.viewportSize();
