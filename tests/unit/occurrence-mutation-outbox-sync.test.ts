@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { UnrecognizedActionError } from "next/dist/client/components/unrecognized-action-error";
 import {
   OCCURRENCE_MUTATION_OUTBOX_STATUS_EVENT,
   enqueueOccurrenceMutationOutboxEntry,
@@ -15,6 +16,7 @@ vi.mock("@/app/actions/sessions", () => ({
 }));
 
 import { syncNextOccurrenceMutation } from "@/components/session/occurrence-mutation-outbox-sync";
+import { deploymentRecoveryRequired } from "@/lib/deployment-recovery";
 
 class MemoryStorage implements OccurrenceMutationOutboxStorage {
   values = new Map<string, string>();
@@ -162,6 +164,25 @@ describe("occurrence mutation outbox sync", () => {
       clientKey: entry().clientKey,
       sessionId: entry().sessionId,
     });
+  });
+
+  it("retains a stale-build workout change and waits for reload", async () => {
+    actionMocks.mutateOccurrence.mockRejectedValueOnce(
+      new UnrecognizedActionError("old action"),
+    );
+    await syncNextOccurrenceMutation(entry().ownerId);
+
+    expect(readOccurrenceMutationOutbox(storage).entries[0]).toMatchObject({
+      clientKey: entry().clientKey,
+      status: "queued",
+      attemptCount: 1,
+      lastError:
+        "Repbook was updated. This workout change is safe on this device and will retry after you reload.",
+    });
+    expect(deploymentRecoveryRequired()).toBe(true);
+
+    await syncNextOccurrenceMutation(entry().ownerId);
+    expect(actionMocks.mutateOccurrence).toHaveBeenCalledOnce();
   });
 
   it("retains stale or conflicting changes for explicit review instead of rewriting them", async () => {

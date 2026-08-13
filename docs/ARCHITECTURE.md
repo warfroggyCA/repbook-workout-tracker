@@ -380,6 +380,18 @@ settled mix containing skips, abandonment, or limited evidence is
 resolved-with-changes. T05 adds no historical rewrite or migration and does not
 reinterpret unsupported legacy evidence.
 
+## Deployment continuity contract
+
+Each hosted build uses Vercel's deployment identity for Next.js version-skew
+protection. If an installed app still holds Server Action references from an
+older build, the durable workout-set, equipment-selection, occurrence, and
+contextual-note queues retain their exact device copies, stop futile automatic
+retries in that document, and show one in-flow reload action. Reloading clears
+only the obsolete application document; local-storage identities and payloads
+remain intact and retry against the current build. An action mismatch is not
+reported as ordinary offline connectivity, and recovery UI must not cover the
+active workout controls.
+
 ## T06 preview, Start, and prescribed-meaning contract
 
 Preview is a URL-backed read-only projection. Rendering, reloading, leaving,

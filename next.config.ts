@@ -1,6 +1,10 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  // Vercel supplies one stable identifier per deployment. Next uses it to
+  // detect an older installed-app document talking to a newer server and
+  // performs a full navigation before incompatible Server Actions can mix.
+  deploymentId: process.env.VERCEL_DEPLOYMENT_ID,
   // PGlite (embedded local dev DB) loads its WASM from disk; bundling breaks it.
   serverExternalPackages: ["@electric-sql/pglite"],
   async headers() {

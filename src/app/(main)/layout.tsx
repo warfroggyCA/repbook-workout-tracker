@@ -11,6 +11,7 @@ import { WorkoutSetOutboxSync } from "@/components/session/workout-set-outbox-sy
 import { OccurrenceMutationOutboxSync } from "@/components/session/occurrence-mutation-outbox-sync";
 import { ContextualNoteProvider } from "@/components/contextual-notes/contextual-note-provider";
 import { ContextualNoteOutboxSync } from "@/components/contextual-notes/contextual-note-outbox-sync";
+import { DeploymentUpdateNotice } from "@/components/deployment-update-notice";
 
 export default async function MainLayout({
   children,
@@ -36,6 +37,7 @@ export default async function MainLayout({
         userName={user.name ?? undefined}
         userEmail={user.email}
       >
+        <DeploymentUpdateNotice />
         <ContextualNoteProvider ownerId={user.id}>
           <ContextualNoteOutboxSync ownerId={user.id} />
           <WorkoutSetOutboxSync ownerId={user.id} />

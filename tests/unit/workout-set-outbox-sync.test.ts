@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
+import { UnrecognizedActionError } from "next/dist/client/components/unrecognized-action-error";
 import {
   WORKOUT_SET_OUTBOX_MAX_AUTO_ATTEMPTS,
   enqueueWorkoutSetOutboxEntry,
@@ -24,6 +25,7 @@ import {
   readRestTimer,
   writeRestTimer,
 } from "@/lib/rest-timer";
+import { deploymentRecoveryRequired } from "@/lib/deployment-recovery";
 
 class MemoryStorage implements WorkoutSetOutboxStorage {
   values = new Map<string, string>();
@@ -130,6 +132,25 @@ describe("workout set outbox sync classification", () => {
       lastError:
         "We couldn't save this set yet. We'll keep trying when you're back online.",
     });
+  });
+
+  it("retains a stale-build set and stops retrying until the app reloads", async () => {
+    actionMocks.logSet.mockRejectedValueOnce(
+      new UnrecognizedActionError("old action"),
+    );
+    await syncNextEntry(entry().ownerId);
+
+    expect(readWorkoutSetOutbox(storage).entries[0]).toMatchObject({
+      clientKey: entry().clientKey,
+      status: "queued",
+      attemptCount: 1,
+      lastError:
+        "Repbook was updated. This set is safe on this device and will retry after you reload.",
+    });
+    expect(deploymentRecoveryRequired()).toBe(true);
+
+    await syncNextEntry(entry().ownerId);
+    expect(actionMocks.logSet).toHaveBeenCalledOnce();
   });
 
   it("parks a named workout-not-active outcome for explicit review", async () => {
