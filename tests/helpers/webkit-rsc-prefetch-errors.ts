@@ -7,6 +7,8 @@ const historyRanges = new Set(["4w", "12w", "6m", "1y", "all"]);
 const historyCalendarViews = new Set(["month", "week", "year"]);
 const activityEditPath =
   /^\/activity\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\/edit$/;
+const workoutHistoryDetailPath =
+  /^\/history\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const webKitRscNavigationFallback =
   /^Failed to fetch RSC payload for (http:\/\/127\.0\.0\.1:\d+\/[^ ]*)\. Falling back to browser navigation\. TypeError: Load failed$/;
 
@@ -59,6 +61,20 @@ function hasOnlyValidHistoryContext(url: URL) {
   }
 
   return true;
+}
+
+function hasOnlyValidWorkoutHistoryDetailContext(url: URL) {
+  const allowed = new Set(["_rsc", "finished"]);
+  for (const key of url.searchParams.keys()) {
+    if (
+      !allowed.has(key) ||
+      url.searchParams.getAll(key).length !== 1
+    ) {
+      return false;
+    }
+  }
+  const finished = url.searchParams.get("finished");
+  return finished === null || finished === "1";
 }
 
 export async function isNextRscPrefetch(request: Request) {
@@ -143,7 +159,13 @@ export function isExpectedWebKitRscHistoryLinkCancellation(
   if (browserName !== "webkit") return false;
 
   const url = parseWebKitRscCancellation(message);
-  if (!url || !hasOnlyValidHistoryContext(url)) return false;
+  if (!url) return false;
+
+  if (workoutHistoryDetailPath.test(url.pathname)) {
+    return hasOnlyValidWorkoutHistoryDetailContext(url);
+  }
+
+  if (!hasOnlyValidHistoryContext(url)) return false;
 
   return url.pathname === "/history" || activityEditPath.test(url.pathname);
 }

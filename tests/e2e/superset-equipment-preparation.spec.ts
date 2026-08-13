@@ -513,20 +513,29 @@ test("presents immutable superset order, truthful progress, and next-member equi
   await expect(
     currentCard.getByRole("button", { name: "Skip set", exact: true }),
   ).toBeVisible();
+  const currentEntryId = await currentCard
+    .getByTestId("current-set-entry")
+    .getAttribute("id");
+  const currentOccurrenceId = currentEntryId?.match(
+    /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
+  )?.[0];
+  expect(currentOccurrenceId).toBeTruthy();
   let releaseGroupSkip!: () => void;
   const groupSkipMayFinish = new Promise<void>((resolve) => {
     releaseGroupSkip = resolve;
   });
   let groupSkipArmed = false;
-  let groupSkipStarted = false;
+  let heldGroupSkipRequests = 0;
   await page.route("**/session/**", async (route) => {
     if (
       groupSkipArmed &&
-      !groupSkipStarted &&
       route.request().method() === "POST" &&
-      route.request().headers()["next-action"]
+      route.request().headers()["next-action"] &&
+      (route.request().postData() ?? "").includes(currentOccurrenceId!) &&
+      (route.request().postData() ?? "").includes('"operation":"skip"') &&
+      (route.request().postData() ?? "").includes('"reason":"time"')
     ) {
-      groupSkipStarted = true;
+      heldGroupSkipRequests += 1;
       await groupSkipMayFinish;
     }
     await route.continue();
@@ -541,7 +550,7 @@ test("presents immutable superset order, truthful progress, and next-member equi
     .getByRole("button", { name: "Skip item", exact: true })
     .click();
   await expect(groupSkip).toHaveCount(0);
-  await expect.poll(() => groupSkipStarted).toBe(true);
+  await expect.poll(() => heldGroupSkipRequests).toBeGreaterThan(0);
   await expect(
     page.getByRole("button", { name: "Open unsaved workout changes" }),
   ).toBeVisible();
@@ -583,7 +592,17 @@ test("presents immutable superset order, truthful progress, and next-member equi
   await expect(currentCard).toContainText(
     "Superset, round 2, member 1 of 2: Dumbbell Lateral Raise, set 2",
   );
+  await expect(
+    page.getByRole("button", { name: "Open unsaved workout changes" }),
+  ).toHaveCount(0);
   await page.unrouteAll({ behavior: "wait" });
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await expect(currentCard.getByRole("heading", { level: 2 })).toHaveText(
+    "Pallof Press",
+  );
+  await expect(restoredGroup).toContainText(
+    "Current member: 2 of 2 · Pallof Press",
+  );
 
   await discardWorkout(page);
   await nextRscPrefetches.settle();
