@@ -2876,7 +2876,7 @@ test("a parked set pauses only its exercise while another exercise saves", async
     await firstExerciseToggle.click();
   }
   const removeParkedSet = firstExercise.getByRole("button", {
-    name: "Discard",
+    name: "Discard device copy",
     exact: true,
   });
   await removeParkedSet.evaluate((element) =>

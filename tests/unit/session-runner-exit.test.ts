@@ -258,6 +258,23 @@ describe("refreshed occurrence reconciliation", () => {
   });
 });
 
+describe("active-workout disclosure ownership", () => {
+  it("invalidates queued automatic handoffs after a manual exercise toggle", () => {
+    const source = readFileSync(
+      "src/components/session/session-runner.tsx",
+      "utf8",
+    );
+    expect(source).toContain("exerciseDisclosureGenerationRef.current += 1");
+    expect(source.match(
+      /exerciseDisclosureGenerationRef\.current !== disclosureGeneration/g,
+    )).toHaveLength(3);
+    expect(source.indexOf("exerciseDisclosureGenerationRef.current += 1"))
+      .toBeLessThan(source.indexOf(
+        "setExpandedId(expandedId === exercise.id ? null : exercise.id)",
+      ));
+  });
+});
+
 describe("set logging equipment resolution", () => {
   it("logs with the resolved snapshot context when a setup is confirmed", () => {
     expect(

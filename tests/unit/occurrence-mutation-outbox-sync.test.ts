@@ -149,6 +149,61 @@ describe("occurrence mutation outbox sync", () => {
     expect(readOccurrenceMutationOutbox(storage).entries).toEqual([]);
   });
 
+  it("drains a command enqueued while the owner sync is still unwinding", async () => {
+    let resolveFirst!: (
+      value: Awaited<ReturnType<typeof actionMocks.mutateOccurrence>>,
+    ) => void;
+    actionMocks.mutateOccurrence.mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolveFirst = resolve;
+      }),
+    );
+    const firstSync = syncNextOccurrenceMutation(entry().ownerId);
+    await vi.waitFor(() =>
+      expect(actionMocks.mutateOccurrence).toHaveBeenCalledTimes(1),
+    );
+
+    const later = {
+      ...entry(),
+      clientKey: "10000000-0000-4000-8000-000000000002",
+      occurrenceId: "40000000-0000-4000-8000-000000000002",
+      label: "Activation ramp",
+      createdAtISO: "2026-07-21T12:00:01.000Z",
+    };
+    enqueueOccurrenceMutationOutboxEntry(storage, later);
+    actionMocks.mutateOccurrence.mockResolvedValueOnce({
+      outcome: "saved",
+      occurrence: {
+        id: later.occurrenceId,
+        state: "skipped",
+        reason: "user_skipped",
+        note: null,
+        revision: 1,
+        resolvedAt: "2026-07-21T12:00:03.000Z",
+      },
+    });
+    const overlappingWake = syncNextOccurrenceMutation(entry().ownerId);
+
+    resolveFirst({
+      outcome: "saved",
+      occurrence: {
+        id: entry().occurrenceId,
+        state: "skipped",
+        reason: "user_skipped",
+        note: null,
+        revision: 1,
+        resolvedAt: "2026-07-21T12:00:02.000Z",
+      },
+    });
+    await Promise.all([firstSync, overlappingWake]);
+
+    expect(actionMocks.mutateOccurrence).toHaveBeenCalledTimes(2);
+    expect(actionMocks.mutateOccurrence).toHaveBeenLastCalledWith(
+      expect.objectContaining({ clientKey: later.clientKey }),
+    );
+    expect(readOccurrenceMutationOutbox(storage).entries).toEqual([]);
+  });
+
   it("retains connection failures for automatic reconnect replay", async () => {
     actionMocks.mutateOccurrence.mockRejectedValueOnce(new Error("offline"));
     await syncNextOccurrenceMutation(entry().ownerId);

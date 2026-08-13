@@ -48,6 +48,26 @@ async function signInAndStartDayA(
   await waitForEquipmentSelectionsToSettle(page);
 }
 
+async function completeWarmupsToFirstWorkingSet(page: Page) {
+  for (
+    let warmupIndex = 0;
+    warmupIndex < PRODUCTION_WORKOUT_START_WARMUP.length;
+    warmupIndex += 1
+  ) {
+    const currentWarmup = warmupIndex === 0
+      ? page.locator(
+          '#workout-warmup [role="checkbox"][aria-checked="false"]:visible',
+        ).first()
+      : page.getByTestId("active-workout-dock-primary");
+    await waitForHydratedReactHandler(currentWarmup);
+    await currentWarmup.click();
+  }
+  await expect(page.getByTestId("active-workout-dock-primary")).toHaveAttribute(
+    "aria-label",
+    /Log Barbell Back Squat, Set 1/i,
+  );
+}
+
 async function expectReachableTarget(locator: Locator) {
   await locator.evaluate((element) => {
     element.scrollIntoView({ block: "center", inline: "center" });
@@ -667,6 +687,7 @@ test("keeps the ordinary active set current-first, unobstructed, and acknowledge
   const pageErrors = observeGauntletPageErrors(page, browserName);
   try {
     await signInAndStartDayA(page);
+    await completeWarmupsToFirstWorkingSet(page);
 
     const currentCard = page.getByTestId("current-exercise-card");
     const currentEntry = currentCard.getByTestId("current-set-entry");
@@ -763,6 +784,7 @@ test("fits the complete primary logging action at 390x844 with keyboard disclosu
   const pageErrors = observeGauntletPageErrors(page, browserName);
   try {
     await signInAndStartDayA(page, { extraLarge: false });
+    await completeWarmupsToFirstWorkingSet(page);
     const currentCard = page.getByTestId("current-exercise-card");
     const currentEntry = currentCard.getByTestId("current-set-entry");
     const primary = currentEntry.getByTestId("active-workout-primary");
@@ -855,6 +877,7 @@ test("fits the complete primary logging action at 390x844 with keyboard disclosu
 
     await discardWorkout(page);
     await signInAndStartDayA(page, { extraLarge: true });
+    await completeWarmupsToFirstWorkingSet(page);
     await revealCurrentFromStatusBar(page);
     const extraLargeGeometry = await compactGeometry(page);
     expect(

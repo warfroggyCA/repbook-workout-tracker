@@ -462,6 +462,7 @@ export function SessionRunner(props: SessionRunnerProps) {
   const previousCurrentActionKindRef = useRef<
     SessionGuidanceFocusAction["kind"] | null
   >(null);
+  const exerciseDisclosureGenerationRef = useRef(0);
   const lastConsumedWorkoutHashRef = useRef<string | null>(null);
   const staleWorkoutActionHashRef = useRef(false);
   const [timer, setTimer] = useState<DurableRestTimer | null>(null);
@@ -1087,7 +1088,11 @@ export function SessionRunner(props: SessionRunnerProps) {
     ) {
       return;
     }
+    const disclosureGeneration = exerciseDisclosureGenerationRef.current;
     const frame = window.requestAnimationFrame(() => {
+      if (
+        exerciseDisclosureGenerationRef.current !== disclosureGeneration
+      ) return;
       setExpandedId(currentActionSessionExerciseId);
     });
     return () => window.cancelAnimationFrame(frame);
@@ -1097,6 +1102,7 @@ export function SessionRunner(props: SessionRunnerProps) {
     skipRecoveryExerciseId,
   ]);
   useEffect(() => {
+    const disclosureGeneration = exerciseDisclosureGenerationRef.current;
     const previousActionId = previousCurrentActionIdRef.current;
     const previousActionKind = previousCurrentActionKindRef.current;
     if (skipRecoveryExerciseId != null) {
@@ -1148,6 +1154,9 @@ export function SessionRunner(props: SessionRunnerProps) {
     let focusFrame = 0;
     let scrollFrame = 0;
     const revealCurrentAction = () => {
+      if (
+        exerciseDisclosureGenerationRef.current !== disclosureGeneration
+      ) return;
       if (pendingSetAcknowledgementAnchorRef.current != null) {
         scrollFrame = window.requestAnimationFrame(revealCurrentAction);
         return;
@@ -1164,6 +1173,9 @@ export function SessionRunner(props: SessionRunnerProps) {
         setExpandedId(currentActionSessionExerciseId);
       }
       focusFrame = window.requestAnimationFrame(() => {
+        if (
+          exerciseDisclosureGenerationRef.current !== disclosureGeneration
+        ) return;
         const target = document.getElementById(currentActionTargetId);
         const acknowledgement =
           shouldRevealLatestAcknowledgement && latestAcknowledgementTargetId
@@ -3158,6 +3170,7 @@ export function SessionRunner(props: SessionRunnerProps) {
                 setExpandedId(skipRecoveryExerciseId);
                 return;
               }
+              exerciseDisclosureGenerationRef.current += 1;
               setExpandedId(expandedId === exercise.id ? null : exercise.id);
             }}
             plateConfigs={safePlateConfigs}

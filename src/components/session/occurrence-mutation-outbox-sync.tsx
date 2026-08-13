@@ -34,6 +34,7 @@ import {
 } from "@/lib/deployment-recovery";
 
 const activeOwners = new Set<string>();
+const pendingOwnerWakes = new Set<string>();
 const TRANSIENT_FAILURE =
   "We couldn't save this yet. We'll keep trying when you're back online.";
 const UPDATED_APP_FAILURE =
@@ -46,10 +47,17 @@ function operationLabel(operation: OccurrenceMutationOutboxEntry["operation"]) {
   return "Update note";
 }
 
-export async function syncNextOccurrenceMutation(ownerId: string) {
+export async function syncNextOccurrenceMutation(
+  ownerId: string,
+  drainDepth = 0,
+) {
   if (deploymentRecoveryRequired()) return;
-  if (activeOwners.has(ownerId)) return;
+  if (activeOwners.has(ownerId)) {
+    pendingOwnerWakes.add(ownerId);
+    return;
+  }
   activeOwners.add(ownerId);
+  let queuedWake = false;
   try {
     await withOccurrenceMutationOutboxLock(async () => {
       const entry = nextOccurrenceMutationOutboxEntry(
@@ -117,7 +125,11 @@ export async function syncNextOccurrenceMutation(ownerId: string) {
       }
     });
   } finally {
+    queuedWake = pendingOwnerWakes.delete(ownerId);
     activeOwners.delete(ownerId);
+  }
+  if (queuedWake && drainDepth < 100) {
+    await syncNextOccurrenceMutation(ownerId, drainDepth + 1);
   }
 }
 
