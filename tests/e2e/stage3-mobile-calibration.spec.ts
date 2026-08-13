@@ -197,7 +197,9 @@ test("keeps new Stage 3 controls usable at the saved iPhone calibration", async 
   );
   await expect(workoutGuidance).toContainText("Now: Mobile activation ramp");
   await expect(statusBar).toContainText("Mobile activation ramp");
-  await expect(statusBar).toContainText("Warm-up");
+  await expect(statusBar).toContainText("Complete warm-up");
+  await expect(statusBar.getByTestId("active-workout-dock-primary"))
+    .toHaveAttribute("aria-label", "Complete Mobile activation ramp");
 
   const addNote = warmupRow.getByRole("button", { name: "Add note", exact: true });
   const skip = warmupRow.getByRole("button", { name: "Skip", exact: true });

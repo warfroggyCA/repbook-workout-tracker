@@ -118,6 +118,7 @@ import {
   reconcileServerOccurrences,
   resolveSetLoggingEquipment,
   shouldShowMissingWarmupMessage,
+  skipRecoveryNeedsReconciliation,
   workoutSaveQueueMessage,
   type WorkoutExitQueues,
 } from "@/lib/session-runner";
@@ -256,10 +257,20 @@ function skipRecoveryStorageKey(ownerId: string, sessionId: string) {
 type SkipRecoveryMarker = {
   exerciseId: string;
   pageTimeOrigin: number;
+  pageInstanceId: string | null;
   reason: "time" | "pain" | "fatigue" | "equipment" | "other";
   phase: "pending" | "unconfirmed";
   expectedHistoryRevision: number;
 };
+
+let skipRecoveryDocumentInstanceId: string | null = null;
+
+function currentSkipRecoveryDocumentInstanceId() {
+  if (skipRecoveryDocumentInstanceId == null) {
+    skipRecoveryDocumentInstanceId = createClientUuid();
+  }
+  return skipRecoveryDocumentInstanceId;
+}
 
 function skipRecoveryReason(value: unknown): SkipRecoveryMarker["reason"] {
   return value === "time" ||
@@ -283,6 +294,9 @@ function readSkipRecovery(
       typeof parsed.exerciseId !== "string" ||
       typeof parsed.pageTimeOrigin !== "number" ||
       !Number.isFinite(parsed.pageTimeOrigin) ||
+      (parsed.pageInstanceId != null &&
+        (typeof parsed.pageInstanceId !== "string" ||
+          parsed.pageInstanceId.length === 0)) ||
       typeof parsed.expectedHistoryRevision !== "number" ||
       !Number.isInteger(parsed.expectedHistoryRevision) ||
       parsed.expectedHistoryRevision < 0 ||
@@ -298,6 +312,7 @@ function readSkipRecovery(
     return {
       exerciseId: parsed.exerciseId,
       pageTimeOrigin: parsed.pageTimeOrigin,
+      pageInstanceId: parsed.pageInstanceId ?? null,
       reason: skipRecoveryReason(parsed.reason),
       phase: parsed.phase === "unconfirmed" ? "unconfirmed" : "pending",
       expectedHistoryRevision: parsed.expectedHistoryRevision,
@@ -452,7 +467,7 @@ export function SessionRunner(props: SessionRunnerProps) {
   } | null>(null);
   const skipReconciliationRef = useRef<Set<string>>(new Set());
   const skipUnconfirmedRef = useRef<Set<string>>(new Set());
-  const skipRequestPageOriginRef = useRef<Record<string, number>>({});
+  const skipRequestPageInstanceRef = useRef<Record<string, string>>({});
   const pageUnloadingRef = useRef(false);
   const skipRecoveryKey = skipRecoveryStorageKey(
     props.ownerId,
@@ -569,6 +584,7 @@ export function SessionRunner(props: SessionRunnerProps) {
         storedMarker?.exerciseId === sessionExerciseId
           ? storedMarker.pageTimeOrigin
           : window.performance.timeOrigin,
+      pageInstanceId: currentSkipRecoveryDocumentInstanceId(),
       reason,
       phase: "unconfirmed",
       expectedHistoryRevision:
@@ -624,16 +640,21 @@ export function SessionRunner(props: SessionRunnerProps) {
     if (
       linkedExercise.modificationType !== "skipped" &&
       storedMarker.phase === "pending" &&
-      storedMarker.pageTimeOrigin !== window.performance.timeOrigin
+      skipRecoveryNeedsReconciliation({
+        markerPageInstanceId: storedMarker.pageInstanceId,
+        currentPageInstanceId: currentSkipRecoveryDocumentInstanceId(),
+      })
     ) {
       const reconciliationKey = [
         storedMarker.exerciseId,
         storedMarker.reason,
-        storedMarker.pageTimeOrigin,
+        storedMarker.pageInstanceId ?? "legacy",
+        storedMarker.expectedHistoryRevision,
       ].join(":");
       if (!skipReconciliationRef.current.has(reconciliationKey)) {
         skipReconciliationRef.current.add(reconciliationKey);
-        const reconciliationPageTimeOrigin = window.performance.timeOrigin;
+        const reconciliationPageInstanceId =
+          currentSkipRecoveryDocumentInstanceId();
         void skipExercise({
           sessionExerciseId: storedMarker.exerciseId,
           reason: storedMarker.reason,
@@ -641,7 +662,8 @@ export function SessionRunner(props: SessionRunnerProps) {
         }).then((result) => {
           if (
             pageUnloadingRef.current ||
-            window.performance.timeOrigin !== reconciliationPageTimeOrigin
+            currentSkipRecoveryDocumentInstanceId() !==
+              reconciliationPageInstanceId
           ) {
             return;
           }
@@ -676,7 +698,8 @@ export function SessionRunner(props: SessionRunnerProps) {
         }).catch(() => {
           if (
             pageUnloadingRef.current ||
-            window.performance.timeOrigin !== reconciliationPageTimeOrigin
+            currentSkipRecoveryDocumentInstanceId() !==
+              reconciliationPageInstanceId
           ) {
             return;
           }
@@ -3253,6 +3276,8 @@ export function SessionRunner(props: SessionRunnerProps) {
                   {
                     exerciseId: exercise.id,
                     pageTimeOrigin: window.performance.timeOrigin,
+                    pageInstanceId:
+                      currentSkipRecoveryDocumentInstanceId(),
                     reason: skipRecoveryReason(patch.skipReason),
                     phase: "pending",
                     expectedHistoryRevision: effectiveHistoryRevision,
@@ -3401,13 +3426,15 @@ export function SessionRunner(props: SessionRunnerProps) {
             onSkipRequestStart={(reason) => {
               skipUnconfirmedRef.current.delete(exercise.id);
               const pageTimeOrigin = window.performance.timeOrigin;
-              skipRequestPageOriginRef.current[exercise.id] = pageTimeOrigin;
+              const pageInstanceId = currentSkipRecoveryDocumentInstanceId();
+              skipRequestPageInstanceRef.current[exercise.id] = pageInstanceId;
               writeSkipRecovery(
                 window.sessionStorage,
                 skipRecoveryKey,
                 {
                   exerciseId: exercise.id,
                   pageTimeOrigin,
+                  pageInstanceId,
                   reason,
                   phase: "pending",
                   expectedHistoryRevision: effectiveHistoryRevision,
@@ -3423,8 +3450,8 @@ export function SessionRunner(props: SessionRunnerProps) {
             onSkipRequestFailure={(reason, code) => {
               if (
                 pageUnloadingRef.current ||
-                skipRequestPageOriginRef.current[exercise.id] !==
-                window.performance.timeOrigin
+                skipRequestPageInstanceRef.current[exercise.id] !==
+                  currentSkipRecoveryDocumentInstanceId()
               ) {
                 return;
               }

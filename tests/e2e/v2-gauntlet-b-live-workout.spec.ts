@@ -363,6 +363,7 @@ test("keeps the full live workout usable through warm-up, skip, replace, continu
       key.startsWith("workout-tracker:skip-recovery:v1:")
     ).length
   )).toBe(1);
+  releaseInterruptedSkip();
   const reconcilingSkip = exerciseCard(page, "Suspension Push-Up");
   await expect.poll(() => interruptedSkipRequests).toBe(2);
   await expect.poll(() => reconcilingSkip.evaluate((card) => {
@@ -405,7 +406,6 @@ test("keeps the full live workout usable through warm-up, skip, replace, continu
     );
     return key == null ? null : window.sessionStorage.getItem(key);
   })).toContain('"phase":"unconfirmed"');
-  releaseInterruptedSkip();
   await page.unrouteAll({ behavior: "wait" });
   await page.reload({ waitUntil: "networkidle" });
   incompatible = exerciseCard(page, "Suspension Push-Up");

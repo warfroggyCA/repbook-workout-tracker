@@ -19,6 +19,14 @@ export function shouldShowMissingWarmupMessage(input: {
 
 export type RuntimeSetSaveState = "saving" | "retrying";
 
+export function skipRecoveryNeedsReconciliation(input: {
+  markerPageInstanceId: string | null;
+  currentPageInstanceId: string;
+}): boolean {
+  return input.markerPageInstanceId == null ||
+    input.markerPageInstanceId !== input.currentPageInstanceId;
+}
+
 /**
  * Merge a refreshed server occurrence ledger without erasing device work that
  * still has an owning durable command or a just-acknowledged server receipt.

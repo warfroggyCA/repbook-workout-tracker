@@ -9,6 +9,7 @@ import {
   resolveSetLoggingEquipment,
   retainedRecordedWorkCount,
   sessionScopedDeviceCopies,
+  skipRecoveryNeedsReconciliation,
   workoutSaveQueueMessage,
   type WorkoutExitQueues,
 } from "@/lib/session-runner";
@@ -151,6 +152,23 @@ describe("occurrence discard continuity", () => {
     );
     expect(source).toContain('type: "discarded"');
     expect(source).not.toContain("window.location.reload");
+  });
+});
+
+describe("interrupted skip recovery", () => {
+  it("reconciles legacy and prior-page markers but not this page's request", () => {
+    expect(skipRecoveryNeedsReconciliation({
+      markerPageInstanceId: null,
+      currentPageInstanceId: "page-2",
+    })).toBe(true);
+    expect(skipRecoveryNeedsReconciliation({
+      markerPageInstanceId: "page-1",
+      currentPageInstanceId: "page-2",
+    })).toBe(true);
+    expect(skipRecoveryNeedsReconciliation({
+      markerPageInstanceId: "page-2",
+      currentPageInstanceId: "page-2",
+    })).toBe(false);
   });
 });
 
