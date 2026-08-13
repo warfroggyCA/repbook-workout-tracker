@@ -500,11 +500,14 @@ test("keeps attention continuous through warm-up, first set, and exact recovery 
           page.getByRole("dialog", { name: "Sets waiting to save" }),
         ).toHaveCount(0);
         const blockerEntry = page.getByTestId("current-set-entry");
-        const blockerFocus = await blockerEntry.evaluate((element) => {
+        await expect.poll(() => blockerEntry.evaluate((element) => {
           const active = document.activeElement as HTMLElement | null;
           const rect = element.getBoundingClientRect();
           return {
             inside: active != null && element.contains(active),
+            expanded:
+              element.closest("section")?.querySelector(":scope > button")
+                ?.getAttribute("aria-expanded") === "true",
             active:
               active?.getAttribute("aria-label") ??
               active?.textContent?.trim().slice(0, 80) ??
@@ -515,8 +518,11 @@ test("keeps attention continuous through warm-up, first set, and exact recovery 
             targetTop: Math.round(rect.top),
             targetBottom: Math.round(rect.bottom),
           };
+        })).toMatchObject({
+          inside: true,
+          expanded: true,
+          hash: `#${await blockerEntry.getAttribute("id")}`,
         });
-        expect(blockerFocus).toMatchObject({ inside: true });
         await expectPrimaryActionUnobstructed(
           page.getByTestId("active-workout-dock-primary"),
         );

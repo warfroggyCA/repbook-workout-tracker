@@ -11,7 +11,6 @@ import {
   useState,
   useSyncExternalStore,
 } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   appendWorkoutSet,
@@ -2760,7 +2759,7 @@ export function SessionRunner(props: SessionRunnerProps) {
     <main className="mx-auto flex max-w-3xl flex-col gap-3 p-3 pb-[calc(12rem+env(safe-area-inset-bottom))] min-[360px]:pb-[calc(8rem+env(safe-area-inset-bottom))] sm:p-5 sm:pb-[calc(8rem+env(safe-area-inset-bottom))] lg:p-8 lg:pb-24">
       <ContextualNoteScope value={contextualNoteScope} />
       <header className="flex flex-wrap items-center justify-between gap-2 px-1">
-        <Link
+        <a
           href="/today"
           aria-label="Back to Today"
           className={buttonVariants({
@@ -2770,7 +2769,7 @@ export function SessionRunner(props: SessionRunnerProps) {
           })}
         >
           <ArrowLeft aria-hidden="true" className="size-5" />
-        </Link>
+        </a>
         <div className="min-w-0 max-[360px]:w-full">
           <h1 className="text-lg font-semibold max-[360px]:sr-only">
             {props.templateName}
@@ -2786,7 +2785,7 @@ export function SessionRunner(props: SessionRunnerProps) {
           </p>
         </div>
         <div className="ml-auto flex items-center gap-1 max-[360px]:hidden">
-          <Link
+          <a
             href="/today"
             className={buttonVariants({
               variant: "outline",
@@ -2795,7 +2794,7 @@ export function SessionRunner(props: SessionRunnerProps) {
             })}
           >
             Back to Today
-          </Link>
+          </a>
           <div className="max-[360px]:hidden">
             <WorkoutMeasurementsDrawer />
           </div>

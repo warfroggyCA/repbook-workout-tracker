@@ -180,6 +180,15 @@ describe("interrupted skip recovery", () => {
     expect(source).toContain("if (!runnerActiveRef.current) return;");
     expect(source).toContain("if (!runnerActiveRef.current) return;\n              patchExercise");
   });
+
+  it("keeps both workout-header exits independent of a pending App Router action", () => {
+    const source = readFileSync(
+      "src/components/session/session-runner.tsx",
+      "utf8",
+    );
+    expect(source).not.toContain('import Link from "next/link"');
+    expect(source.match(/<a\s+href="\/today"/g)).toHaveLength(2);
+  });
 });
 
 describe("atomic finish handoff", () => {

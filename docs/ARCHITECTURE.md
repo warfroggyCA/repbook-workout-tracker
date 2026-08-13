@@ -900,6 +900,13 @@ owner retries the skip or asks Repbook to confirm an unskipped server state and
 return to the current set; Finish cannot bypass that choice. Skip and return
 commands compare and advance the workout's monotonic history revision, so a
 late older request cannot overwrite the newer recovery choice.
+Every navigation control that leaves an active `/session/*` route uses a native
+document navigation rather than the App Router transition queue. An unresolved
+Server Action therefore cannot trap the owner inside the workout. The persisted
+recovery pointer and durable device queues survive the same-origin navigation;
+the old runner becomes inactive on page hide, and a newly mounted runner
+reconciles the exact session before logging or Finish can resume. Navigation
+outside an active workout keeps the ordinary client-side path.
 
 The runner reconciles refreshed occurrence props by stable ID and monotonic
 revision because a Next.js refresh may preserve Client Component state. A
