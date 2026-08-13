@@ -130,9 +130,12 @@ async function clickCentered(page: Page, locator: Locator) {
 async function skipCurrentSet(page: Page) {
   const current = page.getByTestId("current-exercise-card");
   const currentDisclosure = current.locator(":scope > button").first();
-  if ((await currentDisclosure.getAttribute("aria-expanded")) !== "true") {
-    await currentDisclosure.click();
-  }
+  await waitForHydratedReactHandler(currentDisclosure);
+  await currentDisclosure.evaluate((element) => {
+    if (element.getAttribute("aria-expanded") !== "true") {
+      (element as HTMLElement).click();
+    }
+  });
   await expect(currentDisclosure).toHaveAttribute(
     "aria-expanded",
     "true",
