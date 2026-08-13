@@ -143,16 +143,12 @@ test("keeps truthful saved-equipment preparation compact beside the current acti
     preparation.getByText("Review equipment list", { exact: true }),
   ).toBeVisible();
   await expect
-    .poll(() => warmup.evaluate((element) => {
-      const preparationElement = document.querySelector(
-        '[data-testid="session-preparation-panel"]',
-      );
-      return preparationElement != null && Boolean(
-        element.compareDocumentPosition(preparationElement) &
-          Node.DOCUMENT_POSITION_FOLLOWING,
-      );
-    }))
-    .toBe(true);
+    .poll(() => page.locator(
+      '#workout-warmup, [data-testid="session-preparation-panel"]',
+    ).evaluateAll((elements) => elements.map((element) =>
+      element.id || element.getAttribute("data-testid")
+    )))
+    .toEqual(["workout-warmup", "session-preparation-panel"]);
   await expect
     .poll(() => sticky.evaluate((element) =>
       element.nextElementSibling?.id,

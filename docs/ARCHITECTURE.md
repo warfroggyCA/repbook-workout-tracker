@@ -976,14 +976,16 @@ inventory change returns an explicit updating state and withholds straddled
 requirements. Legacy, malformed, unsupported, or partially retained evidence
 remains visibly unknown.
 
-Before warm-up, the runner shows one compact, stable-ID-deduplicated equipment
-list. It describes saved inventory coverage, not whether the owner physically
-gathered anything, and creates no preparation-complete fact. Unknown,
-unavailable, and incompatible rows stay visible and never block the workout.
-Exact load, plate, stack, attachment, and geometry guidance remains
+The runner keeps the current action first, then shows one compact,
+stable-ID-deduplicated equipment list: after the warm-up panel when warm-up owns
+the next action, or immediately after the current exercise when a working set
+owns it. The list describes saved inventory coverage, not whether the owner
+physically gathered anything, and creates no preparation-complete fact.
+Unknown, unavailable, and incompatible rows stay visible and never block the
+workout. Exact load, plate, stack, attachment, and geometry guidance remains
 exercise-local; only the current exercise and unknown, unavailable,
-incompatible, pending, failed, or stale setup evidence stays expanded,
-while ordinary future setup panels use keyboard-native disclosure.
+incompatible, pending, failed, or stale setup evidence stays expanded, while
+ordinary future setup panels use keyboard-native disclosure.
 
 Snapshot schema 32 round-trips the retained tuple and upgrades schema 31 rows
 to explicit null evidence. Recovery manifest 14 keeps the same durable-table

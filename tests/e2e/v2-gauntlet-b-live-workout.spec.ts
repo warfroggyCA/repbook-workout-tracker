@@ -1,4 +1,10 @@
-import { expect, test, type Locator, type Page } from "@playwright/test";
+import {
+  expect,
+  test,
+  type Locator,
+  type Page,
+  type Request,
+} from "@playwright/test";
 import {
   BA_WORKOUT_EMAIL,
   BA_WORKOUT_FIXTURE,
@@ -317,6 +323,18 @@ test("keeps the full live workout usable through warm-up, skip, replace, continu
   const interruptedSkipSettled = new Promise<void>((resolve) => {
     confirmInterruptedSkipSettled = resolve;
   });
+  let confirmInterruptedSkipTransportSettled!: () => void;
+  const interruptedSkipTransportSettled = new Promise<void>((resolve) => {
+    confirmInterruptedSkipTransportSettled = resolve;
+  });
+  let firstInterruptedSkipRequest: Request | null = null;
+  const observeInterruptedSkipTransport = (request: Request) => {
+    if (request === firstInterruptedSkipRequest) {
+      confirmInterruptedSkipTransportSettled();
+    }
+  };
+  page.on("requestfailed", observeInterruptedSkipTransport);
+  page.on("requestfinished", observeInterruptedSkipTransport);
   let rejectReplayedSkip!: () => void;
   const replayedSkipMayFail = new Promise<void>((resolve) => {
     rejectReplayedSkip = resolve;
@@ -332,6 +350,7 @@ test("keeps the full live workout usable through warm-up, skip, replace, continu
     ) {
       interruptedSkipRequests += 1;
       if (interruptedSkipRequests === 1) {
+        firstInterruptedSkipRequest = request;
         await interruptedSkipMayFinish;
         try {
           await route.abort("failed");
@@ -380,7 +399,10 @@ test("keeps the full live workout usable through warm-up, skip, replace, continu
   await interruptedWorkoutExit.click();
   await expect(page).toHaveURL(/\/today$/);
   releaseInterruptedSkip();
-  await interruptedSkipSettled;
+  await Promise.all([
+    interruptedSkipSettled,
+    interruptedSkipTransportSettled,
+  ]);
   await expect.poll(() => page.evaluate(() =>
     Object.keys(window.sessionStorage).filter((key) =>
       key.startsWith("workout-tracker:skip-recovery:v1:")
