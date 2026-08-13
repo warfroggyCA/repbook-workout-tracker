@@ -56,6 +56,7 @@ vi.mock("next/navigation", () => ({ redirect: vi.fn() }));
 vi.mock("next/server", () => ({ after: vi.fn() }));
 
 import {
+  confirmExerciseUnskipped,
   correctAcknowledgedSet,
   correctWorkoutActiveDuration,
   skipExercise,
@@ -243,7 +244,11 @@ describe("session action named results", () => {
 
   it("returns a named failure instead of throwing for a completed workout", async () => {
     await expect(
-      skipExercise({ sessionExerciseId: completedExerciseId, reason: "time" })
+      skipExercise({
+        sessionExerciseId: completedExerciseId,
+        reason: "time",
+        expectedHistoryRevision: 0,
+      })
     ).resolves.toEqual({
       ok: false,
       code: "not_active",
@@ -259,8 +264,91 @@ describe("session action named results", () => {
       .where(eq(workoutSessions.userId, otherUserId));
     expect(rows[0]).toBeTruthy();
     await expect(
-      skipExercise({ sessionExerciseId: rows[0].id, reason: "time" })
+      skipExercise({
+        sessionExerciseId: rows[0].id,
+        reason: "time",
+        expectedHistoryRevision: 0,
+      })
     ).resolves.toMatchObject({ ok: false, code: "not_active" });
+  });
+
+  it("rejects a delayed skip after a newer return-to-workout fence", async () => {
+    await expect(confirmExerciseUnskipped({
+      sessionExerciseId: activeExerciseId,
+      expectedHistoryRevision: 0,
+    })).resolves.toMatchObject({ ok: true, historyRevision: 1 });
+
+    await expect(skipExercise({
+      sessionExerciseId: activeExerciseId,
+      reason: "equipment",
+      expectedHistoryRevision: 0,
+    })).resolves.toMatchObject({ ok: false, code: "skip_stale" });
+
+    await expect(database.db.query.sessionExercises.findFirst({
+      where: eq(sessionExercises.id, activeExerciseId),
+      columns: { modificationType: true, skipReason: true },
+    })).resolves.toEqual({
+      modificationType: "as_planned",
+      skipReason: null,
+    });
+    await expect(database.db.query.workoutSessions.findFirst({
+      where: eq(workoutSessions.userId, ownerId),
+      columns: { historyRevision: true },
+      orderBy: (session, { desc }) => desc(session.startedAt),
+    })).resolves.toEqual({ historyRevision: 1 });
+  });
+
+  it("rejects a stale replay after the original skip fence wins", async () => {
+    await expect(skipExercise({
+      sessionExerciseId: activeExerciseId,
+      reason: "equipment",
+      expectedHistoryRevision: 0,
+    })).resolves.toMatchObject({ ok: true, historyRevision: 1 });
+
+    await expect(skipExercise({
+      sessionExerciseId: activeExerciseId,
+      reason: "equipment",
+      expectedHistoryRevision: 0,
+    })).resolves.toMatchObject({ ok: false, code: "skip_stale" });
+
+    await expect(database.db.query.sessionExercises.findFirst({
+      where: eq(sessionExercises.id, activeExerciseId),
+      columns: { modificationType: true, skipReason: true },
+    })).resolves.toEqual({
+      modificationType: "skipped",
+      skipReason: "equipment",
+    });
+  });
+
+  it("rejects a delayed un-skip after a newer skip choice wins", async () => {
+    await expect(skipExercise({
+      sessionExerciseId: activeExerciseId,
+      reason: "equipment",
+      expectedHistoryRevision: 0,
+    })).resolves.toMatchObject({ ok: true, historyRevision: 1 });
+    await expect(skipExercise({
+      sessionExerciseId: activeExerciseId,
+      reason: "pain",
+      expectedHistoryRevision: 1,
+    })).resolves.toMatchObject({ ok: true, historyRevision: 2 });
+
+    await expect(confirmExerciseUnskipped({
+      sessionExerciseId: activeExerciseId,
+      expectedHistoryRevision: 1,
+    })).resolves.toMatchObject({ ok: false, code: "unskip_stale" });
+
+    await expect(database.db.query.sessionExercises.findFirst({
+      where: eq(sessionExercises.id, activeExerciseId),
+      columns: { modificationType: true, skipReason: true },
+    })).resolves.toEqual({
+      modificationType: "skipped",
+      skipReason: "pain",
+    });
+    await expect(database.db.query.workoutSessions.findFirst({
+      where: eq(workoutSessions.userId, ownerId),
+      columns: { historyRevision: true },
+      orderBy: (session, { desc }) => desc(session.startedAt),
+    })).resolves.toEqual({ historyRevision: 2 });
   });
 
   it("routes a date-only reviewed active-duration correction through the owner action", async () => {

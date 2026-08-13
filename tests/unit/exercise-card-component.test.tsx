@@ -1,4 +1,5 @@
 import { cloneElement } from "react";
+import { readFileSync } from "node:fs";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 import { formatCompactPlateLoadGuidance } from "@/lib/exercise-card";
@@ -7,8 +8,8 @@ vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
 vi.mock("@/app/actions/sessions", () => ({
   correctAcknowledgedSet: vi.fn(),
   archiveSet: vi.fn(),
+  confirmExerciseUnskipped: vi.fn(),
   skipExercise: vi.fn(),
-  unskipExercise: vi.fn(),
   logPain: vi.fn(),
   saveExerciseNote: vi.fn(),
   getAlternativeOptions: vi.fn(),
@@ -30,7 +31,6 @@ import type {
   SetAcknowledgementReceipt,
 } from "@/components/session/types";
 import type { OccurrenceMutationOutboxEntry } from "@/lib/occurrence-mutation-outbox";
-import { ADDED_WORKOUT_SET_NOTE } from "@/lib/session-occurrences";
 
 const warmupSet = {
   label: "Ramp 1",
@@ -90,6 +90,47 @@ const exercise: SessionExerciseData = {
 };
 
 describe("ExerciseCard", () => {
+  it("fences the visible un-skip action with the current history revision", () => {
+    const source = readFileSync(
+      "src/components/session/exercise-card.tsx",
+      "utf8",
+    );
+    expect(source).toContain("const result = await confirmExerciseUnskipped({");
+    expect(source).toContain("expectedHistoryRevision: historyRevision");
+    expect(source).toContain("onHistoryRevisionChange(result.historyRevision)");
+    expect(source).toContain("if (reportDeploymentMismatch(error)) return");
+    expect(source).not.toContain("await unskipExercise(");
+    expect(source).toContain("Checking saved skip…");
+    expect(source).toContain("!skipRecoverySettlementPending");
+  });
+
+  it("keeps both read-only exercise catalogs abortable and retryable", () => {
+    const source = readFileSync(
+      "src/components/session/exercise-card.tsx",
+      "utf8",
+    );
+    expect(source).toContain('mode: "alternative"');
+    expect(source).toContain('mode: "replacement"');
+    expect(source).toContain("loadAbortRef.current?.abort");
+    expect(source).toContain("Try loading catalog again");
+    expect(source).toContain("generation !== loadGenerationRef.current");
+    expect(source).toContain("reconcileOnNextLoadRef.current = true");
+    expect(source).toContain("reconcileOnNextLoadRef.current = false");
+    expect(source).toContain("setReconciliationRequired(true)");
+    expect(source).toContain("setReconciliationRequired(false)");
+    expect(source).toContain("onLoadedRef.current?.(result)");
+    expect(source).toContain("if (reconcileOnNextLoadRef.current) return");
+    expect(source).toContain("Try updating workout again");
+    expect(source).toContain("Back to Today");
+    expect(source.match(
+      /buttonVariants\(\{ variant: "outline", size: "touch" \}\)/g,
+    )).toHaveLength(2);
+    expect(source).toContain("catalog.retryLoad()");
+    expect(source).not.toContain(
+      'if (result.code === "replacement_stale") {\n                      mutationRef.current = null;\n                      const controller = new AbortController()',
+    );
+  });
+
   it("renders total-load, reference guidance, save-state, and note-cap presentation", () => {
     const html = renderToStaticMarkup(
       <ExerciseCard
@@ -153,7 +194,7 @@ describe("ExerciseCard", () => {
     expect(html).toContain("Move smoothly");
     expect(html).toContain("Show details");
     expect(html).toContain("<details");
-    expect(html).toContain("Save failed");
+    expect(html).toContain("Waiting for save acknowledgement");
     expect(html).not.toContain("Use the Next set dock");
     expect(html).toContain("Workout actions");
     expect(html).toContain("Add note");
@@ -595,6 +636,33 @@ describe("ExerciseCard", () => {
   });
 
   it("names and links the exact earlier occurrence that blocks a retained attempt", () => {
+    const blockerOccurrence: SessionOccurrenceData = {
+      id: "60000000-0000-4000-8000-000000000001",
+      sessionExerciseId: exercise.id,
+      kind: "working_set",
+      origin: "planned",
+      sequenceIdx: 0,
+      kindOrdinal: 0,
+      label: null,
+      plannedExerciseId: exercise.exerciseId,
+      plannedNote: null,
+      plannedRepsMin: 6,
+      plannedRepsMax: 8,
+      plannedLoad: 95,
+      plannedLoadUnit: "lb",
+      plannedLoadPercent: null,
+      plannedLoadText: null,
+      plannedRestSec: 90,
+      groupSnapshotId: null,
+      groupRound: null,
+      groupMemberOrderIdx: null,
+      outcome: "pending",
+      outcomeReason: null,
+      outcomeNote: null,
+      revision: 0,
+      resolvedAt: null,
+      completedSetId: null,
+    };
     const failedAttempt: SessionExerciseData = {
       ...exercise,
       sets: [{
@@ -636,6 +704,10 @@ describe("ExerciseCard", () => {
       plateConfigs: {},
       incrementals: {},
       unit: "lb" as const,
+      activeOccurrence: blockerOccurrence,
+      workingOccurrences: [blockerOccurrence],
+      isCurrentExercise: true,
+      nextActionLabel: "Barbell Squat, Set 2",
       onPatch: () => undefined,
       onQueueSet: async () => true,
       onRetrySet: async () => undefined,
@@ -650,9 +722,11 @@ describe("ExerciseCard", () => {
         {...baseProps}
         setOrderBlockers={{
           "failed-order-key": {
-            blockerExerciseName: "Cable Row",
+            blockerOccurrenceId: blockerOccurrence.id,
+            blockerExerciseName: "Barbell Squat",
             blockerLabel: "Set 1",
-            blockerTargetId: "occurrence-cable-row-1",
+            blockerTargetId:
+              `set-entry-${failedAttempt.id}-${blockerOccurrence.id}`,
           },
         }}
         onRevealBlocker={() => undefined}
@@ -660,11 +734,124 @@ describe("ExerciseCard", () => {
       />,
     );
 
-    expect(exact).toContain("Cable Row · Set 1 comes first");
+    expect(exact).toContain("Barbell Squat · Set 1 comes first");
     expect(exact).toContain("Go to Set 1");
-    expect(exact).not.toContain("Retry retained attempt");
-    expect(exact).toContain("Discard attempt");
+    expect(exact).not.toContain("Retry save");
+    expect(exact).toContain("Discard device copy");
     expect(exact).not.toContain("Refresh workout");
+    expect(exact).toContain('data-testid="current-set-entry"');
+    const exactLogButton = exact.match(
+      /<button[^>]*data-testid="active-log-set"[^>]*>/,
+    )?.[0];
+    expect(exactLogButton).toBeDefined();
+    expect(exactLogButton).not.toMatch(/\sdisabled(?:=|>|\s)/);
+    expect(exact.indexOf("Current action")).toBeLessThan(
+      exact.indexOf("Save failed"),
+    );
+
+    const acknowledgedBlocker = renderToStaticMarkup(
+      <ExerciseCard
+        {...baseProps}
+        exercise={{
+          ...failedAttempt,
+          sets: [
+            {
+              id: "saved-blocker",
+              clientKey: "saved-blocker-key",
+              setNo: 1,
+              weight: 95,
+              weightUnit: "lb",
+              reps: 8,
+              rpe: null,
+              note: null,
+              saveState: "saved",
+            },
+            failedAttempt.sets[0],
+          ],
+        }}
+        activeOccurrence={{
+          ...blockerOccurrence,
+          id: "60000000-0000-4000-8000-000000000002",
+          sequenceIdx: 1,
+          kindOrdinal: 1,
+        }}
+        workingOccurrences={[
+          { ...blockerOccurrence, outcome: "completed", completedSetId: "saved-blocker" },
+          {
+            ...blockerOccurrence,
+            id: "60000000-0000-4000-8000-000000000002",
+            sequenceIdx: 1,
+            kindOrdinal: 1,
+          },
+        ]}
+        acknowledgementReceipt={{
+          sessionExerciseId: failedAttempt.id,
+          exerciseName: failedAttempt.name,
+          metricType: "weight_reps",
+          set: {
+            id: "saved-blocker",
+            clientKey: "saved-blocker-key",
+            setNo: 1,
+            weight: 95,
+            weightUnit: "lb",
+            reps: 8,
+            metricType: "weight_reps",
+            rpe: null,
+            note: null,
+            saveState: "saved",
+          },
+        }}
+        onRefreshWorkout={() => undefined}
+      />,
+    );
+    expect(acknowledgedBlocker).toContain(
+      `id="active-set-save-receipt-${failedAttempt.id}-1"`,
+    );
+    expect(acknowledgedBlocker).toContain("Saved · Set 1");
+    expect(acknowledgedBlocker).toContain("Acknowledged by Repbook");
+    expect(acknowledgedBlocker).toContain("Save failed");
+
+    const failedSkipRecovery = renderToStaticMarkup(
+      <ExerciseCard
+        {...baseProps}
+        setOrderBlockers={{
+          "failed-order-key": {
+            blockerOccurrenceId: blockerOccurrence.id,
+            blockerExerciseName: "Barbell Squat",
+            blockerLabel: "Set 1",
+            blockerTargetId:
+              `set-entry-${failedAttempt.id}-${blockerOccurrence.id}`,
+          },
+        }}
+        skipConfirmationError="Repbook did not confirm the equipment skip."
+        onRefreshWorkout={() => undefined}
+      />,
+    );
+    expect(failedSkipRecovery).toContain("Skip was not confirmed");
+    expect(failedSkipRecovery).toContain(
+      "Resolve the exercise skip before logging sets.",
+    );
+    expect(failedSkipRecovery).not.toContain(
+      'data-testid="active-log-set"',
+    );
+
+    const mismatched = renderToStaticMarkup(
+      <ExerciseCard
+        {...baseProps}
+        setOrderBlockers={{
+          "failed-order-key": {
+            blockerOccurrenceId: "60000000-0000-4000-8000-000000000099",
+            blockerExerciseName: "Barbell Squat",
+            blockerLabel: "Set 1",
+            blockerTargetId: "set-entry-mismatched",
+          },
+        }}
+        onRevealBlocker={() => undefined}
+        onRefreshWorkout={() => undefined}
+      />,
+    );
+    expect(mismatched).not.toContain('data-testid="current-set-entry"');
+    expect(mismatched).toContain("Waiting for save acknowledgement");
 
     const fallback = renderToStaticMarkup(
       <ExerciseCard
@@ -688,7 +875,7 @@ describe("ExerciseCard", () => {
     expect(stale).toContain("based on an older workout state");
     expect(stale).toContain("Refresh workout");
     expect(stale).not.toContain("Retry it, or discard it");
-    expect(stale).not.toContain("Retry retained attempt");
+    expect(stale).not.toContain("Retry save");
   });
 
   it("keeps the exact working-set row visible while a skip saves and after it is acknowledged", () => {
@@ -788,7 +975,7 @@ describe("ExerciseCard", () => {
       `id="set-entry-${current.id}-${occurrence.id}"`,
     );
     expect(saving).toContain("Skip · Saving");
-    expect(saving).toContain("Discard unsaved change");
+    expect(saving).toContain("Discard device copy");
 
     const skipped = {
       ...occurrence,
@@ -921,320 +1108,6 @@ describe("order-conflict logging gate", () => {
       targetOccurrenceId: "60000000-0000-4000-8000-000000000003",
       blockers,
     })).toBe(true);
-  });
-
-  it("renders the exact blocker as the current actionable set ahead of the retained later attempt", () => {
-    const blockerOccurrenceId = "60000000-0000-4000-8000-000000000001";
-    const blockedExercise: SessionExerciseData = {
-      ...exercise,
-      sets: [retainedLaterSet],
-    };
-    const activeOccurrence: SessionOccurrenceData = {
-      id: blockerOccurrenceId,
-      sessionExerciseId: blockedExercise.id,
-      kind: "working_set",
-      origin: "planned",
-      sequenceIdx: 0,
-      kindOrdinal: 0,
-      label: null,
-      plannedExerciseId: blockedExercise.exerciseId,
-      plannedNote: null,
-      plannedRepsMin: 6,
-      plannedRepsMax: 8,
-      plannedLoad: 95,
-      plannedLoadUnit: "lb",
-      plannedLoadPercent: null,
-      plannedLoadText: null,
-      plannedRestSec: 90,
-      groupSnapshotId: null,
-      groupRound: null,
-      groupMemberOrderIdx: null,
-      outcome: "pending",
-      outcomeReason: null,
-      outcomeNote: null,
-      revision: 0,
-      resolvedAt: null,
-      completedSetId: null,
-    };
-    const exactBlockerCard = (
-      <ExerciseCard
-        exercise={blockedExercise}
-        historyRevision={0}
-        progress={{
-          sessionExerciseId: blockedExercise.id,
-          exerciseName: blockedExercise.name,
-          total: 3,
-          planned: 3,
-          extra: 0,
-          workoutOnly: 0,
-          performed: 0,
-          plannedPerformed: 0,
-          extraPerformed: 0,
-          workoutOnlyPerformed: 0,
-          skipped: 0,
-          abandoned: 0,
-          pending: 3,
-          legacyUnknown: 0,
-          completedWithoutResult: 0,
-          status: "current",
-        }}
-        expanded
-        onToggle={() => undefined}
-        plateConfigs={{}}
-        incrementals={{}}
-        unit="lb"
-        activeOccurrence={activeOccurrence}
-        workingOccurrences={[activeOccurrence]}
-        isCurrentExercise
-        nextActionLabel="Barbell Squat, set 2"
-        onPatch={() => undefined}
-        onQueueSet={async () => true}
-        onRetrySet={async () => undefined}
-        onDiscardSet={async () => undefined}
-        setOrderBlockers={{
-          [retainedLaterSet.clientKey]: {
-            blockerOccurrenceId,
-            blockerLabel: "Set 1",
-          },
-        }}
-        onSkipComplete={() => undefined}
-        onOpenCoach={() => undefined}
-        adjustIntent={null}
-        onAdjustIntentChange={() => undefined}
-      />
-    );
-    const html = renderToStaticMarkup(exactBlockerCard);
-
-    const blockerTarget = `id="set-entry-${blockedExercise.id}-${blockerOccurrenceId}"`;
-    expect(html).toContain(blockerTarget);
-    expect(html).toContain('data-testid="active-log-set"');
-    expect(html.indexOf(blockerTarget)).toBeLessThan(
-      html.indexOf("Save failed"),
-    );
-
-    const mismatched = renderToStaticMarkup(cloneElement(exactBlockerCard, {
-      setOrderBlockers: {
-        [retainedLaterSet.clientKey]: {
-          blockerOccurrenceId: "60000000-0000-4000-8000-000000000009",
-          blockerLabel: "A different set",
-        },
-      },
-    }));
-    expect(mismatched).not.toContain('data-testid="active-log-set"');
-    expect(mismatched).toContain("Waiting for save acknowledgement");
-  });
-
-  it("enables an added set only when it is the exact blocker occurrence", () => {
-    const blockerOccurrenceId = "60000000-0000-4000-8000-000000000011";
-    const retainedAddedLaterSet = {
-      ...retainedLaterSet,
-      id: "optimistic-added-later",
-      clientKey: "70000000-0000-4000-8000-000000000012",
-      setNo: 5,
-    };
-    const blockedExercise: SessionExerciseData = {
-      ...exercise,
-      sets: [retainedAddedLaterSet],
-    };
-    const appendedOccurrence: SessionOccurrenceData = {
-      id: blockerOccurrenceId,
-      sessionExerciseId: blockedExercise.id,
-      kind: "working_set",
-      origin: "ad_hoc",
-      sequenceIdx: 3,
-      kindOrdinal: 3,
-      label: null,
-      plannedExerciseId: blockedExercise.exerciseId,
-      plannedNote: ADDED_WORKOUT_SET_NOTE,
-      plannedRepsMin: 6,
-      plannedRepsMax: 8,
-      plannedLoad: 95,
-      plannedLoadUnit: "lb",
-      plannedLoadPercent: null,
-      plannedLoadText: null,
-      plannedRestSec: 90,
-      groupSnapshotId: null,
-      groupRound: null,
-      groupMemberOrderIdx: null,
-      outcome: "pending",
-      outcomeReason: null,
-      outcomeNote: null,
-      revision: 0,
-      resolvedAt: null,
-      completedSetId: null,
-    };
-    const exactBlockerCard = (
-      <ExerciseCard
-        exercise={blockedExercise}
-        historyRevision={0}
-        progress={{
-          sessionExerciseId: blockedExercise.id,
-          exerciseName: blockedExercise.name,
-          total: 5,
-          planned: 3,
-          extra: 2,
-          workoutOnly: 0,
-          performed: 0,
-          plannedPerformed: 0,
-          extraPerformed: 0,
-          workoutOnlyPerformed: 0,
-          skipped: 0,
-          abandoned: 0,
-          pending: 5,
-          legacyUnknown: 0,
-          completedWithoutResult: 0,
-          status: "current"
-        }}
-        expanded
-        onToggle={() => undefined}
-        plateConfigs={{}}
-        incrementals={{}}
-        unit="lb"
-        activeOccurrence={appendedOccurrence}
-        workingOccurrences={[appendedOccurrence]}
-        isCurrentExercise
-        nextActionLabel="No further unresolved work"
-        onPatch={() => undefined}
-        onQueueSet={async () => true}
-        onRetrySet={async () => undefined}
-        onDiscardSet={async () => undefined}
-        setOrderBlockers={{
-          [retainedAddedLaterSet.clientKey]: {
-            blockerOccurrenceId,
-            blockerLabel: "Extra set 1",
-          },
-        }}
-        onSkipComplete={() => undefined}
-        onOpenCoach={() => undefined}
-        adjustIntent={null}
-        onAdjustIntentChange={() => undefined}
-      />
-    );
-    const exact = renderToStaticMarkup(exactBlockerCard);
-    const exactLogAt = exact.indexOf("Log set", exact.indexOf('data-testid="added-set-entry"'));
-    const exactLogButton = exact.slice(
-      exact.lastIndexOf("<button", exactLogAt),
-      exact.indexOf("</button>", exactLogAt),
-    );
-    expect(exact).toContain("Extra set 1 · Added to this workout");
-    expect(exactLogButton).not.toContain('disabled=""');
-
-    const mismatched = renderToStaticMarkup(cloneElement(exactBlockerCard, {
-      setOrderBlockers: {
-        [retainedAddedLaterSet.clientKey]: {
-          blockerOccurrenceId: "60000000-0000-4000-8000-000000000019",
-          blockerLabel: "A different set",
-        },
-      },
-    }));
-    const mismatchedLogAt = mismatched.indexOf(
-      "Log set",
-      mismatched.indexOf('data-testid="added-set-entry"'),
-    );
-    const mismatchedLogButton = mismatched.slice(
-      mismatched.lastIndexOf("<button", mismatchedLogAt),
-      mismatched.indexOf("</button>", mismatchedLogAt),
-    );
-    expect(mismatchedLogButton).toContain('disabled=""');
-  });
-
-  it("keeps the recovered set acknowledgement visible when the retained next attempt needs review", () => {
-    const retainedExercise: SessionExerciseData = {
-      ...exercise,
-      sets: [
-        {
-          id: "acknowledged-blocker",
-          clientKey: "70000000-0000-4000-8000-000000000021",
-          setNo: 1,
-          weight: 95,
-          weightUnit: "lb",
-          reps: 8,
-          rpe: null,
-          note: null,
-          saveState: "saved",
-        },
-        retainedLaterSet,
-      ],
-    };
-    const nextOccurrence: SessionOccurrenceData = {
-      id: "60000000-0000-4000-8000-000000000022",
-      sessionExerciseId: retainedExercise.id,
-      kind: "working_set",
-      origin: "planned",
-      sequenceIdx: 1,
-      kindOrdinal: 1,
-      label: null,
-      plannedExerciseId: retainedExercise.exerciseId,
-      plannedNote: null,
-      plannedRepsMin: 6,
-      plannedRepsMax: 8,
-      plannedLoad: 95,
-      plannedLoadUnit: "lb",
-      plannedLoadPercent: null,
-      plannedLoadText: null,
-      plannedRestSec: 90,
-      groupSnapshotId: null,
-      groupRound: null,
-      groupMemberOrderIdx: null,
-      outcome: "pending",
-      outcomeReason: null,
-      outcomeNote: null,
-      revision: 0,
-      resolvedAt: null,
-      completedSetId: null,
-    };
-    const acknowledgedSet = retainedExercise.sets[0]!;
-    const html = renderToStaticMarkup(
-      <ExerciseCard
-        exercise={retainedExercise}
-        historyRevision={0}
-        progress={{
-          sessionExerciseId: retainedExercise.id,
-          exerciseName: retainedExercise.name,
-          total: 3,
-          planned: 3,
-          extra: 0,
-          workoutOnly: 0,
-          performed: 1,
-          plannedPerformed: 1,
-          extraPerformed: 0,
-          workoutOnlyPerformed: 0,
-          skipped: 0,
-          abandoned: 0,
-          pending: 2,
-          legacyUnknown: 0,
-          completedWithoutResult: 0,
-          status: "current",
-        }}
-        expanded
-        onToggle={() => undefined}
-        plateConfigs={{}}
-        incrementals={{}}
-        unit="lb"
-        activeOccurrence={nextOccurrence}
-        workingOccurrences={[nextOccurrence]}
-        acknowledgementReceipt={{
-          sessionExerciseId: retainedExercise.id,
-          exerciseName: retainedExercise.name,
-          metricType: "weight_reps",
-          set: acknowledgedSet,
-        }}
-        isCurrentExercise
-        nextActionLabel="Barbell Squat, set 3"
-        onPatch={() => undefined}
-        onQueueSet={async () => true}
-        onRetrySet={async () => undefined}
-        onDiscardSet={async () => undefined}
-        onSkipComplete={() => undefined}
-        onOpenCoach={() => undefined}
-        adjustIntent={null}
-        onAdjustIntentChange={() => undefined}
-      />,
-    );
-
-    expect(html).toContain("Save failed");
-    expect(html).toContain("Saved · Set 1 · 95 lb × 8 reps");
-    expect(html).toContain("Acknowledged by Repbook");
   });
 });
 

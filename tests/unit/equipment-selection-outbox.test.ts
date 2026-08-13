@@ -275,120 +275,6 @@ describe("equipment selection browser outbox", () => {
     expect(nextWorkoutCommand(ids.owner, sets, selections)?.entry.clientKey).toBe(ids.setA);
   });
 
-  it("keeps an exact-fenced set retained when an acknowledgement has no causal occurrence proof", () => {
-    const storage = new MemoryStorage();
-    enqueueWorkoutSetOutboxEntry(storage, pendingSet({
-      occurrenceId: ids.occurrenceA,
-      expectedOccurrenceRevision: 0,
-    }));
-
-    expect(bindWorkoutSetEntriesToEquipmentSelection(
-      storage,
-      ids.selectionA,
-      ids.snapshotA,
-      [],
-    )).toMatchObject({
-      ok: false,
-      reason: expect.stringMatching(/already saved.*discard.*re-enter/i),
-    });
-    expect(readWorkoutSetOutbox(storage).entries[0]).toMatchObject({
-      equipmentSelectionClientKey: ids.selectionA,
-      equipmentSnapshotId: null,
-      occurrenceId: ids.occurrenceA,
-      expectedOccurrenceRevision: 0,
-    });
-  });
-
-  it("refuses to rebase an exact set when the acknowledged occurrence is no longer pending", () => {
-    const storage = new MemoryStorage();
-    enqueueWorkoutSetOutboxEntry(storage, pendingSet({
-      occurrenceId: ids.occurrenceA,
-      expectedOccurrenceRevision: 0,
-    }));
-
-    expect(bindWorkoutSetEntriesToEquipmentSelection(
-      storage,
-      ids.selectionA,
-      ids.snapshotA,
-      [{
-        id: ids.occurrenceA,
-        previousRevision: 1,
-        revision: 2,
-        outcome: "skipped",
-      }],
-    )).toMatchObject({
-      ok: false,
-      reason: expect.stringMatching(/already saved.*discard.*re-enter/i),
-    });
-    expect(readWorkoutSetOutbox(storage).entries[0]).toMatchObject({
-      equipmentSelectionClientKey: ids.selectionA,
-      equipmentSnapshotId: null,
-      expectedOccurrenceRevision: 0,
-    });
-  });
-
-  it.each([
-    { priorChange: "note", previousRevision: 1, revision: 2 },
-    { priorChange: "skip then restore", previousRevision: 2, revision: 3 },
-  ])("refuses to absorb a pre-selection $priorChange revision", ({
-    previousRevision,
-    revision,
-  }) => {
-    const storage = new MemoryStorage();
-    enqueueWorkoutSetOutboxEntry(storage, pendingSet({
-      occurrenceId: ids.occurrenceA,
-      expectedOccurrenceRevision: 0,
-    }));
-
-    expect(bindWorkoutSetEntriesToEquipmentSelection(
-      storage,
-      ids.selectionA,
-      ids.snapshotA,
-      [{
-        id: ids.occurrenceA,
-        previousRevision,
-        revision,
-        outcome: "pending",
-      }],
-    )).toMatchObject({ ok: false });
-    expect(readWorkoutSetOutbox(storage).entries[0]).toMatchObject({
-      equipmentSelectionClientKey: ids.selectionA,
-      equipmentSnapshotId: null,
-      expectedOccurrenceRevision: 0,
-    });
-  });
-
-  it.each([
-    { transition: "changed", previousRevision: 0, revision: 1 },
-    { transition: "no change", previousRevision: 0, revision: 0 },
-  ])("binds the equipment transaction's own $transition revision", ({
-    previousRevision,
-    revision,
-  }) => {
-    const storage = new MemoryStorage();
-    enqueueWorkoutSetOutboxEntry(storage, pendingSet({
-      occurrenceId: ids.occurrenceA,
-      expectedOccurrenceRevision: 0,
-    }));
-
-    expect(bindWorkoutSetEntriesToEquipmentSelection(
-      storage,
-      ids.selectionA,
-      ids.snapshotA,
-      [{
-        id: ids.occurrenceA,
-        previousRevision,
-        revision,
-        outcome: "pending",
-      }],
-    )).toMatchObject({ ok: true });
-    expect(readWorkoutSetOutbox(storage).entries[0]).toMatchObject({
-      equipmentSelectionClientKey: null,
-      equipmentSnapshotId: ids.snapshotA,
-      expectedOccurrenceRevision: revision,
-    });
-  });
-
   it("rebases a late exact-fenced set from its acknowledged equipment receipt", () => {
     const storage = new MemoryStorage();
     enqueueEquipmentSelectionOutboxEntry(
@@ -402,12 +288,7 @@ describe("equipment selection browser outbox", () => {
         storage,
         ids.selectionA,
         ids.snapshotA,
-        [{
-          id: ids.occurrenceA,
-          previousRevision: 0,
-          revision: 1,
-          outcome: "pending",
-        }],
+        [{ id: ids.occurrenceA, revision: 1 }],
       ).ok,
     ).toBe(true);
     expect(
@@ -468,12 +349,7 @@ describe("equipment selection browser outbox", () => {
       storage,
       ids.selectionA,
       ids.snapshotA,
-      [{
-        id: ids.occurrenceA,
-        previousRevision: 0,
-        revision: 1,
-        outcome: "pending",
-      }],
+      [{ id: ids.occurrenceA, revision: 1 }],
     ).ok).toBe(true);
     expect(enqueueWorkoutSetOutboxEntry(storage, pendingSet({
       occurrenceId: ids.occurrenceA,

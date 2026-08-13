@@ -600,6 +600,7 @@ export async function appendWorkoutSet(input: z.infer<typeof appendSetSchema>) {
 const skipSchema = z.object({
   sessionExerciseId: z.string().uuid(),
   reason: z.enum(["time", "pain", "fatigue", "equipment", "other"]),
+  expectedHistoryRevision: z.number().int().nonnegative(),
 });
 
 export async function skipExercise(input: z.infer<typeof skipSchema>) {
@@ -615,15 +616,39 @@ export async function skipExercise(input: z.infer<typeof skipSchema>) {
     sessionExercise.id,
     { modificationType: "skipped", skipReason: parsed.reason },
     "session_exercise.skip",
-    { activeOnly: true }
+    {
+      activeOnly: true,
+      expectedHistoryRevision: parsed.expectedHistoryRevision,
+      fenceSessionExerciseIntent: true,
+    },
   );
-  if (!updated.ok) return actionFailure("skip_rejected", updated.reason);
+  if (!updated.ok) {
+    return actionFailure(
+      updated.reason.includes("saved workout changed")
+        ? "skip_stale"
+        : "skip_rejected",
+      updated.reason,
+    );
+  }
+  if (updated.historyRevision == null) {
+    return actionFailure(
+      "skip_rejected",
+      "Repbook could not fence this exercise choice. Review the workout before trying again.",
+    );
+  }
   revalidatePath(`/session/${sessionExercise.sessionId}`);
-  return updated;
+  return { ...updated, historyRevision: updated.historyRevision };
 }
 
-export async function unskipExercise(sessionExerciseId: string) {
-  const owned = await requireOwnedSessionExercise(sessionExerciseId);
+export async function confirmExerciseUnskipped(input: {
+  sessionExerciseId: string;
+  expectedHistoryRevision: number;
+}) {
+  const parsed = z.object({
+    sessionExerciseId: z.string().uuid(),
+    expectedHistoryRevision: z.number().int().nonnegative(),
+  }).parse(input);
+  const owned = await requireOwnedSessionExercise(parsed.sessionExerciseId);
   if (!owned.ok) return owned;
   const { user, db, sessionExercise } = owned;
   const updated = await updateSessionExerciseWithVersion(
@@ -637,11 +662,28 @@ export async function unskipExercise(sessionExerciseId: string) {
       skipReason: null,
     },
     "session_exercise.unskip",
-    { activeOnly: true }
+    {
+      activeOnly: true,
+      expectedHistoryRevision: parsed.expectedHistoryRevision,
+      fenceSessionExerciseIntent: true,
+    },
   );
-  if (!updated.ok) return actionFailure("unskip_rejected", updated.reason);
+  if (!updated.ok) {
+    return actionFailure(
+      updated.reason.includes("saved workout changed")
+        ? "unskip_stale"
+        : "unskip_rejected",
+      updated.reason,
+    );
+  }
+  if (updated.historyRevision == null) {
+    return actionFailure(
+      "unskip_rejected",
+      "Repbook could not fence this exercise choice. Review the workout before trying again.",
+    );
+  }
   revalidatePath(`/session/${sessionExercise.sessionId}`);
-  return updated;
+  return { ...updated, historyRevision: updated.historyRevision };
 }
 
 const occurrenceMutationSchema = z.object({
@@ -1042,7 +1084,17 @@ export async function correctWorkoutActiveDuration(
 export async function abandonSession(sessionId: string) {
   const user = await getCurrentUser();
   const db = await getDb();
-  await abandonWorkoutSession(db, user.id, z.string().uuid().parse(sessionId));
+  const result = await abandonWorkoutSession(
+    db,
+    user.id,
+    z.string().uuid().parse(sessionId),
+  );
+  if (result.alreadyFinished && result.status !== "abandoned") {
+    return actionFailure(
+      "abandon_rejected",
+      "This workout was completed elsewhere and was not abandoned.",
+    );
+  }
   revalidatePath("/today");
-  redirect("/today");
+  return { ok: true as const };
 }

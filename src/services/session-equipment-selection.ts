@@ -72,8 +72,6 @@ export type EquipmentSelectionOccurrenceState = {
   outcome: string;
   outcomeReason: string | null;
   outcomeNote: string | null;
-  /** Revision locked before this transaction; absent only in legacy UI input. */
-  previousRevision?: number;
   revision: number;
   resolvedAt: string | null;
   completedSetId: string | null;
@@ -147,15 +145,10 @@ function parseOccurrenceStates(value: unknown): EquipmentSelectionOccurrenceStat
       throw new Error("Equipment selection returned invalid occurrence state.");
     }
     const row = state as Record<string, unknown>;
-    const previousRevision = Number(row.previousRevision);
-    const revision = Number(row.revision);
     if (
       typeof row.id !== "string" ||
       typeof row.outcome !== "string" ||
-      !Number.isInteger(previousRevision) ||
-      previousRevision < 0 ||
-      !Number.isInteger(revision) ||
-      (revision !== previousRevision && revision !== previousRevision + 1)
+      !Number.isInteger(Number(row.revision))
     ) {
       throw new Error("Equipment selection returned invalid occurrence state.");
     }
@@ -165,8 +158,7 @@ function parseOccurrenceStates(value: unknown): EquipmentSelectionOccurrenceStat
       outcomeReason:
         row.outcomeReason == null ? null : String(row.outcomeReason),
       outcomeNote: row.outcomeNote == null ? null : String(row.outcomeNote),
-      previousRevision,
-      revision,
+      revision: Number(row.revision),
       resolvedAt:
         row.resolvedAt == null
           ? null
@@ -175,6 +167,33 @@ function parseOccurrenceStates(value: unknown): EquipmentSelectionOccurrenceStat
         row.completedSetId == null ? null : String(row.completedSetId),
     };
   });
+}
+
+async function loadOwnedOccurrenceStates(
+  db: Db,
+  userId: string,
+  sessionExerciseId: string,
+): Promise<EquipmentSelectionOccurrenceState[]> {
+  const rows = resultRows(await db.execute(sql`
+    SELECT occurrence.id, occurrence.outcome::text AS outcome,
+           occurrence.outcome_reason, occurrence.outcome_note,
+           occurrence.revision, occurrence.resolved_at,
+           occurrence.completed_set_id
+    FROM session_occurrences occurrence
+    JOIN workout_sessions session ON session.id = occurrence.session_id
+    WHERE occurrence.session_exercise_id = ${sessionExerciseId}::uuid
+      AND session.user_id = ${userId}::uuid
+    ORDER BY occurrence.sequence_idx, occurrence.id
+  `));
+  return parseOccurrenceStates(rows.map((row) => ({
+    id: row.id,
+    outcome: row.outcome,
+    outcomeReason: row.outcome_reason,
+    outcomeNote: row.outcome_note,
+    revision: row.revision,
+    resolvedAt: row.resolved_at,
+    completedSetId: row.completed_set_id,
+  })));
 }
 
 /** One CAS identity for every live fact copied into an equipment snapshot. */
@@ -228,7 +247,11 @@ async function replayedReceipt(
       receipt.resulting_snapshot_id == null
         ? null
         : String(receipt.resulting_snapshot_id),
-    occurrenceStates: [],
+    occurrenceStates: await loadOwnedOccurrenceStates(
+      db,
+      userId,
+      input.sessionExerciseId,
+    ),
   };
 }
 
@@ -738,14 +761,11 @@ async function applySelection(
                 occurrence.revision, occurrence.resolved_at,
                 occurrence.completed_set_id
     ), causal_occurrence_states AS MATERIALIZED (
-      SELECT updated.*, locked.revision AS previous_revision
-      FROM updated_occurrences updated
-      JOIN locked_occurrences locked ON locked.id = updated.id
+      SELECT updated.* FROM updated_occurrences updated
       UNION ALL
       SELECT locked.id, locked.sequence_idx, locked.outcome::text,
              locked.outcome_reason, locked.outcome_note, locked.revision,
-             locked.resolved_at, locked.completed_set_id,
-             locked.revision AS previous_revision
+             locked.resolved_at, locked.completed_set_id
       FROM locked_occurrences locked
       WHERE NOT EXISTS (
         SELECT 1 FROM updated_occurrences updated WHERE updated.id = locked.id
@@ -786,7 +806,6 @@ async function applySelection(
           'outcome', state.outcome,
           'outcomeReason', state.outcome_reason,
           'outcomeNote', state.outcome_note,
-          'previousRevision', state.previous_revision,
           'revision', state.revision,
           'resolvedAt', state.resolved_at,
           'completedSetId', state.completed_set_id
@@ -801,7 +820,9 @@ async function applySelection(
     return {
       outcome,
       snapshotId: row.snapshot_id == null ? null : String(row.snapshot_id),
-      occurrenceStates: parseOccurrenceStates(row.occurrence_states),
+      occurrenceStates: outcome === "replayed"
+        ? await loadOwnedOccurrenceStates(db, userId, input.sessionExerciseId)
+        : parseOccurrenceStates(row.occurrence_states),
     };
   }
   return { outcome } as SessionEquipmentSelectionResult;
@@ -859,14 +880,11 @@ async function applyClear(
                 occurrence.revision, occurrence.resolved_at,
                 occurrence.completed_set_id
     ), causal_occurrence_states AS MATERIALIZED (
-      SELECT updated.*, locked.revision AS previous_revision
-      FROM updated_occurrences updated
-      JOIN locked_occurrences locked ON locked.id = updated.id
+      SELECT updated.* FROM updated_occurrences updated
       UNION ALL
       SELECT locked.id, locked.sequence_idx, locked.outcome::text,
              locked.outcome_reason, locked.outcome_note, locked.revision,
-             locked.resolved_at, locked.completed_set_id,
-             locked.revision AS previous_revision
+             locked.resolved_at, locked.completed_set_id
       FROM locked_occurrences locked
       WHERE NOT EXISTS (
         SELECT 1 FROM updated_occurrences updated WHERE updated.id = locked.id
@@ -903,7 +921,6 @@ async function applyClear(
           'outcome', state.outcome,
           'outcomeReason', state.outcome_reason,
           'outcomeNote', state.outcome_note,
-          'previousRevision', state.previous_revision,
           'revision', state.revision,
           'resolvedAt', state.resolved_at,
           'completedSetId', state.completed_set_id
@@ -918,7 +935,9 @@ async function applyClear(
     return {
       outcome,
       snapshotId: null,
-      occurrenceStates: parseOccurrenceStates(row.occurrence_states),
+      occurrenceStates: outcome === "replayed"
+        ? await loadOwnedOccurrenceStates(db, userId, input.sessionExerciseId)
+        : parseOccurrenceStates(row.occurrence_states),
     };
   }
   return { outcome } as SessionEquipmentSelectionResult;

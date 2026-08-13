@@ -255,6 +255,14 @@ describe("WebKit RSC prefetch cancellation classification", () => {
       "an activity edit without History context",
       "/127.0.0.1:3100/activity/4eb1ab8d-6551-4eb1-84e7-3810abcb1ec9/edit?_rsc=token due to access control checks.",
     ],
+    [
+      "a completed workout detail",
+      "/127.0.0.1:3100/history/4eb1ab8d-6551-4eb1-84e7-3810abcb1ec9?finished=1&_rsc=token due to access control checks.",
+    ],
+    [
+      "a workout detail without completion context",
+      "/127.0.0.1:3100/history/4eb1ab8d-6551-4eb1-84e7-3810abcb1ec9?_rsc=token due to access control checks.",
+    ],
   ])("accepts an exact WebKit cancellation for %s", (_label, message) => {
     expect(
       isExpectedWebKitRscHistoryLinkCancellation(message, "webkit"),
@@ -286,6 +294,16 @@ describe("WebKit RSC prefetch cancellation classification", () => {
       "an unrelated query parameter",
       "webkit",
       "/127.0.0.1:3100/history?range=12w&danger=true&_rsc=token due to access control checks.",
+    ],
+    [
+      "an unsupported workout-detail completion value",
+      "webkit",
+      "/127.0.0.1:3100/history/4eb1ab8d-6551-4eb1-84e7-3810abcb1ec9?finished=0&_rsc=token due to access control checks.",
+    ],
+    [
+      "an unrelated workout-detail query parameter",
+      "webkit",
+      "/127.0.0.1:3100/history/4eb1ab8d-6551-4eb1-84e7-3810abcb1ec9?danger=true&_rsc=token due to access control checks.",
     ],
     [
       "an invalid calendar date",

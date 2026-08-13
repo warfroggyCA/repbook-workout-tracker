@@ -55,7 +55,7 @@ describe("occurrence mutation queue presentation", () => {
       "bottom-[calc(4rem+env(safe-area-inset-bottom)+0.75rem)]",
     );
     expect(saving).toContain("min-h-11");
-    expect(saving).toContain("lg:bottom-3");
+    expect(saving).toContain("lg:bottom-[5.75rem]");
 
     const attention = renderToStaticMarkup(
       <Tray entries={[entry("needs_attention")]} storageError={null} onWake={() => undefined} />,
@@ -72,7 +72,7 @@ describe("occurrence mutation queue presentation", () => {
       />,
     );
     expect(unsaved).toContain("Skip · Unsaved");
-    expect(unsaved).toContain("Discard unsaved change");
+    expect(unsaved).toContain("Discard device copy");
 
     const saving = renderToStaticMarkup(
       <OccurrenceSaveStatus
@@ -83,8 +83,8 @@ describe("occurrence mutation queue presentation", () => {
       />,
     );
     expect(saving).toContain("Skip · Saving");
-    expect(saving).toContain("Discard unsaved change");
-    expect(saving).not.toContain(" Retry</button>");
+    expect(saving).toContain("Discard device copy");
+    expect(saving).not.toContain("Retry save</button>");
 
     const transientFailure = renderToStaticMarkup(
       <OccurrenceSaveStatus
@@ -101,8 +101,8 @@ describe("occurrence mutation queue presentation", () => {
       />,
     );
     expect(transientFailure).toContain("Skip · Failed");
-    expect(transientFailure).toContain(" Retry</button>");
-    expect(transientFailure).toContain("Discard unsaved change");
+    expect(transientFailure).toContain("Retry save</button>");
+    expect(transientFailure).toContain("Discard device copy");
 
     const failed = renderToStaticMarkup(
       <OccurrenceSaveStatus
@@ -112,8 +112,8 @@ describe("occurrence mutation queue presentation", () => {
       />,
     );
     expect(failed).toContain("Skip · Failed");
-    expect(failed).toContain(" Retry</button>");
-    expect(failed).toContain("Discard unsaved change");
+    expect(failed).toContain("Retry save</button>");
+    expect(failed).toContain("Discard device copy");
 
     const saved = renderToStaticMarkup(
       <OccurrenceSaveStatus

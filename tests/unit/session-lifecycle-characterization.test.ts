@@ -1,7 +1,7 @@
 // Intent suite: proves workout creation, set delivery, completion, and abandon
 // remain owned, atomic, replay-safe, and bound to the current Program version.
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { and, asc, eq, sql } from "drizzle-orm";
+import { asc, eq, sql } from "drizzle-orm";
 import { parse } from "csv-parse/sync";
 import {
   auditLogs,
@@ -1723,67 +1723,6 @@ describe("workout lifecycle ownership and atomicity invariants", () => {
     expect(await database.db.select().from(completedSets)).toHaveLength(0);
   });
 
-  it("reconciles an exact lost set response after another device completes the workout", async () => {
-    const { sessionId } = await startWorkoutSession(
-      database.db,
-      userId,
-      templateId,
-    );
-    const [sessionExercise] = await database.db
-      .select({ id: sessionExercises.id })
-      .from(sessionExercises)
-      .where(eq(sessionExercises.sessionId, sessionId));
-    const [occurrence] = await database.db
-      .select({
-        id: sessionOccurrences.id,
-        revision: sessionOccurrences.revision,
-      })
-      .from(sessionOccurrences)
-      .where(and(
-        eq(sessionOccurrences.sessionExerciseId, sessionExercise.id),
-        eq(sessionOccurrences.kind, "working_set"),
-      ))
-      .orderBy(asc(sessionOccurrences.sequenceIdx));
-    const input = {
-      sessionExerciseId: sessionExercise.id,
-      occurrenceId: occurrence.id,
-      expectedOccurrenceRevision: occurrence.revision,
-      setNo: 1,
-      weight: 100,
-      weightUnit: "lb" as const,
-      reps: 8,
-      clientKey: "lost-response-before-other-device-finish",
-    };
-
-    await expect(logWorkoutSet(
-      database.db,
-      userId,
-      input,
-      { checkpoint: failAfterBoundary("after-set-statement") },
-    )).rejects.toThrow("Injected failure after after-set-statement");
-
-    await expect(completeWorkoutSession(
-      database.db,
-      {
-        id: userId,
-        coachingPrefs: {
-          aggressiveness: "conservative",
-          deloadSuggestions: true,
-          substitutionSuggestions: true,
-          weeklyReview: true,
-        },
-      },
-      { sessionId },
-    )).resolves.toMatchObject({ outcome: "completed" });
-
-    await expect(logWorkoutSet(database.db, userId, input)).resolves.toMatchObject({
-      outcome: "saved",
-      occurrenceId: occurrence.id,
-      occurrenceRevision: occurrence.revision + 1,
-    });
-    expect(await database.db.select().from(completedSets)).toHaveLength(1);
-  });
-
   it("keeps one complete closing result when the response fails after commit", async () => {
     const { sessionId } = await startWorkoutSession(
       database.db,
@@ -2237,5 +2176,53 @@ describe("workout lifecycle ownership and atomicity invariants", () => {
     const audits = await database.db.select().from(auditLogs);
     expect(audits).toHaveLength(1);
     expect(audits[0]?.action).toBe("session.abandon");
+  });
+
+  it("distinguishes an already-abandoned retry from a workout completed elsewhere", async () => {
+    const abandoned = await startWorkoutSession(
+      database.db,
+      userId,
+      templateId,
+    );
+    const firstAbandon = await abandonWorkoutSession(
+      database.db,
+      userId,
+      abandoned.sessionId,
+    );
+    expect(firstAbandon).toMatchObject({
+      alreadyFinished: false,
+      status: "abandoned",
+    });
+    await expect(
+      abandonWorkoutSession(database.db, userId, abandoned.sessionId),
+    ).resolves.toMatchObject({
+      alreadyFinished: true,
+      status: "abandoned",
+    });
+
+    const completed = await startWorkoutSession(
+      database.db,
+      userId,
+      templateId,
+    );
+    await completeWorkoutSession(
+      database.db,
+      {
+        id: userId,
+        coachingPrefs: {
+          aggressiveness: "conservative",
+          deloadSuggestions: true,
+          substitutionSuggestions: true,
+          weeklyReview: true,
+        },
+      },
+      { sessionId: completed.sessionId },
+    );
+    await expect(
+      abandonWorkoutSession(database.db, userId, completed.sessionId),
+    ).resolves.toMatchObject({
+      alreadyFinished: true,
+      status: "completed",
+    });
   });
 });

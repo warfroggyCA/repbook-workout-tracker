@@ -5,7 +5,6 @@ import {
   type TestDatabase,
 } from "../helpers/database";
 import { mutateSessionEquipmentSelection } from "@/services/session-equipment-selection";
-import { mutateWorkoutOccurrence } from "@/services/session-lifecycle";
 import { logWorkoutSet } from "../helpers/log-workout-set";
 import {
   restoreRecordVersion,
@@ -33,10 +32,6 @@ const ids = {
   ambiguousKey: "80000000-0000-4000-8000-000000000073",
   invalidKey: "80000000-0000-4000-8000-000000000074",
   inactiveKey: "80000000-0000-4000-8000-000000000075",
-  occurrenceMutationKey: "80000000-0000-4000-8000-000000000080",
-  noChangeKey: "80000000-0000-4000-8000-000000000081",
-  skipKey: "80000000-0000-4000-8000-000000000082",
-  restoreKey: "80000000-0000-4000-8000-000000000083",
   cableExercise: "20000000-0000-4000-8000-000000000076",
   alternateExercise: "20000000-0000-4000-8000-000000000077",
   cable: "60000000-0000-4000-8000-000000000076",
@@ -875,7 +870,7 @@ describe("session equipment selection service", () => {
     })).resolves.toMatchObject({ outcome: "saved" });
   });
 
-  it("snapshots and updates pending work atomically without relabelling live rows on replay", async () => {
+  it("snapshots an exact owned setup, updates pending work atomically, and replays", async () => {
     database = await createMigratedTestDatabase();
     await seed(database);
     const input = {
@@ -902,7 +897,6 @@ describe("session equipment selection service", () => {
     ).toEqual([expect.objectContaining({
       id: ids.occurrence,
       outcome: "pending",
-      previousRevision: 0,
       revision: 1,
     })]);
 
@@ -937,92 +931,27 @@ describe("session equipment selection service", () => {
       revision: 1,
     });
 
-    expect(await mutateSessionEquipmentSelection(database.db, ids.user, {
-      ...input,
-      expectedCurrentSnapshotId: stored.rows[0].current_snapshot,
-      clientKey: ids.noChangeKey,
-    })).toEqual({
-      outcome: "no_change",
-      snapshotId: stored.rows[0].current_snapshot,
-      occurrenceStates: [expect.objectContaining({
-        id: ids.occurrence,
-        outcome: "pending",
-        previousRevision: 1,
-        revision: 1,
-      })],
-    });
-
-    await expect(mutateWorkoutOccurrence(database.db, ids.user, {
-      occurrenceId: ids.occurrence,
-      clientKey: ids.occurrenceMutationKey,
-      expectedRevision: 1,
-      operation: "note",
-      note: "Changed in another tab after the equipment save",
-    })).resolves.toMatchObject({
-      outcome: "saved",
-      occurrence: { revision: 2 },
-    });
-
     expect(await mutateSessionEquipmentSelection(database.db, ids.user, input))
       .toEqual({
         outcome: "replayed",
         snapshotId: stored.rows[0].current_snapshot,
-        occurrenceStates: [],
+        occurrenceStates: [expect.objectContaining({
+          id: ids.occurrence,
+          outcome: "pending",
+          revision: 1,
+        })],
       });
     const counts = await database.client.query<{ snapshots: number; receipts: number }>(`
       SELECT
         (SELECT count(*)::int FROM session_equipment_snapshots) AS snapshots,
         (SELECT count(*)::int FROM session_equipment_selection_receipts) AS receipts
     `);
-    expect(counts.rows).toEqual([{ snapshots: 1, receipts: 2 }]);
+    expect(counts.rows).toEqual([{ snapshots: 1, receipts: 1 }]);
 
     expect(await mutateSessionEquipmentSelection(database.db, ids.user, {
       ...input,
       provenance: "auto_unique",
     })).toEqual({ outcome: "conflict" });
-  });
-
-  it("reports the locked pre-selection revision after a skip and restore", async () => {
-    database = await createMigratedTestDatabase();
-    await seed(database);
-    await expect(mutateWorkoutOccurrence(database.db, ids.user, {
-      occurrenceId: ids.occurrence,
-      clientKey: ids.skipKey,
-      expectedRevision: 0,
-      operation: "skip",
-      reason: "Interrupted",
-    })).resolves.toMatchObject({
-      outcome: "saved",
-      occurrence: { revision: 1, state: "skipped" },
-    });
-    await expect(mutateWorkoutOccurrence(database.db, ids.user, {
-      occurrenceId: ids.occurrence,
-      clientKey: ids.restoreKey,
-      expectedRevision: 1,
-      operation: "restore",
-    })).resolves.toMatchObject({
-      outcome: "saved",
-      occurrence: { revision: 2, state: "pending" },
-    });
-
-    await expect(mutateSessionEquipmentSelection(database.db, ids.user, {
-      operation: "select",
-      sessionExerciseId: ids.sessionExercise,
-      equipmentItemId: ids.bar,
-      attachmentItemId: null,
-      expectedCurrentSnapshotId: null,
-      clientKey: ids.selectKey,
-      provenance: "user_selected",
-    })).resolves.toEqual({
-      outcome: "applied",
-      snapshotId: expect.stringMatching(/^[0-9a-f-]{36}$/),
-      occurrenceStates: [expect.objectContaining({
-        id: ids.occurrence,
-        outcome: "pending",
-        previousRevision: 2,
-        revision: 3,
-      })],
-    });
   });
 
   it("returns stale instead of storing a hybrid snapshot when live setup changes during selection", async () => {
@@ -1103,7 +1032,6 @@ describe("session equipment selection service", () => {
         occurrenceStates: [expect.objectContaining({
           id: ids.occurrence,
           outcome: "pending",
-          previousRevision: 1,
           revision: 2,
         })],
       });
@@ -1111,7 +1039,11 @@ describe("session equipment selection service", () => {
       .toEqual({
         outcome: "replayed",
         snapshotId: null,
-        occurrenceStates: [],
+        occurrenceStates: [expect.objectContaining({
+          id: ids.occurrence,
+          outcome: "pending",
+          revision: 2,
+        })],
       });
 
     const rows = await database.client.query<{

@@ -3,7 +3,6 @@ import {
   readWorkoutSetOutbox,
   recordEquipmentSelectionAcknowledgement,
   withOutboxLock,
-  type EquipmentSelectionOccurrenceAcknowledgement,
   type WorkoutSetOutboxEntry,
   type WorkoutSetOutboxStorage,
 } from "@/lib/workout-set-outbox";
@@ -464,7 +463,7 @@ export function releaseQueuedEquipmentSelectionBackoff(ownerId: string) {
 export function acknowledgeEquipmentSelectionUnlocked(
   clientKey: string,
   snapshotId: string | null,
-  occurrenceStates: ReadonlyArray<EquipmentSelectionOccurrenceAcknowledgement> = [],
+  occurrenceStates: ReadonlyArray<{ id: string; revision: number }> = [],
 ): MutationResult {
   const storage = browserStorage();
   if (!storage) return { ok: false, reason: "This browser could not update the equipment queue." };
@@ -481,7 +480,7 @@ export function acknowledgeEquipmentSelectionOutboxEntry(
   storage: WorkoutSetOutboxStorage,
   clientKey: string,
   snapshotId: string | null,
-  occurrenceStates: ReadonlyArray<EquipmentSelectionOccurrenceAcknowledgement> = [],
+  occurrenceStates: ReadonlyArray<{ id: string; revision: number }> = [],
 ): MutationResult {
   const current = readEquipmentSelectionOutbox(storage);
   const entry = current.entries.find((item) => item.clientKey === clientKey);
@@ -494,11 +493,7 @@ export function acknowledgeEquipmentSelectionOutboxEntry(
     snapshotId,
     occurrenceStates: occurrenceStates.map((state) => ({
       id: state.id,
-      ...(state.previousRevision == null
-        ? {}
-        : { previousRevision: state.previousRevision }),
       revision: state.revision,
-      ...(state.outcome == null ? {} : { outcome: state.outcome }),
     })),
     acknowledgedAtISO: new Date().toISOString(),
   });

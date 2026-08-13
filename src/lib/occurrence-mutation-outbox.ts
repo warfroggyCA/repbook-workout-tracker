@@ -440,6 +440,32 @@ export function removeOccurrenceMutationOutboxEntryForOwner(
   return removeOccurrenceMutationOutboxEntry(storage, clientKey);
 }
 
+export function removeOccurrenceMutationOutboxEntryForSession(
+  storage: OccurrenceMutationOutboxStorage,
+  ownerId: string,
+  sessionId: string,
+  clientKey: string,
+): MutationResult {
+  const current = readOccurrenceMutationOutbox(storage);
+  if (current.error) return { ok: false, reason: current.error };
+  const entry = current.entries.find((item) => item.clientKey === clientKey);
+  if (!entry) {
+    return {
+      ok: false,
+      reason:
+        "The saved workout-item copy changed before this workout could be discarded.",
+    };
+  }
+  if (entry.ownerId !== ownerId || entry.sessionId !== sessionId) {
+    return {
+      ok: false,
+      reason:
+        "The saved workout-item copy now belongs to a different workout or account.",
+    };
+  }
+  return removeOccurrenceMutationOutboxEntry(storage, clientKey);
+}
+
 export function releaseOccurrenceMutationBackoffForOwner(
   storage: OccurrenceMutationOutboxStorage,
   ownerId: string,

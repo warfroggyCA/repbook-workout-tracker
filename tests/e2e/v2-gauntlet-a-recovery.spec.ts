@@ -1,8 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
-import { getWorkoutFinishButton } from "../helpers/active-workout-controls";
 import {
   installNextDevelopmentRefreshControl,
-  openNativeDetails,
   waitForEquipmentSelectionsToSettle,
   waitForHydratedReactHandler,
   waitForHydratedServerAction,
@@ -128,11 +126,9 @@ test("recovers offline and timeout-after-commit sets exactly, then reviews aband
       () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
     ),
   ).toBeLessThanOrEqual(1);
-  await getWorkoutFinishButton(page).click();
+  await page.getByRole("button", { name: /^(?:Review workout finish|Finish workout)$/ }).click();
   const finish = page.getByRole("dialog", { name: "Finish workout" });
-  await openNativeDetails(finish.locator("details", {
-    hasText: "Optional note and fatigue",
-  }));
+  await finish.getByText("Optional note and fatigue", { exact: true }).click();
   const fatigue = finish.getByRole("group", { name: "Overall fatigue" });
   const fatigueThree = fatigue.getByRole("button", {
     name: "3",

@@ -1,5 +1,4 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
-import { getWorkoutFinishButton } from "../helpers/active-workout-controls";
 import {
   installNextDevelopmentRefreshControl,
   waitForEquipmentSelectionsToSettle,
@@ -95,7 +94,7 @@ test("keeps ordinary completion minimal and makes exception evidence reversible,
   await expect(hard).toHaveAttribute("aria-pressed", "false");
   await hard.focus();
   await expect(hard).toBeFocused();
-  await hard.press("Space");
+  await page.keyboard.press("Space");
   await expect(hard).toHaveAttribute("aria-pressed", "true");
   await hard.evaluate(
     () => new Promise<void>((resolve) => {
@@ -105,7 +104,7 @@ test("keeps ordinary completion minimal and makes exception evidence reversible,
   await waitForHydratedReactHandler(hard);
   await hard.focus();
   await expect(hard).toBeFocused();
-  await hard.press("Space");
+  await hard.press("Enter");
   await expect(hard).toHaveAttribute("aria-pressed", "false");
   await expectTouchTarget(optional.locator("summary"));
 
@@ -184,7 +183,8 @@ test("keeps ordinary completion minimal and makes exception evidence reversible,
   await expect(receipt).toContainText("Limited by: Strength or fatigue");
   await expect(receipt).toContainText("Pain: back 4/10");
 
-  await getWorkoutFinishButton(page).click();
+  const status = page.getByRole("complementary", { name: "Workout status" });
+  await status.getByRole("button", { name: /^(?:Review workout finish|Finish workout)$/ }).click();
   const finish = page.getByRole("dialog", { name: "Finish workout" });
   await finish.getByRole("button", { name: "Save workout", exact: true }).click();
   await expect(page).toHaveURL(/\/history\/[0-9a-f-]+\?finished=1$/);

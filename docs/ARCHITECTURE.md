@@ -618,12 +618,24 @@ CSS pixels between persistent top and bottom regions and do not overflow
 horizontally.
 
 An exercise-level skip remains recorded as a performed-workout fact. The same
-expanded card immediately offers two explicit recovery branches: replace the
-exercise for this workout or continue without replacement. Replacement restores
+expanded card offers two explicit recovery branches after the server-confirmed
+history revision arrives: replace the exercise for this workout or continue
+without replacement. During that revision handoff it shows a concise checking
+state instead of actions whose state could be discarded by the remount.
+Replacement restores
 only still-unperformed working-set occurrences that the exercise skip resolved;
 an already acknowledged warm-up skip stays intact. The replacement, continuation,
 and un-skip paths leave the saved Program and completed sets unchanged and retain
 44-pixel touch targets.
+Alternative and replacement catalog reads use a private, no-store Route Handler
+so the device can abort them independently of the App Router mutation queue. A
+failed or slow request leaves its workout-only drawer open with explicit retry
+and return actions; retries use a new request generation so late responses
+cannot replace the current result or strand the owner on a loading state.
+If a replacement write proves the open catalog is stale, that drawer remains an
+explicit blocking reconciliation surface until the current exercise is loaded;
+the owner can retry there or leave safely to Today, but cannot resume logging
+against the superseded exercise projection.
 
 History-only snapshot restore treats owner decisions and accepted adaptations as
 monotonic evidence. Recovery manifest 11 merges those rows, rejects contradictory
@@ -886,21 +898,52 @@ next action primary. Ordinary completed/upcoming rows and extra work live in
 `Exercise progress & extras`; notes, coaching, form, and replacement controls
 live in `More for this exercise`. Pending or failed writes and skipped recovery
 remain exposed, and the existing fixed workout-status bar remains the sole
-rest/ready/finish authority.
+rest/ready/finish authority. The set and equipment device-save entry points use
+a separate fixed safe-area slot above that bar, so interruption recovery stays
+reachable after reload without covering the current workout action.
+An exercise-skip confirmation also retains the exact reason in a session-scoped
+recovery pointer. After a Server Action refresh or interruption-time reload, the
+runner idempotently reconciles that intent before set logging can resume and
+keeps the skipped exercise open until the owner replaces, restores, or
+deliberately continues past it. If reconciliation fails, the same exercise
+and exact skip reason remain session-scoped recovery state across another
+reload. The mobile dock keeps that exercise as its recovery target until the
+owner retries the skip or asks Repbook to confirm an unskipped server state and
+return to the current set; Finish cannot bypass that choice. Skip and return
+commands compare and advance the workout's monotonic history revision, so a
+late older request cannot overwrite the newer recovery choice.
+Every navigation control that leaves an active `/session/*` route uses a native
+document navigation rather than the App Router transition queue. An unresolved
+Server Action therefore cannot trap the owner inside the workout. The persisted
+recovery pointer and durable device queues survive the same-origin navigation;
+the old runner becomes inactive on page hide, and a newly mounted runner
+reconciles the exact session before logging or Finish can resume. Navigation
+outside an active workout keeps the ordinary client-side path.
 
 The runner reconciles refreshed occurrence props by stable ID and monotonic
 revision because a Next.js refresh may preserve Client Component state. A
-device-side occurrence revision remains visible only while its durable command
-or acknowledged receipt still owns it; discarding that command lets refreshed
-server truth win. An ordered-set rejection retains the exact authoritative
-blocking occurrence with the later attempt. The blocker is named and directly
+device-side occurrence remains visible while its exact durable command owns it,
+including the brief interval when a Server Action's refreshed RSC tree arrives
+before the client removes and acknowledges that command. A newer acknowledged
+local revision also remains visible while its receipt owns it; discarding a
+device command lets refreshed server truth win. An ordered-set rejection retains
+the exact authoritative blocking occurrence with the later attempt. The blocker is named and directly
 reachable, retry stays locked until that occurrence is resolved, and deliberate
 discard of the later attempt remains available. Legacy retained set commands
 without this newer context remain readable and recoverable. Finish is a
 full-height review mode with recorded-work blockers first; equipment guidance
-remains explicitly non-blocking. None of these presentation and recovery rules
-change Program intent, stored workout ordering, completed History, schema, or
-migration boundaries.
+remains explicitly non-blocking. Destructive active-workout exit may remove only
+readable device copies that match both the authenticated owner and the exact
+session. Quarantined, unreadable, foreign-session, and foreign-owner copies stay
+in their separate review trays. Both device queues are locked and re-read at
+confirmation, so copies added while the dialog was open cannot be orphaned.
+Exact-copy removal rolls back byte-for-byte if local storage or server
+abandonment fails, so the UI never reports a discard that was only partially
+applied. The server also distinguishes an idempotent
+already-abandoned retry from a workout completed elsewhere; the latter rejects
+abandonment and restores the device copies. None of these presentation and
+recovery rules change Program intent, stored workout ordering, completed
+History, schema, or migration boundaries.
 
 ## Post-v2 retained workout-equipment preparation
 
@@ -935,14 +978,16 @@ inventory change returns an explicit updating state and withholds straddled
 requirements. Legacy, malformed, unsupported, or partially retained evidence
 remains visibly unknown.
 
-Before warm-up, the runner shows one compact, stable-ID-deduplicated equipment
-list. It describes saved inventory coverage, not whether the owner physically
-gathered anything, and creates no preparation-complete fact. Unknown,
-unavailable, and incompatible rows stay visible and never block the workout.
-Exact load, plate, stack, attachment, and geometry guidance remains
+The runner keeps the current action first, then shows one compact,
+stable-ID-deduplicated equipment list: after the warm-up panel when warm-up owns
+the next action, or immediately after the current exercise when a working set
+owns it. The list describes saved inventory coverage, not whether the owner
+physically gathered anything, and creates no preparation-complete fact.
+Unknown, unavailable, and incompatible rows stay visible and never block the
+workout. Exact load, plate, stack, attachment, and geometry guidance remains
 exercise-local; only the current exercise and unknown, unavailable,
-incompatible, pending, failed, or stale setup evidence stays expanded,
-while ordinary future setup panels use keyboard-native disclosure.
+incompatible, pending, failed, or stale setup evidence stays expanded, while
+ordinary future setup panels use keyboard-native disclosure.
 
 Snapshot schema 32 round-trips the retained tuple and upgrades schema 31 rows
 to explicit null evidence. Recovery manifest 14 keeps the same durable-table

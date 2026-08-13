@@ -59,12 +59,13 @@ test("keeps warm-up actions singular, reversible, durable, and usable with minim
   const actions = panel.locator("li");
 
   await expect(panel).toContainText("Complete the current warm-up action below.");
-  const reviewFullPlan = panel.getByRole("button", {
-    name: "Review full plan",
-  });
-  await expect(reviewFullPlan).toBeVisible();
-  await reviewFullPlan.click();
   await expect(actions).toHaveCount(PRODUCTION_WORKOUT_START_WARMUP.length);
+  await expect(warmupRow(panel, PRODUCTION_WORKOUT_START_WARMUP[0].label))
+    .toBeVisible();
+  await expect(warmupRow(panel, PRODUCTION_WORKOUT_START_WARMUP[1].label))
+    .not.toBeVisible();
+  await panel.getByRole("button", { name: "Review full plan", exact: true })
+    .click();
   for (const action of PRODUCTION_WORKOUT_START_WARMUP) {
     const row = warmupRow(panel, action.label);
     await expect(row).toHaveCount(1);
@@ -139,15 +140,18 @@ test("keeps warm-up actions singular, reversible, durable, and usable with minim
   await waitForSaved(completedRow);
 
   await page.reload({ waitUntil: "networkidle" });
-  const reloadedPanel = page.locator("#workout-warmup");
+  let reloadedPanel = page.locator("#workout-warmup");
   await reloadedPanel
-    .getByRole("button", { name: "Review full plan" })
+    .getByRole("button", { name: "Review full plan", exact: true })
     .click();
   completedRow = warmupRow(reloadedPanel, completedLabel);
   await expect(completedRow).toContainText("Note: Setup felt stable");
-  await expect(completedRow).toContainText("completed");
-  await expect(completedRow.getByRole("button", { name: "Undo completion" }))
-    .toBeVisible();
+  await expect(
+    completedRow.getByRole("checkbox", {
+      name: `${completedLabel} complete`,
+      exact: true,
+    }),
+  ).toHaveAttribute("aria-checked", "true");
   await completedRow.getByRole("button", { name: "Undo completion" }).click();
   await expect(
     completedRow.getByRole("checkbox", {
@@ -170,11 +174,11 @@ test("keeps warm-up actions singular, reversible, durable, and usable with minim
   await waitForSaved(skippedRow);
 
   await page.reload({ waitUntil: "networkidle" });
-  const restoredPanel = page.locator("#workout-warmup");
-  await restoredPanel
-    .getByRole("button", { name: "Review full plan" })
+  reloadedPanel = page.locator("#workout-warmup");
+  await reloadedPanel
+    .getByRole("button", { name: "Review full plan", exact: true })
     .click();
-  skippedRow = warmupRow(restoredPanel, skippedLabel);
+  skippedRow = warmupRow(reloadedPanel, skippedLabel);
   await expect(skippedRow).toContainText("Note: Short session today");
   await expect(skippedRow).toContainText("skipped");
   await skippedRow.getByRole("button", { name: "Restore" }).click();
@@ -236,18 +240,24 @@ test("keeps warm-up actions singular, reversible, durable, and usable with minim
     exact: true,
   });
   await waitForHydratedReactHandler(discard);
+  const foreignCopyBeforeDiscard = await page.evaluate(() =>
+    localStorage.getItem("workout-tracker:occurrence-mutation-outbox:v1")
+  );
   await discard.click();
   const discardDialog = page.getByRole("dialog", {
     name: /Discard .+\?/,
   });
-  await expect(discardDialog.getByRole("alert")).toContainText(
-    "1 warm-up or workout-item change is still waiting to sync.",
+  await expect(discardDialog.getByRole("note")).toContainText(
+    "1 identified device copy belongs to another workout or account.",
   );
   await discardDialog
-    .getByRole("button", { name: "Discard unsent copies & abandon" })
+    .getByRole("button", { name: "Confirm discard" })
     .click();
   await expect(
     page.getByRole("button", { name: "Train as planned", exact: true }),
   ).toBeVisible();
+  expect(await page.evaluate(() =>
+    localStorage.getItem("workout-tracker:occurrence-mutation-outbox:v1")
+  )).toBe(foreignCopyBeforeDiscard);
   await pageErrors.expectNoUnexpected();
 });

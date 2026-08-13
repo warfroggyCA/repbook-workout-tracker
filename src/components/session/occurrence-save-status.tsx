@@ -72,7 +72,7 @@ export function OccurrenceSaveStatus({
         </div>
         <p className="mt-1 leading-5 text-muted-foreground">
           {failed
-            ? `This change did not save. Retry it, or discard it to restore ${actionLabel.toLowerCase()}.`
+            ? `This device copy did not save. Retry save, or discard it to restore ${actionLabel.toLowerCase()}.`
             : `${actionLabel} will not advance until Repbook acknowledges this change.`}
         </p>
         {entry.lastError && (
@@ -88,7 +88,7 @@ export function OccurrenceSaveStatus({
               variant="outline"
               onClick={() => onRetry(entry)}
             >
-              <RotateCcw className="size-4" /> Retry
+              <RotateCcw className="size-4" /> Retry save
             </Button>
           )}
           <Button
@@ -97,7 +97,7 @@ export function OccurrenceSaveStatus({
             className="text-destructive"
             onClick={() => onDiscard(entry)}
           >
-            <Trash2 className="size-4" /> Discard unsaved change
+            <Trash2 className="size-4" /> Discard device copy
           </Button>
       </div>
     </div>
