@@ -127,12 +127,19 @@ test("puts truthful saved-equipment preparation before warm-up at phone sizes", 
   const warmup = page.locator("#workout-warmup");
   const sticky = page.getByTestId("active-workout-sticky-summary");
   await expect(preparation).toBeVisible();
-  await expect(preparation).toContainText("Before warm-up");
-  await expect(preparation).toContainText("Prepare workout");
-  await expect(preparation).toContainText("In saved equipment");
-  await expect(preparation.locator("li")).not.toHaveCount(0);
-  await expect(preparation).not.toContainText(/\b\d+(?:\.\d+)?\s*(?:lb|kg)\b/i);
-  await expect(preparation.getByRole("checkbox")).toHaveCount(0);
+  await expect(preparation).toContainText("Equipment ready");
+  await expect(preparation).toContainText("Saved equipment covers this workout.");
+  await expect(
+    preparation.getByRole("link", {
+      name: "Go to first exercise",
+      exact: true,
+    }),
+  ).toBeVisible();
+  const equipmentList = preparation.locator("details");
+  await expect(equipmentList).not.toHaveAttribute("open", "");
+  await expect(
+    preparation.getByText("Review equipment list", { exact: true }),
+  ).toBeVisible();
   await expect
     .poll(() => preparation.evaluate((element) => {
       const warmupElement = document.querySelector("#workout-warmup");
@@ -175,6 +182,17 @@ test("puts truthful saved-equipment preparation before warm-up at phone sizes", 
   expect(defaultGeometry.continueWidth).toBeGreaterThanOrEqual(44);
   expect(defaultGeometry.continueHeight).toBeGreaterThanOrEqual(44);
   await expectNoHorizontalOverflow(page);
+  await equipmentList.locator(":scope > summary").click();
+  await expect(equipmentList).toHaveAttribute("open", "");
+  await expect(equipmentList).toContainText("Prepare");
+  await expect(equipmentList).toContainText("In saved equipment");
+  await expect(equipmentList.locator("li")).not.toHaveCount(0);
+  await expect(equipmentList).not.toContainText(
+    /\b\d+(?:\.\d+)?\s*(?:lb|kg)\b/i,
+  );
+  await expect(equipmentList.getByRole("checkbox")).toHaveCount(0);
+  await equipmentList.locator(":scope > summary").click();
+  await expect(equipmentList).not.toHaveAttribute("open", "");
   await page.screenshot({
     path: resolve(
       "output/playwright/superset-prep",
@@ -186,8 +204,13 @@ test("puts truthful saved-equipment preparation before warm-up at phone sizes", 
   await page.reload({ waitUntil: "domcontentloaded" });
   await expect(page.getByTestId("session-preparation-panel")).toBeVisible();
   await expect(page.getByTestId("session-preparation-panel")).toContainText(
-    "Before warm-up",
+    "Equipment ready",
   );
+  await expect(
+    page
+      .getByTestId("session-preparation-panel")
+      .getByText("Review equipment list", { exact: true }),
+  ).toBeVisible();
 
   const activeWorkoutUrl = page.url();
   await chooseFontSize(

@@ -102,16 +102,30 @@ describe("ExerciseCard", () => {
     expect(source).not.toContain("await unskipExercise(");
   });
 
-  it("does not restart exercise catalog loads when parent callbacks rerender", () => {
+  it("keeps both read-only exercise catalogs abortable and retryable", () => {
     const source = readFileSync(
       "src/components/session/exercise-card.tsx",
       "utf8",
     );
+    expect(source).toContain('mode: "alternative"');
+    expect(source).toContain('mode: "replacement"');
+    expect(source).toContain("loadAbortRef.current?.abort");
+    expect(source).toContain("Try loading catalog again");
+    expect(source).toContain("generation !== loadGenerationRef.current");
+    expect(source).toContain("reconcileOnNextLoadRef.current = true");
+    expect(source).toContain("reconcileOnNextLoadRef.current = false");
+    expect(source).toContain("setReconciliationRequired(true)");
+    expect(source).toContain("setReconciliationRequired(false)");
+    expect(source).toContain("onLoadedRef.current?.(result)");
+    expect(source).toContain("if (reconcileOnNextLoadRef.current) return");
+    expect(source).toContain("Try updating workout again");
+    expect(source).toContain("Back to Today");
     expect(source.match(
-      /const onOpenChangeRef = useRef\(onOpenChange\);/g,
+      /buttonVariants\(\{ variant: "outline", size: "touch" \}\)/g,
     )).toHaveLength(2);
+    expect(source).toContain("catalog.retryLoad()");
     expect(source).not.toContain(
-      "[exerciseId, onOpenChange, open, options]",
+      'if (result.code === "replacement_stale") {\n                      mutationRef.current = null;\n                      const controller = new AbortController()',
     );
   });
 

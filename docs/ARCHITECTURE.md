@@ -624,6 +624,15 @@ only still-unperformed working-set occurrences that the exercise skip resolved;
 an already acknowledged warm-up skip stays intact. The replacement, continuation,
 and un-skip paths leave the saved Program and completed sets unchanged and retain
 44-pixel touch targets.
+Alternative and replacement catalog reads use a private, no-store Route Handler
+so the device can abort them independently of the App Router mutation queue. A
+failed or slow request leaves its workout-only drawer open with explicit retry
+and return actions; retries use a new request generation so late responses
+cannot replace the current result or strand the owner on a loading state.
+If a replacement write proves the open catalog is stale, that drawer remains an
+explicit blocking reconciliation surface until the current exercise is loaded;
+the owner can retry there or leave safely to Today, but cannot resume logging
+against the superseded exercise projection.
 
 History-only snapshot restore treats owner decisions and accepted adaptations as
 monotonic evidence. Recovery manifest 11 merges those rows, rejects contradictory

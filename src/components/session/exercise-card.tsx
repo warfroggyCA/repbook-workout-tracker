@@ -10,8 +10,6 @@ import {
   skipExercise,
   logPain,
   saveExerciseNote,
-  getAlternativeOptions,
-  getReplacementOptions,
   substituteExercise,
   replaceExercise,
   undoExerciseSubstitution,
@@ -50,7 +48,10 @@ import {
   setSaveStateLabel,
 } from "@/lib/exercise-card";
 import type { ExerciseDiscoveryItem } from "@/lib/exercise-discovery";
-import type { ExerciseAlternativeReason } from "@/lib/exercise-alternatives";
+import type {
+  ExerciseAlternativeAnnotation,
+  ExerciseAlternativeReason,
+} from "@/lib/exercise-alternatives";
 import { convertWeight, type LoadUnit } from "@/lib/units";
 import {
   Check,
@@ -80,6 +81,11 @@ import {
 } from "@/lib/active-workout-language";
 import { activeWorkoutScrollBehavior } from "@/lib/active-workout-motion";
 import { reportDeploymentMismatch } from "@/lib/deployment-recovery";
+import {
+  fetchWorkoutExerciseOptions,
+  WorkoutExerciseOptionsRequestError,
+  type WorkoutExerciseOptionsMode,
+} from "@/lib/workout-exercise-options-client";
 import {
   patchActiveWorkoutMeasurement,
   readActiveWorkoutMeasurements,
@@ -586,12 +592,133 @@ export async function runGuardedLogRequest<T>(
   }
 }
 
-type ReplacementOptions = Extract<
-  Awaited<ReturnType<typeof getReplacementOptions>>,
-  { ok: true }
->;
+type AlternativeOptions = {
+  currentExerciseId: string;
+  plannedExerciseId: string;
+  plannedExerciseName: string;
+  plannedExercise: ExerciseDiscoveryItem;
+  items: ExerciseDiscoveryItem[];
+  priorityIds: string[];
+  annotations: Record<string, ExerciseAlternativeAnnotation>;
+};
+
+type ReplacementOptions = {
+  currentExerciseId: string;
+  plannedExerciseId: string;
+  plannedExerciseName: string;
+  currentState: Pick<
+    SessionExerciseData,
+    | "modificationType"
+    | "skipReason"
+    | "substitutedForExerciseId"
+    | "substitutionReason"
+    | "substitutedAt"
+    | "targetLoad"
+    | "targetLoadUnit"
+    | "notes"
+    | "warmupNotes"
+    | "warmupSets"
+    | "setNotes"
+  >;
+  items: ExerciseDiscoveryItem[];
+  warnings: Record<string, string>;
+};
 
 export type ExerciseAdjustmentIntent = "note" | "swap" | "replace" | "skip";
+
+export const REPLACEMENT_CATALOG_LOAD_TIMEOUT_MS = 12_000;
+
+function useWorkoutExerciseOptions<T>({
+  mode,
+  exerciseId,
+  open,
+  onLoaded,
+}: {
+  mode: WorkoutExerciseOptionsMode;
+  exerciseId: string;
+  open: boolean;
+  onLoaded?: (options: T) => void;
+}) {
+  const [options, setOptions] = useState<T | null>(null);
+  const [loadAttempt, setLoadAttempt] = useState(0);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const loadGenerationRef = useRef(0);
+  const loadAbortRef = useRef<AbortController | null>(null);
+  const onLoadedRef = useRef(onLoaded);
+
+  useEffect(() => {
+    onLoadedRef.current = onLoaded;
+  }, [onLoaded]);
+
+  useEffect(() => {
+    if (!open || options != null) return;
+    const generation = loadGenerationRef.current + 1;
+    loadGenerationRef.current = generation;
+    const controller = new AbortController();
+    loadAbortRef.current = controller;
+    let ignore = false;
+    const timeoutId = window.setTimeout(
+      () => controller.abort(),
+      REPLACEMENT_CATALOG_LOAD_TIMEOUT_MS,
+    );
+    void fetchWorkoutExerciseOptions<T>(mode, exerciseId, controller.signal)
+      .then((result) => {
+        if (ignore || generation !== loadGenerationRef.current) return;
+        setOptions(result);
+        onLoadedRef.current?.(result);
+      })
+      .catch((error: unknown) => {
+        if (ignore || generation !== loadGenerationRef.current) return;
+        if (controller.signal.aborted) {
+          setLoadError(
+            "The exercise catalog took too long to respond. Check your connection, then try again.",
+          );
+          return;
+        }
+        setLoadError(
+          error instanceof WorkoutExerciseOptionsRequestError
+            ? error.message
+            : "The exercise catalog did not load. Check your connection, then try again.",
+        );
+      })
+      .finally(() => {
+        window.clearTimeout(timeoutId);
+        if (loadAbortRef.current === controller) loadAbortRef.current = null;
+      });
+    return () => {
+      ignore = true;
+      window.clearTimeout(timeoutId);
+      controller.abort();
+      if (loadAbortRef.current === controller) loadAbortRef.current = null;
+    };
+  }, [exerciseId, loadAttempt, mode, open, options]);
+
+  function invalidateActiveLoad() {
+    loadGenerationRef.current += 1;
+    loadAbortRef.current?.abort();
+    loadAbortRef.current = null;
+  }
+
+  function retryLoad() {
+    invalidateActiveLoad();
+    setLoadError(null);
+    setOptions(null);
+    setLoadAttempt((current) => current + 1);
+  }
+
+  function prepareToOpen() {
+    if (options == null) setLoadError(null);
+  }
+
+  return {
+    options,
+    setOptions,
+    loadError,
+    invalidateActiveLoad,
+    retryLoad,
+    prepareToOpen,
+  };
+}
 
 export function ExerciseCard({
   exercise,
@@ -3363,6 +3490,77 @@ function SkipDrawer({
   );
 }
 
+function ExerciseOptionsLoadState({
+  error,
+  onRetry,
+  onBack,
+  reconciliationRequired = false,
+}: {
+  error: string | null;
+  onRetry: () => void;
+  onBack: () => void;
+  reconciliationRequired?: boolean;
+}) {
+  if (error == null) {
+    return (
+      <div className="space-y-3 py-2">
+        <p role="status" className="text-sm text-muted-foreground">
+          {reconciliationRequired
+            ? "Checking the updated exercise…"
+            : "Loading exercise catalog…"}
+        </p>
+        {reconciliationRequired ? (
+          <a
+            href="/today"
+            className={buttonVariants({ variant: "outline", size: "touch" })}
+          >
+            Back to Today
+          </a>
+        ) : (
+          <Button type="button" variant="outline" onClick={onBack}>
+            Back to workout
+          </Button>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div
+      role="alert"
+      className="space-y-3 rounded-lg border border-destructive/35 bg-destructive/5 p-3"
+    >
+      <div>
+        <p className="text-sm font-medium">
+          {reconciliationRequired
+            ? "Workout update needs attention"
+            : "Catalog unavailable"}
+        </p>
+        <p className="mt-1 text-xs leading-5 text-muted-foreground">{error}</p>
+      </div>
+      <div className="flex flex-wrap gap-2">
+        <Button type="button" onClick={onRetry}>
+          {reconciliationRequired
+            ? "Try updating workout again"
+            : "Try loading catalog again"}
+        </Button>
+        {reconciliationRequired ? (
+          <a
+            href="/today"
+            className={buttonVariants({ variant: "outline", size: "touch" })}
+          >
+            Back to Today
+          </a>
+        ) : (
+          <Button type="button" variant="outline" onClick={onBack}>
+            Back to workout
+          </Button>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function AlternativesDrawer({
   exerciseId,
   describedBy,
@@ -3379,46 +3577,19 @@ function AlternativesDrawer({
     reason: ExerciseAlternativeReason
   ) => void;
 }) {
-  type AlternativeOptions = Extract<
-    Awaited<ReturnType<typeof getAlternativeOptions>>,
-    { ok: true }
-  >;
-  const [options, setOptions] = useState<AlternativeOptions | null>(null);
   const [reason, setReason] = useState<ExerciseAlternativeReason>("variety");
-  const [pending, startTransition] = useTransition();
-  const onOpenChangeRef = useRef(onOpenChange);
-
-  useEffect(() => {
-    onOpenChangeRef.current = onOpenChange;
-  }, [onOpenChange]);
+  const catalog = useWorkoutExerciseOptions<AlternativeOptions>({
+    mode: "alternative",
+    exerciseId,
+    open,
+  });
+  const { options, setOptions } = catalog;
 
   function handleOpen(next: boolean) {
+    if (next) catalog.prepareToOpen();
+    else catalog.invalidateActiveLoad();
     onOpenChange(next);
   }
-
-  useEffect(() => {
-    if (!open || options != null) return;
-    let ignore = false;
-    startTransition(async () => {
-      try {
-        const result = await getAlternativeOptions(exerciseId);
-        if (ignore) return;
-        if (!result.ok) {
-          toast.error(result.message);
-          onOpenChangeRef.current(false);
-          return;
-        }
-        setOptions(result);
-      } catch {
-        if (ignore) return;
-        toast.error("Alternatives could not be loaded.");
-        onOpenChangeRef.current(false);
-      }
-    });
-    return () => {
-      ignore = true;
-    };
-  }, [exerciseId, open, options]);
 
   return (
     <Drawer open={open} onOpenChange={handleOpen}>
@@ -3448,7 +3619,6 @@ function AlternativesDrawer({
                     type="button"
                     size="sm"
                     variant={reason === value ? "default" : "outline"}
-                    disabled={pending}
                     aria-pressed={reason === value}
                     onClick={() => setReason(value)}
                   >
@@ -3459,7 +3629,11 @@ function AlternativesDrawer({
             </div>
           </div>
           {options == null ? (
-            <p className="py-4 text-sm text-muted-foreground">Loading…</p>
+            <ExerciseOptionsLoadState
+              error={catalog.loadError}
+              onRetry={catalog.retryLoad}
+              onBack={() => handleOpen(false)}
+            />
           ) : (
             <ExercisePicker
               items={options.items}
@@ -3483,7 +3657,7 @@ function AlternativesDrawer({
                     toast.error(result.message);
                     return false;
                   }
-                  onOpenChange(false);
+                  handleOpen(false);
                   setOptions(null);
                   onDone(selected, reason);
                   return true;
@@ -3525,42 +3699,46 @@ function ReplacementDrawer({
     reason: ExerciseAlternativeReason,
   ) => void;
 }) {
-  const [options, setOptions] = useState<ReplacementOptions | null>(null);
   const [reason, setReason] = useState<ExerciseAlternativeReason>("variety");
-  const [pending, startTransition] = useTransition();
+  const [reconciliationRequired, setReconciliationRequired] = useState(false);
   const mutationRef = useRef<{ signature: string; id: string } | null>(null);
-  const onOpenChangeRef = useRef(onOpenChange);
+  const reconcileOnNextLoadRef = useRef(false);
 
-  useEffect(() => {
-    onOpenChangeRef.current = onOpenChange;
-  }, [onOpenChange]);
+  function reconcileLoadedOptions(loaded: ReplacementOptions) {
+    if (!reconcileOnNextLoadRef.current) return;
+    const authoritative = loaded.items.find(
+      (item) => item.id === loaded.currentExerciseId,
+    );
+    if (!authoritative) return;
+    reconcileOnNextLoadRef.current = false;
+    onReconcile(
+      authoritative,
+      loaded.currentState,
+      loaded.plannedExerciseName,
+    );
+    setReconciliationRequired(false);
+  }
 
-  useEffect(() => {
-    if (!open || options != null) return;
-    let ignore = false;
-    startTransition(async () => {
-      try {
-        const result = await getReplacementOptions(exerciseId);
-        if (ignore) return;
-        if (!result.ok) {
-          toast.error(result.message);
-          onOpenChangeRef.current(false);
-          return;
-        }
-        setOptions(result);
-      } catch {
-        if (ignore) return;
-        toast.error("The exercise catalog could not be loaded.");
-        onOpenChangeRef.current(false);
-      }
-    });
-    return () => {
-      ignore = true;
-    };
-  }, [exerciseId, open, options]);
+  const catalog = useWorkoutExerciseOptions<ReplacementOptions>({
+    mode: "replacement",
+    exerciseId,
+    open,
+    onLoaded: reconcileLoadedOptions,
+  });
+  const { options, setOptions } = catalog;
+
+  function handleOpen(next: boolean) {
+    if (next) catalog.prepareToOpen();
+    else {
+      if (reconcileOnNextLoadRef.current) return;
+      reconcileOnNextLoadRef.current = false;
+      catalog.invalidateActiveLoad();
+    }
+    onOpenChange(next);
+  }
 
   return (
-    <Drawer open={open} onOpenChange={onOpenChange}>
+    <Drawer open={open} onOpenChange={handleOpen}>
       <DrawerTrigger
         render={
           <Button
@@ -3589,7 +3767,6 @@ function ReplacementDrawer({
                     type="button"
                     size="sm"
                     variant={reason === value ? "default" : "outline"}
-                    disabled={pending}
                     aria-pressed={reason === value}
                     onClick={() => setReason(value)}
                   >
@@ -3599,8 +3776,17 @@ function ReplacementDrawer({
               )}
             </div>
           </div>
-          {options == null ? (
-            <p className="py-4 text-sm text-muted-foreground">Loading…</p>
+          {options == null || reconciliationRequired ? (
+            <ExerciseOptionsLoadState
+              error={
+                reconciliationRequired && options != null
+                  ? "Repbook could not confirm the updated exercise. Try again or return to Today."
+                  : catalog.loadError
+              }
+              onRetry={catalog.retryLoad}
+              onBack={() => handleOpen(false)}
+              reconciliationRequired={reconciliationRequired}
+            />
           ) : (
             <ExercisePicker
               items={options.items}
@@ -3634,31 +3820,16 @@ function ReplacementDrawer({
                     toast.error(result.message);
                     if (result.code === "replacement_stale") {
                       mutationRef.current = null;
-                      try {
-                        const refreshed = await getReplacementOptions(exerciseId);
-                        if (refreshed.ok) {
-                          setOptions(refreshed);
-                          const authoritative = refreshed.items.find(
-                            (item) => item.id === refreshed.currentExerciseId,
-                          );
-                          if (authoritative) {
-                            onReconcile(
-                              authoritative,
-                              refreshed.currentState,
-                              refreshed.plannedExerciseName,
-                            );
-                          }
-                        }
-                      } catch {
-                        // The preserved selection remains available for review.
-                      }
+                      setReconciliationRequired(true);
+                      reconcileOnNextLoadRef.current = true;
+                      catalog.retryLoad();
                     }
                     return false;
                   }
                   const warning = options.warnings[selected.id];
                   if (warning) toast.warning(warning);
                   mutationRef.current = null;
-                  onOpenChange(false);
+                  handleOpen(false);
                   setOptions(null);
                   onDone(selected, reason);
                   return true;

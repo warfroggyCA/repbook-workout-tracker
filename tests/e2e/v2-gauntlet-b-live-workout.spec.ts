@@ -508,17 +508,74 @@ test("keeps the full live workout usable through warm-up, skip, replace, continu
     incompatible.getByRole("button", { name: "Skip exercise", exact: true }),
   ).toBeVisible();
   await skipForEquipment(incompatible, page);
+  let replacementCatalogRequests = 0;
+  let releaseClosedCatalog!: () => void;
+  const closedCatalogMayFinish = new Promise<void>((resolve) => {
+    releaseClosedCatalog = resolve;
+  });
+  let releaseTimedOutCatalog!: () => void;
+  const timedOutCatalogMayFinish = new Promise<void>((resolve) => {
+    releaseTimedOutCatalog = resolve;
+  });
+  await page.route("**/api/session/exercise-options?**", async (route) => {
+    const url = new URL(route.request().url());
+    if (url.searchParams.get("mode") !== "replacement") {
+      await route.continue().catch(() => undefined);
+      return;
+    }
+    replacementCatalogRequests += 1;
+    if (replacementCatalogRequests === 1) {
+      await closedCatalogMayFinish;
+      await route.abort("failed").catch(() => undefined);
+      return;
+    }
+    if (replacementCatalogRequests === 2) {
+      await timedOutCatalogMayFinish;
+      await route.abort("failed").catch(() => undefined);
+      return;
+    }
+    await route.continue().catch(() => undefined);
+  });
   await incompatible
     .getByRole("button", { name: "Replace exercise", exact: true })
     .click();
   const replacementDrawer = page.getByRole("dialog", {
     name: "Replace exercise for this workout",
   });
+  await expect(replacementDrawer).toContainText("Loading exercise catalog");
+  await replacementDrawer
+    .getByRole("button", { name: "Back to workout", exact: true })
+    .click();
+  await expect(replacementDrawer).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: "Resolve Suspension Push-Up" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: "Back to Today", exact: true }).first(),
+  ).toBeVisible();
+  releaseClosedCatalog();
+  await incompatible
+    .getByRole("button", { name: "Replace exercise", exact: true })
+    .click();
+  await expect.poll(() => replacementCatalogRequests).toBe(2);
+  await expect(replacementDrawer).toContainText("Catalog unavailable");
+  const retryCatalog = replacementDrawer.getByRole("button", {
+    name: "Try loading catalog again",
+    exact: true,
+  });
+  await expectReachableTarget(retryCatalog);
+  await retryCatalog.evaluate((button) => {
+    (button as HTMLButtonElement).click();
+    (button as HTMLButtonElement).click();
+  });
+  await expect.poll(() => replacementCatalogRequests).toBe(3);
   const searchCatalog = replacementDrawer.getByRole("button", {
     name: "Search exercise catalog",
     exact: true,
   });
   await expect(searchCatalog).toBeVisible();
+  releaseTimedOutCatalog();
+  await page.unrouteAll({ behavior: "wait" });
   const equipmentBusy = replacementDrawer.getByRole("button", {
     name: "Equipment busy",
     exact: true,
