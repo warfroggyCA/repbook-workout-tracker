@@ -184,7 +184,8 @@ test("adds a reviewed workout-only exercise without editing the Program", async 
   await expect(addedCard).toContainText("Set 1");
   await expect(addedCard).toContainText("Set 2");
   await addedCard.getByRole("button", { name: "Log set", exact: true }).click();
-  await expect(addedCard).toContainText("1/2 workout-only performed");
+  await expect(addedCard).toContainText("1/2 done");
+  await expect(addedCard).toContainText("Workout only");
   await expect(
     page.locator('section[aria-labelledby^="session-exercise-heading-"]'),
   ).toHaveCount(plannedHeadingsBefore + 1);
@@ -215,7 +216,7 @@ test("adds a reviewed workout-only exercise without editing the Program", async 
   await page.reload({ waitUntil: "domcontentloaded" });
   const restoredAddedCard = page.getByRole("region", { name: "Push-Up" });
   await expect(restoredAddedCard).toContainText("Workout only");
-  await expect(restoredAddedCard).toContainText("1/2 workout-only performed");
+  await expect(restoredAddedCard).toContainText("1/2 done");
   await discardWorkout(page);
 
   await prefetches.settle();
@@ -312,7 +313,8 @@ test("refuses incomplete assistance, then preserves assisted work without false 
   await assisted
     .getByRole("button", { name: "Log set", exact: true })
     .click();
-  await expect(assisted).toContainText("1/1 workout-only performed");
+  await expect(assisted).toContainText("1/1 done");
+  await expect(assisted).toContainText("Workout only");
 
   const workoutStatus = page.getByRole("complementary", {
     name: "Workout status",
