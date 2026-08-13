@@ -471,6 +471,9 @@ test("keeps attention continuous through warm-up, first set, and exact recovery 
         });
 
         await context.setOffline(false);
+        await expect(
+          page.getByTestId("active-set-save-receipt"),
+        ).toContainText("Acknowledged by Repbook", { timeout: 20_000 });
         await expect.poll(() => page.evaluate(() => {
           const raw = localStorage.getItem(
             "workout-tracker:workout-set-outbox:v1",

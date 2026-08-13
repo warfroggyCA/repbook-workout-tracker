@@ -30,6 +30,7 @@ import type {
   SetAcknowledgementReceipt,
 } from "@/components/session/types";
 import type { OccurrenceMutationOutboxEntry } from "@/lib/occurrence-mutation-outbox";
+import { ADDED_WORKOUT_SET_NOTE } from "@/lib/session-occurrences";
 
 const warmupSet = {
   label: "Ramp 1",
@@ -152,7 +153,7 @@ describe("ExerciseCard", () => {
     expect(html).toContain("Move smoothly");
     expect(html).toContain("Show details");
     expect(html).toContain("<details");
-    expect(html).toContain("Waiting for save acknowledgement");
+    expect(html).toContain("Save failed");
     expect(html).not.toContain("Use the Next set dock");
     expect(html).toContain("Workout actions");
     expect(html).toContain("Add note");
@@ -955,7 +956,7 @@ describe("order-conflict logging gate", () => {
       resolvedAt: null,
       completedSetId: null,
     };
-    const html = renderToStaticMarkup(
+    const exactBlockerCard = (
       <ExerciseCard
         exercise={blockedExercise}
         historyRevision={0}
@@ -1000,8 +1001,9 @@ describe("order-conflict logging gate", () => {
         onOpenCoach={() => undefined}
         adjustIntent={null}
         onAdjustIntentChange={() => undefined}
-      />,
+      />
     );
+    const html = renderToStaticMarkup(exactBlockerCard);
 
     const blockerTarget = `id="set-entry-${blockedExercise.id}-${blockerOccurrenceId}"`;
     expect(html).toContain(blockerTarget);
@@ -1009,6 +1011,230 @@ describe("order-conflict logging gate", () => {
     expect(html.indexOf(blockerTarget)).toBeLessThan(
       html.indexOf("Save failed"),
     );
+
+    const mismatched = renderToStaticMarkup(cloneElement(exactBlockerCard, {
+      setOrderBlockers: {
+        [retainedLaterSet.clientKey]: {
+          blockerOccurrenceId: "60000000-0000-4000-8000-000000000009",
+          blockerLabel: "A different set",
+        },
+      },
+    }));
+    expect(mismatched).not.toContain('data-testid="active-log-set"');
+    expect(mismatched).toContain("Waiting for save acknowledgement");
+  });
+
+  it("enables an added set only when it is the exact blocker occurrence", () => {
+    const blockerOccurrenceId = "60000000-0000-4000-8000-000000000011";
+    const retainedAddedLaterSet = {
+      ...retainedLaterSet,
+      id: "optimistic-added-later",
+      clientKey: "70000000-0000-4000-8000-000000000012",
+      setNo: 5,
+    };
+    const blockedExercise: SessionExerciseData = {
+      ...exercise,
+      sets: [retainedAddedLaterSet],
+    };
+    const appendedOccurrence: SessionOccurrenceData = {
+      id: blockerOccurrenceId,
+      sessionExerciseId: blockedExercise.id,
+      kind: "working_set",
+      origin: "ad_hoc",
+      sequenceIdx: 3,
+      kindOrdinal: 3,
+      label: null,
+      plannedExerciseId: blockedExercise.exerciseId,
+      plannedNote: ADDED_WORKOUT_SET_NOTE,
+      plannedRepsMin: 6,
+      plannedRepsMax: 8,
+      plannedLoad: 95,
+      plannedLoadUnit: "lb",
+      plannedLoadPercent: null,
+      plannedLoadText: null,
+      plannedRestSec: 90,
+      groupSnapshotId: null,
+      groupRound: null,
+      groupMemberOrderIdx: null,
+      outcome: "pending",
+      outcomeReason: null,
+      outcomeNote: null,
+      revision: 0,
+      resolvedAt: null,
+      completedSetId: null,
+    };
+    const exactBlockerCard = (
+      <ExerciseCard
+        exercise={blockedExercise}
+        historyRevision={0}
+        progress={{
+          sessionExerciseId: blockedExercise.id,
+          exerciseName: blockedExercise.name,
+          total: 5,
+          planned: 3,
+          extra: 2,
+          workoutOnly: 0,
+          performed: 0,
+          plannedPerformed: 0,
+          extraPerformed: 0,
+          workoutOnlyPerformed: 0,
+          skipped: 0,
+          abandoned: 0,
+          pending: 5,
+          legacyUnknown: 0,
+          completedWithoutResult: 0,
+          status: "current"
+        }}
+        expanded
+        onToggle={() => undefined}
+        plateConfigs={{}}
+        incrementals={{}}
+        unit="lb"
+        activeOccurrence={appendedOccurrence}
+        workingOccurrences={[appendedOccurrence]}
+        isCurrentExercise
+        nextActionLabel="No further unresolved work"
+        onPatch={() => undefined}
+        onQueueSet={async () => true}
+        onRetrySet={async () => undefined}
+        onDiscardSet={async () => undefined}
+        setOrderBlockers={{
+          [retainedAddedLaterSet.clientKey]: {
+            blockerOccurrenceId,
+            blockerLabel: "Extra set 1",
+          },
+        }}
+        onSkipComplete={() => undefined}
+        onOpenCoach={() => undefined}
+        adjustIntent={null}
+        onAdjustIntentChange={() => undefined}
+      />
+    );
+    const exact = renderToStaticMarkup(exactBlockerCard);
+    const exactLogAt = exact.indexOf("Log set", exact.indexOf('data-testid="added-set-entry"'));
+    const exactLogButton = exact.slice(
+      exact.lastIndexOf("<button", exactLogAt),
+      exact.indexOf("</button>", exactLogAt),
+    );
+    expect(exact).toContain("Extra set 1 · Added to this workout");
+    expect(exactLogButton).not.toContain('disabled=""');
+
+    const mismatched = renderToStaticMarkup(cloneElement(exactBlockerCard, {
+      setOrderBlockers: {
+        [retainedAddedLaterSet.clientKey]: {
+          blockerOccurrenceId: "60000000-0000-4000-8000-000000000019",
+          blockerLabel: "A different set",
+        },
+      },
+    }));
+    const mismatchedLogAt = mismatched.indexOf(
+      "Log set",
+      mismatched.indexOf('data-testid="added-set-entry"'),
+    );
+    const mismatchedLogButton = mismatched.slice(
+      mismatched.lastIndexOf("<button", mismatchedLogAt),
+      mismatched.indexOf("</button>", mismatchedLogAt),
+    );
+    expect(mismatchedLogButton).toContain('disabled=""');
+  });
+
+  it("keeps the recovered set acknowledgement visible when the retained next attempt needs review", () => {
+    const retainedExercise: SessionExerciseData = {
+      ...exercise,
+      sets: [
+        {
+          id: "acknowledged-blocker",
+          clientKey: "70000000-0000-4000-8000-000000000021",
+          setNo: 1,
+          weight: 95,
+          weightUnit: "lb",
+          reps: 8,
+          rpe: null,
+          note: null,
+          saveState: "saved",
+        },
+        retainedLaterSet,
+      ],
+    };
+    const nextOccurrence: SessionOccurrenceData = {
+      id: "60000000-0000-4000-8000-000000000022",
+      sessionExerciseId: retainedExercise.id,
+      kind: "working_set",
+      origin: "planned",
+      sequenceIdx: 1,
+      kindOrdinal: 1,
+      label: null,
+      plannedExerciseId: retainedExercise.exerciseId,
+      plannedNote: null,
+      plannedRepsMin: 6,
+      plannedRepsMax: 8,
+      plannedLoad: 95,
+      plannedLoadUnit: "lb",
+      plannedLoadPercent: null,
+      plannedLoadText: null,
+      plannedRestSec: 90,
+      groupSnapshotId: null,
+      groupRound: null,
+      groupMemberOrderIdx: null,
+      outcome: "pending",
+      outcomeReason: null,
+      outcomeNote: null,
+      revision: 0,
+      resolvedAt: null,
+      completedSetId: null,
+    };
+    const acknowledgedSet = retainedExercise.sets[0]!;
+    const html = renderToStaticMarkup(
+      <ExerciseCard
+        exercise={retainedExercise}
+        historyRevision={0}
+        progress={{
+          sessionExerciseId: retainedExercise.id,
+          exerciseName: retainedExercise.name,
+          total: 3,
+          planned: 3,
+          extra: 0,
+          workoutOnly: 0,
+          performed: 1,
+          plannedPerformed: 1,
+          extraPerformed: 0,
+          workoutOnlyPerformed: 0,
+          skipped: 0,
+          abandoned: 0,
+          pending: 2,
+          legacyUnknown: 0,
+          completedWithoutResult: 0,
+          status: "current",
+        }}
+        expanded
+        onToggle={() => undefined}
+        plateConfigs={{}}
+        incrementals={{}}
+        unit="lb"
+        activeOccurrence={nextOccurrence}
+        workingOccurrences={[nextOccurrence]}
+        acknowledgementReceipt={{
+          sessionExerciseId: retainedExercise.id,
+          exerciseName: retainedExercise.name,
+          metricType: "weight_reps",
+          set: acknowledgedSet,
+        }}
+        isCurrentExercise
+        nextActionLabel="Barbell Squat, set 3"
+        onPatch={() => undefined}
+        onQueueSet={async () => true}
+        onRetrySet={async () => undefined}
+        onDiscardSet={async () => undefined}
+        onSkipComplete={() => undefined}
+        onOpenCoach={() => undefined}
+        adjustIntent={null}
+        onAdjustIntentChange={() => undefined}
+      />,
+    );
+
+    expect(html).toContain("Save failed");
+    expect(html).toContain("Saved · Set 1 · 95 lb × 8 reps");
+    expect(html).toContain("Acknowledged by Repbook");
   });
 });
 

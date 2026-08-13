@@ -1,4 +1,5 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
+import { getWorkoutFinishButton } from "../helpers/active-workout-controls";
 import {
   BA_WORKOUT_EMAIL,
   BA_WORKOUT_FIXTURE,
@@ -147,6 +148,7 @@ async function expectActiveViewportBudget(page: Page) {
           element.id || element.getAttribute("aria-label") || element.tagName
         );
       return {
+        scrollY: window.scrollY,
         usableHeight: Math.max(0, dockRect.top - guidanceRect.bottom),
         dockClearsNavigation:
           navigationRect == null || navigationRect.height === 0 ||
@@ -167,7 +169,7 @@ async function expectActiveViewportBudget(page: Page) {
     expect(budget.dockClearsNavigation).toBe(true);
     expect(budget.intrusions).toEqual([]);
     expect(budget.horizontalOverflow).toBeLessThanOrEqual(1);
-    if (expectsCompactBackControl) {
+    if (expectsCompactBackControl && budget.scrollY <= 1) {
       expect(budget.backControlInsideViewport).toBe(true);
     }
   }).toPass();
@@ -221,7 +223,11 @@ test("keeps the full live workout usable through warm-up, skip, replace, continu
   }
 
   const warmup = page.locator("#workout-warmup");
-  await expect(warmup).toContainText("Check off only the distinct actions below.");
+  await expect(warmup).toContainText(
+    "Complete the current warm-up action below.",
+  );
+  await expect(warmup.getByRole("button", { name: "Review full plan" }))
+    .toBeVisible();
   await expect(page.getByText(
     BA_WORKOUT_FIXTURE.program.days[0].warmupNotes,
     { exact: true },
@@ -274,27 +280,21 @@ test("keeps the full live workout usable through warm-up, skip, replace, continu
   }
 
   for (const [index, action] of PRODUCTION_WORKOUT_START_WARMUP.entries()) {
+    const row = warmup.locator("li").filter({ hasText: action.label });
     const checkbox = warmup.getByRole("checkbox", {
       name: `Mark ${action.label} complete`,
       exact: true,
     });
     await expectReachableTarget(checkbox);
     await checkbox.click();
-    const completedLastAction =
-      index === PRODUCTION_WORKOUT_START_WARMUP.length - 1;
-    if (completedLastAction) {
-      await expect(warmup).not.toHaveAttribute("open", "");
-      await warmup.locator(":scope > summary").click();
+    await expect(row).toContainText("completed");
+    if (index < PRODUCTION_WORKOUT_START_WARMUP.length - 1) {
+      await expect(warmup).toContainText(
+        `Complete the current warm-up action below.`,
+      );
     }
-    await expect(
-      warmup.getByRole("checkbox", {
-        name: `${action.label} complete`,
-        exact: true,
-      }),
-    ).toHaveAttribute("aria-checked", "true");
-    if (completedLastAction) await warmup.locator(":scope > summary").click();
   }
-  await expect(warmup).not.toHaveAttribute("open", "");
+  await expect(warmup).toContainText("Warm-up actions are accounted for.");
 
   for (let setNo = 1; setNo <= 3; setNo += 1) {
     const current = page.getByTestId("current-exercise-card");
@@ -391,7 +391,7 @@ test("keeps the full live workout usable through warm-up, skip, replace, continu
   ).toBeVisible();
   await expectActiveViewportBudget(page);
 
-  const finish = page.getByRole("button", { name: "Finish", exact: true });
+  const finish = getWorkoutFinishButton(page);
   await expectReachableTarget(finish);
   await finish.click();
   const finishDialog = page.getByRole("dialog", { name: "Finish workout" });

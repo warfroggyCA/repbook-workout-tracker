@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { getWorkoutFinishButton } from "../helpers/active-workout-controls";
 import {
   installNextDevelopmentRefreshControl,
   openNativeDetails,
@@ -109,10 +110,13 @@ test("keeps planned work authoritative around extra-before-plan and grouped work
   const laterMember = page.getByRole("region", { name: "Pallof Press" });
   await expect(laterMember.getByTestId("current-set-entry")).toHaveCount(0);
 
-  await page.getByRole("button", { name: "Finish", exact: true }).click();
+  await getWorkoutFinishButton(page).click();
   const finish = page.getByRole("dialog", { name: "Finish workout" });
   await expect(finish).toContainText("0 of 13 planned sets done");
   await expect(finish).toContainText("1 extra set performed");
+  await openNativeDetails(
+    finish.locator("details", { hasText: "Optional note and fatigue" }),
+  );
   const fatigue = finish.getByRole("group", { name: "Overall fatigue" });
   const fatigueThree = fatigue.getByRole("button", {
     name: "3",

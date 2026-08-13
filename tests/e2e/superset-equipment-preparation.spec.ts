@@ -1,5 +1,6 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
 import { resolve } from "node:path";
+import { getWorkoutFinishButton } from "../helpers/active-workout-controls";
 import {
   installNextDevelopmentRefreshControl,
   openNativeDetails,
@@ -57,7 +58,6 @@ async function skipCurrentSet(page: Page) {
   await expect
     .poll(() => showCurrent.innerText())
     .not.toBe(currentLabel);
-  await showCurrent.click();
   await openNativeDetails(
     page.getByTestId("current-exercise-card").locator("details", {
       hasText: "Set exceptions",
@@ -72,7 +72,7 @@ async function skipCurrentSet(page: Page) {
 
 async function discardWorkout(page: Page) {
   if (!/\/session\/[0-9a-f-]+(?:#.*)?$/.test(page.url())) return;
-  await page.getByRole("button", { name: "Finish", exact: true }).click();
+  await getWorkoutFinishButton(page).click();
   const finish = page.getByRole("dialog", { name: "Finish workout" });
   await finish
     .getByRole("button", { name: "Discard workout", exact: true })
@@ -116,7 +116,7 @@ async function chooseFontSize(
   await page.goto(returnUrl);
 }
 
-test("puts truthful saved-equipment preparation before warm-up at phone sizes", async ({
+test("keeps truthful saved-equipment preparation concise at phone sizes", async ({
   page,
 }, testInfo) => {
   await signIn(page);
@@ -127,26 +127,26 @@ test("puts truthful saved-equipment preparation before warm-up at phone sizes", 
   const warmup = page.locator("#workout-warmup");
   const sticky = page.getByTestId("active-workout-sticky-summary");
   await expect(preparation).toBeVisible();
-  await expect(preparation).toContainText("Before warm-up");
-  await expect(preparation).toContainText("Prepare workout");
+  await expect(preparation).toContainText("Equipment ready");
+  await expect(preparation).toContainText("Saved equipment covers this workout");
   await expect(preparation).toContainText("In saved equipment");
   await expect(preparation.locator("li")).not.toHaveCount(0);
   await expect(preparation).not.toContainText(/\b\d+(?:\.\d+)?\s*(?:lb|kg)\b/i);
   await expect(preparation.getByRole("checkbox")).toHaveCount(0);
+  await expect(warmup).toHaveCount(0);
+  const currentCard = page.getByTestId("current-exercise-card");
   await expect
-    .poll(() => preparation.evaluate((element) => {
-      const warmupElement = document.querySelector("#workout-warmup");
-      return warmupElement != null && Boolean(
-        element.compareDocumentPosition(warmupElement) &
+    .poll(() => currentCard.evaluate((element) => {
+      const preparationElement = document.querySelector(
+        '[data-testid="session-preparation-panel"]',
+      );
+      return preparationElement != null && Boolean(
+        element.compareDocumentPosition(preparationElement) &
           Node.DOCUMENT_POSITION_FOLLOWING,
       );
     }))
     .toBe(true);
-  await expect
-    .poll(() => sticky.evaluate((element) =>
-      element.nextElementSibling?.getAttribute("data-testid"),
-    ))
-    .toBe("session-preparation-panel");
+  await expect(sticky).toContainText("Now: Barbell Back Squat, set 1");
 
   await page.setViewportSize({ width: 390, height: 844 });
   await preparation.scrollIntoViewIfNeeded();
@@ -186,7 +186,7 @@ test("puts truthful saved-equipment preparation before warm-up at phone sizes", 
   await page.reload({ waitUntil: "domcontentloaded" });
   await expect(page.getByTestId("session-preparation-panel")).toBeVisible();
   await expect(page.getByTestId("session-preparation-panel")).toContainText(
-    "Before warm-up",
+    "Equipment ready",
   );
 
   const activeWorkoutUrl = page.url();
@@ -204,9 +204,7 @@ test("puts truthful saved-equipment preparation before warm-up at phone sizes", 
     ))
     .toBeCloseTo(23.2, 1);
   await expectNoHorizontalOverflow(page);
-  await expect(warmup).toContainText(
-    "A checkable warm-up sequence is not available yet.",
-  );
+  await expect(page.locator("#workout-warmup")).toHaveCount(0);
   const continueLink = page
     .getByTestId("session-preparation-panel")
     .getByRole("link", { name: "Go to first exercise", exact: true });
@@ -234,7 +232,6 @@ test("puts truthful saved-equipment preparation before warm-up at phone sizes", 
     .toBe(true);
   await expect(page).toHaveURL(/#set-entry-/);
 
-  const currentCard = page.getByTestId("current-exercise-card");
   await currentCard
     .getByRole("button", { name: "Log set", exact: true })
     .click();
@@ -416,11 +413,6 @@ test("presents immutable superset order, truthful progress, and next-member equi
   await expect(
     laterMemberCard.getByRole("button", { name: "Log set", exact: true }),
   ).toHaveCount(0);
-  await page
-    .getByRole("complementary", { name: "Workout status" })
-    .getByRole("button")
-    .first()
-    .click();
   await expect(
     page.getByTestId("current-exercise-card").getByRole("button", {
       name: "Log set",
@@ -470,11 +462,14 @@ test("presents immutable superset order, truthful progress, and next-member equi
   await expect(currentCard.getByRole("heading", { level: 2 })).toHaveText(
     "Dumbbell Lateral Raise",
   );
-  await page
-    .getByRole("complementary", { name: "Workout status" })
-    .locator("button")
+  const currentSetTargetId = await currentCard
+    .locator('[id^="set-entry-"]')
     .first()
-    .click();
+    .getAttribute("id");
+  expect(currentSetTargetId).not.toBeNull();
+  await page.evaluate((targetId) => {
+    window.location.hash = targetId!;
+  }, currentSetTargetId);
   await expect(page).toHaveURL(/#set-entry-/);
   const currentActionUrl = page.url();
   await page.reload({ waitUntil: "domcontentloaded" });
@@ -531,9 +526,10 @@ test("presents immutable superset order, truthful progress, and next-member equi
     .poll(() =>
       page.evaluate(
         () =>
-          document.activeElement?.closest(
+          document.activeElement?.closest([
             '[data-testid="current-exercise-card"]',
-          ) != null,
+            '[data-testid="active-workout-dock-primary"]',
+          ].join(", ")) != null,
       ),
     )
     .toBe(true);

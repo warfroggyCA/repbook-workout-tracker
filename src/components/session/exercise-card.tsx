@@ -1143,16 +1143,26 @@ export function ExerciseCard({
     activeOccurrence?.sessionExerciseId === exercise.id &&
     activeOccurrence.kind === "working_set" &&
     activeOccurrence.kindOrdinal === nextSetIdx;
-  const unconfirmedSetBlocksActiveLogging = unconfirmedSetsBlockLogging({
+  const activeLoggingBlocked = unconfirmedSetsBlockLogging({
     sets: exercise.sets,
     targetOccurrenceId: activeOccurrence?.id ?? null,
     blockers: setOrderBlockers,
   });
+  const appendedLoggingBlocked = unconfirmedSetsBlockLogging({
+    sets: exercise.sets,
+    targetOccurrenceId: appendedOccurrence?.id ?? null,
+    blockers: setOrderBlockers,
+  });
+  const acknowledgementRenderedWithActivePlannedSet =
+    isCurrentPlannedSet &&
+    activeOccurrence != null &&
+    !isAppendedExtraSetOccurrence(activeOccurrence) &&
+    !activeLoggingBlocked;
   // A retained later attempt must yield to the exact earlier occurrence that
   // the server named as its blocker. Other unconfirmed writes still stay first
   // and keep future logging closed until they are resolved.
   const prioritizedRowIndex =
-    isCurrentPlannedSet && !unconfirmedSetBlocksActiveLogging
+    isCurrentPlannedSet && !activeLoggingBlocked
       ? nextSetIdx
       : unconfirmedSet
         ? unconfirmedSet.setNo - 1
@@ -1629,7 +1639,7 @@ export function ExerciseCard({
                         disabled={
                           pending ||
                           !metricSupported ||
-                          Boolean(unconfirmedSet) ||
+                          appendedLoggingBlocked ||
                           Boolean(occurrenceMutation) ||
                           logRequestKey === appendedOccurrence.id
                         }
@@ -1671,7 +1681,7 @@ export function ExerciseCard({
               if (i === nextSetIdx) {
                 if (
                   isCurrentPlannedSet &&
-                  !unconfirmedSetBlocksActiveLogging
+                  !activeLoggingBlocked
                 ) {
                   return (
                     <div
@@ -1953,7 +1963,8 @@ export function ExerciseCard({
               );
             })}
 
-            {activeOccurrence == null && displayedAcknowledgementReceipt && (
+            {!acknowledgementRenderedWithActivePlannedSet &&
+            displayedAcknowledgementReceipt && (
               <ActiveSetSaveReceipt
                 receipt={displayedAcknowledgementReceipt}
                 currentExerciseId={exercise.id}
