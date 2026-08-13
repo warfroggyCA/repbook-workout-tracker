@@ -23,6 +23,7 @@ describe("Program paste review", () => {
     expect(html).toContain("Paste your Program");
     expect(html).toContain("20,000 characters");
     expect(html).toContain("General preparation and lift ramp-ups");
+    expect(html).toContain("Exercise notes stay with that movement");
     expect(html).toContain("Parse for review");
   });
 

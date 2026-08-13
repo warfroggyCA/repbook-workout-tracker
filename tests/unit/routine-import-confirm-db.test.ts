@@ -15,7 +15,10 @@ import {
   users,
   workoutTemplates,
 } from "@/db/schema";
-import { parseCanonicalRoutineText } from "@/ai/tasks/routine-parse/deterministic";
+import {
+  CANONICAL_ROUTINE_PARSER_VERSION,
+  parseCanonicalRoutineText,
+} from "@/ai/tasks/routine-parse/deterministic";
 import type { RepSpec } from "@/ai/tasks/routine-parse/schema";
 import {
   createSuggestedDayIntent,
@@ -110,7 +113,7 @@ Ramp-up: Empty bar | reps=10`)!;
         matchType: "alias",
         candidates: [{ id: exerciseId, name: "Barbell Bench Press" }],
       }],
-      parserVersion: "canonical-routine-text/2",
+      parserVersion: CANONICAL_ROUTINE_PARSER_VERSION,
       aiEventIds,
       baseProgramVersionId,
     });
@@ -234,13 +237,19 @@ Ramp-up: Empty bar | reps=10`)!;
 Day 1 — Strength
 Warm-up: Easy bike | load=5 minutes
 Barbell Bench Press 3x8 @ 60 kg, rest 2 min
-Ramp-up: Empty bar | reps=10`;
+Ramp-up: Empty bar | reps=10
+Exercise notes: Keep the synthetic working sets controlled.`;
 
     const first = await parseRoutineText({ text, clientImportId });
     expect(first.ok).toBe(true);
+    if (!first.ok) return;
+    expect(first.envelope.data.days[0]?.exercises[0]?.notes).toBe(
+      "Keep the synthetic working sets controlled.",
+    );
     const retry = await parseRoutineText({ text, clientImportId });
     expect(retry).toEqual(first);
     expect(await db.query.importEvents.findMany()).toHaveLength(1);
+    expect(await db.query.aiParsingEvents.findMany()).toHaveLength(0);
 
     await expect(parseRoutineText({
       text: text.replace("Retry-safe import", "Changed retry"),

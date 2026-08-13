@@ -91,6 +91,9 @@ linked unconfirmed provider parse records.
 
 The review displays and edits every retained warm-up and the compiler-relevant
 minimum, priority, and protection choices in ordinary workout language.
+The offline canonical grammar also retains an adjacent `Exercise notes:` line
+on the exact exercise; a detached or duplicate notes line fails closed instead
+of being guessed onto another movement.
 Generated starting values are based only on pasted row structure and are not
 presented as owner-goal or History evidence. The current compiler preserves
 exercises, order, and pairings; it reduces only complete sets or complete group

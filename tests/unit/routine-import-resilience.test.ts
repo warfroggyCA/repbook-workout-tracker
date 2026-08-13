@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { structuredOutputTokenLimit } from "@/ai/provider";
 import {
+  CANONICAL_ROUTINE_PARSER_VERSION,
   collectSupersetRestTimings,
   inspectRoutineTextStructure,
   parseCanonicalRoutineText,
@@ -136,6 +137,29 @@ Ramp-up: Lighter hinge prep | reps=5 | load=one lighter set`;
       true,
     );
     expect(inspectRoutineTextStructure(source).exerciseCount).toBe(2);
+  });
+
+  it("retains adjacent exercise notes in the canonical no-AI path", () => {
+    const source = `Program: Synthetic Notes Routine
+Day 1 — Strength
+Warm-up: Easy bike | load=2 minutes easy
+Barbell Bench Press 3x6-8, rest 120 sec
+Ramp-up: Empty bar | reps=10 | load=empty bar
+Exercise notes: Keep two comfortable repetitions in reserve.
+Lat Pulldown 3x8-12, rest 75 sec
+Exercise note: Control the return without turning the movement into a row.`;
+
+    const parsed = parseCanonicalRoutineText(source);
+
+    expect(parsed).not.toBeNull();
+    expect(CANONICAL_ROUTINE_PARSER_VERSION).toBe(
+      "canonical-routine-text/3",
+    );
+    expect(inspectRoutineTextStructure(source).exerciseCount).toBe(2);
+    expect(parsed?.data.days[0]?.exercises.map((exercise) => exercise.notes)).toEqual([
+      "Keep two comfortable repetitions in reserve.",
+      "Control the return without turning the movement into a row.",
+    ]);
   });
 
   it("preserves explicitly unknown warm-up values as null with review ambiguities", () => {
@@ -281,6 +305,19 @@ Barbell Bench Press 3x6-8, rest 120 sec`),
       parseCanonicalRoutineText(`Program: Synthetic Superset
 Day 1 — Focus
 A1 Barbell Bench Press 3x6-8, rest 120 sec`),
+    ).toBeNull();
+    expect(
+      parseCanonicalRoutineText(`Program: Synthetic Detached Notes
+Day 1 — Focus
+Exercise notes: This cannot be attached safely.
+Barbell Bench Press 3x6-8, rest 120 sec`),
+    ).toBeNull();
+    expect(
+      parseCanonicalRoutineText(`Program: Synthetic Duplicate Notes
+Day 1 — Focus
+Barbell Bench Press 3x6-8, rest 120 sec
+Exercise notes: First retained instruction.
+Exercise notes: Conflicting second instruction.`),
     ).toBeNull();
   });
 
