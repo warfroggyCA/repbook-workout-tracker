@@ -357,7 +357,23 @@ test("keeps the full live workout usable through warm-up, skip, replace, continu
       key.startsWith("workout-tracker:skip-recovery:v1:")
     ).length
   )).toBe(1);
-  await page.reload({ waitUntil: "domcontentloaded" });
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("dialog", {
+    name: "Skip exercise — why?",
+  })).toHaveCount(0);
+  const interruptedSessionUrl = page.url();
+  await page.getByRole("link", {
+    name: "Back to Today",
+    exact: true,
+  }).click();
+  await expect(page).toHaveURL(/\/today$/);
+  const resumeInterruptedWorkout = page.getByRole("button", {
+    name: "Resume workout",
+    exact: true,
+  });
+  await expect(resumeInterruptedWorkout).toBeVisible();
+  await resumeInterruptedWorkout.click();
+  await expect(page).toHaveURL(interruptedSessionUrl);
   await expect.poll(() => page.evaluate(() =>
     Object.keys(window.sessionStorage).filter((key) =>
       key.startsWith("workout-tracker:skip-recovery:v1:")

@@ -20,11 +20,11 @@ export function shouldShowMissingWarmupMessage(input: {
 export type RuntimeSetSaveState = "saving" | "retrying";
 
 export function skipRecoveryNeedsReconciliation(input: {
-  markerPageInstanceId: string | null;
-  currentPageInstanceId: string;
+  markerRunnerInstanceId: string | null;
+  currentRunnerInstanceId: string;
 }): boolean {
-  return input.markerPageInstanceId == null ||
-    input.markerPageInstanceId !== input.currentPageInstanceId;
+  return input.markerRunnerInstanceId == null ||
+    input.markerRunnerInstanceId !== input.currentRunnerInstanceId;
 }
 
 /**

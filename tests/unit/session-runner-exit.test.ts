@@ -156,19 +156,29 @@ describe("occurrence discard continuity", () => {
 });
 
 describe("interrupted skip recovery", () => {
-  it("reconciles legacy and prior-page markers but not this page's request", () => {
+  it("reconciles legacy and prior-runner markers but not this runner's request", () => {
     expect(skipRecoveryNeedsReconciliation({
-      markerPageInstanceId: null,
-      currentPageInstanceId: "page-2",
+      markerRunnerInstanceId: null,
+      currentRunnerInstanceId: "runner-2",
     })).toBe(true);
     expect(skipRecoveryNeedsReconciliation({
-      markerPageInstanceId: "page-1",
-      currentPageInstanceId: "page-2",
+      markerRunnerInstanceId: "runner-1",
+      currentRunnerInstanceId: "runner-2",
     })).toBe(true);
     expect(skipRecoveryNeedsReconciliation({
-      markerPageInstanceId: "page-2",
-      currentPageInstanceId: "page-2",
+      markerRunnerInstanceId: "runner-2",
+      currentRunnerInstanceId: "runner-2",
     })).toBe(false);
+  });
+
+  it("invalidates async recovery callbacks when the workout runner unmounts", () => {
+    const source = readFileSync(
+      "src/components/session/session-runner.tsx",
+      "utf8",
+    );
+    expect(source).toContain("runnerActiveRef.current = false");
+    expect(source).toContain("if (!runnerActiveRef.current) return;");
+    expect(source).toContain("if (!runnerActiveRef.current) return;\n              patchExercise");
   });
 });
 

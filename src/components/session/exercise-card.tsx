@@ -535,7 +535,7 @@ type Props = {
   onSkipRequestFailure?: (
     reason: "time" | "pain" | "fatigue" | "equipment" | "other",
     code?: string,
-  ) => void;
+  ) => boolean;
   skipConfirmationPending?: boolean;
   skipConfirmationError?: string | null;
   onSkipConfirmationErrorDismiss?: () => Promise<void> | void;
@@ -631,7 +631,7 @@ export function ExerciseCard({
   onHistoryRevisionChange = () => undefined,
   onOpenCoach,
   onSkipRequestStart = () => undefined,
-  onSkipRequestFailure = () => undefined,
+  onSkipRequestFailure = () => true,
   skipConfirmationPending = false,
   skipConfirmationError = null,
   onSkipConfirmationErrorDismiss = () => undefined,
@@ -3304,7 +3304,7 @@ function SkipDrawer({
   onRequestFailure: (
     reason: "time" | "pain" | "fatigue" | "equipment" | "other",
     code?: string,
-  ) => void;
+  ) => boolean;
   onDone: (
     reason: "time" | "pain" | "fatigue" | "equipment" | "other",
     historyRevision: number,
@@ -3338,15 +3338,17 @@ function SkipDrawer({
                       expectedHistoryRevision,
                     });
                     if (!result.ok) {
-                      onRequestFailure(reason, result.code);
-                      toast.error(result.message);
+                      if (onRequestFailure(reason, result.code)) {
+                        toast.error(result.message);
+                      }
                       return;
                     }
                     onOpenChange(false);
                     onDone(reason, result.historyRevision);
                   } catch {
-                    onRequestFailure(reason);
-                    toast.error("The exercise could not be skipped.");
+                    if (onRequestFailure(reason)) {
+                      toast.error("The exercise could not be skipped.");
+                    }
                     return;
                   }
                 });
