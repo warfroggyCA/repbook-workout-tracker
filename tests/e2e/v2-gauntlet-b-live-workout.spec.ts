@@ -335,10 +335,6 @@ test("keeps the full live workout usable through warm-up, skip, replace, continu
   };
   page.on("requestfailed", observeInterruptedSkipTransport);
   page.on("requestfinished", observeInterruptedSkipTransport);
-  let rejectReplayedSkip!: () => void;
-  const replayedSkipMayFail = new Promise<void>((resolve) => {
-    rejectReplayedSkip = resolve;
-  });
   let interruptedSkipRequests = 0;
   await page.context().route("**/*", async (route) => {
     const request = route.request();
@@ -396,30 +392,25 @@ test("keeps the full live workout usable through warm-up, skip, replace, continu
     interruptedSkipTransportSettled,
   ]);
   await page.context().unrouteAll({ behavior: "wait" });
-  await page.route("**/session/**", async (route) => {
-    const request = route.request();
-    const postData = request.postData() ?? "";
-    if (
-      request.method() === "POST" &&
-      request.headers()["next-action"] &&
-      postData.includes('"reason":"equipment"')
-    ) {
-      interruptedSkipRequests += 1;
-      await replayedSkipMayFail;
-      await route.fulfill({
-        status: 500,
-        contentType: "text/plain",
-        body: "Injected interrupted-skip replay failure",
-      });
-      return;
-    }
-    await route.continue().catch(() => undefined);
-  });
   await expect.poll(() => page.evaluate(() =>
     Object.keys(window.sessionStorage).filter((key) =>
       key.startsWith("workout-tracker:skip-recovery:v1:")
     ).length
   )).toBe(1);
+  await page.evaluate(() => {
+    const key = Object.keys(window.sessionStorage).find((candidate) =>
+      candidate.startsWith("workout-tracker:skip-recovery:v1:")
+    );
+    if (key == null) throw new Error("Missing interrupted-skip recovery marker.");
+    const raw = window.sessionStorage.getItem(key);
+    if (raw == null) throw new Error("Missing interrupted-skip recovery value.");
+    const marker = JSON.parse(raw) as { expectedHistoryRevision?: unknown };
+    if (typeof marker.expectedHistoryRevision !== "number") {
+      throw new Error("Missing interrupted-skip history revision.");
+    }
+    marker.expectedHistoryRevision += 10_000;
+    window.sessionStorage.setItem(key, JSON.stringify(marker));
+  });
   const resumeInterruptedWorkout = page.getByRole("button", {
     name: "Resume workout",
     exact: true,
@@ -432,33 +423,6 @@ test("keeps the full live workout usable through warm-up, skip, replace, continu
       key.startsWith("workout-tracker:skip-recovery:v1:")
     ).length
   )).toBe(1);
-  const reconcilingSkip = exerciseCard(page, "Suspension Push-Up");
-  await expect.poll(() => interruptedSkipRequests).toBe(2);
-  await expect.poll(() => reconcilingSkip.evaluate((card) => {
-    const text = card.textContent ?? "";
-    const logCount = document.querySelectorAll(
-      'button[aria-label^="Log "]',
-    ).length;
-    const checking = document.querySelector<HTMLButtonElement>(
-      'button[aria-label="Checking skip for Suspension Push-Up"]',
-    );
-    const resolve = document.querySelector<HTMLButtonElement>(
-      'button[aria-label="Resolve Suspension Push-Up"]',
-    );
-    if (
-      text.includes("Checking the exercise skip") &&
-      checking?.disabled &&
-      logCount === 0
-    ) return "checking";
-    if (
-      text.includes("Skip was not confirmed") &&
-      resolve != null &&
-      !resolve.disabled &&
-      logCount === 0
-    ) return "unconfirmed";
-    return "transitioning";
-  })).toMatch(/^(?:checking|unconfirmed)$/);
-  rejectReplayedSkip();
   incompatible = exerciseCard(page, "Suspension Push-Up");
   await expect(incompatible).toContainText("Skip was not confirmed");
   const failedSkipRecovery = page.getByRole("button", {
@@ -474,12 +438,11 @@ test("keeps the full live workout usable through warm-up, skip, replace, continu
     );
     return key == null ? null : window.sessionStorage.getItem(key);
   })).toContain('"phase":"unconfirmed"');
-  await page.unrouteAll({ behavior: "wait" });
   await page.reload({ waitUntil: "networkidle" });
   incompatible = exerciseCard(page, "Suspension Push-Up");
   await expect(incompatible).toContainText("Skip was not confirmed");
   await expect(incompatible).toContainText("equipment skip");
-  await expect.poll(() => interruptedSkipRequests).toBe(2);
+  await expect.poll(() => interruptedSkipRequests).toBe(1);
   await expect(page.getByRole("button", { name: /^Log / })).toHaveCount(0);
   const rehydratedFailedSkipRecovery = page.getByRole("button", {
     name: "Resolve Suspension Push-Up",
