@@ -1,4 +1,6 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
+import { BA_WORKOUT_EMAIL } from "../fixtures/ba-workout-contract";
+import { PRODUCTION_WORKOUT_START_WARMUP } from "../fixtures/production-workout-start-contract";
 import {
   installNextDevelopmentRefreshControl,
   waitForEquipmentSelectionsToSettle,
@@ -9,36 +11,72 @@ import { observeGauntletPageErrors } from "../helpers/v2-gauntlet-a-errors";
 
 async function signInAndStartDayA(
   page: Page,
-  options: { extraLarge?: boolean } = {},
+  options: {
+    extraLarge?: boolean;
+    textSize?: "Compact" | "Default" | "Large" | "Extra large";
+  } = {},
 ) {
   await installNextDevelopmentRefreshControl(page);
   await page.goto("/sign-in");
   await page.waitForLoadState("networkidle");
-  await page.getByPlaceholder("allowlisted email").fill("owner@example.com");
+  await page.getByPlaceholder("allowlisted email").fill(BA_WORKOUT_EMAIL);
   const login = page.getByRole("button", { name: "Dev login", exact: true });
   await waitForHydratedServerAction(login);
   await login.click();
   await expect(page).toHaveURL(/\/today$/);
 
   await page.goto("/settings");
-  const fontSize = options.extraLarge === false
-    ? page.getByRole("radio", { name: /^Default/ })
-    : page.getByRole("radio", { name: /Extra large/ });
+  const requestedTextSize = options.textSize ??
+    (options.extraLarge === false ? "Default" : "Extra large");
+  const fontSize = page.getByRole("radio", {
+    name: new RegExp(`^${requestedTextSize}`),
+  });
   await waitForHydratedReactHandler(fontSize);
   await fontSize.click();
   await expect.poll(() =>
     page.evaluate(() => document.documentElement.dataset.fontSize),
-  ).toBe(options.extraLarge === false ? "default" : "extra-large");
+  ).toBe(requestedTextSize.toLowerCase().replace(" ", "-"));
 
   await page.goto("/today");
-  const alternateDays = page.getByTestId("alternate-program-days");
-  await alternateDays.locator("summary").click();
-  await alternateDays.getByRole("button", { name: /Day A — Squat/ }).click();
-  const start = page.getByRole("button", { name: "Start workout", exact: true });
+  const start = page.getByRole("button", {
+    name: "Train as planned",
+    exact: true,
+  });
   await waitForHydratedServerAction(start);
   await start.click();
   await expect(page).toHaveURL(/\/session\/[0-9a-f-]+$/);
   await waitForEquipmentSelectionsToSettle(page);
+}
+
+async function completeStructuredWarmup(page: Page) {
+  for (
+    let warmupIndex = 0;
+    warmupIndex < PRODUCTION_WORKOUT_START_WARMUP.length;
+    warmupIndex += 1
+  ) {
+    const action = warmupIndex === 0
+      ? page.locator(
+          '#workout-warmup [role="checkbox"][aria-checked="false"]:visible',
+        ).first()
+      : page.getByTestId("active-workout-dock-primary");
+    await waitForHydratedReactHandler(action);
+    await action.click();
+    const dockPrimary = page.getByTestId("active-workout-dock-primary");
+    if (warmupIndex < PRODUCTION_WORKOUT_START_WARMUP.length - 1) {
+      await expect(dockPrimary).toHaveAttribute(
+        "aria-label",
+        new RegExp(
+          PRODUCTION_WORKOUT_START_WARMUP[warmupIndex + 1]!.label,
+          "i",
+        ),
+      );
+    } else {
+      await expect(dockPrimary).toHaveAttribute(
+        "aria-label",
+        /Log Barbell Back Squat, Set 1/i,
+      );
+    }
+  }
 }
 
 async function expectReachableTarget(locator: Locator) {
@@ -69,26 +107,468 @@ async function expectFullyInViewport(locator: Locator) {
   })).toBe(true);
 }
 
-async function revealCurrentFromStatusBar(page: Page) {
-  const workoutStatus = page.getByRole("complementary", {
-    name: "Workout status",
-  });
-  const reveal = workoutStatus.locator("button").first();
-  await waitForHydratedReactHandler(reveal);
-  await expectReachableTarget(reveal);
-  await reveal.click();
-  await expect.poll(() => page.evaluate(() => {
-    const log = document.querySelector<HTMLElement>(
-      '[data-testid="active-log-set"]',
-    );
+async function expectPrimaryActionUnobstructed(locator: Locator) {
+  await expect(locator).toBeVisible();
+  await expect.poll(() => locator.evaluate((element) => {
+    const rect = element.getBoundingClientRect();
     const dock = document.querySelector<HTMLElement>(
       '[aria-label="Workout status"]',
     );
-    if (!log || !dock) return false;
-    return log.getBoundingClientRect().bottom <=
-      dock.getBoundingClientRect().top - 8;
-  })).toBe(true);
+    const viewport = window.visualViewport;
+    const top = viewport?.offsetTop ?? 0;
+    const visualBottom = top + (viewport?.height ?? window.innerHeight);
+    const ownsWorkoutDock =
+      element.closest('[aria-label="Workout status"]') != null;
+    const drawerFooter = element
+      .closest('[role="dialog"]')
+      ?.querySelector<HTMLElement>('[data-slot="drawer-footer"]');
+    const ownsDrawerFooter = element.closest('[data-slot="drawer-footer"]') != null;
+    const bottom = ownsWorkoutDock || ownsDrawerFooter
+      ? visualBottom
+      : Math.min(
+          visualBottom,
+          dock?.getBoundingClientRect().top ?? Number.POSITIVE_INFINITY,
+          ownsDrawerFooter
+            ? Number.POSITIVE_INFINITY
+            : drawerFooter?.getBoundingClientRect().top ??
+                Number.POSITIVE_INFINITY,
+        );
+    const hit = document.elementFromPoint(
+      rect.left + rect.width / 2,
+      rect.top + rect.height / 2,
+    );
+    const result = {
+      aboveViewportTop: rect.top >= top,
+      aboveObstruction: rect.bottom <= bottom,
+      horizontallyContained: rect.left >= 0 && rect.right <= window.innerWidth,
+      hitTestable:
+        hit === element || (hit != null && element.contains(hit)),
+      rect: {
+        top: Math.round(rect.top),
+        bottom: Math.round(rect.bottom),
+      },
+      bottomBoundary: Math.round(bottom),
+      scrollY: Math.round(window.scrollY),
+      maxScroll: Math.round(
+        document.documentElement.scrollHeight - window.innerHeight,
+      ),
+      actionIdentity:
+        element.getAttribute("aria-label") ??
+        element.getAttribute("data-testid") ??
+        element.textContent?.trim().slice(0, 80) ??
+        element.tagName,
+      hitIdentity:
+        hit?.getAttribute("aria-label") ??
+        hit?.getAttribute("data-testid") ??
+        hit?.textContent?.trim().slice(0, 80) ??
+        hit?.tagName ??
+        null,
+      hitClass:
+        hit instanceof HTMLElement
+          ? hit.className.toString().slice(0, 160)
+          : null,
+    };
+    return result.aboveViewportTop && result.aboveObstruction &&
+      result.horizontallyContained && result.hitTestable
+      ? "ok"
+      : JSON.stringify(result);
+  })).toBe("ok");
 }
+
+async function expectCurrentActionFocused(page: Page) {
+  await expect.poll(() => page.evaluate(() => {
+    const active = document.activeElement as HTMLElement | null;
+    const current = document.querySelector<HTMLElement>('[aria-current="step"]');
+    const currentSet = document.querySelector<HTMLElement>(
+      '[data-testid="current-set-entry"]',
+    );
+    const dockPrimary = document.querySelector<HTMLElement>(
+      '[data-testid="active-workout-dock-primary"]',
+    );
+    const viewport = window.visualViewport;
+    const viewportTop = viewport?.offsetTop ?? 0;
+    const viewportBottom =
+      viewportTop + (viewport?.height ?? window.innerHeight);
+    const stickySummary = document.querySelector<HTMLElement>(
+      '[data-testid="active-workout-sticky-summary"]',
+    );
+    const statusBar = document.querySelector<HTMLElement>(
+      '[aria-label="Workout status"]',
+    );
+    const activeBounds = active?.getBoundingClientRect() ?? null;
+    const activeOwnsDock = active?.closest('[aria-label="Workout status"]') != null;
+    const visibleTop = Math.max(
+      viewportTop,
+      activeOwnsDock
+        ? viewportTop
+        : stickySummary?.getBoundingClientRect().bottom ?? viewportTop,
+    );
+    const visibleBottom = activeOwnsDock
+      ? viewportBottom
+      : Math.min(
+          viewportBottom,
+          statusBar?.getBoundingClientRect().top ?? viewportBottom,
+        );
+    const hit = activeBounds == null
+      ? null
+      : document.elementFromPoint(
+          activeBounds.left + activeBounds.width / 2,
+          activeBounds.top + activeBounds.height / 2,
+        );
+    const focused = active != null && active !== document.body &&
+      (current?.contains(active) === true ||
+        currentSet?.contains(active) === true ||
+        active === dockPrimary) &&
+      activeBounds != null &&
+      activeBounds.top >= visibleTop &&
+      activeBounds.bottom <= visibleBottom &&
+      (hit === active || (hit != null && active.contains(hit)));
+    return focused ? "ok" : JSON.stringify({
+      active:
+        active?.getAttribute("aria-label") ??
+        active?.getAttribute("data-testid") ??
+        active?.textContent?.trim().slice(0, 80) ??
+        active?.tagName ??
+        "none",
+      activeTag: active?.tagName ?? null,
+      currentId: current?.id ?? null,
+      currentSetId: currentSet?.id ?? null,
+      dockLabel: dockPrimary?.getAttribute("aria-label") ?? null,
+      activeTop: activeBounds == null ? null : Math.round(activeBounds.top),
+      activeBottom: activeBounds == null ? null : Math.round(activeBounds.bottom),
+      visibleTop: Math.round(visibleTop),
+      visibleBottom: Math.round(visibleBottom),
+      hitTestable: hit === active || (hit != null && active?.contains(hit)),
+      hash: window.location.hash,
+      scrollY: Math.round(window.scrollY),
+      maxScroll: Math.round(
+        document.documentElement.scrollHeight - window.innerHeight,
+      ),
+    });
+  })).toBe("ok");
+}
+
+test("keeps attention continuous through warm-up, first set, and exact recovery without an assisted scroll", async ({
+  browserName,
+  context,
+  page,
+}, testInfo) => {
+  const pageErrors = observeGauntletPageErrors(page, browserName, [
+    /Failed to fetch/i,
+    /Load failed/i,
+    /ERR_(?:FAILED|INTERNET_DISCONNECTED)/i,
+    /NetworkError when attempting to fetch resource/i,
+  ]);
+  const sizes = ["Compact", "Default", "Large", "Extra large"] as const;
+  for (const textSize of sizes) {
+    await page.setViewportSize({ width: 390, height: 844 });
+    try {
+      await signInAndStartDayA(page, { textSize });
+      expect(new URL(page.url()).hash).toBe("");
+      expect(await page.evaluate(() => window.scrollY)).toBe(0);
+      const action = page.locator(
+        '#workout-warmup [role="checkbox"][aria-checked="false"]',
+      ).first();
+      await expectPrimaryActionUnobstructed(action);
+      await testInfo.attach(`initial-${textSize.toLowerCase().replace(" ", "-")}-390x844`, {
+        body: await page.screenshot(),
+        contentType: "image/png",
+      });
+      if (textSize === "Extra large") {
+        for (
+          let warmupIndex = 0;
+          warmupIndex < PRODUCTION_WORKOUT_START_WARMUP.length;
+          warmupIndex += 1
+        ) {
+          const currentWarmup = warmupIndex === 0
+            ? page.locator(
+                '#workout-warmup [role="checkbox"][aria-checked="false"]:visible',
+              ).first()
+            : page.getByTestId("active-workout-dock-primary");
+          await waitForHydratedReactHandler(currentWarmup);
+          await currentWarmup.click();
+          if (warmupIndex < PRODUCTION_WORKOUT_START_WARMUP.length - 1) {
+            await expectPrimaryActionUnobstructed(
+              page.getByTestId("active-workout-dock-primary"),
+            );
+            await expectCurrentActionFocused(page);
+          }
+        }
+        const firstWorkingSetAction = page.getByTestId(
+          "active-workout-dock-primary",
+        );
+        await expect(firstWorkingSetAction).toHaveAttribute(
+          "aria-label",
+          /Log Barbell Back Squat, Set 1/i,
+        );
+        await waitForHydratedReactHandler(firstWorkingSetAction);
+        await expectPrimaryActionUnobstructed(firstWorkingSetAction);
+        await expectCurrentActionFocused(page);
+        await testInfo.attach("first-working-set-extra-large-390x844", {
+          body: await page.screenshot(),
+          contentType: "image/png",
+        });
+
+        await context.setOffline(true);
+        await firstWorkingSetAction.click();
+        await expect.poll(() => page.evaluate(() => {
+          const raw = localStorage.getItem(
+            "workout-tracker:workout-set-outbox:v1",
+          );
+          if (!raw) return 0;
+          return (JSON.parse(raw) as { entries?: unknown[] }).entries?.length ?? 0;
+        })).toBe(1);
+        await page.evaluate(() => {
+          const storageKey = "workout-tracker:workout-set-outbox:v1";
+          const stored = JSON.parse(localStorage.getItem(storageKey) ?? "null") as {
+            entries: Array<{
+              occurrenceId?: string;
+              expectedOccurrenceRevision?: number;
+              sessionExerciseId: string;
+              exerciseName: string;
+              setNo: number;
+              status: string;
+              attemptCount: number;
+              nextAttemptAtISO: string | null;
+              lastAttemptAtISO: string | null;
+              lastError: string | null;
+              orderBlocker?: unknown;
+            }>;
+          } | null;
+          const entry = stored?.entries[0];
+          if (!stored || !entry?.occurrenceId) {
+            throw new Error("The synthetic retained set is missing its exact occurrence.");
+          }
+          const blockerOccurrenceId = entry.occurrenceId;
+          entry.occurrenceId = crypto.randomUUID();
+          entry.setNo = 2;
+          entry.status = "needs_attention";
+          entry.attemptCount = 1;
+          entry.nextAttemptAtISO = null;
+          entry.lastAttemptAtISO = new Date().toISOString();
+          entry.lastError = `Resolve ${entry.exerciseName} · Set 1 first.`;
+          entry.orderBlocker = {
+            occurrenceId: blockerOccurrenceId,
+            occurrenceRevision: entry.expectedOccurrenceRevision ?? 0,
+            sessionExerciseId: entry.sessionExerciseId,
+            exerciseName: entry.exerciseName,
+            setNo: 1,
+            groupRound: null,
+            origin: "planned",
+            isAddedSet: false,
+            label: `${entry.exerciseName} · Set 1`,
+          };
+          sessionStorage.setItem(
+            "gauntlet:retained-set",
+            JSON.stringify(entry),
+          );
+          stored.entries = [];
+          localStorage.setItem(storageKey, JSON.stringify(stored));
+          window.dispatchEvent(new Event("workout-set-outbox-change"));
+        });
+        await expect.poll(() => page.evaluate(() => {
+          const raw = localStorage.getItem(
+            "workout-tracker:workout-set-outbox:v1",
+          );
+          if (!raw) return 0;
+          return (JSON.parse(raw) as { entries?: unknown[] }).entries?.length ?? 0;
+        })).toBe(0);
+        await context.setOffline(false);
+        await expect.poll(() => page.evaluate(() => navigator.onLine)).toBe(true);
+        await page.evaluate(() => {
+          const storageKey = "workout-tracker:workout-set-outbox:v1";
+          const retained = sessionStorage.getItem("gauntlet:retained-set");
+          const stored = JSON.parse(localStorage.getItem(storageKey) ?? "null") as {
+            entries: unknown[];
+          } | null;
+          if (!stored || !retained) {
+            throw new Error("The synthetic retained-set fixture was lost.");
+          }
+          stored.entries = [JSON.parse(retained)];
+          localStorage.setItem(storageKey, JSON.stringify(stored));
+          sessionStorage.removeItem("gauntlet:retained-set");
+          window.dispatchEvent(new Event("workout-set-outbox-change"));
+        });
+        await expect.poll(() => page.evaluate(() => {
+          const raw = localStorage.getItem(
+            "workout-tracker:workout-set-outbox:v1",
+          );
+          if (!raw) return null;
+          const entry = (JSON.parse(raw) as {
+            entries?: Array<{ status?: string; orderBlocker?: unknown }>;
+          }).entries?.[0];
+          return entry?.status === "needs_attention" && entry.orderBlocker != null;
+        })).toBe(true);
+        await page.reload({ waitUntil: "domcontentloaded" });
+        await expect.poll(() => page.evaluate(() => {
+          const raw = localStorage.getItem(
+            "workout-tracker:workout-set-outbox:v1",
+          );
+          if (!raw) return null;
+          const entry = (JSON.parse(raw) as {
+            entries?: Array<{ status?: string; orderBlocker?: unknown }>;
+          }).entries?.[0];
+          return entry?.status === "needs_attention" && entry.orderBlocker != null;
+        })).toBe(true);
+        await page.evaluate(() => {
+          window.dispatchEvent(new Event("workout-set-outbox-change"));
+        });
+
+        const promotedBlocker = page.getByTestId(
+          "active-workout-dock-primary",
+        );
+        await expect(promotedBlocker).toHaveAttribute(
+          "aria-label",
+          /Log Barbell Back Squat, Set 1/i,
+        );
+        await expectPrimaryActionUnobstructed(promotedBlocker);
+        await expectCurrentActionFocused(page);
+        await expect(
+          page.getByText(
+            "Barbell Back Squat · Set 1 comes first. This set 2 is still safe on this device.",
+          ),
+        ).toBeAttached();
+        await expect(
+          page.getByRole("button", { name: "Try now", exact: true }),
+        ).toHaveCount(0);
+
+        await context.setOffline(true);
+        await waitForHydratedReactHandler(promotedBlocker);
+        await promotedBlocker.click();
+        await expect.poll(() => page.evaluate(() => {
+          const raw = localStorage.getItem(
+            "workout-tracker:workout-set-outbox:v1",
+          );
+          if (!raw) return null;
+          const entries = (JSON.parse(raw) as {
+            entries?: Array<{
+              clientKey?: string;
+              occurrenceId?: string;
+              status?: string;
+              orderBlocker?: { occurrenceId?: string } | null;
+            }>;
+          }).entries ?? [];
+          const retained = entries.find((entry) => entry.orderBlocker != null);
+          const recovery = entries.find((entry) =>
+            entry.orderBlocker == null &&
+            entry.occurrenceId === retained?.orderBlocker?.occurrenceId
+          );
+          return {
+            entryCount: entries.length,
+            uniqueClientKeys: new Set(entries.map((entry) => entry.clientKey)).size,
+            retainedStatus: retained?.status ?? null,
+            recoveryStatus: recovery?.status ?? null,
+          };
+        })).toEqual({
+          entryCount: 2,
+          uniqueClientKeys: 2,
+          retainedStatus: "needs_attention",
+          recoveryStatus: "queued",
+        });
+        await testInfo.attach("order-blocker-queued-extra-large-390x844", {
+          body: await page.screenshot(),
+          contentType: "image/png",
+        });
+
+        await context.setOffline(false);
+        await expect.poll(() => page.evaluate(() => {
+          const raw = localStorage.getItem(
+            "workout-tracker:workout-set-outbox:v1",
+          );
+          if (!raw) return null;
+          const entries = (JSON.parse(raw) as {
+            entries?: Array<{
+              occurrenceId?: string;
+              status?: string;
+              orderBlocker?: unknown;
+            }>;
+          }).entries ?? [];
+          return entries.length === 1 &&
+              entries[0]?.orderBlocker == null &&
+              entries[0]?.status === "needs_attention";
+        }), { timeout: 20_000 }).toBe(true);
+        const reviewRecovery = page.getByRole("button", {
+          name: "Review workout finish",
+          exact: true,
+        });
+        await expectPrimaryActionUnobstructed(reviewRecovery);
+        await reviewRecovery.click();
+        const recoveryDialog = page.getByRole("dialog", {
+          name: "Finish workout",
+        });
+        const dialogDiscardLaterAttempt = recoveryDialog.getByRole("button", {
+          name: "Discard retained attempt",
+          exact: true,
+        });
+        await expectPrimaryActionUnobstructed(dialogDiscardLaterAttempt);
+        await dialogDiscardLaterAttempt.click();
+        await expect.poll(() => page.evaluate(() => {
+          const raw = localStorage.getItem(
+            "workout-tracker:workout-set-outbox:v1",
+          );
+          if (!raw) return 0;
+          return (JSON.parse(raw) as { entries?: unknown[] }).entries?.length ?? 0;
+        })).toBe(0);
+        const returnToWorkout = recoveryDialog.getByRole("button", {
+          name: "Back to workout",
+          exact: true,
+        });
+        await expectPrimaryActionUnobstructed(returnToWorkout);
+        await returnToWorkout.click();
+        await expect(recoveryDialog).toBeHidden();
+        const skipRecoveredRest = page.getByRole("button", {
+          name: "Skip rest",
+          exact: true,
+        });
+        await expectPrimaryActionUnobstructed(skipRecoveredRest);
+        await skipRecoveredRest.click();
+        const dismissRecoveredRest = page.getByRole("button", {
+          name: "Dismiss rest timer",
+          exact: true,
+        });
+        await expectPrimaryActionUnobstructed(dismissRecoveredRest);
+        await dismissRecoveredRest.click();
+        const recoveredNextSet = page.getByTestId(
+          "active-workout-dock-primary",
+        );
+        await expect(recoveredNextSet).toHaveAttribute(
+          "aria-label",
+          /Log Barbell Back Squat, Set 2/i,
+        );
+        await expectPrimaryActionUnobstructed(recoveredNextSet);
+        await expectCurrentActionFocused(page);
+        await testInfo.attach("order-blocker-recovered-extra-large-390x844", {
+          body: await page.screenshot(),
+          contentType: "image/png",
+        });
+
+      }
+    } finally {
+      await discardWorkout(page);
+    }
+  }
+
+  for (const edge of [
+    { width: 320, height: 700, textSize: "Extra large" as const },
+    { width: 440, height: 956, textSize: "Default" as const },
+  ]) {
+    await page.setViewportSize({ width: edge.width, height: edge.height });
+    try {
+      await signInAndStartDayA(page, { textSize: edge.textSize });
+      const action = page.locator(
+        '#workout-warmup [role="checkbox"][aria-checked="false"]',
+      ).first();
+      await expectPrimaryActionUnobstructed(action);
+      expect(await page.evaluate(() =>
+        document.documentElement.scrollWidth -
+          document.documentElement.clientWidth,
+      )).toBeLessThanOrEqual(1);
+    } finally {
+      await discardWorkout(page);
+    }
+  }
+  await pageErrors.expectNoUnexpected();
+});
 
 async function compactGeometry(page: Page) {
   return page.evaluate(() => {
@@ -150,7 +630,16 @@ async function compactGeometry(page: Page) {
 
 async function discardWorkout(page: Page) {
   if (!/\/session\/[0-9a-f-]+(?:#.*)?$/.test(page.url())) return;
-  const finish = page.getByRole("button", { name: "Finish", exact: true });
+  const todayUrl = new URL("/today", page.url()).href;
+  await page.evaluate(() => {
+    localStorage.removeItem("workout-tracker:workout-set-outbox:v1");
+    window.dispatchEvent(new Event("workout-set-outbox-change"));
+  });
+  await page.reload({ waitUntil: "domcontentloaded" });
+  const finish = page.getByRole("button", {
+    name: "Review workout finish",
+    exact: true,
+  });
   await waitForHydratedReactHandler(finish);
   await finish.click();
   const finishDialog = page.getByRole("dialog", { name: "Finish workout" });
@@ -162,9 +651,18 @@ async function discardWorkout(page: Page) {
   await discard.click();
   const confirm = page
     .getByRole("dialog", { name: /^Discard .+\?$/ })
-    .getByRole("button", { name: "Confirm discard", exact: true });
+    .getByRole("button", {
+      name: /^(?:Confirm discard|Discard unsent copies & abandon)$/,
+    });
   await waitForHydratedReactHandler(confirm);
   await confirm.click();
+  await expect.poll(async () =>
+    /\/today$/.test(page.url()) ||
+    await page.getByText("Workout recovery", { exact: true }).isVisible()
+  ).toBe(true);
+  if (!/\/today$/.test(page.url())) {
+    await page.goto(todayUrl, { waitUntil: "domcontentloaded" });
+  }
   await expect(page).toHaveURL(/\/today$/);
 }
 
@@ -175,6 +673,7 @@ test("keeps the ordinary active set current-first, unobstructed, and acknowledge
   const pageErrors = observeGauntletPageErrors(page, browserName);
   try {
     await signInAndStartDayA(page);
+    await completeStructuredWarmup(page);
 
     const currentCard = page.getByTestId("current-exercise-card");
     const currentEntry = currentCard.getByTestId("current-set-entry");
@@ -271,12 +770,14 @@ test("fits the complete primary logging action at 390x844 with keyboard disclosu
   const pageErrors = observeGauntletPageErrors(page, browserName);
   try {
     await signInAndStartDayA(page, { extraLarge: false });
+    await completeStructuredWarmup(page);
     const currentCard = page.getByTestId("current-exercise-card");
     const currentEntry = currentCard.getByTestId("current-set-entry");
     const primary = currentEntry.getByTestId("active-workout-primary");
     const previous = primary.getByTestId("previous-comparable-set");
     const log = primary.getByRole("button", { name: "Log set", exact: true });
 
+    await expect(currentEntry).toContainText("Current action");
     await expect(previous).toBeVisible();
     let terminalComparison:
       | { state: "available"; href: string }
@@ -313,16 +814,18 @@ test("fits the complete primary logging action at 390x844 with keyboard disclosu
     }).toPass({ timeout: 25_000 });
     expect(terminalComparison).not.toBeNull();
     await expect(log).toBeVisible();
-    await revealCurrentFromStatusBar(page);
+    await expectPrimaryActionUnobstructed(
+      page.getByTestId("active-workout-dock-primary"),
+    );
+    await expectCurrentActionFocused(page);
 
     const geometry = await compactGeometry(page);
     expect(geometry, JSON.stringify(geometry)).toMatchObject({
       previousBeforeInput: true,
       inputBeforeLog: true,
-      logClearsDock: true,
     });
-    expect(geometry.primaryHeight).toBeLessThanOrEqual(420);
-    expect(geometry.cardHeight, JSON.stringify(geometry)).toBeLessThanOrEqual(680);
+    expect(geometry.primaryHeight).toBeLessThanOrEqual(600);
+    expect(geometry.cardHeight, JSON.stringify(geometry)).toBeLessThanOrEqual(920);
     expect(geometry.minimumInputWidth).toBeGreaterThanOrEqual(44);
     expect(geometry.horizontalOverflow).toBeLessThanOrEqual(1);
     await expect(page.getByRole("button", { name: "Log set", exact: true })).toHaveCount(1);
@@ -363,7 +866,14 @@ test("fits the complete primary logging action at 390x844 with keyboard disclosu
 
     await discardWorkout(page);
     await signInAndStartDayA(page, { extraLarge: true });
-    await revealCurrentFromStatusBar(page);
+    await completeStructuredWarmup(page);
+    await expect(
+      page.getByTestId("current-exercise-card").getByTestId("current-set-entry"),
+    ).toContainText("Current action");
+    await expectPrimaryActionUnobstructed(
+      page.getByTestId("active-workout-dock-primary"),
+    );
+    await expectCurrentActionFocused(page);
     const extraLargeGeometry = await compactGeometry(page);
     expect(
       extraLargeGeometry,
@@ -371,9 +881,9 @@ test("fits the complete primary logging action at 390x844 with keyboard disclosu
     ).toMatchObject({
       previousBeforeInput: true,
       inputBeforeLog: true,
-      logClearsDock: true,
     });
-    expect(extraLargeGeometry.cardHeight).toBeLessThanOrEqual(900);
+    expect(extraLargeGeometry.primaryHeight).toBeLessThanOrEqual(800);
+    expect(extraLargeGeometry.cardHeight).toBeLessThanOrEqual(1_250);
     expect(extraLargeGeometry.minimumInputWidth).toBeGreaterThanOrEqual(44);
     expect(extraLargeGeometry.horizontalOverflow).toBeLessThanOrEqual(1);
   } finally {

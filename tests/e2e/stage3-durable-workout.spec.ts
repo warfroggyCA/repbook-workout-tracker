@@ -166,7 +166,7 @@ test("publishes and preserves durable warm-up and grouped workout outcomes", asy
     "Next: Superset 1, round 1, member 1 of 3: Romanian Deadlift, set 1",
   );
   await expect(workoutStatus).toContainText("Activation ramp");
-  await expect(workoutStatus).toContainText("Warm-up");
+  await expect(workoutStatus).toContainText("Complete warm-up");
   await expect(workoutStatus).not.toContainText("Romanian Deadlift");
   await expect(warmupRow).toContainText("8 reps · 45 lb");
   await expect(warmupRow).toContainText(
@@ -238,6 +238,7 @@ test("publishes and preserves durable warm-up and grouped workout outcomes", asy
   await expect(reloadedWarmupRow).toContainText(
     "Note: Briefly skipped to prove recovery controls.",
   );
+  await completedWarmup.getByRole("button", { name: "Review full plan" }).click();
   await reloadedWarmupRow.getByRole("button", { name: "Restore", exact: true }).click();
   await expect(reloadedWarmupRow.getByRole("checkbox", { name: "Mark Activation ramp complete", exact: true })).toBeVisible();
   await reloadedWarmupRow.getByRole("checkbox", { name: "Mark Activation ramp complete", exact: true }).click();
@@ -255,7 +256,7 @@ test("publishes and preserves durable warm-up and grouped workout outcomes", asy
   await screenshot(page, "03-warmup-restored-and-completed.png");
   await waitForEquipmentSelectionsToSettle(page);
 
-  const nextSet = page.getByTestId("current-exercise-card");
+  let nextSet = page.getByTestId("current-exercise-card");
   await expect(nextSet.getByRole("heading", { level: 2 })).toHaveText("Romanian Deadlift");
   await nextSet.getByRole("button", { name: "Log set", exact: true }).click();
   await expect(nextSet.getByRole("heading", { level: 2 })).toHaveText("Barbell Overhead Press");
@@ -266,6 +267,7 @@ test("publishes and preserves durable warm-up and grouped workout outcomes", asy
     .getByRole("button", { name: "Dismiss rest timer", exact: true })
     .click();
 
+  nextSet = page.getByTestId("current-exercise-card");
   await openNativeDetails(nextSet.locator("details", {
     hasText: "Set exceptions",
   }));
@@ -280,8 +282,8 @@ test("publishes and preserves durable warm-up and grouped workout outcomes", asy
   await workingSkip.getByRole("button", { name: "Skip item", exact: true }).click();
   await expect(nextSet.getByRole("heading", { level: 2 })).toHaveText("Band Lat Pulldown");
   await expect(page.getByRole("button", { name: "Open unsaved workout changes" })).toHaveCount(0);
-  await workoutStatus.locator("button").first().click();
 
+  nextSet = page.getByTestId("current-exercise-card");
   await openNativeDetails(nextSet.locator("details", {
     hasText: "More for this exercise",
   }));
@@ -332,7 +334,7 @@ test("publishes and preserves durable warm-up and grouped workout outcomes", asy
   await screenshot(page, "06-group-round-reload-continuity.png");
 
   await page.getByRole("complementary", { name: "Workout status" })
-    .getByRole("button", { name: "Finish", exact: true }).click();
+    .getByRole("button", { name: "Review workout finish", exact: true }).click();
   const finish = page.getByRole("dialog", { name: "Finish workout" });
   await expect(finish).toContainText(/2 of \d+ planned sets done/);
   await expect(finish).toContainText(/1 skipped · \d+ still pending/);

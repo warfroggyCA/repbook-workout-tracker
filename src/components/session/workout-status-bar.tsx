@@ -16,11 +16,14 @@ type Props = {
   timer: DurableRestTimer | null;
   restRemainingSec: number | null;
   onShowCurrent: () => void;
+  onPrimaryAction?: () => void;
+  allowLogWithRetainedFailure?: boolean;
   onRestAdjust: (deltaSec: number) => void;
   onRestSkip: () => void;
   onRestContinue: () => void;
   onAddNote: () => void;
   onFinish: () => void;
+  finishReady?: boolean;
 };
 
 function saveStatus(exercise: SessionExerciseData | null) {
@@ -40,11 +43,14 @@ export function WorkoutStatusBar({
   timer,
   restRemainingSec,
   onShowCurrent,
+  onPrimaryAction,
+  allowLogWithRetainedFailure = false,
   onRestAdjust,
   onRestSkip,
   onRestContinue,
   onAddNote,
   onFinish,
+  finishReady,
 }: Props) {
   const saving = action?.kind === "working_set" ? saveStatus(exercise) : null;
   const timerRunning = timer?.phase === "running" && restRemainingSec != null;
@@ -66,6 +72,17 @@ export function WorkoutStatusBar({
       ? action.actualExerciseName
       : formatSessionGuidanceAction(action)
     : "Workout";
+  const canFinishNow = finishReady ?? action == null;
+  const logsCurrentSet =
+    action?.kind === "working_set" &&
+    onPrimaryAction != null &&
+    (saving == null || (saving === "Failed" && allowLogWithRetainedFailure));
+  const completesCurrentWarmup =
+    action != null &&
+    action.kind !== "working_set" &&
+    action.kind !== "rest" &&
+    onPrimaryAction != null;
+  const runsPrimaryAction = logsCurrentSet || completesCurrentWarmup;
 
   return (
     <aside
@@ -94,9 +111,17 @@ export function WorkoutStatusBar({
       >
         <button
           type="button"
-          onClick={onShowCurrent}
+          data-testid={runsPrimaryAction ? "active-workout-dock-primary" : undefined}
+          aria-label={logsCurrentSet
+            ? `Log ${title}, ${setPosition?.label ?? "current set"}`
+            : completesCurrentWarmup
+              ? `Complete ${title}`
+              : undefined}
+          onClick={runsPrimaryAction ? onPrimaryAction : onShowCurrent}
           className={cn(
-            "min-h-11 min-w-0 flex-1 rounded-md px-1 py-1 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring",
+            "min-h-11 min-w-0 flex-1 rounded-lg border border-primary/20 bg-primary/5 px-2 py-1 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring",
+            runsPrimaryAction &&
+              "border-primary bg-primary text-primary-foreground",
             timerRunning &&
               "col-span-2 col-start-1 row-start-1 min-[400px]:col-span-3 min-[520px]:col-span-1 min-[520px]:col-start-auto min-[520px]:row-start-auto",
             timerReady &&
@@ -112,6 +137,7 @@ export function WorkoutStatusBar({
             className={cn(
               "block break-words text-[11px] leading-tight text-muted-foreground",
               saving === "Failed" && "font-semibold text-destructive",
+              runsPrimaryAction && "text-primary-foreground/85",
               timerRunning &&
                 "font-semibold text-amber-950 dark:text-amber-100",
               timerReady &&
@@ -121,8 +147,10 @@ export function WorkoutStatusBar({
             {setPosition
               ? setPosition.kind === "extra"
                 ? `${setPosition.label} · ${status}`
-                : `${setPosition.label} of ${exercise?.targetSets ?? "open"} · ${status}`
-              : status}
+                : `${setPosition.label} of ${exercise?.targetSets ?? "open"} · ${logsCurrentSet ? "Log set" : status}`
+              : completesCurrentWarmup
+                ? "Complete warm-up"
+                : status}
           </span>
         </button>
 
@@ -176,12 +204,14 @@ export function WorkoutStatusBar({
         <Button
           type="button"
           size="sm"
+          variant={canFinishNow ? "default" : "outline"}
           className={cn(
             "min-h-11 shrink-0 px-2",
             (timerRunning || timerReady) &&
               "col-start-3 row-start-2 min-[400px]:col-start-auto min-[400px]:row-start-auto",
           )}
           onClick={onFinish}
+          aria-label={canFinishNow ? "Finish workout" : "Review workout finish"}
         >
           Finish
         </Button>

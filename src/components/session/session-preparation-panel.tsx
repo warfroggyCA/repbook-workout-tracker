@@ -290,6 +290,59 @@ export function SessionPreparationPanel({
     !needsVisibleAttention &&
     projection.state === "available";
 
+  if (compactAvailableSummary) {
+    return (
+      <section
+        id="session-equipment-preparation"
+        data-testid="session-preparation-panel"
+        aria-labelledby="session-equipment-preparation-heading"
+        className="scroll-mt-40 rounded-xl border border-primary/25 bg-primary/5 p-3 shadow-[var(--shadow-soft)]"
+      >
+        <div className="flex min-w-0 flex-col gap-1 min-[420px]:flex-row min-[420px]:items-start min-[420px]:justify-between">
+          <div className="min-w-0">
+            <h2
+              id="session-equipment-preparation-heading"
+              className="text-sm font-semibold"
+            >
+              Equipment ready
+            </h2>
+            <p className="break-words text-xs leading-snug text-muted-foreground">
+              {preparationLeadText(projection, true)} Exact setup stays with each exercise.
+            </p>
+          </div>
+          <span className="w-fit max-w-full rounded-full border bg-background px-2 py-1 text-xs font-medium leading-snug">
+            {summaryStatus}
+          </span>
+        </div>
+        <a
+          href={`#${encodeURIComponent(continueTargetId)}`}
+          onClick={onContinue}
+          className={buttonVariants({
+            size: "touch",
+            className: "mt-2 w-full motion-reduce:transition-none",
+          })}
+        >
+          {continueLabel}
+        </a>
+        <details className="mt-2 rounded-lg border bg-background/75">
+          <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-2 rounded-lg px-3 py-2 text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
+            <span>Review equipment list</span>
+            <span className="text-xs text-muted-foreground">Optional</span>
+          </summary>
+          <div className="border-t p-3">
+            <PreparationContents
+              projection={projection}
+              continueTargetId={continueTargetId}
+              continueLabel={continueLabel}
+              onContinue={onContinue}
+              showOverview={false}
+            />
+          </div>
+        </details>
+      </section>
+    );
+  }
+
   if (hasAcknowledgedWork && !needsVisibleAttention) {
     return (
       <details
@@ -323,26 +376,46 @@ export function SessionPreparationPanel({
       id="session-equipment-preparation"
       data-testid="session-preparation-panel"
       aria-labelledby="session-equipment-preparation-heading"
-      className="scroll-mt-40 rounded-xl border border-primary/25 bg-primary/5 p-3 shadow-[var(--shadow-soft)] sm:p-4"
+      className="scroll-mt-40 rounded-xl border border-primary/25 bg-primary/5 px-3 py-2.5 shadow-[var(--shadow-soft)] sm:px-4 sm:py-3"
     >
-      <p className="text-xs font-semibold uppercase tracking-wide text-primary">
+      <p className="sr-only">
         {hasAcknowledgedWork ? "Equipment update" : "Before warm-up"}
       </p>
-      <h2 id="session-equipment-preparation-heading" className="mt-0.5 text-lg font-semibold">
-        {hasAcknowledgedWork ? "Workout equipment" : "Prepare workout"}
-      </h2>
-      <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
-        {preparationLeadText(projection, compactAvailableSummary)}
-      </p>
-      <div className="mt-3">
-        <PreparationContents
-          projection={projection}
-          continueTargetId={continueTargetId}
-          continueLabel={continueLabel}
-          onContinue={onContinue}
-          showOverview={!compactAvailableSummary}
-        />
+      <div className="flex min-w-0 flex-col gap-1 min-[420px]:flex-row min-[420px]:items-start min-[420px]:justify-between min-[420px]:gap-3">
+        <div className="min-w-0">
+          <h2
+            id="session-equipment-preparation-heading"
+            className="text-sm font-semibold"
+          >
+            {hasAcknowledgedWork ? "Workout equipment" : "Prepare workout"}
+          </h2>
+          <p className="mt-0.5 break-words text-xs leading-snug text-muted-foreground">
+            {preparationLeadText(projection, compactAvailableSummary)}
+          </p>
+        </div>
+        <span className="w-fit max-w-full rounded-full border bg-background px-2 py-1 text-xs font-medium leading-snug">
+          {summaryStatus}
+        </span>
       </div>
+      <details className="mt-2 rounded-lg border bg-background/75">
+        <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 rounded-lg px-3 py-2 text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 motion-reduce:transition-none">
+          <span>
+            {needsVisibleAttention ? "Review equipment details" : "Equipment details"}
+          </span>
+          <span className="shrink-0 text-xs text-muted-foreground">
+            List &amp; continue
+          </span>
+        </summary>
+        <div className="border-t p-3">
+          <PreparationContents
+            projection={projection}
+            continueTargetId={continueTargetId}
+            continueLabel={continueLabel}
+            onContinue={onContinue}
+            showOverview={!compactAvailableSummary}
+          />
+        </div>
+      </details>
     </section>
   );
 }

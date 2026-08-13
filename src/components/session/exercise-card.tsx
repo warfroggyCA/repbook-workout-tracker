@@ -204,6 +204,33 @@ function formatLoggedExceptionContext(set: LoggedSet) {
   return context;
 }
 
+function formatSetTarget(
+  occurrence: SessionOccurrenceData,
+  exercise: SessionExerciseData,
+) {
+  const parts: string[] = [];
+  const repsMin = occurrence.plannedRepsMin ?? exercise.targetRepsMin;
+  const repsMax = occurrence.plannedRepsMax ?? exercise.targetRepsMax;
+  if (repsMin != null && repsMax != null) {
+    parts.push(
+      repsMin === repsMax
+        ? `${repsMin} rep${repsMin === 1 ? "" : "s"}`
+        : `${repsMin}–${repsMax} reps`,
+    );
+  }
+  const plannedLoad = occurrence.plannedLoad ?? exercise.targetLoad;
+  const plannedLoadUnit =
+    occurrence.plannedLoadUnit ?? exercise.targetLoadUnit;
+  if (plannedLoad != null && plannedLoadUnit != null) {
+    parts.push(`${plannedLoad} ${plannedLoadUnit}`);
+  } else if (occurrence.plannedLoadPercent != null) {
+    parts.push(`${occurrence.plannedLoadPercent}%`);
+  } else if (occurrence.plannedLoadText?.trim()) {
+    parts.push(occurrence.plannedLoadText.trim());
+  }
+  return parts.length > 0 ? parts.join(" · ") : "No numeric target";
+}
+
 function ActiveSetSaveReceipt({
   receipt,
   currentExerciseId,
@@ -223,28 +250,22 @@ function ActiveSetSaveReceipt({
       id={`active-set-save-receipt-${receipt.sessionExerciseId}-${receipt.set.setNo}`}
       data-testid="active-set-save-receipt"
       role="status"
-      className="mt-3 rounded-md border border-green-600/30 bg-green-600/10 px-3 py-2 text-sm"
+      className="mt-2 rounded-lg border border-emerald-600/30 bg-emerald-600/10 p-3 text-sm"
     >
-      <p className="font-semibold">
-        Saved · {receipt.sessionExerciseId !== currentExerciseId
-          ? `${receipt.exerciseName} · `
-          : ""}
-        Set {receipt.set.setNo}
-      </p>
-      <p className="mt-0.5 text-xs text-muted-foreground">
-        {formatLoggedSet(receipt.set, receipt.metricType)} · Acknowledged by
-        Repbook
-      </p>
-      {formatLoggedExceptionContext(receipt.set).map((context) => (
-        <p key={context} className="mt-0.5 text-xs text-muted-foreground">
-          {context}
-        </p>
-      ))}
-      <div className="mt-2 flex flex-wrap items-center justify-between gap-2 border-t border-green-700/20 pt-2">
-        <span className="text-xs text-muted-foreground">
-          Wrong value? Correct the saved set; the original remains in Edit
-          history.
-        </span>
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div className="min-w-0">
+          <p className="break-words font-semibold tabular-nums">
+            Saved · {receipt.sessionExerciseId !== currentExerciseId
+              ? `${receipt.exerciseName} · `
+              : ""}
+            Set {receipt.set.setNo} · {formatLoggedSet(receipt.set, receipt.metricType)}
+          </p>
+          {formatLoggedExceptionContext(receipt.set).length > 0 && (
+            <p className="mt-1 text-xs text-muted-foreground">
+              {formatLoggedExceptionContext(receipt.set).join(" · ")}
+            </p>
+          )}
+        </div>
         {(receipt.set.metricType ?? receipt.metricType) === "activity" ? (
           <span className="text-xs text-muted-foreground">
             Correction unavailable for this legacy shape
@@ -267,6 +288,123 @@ function ActiveSetSaveReceipt({
           />
         )}
       </div>
+      <p className="mt-2 border-t border-emerald-700/20 pt-2 text-xs text-muted-foreground">
+        Acknowledged by Repbook. Wrong value? Correct the saved set; the
+        original remains in Edit history.
+      </p>
+    </div>
+  );
+}
+
+function PendingSetSaveStatus({
+  set,
+  rowLabel,
+  orderBlocker = null,
+  reviewRequired = false,
+  onRevealBlocker,
+  onRefreshWorkout,
+  onRetry,
+  onDiscard,
+}: {
+  set: LoggedSet;
+  rowLabel: string;
+  orderBlocker?: SetOrderBlocker | null;
+  reviewRequired?: boolean;
+  onRevealBlocker?: (targetId: string) => void;
+  onRefreshWorkout?: () => void;
+  onRetry: (clientKey: string) => Promise<void>;
+  onDiscard: (clientKey: string) => Promise<void>;
+}) {
+  if (set.saveState == null || set.saveState === "saved") return null;
+  const failed = set.saveState === "failed";
+  const orderConflict =
+    failed &&
+    (orderBlocker != null ||
+      set.lastError?.toLowerCase().includes("earlier set") === true ||
+      set.lastError?.toLowerCase().includes("set order") === true ||
+      set.lastError?.toLowerCase().includes("workout order") === true);
+  const blockerDescription = orderBlocker == null
+    ? null
+    : [orderBlocker.blockerExerciseName, orderBlocker.blockerLabel]
+        .filter((part): part is string => Boolean(part?.trim()))
+        .join(" · ");
+
+  return (
+    <div
+      className={cn(
+        "mt-2 rounded-lg border p-3",
+        failed
+          ? "border-destructive/40 bg-destructive/5"
+          : "border-amber-600/30 bg-amber-500/5",
+      )}
+    >
+      <div role={failed ? "alert" : "status"}>
+        <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+          <p className="font-semibold">{rowLabel}</p>
+          <p
+            className={cn(
+              "text-xs font-semibold",
+              failed ? "text-destructive" : "text-amber-800 dark:text-amber-200",
+            )}
+          >
+            {setSaveStateLabel(set.saveState)}
+          </p>
+        </div>
+        <p className="mt-1 text-xs leading-5 text-muted-foreground">
+          {reviewRequired
+            ? `This retained ${rowLabel.toLowerCase()} was based on an older workout state. Refresh, then review or discard it.`
+            : orderConflict && blockerDescription
+            ? `${blockerDescription} comes first. This ${rowLabel.toLowerCase()} is still safe on this device.`
+            : orderConflict
+              ? "Workout order changed. Refresh to find the exact set that comes first."
+              : failed
+                ? `This unsaved attempt still owns ${rowLabel}. Retry it, or discard it to enter or skip ${rowLabel} again.`
+                : `Waiting for Repbook to acknowledge ${rowLabel}. It will not advance until that happens.`}
+        </p>
+        {failed && set.lastError && !orderConflict && (
+          <p className="mt-2 text-sm text-foreground">{set.lastError}</p>
+        )}
+      </div>
+      {failed && set.clientKey && (
+        <div className="mt-3 grid grid-cols-1 gap-2 min-[520px]:grid-cols-2">
+          {reviewRequired && onRefreshWorkout ? (
+            <Button type="button" onClick={onRefreshWorkout}>
+              Refresh workout
+            </Button>
+          ) : orderBlocker?.blockerTargetId && onRevealBlocker ? (
+            <Button
+              type="button"
+              onClick={() => onRevealBlocker(orderBlocker.blockerTargetId!)}
+            >
+              Go to {orderBlocker.blockerLabel}
+            </Button>
+          ) : orderConflict && onRefreshWorkout ? (
+            <Button type="button" onClick={onRefreshWorkout}>
+              Refresh workout
+            </Button>
+          ) : null}
+          {orderBlocker == null && !reviewRequired && (
+            <Button
+              type="button"
+              variant="outline"
+              onClick={async () => await onRetry(set.clientKey!)}
+            >
+              {orderConflict ? "Retry retained attempt" : `Retry ${rowLabel}`}
+            </Button>
+          )}
+          <Button
+            type="button"
+            variant="ghost"
+            className={cn(
+              "text-destructive",
+              orderConflict && "min-[520px]:col-span-2",
+            )}
+            onClick={async () => await onDiscard(set.clientKey!)}
+          >
+            Discard attempt
+          </Button>
+        </div>
+      )}
     </div>
   );
 }
@@ -364,6 +502,7 @@ type Props = {
   acknowledgementReceipt?: SetAcknowledgementReceipt | null;
   isCurrentExercise?: boolean;
   nextActionLabel?: string | null;
+  currentActionControlRef?: (node: HTMLButtonElement | null) => void;
   warmupResolved?: boolean;
   groupContext?: {
     name: string;
@@ -383,12 +522,58 @@ type Props = {
   ) => void;
   onRetrySet: (clientKey: string) => Promise<void>;
   onDiscardSet: (clientKey: string) => Promise<void>;
+  setOrderBlockers?: Record<string, SetOrderBlocker>;
+  setReviewRequired?: Record<string, boolean>;
+  onRevealBlocker?: (targetId: string) => void;
+  onRefreshWorkout?: () => void;
   onHistoryRevisionChange?: (historyRevision: number) => void;
   onOpenCoach: () => void;
   onSkipComplete: () => void;
   adjustIntent: ExerciseAdjustmentIntent | null;
   onAdjustIntentChange: (intent: ExerciseAdjustmentIntent | null) => void;
 };
+
+export type SetOrderBlocker = {
+  blockerOccurrenceId?: string;
+  blockerLabel: string;
+  blockerExerciseName?: string | null;
+  blockerTargetId?: string;
+};
+
+export function unconfirmedSetsBlockLogging({
+  sets,
+  targetOccurrenceId,
+  blockers,
+}: {
+  sets: LoggedSet[];
+  targetOccurrenceId: string | null;
+  blockers: Record<string, SetOrderBlocker>;
+}) {
+  const unconfirmedSets = sets.filter(
+    (set) => set.saveState != null && set.saveState !== "saved",
+  );
+  if (unconfirmedSets.length === 0) return false;
+  if (targetOccurrenceId == null) return true;
+  return !unconfirmedSets.every(
+    (set) =>
+      set.clientKey != null &&
+      blockers[set.clientKey]?.blockerOccurrenceId === targetOccurrenceId,
+  );
+}
+
+export async function runGuardedLogRequest<T>(
+  inFlight: Set<string>,
+  requestKey: string,
+  request: () => Promise<T>,
+): Promise<{ started: false } | { started: true; value: T }> {
+  if (inFlight.has(requestKey)) return { started: false };
+  inFlight.add(requestKey);
+  try {
+    return { started: true, value: await request() };
+  } finally {
+    inFlight.delete(requestKey);
+  }
+}
 
 type ReplacementOptions = Extract<
   Awaited<ReturnType<typeof getReplacementOptions>>,
@@ -420,6 +605,7 @@ export function ExerciseCard({
   acknowledgementReceipt = null,
   isCurrentExercise = false,
   nextActionLabel = null,
+  currentActionControlRef,
   warmupResolved = false,
   groupContext = null,
   occurrenceChangesBlocked = false,
@@ -428,6 +614,10 @@ export function ExerciseCard({
   onDiscardOccurrenceMutation = () => undefined,
   onRetrySet,
   onDiscardSet,
+  setOrderBlockers = {},
+  setReviewRequired = {},
+  onRevealBlocker,
+  onRefreshWorkout,
   onHistoryRevisionChange = () => undefined,
   onOpenCoach,
   onSkipComplete,
@@ -607,6 +797,8 @@ export function ExerciseCard({
   const [appendingSet, setAppendingSet] = useState(false);
   const appendRequestRef = useRef<string | null>(null);
   const appendFocusRequestRef = useRef<string | null>(null);
+  const logRequestRef = useRef(new Set<string>());
+  const [logRequestKey, setLogRequestKey] = useState<string | null>(null);
   const [skipSetOccurrence, setSkipSetOccurrence] =
     useState<SessionOccurrenceData | null>(null);
   const [note, setNote] = useState(exercise.notes ?? "");
@@ -684,7 +876,11 @@ export function ExerciseCard({
     occurrence: SessionOccurrenceData | null = activeOccurrence,
     submittedDraft: SetDraft = draft,
   ) {
-    if (exercise.sets.some((set) => set.saveState != null && set.saveState !== "saved")) {
+    if (unconfirmedSetsBlockLogging({
+      sets: exercise.sets,
+      targetOccurrenceId: occurrence?.id ?? null,
+      blockers: setOrderBlockers,
+    })) {
       return;
     }
     if (!metricSupported) {
@@ -723,74 +919,82 @@ export function ExerciseCard({
         note: submittedDraft.pain.note,
       };
     }
-    let clientKey: string;
-    try {
-      clientKey = createClientUuid();
-    } catch {
-      toast.error(
-        "This browser could not create a secure set identity. Nothing was saved.",
-      );
-      return;
-    }
-    const submittedAtISO = new Date().toISOString();
-    const cleanNote = submittedDraft.note.trim() || null;
-    const optimistic: LoggedSet = {
-      id: `optimistic-${clientKey}`,
-      clientKey,
-      setNo,
-      ...performed.measurement,
-      rpe: submittedDraft.rpe,
-      rir: submittedDraft.rir,
-      techniqueIssue: submittedDraft.techniqueIssue,
-      limitationCause: submittedDraft.limitationCause,
-      pain,
-      note: cleanNote,
-      saveState: "pending",
-    };
-    try {
-      if (!(await onQueueSet(optimistic, occurrence))) return;
-    } catch {
-      toast.error(
-        "This browser could not open the device set queue. Nothing was saved.",
-      );
-      return;
-    }
-    writeActiveWorkoutMeasurement({
-      version: 1,
-      clientKey,
-      setId: null,
-      readyAtISO: readyAtRef.current,
-      submittedAtISO,
-      acknowledgedAtISO: null,
-      durationMs: null,
-      taps: tapsRef.current,
-      focusChanges: focusChangesRef.current,
-      corrections: 0,
-      outcome: "delayed",
+    const requestKey = occurrence?.id ?? `${exercise.id}:${setNo}`;
+    await runGuardedLogRequest(logRequestRef.current, requestKey, async () => {
+      setLogRequestKey(requestKey);
+      try {
+        let clientKey: string;
+        try {
+          clientKey = createClientUuid();
+        } catch {
+          toast.error(
+            "This browser could not create a secure set identity. Nothing was saved.",
+          );
+          return;
+        }
+        const submittedAtISO = new Date().toISOString();
+        const cleanNote = submittedDraft.note.trim() || null;
+        const optimistic: LoggedSet = {
+          id: `optimistic-${clientKey}`,
+          clientKey,
+          setNo,
+          ...performed.measurement,
+          rpe: submittedDraft.rpe,
+          rir: submittedDraft.rir,
+          techniqueIssue: submittedDraft.techniqueIssue,
+          limitationCause: submittedDraft.limitationCause,
+          pain,
+          note: cleanNote,
+          saveState: "pending",
+        };
+        try {
+          if (!(await onQueueSet(optimistic, occurrence))) return;
+        } catch {
+          toast.error(
+            "This browser could not open the device set queue. Nothing was saved.",
+          );
+          return;
+        }
+        writeActiveWorkoutMeasurement({
+          version: 1,
+          clientKey,
+          setId: null,
+          readyAtISO: readyAtRef.current,
+          submittedAtISO,
+          acknowledgedAtISO: null,
+          durationMs: null,
+          taps: tapsRef.current,
+          focusChanges: focusChangesRef.current,
+          corrections: 0,
+          outcome: "delayed",
+        });
+        const resetSubmittedDraft = (current: SetDraft): SetDraft => ({
+          ...current,
+          distanceKm:
+            performed.measurement.metricType === "distance_duration"
+              ? null
+              : current.distanceKm,
+          durationSeconds:
+            performed.measurement.metricType === "duration" ||
+              performed.measurement.metricType === "distance_duration"
+              ? null
+              : current.durationSeconds,
+          rpe: null,
+          rir: null,
+          techniqueIssue: null,
+          limitationCause: null,
+          pain: null,
+          note: exercise.setNotes[setNo] ?? "",
+        });
+        if (occurrence?.id === appendedOccurrence?.id) {
+          setAppendedDraft(resetSubmittedDraft);
+        } else {
+          setDraft(resetSubmittedDraft);
+        }
+      } finally {
+        setLogRequestKey((current) => current === requestKey ? null : current);
+      }
     });
-    const resetSubmittedDraft = (current: SetDraft): SetDraft => ({
-      ...current,
-      distanceKm:
-        performed.measurement.metricType === "distance_duration"
-          ? null
-          : current.distanceKm,
-      durationSeconds:
-        performed.measurement.metricType === "duration" ||
-          performed.measurement.metricType === "distance_duration"
-          ? null
-          : current.durationSeconds,
-      rpe: null,
-      rir: null,
-      techniqueIssue: null,
-      limitationCause: null,
-      pain: null,
-      note: exercise.setNotes[setNo] ?? "",
-    });
-    if (occurrence?.id === appendedOccurrence?.id) {
-      setAppendedDraft(resetSubmittedDraft);
-    } else {
-      setDraft(resetSubmittedDraft);
-    }
   }
 
   async function handleAppendSet() {
@@ -935,11 +1139,26 @@ export function ExerciseCard({
       });
     }
   }
-  const prioritizedRowIndex = prioritizeCurrentAction
-    ? nextSetIdx
-    : unconfirmedSet
-      ? unconfirmedSet.setNo - 1
-      : null;
+  const isCurrentPlannedSet =
+    activeOccurrence?.sessionExerciseId === exercise.id &&
+    activeOccurrence.kind === "working_set" &&
+    activeOccurrence.kindOrdinal === nextSetIdx;
+  const unconfirmedSetBlocksActiveLogging = unconfirmedSetsBlockLogging({
+    sets: exercise.sets,
+    targetOccurrenceId: activeOccurrence?.id ?? null,
+    blockers: setOrderBlockers,
+  });
+  // A retained later attempt must yield to the exact earlier occurrence that
+  // the server named as its blocker. Other unconfirmed writes still stay first
+  // and keep future logging closed until they are resolved.
+  const prioritizedRowIndex =
+    isCurrentPlannedSet && !unconfirmedSetBlocksActiveLogging
+      ? nextSetIdx
+      : unconfirmedSet
+        ? unconfirmedSet.setNo - 1
+        : prioritizeCurrentAction
+          ? nextSetIdx
+          : null;
   const plannedRowOrder = Array.from(
     { length: plannedRows },
     (_, index) => index,
@@ -948,10 +1167,6 @@ export function ExerciseCard({
     if (right === prioritizedRowIndex) return 1;
     return left - right;
   });
-  const isCurrentPlannedSet =
-    activeOccurrence?.sessionExerciseId === exercise.id &&
-    activeOccurrence.kind === "working_set" &&
-    activeOccurrence.kindOrdinal === nextSetIdx;
   const hasWarmupGuidance =
     exercise.modificationType !== "substituted" &&
     !!exercise.warmupNotes?.trim();
@@ -1146,14 +1361,14 @@ export function ExerciseCard({
               <AlertTriangle className="size-3.5 shrink-0 text-amber-500" />
             )}
           </div>
-          <p className="text-xs text-muted-foreground">
+          <p className="break-words text-xs leading-5 text-muted-foreground">
             {isSkipped
               ? `Skipped (${exercise.skipReason})`
               : exercise.modificationType === "added"
-                ? `${progress.workoutOnlyPerformed}/${progress.workoutOnly || "–"} workout-only performed${progress.extraPerformed > 0 ? ` · ${progress.extraPerformed} extra` : ""}${devicePendingSets > 0 ? ` · ${devicePendingSets} saving` : ""} · Added · ${formatRestTime(exercise.restSec)} rest`
+                ? `${progress.workoutOnlyPerformed}/${progress.workoutOnly || "–"} done${progress.extraPerformed > 0 ? ` · ${progress.extraPerformed} extra` : ""}${devicePendingSets > 0 ? ` · ${devicePendingSets} saving` : ""} · Workout only`
                 : isCurrentExercise
-                  ? `${progress.plannedPerformed}/${progress.planned || "–"} done${progress.extraPerformed > 0 ? ` · ${progress.extraPerformed} extra` : ""}${devicePendingSets > 0 ? ` · ${devicePendingSets} saving` : ""} · ${targetText} · ${formatRestTime(exercise.restSec)} rest`
-                  : `${progress.plannedPerformed}/${progress.planned || "–"} planned performed${progress.extraPerformed > 0 ? ` · ${progress.extraPerformed} extra` : ""}${devicePendingSets > 0 ? ` · ${devicePendingSets} saving` : ""} · Planned: ${targetText} · ${formatRestTime(exercise.restSec)} rest`}
+                  ? `${progress.plannedPerformed}/${progress.planned || "–"} done${progress.extraPerformed > 0 ? ` · ${progress.extraPerformed} extra` : ""}${devicePendingSets > 0 ? ` · ${devicePendingSets} saving` : ""}`
+                  : `${progress.plannedPerformed}/${progress.planned || "–"} planned performed${progress.extraPerformed > 0 ? ` · ${progress.extraPerformed} extra` : ""}${devicePendingSets > 0 ? ` · ${devicePendingSets} saving` : ""} · ${targetText} · ${formatRestTime(exercise.restSec)} rest`}
             {exercise.modificationType === "substituted" &&
               ` · instead of ${exercise.plannedExerciseName ?? "planned exercise"}`}
           </p>
@@ -1211,18 +1426,22 @@ export function ExerciseCard({
               if (set) {
                 const awaitingSave =
                   set.saveState != null && set.saveState !== "saved";
+                const setRowLabel = rowPosition?.label ?? `Set ${i + 1}`;
                 return (
                   <div
                     key={set.id}
                     id={`logged-set-${exercise.id}-${set.setNo}`}
-                    className="rounded-md bg-primary/5 px-3 py-2 text-sm"
+                    className={cn(
+                      "rounded-lg px-3 py-2 text-sm",
+                      awaitingSave ? "border bg-background" : "bg-primary/5",
+                    )}
                   >
                     <div>
-                      <div className="flex items-center justify-between gap-3">
+                      <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
                         <span className="text-muted-foreground">
-                          {rowPosition?.label ?? `Set ${i + 1}`}
+                          {setRowLabel}
                         </span>
-                        <span className="font-medium tabular-nums">
+                        <span className="break-words text-right font-medium tabular-nums">
                           {formatLoggedSet(set, exercise.metricType)}
                           {set.rpe != null &&
                             ` · ${effortChoiceForLegacyRpe(set.rpe)?.label ?? `RPE ${set.rpe}`}`}
@@ -1243,49 +1462,24 @@ export function ExerciseCard({
                         </p>
                       ))}
                     </div>
-                    {set.saveState && (
-                      <div className="mt-2 flex flex-wrap items-center justify-between gap-2 border-t pt-2 text-xs">
-                        <span
-                          role={set.saveState === "failed" ? "alert" : "status"}
-                          className={cn(
-                            "text-muted-foreground",
-                            set.saveState === "failed" && "text-destructive"
-                          )}
-                        >
-                          {setSaveStateLabel(set.saveState)}
-                        </span>
-                        {set.saveState === "failed" && set.lastError && (
-                          <p className="basis-full text-amber-800 dark:text-amber-300">
-                            {set.lastError}
-                          </p>
-                        )}
-                        {set.saveState === "failed" && set.clientKey && (
-                          <div className="flex gap-2">
-                            <Button
-                              type="button"
-                              size="sm"
-                              variant="outline"
-                              onClick={async () =>
-                                await onRetrySet(set.clientKey!)
-                              }
-                            >
-                              Retry
-                            </Button>
-                            <Button
-                              type="button"
-                              size="sm"
-                              variant="ghost"
-                              className="text-destructive"
-                              onClick={async () =>
-                                await onDiscardSet(set.clientKey!)
-                              }
-                            >
-                              Discard
-                            </Button>
-                          </div>
-                        )}
-                      </div>
-                    )}
+                    <PendingSetSaveStatus
+                      set={set}
+                      rowLabel={setRowLabel}
+                      orderBlocker={
+                        set.clientKey == null
+                          ? null
+                          : (setOrderBlockers[set.clientKey] ?? null)
+                      }
+                      reviewRequired={
+                        set.clientKey == null
+                          ? false
+                          : (setReviewRequired[set.clientKey] ?? false)
+                      }
+                      onRevealBlocker={onRevealBlocker}
+                      onRefreshWorkout={onRefreshWorkout}
+                      onRetry={onRetrySet}
+                      onDiscard={onDiscardSet}
+                    />
                     {!awaitingSave && (
                       <div className="mt-2 flex flex-wrap items-center justify-between gap-2 border-t pt-2">
                         <span className="text-xs text-muted-foreground">
@@ -1386,6 +1580,7 @@ export function ExerciseCard({
                     )}
                     <OccurrenceSaveStatus
                       entry={occurrenceMutation}
+                      displayLabel={rowPosition?.label ?? `Set ${i + 1}`}
                       runtimeState={
                         occurrenceMutation
                           ? occurrenceRuntimeSaveStates[
@@ -1435,7 +1630,8 @@ export function ExerciseCard({
                           pending ||
                           !metricSupported ||
                           Boolean(unconfirmedSet) ||
-                          Boolean(occurrenceMutation)
+                          Boolean(occurrenceMutation) ||
+                          logRequestKey === appendedOccurrence.id
                         }
                       >
                         <Check className="size-4" /> Log set
@@ -1454,6 +1650,10 @@ export function ExerciseCard({
                     </div>
                     <OccurrenceSaveStatus
                       entry={occurrenceMutation}
+                      displayLabel={workingSetDisplayPosition(
+                        appendedOccurrence,
+                        workingOccurrences,
+                      ).label}
                       runtimeState={
                         occurrenceMutation
                           ? occurrenceRuntimeSaveStates[
@@ -1469,7 +1669,10 @@ export function ExerciseCard({
                 );
               }
               if (i === nextSetIdx) {
-                if (isCurrentPlannedSet && !unconfirmedSet) {
+                if (
+                  isCurrentPlannedSet &&
+                  !unconfirmedSetBlocksActiveLogging
+                ) {
                   return (
                     <div
                       key={`active-${i}`}
@@ -1484,36 +1687,53 @@ export function ExerciseCard({
                     >
                       <div data-testid="active-workout-primary">
                       {prioritizeCurrentAction ? (
-                        <div className="mb-2 flex items-baseline justify-between gap-2">
-                          <p className="text-xs font-semibold uppercase tracking-[0.12em] text-primary">
+                        <div className="mb-3 rounded-lg bg-primary px-3 py-2.5 text-primary-foreground">
+                          <p className="text-xs font-semibold uppercase tracking-[0.12em] opacity-80">
                             Current action
                           </p>
-                          <p className="shrink-0 text-sm font-semibold tabular-nums">
-                            Set {i + 1} of {exercise.targetSets ?? "open"}
-                          </p>
+                          <div className="mt-1 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+                            <p className="break-words text-base font-semibold leading-tight">
+                              {exercise.name}
+                            </p>
+                            <p className="text-xl font-bold tabular-nums">
+                              {rowPosition?.label ?? `Set ${i + 1}`} of {exercise.targetSets ?? "open"}
+                            </p>
+                          </div>
                         </div>
                       ) : (
                         <p className="mb-2 px-1 text-sm font-medium">
                           Set {i + 1} of {exercise.targetSets ?? "open"}
                         </p>
                       )}
-                      <div
-                        data-testid="previous-comparable-set"
-                        data-comparison-state={comparableRenderState}
-                        className="mb-2 rounded-md border bg-muted/25 px-2 py-1.5 text-sm"
-                      >
+                      <div className="mb-3 grid grid-cols-1 gap-2 min-[520px]:grid-cols-2">
+                        <div
+                          data-testid="current-set-target"
+                          className="rounded-lg border bg-muted/25 px-3 py-2 text-sm"
+                        >
+                          <p className="text-xs font-semibold uppercase tracking-[0.1em] text-muted-foreground">
+                            Target
+                          </p>
+                          <p className="mt-1 break-words font-semibold tabular-nums">
+                            {formatSetTarget(activeOccurrence, exercise)}
+                          </p>
+                        </div>
+                        <div
+                          data-testid="previous-comparable-set"
+                          data-comparison-state={comparableRenderState}
+                          className="rounded-lg border bg-muted/25 px-3 py-2 text-sm"
+                        >
                         {comparableRenderState === "available" &&
                         comparableProjection?.status === "available" &&
                         previousComparableSet ? (
-                          <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2">
+                          <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-2">
                             <div className="min-w-0">
-                              <p className="truncate text-xs text-muted-foreground">
+                              <p className="break-words text-xs text-muted-foreground">
                                 Previous · {comparableProjection.source.localDate} · {compactComparableProvenance(
                                   previousComparableSet,
                                   comparableProjection.source.workoutSource,
                                 )}
                               </p>
-                              <p className="truncate font-medium tabular-nums">
+                              <p className="mt-1 break-words font-semibold tabular-nums">
                                 {formatPreviousComparableSet(
                                   previousComparableSet,
                                   comparableProjection.semantics.metricType,
@@ -1548,9 +1768,10 @@ export function ExerciseCard({
                             Previous comparable set unavailable
                           </p>
                         )}
+                        </div>
                       </div>
                       {prioritizeCurrentAction && (
-                        <p className="mb-1 text-xs font-semibold uppercase tracking-[0.1em] text-muted-foreground">Performed measure</p>
+                        <p className="mb-2 text-xs font-semibold uppercase tracking-[0.1em] text-muted-foreground">Performed measure</p>
                       )}
                       <SetEntry
                         metricType={performedMetricType}
@@ -1574,10 +1795,21 @@ export function ExerciseCard({
                       >
                         <Button
                           data-testid="active-log-set"
-                          className={cn(prioritizeCurrentAction && "w-full")}
+                          ref={
+                            prioritizeCurrentAction
+                              ? currentActionControlRef
+                              : undefined
+                          }
+                          className={cn(
+                            prioritizeCurrentAction &&
+                              "min-h-12 w-full text-base font-semibold",
+                          )}
                           onClick={() => handleLog()}
                           disabled={
-                            pending || !metricSupported || Boolean(occurrenceMutation)
+                            pending ||
+                            !metricSupported ||
+                            Boolean(occurrenceMutation) ||
+                            logRequestKey === activeOccurrence.id
                           }
                         >
                           <Check className="size-4" /> Log set
@@ -1601,6 +1833,10 @@ export function ExerciseCard({
                       </div>
                       <OccurrenceSaveStatus
                         entry={occurrenceMutation}
+                        displayLabel={workingSetDisplayPosition(
+                          activeOccurrence,
+                          workingOccurrences,
+                        ).label}
                         runtimeState={
                           occurrenceMutation
                             ? occurrenceRuntimeSaveStates[
@@ -1626,14 +1862,14 @@ export function ExerciseCard({
                             <p className="shrink-0 text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
                               Next action
                             </p>
-                            <p className="min-w-0 truncate text-sm">
+                            <p className="min-w-0 break-words py-2 text-sm">
                               {nextActionLabel}
                             </p>
                           </div>
                           <details className="mt-1 rounded-md border border-dashed text-sm">
                             <summary className="flex min-h-[44px] cursor-pointer list-none items-center justify-between gap-2 rounded-md px-2 py-1 font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
                               <span>Set options</span>
-                              <span className="text-xs text-muted-foreground">Effort, note or skip</span>
+                              <span className="break-words text-right text-xs text-muted-foreground">Effort, note or skip</span>
                             </summary>
                             <div className="space-y-3 border-t p-3">
                               <section aria-labelledby={`optional-set-fields-${exercise.id}`}>
@@ -2693,7 +2929,7 @@ function SetEntry({
           "grid items-end gap-2",
           (hasWeight && recordsRepetitions) ||
             metricType === "distance_duration"
-            ? "grid-cols-2"
+            ? "grid-cols-1 min-[520px]:grid-cols-2"
             : "grid-cols-1 sm:grid-cols-2",
         )}
       >

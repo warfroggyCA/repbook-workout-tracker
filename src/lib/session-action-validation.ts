@@ -14,6 +14,9 @@ const loadSemanticsSchema = z.enum(PERFORMED_LOAD_SEMANTICS);
 
 const logSetCommandFields = {
   sessionExerciseId: z.string().uuid(),
+  /** Exact working-set occurrence targeted by newer durable commands. */
+  occurrenceId: z.string().uuid().optional(),
+  expectedOccurrenceRevision: z.number().int().min(0).optional(),
   performedExerciseId: z.string().uuid(),
   performedSemanticsVersion: z.literal(1),
   performedLoadType: z.string().trim().min(1).max(50),
@@ -118,6 +121,15 @@ export const logSetSchema = z
     message: "Record effort as either RIR or RPE, not both.",
     path: ["rir"],
   })
+  .refine(
+    (value) =>
+      (value.occurrenceId == null) ===
+      (value.expectedOccurrenceRevision == null),
+    {
+      message: "An occurrence identity and revision must be supplied together.",
+      path: ["occurrenceId"],
+    },
+  )
   .refine(
     (value) =>
       (value.equipmentSnapshotId == null) ===

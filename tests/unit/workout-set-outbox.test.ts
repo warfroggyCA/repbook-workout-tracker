@@ -11,6 +11,7 @@ import {
   parseWorkoutSetOutbox,
   readWorkoutSetOutbox,
   releaseQueuedWorkoutSetBackoffForOwner,
+  releaseWorkoutSetOrderBlockerOutboxEntry,
   removeWorkoutSetOutboxEntry,
   removeWorkoutSetOutboxEntriesForOwner,
   retryWorkoutSetOutboxEntry,
@@ -192,6 +193,166 @@ describe("workout set device queue", () => {
     expect(nextWorkoutSetOutboxEntry(entries, first.ownerId)?.clientKey).toBe(
       second.clientKey
     );
+  });
+
+  it("retains an exact server blocker and refuses retry until that occurrence resolves", () => {
+    const storage = new MemoryStorage();
+    const later = setInput(2);
+    enqueueWorkoutSetOutboxEntry(storage, later);
+    const blocker = {
+      occurrenceId: "60000000-0000-4000-8000-000000000001",
+      occurrenceRevision: 3,
+      sessionExerciseId: later.sessionExerciseId,
+      exerciseName: "Bench Press",
+      setNo: 1,
+      groupRound: null,
+      origin: "planned",
+      isAddedSet: false,
+      label: "Bench Press · set 1",
+    };
+    expect(markWorkoutSetNeedsAttention(
+      storage,
+      later.clientKey,
+      `Resolve ${blocker.label} first.`,
+      new Date("2026-07-13T12:01:00.000Z"),
+      blocker,
+    )).toMatchObject({ ok: true });
+
+    expect(readWorkoutSetOutbox(storage).entries[0]).toMatchObject({
+      status: "needs_attention",
+      orderBlocker: blocker,
+    });
+    expect(retryWorkoutSetOutboxEntry(storage, later.clientKey)).toMatchObject({
+      ok: false,
+      reason: expect.stringContaining(blocker.label),
+    });
+    expect(releaseWorkoutSetOrderBlockerOutboxEntry(
+      storage,
+      later.clientKey,
+      "60000000-0000-4000-8000-000000000099",
+    )).toMatchObject({ ok: false, reason: expect.stringContaining("changed") });
+    expect(releaseWorkoutSetOrderBlockerOutboxEntry(
+      storage,
+      later.clientKey,
+      blocker.occurrenceId,
+    )).toMatchObject({
+      ok: true,
+      entry: { status: "queued", orderBlocker: null, lastError: null },
+    });
+    expect(nextWorkoutSetOutboxEntry(
+      readWorkoutSetOutbox(storage).entries,
+      later.ownerId,
+    )?.clientKey).toBe(later.clientKey);
+  });
+
+  it("lets only the exact earlier occurrence save ahead of its parked later attempt", () => {
+    const storage = new MemoryStorage();
+    const later = setInput(2);
+    enqueueWorkoutSetOutboxEntry(storage, later);
+    const blockerOccurrenceId = "60000000-0000-4000-8000-000000000001";
+    markWorkoutSetNeedsAttention(
+      storage,
+      later.clientKey,
+      "Resolve Bench Press · set 1 first.",
+      new Date("2026-07-13T12:01:00.000Z"),
+      {
+        occurrenceId: blockerOccurrenceId,
+        occurrenceRevision: 0,
+        sessionExerciseId: later.sessionExerciseId,
+        exerciseName: "Bench Press",
+        setNo: 1,
+        groupRound: null,
+        origin: "planned",
+        isAddedSet: false,
+        label: "Bench Press · set 1",
+      },
+    );
+    const earlier = {
+      ...setInput(1),
+      occurrenceId: blockerOccurrenceId,
+      expectedOccurrenceRevision: 0,
+      createdAtISO: "2026-07-13T12:02:00.000Z",
+    };
+    enqueueWorkoutSetOutboxEntry(storage, earlier);
+
+    const entries = readWorkoutSetOutbox(storage).entries;
+    expect(nextWorkoutSetOutboxEntry(entries, later.ownerId)?.clientKey).toBe(
+      earlier.clientKey,
+    );
+    const unrelated = {
+      ...setInput(3),
+      occurrenceId: "60000000-0000-4000-8000-000000000003",
+      expectedOccurrenceRevision: 0,
+      createdAtISO: "2026-07-13T12:03:00.000Z",
+    };
+    enqueueWorkoutSetOutboxEntry(storage, unrelated);
+    expect(nextWorkoutSetOutboxEntry(
+      readWorkoutSetOutbox(storage).entries,
+      later.ownerId,
+    )?.clientKey).toBe(earlier.clientKey);
+  });
+
+  it("keeps a stale occurrence retained for review without allowing blind retry", () => {
+    const storage = new MemoryStorage();
+    const attempt = setInput(1);
+    enqueueWorkoutSetOutboxEntry(storage, attempt);
+    expect(markWorkoutSetNeedsAttention(
+      storage,
+      attempt.clientKey,
+      "This set changed after it was opened.",
+      new Date("2026-07-13T12:01:00.000Z"),
+      null,
+      "stale_occurrence",
+    )).toMatchObject({ ok: true });
+
+    expect(readWorkoutSetOutbox(storage).entries[0]).toMatchObject({
+      status: "needs_attention",
+      reviewRequired: "stale_occurrence",
+    });
+    expect(retryWorkoutSetOutboxEntry(storage, attempt.clientKey)).toMatchObject({
+      ok: false,
+      reason: expect.stringContaining("review or discard"),
+    });
+  });
+
+  it("accepts legacy version-four commands without occurrence fences", () => {
+    const legacy = {
+      ...setInput(1),
+      observedCompletedAtISO: null,
+      status: "queued",
+      attemptCount: 0,
+      nextAttemptAtISO: null,
+      lastAttemptAtISO: null,
+      lastError: null,
+    };
+    const snapshot = parseWorkoutSetOutbox(JSON.stringify({
+      version: 4,
+      entries: [legacy],
+    }));
+    expect(snapshot.entries).toEqual([withUnknownExceptionContext(legacy)]);
+    expect(snapshot.quarantined).toEqual([]);
+  });
+
+  it("fails closed when a retained occurrence fence is incomplete", () => {
+    const invalid = {
+      ...setInput(1),
+      occurrenceId: "60000000-0000-4000-8000-000000000001",
+      observedCompletedAtISO: null,
+      status: "queued",
+      attemptCount: 0,
+      nextAttemptAtISO: null,
+      lastAttemptAtISO: null,
+      lastError: null,
+    };
+    const snapshot = parseWorkoutSetOutbox(JSON.stringify({
+      version: 4,
+      entries: [invalid],
+    }));
+
+    expect(snapshot.entries).toEqual([]);
+    expect(snapshot.quarantined).toEqual([
+      expect.objectContaining({ quarantineKey: "entries:0" }),
+    ]);
   });
 
   it("lets another exercise drain past a needs-attention head", () => {

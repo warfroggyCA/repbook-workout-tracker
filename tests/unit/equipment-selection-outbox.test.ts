@@ -17,6 +17,7 @@ import {
   bindWorkoutSetEntriesToEquipmentSelection,
   EQUIPMENT_SELECTION_ACKNOWLEDGEMENT_STORAGE_KEY,
   enqueueWorkoutSetOutboxEntry,
+  markWorkoutSetNeedsAttention,
   readWorkoutSetOutbox,
   WORKOUT_SET_OUTBOX_STORAGE_KEY,
   type WorkoutSetOutboxStorage,
@@ -39,10 +40,16 @@ const ids = {
   setA: "10000000-0000-4000-8000-000000000007",
   selectionB: "10000000-0000-4000-8000-000000000008",
   snapshotA: "10000000-0000-4000-8000-000000000009",
+  occurrenceA: "10000000-0000-4000-8000-000000000012",
 };
 
 function pendingSet(
-  overrides: { weight?: number; createdAtISO?: string } = {},
+  overrides: {
+    weight?: number;
+    createdAtISO?: string;
+    occurrenceId?: string;
+    expectedOccurrenceRevision?: number;
+  } = {},
 ): Parameters<typeof enqueueWorkoutSetOutboxEntry>[1] {
   return {
     clientKey: ids.setA,
@@ -86,6 +93,107 @@ function selection(
 }
 
 describe("equipment selection browser outbox", () => {
+  it("schedules the exact order blocker ahead of a parked later set", () => {
+    const storage = new MemoryStorage();
+    const laterClientKey = "10000000-0000-4000-8000-000000000011";
+    const blockerOccurrenceId = "10000000-0000-4000-8000-000000000012";
+    const later = {
+      ...pendingSet(),
+      clientKey: laterClientKey,
+      setNo: 2,
+      equipmentSelectionClientKey: null,
+      loadEntryMeaning: "legacy_unknown" as const,
+      createdAtISO: new Date(1000).toISOString(),
+    };
+    enqueueWorkoutSetOutboxEntry(storage, later);
+    markWorkoutSetNeedsAttention(
+      storage,
+      laterClientKey,
+      "Resolve Curl · set 1 first.",
+      new Date(1100),
+      {
+        occurrenceId: blockerOccurrenceId,
+        occurrenceRevision: 0,
+        sessionExerciseId: ids.exercise,
+        exerciseName: "Curl",
+        setNo: 1,
+        groupRound: null,
+        origin: "planned",
+        isAddedSet: false,
+        label: "Curl · set 1",
+      },
+    );
+    const earlier = {
+      ...pendingSet(),
+      occurrenceId: blockerOccurrenceId,
+      expectedOccurrenceRevision: 0,
+      equipmentSelectionClientKey: null,
+      loadEntryMeaning: "legacy_unknown" as const,
+      createdAtISO: new Date(1200).toISOString(),
+    };
+    enqueueWorkoutSetOutboxEntry(storage, earlier);
+
+    expect(nextWorkoutCommand(
+      ids.owner,
+      readWorkoutSetOutbox(storage).entries,
+      [],
+    )?.entry.clientKey).toBe(ids.setA);
+  });
+
+  it("schedules the full equipment dependency chain for an exact recovery set", () => {
+    const storage = new MemoryStorage();
+    const laterClientKey = "10000000-0000-4000-8000-000000000011";
+    const blockerOccurrenceId = "10000000-0000-4000-8000-000000000012";
+    enqueueWorkoutSetOutboxEntry(storage, {
+      ...pendingSet(),
+      clientKey: laterClientKey,
+      setNo: 2,
+      equipmentSelectionClientKey: null,
+      loadEntryMeaning: "legacy_unknown",
+      createdAtISO: new Date(1000).toISOString(),
+    });
+    markWorkoutSetNeedsAttention(
+      storage,
+      laterClientKey,
+      "Resolve Curl · set 1 first.",
+      new Date(1100),
+      {
+        occurrenceId: blockerOccurrenceId,
+        occurrenceRevision: 0,
+        sessionExerciseId: ids.exercise,
+        exerciseName: "Curl",
+        setNo: 1,
+        groupRound: null,
+        origin: "planned",
+        isAddedSet: false,
+        label: "Curl · set 1",
+      },
+    );
+    enqueueEquipmentSelectionOutboxEntry(
+      storage,
+      selection(ids.selectionA, ids.equipmentA, null),
+      1200,
+    );
+    enqueueEquipmentSelectionOutboxEntry(
+      storage,
+      selection(ids.selectionB, ids.equipmentB, ids.selectionA),
+      1300,
+    );
+    enqueueWorkoutSetOutboxEntry(storage, {
+      ...pendingSet(),
+      occurrenceId: blockerOccurrenceId,
+      expectedOccurrenceRevision: 0,
+      equipmentSelectionClientKey: ids.selectionB,
+      createdAtISO: new Date(1400).toISOString(),
+    });
+
+    expect(nextWorkoutCommand(
+      ids.owner,
+      readWorkoutSetOutbox(storage).entries,
+      readEquipmentSelectionOutbox(storage).entries,
+    )?.entry.clientKey).toBe(ids.selectionA);
+  });
+
   it("withholds a same-meaning comparison through different-equipment delayed or failed acknowledgement", () => {
     const storage = new MemoryStorage();
     const identity = {
@@ -167,7 +275,121 @@ describe("equipment selection browser outbox", () => {
     expect(nextWorkoutCommand(ids.owner, sets, selections)?.entry.clientKey).toBe(ids.setA);
   });
 
-  it("binds a set enqueued just after its equipment selection was acknowledged", () => {
+  it("keeps an exact-fenced set retained when an acknowledgement has no causal occurrence proof", () => {
+    const storage = new MemoryStorage();
+    enqueueWorkoutSetOutboxEntry(storage, pendingSet({
+      occurrenceId: ids.occurrenceA,
+      expectedOccurrenceRevision: 0,
+    }));
+
+    expect(bindWorkoutSetEntriesToEquipmentSelection(
+      storage,
+      ids.selectionA,
+      ids.snapshotA,
+      [],
+    )).toMatchObject({
+      ok: false,
+      reason: expect.stringMatching(/already saved.*discard.*re-enter/i),
+    });
+    expect(readWorkoutSetOutbox(storage).entries[0]).toMatchObject({
+      equipmentSelectionClientKey: ids.selectionA,
+      equipmentSnapshotId: null,
+      occurrenceId: ids.occurrenceA,
+      expectedOccurrenceRevision: 0,
+    });
+  });
+
+  it("refuses to rebase an exact set when the acknowledged occurrence is no longer pending", () => {
+    const storage = new MemoryStorage();
+    enqueueWorkoutSetOutboxEntry(storage, pendingSet({
+      occurrenceId: ids.occurrenceA,
+      expectedOccurrenceRevision: 0,
+    }));
+
+    expect(bindWorkoutSetEntriesToEquipmentSelection(
+      storage,
+      ids.selectionA,
+      ids.snapshotA,
+      [{
+        id: ids.occurrenceA,
+        previousRevision: 1,
+        revision: 2,
+        outcome: "skipped",
+      }],
+    )).toMatchObject({
+      ok: false,
+      reason: expect.stringMatching(/already saved.*discard.*re-enter/i),
+    });
+    expect(readWorkoutSetOutbox(storage).entries[0]).toMatchObject({
+      equipmentSelectionClientKey: ids.selectionA,
+      equipmentSnapshotId: null,
+      expectedOccurrenceRevision: 0,
+    });
+  });
+
+  it.each([
+    { priorChange: "note", previousRevision: 1, revision: 2 },
+    { priorChange: "skip then restore", previousRevision: 2, revision: 3 },
+  ])("refuses to absorb a pre-selection $priorChange revision", ({
+    previousRevision,
+    revision,
+  }) => {
+    const storage = new MemoryStorage();
+    enqueueWorkoutSetOutboxEntry(storage, pendingSet({
+      occurrenceId: ids.occurrenceA,
+      expectedOccurrenceRevision: 0,
+    }));
+
+    expect(bindWorkoutSetEntriesToEquipmentSelection(
+      storage,
+      ids.selectionA,
+      ids.snapshotA,
+      [{
+        id: ids.occurrenceA,
+        previousRevision,
+        revision,
+        outcome: "pending",
+      }],
+    )).toMatchObject({ ok: false });
+    expect(readWorkoutSetOutbox(storage).entries[0]).toMatchObject({
+      equipmentSelectionClientKey: ids.selectionA,
+      equipmentSnapshotId: null,
+      expectedOccurrenceRevision: 0,
+    });
+  });
+
+  it.each([
+    { transition: "changed", previousRevision: 0, revision: 1 },
+    { transition: "no change", previousRevision: 0, revision: 0 },
+  ])("binds the equipment transaction's own $transition revision", ({
+    previousRevision,
+    revision,
+  }) => {
+    const storage = new MemoryStorage();
+    enqueueWorkoutSetOutboxEntry(storage, pendingSet({
+      occurrenceId: ids.occurrenceA,
+      expectedOccurrenceRevision: 0,
+    }));
+
+    expect(bindWorkoutSetEntriesToEquipmentSelection(
+      storage,
+      ids.selectionA,
+      ids.snapshotA,
+      [{
+        id: ids.occurrenceA,
+        previousRevision,
+        revision,
+        outcome: "pending",
+      }],
+    )).toMatchObject({ ok: true });
+    expect(readWorkoutSetOutbox(storage).entries[0]).toMatchObject({
+      equipmentSelectionClientKey: null,
+      equipmentSnapshotId: ids.snapshotA,
+      expectedOccurrenceRevision: revision,
+    });
+  });
+
+  it("rebases a late exact-fenced set from its acknowledged equipment receipt", () => {
     const storage = new MemoryStorage();
     enqueueEquipmentSelectionOutboxEntry(
       storage,
@@ -180,17 +402,92 @@ describe("equipment selection browser outbox", () => {
         storage,
         ids.selectionA,
         ids.snapshotA,
+        [{
+          id: ids.occurrenceA,
+          previousRevision: 0,
+          revision: 1,
+          outcome: "pending",
+        }],
       ).ok,
     ).toBe(true);
     expect(
-      enqueueWorkoutSetOutboxEntry(storage, pendingSet()),
+      enqueueWorkoutSetOutboxEntry(storage, pendingSet({
+        occurrenceId: ids.occurrenceA,
+        expectedOccurrenceRevision: 0,
+      })),
     ).toMatchObject({
       ok: true,
       entry: {
         equipmentSelectionClientKey: null,
         equipmentSnapshotId: ids.snapshotA,
+        occurrenceId: ids.occurrenceA,
+        expectedOccurrenceRevision: 1,
       },
     });
+    expect(nextWorkoutCommand(
+      ids.owner,
+      readWorkoutSetOutbox(storage).entries,
+      readEquipmentSelectionOutbox(storage).entries,
+    )?.entry.clientKey).toBe(ids.setA);
+  });
+
+  it("rebases a late exact blocker and schedules it ahead of the retained later attempt", () => {
+    const storage = new MemoryStorage();
+    const laterClientKey = "10000000-0000-4000-8000-000000000011";
+    enqueueWorkoutSetOutboxEntry(storage, {
+      ...pendingSet(),
+      clientKey: laterClientKey,
+      setNo: 2,
+      equipmentSelectionClientKey: null,
+      loadEntryMeaning: "legacy_unknown",
+      createdAtISO: new Date(1000).toISOString(),
+    });
+    markWorkoutSetNeedsAttention(
+      storage,
+      laterClientKey,
+      "Resolve Curl · set 1 first.",
+      new Date(1100),
+      {
+        occurrenceId: ids.occurrenceA,
+        occurrenceRevision: 0,
+        sessionExerciseId: ids.exercise,
+        exerciseName: "Curl",
+        setNo: 1,
+        groupRound: null,
+        origin: "planned",
+        isAddedSet: false,
+        label: "Curl · set 1",
+      },
+    );
+    enqueueEquipmentSelectionOutboxEntry(
+      storage,
+      selection(ids.selectionA, ids.equipmentA, null),
+      1200,
+    );
+    expect(acknowledgeEquipmentSelectionOutboxEntry(
+      storage,
+      ids.selectionA,
+      ids.snapshotA,
+      [{
+        id: ids.occurrenceA,
+        previousRevision: 0,
+        revision: 1,
+        outcome: "pending",
+      }],
+    ).ok).toBe(true);
+    expect(enqueueWorkoutSetOutboxEntry(storage, pendingSet({
+      occurrenceId: ids.occurrenceA,
+      expectedOccurrenceRevision: 0,
+      createdAtISO: new Date(1300).toISOString(),
+    }))).toMatchObject({
+      ok: true,
+      entry: {
+        equipmentSelectionClientKey: null,
+        equipmentSnapshotId: ids.snapshotA,
+        expectedOccurrenceRevision: 1,
+      },
+    });
+
     expect(nextWorkoutCommand(
       ids.owner,
       readWorkoutSetOutbox(storage).entries,

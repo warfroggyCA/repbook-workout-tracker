@@ -163,6 +163,60 @@ describe("workout set outbox sync classification", () => {
     });
   });
 
+  it("persists the exact authoritative blocker and disables blind retry", async () => {
+    const blocker = {
+      occurrenceId: "60000000-0000-4000-8000-000000000002",
+      occurrenceRevision: 1,
+      sessionExerciseId: "40000000-0000-4000-8000-000000000002",
+      exerciseName: "Cable Pushdown",
+      setNo: 2,
+      groupRound: 2,
+      origin: "planned",
+      isAddedSet: false,
+      label: "Cable Pushdown · round 2, set 2",
+    };
+    actionMocks.logSet.mockResolvedValueOnce({
+      outcome: "set_order_conflict",
+      blocker,
+    });
+    await syncNextEntry(entry().ownerId);
+
+    expect(readWorkoutSetOutbox(storage).entries[0]).toMatchObject({
+      clientKey: entry().clientKey,
+      status: "needs_attention",
+      lastError: expect.stringContaining(blocker.label),
+      orderBlocker: blocker,
+    });
+    await expect(retryWorkoutSet(entry().clientKey)).resolves.toMatchObject({
+      ok: false,
+      reason: expect.stringContaining(blocker.label),
+    });
+  });
+
+  it("sends an exact occurrence fence for new commands while legacy entries remain valid", async () => {
+    storage.values.clear();
+    const occurrenceId = "60000000-0000-4000-8000-000000000003";
+    enqueueWorkoutSetOutboxEntry(storage, {
+      ...entry(),
+      occurrenceId,
+      expectedOccurrenceRevision: 4,
+    });
+    actionMocks.logSet.mockResolvedValueOnce({
+      outcome: "saved",
+      setId: savedSetId,
+      occurrenceId,
+      occurrenceRevision: 5,
+    });
+
+    await syncNextEntry(entry().ownerId);
+
+    expect(actionMocks.logSet).toHaveBeenCalledWith(expect.objectContaining({
+      occurrenceId,
+      expectedOccurrenceRevision: 4,
+    }));
+    expect(readWorkoutSetOutbox(storage).entries).toEqual([]);
+  });
+
   it("sends the captured evidence and parks a stale selection for review", async () => {
     actionMocks.logSet.mockResolvedValueOnce({
       outcome: "equipment_selection_conflict",
@@ -186,6 +240,7 @@ describe("workout set outbox sync classification", () => {
         outcome: "saved",
         setId: savedSetId,
         occurrenceId: savedOccurrenceId,
+        occurrenceRevision: 1,
       });
 
     await syncNextEntry(entry().ownerId);
@@ -210,7 +265,7 @@ describe("workout set outbox sync classification", () => {
   it("starts rest only after the server acknowledges the exact set", async () => {
     storage.values.clear();
     enqueueWorkoutSetOutboxEntry(storage, { ...entry(), restAfterSec: 90 });
-    let acknowledge!: (value: { outcome: "saved"; setId: string; occurrenceId: string }) => void;
+    let acknowledge!: (value: { outcome: "saved"; setId: string; occurrenceId: string; occurrenceRevision: number }) => void;
     actionMocks.logSet.mockReturnValueOnce(new Promise((resolve) => {
       acknowledge = resolve;
     }));
@@ -220,7 +275,7 @@ describe("workout set outbox sync classification", () => {
     const identity = { ownerId: entry().ownerId, sessionId: entry().sessionId };
     expect(readRestTimer(storage, identity).timer).toBeNull();
 
-    acknowledge({ outcome: "saved", setId: savedSetId, occurrenceId: savedOccurrenceId });
+    acknowledge({ outcome: "saved", setId: savedSetId, occurrenceId: savedOccurrenceId, occurrenceRevision: 1 });
     await syncing;
 
     expect(readRestTimer(storage, identity).timer).toMatchObject({
@@ -238,7 +293,7 @@ describe("workout set outbox sync classification", () => {
     storage.values.clear();
     enqueueWorkoutSetOutboxEntry(storage, { ...entry(), restAfterSec: 90 });
     storage.rejectRestWrites = true;
-    actionMocks.logSet.mockResolvedValueOnce({ outcome: "saved", setId: savedSetId, occurrenceId: savedOccurrenceId });
+    actionMocks.logSet.mockResolvedValueOnce({ outcome: "saved", setId: savedSetId, occurrenceId: savedOccurrenceId, occurrenceRevision: 1 });
 
     await syncNextEntry(entry().ownerId);
 
@@ -270,6 +325,7 @@ describe("workout set outbox sync classification", () => {
       outcome: "saved",
       setId: savedSetId,
       occurrenceId: savedOccurrenceId,
+      occurrenceRevision: 1,
     });
 
     await syncNextEntry(entry().ownerId);
@@ -292,7 +348,7 @@ describe("workout set outbox sync classification", () => {
     const identity = { ownerId: entry().ownerId, sessionId: entry().sessionId };
     await writeRestTimer(storage, createRestTimer({ ...identity, now: 1_000, seconds: 90 })!);
     enqueueWorkoutSetOutboxEntry(storage, { ...entry(), restAfterSec: 0 });
-    let acknowledge!: (value: { outcome: "saved"; setId: string; occurrenceId: string }) => void;
+    let acknowledge!: (value: { outcome: "saved"; setId: string; occurrenceId: string; occurrenceRevision: number }) => void;
     actionMocks.logSet.mockReturnValueOnce(new Promise((resolve) => {
       acknowledge = resolve;
     }));
@@ -300,7 +356,7 @@ describe("workout set outbox sync classification", () => {
     const syncing = syncNextEntry(entry().ownerId);
     await vi.waitFor(() => expect(actionMocks.logSet).toHaveBeenCalledTimes(1));
     expect(readRestTimer(storage, identity).timer).not.toBeNull();
-    acknowledge({ outcome: "saved", setId: savedSetId, occurrenceId: savedOccurrenceId });
+    acknowledge({ outcome: "saved", setId: savedSetId, occurrenceId: savedOccurrenceId, occurrenceRevision: 1 });
     await syncing;
 
     expect(readRestTimer(storage, identity).timer).toBeNull();
@@ -315,6 +371,7 @@ describe("workout set outbox sync classification", () => {
       outcome: "saved",
       setId: savedSetId,
       occurrenceId: savedOccurrenceId,
+      occurrenceRevision: 1,
     });
 
     await syncNextEntry(entry().ownerId);
@@ -332,6 +389,7 @@ describe("workout set outbox sync classification", () => {
       outcome: "saved",
       setId: savedSetId,
       occurrenceId: savedOccurrenceId,
+      occurrenceRevision: 1,
     });
 
     await syncNextEntry(entry().ownerId);

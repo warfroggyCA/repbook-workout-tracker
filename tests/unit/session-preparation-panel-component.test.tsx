@@ -116,6 +116,11 @@ describe("SessionPreparationPanel", () => {
     expect(unknown).not.toContain(">0 items<");
     expect(unknown).toContain('data-testid="session-preparation-evidence-notice"');
     expect(noneNeeded).toContain("No equipment needed.");
+    expect(noneNeeded).toContain("Equipment ready");
+    expect(noneNeeded).toContain(">Go to warm-up<");
+    expect(noneNeeded.indexOf(">Go to warm-up<")).toBeLessThan(
+      noneNeeded.indexOf("Review equipment list"),
+    );
     expect(noneNeeded).not.toContain("does not have a saved equipment list");
   });
 

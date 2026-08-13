@@ -19,6 +19,58 @@ export function shouldShowMissingWarmupMessage(input: {
 
 export type RuntimeSetSaveState = "saving" | "retrying";
 
+/**
+ * Merge a refreshed server occurrence ledger without erasing device work that
+ * still has an owning durable command or a just-acknowledged server receipt.
+ * A discarded optimistic change has neither, so refreshed server truth wins.
+ */
+export function reconcileServerOccurrences({
+  current,
+  server,
+  previousServerIds,
+  pendingMutationOccurrenceIds,
+  acknowledgedOccurrenceIds,
+}: {
+  current: SessionOccurrenceData[];
+  server: SessionOccurrenceData[];
+  previousServerIds: ReadonlySet<string>;
+  pendingMutationOccurrenceIds: ReadonlySet<string>;
+  acknowledgedOccurrenceIds: ReadonlySet<string>;
+}): SessionOccurrenceData[] {
+  const nextServerIds = new Set(server.map((occurrence) => occurrence.id));
+  const currentById = new Map(
+    current.map((occurrence) => [occurrence.id, occurrence]),
+  );
+  const reconciled = server.map((serverOccurrence) => {
+    const localOccurrence = currentById.get(serverOccurrence.id);
+    const localRevisionIsStillOwned =
+      localOccurrence != null &&
+      (
+        pendingMutationOccurrenceIds.has(localOccurrence.id) ||
+        acknowledgedOccurrenceIds.has(localOccurrence.id) ||
+        (
+          localOccurrence.kind === "working_set" &&
+          localOccurrence.outcome === "completed" &&
+          localOccurrence.completedSetId != null
+        )
+      );
+    return localOccurrence &&
+        localOccurrence.revision > serverOccurrence.revision &&
+        localRevisionIsStillOwned
+      ? localOccurrence
+      : serverOccurrence;
+  });
+  for (const localOccurrence of current) {
+    if (
+      !nextServerIds.has(localOccurrence.id) &&
+      !previousServerIds.has(localOccurrence.id)
+    ) {
+      reconciled.push(localOccurrence);
+    }
+  }
+  return reconciled.sort((left, right) => left.sequenceIdx - right.sequenceIdx);
+}
+
 export function mergeEquipmentSelectionOccurrenceStates(
   current: SessionOccurrenceData[],
   received: EquipmentSelectionOccurrenceState[],

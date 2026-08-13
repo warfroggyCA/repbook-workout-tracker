@@ -82,6 +82,50 @@ describe("WorkoutStatusBar", () => {
     expect(html).toContain("col-span-3");
   });
 
+  it("turns the working-set dock into the immediate primary log action", () => {
+    const html = renderToStaticMarkup(
+      <WorkoutStatusBar
+        action={action}
+        exercise={exercise}
+        timer={null}
+        restRemainingSec={null}
+        {...callbacks}
+        onPrimaryAction={() => undefined}
+      />,
+    );
+
+    expect(html).toContain('data-testid="active-workout-dock-primary"');
+    expect(html).toContain('aria-label="Log Barbell Squat, Set 2"');
+    expect(html).toContain("Set 2 of 3 · Log set");
+    expect(html).toContain("bg-primary text-primary-foreground");
+  });
+
+  it("keeps the exact earlier blocker loggable while a later attempt is retained", () => {
+    const retainedLaterAttempt = {
+      ...exercise,
+      sets: [{
+        id: "optimistic-later",
+        setNo: 2,
+        saveState: "failed",
+      }],
+    } as unknown as SessionExerciseData;
+    const html = renderToStaticMarkup(
+      <WorkoutStatusBar
+        action={action}
+        exercise={retainedLaterAttempt}
+        timer={null}
+        restRemainingSec={null}
+        {...callbacks}
+        onPrimaryAction={() => undefined}
+        allowLogWithRetainedFailure
+      />,
+    );
+
+    expect(html).toContain('data-testid="active-workout-dock-primary"');
+    expect(html).toContain("Set 2 of 3 · Log set");
+    expect(html).not.toContain("Set 2 of 3 · Failed");
+  });
+
   it("names the ready-state transition instead of using a generic continue action", () => {
     const html = renderToStaticMarkup(
       <WorkoutStatusBar
@@ -149,5 +193,29 @@ describe("WorkoutStatusBar", () => {
     expect(html).toContain("Warm-up");
     expect(html).not.toContain("Barbell Squat");
     expect(html).not.toContain("Next set");
+  });
+
+  it("turns the warm-up dock into the immediate Complete action", () => {
+    const html = renderToStaticMarkup(
+      <WorkoutStatusBar
+        action={{
+          kind: "exercise_warmup",
+          occurrenceId: "warmup-1",
+          sessionExerciseId: exercise.id,
+          sequenceIdx: 0,
+          label: "Empty bar",
+          exerciseName: "Barbell Squat",
+        }}
+        exercise={exercise}
+        timer={null}
+        restRemainingSec={null}
+        {...callbacks}
+        onPrimaryAction={() => undefined}
+      />,
+    );
+
+    expect(html).toContain('data-testid="active-workout-dock-primary"');
+    expect(html).toContain('aria-label="Complete Barbell Squat warm-up: Empty bar"');
+    expect(html).toContain("Complete warm-up");
   });
 });

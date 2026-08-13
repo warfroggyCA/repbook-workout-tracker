@@ -3,6 +3,7 @@ import {
   readWorkoutSetOutbox,
   recordEquipmentSelectionAcknowledgement,
   withOutboxLock,
+  type EquipmentSelectionOccurrenceAcknowledgement,
   type WorkoutSetOutboxEntry,
   type WorkoutSetOutboxStorage,
 } from "@/lib/workout-set-outbox";
@@ -460,10 +461,19 @@ export function releaseQueuedEquipmentSelectionBackoff(ownerId: string) {
 }
 
 /** Caller holds the shared lock. Sets are patched before this is called. */
-export function acknowledgeEquipmentSelectionUnlocked(clientKey: string, snapshotId: string | null): MutationResult {
+export function acknowledgeEquipmentSelectionUnlocked(
+  clientKey: string,
+  snapshotId: string | null,
+  occurrenceStates: ReadonlyArray<EquipmentSelectionOccurrenceAcknowledgement> = [],
+): MutationResult {
   const storage = browserStorage();
   if (!storage) return { ok: false, reason: "This browser could not update the equipment queue." };
-  const result = acknowledgeEquipmentSelectionOutboxEntry(storage, clientKey, snapshotId);
+  const result = acknowledgeEquipmentSelectionOutboxEntry(
+    storage,
+    clientKey,
+    snapshotId,
+    occurrenceStates,
+  );
   notify();
   return result;
 }
@@ -471,6 +481,7 @@ export function acknowledgeEquipmentSelectionOutboxEntry(
   storage: WorkoutSetOutboxStorage,
   clientKey: string,
   snapshotId: string | null,
+  occurrenceStates: ReadonlyArray<EquipmentSelectionOccurrenceAcknowledgement> = [],
 ): MutationResult {
   const current = readEquipmentSelectionOutbox(storage);
   const entry = current.entries.find((item) => item.clientKey === clientKey);
@@ -481,6 +492,14 @@ export function acknowledgeEquipmentSelectionOutboxEntry(
     sessionId: entry.sessionId,
     sessionExerciseId: entry.sessionExerciseId,
     snapshotId,
+    occurrenceStates: occurrenceStates.map((state) => ({
+      id: state.id,
+      ...(state.previousRevision == null
+        ? {}
+        : { previousRevision: state.previousRevision }),
+      revision: state.revision,
+      ...(state.outcome == null ? {} : { outcome: state.outcome }),
+    })),
     acknowledgedAtISO: new Date().toISOString(),
   });
   if (!receipt.ok) return receipt;
@@ -506,9 +525,51 @@ export function nextWorkoutCommand(
     ...sets.filter((entry) => entry.ownerId === ownerId).map((entry) => ({ kind: "set" as const, entry, createdAtISO: entry.createdAtISO, clientKey: entry.clientKey })),
     ...selections.filter((entry) => entry.ownerId === ownerId).map((entry) => ({ kind: "selection" as const, entry, createdAtISO: entry.createdAtISO, clientKey: entry.clientKey })),
   ]);
-  const blocked = new Set<string>();
+  const blocked = new Map<string, WorkoutSetOutboxEntry | EquipmentSelectionOutboxEntry>();
+  const recoverySelectionKeysByExercise = new Map<string, Set<string>>();
+  for (const blockedSet of sets) {
+    const blockerOccurrenceId = blockedSet.orderBlocker?.occurrenceId;
+    if (!blockerOccurrenceId) continue;
+    const recoverySet = sets.find(
+      (candidate) =>
+        candidate.ownerId === ownerId &&
+        candidate.sessionExerciseId === blockedSet.sessionExerciseId &&
+        candidate.occurrenceId === blockerOccurrenceId,
+    );
+    if (recoverySet) {
+      const dependencyKeys = new Set<string>();
+      let selectionKey = recoverySet.equipmentSelectionClientKey;
+      while (selectionKey && !dependencyKeys.has(selectionKey)) {
+        dependencyKeys.add(selectionKey);
+        selectionKey = selections.find(
+          (candidate) =>
+            candidate.ownerId === ownerId &&
+            candidate.sessionExerciseId === blockedSet.sessionExerciseId &&
+            candidate.clientKey === selectionKey,
+        )?.predecessorSelectionClientKey ?? null;
+      }
+      recoverySelectionKeysByExercise.set(
+        blockedSet.sessionExerciseId,
+        dependencyKeys,
+      );
+    }
+  }
   for (const command of commands) {
-    if (blocked.has(command.entry.sessionExerciseId)) continue;
+    const blockingEntry = blocked.get(command.entry.sessionExerciseId);
+    const resolvesExactBlocker =
+      blockingEntry != null &&
+      "orderBlocker" in blockingEntry &&
+      blockingEntry.orderBlocker != null &&
+      (
+        (command.kind === "set" &&
+          command.entry.occurrenceId ===
+            blockingEntry.orderBlocker.occurrenceId) ||
+        (command.kind === "selection" &&
+          recoverySelectionKeysByExercise
+            .get(command.entry.sessionExerciseId)
+            ?.has(command.entry.clientKey) === true)
+      );
+    if (blockingEntry && !resolvesExactBlocker) continue;
     const dependencyPending = command.kind === "set"
       ? command.entry.equipmentSelectionClientKey != null
       : command.entry.predecessorSelectionClientKey != null;
@@ -519,7 +580,9 @@ export function nextWorkoutCommand(
         ? { kind: "set", entry: command.entry }
         : { kind: "selection", entry: command.entry };
     }
-    blocked.add(entry.sessionExerciseId);
+    if (!resolvesExactBlocker) {
+      blocked.set(entry.sessionExerciseId, entry);
+    }
   }
   return null;
 }

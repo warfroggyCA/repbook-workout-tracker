@@ -19,7 +19,11 @@ vi.mock("@/app/actions/sessions", () => ({
 }));
 vi.mock("@/app/actions/archive", () => ({ restoreArchiveOperation: vi.fn() }));
 
-import { ExerciseCard } from "@/components/session/exercise-card";
+import {
+  ExerciseCard,
+  runGuardedLogRequest,
+  unconfirmedSetsBlockLogging,
+} from "@/components/session/exercise-card";
 import type {
   SessionExerciseData,
   SessionOccurrenceData,
@@ -589,6 +593,103 @@ describe("ExerciseCard", () => {
     expect(crossExerciseHtml).toContain("Acknowledged by Repbook");
   });
 
+  it("names and links the exact earlier occurrence that blocks a retained attempt", () => {
+    const failedAttempt: SessionExerciseData = {
+      ...exercise,
+      sets: [{
+        id: "failed-order-attempt",
+        clientKey: "failed-order-key",
+        setNo: 2,
+        weight: 95,
+        weightUnit: "lb",
+        reps: 8,
+        rpe: null,
+        note: null,
+        saveState: "failed",
+        lastError: "Finish or skip the earlier set first.",
+      }],
+    };
+    const baseProps = {
+      exercise: failedAttempt,
+      historyRevision: 0,
+      progress: {
+        sessionExerciseId: failedAttempt.id,
+        exerciseName: failedAttempt.name,
+        total: 3,
+        planned: 3,
+        extra: 0,
+        workoutOnly: 0,
+        performed: 0,
+        plannedPerformed: 0,
+        extraPerformed: 0,
+        workoutOnlyPerformed: 0,
+        skipped: 0,
+        abandoned: 0,
+        pending: 3,
+        legacyUnknown: 0,
+        completedWithoutResult: 0,
+        status: "current" as const,
+      },
+      expanded: true,
+      onToggle: () => undefined,
+      plateConfigs: {},
+      incrementals: {},
+      unit: "lb" as const,
+      onPatch: () => undefined,
+      onQueueSet: async () => true,
+      onRetrySet: async () => undefined,
+      onDiscardSet: async () => undefined,
+      onSkipComplete: () => undefined,
+      onOpenCoach: () => undefined,
+      adjustIntent: null,
+      onAdjustIntentChange: () => undefined,
+    };
+    const exact = renderToStaticMarkup(
+      <ExerciseCard
+        {...baseProps}
+        setOrderBlockers={{
+          "failed-order-key": {
+            blockerExerciseName: "Cable Row",
+            blockerLabel: "Set 1",
+            blockerTargetId: "occurrence-cable-row-1",
+          },
+        }}
+        onRevealBlocker={() => undefined}
+        onRefreshWorkout={() => undefined}
+      />,
+    );
+
+    expect(exact).toContain("Cable Row · Set 1 comes first");
+    expect(exact).toContain("Go to Set 1");
+    expect(exact).not.toContain("Retry retained attempt");
+    expect(exact).toContain("Discard attempt");
+    expect(exact).not.toContain("Refresh workout");
+
+    const fallback = renderToStaticMarkup(
+      <ExerciseCard
+        {...baseProps}
+        onRefreshWorkout={() => undefined}
+      />,
+    );
+    expect(fallback).toContain(
+      "Workout order changed. Refresh to find the exact set that comes first.",
+    );
+    expect(fallback).toContain("Refresh workout");
+    expect(fallback).not.toContain("Finish or skip the earlier set first.");
+
+    const stale = renderToStaticMarkup(
+      <ExerciseCard
+        {...baseProps}
+        setReviewRequired={{ "failed-order-key": true }}
+        onRefreshWorkout={() => undefined}
+      />,
+    );
+    expect(stale).toContain("based on an older workout state");
+    expect(stale).toContain("Refresh workout");
+    expect(stale).not.toContain("Retry it, or discard it");
+    expect(stale).not.toContain("Retry retained attempt");
+  });
+
   it("keeps the exact working-set row visible while a skip saves and after it is acknowledged", () => {
     const current = { ...exercise, sets: [] };
     const occurrence = {
@@ -784,6 +885,163 @@ describe("ExerciseCard", () => {
     expect(html).toContain(
       "Adds ad-hoc work without changing the planned set order.",
     );
+  });
+});
+
+describe("order-conflict logging gate", () => {
+  const retainedLaterSet = {
+    id: "optimistic-later",
+    clientKey: "70000000-0000-4000-8000-000000000002",
+    setNo: 2,
+    weight: 95,
+    weightUnit: "lb" as const,
+    reps: 8,
+    rpe: null,
+    note: null,
+    saveState: "failed" as const,
+  };
+
+  it("allows only the exact authoritative blocker to be logged first", () => {
+    const blockerOccurrenceId = "60000000-0000-4000-8000-000000000001";
+    const blockers = {
+      [retainedLaterSet.clientKey]: {
+        blockerOccurrenceId,
+        blockerLabel: "Set 1",
+      },
+    };
+
+    expect(unconfirmedSetsBlockLogging({
+      sets: [retainedLaterSet],
+      targetOccurrenceId: blockerOccurrenceId,
+      blockers,
+    })).toBe(false);
+    expect(unconfirmedSetsBlockLogging({
+      sets: [retainedLaterSet],
+      targetOccurrenceId: "60000000-0000-4000-8000-000000000003",
+      blockers,
+    })).toBe(true);
+  });
+
+  it("renders the exact blocker as the current actionable set ahead of the retained later attempt", () => {
+    const blockerOccurrenceId = "60000000-0000-4000-8000-000000000001";
+    const blockedExercise: SessionExerciseData = {
+      ...exercise,
+      sets: [retainedLaterSet],
+    };
+    const activeOccurrence: SessionOccurrenceData = {
+      id: blockerOccurrenceId,
+      sessionExerciseId: blockedExercise.id,
+      kind: "working_set",
+      origin: "planned",
+      sequenceIdx: 0,
+      kindOrdinal: 0,
+      label: null,
+      plannedExerciseId: blockedExercise.exerciseId,
+      plannedNote: null,
+      plannedRepsMin: 6,
+      plannedRepsMax: 8,
+      plannedLoad: 95,
+      plannedLoadUnit: "lb",
+      plannedLoadPercent: null,
+      plannedLoadText: null,
+      plannedRestSec: 90,
+      groupSnapshotId: null,
+      groupRound: null,
+      groupMemberOrderIdx: null,
+      outcome: "pending",
+      outcomeReason: null,
+      outcomeNote: null,
+      revision: 0,
+      resolvedAt: null,
+      completedSetId: null,
+    };
+    const html = renderToStaticMarkup(
+      <ExerciseCard
+        exercise={blockedExercise}
+        historyRevision={0}
+        progress={{
+          sessionExerciseId: blockedExercise.id,
+          exerciseName: blockedExercise.name,
+          total: 3,
+          planned: 3,
+          extra: 0,
+          workoutOnly: 0,
+          performed: 0,
+          plannedPerformed: 0,
+          extraPerformed: 0,
+          workoutOnlyPerformed: 0,
+          skipped: 0,
+          abandoned: 0,
+          pending: 3,
+          legacyUnknown: 0,
+          completedWithoutResult: 0,
+          status: "current",
+        }}
+        expanded
+        onToggle={() => undefined}
+        plateConfigs={{}}
+        incrementals={{}}
+        unit="lb"
+        activeOccurrence={activeOccurrence}
+        workingOccurrences={[activeOccurrence]}
+        isCurrentExercise
+        nextActionLabel="Barbell Squat, set 2"
+        onPatch={() => undefined}
+        onQueueSet={async () => true}
+        onRetrySet={async () => undefined}
+        onDiscardSet={async () => undefined}
+        setOrderBlockers={{
+          [retainedLaterSet.clientKey]: {
+            blockerOccurrenceId,
+            blockerLabel: "Set 1",
+          },
+        }}
+        onSkipComplete={() => undefined}
+        onOpenCoach={() => undefined}
+        adjustIntent={null}
+        onAdjustIntentChange={() => undefined}
+      />,
+    );
+
+    const blockerTarget = `id="set-entry-${blockedExercise.id}-${blockerOccurrenceId}"`;
+    expect(html).toContain(blockerTarget);
+    expect(html).toContain('data-testid="active-log-set"');
+    expect(html.indexOf(blockerTarget)).toBeLessThan(
+      html.indexOf("Save failed"),
+    );
+  });
+});
+
+describe("rapid Log set request guard", () => {
+  it("creates only one enqueue identity for two immediate invocations", async () => {
+    const inFlight = new Set<string>();
+    const clientKeys: string[] = [];
+    let releaseFirst!: () => void;
+    const firstEnqueue = new Promise<void>((resolve) => {
+      releaseFirst = resolve;
+    });
+
+    const first = runGuardedLogRequest(inFlight, "occurrence-1", async () => {
+      clientKeys.push("client-key-1");
+      await firstEnqueue;
+      return true;
+    });
+    const duplicate = await runGuardedLogRequest(
+      inFlight,
+      "occurrence-1",
+      async () => {
+        clientKeys.push("client-key-2");
+        return true;
+      },
+    );
+
+    expect(duplicate).toEqual({ started: false });
+    expect(clientKeys).toEqual(["client-key-1"]);
+    expect(inFlight.has("occurrence-1")).toBe(true);
+
+    releaseFirst();
+    await expect(first).resolves.toEqual({ started: true, value: true });
+    expect(inFlight.size).toBe(0);
   });
 });
 
