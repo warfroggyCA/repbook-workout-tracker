@@ -100,6 +100,8 @@ describe("ExerciseCard", () => {
     expect(source).toContain("onHistoryRevisionChange(result.historyRevision)");
     expect(source).toContain("if (reportDeploymentMismatch(error)) return");
     expect(source).not.toContain("await unskipExercise(");
+    expect(source).toContain("Checking saved skip…");
+    expect(source).toContain("!skipRecoverySettlementPending");
   });
 
   it("keeps both read-only exercise catalogs abortable and retryable", () => {

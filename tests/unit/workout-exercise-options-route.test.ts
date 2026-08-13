@@ -17,6 +17,7 @@ vi.mock("@/services/exercise-replacements", () => ({
 }));
 
 import { GET } from "@/app/api/session/exercise-options/route";
+import { WorkoutExerciseOptionsUnavailableError } from "@/services/workout-exercise-options-errors";
 
 const exerciseId = "00000000-0000-4000-8000-000000000001";
 
@@ -85,6 +86,21 @@ describe("authenticated active-workout exercise options route", () => {
       ok: false,
       message:
         "The exercise catalog could not be loaded. Try again or return to the workout.",
+    });
+  });
+
+  it("distinguishes a positively identified inactive workout", async () => {
+    mocks.alternatives.mockRejectedValue(
+      new WorkoutExerciseOptionsUnavailableError(
+        "workout_not_active",
+        "private service detail",
+      ),
+    );
+    const response = await GET(request("alternative"));
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toEqual({
+      ok: false,
+      message: "Only an active workout can be changed.",
     });
   });
 });

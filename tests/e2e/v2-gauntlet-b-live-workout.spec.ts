@@ -508,6 +508,15 @@ test("keeps the full live workout usable through warm-up, skip, replace, continu
     incompatible.getByRole("button", { name: "Skip exercise", exact: true }),
   ).toBeVisible();
   await skipForEquipment(incompatible, page);
+  await expect(
+    page.getByRole("dialog", { name: "Skip exercise — why?" }),
+  ).toHaveCount(0);
+  const replaceSkippedExercise = incompatible.getByRole("button", {
+    name: "Replace exercise",
+    exact: true,
+  });
+  await expect(replaceSkippedExercise).toBeEnabled();
+  await expectReachableTarget(replaceSkippedExercise);
   let replacementCatalogRequests = 0;
   let releaseClosedCatalog!: () => void;
   const closedCatalogMayFinish = new Promise<void>((resolve) => {
@@ -536,9 +545,7 @@ test("keeps the full live workout usable through warm-up, skip, replace, continu
     }
     await route.continue().catch(() => undefined);
   });
-  await incompatible
-    .getByRole("button", { name: "Replace exercise", exact: true })
-    .click();
+  await replaceSkippedExercise.click();
   const replacementDrawer = page.getByRole("dialog", {
     name: "Replace exercise for this workout",
   });

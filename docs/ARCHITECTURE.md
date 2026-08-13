@@ -618,8 +618,11 @@ CSS pixels between persistent top and bottom regions and do not overflow
 horizontally.
 
 An exercise-level skip remains recorded as a performed-workout fact. The same
-expanded card immediately offers two explicit recovery branches: replace the
-exercise for this workout or continue without replacement. Replacement restores
+expanded card offers two explicit recovery branches after the server-confirmed
+history revision arrives: replace the exercise for this workout or continue
+without replacement. During that revision handoff it shows a concise checking
+state instead of actions whose state could be discarded by the remount.
+Replacement restores
 only still-unperformed working-set occurrences that the exercise skip resolved;
 an already acknowledged warm-up skip stays intact. The replacement, continuation,
 and un-skip paths leave the saved Program and completed sets unchanged and retain

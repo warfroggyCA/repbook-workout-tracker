@@ -135,7 +135,9 @@ test("puts truthful saved-equipment preparation before warm-up at phone sizes", 
       exact: true,
     }),
   ).toBeVisible();
-  const equipmentList = preparation.locator("details");
+  const equipmentList = preparation.locator("details").filter({
+    hasText: "Review equipment list",
+  });
   await expect(equipmentList).not.toHaveAttribute("open", "");
   await expect(
     preparation.getByText("Review equipment list", { exact: true }),

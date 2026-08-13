@@ -543,6 +543,7 @@ type Props = {
     code?: string,
   ) => boolean;
   skipConfirmationPending?: boolean;
+  skipRecoverySettlementPending?: boolean;
   skipConfirmationError?: string | null;
   onSkipConfirmationErrorDismiss?: () => Promise<void> | void;
   onSkipComplete: () => void;
@@ -760,6 +761,7 @@ export function ExerciseCard({
   onSkipRequestStart = () => undefined,
   onSkipRequestFailure = () => true,
   skipConfirmationPending = false,
+  skipRecoverySettlementPending = false,
   skipConfirmationError = null,
   onSkipConfirmationErrorDismiss = () => undefined,
   onSkipComplete,
@@ -2727,7 +2729,19 @@ export function ExerciseCard({
         </div>
       )}
 
-      {expanded && isSkipped && (
+      {expanded && isSkipped && skipRecoverySettlementPending && (
+        <div className="border-t p-3">
+          <div role="status" className="rounded-lg border bg-background p-3">
+            <h3 className="text-sm font-semibold">Checking saved skip…</h3>
+            <p className="mt-1 text-xs leading-5 text-muted-foreground">
+              Repbook is loading the confirmed workout revision before it offers
+              replacement or continuation actions.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {expanded && isSkipped && !skipRecoverySettlementPending && (
         <div className="flex flex-col gap-3 border-t p-3">
           <div
             id={`skip-recovery-description-${exercise.id}`}
@@ -3470,7 +3484,6 @@ function SkipDrawer({
                       }
                       return;
                     }
-                    onOpenChange(false);
                     onDone(reason, result.historyRevision);
                   } catch {
                     if (onRequestFailure(reason)) {

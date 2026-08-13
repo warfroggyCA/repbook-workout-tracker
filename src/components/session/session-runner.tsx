@@ -3467,6 +3467,10 @@ export function SessionRunner(props: SessionRunnerProps) {
             skipConfirmationPending={
               skipConfirmationExerciseId === exercise.id
             }
+            skipRecoverySettlementPending={
+              skipRecoveryExerciseId === exercise.id &&
+              historyRevision > props.historyRevision
+            }
             skipConfirmationError={
               skipConfirmationError?.exerciseId === exercise.id
                 ? skipConfirmationError.message

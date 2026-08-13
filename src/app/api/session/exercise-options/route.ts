@@ -4,6 +4,7 @@ import { sensitiveJson } from "@/lib/http-security";
 import { getRouteUser } from "@/lib/route-auth";
 import { getExerciseAlternativeOptions } from "@/services/exercise-alternatives";
 import { getExerciseReplacementOptions } from "@/services/exercise-replacements";
+import { WorkoutExerciseOptionsUnavailableError } from "@/services/workout-exercise-options-errors";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -47,7 +48,19 @@ export async function GET(request: Request) {
           parsed.data.sessionExerciseId,
         );
     return sensitiveJson({ ok: true, options });
-  } catch {
+  } catch (error) {
+    if (error instanceof WorkoutExerciseOptionsUnavailableError) {
+      return sensitiveJson(
+        {
+          ok: false,
+          message:
+            error.code === "workout_not_active"
+              ? "Only an active workout can be changed."
+              : "The planned exercise is no longer available for this workout.",
+        },
+        { status: 409 },
+      );
+    }
     return sensitiveJson(
       {
         ok: false,

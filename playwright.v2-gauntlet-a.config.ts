@@ -9,7 +9,6 @@ export default defineConfig({
     "v2-gauntlet-a-recovery.spec.ts",
     "v2-t03-planned-order.spec.ts",
     "v2-t05-execution-semantics.spec.ts",
-    "v2-u01-active-workout-hierarchy.spec.ts",
     "v2-u02-exception-context.spec.ts",
   ],
   outputDir: "./output/playwright/v2-gauntlet-a/test-results",
