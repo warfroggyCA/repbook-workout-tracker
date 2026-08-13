@@ -769,27 +769,56 @@ test("keeps the ordinary active set current-first, unobstructed, and acknowledge
     ).toBeVisible();
     await expect(receipt).toBeVisible();
     await expectFullyInViewport(receipt);
+    await expect(currentEntry).toContainText("Set 2 of 3");
     const restingGeometry = await compactGeometry(page);
     expect(
-      restingGeometry.primaryHeight,
+      restingGeometry,
       JSON.stringify(restingGeometry),
-    ).toBeLessThanOrEqual(420);
+    ).toMatchObject({
+      targetBeforePrevious: true,
+      previousBeforeInput: true,
+      inputBeforeLog: true,
+      logClearsDock: true,
+    });
     expect(restingGeometry.disclosures.every((item) => !item.open)).toBe(true);
+    expect(
+      restingGeometry.disclosures.every(
+        (item) => item.height <= item.summaryHeight + 2,
+      ),
+      JSON.stringify(restingGeometry.disclosures),
+    ).toBe(true);
+    expect(restingGeometry.horizontalOverflow).toBeLessThanOrEqual(1);
+    await expect(setOptions.getByLabel("RIR (0–10)")).not.toBeVisible();
+    await expect(setOptions.getByLabel("Set note (optional)")).not.toBeVisible();
     const workoutStatus = page.getByRole("complementary", {
       name: "Workout status",
     });
-    await workoutStatus
-      .getByRole("button", { name: "Skip rest", exact: true })
-      .click();
-    await workoutStatus
-      .getByRole("button", { name: "Dismiss rest timer", exact: true })
-      .click();
+    const skipRest = workoutStatus.getByRole("button", {
+      name: "Skip rest",
+      exact: true,
+    });
+    await expectPrimaryActionUnobstructed(skipRest);
+    await skipRest.click();
+    const dismissRest = workoutStatus.getByRole("button", {
+      name: "Dismiss rest timer",
+      exact: true,
+    });
+    await expectPrimaryActionUnobstructed(dismissRest);
+    await dismissRest.click();
     await expectFullyInViewport(receipt);
     expect(
       await page.evaluate(
         () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
       ),
     ).toBeLessThanOrEqual(1);
+    for (const target of [
+      currentEntry.getByTestId("current-set-target"),
+      currentEntry.getByLabel("Total load", { exact: true }),
+      currentEntry.getByRole("textbox", { name: "Reps", exact: true }),
+      currentEntry.getByRole("button", { name: "Log set", exact: true }),
+    ]) {
+      await expectReachableTarget(target);
+    }
   } finally {
     await discardWorkout(page);
   }
