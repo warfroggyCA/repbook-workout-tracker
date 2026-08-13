@@ -488,6 +488,9 @@ test("presents immutable superset order, truthful progress, and next-member equi
   await expect(
     page.getByRole("region", { name: "Workout progress and upcoming work" }),
   ).toContainText("9 skipped");
+  await expect(
+    page.getByRole("button", { name: "Open unsaved workout changes" }),
+  ).toHaveCount(0);
   await expect(restoredGroup).toContainText("Prepare for Pallof Press");
   await expectNoHorizontalOverflow(page);
 
