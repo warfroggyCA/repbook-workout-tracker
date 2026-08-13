@@ -362,6 +362,23 @@ describe("active-workout disclosure ownership", () => {
       .toBeLessThan(source.indexOf(
         "setExpandedId(expandedId === exercise.id ? null : exercise.id)",
       ));
+    const handoffConsumption = [
+      "previousCurrentActionIdRef.current = currentActionId;",
+      "previousCurrentActionKindRef.current = currentActionKind;",
+    ];
+    for (const assignment of handoffConsumption) {
+      expect(source.lastIndexOf(assignment)).toBeGreaterThan(
+        source.indexOf("exerciseDisclosureGenerationRef.current += 1"),
+      );
+    }
+    expect(
+      source.indexOf(
+        "previousCurrentActionIdRef.current = currentActionId;",
+        source.indexOf("const revealCurrentAction = () =>"),
+      ),
+    ).toBeGreaterThan(
+      source.indexOf("focusTarget.focus({ preventScroll: true });"),
+    );
   });
 });
 

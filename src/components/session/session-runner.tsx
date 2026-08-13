@@ -1161,10 +1161,9 @@ export function SessionRunner(props: SessionRunnerProps) {
       !restoredEarlierAction
     ) return;
     // Do not consume a transition until the previous occurrence is locally
-    // acknowledged. The acknowledgement event will update `occurrences` and
-    // rerun this effect, preserving the exact reveal/focus handoff.
-    previousCurrentActionIdRef.current = currentActionId;
-    previousCurrentActionKindRef.current = currentActionKind;
+    // acknowledged and the scheduled reveal/focus has actually run. A queue
+    // or RSC reconciliation render can otherwise cancel the frame after this
+    // effect has claimed the handoff, leaving the next card open but unfocused.
     const acknowledgementBelongsToPreviousAction =
       previousOccurrence?.kind === "working_set" &&
       latestAcknowledgementTargetId ===
@@ -1217,6 +1216,8 @@ export function SessionRunner(props: SessionRunnerProps) {
             (target.matches("[tabindex]") ? target : null);
         if (focusTarget instanceof HTMLElement) {
           focusTarget.focus({ preventScroll: true });
+          previousCurrentActionIdRef.current = currentActionId;
+          previousCurrentActionKindRef.current = currentActionKind;
         }
       });
     };
@@ -3196,6 +3197,11 @@ export function SessionRunner(props: SessionRunnerProps) {
                 return;
               }
               exerciseDisclosureGenerationRef.current += 1;
+              // An explicit disclosure choice owns this handoff. Consume any
+              // queued automatic reveal so later reconciliation cannot undo
+              // the owner's newer choice.
+              previousCurrentActionIdRef.current = currentActionId;
+              previousCurrentActionKindRef.current = currentActionKind;
               setExpandedId(expandedId === exercise.id ? null : exercise.id);
             }}
             plateConfigs={safePlateConfigs}
