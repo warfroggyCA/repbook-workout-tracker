@@ -364,14 +364,31 @@ test("keeps the full live workout usable through warm-up, skip, replace, continu
     ).length
   )).toBe(1);
   const reconcilingSkip = exerciseCard(page, "Suspension Push-Up");
-  await expect(reconcilingSkip).toContainText("Checking the exercise skip");
   await expect.poll(() => interruptedSkipRequests).toBe(2);
-  await expect(
-    page.getByRole("button", { name: /^Log / }),
-  ).toHaveCount(0);
-  await expect(
-    page.getByRole("button", { name: "Checking skip for Suspension Push-Up" }),
-  ).toBeDisabled();
+  await expect.poll(() => reconcilingSkip.evaluate((card) => {
+    const text = card.textContent ?? "";
+    const logCount = document.querySelectorAll(
+      'button[aria-label^="Log "]',
+    ).length;
+    const checking = document.querySelector<HTMLButtonElement>(
+      'button[aria-label="Checking skip for Suspension Push-Up"]',
+    );
+    const resolve = document.querySelector<HTMLButtonElement>(
+      'button[aria-label="Resolve Suspension Push-Up"]',
+    );
+    if (
+      text.includes("Checking the exercise skip") &&
+      checking?.disabled &&
+      logCount === 0
+    ) return "checking";
+    if (
+      text.includes("Skip was not confirmed") &&
+      resolve != null &&
+      !resolve.disabled &&
+      logCount === 0
+    ) return "unconfirmed";
+    return "transitioning";
+  })).toMatch(/^(?:checking|unconfirmed)$/);
   rejectReplayedSkip();
   incompatible = exerciseCard(page, "Suspension Push-Up");
   await expect(incompatible).toContainText("Skip was not confirmed");

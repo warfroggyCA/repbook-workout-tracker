@@ -1,4 +1,5 @@
 import { cloneElement } from "react";
+import { readFileSync } from "node:fs";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 import { formatCompactPlateLoadGuidance } from "@/lib/exercise-card";
@@ -7,8 +8,8 @@ vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
 vi.mock("@/app/actions/sessions", () => ({
   correctAcknowledgedSet: vi.fn(),
   archiveSet: vi.fn(),
+  confirmExerciseUnskipped: vi.fn(),
   skipExercise: vi.fn(),
-  unskipExercise: vi.fn(),
   logPain: vi.fn(),
   saveExerciseNote: vi.fn(),
   getAlternativeOptions: vi.fn(),
@@ -89,6 +90,17 @@ const exercise: SessionExerciseData = {
 };
 
 describe("ExerciseCard", () => {
+  it("fences the visible un-skip action with the current history revision", () => {
+    const source = readFileSync(
+      "src/components/session/exercise-card.tsx",
+      "utf8",
+    );
+    expect(source).toContain("const result = await confirmExerciseUnskipped({");
+    expect(source).toContain("expectedHistoryRevision: historyRevision");
+    expect(source).toContain("onHistoryRevisionChange(result.historyRevision)");
+    expect(source).not.toContain("await unskipExercise(");
+  });
+
   it("renders total-load, reference guidance, save-state, and note-cap presentation", () => {
     const html = renderToStaticMarkup(
       <ExerciseCard

@@ -686,28 +686,6 @@ export async function confirmExerciseUnskipped(input: {
   return { ...updated, historyRevision: updated.historyRevision };
 }
 
-export async function unskipExercise(sessionExerciseId: string) {
-  const owned = await requireOwnedSessionExercise(sessionExerciseId);
-  if (!owned.ok) return owned;
-  const { user, db, sessionExercise } = owned;
-  const updated = await updateSessionExerciseWithVersion(
-    db,
-    user.id,
-    sessionExercise.id,
-    {
-      modificationType: sessionExercise.substitutedForExerciseId
-        ? "substituted"
-        : "as_planned",
-      skipReason: null,
-    },
-    "session_exercise.unskip",
-    { activeOnly: true }
-  );
-  if (!updated.ok) return actionFailure("unskip_rejected", updated.reason);
-  revalidatePath(`/session/${sessionExercise.sessionId}`);
-  return updated;
-}
-
 const occurrenceMutationSchema = z.object({
   occurrenceId: z.string().uuid(),
   clientKey: z.string().uuid(),

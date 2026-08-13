@@ -238,6 +238,9 @@ test("publishes and preserves durable warm-up and grouped workout outcomes", asy
   const completedWarmup = page.locator("details#workout-warmup");
   await expect(completedWarmup).not.toHaveAttribute("open", "");
   await completedWarmup.locator("summary").click();
+  await completedWarmup
+    .getByRole("button", { name: "Review full plan", exact: true })
+    .click();
   await expect(reloadedWarmupRow).toContainText("skipped");
   await expect(reloadedWarmupRow).toContainText(
     "Note: Briefly skipped to prove recovery controls.",

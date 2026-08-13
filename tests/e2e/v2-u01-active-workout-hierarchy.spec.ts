@@ -563,7 +563,12 @@ async function revealCurrentFromStatusBar(page: Page) {
   const reveal = workoutStatus.locator("button").first();
   await waitForHydratedReactHandler(reveal);
   await expectReachableTarget(reveal);
-  await reveal.click();
+  const label = await reveal.getAttribute("aria-label");
+  if (label?.startsWith("Show ")) {
+    await reveal.click();
+  } else {
+    expect(label).toMatch(/^Log /);
+  }
   await expect.poll(() => page.evaluate(() => {
     const log = document.querySelector<HTMLElement>(
       '[data-testid="active-log-set"]',
@@ -755,6 +760,12 @@ test("keeps the ordinary active set current-first, unobstructed, and acknowledge
     ).toBeVisible();
     await expect(receipt).toBeVisible();
     await expectFullyInViewport(receipt);
+    const restingGeometry = await compactGeometry(page);
+    expect(
+      restingGeometry.primaryHeight,
+      JSON.stringify(restingGeometry),
+    ).toBeLessThanOrEqual(420);
+    expect(restingGeometry.disclosures.every((item) => !item.open)).toBe(true);
     const workoutStatus = page.getByRole("complementary", {
       name: "Workout status",
     });

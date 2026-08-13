@@ -123,7 +123,7 @@ describe("server action result contract", () => {
         "correctAcknowledgedSet",
         "archiveSet",
         "skipExercise",
-        "unskipExercise",
+        "confirmExerciseUnskipped",
         "substituteExercise",
         "undoExerciseSubstitution",
         "logPain",

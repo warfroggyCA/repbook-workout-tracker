@@ -320,6 +320,37 @@ describe("session action named results", () => {
     });
   });
 
+  it("rejects a delayed un-skip after a newer skip choice wins", async () => {
+    await expect(skipExercise({
+      sessionExerciseId: activeExerciseId,
+      reason: "equipment",
+      expectedHistoryRevision: 0,
+    })).resolves.toMatchObject({ ok: true, historyRevision: 1 });
+    await expect(skipExercise({
+      sessionExerciseId: activeExerciseId,
+      reason: "pain",
+      expectedHistoryRevision: 1,
+    })).resolves.toMatchObject({ ok: true, historyRevision: 2 });
+
+    await expect(confirmExerciseUnskipped({
+      sessionExerciseId: activeExerciseId,
+      expectedHistoryRevision: 1,
+    })).resolves.toMatchObject({ ok: false, code: "unskip_stale" });
+
+    await expect(database.db.query.sessionExercises.findFirst({
+      where: eq(sessionExercises.id, activeExerciseId),
+      columns: { modificationType: true, skipReason: true },
+    })).resolves.toEqual({
+      modificationType: "skipped",
+      skipReason: "pain",
+    });
+    await expect(database.db.query.workoutSessions.findFirst({
+      where: eq(workoutSessions.userId, ownerId),
+      columns: { historyRevision: true },
+      orderBy: (session, { desc }) => desc(session.startedAt),
+    })).resolves.toEqual({ historyRevision: 2 });
+  });
+
   it("routes a date-only reviewed active-duration correction through the owner action", async () => {
     await database.db.update(workoutSessions).set({
       finishedAt: null,

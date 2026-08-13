@@ -6,8 +6,8 @@ import Link from "next/link";
 import { toast } from "sonner";
 import {
   archiveSet,
+  confirmExerciseUnskipped,
   skipExercise,
-  unskipExercise,
   logPain,
   saveExerciseNote,
   getAlternativeOptions,
@@ -1862,7 +1862,7 @@ export function ExerciseCard({
                         weightLabel={liveWeightLabel}
                         plateConfig={plateConfig}
                         machineLoadConfig={machineLoadConfig}
-                        prioritizePerformedMeasure={prioritizeCurrentAction}
+                        prioritizePerformedMeasure
                       />
                       <div
                         className={cn(
@@ -1930,42 +1930,49 @@ export function ExerciseCard({
                         onDiscard={onDiscardOccurrenceMutation}
                       />
                       {prioritizeCurrentAction && (
-                        <>
-                          <div className="mt-1 flex min-h-11 items-center gap-2 border-t">
-                            <p className="shrink-0 text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
-                              Next action
-                            </p>
-                            <p className="min-w-0 break-words py-2 text-sm">
-                              {nextActionLabel}
-                            </p>
-                          </div>
-                          <details className="mt-1 rounded-md border border-dashed text-sm">
-                            <summary className="flex min-h-[44px] cursor-pointer list-none items-center justify-between gap-2 rounded-md px-2 py-1 font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
-                              <span>Set options</span>
-                              <span className="break-words text-right text-xs text-muted-foreground">Effort, note or skip</span>
-                            </summary>
-                            <div className="space-y-3 border-t p-3">
-                              <section aria-labelledby={`optional-set-fields-${exercise.id}`}>
-                                <h3
-                                  id={`optional-set-fields-${exercise.id}`}
-                                  className="mb-2 font-medium"
-                                >
-                                  Optional effort and set note
-                                </h3>
-                                <SetEntry
-                                  metricType={performedMetricType}
-                                  supported={metricSupported}
-                                  draft={draft}
-                                  setDraft={setDraft}
-                                  stepWeight={stepWeight}
-                                  unit={unit}
-                                  hasWeight={recordsNumericLoad}
-                                  weightLabel={liveWeightLabel}
-                                  plateConfig={plateConfig}
-                                  machineLoadConfig={machineLoadConfig}
-                                  optionalOnly
-                                />
-                              </section>
+                        <div className="mt-1 flex min-h-11 items-center gap-2 border-t">
+                          <p className="shrink-0 text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+                            Next action
+                          </p>
+                          <p className="min-w-0 break-words py-2 text-sm">
+                            {nextActionLabel}
+                          </p>
+                        </div>
+                      )}
+                      <details className="mt-1 rounded-md border border-dashed text-sm">
+                        <summary className="flex min-h-[44px] cursor-pointer list-none items-center justify-between gap-2 rounded-md px-2 py-1 font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
+                          <span>Set options</span>
+                          <span className="break-words text-right text-xs text-muted-foreground">
+                            {prioritizeCurrentAction
+                              ? "Effort, note or skip"
+                              : "Effort or note"}
+                          </span>
+                        </summary>
+                        <div className="space-y-3 border-t p-3">
+                          <section
+                            aria-labelledby={`optional-set-fields-${exercise.id}`}
+                          >
+                            <h3
+                              id={`optional-set-fields-${exercise.id}`}
+                              className="mb-2 font-medium"
+                            >
+                              Optional effort and set note
+                            </h3>
+                            <SetEntry
+                              metricType={performedMetricType}
+                              supported={metricSupported}
+                              draft={draft}
+                              setDraft={setDraft}
+                              stepWeight={stepWeight}
+                              unit={unit}
+                              hasWeight={recordsNumericLoad}
+                              weightLabel={liveWeightLabel}
+                              plateConfig={plateConfig}
+                              machineLoadConfig={machineLoadConfig}
+                              optionalOnly
+                            />
+                          </section>
+                          {prioritizeCurrentAction && (
                               <section
                                 aria-labelledby={`set-exceptions-${exercise.id}`}
                                 className="border-t pt-3"
@@ -1976,25 +1983,24 @@ export function ExerciseCard({
                                 >
                                   Set exceptions
                                 </h3>
-                              <Button
-                                type="button"
-                                variant="outline"
-                                className="w-full"
-                                disabled={
-                                  occurrenceChangesBlocked ||
-                                  Boolean(occurrenceMutation)
-                                }
-                                onClick={() =>
-                                  setSkipSetOccurrence(activeOccurrence)
-                                }
-                              >
-                                Skip set
-                              </Button>
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  className="w-full"
+                                  disabled={
+                                    occurrenceChangesBlocked ||
+                                    Boolean(occurrenceMutation)
+                                  }
+                                  onClick={() =>
+                                    setSkipSetOccurrence(activeOccurrence)
+                                  }
+                                >
+                                  Skip set
+                                </Button>
                               </section>
-                            </div>
-                          </details>
-                        </>
-                      )}
+                          )}
+                        </div>
+                      </details>
                     </div>
                   );
                 }
@@ -2628,11 +2634,16 @@ export function ExerciseCard({
               onClick={() =>
                 startTransition(async () => {
                   try {
-                    const result = await unskipExercise(exercise.id);
+                    const result = await confirmExerciseUnskipped({
+                      sessionExerciseId: exercise.id,
+                      expectedHistoryRevision: historyRevision,
+                    });
                     if (!result.ok) {
                       toast.error(result.message);
+                      if (result.code === "unskip_stale") router.refresh();
                       return;
                     }
+                    onHistoryRevisionChange(result.historyRevision);
                   } catch {
                     toast.error("The exercise could not be restored.");
                     return;
