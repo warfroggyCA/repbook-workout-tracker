@@ -80,6 +80,7 @@ import {
 } from "@/lib/deployment-recovery";
 
 const activeOwners = new Set<string>();
+const pendingOwnerWakes = new Map<string, boolean>();
 
 export const WORKOUT_DEVICE_STATUS_CLASS_NAME =
   "fixed right-3 bottom-[calc(7.5rem+env(safe-area-inset-bottom))] z-30 flex max-w-[calc(100vw-1.5rem)] flex-wrap justify-end gap-2 lg:bottom-[5.75rem]";
@@ -179,9 +180,16 @@ export async function syncNextEntry(
   drainDepth = 0,
 ) {
   if (deploymentRecoveryRequired()) return;
-  if (activeOwners.has(ownerId)) return;
+  if (activeOwners.has(ownerId)) {
+    pendingOwnerWakes.set(
+      ownerId,
+      (pendingOwnerWakes.get(ownerId) ?? false) || drainReady,
+    );
+    return;
+  }
   activeOwners.add(ownerId);
   let attempted = false;
+  let queuedDrainReady: boolean | undefined;
   try {
     await withOutboxLock(async () => {
       const command = nextWorkoutCommand(
@@ -423,13 +431,22 @@ export async function syncNextEntry(
       }
     });
   } finally {
+    queuedDrainReady = pendingOwnerWakes.get(ownerId);
+    pendingOwnerWakes.delete(ownerId);
     activeOwners.delete(ownerId);
     if (attempted) {
       window.dispatchEvent(new Event(WORKOUT_SET_OUTBOX_CHANGE_EVENT));
     }
   }
-  if (attempted && drainReady && drainDepth < 100) {
-    await syncNextEntry(ownerId, true, drainDepth + 1);
+  if (
+    (queuedDrainReady !== undefined || (attempted && drainReady)) &&
+    drainDepth < 100
+  ) {
+    await syncNextEntry(
+      ownerId,
+      drainReady || queuedDrainReady === true,
+      drainDepth + 1,
+    );
   }
 }
 

@@ -5,6 +5,7 @@ import { UnrecognizedActionError } from "next/dist/client/components/unrecognize
 import {
   WORKOUT_SET_OUTBOX_MAX_AUTO_ATTEMPTS,
   enqueueWorkoutSetOutboxEntry,
+  markWorkoutSetNeedsAttention,
   markWorkoutSetTransientFailure,
   readWorkoutSetOutbox,
   retryWorkoutSet,
@@ -200,6 +201,70 @@ describe("workout set outbox sync classification", () => {
       ok: false,
       reason: expect.stringContaining(blocker.label),
     });
+  });
+
+  it("coalesces an exact-blocker wake that arrives while its owner drain unwinds", async () => {
+    storage.values.clear();
+    const blockerOccurrenceId =
+      "60000000-0000-4000-8000-000000000004";
+    const retained = {
+      ...entry(),
+      occurrenceId: "60000000-0000-4000-8000-000000000005",
+      expectedOccurrenceRevision: 0,
+      setNo: 2,
+    };
+    enqueueWorkoutSetOutboxEntry(storage, retained);
+    markWorkoutSetNeedsAttention(
+      storage,
+      retained.clientKey,
+      "Resolve Bench Press · Set 1 first.",
+      new Date("2026-07-18T12:01:00.000Z"),
+      {
+        occurrenceId: blockerOccurrenceId,
+        occurrenceRevision: 0,
+        sessionExerciseId: retained.sessionExerciseId,
+        exerciseName: retained.exerciseName,
+        setNo: 1,
+        groupRound: null,
+        origin: "planned",
+        isAddedSet: false,
+        label: "Bench Press · Set 1",
+      },
+    );
+    actionMocks.logSet.mockResolvedValueOnce({
+      outcome: "saved",
+      setId: savedSetId,
+      occurrenceId: blockerOccurrenceId,
+      occurrenceRevision: 1,
+    });
+
+    const dormantPass = syncNextEntry(retained.ownerId);
+    const blocker = {
+      ...entry(),
+      clientKey: "10000000-0000-4000-8000-000000000002",
+      occurrenceId: blockerOccurrenceId,
+      expectedOccurrenceRevision: 0,
+      createdAtISO: "2026-07-18T12:02:00.000Z",
+    };
+    enqueueWorkoutSetOutboxEntry(storage, blocker);
+    const overlappingWake = syncNextEntry(retained.ownerId);
+
+    await Promise.all([dormantPass, overlappingWake]);
+
+    expect(actionMocks.logSet).toHaveBeenCalledOnce();
+    expect(actionMocks.logSet).toHaveBeenCalledWith(
+      expect.objectContaining({
+        clientKey: blocker.clientKey,
+        occurrenceId: blockerOccurrenceId,
+      }),
+    );
+    expect(readWorkoutSetOutbox(storage).entries).toEqual([
+      expect.objectContaining({
+        clientKey: retained.clientKey,
+        status: "queued",
+        orderBlocker: null,
+      }),
+    ]);
   });
 
   it("sends an exact occurrence fence for new commands while legacy entries remain valid", async () => {

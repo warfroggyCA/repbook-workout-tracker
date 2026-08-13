@@ -707,6 +707,68 @@ describe("ExerciseCard", () => {
       exact.indexOf("Save failed"),
     );
 
+    const acknowledgedBlocker = renderToStaticMarkup(
+      <ExerciseCard
+        {...baseProps}
+        exercise={{
+          ...failedAttempt,
+          sets: [
+            {
+              id: "saved-blocker",
+              clientKey: "saved-blocker-key",
+              setNo: 1,
+              weight: 95,
+              weightUnit: "lb",
+              reps: 8,
+              rpe: null,
+              note: null,
+              saveState: "saved",
+            },
+            failedAttempt.sets[0],
+          ],
+        }}
+        activeOccurrence={{
+          ...blockerOccurrence,
+          id: "60000000-0000-4000-8000-000000000002",
+          sequenceIdx: 1,
+          kindOrdinal: 1,
+        }}
+        workingOccurrences={[
+          { ...blockerOccurrence, outcome: "completed", completedSetId: "saved-blocker" },
+          {
+            ...blockerOccurrence,
+            id: "60000000-0000-4000-8000-000000000002",
+            sequenceIdx: 1,
+            kindOrdinal: 1,
+          },
+        ]}
+        acknowledgementReceipt={{
+          sessionExerciseId: failedAttempt.id,
+          exerciseName: failedAttempt.name,
+          metricType: "weight_reps",
+          set: {
+            id: "saved-blocker",
+            clientKey: "saved-blocker-key",
+            setNo: 1,
+            weight: 95,
+            weightUnit: "lb",
+            reps: 8,
+            metricType: "weight_reps",
+            rpe: null,
+            note: null,
+            saveState: "saved",
+          },
+        }}
+        onRefreshWorkout={() => undefined}
+      />,
+    );
+    expect(acknowledgedBlocker).toContain(
+      `id="active-set-save-receipt-${failedAttempt.id}-1"`,
+    );
+    expect(acknowledgedBlocker).toContain("Saved · Set 1");
+    expect(acknowledgedBlocker).toContain("Acknowledged by Repbook");
+    expect(acknowledgedBlocker).toContain("Save failed");
+
     const mismatched = renderToStaticMarkup(
       <ExerciseCard
         {...baseProps}

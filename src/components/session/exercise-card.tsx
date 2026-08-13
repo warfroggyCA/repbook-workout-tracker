@@ -1917,14 +1917,6 @@ export function ExerciseCard({
                         onRetry={onRetryOccurrenceMutation}
                         onDiscard={onDiscardOccurrenceMutation}
                       />
-                      {displayedAcknowledgementReceipt && (
-                        <ActiveSetSaveReceipt
-                          receipt={displayedAcknowledgementReceipt}
-                          currentExerciseId={exercise.id}
-                          historyRevision={historyRevision}
-                          onAcknowledged={handleAcknowledgementCorrection}
-                        />
-                      )}
                       {prioritizeCurrentAction && (
                         <>
                           <div className="mt-1 flex min-h-11 items-center gap-2 border-t">
@@ -2024,7 +2016,7 @@ export function ExerciseCard({
               );
             })}
 
-            {activeOccurrence == null && displayedAcknowledgementReceipt && (
+            {displayedAcknowledgementReceipt && (
               <ActiveSetSaveReceipt
                 receipt={displayedAcknowledgementReceipt}
                 currentExerciseId={exercise.id}
