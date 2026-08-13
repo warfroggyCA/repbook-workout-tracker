@@ -673,9 +673,21 @@ async function releaseWhenContended(
 }
 
 function expectRetryablePostgresRace(error: unknown) {
-  const code = error != null && typeof error === "object" && "code" in error
-    ? String(error.code)
-    : null;
+  let current = error;
+  let code: string | null = null;
+  const visited = new Set<unknown>();
+  while (
+    current != null &&
+    typeof current === "object" &&
+    !visited.has(current)
+  ) {
+    visited.add(current);
+    if ("code" in current && current.code != null) {
+      code = String(current.code);
+      break;
+    }
+    current = "cause" in current ? current.cause : null;
+  }
   expect(["40001", "40P01"]).toContain(code);
 }
 
