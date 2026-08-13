@@ -10,13 +10,14 @@ const PROGRAM_HEADING = /^Program\s*:\s*(.+)$/iu;
 const DAY_HEADING = /^Day\s+\d+\b(?:\s*[\u2013\u2014-]\s*.+)?$/iu;
 const DAY_WARMUP_LINE = /^Warm[ -]?up\s*:\s*(.+)$/iu;
 const EXERCISE_RAMP_LINE = /^Ramp[ -]?up\s*:\s*(.+)$/iu;
+const EXERCISE_NOTES_LINE = /^Exercise notes?\s*:\s*(.+)$/iu;
 const EXERCISE_LINE =
   /^(?:(?<group>[A-Za-z])(?<member>\d+)\s+)?(?<name>.+?)\s+(?<sets>\d{1,2})\s*[x\u00d7]\s*(?<repMin>\d{1,3})(?:\s*[\u2013\u2014-]\s*(?<repMax>\d{1,3}))?(?<tail>.*)$/u;
 const EXERCISE_TAIL =
   /^\s*(?:@\s*(?<load>\d+(?:\.\d+)?)\s*(?<loadUnit>lb|kg))?\s*(?:,\s*)?(?:rest\s+(?<rest>\d+(?:\.\d+)?)\s*(?<restUnit>sec(?:ond)?s?|s|min(?:ute)?s?|m))?\s*$/iu;
 const UNKNOWN_VALUE = /^(?:\?|unknown|not stated)$/iu;
 
-export const CANONICAL_ROUTINE_PARSER_VERSION = "canonical-routine-text/2";
+export const CANONICAL_ROUTINE_PARSER_VERSION = "canonical-routine-text/3";
 
 export type RoutineTextStructure = Readonly<{
   characterCount: number;
@@ -68,6 +69,7 @@ export function inspectRoutineTextStructure(input: string): RoutineTextStructure
       (line) =>
         !DAY_WARMUP_LINE.test(line) &&
         !EXERCISE_RAMP_LINE.test(line) &&
+        !EXERCISE_NOTES_LINE.test(line) &&
         EXERCISE_LINE.test(line),
     ).length,
   };
@@ -188,9 +190,10 @@ function parseWarmupInstruction(
 /**
  * Parses Repbook's documented canonical paste format without an AI call.
  * `Warm-up:` creates day preparation. An adjacent `Ramp-up:` after an
- * exercise creates ordered lift-specific preparation for that exercise. Every
- * other non-heading line must be understood or the parser fails closed so the
- * provider-backed parser can review it without silently dropping text.
+ * exercise creates ordered lift-specific preparation for that exercise. An
+ * adjacent `Exercise notes:` line remains attached to that exact exercise.
+ * Every other non-heading line must be understood or the parser fails closed
+ * so the provider-backed parser can review it without silently dropping text.
  */
 export function parseCanonicalRoutineText(
   input: string,
@@ -204,6 +207,7 @@ export function parseCanonicalRoutineText(
   let programName: string | null = null;
   const days: RoutineParseDraftData["days"] = [];
   const ambiguities: ParseAmbiguity[] = [];
+  let canAttachExerciseDetails = false;
 
   for (const line of lines) {
     const program = PROGRAM_HEADING.exec(line);
@@ -222,6 +226,7 @@ export function parseCanonicalRoutineText(
         warmupItems: [],
         exercises: [],
       });
+      canAttachExerciseDetails = false;
       continue;
     }
 
@@ -245,6 +250,24 @@ export function parseCanonicalRoutineText(
       if (!parsed) return null;
       currentDay.warmupItems.push(parsed.item);
       ambiguities.push(...parsed.ambiguities);
+      canAttachExerciseDetails = false;
+      continue;
+    }
+
+    const exerciseNotes = EXERCISE_NOTES_LINE.exec(line);
+    if (exerciseNotes) {
+      const currentExercise = currentDay.exercises.at(-1);
+      const notes = exerciseNotes[1]?.trim() ?? "";
+      if (
+        !canAttachExerciseDetails ||
+        !currentExercise ||
+        currentExercise.notes !== null ||
+        notes.length === 0 ||
+        notes.length > 2_000
+      ) {
+        return null;
+      }
+      currentExercise.notes = notes;
       continue;
     }
 
@@ -268,6 +291,7 @@ export function parseCanonicalRoutineText(
       if (!parsed) return null;
       currentExercise.rampUps.push(parsed.item);
       ambiguities.push(...parsed.ambiguities);
+      canAttachExerciseDetails = true;
       continue;
     }
 
@@ -321,6 +345,7 @@ export function parseCanonicalRoutineText(
       notes: null,
       rampUps: [],
     });
+    canAttachExerciseDetails = true;
   }
 
   if (days.length === 0 || days.some((day) => day.exercises.length === 0)) {

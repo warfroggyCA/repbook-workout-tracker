@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { parseCanonicalRoutineText } from "@/ai/tasks/routine-parse/deterministic";
+import {
+  CANONICAL_ROUTINE_PARSER_VERSION,
+  parseCanonicalRoutineText,
+} from "@/ai/tasks/routine-parse/deterministic";
 import {
   buildRoutineImportStagePayload,
   readRoutineImportStagePayload,
@@ -27,7 +30,7 @@ Ramp-up: Empty bar | reps=10`);
           candidates: [{ id: exerciseId, name: "Barbell Bench Press" }],
         },
       ],
-      parserVersion: "canonical-routine-text/2",
+      parserVersion: CANONICAL_ROUTINE_PARSER_VERSION,
       aiEventIds: { routineParse: null, exerciseMap: null },
       baseProgramVersionId,
     });
@@ -55,7 +58,7 @@ Bench Press 3x8 @ 135 lb, rest 2 min`)!;
       schemaVersion: "routine-import-stage/1",
       envelope,
       mappings: [],
-      parserVersion: "canonical-routine-text/2",
+      parserVersion: CANONICAL_ROUTINE_PARSER_VERSION,
       aiEventIds: { routineParse: null, exerciseMap: null },
       baseProgramVersionId: null,
     });

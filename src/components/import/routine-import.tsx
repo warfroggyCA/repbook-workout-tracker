@@ -583,7 +583,7 @@ export function RoutineImport({
         <Textarea
           id="routine-paste"
           placeholder={
-            "Program: Three-day plan\nDay 1 — Push\nWarm-up: Easy bike | load=5 minutes\nBench press 3x8 @ 135 lb, rest 2 min\nRamp-up: Empty bar | reps=10"
+            "Program: Three-day plan\nDay 1 — Push\nWarm-up: Easy bike | load=5 minutes\nBench press 3x8 @ 135 lb, rest 2 min\nRamp-up: Empty bar | reps=10\nExercise notes: Stop before grinding"
           }
           value={input}
           onChange={(event) => handleInputChange(event.target.value)}
@@ -593,7 +593,8 @@ export function RoutineImport({
         />
         <p id="routine-paste-help" className="mt-2 text-xs leading-5 text-muted-foreground">
           General preparation and lift ramp-ups become separate checkable steps.
-          You will edit every proposed step and training choice before publication.
+          Exercise notes stay with that movement. You will edit every proposed
+          step and training choice before publication.
         </p>
         <p id="routine-paste-count" className="mt-1 text-xs text-muted-foreground">
           {input.length.toLocaleString()} / 20,000 characters
