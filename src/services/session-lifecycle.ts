@@ -213,6 +213,9 @@ export async function cleanupIncompleteWorkoutCreation(
 
 export type LogWorkoutSetInput = {
   sessionExerciseId: string;
+  /** Exact occurrence fence for commands created by revision-aware clients. */
+  occurrenceId?: string;
+  expectedOccurrenceRevision?: number;
   /** Exact performed exercise identity observed when the command was created. */
   performedExerciseId: string;
   performedSemanticsVersion: 1;
@@ -244,7 +247,12 @@ export type EquipmentLoadEntryMeaning =
   | "legacy_unknown";
 
 export type LogWorkoutSetResult =
-  | { outcome: "saved"; setId: string; occurrenceId: string }
+  | {
+      outcome: "saved";
+      setId: string;
+      occurrenceId: string;
+      occurrenceRevision: number;
+    }
   | { outcome: "workout_not_active" }
   | { outcome: "retry_identity_conflict" }
   | {
@@ -276,7 +284,21 @@ export type LogWorkoutSetResult =
   | { outcome: "equipment_selection_required" }
   | { outcome: "equipment_selection_conflict" }
   | { outcome: "invalid_observed_completion" }
-  | { outcome: "set_order_conflict" }
+  | { outcome: "stale_occurrence" }
+  | {
+      outcome: "set_order_conflict";
+      blocker: {
+        occurrenceId: string;
+        occurrenceRevision: number;
+        sessionExerciseId: string;
+        exerciseName: string;
+        setNo: number;
+        groupRound: number | null;
+        origin: string;
+        isAddedSet: boolean;
+        label: string;
+      };
+    }
   | { outcome: "set_number_conflict" }
   | { outcome: "not_found" };
 
@@ -1825,6 +1847,12 @@ export async function logWorkoutSet(
   dependencies: SessionLifecycleDependencies = {}
 ): Promise<LogWorkoutSetResult> {
   if (
+    (input.occurrenceId == null) !==
+    (input.expectedOccurrenceRevision == null)
+  ) {
+    throw new Error("An occurrence identity and revision must be supplied together.");
+  }
+  if (
     (input.rir != null && (
       !Number.isFinite(input.rir) || input.rir < 0 || input.rir > 10
     )) ||
@@ -1920,6 +1948,8 @@ async function logWorkoutSetAttempt(
   const mutationHash = createHash("sha256")
     .update(JSON.stringify({
       operation: "complete",
+      occurrenceId: input.occurrenceId ?? null,
+      expectedOccurrenceRevision: input.expectedOccurrenceRevision ?? null,
       performedExerciseId: input.performedExerciseId,
       performedSemanticsVersion: input.performedSemanticsVersion,
       performedLoadType: input.performedLoadType,
@@ -2376,38 +2406,74 @@ async function logWorkoutSetAttempt(
       JOIN owned ON owned.id = occurrence.session_exercise_id
       WHERE occurrence.kind = 'working_set'
         AND occurrence.kind_ordinal = ${input.setNo - 1}
+        AND (
+          ${input.occurrenceId ?? null}::uuid IS NULL
+          OR occurrence.id = ${input.occurrenceId ?? null}::uuid
+        )
+        AND (
+          ${input.expectedOccurrenceRevision ?? null}::integer IS NULL
+          OR occurrence.revision = ${input.expectedOccurrenceRevision ?? null}::integer
+        )
       FOR UPDATE OF occurrence
+    ), exact_occurrence_target AS MATERIALIZED (
+      SELECT occurrence.id, occurrence.revision
+      FROM session_occurrences occurrence
+      JOIN owned ON owned.id = occurrence.session_exercise_id
+      WHERE ${input.occurrenceId ?? null}::uuid IS NOT NULL
+        AND occurrence.id = ${input.occurrenceId ?? null}::uuid
+        AND occurrence.kind = 'working_set'
+        AND occurrence.kind_ordinal = ${input.setNo - 1}
+    ), blocking_owned_occurrence AS MATERIALIZED (
+      SELECT
+        earlier.id,
+        earlier.revision,
+        earlier.session_exercise_id,
+        earlier.kind_ordinal + 1 AS set_no,
+        earlier.group_round,
+        earlier.origin,
+        (
+          earlier.origin = 'ad_hoc'
+          AND earlier.planned_note = ${ADDED_WORKOUT_SET_NOTE}
+        ) AS is_added_set,
+        blocker_exercise.name AS exercise_name
+      FROM owned_occurrence attempted
+      JOIN session_occurrences earlier
+        ON earlier.session_id = attempted.session_id
+       AND earlier.kind = 'working_set'
+       AND earlier.outcome = 'pending'
+       AND (
+         (
+           earlier.session_exercise_id = attempted.session_exercise_id
+           AND earlier.kind_ordinal < attempted.kind_ordinal
+           AND (
+             NOT (
+               attempted.origin = 'ad_hoc'
+               AND attempted.planned_note = ${ADDED_WORKOUT_SET_NOTE}
+             )
+             OR (
+               earlier.origin = 'ad_hoc'
+               AND earlier.planned_note = ${ADDED_WORKOUT_SET_NOTE}
+             )
+           )
+         )
+         OR (
+           attempted.group_snapshot_id IS NOT NULL
+           AND earlier.group_snapshot_id = attempted.group_snapshot_id
+           AND earlier.sequence_idx < attempted.sequence_idx
+         )
+       )
+      JOIN session_exercises blocker_session_exercise
+        ON blocker_session_exercise.id = earlier.session_exercise_id
+       AND blocker_session_exercise.session_id = attempted.session_id
+      JOIN exercises blocker_exercise
+        ON blocker_exercise.id = blocker_session_exercise.exercise_id
+      ORDER BY earlier.sequence_idx, earlier.kind_ordinal, earlier.id
+      LIMIT 1
     ), eligible_owned_occurrence AS MATERIALIZED (
       SELECT occurrence.*
       FROM owned_occurrence occurrence
       WHERE occurrence.outcome = 'pending'
-        AND NOT EXISTS (
-          SELECT 1
-          FROM session_occurrences earlier
-          WHERE earlier.session_exercise_id = occurrence.session_exercise_id
-            AND earlier.kind = 'working_set'
-            AND earlier.kind_ordinal < occurrence.kind_ordinal
-            AND earlier.outcome = 'pending'
-            AND (
-              NOT (
-                occurrence.origin = 'ad_hoc'
-                AND occurrence.planned_note = ${ADDED_WORKOUT_SET_NOTE}
-              )
-              OR (
-                earlier.origin = 'ad_hoc'
-                AND earlier.planned_note = ${ADDED_WORKOUT_SET_NOTE}
-              )
-            )
-        )
-        AND NOT EXISTS (
-          SELECT 1
-          FROM session_occurrences earlier
-          WHERE occurrence.group_snapshot_id IS NOT NULL
-            AND earlier.group_snapshot_id = occurrence.group_snapshot_id
-            AND earlier.kind = 'working_set'
-            AND earlier.sequence_idx < occurrence.sequence_idx
-            AND earlier.outcome = 'pending'
-        )
+        AND NOT EXISTS (SELECT 1 FROM blocking_owned_occurrence)
     ), eligible_ad_hoc AS MATERIALIZED (
       SELECT
         owned.*,
@@ -2648,6 +2714,8 @@ async function logWorkoutSetAttempt(
     SELECT
       (SELECT saved.id FROM saved, resolved_occurrence LIMIT 1) AS id,
       (SELECT resolved_occurrence.id FROM resolved_occurrence LIMIT 1) AS occurrence_id,
+      (SELECT resolved_occurrence.resulting_revision FROM resolved_occurrence LIMIT 1)
+        AS occurrence_revision,
       CASE
         WHEN EXISTS (SELECT 1 FROM resolved_occurrence) THEN 'saved'
         WHEN EXISTS (
@@ -2676,6 +2744,10 @@ async function logWorkoutSetAttempt(
         WHEN EXISTS (SELECT 1 FROM owned)
           AND NOT EXISTS (SELECT 1 FROM selected_setup)
           THEN 'equipment_selection_conflict'
+        WHEN ${input.occurrenceId ?? null}::uuid IS NOT NULL
+          AND EXISTS (SELECT 1 FROM exact_occurrence_target)
+          AND NOT EXISTS (SELECT 1 FROM owned_occurrence)
+          THEN 'stale_occurrence'
         WHEN EXISTS (
           SELECT 1
           FROM owned_occurrence occurrence
@@ -2725,6 +2797,16 @@ async function logWorkoutSetAttempt(
           ELSE 'unsupported_metric'
         END
       END FROM owned WHERE NOT writer_shape_supported LIMIT 1) AS unsupported_reason
+      , (SELECT id FROM blocking_owned_occurrence) AS blocker_occurrence_id
+      , (SELECT revision FROM blocking_owned_occurrence) AS blocker_occurrence_revision
+      , (SELECT session_exercise_id FROM blocking_owned_occurrence)
+          AS blocker_session_exercise_id
+      , (SELECT exercise_name FROM blocking_owned_occurrence)
+          AS blocker_exercise_name
+      , (SELECT set_no FROM blocking_owned_occurrence) AS blocker_set_no
+      , (SELECT group_round FROM blocking_owned_occurrence) AS blocker_group_round
+      , (SELECT origin FROM blocking_owned_occurrence) AS blocker_origin
+      , (SELECT is_added_set FROM blocking_owned_occurrence) AS blocker_is_added_set
   `;
   let row: Record<string, unknown> | undefined;
   try {
@@ -2742,18 +2824,21 @@ async function logWorkoutSetAttempt(
       outcome: "saved",
       setId: String(row.id),
       occurrenceId: String(row.occurrence_id),
+      occurrenceRevision: Number(row.occurrence_revision),
     };
   }
   if (
     row.outcome === "set_number_conflict" ||
     row.outcome === "equipment_selection_required" ||
     row.outcome === "equipment_selection_conflict" ||
-    row.outcome === "performed_evidence_conflict"
+    row.outcome === "performed_evidence_conflict" ||
+    row.outcome === "stale_occurrence"
   ) {
     const replay = resultRows(await db.execute(sql`
       SELECT
         completed_set.id,
         occurrence.id AS occurrence_id,
+        occurrence.revision AS occurrence_revision,
         (ROW(
           completed_set.set_no,
           completed_set.weight,
@@ -2846,6 +2931,7 @@ async function logWorkoutSetAttempt(
         outcome: "saved",
         setId: String(replay.id),
         occurrenceId: String(replay.occurrence_id),
+        occurrenceRevision: Number(replay.occurrence_revision),
       };
     }
     if (replay) return { outcome: "retry_identity_conflict" };
@@ -2867,6 +2953,7 @@ async function logWorkoutSetAttempt(
     row.outcome === "equipment_selection_required" ||
     row.outcome === "equipment_selection_conflict" ||
     row.outcome === "invalid_observed_completion" ||
+    row.outcome === "stale_occurrence" ||
     row.outcome === "set_order_conflict" ||
     row.outcome === "not_found"
   ) {
@@ -2890,6 +2977,44 @@ async function logWorkoutSetAttempt(
           LogWorkoutSetResult,
           { outcome: "unsupported_set_shape" }
         >["reason"],
+      };
+    }
+    if (row.outcome === "set_order_conflict") {
+      if (
+        row.blocker_occurrence_id == null ||
+        row.blocker_occurrence_revision == null ||
+        row.blocker_session_exercise_id == null ||
+        row.blocker_exercise_name == null ||
+        row.blocker_set_no == null ||
+        typeof row.blocker_origin !== "string" ||
+        typeof row.blocker_is_added_set !== "boolean"
+      ) {
+        throw new Error("The set order conflict did not identify its blocker.");
+      }
+      const setNo = Number(row.blocker_set_no);
+      const groupRound = row.blocker_group_round == null
+        ? null
+        : Number(row.blocker_group_round);
+      const exerciseName = String(row.blocker_exercise_name);
+      const isAddedSet = row.blocker_is_added_set;
+      const position = isAddedSet
+        ? "added set"
+        : groupRound == null
+          ? `set ${setNo}`
+          : `round ${groupRound}, set ${setNo}`;
+      return {
+        outcome: "set_order_conflict",
+        blocker: {
+          occurrenceId: String(row.blocker_occurrence_id),
+          occurrenceRevision: Number(row.blocker_occurrence_revision),
+          sessionExerciseId: String(row.blocker_session_exercise_id),
+          exerciseName,
+          setNo,
+          groupRound,
+          origin: String(row.blocker_origin),
+          isAddedSet,
+          label: `${exerciseName} · ${position}`,
+        },
       };
     }
     return { outcome: row.outcome };
@@ -3284,6 +3409,10 @@ export async function abandonWorkoutSession(
     )
     SELECT
       owned.id,
+      coalesce(
+        (SELECT transitioned.status FROM transitioned LIMIT 1),
+        owned.status
+      ) AS status,
       EXISTS (SELECT 1 FROM transitioned) AS transitioned
     FROM owned
   `;
@@ -3293,6 +3422,7 @@ export async function abandonWorkoutSession(
   return {
     sessionId: String(row.id),
     alreadyFinished: !Boolean(row.transitioned),
+    status: String(row.status) as "in_progress" | "completed" | "abandoned",
   };
 }
 

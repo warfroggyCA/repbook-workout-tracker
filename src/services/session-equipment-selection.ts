@@ -128,56 +128,72 @@ function payloadHash(input: SessionEquipmentSelectionInput): string {
   return sha256Hex(Buffer.from(canonicalJson(input), "utf8"));
 }
 
-async function loadOccurrenceStates(
+function parseOccurrenceStates(value: unknown): EquipmentSelectionOccurrenceState[] {
+  let decoded = value;
+  if (typeof decoded === "string") {
+    try {
+      decoded = JSON.parse(decoded) as unknown;
+    } catch {
+      throw new Error("Equipment selection returned invalid occurrence state.");
+    }
+  }
+  if (!Array.isArray(decoded)) {
+    throw new Error("Equipment selection returned invalid occurrence state.");
+  }
+  return decoded.map((state) => {
+    if (state == null || typeof state !== "object") {
+      throw new Error("Equipment selection returned invalid occurrence state.");
+    }
+    const row = state as Record<string, unknown>;
+    if (
+      typeof row.id !== "string" ||
+      typeof row.outcome !== "string" ||
+      !Number.isInteger(Number(row.revision))
+    ) {
+      throw new Error("Equipment selection returned invalid occurrence state.");
+    }
+    return {
+      id: row.id,
+      outcome: row.outcome,
+      outcomeReason:
+        row.outcomeReason == null ? null : String(row.outcomeReason),
+      outcomeNote: row.outcomeNote == null ? null : String(row.outcomeNote),
+      revision: Number(row.revision),
+      resolvedAt:
+        row.resolvedAt == null
+          ? null
+          : new Date(row.resolvedAt as Date | string).toISOString(),
+      completedSetId:
+        row.completedSetId == null ? null : String(row.completedSetId),
+    };
+  });
+}
+
+async function loadOwnedOccurrenceStates(
   db: Db,
   userId: string,
   sessionExerciseId: string,
-) {
-  return resultRows(await db.execute(sql`
-    SELECT occurrence.id, occurrence.outcome::text, occurrence.outcome_reason,
-           occurrence.outcome_note, occurrence.revision, occurrence.resolved_at,
+): Promise<EquipmentSelectionOccurrenceState[]> {
+  const rows = resultRows(await db.execute(sql`
+    SELECT occurrence.id, occurrence.outcome::text AS outcome,
+           occurrence.outcome_reason, occurrence.outcome_note,
+           occurrence.revision, occurrence.resolved_at,
            occurrence.completed_set_id
     FROM session_occurrences occurrence
     JOIN workout_sessions session ON session.id = occurrence.session_id
     WHERE occurrence.session_exercise_id = ${sessionExerciseId}::uuid
       AND session.user_id = ${userId}::uuid
     ORDER BY occurrence.sequence_idx, occurrence.id
-  `)).map((row) => ({
-    id: String(row.id),
-    outcome: String(row.outcome),
-    outcomeReason: row.outcome_reason == null ? null : String(row.outcome_reason),
-    outcomeNote: row.outcome_note == null ? null : String(row.outcome_note),
-    revision: Number(row.revision),
-    resolvedAt:
-      row.resolved_at == null
-        ? null
-        : new Date(row.resolved_at as Date | string).toISOString(),
-    completedSetId:
-      row.completed_set_id == null ? null : String(row.completed_set_id),
-  }));
-}
-
-async function attachOccurrenceStates(
-  db: Db,
-  userId: string,
-  sessionExerciseId: string,
-  result: SessionEquipmentSelectionResult,
-): Promise<SessionEquipmentSelectionResult> {
-  if (
-    result.outcome !== "applied" &&
-    result.outcome !== "no_change" &&
-    result.outcome !== "replayed"
-  ) {
-    return result;
-  }
-  return {
-    ...result,
-    occurrenceStates: await loadOccurrenceStates(
-      db,
-      userId,
-      sessionExerciseId,
-    ),
-  };
+  `));
+  return parseOccurrenceStates(rows.map((row) => ({
+    id: row.id,
+    outcome: row.outcome,
+    outcomeReason: row.outcome_reason,
+    outcomeNote: row.outcome_note,
+    revision: row.revision,
+    resolvedAt: row.resolved_at,
+    completedSetId: row.completed_set_id,
+  })));
 }
 
 /** One CAS identity for every live fact copied into an equipment snapshot. */
@@ -231,7 +247,11 @@ async function replayedReceipt(
       receipt.resulting_snapshot_id == null
         ? null
         : String(receipt.resulting_snapshot_id),
-    occurrenceStates: [],
+    occurrenceStates: await loadOwnedOccurrenceStates(
+      db,
+      userId,
+      input.sessionExerciseId,
+    ),
   };
 }
 
@@ -683,6 +703,14 @@ async function applySelection(
         )} = ${context.source_revision}
         AND NOT EXISTS (SELECT 1 FROM existing)
       FOR UPDATE
+    ), locked_occurrences AS MATERIALIZED (
+      SELECT occurrence.*
+      FROM session_occurrences occurrence
+      JOIN eligible
+        ON eligible.id = occurrence.session_exercise_id
+       AND eligible.session_id = occurrence.session_id
+      ORDER BY occurrence.sequence_idx, occurrence.id
+      FOR UPDATE OF occurrence
     ), inserted_snapshot AS (
       INSERT INTO session_equipment_snapshots (
         id, user_id, session_id, session_exercise_id, equipment_item_id,
@@ -723,12 +751,25 @@ async function applySelection(
       UPDATE session_occurrences occurrence
       SET equipment_snapshot_id = updated_exercise.resulting_snapshot_id,
           revision = occurrence.revision + 1
-      FROM updated_exercise
-      WHERE occurrence.session_exercise_id = updated_exercise.id
-        AND occurrence.session_id = updated_exercise.session_id
-        AND occurrence.outcome = 'pending'
-        AND occurrence.equipment_snapshot_id IS DISTINCT FROM updated_exercise.resulting_snapshot_id
-      RETURNING occurrence.id
+      FROM updated_exercise, locked_occurrences locked
+      WHERE occurrence.id = locked.id
+        AND locked.outcome = 'pending'
+        AND locked.equipment_snapshot_id IS DISTINCT FROM updated_exercise.resulting_snapshot_id
+      RETURNING occurrence.id, occurrence.sequence_idx,
+                occurrence.outcome::text AS outcome,
+                occurrence.outcome_reason, occurrence.outcome_note,
+                occurrence.revision, occurrence.resolved_at,
+                occurrence.completed_set_id
+    ), causal_occurrence_states AS MATERIALIZED (
+      SELECT updated.* FROM updated_occurrences updated
+      UNION ALL
+      SELECT locked.id, locked.sequence_idx, locked.outcome::text,
+             locked.outcome_reason, locked.outcome_note, locked.revision,
+             locked.resolved_at, locked.completed_set_id
+      FROM locked_occurrences locked
+      WHERE NOT EXISTS (
+        SELECT 1 FROM updated_occurrences updated WHERE updated.id = locked.id
+      )
     ), saved_receipt AS (
       INSERT INTO session_equipment_selection_receipts (
         user_id, session_id, session_exercise_id, client_key, operation,
@@ -757,7 +798,21 @@ async function applySelection(
     COALESCE(
       (SELECT resulting_snapshot_id FROM saved_receipt),
       (SELECT resulting_snapshot_id FROM existing)
-    ) AS snapshot_id
+    ) AS snapshot_id,
+    CASE WHEN EXISTS (SELECT 1 FROM saved_receipt) THEN
+      COALESCE((
+        SELECT jsonb_agg(jsonb_build_object(
+          'id', state.id,
+          'outcome', state.outcome,
+          'outcomeReason', state.outcome_reason,
+          'outcomeNote', state.outcome_note,
+          'revision', state.revision,
+          'resolvedAt', state.resolved_at,
+          'completedSetId', state.completed_set_id
+        ) ORDER BY state.sequence_idx, state.id)
+        FROM causal_occurrence_states state
+      ), '[]'::jsonb)
+    ELSE '[]'::jsonb END AS occurrence_states
   `))[0];
   if (!row) throw new Error("Equipment selection returned no outcome.");
   const outcome = String(row.outcome) as SessionEquipmentSelectionResult["outcome"];
@@ -765,7 +820,9 @@ async function applySelection(
     return {
       outcome,
       snapshotId: row.snapshot_id == null ? null : String(row.snapshot_id),
-      occurrenceStates: [],
+      occurrenceStates: outcome === "replayed"
+        ? await loadOwnedOccurrenceStates(db, userId, input.sessionExerciseId)
+        : parseOccurrenceStates(row.occurrence_states),
     };
   }
   return { outcome } as SessionEquipmentSelectionResult;
@@ -794,6 +851,14 @@ async function applyClear(
         AND current_equipment_snapshot_id IS NOT DISTINCT FROM ${input.expectedCurrentSnapshotId}::uuid
         AND NOT EXISTS (SELECT 1 FROM existing)
       FOR UPDATE
+    ), locked_occurrences AS MATERIALIZED (
+      SELECT occurrence.*
+      FROM session_occurrences occurrence
+      JOIN eligible
+        ON eligible.id = occurrence.session_exercise_id
+       AND eligible.session_id = occurrence.session_id
+      ORDER BY occurrence.sequence_idx, occurrence.id
+      FOR UPDATE OF occurrence
     ), updated_exercise AS (
       UPDATE session_exercises exercise
       SET current_equipment_snapshot_id = NULL
@@ -805,12 +870,25 @@ async function applyClear(
     ), updated_occurrences AS (
       UPDATE session_occurrences occurrence
       SET equipment_snapshot_id = NULL, revision = occurrence.revision + 1
-      FROM updated_exercise
-      WHERE occurrence.session_exercise_id = updated_exercise.id
-        AND occurrence.session_id = updated_exercise.session_id
-        AND occurrence.outcome = 'pending'
-        AND occurrence.equipment_snapshot_id IS NOT NULL
-      RETURNING occurrence.id
+      FROM updated_exercise, locked_occurrences locked
+      WHERE occurrence.id = locked.id
+        AND locked.outcome = 'pending'
+        AND locked.equipment_snapshot_id IS NOT NULL
+      RETURNING occurrence.id, occurrence.sequence_idx,
+                occurrence.outcome::text AS outcome,
+                occurrence.outcome_reason, occurrence.outcome_note,
+                occurrence.revision, occurrence.resolved_at,
+                occurrence.completed_set_id
+    ), causal_occurrence_states AS MATERIALIZED (
+      SELECT updated.* FROM updated_occurrences updated
+      UNION ALL
+      SELECT locked.id, locked.sequence_idx, locked.outcome::text,
+             locked.outcome_reason, locked.outcome_note, locked.revision,
+             locked.resolved_at, locked.completed_set_id
+      FROM locked_occurrences locked
+      WHERE NOT EXISTS (
+        SELECT 1 FROM updated_occurrences updated WHERE updated.id = locked.id
+      )
     ), saved_receipt AS (
       INSERT INTO session_equipment_selection_receipts (
         user_id, session_id, session_exercise_id, client_key, operation,
@@ -835,12 +913,32 @@ async function applyClear(
       WHEN EXISTS (SELECT 1 FROM visible) THEN 'stale'
       ELSE 'not_found'
     END AS outcome,
-    NULL::uuid AS snapshot_id
+    NULL::uuid AS snapshot_id,
+    CASE WHEN EXISTS (SELECT 1 FROM saved_receipt) THEN
+      COALESCE((
+        SELECT jsonb_agg(jsonb_build_object(
+          'id', state.id,
+          'outcome', state.outcome,
+          'outcomeReason', state.outcome_reason,
+          'outcomeNote', state.outcome_note,
+          'revision', state.revision,
+          'resolvedAt', state.resolved_at,
+          'completedSetId', state.completed_set_id
+        ) ORDER BY state.sequence_idx, state.id)
+        FROM causal_occurrence_states state
+      ), '[]'::jsonb)
+    ELSE '[]'::jsonb END AS occurrence_states
   `))[0];
   if (!row) throw new Error("Equipment clear returned no outcome.");
   const outcome = String(row.outcome) as SessionEquipmentSelectionResult["outcome"];
   if (outcome === "applied" || outcome === "no_change" || outcome === "replayed") {
-    return { outcome, snapshotId: null, occurrenceStates: [] };
+    return {
+      outcome,
+      snapshotId: null,
+      occurrenceStates: outcome === "replayed"
+        ? await loadOwnedOccurrenceStates(db, userId, input.sessionExerciseId)
+        : parseOccurrenceStates(row.occurrence_states),
+    };
   }
   return { outcome } as SessionEquipmentSelectionResult;
 }
@@ -852,14 +950,7 @@ export async function mutateSessionEquipmentSelection(
 ): Promise<SessionEquipmentSelectionResult> {
   const hash = payloadHash(input);
   const replay = await replayedReceipt(db, userId, input, hash);
-  if (replay) {
-    return attachOccurrenceStates(
-      db,
-      userId,
-      input.sessionExerciseId,
-      replay,
-    );
-  }
+  if (replay) return replay;
 
   const context = await loadContext(db, userId, input.sessionExerciseId);
   if (!context) return { outcome: "not_found" };
@@ -870,12 +961,7 @@ export async function mutateSessionEquipmentSelection(
     return { outcome: "stale" };
   }
   if (input.operation === "clear") {
-    return attachOccurrenceStates(
-      db,
-      userId,
-      input.sessionExerciseId,
-      await applyClear(db, userId, input, hash),
-    );
+    return applyClear(db, userId, input, hash);
   }
 
   const [{ items, plates }, profiles, requirements] = await Promise.all([
@@ -1084,10 +1170,5 @@ export async function mutateSessionEquipmentSelection(
       Buffer.from(canonicalJson(configurationIdentity), "utf8"),
     ),
   };
-  return attachOccurrenceStates(
-    db,
-    userId,
-    input.sessionExerciseId,
-    await applySelection(db, userId, context, input, hash, snapshot),
-  );
+  return applySelection(db, userId, context, input, hash, snapshot);
 }

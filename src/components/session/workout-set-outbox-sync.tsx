@@ -36,6 +36,7 @@ import {
   releaseQueuedWorkoutSetBackoff,
   recordWorkoutSetNeedsAttentionUnlocked,
   recordWorkoutSetTransientFailureUnlocked,
+  releaseWorkoutSetOrderBlockerOutboxEntry,
   removeWorkoutSet,
   removeWorkoutSetUnlocked,
   retryWorkoutSet,
@@ -133,6 +134,8 @@ function formatRetainedMeasurement(entry: WorkoutSetOutboxEntry) {
 function serverSetCommand(entry: WorkoutSetOutboxEntry): LogSetInput {
   const common = {
     sessionExerciseId: entry.sessionExerciseId,
+    occurrenceId: entry.occurrenceId,
+    expectedOccurrenceRevision: entry.expectedOccurrenceRevision,
     performedExerciseId: entry.performedExerciseId,
     performedSemanticsVersion: entry.performedSemanticsVersion,
     performedLoadType: entry.performedLoadType,
@@ -216,13 +219,18 @@ export async function syncNextEntry(
             const bound = bindWorkoutSetsToEquipmentSelectionUnlocked(
               entry.clientKey,
               result.snapshotId,
+              result.occurrenceStates,
             );
             if (!bound.ok) {
               markEquipmentSelectionNeedsAttentionUnlocked(entry.clientKey, bound.reason);
               publishEquipmentSelectionOutboxEvent({ type: "failed", clientKey: entry.clientKey, sessionExerciseId: entry.sessionExerciseId });
               return;
             }
-            const acknowledged = acknowledgeEquipmentSelectionUnlocked(entry.clientKey, result.snapshotId);
+            const acknowledged = acknowledgeEquipmentSelectionUnlocked(
+              entry.clientKey,
+              result.snapshotId,
+              result.occurrenceStates,
+            );
             if (!acknowledged.ok) {
               markEquipmentSelectionNeedsAttentionUnlocked(entry.clientKey, acknowledged.reason);
               return;
@@ -271,6 +279,9 @@ export async function syncNextEntry(
       try {
         const result = await logSet(serverSetCommand(entry));
         if (result.outcome !== "saved") {
+          const orderBlocker = result.outcome === "set_order_conflict"
+            ? result.blocker
+            : null;
           const reason =
             result.outcome === "workout_not_active"
               ? "This workout has ended. Check this set before removing it."
@@ -279,7 +290,9 @@ export async function syncNextEntry(
                 : result.outcome === "set_number_conflict"
                   ? "A different set is already saved in this spot."
                   : result.outcome === "set_order_conflict"
-                    ? "Finish or skip the earlier set first."
+                    ? `Resolve ${result.blocker.label} first. Your later attempt is still saved on this device.`
+                  : result.outcome === "stale_occurrence"
+                    ? "This set changed after it was opened. Refresh the workout and review this retained attempt."
                   : result.outcome === "equipment_selection_required"
                     ? "Choose the equipment you're using before saving this set."
                   : result.outcome === "equipment_selection_conflict"
@@ -311,11 +324,17 @@ export async function syncNextEntry(
                   : result.outcome === "not_found"
                     ? "We couldn't find this exercise in the workout."
                     : "We couldn't save these set details. Check them and try again.";
-          recordWorkoutSetNeedsAttentionUnlocked(entry.clientKey, reason);
+          recordWorkoutSetNeedsAttentionUnlocked(
+            entry.clientKey,
+            reason,
+            orderBlocker,
+            result.outcome === "stale_occurrence" ? "stale_occurrence" : null,
+          );
           publishWorkoutSetOutboxEvent({
             type: "failed",
             clientKey: entry.clientKey,
             sessionId: entry.sessionId,
+            blocker: orderBlocker,
           });
           return;
         }
@@ -359,11 +378,23 @@ export async function syncNextEntry(
           recordWorkoutSetNeedsAttentionUnlocked(entry.clientKey, removed.reason);
           return;
         }
+        for (const blockedEntry of getWorkoutSetOutboxSnapshot().entries) {
+          if (blockedEntry.orderBlocker?.occurrenceId !== result.occurrenceId) {
+            continue;
+          }
+          releaseWorkoutSetOrderBlockerOutboxEntry(
+            window.localStorage,
+            blockedEntry.clientKey,
+            result.occurrenceId,
+          );
+        }
         publishWorkoutSetOutboxEvent({
           type: "saved",
           clientKey: entry.clientKey,
           sessionId: entry.sessionId,
           setId: result.setId,
+          occurrenceId: result.occurrenceId,
+          occurrenceRevision: result.occurrenceRevision,
           entry,
         });
       } catch (error) {
@@ -896,29 +927,71 @@ export function WorkoutSetOutboxTray({
                       {entry.lastError}
                     </p>
                   )}
+                  {entry.orderBlocker && (
+                    <p className="mt-2 text-sm font-medium">
+                      Required first: {entry.orderBlocker.label}. Retry unlocks
+                      after that set is completed or skipped.
+                    </p>
+                  )}
                   <div className="mt-3 flex flex-wrap gap-2">
                     <Link
-                      href={`/session/${entry.sessionId}#exercise-${entry.sessionExerciseId}`}
-                      onClick={() => handleOpenChange(false)}
-                      aria-label={`Return to ${entry.exerciseName} set ${entry.setNo}`}
+                      href={entry.orderBlocker
+                        ? `/session/${entry.sessionId}#${entry.orderBlocker.isAddedSet ? "added-set-entry" : "set-entry"}-${entry.orderBlocker.sessionExerciseId}-${entry.orderBlocker.occurrenceId}`
+                        : `/session/${entry.sessionId}#exercise-${entry.sessionExerciseId}`}
+                      onClick={(event) => {
+                        const drawer = event.currentTarget.closest('[role="dialog"]');
+                        if (
+                          entry.orderBlocker &&
+                          window.location.pathname === `/session/${entry.sessionId}`
+                        ) {
+                          event.preventDefault();
+                          window.history.replaceState(
+                            window.history.state,
+                            "",
+                            event.currentTarget.getAttribute("href") ??
+                              window.location.href,
+                          );
+                        }
+                        handleOpenChange(false);
+                        if (entry.orderBlocker) {
+                          let remainingFrames = 120;
+                          const revealAfterDrawerCloses = () => {
+                            if (drawer?.isConnected && remainingFrames > 0) {
+                              remainingFrames -= 1;
+                              window.requestAnimationFrame(revealAfterDrawerCloses);
+                              return;
+                            }
+                            window.dispatchEvent(new Event("hashchange"));
+                          };
+                          window.requestAnimationFrame(revealAfterDrawerCloses);
+                        }
+                      }}
+                      aria-label={entry.orderBlocker
+                        ? `Go to required ${entry.orderBlocker.label}`
+                        : `Return to ${entry.exerciseName} set ${entry.setNo}`}
                       className={buttonVariants({
                         size: "touch",
                         variant: "outline",
                       })}
                     >
-                      <ArrowLeft className="size-3.5" /> Return to exercise
+                      <ArrowLeft className="size-3.5" /> {entry.orderBlocker
+                        ? "Go to required set"
+                        : "Return to exercise"}
                     </Link>
-                    <Button
-                      type="button"
-                      size="touch"
-                      variant="outline"
-                      onClick={async () => {
-                        await retryWorkoutSet(entry.clientKey);
-                        onWake();
-                      }}
-                    >
-                      <RotateCcw className="size-3.5" /> Try now
-                    </Button>
+                    {!entry.orderBlocker &&
+                      entry.reviewRequired !== "stale_occurrence" && (
+                      <Button
+                        type="button"
+                        size="touch"
+                        variant="outline"
+                        onClick={async () => {
+                          await retryWorkoutSet(entry.clientKey);
+                          onWake();
+                        }}
+                      >
+                        <RotateCcw className="size-3.5" /> Retry save
+                      </Button>
+                    )}
                     {confirmRemove === entry.clientKey ? (
                       <Button
                         type="button"
@@ -926,7 +999,7 @@ export function WorkoutSetOutboxTray({
                         variant="destructive"
                         onClick={() => void discard(entry)}
                       >
-                        Discard set
+                        Discard device copy
                       </Button>
                     ) : (
                       <Button
@@ -935,7 +1008,7 @@ export function WorkoutSetOutboxTray({
                         variant="ghost"
                         onClick={() => setConfirmRemove(entry.clientKey)}
                       >
-                        <Trash2 className="size-3.5" /> Remove
+                        <Trash2 className="size-3.5" /> Discard device copy
                       </Button>
                     )}
                   </div>

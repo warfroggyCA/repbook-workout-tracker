@@ -133,7 +133,7 @@ describe("V2 T05 execution semantics database and service contract", () => {
 
     await expect(
       logWorkoutSet(database.db, fixture.userId, command(1, 1, "t05-too-early")),
-    ).resolves.toEqual({ outcome: "set_order_conflict" });
+    ).resolves.toMatchObject({ outcome: "set_order_conflict" });
     const first = await logWorkoutSet(
       database.db,
       fixture.userId,

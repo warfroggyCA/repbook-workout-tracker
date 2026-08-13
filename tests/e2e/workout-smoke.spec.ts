@@ -440,35 +440,34 @@ async function verifyDecisiveToday({
   await expect(discardDialog).toContainText(
     "Saved history is retained",
   );
-  // Exiting must stay reachable even with unsent/unreadable device copies: the
-  // dialog offers an explicit destructive escape instead of a dead disabled
-  // button, and never renders the raw private value.
+  // An unreadable copy cannot be attributed to this workout. Exiting remains
+  // reachable, the dialog never renders its raw private value, and abandoning
+  // this workout must leave the unscopable copy byte-for-byte intact.
   await expect(discardDialog).toContainText(
-    "1 unreadable set copy is retained.",
+    "1 unreadable set copy may belong to this or another workout.",
   );
   await expect(
     discardDialog.getByRole("button", {
-      name: "Discard unsent copies & abandon",
+      name: "Confirm discard",
       exact: true,
     })
   ).toBeEnabled();
   await expect(discardDialog).not.toContainText("must-stay-private");
-  await discardDialog.getByRole("button", { name: "Keep workout", exact: true }).click();
+  const unreadableCopyBeforeDiscard = await page.evaluate(() =>
+    localStorage.getItem("workout-tracker:workout-set-outbox:v1")
+  );
+  await discardDialog
+    .getByRole("button", { name: "Confirm discard", exact: true })
+    .click();
   await expect(page).toHaveURL(/\/today$/);
-  await expect(resume).toBeVisible();
+  expect(await page.evaluate(() =>
+    localStorage.getItem("workout-tracker:workout-set-outbox:v1")
+  )).toBe(unreadableCopyBeforeDiscard);
+  workoutMayBeActive = false;
   await page.evaluate(() => {
     localStorage.removeItem("workout-tracker:workout-set-outbox:v1");
     window.dispatchEvent(new Event("workout-set-outbox-change"));
   });
-  await page
-    .getByRole("button", { name: "Discard this workout", exact: true })
-    .click();
-  await page
-    .getByRole("dialog", { name: /Discard Day B — Hinge/ })
-    .getByRole("button", { name: "Confirm discard", exact: true })
-    .click();
-  await expect(page).toHaveURL(/\/today$/);
-  workoutMayBeActive = false;
 
   const reopenedAlternates = page.getByTestId("alternate-program-days");
   await reopenedAlternates.locator("summary").click();
@@ -2963,7 +2962,7 @@ test("keeps a stale-tab rejection visible until the user resolves it", async ({
     await route.continue();
   });
   const retryStaleSet = staleExercise.getByRole("button", {
-    name: "Retry",
+    name: "Retry save",
     exact: true,
   });
   await waitForReactHandler(retryStaleSet);
@@ -2977,7 +2976,7 @@ test("keeps a stale-tab rejection visible until the user resolves it", async ({
     staleExercise.getByText("Save failed", { exact: true })
   ).toBeVisible();
   await context.unrouteAll({ behavior: "wait" });
-  await staleExercise.getByRole("button", { name: "Discard", exact: true }).click();
+  await staleExercise.getByRole("button", { name: "Discard device copy", exact: true }).click();
   await expect(staleExercise.getByText("Save failed", { exact: true })).toHaveCount(0);
   await stalePage.close();
 });
@@ -3289,10 +3288,10 @@ test("opens failed-set recovery from Settings at 145 percent on iPhone WebKit", 
     "Workout order currently requires",
   );
   await expect(
-    finishRecovery.getByRole("button", { name: "Try saving again" }),
+    finishRecovery.getByRole("button", { name: "Retry save" }),
   ).toBeVisible();
   await expect(
-    finishRecovery.getByRole("button", { name: "Review saved attempt" }),
+    finishRecovery.getByRole("button", { name: "Review device copy" }),
   ).toBeVisible();
   const finishRecoveryGeometry = await finishRecovery.evaluate((dialog) => {
     const footer = dialog.querySelector<HTMLElement>(
@@ -3318,7 +3317,7 @@ test("opens failed-set recovery from Settings at 145 percent on iPhone WebKit", 
     finishRecoveryGeometry.viewportHeight + 1,
   );
   await finishRecovery
-    .getByRole("button", { name: "Review saved attempt" })
+    .getByRole("button", { name: "Review device copy" })
     .click();
   await expect(finishRecovery).toHaveCount(0);
   await expect(page).toHaveURL(
@@ -3371,8 +3370,8 @@ test("opens failed-set recovery from Settings at 145 percent on iPhone WebKit", 
   await expect(recovery).toContainText(
     "No reviewed matching setup exists. The displayed load can be saved with setup unknown.",
   );
-  await expect(recovery.getByRole("button", { name: "Try now" })).toBeVisible();
-  await expect(recovery.getByRole("button", { name: "Remove" })).toBeVisible();
+  await expect(recovery.getByRole("button", { name: "Retry save" })).toBeVisible();
+  await expect(recovery.getByRole("button", { name: "Discard device copy" })).toBeVisible();
   await expect(
     recovery.getByRole("link", {
       name: `Return to ${retained.exerciseName} set 1`,

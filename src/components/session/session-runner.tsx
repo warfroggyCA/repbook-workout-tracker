@@ -31,6 +31,7 @@ import { ArrowLeft, CheckCircle2, MessageSquareText } from "lucide-react";
 import {
   ExerciseCard,
   type ExerciseAdjustmentIntent,
+  type SetOrderBlocker,
 } from "./exercise-card";
 import { ActiveWorkoutDiscard } from "./active-workout-actions";
 import { LiveCoachDrawer } from "./live-coach-drawer";
@@ -53,6 +54,7 @@ import { ContextualNoteScope } from "@/components/contextual-notes/contextual-no
 import { AddWorkoutExercise } from "./add-workout-exercise";
 import { openContextualNoteComposer, type ContextualNoteScopeValue } from "@/lib/contextual-note-ui";
 import { createClientUuid } from "@/lib/client-uuid";
+import { activeWorkoutScrollBehavior } from "@/lib/active-workout-motion";
 import {
   buildPerformedSetMeasurement,
   resolveFutureSetWriterMetricType,
@@ -66,15 +68,18 @@ import type {
   SetAcknowledgementReceipt,
 } from "./types";
 import { toast } from "sonner";
+import { cn } from "@/lib/utils";
 import {
   enqueueWorkoutSet,
   getWorkoutSetOutboxServerSnapshot,
   getWorkoutSetOutboxSnapshot,
   publishWorkoutSetOutboxEvent,
+  releaseWorkoutSetOrderBlockersForOccurrence,
   removeWorkoutSet,
   retryWorkoutSet,
   subscribeToWorkoutSetOutbox,
   subscribeToWorkoutSetOutboxStatus,
+  withOutboxLock,
   WORKOUT_SET_OUTBOX_CHANGE_EVENT,
   type WorkoutSetOutboxClientEvent,
   type WorkoutSetOutboxEntry,
@@ -97,6 +102,7 @@ import {
   retryOccurrenceMutation,
   subscribeToOccurrenceMutationOutbox,
   subscribeToOccurrenceMutationOutboxStatus,
+  withOccurrenceMutationOutboxLock,
   type OccurrenceMutationOutboxClientEvent,
   type OccurrenceMutationOperation,
 } from "@/lib/occurrence-mutation-outbox";
@@ -107,6 +113,7 @@ import {
   mergeEquipmentSelectionOccurrenceStates,
   nextIncompleteExerciseId,
   previousComparableIsTemporarilyUnavailable,
+  reconcileServerOccurrences,
   resolveSetLoggingEquipment,
   shouldShowMissingWarmupMessage,
   workoutSaveQueueMessage,
@@ -146,6 +153,7 @@ import {
   workingSetDisplayPosition,
   workingSetOccurrenceOrderIsEligible,
 } from "@/lib/session-occurrences";
+import { reportDeploymentMismatch } from "@/lib/deployment-recovery";
 import {
   patchActiveWorkoutMeasurement,
   readActiveWorkoutMeasurements,
@@ -220,7 +228,7 @@ function WarmupPanel({
       id="workout-warmup"
       tabIndex={-1}
       aria-labelledby="workout-warmup-heading"
-      className="scroll-mt-4 rounded-xl border border-violet-300/60 bg-violet-50/60 p-4 dark:bg-violet-950/20"
+      className="scroll-mt-4 flex flex-col rounded-xl border border-violet-300/60 bg-violet-50/60 p-4 dark:bg-violet-950/20"
     >
       <h2 id="workout-warmup-heading" className="font-semibold">Warm-up</h2>
       {children}
@@ -288,6 +296,16 @@ function revealWorkoutTarget(
   }
 }
 
+function firstVisibleFocusable(target: HTMLElement) {
+  return [...target.querySelectorAll<HTMLElement>(
+    "input:not([type='hidden']):not([disabled]), button:not([disabled]), [href], [tabindex]:not([tabindex='-1'])",
+  )].find((candidate) => {
+    const bounds = candidate.getBoundingClientRect();
+    return bounds.width > 0 && bounds.height > 0 &&
+      candidate.getAttribute("aria-hidden") !== "true";
+  }) ?? null;
+}
+
 function actionIdentity(action: SessionGuidanceFocusAction | null) {
   if (!action) return null;
   return action.kind === "rest" ? action.actionId : action.occurrenceId;
@@ -352,13 +370,19 @@ export function SessionRunner(props: SessionRunnerProps) {
   const [restNow, setRestNow] = useState(() => Date.now());
   const previousRestRemainingRef = useRef<number | null>(null);
   const restWasVisibleRef = useRef(true);
+  const serverOccurrenceIdsRef = useRef(
+    new Set(props.occurrences.map((occurrence) => occurrence.id)),
+  );
+  const requestedOrderConflictRefreshesRef = useRef<Set<string>>(new Set());
   const [finishOpen, setFinishOpen] = useState(
     props.initialTimingReviewOpen ?? false,
   );
   const [finishNote, setFinishNote] = useState("");
   const [fatigue, setFatigue] = useState<number | null>(null);
+  const [warmupPlanOpen, setWarmupPlanOpen] = useState(false);
   const [finishing, setFinishing] = useState(false);
   const [finishError, setFinishError] = useState<string | null>(null);
+  const [recordedEnqueueCount, setRecordedEnqueueCount] = useState(0);
   const [durationChoice, setDurationChoice] =
     useState<ActiveDurationChoice | null>(() =>
       props.initialTimingReviewRequired
@@ -479,6 +503,27 @@ export function SessionRunner(props: SessionRunnerProps) {
     () => sessionEntries.filter((entry) => entry.status === "needs_attention"),
     [sessionEntries],
   );
+  useEffect(() => {
+    const resolvedBlockerIds = new Set(
+      sessionEntries.flatMap((entry) => {
+        const blocker = entry.orderBlocker;
+        if (!blocker) return [];
+        const authoritative = props.occurrences.find(
+          (occurrence) => occurrence.id === blocker.occurrenceId,
+        );
+        return authoritative && authoritative.outcome !== "pending"
+          ? [blocker.occurrenceId]
+          : [];
+      }),
+    );
+    for (const blockerOccurrenceId of resolvedBlockerIds) {
+      void releaseWorkoutSetOrderBlockersForOccurrence(
+        blockerOccurrenceId,
+      ).then((released) => {
+        if (!released.ok) toast.error(released.reason);
+      });
+    }
+  }, [props.occurrences, sessionEntries]);
   const equipmentSelectionOutbox = useSyncExternalStore(
     subscribeToEquipmentSelectionOutbox,
     getEquipmentSelectionOutboxSnapshot,
@@ -502,6 +547,56 @@ export function SessionRunner(props: SessionRunnerProps) {
       ),
     [occurrenceOutbox.entries, props.ownerId, props.sessionId],
   );
+
+  // A router refresh preserves this Client Component whenever the session-wide
+  // history revision is unchanged. Reconcile occurrence rows by their own
+  // monotonic revision so an acknowledgement in another tab, an equipment
+  // refresh, or an order-conflict recovery cannot leave a stale local ledger
+  // presenting a later set as actionable. Rows created locally by the append
+  // action remain until the refreshed server payload includes them.
+  useEffect(() => {
+    const previousServerIds = serverOccurrenceIdsRef.current;
+    const nextServerIds = new Set(
+      props.occurrences.map((occurrence) => occurrence.id),
+    );
+    const reconcile = window.setTimeout(() => {
+      setOccurrences((current) => reconcileServerOccurrences({
+        current,
+        server: props.occurrences,
+        previousServerIds,
+        pendingMutationOccurrenceIds: new Set(
+          sessionOccurrenceEntries.map((entry) => entry.occurrenceId),
+        ),
+        acknowledgedOccurrenceIds: new Set(acknowledgedOccurrenceIds),
+      }));
+      serverOccurrenceIdsRef.current = nextServerIds;
+    }, 0);
+    return () => window.clearTimeout(reconcile);
+  }, [
+    acknowledgedOccurrenceIds,
+    props.occurrences,
+    sessionOccurrenceEntries,
+  ]);
+
+  useEffect(() => {
+    const conflicts = failedSetEntries.filter(
+      (entry) =>
+        entry.orderBlocker != null ||
+        entry.lastError?.toLowerCase().includes("earlier set") === true ||
+        entry.lastError?.toLowerCase().includes("set order") === true ||
+        entry.lastError?.toLowerCase().includes("workout order") === true,
+    );
+    if (conflicts.length === 0) return;
+    let needsRefresh = false;
+    for (const entry of conflicts) {
+      if (requestedOrderConflictRefreshesRef.current.has(entry.clientKey)) {
+        continue;
+      }
+      requestedOrderConflictRefreshesRef.current.add(entry.clientKey);
+      needsRefresh = true;
+    }
+    if (needsRefresh) router.refresh();
+  }, [failedSetEntries, router]);
 
   useEffect(
     () => () => {
@@ -600,9 +695,13 @@ export function SessionRunner(props: SessionRunnerProps) {
       staleWorkoutActionHashRef.current = false;
       setExpandedId(linkedExercise.id);
       requestAnimationFrame(() => {
-        document
-          .getElementById(targetId)
-          ?.scrollIntoView({ block: "start" });
+        requestAnimationFrame(() => {
+          const target = document.getElementById(targetId);
+          if (!target) return;
+          revealWorkoutTarget(target, activeWorkoutScrollBehavior());
+          const focusTarget = firstVisibleFocusable(target);
+          (focusTarget ?? target).focus({ preventScroll: true });
+        });
       });
     };
     const revealChangedHash = () => {
@@ -682,9 +781,9 @@ export function SessionRunner(props: SessionRunnerProps) {
   useEffect(() => {
     const previousActionId = previousCurrentActionIdRef.current;
     const previousActionKind = previousCurrentActionKindRef.current;
-    previousCurrentActionIdRef.current = currentActionId;
-    previousCurrentActionKindRef.current = currentActionKind;
     if (skipRecoveryExerciseId != null) {
+      previousCurrentActionIdRef.current = currentActionId;
+      previousCurrentActionKindRef.current = currentActionKind;
       return;
     }
     const reconcileStaleHash = staleWorkoutActionHashRef.current;
@@ -697,6 +796,8 @@ export function SessionRunner(props: SessionRunnerProps) {
       !reconcileInitialCurrentAction &&
       (previousActionId == null || previousActionId === currentActionId)
     ) {
+      previousCurrentActionIdRef.current = currentActionId;
+      previousCurrentActionKindRef.current = currentActionKind;
       return;
     }
     staleWorkoutActionHashRef.current = false;
@@ -712,6 +813,11 @@ export function SessionRunner(props: SessionRunnerProps) {
       previousOccurrence?.outcome === "pending" &&
       !restoredEarlierAction
     ) return;
+    // Do not consume a transition until the previous occurrence is locally
+    // acknowledged. The acknowledgement event will update `occurrences` and
+    // rerun this effect, preserving the exact reveal/focus handoff.
+    previousCurrentActionIdRef.current = currentActionId;
+    previousCurrentActionKindRef.current = currentActionKind;
     const acknowledgementBelongsToPreviousAction =
       previousOccurrence?.kind === "working_set" &&
       latestAcknowledgementTargetId ===
@@ -748,11 +854,14 @@ export function SessionRunner(props: SessionRunnerProps) {
         if (acknowledgement) {
           revealWorkoutTarget(acknowledgement, "auto");
         } else if (currentActionKind !== "rest") {
-          if (target) revealWorkoutTarget(target, "smooth");
+          if (target) {
+            revealWorkoutTarget(target, activeWorkoutScrollBehavior());
+          }
         }
-        const focusTarget = target?.matches("[tabindex]")
-          ? target
-          : target?.querySelector<HTMLElement>("button, [href], input");
+        const focusTarget = target == null
+          ? null
+          : firstVisibleFocusable(target) ??
+            (target.matches("[tabindex]") ? target : null);
         if (focusTarget instanceof HTMLElement) {
           focusTarget.focus({ preventScroll: true });
         }
@@ -840,9 +949,12 @@ export function SessionRunner(props: SessionRunnerProps) {
       setExpandedId(nextId);
 
       requestAnimationFrame(() => {
-        document
-          .getElementById(nextId ? `exercise-${nextId}` : "finish-workout")
-          ?.scrollIntoView({ behavior: "smooth", block: "start" });
+        const target = document.getElementById(
+          nextId ? `exercise-${nextId}` : "finish-workout",
+        );
+        if (!target) return;
+        revealWorkoutTarget(target, activeWorkoutScrollBehavior());
+        (firstVisibleFocusable(target) ?? target).focus({ preventScroll: true });
       });
     },
     [shownExercises, setExpandedId]
@@ -972,13 +1084,12 @@ export function SessionRunner(props: SessionRunnerProps) {
       setOccurrences((current) =>
         current.map((occurrence) =>
           occurrence.kind === "working_set" &&
-          occurrence.sessionExerciseId === detail.entry.sessionExerciseId &&
-          occurrence.kindOrdinal === detail.entry.setNo - 1
+          occurrence.id === detail.occurrenceId
             ? {
                 ...occurrence,
                 outcome: "completed",
                 completedSetId: detail.setId,
-                revision: occurrence.revision + 1,
+                revision: detail.occurrenceRevision,
                 resolvedAt: new Date().toISOString(),
               }
             : occurrence,
@@ -1051,6 +1162,11 @@ export function SessionRunner(props: SessionRunnerProps) {
           ? current
           : [...current, detail.occurrence.id],
       );
+      void releaseWorkoutSetOrderBlockersForOccurrence(
+        detail.occurrence.id,
+      ).then((released) => {
+        if (!released.ok) toast.error(released.reason);
+      });
     };
     return subscribeToOccurrenceMutationOutboxStatus(onStatus);
   }, [props.sessionId, sessionOccurrenceEntries]);
@@ -1118,18 +1234,33 @@ export function SessionRunner(props: SessionRunnerProps) {
   );
   const exitQueues: WorkoutExitQueues = {
     unsyncedSetCount: sessionEntries.length,
-    quarantinedSetCount: outbox.quarantined.length,
-    setHasError: outbox.error != null,
+    // Unreadable copies have no trustworthy session identity. Keep them in
+    // the global review tray, but never attribute them to this workout.
+    quarantinedSetCount: 0,
+    setHasError: false,
     unsyncedOccurrenceCount: sessionOccurrenceEntries.length,
-    occurrenceHasError: occurrenceOutbox.error != null,
+    occurrenceHasError: false,
     unsyncedEquipmentCount: sessionEquipmentEntries.length,
     quarantinedEquipmentCount: equipmentSelectionOutbox.quarantined.length,
     equipmentHasError: equipmentSelectionOutbox.error != null,
   };
   // Finishing is gated only by unresolved recorded work; a stuck equipment
   // setup ("awaiting information") is guidance and must never trap the workout.
-  const finishBlocked = finishBlockedByRecordedWork(exitQueues);
+  const finishBlocked =
+    recordedEnqueueCount > 0 || finishBlockedByRecordedWork(exitQueues);
   const equipmentGuidancePending = equipmentSyncPending(exitQueues);
+  const unscopableDeviceCopiesPending =
+    outbox.entries.some(
+      (entry) =>
+        entry.ownerId !== props.ownerId || entry.sessionId !== props.sessionId,
+    ) ||
+    occurrenceOutbox.entries.some(
+      (entry) =>
+        entry.ownerId !== props.ownerId || entry.sessionId !== props.sessionId,
+    ) ||
+    outbox.quarantined.length > 0 ||
+    outbox.error != null ||
+    occurrenceOutbox.error != null;
   const effectiveDurationChoice =
     timing.reviewRequired && durationChoice === "wall_clock_no_stale_signal"
       ? null
@@ -1184,6 +1315,7 @@ export function SessionRunner(props: SessionRunnerProps) {
     exercise: SessionExerciseData,
     set: LoggedSet,
     restAfterSec: number | null | undefined = exercise.restSec,
+    occurrence: SessionOccurrenceData | null = null,
   ) {
     if (!set.clientKey) return false;
     const performed = buildPerformedSetMeasurement({
@@ -1241,48 +1373,63 @@ export function SessionRunner(props: SessionRunnerProps) {
       performed.measurement.weight != null;
     const observedCompletedAtISO = new Date().toISOString();
     if (restAfterSec != null && restAfterSec > 0) primeRestCue();
-    const queued = await enqueueWorkoutSet({
-      clientKey: set.clientKey,
-      ownerId: props.ownerId,
-      sessionId: props.sessionId,
-      sessionExerciseId: exercise.id,
-      performedExerciseId: exercise.exerciseId,
-      performedSemanticsVersion: 1,
-      performedLoadType: exercise.loadType,
-      performedLoadSemantics:
-        exercise.loadSemantics as PerformedLoadSemantics,
-      workoutName: props.templateName,
-      exerciseName: exercise.name,
-      setNo: set.setNo,
-      ...performed.measurement,
-      rpe: set.rpe,
-      rir: set.rir ?? null,
-      techniqueIssue: set.techniqueIssue ?? null,
-      limitationCause: set.limitationCause ?? null,
-      pain: set.pain ?? null,
-      note: set.note,
-      equipmentSnapshotId: useSnapshot ? setup?.currentSnapshotId ?? null : null,
-      equipmentSelectionClientKey: useSnapshot
-        ? pendingEquipmentSelection?.clientKey ?? null
-        : null,
-      restAfterSec,
-      loadEntryMeaning: useSnapshot ? decision.loadEntryMeaning : "legacy_unknown",
-      observedCompletedAtISO,
-      createdAtISO: observedCompletedAtISO,
-    });
-    if (!queued.ok) {
-      toast.error(queued.reason);
-      return false;
+    setRecordedEnqueueCount((count) => count + 1);
+    try {
+      const queued = await enqueueWorkoutSet({
+        clientKey: set.clientKey,
+        ownerId: props.ownerId,
+        sessionId: props.sessionId,
+        sessionExerciseId: exercise.id,
+        ...(occurrence
+          ? {
+              occurrenceId: occurrence.id,
+              expectedOccurrenceRevision: occurrence.revision,
+            }
+          : {}),
+        performedExerciseId: exercise.exerciseId,
+        performedSemanticsVersion: 1,
+        performedLoadType: exercise.loadType,
+        performedLoadSemantics:
+          exercise.loadSemantics as PerformedLoadSemantics,
+        workoutName: props.templateName,
+        exerciseName: exercise.name,
+        setNo: set.setNo,
+        ...performed.measurement,
+        rpe: set.rpe,
+        rir: set.rir ?? null,
+        techniqueIssue: set.techniqueIssue ?? null,
+        limitationCause: set.limitationCause ?? null,
+        pain: set.pain ?? null,
+        note: set.note,
+        equipmentSnapshotId: useSnapshot
+          ? setup?.currentSnapshotId ?? null
+          : null,
+        equipmentSelectionClientKey: useSnapshot
+          ? pendingEquipmentSelection?.clientKey ?? null
+          : null,
+        restAfterSec,
+        loadEntryMeaning: useSnapshot
+          ? decision.loadEntryMeaning
+          : "legacy_unknown",
+        observedCompletedAtISO,
+        createdAtISO: observedCompletedAtISO,
+      });
+      if (!queued.ok) {
+        toast.error(queued.reason);
+        return false;
+      }
+      setExercises((current) =>
+        current.map((candidate) =>
+          candidate.id !== exercise.id ||
+          candidate.sets.some((existing) => existing.clientKey === set.clientKey)
+            ? candidate
+            : { ...candidate, sets: [...candidate.sets, set] },
+        ),
+      );
+      return true;
+    } finally {
+      setRecordedEnqueueCount((count) => Math.max(0, count - 1));
     }
-    setExercises((current) =>
-      current.map((candidate) =>
-        candidate.id !== exercise.id ||
-        candidate.sets.some((existing) => existing.clientKey === set.clientKey)
-          ? candidate
-          : { ...candidate, sets: [...candidate.sets, set] }
-      )
-    );
-    return true;
   }
 
   async function retrySet(clientKey: string) {
@@ -1561,7 +1708,7 @@ export function SessionRunner(props: SessionRunnerProps) {
 
   async function handleFinish() {
     if (finishBlocked) {
-      toast.error("Retry or discard the unconfirmed set copies below before finishing.");
+      toast.error("Retry save or discard the current workout's device copies below before finishing.");
       return;
     }
     if (!durationReviewReady || effectiveDurationChoice == null) {
@@ -1575,24 +1722,65 @@ export function SessionRunner(props: SessionRunnerProps) {
     setFinishing(true);
     setFinishError(null);
     try {
-      await clearMatchingRestTimer();
-      const result = await completeSession({
-        sessionId: props.sessionId,
-        note: finishNote || undefined,
-        fatigue: fatigue ?? undefined,
-        durationDecision:
-          effectiveDurationChoice === "owner_reported"
-            ? {
-                basis: "owner_reported",
-                activeDurationSeconds: ownerReportedSeconds!,
-              }
-            : { basis: effectiveDurationChoice },
-      });
+      const completion = await withOutboxLock(() =>
+        withOccurrenceMutationOutboxLock(async () => {
+          const latestSetQueue = getWorkoutSetOutboxSnapshot();
+          const latestOccurrenceQueue = getOccurrenceMutationOutboxSnapshot();
+          const freshExitQueues: WorkoutExitQueues = {
+            ...exitQueues,
+            unsyncedSetCount: latestSetQueue.entries.filter(
+              (entry) =>
+                entry.ownerId === props.ownerId &&
+                entry.sessionId === props.sessionId,
+            ).length,
+            quarantinedSetCount: 0,
+            setHasError: false,
+            unsyncedOccurrenceCount: latestOccurrenceQueue.entries.filter(
+              (entry) =>
+                entry.ownerId === props.ownerId &&
+                entry.sessionId === props.sessionId,
+            ).length,
+            occurrenceHasError: false,
+          };
+          if (finishBlockedByRecordedWork(freshExitQueues)) {
+            return { blocked: true as const, result: null };
+          }
+          await clearMatchingRestTimer();
+          const result = await completeSession({
+            sessionId: props.sessionId,
+            note: finishNote || undefined,
+            fatigue: fatigue ?? undefined,
+            durationDecision:
+              effectiveDurationChoice === "owner_reported"
+                ? {
+                    basis: "owner_reported",
+                    activeDurationSeconds: ownerReportedSeconds!,
+                  }
+                : { basis: effectiveDurationChoice },
+          });
+          return { blocked: false as const, result };
+        }),
+      );
+      if (completion.blocked) {
+        setFinishError(
+          "A recorded workout change entered the device queue. Review it before finishing.",
+        );
+        setFinishing(false);
+        return;
+      }
+      const result = completion.result;
       if (result?.ok === false) {
         setFinishError(result.message);
         setFinishing(false);
       }
-    } catch {
+    } catch (error) {
+      if (reportDeploymentMismatch(error)) {
+        setFinishError(
+          "Repbook was updated. Your pending workout changes are safe on this device. Reload once, then finish again.",
+        );
+        setFinishing(false);
+        return;
+      }
       setFinishError(
         "The workout was not saved. Review the latest timing and try again.",
       );
@@ -1629,6 +1817,7 @@ export function SessionRunner(props: SessionRunnerProps) {
       return false;
     }
     occurrenceEnqueueInFlightRef.current.add(occurrence.id);
+    setRecordedEnqueueCount((count) => count + 1);
     setAcknowledgedOccurrenceIds((current) =>
       current.filter((id) => id !== occurrence.id),
     );
@@ -1663,6 +1852,7 @@ export function SessionRunner(props: SessionRunnerProps) {
       return true;
     } finally {
       occurrenceEnqueueInFlightRef.current.delete(occurrence.id);
+      setRecordedEnqueueCount((count) => Math.max(0, count - 1));
     }
   }
 
@@ -1770,6 +1960,19 @@ export function SessionRunner(props: SessionRunnerProps) {
           exercise.modificationType !== "skipped",
       ) ?? null
     : null;
+  const retainedFailuresForCurrentExercise = currentActionExercise == null
+    ? []
+    : failedSetEntries.filter(
+        (entry) => entry.sessionExerciseId === currentActionExercise.id,
+      );
+  const allowLogWithRetainedFailure =
+    currentActionOccurrence?.kind === "working_set" &&
+    retainedFailuresForCurrentExercise.length > 0 &&
+    retainedFailuresForCurrentExercise.every(
+      (entry) =>
+        entry.reviewRequired == null &&
+        entry.orderBlocker?.occurrenceId === currentActionOccurrence.id,
+    );
   function nextPendingOccurrenceForExercise(exerciseId: string) {
     return occurrences.find(
       (occurrence) =>
@@ -1807,7 +2010,9 @@ export function SessionRunner(props: SessionRunnerProps) {
     );
     requestAnimationFrame(() => {
       const target = document.getElementById(targetId);
-      if (target) revealWorkoutTarget(target, "smooth");
+      if (target) {
+        revealWorkoutTarget(target, activeWorkoutScrollBehavior());
+      }
     });
   }
 
@@ -1823,11 +2028,38 @@ export function SessionRunner(props: SessionRunnerProps) {
     requestAnimationFrame(() => {
       const target = document.getElementById(targetId);
       if (!target) return;
-      revealWorkoutTarget(target, "smooth");
+      revealWorkoutTarget(target, activeWorkoutScrollBehavior());
       const focusTarget = target.querySelector<HTMLElement>(
         "button, [href], input",
       );
       focusTarget?.focus({ preventScroll: true });
+    });
+  }
+
+  function revealOrderBlocker(targetId: string) {
+    const blocker = occurrences.find((occurrence) => {
+      if (occurrence.kind !== "working_set" || !occurrence.sessionExerciseId) {
+        return false;
+      }
+      const position = workingSetDisplayPosition(occurrence, occurrences);
+      const prefix = position.kind === "extra" ? "added-set-entry" : "set-entry";
+      return `${prefix}-${occurrence.sessionExerciseId}-${occurrence.id}` === targetId;
+    });
+    if (blocker?.sessionExerciseId) {
+      setExpandedId(blocker.sessionExerciseId);
+    }
+    setFinishOpen(false);
+    window.history.replaceState(
+      window.history.state,
+      "",
+      `${window.location.pathname}${window.location.search}#${targetId}`,
+    );
+    window.requestAnimationFrame(() => {
+      const target = document.getElementById(targetId);
+      if (!target) return;
+      revealWorkoutTarget(target, activeWorkoutScrollBehavior());
+      const focusTarget = firstVisibleFocusable(target);
+      (focusTarget ?? target).focus({ preventScroll: true });
     });
   }
 
@@ -2023,6 +2255,35 @@ export function SessionRunner(props: SessionRunnerProps) {
         : guidance.currentAction
           ? "Go to warm-up"
           : "Go to finish workout";
+  const setOrderBlockers = useMemo(() => {
+    const blockers: Record<string, SetOrderBlocker> = {};
+    for (const entry of failedSetEntries) {
+      const blocker = entry.orderBlocker;
+      if (!blocker) continue;
+      blockers[entry.clientKey] = {
+        blockerOccurrenceId: blocker.occurrenceId,
+        blockerLabel: blocker.isAddedSet
+          ? "Added set"
+          : blocker.groupRound == null
+            ? `Set ${blocker.setNo}`
+            : `Round ${blocker.groupRound} · Set ${blocker.setNo}`,
+        blockerExerciseName: blocker.exerciseName,
+        blockerTargetId:
+          `${blocker.isAddedSet ? "added-set-entry" : "set-entry"}-${blocker.sessionExerciseId}-${blocker.occurrenceId}`,
+      };
+    }
+    return blockers;
+  }, [failedSetEntries]);
+  const setReviewRequired = useMemo(
+    () => Object.fromEntries(
+      failedSetEntries
+        .filter((entry) => entry.reviewRequired === "stale_occurrence")
+        .map((entry) => [entry.clientKey, true]),
+    ),
+    [failedSetEntries],
+  );
+  const currentActionIsWorkingSet =
+    guidance.currentAction?.kind === "working_set";
   const continueFromPreparation = useCallback(
     (event: ReactMouseEvent<HTMLAnchorElement>) => {
       event.preventDefault();
@@ -2042,20 +2303,15 @@ export function SessionRunner(props: SessionRunnerProps) {
         window.requestAnimationFrame(() => {
           const target = document.getElementById(preparationTargetId);
           if (!target) return;
-          const behavior = window.matchMedia("(prefers-reduced-motion: reduce)").matches
-            ? "auto"
-            : "smooth";
-          revealWorkoutTarget(target, behavior);
+          revealWorkoutTarget(target, activeWorkoutScrollBehavior());
           const pendingWarmupControl = preparationWarmupAction
             ? target.querySelector<HTMLElement>(
                 '[role="checkbox"][aria-checked="false"]',
               )
             : null;
-          const focusTarget = pendingWarmupControl ?? (
-            target.matches("[tabindex]")
-              ? target
-              : target.querySelector<HTMLElement>("button, [href], input")
-          );
+          const focusTarget = pendingWarmupControl ??
+            firstVisibleFocusable(target) ??
+            (target.matches("[tabindex]") ? target : null);
           focusTarget?.focus({ preventScroll: true });
         });
       });
@@ -2070,18 +2326,18 @@ export function SessionRunner(props: SessionRunnerProps) {
   return (
     <main className="mx-auto flex max-w-3xl flex-col gap-3 p-3 pb-[calc(12rem+env(safe-area-inset-bottom))] min-[360px]:pb-[calc(8rem+env(safe-area-inset-bottom))] sm:p-5 sm:pb-[calc(8rem+env(safe-area-inset-bottom))] lg:p-8 lg:pb-24">
       <ContextualNoteScope value={contextualNoteScope} />
-      <Link
-        href="/today"
-        aria-label="Back to Today"
-        className={buttonVariants({
-          variant: "outline",
-          size: "sm",
-          className: "fixed right-2 top-[max(.5rem,env(safe-area-inset-top))] z-30 min-h-[44px] min-w-[44px] bg-background p-0 shadow-sm min-[361px]:hidden",
-        })}
-      >
-        <ArrowLeft aria-hidden="true" className="size-5" />
-      </Link>
       <header className="flex flex-wrap items-center justify-between gap-2 px-1">
+        <Link
+          href="/today"
+          aria-label="Back to Today"
+          className={buttonVariants({
+            variant: "outline",
+            size: "sm",
+            className: "min-h-11 min-w-11 p-0 min-[361px]:hidden",
+          })}
+        >
+          <ArrowLeft aria-hidden="true" className="size-5" />
+        </Link>
         <div className="min-w-0 max-[360px]:w-full">
           <h1 className="text-lg font-semibold max-[360px]:sr-only">
             {props.templateName}
@@ -2149,22 +2405,15 @@ export function SessionRunner(props: SessionRunnerProps) {
         </section>
       )}
 
-      <SessionPreparationPanel
-        projection={sessionPreparation}
-        hasAcknowledgedWork={hasAcknowledgedWork}
-        continueTargetId={preparationTargetId}
-        continueLabel={preparationContinueLabel}
-        onContinue={continueFromPreparation}
-      />
-
+      {(hasStructuredWarmup || Boolean(props.dayWarmupNotes?.trim())) && (
       <WarmupPanel
         completed={guidance.warmups.completed}
         skipped={guidance.warmups.skipped}
         planned={guidance.warmups.planned}
         remaining={guidance.warmups.remaining}
       >
-        {props.dayWarmupNotes && hasStructuredWarmup ? (
-          <details className="mt-1 rounded-md border border-violet-300/50 bg-background/60 text-sm">
+        {props.dayWarmupNotes ? (
+          <details className="order-3 mt-2 rounded-md border border-violet-300/50 bg-background/60 text-sm">
             <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-2 rounded-md px-3 py-2 font-medium text-violet-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 dark:text-violet-200">
               <span>Day guidance · reference only</span>
               <span className="text-xs text-muted-foreground">Show</span>
@@ -2173,15 +2422,6 @@ export function SessionRunner(props: SessionRunnerProps) {
               {props.dayWarmupNotes}
             </p>
           </details>
-        ) : props.dayWarmupNotes ? (
-          <>
-            <p className="mt-1 text-xs font-medium text-violet-800 dark:text-violet-200">
-              Day guidance · reference only
-            </p>
-            <p className="mt-1 whitespace-pre-line text-sm leading-6 text-muted-foreground">
-              {props.dayWarmupNotes}
-            </p>
-          </>
         ) : shouldShowMissingWarmupMessage({
           dayWarmupNotes: props.dayWarmupNotes,
           hasStructuredWarmup,
@@ -2192,10 +2432,26 @@ export function SessionRunner(props: SessionRunnerProps) {
         ) : null}
         {hasStructuredWarmup && (
           <>
-            <p className="mt-3 text-xs font-medium text-violet-800 dark:text-violet-200">
-              Check off only the distinct actions below.
-            </p>
-            <ul className="mt-2 space-y-2">
+            <div className="order-2 mt-2 flex flex-wrap items-center justify-between gap-2">
+              <p className="text-xs font-medium text-violet-800 dark:text-violet-200">
+                {guidance.currentAction?.kind === "day_warmup" ||
+                guidance.currentAction?.kind === "exercise_warmup"
+                  ? "Complete the current warm-up action below."
+                  : "Warm-up actions are accounted for."}
+              </p>
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                className="min-h-11"
+                aria-expanded={warmupPlanOpen}
+                aria-controls="workout-warmup-plan"
+                onClick={() => setWarmupPlanOpen((open) => !open)}
+              >
+                {warmupPlanOpen ? "Hide full plan" : "Review full plan"}
+              </Button>
+            </div>
+            <ul id="workout-warmup-plan" className="order-1 mt-2 space-y-2">
               {occurrences
                 .filter((occurrence) => occurrence.kind !== "working_set")
                 .map((occurrence) => {
@@ -2242,7 +2498,13 @@ export function SessionRunner(props: SessionRunnerProps) {
                           ? "step"
                           : undefined
                       }
-                      className="scroll-mt-40 flex flex-wrap items-center justify-between gap-2 rounded-lg border bg-background/80 px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                      className={cn(
+                        "scroll-mt-40 flex flex-wrap items-center justify-between gap-2 rounded-lg border bg-background/80 px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+                        !warmupPlanOpen &&
+                          actionOccurrenceId(guidance.currentAction) !== occurrence.id &&
+                          occurrenceMutation == null &&
+                          "hidden",
+                      )}
                     >
                       <div className="min-w-0 flex-1">
                         <p className="font-medium">
@@ -2421,6 +2683,15 @@ export function SessionRunner(props: SessionRunnerProps) {
           </>
         )}
       </WarmupPanel>
+      )}
+
+      {!currentActionIsWorkingSet && <SessionPreparationPanel
+        projection={sessionPreparation}
+        hasAcknowledgedWork={hasAcknowledgedWork}
+        continueTargetId={preparationTargetId}
+        continueLabel={preparationContinueLabel}
+        onContinue={continueFromPreparation}
+      />}
 
       <div className="flex flex-col gap-3">
         {shownExercises.map((exercise) => {
@@ -2469,29 +2740,6 @@ export function SessionRunner(props: SessionRunnerProps) {
           {currentOccurrence?.sessionExerciseId === exercise.id &&
           guidance.activeGroup ? (
             <WorkoutGroupContext guidance={guidance} />
-          ) : null}
-          {equipmentPanel ? (
-            <details
-              className={equipmentSetupForcedOpen
-                ? undefined
-                : "rounded-xl border bg-muted/20"}
-              open={equipmentSetupForcedOpen ? true : undefined}
-            >
-              <summary
-                hidden={equipmentSetupForcedOpen}
-                className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 rounded-xl px-3 py-2 text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-              >
-                <span className="min-w-0 break-words">
-                  Equipment setup for {exercise.name}
-                </span>
-                <span className="shrink-0 text-xs text-muted-foreground">
-                  Show
-                </span>
-              </summary>
-              <div className={equipmentSetupForcedOpen ? undefined : "border-t p-2"}>
-                {equipmentPanel}
-              </div>
-            </details>
           ) : null}
           <ExerciseCard
             key={`${exercise.id}:${exercise.exerciseId}:${exercise.metricType}:${exercise.loadType}:${exercise.loadSemantics}`}
@@ -2692,6 +2940,7 @@ export function SessionRunner(props: SessionRunnerProps) {
                       (action) => action.occurrenceId === occurrence.id,
                     )?.restAfter.seconds ?? null
                   : exercise.restSec,
+                occurrence,
               )
             }
             onAppendSet={(occurrenceId, expectedSetNo) =>
@@ -2716,6 +2965,10 @@ export function SessionRunner(props: SessionRunnerProps) {
             onDiscardOccurrenceMutation={discardOccurrenceEntry}
             onRetrySet={retrySet}
             onDiscardSet={discardSet}
+            setOrderBlockers={setOrderBlockers}
+            setReviewRequired={setReviewRequired}
+            onRevealBlocker={revealOrderBlocker}
+            onRefreshWorkout={() => router.refresh()}
             onHistoryRevisionChange={setHistoryRevision}
             onOpenCoach={() => openCoach(exercise.id)}
             onSkipComplete={() => {
@@ -2733,6 +2986,39 @@ export function SessionRunner(props: SessionRunnerProps) {
               setAdjustment(intent ? { exerciseId: exercise.id, intent } : null)
             }
           />
+          {currentActionIsWorkingSet &&
+          currentOccurrence?.sessionExerciseId === exercise.id ? (
+            <SessionPreparationPanel
+              projection={sessionPreparation}
+              hasAcknowledgedWork={hasAcknowledgedWork}
+              continueTargetId={preparationTargetId}
+              continueLabel={preparationContinueLabel}
+              onContinue={continueFromPreparation}
+            />
+          ) : null}
+          {equipmentPanel ? (
+            <details
+              className={equipmentSetupForcedOpen
+                ? undefined
+                : "rounded-xl border bg-muted/20"}
+              open={equipmentSetupForcedOpen ? true : undefined}
+            >
+              <summary
+                hidden={equipmentSetupForcedOpen}
+                className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 rounded-xl px-3 py-2 text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+              >
+                <span className="min-w-0 break-words">
+                  Equipment setup for {exercise.name}
+                </span>
+                <span className="shrink-0 text-xs text-muted-foreground">
+                  Show
+                </span>
+              </summary>
+              <div className={equipmentSetupForcedOpen ? undefined : "border-t p-2"}>
+                {equipmentPanel}
+              </div>
+            </details>
+          ) : null}
           </div>
           );
         })}
@@ -2770,18 +3056,32 @@ export function SessionRunner(props: SessionRunnerProps) {
       </section>
 
       <Drawer open={finishOpen} onOpenChange={setFinishOpen}>
-        <DrawerContent className="data-[swipe-axis=y]:[--drawer-content-max-height:calc(min(100dvh,100svh)-1rem)] [&_button]:min-h-11 [&_button]:min-w-11 [&_textarea]:min-h-11">
-          <DrawerHeader className="pb-3">
-            <DrawerTitle>Finish workout</DrawerTitle>
-            <DrawerDescription>
-              {plannedPerformed} of {totalPlanned} planned sets done. Wall clock {elapsed}.
-              {extraPerformed > 0
-                ? ` ${extraPerformed} extra set${extraPerformed === 1 ? "" : "s"} performed.`
-                : ""}
-              {workoutOnlyPerformed > 0
-                ? ` ${workoutOnlyPerformed} workout-only set${workoutOnlyPerformed === 1 ? "" : "s"} performed.`
-                : ""}
-            </DrawerDescription>
+        <DrawerContent className="m-0 [--drawer-content-height:100dvh] [--drawer-content-max-height:100dvh] [border-radius:0] [&_button]:min-h-11 [&_button]:min-w-11 [&_textarea]:min-h-11">
+          <DrawerHeader className="border-b pb-3 pt-[max(1rem,env(safe-area-inset-top))] text-left">
+            <div className="flex items-start gap-3">
+              <Button
+                type="button"
+                size="icon"
+                variant="ghost"
+                className="shrink-0"
+                onClick={() => setFinishOpen(false)}
+                aria-label="Back to workout"
+              >
+                <ArrowLeft className="size-5" />
+              </Button>
+              <div className="min-w-0">
+                <DrawerTitle className="text-lg">Finish workout</DrawerTitle>
+                <DrawerDescription className="mt-1 text-left">
+                  {plannedPerformed} of {totalPlanned} planned sets done. Wall clock {elapsed}.
+                  {extraPerformed > 0
+                    ? ` ${extraPerformed} extra set${extraPerformed === 1 ? "" : "s"} performed.`
+                    : ""}
+                  {workoutOnlyPerformed > 0
+                    ? ` ${workoutOnlyPerformed} workout-only set${workoutOnlyPerformed === 1 ? "" : "s"} performed.`
+                    : ""}
+                </DrawerDescription>
+              </div>
+            </div>
           </DrawerHeader>
           <div
             data-testid="finish-workout-scroll"
@@ -2801,22 +3101,30 @@ export function SessionRunner(props: SessionRunnerProps) {
                 </p>
               )}
               {groupRoundSummary.length > 0 && (
-                <ul className="mt-2 flex flex-col gap-1 text-xs text-muted-foreground">
-                  {groupRoundSummary.map((round) => (
-                    <li key={round.key}>
-                      {round.groupName}, round {round.round}: {round.completed} of {round.planned} performed
-                      {round.skipped > 0 ? ` · ${round.skipped} skipped` : ""}
-                      {round.pending > 0 ? ` · ${round.pending} still pending` : ""}
-                      {round.abandoned > 0 ? ` · ${round.abandoned} abandoned` : ""}
-                      {round.completedWithoutResult > 0
-                        ? ` · ${round.completedWithoutResult} missing a saved result`
-                        : ""}
-                      {round.legacyUnknown > 0
-                        ? ` · ${round.legacyUnknown} result unknown`
-                        : ""}
-                    </li>
-                  ))}
-                </ul>
+                <details className="mt-2 rounded-md border bg-background/70">
+                  <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 rounded-md px-3 py-2 text-xs font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
+                    <span>Group-round details</span>
+                    <span className="text-muted-foreground">
+                      {groupRoundSummary.length} rounds
+                    </span>
+                  </summary>
+                  <ul className="flex flex-col gap-1 border-t px-3 py-2 text-xs text-muted-foreground">
+                    {groupRoundSummary.map((round) => (
+                      <li key={round.key}>
+                        {round.groupName}, round {round.round}: {round.completed} of {round.planned} performed
+                        {round.skipped > 0 ? ` · ${round.skipped} skipped` : ""}
+                        {round.pending > 0 ? ` · ${round.pending} still pending` : ""}
+                        {round.abandoned > 0 ? ` · ${round.abandoned} abandoned` : ""}
+                        {round.completedWithoutResult > 0
+                          ? ` · ${round.completedWithoutResult} missing a saved result`
+                          : ""}
+                        {round.legacyUnknown > 0
+                          ? ` · ${round.legacyUnknown} result unknown`
+                          : ""}
+                      </li>
+                    ))}
+                  </ul>
+                </details>
               )}
             </div>
             {finishBlocked && (
@@ -2828,18 +3136,20 @@ export function SessionRunner(props: SessionRunnerProps) {
                 <p role="alert" className="font-medium">
                   {failedSetEntries.length > 0
                     ? `${failedSetEntries.length} ${failedSetEntries.length === 1 ? "set failed" : "sets failed"} to save. Your recorded ${failedSetEntries.length === 1 ? "attempt is" : "attempts are"} still on this device.`
+                    : sessionOccurrenceEntries.length > 0
+                      ? `${sessionOccurrenceEntries.length} workout-item ${sessionOccurrenceEntries.length === 1 ? "device copy is" : "device copies are"} waiting for acknowledgement.`
                     : workoutSaveQueueMessage({
                         // Equipment guidance no longer blocks finishing, so it is
                         // excluded from this blocking message and shown separately.
                         equipmentError: null,
-                        occurrenceError: occurrenceOutbox.error,
-                        setError: outbox.error,
+                        occurrenceError: null,
+                        setError: null,
                         occurrenceCount: sessionOccurrenceEntries.length,
                         occurrenceQuarantineCount: 0,
                         equipmentCount: 0,
                         equipmentQuarantineCount: 0,
                         setCount: sessionEntries.length,
-                        setQuarantineCount: outbox.quarantined.length,
+                        setQuarantineCount: 0,
                       })}
                 </p>
                 {guidance.currentAction && sessionEntries.length > 0 && (
@@ -2879,24 +3189,102 @@ export function SessionRunner(props: SessionRunnerProps) {
                             {entry.lastError}
                           </p>
                         )}
+                        {entry.orderBlocker && (
+                          <p className="mt-2 text-sm font-medium">
+                            Required first: {entry.orderBlocker.label}. Retry
+                            unlocks after that exact set is completed or skipped.
+                          </p>
+                        )}
                         <div className="mt-3 flex flex-col gap-2 min-[420px]:flex-row">
-                          {entry.status === "needs_attention" && (
+                          {entry.orderBlocker ? (
+                            <Button
+                              type="button"
+                              className="flex-1"
+                              onClick={() =>
+                                revealOrderBlocker(
+                                  `${entry.orderBlocker!.isAddedSet ? "added-set-entry" : "set-entry"}-${entry.orderBlocker!.sessionExerciseId}-${entry.orderBlocker!.occurrenceId}`,
+                                )
+                              }
+                            >
+                              Go to required set
+                            </Button>
+                          ) : entry.status === "needs_attention" &&
+                            entry.reviewRequired !== "stale_occurrence" ? (
                             <Button
                               type="button"
                               variant="outline"
                               className="flex-1"
                               onClick={() => void retrySet(entry.clientKey)}
                             >
-                              Try saving again
+                              Retry save
                             </Button>
-                          )}
+                          ) : null}
                           <Button
                             type="button"
                             variant="outline"
                             className="flex-1"
                             onClick={() => revealUnsavedSet(entry)}
                           >
-                            Review saved attempt
+                            Review device copy
+                          </Button>
+                          {entry.status === "needs_attention" && (
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              className="flex-1 text-destructive"
+                              onClick={() => void discardSet(entry.clientKey)}
+                            >
+                              Discard device copy
+                            </Button>
+                          )}
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                {sessionOccurrenceEntries.length > 0 && (
+                  <ul className="mt-3 flex flex-col gap-2">
+                    {sessionOccurrenceEntries.map((entry) => (
+                      <li
+                        key={entry.clientKey}
+                        className="rounded-md border border-amber-700/25 bg-background/70 p-3 text-foreground"
+                      >
+                        <p className="font-medium">{entry.label}</p>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          {entry.operation === "complete"
+                            ? "Mark done"
+                            : entry.operation === "skip"
+                              ? "Skip"
+                              : entry.operation === "restore"
+                                ? "Restore"
+                                : "Update note"}
+                          {entry.status === "needs_attention"
+                            ? " · Save failed — device copy retained"
+                            : " · Waiting for save acknowledgement"}
+                        </p>
+                        {entry.lastError && (
+                          <p className="mt-2 text-sm text-destructive">
+                            {entry.lastError}
+                          </p>
+                        )}
+                        <div className="mt-3 flex flex-col gap-2 min-[420px]:flex-row">
+                          {entry.status === "needs_attention" && (
+                            <Button
+                              type="button"
+                              variant="outline"
+                              className="flex-1"
+                              onClick={() => retryOccurrenceEntry(entry)}
+                            >
+                              Retry save
+                            </Button>
+                          )}
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            className="flex-1 text-destructive"
+                            onClick={() => discardOccurrenceEntry(entry)}
+                          >
+                            Discard device copy
                           </Button>
                         </div>
                       </li>
@@ -2904,6 +3292,14 @@ export function SessionRunner(props: SessionRunnerProps) {
                   </ul>
                 )}
               </div>
+            )}
+            {unscopableDeviceCopiesPending && (
+              <p className="rounded-md border border-sky-500/40 bg-sky-500/10 p-3 text-sm text-sky-950 dark:text-sky-100">
+                Repbook also found a separate or unreadable device copy that
+                may belong to another workout or account. It does not block
+                Finish and will not be deleted here. Review it separately under
+                the device-copy tray.
+              </p>
             )}
             {equipmentGuidancePending && (
               <p className="rounded-md border border-muted-foreground/25 bg-muted/40 p-3 text-sm text-muted-foreground">
@@ -2935,41 +3331,51 @@ export function SessionRunner(props: SessionRunnerProps) {
                 {finishError}
               </p>
             )}
-            <Textarea
-              placeholder="Session note (optional) — how did it go?"
-              value={finishNote}
-              onChange={(e) => setFinishNote(e.target.value)}
-              rows={2}
-            />
-            <div>
-              <p
-                id={fatigueLabelId}
-                className="mb-2 text-sm text-muted-foreground"
-              >
-                Overall fatigue
-              </p>
-              <div
-                role="group"
-                aria-labelledby={fatigueLabelId}
-                className="flex gap-2"
-              >
-                {[1, 2, 3, 4, 5].map((n) => (
-                  <Button
-                    key={n}
-                    variant={fatigue === n ? "default" : "outline"}
-                    size="touch"
-                    className="flex-1"
-                    aria-pressed={fatigue === n}
-                    onClick={() => setFatigue(fatigue === n ? null : n)}
+            <details className="rounded-lg border bg-background">
+              <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 rounded-lg px-3 py-2 font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
+                <span>Optional note and fatigue</span>
+                <span className="text-xs text-muted-foreground">
+                  {finishNote.trim() || fatigue != null ? "Added" : "Skip if not useful"}
+                </span>
+              </summary>
+              <div className="space-y-4 border-t p-3">
+                <Textarea
+                  placeholder="Session note (optional) — how did it go?"
+                  value={finishNote}
+                  onChange={(e) => setFinishNote(e.target.value)}
+                  rows={2}
+                />
+                <div>
+                  <p
+                    id={fatigueLabelId}
+                    className="mb-2 text-sm text-muted-foreground"
                   >
-                    {n}
-                  </Button>
-                ))}
+                    Overall fatigue
+                  </p>
+                  <div
+                    role="group"
+                    aria-labelledby={fatigueLabelId}
+                    className="flex gap-2"
+                  >
+                    {[1, 2, 3, 4, 5].map((n) => (
+                      <Button
+                        key={n}
+                        variant={fatigue === n ? "default" : "outline"}
+                        size="touch"
+                        className="flex-1"
+                        aria-pressed={fatigue === n}
+                        onClick={() => setFatigue(fatigue === n ? null : n)}
+                      >
+                        {n}
+                      </Button>
+                    ))}
+                  </div>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    1 = fresh · 5 = wiped out
+                  </p>
+                </div>
               </div>
-              <p className="mt-1 text-xs text-muted-foreground">
-                1 = fresh · 5 = wiped out
-              </p>
-            </div>
+            </details>
             </div>
           </div>
           <DrawerFooter className="border-t bg-popover pt-3 pb-[max(1rem,env(safe-area-inset-bottom))]">
@@ -2981,6 +3387,7 @@ export function SessionRunner(props: SessionRunnerProps) {
               {finishing ? "Saving…" : "Save workout"}
             </Button>
             <ActiveWorkoutDiscard
+              ownerId={props.ownerId}
               sessionId={props.sessionId}
               sessionName={props.templateName}
               triggerLabel="Discard workout"
@@ -3022,11 +3429,33 @@ export function SessionRunner(props: SessionRunnerProps) {
           onShowCurrent={() => {
             revealCurrentWorkoutAction();
           }}
+          onPrimaryAction={() => {
+            if (
+              guidance.currentAction != null &&
+              guidance.currentAction.kind !== "working_set" &&
+              guidance.currentAction.kind !== "rest"
+            ) {
+              const target = document.getElementById(currentActionTargetId);
+              const warmup = target?.querySelector<HTMLButtonElement>(
+                '[role="checkbox"][aria-checked="false"]',
+              );
+              if (warmup && !warmup.disabled) warmup.click();
+              else revealCurrentWorkoutAction();
+              return;
+            }
+            const logSet = document.querySelector<HTMLButtonElement>(
+              '[data-testid="active-log-set"]',
+            );
+            if (logSet && !logSet.disabled) logSet.click();
+            else revealCurrentWorkoutAction();
+          }}
+          allowLogWithRetainedFailure={allowLogWithRetainedFailure}
           onRestAdjust={adjustRest}
           onRestSkip={skipRest}
           onRestContinue={continueRest}
           onAddNote={openContextualNoteComposer}
           onFinish={() => setFinishOpen(true)}
+          finishReady={guidance.currentAction == null && !finishBlocked}
         />
       )}
       {(() => {

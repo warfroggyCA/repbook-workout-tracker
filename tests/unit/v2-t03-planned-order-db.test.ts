@@ -69,14 +69,55 @@ describe("V2 T03 planned order and extra-set truth", () => {
         plannedRestSec: 90,
       },
     ]);
+    const authoritativeLoadedOccurrences = await database.db.query.sessionOccurrences.findMany({
+      where: eq(sessionOccurrences.sessionExerciseId, loadedExerciseId),
+      columns: { id: true, kindOrdinal: true, revision: true },
+      orderBy: asc(sessionOccurrences.kindOrdinal),
+    });
+    const firstPlanned = authoritativeLoadedOccurrences[0];
+    const secondPlanned = authoritativeLoadedOccurrences[1];
 
-    await expect(
-      logWorkoutSet(database.db, fixture.userId, {
-        ...fixture.commands.loaded,
-        setNo: 2,
-        clientKey: "t03-later-before-earlier",
-      }),
-    ).resolves.toEqual({ outcome: "set_order_conflict" });
+    const staleLaterAttempt = await logWorkoutSet(database.db, fixture.userId, {
+      ...fixture.commands.loaded,
+      setNo: 2,
+      clientKey: "t03-later-before-earlier",
+    });
+    expect(staleLaterAttempt).toMatchObject({
+      outcome: "set_order_conflict",
+      blocker: {
+        occurrenceId: firstPlanned.id,
+        occurrenceRevision: 0,
+        sessionExerciseId: loadedExerciseId,
+        setNo: 1,
+        groupRound: null,
+        origin: "planned",
+        isAddedSet: false,
+      },
+    });
+    if (staleLaterAttempt.outcome !== "set_order_conflict") {
+      throw new Error(staleLaterAttempt.outcome);
+    }
+    expect(staleLaterAttempt.blocker.exerciseName).toMatch(/^T01 loaded press /);
+    expect(staleLaterAttempt.blocker.label).toBe(
+      `${staleLaterAttempt.blocker.exerciseName} · set 1`,
+    );
+    await expect(logWorkoutSet(database.db, fixture.userId, {
+      ...fixture.commands.loaded,
+      occurrenceId: secondPlanned.id,
+      expectedOccurrenceRevision: secondPlanned.revision,
+      setNo: 2,
+      clientKey: "t03-exact-later-before-earlier",
+    })).resolves.toMatchObject({
+      outcome: "set_order_conflict",
+      blocker: { occurrenceId: firstPlanned.id },
+    });
+    await expect(logWorkoutSet(database.db, fixture.userId, {
+      ...fixture.commands.loaded,
+      occurrenceId: secondPlanned.id,
+      expectedOccurrenceRevision: secondPlanned.revision + 1,
+      setNo: 2,
+      clientKey: "t03-stale-occurrence-revision",
+    })).resolves.toEqual({ outcome: "stale_occurrence" });
 
     const beforePlanExtraId = crypto.randomUUID();
     await expect(
@@ -176,7 +217,37 @@ describe("V2 T03 planned order and extra-set truth", () => {
       }),
     ).resolves.toEqual({ targetMet: null });
 
-    for (const setNo of [1, 2, 3]) {
+    const lostResponseInput = {
+      ...fixture.commands.loaded,
+      occurrenceId: firstPlanned.id,
+      expectedOccurrenceRevision: firstPlanned.revision,
+      setNo: 1,
+      clientKey: "t03-exact-set-lost-response",
+    };
+    await expect(logWorkoutSet(
+      database.db,
+      fixture.userId,
+      lostResponseInput,
+      {
+        checkpoint: async (boundary) => {
+          if (boundary === "after-set-statement") {
+            throw new Error("simulated lost response");
+          }
+        },
+      },
+    )).rejects.toThrow("simulated lost response");
+    const recoveredLostResponse = await logWorkoutSet(
+      database.db,
+      fixture.userId,
+      lostResponseInput,
+    );
+    expect(recoveredLostResponse).toMatchObject({
+      outcome: "saved",
+      occurrenceId: firstPlanned.id,
+      occurrenceRevision: firstPlanned.revision + 1,
+    });
+
+    for (const setNo of [2, 3]) {
       await expect(
         logWorkoutSet(database.db, fixture.userId, {
           ...fixture.commands.loaded,
@@ -331,7 +402,16 @@ describe("V2 T03 planned order and extra-set truth", () => {
         fixture.userId,
         command(1, 1, "t03-group-later-member"),
       ),
-    ).resolves.toEqual({ outcome: "set_order_conflict" });
+    ).resolves.toMatchObject({
+      outcome: "set_order_conflict",
+      blocker: {
+        occurrenceId: occurrences[0].id,
+        sessionExerciseId: members[0].id,
+        setNo: 1,
+        groupRound: 1,
+        isAddedSet: false,
+      },
+    });
     await expect(
       mutateWorkoutOccurrence(database.db, fixture.userId, {
         occurrenceId: occurrences[1].id,
@@ -367,7 +447,7 @@ describe("V2 T03 planned order and extra-set truth", () => {
         fixture.userId,
         command(0, 2, "t03-group-later-round"),
       ),
-    ).resolves.toEqual({ outcome: "set_order_conflict" });
+    ).resolves.toMatchObject({ outcome: "set_order_conflict" });
 
     const independent = await logWorkoutSet(
       database.db,
@@ -407,7 +487,7 @@ describe("V2 T03 planned order and extra-set truth", () => {
         fixture.userId,
         command(0, 2, "t03-group-round-before-member"),
       ),
-    ).resolves.toEqual({ outcome: "set_order_conflict" });
+    ).resolves.toMatchObject({ outcome: "set_order_conflict" });
     await expect(
       mutateWorkoutOccurrence(database.db, fixture.userId, {
         occurrenceId: occurrences[1].id,

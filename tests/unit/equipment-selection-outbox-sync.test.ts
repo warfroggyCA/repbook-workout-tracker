@@ -72,6 +72,7 @@ describe("equipment and set command sync", () => {
       performedExerciseId: performedExercise, performedSemanticsVersion: 1,
       performedLoadType: "ez_bar", performedLoadSemantics: "total",
       exerciseName: "Curl", setNo: 1, metricType: "weight_reps",
+      occurrenceId: occurrence, expectedOccurrenceRevision: 0,
       weight: 43, weightUnit: "lb", reps: 10,
       distanceKm: null, durationSeconds: null,
       rpe: null, note: null, equipmentSnapshotId: null,
@@ -99,6 +100,7 @@ describe("equipment and set command sync", () => {
       outcome: "saved",
       setId: "50000000-0000-4000-8000-000000000001",
       occurrenceId: "60000000-0000-4000-8000-000000000001",
+      occurrenceRevision: 2,
     });
 
     await syncNextEntry(owner);
@@ -109,9 +111,14 @@ describe("equipment and set command sync", () => {
         occurrenceStates: [expect.objectContaining({ id: occurrence, revision: 1 })],
       }));
     expect(readWorkoutSetOutbox(storage).entries[0].equipmentSnapshotId).toBe(snapshotA);
+    expect(readWorkoutSetOutbox(storage).entries[0].expectedOccurrenceRevision).toBe(1);
     expect(readEquipmentSelectionOutbox(storage).entries[0].expectedCurrentSnapshotId).toBe(snapshotA);
     await syncNextEntry(owner);
-    expect(actionMocks.logSet).toHaveBeenCalledWith(expect.objectContaining({ equipmentSnapshotId: snapshotA }));
+    expect(actionMocks.logSet).toHaveBeenCalledWith(expect.objectContaining({
+      equipmentSnapshotId: snapshotA,
+      occurrenceId: occurrence,
+      expectedOccurrenceRevision: 1,
+    }));
     await syncNextEntry(owner);
 
     expect(actionMocks.setSessionEquipmentSelection.mock.invocationCallOrder[0])

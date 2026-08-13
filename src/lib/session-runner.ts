@@ -19,6 +19,58 @@ export function shouldShowMissingWarmupMessage(input: {
 
 export type RuntimeSetSaveState = "saving" | "retrying";
 
+/**
+ * Merge a refreshed server occurrence ledger without erasing device work that
+ * still has an owning durable command or a just-acknowledged server receipt.
+ * A discarded optimistic change has neither, so refreshed server truth wins.
+ */
+export function reconcileServerOccurrences({
+  current,
+  server,
+  previousServerIds,
+  pendingMutationOccurrenceIds,
+  acknowledgedOccurrenceIds,
+}: {
+  current: SessionOccurrenceData[];
+  server: SessionOccurrenceData[];
+  previousServerIds: ReadonlySet<string>;
+  pendingMutationOccurrenceIds: ReadonlySet<string>;
+  acknowledgedOccurrenceIds: ReadonlySet<string>;
+}): SessionOccurrenceData[] {
+  const nextServerIds = new Set(server.map((occurrence) => occurrence.id));
+  const currentById = new Map(
+    current.map((occurrence) => [occurrence.id, occurrence]),
+  );
+  const reconciled = server.map((serverOccurrence) => {
+    const localOccurrence = currentById.get(serverOccurrence.id);
+    const localRevisionIsStillOwned =
+      localOccurrence != null &&
+      (
+        pendingMutationOccurrenceIds.has(localOccurrence.id) ||
+        acknowledgedOccurrenceIds.has(localOccurrence.id) ||
+        (
+          localOccurrence.kind === "working_set" &&
+          localOccurrence.outcome === "completed" &&
+          localOccurrence.completedSetId != null
+        )
+      );
+    return localOccurrence &&
+        localOccurrence.revision > serverOccurrence.revision &&
+        localRevisionIsStillOwned
+      ? localOccurrence
+      : serverOccurrence;
+  });
+  for (const localOccurrence of current) {
+    if (
+      !nextServerIds.has(localOccurrence.id) &&
+      !previousServerIds.has(localOccurrence.id)
+    ) {
+      reconciled.push(localOccurrence);
+    }
+  }
+  return reconciled.sort((left, right) => left.sequenceIdx - right.sequenceIdx);
+}
+
 export function mergeEquipmentSelectionOccurrenceStates(
   current: SessionOccurrenceData[],
   received: EquipmentSelectionOccurrenceState[],
@@ -84,13 +136,34 @@ export function mergeSessionOutboxSets(
 
 export function workoutFinishIsBlocked(
   sessionEntries: WorkoutSetOutboxEntry[],
-  outbox: Pick<WorkoutSetOutboxSnapshot, "quarantined" | "error">
+  _outbox: Pick<WorkoutSetOutboxSnapshot, "quarantined" | "error">
 ): boolean {
-  return (
-    sessionEntries.length > 0 ||
-    outbox.quarantined.length > 0 ||
-    outbox.error != null
-  );
+  void _outbox;
+  // Quarantined or unreadable storage cannot be attributed to this session.
+  // It remains protected in the global review tray, but must not be treated as
+  // current-workout data or trap an unrelated workout.
+  return sessionEntries.length > 0;
+}
+
+export function sessionScopedDeviceCopies<
+  SetCopy extends { ownerId: string; sessionId: string },
+  OccurrenceCopy extends { ownerId: string; sessionId: string },
+>(input: {
+  ownerId: string;
+  sessionId: string;
+  setCopies: readonly SetCopy[];
+  occurrenceCopies: readonly OccurrenceCopy[];
+}) {
+  return {
+    setCopies: input.setCopies.filter(
+      (entry) =>
+        entry.ownerId === input.ownerId && entry.sessionId === input.sessionId,
+    ),
+    occurrenceCopies: input.occurrenceCopies.filter(
+      (entry) =>
+        entry.ownerId === input.ownerId && entry.sessionId === input.sessionId,
+    ),
+  };
 }
 
 /**
@@ -102,7 +175,7 @@ export function workoutFinishIsBlocked(
 export type WorkoutExitQueues = {
   /** Logged sets held only on this device and not confirmed by the server. */
   unsyncedSetCount: number;
-  /** Unreadable retained set copies (quarantine). */
+  /** Unreadable set copies only when ownership is positively session-scoped. */
   quarantinedSetCount: number;
   setHasError: boolean;
   /** Warm-up/occurrence changes queued on this device and not yet confirmed. */

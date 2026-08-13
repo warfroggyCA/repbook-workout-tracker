@@ -503,7 +503,7 @@ test.describe.serial("matched active-workout friction study", () => {
       await route.continue();
     });
     const previousSignature = await currentSetSignature(page);
-    await exercise.getByRole("button", { name: "Retry", exact: true }).click();
+    await exercise.getByRole("button", { name: "Retry save", exact: true }).click();
     await expect.poll(() => retryRequests).toBe(1);
     const retryingStatus = exercise.getByText("Retrying…", { exact: true });
     await expect(retryingStatus).toBeVisible();

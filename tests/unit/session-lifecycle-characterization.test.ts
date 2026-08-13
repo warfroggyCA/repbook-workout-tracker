@@ -930,7 +930,7 @@ describe("workout lifecycle ownership and atomicity invariants", () => {
       weightUnit: "lb",
       reps: 8,
       clientKey: "out-of-order-set-2",
-    })).resolves.toEqual({ outcome: "set_order_conflict" });
+    })).resolves.toMatchObject({ outcome: "set_order_conflict" });
     await expect(logWorkoutSet(database.db, userId, {
       sessionExerciseId: added.sessionExerciseId,
       setNo: 1,
@@ -2176,5 +2176,53 @@ describe("workout lifecycle ownership and atomicity invariants", () => {
     const audits = await database.db.select().from(auditLogs);
     expect(audits).toHaveLength(1);
     expect(audits[0]?.action).toBe("session.abandon");
+  });
+
+  it("distinguishes an already-abandoned retry from a workout completed elsewhere", async () => {
+    const abandoned = await startWorkoutSession(
+      database.db,
+      userId,
+      templateId,
+    );
+    const firstAbandon = await abandonWorkoutSession(
+      database.db,
+      userId,
+      abandoned.sessionId,
+    );
+    expect(firstAbandon).toMatchObject({
+      alreadyFinished: false,
+      status: "abandoned",
+    });
+    await expect(
+      abandonWorkoutSession(database.db, userId, abandoned.sessionId),
+    ).resolves.toMatchObject({
+      alreadyFinished: true,
+      status: "abandoned",
+    });
+
+    const completed = await startWorkoutSession(
+      database.db,
+      userId,
+      templateId,
+    );
+    await completeWorkoutSession(
+      database.db,
+      {
+        id: userId,
+        coachingPrefs: {
+          aggressiveness: "conservative",
+          deloadSuggestions: true,
+          substitutionSuggestions: true,
+          weeklyReview: true,
+        },
+      },
+      { sessionId: completed.sessionId },
+    );
+    await expect(
+      abandonWorkoutSession(database.db, userId, completed.sessionId),
+    ).resolves.toMatchObject({
+      alreadyFinished: true,
+      status: "completed",
+    });
   });
 });

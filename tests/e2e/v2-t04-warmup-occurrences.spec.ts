@@ -226,18 +226,24 @@ test("keeps warm-up actions singular, reversible, durable, and usable with minim
     exact: true,
   });
   await waitForHydratedReactHandler(discard);
+  const foreignCopyBeforeDiscard = await page.evaluate(() =>
+    localStorage.getItem("workout-tracker:occurrence-mutation-outbox:v1")
+  );
   await discard.click();
   const discardDialog = page.getByRole("dialog", {
     name: /Discard .+\?/,
   });
-  await expect(discardDialog.getByRole("alert")).toContainText(
-    "1 warm-up or workout-item change is still waiting to sync.",
+  await expect(discardDialog.getByRole("note")).toContainText(
+    "1 identified device copy belongs to another workout or account.",
   );
   await discardDialog
-    .getByRole("button", { name: "Discard unsent copies & abandon" })
+    .getByRole("button", { name: "Confirm discard" })
     .click();
   await expect(
     page.getByRole("button", { name: "Train as planned", exact: true }),
   ).toBeVisible();
+  expect(await page.evaluate(() =>
+    localStorage.getItem("workout-tracker:occurrence-mutation-outbox:v1")
+  )).toBe(foreignCopyBeforeDiscard);
   await pageErrors.expectNoUnexpected();
 });

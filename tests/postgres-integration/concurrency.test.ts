@@ -7,8 +7,10 @@ import * as schema from "@/db/schema";
 import { resultRows } from "@/db/result";
 import { updateProgramDayWarmupOverview } from "@/lib/program-editor-client";
 import {
+  barbellConfigs,
   completedSets,
   coachingInsights,
+  equipmentItems,
   exerciseEquipmentRequirements,
   exercises,
   painLogs,
@@ -74,6 +76,7 @@ import { getHistoryReport } from "@/services/history-report";
 import { getCurrentProgramDocument } from "@/services/program-documents";
 import { createStartBarrier } from "../helpers/database";
 import { createTotalSystemTestSnapshot } from "../helpers/set-semantics";
+import { mutateSessionEquipmentSelection } from "@/services/session-equipment-selection";
 import validExternalAnalysisFixture from "../fixtures/v2/a03-typed-response.json";
 import {
   createSuggestedDayIntent,
@@ -109,6 +112,15 @@ type ProgramFixture = {
   slotId: string;
   slotLineageId: string;
   comparableBarbell: boolean;
+};
+
+type EquipmentRaceFixture = ProgramFixture & {
+  sessionId: string;
+  sessionExerciseId: string;
+  occurrenceId: string;
+  occurrenceRevision: number;
+  primarySnapshotId: string;
+  replacementItemId: string;
 };
 
 type ReviewedDraft = {
@@ -204,6 +216,100 @@ async function createProgramFixture(
     slotId: slot.id,
     slotLineageId: slot.lineageId,
     comparableBarbell: options.comparableBarbell === true,
+  };
+}
+
+async function createEquipmentRaceFixture(
+  label: string,
+): Promise<EquipmentRaceFixture> {
+  const fixture = await createProgramFixture(label, { comparableBarbell: true });
+  const [primaryItem, replacementItem] = await db
+    .insert(equipmentItems)
+    .values([
+      {
+        userId: fixture.userId,
+        type: "barbell",
+        label: `${label} primary bar`,
+      },
+      {
+        userId: fixture.userId,
+        type: "barbell",
+        label: `${label} replacement bar`,
+      },
+    ])
+    .returning({ id: equipmentItems.id });
+  if (!primaryItem || !replacementItem) {
+    throw new Error("Equipment race fixture inventory missing.");
+  }
+  await db.insert(barbellConfigs).values([
+    {
+      userId: fixture.userId,
+      equipmentItemId: primaryItem.id,
+      barType: "olympic",
+      unit: "lb",
+      loadingKind: "olympic",
+      sharedPlatePoolCompatible: true,
+      barWeight: 45,
+      collarWeight: 0,
+      label: `${label} primary bar`,
+    },
+    {
+      userId: fixture.userId,
+      equipmentItemId: replacementItem.id,
+      barType: "olympic",
+      unit: "lb",
+      loadingKind: "olympic",
+      sharedPlatePoolCompatible: true,
+      barWeight: 35,
+      collarWeight: 0,
+      label: `${label} replacement bar`,
+    },
+  ]);
+
+  const started = await startWorkoutSession(
+    db,
+    fixture.userId,
+    fixture.templateId,
+  );
+  const [sessionExercise] = await db
+    .select({ id: sessionExercises.id })
+    .from(sessionExercises)
+    .where(eq(sessionExercises.sessionId, started.sessionId));
+  if (!sessionExercise) throw new Error("Equipment race session exercise missing.");
+  const [occurrence] = await db
+    .select({
+      id: sessionOccurrences.id,
+      revision: sessionOccurrences.revision,
+    })
+    .from(sessionOccurrences)
+    .where(eq(sessionOccurrences.sessionExerciseId, sessionExercise.id));
+  if (!occurrence) throw new Error("Equipment race occurrence missing.");
+
+  const selected = await mutateSessionEquipmentSelection(db, fixture.userId, {
+    operation: "select",
+    sessionExerciseId: sessionExercise.id,
+    equipmentItemId: primaryItem.id,
+    attachmentItemId: null,
+    expectedCurrentSnapshotId: null,
+    clientKey: crypto.randomUUID(),
+    provenance: "user_selected",
+  });
+  if (
+    selected.outcome !== "applied" ||
+    selected.snapshotId == null ||
+    selected.occurrenceStates.length !== 1
+  ) {
+    throw new Error(`Initial equipment selection failed: ${selected.outcome}.`);
+  }
+
+  return {
+    ...fixture,
+    sessionId: started.sessionId,
+    sessionExerciseId: sessionExercise.id,
+    occurrenceId: occurrence.id,
+    occurrenceRevision: selected.occurrenceStates[0]!.revision,
+    primarySnapshotId: selected.snapshotId,
+    replacementItemId: replacementItem.id,
   };
 }
 
@@ -564,6 +670,13 @@ async function releaseWhenContended(
     await Promise.allSettled(operations);
     throw waitError;
   }
+}
+
+function expectRetryablePostgresRace(error: unknown) {
+  const code = error != null && typeof error === "object" && "code" in error
+    ? String(error.code)
+    : null;
+  expect(["40001", "40P01"]).toContain(code);
 }
 
 function expectDefaultAccount(
@@ -1043,6 +1156,243 @@ describe.sequential("real PostgreSQL parallel invariants", () => {
     ).toEqual([expect.objectContaining({ status: "completed", attempts: 1 })]);
   });
 
+  it("serializes an equipment change with an exact-fenced set save", async () => {
+    const fixture = await createEquipmentRaceFixture("equipment set race");
+    const selectionInput = {
+      operation: "select" as const,
+      sessionExerciseId: fixture.sessionExerciseId,
+      equipmentItemId: fixture.replacementItemId,
+      attachmentItemId: null,
+      expectedCurrentSnapshotId: fixture.primarySnapshotId,
+      clientKey: crypto.randomUUID(),
+      provenance: "user_selected" as const,
+    };
+    const setClientKey = crypto.randomUUID();
+    const originalSetInput = {
+      sessionExerciseId: fixture.sessionExerciseId,
+      occurrenceId: fixture.occurrenceId,
+      expectedOccurrenceRevision: fixture.occurrenceRevision,
+      setNo: 1,
+      weight: 100,
+      weightUnit: "lb" as const,
+      reps: 8,
+      clientKey: setClientKey,
+      equipmentSnapshotId: fixture.primarySnapshotId,
+      loadEntryMeaning: "total_system" as const,
+    };
+    const lock = await lockWorkoutSession(fixture.sessionId);
+    const ready = createStartBarrier(2);
+    const selecting = (async () => {
+      await ready();
+      return mutateSessionEquipmentSelection(db, fixture.userId, selectionInput);
+    })();
+    const logging = (async () => {
+      await ready();
+      return logWorkoutSet(db, fixture.userId, originalSetInput);
+    })();
+
+    await releaseWhenContended(lock, [selecting, logging], 2);
+    const [selectionSettled, logSettled] = await Promise.allSettled([
+      selecting,
+      logging,
+    ]);
+    let selection = selectionSettled.status === "fulfilled"
+      ? selectionSettled.value
+      : null;
+    if (selectionSettled.status === "rejected") {
+      expectRetryablePostgresRace(selectionSettled.reason);
+      selection = await mutateSessionEquipmentSelection(
+        db,
+        fixture.userId,
+        selectionInput,
+      );
+    }
+    expect(selection).toMatchObject({ outcome: "applied" });
+    if (
+      selection == null ||
+      !("snapshotId" in selection) ||
+      selection.snapshotId == null
+    ) {
+      throw new Error("Replacement equipment snapshot missing.");
+    }
+
+    let saved = logSettled.status === "fulfilled" ? logSettled.value : null;
+    if (logSettled.status === "rejected") {
+      expectRetryablePostgresRace(logSettled.reason);
+      saved = await logWorkoutSet(db, fixture.userId, originalSetInput);
+    }
+    if (saved?.outcome !== "saved") {
+      expect(saved?.outcome).toMatch(
+        /^(equipment_selection_conflict|stale_occurrence)$/,
+      );
+      const [currentOccurrence] = await db
+        .select({ revision: sessionOccurrences.revision })
+        .from(sessionOccurrences)
+        .where(eq(sessionOccurrences.id, fixture.occurrenceId));
+      if (!currentOccurrence) throw new Error("Current occurrence missing.");
+      saved = await logWorkoutSet(db, fixture.userId, {
+        ...originalSetInput,
+        expectedOccurrenceRevision: currentOccurrence.revision,
+        equipmentSnapshotId: selection.snapshotId,
+      });
+    }
+    expect(saved).toMatchObject({
+      outcome: "saved",
+      occurrenceId: fixture.occurrenceId,
+    });
+
+    const [storedOccurrence] = await db
+      .select({
+        outcome: sessionOccurrences.outcome,
+        revision: sessionOccurrences.revision,
+        equipmentSnapshotId: sessionOccurrences.equipmentSnapshotId,
+        completedSetId: sessionOccurrences.completedSetId,
+      })
+      .from(sessionOccurrences)
+      .where(eq(sessionOccurrences.id, fixture.occurrenceId));
+    const storedSets = await db
+      .select({
+        id: completedSets.id,
+        equipmentSnapshotId: completedSets.equipmentSnapshotId,
+      })
+      .from(completedSets)
+      .where(eq(completedSets.sessionExerciseId, fixture.sessionExerciseId));
+    const [storedExercise] = await db
+      .select({ snapshotId: sessionExercises.currentEquipmentSnapshotId })
+      .from(sessionExercises)
+      .where(eq(sessionExercises.id, fixture.sessionExerciseId));
+    expect(storedSets).toHaveLength(1);
+    expect(storedOccurrence).toMatchObject({
+      outcome: "completed",
+      completedSetId: storedSets[0]!.id,
+      equipmentSnapshotId: storedSets[0]!.equipmentSnapshotId,
+    });
+    expect(storedOccurrence!.revision).toBeGreaterThanOrEqual(2);
+    expect(storedExercise?.snapshotId).toBe(selection.snapshotId);
+
+    await expect(
+      mutateSessionEquipmentSelection(db, fixture.userId, selectionInput),
+    ).resolves.toEqual({
+      outcome: "replayed",
+      snapshotId: selection.snapshotId,
+      occurrenceStates: [expect.objectContaining({
+        id: fixture.occurrenceId,
+        outcome: "completed",
+        revision: storedOccurrence!.revision,
+        completedSetId: storedSets[0]!.id,
+      })],
+    });
+  });
+
+  it("does not rewrite pending occurrence evidence after Finish wins an equipment race", async () => {
+    const fixture = await createEquipmentRaceFixture("equipment finish race");
+    const selectionInput = {
+      operation: "select" as const,
+      sessionExerciseId: fixture.sessionExerciseId,
+      equipmentItemId: fixture.replacementItemId,
+      attachmentItemId: null,
+      expectedCurrentSnapshotId: fixture.primarySnapshotId,
+      clientKey: crypto.randomUUID(),
+      provenance: "user_selected" as const,
+    };
+    const lock = await lockWorkoutSession(fixture.sessionId);
+    const ready = createStartBarrier(2);
+    const selecting = (async () => {
+      await ready();
+      return mutateSessionEquipmentSelection(db, fixture.userId, selectionInput);
+    })();
+    const finishing = (async () => {
+      await ready();
+      return completeWorkoutSession(
+        db,
+        { id: fixture.userId, coachingPrefs },
+        { sessionId: fixture.sessionId },
+      );
+    })();
+
+    await releaseWhenContended(lock, [selecting, finishing], 2);
+    const [selectionSettled, finishSettled] = await Promise.allSettled([
+      selecting,
+      finishing,
+    ]);
+    let finished = finishSettled.status === "fulfilled"
+      ? finishSettled.value
+      : null;
+    if (finishSettled.status === "rejected") {
+      expectRetryablePostgresRace(finishSettled.reason);
+      finished = await completeWorkoutSession(
+        db,
+        { id: fixture.userId, coachingPrefs },
+        { sessionId: fixture.sessionId },
+      );
+    }
+    expect(finished).toMatchObject({ outcome: "completed" });
+
+    let selection = selectionSettled.status === "fulfilled"
+      ? selectionSettled.value
+      : null;
+    if (selectionSettled.status === "rejected") {
+      expectRetryablePostgresRace(selectionSettled.reason);
+      selection = await mutateSessionEquipmentSelection(
+        db,
+        fixture.userId,
+        selectionInput,
+      );
+    }
+    expect(["applied", "not_active"]).toContain(selection?.outcome);
+
+    const readState = async () => {
+      const [row] = await db
+        .select({
+          sessionStatus: workoutSessions.status,
+          currentSnapshotId: sessionExercises.currentEquipmentSnapshotId,
+          occurrenceOutcome: sessionOccurrences.outcome,
+          occurrenceRevision: sessionOccurrences.revision,
+          occurrenceSnapshotId: sessionOccurrences.equipmentSnapshotId,
+          completedSetId: sessionOccurrences.completedSetId,
+        })
+        .from(workoutSessions)
+        .innerJoin(
+          sessionExercises,
+          eq(sessionExercises.sessionId, workoutSessions.id),
+        )
+        .innerJoin(
+          sessionOccurrences,
+          eq(sessionOccurrences.sessionExerciseId, sessionExercises.id),
+        )
+        .where(eq(workoutSessions.id, fixture.sessionId));
+      return row;
+    };
+    const completedState = await readState();
+    expect(completedState).toMatchObject({
+      sessionStatus: "completed",
+      occurrenceOutcome: "abandoned",
+      completedSetId: null,
+    });
+
+    if (selection?.outcome === "applied" && "snapshotId" in selection) {
+      await expect(
+        mutateSessionEquipmentSelection(db, fixture.userId, selectionInput),
+      ).resolves.toEqual({
+        outcome: "replayed",
+        snapshotId: selection.snapshotId,
+        occurrenceStates: [expect.objectContaining({
+          id: fixture.occurrenceId,
+          outcome: "abandoned",
+          revision: completedState!.occurrenceRevision,
+          completedSetId: null,
+        })],
+      });
+    }
+
+    await expect(mutateSessionEquipmentSelection(db, fixture.userId, {
+      ...selectionInput,
+      expectedCurrentSnapshotId: completedState!.currentSnapshotId,
+      clientKey: crypto.randomUUID(),
+    })).resolves.toEqual({ outcome: "not_active" });
+    expect(await readState()).toEqual(completedState);
+  });
+
   it("converges same-key Start delivery on one created and replayed session", async () => {
     const fixture = await createProgramFixture("keyed same Start");
     const startRequestKey = crypto.randomUUID();
@@ -1130,7 +1480,7 @@ describe.sequential("real PostgreSQL parallel invariants", () => {
       weightUnit: "lb",
       reps: 8,
       clientKey: "native-out-of-order-set-2",
-    })).resolves.toEqual({ outcome: "set_order_conflict" });
+    })).resolves.toMatchObject({ outcome: "set_order_conflict" });
     const extraOccurrenceId = crypto.randomUUID();
     await expect(appendWorkoutSetOccurrence(db, fixture.userId, {
       sessionExerciseId: sessionExercise.id,

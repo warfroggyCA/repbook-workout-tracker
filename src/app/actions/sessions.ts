@@ -1042,7 +1042,17 @@ export async function correctWorkoutActiveDuration(
 export async function abandonSession(sessionId: string) {
   const user = await getCurrentUser();
   const db = await getDb();
-  await abandonWorkoutSession(db, user.id, z.string().uuid().parse(sessionId));
+  const result = await abandonWorkoutSession(
+    db,
+    user.id,
+    z.string().uuid().parse(sessionId),
+  );
+  if (result.alreadyFinished && result.status !== "abandoned") {
+    return actionFailure(
+      "abandon_rejected",
+      "This workout was completed elsewhere and was not abandoned.",
+    );
+  }
   revalidatePath("/today");
-  redirect("/today");
+  return { ok: true as const };
 }

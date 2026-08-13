@@ -314,6 +314,7 @@ export default async function TodayPage({
               )}
               <ProgramDecisionStatus count={pendingRecs.length} />
               <ActiveWorkoutDiscard
+                ownerId={user.id}
                 sessionId={today.inProgressSessionId}
                 sessionName={today.inProgressSessionName ?? "this workout"}
               />
