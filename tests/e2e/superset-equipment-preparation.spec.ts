@@ -607,13 +607,6 @@ test("presents immutable superset order, truthful progress, and next-member equi
       ),
     )
     .toBe(true);
-  const advancedEntryId = await currentCard
-    .getByTestId("current-set-entry")
-    .getAttribute("id");
-  expect(advancedEntryId).toBeTruthy();
-  await expect.poll(() => page.evaluate(() => window.location.hash)).toBe(
-    `#${advancedEntryId}`,
-  );
   await expect(restoredGroup).toContainText(
     "Current member: 2 of 2 · Pallof Press",
   );
