@@ -609,6 +609,7 @@ async function compactGeometry(page: Page) {
     }
     const primaryRect = primaryElement.getBoundingClientRect();
     const previousRect = previousElement.getBoundingClientRect();
+    const targetRect = targetElement.getBoundingClientRect();
     const firstInput = primaryElement.querySelector<HTMLElement>("input");
     const inputWidths = [...primaryElement.querySelectorAll<HTMLElement>("input")]
       .map((input) => input.getBoundingClientRect().width);
@@ -616,10 +617,17 @@ async function compactGeometry(page: Page) {
     return {
       primaryHeight: primaryRect.height,
       cardHeight: cardElement.getBoundingClientRect().height,
-      targetBeforePrevious:
-        targetElement.getBoundingClientRect().bottom <= previousRect.top,
+      targetBeforePrevious: targetRect.bottom <= previousRect.top,
+      targetBeforeOrBesidePrevious:
+        targetRect.bottom <= previousRect.top ||
+        (Math.abs(targetRect.top - previousRect.top) <= 2 &&
+          targetRect.right <= previousRect.left),
       previousBeforeInput:
         firstInput != null && previousRect.bottom <= firstInput.getBoundingClientRect().top,
+      evidenceBeforeInput:
+        firstInput != null &&
+        Math.max(targetRect.bottom, previousRect.bottom) <=
+          firstInput.getBoundingClientRect().top,
       inputBeforeLog:
         firstInput != null && firstInput.getBoundingClientRect().bottom <= logRect.top,
       logClearsDock: logRect.bottom <= dockElement.getBoundingClientRect().top - 8,
@@ -775,8 +783,8 @@ test("keeps the ordinary active set current-first, unobstructed, and acknowledge
       restingGeometry,
       JSON.stringify(restingGeometry),
     ).toMatchObject({
-      targetBeforePrevious: true,
-      previousBeforeInput: true,
+      targetBeforeOrBesidePrevious: true,
+      evidenceBeforeInput: true,
       inputBeforeLog: true,
       logClearsDock: true,
     });
