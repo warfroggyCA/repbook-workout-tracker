@@ -557,9 +557,14 @@ test("keeps the full live workout usable through warm-up, skip, replace, continu
   await expect(
     page.getByRole("button", { name: "Resolve Suspension Push-Up" }),
   ).toBeVisible();
-  await expect(
-    page.getByRole("link", { name: "Back to Today", exact: true }).first(),
-  ).toBeVisible();
+  const catalogRecoveryExit =
+    (page.viewportSize()?.width ?? Number.POSITIVE_INFINITY) <= 440
+      ? page.getByRole("link", { name: "Back to Today", exact: true })
+      : page
+          .getByRole("navigation", { name: "Main navigation" })
+          .getByRole("link", { name: "Today", exact: true });
+  await expect(catalogRecoveryExit).toBeVisible();
+  await expect(catalogRecoveryExit).toHaveAttribute("href", "/today");
   releaseClosedCatalog();
   await incompatible
     .getByRole("button", { name: "Replace exercise", exact: true })
