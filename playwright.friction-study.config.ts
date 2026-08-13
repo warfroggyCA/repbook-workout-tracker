@@ -4,6 +4,7 @@ const variant = process.env.STUDY_VARIANT;
 if (variant !== "before" && variant !== "after") {
   throw new Error("STUDY_VARIANT must be before or after.");
 }
+const port = Number.parseInt(process.env.STUDY_PORT ?? "3100", 10);
 
 export default defineConfig({
   testDir: "./tests/studies",
@@ -17,15 +18,15 @@ export default defineConfig({
   reporter: [["list"]],
   use: {
     ...devices["Desktop Chrome"],
-    baseURL: "http://127.0.0.1:3100",
+    baseURL: `http://127.0.0.1:${port}`,
     trace: "retain-on-failure",
     screenshot: "only-on-failure",
     video: "retain-on-failure",
   },
   webServer: {
-    command: "node scripts/run-friction-study-server.mjs",
+    command: `env E2E_PORT=${port} node scripts/run-friction-study-server.mjs`,
     gracefulShutdown: { signal: "SIGTERM", timeout: 5_000 },
-    url: "http://127.0.0.1:3100/sign-in",
+    url: `http://127.0.0.1:${port}/sign-in`,
     reuseExistingServer: false,
     timeout: 180_000,
   },

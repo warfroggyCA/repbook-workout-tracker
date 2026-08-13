@@ -197,7 +197,7 @@ test("keeps new Stage 3 controls usable at the saved iPhone calibration", async 
   );
   await expect(workoutGuidance).toContainText("Now: Mobile activation ramp");
   await expect(statusBar).toContainText("Mobile activation ramp");
-  await expect(statusBar).toContainText("Warm-up");
+  await expect(statusBar).toContainText("Complete warm-up");
 
   const addNote = warmupRow.getByRole("button", { name: "Add note", exact: true });
   const skip = warmupRow.getByRole("button", { name: "Skip", exact: true });
@@ -307,6 +307,7 @@ test("keeps new Stage 3 controls usable at the saved iPhone calibration", async 
   await expect(collapsedWarmup).not.toHaveAttribute("open", "");
   await expect(collapsedWarmup).toContainText("Warm-up complete");
   await collapsedWarmup.locator("summary").click();
+  await collapsedWarmup.getByRole("button", { name: "Review full plan" }).click();
   await expect(resumedWarmupRow).toContainText("completed");
   const resolvedEditNote = resumedWarmupRow.getByRole("button", {
     name: "Edit note",

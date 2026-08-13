@@ -30,6 +30,17 @@ export const WORKOUT_SET_OUTBOX_MAX_ENTRIES = 100;
 export const WORKOUT_SET_OUTBOX_MAX_AUTO_ATTEMPTS = 6;
 const MAX_EQUIPMENT_SELECTION_ACKNOWLEDGEMENTS = 200;
 const EQUIPMENT_SELECTION_ACKNOWLEDGEMENT_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+const UNPROVEN_EQUIPMENT_OCCURRENCE_RECOVERY =
+  "The equipment choice already saved, but Repbook cannot prove this retained set attempt still matches it. Refresh the workout, discard the retained set attempt, remove this queue notice, then re-enter the set from the refreshed workout.";
+
+export type EquipmentSelectionOccurrenceAcknowledgement = {
+  id: string;
+  /** Revision locked before the acknowledged equipment transaction. */
+  previousRevision?: number;
+  revision: number;
+  /** Absent only on a legacy retained browser receipt. */
+  outcome?: string;
+};
 
 export type EquipmentSelectionAcknowledgement = {
   clientKey: string;
@@ -37,10 +48,23 @@ export type EquipmentSelectionAcknowledgement = {
   sessionId: string;
   sessionExerciseId: string;
   snapshotId: string | null;
+  /** Transaction-scoped occurrence states after this selection applied. */
+  occurrenceStates?: EquipmentSelectionOccurrenceAcknowledgement[];
   acknowledgedAtISO: string;
 };
 
 export type WorkoutSetOutboxStatus = "queued" | "needs_attention";
+export type WorkoutSetOrderBlocker = {
+  occurrenceId: string;
+  occurrenceRevision: number;
+  sessionExerciseId: string;
+  exerciseName: string;
+  setNo: number;
+  groupRound: number | null;
+  origin: string;
+  isAddedSet: boolean;
+  label: string;
+};
 export type WorkoutSetLoadEntryMeaning =
   | "total_system"
   | "per_loading_point"
@@ -54,6 +78,9 @@ type WorkoutSetOutboxCommand = {
   ownerId: string;
   sessionId: string;
   sessionExerciseId: string;
+  /** Exact occurrence fence; absent only on legacy retained version-four entries. */
+  occurrenceId?: string;
+  expectedOccurrenceRevision?: number;
   performedExerciseId: string;
   performedSemanticsVersion: 1;
   performedLoadType: string;
@@ -88,6 +115,10 @@ export type WorkoutSetOutboxEntry = WorkoutSetOutboxCommand & {
   nextAttemptAtISO: string | null;
   lastAttemptAtISO: string | null;
   lastError: string | null;
+  /** Exact authoritative predecessor returned by an ordered-save rejection. */
+  orderBlocker?: WorkoutSetOrderBlocker | null;
+  /** Server fence changed; this retained attempt requires review, not blind retry. */
+  reviewRequired?: "stale_occurrence" | null;
 };
 
 type DistributiveOmit<T, K extends PropertyKey> = T extends unknown
@@ -106,6 +137,8 @@ export type NewWorkoutSetOutboxEntry = DistributiveOmit<
   | "techniqueIssue"
   | "limitationCause"
   | "pain"
+  | "orderBlocker"
+  | "reviewRequired"
 > & {
   observedCompletedAtISO?: string | null;
   rir?: number | null;
@@ -138,9 +171,16 @@ export type WorkoutSetOutboxClientEvent =
       clientKey: string;
       sessionId: string;
       setId: string;
+      occurrenceId: string;
+      occurrenceRevision: number;
       entry: WorkoutSetOutboxEntry;
     }
-  | { type: "failed"; clientKey: string; sessionId: string }
+  | {
+      type: "failed";
+      clientKey: string;
+      sessionId: string;
+      blocker?: WorkoutSetOrderBlocker | null;
+    }
   | { type: "discarded"; clientKey: string; sessionId: string };
 
 let statusChannel: BroadcastChannel | null = null;
@@ -245,6 +285,26 @@ function isEquipmentSelectionAcknowledgement(
     UUID_PATTERN.test(value.sessionExerciseId) &&
     (value.snapshotId === null ||
       (typeof value.snapshotId === "string" && UUID_PATTERN.test(value.snapshotId))) &&
+    (value.occurrenceStates === undefined ||
+      (Array.isArray(value.occurrenceStates) &&
+        value.occurrenceStates.every(
+          (state) =>
+            isRecord(state) &&
+            typeof state.id === "string" &&
+            UUID_PATTERN.test(state.id) &&
+            typeof state.revision === "number" &&
+            Number.isInteger(state.revision) &&
+            state.revision >= 0 &&
+            (state.previousRevision === undefined ||
+              (typeof state.previousRevision === "number" &&
+                Number.isInteger(state.previousRevision) &&
+                state.previousRevision >= 0 &&
+                (state.revision === state.previousRevision ||
+                  state.revision === state.previousRevision + 1))) &&
+            (state.outcome === undefined ||
+              (typeof state.outcome === "string" &&
+                state.outcome.length > 0 && state.outcome.length <= 50)),
+        ))) &&
     isDate(value.acknowledgedAtISO);
 }
 
@@ -339,10 +399,35 @@ function resolveAcknowledgedEquipmentDependency(
   if (acknowledgement.snapshotId == null) {
     return { reason: "The acknowledged equipment choice did not retain a usable setup." };
   }
+  const acknowledgedOccurrenceState = input.occurrenceId == null
+    ? undefined
+    : acknowledgement.occurrenceStates?.find(
+        (state) => state.id === input.occurrenceId,
+      );
+  const acknowledgedPreviousRevision =
+    acknowledgedOccurrenceState?.previousRevision;
+  if (
+    input.occurrenceId != null &&
+    (acknowledgedOccurrenceState?.outcome !== "pending" ||
+      typeof acknowledgedPreviousRevision !== "number" ||
+      acknowledgedPreviousRevision !==
+        input.expectedOccurrenceRevision ||
+      (acknowledgedOccurrenceState.revision !==
+        acknowledgedPreviousRevision &&
+        acknowledgedOccurrenceState.revision !==
+          acknowledgedPreviousRevision + 1))
+  ) {
+    return {
+      reason: UNPROVEN_EQUIPMENT_OCCURRENCE_RECOVERY,
+    };
+  }
   return {
     ...input,
     equipmentSelectionClientKey: null,
     equipmentSnapshotId: acknowledgement.snapshotId,
+    ...(acknowledgedOccurrenceState == null
+      ? {}
+      : { expectedOccurrenceRevision: acknowledgedOccurrenceState.revision }),
   };
 }
 
@@ -372,6 +457,34 @@ function isWorkoutSetLoadEntryMeaning(
     value === "per_stack" ||
     value === "combined_stacks" ||
     value === "legacy_unknown";
+}
+
+function isWorkoutSetOrderBlocker(
+  value: unknown,
+): value is WorkoutSetOrderBlocker {
+  return isRecord(value) &&
+    typeof value.occurrenceId === "string" &&
+    UUID_PATTERN.test(value.occurrenceId) &&
+    Number.isInteger(value.occurrenceRevision) &&
+    Number(value.occurrenceRevision) >= 0 &&
+    typeof value.sessionExerciseId === "string" &&
+    UUID_PATTERN.test(value.sessionExerciseId) &&
+    typeof value.exerciseName === "string" &&
+    value.exerciseName.length > 0 &&
+    value.exerciseName.length <= 200 &&
+    Number.isInteger(value.setNo) &&
+    Number(value.setNo) >= 1 &&
+    Number(value.setNo) <= 50 &&
+    (value.groupRound === null || (
+      Number.isInteger(value.groupRound) && Number(value.groupRound) >= 1
+    )) &&
+    typeof value.origin === "string" &&
+    value.origin.length > 0 &&
+    value.origin.length <= 50 &&
+    typeof value.isAddedSet === "boolean" &&
+    typeof value.label === "string" &&
+    value.label.length > 0 &&
+    value.label.length <= 300;
 }
 
 function isWorkoutSetOutboxEntry(value: unknown): value is WorkoutSetOutboxEntry {
@@ -438,6 +551,15 @@ function isWorkoutSetOutboxEntry(value: unknown): value is WorkoutSetOutboxEntry
     UUID_PATTERN.test(value.sessionId) &&
     typeof value.sessionExerciseId === "string" &&
     UUID_PATTERN.test(value.sessionExerciseId) &&
+    (value.occurrenceId === undefined || (
+      typeof value.occurrenceId === "string" && UUID_PATTERN.test(value.occurrenceId)
+    )) &&
+    (value.expectedOccurrenceRevision === undefined || (
+      Number.isInteger(value.expectedOccurrenceRevision) &&
+      Number(value.expectedOccurrenceRevision) >= 0
+    )) &&
+    ((value.occurrenceId === undefined) ===
+      (value.expectedOccurrenceRevision === undefined)) &&
     (value.workoutName === undefined ||
       (typeof value.workoutName === "string" &&
         value.workoutName.length > 0 &&
@@ -476,6 +598,10 @@ function isWorkoutSetOutboxEntry(value: unknown): value is WorkoutSetOutboxEntry
     isNullableDate(value.lastAttemptAtISO) &&
     (value.lastError === null ||
       (typeof value.lastError === "string" && value.lastError.length <= 500)) &&
+    (value.orderBlocker === undefined || value.orderBlocker === null ||
+      isWorkoutSetOrderBlocker(value.orderBlocker)) &&
+    (value.reviewRequired === undefined || value.reviewRequired === null ||
+      value.reviewRequired === "stale_occurrence") &&
     (value.equipmentSnapshotId === null ||
       (typeof value.equipmentSnapshotId === "string" &&
         UUID_PATTERN.test(value.equipmentSnapshotId))) &&
@@ -648,6 +774,9 @@ function sameSet(
     entry.ownerId === input.ownerId &&
     entry.sessionId === input.sessionId &&
     entry.sessionExerciseId === input.sessionExerciseId &&
+    (entry.occurrenceId ?? null) === (input.occurrenceId ?? null) &&
+    (entry.expectedOccurrenceRevision ?? null) ===
+      (input.expectedOccurrenceRevision ?? null) &&
     entry.performedExerciseId === input.performedExerciseId &&
     entry.performedSemanticsVersion === input.performedSemanticsVersion &&
     entry.performedLoadType === input.performedLoadType &&
@@ -798,7 +927,9 @@ export function markWorkoutSetNeedsAttention(
   storage: WorkoutSetOutboxStorage,
   clientKey: string,
   reason: string,
-  now = new Date()
+  now = new Date(),
+  orderBlocker: WorkoutSetOrderBlocker | null = null,
+  reviewRequired: WorkoutSetOutboxEntry["reviewRequired"] = null,
 ): MutationResult {
   return replaceEntry(storage, clientKey, (entry) => ({
     ...entry,
@@ -807,6 +938,8 @@ export function markWorkoutSetNeedsAttention(
     nextAttemptAtISO: null,
     lastAttemptAtISO: now.toISOString(),
     lastError: reason.slice(0, 500),
+    orderBlocker,
+    reviewRequired,
   }));
 }
 
@@ -814,12 +947,53 @@ export function retryWorkoutSetOutboxEntry(
   storage: WorkoutSetOutboxStorage,
   clientKey: string
 ): MutationResult {
+  const current = readWorkoutSetOutbox(storage);
+  if (current.error) return { ok: false, reason: current.error };
+  const blocked = current.entries.find((entry) => entry.clientKey === clientKey);
+  if (blocked?.orderBlocker) {
+    return {
+      ok: false,
+      reason: `Resolve ${blocked.orderBlocker.label} before retrying this saved attempt.`,
+    };
+  }
+  if (blocked?.reviewRequired === "stale_occurrence") {
+    return {
+      ok: false,
+      reason: "Refresh the workout and review or discard this retained attempt before retrying.",
+    };
+  }
   return replaceEntry(storage, clientKey, (entry) => ({
     ...entry,
     status: "queued",
     attemptCount: 0,
     nextAttemptAtISO: null,
     lastError: null,
+  }));
+}
+
+export function releaseWorkoutSetOrderBlockerOutboxEntry(
+  storage: WorkoutSetOutboxStorage,
+  clientKey: string,
+  blockerOccurrenceId: string,
+): MutationResult {
+  const current = readWorkoutSetOutbox(storage);
+  if (current.error) return { ok: false, reason: current.error };
+  const blocked = current.entries.find((entry) => entry.clientKey === clientKey);
+  if (!blocked) return { ok: true, entry: null };
+  if (blocked.orderBlocker?.occurrenceId !== blockerOccurrenceId) {
+    return {
+      ok: false,
+      reason: "The saved attempt's required earlier set changed. Refresh before retrying.",
+    };
+  }
+  return replaceEntry(storage, clientKey, (entry) => ({
+    ...entry,
+    status: "queued",
+    attemptCount: 0,
+    nextAttemptAtISO: null,
+    lastError: null,
+    orderBlocker: null,
+    reviewRequired: null,
   }));
 }
 
@@ -944,11 +1118,16 @@ export function nextWorkoutSetOutboxEntry(
   ownerId: string,
   now = new Date()
 ) {
-  const blocked = new Set<string>();
+  const blocked = new Map<string, WorkoutSetOutboxEntry>();
   for (const entry of ordered(entries)) {
-    if (entry.ownerId !== ownerId || blocked.has(entry.sessionExerciseId)) {
+    if (entry.ownerId !== ownerId) {
       continue;
     }
+    const blockingEntry = blocked.get(entry.sessionExerciseId);
+    const resolvesExactBlocker =
+      blockingEntry?.orderBlocker != null &&
+      entry.occurrenceId === blockingEntry.orderBlocker.occurrenceId;
+    if (blockingEntry && !resolvesExactBlocker) continue;
     if (
       entry.status === "queued" &&
       entry.equipmentSelectionClientKey == null &&
@@ -957,7 +1136,9 @@ export function nextWorkoutSetOutboxEntry(
     ) {
       return entry;
     }
-    blocked.add(entry.sessionExerciseId);
+    if (!resolvesExactBlocker) {
+      blocked.set(entry.sessionExerciseId, entry);
+    }
   }
   return null;
 }
@@ -969,9 +1150,15 @@ export function nextWorkoutSetOutboxEntry(
 export function bindWorkoutSetsToEquipmentSelectionUnlocked(
   selectionClientKey: string,
   snapshotId: string | null,
+  occurrenceStates: ReadonlyArray<EquipmentSelectionOccurrenceAcknowledgement> = [],
 ) {
   return unlockedBrowserMutation((storage) =>
-    bindWorkoutSetEntriesToEquipmentSelection(storage, selectionClientKey, snapshotId)
+    bindWorkoutSetEntriesToEquipmentSelection(
+      storage,
+      selectionClientKey,
+      snapshotId,
+      occurrenceStates,
+    )
   );
 }
 
@@ -979,6 +1166,7 @@ export function bindWorkoutSetEntriesToEquipmentSelection(
   storage: WorkoutSetOutboxStorage,
   selectionClientKey: string,
   snapshotId: string | null,
+  occurrenceStates: ReadonlyArray<EquipmentSelectionOccurrenceAcknowledgement> = [],
 ) {
     const current = readWorkoutSetOutbox(storage);
     if (current.error) return { ok: false as const, reason: current.error };
@@ -992,6 +1180,25 @@ export function bindWorkoutSetEntriesToEquipmentSelection(
         reason: "The equipment command did not return a setup for its waiting sets.",
       };
     }
+    const occurrenceRevisionById = new Map(
+      occurrenceStates.map((state) => [state.id, state]),
+    );
+    const unproven = dependents.find((entry) => {
+      if (entry.occurrenceId == null) return false;
+      const state = occurrenceRevisionById.get(entry.occurrenceId);
+      const previousRevision = state?.previousRevision;
+      return state?.outcome !== "pending" ||
+        typeof previousRevision !== "number" ||
+        previousRevision !== entry.expectedOccurrenceRevision ||
+        (state.revision !== previousRevision &&
+          state.revision !== previousRevision + 1);
+    });
+    if (unproven) {
+      return {
+        ok: false as const,
+        reason: UNPROVEN_EQUIPMENT_OCCURRENCE_RECOVERY,
+      };
+    }
     try {
       writeWorkoutSetOutbox(
         storage,
@@ -1001,6 +1208,13 @@ export function bindWorkoutSetEntriesToEquipmentSelection(
                 ...entry,
                 equipmentSelectionClientKey: null,
                 equipmentSnapshotId: snapshotId,
+                ...(entry.occurrenceId != null &&
+                  occurrenceRevisionById.has(entry.occurrenceId)
+                  ? {
+                      expectedOccurrenceRevision:
+                        occurrenceRevisionById.get(entry.occurrenceId)!.revision,
+                    }
+                  : {}),
               }
             : entry,
         ),
@@ -1133,15 +1347,61 @@ export function recordWorkoutSetNeedsAttention(clientKey: string, reason: string
 
 export function recordWorkoutSetNeedsAttentionUnlocked(
   clientKey: string,
-  reason: string
+  reason: string,
+  orderBlocker: WorkoutSetOrderBlocker | null = null,
+  reviewRequired: WorkoutSetOutboxEntry["reviewRequired"] = null,
 ) {
   return unlockedBrowserMutation((storage) =>
-    markWorkoutSetNeedsAttention(storage, clientKey, reason)
+    markWorkoutSetNeedsAttention(
+      storage,
+      clientKey,
+      reason,
+      new Date(),
+      orderBlocker,
+      reviewRequired,
+    )
   );
 }
 
 export function retryWorkoutSet(clientKey: string) {
   return browserMutation((storage) => retryWorkoutSetOutboxEntry(storage, clientKey));
+}
+
+export function releaseWorkoutSetOrderBlocker(
+  clientKey: string,
+  blockerOccurrenceId: string,
+) {
+  return browserMutation((storage) =>
+    releaseWorkoutSetOrderBlockerOutboxEntry(
+      storage,
+      clientKey,
+      blockerOccurrenceId,
+    )
+  );
+}
+
+export function releaseWorkoutSetOrderBlockersForOccurrence(
+  blockerOccurrenceId: string,
+) {
+  return browserMutation((storage) => {
+    const current = readWorkoutSetOutbox(storage);
+    if (current.error) return { ok: false, reason: current.error };
+    const blockedEntries = current.entries.filter(
+      (entry) => entry.orderBlocker?.occurrenceId === blockerOccurrenceId,
+    );
+    if (blockedEntries.length === 0) return { ok: true, entry: null };
+    let lastReleased: WorkoutSetOutboxEntry | null = null;
+    for (const entry of blockedEntries) {
+      const released = releaseWorkoutSetOrderBlockerOutboxEntry(
+        storage,
+        entry.clientKey,
+        blockerOccurrenceId,
+      );
+      if (!released.ok) return released;
+      lastReleased = released.entry;
+    }
+    return { ok: true, entry: lastReleased };
+  });
 }
 
 export function releaseQueuedWorkoutSetBackoff(ownerId: string) {

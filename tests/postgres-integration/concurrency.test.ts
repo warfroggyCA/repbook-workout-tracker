@@ -1130,7 +1130,7 @@ describe.sequential("real PostgreSQL parallel invariants", () => {
       weightUnit: "lb",
       reps: 8,
       clientKey: "native-out-of-order-set-2",
-    })).resolves.toEqual({ outcome: "set_order_conflict" });
+    })).resolves.toMatchObject({ outcome: "set_order_conflict" });
     const extraOccurrenceId = crypto.randomUUID();
     await expect(appendWorkoutSetOccurrence(db, fixture.userId, {
       sessionExerciseId: sessionExercise.id,

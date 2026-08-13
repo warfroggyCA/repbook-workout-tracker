@@ -143,6 +143,7 @@ export function ActiveWorkoutDiscard({
             <Button
               type="button"
               variant="destructive"
+              className="h-auto min-h-11 whitespace-normal py-2 text-balance"
               disabled={pending}
               onClick={() => {
                 startTransition(async () => {
@@ -156,6 +157,7 @@ export function ActiveWorkoutDiscard({
             <Button
               type="button"
               variant="destructive"
+              className="h-auto min-h-11 whitespace-normal py-2 text-balance"
               disabled={pending}
               onClick={() => {
                 startTransition(async () => {

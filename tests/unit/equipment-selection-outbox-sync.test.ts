@@ -1,10 +1,16 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { enqueueWorkoutSetOutboxEntry, readWorkoutSetOutbox, type WorkoutSetOutboxStorage } from "@/lib/workout-set-outbox";
+import {
+  enqueueWorkoutSetOutboxEntry,
+  readWorkoutSetOutbox,
+  removeWorkoutSetOutboxEntry,
+  type WorkoutSetOutboxStorage,
+} from "@/lib/workout-set-outbox";
 import {
   enqueueEquipmentSelectionOutboxEntry,
   readEquipmentSelectionOutbox,
+  removeEquipmentSelectionOutboxEntry,
 } from "@/lib/equipment-selection-outbox";
 
 const actionMocks = vi.hoisted(() => ({
@@ -72,6 +78,7 @@ describe("equipment and set command sync", () => {
       performedExerciseId: performedExercise, performedSemanticsVersion: 1,
       performedLoadType: "ez_bar", performedLoadSemantics: "total",
       exerciseName: "Curl", setNo: 1, metricType: "weight_reps",
+      occurrenceId: occurrence, expectedOccurrenceRevision: 0,
       weight: 43, weightUnit: "lb", reps: 10,
       distanceKm: null, durationSeconds: null,
       rpe: null, note: null, equipmentSnapshotId: null,
@@ -91,7 +98,8 @@ describe("equipment and set command sync", () => {
         snapshotId: snapshotA,
         occurrenceStates: [{
           id: occurrence, outcome: "pending", outcomeReason: null,
-          outcomeNote: null, revision: 1, resolvedAt: null, completedSetId: null,
+          outcomeNote: null, previousRevision: 0, revision: 1,
+          resolvedAt: null, completedSetId: null,
         }],
       })
       .mockResolvedValueOnce({ outcome: "applied", snapshotId: snapshotB, occurrenceStates: [] });
@@ -99,6 +107,7 @@ describe("equipment and set command sync", () => {
       outcome: "saved",
       setId: "50000000-0000-4000-8000-000000000001",
       occurrenceId: "60000000-0000-4000-8000-000000000001",
+      occurrenceRevision: 2,
     });
 
     await syncNextEntry(owner);
@@ -109,15 +118,76 @@ describe("equipment and set command sync", () => {
         occurrenceStates: [expect.objectContaining({ id: occurrence, revision: 1 })],
       }));
     expect(readWorkoutSetOutbox(storage).entries[0].equipmentSnapshotId).toBe(snapshotA);
+    expect(readWorkoutSetOutbox(storage).entries[0].expectedOccurrenceRevision).toBe(1);
     expect(readEquipmentSelectionOutbox(storage).entries[0].expectedCurrentSnapshotId).toBe(snapshotA);
     await syncNextEntry(owner);
-    expect(actionMocks.logSet).toHaveBeenCalledWith(expect.objectContaining({ equipmentSnapshotId: snapshotA }));
+    expect(actionMocks.logSet).toHaveBeenCalledWith(expect.objectContaining({
+      equipmentSnapshotId: snapshotA,
+      occurrenceId: occurrence,
+      expectedOccurrenceRevision: 1,
+    }));
     await syncNextEntry(owner);
 
     expect(actionMocks.setSessionEquipmentSelection.mock.invocationCallOrder[0])
       .toBeLessThan(actionMocks.logSet.mock.invocationCallOrder[0]);
     expect(actionMocks.logSet.mock.invocationCallOrder[0])
       .toBeLessThan(actionMocks.setSessionEquipmentSelection.mock.invocationCallOrder[1]);
+    expect(readWorkoutSetOutbox(storage).entries).toEqual([]);
+    expect(readEquipmentSelectionOutbox(storage).entries).toEqual([]);
+  });
+
+  it("parks a no-intervening lost-response replay until the retained set is discarded and re-entered", async () => {
+    enqueueEquipmentSelectionOutboxEntry(storage, {
+      clientKey: selectionA, ownerId: owner, sessionId: session,
+      sessionExerciseId: exercise, operation: "select",
+      equipmentItemId: "10000000-0000-4000-8000-000000000031",
+      attachmentItemId: null, expectedCurrentSnapshotId: null,
+      predecessorSelectionClientKey: null, provenance: "user_selected",
+      equipmentLabel: "18 lb EZ curl bar", attachmentLabel: null,
+    }, 1000);
+    enqueueWorkoutSetOutboxEntry(storage, {
+      clientKey: setA, ownerId: owner, sessionId: session,
+      sessionExerciseId: exercise, performedExerciseId: performedExercise,
+      performedSemanticsVersion: 1, performedLoadType: "ez_bar",
+      performedLoadSemantics: "total", exerciseName: "Curl", setNo: 1,
+      metricType: "weight_reps", occurrenceId: occurrence,
+      expectedOccurrenceRevision: 0, weight: 43, weightUnit: "lb", reps: 10,
+      distanceKm: null, durationSeconds: null, rpe: null, note: null,
+      equipmentSnapshotId: null, equipmentSelectionClientKey: selectionA,
+      loadEntryMeaning: "total_system", createdAtISO: new Date(1001).toISOString(),
+    });
+    actionMocks.setSessionEquipmentSelection.mockResolvedValueOnce({
+      outcome: "replayed",
+      snapshotId: snapshotA,
+      occurrenceStates: [],
+    });
+
+    await syncNextEntry(owner);
+
+    expect(actionMocks.logSet).not.toHaveBeenCalled();
+    expect(readWorkoutSetOutbox(storage).entries[0]).toMatchObject({
+      equipmentSelectionClientKey: selectionA,
+      equipmentSnapshotId: null,
+      expectedOccurrenceRevision: 0,
+    });
+    expect(readEquipmentSelectionOutbox(storage).entries[0]).toMatchObject({
+      clientKey: selectionA,
+      status: "needs_attention",
+      lastError: expect.stringMatching(
+        /already saved.*refresh.*discard.*remove.*re-enter/i,
+      ),
+    });
+    expect(dispatched.map((event) => (event as CustomEvent).detail).filter(Boolean))
+      .toContainEqual(expect.objectContaining({
+        type: "failed",
+        clientKey: selectionA,
+        sessionExerciseId: exercise,
+      }));
+
+    // These are the same guarded discard actions exposed by the set and
+    // equipment trays after authoritative workout state has been refreshed.
+    expect(removeWorkoutSetOutboxEntry(storage, setA).ok).toBe(true);
+    expect(removeEquipmentSelectionOutboxEntry(storage, selectionA).ok).toBe(true);
     expect(readWorkoutSetOutbox(storage).entries).toEqual([]);
     expect(readEquipmentSelectionOutbox(storage).entries).toEqual([]);
   });

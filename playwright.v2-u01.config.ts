@@ -44,7 +44,7 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: `env E2E_PORT=${port} AUTH_GITHUB_ID=local-e2e-client AUTH_GITHUB_SECRET=local-e2e-secret node scripts/run-e2e-server.mjs --production`,
+    command: `env E2E_PORT=${port} AUTH_GITHUB_ID=local-e2e-client AUTH_GITHUB_SECRET=local-e2e-secret node scripts/run-e2e-server.mjs --production --ba-fixture`,
     gracefulShutdown: { signal: "SIGTERM", timeout: 5_000 },
     url: `http://127.0.0.1:${port}/sign-in`,
     reuseExistingServer: false,

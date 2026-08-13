@@ -5,6 +5,7 @@ import {
   exitRequiresDeviceCopyAcknowledgement,
   finishBlockedByRecordedWork,
   nextPendingWorkingOccurrence,
+  reconcileServerOccurrences,
   resolveSetLoggingEquipment,
   retainedRecordedWorkCount,
   type WorkoutExitQueues,
@@ -95,6 +96,110 @@ describe("occurrence discard continuity", () => {
     );
     expect(source).toContain('type: "discarded"');
     expect(source).not.toContain("window.location.reload");
+  });
+});
+
+describe("atomic finish handoff", () => {
+  it("rechecks both durable recorded-work queues while their enqueue locks are held", () => {
+    const source = readFileSync(
+      "src/components/session/session-runner.tsx",
+      "utf8",
+    );
+    expect(source).toContain("withOutboxLock(() =>");
+    expect(source).toContain("withOccurrenceMutationOutboxLock(async () =>");
+    expect(source).toContain("const latestSetQueue = getWorkoutSetOutboxSnapshot()");
+    expect(source).toContain(
+      "const latestOccurrenceQueue = getOccurrenceMutationOutboxSnapshot()",
+    );
+    expect(source.indexOf("finishBlockedByRecordedWork(freshExitQueues)")).toBeLessThan(
+      source.indexOf("const result = await completeSession({"),
+    );
+  });
+});
+
+describe("refreshed occurrence reconciliation", () => {
+  const occurrence = (
+    revision: number,
+    outcome: SessionOccurrenceData["outcome"],
+    completedSetId: string | null = null,
+  ): SessionOccurrenceData => ({
+    id: "occurrence-1",
+    sessionExerciseId: "exercise-1",
+    kind: "working_set",
+    origin: "planned",
+    sequenceIdx: 0,
+    kindOrdinal: 0,
+    label: null,
+    plannedExerciseId: null,
+    plannedNote: null,
+    plannedRepsMin: null,
+    plannedRepsMax: null,
+    plannedLoad: null,
+    plannedLoadUnit: null,
+    plannedLoadPercent: null,
+    plannedLoadText: null,
+    plannedRestSec: 60,
+    groupSnapshotId: null,
+    groupRound: null,
+    groupMemberOrderIdx: null,
+    outcome,
+    outcomeReason: null,
+    outcomeNote: null,
+    revision,
+    resolvedAt: outcome === "pending" ? null : "2026-08-12T12:00:00.000Z",
+    completedSetId,
+  });
+
+  it("accepts a newer server occurrence revision after refresh", () => {
+    const merged = reconcileServerOccurrences({
+      current: [occurrence(0, "pending")],
+      server: [occurrence(1, "skipped")],
+      previousServerIds: new Set(["occurrence-1"]),
+      pendingMutationOccurrenceIds: new Set(),
+      acknowledgedOccurrenceIds: new Set(),
+    });
+
+    expect(merged[0]).toMatchObject({ revision: 1, outcome: "skipped" });
+  });
+
+  it("preserves a newer optimistic occurrence while its durable command exists", () => {
+    const merged = reconcileServerOccurrences({
+      current: [occurrence(1, "skipped")],
+      server: [occurrence(0, "pending")],
+      previousServerIds: new Set(["occurrence-1"]),
+      pendingMutationOccurrenceIds: new Set(["occurrence-1"]),
+      acknowledgedOccurrenceIds: new Set(),
+    });
+
+    expect(merged[0]).toMatchObject({ revision: 1, outcome: "skipped" });
+  });
+
+  it("restores server truth after an optimistic occurrence command is discarded", () => {
+    const merged = reconcileServerOccurrences({
+      current: [occurrence(1, "skipped")],
+      server: [occurrence(0, "pending")],
+      previousServerIds: new Set(["occurrence-1"]),
+      pendingMutationOccurrenceIds: new Set(),
+      acknowledgedOccurrenceIds: new Set(),
+    });
+
+    expect(merged[0]).toMatchObject({ revision: 0, outcome: "pending" });
+  });
+
+  it("keeps a just-acknowledged saved set until refreshed props catch up", () => {
+    const merged = reconcileServerOccurrences({
+      current: [occurrence(1, "completed", "set-1")],
+      server: [occurrence(0, "pending")],
+      previousServerIds: new Set(["occurrence-1"]),
+      pendingMutationOccurrenceIds: new Set(),
+      acknowledgedOccurrenceIds: new Set(),
+    });
+
+    expect(merged[0]).toMatchObject({
+      revision: 1,
+      outcome: "completed",
+      completedSetId: "set-1",
+    });
   });
 });
 

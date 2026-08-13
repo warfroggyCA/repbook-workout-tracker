@@ -888,6 +888,20 @@ live in `More for this exercise`. Pending or failed writes and skipped recovery
 remain exposed, and the existing fixed workout-status bar remains the sole
 rest/ready/finish authority.
 
+The runner reconciles refreshed occurrence props by stable ID and monotonic
+revision because a Next.js refresh may preserve Client Component state. A
+device-side occurrence revision remains visible only while its durable command
+or acknowledged receipt still owns it; discarding that command lets refreshed
+server truth win. An ordered-set rejection retains the exact authoritative
+blocking occurrence with the later attempt. The blocker is named and directly
+reachable, retry stays locked until that occurrence is resolved, and deliberate
+discard of the later attempt remains available. Legacy retained set commands
+without this newer context remain readable and recoverable. Finish is a
+full-height review mode with recorded-work blockers first; equipment guidance
+remains explicitly non-blocking. None of these presentation and recovery rules
+change Program intent, stored workout ordering, completed History, schema, or
+migration boundaries.
+
 ## Post-v2 retained workout-equipment preparation
 
 Migration `0080_session_equipment_requirements_snapshot` adds one nullable,
