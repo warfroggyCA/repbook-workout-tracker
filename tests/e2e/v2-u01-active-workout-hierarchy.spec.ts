@@ -69,18 +69,38 @@ async function completeWarmupsToFirstWorkingSet(page: Page) {
 }
 
 async function expectReachableTarget(locator: Locator) {
-  await locator.evaluate((element) => {
-    element.scrollIntoView({ block: "center", inline: "center" });
-  });
   await expect(locator).toBeVisible();
-  await expect.poll(() => locator.evaluate((element) => {
+  await expect.poll(() => locator.evaluate(async (element) => {
+    element.scrollIntoView({ block: "center", inline: "center" });
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
     const rect = element.getBoundingClientRect();
     const hit = document.elementFromPoint(
       rect.left + rect.width / 2,
       rect.top + rect.height / 2,
     );
-    return hit === element || (hit != null && element.contains(hit));
-  })).toBe(true);
+    const reachable =
+      hit === element || (hit != null && element.contains(hit));
+    return reachable ? "ok" : JSON.stringify({
+      target:
+        element.getAttribute("aria-label") ??
+        element.getAttribute("data-testid") ??
+        element.textContent?.trim().slice(0, 80) ??
+        element.tagName,
+      rect: {
+        top: Math.round(rect.top),
+        right: Math.round(rect.right),
+        bottom: Math.round(rect.bottom),
+        left: Math.round(rect.left),
+      },
+      hit:
+        hit instanceof HTMLElement
+          ? hit.getAttribute("aria-label") ??
+            hit.getAttribute("data-testid") ??
+            hit.textContent?.trim().slice(0, 80) ??
+            hit.tagName
+          : null,
+    });
+  })).toBe("ok");
   const result = await locator.evaluate((element) => {
     const rect = element.getBoundingClientRect();
     return { height: rect.height, width: rect.width };
@@ -813,20 +833,44 @@ test("keeps the ordinary active set current-first, unobstructed, and acknowledge
     });
     await expectPrimaryActionUnobstructed(dismissRest);
     await dismissRest.click();
+    const setTwoDockAction = page.getByTestId("active-workout-dock-primary");
+    await expect(setTwoDockAction).toHaveAttribute(
+      "aria-label",
+      /Log Barbell Back Squat, Set 2/i,
+    );
+    await expectPrimaryActionUnobstructed(setTwoDockAction);
+    await expect(workoutStatus.getByRole("button", {
+      name: "Skip rest",
+      exact: true,
+    })).toHaveCount(0);
+    await expect(currentCard.locator(":scope > button")).toHaveAttribute(
+      "aria-expanded",
+      "true",
+    );
+    const setTwoEntryId = await currentEntry.getAttribute("id");
+    expect(setTwoEntryId).not.toBeNull();
+    await expect.poll(() => page.evaluate(() => window.location.hash)).toBe(
+      `#${setTwoEntryId}`,
+    );
+    await page.evaluate(() => new Promise<void>((resolve) =>
+      requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
+    ));
     await expectFullyInViewport(receipt);
     expect(
       await page.evaluate(
         () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
       ),
     ).toBeLessThanOrEqual(1);
-    for (const target of [
-      currentEntry.getByTestId("current-set-target"),
-      currentEntry.getByLabel("Total load", { exact: true }),
-      currentEntry.getByRole("textbox", { name: "Reps", exact: true }),
-      currentEntry.getByRole("button", { name: "Log set", exact: true }),
-    ]) {
-      await expectReachableTarget(target);
-    }
+    const settledSetTwoGeometry = await compactGeometry(page);
+    expect(
+      settledSetTwoGeometry,
+      JSON.stringify(settledSetTwoGeometry),
+    ).toMatchObject({
+      targetBeforeOrBesidePrevious: true,
+      evidenceBeforeInput: true,
+      inputBeforeLog: true,
+      logClearsDock: true,
+    });
   } finally {
     await discardWorkout(page);
   }
