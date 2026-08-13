@@ -145,6 +145,22 @@ describe("workout exit readiness", () => {
 });
 
 describe("occurrence discard continuity", () => {
+  it("keeps the fixed dock in checking mode through skip revision settlement", () => {
+    const source = readFileSync(
+      "src/components/session/session-runner.tsx",
+      "utf8",
+    );
+    expect(source).toContain(
+      "skipRecoveryExerciseId != null && historyRevision > props.historyRevision",
+    );
+    expect(source).toContain(
+      "skipRecoverySettlementPending ||\n            skipRecoveryExerciseId == null",
+    );
+    expect(source).toContain(
+      "skipConfirmationExerciseId ?? skipRecoveryExerciseId",
+    );
+  });
+
   it("removes the unsaved command without reloading or navigating the workout", () => {
     const source = readFileSync(
       "src/components/session/session-runner.tsx",

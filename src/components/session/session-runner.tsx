@@ -457,6 +457,8 @@ export function SessionRunner(props: SessionRunnerProps) {
     exerciseId: string;
     message: string;
   } | null>(null);
+  const skipRecoverySettlementPending =
+    skipRecoveryExerciseId != null && historyRevision > props.historyRevision;
   const skipReconciliationRef = useRef<Set<string>>(new Set());
   const skipUnconfirmedRef = useRef<Set<string>>(new Set());
   const skipRequestRunnerInstanceRef = useRef<Record<string, string>>({});
@@ -3468,8 +3470,8 @@ export function SessionRunner(props: SessionRunnerProps) {
               skipConfirmationExerciseId === exercise.id
             }
             skipRecoverySettlementPending={
-              skipRecoveryExerciseId === exercise.id &&
-              historyRevision > props.historyRevision
+              skipRecoverySettlementPending &&
+              skipRecoveryExerciseId === exercise.id
             }
             skipConfirmationError={
               skipConfirmationError?.exerciseId === exercise.id
@@ -3967,14 +3969,21 @@ export function SessionRunner(props: SessionRunnerProps) {
           }}
           allowLogWithRetainedFailure={allowLogWithRetainedFailure}
           checkingExerciseSkip={
-            skipConfirmationExerciseId == null
+            (skipConfirmationExerciseId ??
+              (skipRecoverySettlementPending
+                ? skipRecoveryExerciseId
+                : null)) == null
               ? null
               : shownExercises.find(
-                  (exercise) => exercise.id === skipConfirmationExerciseId,
+                  (exercise) => exercise.id === (
+                    skipConfirmationExerciseId ?? skipRecoveryExerciseId
+                  ),
                 )?.name ?? "exercise"
           }
           recoveringSkippedExercise={
-            skipConfirmationExerciseId != null || skipRecoveryExerciseId == null
+            skipConfirmationExerciseId != null ||
+            skipRecoverySettlementPending ||
+            skipRecoveryExerciseId == null
               ? null
               : shownExercises.find(
                   (exercise) => exercise.id === skipRecoveryExerciseId,
