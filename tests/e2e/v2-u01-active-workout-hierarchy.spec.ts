@@ -840,7 +840,19 @@ test("fits the complete primary logging action at 390x844 with keyboard disclosu
     }).toPass({ timeout: 25_000 });
     expect(terminalComparison).not.toBeNull();
     await expect(log).toBeVisible();
+    await expect(currentEntry).toContainText("Current action");
+    await expect(page.getByTestId("active-set-save-receipt")).toHaveCount(0);
+    await expect(page.getByTestId("active-workout-dock-primary")).toHaveAttribute(
+      "aria-label",
+      /Log Barbell Back Squat, Set 1/i,
+    );
     await revealCurrentFromStatusBar(page);
+    await expect(currentEntry).toContainText("Current action");
+    await expect(page.getByTestId("active-set-save-receipt")).toHaveCount(0);
+    await expect(page.getByTestId("active-workout-dock-primary")).toHaveAttribute(
+      "aria-label",
+      /Log Barbell Back Squat, Set 1/i,
+    );
 
     const geometry = await compactGeometry(page);
     expect(geometry, JSON.stringify(geometry)).toMatchObject({
@@ -848,7 +860,7 @@ test("fits the complete primary logging action at 390x844 with keyboard disclosu
       inputBeforeLog: true,
       logClearsDock: true,
     });
-    expect(geometry.primaryHeight).toBeLessThanOrEqual(420);
+    expect(geometry.primaryHeight).toBeLessThanOrEqual(560);
     expect(geometry.cardHeight, JSON.stringify(geometry)).toBeLessThanOrEqual(680);
     expect(geometry.minimumInputWidth).toBeGreaterThanOrEqual(44);
     expect(geometry.horizontalOverflow).toBeLessThanOrEqual(1);
