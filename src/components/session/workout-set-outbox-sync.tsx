@@ -73,11 +73,19 @@ import {
   TECHNIQUE_ISSUE_LABELS,
 } from "@/lib/set-exception-context";
 import { formatPainEvidence } from "@/lib/pain-evidence";
+import {
+  deploymentRecoveryRequired,
+  reportDeploymentMismatch,
+} from "@/lib/deployment-recovery";
 
 const activeOwners = new Set<string>();
 
 const TRANSIENT_SET_FAILURE =
   "We couldn't save this set yet. We'll keep trying when you're back online.";
+const UPDATED_SET_FAILURE =
+  "Repbook was updated. This set is safe on this device and will retry after you reload.";
+const UPDATED_EQUIPMENT_FAILURE =
+  "Repbook was updated. This equipment choice is safe on this device and will retry after you reload.";
 
 function formatRetainedContext(entry: WorkoutSetOutboxEntry) {
   const context: string[] = [];
@@ -164,6 +172,7 @@ export async function syncNextEntry(
   drainReady = false,
   drainDepth = 0,
 ) {
+  if (deploymentRecoveryRequired()) return;
   if (activeOwners.has(ownerId)) return;
   activeOwners.add(ownerId);
   let attempted = false;
@@ -235,10 +244,13 @@ export async function syncNextEntry(
                 : "That exact equipment setup is no longer available.";
           markEquipmentSelectionNeedsAttentionUnlocked(entry.clientKey, reason);
           publishEquipmentSelectionOutboxEvent({ type: "failed", clientKey: entry.clientKey, sessionExerciseId: entry.sessionExerciseId });
-        } catch {
+        } catch (error) {
+          const deploymentMismatch = reportDeploymentMismatch(error);
           const marked = markEquipmentSelectionTransientFailureUnlocked(
             entry.clientKey,
-            "The server could not be reached. This equipment choice will retry automatically.",
+            deploymentMismatch
+              ? UPDATED_EQUIPMENT_FAILURE
+              : "The server could not be reached. This equipment choice will retry automatically.",
           );
           publishEquipmentSelectionOutboxEvent({
             type: marked.ok && marked.entry?.status !== "needs_attention" ? "saving" : "failed",
@@ -354,10 +366,11 @@ export async function syncNextEntry(
           setId: result.setId,
           entry,
         });
-      } catch {
+      } catch (error) {
+        const deploymentMismatch = reportDeploymentMismatch(error);
         const marked = recordWorkoutSetTransientFailureUnlocked(
           entry.clientKey,
-          TRANSIENT_SET_FAILURE
+          deploymentMismatch ? UPDATED_SET_FAILURE : TRANSIENT_SET_FAILURE,
         );
         if (marked.ok && marked.entry?.status !== "needs_attention") {
           publishWorkoutSetOutboxEvent({

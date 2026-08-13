@@ -15,6 +15,10 @@ import {
   withContextualNoteOutboxLock,
   type ContextualNoteOutboxEntry,
 } from "@/lib/contextual-note-outbox";
+import {
+  deploymentRecoveryRequired,
+  reportDeploymentMismatch,
+} from "@/lib/deployment-recovery";
 
 type ContextualNoteSaveAction = (
   input: ContextualNoteOutboxEntry["payload"]
@@ -57,6 +61,7 @@ export async function syncContextualNoteEntry(
   original: ContextualNoteOutboxEntry,
   save: ContextualNoteSaveAction = createContextualNoteAction
 ) {
+  if (deploymentRecoveryRequired()) return;
   // Without Web Locks, a second tab could race this read-modify-write drain and
   // delete or overwrite a different queued note. Keep the device copy intact.
   if (typeof navigator === "undefined" || !navigator.locks) return;
@@ -109,14 +114,17 @@ export async function syncContextualNoteEntry(
       let rawResult: unknown;
       try {
         rawResult = await save(entry.payload);
-      } catch {
+      } catch (error) {
+        const deploymentMismatch = reportDeploymentMismatch(error);
         mutateUnlocked(ownerId, (storage) =>
           markContextualNoteOutboxTransientFailure(
             storage,
             ownerId,
             entry!.clientKey,
             entry!.payloadHash,
-            "The connection was interrupted. This note remains queued on this device."
+            deploymentMismatch
+              ? "Repbook was updated. This note is safe on this device and will retry after you reload."
+              : "The connection was interrupted. This note remains queued on this device."
           )
         );
         return;

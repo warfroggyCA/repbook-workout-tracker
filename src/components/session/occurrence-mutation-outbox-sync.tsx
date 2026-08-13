@@ -28,10 +28,16 @@ import {
   withOccurrenceMutationOutboxLock,
   type OccurrenceMutationOutboxEntry,
 } from "@/lib/occurrence-mutation-outbox";
+import {
+  deploymentRecoveryRequired,
+  reportDeploymentMismatch,
+} from "@/lib/deployment-recovery";
 
 const activeOwners = new Set<string>();
 const TRANSIENT_FAILURE =
   "We couldn't save this yet. We'll keep trying when you're back online.";
+const UPDATED_APP_FAILURE =
+  "Repbook was updated. This workout change is safe on this device and will retry after you reload.";
 
 function operationLabel(operation: OccurrenceMutationOutboxEntry["operation"]) {
   if (operation === "complete") return "Mark done";
@@ -41,6 +47,7 @@ function operationLabel(operation: OccurrenceMutationOutboxEntry["operation"]) {
 }
 
 export async function syncNextOccurrenceMutation(ownerId: string) {
+  if (deploymentRecoveryRequired()) return;
   if (activeOwners.has(ownerId)) return;
   activeOwners.add(ownerId);
   try {
@@ -96,10 +103,11 @@ export async function syncNextOccurrenceMutation(ownerId: string) {
           clientKey: entry.clientKey,
           sessionId: entry.sessionId,
         });
-      } catch {
+      } catch (error) {
+        const deploymentMismatch = reportDeploymentMismatch(error);
         markOccurrenceMutationTransientFailureUnlocked(
           entry.clientKey,
-          TRANSIENT_FAILURE,
+          deploymentMismatch ? UPDATED_APP_FAILURE : TRANSIENT_FAILURE,
         );
         publishOccurrenceMutationOutboxEvent({
           type: "failed",

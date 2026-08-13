@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { UnrecognizedActionError } from "next/dist/client/components/unrecognized-action-error";
 import {
   enqueueContextualNoteOutboxEntry,
   markContextualNoteOutboxSyncing,
@@ -17,6 +18,7 @@ import {
   registerContextualNoteOutboxWakeListeners,
   syncContextualNoteEntry,
 } from "@/components/contextual-notes/contextual-note-outbox-sync";
+import { deploymentRecoveryRequired } from "@/lib/deployment-recovery";
 
 const OWNER_ID = "10000000-0000-4000-8000-000000000001";
 
@@ -127,6 +129,27 @@ describe("contextual note outbox sync", () => {
       payloadHash: entry.payloadHash,
       lastError: expect.stringContaining("different note content"),
     });
+  });
+
+  it("retains a stale-build note and waits for reload", async () => {
+    const entry = queued(storage);
+    const save = vi.fn(async () => {
+      throw new UnrecognizedActionError("old action");
+    });
+
+    await syncContextualNoteEntry(OWNER_ID, entry, save);
+
+    expect(readContextualNoteOutbox(storage, OWNER_ID).entries[0]).toMatchObject({
+      clientKey: entry.clientKey,
+      status: "queued",
+      attemptCount: 1,
+      lastError:
+        "Repbook was updated. This note is safe on this device and will retry after you reload.",
+    });
+    expect(deploymentRecoveryRequired()).toBe(true);
+
+    await syncContextualNoteEntry(OWNER_ID, entry, save);
+    expect(save).toHaveBeenCalledOnce();
   });
 
   it("queues retryable failures with backoff and pauses permanent or malformed failures", async () => {
