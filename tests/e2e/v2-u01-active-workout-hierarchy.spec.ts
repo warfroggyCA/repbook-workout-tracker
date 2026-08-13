@@ -592,6 +592,9 @@ async function compactGeometry(page: Page) {
     const previousElement = document.querySelector<HTMLElement>(
       '[data-testid="previous-comparable-set"]',
     );
+    const targetElement = document.querySelector<HTMLElement>(
+      '[data-testid="current-set-target"]',
+    );
     const logElement = document.querySelector<HTMLElement>(
       '[data-testid="active-log-set"]',
     );
@@ -601,7 +604,7 @@ async function compactGeometry(page: Page) {
     const cardElement = document.querySelector<HTMLElement>(
       '[data-testid="current-exercise-card"]',
     );
-    if (!primaryElement || !previousElement || !logElement || !dockElement || !cardElement) {
+    if (!primaryElement || !targetElement || !previousElement || !logElement || !dockElement || !cardElement) {
       throw new Error("The compact active-workout geometry is incomplete.");
     }
     const primaryRect = primaryElement.getBoundingClientRect();
@@ -613,6 +616,8 @@ async function compactGeometry(page: Page) {
     return {
       primaryHeight: primaryRect.height,
       cardHeight: cardElement.getBoundingClientRect().height,
+      targetBeforePrevious:
+        targetElement.getBoundingClientRect().bottom <= previousRect.top,
       previousBeforeInput:
         firstInput != null && previousRect.bottom <= firstInput.getBoundingClientRect().top,
       inputBeforeLog:
@@ -634,6 +639,8 @@ async function compactGeometry(page: Page) {
       disclosures: [...cardElement.querySelectorAll("details")].map(
         (details) => ({
           summary: details.querySelector("summary")?.textContent?.trim() ?? "",
+          summaryHeight:
+            details.querySelector("summary")?.getBoundingClientRect().height ?? 0,
           open: details.open,
           height: details.getBoundingClientRect().height,
         }),
@@ -856,15 +863,17 @@ test("fits the complete primary logging action at 390x844 with keyboard disclosu
 
     const geometry = await compactGeometry(page);
     expect(geometry, JSON.stringify(geometry)).toMatchObject({
+      targetBeforePrevious: true,
       previousBeforeInput: true,
       inputBeforeLog: true,
       logClearsDock: true,
     });
     expect(geometry.primaryHeight).toBeLessThanOrEqual(560);
-    expect(geometry.cardHeight, JSON.stringify(geometry)).toBeLessThanOrEqual(900);
     expect(geometry.disclosures.every((item) => !item.open)).toBe(true);
     expect(
-      geometry.disclosures.every((item) => item.height <= 60),
+      geometry.disclosures.every(
+        (item) => item.height <= item.summaryHeight + 2,
+      ),
       JSON.stringify(geometry.disclosures),
     ).toBe(true);
     expect(geometry.minimumInputWidth).toBeGreaterThanOrEqual(44);
@@ -908,17 +917,58 @@ test("fits the complete primary logging action at 390x844 with keyboard disclosu
     await discardWorkout(page);
     await signInAndStartDayA(page, { extraLarge: true });
     await completeWarmupsToFirstWorkingSet(page);
+    const extraLargeEntry = page.getByTestId("current-set-entry");
+    await expect(extraLargeEntry).toContainText("Current action");
+    await expect(page.getByTestId("active-set-save-receipt")).toHaveCount(0);
+    await expect(page.getByTestId("active-workout-dock-primary")).toHaveAttribute(
+      "aria-label",
+      /Log Barbell Back Squat, Set 1/i,
+    );
     await revealCurrentFromStatusBar(page);
+    for (const target of [
+      extraLargeEntry.getByTestId("current-set-target"),
+      extraLargeEntry.getByTestId("previous-comparable-set"),
+      extraLargeEntry.getByLabel("Total load", { exact: true }),
+      extraLargeEntry.getByRole("textbox", { name: "Reps", exact: true }),
+      extraLargeEntry.getByRole("button", { name: "Log set", exact: true }),
+    ]) {
+      await expectReachableTarget(target);
+    }
+    await expect(extraLargeEntry).toContainText("Current action");
+    await expect(page.getByTestId("active-set-save-receipt")).toHaveCount(0);
+    await expect(page.getByTestId("active-workout-dock-primary")).toHaveAttribute(
+      "aria-label",
+      /Log Barbell Back Squat, Set 1/i,
+    );
     const extraLargeGeometry = await compactGeometry(page);
     expect(
       extraLargeGeometry,
       JSON.stringify(extraLargeGeometry),
     ).toMatchObject({
+      targetBeforePrevious: true,
       previousBeforeInput: true,
       inputBeforeLog: true,
       logClearsDock: true,
     });
-    expect(extraLargeGeometry.cardHeight).toBeLessThanOrEqual(900);
+    expect(
+      extraLargeGeometry.primaryHeight,
+      JSON.stringify(extraLargeGeometry),
+    ).toBeLessThanOrEqual(800);
+    expect(extraLargeGeometry.disclosures.every((item) => !item.open)).toBe(true);
+    expect(
+      extraLargeGeometry.disclosures.every(
+        (item) => item.height <= item.summaryHeight + 2,
+      ),
+      JSON.stringify(extraLargeGeometry.disclosures),
+    ).toBe(true);
+    expect(extraLargeGeometry.disclosures.map((item) => item.summary)).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining("Set options"),
+        expect.stringContaining("Exercise progress & extras"),
+        expect.stringContaining("More for this exercise"),
+        expect.stringContaining("Warm-up guidance · reference"),
+      ]),
+    );
     expect(extraLargeGeometry.minimumInputWidth).toBeGreaterThanOrEqual(44);
     expect(extraLargeGeometry.horizontalOverflow).toBeLessThanOrEqual(1);
   } finally {

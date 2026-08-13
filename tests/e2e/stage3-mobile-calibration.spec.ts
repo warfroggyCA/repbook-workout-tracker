@@ -309,6 +309,10 @@ test("keeps new Stage 3 controls usable at the saved iPhone calibration", async 
   await expect(collapsedWarmup).not.toHaveAttribute("open", "");
   await expect(collapsedWarmup).toContainText("Warm-up complete");
   await collapsedWarmup.locator("summary").click();
+  await collapsedWarmup
+    .getByRole("button", { name: "Review full plan", exact: true })
+    .click();
+  await expect(resumedWarmupRow).toBeVisible();
   await expect(resumedWarmupRow).toContainText("completed");
   const resolvedEditNote = resumedWarmupRow.getByRole("button", {
     name: "Edit note",

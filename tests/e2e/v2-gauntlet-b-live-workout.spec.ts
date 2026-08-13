@@ -362,10 +362,14 @@ test("keeps the full live workout usable through warm-up, skip, replace, continu
     name: "Skip exercise — why?",
   })).toHaveCount(0);
   const interruptedSessionUrl = page.url();
-  await page.getByRole("link", {
-    name: "Back to Today",
-    exact: true,
-  }).click();
+  const interruptedWorkoutExit =
+    (page.viewportSize()?.width ?? Number.POSITIVE_INFINITY) <= 440
+      ? page.getByRole("link", { name: "Back to Today", exact: true })
+      : page
+          .getByRole("navigation", { name: "Primary navigation" })
+          .getByRole("link", { name: "Today", exact: true });
+  await expect(interruptedWorkoutExit).toBeVisible();
+  await interruptedWorkoutExit.click();
   await expect(page).toHaveURL(/\/today$/);
   const resumeInterruptedWorkout = page.getByRole("button", {
     name: "Resume workout",
