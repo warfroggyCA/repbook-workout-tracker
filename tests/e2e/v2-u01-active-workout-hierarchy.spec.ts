@@ -517,7 +517,7 @@ test("keeps attention continuous through warm-up, first set, and exact recovery 
           exact: true,
         }).click();
         await page.getByRole("button", {
-          name: "Discard set",
+          name: "Discard device copy",
           exact: true,
         }).click();
         await expect.poll(() => page.evaluate(() => {

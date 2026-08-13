@@ -893,8 +893,8 @@ export function ExerciseCard({
     occurrence: SessionOccurrenceData | null = activeOccurrence,
     submittedDraft: SetDraft = draft,
   ) {
-    if (skipConfirmationPending) {
-      toast.info("Wait while Repbook confirms whether this exercise was skipped.");
+    if (skipConfirmationPending || skipConfirmationError != null) {
+      toast.info("Resolve the exercise skip before logging a set.");
       return;
     }
     if (unconfirmedSetsBlockLogging({
@@ -1696,21 +1696,27 @@ export function ExerciseCard({
                       machineLoadConfig={machineLoadConfig}
                     />
                     <div className="mt-2 grid grid-cols-[1fr_auto] gap-2">
-                      <Button
-                        onClick={() =>
-                          handleLog(i + 1, appendedOccurrence, appendedDraft)
-                        }
-                        disabled={
-                          pending ||
-                          skipConfirmationPending ||
-                          !metricSupported ||
-                          appendedLoggingBlocked ||
-                          Boolean(occurrenceMutation) ||
-                          logRequestKey === appendedOccurrence.id
-                        }
-                      >
-                        <Check className="size-4" /> Log set
-                      </Button>
+                      {skipConfirmationError == null ? (
+                        <Button
+                          onClick={() =>
+                            handleLog(i + 1, appendedOccurrence, appendedDraft)
+                          }
+                          disabled={
+                            pending ||
+                            skipConfirmationPending ||
+                            !metricSupported ||
+                            appendedLoggingBlocked ||
+                            Boolean(occurrenceMutation) ||
+                            logRequestKey === appendedOccurrence.id
+                          }
+                        >
+                          <Check className="size-4" /> Log set
+                        </Button>
+                      ) : (
+                        <p className="flex min-h-11 items-center text-sm font-medium">
+                          Resolve the exercise skip before logging sets.
+                        </p>
+                      )}
                       <Button
                         type="button"
                         variant="outline"
@@ -1865,24 +1871,30 @@ export function ExerciseCard({
                             : "mt-2 grid grid-cols-[1fr_auto] gap-2",
                         )}
                       >
-                        <Button
-                          data-testid="active-log-set"
-                          className={cn(
-                            prioritizeCurrentAction &&
-                              "min-h-12 w-full text-base font-semibold",
-                          )}
-                          onClick={() => handleLog()}
-                          disabled={
-                            pending ||
-                            skipConfirmationPending ||
-                            !metricSupported ||
-                            Boolean(occurrenceMutation) ||
-                            activeLoggingBlocked ||
-                            logRequestKey === activeOccurrence.id
-                          }
-                        >
-                          <Check className="size-4" /> Log set
-                        </Button>
+                        {skipConfirmationError == null ? (
+                          <Button
+                            data-testid="active-log-set"
+                            className={cn(
+                              prioritizeCurrentAction &&
+                                "min-h-12 w-full text-base font-semibold",
+                            )}
+                            onClick={() => handleLog()}
+                            disabled={
+                              pending ||
+                              skipConfirmationPending ||
+                              !metricSupported ||
+                              Boolean(occurrenceMutation) ||
+                              activeLoggingBlocked ||
+                              logRequestKey === activeOccurrence.id
+                            }
+                          >
+                            <Check className="size-4" /> Log set
+                          </Button>
+                        ) : (
+                          <p className="flex min-h-11 items-center text-sm font-medium">
+                            Resolve the exercise skip before logging sets.
+                          </p>
+                        )}
                         {!prioritizeCurrentAction && (
                           <Button
                             type="button"

@@ -100,6 +100,25 @@ describe("WorkoutStatusBar", () => {
     expect(html).toContain("bg-primary text-primary-foreground");
   });
 
+  it("truthfully reveals a collapsed current set before offering to log it", () => {
+    const html = renderToStaticMarkup(
+      <WorkoutStatusBar
+        action={action}
+        exercise={exercise}
+        timer={null}
+        restRemainingSec={null}
+        {...callbacks}
+        onPrimaryAction={() => undefined}
+        currentWorkingSetRevealed={false}
+      />,
+    );
+
+    expect(html).toContain('aria-label="Show Barbell Squat, Set 2"');
+    expect(html).toContain("Set 2 of 3 · Show current set");
+    expect(html).not.toContain('data-testid="active-workout-dock-primary"');
+    expect(html).not.toContain('aria-label="Log Barbell Squat, Set 2"');
+  });
+
   it("replaces the dock log action while an interrupted exercise skip reconciles", () => {
     const html = renderToStaticMarkup(
       <WorkoutStatusBar

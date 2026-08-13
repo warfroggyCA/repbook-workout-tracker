@@ -769,6 +769,30 @@ describe("ExerciseCard", () => {
     expect(acknowledgedBlocker).toContain("Acknowledged by Repbook");
     expect(acknowledgedBlocker).toContain("Save failed");
 
+    const failedSkipRecovery = renderToStaticMarkup(
+      <ExerciseCard
+        {...baseProps}
+        setOrderBlockers={{
+          "failed-order-key": {
+            blockerOccurrenceId: blockerOccurrence.id,
+            blockerExerciseName: "Barbell Squat",
+            blockerLabel: "Set 1",
+            blockerTargetId:
+              `set-entry-${failedAttempt.id}-${blockerOccurrence.id}`,
+          },
+        }}
+        skipConfirmationError="Repbook did not confirm the equipment skip."
+        onRefreshWorkout={() => undefined}
+      />,
+    );
+    expect(failedSkipRecovery).toContain("Skip was not confirmed");
+    expect(failedSkipRecovery).toContain(
+      "Resolve the exercise skip before logging sets.",
+    );
+    expect(failedSkipRecovery).not.toContain(
+      'data-testid="active-log-set"',
+    );
+
     const mismatched = renderToStaticMarkup(
       <ExerciseCard
         {...baseProps}

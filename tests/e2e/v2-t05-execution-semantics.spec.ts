@@ -129,12 +129,11 @@ async function clickCentered(page: Page, locator: Locator) {
 
 async function skipCurrentSet(page: Page) {
   const current = page.getByTestId("current-exercise-card");
-  const showCurrent = page
-    .getByRole("complementary", { name: "Workout status" })
-    .getByRole("button")
-    .first();
-  await showCurrent.click();
-  await expect(current.locator(":scope > button").first()).toHaveAttribute(
+  const currentDisclosure = current.locator(":scope > button").first();
+  if ((await currentDisclosure.getAttribute("aria-expanded")) !== "true") {
+    await currentDisclosure.click();
+  }
+  await expect(currentDisclosure).toHaveAttribute(
     "aria-expanded",
     "true",
   );
@@ -225,7 +224,17 @@ test("keeps one ledger-driven current/next/group/rest state through retry, inter
   await otherExercise.locator(":scope > button").click();
   await expect(guidance).toContainText("Now: Barbell Back Squat, set 1");
   await expect(guidance).toContainText("Next: Barbell Back Squat, set 2");
-  await status.getByRole("button").first().click();
+  const showCurrent = status.getByRole("button", {
+    name: "Show Barbell Back Squat, Set 1",
+    exact: true,
+  });
+  await expect(showCurrent).toContainText("Show current set");
+  await showCurrent.click();
+  await expect(
+    page.getByTestId("current-exercise-card").locator(":scope > button").first(),
+  ).toHaveAttribute("aria-expanded", "true");
+  await expect(status.getByTestId("active-workout-dock-primary"))
+    .toHaveAccessibleName("Log Barbell Back Squat, Set 1");
 
   for (let count = 0; count < 20; count += 1) {
     if ((await currentExerciseName(page)) === "Dumbbell Lateral Raise") break;

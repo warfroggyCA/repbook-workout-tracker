@@ -17,6 +17,7 @@ type Props = {
   restRemainingSec: number | null;
   onShowCurrent: () => void;
   onPrimaryAction?: () => void;
+  currentWorkingSetRevealed?: boolean;
   allowLogWithRetainedFailure?: boolean;
   checkingExerciseSkip?: string | null;
   recoveringSkippedExercise?: string | null;
@@ -48,6 +49,7 @@ export function WorkoutStatusBar({
   restRemainingSec,
   onShowCurrent,
   onPrimaryAction,
+  currentWorkingSetRevealed = true,
   allowLogWithRetainedFailure = false,
   checkingExerciseSkip = null,
   recoveringSkippedExercise = null,
@@ -65,6 +67,11 @@ export function WorkoutStatusBar({
   const timerReady = timer?.phase === "ready" || timer?.phase === "skipped";
   const skipRecoveryPending =
     checkingExerciseSkip == null && recoveringSkippedExercise != null;
+  const showsCurrentSet =
+    action?.kind === "working_set" &&
+    checkingExerciseSkip == null &&
+    !skipRecoveryPending &&
+    !currentWorkingSetRevealed;
   const status = checkingExerciseSkip != null
     ? "Checking skip…"
     : skipRecoveryPending
@@ -93,6 +100,7 @@ export function WorkoutStatusBar({
     action?.kind === "working_set" &&
     checkingExerciseSkip == null &&
     !skipRecoveryPending &&
+    currentWorkingSetRevealed &&
     onPrimaryAction != null &&
     (saving == null || (saving === "Failed" && allowLogWithRetainedFailure));
   const completesCurrentWarmup =
@@ -106,6 +114,11 @@ export function WorkoutStatusBar({
     skipRecoveryPending && onResolveSkippedExercise != null;
   const runsPrimaryAction =
     resolvesSkippedExercise || logsCurrentSet || completesCurrentWarmup;
+  const workingSetStatus = logsCurrentSet
+    ? "Log set"
+    : showsCurrentSet
+      ? "Show current set"
+      : status;
 
   return (
     <aside
@@ -144,6 +157,8 @@ export function WorkoutStatusBar({
                 ? `Checking skip for ${checkingExerciseSkip}`
                 : resolvesSkippedExercise
                   ? `Resolve ${recoveringSkippedExercise}`
+                  : showsCurrentSet
+                    ? `Show ${title}, ${setPosition?.label ?? "current set"}`
               : undefined}
           onClick={
             resolvesSkippedExercise
@@ -182,8 +197,8 @@ export function WorkoutStatusBar({
               ? status
               : setPosition
               ? setPosition.kind === "extra"
-                ? `${setPosition.label} · ${status}`
-                : `${setPosition.label} of ${exercise?.targetSets ?? "open"} · ${logsCurrentSet ? "Log set" : status}`
+                ? `${setPosition.label} · ${workingSetStatus}`
+                : `${setPosition.label} of ${exercise?.targetSets ?? "open"} · ${workingSetStatus}`
               : completesCurrentWarmup
                 ? "Complete warm-up"
                 : status}

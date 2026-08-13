@@ -3895,6 +3895,10 @@ export function SessionRunner(props: SessionRunnerProps) {
           onShowCurrent={() => {
             revealCurrentWorkoutAction();
           }}
+          currentWorkingSetRevealed={
+            guidance.currentAction?.kind !== "working_set" ||
+            expandedId === guidance.currentAction.sessionExerciseId
+          }
           onPrimaryAction={() => {
             if (
               guidance.currentAction != null &&

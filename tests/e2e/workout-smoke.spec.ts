@@ -1613,11 +1613,16 @@ test("signs in and completes a durable workout flow", async ({ page }) => {
   await expect(frictionLog).toHaveCount(0);
 
   await page.getByRole("button", { name: /^(?:Review workout finish|Finish workout)$/ }).click();
-  await page
+  const finish = page.getByRole("dialog", { name: "Finish workout" });
+  await expect(finish).toBeVisible();
+  await openNativeDetails(finish.locator("details", {
+    hasText: "Optional note and fatigue",
+  }));
+  await finish
     .getByPlaceholder("Session note (optional) — how did it go?")
     .fill("Phase 1 browser verification");
-  await page.getByRole("button", { name: "3", exact: true }).click();
-  await page.getByRole("button", { name: "Save workout", exact: true }).click();
+  await finish.getByRole("button", { name: "3", exact: true }).click();
+  await finish.getByRole("button", { name: "Save workout", exact: true }).click();
 
   await expect(page).toHaveURL(/\/history\/[0-9a-f-]+\?finished=1$/);
   await expect(page.getByText("Phase 1 browser verification")).toBeVisible();

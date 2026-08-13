@@ -166,7 +166,11 @@ test("publishes and preserves durable warm-up and grouped workout outcomes", asy
     "Next: Superset 1, round 1, member 1 of 3: Romanian Deadlift, set 1",
   );
   await expect(workoutStatus).toContainText("Activation ramp");
-  await expect(workoutStatus).toContainText("Warm-up");
+  const warmupPrimary = workoutStatus.getByTestId(
+    "active-workout-dock-primary",
+  );
+  await expect(warmupPrimary).toHaveAccessibleName("Complete Activation ramp");
+  await expect(warmupPrimary).toContainText("Complete warm-up");
   await expect(workoutStatus).not.toContainText("Romanian Deadlift");
   await expect(warmupRow).toContainText("8 reps · 45 lb");
   await expect(warmupRow).toContainText(
