@@ -125,7 +125,7 @@ test("keeps truthful saved-equipment preparation compact beside the current acti
 
   const preparation = page.getByTestId("session-preparation-panel");
   const warmup = page.locator("#workout-warmup");
-  const sticky = page.getByTestId("active-workout-sticky-summary");
+  const currentCard = page.getByTestId("current-exercise-card");
   await expect(preparation).toBeVisible();
   await expect(preparation).toContainText("Equipment ready");
   await expect(preparation).toContainText("Saved equipment covers this workout.");
@@ -144,16 +144,11 @@ test("keeps truthful saved-equipment preparation compact beside the current acti
   ).toBeVisible();
   await expect
     .poll(() => page.locator(
-      '#workout-warmup, [data-testid="session-preparation-panel"]',
+      '[data-testid="current-exercise-card"], [data-testid="session-preparation-panel"]',
     ).evaluateAll((elements) => elements.map((element) =>
-      element.id || element.getAttribute("data-testid")
+      element.getAttribute("data-testid")
     )))
-    .toEqual(["workout-warmup", "session-preparation-panel"]);
-  await expect
-    .poll(() => sticky.evaluate((element) =>
-      element.nextElementSibling?.id,
-    ))
-    .toBe("workout-warmup");
+    .toEqual(["current-exercise-card", "session-preparation-panel"]);
 
   await page.setViewportSize({ width: 390, height: 844 });
   await preparation.scrollIntoViewIfNeeded();
@@ -257,7 +252,6 @@ test("keeps truthful saved-equipment preparation compact beside the current acti
     .toBe(true);
   await expect(page).toHaveURL(/#set-entry-/);
 
-  const currentCard = page.getByTestId("current-exercise-card");
   await currentCard
     .getByRole("button", { name: "Log set", exact: true })
     .click();

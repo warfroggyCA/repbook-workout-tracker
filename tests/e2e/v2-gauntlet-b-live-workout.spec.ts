@@ -358,14 +358,6 @@ test("keeps the full live workout usable through warm-up, skip, replace, continu
           confirmInterruptedSkipSettled();
         }
         return;
-      } else if (interruptedSkipRequests === 2) {
-        await replayedSkipMayFail;
-        await route.fulfill({
-          status: 500,
-          contentType: "text/plain",
-          body: "Injected interrupted-skip replay failure",
-        });
-        return;
       }
     }
     await route.continue().catch(() => undefined);
@@ -403,6 +395,26 @@ test("keeps the full live workout usable through warm-up, skip, replace, continu
     interruptedSkipSettled,
     interruptedSkipTransportSettled,
   ]);
+  await page.unrouteAll({ behavior: "wait" });
+  await page.route("**/session/**", async (route) => {
+    const request = route.request();
+    const postData = request.postData() ?? "";
+    if (
+      request.method() === "POST" &&
+      request.headers()["next-action"] &&
+      postData.includes('"reason":"equipment"')
+    ) {
+      interruptedSkipRequests += 1;
+      await replayedSkipMayFail;
+      await route.fulfill({
+        status: 500,
+        contentType: "text/plain",
+        body: "Injected interrupted-skip replay failure",
+      });
+      return;
+    }
+    await route.continue().catch(() => undefined);
+  });
   await expect.poll(() => page.evaluate(() =>
     Object.keys(window.sessionStorage).filter((key) =>
       key.startsWith("workout-tracker:skip-recovery:v1:")
