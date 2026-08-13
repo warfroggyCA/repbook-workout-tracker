@@ -55,7 +55,7 @@ describe("occurrence mutation queue presentation", () => {
       "bottom-[calc(4rem+env(safe-area-inset-bottom)+0.75rem)]",
     );
     expect(saving).toContain("min-h-11");
-    expect(saving).toContain("lg:bottom-3");
+    expect(saving).toContain("lg:bottom-[5.75rem]");
 
     const attention = renderToStaticMarkup(
       <Tray entries={[entry("needs_attention")]} storageError={null} onWake={() => undefined} />,

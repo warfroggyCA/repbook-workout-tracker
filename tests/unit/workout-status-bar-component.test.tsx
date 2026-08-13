@@ -100,6 +100,71 @@ describe("WorkoutStatusBar", () => {
     expect(html).toContain("bg-primary text-primary-foreground");
   });
 
+  it("replaces the dock log action while an interrupted exercise skip reconciles", () => {
+    const html = renderToStaticMarkup(
+      <WorkoutStatusBar
+        action={action}
+        exercise={exercise}
+        timer={null}
+        restRemainingSec={null}
+        {...callbacks}
+        onPrimaryAction={() => undefined}
+        checkingExerciseSkip="Suspension Push-Up"
+      />,
+    );
+
+    expect(html).toContain('aria-label="Checking skip for Suspension Push-Up"');
+    expect(html).toContain("Checking skip…");
+    expect(html).toMatch(/<button[^>]*disabled=""/);
+    expect(html).not.toContain('aria-label="Log Barbell Squat, Set 2"');
+    expect(html).not.toContain('data-testid="active-workout-dock-primary"');
+    expect(html).not.toContain("Log set");
+  });
+
+  it("keeps confirmed future-exercise skip recovery dominant until resolved", () => {
+    const html = renderToStaticMarkup(
+      <WorkoutStatusBar
+        action={action}
+        exercise={exercise}
+        timer={null}
+        restRemainingSec={null}
+        {...callbacks}
+        onPrimaryAction={() => undefined}
+        recoveringSkippedExercise="Suspension Push-Up"
+        onResolveSkippedExercise={() => undefined}
+      />,
+    );
+
+    expect(html).toContain('aria-label="Resolve Suspension Push-Up"');
+    expect(html).toContain("Suspension Push-Up");
+    expect(html).toContain("Replace or continue");
+    expect(html).toContain('data-testid="active-workout-dock-primary"');
+    expect(html).not.toContain('aria-label="Log Barbell Squat, Set 2"');
+    expect(html).not.toContain("Log set");
+  });
+
+  it("keeps failed future-exercise skip recovery dominant until reviewed", () => {
+    const html = renderToStaticMarkup(
+      <WorkoutStatusBar
+        action={action}
+        exercise={exercise}
+        timer={null}
+        restRemainingSec={null}
+        {...callbacks}
+        onPrimaryAction={() => undefined}
+        recoveringSkippedExercise="Suspension Push-Up"
+        skippedExerciseRecoveryFailed
+        onResolveSkippedExercise={() => undefined}
+      />,
+    );
+
+    expect(html).toContain('aria-label="Resolve Suspension Push-Up"');
+    expect(html).toContain("Review or try again");
+    expect(html).toContain('data-testid="active-workout-dock-primary"');
+    expect(html).not.toContain('aria-label="Log Barbell Squat, Set 2"');
+    expect(html).not.toContain("Log set");
+  });
+
   it("keeps the exact earlier blocker loggable while a later attempt is retained", () => {
     const retainedLaterAttempt = {
       ...exercise,
@@ -217,5 +282,34 @@ describe("WorkoutStatusBar", () => {
     expect(html).toContain('data-testid="active-workout-dock-primary"');
     expect(html).toContain('aria-label="Complete Barbell Squat warm-up: Empty bar"');
     expect(html).toContain("Complete warm-up");
+  });
+
+  it("replaces a warm-up action when a future exercise skip is being checked", () => {
+    const html = renderToStaticMarkup(
+      <WorkoutStatusBar
+        action={{
+          kind: "day_warmup",
+          occurrenceId: "warmup-1",
+          sessionExerciseId: null,
+          sequenceIdx: 0,
+          label: "Elliptical 2 min easy",
+          exerciseName: null,
+        }}
+        exercise={null}
+        timer={null}
+        restRemainingSec={null}
+        {...callbacks}
+        onPrimaryAction={() => undefined}
+        checkingExerciseSkip="Suspension Push-Up"
+      />,
+    );
+
+    expect(html).toContain('aria-label="Checking skip for Suspension Push-Up"');
+    expect(html).toContain("Suspension Push-Up");
+    expect(html).toContain("Checking skip…");
+    expect(html).toMatch(/<button[^>]*disabled=""/);
+    expect(html).not.toContain('data-testid="active-workout-dock-primary"');
+    expect(html).not.toContain("Complete warm-up");
+    expect(html).not.toContain('aria-label="Complete Elliptical');
   });
 });

@@ -209,7 +209,9 @@ test("keeps the full live workout usable through warm-up, skip, replace, continu
   browserName,
   page,
 }) => {
-  const pageErrors = observeGauntletPageErrors(page, browserName);
+  const pageErrors = observeGauntletPageErrors(page, browserName, [
+    /500|Internal Server Error|Failed to load resource/i,
+  ]);
   await signInAndStart(page);
   if ((page.viewportSize()?.width ?? Number.POSITIVE_INFINITY) <= 440) {
     const workoutExit = page.getByRole("link", {
@@ -221,7 +223,7 @@ test("keeps the full live workout usable through warm-up, skip, replace, continu
   }
 
   const warmup = page.locator("#workout-warmup");
-  await expect(warmup).toContainText("Check off only the distinct actions below.");
+  await expect(warmup).toContainText("Complete the current warm-up action below.");
   await expect(page.getByText(
     BA_WORKOUT_FIXTURE.program.days[0].warmupNotes,
     { exact: true },
@@ -283,18 +285,165 @@ test("keeps the full live workout usable through warm-up, skip, replace, continu
     const completedLastAction =
       index === PRODUCTION_WORKOUT_START_WARMUP.length - 1;
     if (completedLastAction) {
-      await expect(warmup).not.toHaveAttribute("open", "");
-      await warmup.locator(":scope > summary").click();
+      await expect(warmup).toContainText("Warm-up actions are accounted for.");
+    } else {
+      const nextAction = PRODUCTION_WORKOUT_START_WARMUP[index + 1];
+      await expect(
+        warmup.getByRole("checkbox", {
+          name: `Mark ${nextAction.label} complete`,
+          exact: true,
+        }),
+      ).toBeVisible();
     }
-    await expect(
-      warmup.getByRole("checkbox", {
-        name: `${action.label} complete`,
-        exact: true,
-      }),
-    ).toHaveAttribute("aria-checked", "true");
-    if (completedLastAction) await warmup.locator(":scope > summary").click();
   }
-  await expect(warmup).not.toHaveAttribute("open", "");
+
+  expect(
+    BA_WORKOUT_FIXTURE.equipment.items
+      .map((item) => String(item.type))
+      .includes("suspension"),
+  ).toBe(false);
+  let incompatible = exerciseCard(page, "Suspension Push-Up");
+  if (
+    (await incompatible.locator(":scope > button").getAttribute("aria-expanded")) !==
+    "true"
+  ) {
+    await incompatible.locator(":scope > button").click();
+  }
+  let releaseInterruptedSkip!: () => void;
+  const interruptedSkipMayFinish = new Promise<void>((resolve) => {
+    releaseInterruptedSkip = resolve;
+  });
+  let rejectReplayedSkip!: () => void;
+  const replayedSkipMayFail = new Promise<void>((resolve) => {
+    rejectReplayedSkip = resolve;
+  });
+  let interruptedSkipRequests = 0;
+  await page.route("**/session/**", async (route) => {
+    const request = route.request();
+    const postData = request.postData() ?? "";
+    if (
+      request.method() === "POST" &&
+      request.headers()["next-action"] &&
+      postData.includes('"reason":"equipment"')
+    ) {
+      interruptedSkipRequests += 1;
+      if (interruptedSkipRequests === 1) {
+        await interruptedSkipMayFinish;
+        await route.abort("failed");
+        return;
+      } else if (interruptedSkipRequests === 2) {
+        await replayedSkipMayFail;
+        await route.fulfill({
+          status: 500,
+          contentType: "text/plain",
+          body: "Injected interrupted-skip replay failure",
+        });
+        return;
+      }
+    }
+    await route.continue().catch(() => undefined);
+  });
+  await openMoreForExercise(incompatible);
+  await incompatible
+    .getByRole("button", { name: "Skip exercise", exact: true })
+    .click();
+  await page
+    .getByRole("dialog", { name: "Skip exercise — why?" })
+    .getByRole("button", { name: "equipment", exact: true })
+    .click();
+  await expect.poll(() => interruptedSkipRequests).toBe(1);
+  await expect.poll(() => page.evaluate(() =>
+    Object.keys(window.sessionStorage).filter((key) =>
+      key.startsWith("workout-tracker:skip-recovery:v1:")
+    ).length
+  )).toBe(1);
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await expect.poll(() => page.evaluate(() =>
+    Object.keys(window.sessionStorage).filter((key) =>
+      key.startsWith("workout-tracker:skip-recovery:v1:")
+    ).length
+  )).toBe(1);
+  const reconcilingSkip = exerciseCard(page, "Suspension Push-Up");
+  await expect(reconcilingSkip).toContainText("Checking the exercise skip");
+  await expect.poll(() => interruptedSkipRequests).toBe(2);
+  await expect(
+    page.getByRole("button", { name: /^Log / }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: "Checking skip for Suspension Push-Up" }),
+  ).toBeDisabled();
+  rejectReplayedSkip();
+  incompatible = exerciseCard(page, "Suspension Push-Up");
+  await expect(incompatible).toContainText("Skip was not confirmed");
+  const failedSkipRecovery = page.getByRole("button", {
+    name: "Resolve Suspension Push-Up",
+  });
+  await expectReachableTarget(failedSkipRecovery);
+  await expect(failedSkipRecovery).toContainText("Review or try again");
+  await expect(page.getByRole("button", { name: /^Log / })).toHaveCount(0);
+  await expect(incompatible).toContainText("equipment skip");
+  await expect.poll(() => page.evaluate(() => {
+    const key = Object.keys(window.sessionStorage).find((candidate) =>
+      candidate.startsWith("workout-tracker:skip-recovery:v1:")
+    );
+    return key == null ? null : window.sessionStorage.getItem(key);
+  })).toContain('"phase":"unconfirmed"');
+  releaseInterruptedSkip();
+  await page.unrouteAll({ behavior: "wait" });
+  await page.reload({ waitUntil: "networkidle" });
+  incompatible = exerciseCard(page, "Suspension Push-Up");
+  await expect(incompatible).toContainText("Skip was not confirmed");
+  await expect(incompatible).toContainText("equipment skip");
+  await expect.poll(() => interruptedSkipRequests).toBe(2);
+  await expect(page.getByRole("button", { name: /^Log / })).toHaveCount(0);
+  const rehydratedFailedSkipRecovery = page.getByRole("button", {
+    name: "Resolve Suspension Push-Up",
+  });
+  await expectReachableTarget(rehydratedFailedSkipRecovery);
+  await expect(rehydratedFailedSkipRecovery).toContainText(
+    "Review or try again",
+  );
+  await rehydratedFailedSkipRecovery.click();
+  await expect(
+    incompatible.getByRole("button", { name: "Try skipping again" }),
+  ).toBeFocused();
+  await incompatible
+    .getByRole("button", { name: "Try skipping again" })
+    .click();
+  await page
+    .getByRole("dialog", { name: "Skip exercise — why?" })
+    .getByRole("button", { name: "equipment", exact: true })
+    .click();
+  await expect(incompatible.getByRole("status")).toContainText(
+    "Exercise skipped",
+  );
+  await expect(page.getByRole("button", { name: /^Log / })).toHaveCount(0);
+  const resolveSkippedExercise = page.getByRole("button", {
+    name: "Resolve Suspension Push-Up",
+  });
+  await expectReachableTarget(resolveSkippedExercise);
+  await expect(resolveSkippedExercise).toContainText("Replace or continue");
+  const replace = incompatible.getByRole("button", {
+    name: "Replace exercise",
+    exact: true,
+  });
+  const continueWithout = incompatible.getByRole("button", {
+    name: "Continue without replacement",
+    exact: true,
+  });
+  await expectReachableTarget(replace);
+  await expectReachableTarget(continueWithout);
+  await expectActiveViewportBudget(page);
+
+  await continueWithout.click();
+  await expect(resolveSkippedExercise).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: /^Log Barbell Back Squat/ }),
+  ).toBeVisible();
+  await expect(
+    exerciseCard(page, "Barbell Back Squat").locator(":scope > button"),
+  ).toHaveAttribute("aria-expanded", "true");
+  await expectActiveViewportBudget(page);
 
   for (let setNo = 1; setNo <= 3; setNo += 1) {
     const current = page.getByTestId("current-exercise-card");
@@ -310,36 +459,9 @@ test("keeps the full live workout usable through warm-up, skip, replace, continu
     await expectActiveViewportBudget(page);
   }
 
-  expect(
-    BA_WORKOUT_FIXTURE.equipment.items
-      .map((item) => String(item.type))
-      .includes("suspension"),
-  ).toBe(false);
-  let incompatible = exerciseCard(page, "Suspension Push-Up");
-  if (
-    (await incompatible.locator(":scope > button").getAttribute("aria-expanded")) !==
-    "true"
-  ) {
-    await incompatible.locator(":scope > button").click();
-  }
-  await skipForEquipment(incompatible, page);
-  const replace = incompatible.getByRole("button", {
-    name: "Replace exercise",
-    exact: true,
-  });
-  const continueWithout = incompatible.getByRole("button", {
-    name: "Continue without replacement",
-    exact: true,
-  });
-  await expectReachableTarget(replace);
-  await expectReachableTarget(continueWithout);
-  await expectActiveViewportBudget(page);
-
-  await continueWithout.click();
   await expect(
     exerciseCard(page, "Dumbbell Lateral Raise").locator(":scope > button"),
   ).toHaveAttribute("aria-expanded", "true");
-  await expectActiveViewportBudget(page);
 
   incompatible = exerciseCard(page, "Suspension Push-Up");
   await incompatible.locator(":scope > button").click();
@@ -391,7 +513,7 @@ test("keeps the full live workout usable through warm-up, skip, replace, continu
   ).toBeVisible();
   await expectActiveViewportBudget(page);
 
-  const finish = page.getByRole("button", { name: "Finish", exact: true });
+  const finish = page.getByRole("button", { name: /^(?:Review workout finish|Finish workout)$/ });
   await expectReachableTarget(finish);
   await finish.click();
   const finishDialog = page.getByRole("dialog", { name: "Finish workout" });

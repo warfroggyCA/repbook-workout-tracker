@@ -17,6 +17,7 @@ vi.mock("@/app/actions/sessions", () => ({ logSet: actionMocks.logSet }));
 
 import {
   syncNextEntry,
+  WORKOUT_DEVICE_STATUS_CLASS_NAME,
   WorkoutSetOutboxTray,
 } from "@/components/session/workout-set-outbox-sync";
 import {
@@ -107,7 +108,7 @@ describe("workout set outbox sync classification", () => {
 
   afterEach(() => vi.unstubAllGlobals());
 
-  it("keeps the recovery queue in page flow so it cannot cover set controls", () => {
+  it("keeps recovery reachable in its own safe slot without fixing the trigger itself", () => {
     const snapshot = readWorkoutSetOutbox(storage);
     const html = renderToStaticMarkup(createElement(WorkoutSetOutboxTray, {
       entries: snapshot.entries,
@@ -120,6 +121,14 @@ describe("workout set outbox sync classification", () => {
     expect(html).toContain('data-slot="drawer-trigger"');
     expect(html).toContain("1 set saving");
     expect(html).not.toMatch(/class="[^"]*\bfixed\b/);
+    expect(WORKOUT_DEVICE_STATUS_CLASS_NAME).toContain("fixed");
+    expect(WORKOUT_DEVICE_STATUS_CLASS_NAME).toContain(
+      "bottom-[calc(7.5rem+env(safe-area-inset-bottom))]",
+    );
+    expect(WORKOUT_DEVICE_STATUS_CLASS_NAME).toContain(
+      "lg:bottom-[5.75rem]",
+    );
+    expect(WORKOUT_DEVICE_STATUS_CLASS_NAME).toContain("z-30");
   });
 
   it("treats every thrown action failure as transient with fixed copy", async () => {

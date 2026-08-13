@@ -332,7 +332,7 @@ test("publishes and preserves durable warm-up and grouped workout outcomes", asy
   await screenshot(page, "06-group-round-reload-continuity.png");
 
   await page.getByRole("complementary", { name: "Workout status" })
-    .getByRole("button", { name: "Finish", exact: true }).click();
+    .getByRole("button", { name: /^(?:Review workout finish|Finish workout)$/ }).click();
   const finish = page.getByRole("dialog", { name: "Finish workout" });
   await expect(finish).toContainText(/2 of \d+ planned sets done/);
   await expect(finish).toContainText(/1 skipped · \d+ still pending/);

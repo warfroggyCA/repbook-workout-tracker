@@ -213,7 +213,7 @@ export function OccurrenceMutationOutboxTray({
       <Button
         type="button"
         variant={attentionCount > 0 || storageError ? "destructive" : "secondary"}
-        className="fixed bottom-[calc(4rem+env(safe-area-inset-bottom)+0.75rem)] left-3 z-30 min-h-11 max-w-[calc(100vw-1.5rem)] shadow-lg lg:bottom-3"
+        className="fixed bottom-[calc(4rem+env(safe-area-inset-bottom)+0.75rem)] left-3 z-30 min-h-11 max-w-[calc(100vw-1.5rem)] shadow-lg lg:bottom-[5.75rem]"
         onClick={() => setOpen(true)}
         aria-label="Open unsaved workout changes"
       >

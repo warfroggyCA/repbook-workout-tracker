@@ -18,6 +18,10 @@ type Props = {
   onShowCurrent: () => void;
   onPrimaryAction?: () => void;
   allowLogWithRetainedFailure?: boolean;
+  checkingExerciseSkip?: string | null;
+  recoveringSkippedExercise?: string | null;
+  skippedExerciseRecoveryFailed?: boolean;
+  onResolveSkippedExercise?: () => void;
   onRestAdjust: (deltaSec: number) => void;
   onRestSkip: () => void;
   onRestContinue: () => void;
@@ -45,6 +49,10 @@ export function WorkoutStatusBar({
   onShowCurrent,
   onPrimaryAction,
   allowLogWithRetainedFailure = false,
+  checkingExerciseSkip = null,
+  recoveringSkippedExercise = null,
+  skippedExerciseRecoveryFailed = false,
+  onResolveSkippedExercise,
   onRestAdjust,
   onRestSkip,
   onRestContinue,
@@ -55,7 +63,15 @@ export function WorkoutStatusBar({
   const saving = action?.kind === "working_set" ? saveStatus(exercise) : null;
   const timerRunning = timer?.phase === "running" && restRemainingSec != null;
   const timerReady = timer?.phase === "ready" || timer?.phase === "skipped";
-  const status = saving ?? (
+  const skipRecoveryPending =
+    checkingExerciseSkip == null && recoveringSkippedExercise != null;
+  const status = checkingExerciseSkip != null
+    ? "Checking skip…"
+    : skipRecoveryPending
+      ? skippedExerciseRecoveryFailed
+        ? "Review or try again"
+        : "Replace or continue"
+      : saving ?? (
     timerRunning
       ? "Resting"
       : timerReady
@@ -67,22 +83,29 @@ export function WorkoutStatusBar({
             : "Ready to finish"
   );
   const setPosition = action?.kind === "working_set" ? action.position : null;
-  const title = action
+  const title = checkingExerciseSkip ?? recoveringSkippedExercise ?? (action
     ? action.kind === "working_set"
       ? action.actualExerciseName
       : formatSessionGuidanceAction(action)
-    : "Workout";
+    : "Workout");
   const canFinishNow = finishReady ?? action == null;
   const logsCurrentSet =
     action?.kind === "working_set" &&
+    checkingExerciseSkip == null &&
+    !skipRecoveryPending &&
     onPrimaryAction != null &&
     (saving == null || (saving === "Failed" && allowLogWithRetainedFailure));
   const completesCurrentWarmup =
+    checkingExerciseSkip == null &&
+    !skipRecoveryPending &&
     action != null &&
     action.kind !== "working_set" &&
     action.kind !== "rest" &&
     onPrimaryAction != null;
-  const runsPrimaryAction = logsCurrentSet || completesCurrentWarmup;
+  const resolvesSkippedExercise =
+    skipRecoveryPending && onResolveSkippedExercise != null;
+  const runsPrimaryAction =
+    resolvesSkippedExercise || logsCurrentSet || completesCurrentWarmup;
 
   return (
     <aside
@@ -112,12 +135,23 @@ export function WorkoutStatusBar({
         <button
           type="button"
           data-testid={runsPrimaryAction ? "active-workout-dock-primary" : undefined}
+          disabled={checkingExerciseSkip != null}
           aria-label={logsCurrentSet
             ? `Log ${title}, ${setPosition?.label ?? "current set"}`
             : completesCurrentWarmup
               ? `Complete ${title}`
+              : checkingExerciseSkip != null
+                ? `Checking skip for ${checkingExerciseSkip}`
+                : resolvesSkippedExercise
+                  ? `Resolve ${recoveringSkippedExercise}`
               : undefined}
-          onClick={runsPrimaryAction ? onPrimaryAction : onShowCurrent}
+          onClick={
+            resolvesSkippedExercise
+              ? onResolveSkippedExercise
+              : runsPrimaryAction
+                ? onPrimaryAction
+                : onShowCurrent
+          }
           className={cn(
             "min-h-11 min-w-0 flex-1 rounded-lg border border-primary/20 bg-primary/5 px-2 py-1 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring",
             runsPrimaryAction &&
@@ -144,7 +178,9 @@ export function WorkoutStatusBar({
                 "font-semibold text-emerald-900 dark:text-emerald-100",
             )}
           >
-            {setPosition
+            {checkingExerciseSkip != null || skipRecoveryPending
+              ? status
+              : setPosition
               ? setPosition.kind === "extra"
                 ? `${setPosition.label} · ${status}`
                 : `${setPosition.label} of ${exercise?.targetSets ?? "open"} · ${logsCurrentSet ? "Log set" : status}`

@@ -184,7 +184,7 @@ test("keeps ordinary completion minimal and makes exception evidence reversible,
   await expect(receipt).toContainText("Pain: back 4/10");
 
   const status = page.getByRole("complementary", { name: "Workout status" });
-  await status.getByRole("button", { name: "Finish", exact: true }).click();
+  await status.getByRole("button", { name: /^(?:Review workout finish|Finish workout)$/ }).click();
   const finish = page.getByRole("dialog", { name: "Finish workout" });
   await finish.getByRole("button", { name: "Save workout", exact: true }).click();
   await expect(page).toHaveURL(/\/history\/[0-9a-f-]+\?finished=1$/);

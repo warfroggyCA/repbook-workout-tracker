@@ -37,7 +37,7 @@ async function discardActiveWorkout(page: Page) {
   await expect(page).toHaveURL(
     /\/session\/[0-9a-f-]+(?:#workout-rest-status)?$/,
   );
-  await page.getByRole("button", { name: "Finish", exact: true }).click();
+  await page.getByRole("button", { name: /^(?:Review workout finish|Finish workout)$/ }).click();
   await page
     .getByRole("dialog", { name: "Finish workout" })
     .getByRole("button", { name: "Discard workout", exact: true })

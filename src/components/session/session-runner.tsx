@@ -15,7 +15,9 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   appendWorkoutSet,
+  confirmExerciseUnskipped,
   completeSession,
+  skipExercise,
 } from "@/app/actions/sessions";
 import { Button, buttonVariants } from "@/components/ui/button";
 import {
@@ -247,6 +249,84 @@ function actionTargetId(action: SessionGuidanceFocusAction | null): string {
   return `${prefix}-${action.sessionExerciseId}-${action.occurrenceId}`;
 }
 
+function skipRecoveryStorageKey(ownerId: string, sessionId: string) {
+  return `workout-tracker:skip-recovery:v1:${ownerId}:${sessionId}`;
+}
+
+type SkipRecoveryMarker = {
+  exerciseId: string;
+  pageTimeOrigin: number;
+  reason: "time" | "pain" | "fatigue" | "equipment" | "other";
+  phase: "pending" | "unconfirmed";
+  expectedHistoryRevision: number;
+};
+
+function skipRecoveryReason(value: unknown): SkipRecoveryMarker["reason"] {
+  return value === "time" ||
+      value === "pain" ||
+      value === "fatigue" ||
+      value === "equipment" ||
+      value === "other"
+    ? value
+    : "other";
+}
+
+function readSkipRecovery(
+  storage: Storage,
+  key: string,
+): SkipRecoveryMarker | null {
+  try {
+    const raw = storage.getItem(key);
+    if (raw == null) return null;
+    const parsed = JSON.parse(raw) as Partial<SkipRecoveryMarker>;
+    if (
+      typeof parsed.exerciseId !== "string" ||
+      typeof parsed.pageTimeOrigin !== "number" ||
+      !Number.isFinite(parsed.pageTimeOrigin) ||
+      typeof parsed.expectedHistoryRevision !== "number" ||
+      !Number.isInteger(parsed.expectedHistoryRevision) ||
+      parsed.expectedHistoryRevision < 0 ||
+      (parsed.phase != null &&
+        parsed.phase !== "pending" &&
+        parsed.phase !== "unconfirmed") ||
+      !["time", "pain", "fatigue", "equipment", "other"].includes(
+        parsed.reason ?? "",
+      )
+    ) {
+      return null;
+    }
+    return {
+      exerciseId: parsed.exerciseId,
+      pageTimeOrigin: parsed.pageTimeOrigin,
+      reason: skipRecoveryReason(parsed.reason),
+      phase: parsed.phase === "unconfirmed" ? "unconfirmed" : "pending",
+      expectedHistoryRevision: parsed.expectedHistoryRevision,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function writeSkipRecovery(
+  storage: Storage,
+  key: string,
+  marker: SkipRecoveryMarker,
+) {
+  try {
+    storage.setItem(key, JSON.stringify(marker));
+  } catch {
+    // The in-memory recovery state remains available for this page lifetime.
+  }
+}
+
+function removeSkipRecovery(storage: Storage, key: string) {
+  try {
+    storage.removeItem(key);
+  } catch {
+    // The in-memory recovery state remains authoritative for this page lifetime.
+  }
+}
+
 function revealWorkoutTarget(
   target: HTMLElement,
   behavior: ScrollBehavior,
@@ -344,6 +424,10 @@ export function SessionRunner(props: SessionRunnerProps) {
   const [historyRevision, setHistoryRevision] = useState(
     props.historyRevision,
   );
+  const effectiveHistoryRevision = Math.max(
+    historyRevision,
+    props.historyRevision,
+  );
   const [occurrences, setOccurrences] = useState<SessionOccurrenceData[]>(
     props.occurrences,
   );
@@ -359,6 +443,21 @@ export function SessionRunner(props: SessionRunnerProps) {
   const [skipRecoveryExerciseId, setSkipRecoveryExerciseId] = useState<
     string | null
   >(null);
+  const [skipConfirmationExerciseId, setSkipConfirmationExerciseId] = useState<
+    string | null
+  >(null);
+  const [skipConfirmationError, setSkipConfirmationError] = useState<{
+    exerciseId: string;
+    message: string;
+  } | null>(null);
+  const skipReconciliationRef = useRef<Set<string>>(new Set());
+  const skipUnconfirmedRef = useRef<Set<string>>(new Set());
+  const skipRequestPageOriginRef = useRef<Record<string, number>>({});
+  const pageUnloadingRef = useRef(false);
+  const skipRecoveryKey = skipRecoveryStorageKey(
+    props.ownerId,
+    props.sessionId,
+  );
   const previousCurrentActionIdRef = useRef<string | null>(null);
   const previousCurrentActionKindRef = useRef<
     SessionGuidanceFocusAction["kind"] | null
@@ -420,6 +519,208 @@ export function SessionRunner(props: SessionRunnerProps) {
     setOccurrenceRuntimeSaveStates,
   ] = useState<Record<string, "saving" | "retrying">>({});
   const occurrenceEnqueueInFlightRef = useRef<Set<string>>(new Set());
+
+  useEffect(() => {
+    const onPageHide = () => {
+      pageUnloadingRef.current = true;
+    };
+    const onPageShow = () => {
+      pageUnloadingRef.current = false;
+    };
+    window.addEventListener("pagehide", onPageHide);
+    window.addEventListener("pageshow", onPageShow);
+    return () => {
+      window.removeEventListener("pagehide", onPageHide);
+      window.removeEventListener("pageshow", onPageShow);
+    };
+  }, []);
+
+  const clearSkipRecovery = useCallback((sessionExerciseId: string) => {
+    skipUnconfirmedRef.current.delete(sessionExerciseId);
+    setSkipRecoveryExerciseId((current) =>
+      current === sessionExerciseId ? null : current,
+    );
+    setSkipConfirmationExerciseId((current) =>
+      current === sessionExerciseId ? null : current,
+    );
+    const storedMarker = readSkipRecovery(
+      window.sessionStorage,
+      skipRecoveryKey,
+    );
+    if (storedMarker?.exerciseId === sessionExerciseId) {
+      removeSkipRecovery(window.sessionStorage, skipRecoveryKey);
+    }
+  }, [skipRecoveryKey]);
+
+  const failSkipRecovery = useCallback((
+    sessionExerciseId: string,
+    reason: SkipRecoveryMarker["reason"],
+    message: string,
+  ) => {
+    skipUnconfirmedRef.current.add(sessionExerciseId);
+    const storedMarker = readSkipRecovery(
+      window.sessionStorage,
+      skipRecoveryKey,
+    );
+    writeSkipRecovery(window.sessionStorage, skipRecoveryKey, {
+      exerciseId: sessionExerciseId,
+      pageTimeOrigin:
+        storedMarker?.exerciseId === sessionExerciseId
+          ? storedMarker.pageTimeOrigin
+          : window.performance.timeOrigin,
+      reason,
+      phase: "unconfirmed",
+      expectedHistoryRevision:
+        storedMarker?.exerciseId === sessionExerciseId
+          ? storedMarker.expectedHistoryRevision
+          : effectiveHistoryRevision,
+    });
+    setSkipConfirmationExerciseId((current) =>
+      current === sessionExerciseId ? null : current,
+    );
+    setSkipRecoveryExerciseId(sessionExerciseId);
+    setExpandedId(sessionExerciseId);
+    setSkipConfirmationError({ exerciseId: sessionExerciseId, message });
+  }, [effectiveHistoryRevision, skipRecoveryKey]);
+
+  useEffect(() => {
+    if (skipRecoveryExerciseId != null) return;
+    const storedMarker = readSkipRecovery(
+      window.sessionStorage,
+      skipRecoveryKey,
+    );
+    if (storedMarker == null) return;
+    const linkedExercise = exercises.find(
+      (exercise) => storedMarker.exerciseId === exercise.id,
+    );
+    if (!linkedExercise) {
+      removeSkipRecovery(window.sessionStorage, skipRecoveryKey);
+      return;
+    }
+    const frame = window.requestAnimationFrame(() => {
+      const unconfirmed =
+        storedMarker.phase === "unconfirmed" ||
+        skipUnconfirmedRef.current.has(linkedExercise.id);
+      if (unconfirmed) skipUnconfirmedRef.current.add(linkedExercise.id);
+      setSkipRecoveryExerciseId(linkedExercise.id);
+      setExpandedId(linkedExercise.id);
+      setSkipConfirmationExerciseId(
+        linkedExercise.modificationType === "skipped" ||
+          unconfirmed
+          ? null
+          : linkedExercise.id,
+      );
+      setSkipConfirmationError(
+        linkedExercise.modificationType !== "skipped" &&
+          unconfirmed
+          ? {
+              exerciseId: linkedExercise.id,
+              message: `Repbook could not confirm the ${storedMarker.reason} skip after the reload. Review the exercise, then try skipping again or return to the current set.`,
+            }
+          : null,
+      );
+    });
+    if (
+      linkedExercise.modificationType !== "skipped" &&
+      storedMarker.phase === "pending" &&
+      storedMarker.pageTimeOrigin !== window.performance.timeOrigin
+    ) {
+      const reconciliationKey = [
+        storedMarker.exerciseId,
+        storedMarker.reason,
+        storedMarker.pageTimeOrigin,
+      ].join(":");
+      if (!skipReconciliationRef.current.has(reconciliationKey)) {
+        skipReconciliationRef.current.add(reconciliationKey);
+        const reconciliationPageTimeOrigin = window.performance.timeOrigin;
+        void skipExercise({
+          sessionExerciseId: storedMarker.exerciseId,
+          reason: storedMarker.reason,
+          expectedHistoryRevision: storedMarker.expectedHistoryRevision,
+        }).then((result) => {
+          if (
+            pageUnloadingRef.current ||
+            window.performance.timeOrigin !== reconciliationPageTimeOrigin
+          ) {
+            return;
+          }
+          if (!result.ok) {
+            failSkipRecovery(
+              storedMarker.exerciseId,
+              storedMarker.reason,
+              `${result.message} Review the ${storedMarker.reason} skip, then try again or return to the current set.`,
+            );
+            if (result.code === "skip_stale") router.refresh();
+            return;
+          }
+          patchExercise(storedMarker.exerciseId, {
+            modificationType: "skipped",
+            skipReason: storedMarker.reason,
+          });
+          setOccurrences((current) => current.map((occurrence) =>
+            occurrence.sessionExerciseId === storedMarker.exerciseId &&
+            occurrence.outcome === "pending"
+              ? {
+                  ...occurrence,
+                  outcome: "skipped",
+                  outcomeReason: `exercise:${storedMarker.reason}`,
+                  revision: occurrence.revision + 1,
+                  resolvedAt: new Date().toISOString(),
+                }
+              : occurrence,
+          ));
+          setSkipConfirmationExerciseId(null);
+          setHistoryRevision(result.historyRevision);
+          router.refresh();
+        }).catch(() => {
+          if (
+            pageUnloadingRef.current ||
+            window.performance.timeOrigin !== reconciliationPageTimeOrigin
+          ) {
+            return;
+          }
+          failSkipRecovery(
+            storedMarker.exerciseId,
+            storedMarker.reason,
+            `Repbook could not confirm the ${storedMarker.reason} skip after the reload. Review the exercise, then try again or return to the current set.`,
+          );
+        });
+      }
+    }
+    return () => window.cancelAnimationFrame(frame);
+  }, [
+    exercises,
+    failSkipRecovery,
+    router,
+    skipRecoveryExerciseId,
+    skipRecoveryKey,
+  ]);
+  useEffect(() => {
+    if (skipRecoveryExerciseId == null) return;
+    const authoritative = props.exercises.find(
+      (exercise) =>
+        exercise.id === skipRecoveryExerciseId &&
+        exercise.modificationType === "skipped",
+    );
+    if (!authoritative) return;
+    const frame = window.requestAnimationFrame(() => {
+      skipUnconfirmedRef.current.delete(skipRecoveryExerciseId);
+      setExercises((current) => current.map((exercise) =>
+        exercise.id === authoritative.id
+          ? {
+              ...exercise,
+              modificationType: "skipped",
+              skipReason: authoritative.skipReason,
+            }
+          : exercise,
+      ));
+      setSkipConfirmationExerciseId(null);
+      setSkipConfirmationError((current) =>
+        current?.exerciseId === authoritative.id ? null : current,
+      );
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [props.exercises, skipRecoveryExerciseId]);
   const [equipmentLoadMeanings, setEquipmentLoadMeanings] = useState<Record<string, WorkoutSetLoadEntryMeaning>>(() =>
     Object.fromEntries(
       Object.entries(props.equipmentSetups).map(([exerciseId, setup]) => [
@@ -778,6 +1079,23 @@ export function SessionRunner(props: SessionRunnerProps) {
         : currentActionSessionExerciseId ??
           latestSetAcknowledgement.sessionExerciseId
       : null;
+  useEffect(() => {
+    if (
+      currentActionKind !== "working_set" ||
+      currentActionSessionExerciseId == null ||
+      skipRecoveryExerciseId != null
+    ) {
+      return;
+    }
+    const frame = window.requestAnimationFrame(() => {
+      setExpandedId(currentActionSessionExerciseId);
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [
+    currentActionKind,
+    currentActionSessionExerciseId,
+    skipRecoveryExerciseId,
+  ]);
   useEffect(() => {
     const previousActionId = previousCurrentActionIdRef.current;
     const previousActionKind = previousCurrentActionKindRef.current;
@@ -1247,7 +1565,9 @@ export function SessionRunner(props: SessionRunnerProps) {
   // Finishing is gated only by unresolved recorded work; a stuck equipment
   // setup ("awaiting information") is guidance and must never trap the workout.
   const finishBlocked =
-    recordedEnqueueCount > 0 || finishBlockedByRecordedWork(exitQueues);
+    skipRecoveryExerciseId != null ||
+    recordedEnqueueCount > 0 ||
+    finishBlockedByRecordedWork(exitQueues);
   const equipmentGuidancePending = equipmentSyncPending(exitQueues);
   const unscopableDeviceCopiesPending =
     outbox.entries.some(
@@ -1309,6 +1629,63 @@ export function SessionRunner(props: SessionRunnerProps) {
     setExercises((list) =>
       list.map((e) => (e.id === id ? { ...e, ...patch } : e))
     );
+  }
+
+  async function returnFromUnconfirmedSkip(exercise: SessionExerciseData) {
+    const marker = readSkipRecovery(window.sessionStorage, skipRecoveryKey);
+    const reason = marker?.exerciseId === exercise.id
+      ? marker.reason
+      : skipRecoveryReason(exercise.skipReason);
+    setSkipConfirmationExerciseId(exercise.id);
+    setSkipConfirmationError((current) =>
+      current?.exerciseId === exercise.id ? null : current,
+    );
+    try {
+      const result = await confirmExerciseUnskipped({
+        sessionExerciseId: exercise.id,
+        expectedHistoryRevision: effectiveHistoryRevision,
+      });
+      if (!result.ok) {
+        failSkipRecovery(
+          exercise.id,
+          reason,
+          `${result.message} Repbook has kept this exercise paused so you can try again safely.`,
+        );
+        router.refresh();
+        return;
+      }
+      setHistoryRevision(result.historyRevision);
+    } catch {
+      failSkipRecovery(
+        exercise.id,
+        reason,
+        "Repbook could not confirm the saved exercise state. The exercise remains paused so you can try again safely.",
+      );
+      return;
+    }
+    patchExercise(exercise.id, {
+      modificationType: exercise.substitutedForExerciseId
+        ? "substituted"
+        : "as_planned",
+      skipReason: null,
+    });
+    setOccurrences((current) => current.map((occurrence) =>
+      occurrence.sessionExerciseId === exercise.id &&
+      occurrence.outcome === "skipped" &&
+      occurrence.outcomeReason?.startsWith("exercise:") &&
+      !occurrence.outcomeReason.startsWith("exercise:substituted:")
+        ? {
+            ...occurrence,
+            outcome: "pending",
+            outcomeReason: null,
+            revision: occurrence.revision + 1,
+            resolvedAt: null,
+          }
+        : occurrence,
+    ));
+    clearSkipRecovery(exercise.id);
+    router.refresh();
+    window.requestAnimationFrame(revealCurrentWorkoutAction);
   }
 
   async function queueSet(
@@ -1708,7 +2085,13 @@ export function SessionRunner(props: SessionRunnerProps) {
 
   async function handleFinish() {
     if (finishBlocked) {
-      toast.error("Retry save or discard the current workout's device copies below before finishing.");
+      toast.error(
+        skipConfirmationExerciseId != null
+          ? "Wait while Repbook confirms the exercise skip before finishing."
+          : skipRecoveryExerciseId != null
+            ? "Resolve the exercise skip before finishing."
+          : "Retry save or discard the current workout's device copies below before finishing.",
+      );
       return;
     }
     if (!durationReviewReady || effectiveDurationChoice == null) {
@@ -2013,6 +2396,20 @@ export function SessionRunner(props: SessionRunnerProps) {
       if (target) {
         revealWorkoutTarget(target, activeWorkoutScrollBehavior());
       }
+    });
+  }
+
+  function revealSkippedExerciseRecovery() {
+    if (skipRecoveryExerciseId == null) return;
+    const targetId = `skip-recovery-description-${skipRecoveryExerciseId}`;
+    setFinishOpen(false);
+    setExpandedId(skipRecoveryExerciseId);
+    requestAnimationFrame(() => {
+      const target = document.getElementById(targetId);
+      if (!target) return;
+      revealWorkoutTarget(target, activeWorkoutScrollBehavior());
+      const focusTarget = firstVisibleFocusable(target.parentElement ?? target);
+      (focusTarget ?? target).focus({ preventScroll: true });
     });
   }
 
@@ -2747,16 +3144,22 @@ export function SessionRunner(props: SessionRunnerProps) {
             comparisonTemporarilyUnavailable={
               comparisonUnavailableByExerciseId[exercise.id] ?? true
             }
-            historyRevision={historyRevision}
+            historyRevision={effectiveHistoryRevision}
             progress={
               guidance.exercises.find(
                 (item) => item.sessionExerciseId === exercise.id,
               )!
             }
-            expanded={expandedId === exercise.id}
-            onToggle={() =>
-              setExpandedId(expandedId === exercise.id ? null : exercise.id)
+            expanded={
+              (skipRecoveryExerciseId ?? expandedId) === exercise.id
             }
+            onToggle={() => {
+              if (skipRecoveryExerciseId != null) {
+                setExpandedId(skipRecoveryExerciseId);
+                return;
+              }
+              setExpandedId(expandedId === exercise.id ? null : exercise.id);
+            }}
             plateConfigs={safePlateConfigs}
             machineLoadConfig={
               safeEquipmentSetups[exercise.id]?.machineLoadConfig ?? null
@@ -2831,6 +3234,21 @@ export function SessionRunner(props: SessionRunnerProps) {
                 "exerciseId",
               );
               if (patch.modificationType === "skipped") {
+                writeSkipRecovery(
+                  window.sessionStorage,
+                  skipRecoveryKey,
+                  {
+                    exerciseId: exercise.id,
+                    pageTimeOrigin: window.performance.timeOrigin,
+                    reason: skipRecoveryReason(patch.skipReason),
+                    phase: "pending",
+                    expectedHistoryRevision: effectiveHistoryRevision,
+                  },
+                );
+                setSkipConfirmationExerciseId(null);
+                setSkipConfirmationError((current) =>
+                  current?.exerciseId === exercise.id ? null : current,
+                );
                 setSkipRecoveryExerciseId(exercise.id);
                 setExpandedId(exercise.id);
                 setOccurrences((current) => current.map((occurrence) =>
@@ -2849,9 +3267,7 @@ export function SessionRunner(props: SessionRunnerProps) {
                 exerciseIdentityChanged &&
                 patch.modificationType === "substituted"
               ) {
-                setSkipRecoveryExerciseId((current) =>
-                  current === exercise.id ? null : current,
-                );
+                clearSkipRecovery(exercise.id);
                 setOccurrences((current) => current.map((occurrence) => {
                   if (occurrence.sessionExerciseId !== exercise.id) {
                     return occurrence;
@@ -2910,9 +3326,7 @@ export function SessionRunner(props: SessionRunnerProps) {
                 patch.modificationType === "as_planned" ||
                 patch.modificationType === "substituted"
               ) {
-                setSkipRecoveryExerciseId((current) =>
-                  current === exercise.id ? null : current,
-                );
+                clearSkipRecovery(exercise.id);
                 setOccurrences((current) => current.map((occurrence) =>
                   occurrence.sessionExerciseId === exercise.id &&
                   occurrence.outcome === "skipped" &&
@@ -2971,10 +3385,56 @@ export function SessionRunner(props: SessionRunnerProps) {
             onRefreshWorkout={() => router.refresh()}
             onHistoryRevisionChange={setHistoryRevision}
             onOpenCoach={() => openCoach(exercise.id)}
-            onSkipComplete={() => {
-              setSkipRecoveryExerciseId((current) =>
-                current === exercise.id ? null : current,
+            onSkipRequestStart={(reason) => {
+              skipUnconfirmedRef.current.delete(exercise.id);
+              const pageTimeOrigin = window.performance.timeOrigin;
+              skipRequestPageOriginRef.current[exercise.id] = pageTimeOrigin;
+              writeSkipRecovery(
+                window.sessionStorage,
+                skipRecoveryKey,
+                {
+                  exerciseId: exercise.id,
+                  pageTimeOrigin,
+                  reason,
+                  phase: "pending",
+                  expectedHistoryRevision: effectiveHistoryRevision,
+                },
               );
+              setSkipRecoveryExerciseId(exercise.id);
+              setSkipConfirmationExerciseId(exercise.id);
+              setSkipConfirmationError((current) =>
+                current?.exerciseId === exercise.id ? null : current,
+              );
+              setExpandedId(exercise.id);
+            }}
+            onSkipRequestFailure={(reason, code) => {
+              if (
+                pageUnloadingRef.current ||
+                skipRequestPageOriginRef.current[exercise.id] !==
+                window.performance.timeOrigin
+              ) {
+                return;
+              }
+              failSkipRecovery(
+                exercise.id,
+                reason,
+                `Repbook did not confirm the ${reason} skip. Review the exercise, then try again or return to the current set.`,
+              );
+              if (code === "skip_stale") router.refresh();
+            }}
+            skipConfirmationPending={
+              skipConfirmationExerciseId === exercise.id
+            }
+            skipConfirmationError={
+              skipConfirmationError?.exerciseId === exercise.id
+                ? skipConfirmationError.message
+                : null
+            }
+            onSkipConfirmationErrorDismiss={() =>
+              returnFromUnconfirmedSkip(exercise)
+            }
+            onSkipComplete={() => {
+              clearSkipRecovery(exercise.id);
               advanceAfterExercise(exercise.id);
             }}
             adjustIntent={
@@ -3134,7 +3594,13 @@ export function SessionRunner(props: SessionRunnerProps) {
                 className="rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-sm text-amber-950 dark:text-amber-100"
               >
                 <p role="alert" className="font-medium">
-                  {failedSetEntries.length > 0
+                  {skipConfirmationExerciseId != null
+                    ? "Repbook is confirming an exercise skip. Set logging and Finish remain paused until the saved workout state is known."
+                    : skipConfirmationError?.exerciseId === skipRecoveryExerciseId
+                      ? "Repbook could not confirm the exercise skip. Review that exercise, retry the skip, or return to the current set before finishing."
+                      : skipRecoveryExerciseId != null
+                        ? "Resolve the skipped exercise by replacing it or continuing without a replacement before finishing."
+                    : failedSetEntries.length > 0
                     ? `${failedSetEntries.length} ${failedSetEntries.length === 1 ? "set failed" : "sets failed"} to save. Your recorded ${failedSetEntries.length === 1 ? "attempt is" : "attempts are"} still on this device.`
                     : sessionOccurrenceEntries.length > 0
                       ? `${sessionOccurrenceEntries.length} workout-item ${sessionOccurrenceEntries.length === 1 ? "device copy is" : "device copies are"} waiting for acknowledgement.`
@@ -3450,6 +3916,25 @@ export function SessionRunner(props: SessionRunnerProps) {
             else revealCurrentWorkoutAction();
           }}
           allowLogWithRetainedFailure={allowLogWithRetainedFailure}
+          checkingExerciseSkip={
+            skipConfirmationExerciseId == null
+              ? null
+              : shownExercises.find(
+                  (exercise) => exercise.id === skipConfirmationExerciseId,
+                )?.name ?? "exercise"
+          }
+          recoveringSkippedExercise={
+            skipConfirmationExerciseId != null || skipRecoveryExerciseId == null
+              ? null
+              : shownExercises.find(
+                  (exercise) => exercise.id === skipRecoveryExerciseId,
+                )?.name ?? "exercise"
+          }
+          skippedExerciseRecoveryFailed={
+            skipRecoveryExerciseId != null &&
+            skipConfirmationError?.exerciseId === skipRecoveryExerciseId
+          }
+          onResolveSkippedExercise={revealSkippedExerciseRecovery}
           onRestAdjust={adjustRest}
           onRestSkip={skipRest}
           onRestContinue={continueRest}

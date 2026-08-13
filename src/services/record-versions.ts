@@ -842,6 +842,8 @@ export async function updateSessionExerciseWithVersion(
   options: {
     activeOnly?: boolean;
     expectedExerciseId?: string;
+    expectedHistoryRevision?: number;
+    fenceSessionExerciseIntent?: boolean;
     versionId?: string;
   } = {}
 ): Promise<VersionedEditResult> {
@@ -907,7 +909,7 @@ export async function updateSessionExerciseWithVersion(
         AND rv.entity_id = ${sessionExerciseId}::uuid
         AND rv.action = ${action}
     ), current_record AS MATERIALIZED (
-      SELECT se.*, to_jsonb(se) AS before_data
+      SELECT se.*, ws.history_revision, to_jsonb(se) AS before_data
       FROM session_exercises se
       JOIN workout_sessions ws ON ws.id = se.session_id
       WHERE se.id = ${sessionExerciseId}::uuid
@@ -976,6 +978,11 @@ export async function updateSessionExerciseWithVersion(
                   ${values.substitutionReason ?? null}::text
               )
           )
+        )
+        AND (
+          ${options.expectedHistoryRevision ?? null}::integer IS NULL
+          OR candidate.history_revision =
+            ${options.expectedHistoryRevision ?? null}::integer
         )
         AND (candidate.next_target_load IS NULL) = (candidate.next_target_load_unit IS NULL)
         AND (
@@ -1062,9 +1069,19 @@ export async function updateSessionExerciseWithVersion(
     ), revised_session AS (
       UPDATE workout_sessions session
       SET history_revision = session.history_revision + 1
-      FROM updated
-      WHERE ${action === "session_exercise.substitute"}::boolean
-        AND session.id = updated.session_id
+      FROM current_record current
+      WHERE (
+          (
+            ${action === "session_exercise.substitute"}::boolean
+            AND EXISTS (SELECT 1 FROM updated)
+          )
+          OR (
+            ${options.fenceSessionExerciseIntent ?? false}::boolean
+            AND EXISTS (SELECT 1 FROM valid_candidate)
+          )
+        )
+        AND session.id = current.session_id
+        AND session.history_revision = current.history_revision
       RETURNING session.history_revision
     ), cleared_equipment_occurrences AS (
       UPDATE session_occurrences occurrence
@@ -1234,6 +1251,11 @@ export async function updateSessionExerciseWithVersion(
         ${options.expectedExerciseId ?? null}::uuid IS NULL
         OR current.exercise_id = ${options.expectedExerciseId ?? null}::uuid
       ) AS expected_exercise_matches,
+      (
+        ${options.expectedHistoryRevision ?? null}::integer IS NULL
+        OR current.history_revision =
+          ${options.expectedHistoryRevision ?? null}::integer
+      ) AS expected_history_revision_matches,
       (updated.id IS NOT NULL) AS changed,
       COALESCE(versioned.id, (SELECT id FROM existing_version)) AS version_id,
       (SELECT count(*)::integer FROM occurrence_receipts) AS occurrence_changes,
@@ -1257,6 +1279,9 @@ export async function updateSessionExerciseWithVersion(
             ? "Finish or skip the earlier group item before skipping this exercise."
           : options.expectedExerciseId && !row.expected_exercise_matches
             ? "This exercise changed after replacement opened. Review the current exercise before trying again."
+          : options.expectedHistoryRevision != null &&
+              !row.expected_history_revision_matches
+            ? "The saved workout changed before this exercise choice arrived. Review the latest exercise state before trying again."
             : "The workout exercise is no longer compatible with this change.",
     };
   }

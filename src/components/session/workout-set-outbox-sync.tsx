@@ -81,6 +81,9 @@ import {
 
 const activeOwners = new Set<string>();
 
+export const WORKOUT_DEVICE_STATUS_CLASS_NAME =
+  "fixed right-3 bottom-[calc(7.5rem+env(safe-area-inset-bottom))] z-30 flex max-w-[calc(100vw-1.5rem)] flex-wrap justify-end gap-2 lg:bottom-[5.75rem]";
+
 const TRANSIENT_SET_FAILURE =
   "We couldn't save this set yet. We'll keep trying when you're back online.";
 const UPDATED_SET_FAILURE =
@@ -506,7 +509,7 @@ export function WorkoutSetOutboxSync({ ownerId }: { ownerId: string }) {
     <div
       role="region"
       aria-label="Device save status"
-      className="flex flex-wrap justify-end gap-2 px-4 pt-3 sm:px-6 lg:px-8"
+      className={WORKOUT_DEVICE_STATUS_CLASS_NAME}
     >
       <WorkoutSetOutboxTray
         entries={entries}

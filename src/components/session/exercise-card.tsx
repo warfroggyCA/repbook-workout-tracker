@@ -528,6 +528,16 @@ type Props = {
   onRefreshWorkout?: () => void;
   onHistoryRevisionChange?: (historyRevision: number) => void;
   onOpenCoach: () => void;
+  onSkipRequestStart?: (
+    reason: "time" | "pain" | "fatigue" | "equipment" | "other",
+  ) => void;
+  onSkipRequestFailure?: (
+    reason: "time" | "pain" | "fatigue" | "equipment" | "other",
+    code?: string,
+  ) => void;
+  skipConfirmationPending?: boolean;
+  skipConfirmationError?: string | null;
+  onSkipConfirmationErrorDismiss?: () => Promise<void> | void;
   onSkipComplete: () => void;
   adjustIntent: ExerciseAdjustmentIntent | null;
   onAdjustIntentChange: (intent: ExerciseAdjustmentIntent | null) => void;
@@ -619,6 +629,11 @@ export function ExerciseCard({
   onRefreshWorkout,
   onHistoryRevisionChange = () => undefined,
   onOpenCoach,
+  onSkipRequestStart = () => undefined,
+  onSkipRequestFailure = () => undefined,
+  skipConfirmationPending = false,
+  skipConfirmationError = null,
+  onSkipConfirmationErrorDismiss = () => undefined,
   onSkipComplete,
   adjustIntent,
   onAdjustIntentChange,
@@ -878,6 +893,10 @@ export function ExerciseCard({
     occurrence: SessionOccurrenceData | null = activeOccurrence,
     submittedDraft: SetDraft = draft,
   ) {
+    if (skipConfirmationPending) {
+      toast.info("Wait while Repbook confirms whether this exercise was skipped.");
+      return;
+    }
     if (unconfirmedSetsBlockLogging({
       sets: exercise.sets,
       targetOccurrenceId: occurrence?.id ?? null,
@@ -1402,13 +1421,60 @@ export function ExerciseCard({
         </div>
       </button>
 
-      {expanded && !isSkipped && (
+      {expanded && !isSkipped && skipConfirmationPending && (
+        <div
+          id={`session-exercise-details-${exercise.id}`}
+          role="status"
+          className="border-t p-3"
+        >
+          <p className="font-medium">Checking the exercise skip…</p>
+          <p className="mt-1 text-xs leading-5 text-muted-foreground">
+            Repbook is confirming the saved workout state. Set logging stays
+            paused so this exercise cannot be recorded against stale details.
+          </p>
+        </div>
+      )}
+
+      {expanded && !isSkipped && !skipConfirmationPending && (
         <div
           id={`session-exercise-details-${exercise.id}`}
           className="flex flex-col gap-1.5 border-t px-2 py-1.5"
         >
           {/* The current action and unresolved writes stay outside disclosure. */}
           <div className="flex flex-col gap-1">
+            {skipConfirmationError && (
+              <div
+                id={`skip-recovery-description-${exercise.id}`}
+                role="status"
+                className="rounded-lg border border-destructive/40 bg-destructive/5 p-3"
+              >
+                <p className="font-medium">Skip was not confirmed</p>
+                <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                  {skipConfirmationError}
+                </p>
+                <div className="mt-2 grid gap-2 min-[420px]:grid-cols-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => onAdjustIntentChange("skip")}
+                  >
+                    Try skipping again
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    disabled={pending}
+                    onClick={() => {
+                      startTransition(async () => {
+                        await onSkipConfirmationErrorDismiss();
+                      });
+                    }}
+                  >
+                    {pending ? "Checking saved state…" : "Return to current set"}
+                  </Button>
+                </div>
+              </div>
+            )}
             {immediateRowOrder.map((i) => {
               const set = exercise.sets.find((candidate) => candidate.setNo === i + 1);
               const occurrenceForRow = workingOccurrences.find(
@@ -1636,6 +1702,7 @@ export function ExerciseCard({
                         }
                         disabled={
                           pending ||
+                          skipConfirmationPending ||
                           !metricSupported ||
                           appendedLoggingBlocked ||
                           Boolean(occurrenceMutation) ||
@@ -1807,6 +1874,7 @@ export function ExerciseCard({
                           onClick={() => handleLog()}
                           disabled={
                             pending ||
+                            skipConfirmationPending ||
                             !metricSupported ||
                             Boolean(occurrenceMutation) ||
                             activeLoggingBlocked ||
@@ -2226,12 +2294,16 @@ export function ExerciseCard({
               />
               <SkipDrawer
                 exerciseId={exercise.id}
+                expectedHistoryRevision={historyRevision}
                 open={adjustIntent === "skip"}
+                onRequestStart={onSkipRequestStart}
+                onRequestFailure={onSkipRequestFailure}
                 onOpenChange={(open) =>
                   onAdjustIntentChange(open ? "skip" : null)
                 }
-                onDone={(reason) => {
+                onDone={(reason, resultHistoryRevision) => {
                   onAdjustIntentChange(null);
+                  onHistoryRevisionChange(resultHistoryRevision);
                   onPatch({ modificationType: "skipped", skipReason: reason });
                 }}
               />
@@ -3198,14 +3270,28 @@ function PainDrawer({
 
 function SkipDrawer({
   exerciseId,
+  expectedHistoryRevision,
   open,
   onOpenChange,
+  onRequestStart,
+  onRequestFailure,
   onDone,
 }: {
   exerciseId: string;
+  expectedHistoryRevision: number;
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onDone: (reason: "time" | "pain" | "fatigue" | "equipment" | "other") => void;
+  onRequestStart: (
+    reason: "time" | "pain" | "fatigue" | "equipment" | "other",
+  ) => void;
+  onRequestFailure: (
+    reason: "time" | "pain" | "fatigue" | "equipment" | "other",
+    code?: string,
+  ) => void;
+  onDone: (
+    reason: "time" | "pain" | "fatigue" | "equipment" | "other",
+    historyRevision: number,
+  ) => void;
 }) {
   const [pending, startTransition] = useTransition();
   const reasons = ["time", "pain", "fatigue", "equipment", "other"] as const;
@@ -3225,25 +3311,29 @@ function SkipDrawer({
               key={reason}
               variant="outline"
               disabled={pending}
-              onClick={() =>
+              onClick={() => {
+                onRequestStart(reason);
                 startTransition(async () => {
                   try {
                     const result = await skipExercise({
                       sessionExerciseId: exerciseId,
                       reason,
+                      expectedHistoryRevision,
                     });
                     if (!result.ok) {
+                      onRequestFailure(reason, result.code);
                       toast.error(result.message);
                       return;
                     }
+                    onOpenChange(false);
+                    onDone(reason, result.historyRevision);
                   } catch {
+                    onRequestFailure(reason);
                     toast.error("The exercise could not be skipped.");
                     return;
                   }
-                  onOpenChange(false);
-                  onDone(reason);
-                })
-              }
+                });
+              }}
             >
               {reason}
             </Button>

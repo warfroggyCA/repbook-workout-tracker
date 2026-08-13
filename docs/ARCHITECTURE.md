@@ -886,7 +886,20 @@ next action primary. Ordinary completed/upcoming rows and extra work live in
 `Exercise progress & extras`; notes, coaching, form, and replacement controls
 live in `More for this exercise`. Pending or failed writes and skipped recovery
 remain exposed, and the existing fixed workout-status bar remains the sole
-rest/ready/finish authority.
+rest/ready/finish authority. The set and equipment device-save entry points use
+a separate fixed safe-area slot above that bar, so interruption recovery stays
+reachable after reload without covering the current workout action.
+An exercise-skip confirmation also retains the exact reason in a session-scoped
+recovery pointer. After a Server Action refresh or interruption-time reload, the
+runner idempotently reconciles that intent before set logging can resume and
+keeps the skipped exercise open until the owner replaces, restores, or
+deliberately continues past it. If reconciliation fails, the same exercise
+and exact skip reason remain session-scoped recovery state across another
+reload. The mobile dock keeps that exercise as its recovery target until the
+owner retries the skip or asks Repbook to confirm an unskipped server state and
+return to the current set; Finish cannot bypass that choice. Skip and return
+commands compare and advance the workout's monotonic history revision, so a
+late older request cannot overwrite the newer recovery choice.
 
 The runner reconciles refreshed occurrence props by stable ID and monotonic
 revision because a Next.js refresh may preserve Client Component state. A
