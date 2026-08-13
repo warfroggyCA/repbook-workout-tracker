@@ -3384,6 +3384,11 @@ function AlternativesDrawer({
   const [options, setOptions] = useState<AlternativeOptions | null>(null);
   const [reason, setReason] = useState<ExerciseAlternativeReason>("variety");
   const [pending, startTransition] = useTransition();
+  const onOpenChangeRef = useRef(onOpenChange);
+
+  useEffect(() => {
+    onOpenChangeRef.current = onOpenChange;
+  }, [onOpenChange]);
 
   function handleOpen(next: boolean) {
     onOpenChange(next);
@@ -3398,20 +3403,20 @@ function AlternativesDrawer({
         if (ignore) return;
         if (!result.ok) {
           toast.error(result.message);
-          onOpenChange(false);
+          onOpenChangeRef.current(false);
           return;
         }
         setOptions(result);
       } catch {
         if (ignore) return;
         toast.error("Alternatives could not be loaded.");
-        onOpenChange(false);
+        onOpenChangeRef.current(false);
       }
     });
     return () => {
       ignore = true;
     };
-  }, [exerciseId, onOpenChange, open, options]);
+  }, [exerciseId, open, options]);
 
   return (
     <Drawer open={open} onOpenChange={handleOpen}>
@@ -3522,6 +3527,11 @@ function ReplacementDrawer({
   const [reason, setReason] = useState<ExerciseAlternativeReason>("variety");
   const [pending, startTransition] = useTransition();
   const mutationRef = useRef<{ signature: string; id: string } | null>(null);
+  const onOpenChangeRef = useRef(onOpenChange);
+
+  useEffect(() => {
+    onOpenChangeRef.current = onOpenChange;
+  }, [onOpenChange]);
 
   useEffect(() => {
     if (!open || options != null) return;
@@ -3532,20 +3542,20 @@ function ReplacementDrawer({
         if (ignore) return;
         if (!result.ok) {
           toast.error(result.message);
-          onOpenChange(false);
+          onOpenChangeRef.current(false);
           return;
         }
         setOptions(result);
       } catch {
         if (ignore) return;
         toast.error("The exercise catalog could not be loaded.");
-        onOpenChange(false);
+        onOpenChangeRef.current(false);
       }
     });
     return () => {
       ignore = true;
     };
-  }, [exerciseId, onOpenChange, open, options]);
+  }, [exerciseId, open, options]);
 
   return (
     <Drawer open={open} onOpenChange={onOpenChange}>

@@ -494,12 +494,18 @@ test("keeps the full live workout usable through warm-up, skip, replace, continu
   const replacementDrawer = page.getByRole("dialog", {
     name: "Replace exercise for this workout",
   });
-  await replacementDrawer
-    .getByRole("button", { name: "Equipment busy", exact: true })
-    .click();
-  await replacementDrawer
-    .getByRole("button", { name: "Search exercise catalog", exact: true })
-    .click();
+  const searchCatalog = replacementDrawer.getByRole("button", {
+    name: "Search exercise catalog",
+    exact: true,
+  });
+  await expect(searchCatalog).toBeVisible();
+  const equipmentBusy = replacementDrawer.getByRole("button", {
+    name: "Equipment busy",
+    exact: true,
+  });
+  await expect(equipmentBusy).toBeEnabled();
+  await equipmentBusy.click();
+  await searchCatalog.click();
   const picker = page.getByRole("dialog", { name: "Replace exercise", exact: true });
   await picker.getByLabel("Search exercise library").fill("Push-Up");
   await picker

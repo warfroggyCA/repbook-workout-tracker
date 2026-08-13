@@ -568,6 +568,8 @@ async function revealCurrentFromStatusBar(page: Page) {
     await reveal.click();
   } else {
     expect(label).toMatch(/^Log /);
+    await expectPrimaryActionUnobstructed(reveal);
+    await expectReachableTarget(page.getByTestId("active-log-set"));
   }
   await expect.poll(() => page.evaluate(() => {
     const log = document.querySelector<HTMLElement>(

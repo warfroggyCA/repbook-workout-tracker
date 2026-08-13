@@ -102,6 +102,19 @@ describe("ExerciseCard", () => {
     expect(source).not.toContain("await unskipExercise(");
   });
 
+  it("does not restart exercise catalog loads when parent callbacks rerender", () => {
+    const source = readFileSync(
+      "src/components/session/exercise-card.tsx",
+      "utf8",
+    );
+    expect(source.match(
+      /const onOpenChangeRef = useRef\(onOpenChange\);/g,
+    )).toHaveLength(2);
+    expect(source).not.toContain(
+      "[exerciseId, onOpenChange, open, options]",
+    );
+  });
+
   it("renders total-load, reference guidance, save-state, and note-cap presentation", () => {
     const html = renderToStaticMarkup(
       <ExerciseCard
