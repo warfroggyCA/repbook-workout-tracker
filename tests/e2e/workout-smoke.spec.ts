@@ -1858,13 +1858,17 @@ test("keeps every active-workout route reachable with one scroll surface", async
   await expect(
     page.getByTestId("current-exercise-card").getByRole("heading", { level: 2 }),
   ).not.toHaveText(plannedExerciseName);
-  await plannedCard.locator(":scope > button").click();
-  await expect(
-    plannedCard.getByText("skipped", { exact: true }),
-  ).toHaveCount(3);
+  const plannedCardToggle = plannedCard.locator(":scope > button");
+  if ((await plannedCardToggle.getAttribute("aria-expanded")) !== "true") {
+    await plannedCardToggle.click();
+  }
+  await expect(plannedCardToggle).toHaveAttribute("aria-expanded", "true");
   await openNativeDetails(plannedCard.locator("details", {
     hasText: "Exercise progress & extras",
   }));
+  await expect(
+    plannedCard.getByText("skipped", { exact: true }),
+  ).toHaveCount(3);
   const addSet = plannedCard.getByRole("button", {
     name: "Add extra set",
     exact: true,
@@ -1894,8 +1898,10 @@ test("keeps every active-workout route reachable with one scroll surface", async
     addedSet.evaluate((element) => element.getBoundingClientRect().top),
     addSet.evaluate((element) => element.getBoundingClientRect().top),
   ]);
-  expect(positions[0]).toBeLessThan(positions[1]);
-  expect(positions[1]).toBeLessThan(positions[2]);
+  // The unresolved added set is the actionable row, so it stays above the
+  // completed planned-set history while the Add extra set control stays last.
+  expect(positions[1]).toBeLessThan(positions[0]);
+  expect(positions[0]).toBeLessThan(positions[2]);
   const addedWeight = await addedSet
     .locator('input[inputmode="decimal"]')
     .first()
@@ -2873,7 +2879,7 @@ test("a parked set pauses only its exercise while another exercise saves", async
     await firstExerciseToggle.click();
   }
   const removeParkedSet = firstExercise.getByRole("button", {
-    name: "Discard",
+    name: "Discard attempt",
     exact: true,
   });
   await removeParkedSet.evaluate((element) =>
@@ -2961,8 +2967,7 @@ test("keeps a stale-tab rejection visible until the user resolves it", async ({
     await route.continue();
   });
   const retryStaleSet = staleExercise.getByRole("button", {
-    name: "Retry",
-    exact: true,
+    name: /^Retry Set \d+$/,
   });
   await waitForReactHandler(retryStaleSet);
   await retryStaleSet.click();
@@ -2975,7 +2980,10 @@ test("keeps a stale-tab rejection visible until the user resolves it", async ({
     staleExercise.getByText("Save failed", { exact: true })
   ).toBeVisible();
   await context.unrouteAll({ behavior: "wait" });
-  await staleExercise.getByRole("button", { name: "Discard", exact: true }).click();
+  await staleExercise.getByRole("button", {
+    name: "Discard attempt",
+    exact: true,
+  }).click();
   await expect(staleExercise.getByText("Save failed", { exact: true })).toHaveCount(0);
   await stalePage.close();
 });
