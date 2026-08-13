@@ -922,10 +922,12 @@ outside an active workout keeps the ordinary client-side path.
 
 The runner reconciles refreshed occurrence props by stable ID and monotonic
 revision because a Next.js refresh may preserve Client Component state. A
-device-side occurrence revision remains visible only while its durable command
-or acknowledged receipt still owns it; discarding that command lets refreshed
-server truth win. An ordered-set rejection retains the exact authoritative
-blocking occurrence with the later attempt. The blocker is named and directly
+device-side occurrence remains visible while its exact durable command owns it,
+including the brief interval when a Server Action's refreshed RSC tree arrives
+before the client removes and acknowledges that command. A newer acknowledged
+local revision also remains visible while its receipt owns it; discarding a
+device command lets refreshed server truth win. An ordered-set rejection retains
+the exact authoritative blocking occurrence with the later attempt. The blocker is named and directly
 reachable, retry stays locked until that occurrence is resolved, and deliberate
 discard of the later attempt remains available. Legacy retained set commands
 without this newer context remain readable and recoverable. Finish is a

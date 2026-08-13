@@ -282,6 +282,43 @@ describe("refreshed occurrence reconciliation", () => {
     expect(merged[0]).toMatchObject({ revision: 1, outcome: "skipped" });
   });
 
+  it("does not expose a newer action re-render before device acknowledgement", () => {
+    const merged = reconcileServerOccurrences({
+      current: [occurrence(0, "pending")],
+      server: [occurrence(1, "skipped")],
+      previousServerIds: new Set(["occurrence-1"]),
+      pendingMutationOccurrenceIds: new Set(["occurrence-1"]),
+      acknowledgedOccurrenceIds: new Set(),
+    });
+
+    expect(merged[0]).toMatchObject({ revision: 0, outcome: "pending" });
+  });
+
+  it("keeps pending command ownership exact to its occurrence", () => {
+    const secondCurrent = {
+      ...occurrence(0, "pending"),
+      id: "occurrence-2",
+      sequenceIdx: 1,
+    };
+    const secondServer = {
+      ...occurrence(1, "skipped"),
+      id: "occurrence-2",
+      sequenceIdx: 1,
+    };
+    const merged = reconcileServerOccurrences({
+      current: [occurrence(0, "pending"), secondCurrent],
+      server: [occurrence(1, "skipped"), secondServer],
+      previousServerIds: new Set(["occurrence-1", "occurrence-2"]),
+      pendingMutationOccurrenceIds: new Set(["occurrence-1"]),
+      acknowledgedOccurrenceIds: new Set(),
+    });
+
+    expect(merged).toMatchObject([
+      { id: "occurrence-1", revision: 0, outcome: "pending" },
+      { id: "occurrence-2", revision: 1, outcome: "skipped" },
+    ]);
+  });
+
   it("restores server truth after an optimistic occurrence command is discarded", () => {
     const merged = reconcileServerOccurrences({
       current: [occurrence(1, "skipped")],

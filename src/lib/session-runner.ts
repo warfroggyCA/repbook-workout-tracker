@@ -51,10 +51,20 @@ export function reconcileServerOccurrences({
   );
   const reconciled = server.map((serverOccurrence) => {
     const localOccurrence = currentById.get(serverOccurrence.id);
+    // A Server Action response can commit its refreshed RSC tree before the
+    // awaiting outbox worker removes the device command and publishes its
+    // acknowledgement. Keep that exact device-owned occurrence current until
+    // the command is acknowledged or deliberately removed, even when the RSC
+    // row already carries the next server revision.
+    if (
+      localOccurrence != null &&
+      pendingMutationOccurrenceIds.has(localOccurrence.id)
+    ) {
+      return localOccurrence;
+    }
     const localRevisionIsStillOwned =
       localOccurrence != null &&
       (
-        pendingMutationOccurrenceIds.has(localOccurrence.id) ||
         acknowledgedOccurrenceIds.has(localOccurrence.id) ||
         (
           localOccurrence.kind === "working_set" &&
