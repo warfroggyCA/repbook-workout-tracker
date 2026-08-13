@@ -104,7 +104,7 @@ test("keeps ordinary completion minimal and makes exception evidence reversible,
   await waitForHydratedReactHandler(hard);
   await hard.focus();
   await expect(hard).toBeFocused();
-  await page.keyboard.press("Space");
+  await hard.press("Enter");
   await expect(hard).toHaveAttribute("aria-pressed", "false");
   await expectTouchTarget(optional.locator("summary"));
 

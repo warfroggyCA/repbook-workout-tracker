@@ -498,15 +498,26 @@ test("presents immutable superset order, truthful progress, and next-member equi
   await expect(currentCard.getByRole("heading", { level: 2 })).toHaveText(
     "Dumbbell Lateral Raise",
   );
-  await page
+  const currentToggle = currentCard.locator(":scope > button");
+  await expect(currentToggle).toHaveAttribute("aria-expanded", "true");
+  await currentToggle.click();
+  await expect(currentToggle).toHaveAttribute("aria-expanded", "false");
+  const showCurrent = page
     .getByRole("complementary", { name: "Workout status" })
     .locator("button")
-    .first()
-    .click();
+    .first();
+  await expect(showCurrent).toHaveAccessibleName(
+    "Show Dumbbell Lateral Raise, Set 1",
+  );
+  await showCurrent.click();
+  await expect(currentToggle).toHaveAttribute("aria-expanded", "true");
   await expect(page).toHaveURL(/#set-entry-/);
   const currentActionUrl = page.url();
   await page.reload({ waitUntil: "domcontentloaded" });
   await expect(page).toHaveURL(currentActionUrl);
+  await expect(currentCard.getByRole("heading", { level: 2 })).toHaveText(
+    "Dumbbell Lateral Raise",
+  );
   await openNativeDetails(currentCard.locator("details", {
     hasText: "Set exceptions",
   }));
