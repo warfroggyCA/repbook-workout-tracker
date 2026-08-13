@@ -59,6 +59,9 @@ async function completeWarmupsToFirstWorkingSet(page: Page) {
           '#workout-warmup [role="checkbox"][aria-checked="false"]:visible',
         ).first()
       : page.getByTestId("active-workout-dock-primary");
+    await expect
+      .poll(() => currentWarmup.getAttribute("aria-label"))
+      .toContain(PRODUCTION_WORKOUT_START_WARMUP[warmupIndex].label);
     await waitForHydratedReactHandler(currentWarmup);
     await currentWarmup.click();
   }
@@ -257,19 +260,7 @@ test.describe("reduced-motion active workout", () => {
 
     try {
       await signInAndStartDayA(page, { textSize: "Extra large" });
-      for (
-        let warmupIndex = 0;
-        warmupIndex < PRODUCTION_WORKOUT_START_WARMUP.length;
-        warmupIndex += 1
-      ) {
-        const action = warmupIndex === 0
-          ? page.locator(
-              '#workout-warmup [role="checkbox"][aria-checked="false"]',
-            ).first()
-          : page.getByTestId("active-workout-dock-primary");
-        await waitForHydratedReactHandler(action);
-        await action.click();
-      }
+      await completeWarmupsToFirstWorkingSet(page);
 
       const firstWorkingSetAction = page.getByTestId(
         "active-workout-dock-primary",
@@ -347,6 +338,9 @@ test("keeps attention continuous through warm-up, first set, and exact recovery 
                 '#workout-warmup [role="checkbox"][aria-checked="false"]:visible',
               ).first()
             : page.getByTestId("active-workout-dock-primary");
+          await expect
+            .poll(() => currentWarmup.getAttribute("aria-label"))
+            .toContain(PRODUCTION_WORKOUT_START_WARMUP[warmupIndex].label);
           await waitForHydratedReactHandler(currentWarmup);
           await currentWarmup.click();
           if (warmupIndex < PRODUCTION_WORKOUT_START_WARMUP.length - 1) {

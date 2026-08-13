@@ -520,47 +520,65 @@ test("presents immutable superset order, truthful progress, and next-member equi
     /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
   )?.[0];
   expect(currentOccurrenceId).toBeTruthy();
-  let releaseGroupSkip!: () => void;
-  const groupSkipMayFinish = new Promise<void>((resolve) => {
-    releaseGroupSkip = resolve;
-  });
-  let groupSkipArmed = false;
-  let heldGroupSkipRequests = 0;
-  await page.route("**/session/**", async (route) => {
-    if (
-      groupSkipArmed &&
-      route.request().method() === "POST" &&
-      route.request().headers()["next-action"] &&
-      (route.request().postData() ?? "").includes(currentOccurrenceId!) &&
-      (route.request().postData() ?? "").includes('"operation":"skip"') &&
-      (route.request().postData() ?? "").includes('"reason":"time"')
-    ) {
-      heldGroupSkipRequests += 1;
-      await groupSkipMayFinish;
-    }
-    await route.continue();
-  });
+  await page.context().setOffline(true);
+  await expect.poll(() => page.evaluate(() => navigator.onLine)).toBe(false);
   await currentCard
     .getByRole("button", { name: "Skip set", exact: true })
     .click();
   const groupSkip = page.getByRole("dialog", { name: /^Skip set / });
   await groupSkip.getByLabel("Reason").selectOption("time");
-  groupSkipArmed = true;
   await groupSkip
     .getByRole("button", { name: "Skip item", exact: true })
     .click();
   await expect(groupSkip).toHaveCount(0);
-  await expect.poll(() => heldGroupSkipRequests).toBeGreaterThan(0);
   await expect(
     page.getByRole("button", { name: "Open unsaved workout changes" }),
   ).toBeVisible();
+  await expect.poll(() => page.evaluate(() => {
+    const raw = localStorage.getItem(
+      "workout-tracker:occurrence-mutation-outbox:v1",
+    );
+    const entries = raw == null ? [] : JSON.parse(raw).entries ?? [];
+    return entries.map((entry: {
+      occurrenceId?: unknown;
+      operation?: unknown;
+      reason?: unknown;
+      label?: unknown;
+      status?: unknown;
+    }) => ({
+      occurrenceId: entry.occurrenceId,
+      operation: entry.operation,
+      reason: entry.reason,
+      label: entry.label,
+      status: entry.status,
+    }));
+  })).toEqual([{
+    occurrenceId: currentOccurrenceId,
+    operation: "skip",
+    reason: "time",
+    label: "Working set",
+    status: "queued",
+  }]);
   await expect(currentCard.getByRole("heading", { level: 2 })).toHaveText(
     "Dumbbell Lateral Raise",
+  );
+  await expect(currentCard).toContainText("Skip · Unsaved");
+  await expect(currentCard).toContainText(
+    "will not advance until Repbook acknowledges this change",
   );
   await expect(restoredGroup).toContainText(
     "Current member: 1 of 2 · Dumbbell Lateral Raise",
   );
-  releaseGroupSkip();
+  const pendingGuidance = page.getByRole("region", {
+    name: "Workout progress and upcoming work",
+  });
+  await expect(pendingGuidance).toContainText("9 skipped");
+  await expect(pendingGuidance).toContainText(
+    /Now: Superset, round 1, member 1 of 2: Dumbbell Lateral Raise, set 1/,
+  );
+  await page.context().setOffline(false);
+  await expect.poll(() => page.evaluate(() => navigator.onLine)).toBe(true);
+  await page.evaluate(() => window.dispatchEvent(new Event("online")));
   await expect(currentCard.getByRole("heading", { level: 2 })).toHaveText(
     "Pallof Press",
   );
@@ -595,7 +613,6 @@ test("presents immutable superset order, truthful progress, and next-member equi
   await expect(
     page.getByRole("button", { name: "Open unsaved workout changes" }),
   ).toHaveCount(0);
-  await page.unrouteAll({ behavior: "wait" });
   await page.reload({ waitUntil: "domcontentloaded" });
   await expect(currentCard.getByRole("heading", { level: 2 })).toHaveText(
     "Pallof Press",
