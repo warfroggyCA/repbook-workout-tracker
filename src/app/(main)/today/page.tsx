@@ -551,7 +551,7 @@ export default async function TodayPage({
                 </div>
               </div>
               <Button
-                render={<Link href="/activity/new" />}
+                render={<Link href="/activity/new" prefetch={false} />}
                 nativeButton={false}
                 variant="outline"
                 className="min-h-11 w-full sm:w-auto lg:w-full"
