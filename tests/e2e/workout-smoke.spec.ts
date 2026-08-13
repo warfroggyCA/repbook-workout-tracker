@@ -3281,7 +3281,7 @@ test("opens failed-set recovery from Settings at 145 percent on iPhone WebKit", 
     finishRecovery.getByRole("button", { name: "Try saving again" }),
   ).toBeVisible();
   await expect(
-    finishRecovery.getByRole("button", { name: "Review saved attempt" }),
+    finishRecovery.getByRole("button", { name: "Review attempt" }),
   ).toBeVisible();
   const finishRecoveryGeometry = await finishRecovery.evaluate((dialog) => {
     const footer = dialog.querySelector<HTMLElement>(
@@ -3307,7 +3307,7 @@ test("opens failed-set recovery from Settings at 145 percent on iPhone WebKit", 
     finishRecoveryGeometry.viewportHeight + 1,
   );
   await finishRecovery
-    .getByRole("button", { name: "Review saved attempt" })
+    .getByRole("button", { name: "Review attempt" })
     .click();
   await expect(finishRecovery).toHaveCount(0);
   await expect(page).toHaveURL(
