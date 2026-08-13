@@ -4,12 +4,13 @@ const port = Number.parseInt(process.env.V2_GAUNTLET_A_PORT ?? "3139", 10);
 
 export default defineConfig({
   testDir: "./tests/e2e",
+  // v2-u01 owns a separate BA-identity fixture and runs immediately before
+  // this suite in the protected v2-execution group.
   testMatch: [
     "replacement-mobile-keyboard.spec.ts",
     "v2-gauntlet-a-recovery.spec.ts",
     "v2-t03-planned-order.spec.ts",
     "v2-t05-execution-semantics.spec.ts",
-    "v2-u01-active-workout-hierarchy.spec.ts",
     "v2-u02-exception-context.spec.ts",
   ],
   outputDir: "./output/playwright/v2-gauntlet-a/test-results",
