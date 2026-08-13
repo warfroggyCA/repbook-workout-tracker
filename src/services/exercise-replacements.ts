@@ -8,6 +8,7 @@ import {
   workoutReplacementUnavailableReason,
 } from "@/lib/exercise-replacements";
 import { getExerciseDiscoveryLibrary } from "@/services/exercise-discovery";
+import { WorkoutExerciseOptionsUnavailableError } from "@/services/workout-exercise-options-errors";
 
 type SessionExerciseRow = typeof sessionExercises.$inferSelect;
 
@@ -47,14 +48,22 @@ export async function getExerciseReplacementOptions(
     sessionExercise.session.status !== "in_progress" ||
     sessionExercise.session.archivedAt != null
   ) {
-    throw new Error("The workout exercise is no longer available.");
+    throw new WorkoutExerciseOptionsUnavailableError(
+      "workout_not_active",
+      "The workout exercise is no longer available.",
+    );
   }
 
   const library = await getExerciseDiscoveryLibrary(db, userId);
   const plannedExerciseId =
     sessionExercise.substitutedForExerciseId ?? sessionExercise.exerciseId;
   const planned = library.find((item) => item.id === plannedExerciseId);
-  if (!planned) throw new Error("The planned exercise is no longer available.");
+  if (!planned) {
+    throw new WorkoutExerciseOptionsUnavailableError(
+      "planned_exercise_unavailable",
+      "The planned exercise is no longer available.",
+    );
+  }
 
   const warnings: Record<string, string> = {};
   const items = library.map((item) => {

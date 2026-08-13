@@ -34,6 +34,7 @@ import {
 } from "@/lib/deployment-recovery";
 
 const activeOwners = new Set<string>();
+const pendingOwnerWakes = new Set<string>();
 const TRANSIENT_FAILURE =
   "We couldn't save this yet. We'll keep trying when you're back online.";
 const UPDATED_APP_FAILURE =
@@ -46,10 +47,17 @@ function operationLabel(operation: OccurrenceMutationOutboxEntry["operation"]) {
   return "Update note";
 }
 
-export async function syncNextOccurrenceMutation(ownerId: string) {
+export async function syncNextOccurrenceMutation(
+  ownerId: string,
+  drainDepth = 0,
+) {
   if (deploymentRecoveryRequired()) return;
-  if (activeOwners.has(ownerId)) return;
+  if (activeOwners.has(ownerId)) {
+    pendingOwnerWakes.add(ownerId);
+    return;
+  }
   activeOwners.add(ownerId);
+  let queuedWake = false;
   try {
     await withOccurrenceMutationOutboxLock(async () => {
       const entry = nextOccurrenceMutationOutboxEntry(
@@ -117,7 +125,11 @@ export async function syncNextOccurrenceMutation(ownerId: string) {
       }
     });
   } finally {
+    queuedWake = pendingOwnerWakes.delete(ownerId);
     activeOwners.delete(ownerId);
+  }
+  if (queuedWake && drainDepth < 100) {
+    await syncNextOccurrenceMutation(ownerId, drainDepth + 1);
   }
 }
 
@@ -191,6 +203,7 @@ export function OccurrenceMutationOutboxTray({
 }) {
   const [open, setOpen] = useState(false);
   const [confirmRemove, setConfirmRemove] = useState<string | null>(null);
+  const [confirmUnreadable, setConfirmUnreadable] = useState(false);
   const attentionCount = entries.filter(
     (entry) => entry.status === "needs_attention",
   ).length;
@@ -212,7 +225,7 @@ export function OccurrenceMutationOutboxTray({
       <Button
         type="button"
         variant={attentionCount > 0 || storageError ? "destructive" : "secondary"}
-        className="fixed bottom-[calc(4rem+env(safe-area-inset-bottom)+0.75rem)] left-3 z-30 min-h-11 max-w-[calc(100vw-1.5rem)] shadow-lg lg:bottom-3"
+        className="fixed bottom-[calc(4rem+env(safe-area-inset-bottom)+0.75rem)] left-3 z-30 min-h-11 max-w-[calc(100vw-1.5rem)] shadow-lg lg:bottom-[5.75rem]"
         onClick={() => setOpen(true)}
         aria-label="Open unsaved workout changes"
       >
@@ -228,27 +241,58 @@ export function OccurrenceMutationOutboxTray({
       <Drawer open={open} onOpenChange={setOpen} showSwipeHandle>
         <DrawerContent className="[--drawer-content-max-height:calc(100dvh-2rem)]">
           <DrawerHeader>
-            <DrawerTitle>Changes waiting to save</DrawerTitle>
+            <DrawerTitle>Workout-item device copies</DrawerTitle>
             <DrawerDescription>
               If you lose your connection, these changes stay here and try
-              again. Save or discard each one before finishing your workout.
+              again. Retry save or discard each identified copy before
+              finishing its workout.
             </DrawerDescription>
           </DrawerHeader>
           <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-6">
             {storageError && (
               <div role="alert" className="rounded-xl border border-destructive/40 p-3 text-sm">
                 <p>{storageError}</p>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="destructive"
-                  className="mt-3 min-h-11"
-                  onClick={() => {
-                    if (discardUnreadableOccurrenceMutationOutbox().ok) onWake();
-                  }}
-                >
-                  <Trash2 className="size-4" /> Discard unreadable queue
-                </Button>
+                {confirmUnreadable ? (
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <p className="basis-full font-medium">
+                      Discard the entire unreadable device queue? Its workout
+                      ownership cannot be verified, and this cannot be undone.
+                    </p>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="destructive"
+                      className="min-h-11"
+                      onClick={() => {
+                        if (discardUnreadableOccurrenceMutationOutbox().ok) {
+                          setConfirmUnreadable(false);
+                          onWake();
+                        }
+                      }}
+                    >
+                      <Trash2 className="size-4" /> Discard unreadable device queue
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="ghost"
+                      className="min-h-11"
+                      onClick={() => setConfirmUnreadable(false)}
+                    >
+                      Keep it
+                    </Button>
+                  </div>
+                ) : (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    className="mt-3 min-h-11"
+                    onClick={() => setConfirmUnreadable(true)}
+                  >
+                    Review unreadable device queue
+                  </Button>
+                )}
               </div>
             )}
             <ol className="mt-3 flex flex-col gap-3">
@@ -277,13 +321,13 @@ export function OccurrenceMutationOutboxTray({
                         variant="outline"
                         onClick={() => void retryOccurrenceMutation(entry.clientKey).then(onWake)}
                       >
-                        <RotateCcw className="size-4" /> Retry
+                        <RotateCcw className="size-4" /> Retry save
                       </Button>
                     )}
                     {confirmRemove === entry.clientKey ? (
                       <>
                         <Button type="button" size="sm" className="min-h-11" variant="destructive" onClick={() => void discard(entry)}>
-                          Discard change
+                          Discard device copy
                         </Button>
                         <Button type="button" size="sm" className="min-h-11" variant="ghost" onClick={() => setConfirmRemove(null)}>
                           Keep it
@@ -291,7 +335,7 @@ export function OccurrenceMutationOutboxTray({
                       </>
                     ) : (
                       <Button type="button" size="sm" className="min-h-11" variant="ghost" onClick={() => setConfirmRemove(entry.clientKey)}>
-                        <Trash2 className="size-4" /> Discard
+                        <Trash2 className="size-4" /> Review device copy
                       </Button>
                     )}
                   </div>

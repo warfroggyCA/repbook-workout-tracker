@@ -1,5 +1,4 @@
 import { expect, test, type Page } from "@playwright/test";
-import { getWorkoutFinishButton } from "../helpers/active-workout-controls";
 import {
   installNextDevelopmentRefreshControl,
   openNativeDetails,
@@ -104,19 +103,26 @@ test("keeps planned work authoritative around extra-before-plan and grouped work
   for (let index = 0; index < 9; index += 1) {
     await skipCurrentSet(page);
   }
+  await expect(
+    page.getByTestId("current-exercise-card").getByRole("heading", {
+      name: "Dumbbell Lateral Raise",
+      exact: true,
+    }),
+  ).toBeVisible();
+  await expect(
+    page.getByTestId("current-exercise-card").getByTestId("current-set-entry"),
+  ).toContainText("Set 1");
   const group = page.getByTestId("active-workout-group");
   await expect(group).toContainText("Dumbbell Lateral Raise");
   await expect(group).toContainText("Up next in group: 2 of 2 · Pallof Press");
   const laterMember = page.getByRole("region", { name: "Pallof Press" });
   await expect(laterMember.getByTestId("current-set-entry")).toHaveCount(0);
 
-  await getWorkoutFinishButton(page).click();
+  await page.getByRole("button", { name: /^(?:Review workout finish|Finish workout)$/ }).click();
   const finish = page.getByRole("dialog", { name: "Finish workout" });
   await expect(finish).toContainText("0 of 13 planned sets done");
   await expect(finish).toContainText("1 extra set performed");
-  await openNativeDetails(
-    finish.locator("details", { hasText: "Optional note and fatigue" }),
-  );
+  await finish.getByText("Optional note and fatigue", { exact: true }).click();
   const fatigue = finish.getByRole("group", { name: "Overall fatigue" });
   const fatigueThree = fatigue.getByRole("button", {
     name: "3",

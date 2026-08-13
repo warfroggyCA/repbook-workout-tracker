@@ -8,6 +8,9 @@ import {
   reconcileServerOccurrences,
   resolveSetLoggingEquipment,
   retainedRecordedWorkCount,
+  sessionScopedDeviceCopies,
+  skipRecoveryNeedsReconciliation,
+  workoutSaveQueueMessage,
   type WorkoutExitQueues,
 } from "@/lib/session-runner";
 import type { SessionOccurrenceData } from "@/components/session/types";
@@ -24,10 +27,63 @@ const EMPTY: WorkoutExitQueues = {
 };
 
 describe("workout exit readiness", () => {
+  it("selects only exact current-session copies for destructive exit", () => {
+    const currentSet = { ownerId: "owner", sessionId: "current", clientKey: "current-set" };
+    const foreignSet = { ownerId: "owner", sessionId: "foreign", clientKey: "foreign-set" };
+    const foreignOwnerSet = { ownerId: "other", sessionId: "current", clientKey: "other-owner-set" };
+    const currentOccurrence = {
+      ownerId: "owner",
+      sessionId: "current",
+      clientKey: "current-occurrence",
+    };
+    const foreignOccurrence = {
+      ownerId: "owner",
+      sessionId: "foreign",
+      clientKey: "foreign-occurrence",
+    };
+    expect(sessionScopedDeviceCopies({
+      ownerId: "owner",
+      sessionId: "current",
+      setCopies: [foreignSet, foreignOwnerSet, currentSet],
+      occurrenceCopies: [currentOccurrence, foreignOccurrence],
+    })).toEqual({
+      setCopies: [currentSet],
+      occurrenceCopies: [currentOccurrence],
+    });
+
+    const discardSource = readFileSync(
+      "src/components/session/active-workout-actions.tsx",
+      "utf8",
+    );
+    expect(discardSource).not.toContain("discardQuarantinedWorkoutSet");
+    expect(discardSource).not.toContain(
+      "discardUnreadableOccurrenceMutationOutbox",
+    );
+    expect(discardSource).toContain("At confirmation, Repbook");
+    expect(discardSource).toContain(
+      "workout-item copies found then are permanently removed",
+    );
+    expect(discardSource).toContain("showCloseButton={!pending}");
+  });
+
   it("does not block finishing when every queue is clear", () => {
     expect(finishBlockedByRecordedWork(EMPTY)).toBe(false);
     expect(equipmentSyncPending(EMPTY)).toBe(false);
     expect(exitRequiresDeviceCopyAcknowledgement(EMPTY)).toBe(false);
+  });
+
+  it("names the current set blocker instead of an unrelated quarantine", () => {
+    expect(workoutSaveQueueMessage({
+      equipmentError: null,
+      occurrenceError: null,
+      setError: null,
+      occurrenceCount: 0,
+      occurrenceQuarantineCount: 0,
+      equipmentCount: 0,
+      equipmentQuarantineCount: 0,
+      setCount: 1,
+      setQuarantineCount: 0,
+    })).toBe("1 set is still saving. Try again or remove it before finishing.");
   });
 
   // Day 3 field incident reproduction: an equipment setup command was stuck
@@ -68,12 +124,12 @@ describe("workout exit readiness", () => {
     // terminalizing the workout requires retry or explicit discard.
     expect(exitRequiresDeviceCopyAcknowledgement(pendingOccurrence)).toBe(true);
 
-    const quarantinedSet: WorkoutExitQueues = {
+    const positivelyScopedQuarantinedSet: WorkoutExitQueues = {
       ...EMPTY,
       quarantinedSetCount: 1,
     };
-    expect(finishBlockedByRecordedWork(quarantinedSet)).toBe(true);
-    expect(exitRequiresDeviceCopyAcknowledgement(quarantinedSet)).toBe(true);
+    expect(finishBlockedByRecordedWork(positivelyScopedQuarantinedSet)).toBe(true);
+    expect(exitRequiresDeviceCopyAcknowledgement(positivelyScopedQuarantinedSet)).toBe(true);
   });
 
   it("counts set and occurrence errors as recorded-work blockers", () => {
@@ -89,6 +145,22 @@ describe("workout exit readiness", () => {
 });
 
 describe("occurrence discard continuity", () => {
+  it("keeps the fixed dock in checking mode through skip revision settlement", () => {
+    const source = readFileSync(
+      "src/components/session/session-runner.tsx",
+      "utf8",
+    );
+    expect(source).toContain(
+      "skipRecoveryExerciseId != null && historyRevision > props.historyRevision",
+    );
+    expect(source).toContain(
+      "skipRecoverySettlementPending ||\n            skipRecoveryExerciseId == null",
+    );
+    expect(source).toContain(
+      "skipConfirmationExerciseId ?? skipRecoveryExerciseId",
+    );
+  });
+
   it("removes the unsaved command without reloading or navigating the workout", () => {
     const source = readFileSync(
       "src/components/session/session-runner.tsx",
@@ -96,6 +168,42 @@ describe("occurrence discard continuity", () => {
     );
     expect(source).toContain('type: "discarded"');
     expect(source).not.toContain("window.location.reload");
+  });
+});
+
+describe("interrupted skip recovery", () => {
+  it("reconciles legacy and prior-runner markers but not this runner's request", () => {
+    expect(skipRecoveryNeedsReconciliation({
+      markerRunnerInstanceId: null,
+      currentRunnerInstanceId: "runner-2",
+    })).toBe(true);
+    expect(skipRecoveryNeedsReconciliation({
+      markerRunnerInstanceId: "runner-1",
+      currentRunnerInstanceId: "runner-2",
+    })).toBe(true);
+    expect(skipRecoveryNeedsReconciliation({
+      markerRunnerInstanceId: "runner-2",
+      currentRunnerInstanceId: "runner-2",
+    })).toBe(false);
+  });
+
+  it("invalidates async recovery callbacks when the workout runner unmounts", () => {
+    const source = readFileSync(
+      "src/components/session/session-runner.tsx",
+      "utf8",
+    );
+    expect(source).toContain("runnerActiveRef.current = false");
+    expect(source).toContain("if (!runnerActiveRef.current) return;");
+    expect(source).toContain("if (!runnerActiveRef.current) return;\n              patchExercise");
+  });
+
+  it("keeps both workout-header exits independent of a pending App Router action", () => {
+    const source = readFileSync(
+      "src/components/session/session-runner.tsx",
+      "utf8",
+    );
+    expect(source).not.toContain('import Link from "next/link"');
+    expect(source.match(/<a\s+href="\/today"/g)).toHaveLength(2);
   });
 });
 
@@ -174,6 +282,43 @@ describe("refreshed occurrence reconciliation", () => {
     expect(merged[0]).toMatchObject({ revision: 1, outcome: "skipped" });
   });
 
+  it("does not expose a newer action re-render before device acknowledgement", () => {
+    const merged = reconcileServerOccurrences({
+      current: [occurrence(0, "pending")],
+      server: [occurrence(1, "skipped")],
+      previousServerIds: new Set(["occurrence-1"]),
+      pendingMutationOccurrenceIds: new Set(["occurrence-1"]),
+      acknowledgedOccurrenceIds: new Set(),
+    });
+
+    expect(merged[0]).toMatchObject({ revision: 0, outcome: "pending" });
+  });
+
+  it("keeps pending command ownership exact to its occurrence", () => {
+    const secondCurrent = {
+      ...occurrence(0, "pending"),
+      id: "occurrence-2",
+      sequenceIdx: 1,
+    };
+    const secondServer = {
+      ...occurrence(1, "skipped"),
+      id: "occurrence-2",
+      sequenceIdx: 1,
+    };
+    const merged = reconcileServerOccurrences({
+      current: [occurrence(0, "pending"), secondCurrent],
+      server: [occurrence(1, "skipped"), secondServer],
+      previousServerIds: new Set(["occurrence-1", "occurrence-2"]),
+      pendingMutationOccurrenceIds: new Set(["occurrence-1"]),
+      acknowledgedOccurrenceIds: new Set(),
+    });
+
+    expect(merged).toMatchObject([
+      { id: "occurrence-1", revision: 0, outcome: "pending" },
+      { id: "occurrence-2", revision: 1, outcome: "skipped" },
+    ]);
+  });
+
   it("restores server truth after an optimistic occurrence command is discarded", () => {
     const merged = reconcileServerOccurrences({
       current: [occurrence(1, "skipped")],
@@ -200,6 +345,40 @@ describe("refreshed occurrence reconciliation", () => {
       outcome: "completed",
       completedSetId: "set-1",
     });
+  });
+});
+
+describe("active-workout disclosure ownership", () => {
+  it("invalidates queued automatic handoffs after a manual exercise toggle", () => {
+    const source = readFileSync(
+      "src/components/session/session-runner.tsx",
+      "utf8",
+    );
+    expect(source).toContain("exerciseDisclosureGenerationRef.current += 1");
+    expect(source.match(
+      /exerciseDisclosureGenerationRef\.current !== disclosureGeneration/g,
+    )).toHaveLength(3);
+    expect(source.indexOf("exerciseDisclosureGenerationRef.current += 1"))
+      .toBeLessThan(source.indexOf(
+        "setExpandedId(expandedId === exercise.id ? null : exercise.id)",
+      ));
+    const handoffConsumption = [
+      "previousCurrentActionIdRef.current = currentActionId;",
+      "previousCurrentActionKindRef.current = currentActionKind;",
+    ];
+    for (const assignment of handoffConsumption) {
+      expect(source.lastIndexOf(assignment)).toBeGreaterThan(
+        source.indexOf("exerciseDisclosureGenerationRef.current += 1"),
+      );
+    }
+    expect(
+      source.indexOf(
+        "previousCurrentActionIdRef.current = currentActionId;",
+        source.indexOf("const revealCurrentAction = () =>"),
+      ),
+    ).toBeGreaterThan(
+      source.indexOf("focusTarget.focus({ preventScroll: true });"),
+    );
   });
 });
 

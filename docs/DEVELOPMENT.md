@@ -309,7 +309,7 @@ manifest 14 and the durable
 table count stay unchanged.
 
 `test:e2e:superset-prep` owns the 390 by 844 default-text and 320 by 700
-enlarged-text preparation journey, including DOM order before warm-up,
+enlarged-text preparation journey, including current-action-first DOM order,
 keyboard focus, target size, overflow, pre/post-acknowledgement reload, and
 screenshots. `test:e2e:replacement-mobile` proves a substitution cannot leave
 old requirements visible, while `test:e2e:active-workout-add-exercise` proves

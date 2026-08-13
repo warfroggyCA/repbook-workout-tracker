@@ -5,6 +5,7 @@ import { UnrecognizedActionError } from "next/dist/client/components/unrecognize
 import {
   WORKOUT_SET_OUTBOX_MAX_AUTO_ATTEMPTS,
   enqueueWorkoutSetOutboxEntry,
+  markWorkoutSetNeedsAttention,
   markWorkoutSetTransientFailure,
   readWorkoutSetOutbox,
   retryWorkoutSet,
@@ -17,6 +18,7 @@ vi.mock("@/app/actions/sessions", () => ({ logSet: actionMocks.logSet }));
 
 import {
   syncNextEntry,
+  WORKOUT_DEVICE_STATUS_CLASS_NAME,
   WorkoutSetOutboxTray,
 } from "@/components/session/workout-set-outbox-sync";
 import {
@@ -107,7 +109,7 @@ describe("workout set outbox sync classification", () => {
 
   afterEach(() => vi.unstubAllGlobals());
 
-  it("keeps the recovery queue in page flow so it cannot cover set controls", () => {
+  it("keeps recovery reachable in its own safe slot without fixing the trigger itself", () => {
     const snapshot = readWorkoutSetOutbox(storage);
     const html = renderToStaticMarkup(createElement(WorkoutSetOutboxTray, {
       entries: snapshot.entries,
@@ -120,6 +122,14 @@ describe("workout set outbox sync classification", () => {
     expect(html).toContain('data-slot="drawer-trigger"');
     expect(html).toContain("1 set saving");
     expect(html).not.toMatch(/class="[^"]*\bfixed\b/);
+    expect(WORKOUT_DEVICE_STATUS_CLASS_NAME).toContain("fixed");
+    expect(WORKOUT_DEVICE_STATUS_CLASS_NAME).toContain(
+      "bottom-[calc(7.5rem+env(safe-area-inset-bottom))]",
+    );
+    expect(WORKOUT_DEVICE_STATUS_CLASS_NAME).toContain(
+      "lg:bottom-[5.75rem]",
+    );
+    expect(WORKOUT_DEVICE_STATUS_CLASS_NAME).toContain("z-30");
   });
 
   it("treats every thrown action failure as transient with fixed copy", async () => {
@@ -191,6 +201,70 @@ describe("workout set outbox sync classification", () => {
       ok: false,
       reason: expect.stringContaining(blocker.label),
     });
+  });
+
+  it("coalesces an exact-blocker wake that arrives while its owner drain unwinds", async () => {
+    storage.values.clear();
+    const blockerOccurrenceId =
+      "60000000-0000-4000-8000-000000000004";
+    const retained = {
+      ...entry(),
+      occurrenceId: "60000000-0000-4000-8000-000000000005",
+      expectedOccurrenceRevision: 0,
+      setNo: 2,
+    };
+    enqueueWorkoutSetOutboxEntry(storage, retained);
+    markWorkoutSetNeedsAttention(
+      storage,
+      retained.clientKey,
+      "Resolve Bench Press · Set 1 first.",
+      new Date("2026-07-18T12:01:00.000Z"),
+      {
+        occurrenceId: blockerOccurrenceId,
+        occurrenceRevision: 0,
+        sessionExerciseId: retained.sessionExerciseId,
+        exerciseName: retained.exerciseName,
+        setNo: 1,
+        groupRound: null,
+        origin: "planned",
+        isAddedSet: false,
+        label: "Bench Press · Set 1",
+      },
+    );
+    actionMocks.logSet.mockResolvedValueOnce({
+      outcome: "saved",
+      setId: savedSetId,
+      occurrenceId: blockerOccurrenceId,
+      occurrenceRevision: 1,
+    });
+
+    const dormantPass = syncNextEntry(retained.ownerId);
+    const blocker = {
+      ...entry(),
+      clientKey: "10000000-0000-4000-8000-000000000002",
+      occurrenceId: blockerOccurrenceId,
+      expectedOccurrenceRevision: 0,
+      createdAtISO: "2026-07-18T12:02:00.000Z",
+    };
+    enqueueWorkoutSetOutboxEntry(storage, blocker);
+    const overlappingWake = syncNextEntry(retained.ownerId);
+
+    await Promise.all([dormantPass, overlappingWake]);
+
+    expect(actionMocks.logSet).toHaveBeenCalledOnce();
+    expect(actionMocks.logSet).toHaveBeenCalledWith(
+      expect.objectContaining({
+        clientKey: blocker.clientKey,
+        occurrenceId: blockerOccurrenceId,
+      }),
+    );
+    expect(readWorkoutSetOutbox(storage).entries).toEqual([
+      expect.objectContaining({
+        clientKey: retained.clientKey,
+        status: "queued",
+        orderBlocker: null,
+      }),
+    ]);
   });
 
   it("sends an exact occurrence fence for new commands while legacy entries remain valid", async () => {

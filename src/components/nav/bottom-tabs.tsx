@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useSyncExternalStore } from "react";
+import { type ReactNode, useSyncExternalStore } from "react";
 import {
   ClipboardCheck,
   Dumbbell,
@@ -63,6 +63,48 @@ export function mobileNavigationUsesFocusedWorkoutMode(
     (pathname === "/session" || pathname.startsWith("/session/"));
 }
 
+export function navigationItemRequiresDocumentNavigation(
+  pathname: string | null,
+) {
+  return mobileNavigationUsesFocusedWorkoutMode(pathname);
+}
+
+function NavigationItemLink({
+  href,
+  label,
+  active,
+  className,
+  title,
+  forceDocumentNavigation,
+  prefetch,
+  children,
+}: {
+  href: string;
+  label: string;
+  active: boolean;
+  className: string;
+  title?: string;
+  forceDocumentNavigation: boolean;
+  prefetch: boolean | null;
+  children: ReactNode;
+}) {
+  const sharedProps = {
+    "aria-label": label,
+    "aria-current": active ? ("page" as const) : undefined,
+    className,
+    title,
+  };
+  return forceDocumentNavigation ? (
+    <a href={href} {...sharedProps}>
+      {children}
+    </a>
+  ) : (
+    <Link href={href} prefetch={prefetch} {...sharedProps}>
+      {children}
+    </Link>
+  );
+}
+
 export function BottomTabs({
   userName,
   userEmail,
@@ -84,6 +126,9 @@ export function BottomTabs({
   // rewrites or history restoration. Keep server and hydration output stable,
   // then apply the current route immediately after hydration.
   const activePathname = hydrated ? pathname : null;
+  const focusedWorkoutMode = mobileNavigationUsesFocusedWorkoutMode(
+    activePathname,
+  );
   const displayName = userName || userEmail?.split("@")[0] || "You";
   const initial = displayName.charAt(0).toUpperCase();
 
@@ -111,7 +156,11 @@ export function BottomTabs({
           )}
         </Button>
 
-        <ProductHomeLink href="/today" collapsed={collapsed} />
+        <ProductHomeLink
+          href="/today"
+          collapsed={collapsed}
+          forceDocumentNavigation={focusedWorkoutMode}
+        />
 
         {!collapsed && (
           <div className="mt-8 border-l-2 border-primary/50 px-3 py-1">
@@ -132,26 +181,17 @@ export function BottomTabs({
           {PRODUCT_NAVIGATION.map(({ href, label, purpose }) => {
             const Icon = tabIcons[href];
             const active = navigationItemIsActive(activePathname, href);
-            return (
-              <Link
-                key={href}
-                href={href}
-                prefetch={
-                  navigationItemShouldPrefetch(activePathname, href)
-                    ? null
-                    : false
-                }
-                aria-label={label}
-                aria-current={active ? "page" : undefined}
-                className={cn(
-                  "flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors motion-reduce:transition-none",
-                  collapsed && "justify-center px-2",
-                  active
-                    ? "bg-primary/10 font-medium text-accent-foreground"
-                    : "text-foreground/75 hover:bg-muted hover:text-foreground"
-                )}
-                title={collapsed ? label : undefined}
-              >
+            const forceDocumentNavigation =
+              navigationItemRequiresDocumentNavigation(activePathname);
+            const itemClassName = cn(
+              "flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors motion-reduce:transition-none",
+              collapsed && "justify-center px-2",
+              active
+                ? "bg-primary/10 font-medium text-accent-foreground"
+                : "text-foreground/75 hover:bg-muted hover:text-foreground"
+            );
+            const itemContent = (
+              <>
                 <Icon className="size-[1.1875rem]" strokeWidth={active ? 2.25 : 1.8} />
                 {!collapsed && (
                   <span className="min-w-0 leading-tight">
@@ -169,7 +209,25 @@ export function BottomTabs({
                     </span>
                   </span>
                 )}
-              </Link>
+              </>
+            );
+            return (
+              <NavigationItemLink
+                key={href}
+                href={href}
+                label={label}
+                active={active}
+                className={itemClassName}
+                title={collapsed ? label : undefined}
+                forceDocumentNavigation={forceDocumentNavigation}
+                prefetch={
+                  navigationItemShouldPrefetch(activePathname, href)
+                    ? null
+                    : false
+                }
+              >
+                {itemContent}
+              </NavigationItemLink>
             );
           })}
         </nav>
@@ -209,30 +267,39 @@ export function BottomTabs({
           {PRODUCT_NAVIGATION.map(({ href, label }) => {
             const Icon = tabIcons[href];
             const active = navigationItemIsActive(activePathname, href);
-            return (
-              <Link
-                key={href}
-                href={href}
-                prefetch={
-                  navigationItemShouldPrefetch(activePathname, href)
-                    ? null
-                    : false
-                }
-                aria-label={label}
-                aria-current={active ? "page" : undefined}
-                className={cn(
-                  "relative flex min-w-0 flex-1 flex-col items-center gap-0.5 px-0.5 py-2 text-[0.625rem] leading-tight transition-colors motion-reduce:transition-none",
-                  active
-                    ? "font-medium text-primary"
-                    : "text-muted-foreground hover:text-foreground"
-                )}
-              >
+            const forceDocumentNavigation =
+              navigationItemRequiresDocumentNavigation(activePathname);
+            const itemClassName = cn(
+              "relative flex min-w-0 flex-1 flex-col items-center gap-0.5 px-0.5 py-2 text-[0.625rem] leading-tight transition-colors motion-reduce:transition-none",
+              active
+                ? "font-medium text-primary"
+                : "text-muted-foreground hover:text-foreground"
+            );
+            const itemContent = (
+              <>
                 {active && (
                   <span className="absolute top-0 h-0.5 w-8 rounded-full bg-primary" />
                 )}
                 <Icon className="size-5" strokeWidth={active ? 2.4 : 1.8} />
                 {label}
-              </Link>
+              </>
+            );
+            return (
+              <NavigationItemLink
+                key={href}
+                href={href}
+                label={label}
+                active={active}
+                className={itemClassName}
+                forceDocumentNavigation={forceDocumentNavigation}
+                prefetch={
+                  navigationItemShouldPrefetch(activePathname, href)
+                    ? null
+                    : false
+                }
+              >
+                {itemContent}
+              </NavigationItemLink>
             );
           })}
         </div>

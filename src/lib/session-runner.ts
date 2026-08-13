@@ -19,6 +19,14 @@ export function shouldShowMissingWarmupMessage(input: {
 
 export type RuntimeSetSaveState = "saving" | "retrying";
 
+export function skipRecoveryNeedsReconciliation(input: {
+  markerRunnerInstanceId: string | null;
+  currentRunnerInstanceId: string;
+}): boolean {
+  return input.markerRunnerInstanceId == null ||
+    input.markerRunnerInstanceId !== input.currentRunnerInstanceId;
+}
+
 /**
  * Merge a refreshed server occurrence ledger without erasing device work that
  * still has an owning durable command or a just-acknowledged server receipt.
@@ -43,10 +51,20 @@ export function reconcileServerOccurrences({
   );
   const reconciled = server.map((serverOccurrence) => {
     const localOccurrence = currentById.get(serverOccurrence.id);
+    // A Server Action response can commit its refreshed RSC tree before the
+    // awaiting outbox worker removes the device command and publishes its
+    // acknowledgement. Keep that exact device-owned occurrence current until
+    // the command is acknowledged or deliberately removed, even when the RSC
+    // row already carries the next server revision.
+    if (
+      localOccurrence != null &&
+      pendingMutationOccurrenceIds.has(localOccurrence.id)
+    ) {
+      return localOccurrence;
+    }
     const localRevisionIsStillOwned =
       localOccurrence != null &&
       (
-        pendingMutationOccurrenceIds.has(localOccurrence.id) ||
         acknowledgedOccurrenceIds.has(localOccurrence.id) ||
         (
           localOccurrence.kind === "working_set" &&
@@ -136,13 +154,34 @@ export function mergeSessionOutboxSets(
 
 export function workoutFinishIsBlocked(
   sessionEntries: WorkoutSetOutboxEntry[],
-  outbox: Pick<WorkoutSetOutboxSnapshot, "quarantined" | "error">
+  _outbox: Pick<WorkoutSetOutboxSnapshot, "quarantined" | "error">
 ): boolean {
-  return (
-    sessionEntries.length > 0 ||
-    outbox.quarantined.length > 0 ||
-    outbox.error != null
-  );
+  void _outbox;
+  // Quarantined or unreadable storage cannot be attributed to this session.
+  // It remains protected in the global review tray, but must not be treated as
+  // current-workout data or trap an unrelated workout.
+  return sessionEntries.length > 0;
+}
+
+export function sessionScopedDeviceCopies<
+  SetCopy extends { ownerId: string; sessionId: string },
+  OccurrenceCopy extends { ownerId: string; sessionId: string },
+>(input: {
+  ownerId: string;
+  sessionId: string;
+  setCopies: readonly SetCopy[];
+  occurrenceCopies: readonly OccurrenceCopy[];
+}) {
+  return {
+    setCopies: input.setCopies.filter(
+      (entry) =>
+        entry.ownerId === input.ownerId && entry.sessionId === input.sessionId,
+    ),
+    occurrenceCopies: input.occurrenceCopies.filter(
+      (entry) =>
+        entry.ownerId === input.ownerId && entry.sessionId === input.sessionId,
+    ),
+  };
 }
 
 /**
@@ -154,7 +193,7 @@ export function workoutFinishIsBlocked(
 export type WorkoutExitQueues = {
   /** Logged sets held only on this device and not confirmed by the server. */
   unsyncedSetCount: number;
-  /** Unreadable retained set copies (quarantine). */
+  /** Unreadable set copies only when ownership is positively session-scoped. */
   quarantinedSetCount: number;
   setHasError: boolean;
   /** Warm-up/occurrence changes queued on this device and not yet confirmed. */

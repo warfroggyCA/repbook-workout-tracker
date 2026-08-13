@@ -14,6 +14,8 @@ import type { LoadUnit } from "@/lib/units";
 
 type CharacterizationSetInput = {
   sessionExerciseId: string;
+  occurrenceId?: string;
+  expectedOccurrenceRevision?: number;
   setNo: number;
   weight: number | null;
   weightUnit: LoadUnit | null;

@@ -1,6 +1,5 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
 import { resolve } from "node:path";
-import { getWorkoutFinishButton } from "../helpers/active-workout-controls";
 import {
   installNextDevelopmentRefreshControl,
   openNativeDetails,
@@ -40,8 +39,19 @@ async function startDayA(page: Page) {
   await waitForEquipmentSelectionsToSettle(page);
 }
 
-async function skipCurrentSet(page: Page) {
+async function openCurrentExerciseCard(page: Page) {
   const card = page.getByTestId("current-exercise-card");
+  const toggle = card.locator(":scope > button");
+  await waitForHydratedReactHandler(toggle);
+  if ((await toggle.getAttribute("aria-expanded")) !== "true") {
+    await toggle.click();
+  }
+  await expect(toggle).toHaveAttribute("aria-expanded", "true");
+  return card;
+}
+
+async function skipCurrentSet(page: Page) {
+  let card = await openCurrentExerciseCard(page);
   const workoutStatus = page.getByRole("complementary", {
     name: "Workout status",
   });
@@ -58,21 +68,20 @@ async function skipCurrentSet(page: Page) {
   await expect
     .poll(() => showCurrent.innerText())
     .not.toBe(currentLabel);
+  card = await openCurrentExerciseCard(page);
   await openNativeDetails(
-    page.getByTestId("current-exercise-card").locator("details", {
+    card.locator("details", {
       hasText: "Set exceptions",
     }),
   );
   await expect(
-    page
-      .getByTestId("current-exercise-card")
-      .getByRole("button", { name: "Skip set", exact: true }),
+    card.getByRole("button", { name: "Skip set", exact: true }),
   ).toBeEnabled();
 }
 
 async function discardWorkout(page: Page) {
   if (!/\/session\/[0-9a-f-]+(?:#.*)?$/.test(page.url())) return;
-  await getWorkoutFinishButton(page).click();
+  await page.getByRole("button", { name: /^(?:Review workout finish|Finish workout)$/ }).click();
   const finish = page.getByRole("dialog", { name: "Finish workout" });
   await finish
     .getByRole("button", { name: "Discard workout", exact: true })
@@ -116,7 +125,7 @@ async function chooseFontSize(
   await page.goto(returnUrl);
 }
 
-test("keeps truthful saved-equipment preparation concise at phone sizes", async ({
+test("keeps truthful saved-equipment preparation compact beside the current action", async ({
   page,
 }, testInfo) => {
   await signIn(page);
@@ -125,28 +134,31 @@ test("keeps truthful saved-equipment preparation concise at phone sizes", async 
 
   const preparation = page.getByTestId("session-preparation-panel");
   const warmup = page.locator("#workout-warmup");
-  const sticky = page.getByTestId("active-workout-sticky-summary");
+  const currentCard = page.getByTestId("current-exercise-card");
   await expect(preparation).toBeVisible();
   await expect(preparation).toContainText("Equipment ready");
-  await expect(preparation).toContainText("Saved equipment covers this workout");
-  await expect(preparation).toContainText("In saved equipment");
-  await expect(preparation.locator("li")).not.toHaveCount(0);
-  await expect(preparation).not.toContainText(/\b\d+(?:\.\d+)?\s*(?:lb|kg)\b/i);
-  await expect(preparation.getByRole("checkbox")).toHaveCount(0);
+  await expect(preparation).toContainText("Saved equipment covers this workout.");
+  await expect(
+    preparation.getByRole("link", {
+      name: "Go to first exercise",
+      exact: true,
+    }),
+  ).toBeVisible();
+  const equipmentList = preparation.locator("details").filter({
+    hasText: "Review equipment list",
+  });
   await expect(warmup).toHaveCount(0);
-  const currentCard = page.getByTestId("current-exercise-card");
+  await expect(equipmentList).not.toHaveAttribute("open", "");
+  await expect(
+    preparation.getByText("Review equipment list", { exact: true }),
+  ).toBeVisible();
   await expect
-    .poll(() => currentCard.evaluate((element) => {
-      const preparationElement = document.querySelector(
-        '[data-testid="session-preparation-panel"]',
-      );
-      return preparationElement != null && Boolean(
-        element.compareDocumentPosition(preparationElement) &
-          Node.DOCUMENT_POSITION_FOLLOWING,
-      );
-    }))
-    .toBe(true);
-  await expect(sticky).toContainText("Now: Barbell Back Squat, set 1");
+    .poll(() => page.locator(
+      '[data-testid="current-exercise-card"], [data-testid="session-preparation-panel"]',
+    ).evaluateAll((elements) => elements.map((element) =>
+      element.getAttribute("data-testid")
+    )))
+    .toEqual(["current-exercise-card", "session-preparation-panel"]);
 
   await page.setViewportSize({ width: 390, height: 844 });
   await preparation.scrollIntoViewIfNeeded();
@@ -175,6 +187,17 @@ test("keeps truthful saved-equipment preparation concise at phone sizes", async 
   expect(defaultGeometry.continueWidth).toBeGreaterThanOrEqual(44);
   expect(defaultGeometry.continueHeight).toBeGreaterThanOrEqual(44);
   await expectNoHorizontalOverflow(page);
+  await equipmentList.locator(":scope > summary").click();
+  await expect(equipmentList).toHaveAttribute("open", "");
+  await expect(equipmentList).toContainText("Prepare");
+  await expect(equipmentList).toContainText("In saved equipment");
+  await expect(equipmentList.locator("li")).not.toHaveCount(0);
+  await expect(equipmentList).not.toContainText(
+    /\b\d+(?:\.\d+)?\s*(?:lb|kg)\b/i,
+  );
+  await expect(equipmentList.getByRole("checkbox")).toHaveCount(0);
+  await equipmentList.locator(":scope > summary").click();
+  await expect(equipmentList).not.toHaveAttribute("open", "");
   await page.screenshot({
     path: resolve(
       "output/playwright/superset-prep",
@@ -188,6 +211,11 @@ test("keeps truthful saved-equipment preparation concise at phone sizes", async 
   await expect(page.getByTestId("session-preparation-panel")).toContainText(
     "Equipment ready",
   );
+  await expect(
+    page
+      .getByTestId("session-preparation-panel")
+      .getByText("Review equipment list", { exact: true }),
+  ).toBeVisible();
 
   const activeWorkoutUrl = page.url();
   await chooseFontSize(
@@ -204,7 +232,7 @@ test("keeps truthful saved-equipment preparation concise at phone sizes", async 
     ))
     .toBeCloseTo(23.2, 1);
   await expectNoHorizontalOverflow(page);
-  await expect(page.locator("#workout-warmup")).toHaveCount(0);
+  await expect(warmup).toHaveCount(0);
   const continueLink = page
     .getByTestId("session-preparation-panel")
     .getByRole("link", { name: "Go to first exercise", exact: true });
@@ -413,6 +441,11 @@ test("presents immutable superset order, truthful progress, and next-member equi
   await expect(
     laterMemberCard.getByRole("button", { name: "Log set", exact: true }),
   ).toHaveCount(0);
+  await page
+    .getByRole("complementary", { name: "Workout status" })
+    .getByRole("button")
+    .first()
+    .click();
   await expect(
     page.getByTestId("current-exercise-card").getByRole("button", {
       name: "Log set",
@@ -455,6 +488,9 @@ test("presents immutable superset order, truthful progress, and next-member equi
   await expect(
     page.getByRole("region", { name: "Workout progress and upcoming work" }),
   ).toContainText("9 skipped");
+  await expect(
+    page.getByRole("button", { name: "Open unsaved workout changes" }),
+  ).toHaveCount(0);
   await expect(restoredGroup).toContainText("Prepare for Pallof Press");
   await expectNoHorizontalOverflow(page);
 
@@ -462,42 +498,41 @@ test("presents immutable superset order, truthful progress, and next-member equi
   await expect(currentCard.getByRole("heading", { level: 2 })).toHaveText(
     "Dumbbell Lateral Raise",
   );
-  const currentSetTargetId = await currentCard
-    .locator('[id^="set-entry-"]')
-    .first()
-    .getAttribute("id");
-  expect(currentSetTargetId).not.toBeNull();
-  await page.evaluate((targetId) => {
-    window.location.hash = targetId!;
-  }, currentSetTargetId);
+  const currentToggle = currentCard.locator(":scope > button");
+  await expect(currentToggle).toHaveAttribute("aria-expanded", "true");
+  await currentToggle.click();
+  await expect(currentToggle).toHaveAttribute("aria-expanded", "false");
+  const showCurrent = page
+    .getByRole("complementary", { name: "Workout status" })
+    .locator("button")
+    .first();
+  await expect(showCurrent).toHaveAccessibleName(
+    "Show Dumbbell Lateral Raise, Set 1",
+  );
+  await showCurrent.click();
+  await expect(currentToggle).toHaveAttribute("aria-expanded", "true");
   await expect(page).toHaveURL(/#set-entry-/);
   const currentActionUrl = page.url();
   await page.reload({ waitUntil: "domcontentloaded" });
   await expect(page).toHaveURL(currentActionUrl);
+  await expect(currentCard.getByRole("heading", { level: 2 })).toHaveText(
+    "Dumbbell Lateral Raise",
+  );
   await openNativeDetails(currentCard.locator("details", {
     hasText: "Set exceptions",
   }));
   await expect(
     currentCard.getByRole("button", { name: "Skip set", exact: true }),
   ).toBeVisible();
-  let releaseGroupSkip!: () => void;
-  const groupSkipMayFinish = new Promise<void>((resolve) => {
-    releaseGroupSkip = resolve;
-  });
-  let groupSkipStarted = false;
-  await page.route("**/session/**", async (route) => {
-    const postData = route.request().postData() ?? "";
-    if (
-      !groupSkipStarted &&
-      route.request().method() === "POST" &&
-      route.request().headers()["next-action"] &&
-      postData.includes('"operation":"skip"')
-    ) {
-      groupSkipStarted = true;
-      await groupSkipMayFinish;
-    }
-    await route.continue();
-  });
+  const currentEntryId = await currentCard
+    .getByTestId("current-set-entry")
+    .getAttribute("id");
+  const currentOccurrenceId = currentEntryId?.match(
+    /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
+  )?.[0];
+  expect(currentOccurrenceId).toBeTruthy();
+  await page.context().setOffline(true);
+  await expect.poll(() => page.evaluate(() => navigator.onLine)).toBe(false);
   await currentCard
     .getByRole("button", { name: "Skip set", exact: true })
     .click();
@@ -507,14 +542,54 @@ test("presents immutable superset order, truthful progress, and next-member equi
     .getByRole("button", { name: "Skip item", exact: true })
     .click();
   await expect(groupSkip).toHaveCount(0);
-  await expect.poll(() => groupSkipStarted).toBe(true);
+  await expect(
+    page.getByRole("button", { name: "Open unsaved workout changes" }),
+  ).toBeVisible();
+  await expect.poll(() => page.evaluate(() => {
+    const raw = localStorage.getItem(
+      "workout-tracker:occurrence-mutation-outbox:v1",
+    );
+    const entries = raw == null ? [] : JSON.parse(raw).entries ?? [];
+    return entries.map((entry: {
+      occurrenceId?: unknown;
+      operation?: unknown;
+      reason?: unknown;
+      label?: unknown;
+      status?: unknown;
+    }) => ({
+      occurrenceId: entry.occurrenceId,
+      operation: entry.operation,
+      reason: entry.reason,
+      label: entry.label,
+      status: entry.status,
+    }));
+  })).toEqual([{
+    occurrenceId: currentOccurrenceId,
+    operation: "skip",
+    reason: "time",
+    label: "Working set",
+    status: "queued",
+  }]);
   await expect(currentCard.getByRole("heading", { level: 2 })).toHaveText(
     "Dumbbell Lateral Raise",
+  );
+  await expect(currentCard).toContainText("Skip · Unsaved");
+  await expect(currentCard).toContainText(
+    "will not advance until Repbook acknowledges this change",
   );
   await expect(restoredGroup).toContainText(
     "Current member: 1 of 2 · Dumbbell Lateral Raise",
   );
-  releaseGroupSkip();
+  const pendingGuidance = page.getByRole("region", {
+    name: "Workout progress and upcoming work",
+  });
+  await expect(pendingGuidance).toContainText("9 skipped");
+  await expect(pendingGuidance).toContainText(
+    /Now: Superset, round 1, member 1 of 2: Dumbbell Lateral Raise, set 1/,
+  );
+  await page.context().setOffline(false);
+  await expect.poll(() => page.evaluate(() => navigator.onLine)).toBe(true);
+  await page.evaluate(() => window.dispatchEvent(new Event("online")));
   await expect(currentCard.getByRole("heading", { level: 2 })).toHaveText(
     "Pallof Press",
   );
@@ -526,10 +601,9 @@ test("presents immutable superset order, truthful progress, and next-member equi
     .poll(() =>
       page.evaluate(
         () =>
-          document.activeElement?.closest([
+          document.activeElement?.closest(
             '[data-testid="current-exercise-card"]',
-            '[data-testid="active-workout-dock-primary"]',
-          ].join(", ")) != null,
+          ) != null,
       ),
     )
     .toBe(true);
@@ -547,7 +621,16 @@ test("presents immutable superset order, truthful progress, and next-member equi
   await expect(currentCard).toContainText(
     "Superset, round 2, member 1 of 2: Dumbbell Lateral Raise, set 2",
   );
-  await page.unrouteAll({ behavior: "wait" });
+  await expect(
+    page.getByRole("button", { name: "Open unsaved workout changes" }),
+  ).toHaveCount(0);
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await expect(currentCard.getByRole("heading", { level: 2 })).toHaveText(
+    "Pallof Press",
+  );
+  await expect(restoredGroup).toContainText(
+    "Current member: 2 of 2 · Pallof Press",
+  );
 
   await discardWorkout(page);
   await nextRscPrefetches.settle();

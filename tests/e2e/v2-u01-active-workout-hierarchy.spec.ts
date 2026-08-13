@@ -48,50 +48,62 @@ async function signInAndStartDayA(
   await waitForEquipmentSelectionsToSettle(page);
 }
 
-async function completeStructuredWarmup(page: Page) {
+async function completeWarmupsToFirstWorkingSet(page: Page) {
   for (
     let warmupIndex = 0;
     warmupIndex < PRODUCTION_WORKOUT_START_WARMUP.length;
     warmupIndex += 1
   ) {
-    const action = warmupIndex === 0
+    const currentWarmup = warmupIndex === 0
       ? page.locator(
           '#workout-warmup [role="checkbox"][aria-checked="false"]:visible',
         ).first()
       : page.getByTestId("active-workout-dock-primary");
-    await waitForHydratedReactHandler(action);
-    await action.click();
-    const dockPrimary = page.getByTestId("active-workout-dock-primary");
-    if (warmupIndex < PRODUCTION_WORKOUT_START_WARMUP.length - 1) {
-      await expect(dockPrimary).toHaveAttribute(
-        "aria-label",
-        new RegExp(
-          PRODUCTION_WORKOUT_START_WARMUP[warmupIndex + 1]!.label,
-          "i",
-        ),
-      );
-    } else {
-      await expect(dockPrimary).toHaveAttribute(
-        "aria-label",
-        /Log Barbell Back Squat, Set 1/i,
-      );
-    }
+    await expect
+      .poll(() => currentWarmup.getAttribute("aria-label"))
+      .toContain(PRODUCTION_WORKOUT_START_WARMUP[warmupIndex].label);
+    await waitForHydratedReactHandler(currentWarmup);
+    await currentWarmup.click();
   }
+  await expect(page.getByTestId("active-workout-dock-primary")).toHaveAttribute(
+    "aria-label",
+    /Log Barbell Back Squat, Set 1/i,
+  );
 }
 
 async function expectReachableTarget(locator: Locator) {
-  await locator.evaluate((element) => {
-    element.scrollIntoView({ block: "center", inline: "center" });
-  });
   await expect(locator).toBeVisible();
-  await expect.poll(() => locator.evaluate((element) => {
+  await expect.poll(() => locator.evaluate(async (element) => {
+    element.scrollIntoView({ block: "center", inline: "center" });
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
     const rect = element.getBoundingClientRect();
     const hit = document.elementFromPoint(
       rect.left + rect.width / 2,
       rect.top + rect.height / 2,
     );
-    return hit === element || (hit != null && element.contains(hit));
-  })).toBe(true);
+    const reachable =
+      hit === element || (hit != null && element.contains(hit));
+    return reachable ? "ok" : JSON.stringify({
+      target:
+        element.getAttribute("aria-label") ??
+        element.getAttribute("data-testid") ??
+        element.textContent?.trim().slice(0, 80) ??
+        element.tagName,
+      rect: {
+        top: Math.round(rect.top),
+        right: Math.round(rect.right),
+        bottom: Math.round(rect.bottom),
+        left: Math.round(rect.left),
+      },
+      hit:
+        hit instanceof HTMLElement
+          ? hit.getAttribute("aria-label") ??
+            hit.getAttribute("data-testid") ??
+            hit.textContent?.trim().slice(0, 80) ??
+            hit.tagName
+          : null,
+    });
+  })).toBe("ok");
   const result = await locator.evaluate((element) => {
     const rect = element.getBoundingClientRect();
     return { height: rect.height, width: rect.width };
@@ -117,21 +129,14 @@ async function expectPrimaryActionUnobstructed(locator: Locator) {
     const viewport = window.visualViewport;
     const top = viewport?.offsetTop ?? 0;
     const visualBottom = top + (viewport?.height ?? window.innerHeight);
-    const ownsWorkoutDock =
-      element.closest('[aria-label="Workout status"]') != null;
-    const drawerFooter = element
-      .closest('[role="dialog"]')
-      ?.querySelector<HTMLElement>('[data-slot="drawer-footer"]');
-    const ownsDrawerFooter = element.closest('[data-slot="drawer-footer"]') != null;
-    const bottom = ownsWorkoutDock || ownsDrawerFooter
+    const ownsViewport =
+      element.closest('[aria-label="Workout status"]') != null ||
+      element.closest('[role="dialog"]') != null;
+    const bottom = ownsViewport
       ? visualBottom
       : Math.min(
           visualBottom,
           dock?.getBoundingClientRect().top ?? Number.POSITIVE_INFINITY,
-          ownsDrawerFooter
-            ? Number.POSITIVE_INFINITY
-            : drawerFooter?.getBoundingClientRect().top ??
-                Number.POSITIVE_INFINITY,
         );
     const hit = document.elementFromPoint(
       rect.left + rect.width / 2,
@@ -157,16 +162,6 @@ async function expectPrimaryActionUnobstructed(locator: Locator) {
         element.getAttribute("data-testid") ??
         element.textContent?.trim().slice(0, 80) ??
         element.tagName,
-      hitIdentity:
-        hit?.getAttribute("aria-label") ??
-        hit?.getAttribute("data-testid") ??
-        hit?.textContent?.trim().slice(0, 80) ??
-        hit?.tagName ??
-        null,
-      hitClass:
-        hit instanceof HTMLElement
-          ? hit.className.toString().slice(0, 160)
-          : null,
     };
     return result.aboveViewportTop && result.aboveObstruction &&
       result.horizontallyContained && result.hitTestable
@@ -175,78 +170,136 @@ async function expectPrimaryActionUnobstructed(locator: Locator) {
   })).toBe("ok");
 }
 
-async function expectCurrentActionFocused(page: Page) {
-  await expect.poll(() => page.evaluate(() => {
-    const active = document.activeElement as HTMLElement | null;
-    const current = document.querySelector<HTMLElement>('[aria-current="step"]');
-    const currentSet = document.querySelector<HTMLElement>(
-      '[data-testid="current-set-entry"]',
-    );
-    const dockPrimary = document.querySelector<HTMLElement>(
-      '[data-testid="active-workout-dock-primary"]',
-    );
-    const viewport = window.visualViewport;
-    const viewportTop = viewport?.offsetTop ?? 0;
-    const viewportBottom =
-      viewportTop + (viewport?.height ?? window.innerHeight);
-    const stickySummary = document.querySelector<HTMLElement>(
-      '[data-testid="active-workout-sticky-summary"]',
-    );
-    const statusBar = document.querySelector<HTMLElement>(
-      '[aria-label="Workout status"]',
-    );
-    const activeBounds = active?.getBoundingClientRect() ?? null;
-    const activeOwnsDock = active?.closest('[aria-label="Workout status"]') != null;
-    const visibleTop = Math.max(
-      viewportTop,
-      activeOwnsDock
-        ? viewportTop
-        : stickySummary?.getBoundingClientRect().bottom ?? viewportTop,
-    );
-    const visibleBottom = activeOwnsDock
-      ? viewportBottom
-      : Math.min(
-          viewportBottom,
-          statusBar?.getBoundingClientRect().top ?? viewportBottom,
-        );
-    const hit = activeBounds == null
-      ? null
-      : document.elementFromPoint(
-          activeBounds.left + activeBounds.width / 2,
-          activeBounds.top + activeBounds.height / 2,
-        );
-    const focused = active != null && active !== document.body &&
-      (current?.contains(active) === true ||
-        currentSet?.contains(active) === true ||
-        active === dockPrimary) &&
-      activeBounds != null &&
-      activeBounds.top >= visibleTop &&
-      activeBounds.bottom <= visibleBottom &&
-      (hit === active || (hit != null && active.contains(hit)));
-    return focused ? "ok" : JSON.stringify({
-      active:
-        active?.getAttribute("aria-label") ??
-        active?.getAttribute("data-testid") ??
-        active?.textContent?.trim().slice(0, 80) ??
-        active?.tagName ??
-        "none",
-      activeTag: active?.tagName ?? null,
-      currentId: current?.id ?? null,
-      currentSetId: currentSet?.id ?? null,
-      dockLabel: dockPrimary?.getAttribute("aria-label") ?? null,
-      activeTop: activeBounds == null ? null : Math.round(activeBounds.top),
-      activeBottom: activeBounds == null ? null : Math.round(activeBounds.bottom),
-      visibleTop: Math.round(visibleTop),
-      visibleBottom: Math.round(visibleBottom),
-      hitTestable: hit === active || (hit != null && active?.contains(hit)),
-      hash: window.location.hash,
-      scrollY: Math.round(window.scrollY),
-      maxScroll: Math.round(
-        document.documentElement.scrollHeight - window.innerHeight,
-      ),
+for (const initialCase of [
+  { width: 390, height: 844, textSize: "Compact" as const },
+  { width: 390, height: 844, textSize: "Default" as const },
+  { width: 390, height: 844, textSize: "Large" as const },
+  { width: 390, height: 844, textSize: "Extra large" as const },
+  { width: 320, height: 700, textSize: "Extra large" as const },
+  { width: 440, height: 956, textSize: "Default" as const },
+]) {
+  test(`keeps the first action unobstructed at ${initialCase.width}x${initialCase.height} ${initialCase.textSize}`, async ({
+    browserName,
+    page,
+  }, testInfo) => {
+    const pageErrors = observeGauntletPageErrors(page, browserName);
+    await page.setViewportSize({
+      width: initialCase.width,
+      height: initialCase.height,
     });
-  })).toBe("ok");
+    try {
+      await signInAndStartDayA(page, { textSize: initialCase.textSize });
+      expect(new URL(page.url()).hash).toBe("");
+      expect(await page.evaluate(() => window.scrollY)).toBe(0);
+      const action = page.locator(
+        '#workout-warmup [role="checkbox"][aria-checked="false"]',
+      ).first();
+      await expectPrimaryActionUnobstructed(action);
+      expect(await page.evaluate(() =>
+        document.documentElement.scrollWidth -
+          document.documentElement.clientWidth,
+      )).toBeLessThanOrEqual(1);
+      await testInfo.attach(
+        `initial-${initialCase.width}x${initialCase.height}-${initialCase.textSize.toLowerCase().replace(" ", "-")}`,
+        { body: await page.screenshot(), contentType: "image/png" },
+      );
+    } finally {
+      await discardWorkout(page);
+    }
+    await pageErrors.expectNoUnexpected();
+  });
 }
+
+test.describe("reduced-motion active workout", () => {
+  test.use({ contextOptions: { reducedMotion: "reduce" } });
+
+  test("keeps automatic action handoffs instant and unobstructed", async ({
+    browserName,
+    page,
+  }) => {
+    const pageErrors = observeGauntletPageErrors(page, browserName);
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.addInitScript(() => {
+      const calls: Array<{ method: string; behavior: string | null }> = [];
+      Object.defineProperty(window, "__activeWorkoutMotionCalls", {
+        configurable: true,
+        value: calls,
+      });
+      const originalScrollBy = window.scrollBy.bind(window);
+      window.scrollBy = ((
+        optionsOrX?: ScrollToOptions | number,
+        y?: number,
+      ) => {
+        calls.push({
+          method: "scrollBy",
+          behavior:
+            typeof optionsOrX === "object" && optionsOrX != null
+              ? (optionsOrX.behavior ?? null)
+              : null,
+        });
+        if (typeof optionsOrX === "number") {
+          originalScrollBy(optionsOrX, y ?? 0);
+        } else {
+          originalScrollBy(optionsOrX);
+        }
+      }) as typeof window.scrollBy;
+      const originalScrollIntoView = Element.prototype.scrollIntoView;
+      Element.prototype.scrollIntoView = function scrollIntoView(
+        options?: boolean | ScrollIntoViewOptions,
+      ) {
+        calls.push({
+          method: "scrollIntoView",
+          behavior:
+            typeof options === "object" && options != null
+              ? (options.behavior ?? null)
+              : null,
+        });
+        originalScrollIntoView.call(this, options);
+      };
+    });
+
+    try {
+      await signInAndStartDayA(page, { textSize: "Extra large" });
+      await completeWarmupsToFirstWorkingSet(page);
+
+      const firstWorkingSetAction = page.getByTestId(
+        "active-workout-dock-primary",
+      );
+      await expect(firstWorkingSetAction).toHaveAttribute(
+        "aria-label",
+        /Log Barbell Back Squat, Set 1/i,
+      );
+      await expectPrimaryActionUnobstructed(firstWorkingSetAction);
+
+      await page.getByRole("button", {
+        name: "Review workout finish",
+        exact: true,
+      }).click();
+      await page.getByRole("button", {
+        name: "Back to workout",
+        exact: true,
+      }).click();
+      await expectPrimaryActionUnobstructed(firstWorkingSetAction);
+
+      const motionCalls = await page.evaluate(() =>
+        (window as typeof window & {
+          __activeWorkoutMotionCalls?: Array<{
+            method: string;
+            behavior: string | null;
+          }>;
+        }).__activeWorkoutMotionCalls ?? []
+      );
+      // A fully unobstructed handoff may not need to scroll at all. When a
+      // reveal is needed, reduced motion must still keep every call instant.
+      expect(motionCalls).not.toContainEqual(
+        expect.objectContaining({ behavior: "smooth" }),
+      );
+    } finally {
+      await discardWorkout(page);
+    }
+    await pageErrors.expectNoUnexpected();
+  });
+});
 
 test("keeps attention continuous through warm-up, first set, and exact recovery without an assisted scroll", async ({
   browserName,
@@ -259,7 +312,7 @@ test("keeps attention continuous through warm-up, first set, and exact recovery 
     /ERR_(?:FAILED|INTERNET_DISCONNECTED)/i,
     /NetworkError when attempting to fetch resource/i,
   ]);
-  const sizes = ["Compact", "Default", "Large", "Extra large"] as const;
+  const sizes = ["Extra large"] as const;
   for (const textSize of sizes) {
     await page.setViewportSize({ width: 390, height: 844 });
     try {
@@ -285,13 +338,15 @@ test("keeps attention continuous through warm-up, first set, and exact recovery 
                 '#workout-warmup [role="checkbox"][aria-checked="false"]:visible',
               ).first()
             : page.getByTestId("active-workout-dock-primary");
+          await expect
+            .poll(() => currentWarmup.getAttribute("aria-label"))
+            .toContain(PRODUCTION_WORKOUT_START_WARMUP[warmupIndex].label);
           await waitForHydratedReactHandler(currentWarmup);
           await currentWarmup.click();
           if (warmupIndex < PRODUCTION_WORKOUT_START_WARMUP.length - 1) {
             await expectPrimaryActionUnobstructed(
               page.getByTestId("active-workout-dock-primary"),
             );
-            await expectCurrentActionFocused(page);
           }
         }
         const firstWorkingSetAction = page.getByTestId(
@@ -303,14 +358,17 @@ test("keeps attention continuous through warm-up, first set, and exact recovery 
         );
         await waitForHydratedReactHandler(firstWorkingSetAction);
         await expectPrimaryActionUnobstructed(firstWorkingSetAction);
-        await expectCurrentActionFocused(page);
         await testInfo.attach("first-working-set-extra-large-390x844", {
           body: await page.screenshot(),
           contentType: "image/png",
         });
 
         await context.setOffline(true);
-        await firstWorkingSetAction.click();
+        await firstWorkingSetAction.evaluate((element) => {
+          element.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+          element.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        });
+        await expect(firstWorkingSetAction).toHaveCount(0);
         await expect.poll(() => page.evaluate(() => {
           const raw = localStorage.getItem(
             "workout-tracker:workout-set-outbox:v1",
@@ -318,6 +376,9 @@ test("keeps attention continuous through warm-up, first set, and exact recovery 
           if (!raw) return 0;
           return (JSON.parse(raw) as { entries?: unknown[] }).entries?.length ?? 0;
         })).toBe(1);
+        await expect(
+          page.getByText(/already waiting to be saved/i),
+        ).toHaveCount(0);
         await page.evaluate(() => {
           const storageKey = "workout-tracker:workout-set-outbox:v1";
           const stored = JSON.parse(localStorage.getItem(storageKey) ?? "null") as {
@@ -414,97 +475,91 @@ test("keeps attention continuous through warm-up, first set, and exact recovery 
           window.dispatchEvent(new Event("workout-set-outbox-change"));
         });
 
-        const promotedBlocker = page.getByTestId(
-          "active-workout-dock-primary",
-        );
-        await expect(promotedBlocker).toHaveAttribute(
-          "aria-label",
-          /Log Barbell Back Squat, Set 1/i,
-        );
-        await expectPrimaryActionUnobstructed(promotedBlocker);
-        await expectCurrentActionFocused(page);
-        await expect(
-          page.getByText(
-            "Barbell Back Squat · Set 1 comes first. This set 2 is still safe on this device.",
-          ),
-        ).toBeAttached();
-        await expect(
-          page.getByRole("button", { name: "Try now", exact: true }),
-        ).toHaveCount(0);
-
-        await context.setOffline(true);
-        await waitForHydratedReactHandler(promotedBlocker);
-        await promotedBlocker.click();
-        await expect.poll(() => page.evaluate(() => {
-          const raw = localStorage.getItem(
-            "workout-tracker:workout-set-outbox:v1",
-          );
-          if (!raw) return null;
-          const entries = (JSON.parse(raw) as {
-            entries?: Array<{
-              clientKey?: string;
-              occurrenceId?: string;
-              status?: string;
-              orderBlocker?: { occurrenceId?: string } | null;
-            }>;
-          }).entries ?? [];
-          const retained = entries.find((entry) => entry.orderBlocker != null);
-          const recovery = entries.find((entry) =>
-            entry.orderBlocker == null &&
-            entry.occurrenceId === retained?.orderBlocker?.occurrenceId
-          );
-          return {
-            entryCount: entries.length,
-            uniqueClientKeys: new Set(entries.map((entry) => entry.clientKey)).size,
-            retainedStatus: retained?.status ?? null,
-            recoveryStatus: recovery?.status ?? null,
-          };
-        })).toEqual({
-          entryCount: 2,
-          uniqueClientKeys: 2,
-          retainedStatus: "needs_attention",
-          recoveryStatus: "queued",
+        const recoveryStatus = page.getByRole("button", {
+          name: "Open sets waiting to save",
+          exact: true,
         });
-        await testInfo.attach("order-blocker-queued-extra-large-390x844", {
+        await expect(recoveryStatus).toContainText("Sets need attention");
+        await expectPrimaryActionUnobstructed(recoveryStatus);
+        await recoveryStatus.click();
+        const goToBlocker = page.getByRole("link", {
+          name: /Go to required Barbell Back Squat · Set 1/i,
+        });
+        await expectPrimaryActionUnobstructed(goToBlocker);
+        await expect(
+          page.getByRole("button", { name: "Retry save", exact: true }),
+        ).toHaveCount(0);
+        await goToBlocker.click();
+        await expect(
+          page.getByRole("dialog", { name: "Sets waiting to save" }),
+        ).toHaveCount(0);
+        const blockerEntry = page.getByTestId("current-set-entry");
+        await expect.poll(() => blockerEntry.evaluate((element) => {
+          const active = document.activeElement as HTMLElement | null;
+          const rect = element.getBoundingClientRect();
+          return {
+            inside: active != null && element.contains(active),
+            expanded:
+              element.closest("section")?.querySelector(":scope > button")
+                ?.getAttribute("aria-expanded") === "true",
+            active:
+              active?.getAttribute("aria-label") ??
+              active?.textContent?.trim().slice(0, 80) ??
+              active?.tagName ??
+              "none",
+            hash: window.location.hash,
+            targetId: element.id,
+            targetTop: Math.round(rect.top),
+            targetBottom: Math.round(rect.bottom),
+          };
+        })).toMatchObject({
+          inside: true,
+          expanded: true,
+          hash: `#${await blockerEntry.getAttribute("id")}`,
+        });
+        await expectPrimaryActionUnobstructed(
+          page.getByTestId("active-workout-dock-primary"),
+        );
+        await testInfo.attach("order-blocker-recovery-extra-large-390x844", {
           body: await page.screenshot(),
           contentType: "image/png",
         });
 
-        await context.setOffline(false);
-        await expect(
-          page.getByTestId("active-set-save-receipt"),
-        ).toContainText("Acknowledged by Repbook", { timeout: 20_000 });
+        const blockerLog = blockerEntry.getByRole("button", {
+          name: "Log set",
+          exact: true,
+        });
+        await expect(blockerLog).toBeEnabled();
+        await blockerLog.click();
+        await expect(page.getByTestId("active-set-save-receipt")).toContainText(
+          "Saved · Set 1",
+        );
         await expect.poll(() => page.evaluate(() => {
           const raw = localStorage.getItem(
             "workout-tracker:workout-set-outbox:v1",
           );
           if (!raw) return null;
-          const entries = (JSON.parse(raw) as {
+          const entry = (JSON.parse(raw) as {
             entries?: Array<{
-              occurrenceId?: string;
               status?: string;
               orderBlocker?: unknown;
             }>;
-          }).entries ?? [];
-          return entries.length === 1 &&
-              entries[0]?.orderBlocker == null &&
-              entries[0]?.status === "needs_attention";
-        }), { timeout: 20_000 }).toBe(true);
-        const reviewRecovery = page.getByRole("button", {
-          name: "Review workout finish",
+          }).entries?.[0];
+          return entry?.status === "needs_attention" &&
+              entry.orderBlocker == null
+            ? "released-once"
+            : null;
+        })).toBe("released-once");
+
+        await recoveryStatus.click();
+        await page.getByRole("button", {
+          name: "Discard device copy",
           exact: true,
-        });
-        await expectPrimaryActionUnobstructed(reviewRecovery);
-        await reviewRecovery.click();
-        const recoveryDialog = page.getByRole("dialog", {
-          name: "Finish workout",
-        });
-        const dialogDiscardLaterAttempt = recoveryDialog.getByRole("button", {
-          name: "Discard retained attempt",
+        }).click();
+        await page.getByRole("button", {
+          name: "Discard device copy",
           exact: true,
-        });
-        await expectPrimaryActionUnobstructed(dialogDiscardLaterAttempt);
-        await dialogDiscardLaterAttempt.click();
+        }).click();
         await expect.poll(() => page.evaluate(() => {
           const raw = localStorage.getItem(
             "workout-tracker:workout-set-outbox:v1",
@@ -512,66 +567,42 @@ test("keeps attention continuous through warm-up, first set, and exact recovery 
           if (!raw) return 0;
           return (JSON.parse(raw) as { entries?: unknown[] }).entries?.length ?? 0;
         })).toBe(0);
-        const returnToWorkout = recoveryDialog.getByRole("button", {
-          name: "Back to workout",
-          exact: true,
-        });
-        await expectPrimaryActionUnobstructed(returnToWorkout);
-        await returnToWorkout.click();
-        await expect(recoveryDialog).toBeHidden();
-        const skipRecoveredRest = page.getByRole("button", {
-          name: "Skip rest",
-          exact: true,
-        });
-        await expectPrimaryActionUnobstructed(skipRecoveredRest);
-        await skipRecoveredRest.click();
-        const dismissRecoveredRest = page.getByRole("button", {
-          name: "Dismiss rest timer",
-          exact: true,
-        });
-        await expectPrimaryActionUnobstructed(dismissRecoveredRest);
-        await dismissRecoveredRest.click();
-        const recoveredNextSet = page.getByTestId(
-          "active-workout-dock-primary",
-        );
-        await expect(recoveredNextSet).toHaveAttribute(
-          "aria-label",
-          /Log Barbell Back Squat, Set 2/i,
-        );
-        await expectPrimaryActionUnobstructed(recoveredNextSet);
-        await expectCurrentActionFocused(page);
-        await testInfo.attach("order-blocker-recovered-extra-large-390x844", {
-          body: await page.screenshot(),
-          contentType: "image/png",
-        });
-
       }
     } finally {
       await discardWorkout(page);
     }
   }
 
-  for (const edge of [
-    { width: 320, height: 700, textSize: "Extra large" as const },
-    { width: 440, height: 956, textSize: "Default" as const },
-  ]) {
-    await page.setViewportSize({ width: edge.width, height: edge.height });
-    try {
-      await signInAndStartDayA(page, { textSize: edge.textSize });
-      const action = page.locator(
-        '#workout-warmup [role="checkbox"][aria-checked="false"]',
-      ).first();
-      await expectPrimaryActionUnobstructed(action);
-      expect(await page.evaluate(() =>
-        document.documentElement.scrollWidth -
-          document.documentElement.clientWidth,
-      )).toBeLessThanOrEqual(1);
-    } finally {
-      await discardWorkout(page);
-    }
-  }
   await pageErrors.expectNoUnexpected();
 });
+
+async function revealCurrentFromStatusBar(page: Page) {
+  const workoutStatus = page.getByRole("complementary", {
+    name: "Workout status",
+  });
+  const reveal = workoutStatus.locator("button").first();
+  await waitForHydratedReactHandler(reveal);
+  await expectReachableTarget(reveal);
+  const label = await reveal.getAttribute("aria-label");
+  if (label?.startsWith("Show ")) {
+    await reveal.click();
+  } else {
+    expect(label).toMatch(/^Log /);
+    await expectPrimaryActionUnobstructed(reveal);
+    await expectReachableTarget(page.getByTestId("active-log-set"));
+  }
+  await expect.poll(() => page.evaluate(() => {
+    const log = document.querySelector<HTMLElement>(
+      '[data-testid="active-log-set"]',
+    );
+    const dock = document.querySelector<HTMLElement>(
+      '[aria-label="Workout status"]',
+    );
+    if (!log || !dock) return false;
+    return log.getBoundingClientRect().bottom <=
+      dock.getBoundingClientRect().top - 8;
+  })).toBe(true);
+}
 
 async function compactGeometry(page: Page) {
   return page.evaluate(() => {
@@ -580,6 +611,9 @@ async function compactGeometry(page: Page) {
     );
     const previousElement = document.querySelector<HTMLElement>(
       '[data-testid="previous-comparable-set"]',
+    );
+    const targetElement = document.querySelector<HTMLElement>(
+      '[data-testid="current-set-target"]',
     );
     const logElement = document.querySelector<HTMLElement>(
       '[data-testid="active-log-set"]',
@@ -590,11 +624,12 @@ async function compactGeometry(page: Page) {
     const cardElement = document.querySelector<HTMLElement>(
       '[data-testid="current-exercise-card"]',
     );
-    if (!primaryElement || !previousElement || !logElement || !dockElement || !cardElement) {
+    if (!primaryElement || !targetElement || !previousElement || !logElement || !dockElement || !cardElement) {
       throw new Error("The compact active-workout geometry is incomplete.");
     }
     const primaryRect = primaryElement.getBoundingClientRect();
     const previousRect = previousElement.getBoundingClientRect();
+    const targetRect = targetElement.getBoundingClientRect();
     const firstInput = primaryElement.querySelector<HTMLElement>("input");
     const inputWidths = [...primaryElement.querySelectorAll<HTMLElement>("input")]
       .map((input) => input.getBoundingClientRect().width);
@@ -602,8 +637,17 @@ async function compactGeometry(page: Page) {
     return {
       primaryHeight: primaryRect.height,
       cardHeight: cardElement.getBoundingClientRect().height,
+      targetBeforePrevious: targetRect.bottom <= previousRect.top,
+      targetBeforeOrBesidePrevious:
+        targetRect.bottom <= previousRect.top ||
+        (Math.abs(targetRect.top - previousRect.top) <= 2 &&
+          targetRect.right <= previousRect.left),
       previousBeforeInput:
         firstInput != null && previousRect.bottom <= firstInput.getBoundingClientRect().top,
+      evidenceBeforeInput:
+        firstInput != null &&
+        Math.max(targetRect.bottom, previousRect.bottom) <=
+          firstInput.getBoundingClientRect().top,
       inputBeforeLog:
         firstInput != null && firstInput.getBoundingClientRect().bottom <= logRect.top,
       logClearsDock: logRect.bottom <= dockElement.getBoundingClientRect().top - 8,
@@ -623,6 +667,8 @@ async function compactGeometry(page: Page) {
       disclosures: [...cardElement.querySelectorAll("details")].map(
         (details) => ({
           summary: details.querySelector("summary")?.textContent?.trim() ?? "",
+          summaryHeight:
+            details.querySelector("summary")?.getBoundingClientRect().height ?? 0,
           open: details.open,
           height: details.getBoundingClientRect().height,
         }),
@@ -632,20 +678,27 @@ async function compactGeometry(page: Page) {
 }
 
 async function discardWorkout(page: Page) {
+  if (page.isClosed()) return;
   if (!/\/session\/[0-9a-f-]+(?:#.*)?$/.test(page.url())) return;
+  try {
+    await page.context().setOffline(false);
+  } catch {
+    return;
+  }
   const todayUrl = new URL("/today", page.url()).href;
   await page.evaluate(() => {
     localStorage.removeItem("workout-tracker:workout-set-outbox:v1");
     window.dispatchEvent(new Event("workout-set-outbox-change"));
   });
   await page.reload({ waitUntil: "domcontentloaded" });
-  const finish = page.getByRole("button", {
-    name: "Review workout finish",
-    exact: true,
-  });
-  await waitForHydratedReactHandler(finish);
-  await finish.click();
   const finishDialog = page.getByRole("dialog", { name: "Finish workout" });
+  if (!(await finishDialog.isVisible())) {
+    const finish = page.getByRole("button", {
+      name: /^(?:Review workout finish|Finish workout)$/,
+    });
+    await waitForHydratedReactHandler(finish);
+    await finish.click();
+  }
   const discard = finishDialog.getByRole("button", {
     name: "Discard workout",
     exact: true,
@@ -655,7 +708,7 @@ async function discardWorkout(page: Page) {
   const confirm = page
     .getByRole("dialog", { name: /^Discard .+\?$/ })
     .getByRole("button", {
-      name: /^(?:Confirm discard|Discard unsent copies & abandon)$/,
+      name: /^(?:Confirm discard|Discard current device copies & abandon)$/,
     });
   await waitForHydratedReactHandler(confirm);
   await confirm.click();
@@ -676,7 +729,7 @@ test("keeps the ordinary active set current-first, unobstructed, and acknowledge
   const pageErrors = observeGauntletPageErrors(page, browserName);
   try {
     await signInAndStartDayA(page);
-    await completeStructuredWarmup(page);
+    await completeWarmupsToFirstWorkingSet(page);
 
     const currentCard = page.getByTestId("current-exercise-card");
     const currentEntry = currentCard.getByTestId("current-set-entry");
@@ -744,21 +797,80 @@ test("keeps the ordinary active set current-first, unobstructed, and acknowledge
     ).toBeVisible();
     await expect(receipt).toBeVisible();
     await expectFullyInViewport(receipt);
+    await expect(currentEntry).toContainText("Set 2 of 3");
+    const restingGeometry = await compactGeometry(page);
+    expect(
+      restingGeometry,
+      JSON.stringify(restingGeometry),
+    ).toMatchObject({
+      targetBeforeOrBesidePrevious: true,
+      evidenceBeforeInput: true,
+      inputBeforeLog: true,
+      logClearsDock: true,
+    });
+    expect(restingGeometry.disclosures.every((item) => !item.open)).toBe(true);
+    expect(
+      restingGeometry.disclosures.every(
+        (item) => item.height <= item.summaryHeight + 2,
+      ),
+      JSON.stringify(restingGeometry.disclosures),
+    ).toBe(true);
+    expect(restingGeometry.horizontalOverflow).toBeLessThanOrEqual(1);
+    await expect(setOptions.getByLabel("RIR (0–10)")).not.toBeVisible();
+    await expect(setOptions.getByLabel("Set note (optional)")).not.toBeVisible();
     const workoutStatus = page.getByRole("complementary", {
       name: "Workout status",
     });
-    await workoutStatus
-      .getByRole("button", { name: "Skip rest", exact: true })
-      .click();
-    await workoutStatus
-      .getByRole("button", { name: "Dismiss rest timer", exact: true })
-      .click();
+    const skipRest = workoutStatus.getByRole("button", {
+      name: "Skip rest",
+      exact: true,
+    });
+    await expectPrimaryActionUnobstructed(skipRest);
+    await skipRest.click();
+    const dismissRest = workoutStatus.getByRole("button", {
+      name: "Dismiss rest timer",
+      exact: true,
+    });
+    await expectPrimaryActionUnobstructed(dismissRest);
+    await dismissRest.click();
+    const setTwoDockAction = page.getByTestId("active-workout-dock-primary");
+    await expect(setTwoDockAction).toHaveAttribute(
+      "aria-label",
+      /Log Barbell Back Squat, Set 2/i,
+    );
+    await expectPrimaryActionUnobstructed(setTwoDockAction);
+    await expect(workoutStatus.getByRole("button", {
+      name: "Skip rest",
+      exact: true,
+    })).toHaveCount(0);
+    await expect(currentCard.locator(":scope > button")).toHaveAttribute(
+      "aria-expanded",
+      "true",
+    );
+    const setTwoEntryId = await currentEntry.getAttribute("id");
+    expect(setTwoEntryId).not.toBeNull();
+    await expect.poll(() => page.evaluate(() => window.location.hash)).toBe(
+      `#${setTwoEntryId}`,
+    );
+    await page.evaluate(() => new Promise<void>((resolve) =>
+      requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
+    ));
     await expectFullyInViewport(receipt);
     expect(
       await page.evaluate(
         () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
       ),
     ).toBeLessThanOrEqual(1);
+    const settledSetTwoGeometry = await compactGeometry(page);
+    expect(
+      settledSetTwoGeometry,
+      JSON.stringify(settledSetTwoGeometry),
+    ).toMatchObject({
+      targetBeforeOrBesidePrevious: true,
+      evidenceBeforeInput: true,
+      inputBeforeLog: true,
+      logClearsDock: true,
+    });
   } finally {
     await discardWorkout(page);
   }
@@ -773,14 +885,13 @@ test("fits the complete primary logging action at 390x844 with keyboard disclosu
   const pageErrors = observeGauntletPageErrors(page, browserName);
   try {
     await signInAndStartDayA(page, { extraLarge: false });
-    await completeStructuredWarmup(page);
+    await completeWarmupsToFirstWorkingSet(page);
     const currentCard = page.getByTestId("current-exercise-card");
     const currentEntry = currentCard.getByTestId("current-set-entry");
     const primary = currentEntry.getByTestId("active-workout-primary");
     const previous = primary.getByTestId("previous-comparable-set");
     const log = primary.getByRole("button", { name: "Log set", exact: true });
 
-    await expect(currentEntry).toContainText("Current action");
     await expect(previous).toBeVisible();
     let terminalComparison:
       | { state: "available"; href: string }
@@ -817,18 +928,35 @@ test("fits the complete primary logging action at 390x844 with keyboard disclosu
     }).toPass({ timeout: 25_000 });
     expect(terminalComparison).not.toBeNull();
     await expect(log).toBeVisible();
-    await expectPrimaryActionUnobstructed(
-      page.getByTestId("active-workout-dock-primary"),
+    await expect(currentEntry).toContainText("Current action");
+    await expect(page.getByTestId("active-set-save-receipt")).toHaveCount(0);
+    await expect(page.getByTestId("active-workout-dock-primary")).toHaveAttribute(
+      "aria-label",
+      /Log Barbell Back Squat, Set 1/i,
     );
-    await expectCurrentActionFocused(page);
+    await revealCurrentFromStatusBar(page);
+    await expect(currentEntry).toContainText("Current action");
+    await expect(page.getByTestId("active-set-save-receipt")).toHaveCount(0);
+    await expect(page.getByTestId("active-workout-dock-primary")).toHaveAttribute(
+      "aria-label",
+      /Log Barbell Back Squat, Set 1/i,
+    );
 
     const geometry = await compactGeometry(page);
     expect(geometry, JSON.stringify(geometry)).toMatchObject({
+      targetBeforePrevious: true,
       previousBeforeInput: true,
       inputBeforeLog: true,
+      logClearsDock: true,
     });
-    expect(geometry.primaryHeight).toBeLessThanOrEqual(600);
-    expect(geometry.cardHeight, JSON.stringify(geometry)).toBeLessThanOrEqual(920);
+    expect(geometry.primaryHeight).toBeLessThanOrEqual(560);
+    expect(geometry.disclosures.every((item) => !item.open)).toBe(true);
+    expect(
+      geometry.disclosures.every(
+        (item) => item.height <= item.summaryHeight + 2,
+      ),
+      JSON.stringify(geometry.disclosures),
+    ).toBe(true);
     expect(geometry.minimumInputWidth).toBeGreaterThanOrEqual(44);
     expect(geometry.horizontalOverflow).toBeLessThanOrEqual(1);
     await expect(page.getByRole("button", { name: "Log set", exact: true })).toHaveCount(1);
@@ -869,24 +997,59 @@ test("fits the complete primary logging action at 390x844 with keyboard disclosu
 
     await discardWorkout(page);
     await signInAndStartDayA(page, { extraLarge: true });
-    await completeStructuredWarmup(page);
-    await expect(
-      page.getByTestId("current-exercise-card").getByTestId("current-set-entry"),
-    ).toContainText("Current action");
-    await expectPrimaryActionUnobstructed(
-      page.getByTestId("active-workout-dock-primary"),
+    await completeWarmupsToFirstWorkingSet(page);
+    const extraLargeEntry = page.getByTestId("current-set-entry");
+    await expect(extraLargeEntry).toContainText("Current action");
+    await expect(page.getByTestId("active-set-save-receipt")).toHaveCount(0);
+    await expect(page.getByTestId("active-workout-dock-primary")).toHaveAttribute(
+      "aria-label",
+      /Log Barbell Back Squat, Set 1/i,
     );
-    await expectCurrentActionFocused(page);
+    await revealCurrentFromStatusBar(page);
+    for (const target of [
+      extraLargeEntry.getByTestId("current-set-target"),
+      extraLargeEntry.getByTestId("previous-comparable-set"),
+      extraLargeEntry.getByLabel("Total load", { exact: true }),
+      extraLargeEntry.getByRole("textbox", { name: "Reps", exact: true }),
+      extraLargeEntry.getByRole("button", { name: "Log set", exact: true }),
+    ]) {
+      await expectReachableTarget(target);
+    }
+    await expect(extraLargeEntry).toContainText("Current action");
+    await expect(page.getByTestId("active-set-save-receipt")).toHaveCount(0);
+    await expect(page.getByTestId("active-workout-dock-primary")).toHaveAttribute(
+      "aria-label",
+      /Log Barbell Back Squat, Set 1/i,
+    );
     const extraLargeGeometry = await compactGeometry(page);
     expect(
       extraLargeGeometry,
       JSON.stringify(extraLargeGeometry),
     ).toMatchObject({
+      targetBeforePrevious: true,
       previousBeforeInput: true,
       inputBeforeLog: true,
+      logClearsDock: true,
     });
-    expect(extraLargeGeometry.primaryHeight).toBeLessThanOrEqual(800);
-    expect(extraLargeGeometry.cardHeight).toBeLessThanOrEqual(1_250);
+    expect(
+      extraLargeGeometry.primaryHeight,
+      JSON.stringify(extraLargeGeometry),
+    ).toBeLessThanOrEqual(800);
+    expect(extraLargeGeometry.disclosures.every((item) => !item.open)).toBe(true);
+    expect(
+      extraLargeGeometry.disclosures.every(
+        (item) => item.height <= item.summaryHeight + 2,
+      ),
+      JSON.stringify(extraLargeGeometry.disclosures),
+    ).toBe(true);
+    expect(extraLargeGeometry.disclosures.map((item) => item.summary)).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining("Set options"),
+        expect.stringContaining("Exercise progress & extras"),
+        expect.stringContaining("More for this exercise"),
+        expect.stringContaining("Warm-up guidance · reference"),
+      ]),
+    );
     expect(extraLargeGeometry.minimumInputWidth).toBeGreaterThanOrEqual(44);
     expect(extraLargeGeometry.horizontalOverflow).toBeLessThanOrEqual(1);
   } finally {

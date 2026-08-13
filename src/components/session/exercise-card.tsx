@@ -6,12 +6,10 @@ import Link from "next/link";
 import { toast } from "sonner";
 import {
   archiveSet,
+  confirmExerciseUnskipped,
   skipExercise,
-  unskipExercise,
   logPain,
   saveExerciseNote,
-  getAlternativeOptions,
-  getReplacementOptions,
   substituteExercise,
   replaceExercise,
   undoExerciseSubstitution,
@@ -50,7 +48,10 @@ import {
   setSaveStateLabel,
 } from "@/lib/exercise-card";
 import type { ExerciseDiscoveryItem } from "@/lib/exercise-discovery";
-import type { ExerciseAlternativeReason } from "@/lib/exercise-alternatives";
+import type {
+  ExerciseAlternativeAnnotation,
+  ExerciseAlternativeReason,
+} from "@/lib/exercise-alternatives";
 import { convertWeight, type LoadUnit } from "@/lib/units";
 import {
   Check,
@@ -78,6 +79,13 @@ import {
   EFFORT_CHOICES,
   effortChoiceForLegacyRpe,
 } from "@/lib/active-workout-language";
+import { activeWorkoutScrollBehavior } from "@/lib/active-workout-motion";
+import { reportDeploymentMismatch } from "@/lib/deployment-recovery";
+import {
+  fetchWorkoutExerciseOptions,
+  WorkoutExerciseOptionsRequestError,
+  type WorkoutExerciseOptionsMode,
+} from "@/lib/workout-exercise-options-client";
 import {
   patchActiveWorkoutMeasurement,
   readActiveWorkoutMeasurements,
@@ -358,7 +366,7 @@ function PendingSetSaveStatus({
             : orderConflict
               ? "Workout order changed. Refresh to find the exact set that comes first."
               : failed
-                ? `This unsaved attempt still owns ${rowLabel}. Retry it, or discard it to enter or skip ${rowLabel} again.`
+                ? `This device copy still owns ${rowLabel}. Retry the save, or discard the device copy to enter or skip ${rowLabel} again.`
                 : `Waiting for Repbook to acknowledge ${rowLabel}. It will not advance until that happens.`}
         </p>
         {failed && set.lastError && !orderConflict && (
@@ -389,7 +397,7 @@ function PendingSetSaveStatus({
               variant="outline"
               onClick={async () => await onRetry(set.clientKey!)}
             >
-              {orderConflict ? "Retry retained attempt" : `Retry ${rowLabel}`}
+              Retry save
             </Button>
           )}
           <Button
@@ -401,7 +409,7 @@ function PendingSetSaveStatus({
             )}
             onClick={async () => await onDiscard(set.clientKey!)}
           >
-            Discard attempt
+            Discard device copy
           </Button>
         </div>
       )}
@@ -502,7 +510,6 @@ type Props = {
   acknowledgementReceipt?: SetAcknowledgementReceipt | null;
   isCurrentExercise?: boolean;
   nextActionLabel?: string | null;
-  currentActionControlRef?: (node: HTMLButtonElement | null) => void;
   warmupResolved?: boolean;
   groupContext?: {
     name: string;
@@ -528,6 +535,17 @@ type Props = {
   onRefreshWorkout?: () => void;
   onHistoryRevisionChange?: (historyRevision: number) => void;
   onOpenCoach: () => void;
+  onSkipRequestStart?: (
+    reason: "time" | "pain" | "fatigue" | "equipment" | "other",
+  ) => void;
+  onSkipRequestFailure?: (
+    reason: "time" | "pain" | "fatigue" | "equipment" | "other",
+    code?: string,
+  ) => boolean;
+  skipConfirmationPending?: boolean;
+  skipRecoverySettlementPending?: boolean;
+  skipConfirmationError?: string | null;
+  onSkipConfirmationErrorDismiss?: () => Promise<void> | void;
   onSkipComplete: () => void;
   adjustIntent: ExerciseAdjustmentIntent | null;
   onAdjustIntentChange: (intent: ExerciseAdjustmentIntent | null) => void;
@@ -575,12 +593,133 @@ export async function runGuardedLogRequest<T>(
   }
 }
 
-type ReplacementOptions = Extract<
-  Awaited<ReturnType<typeof getReplacementOptions>>,
-  { ok: true }
->;
+type AlternativeOptions = {
+  currentExerciseId: string;
+  plannedExerciseId: string;
+  plannedExerciseName: string;
+  plannedExercise: ExerciseDiscoveryItem;
+  items: ExerciseDiscoveryItem[];
+  priorityIds: string[];
+  annotations: Record<string, ExerciseAlternativeAnnotation>;
+};
+
+type ReplacementOptions = {
+  currentExerciseId: string;
+  plannedExerciseId: string;
+  plannedExerciseName: string;
+  currentState: Pick<
+    SessionExerciseData,
+    | "modificationType"
+    | "skipReason"
+    | "substitutedForExerciseId"
+    | "substitutionReason"
+    | "substitutedAt"
+    | "targetLoad"
+    | "targetLoadUnit"
+    | "notes"
+    | "warmupNotes"
+    | "warmupSets"
+    | "setNotes"
+  >;
+  items: ExerciseDiscoveryItem[];
+  warnings: Record<string, string>;
+};
 
 export type ExerciseAdjustmentIntent = "note" | "swap" | "replace" | "skip";
+
+export const REPLACEMENT_CATALOG_LOAD_TIMEOUT_MS = 12_000;
+
+function useWorkoutExerciseOptions<T>({
+  mode,
+  exerciseId,
+  open,
+  onLoaded,
+}: {
+  mode: WorkoutExerciseOptionsMode;
+  exerciseId: string;
+  open: boolean;
+  onLoaded?: (options: T) => void;
+}) {
+  const [options, setOptions] = useState<T | null>(null);
+  const [loadAttempt, setLoadAttempt] = useState(0);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const loadGenerationRef = useRef(0);
+  const loadAbortRef = useRef<AbortController | null>(null);
+  const onLoadedRef = useRef(onLoaded);
+
+  useEffect(() => {
+    onLoadedRef.current = onLoaded;
+  }, [onLoaded]);
+
+  useEffect(() => {
+    if (!open || options != null) return;
+    const generation = loadGenerationRef.current + 1;
+    loadGenerationRef.current = generation;
+    const controller = new AbortController();
+    loadAbortRef.current = controller;
+    let ignore = false;
+    const timeoutId = window.setTimeout(
+      () => controller.abort(),
+      REPLACEMENT_CATALOG_LOAD_TIMEOUT_MS,
+    );
+    void fetchWorkoutExerciseOptions<T>(mode, exerciseId, controller.signal)
+      .then((result) => {
+        if (ignore || generation !== loadGenerationRef.current) return;
+        setOptions(result);
+        onLoadedRef.current?.(result);
+      })
+      .catch((error: unknown) => {
+        if (ignore || generation !== loadGenerationRef.current) return;
+        if (controller.signal.aborted) {
+          setLoadError(
+            "The exercise catalog took too long to respond. Check your connection, then try again.",
+          );
+          return;
+        }
+        setLoadError(
+          error instanceof WorkoutExerciseOptionsRequestError
+            ? error.message
+            : "The exercise catalog did not load. Check your connection, then try again.",
+        );
+      })
+      .finally(() => {
+        window.clearTimeout(timeoutId);
+        if (loadAbortRef.current === controller) loadAbortRef.current = null;
+      });
+    return () => {
+      ignore = true;
+      window.clearTimeout(timeoutId);
+      controller.abort();
+      if (loadAbortRef.current === controller) loadAbortRef.current = null;
+    };
+  }, [exerciseId, loadAttempt, mode, open, options]);
+
+  function invalidateActiveLoad() {
+    loadGenerationRef.current += 1;
+    loadAbortRef.current?.abort();
+    loadAbortRef.current = null;
+  }
+
+  function retryLoad() {
+    invalidateActiveLoad();
+    setLoadError(null);
+    setOptions(null);
+    setLoadAttempt((current) => current + 1);
+  }
+
+  function prepareToOpen() {
+    if (options == null) setLoadError(null);
+  }
+
+  return {
+    options,
+    setOptions,
+    loadError,
+    invalidateActiveLoad,
+    retryLoad,
+    prepareToOpen,
+  };
+}
 
 export function ExerciseCard({
   exercise,
@@ -605,7 +744,6 @@ export function ExerciseCard({
   acknowledgementReceipt = null,
   isCurrentExercise = false,
   nextActionLabel = null,
-  currentActionControlRef,
   warmupResolved = false,
   groupContext = null,
   occurrenceChangesBlocked = false,
@@ -620,6 +758,12 @@ export function ExerciseCard({
   onRefreshWorkout,
   onHistoryRevisionChange = () => undefined,
   onOpenCoach,
+  onSkipRequestStart = () => undefined,
+  onSkipRequestFailure = () => true,
+  skipConfirmationPending = false,
+  skipRecoverySettlementPending = false,
+  skipConfirmationError = null,
+  onSkipConfirmationErrorDismiss = () => undefined,
   onSkipComplete,
   adjustIntent,
   onAdjustIntentChange,
@@ -826,7 +970,10 @@ export function ExerciseCard({
       const targetId = `added-set-entry-${exercise.id}-${requestedOccurrenceId}`;
       document
         .getElementById(targetId)
-        ?.scrollIntoView({ behavior: "smooth", block: "center" });
+        ?.scrollIntoView({
+          behavior: activeWorkoutScrollBehavior(),
+          block: "center",
+        });
       focusFrame = requestAnimationFrame(() => {
         document
           .querySelector<HTMLElement>(`#${targetId} input`)
@@ -876,6 +1023,10 @@ export function ExerciseCard({
     occurrence: SessionOccurrenceData | null = activeOccurrence,
     submittedDraft: SetDraft = draft,
   ) {
+    if (skipConfirmationPending || skipConfirmationError != null) {
+      toast.info("Resolve the exercise skip before logging a set.");
+      return;
+    }
     if (unconfirmedSetsBlockLogging({
       sets: exercise.sets,
       targetOccurrenceId: occurrence?.id ?? null,
@@ -1086,6 +1237,18 @@ export function ExerciseCard({
   const unconfirmedSet = exercise.sets.find(
     (set) => set.saveState != null && set.saveState !== "saved",
   );
+  const activeLoggingBlocked = unconfirmedSetsBlockLogging({
+    sets: exercise.sets,
+    targetOccurrenceId: activeOccurrence?.id ?? null,
+    blockers: setOrderBlockers,
+  });
+  const appendedLoggingBlocked = unconfirmedSetsBlockLogging({
+    sets: exercise.sets,
+    targetOccurrenceId: appendedOccurrence?.id ?? null,
+    blockers: setOrderBlockers,
+  });
+  const exactActiveBlockerCanLog =
+    unconfirmedSet != null && !activeLoggingBlocked;
   const prioritizeCurrentAction = nextActionLabel != null;
   const latestAcknowledgedSet = prioritizeCurrentAction
     ? [...exercise.sets]
@@ -1139,36 +1302,16 @@ export function ExerciseCard({
       });
     }
   }
-  const isCurrentPlannedSet =
-    activeOccurrence?.sessionExerciseId === exercise.id &&
-    activeOccurrence.kind === "working_set" &&
-    activeOccurrence.kindOrdinal === nextSetIdx;
-  const activeLoggingBlocked = unconfirmedSetsBlockLogging({
-    sets: exercise.sets,
-    targetOccurrenceId: activeOccurrence?.id ?? null,
-    blockers: setOrderBlockers,
-  });
-  const appendedLoggingBlocked = unconfirmedSetsBlockLogging({
-    sets: exercise.sets,
-    targetOccurrenceId: appendedOccurrence?.id ?? null,
-    blockers: setOrderBlockers,
-  });
-  const acknowledgementRenderedWithActivePlannedSet =
-    isCurrentPlannedSet &&
-    activeOccurrence != null &&
-    !isAppendedExtraSetOccurrence(activeOccurrence) &&
-    !activeLoggingBlocked;
-  // A retained later attempt must yield to the exact earlier occurrence that
-  // the server named as its blocker. Other unconfirmed writes still stay first
-  // and keep future logging closed until they are resolved.
-  const prioritizedRowIndex =
-    isCurrentPlannedSet && !activeLoggingBlocked
+  // A failed or delayed write owns its occurrence until acknowledgement. Put
+  // that exact recovery row ahead of the later blocked row so the user never
+  // has to hunt for the action that can move the workout forward.
+  const prioritizedRowIndex = exactActiveBlockerCanLog
+    ? nextSetIdx
+    : unconfirmedSet
+      ? unconfirmedSet.setNo - 1
+    : prioritizeCurrentAction
       ? nextSetIdx
-      : unconfirmedSet
-        ? unconfirmedSet.setNo - 1
-        : prioritizeCurrentAction
-          ? nextSetIdx
-          : null;
+      : null;
   const plannedRowOrder = Array.from(
     { length: plannedRows },
     (_, index) => index,
@@ -1177,6 +1320,10 @@ export function ExerciseCard({
     if (right === prioritizedRowIndex) return 1;
     return left - right;
   });
+  const isCurrentPlannedSet =
+    activeOccurrence?.sessionExerciseId === exercise.id &&
+    activeOccurrence.kind === "working_set" &&
+    activeOccurrence.kindOrdinal === nextSetIdx;
   const hasWarmupGuidance =
     exercise.modificationType !== "substituted" &&
     !!exercise.warmupNotes?.trim();
@@ -1404,13 +1551,60 @@ export function ExerciseCard({
         </div>
       </button>
 
-      {expanded && !isSkipped && (
+      {expanded && !isSkipped && skipConfirmationPending && (
+        <div
+          id={`session-exercise-details-${exercise.id}`}
+          role="status"
+          className="border-t p-3"
+        >
+          <p className="font-medium">Checking the exercise skip…</p>
+          <p className="mt-1 text-xs leading-5 text-muted-foreground">
+            Repbook is confirming the saved workout state. Set logging stays
+            paused so this exercise cannot be recorded against stale details.
+          </p>
+        </div>
+      )}
+
+      {expanded && !isSkipped && !skipConfirmationPending && (
         <div
           id={`session-exercise-details-${exercise.id}`}
           className="flex flex-col gap-1.5 border-t px-2 py-1.5"
         >
           {/* The current action and unresolved writes stay outside disclosure. */}
           <div className="flex flex-col gap-1">
+            {skipConfirmationError && (
+              <div
+                id={`skip-recovery-description-${exercise.id}`}
+                role="status"
+                className="rounded-lg border border-destructive/40 bg-destructive/5 p-3"
+              >
+                <p className="font-medium">Skip was not confirmed</p>
+                <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                  {skipConfirmationError}
+                </p>
+                <div className="mt-2 grid gap-2 min-[420px]:grid-cols-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => onAdjustIntentChange("skip")}
+                  >
+                    Try skipping again
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    disabled={pending}
+                    onClick={() => {
+                      startTransition(async () => {
+                        await onSkipConfirmationErrorDismiss();
+                      });
+                    }}
+                  >
+                    {pending ? "Checking saved state…" : "Return to current set"}
+                  </Button>
+                </div>
+              </div>
+            )}
             {immediateRowOrder.map((i) => {
               const set = exercise.sets.find((candidate) => candidate.setNo === i + 1);
               const occurrenceForRow = workingOccurrences.find(
@@ -1632,20 +1826,27 @@ export function ExerciseCard({
                       machineLoadConfig={machineLoadConfig}
                     />
                     <div className="mt-2 grid grid-cols-[1fr_auto] gap-2">
-                      <Button
-                        onClick={() =>
-                          handleLog(i + 1, appendedOccurrence, appendedDraft)
-                        }
-                        disabled={
-                          pending ||
-                          !metricSupported ||
-                          appendedLoggingBlocked ||
-                          Boolean(occurrenceMutation) ||
-                          logRequestKey === appendedOccurrence.id
-                        }
-                      >
-                        <Check className="size-4" /> Log set
-                      </Button>
+                      {skipConfirmationError == null ? (
+                        <Button
+                          onClick={() =>
+                            handleLog(i + 1, appendedOccurrence, appendedDraft)
+                          }
+                          disabled={
+                            pending ||
+                            skipConfirmationPending ||
+                            !metricSupported ||
+                            appendedLoggingBlocked ||
+                            Boolean(occurrenceMutation) ||
+                            logRequestKey === appendedOccurrence.id
+                          }
+                        >
+                          <Check className="size-4" /> Log set
+                        </Button>
+                      ) : (
+                        <p className="flex min-h-11 items-center text-sm font-medium">
+                          Resolve the exercise skip before logging sets.
+                        </p>
+                      )}
                       <Button
                         type="button"
                         variant="outline"
@@ -1679,10 +1880,7 @@ export function ExerciseCard({
                 );
               }
               if (i === nextSetIdx) {
-                if (
-                  isCurrentPlannedSet &&
-                  !activeLoggingBlocked
-                ) {
+                if (isCurrentPlannedSet && !activeLoggingBlocked) {
                   return (
                     <div
                       key={`active-${i}`}
@@ -1794,7 +1992,7 @@ export function ExerciseCard({
                         weightLabel={liveWeightLabel}
                         plateConfig={plateConfig}
                         machineLoadConfig={machineLoadConfig}
-                        prioritizePerformedMeasure={prioritizeCurrentAction}
+                        prioritizePerformedMeasure
                       />
                       <div
                         className={cn(
@@ -1803,27 +2001,30 @@ export function ExerciseCard({
                             : "mt-2 grid grid-cols-[1fr_auto] gap-2",
                         )}
                       >
-                        <Button
-                          data-testid="active-log-set"
-                          ref={
-                            prioritizeCurrentAction
-                              ? currentActionControlRef
-                              : undefined
-                          }
-                          className={cn(
-                            prioritizeCurrentAction &&
-                              "min-h-12 w-full text-base font-semibold",
-                          )}
-                          onClick={() => handleLog()}
-                          disabled={
-                            pending ||
-                            !metricSupported ||
-                            Boolean(occurrenceMutation) ||
-                            logRequestKey === activeOccurrence.id
-                          }
-                        >
-                          <Check className="size-4" /> Log set
-                        </Button>
+                        {skipConfirmationError == null ? (
+                          <Button
+                            data-testid="active-log-set"
+                            className={cn(
+                              prioritizeCurrentAction &&
+                                "min-h-12 w-full text-base font-semibold",
+                            )}
+                            onClick={() => handleLog()}
+                            disabled={
+                              pending ||
+                              skipConfirmationPending ||
+                              !metricSupported ||
+                              Boolean(occurrenceMutation) ||
+                              activeLoggingBlocked ||
+                              logRequestKey === activeOccurrence.id
+                            }
+                          >
+                            <Check className="size-4" /> Log set
+                          </Button>
+                        ) : (
+                          <p className="flex min-h-11 items-center text-sm font-medium">
+                            Resolve the exercise skip before logging sets.
+                          </p>
+                        )}
                         {!prioritizeCurrentAction && (
                           <Button
                             type="button"
@@ -1858,51 +2059,50 @@ export function ExerciseCard({
                         onRetry={onRetryOccurrenceMutation}
                         onDiscard={onDiscardOccurrenceMutation}
                       />
-                      {displayedAcknowledgementReceipt && (
-                        <ActiveSetSaveReceipt
-                          receipt={displayedAcknowledgementReceipt}
-                          currentExerciseId={exercise.id}
-                          historyRevision={historyRevision}
-                          onAcknowledged={handleAcknowledgementCorrection}
-                        />
-                      )}
                       {prioritizeCurrentAction && (
-                        <>
-                          <div className="mt-1 flex min-h-11 items-center gap-2 border-t">
-                            <p className="shrink-0 text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
-                              Next action
-                            </p>
-                            <p className="min-w-0 break-words py-2 text-sm">
-                              {nextActionLabel}
-                            </p>
-                          </div>
-                          <details className="mt-1 rounded-md border border-dashed text-sm">
-                            <summary className="flex min-h-[44px] cursor-pointer list-none items-center justify-between gap-2 rounded-md px-2 py-1 font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
-                              <span>Set options</span>
-                              <span className="break-words text-right text-xs text-muted-foreground">Effort, note or skip</span>
-                            </summary>
-                            <div className="space-y-3 border-t p-3">
-                              <section aria-labelledby={`optional-set-fields-${exercise.id}`}>
-                                <h3
-                                  id={`optional-set-fields-${exercise.id}`}
-                                  className="mb-2 font-medium"
-                                >
-                                  Optional effort and set note
-                                </h3>
-                                <SetEntry
-                                  metricType={performedMetricType}
-                                  supported={metricSupported}
-                                  draft={draft}
-                                  setDraft={setDraft}
-                                  stepWeight={stepWeight}
-                                  unit={unit}
-                                  hasWeight={recordsNumericLoad}
-                                  weightLabel={liveWeightLabel}
-                                  plateConfig={plateConfig}
-                                  machineLoadConfig={machineLoadConfig}
-                                  optionalOnly
-                                />
-                              </section>
+                        <div className="mt-1 flex min-h-11 items-center gap-2 border-t">
+                          <p className="shrink-0 text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+                            Next action
+                          </p>
+                          <p className="min-w-0 break-words py-2 text-sm">
+                            {nextActionLabel}
+                          </p>
+                        </div>
+                      )}
+                      <details className="mt-1 rounded-md border border-dashed text-sm">
+                        <summary className="flex min-h-[44px] cursor-pointer list-none items-center justify-between gap-2 rounded-md px-2 py-1 font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
+                          <span>Set options</span>
+                          <span className="break-words text-right text-xs text-muted-foreground">
+                            {prioritizeCurrentAction
+                              ? "Effort, note or skip"
+                              : "Effort or note"}
+                          </span>
+                        </summary>
+                        <div className="space-y-3 border-t p-3">
+                          <section
+                            aria-labelledby={`optional-set-fields-${exercise.id}`}
+                          >
+                            <h3
+                              id={`optional-set-fields-${exercise.id}`}
+                              className="mb-2 font-medium"
+                            >
+                              Optional effort and set note
+                            </h3>
+                            <SetEntry
+                              metricType={performedMetricType}
+                              supported={metricSupported}
+                              draft={draft}
+                              setDraft={setDraft}
+                              stepWeight={stepWeight}
+                              unit={unit}
+                              hasWeight={recordsNumericLoad}
+                              weightLabel={liveWeightLabel}
+                              plateConfig={plateConfig}
+                              machineLoadConfig={machineLoadConfig}
+                              optionalOnly
+                            />
+                          </section>
+                          {prioritizeCurrentAction && (
                               <section
                                 aria-labelledby={`set-exceptions-${exercise.id}`}
                                 className="border-t pt-3"
@@ -1913,25 +2113,24 @@ export function ExerciseCard({
                                 >
                                   Set exceptions
                                 </h3>
-                              <Button
-                                type="button"
-                                variant="outline"
-                                className="w-full"
-                                disabled={
-                                  occurrenceChangesBlocked ||
-                                  Boolean(occurrenceMutation)
-                                }
-                                onClick={() =>
-                                  setSkipSetOccurrence(activeOccurrence)
-                                }
-                              >
-                                Skip set
-                              </Button>
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  className="w-full"
+                                  disabled={
+                                    occurrenceChangesBlocked ||
+                                    Boolean(occurrenceMutation)
+                                  }
+                                  onClick={() =>
+                                    setSkipSetOccurrence(activeOccurrence)
+                                  }
+                                >
+                                  Skip set
+                                </Button>
                               </section>
-                            </div>
-                          </details>
-                        </>
-                      )}
+                          )}
+                        </div>
+                      </details>
                     </div>
                   );
                 }
@@ -1940,7 +2139,9 @@ export function ExerciseCard({
                     <div className="flex items-center justify-between gap-3">
                       <span>Set {i + 1}</span>
                       <span className="text-muted-foreground">
-                        {unconfirmedSet ? "Waiting for save acknowledgement" : "Reach this set in the workout flow"}
+                        {activeLoggingBlocked
+                          ? "Waiting for save acknowledgement"
+                          : "Reach this set in the workout flow"}
                       </span>
                     </div>
                     {plannedNote(i) && (
@@ -1963,8 +2164,7 @@ export function ExerciseCard({
               );
             })}
 
-            {!acknowledgementRenderedWithActivePlannedSet &&
-            displayedAcknowledgementReceipt && (
+            {displayedAcknowledgementReceipt && (
               <ActiveSetSaveReceipt
                 receipt={displayedAcknowledgementReceipt}
                 currentExerciseId={exercise.id}
@@ -2234,12 +2434,16 @@ export function ExerciseCard({
               />
               <SkipDrawer
                 exerciseId={exercise.id}
+                expectedHistoryRevision={historyRevision}
                 open={adjustIntent === "skip"}
+                onRequestStart={onSkipRequestStart}
+                onRequestFailure={onSkipRequestFailure}
                 onOpenChange={(open) =>
                   onAdjustIntentChange(open ? "skip" : null)
                 }
-                onDone={(reason) => {
+                onDone={(reason, resultHistoryRevision) => {
                   onAdjustIntentChange(null);
+                  onHistoryRevisionChange(resultHistoryRevision);
                   onPatch({ modificationType: "skipped", skipReason: reason });
                 }}
               />
@@ -2525,7 +2729,19 @@ export function ExerciseCard({
         </div>
       )}
 
-      {expanded && isSkipped && (
+      {expanded && isSkipped && skipRecoverySettlementPending && (
+        <div className="border-t p-3">
+          <div role="status" className="rounded-lg border bg-background p-3">
+            <h3 className="text-sm font-semibold">Checking saved skip…</h3>
+            <p className="mt-1 text-xs leading-5 text-muted-foreground">
+              Repbook is loading the confirmed workout revision before it offers
+              replacement or continuation actions.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {expanded && isSkipped && !skipRecoverySettlementPending && (
         <div className="flex flex-col gap-3 border-t p-3">
           <div
             id={`skip-recovery-description-${exercise.id}`}
@@ -2560,12 +2776,18 @@ export function ExerciseCard({
               onClick={() =>
                 startTransition(async () => {
                   try {
-                    const result = await unskipExercise(exercise.id);
+                    const result = await confirmExerciseUnskipped({
+                      sessionExerciseId: exercise.id,
+                      expectedHistoryRevision: historyRevision,
+                    });
                     if (!result.ok) {
                       toast.error(result.message);
+                      if (result.code === "unskip_stale") router.refresh();
                       return;
                     }
-                  } catch {
+                    onHistoryRevisionChange(result.historyRevision);
+                  } catch (error) {
+                    if (reportDeploymentMismatch(error)) return;
                     toast.error("The exercise could not be restored.");
                     return;
                   }
@@ -3206,14 +3428,28 @@ function PainDrawer({
 
 function SkipDrawer({
   exerciseId,
+  expectedHistoryRevision,
   open,
   onOpenChange,
+  onRequestStart,
+  onRequestFailure,
   onDone,
 }: {
   exerciseId: string;
+  expectedHistoryRevision: number;
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onDone: (reason: "time" | "pain" | "fatigue" | "equipment" | "other") => void;
+  onRequestStart: (
+    reason: "time" | "pain" | "fatigue" | "equipment" | "other",
+  ) => void;
+  onRequestFailure: (
+    reason: "time" | "pain" | "fatigue" | "equipment" | "other",
+    code?: string,
+  ) => boolean;
+  onDone: (
+    reason: "time" | "pain" | "fatigue" | "equipment" | "other",
+    historyRevision: number,
+  ) => void;
 }) {
   const [pending, startTransition] = useTransition();
   const reasons = ["time", "pain", "fatigue", "equipment", "other"] as const;
@@ -3233,25 +3469,30 @@ function SkipDrawer({
               key={reason}
               variant="outline"
               disabled={pending}
-              onClick={() =>
+              onClick={() => {
+                onRequestStart(reason);
                 startTransition(async () => {
                   try {
                     const result = await skipExercise({
                       sessionExerciseId: exerciseId,
                       reason,
+                      expectedHistoryRevision,
                     });
                     if (!result.ok) {
-                      toast.error(result.message);
+                      if (onRequestFailure(reason, result.code)) {
+                        toast.error(result.message);
+                      }
                       return;
                     }
+                    onDone(reason, result.historyRevision);
                   } catch {
-                    toast.error("The exercise could not be skipped.");
+                    if (onRequestFailure(reason)) {
+                      toast.error("The exercise could not be skipped.");
+                    }
                     return;
                   }
-                  onOpenChange(false);
-                  onDone(reason);
-                })
-              }
+                });
+              }}
             >
               {reason}
             </Button>
@@ -3259,6 +3500,77 @@ function SkipDrawer({
         </div>
       </DrawerContent>
     </Drawer>
+  );
+}
+
+function ExerciseOptionsLoadState({
+  error,
+  onRetry,
+  onBack,
+  reconciliationRequired = false,
+}: {
+  error: string | null;
+  onRetry: () => void;
+  onBack: () => void;
+  reconciliationRequired?: boolean;
+}) {
+  if (error == null) {
+    return (
+      <div className="space-y-3 py-2">
+        <p role="status" className="text-sm text-muted-foreground">
+          {reconciliationRequired
+            ? "Checking the updated exercise…"
+            : "Loading exercise catalog…"}
+        </p>
+        {reconciliationRequired ? (
+          <a
+            href="/today"
+            className={buttonVariants({ variant: "outline", size: "touch" })}
+          >
+            Back to Today
+          </a>
+        ) : (
+          <Button type="button" variant="outline" onClick={onBack}>
+            Back to workout
+          </Button>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div
+      role="alert"
+      className="space-y-3 rounded-lg border border-destructive/35 bg-destructive/5 p-3"
+    >
+      <div>
+        <p className="text-sm font-medium">
+          {reconciliationRequired
+            ? "Workout update needs attention"
+            : "Catalog unavailable"}
+        </p>
+        <p className="mt-1 text-xs leading-5 text-muted-foreground">{error}</p>
+      </div>
+      <div className="flex flex-wrap gap-2">
+        <Button type="button" onClick={onRetry}>
+          {reconciliationRequired
+            ? "Try updating workout again"
+            : "Try loading catalog again"}
+        </Button>
+        {reconciliationRequired ? (
+          <a
+            href="/today"
+            className={buttonVariants({ variant: "outline", size: "touch" })}
+          >
+            Back to Today
+          </a>
+        ) : (
+          <Button type="button" variant="outline" onClick={onBack}>
+            Back to workout
+          </Button>
+        )}
+      </div>
+    </div>
   );
 }
 
@@ -3278,41 +3590,19 @@ function AlternativesDrawer({
     reason: ExerciseAlternativeReason
   ) => void;
 }) {
-  type AlternativeOptions = Extract<
-    Awaited<ReturnType<typeof getAlternativeOptions>>,
-    { ok: true }
-  >;
-  const [options, setOptions] = useState<AlternativeOptions | null>(null);
   const [reason, setReason] = useState<ExerciseAlternativeReason>("variety");
-  const [pending, startTransition] = useTransition();
+  const catalog = useWorkoutExerciseOptions<AlternativeOptions>({
+    mode: "alternative",
+    exerciseId,
+    open,
+  });
+  const { options, setOptions } = catalog;
 
   function handleOpen(next: boolean) {
+    if (next) catalog.prepareToOpen();
+    else catalog.invalidateActiveLoad();
     onOpenChange(next);
   }
-
-  useEffect(() => {
-    if (!open || options != null) return;
-    let ignore = false;
-    startTransition(async () => {
-      try {
-        const result = await getAlternativeOptions(exerciseId);
-        if (ignore) return;
-        if (!result.ok) {
-          toast.error(result.message);
-          onOpenChange(false);
-          return;
-        }
-        setOptions(result);
-      } catch {
-        if (ignore) return;
-        toast.error("Alternatives could not be loaded.");
-        onOpenChange(false);
-      }
-    });
-    return () => {
-      ignore = true;
-    };
-  }, [exerciseId, onOpenChange, open, options]);
 
   return (
     <Drawer open={open} onOpenChange={handleOpen}>
@@ -3342,7 +3632,6 @@ function AlternativesDrawer({
                     type="button"
                     size="sm"
                     variant={reason === value ? "default" : "outline"}
-                    disabled={pending}
                     aria-pressed={reason === value}
                     onClick={() => setReason(value)}
                   >
@@ -3353,7 +3642,11 @@ function AlternativesDrawer({
             </div>
           </div>
           {options == null ? (
-            <p className="py-4 text-sm text-muted-foreground">Loading…</p>
+            <ExerciseOptionsLoadState
+              error={catalog.loadError}
+              onRetry={catalog.retryLoad}
+              onBack={() => handleOpen(false)}
+            />
           ) : (
             <ExercisePicker
               items={options.items}
@@ -3377,7 +3670,7 @@ function AlternativesDrawer({
                     toast.error(result.message);
                     return false;
                   }
-                  onOpenChange(false);
+                  handleOpen(false);
                   setOptions(null);
                   onDone(selected, reason);
                   return true;
@@ -3419,37 +3712,46 @@ function ReplacementDrawer({
     reason: ExerciseAlternativeReason,
   ) => void;
 }) {
-  const [options, setOptions] = useState<ReplacementOptions | null>(null);
   const [reason, setReason] = useState<ExerciseAlternativeReason>("variety");
-  const [pending, startTransition] = useTransition();
+  const [reconciliationRequired, setReconciliationRequired] = useState(false);
   const mutationRef = useRef<{ signature: string; id: string } | null>(null);
+  const reconcileOnNextLoadRef = useRef(false);
 
-  useEffect(() => {
-    if (!open || options != null) return;
-    let ignore = false;
-    startTransition(async () => {
-      try {
-        const result = await getReplacementOptions(exerciseId);
-        if (ignore) return;
-        if (!result.ok) {
-          toast.error(result.message);
-          onOpenChange(false);
-          return;
-        }
-        setOptions(result);
-      } catch {
-        if (ignore) return;
-        toast.error("The exercise catalog could not be loaded.");
-        onOpenChange(false);
-      }
-    });
-    return () => {
-      ignore = true;
-    };
-  }, [exerciseId, onOpenChange, open, options]);
+  function reconcileLoadedOptions(loaded: ReplacementOptions) {
+    if (!reconcileOnNextLoadRef.current) return;
+    const authoritative = loaded.items.find(
+      (item) => item.id === loaded.currentExerciseId,
+    );
+    if (!authoritative) return;
+    reconcileOnNextLoadRef.current = false;
+    onReconcile(
+      authoritative,
+      loaded.currentState,
+      loaded.plannedExerciseName,
+    );
+    setReconciliationRequired(false);
+  }
+
+  const catalog = useWorkoutExerciseOptions<ReplacementOptions>({
+    mode: "replacement",
+    exerciseId,
+    open,
+    onLoaded: reconcileLoadedOptions,
+  });
+  const { options, setOptions } = catalog;
+
+  function handleOpen(next: boolean) {
+    if (next) catalog.prepareToOpen();
+    else {
+      if (reconcileOnNextLoadRef.current) return;
+      reconcileOnNextLoadRef.current = false;
+      catalog.invalidateActiveLoad();
+    }
+    onOpenChange(next);
+  }
 
   return (
-    <Drawer open={open} onOpenChange={onOpenChange}>
+    <Drawer open={open} onOpenChange={handleOpen}>
       <DrawerTrigger
         render={
           <Button
@@ -3478,7 +3780,6 @@ function ReplacementDrawer({
                     type="button"
                     size="sm"
                     variant={reason === value ? "default" : "outline"}
-                    disabled={pending}
                     aria-pressed={reason === value}
                     onClick={() => setReason(value)}
                   >
@@ -3488,8 +3789,17 @@ function ReplacementDrawer({
               )}
             </div>
           </div>
-          {options == null ? (
-            <p className="py-4 text-sm text-muted-foreground">Loading…</p>
+          {options == null || reconciliationRequired ? (
+            <ExerciseOptionsLoadState
+              error={
+                reconciliationRequired && options != null
+                  ? "Repbook could not confirm the updated exercise. Try again or return to Today."
+                  : catalog.loadError
+              }
+              onRetry={catalog.retryLoad}
+              onBack={() => handleOpen(false)}
+              reconciliationRequired={reconciliationRequired}
+            />
           ) : (
             <ExercisePicker
               items={options.items}
@@ -3523,31 +3833,16 @@ function ReplacementDrawer({
                     toast.error(result.message);
                     if (result.code === "replacement_stale") {
                       mutationRef.current = null;
-                      try {
-                        const refreshed = await getReplacementOptions(exerciseId);
-                        if (refreshed.ok) {
-                          setOptions(refreshed);
-                          const authoritative = refreshed.items.find(
-                            (item) => item.id === refreshed.currentExerciseId,
-                          );
-                          if (authoritative) {
-                            onReconcile(
-                              authoritative,
-                              refreshed.currentState,
-                              refreshed.plannedExerciseName,
-                            );
-                          }
-                        }
-                      } catch {
-                        // The preserved selection remains available for review.
-                      }
+                      setReconciliationRequired(true);
+                      reconcileOnNextLoadRef.current = true;
+                      catalog.retryLoad();
                     }
                     return false;
                   }
                   const warning = options.warnings[selected.id];
                   if (warning) toast.warning(warning);
                   mutationRef.current = null;
-                  onOpenChange(false);
+                  handleOpen(false);
                   setOptions(null);
                   onDone(selected, reason);
                   return true;

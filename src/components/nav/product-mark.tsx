@@ -49,24 +49,32 @@ export function ProductHomeLink({
   collapsed = false,
   label = `${PRODUCT_NAME} home`,
   className,
+  forceDocumentNavigation = false,
 }: {
   href: string;
   collapsed?: boolean;
   label?: string;
   className?: string;
+  forceDocumentNavigation?: boolean;
 }) {
-  return (
-    <Link
-      href={href}
-      aria-label={label}
-      title={collapsed ? PRODUCT_NAME : undefined}
-      className={cn(
-        "rounded-lg outline-none focus-visible:ring-3 focus-visible:ring-ring/50",
-        collapsed ? "flex justify-center" : "block px-2",
-        className
-      )}
-    >
-      {collapsed ? <ProductGlyph /> : <ProductLockup />}
+  const sharedProps = {
+    "aria-label": label,
+    title: collapsed ? PRODUCT_NAME : undefined,
+    className: cn(
+      "rounded-lg outline-none focus-visible:ring-3 focus-visible:ring-ring/50",
+      collapsed ? "flex justify-center" : "block px-2",
+      className
+    ),
+  };
+  const content = collapsed ? <ProductGlyph /> : <ProductLockup />;
+
+  return forceDocumentNavigation ? (
+    <a href={href} {...sharedProps}>
+      {content}
+    </a>
+  ) : (
+    <Link href={href} {...sharedProps}>
+      {content}
     </Link>
   );
 }

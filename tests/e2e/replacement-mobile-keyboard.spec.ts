@@ -1,5 +1,4 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
-import { getWorkoutFinishButton } from "../helpers/active-workout-controls";
 import {
   waitForHydratedReactChangeHandler,
   waitForHydratedReactHandler,
@@ -38,7 +37,7 @@ async function discardActiveWorkout(page: Page) {
   await expect(page).toHaveURL(
     /\/session\/[0-9a-f-]+(?:#workout-rest-status)?$/,
   );
-  await getWorkoutFinishButton(page).click();
+  await page.getByRole("button", { name: /^(?:Review workout finish|Finish workout)$/ }).click();
   await page
     .getByRole("dialog", { name: "Finish workout" })
     .getByRole("button", { name: "Discard workout", exact: true })

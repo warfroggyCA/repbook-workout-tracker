@@ -1,5 +1,4 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
-import { getWorkoutFinishButton } from "../helpers/active-workout-controls";
 import {
   installNextDevelopmentRefreshControl,
   openNativeDetails,
@@ -130,11 +129,14 @@ async function clickCentered(page: Page, locator: Locator) {
 
 async function skipCurrentSet(page: Page) {
   const current = page.getByTestId("current-exercise-card");
-  const currentHeader = current.locator(":scope > button").first();
-  if ((await currentHeader.getAttribute("aria-expanded")) !== "true") {
-    await currentHeader.click();
-  }
-  await expect(current.locator(":scope > button").first()).toHaveAttribute(
+  const currentDisclosure = current.locator(":scope > button").first();
+  await waitForHydratedReactHandler(currentDisclosure);
+  await currentDisclosure.evaluate((element) => {
+    if (element.getAttribute("aria-expanded") !== "true") {
+      (element as HTMLElement).click();
+    }
+  });
+  await expect(currentDisclosure).toHaveAttribute(
     "aria-expanded",
     "true",
   );
@@ -184,7 +186,7 @@ async function skipCurrentSet(page: Page) {
 }
 
 async function discardWorkout(page: Page) {
-  await getWorkoutFinishButton(page).click();
+  await page.getByRole("button", { name: /^(?:Review workout finish|Finish workout)$/ }).click();
   const finish = page.getByRole("dialog", { name: "Finish workout" });
   await finish.getByRole("button", { name: "Discard workout", exact: true }).click();
   const confirmation = page.getByRole("dialog", { name: /^Discard .+\?$/ });
@@ -224,8 +226,18 @@ test("keeps one ledger-driven current/next/group/rest state through retry, inter
   const otherExercise = page.getByRole("region", { name: "Dumbbell Bench Press" });
   await otherExercise.locator(":scope > button").click();
   await expect(guidance).toContainText("Now: Barbell Back Squat, set 1");
-  await expect(first).toContainText("Next action");
-  await expect(first).toContainText("Barbell Back Squat, set 2");
+  await expect(guidance).toContainText("Next: Barbell Back Squat, set 2");
+  const showCurrent = status.getByRole("button", {
+    name: "Show Barbell Back Squat, Set 1",
+    exact: true,
+  });
+  await expect(showCurrent).toContainText("Show current set");
+  await showCurrent.click();
+  await expect(
+    page.getByTestId("current-exercise-card").locator(":scope > button").first(),
+  ).toHaveAttribute("aria-expanded", "true");
+  await expect(status.getByTestId("active-workout-dock-primary"))
+    .toHaveAccessibleName("Log Barbell Back Squat, Set 1");
 
   for (let count = 0; count < 20; count += 1) {
     if ((await currentExerciseName(page)) === "Dumbbell Lateral Raise") break;
@@ -272,7 +284,9 @@ test("keeps one ledger-driven current/next/group/rest state through retry, inter
   await expect(guidance).toContainText(
     /Now: Superset, round 1, member 1 of 2: Dumbbell Lateral Raise, set 1/,
   );
-  await expect(group).toContainText("Up next in group: 2 of 2 · Pallof Press");
+  await expect(guidance).toContainText(
+    /Next: Superset, round 1, member 2 of 2: Pallof Press, set 1/,
+  );
   await expect(status.getByLabel("Rest timer")).toHaveCount(0);
 
   const background = await context.newPage();
@@ -339,7 +353,7 @@ test("keeps one ledger-driven current/next/group/rest state through retry, inter
   await expect(
     page.getByRole("region", { name: "Workout progress and upcoming work" }),
   ).toContainText("All actions resolved");
-  await expect(getWorkoutFinishButton(page)).toBeVisible();
+  await expect(page.getByRole("button", { name: /^(?:Review workout finish|Finish workout)$/ })).toBeVisible();
   expect(
     await page.evaluate(
       () => document.documentElement.scrollWidth - document.documentElement.clientWidth,

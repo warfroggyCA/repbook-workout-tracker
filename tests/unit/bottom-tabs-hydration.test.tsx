@@ -4,6 +4,7 @@ import {
   BottomTabs,
   mobileNavigationUsesFocusedWorkoutMode,
   navigationItemIsActive,
+  navigationItemRequiresDocumentNavigation,
   navigationItemShouldPrefetch,
 } from "@/components/nav/bottom-tabs";
 
@@ -47,5 +48,16 @@ describe("BottomTabs hydration", () => {
     expect(mobileNavigationUsesFocusedWorkoutMode("/sessions")).toBe(false);
     expect(mobileNavigationUsesFocusedWorkoutMode("/today")).toBe(false);
     expect(mobileNavigationUsesFocusedWorkoutMode(null)).toBe(false);
+  });
+
+  it("requires interruption-safe document navigation only when leaving an active workout", () => {
+    expect(
+      navigationItemRequiresDocumentNavigation("/session/session-id"),
+    ).toBe(true);
+    expect(
+      navigationItemRequiresDocumentNavigation("/session"),
+    ).toBe(true);
+    expect(navigationItemRequiresDocumentNavigation("/today")).toBe(false);
+    expect(navigationItemRequiresDocumentNavigation(null)).toBe(false);
   });
 });

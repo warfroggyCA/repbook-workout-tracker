@@ -2832,8 +2832,7 @@ async function logWorkoutSetAttempt(
     row.outcome === "equipment_selection_required" ||
     row.outcome === "equipment_selection_conflict" ||
     row.outcome === "performed_evidence_conflict" ||
-    row.outcome === "stale_occurrence" ||
-    row.outcome === "workout_not_active"
+    row.outcome === "stale_occurrence"
   ) {
     const replay = resultRows(await db.execute(sql`
       SELECT
@@ -3410,6 +3409,10 @@ export async function abandonWorkoutSession(
     )
     SELECT
       owned.id,
+      coalesce(
+        (SELECT transitioned.status FROM transitioned LIMIT 1),
+        owned.status
+      ) AS status,
       EXISTS (SELECT 1 FROM transitioned) AS transitioned
     FROM owned
   `;
@@ -3419,6 +3422,7 @@ export async function abandonWorkoutSession(
   return {
     sessionId: String(row.id),
     alreadyFinished: !Boolean(row.transitioned),
+    status: String(row.status) as "in_progress" | "completed" | "abandoned",
   };
 }
 

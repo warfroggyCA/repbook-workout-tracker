@@ -248,7 +248,7 @@ describe("session-runner workflow rules", () => {
     ).toBe(newer);
   });
 
-  it("blocks finish while any device-only or unreadable set remains", () => {
+  it("blocks only on device copies positively scoped to this workout", () => {
     const outbox = { quarantined: [], error: null };
     expect(workoutFinishIsBlocked([], outbox)).toBe(false);
     expect(workoutFinishIsBlocked([{} as never], outbox)).toBe(true);
@@ -257,7 +257,7 @@ describe("session-runner workflow rules", () => {
         quarantined: [{ quarantineKey: "q", raw: null, reason: "invalid" }],
         error: null,
       })
-    ).toBe(true);
+    ).toBe(false);
   });
 
   it("advances to the next unfinished non-skipped exercise in order", () => {
