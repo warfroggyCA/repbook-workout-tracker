@@ -313,6 +313,10 @@ test("keeps the full live workout usable through warm-up, skip, replace, continu
   const interruptedSkipMayFinish = new Promise<void>((resolve) => {
     releaseInterruptedSkip = resolve;
   });
+  let confirmInterruptedSkipSettled!: () => void;
+  const interruptedSkipSettled = new Promise<void>((resolve) => {
+    confirmInterruptedSkipSettled = resolve;
+  });
   let rejectReplayedSkip!: () => void;
   const replayedSkipMayFail = new Promise<void>((resolve) => {
     rejectReplayedSkip = resolve;
@@ -329,7 +333,11 @@ test("keeps the full live workout usable through warm-up, skip, replace, continu
       interruptedSkipRequests += 1;
       if (interruptedSkipRequests === 1) {
         await interruptedSkipMayFinish;
-        await route.abort("failed");
+        try {
+          await route.abort("failed");
+        } finally {
+          confirmInterruptedSkipSettled();
+        }
         return;
       } else if (interruptedSkipRequests === 2) {
         await replayedSkipMayFail;
@@ -371,6 +379,13 @@ test("keeps the full live workout usable through warm-up, skip, replace, continu
   await expect(interruptedWorkoutExit).toBeVisible();
   await interruptedWorkoutExit.click();
   await expect(page).toHaveURL(/\/today$/);
+  releaseInterruptedSkip();
+  await interruptedSkipSettled;
+  await expect.poll(() => page.evaluate(() =>
+    Object.keys(window.sessionStorage).filter((key) =>
+      key.startsWith("workout-tracker:skip-recovery:v1:")
+    ).length
+  )).toBe(1);
   const resumeInterruptedWorkout = page.getByRole("button", {
     name: "Resume workout",
     exact: true,
@@ -383,7 +398,6 @@ test("keeps the full live workout usable through warm-up, skip, replace, continu
       key.startsWith("workout-tracker:skip-recovery:v1:")
     ).length
   )).toBe(1);
-  releaseInterruptedSkip();
   const reconcilingSkip = exerciseCard(page, "Suspension Push-Up");
   await expect.poll(() => interruptedSkipRequests).toBe(2);
   await expect.poll(() => reconcilingSkip.evaluate((card) => {

@@ -116,7 +116,7 @@ async function chooseFontSize(
   await page.goto(returnUrl);
 }
 
-test("puts truthful saved-equipment preparation before warm-up at phone sizes", async ({
+test("keeps truthful saved-equipment preparation compact beside the current action", async ({
   page,
 }, testInfo) => {
   await signIn(page);
@@ -143,19 +143,21 @@ test("puts truthful saved-equipment preparation before warm-up at phone sizes", 
     preparation.getByText("Review equipment list", { exact: true }),
   ).toBeVisible();
   await expect
-    .poll(() => preparation.evaluate((element) => {
-      const warmupElement = document.querySelector("#workout-warmup");
-      return warmupElement != null && Boolean(
-        element.compareDocumentPosition(warmupElement) &
+    .poll(() => warmup.evaluate((element) => {
+      const preparationElement = document.querySelector(
+        '[data-testid="session-preparation-panel"]',
+      );
+      return preparationElement != null && Boolean(
+        element.compareDocumentPosition(preparationElement) &
           Node.DOCUMENT_POSITION_FOLLOWING,
       );
     }))
     .toBe(true);
   await expect
     .poll(() => sticky.evaluate((element) =>
-      element.nextElementSibling?.getAttribute("data-testid"),
+      element.nextElementSibling?.id,
     ))
-    .toBe("session-preparation-panel");
+    .toBe("workout-warmup");
 
   await page.setViewportSize({ width: 390, height: 844 });
   await preparation.scrollIntoViewIfNeeded();
