@@ -19,6 +19,8 @@ const UNKNOWN_VALUE = /^(?:\?|unknown|not stated)$/iu;
 
 export const CANONICAL_ROUTINE_PARSER_VERSION = "canonical-routine-text/4";
 
+class InvalidCanonicalExerciseNotesError extends Error {}
+
 export type RoutineTextStructure = Readonly<{
   characterCount: number;
   dayCount: number;
@@ -192,10 +194,12 @@ function parseWarmupInstruction(
  * `Warm-up:` creates day preparation. An adjacent `Ramp-up:` after an
  * exercise creates ordered lift-specific preparation for that exercise. An
  * adjacent `Exercise notes:` line remains attached to that exact exercise.
- * Every other non-heading line must be understood or the parser fails closed
- * so the provider-backed parser can review it without silently dropping text.
+ * Invalid `Exercise notes:` placement is reported separately and must not fall
+ * through to AI. Every other non-heading line must be understood or the parser
+ * fails closed so the provider-backed parser can review it without silently
+ * dropping text.
  */
-export function parseCanonicalRoutineText(
+function parseCanonicalRoutineTextInternal(
   input: string,
 ): RoutineParseResult | null {
   const lines = input
@@ -269,7 +273,7 @@ export function parseCanonicalRoutineText(
         notes.length === 0 ||
         notes.length > 2_000
       ) {
-        return null;
+        throw new InvalidCanonicalExerciseNotesError();
       }
       currentExercise.notes = notes;
       continue;
@@ -377,4 +381,27 @@ export function parseCanonicalRoutineText(
   });
   if (!draft.success) return null;
   return normalizeRoutineParseDraftEnvelope(draft.data, input);
+}
+
+export function parseCanonicalRoutineTextWithDiagnostics(input: string): {
+  envelope: RoutineParseResult | null;
+  invalidExerciseNotes: boolean;
+} {
+  try {
+    return {
+      envelope: parseCanonicalRoutineTextInternal(input),
+      invalidExerciseNotes: false,
+    };
+  } catch (error) {
+    if (error instanceof InvalidCanonicalExerciseNotesError) {
+      return { envelope: null, invalidExerciseNotes: true };
+    }
+    throw error;
+  }
+}
+
+export function parseCanonicalRoutineText(
+  input: string,
+): RoutineParseResult | null {
+  return parseCanonicalRoutineTextWithDiagnostics(input).envelope;
 }

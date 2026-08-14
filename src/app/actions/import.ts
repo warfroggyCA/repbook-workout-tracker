@@ -29,7 +29,7 @@ import { ROUTINE_PARSE_SYSTEM } from "@/ai/tasks/routine-parse/prompt";
 import {
   CANONICAL_ROUTINE_PARSER_VERSION,
   inspectRoutineTextStructure,
-  parseCanonicalRoutineText,
+  parseCanonicalRoutineTextWithDiagnostics,
 } from "@/ai/tasks/routine-parse/deterministic";
 import {
   exerciseMapSchema,
@@ -205,7 +205,15 @@ export async function parseRoutineText(
     };
   }
   const { text, clientImportId } = validated.data;
-  const deterministicEnvelope = parseCanonicalRoutineText(text);
+  const deterministicAttempt = parseCanonicalRoutineTextWithDiagnostics(text);
+  if (deterministicAttempt.invalidExerciseNotes) {
+    return {
+      ok: false,
+      reason:
+        "An Exercise notes line is blank, duplicated, too long, or separated from its exercise. Fix that line and parse again. Your current Program was not changed.",
+    };
+  }
+  const deterministicEnvelope = deterministicAttempt.envelope;
   const user = await getCurrentUser();
   const db = await getDb();
 
@@ -831,6 +839,17 @@ export async function confirmImport(
       ok: false,
       reason:
         "This review no longer matches the staged paste. Discard it and parse again.",
+    };
+  }
+  if (
+    stagedPayload.parserVersion.startsWith("ai-structured-output/") &&
+    parseCanonicalRoutineTextWithDiagnostics(event.rawPayload)
+      .invalidExerciseNotes
+  ) {
+    return {
+      ok: false,
+      reason:
+        "This review contains an Exercise notes line that cannot be attached safely. Nothing was published; discard it, fix that line, and parse the routine again.",
     };
   }
   if (
