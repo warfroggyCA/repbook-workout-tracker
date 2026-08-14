@@ -1033,7 +1033,7 @@ describe("Live Coach durable workout conversation", () => {
     );
     expect(csv).toContain("The first set felt harder");
     expect(csv).toContain("Hold the load for the next set");
-    expect(backup.schemaVersion).toBe("33");
+    expect(backup.schemaVersion).toBe("34");
     expect(backup.canonical.tables.coaching_insights).toHaveLength(4);
     expect(snapshot.schemaVersion).toBe(SNAPSHOT_SCHEMA_VERSION);
     expect(snapshot.tables.coaching_insights).toHaveLength(4);

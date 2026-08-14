@@ -8,7 +8,7 @@ import {
   workoutTemplates,
 } from "@/db/schema";
 import {
-  getActiveProgramVersion,
+  getActiveProgramVersionWithSchedule,
   getTemplatesWithSlots,
   type TemplateWithSlots,
 } from "./program";
@@ -19,6 +19,7 @@ import {
   classifyActiveSessionTiming,
   type ActiveSessionTiming,
 } from "@/lib/active-session-timing";
+import type { ScheduledProgramEventIntentSnapshot } from "@/lib/program-schedule";
 
 export type TodayData = {
   programName: string;
@@ -39,6 +40,26 @@ export type TodayData = {
   inProgressSessionName: string | null;
   inProgressSessionStartedAtISO: string | null;
   inProgressTiming: ActiveSessionTiming | null;
+  schedule: {
+    scheduleVersionId: string;
+    scheduleVersionHash: string;
+    complete: boolean;
+    nextEvent: {
+      id: string;
+      kind: "resistance" | "cardio" | "recovery" | "rest";
+      scheduleKind: "fixed_7_day" | "rolling";
+      revision: number;
+      phaseName: string;
+      currentLocalDate: string;
+      originalLocalDate: string;
+      programWeek: number;
+      cyclePosition: number;
+      routineLineageId: string | null;
+      intentSnapshot: ScheduledProgramEventIntentSnapshot;
+      sourceProgramVersionChanged: boolean;
+      routineUnavailable: boolean;
+    } | null;
+  } | null;
   inProgressOccurrences: Array<{
     id: string;
     kind: string;
@@ -91,7 +112,7 @@ export async function getTodayData(
   now = new Date(),
 ): Promise<TodayData | null> {
   const [active, inProgress, recent] = await Promise.all([
-    getActiveProgramVersion(db, userId),
+    getActiveProgramVersionWithSchedule(db, userId),
     db.query.workoutSessions.findFirst({
       where: and(
         eq(workoutSessions.userId, userId),
@@ -175,8 +196,18 @@ export async function getTodayData(
     templates.map((t) => t.template.lineageId),
     recent.map(lineageForSession)
   );
-  const nextTemplate =
+  const legacyNextTemplate =
     currentTemplateByLineage.get(nextTemplateLineageId) ?? templates[0];
+  const scheduledTemplate =
+    active.schedule?.nextEvent?.kind === "resistance" &&
+    active.schedule.nextEvent.routineLineageId
+      ? (currentTemplateByLineage.get(
+          active.schedule.nextEvent.routineLineageId,
+        ) ?? null)
+      : null;
+  const nextTemplate = active.schedule
+    ? scheduledTemplate
+    : legacyNextTemplate;
 
   const lastCompletedProgramDay =
     recent.find((session) => lineageForSession(session) != null) ?? null;
@@ -216,6 +247,33 @@ export async function getTodayData(
     inProgressSessionStartedAtISO: inProgress?.startedAt.toISOString() ?? null,
     inProgressTiming: inProgress
       ? classifyActiveSessionTiming(inProgress.startedAt, now)
+      : null,
+    schedule: active.schedule
+      ? {
+          scheduleVersionId: active.schedule.version.id,
+          scheduleVersionHash: active.schedule.version.contentHash,
+          complete: active.schedule.nextEvent == null,
+          nextEvent: active.schedule.nextEvent
+            ? {
+                id: active.schedule.nextEvent.id,
+                kind: active.schedule.nextEvent.kind as "resistance" | "cardio" | "recovery" | "rest",
+                scheduleKind: active.schedule.nextEvent.scheduleKind as "fixed_7_day" | "rolling",
+                revision: active.schedule.nextEvent.revision,
+                phaseName: active.schedule.nextEvent.sourcePhaseName,
+                currentLocalDate: active.schedule.nextEvent.currentLocalDate,
+                originalLocalDate: active.schedule.nextEvent.originalLocalDate,
+                programWeek: active.schedule.nextEvent.programWeek,
+                cyclePosition: active.schedule.nextEvent.cyclePosition,
+                routineLineageId: active.schedule.nextEvent.routineLineageId,
+                intentSnapshot: active.schedule.nextEvent.intentSnapshot,
+                sourceProgramVersionChanged:
+                  active.schedule.nextEvent.sourceProgramVersionId !== active.version.id,
+                routineUnavailable:
+                  active.schedule.nextEvent.kind === "resistance" &&
+                  scheduledTemplate == null,
+              }
+            : null,
+        }
       : null,
     inProgressOccurrences: (inProgress?.occurrences ?? []).map((occurrence) => ({
       id: occurrence.id,

@@ -13,6 +13,7 @@ import {
   programVersions,
   userProfiles,
   users,
+  workoutSessions,
   workoutTemplates,
 } from "@/db/schema";
 import {
@@ -215,6 +216,82 @@ Ramp-up: Empty bar | reps=10`)!;
     await expect(confirmImport(staged.input)).resolves.toEqual(published);
     expect(await db.query.programVersions.findMany()).toHaveLength(1);
     expect(mocked.createSafetySnapshot).toHaveBeenCalledTimes(1);
+  });
+
+  it("can publish the reviewed routines as a separate named Program", async () => {
+    const existing = await activateProgramAtomically(db, {
+      userId,
+      loadUnit: "lb",
+      programName: "Hevy",
+      days: [{
+        name: "Hevy A",
+        exercises: [{
+          exerciseId,
+          sets: 3,
+          repMin: 8,
+          repMax: 8,
+          targetLoad: 60,
+          targetLoadUnit: "lb",
+          restSec: 120,
+          supersetKey: null,
+          notes: null,
+        }],
+      }],
+      changeSummary: "Create existing Program",
+      auditAction: "program.activate",
+      auditSummary: "Create existing Program",
+      expectedCurrentProgramVersionId: null,
+    });
+    if (!existing.ok) throw new Error(existing.reason);
+    const staged = await stageReview(existing.programVersionId);
+    const [activeSession] = await db.insert(workoutSessions).values({
+      userId,
+      templateName: "Hevy A",
+      timezone: "UTC",
+      localDate: "2026-08-14",
+      startedAt: new Date("2026-08-14T12:00:00.000Z"),
+    }).returning({ id: workoutSessions.id });
+    await expect(confirmImport({
+      ...staged.input,
+      destination: "create_new_active",
+      programName: "Transformation",
+    })).resolves.toEqual({
+      ok: false,
+      reason: "Finish or discard the active workout before adding a new active Program.",
+    });
+    await db.update(workoutSessions).set({
+      status: "abandoned",
+      finishedAt: new Date("2026-08-14T12:30:00.000Z"),
+    }).where(eq(workoutSessions.id, activeSession.id));
+    const published = await confirmImport({
+      ...staged.input,
+      destination: "create_new_active",
+      programName: "Transformation",
+    });
+    expect(published.ok).toBe(true);
+
+    const saved = await db.query.programs.findMany();
+    expect(saved).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        id: existing.programId,
+        name: "Hevy",
+        status: "inactive",
+        currentVersionId: existing.programVersionId,
+      }),
+      expect.objectContaining({
+        name: "Transformation",
+        status: "active",
+      }),
+    ]));
+    expect(saved).toHaveLength(2);
+    expect(await db.query.importEvents.findFirst({
+      where: eq(importEvents.id, staged.eventId),
+    })).toMatchObject({
+      status: "confirmed",
+      confirmedPayload: expect.objectContaining({
+        destination: "create_new_active",
+      }),
+    });
   });
 
   it("rejects malformed and oversized paste input without durable staging", async () => {

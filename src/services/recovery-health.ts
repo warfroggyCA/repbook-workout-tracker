@@ -1214,11 +1214,11 @@ export async function evaluateApplicationIntegrity(
 
       UNION ALL
       SELECT 'program.current_version', 'error', 'program', program.id::text,
-        'An active Program does not point to one of its immutable versions.',
+        'A usable Program does not point to one of its immutable versions.',
         jsonb_build_object('currentVersionId', program.current_version_id)
       FROM user_programs program
       LEFT JOIN program_versions version ON version.id = program.current_version_id
-      WHERE program.status = 'active'
+      WHERE program.status IN ('active', 'inactive')
         AND program.archived_at IS NULL
         AND (
           version.id IS NULL OR version.program_id <> program.id
@@ -1231,11 +1231,12 @@ export async function evaluateApplicationIntegrity(
 
       UNION ALL
       SELECT 'program.state', 'error', 'program', program.id::text,
-        'A Program has inconsistent active and archive state.',
+        'A Program has inconsistent usable and archive state.',
         jsonb_build_object('status', program.status, 'archivedAt', program.archived_at)
       FROM user_programs program
-      WHERE (program.status = 'active' AND program.archived_at IS NOT NULL)
+      WHERE (program.status IN ('active', 'inactive') AND program.archived_at IS NOT NULL)
          OR (program.status = 'archived' AND program.archived_at IS NULL)
+         OR program.status NOT IN ('active', 'inactive', 'archived')
 
       UNION ALL
       SELECT 'program_version.parent', 'error', 'program_version', version.id::text,

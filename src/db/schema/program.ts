@@ -59,11 +59,11 @@ export const programs = pgTable(
     uniqueIndex("programs_id_user_uq").on(t.id, t.userId),
     check(
       "programs_status_valid",
-      sql`${t.status} IN ('active', 'archived')`
+      sql`${t.status} IN ('active', 'inactive', 'archived')`
     ),
     check(
       "programs_current_version_state_check",
-      sql`(${t.status} = 'active' AND ${t.archivedAt} IS NULL AND ${t.currentVersionId} IS NOT NULL) OR (${t.status} = 'archived' AND ${t.archivedAt} IS NOT NULL)`
+      sql`(${t.status} IN ('active', 'inactive') AND ${t.archivedAt} IS NULL AND ${t.currentVersionId} IS NOT NULL) OR (${t.status} = 'archived' AND ${t.archivedAt} IS NOT NULL)`
     ),
   ]
 );

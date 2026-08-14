@@ -84,6 +84,7 @@ const PRE_REVIEW_SNAPSHOT_SCHEMA_VERSION = "29";
 const PRE_ACTIVE_DURATION_SNAPSHOT_SCHEMA_VERSION = "30";
 const PRE_SESSION_EQUIPMENT_REQUIREMENTS_SNAPSHOT_SCHEMA_VERSION = "31";
 const PRE_PROGRAM_SCHEDULE_SNAPSHOT_SCHEMA_VERSION = "32";
+const PRE_NAMED_PROGRAM_LIBRARY_SNAPSHOT_SCHEMA_VERSION = "33";
 
 type SnapshotRow = Record<string, unknown>;
 type RestoreRows = Record<string, SnapshotRow[]>;
@@ -1220,6 +1221,7 @@ export function upgradeSnapshotPayload(
     PRE_ACTIVE_DURATION_SNAPSHOT_SCHEMA_VERSION,
     PRE_SESSION_EQUIPMENT_REQUIREMENTS_SNAPSHOT_SCHEMA_VERSION,
     PRE_PROGRAM_SCHEDULE_SNAPSHOT_SCHEMA_VERSION,
+    PRE_NAMED_PROGRAM_LIBRARY_SNAPSHOT_SCHEMA_VERSION,
     SNAPSHOT_SCHEMA_VERSION,
   ]);
   if (!supported.has(payload.schemaVersion)) {
@@ -1304,6 +1306,7 @@ export function upgradeSnapshotPayload(
       PRE_ACTIVE_DURATION_SNAPSHOT_SCHEMA_VERSION,
       PRE_SESSION_EQUIPMENT_REQUIREMENTS_SNAPSHOT_SCHEMA_VERSION,
       PRE_PROGRAM_SCHEDULE_SNAPSHOT_SCHEMA_VERSION,
+      PRE_NAMED_PROGRAM_LIBRARY_SNAPSHOT_SCHEMA_VERSION,
       SNAPSHOT_SCHEMA_VERSION,
     ].includes(upgraded.schemaVersion)
   ) {
@@ -1790,15 +1793,21 @@ function validateVersionedProgramData(payload: CanonicalSnapshotPayload) {
       program.current_version_id == null
         ? null
         : versions.get(String(program.current_version_id));
-    if (program.status === "active" && program.archived_at == null && !current) {
-      throw new Error("Snapshot active Program has no current immutable version.");
+    if (
+      (program.status === "active" || program.status === "inactive") &&
+      program.archived_at == null &&
+      !current
+    ) {
+      throw new Error("Snapshot usable Program has no current immutable version.");
     }
     if (current && current.program_id !== program.id) {
       throw new Error("Snapshot Program current version belongs to another Program.");
     }
+    const usable = program.status === "active" || program.status === "inactive";
     if (
-      (program.status === "active") !== (program.archived_at == null) ||
-      (program.status === "archived") !== (program.archived_at != null)
+      (!usable && program.status !== "archived") ||
+      (usable && program.archived_at != null) ||
+      (program.status === "archived" && program.archived_at == null)
     ) {
       throw new Error("Snapshot Program archive state is inconsistent.");
     }
@@ -2756,6 +2765,7 @@ export function validateSnapshotPayload(
       PRE_ACTIVE_DURATION_SNAPSHOT_SCHEMA_VERSION,
       PRE_SESSION_EQUIPMENT_REQUIREMENTS_SNAPSHOT_SCHEMA_VERSION,
       PRE_PROGRAM_SCHEDULE_SNAPSHOT_SCHEMA_VERSION,
+      PRE_NAMED_PROGRAM_LIBRARY_SNAPSHOT_SCHEMA_VERSION,
       SNAPSHOT_SCHEMA_VERSION,
     ].includes(payload.schemaVersion)
   ) {
@@ -2799,6 +2809,7 @@ export function validateSnapshotPayload(
       PRE_ACTIVE_DURATION_SNAPSHOT_SCHEMA_VERSION,
       PRE_SESSION_EQUIPMENT_REQUIREMENTS_SNAPSHOT_SCHEMA_VERSION,
       PRE_PROGRAM_SCHEDULE_SNAPSHOT_SCHEMA_VERSION,
+      PRE_NAMED_PROGRAM_LIBRARY_SNAPSHOT_SCHEMA_VERSION,
       SNAPSHOT_SCHEMA_VERSION,
     ].includes(payload.schemaVersion)
   ) {
@@ -3008,6 +3019,7 @@ export function validateSnapshotPayload(
       PRE_ACTIVE_DURATION_SNAPSHOT_SCHEMA_VERSION,
       PRE_SESSION_EQUIPMENT_REQUIREMENTS_SNAPSHOT_SCHEMA_VERSION,
       PRE_PROGRAM_SCHEDULE_SNAPSHOT_SCHEMA_VERSION,
+      PRE_NAMED_PROGRAM_LIBRARY_SNAPSHOT_SCHEMA_VERSION,
       SNAPSHOT_SCHEMA_VERSION,
     ].includes(payload.schemaVersion)
   ) {

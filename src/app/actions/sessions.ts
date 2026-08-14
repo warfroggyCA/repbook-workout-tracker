@@ -118,6 +118,25 @@ export async function startSession(
   const parsedStartRequestKey = z.string().uuid().safeParse(
     formData.get("startRequestKey"),
   );
+  const scheduledValues = {
+    scheduledProgramEventId: formData.get("scheduledProgramEventId"),
+    expectedEventRevision: formData.get("expectedEventRevision"),
+    programScheduleVersionId: formData.get("programScheduleVersionId"),
+    programScheduleVersionHash: formData.get("programScheduleVersionHash"),
+  };
+  const hasAnyScheduledValue = Object.values(scheduledValues).some(
+    (value) => value !== null,
+  );
+  const parsedScheduledStart = hasAnyScheduledValue
+    ? z
+        .object({
+          scheduledProgramEventId: z.string().uuid(),
+          expectedEventRevision: z.coerce.number().int().min(0),
+          programScheduleVersionId: z.string().uuid(),
+          programScheduleVersionHash: z.string().regex(/^[0-9a-f]{64}$/u),
+        })
+        .safeParse(scheduledValues)
+    : null;
   const submittedStartRequestKey = parsedStartRequestKey.success
     ? parsedStartRequestKey.data.toLowerCase()
     : null;
@@ -127,7 +146,8 @@ export async function startSession(
   if (
     !timezoneResult.success ||
     !parsedTemplateId.success ||
-    !parsedStartRequestKey.success
+    !parsedStartRequestKey.success ||
+    (hasAnyScheduledValue && !parsedScheduledStart?.success)
   ) {
     logDiagnosticEvent("session.start_rejected", {
       rejection: "invalid_request",
@@ -142,10 +162,14 @@ export async function startSession(
   }
   const timeBudgetMin = sessionTimeBudgetSchema.parse(undefined);
   const startRequestKey = submittedStartRequestKey!;
+  const scheduledStart = parsedScheduledStart?.success
+    ? parsedScheduledStart.data
+    : undefined;
   const startRequestHash = buildWorkoutStartRequestHash({
     templateId: parsedTemplateId.data,
     timezone: timezoneResult.data,
     timeBudgetMin: timeBudgetMin ?? null,
+    ...(scheduledStart ? { scheduledStart } : {}),
   });
   let result: Awaited<ReturnType<typeof startWorkoutSession>>;
   try {
@@ -158,6 +182,7 @@ export async function startSession(
         timezone: timezoneResult.data,
         startRequestKey,
         now: acceptanceWorkoutNow("start"),
+        ...(scheduledStart ? { scheduledStart } : {}),
         ...(acceptanceFailure === "incomplete"
           ? { evaluateStartCounts: () => false }
           : {}),

@@ -300,9 +300,11 @@ function comparableInstruction(value: string) {
 export function RoutineImport({
   aiAvailable,
   initialParse = null,
+  initialDestination = "replace_active",
 }: {
   aiAvailable: boolean;
   initialParse?: ParseOk | null;
+  initialDestination?: "replace_active" | "create_new_active";
 }) {
   const router = useRouter();
   const [input, setInput] = useState("");
@@ -317,6 +319,7 @@ export function RoutineImport({
     initialParse ? initialDays(initialParse) : [],
   );
   const [equipmentFitReviewed, setEquipmentFitReviewed] = useState(false);
+  const [destination, setDestination] = useState(initialDestination);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
@@ -642,6 +645,7 @@ export function RoutineImport({
       try {
         const result = await confirmImport({
         schemaVersion: "program-input-review/1",
+        destination,
         importEventId: parsed.importEventId,
         stageDigest: parsed.stageDigest,
         baseProgramVersionId: parsed.baseProgramVersionId,
@@ -727,6 +731,29 @@ export function RoutineImport({
           maxLength={120}
           onChange={(event) => setProgramName(event.target.value)}
         />
+        <fieldset className="mt-4 rounded-xl border p-3">
+          <legend className="px-1 text-sm font-medium">Where to save these routines</legend>
+          <label className="mt-1 flex min-h-11 items-start gap-3 rounded-lg p-2 text-sm">
+            <input
+              type="radio"
+              name="program-destination"
+              className="mt-0.5 size-5"
+              checked={destination === "create_new_active"}
+              onChange={() => setDestination("create_new_active")}
+            />
+            <span><span className="font-medium">Add as a new named Program</span><span className="mt-1 block text-xs leading-5 text-muted-foreground">Keep the current Program saved and make this new routine set active.</span></span>
+          </label>
+          <label className="flex min-h-11 items-start gap-3 rounded-lg p-2 text-sm">
+            <input
+              type="radio"
+              name="program-destination"
+              className="mt-0.5 size-5"
+              checked={destination === "replace_active"}
+              onChange={() => setDestination("replace_active")}
+            />
+            <span><span className="font-medium">Update the active Program</span><span className="mt-1 block text-xs leading-5 text-muted-foreground">Publish this as the next version of the active Program.</span></span>
+          </label>
+        </fieldset>
       </section>
 
       <Alert>

@@ -59,6 +59,15 @@ function startForm() {
   return form;
 }
 
+function scheduledStartForm() {
+  const form = startForm();
+  form.set("scheduledProgramEventId", "a9a8fcd0-2513-4ff3-907a-d44ac72f4dc9");
+  form.set("expectedEventRevision", "2");
+  form.set("programScheduleVersionId", "63d06aa5-534e-4e6f-8b63-d888a658ab72");
+  form.set("programScheduleVersionHash", "a".repeat(64));
+  return form;
+}
+
 describe("startSession route freshness", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -92,6 +101,38 @@ describe("startSession route freshness", () => {
       "/session/7c18bb2f-26d8-492f-8dbe-af4c57abef97",
       "push",
     );
+  });
+
+  it("binds the exact scheduled occurrence into the Start identity", async () => {
+    await startSession(templateId, { status: "idle" }, scheduledStartForm());
+
+    const scheduledStart = {
+      scheduledProgramEventId: "a9a8fcd0-2513-4ff3-907a-d44ac72f4dc9",
+      expectedEventRevision: 2,
+      programScheduleVersionId: "63d06aa5-534e-4e6f-8b63-d888a658ab72",
+      programScheduleVersionHash: "a".repeat(64),
+    };
+    expect(mocks.buildWorkoutStartRequestHash).toHaveBeenCalledWith(
+      expect.objectContaining({ templateId, scheduledStart }),
+    );
+    expect(mocks.startWorkoutSession).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.any(String),
+      templateId,
+      undefined,
+      expect.objectContaining({ scheduledStart }),
+    );
+  });
+
+  it("rejects a partial scheduled Start identity before creating a workout", async () => {
+    const form = startForm();
+    form.set("scheduledProgramEventId", "a9a8fcd0-2513-4ff3-907a-d44ac72f4dc9");
+    await expect(startSession(templateId, { status: "idle" }, form)).resolves.toMatchObject({
+      status: "error",
+      code: "not_created",
+      workoutCreated: false,
+    });
+    expect(mocks.startWorkoutSession).not.toHaveBeenCalled();
   });
 
   it.each([

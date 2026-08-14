@@ -102,8 +102,8 @@ invent substitutions or omissions. Other versioned intent remains context for
 a separately reviewed future compiler.
 
 `program-input/1` is also the contract foundation for a later validated
-external-assistant package. This tranche adds no external exchange UI or
-multiple-Program library.
+external-assistant package. Routine parsing remains separate from Program
+library and scheduling behavior.
 
 Current equipment availability proves only catalog requirements against broad
 inventory and movement constraints. Import therefore requires the owner to
@@ -158,10 +158,29 @@ Full restore recomputes every immutable schedule version's canonical occurrence
 window and rejects missing, extra, or falsified dates, phase/event identities,
 routine lineage, week, cycle, or timezone evidence before replacement.
 
-This architecture tranche intentionally adds no schedule editor, program-plan
-parser, RIR overrides, progression engine, monitoring inputs, or automatic Coach
-adaptation. Those later capabilities must compose with this boundary and remain
-explicitly reviewed; they must not expand the routine parser or mutate history.
+The document layer adds no program-plan parser, RIR overrides, progression
+engine, monitoring inputs, or automatic Coach adaptation. Those later
+capabilities must compose with this boundary and remain explicitly reviewed;
+they must not expand the routine parser or mutate history.
+
+Migration 0082 adds a non-archived `inactive` Program state. An owner may keep
+multiple named Programs, but exactly one remains active and therefore supplies
+Today, Program editing, and current recommendations. Switching changes only the
+two Program status rows in one owner-scoped statement, is blocked during an
+active workout, expires suggestions tied to the prior current plan, and never
+edits immutable Program versions or completed sessions. Routine import makes
+the destination explicit: publish a new version of the active Program, or keep
+that Program saved and activate a new named Program.
+
+The owner-facing schedule editor is deliberately narrower than the document
+contract: it authors one fixed seven-day or rolling phase with resistance,
+cardio, recovery, and rest events. Multi-phase or otherwise advanced documents
+remain executable and are shown without being flattened. Once any event is
+used or adjusted, the editor becomes read-only and Today owns the explicit
+complete, skip, reschedule, and rolling-shift actions. Today passes the exact
+scheduled occurrence identity into Start, so routine-only Start remains the
+legacy fallback only when no schedule exists. Snapshot schema 34 preserves
+saved inactive Programs; recovery manifest 15 retains the same table inventory.
 
 ## Persisted evidence
 

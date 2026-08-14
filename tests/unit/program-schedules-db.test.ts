@@ -15,6 +15,7 @@ import {
   getCurrentProgramSchedule,
   publishProgramSchedule,
 } from "@/services/program-schedules";
+import { getTodayData } from "@/services/today";
 import {
   createMigratedTestDatabase,
   type TestDatabase,
@@ -128,6 +129,7 @@ function rollingDocument(lineageId: string) {
 describe("Program schedule service", () => {
   let database: TestDatabase;
   let userId: string;
+  let exerciseId: string;
   let programId: string;
   let programVersionId: string;
   let firstTemplateId: string;
@@ -146,7 +148,7 @@ describe("Program schedule service", () => {
       timezone: "America/Toronto",
       unit: "lb",
     });
-    const exerciseId = crypto.randomUUID();
+    exerciseId = crypto.randomUUID();
     await database.db.insert(exercises).values({
       id: exerciseId,
       name: `Schedule press ${exerciseId}`,
@@ -257,6 +259,127 @@ describe("Program schedule service", () => {
         with: { exercises: { with: { prescriptions: true } } },
       }),
     ).toEqual(before);
+  });
+
+  it("makes the next scheduled event authoritative for Today", async () => {
+    const published = await publish(
+      fixedDocument(firstLineageId, secondLineageId),
+    );
+    if (published.outcome !== "published") throw new Error("Publish failed.");
+
+    const today = await getTodayData(
+      database.db,
+      userId,
+      "America/Toronto",
+      new Date("2026-08-10T12:00:00.000Z"),
+    );
+    expect(today).toMatchObject({
+      programName: "Simple scheduled Program",
+      nextTemplate: { template: { lineageId: firstLineageId } },
+      schedule: {
+        scheduleVersionId: published.scheduleVersionId,
+        complete: false,
+        nextEvent: {
+          kind: "resistance",
+          phaseName: "Foundation",
+          currentLocalDate: "2026-08-10",
+          programWeek: 1,
+          routineLineageId: firstLineageId,
+          routineUnavailable: false,
+        },
+      },
+    });
+
+    const firstEvent = await database.db.query.scheduledProgramEvents.findFirst({
+      where: and(
+        eq(scheduledProgramEvents.scheduleVersionId, published.scheduleVersionId),
+        eq(scheduledProgramEvents.sequenceNo, 1),
+      ),
+    });
+    if (!firstEvent) throw new Error("First event missing.");
+    await database.db.update(scheduledProgramEvents).set({
+      status: "completed",
+      revision: 1,
+      resolvedAt: new Date("2026-08-10T13:00:00.000Z"),
+    }).where(eq(scheduledProgramEvents.id, firstEvent.id));
+
+    const cardioToday = await getTodayData(
+      database.db,
+      userId,
+      "America/Toronto",
+      new Date("2026-08-11T12:00:00.000Z"),
+    );
+    expect(cardioToday?.nextTemplate).toBeNull();
+    expect(cardioToday?.schedule?.nextEvent).toMatchObject({
+      kind: "cardio",
+      currentLocalDate: "2026-08-11",
+      intentSnapshot: {
+        kind: "cardio",
+        modality: "Elliptical",
+        durationMinutes: { min: 20, max: 25 },
+      },
+    });
+  });
+
+  it("does not let a routine import strand an unfinished active schedule", async () => {
+    await publish(fixedDocument(firstLineageId, secondLineageId));
+    const replacement = await activateProgramAtomically(database.db, {
+      userId,
+      loadUnit: "lb",
+      programName: "Replacement",
+      days: [{
+        name: "Replacement A",
+        exercises: [{
+          exerciseId,
+          sets: 2,
+          repMin: 8,
+          repMax: 10,
+          targetLoad: 80,
+          targetLoadUnit: "lb",
+          restSec: 60,
+          supersetKey: null,
+          notes: null,
+        }],
+      }],
+      changeSummary: "Attempt replacement",
+      auditAction: "program.activate",
+      auditSummary: "Attempt replacement",
+      expectedCurrentProgramVersionId: programVersionId,
+    });
+    expect(replacement).toEqual({
+      ok: false,
+      reason: "This active Program has an unfinished schedule. Add these routines as a new Program, or finish the current schedule before replacing it.",
+    });
+    expect((await getCurrentProgramSchedule(database.db, userId, programId))?.nextEvent)
+      .toMatchObject({ status: "scheduled", routineLineageId: firstLineageId });
+
+    const separate = await activateProgramAtomically(database.db, {
+      userId,
+      loadUnit: "lb",
+      programName: "Separate",
+      days: [{
+        name: "Separate A",
+        exercises: [{
+          exerciseId,
+          sets: 2,
+          repMin: 8,
+          repMax: 10,
+          targetLoad: 80,
+          targetLoadUnit: "lb",
+          restSec: 60,
+          supersetKey: null,
+          notes: null,
+        }],
+      }],
+      changeSummary: "Create separate Program",
+      auditAction: "program.activate",
+      auditSummary: "Create separate Program",
+      expectedCurrentProgramVersionId: programVersionId,
+      destination: "create_new_active",
+    });
+    expect(separate).toMatchObject({ ok: true, replacedPrograms: 1 });
+    expect((await getCurrentProgramSchedule(database.db, userId, programId))?.nextEvent)
+      .toMatchObject({ status: "scheduled", routineLineageId: firstLineageId });
   });
 
   it("replays an exact request and rejects conflicting reuse", async () => {

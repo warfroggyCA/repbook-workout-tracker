@@ -18,9 +18,10 @@ import { isProgramTextImportEnabled } from "@/lib/program-text-import-feature";
 export const dynamic = "force-dynamic";
 export const maxDuration = 120;
 
-export default async function ImportPage() {
+export default async function ImportPage(props: PageProps<"/program/import">) {
   const user = await getCurrentUser();
   const db = await getDb();
+  const query = await props.searchParams;
   const textImportEnabled = isProgramTextImportEnabled();
 
   // Resume a staged parse if one is waiting for review (plan §5: raw and
@@ -99,6 +100,7 @@ export default async function ImportPage() {
           <RoutineImport
             aiAvailable={isAIAvailable()}
             initialParse={initialParse}
+            initialDestination={query.destination === "new" ? "create_new_active" : "replace_active"}
           />
         </section>
       ) : (
