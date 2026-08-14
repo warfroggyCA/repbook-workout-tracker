@@ -82,6 +82,12 @@ export async function evaluateApplicationIntegrity(
     ), user_program_versions AS (
       SELECT pv.* FROM program_versions pv
       JOIN user_programs p ON p.id = pv.program_id
+    ), user_program_schedules AS (
+      SELECT * FROM program_schedules WHERE user_id = ${userId}::uuid
+    ), user_program_schedule_versions AS (
+      SELECT * FROM program_schedule_versions WHERE user_id = ${userId}::uuid
+    ), user_scheduled_program_events AS (
+      SELECT * FROM scheduled_program_events WHERE user_id = ${userId}::uuid
     ), user_templates AS (
       SELECT wt.* FROM workout_templates wt
       JOIN user_program_versions pv ON pv.id = wt.program_version_id
@@ -1055,6 +1061,147 @@ export async function evaluateApplicationIntegrity(
       FROM user_sessions
       WHERE source_workout_key IS NOT NULL
       GROUP BY source, source_workout_key HAVING count(*) > 1
+
+      UNION ALL
+      SELECT 'program_schedule.current_version', 'error', 'program_schedule', schedule.id::text,
+        'A Program schedule does not point to its newest immutable owner version.',
+        jsonb_build_object(
+          'programId', schedule.program_id,
+          'currentVersionId', schedule.current_version_id
+        )
+      FROM user_program_schedules schedule
+      LEFT JOIN user_programs program ON program.id = schedule.program_id
+      LEFT JOIN user_program_schedule_versions current_version
+        ON current_version.id = schedule.current_version_id
+      WHERE program.id IS NULL
+        OR program.user_id <> schedule.user_id
+        OR current_version.id IS NULL
+        OR current_version.schedule_id <> schedule.id
+        OR current_version.user_id <> schedule.user_id
+        OR current_version.program_id <> schedule.program_id
+        OR EXISTS (
+          SELECT 1 FROM user_program_schedule_versions newer
+          WHERE newer.schedule_id = schedule.id
+            AND newer.version_no > current_version.version_no
+        )
+
+      UNION ALL
+      SELECT 'program_schedule_version.relationships', 'error',
+        'program_schedule_version', version.id::text,
+        'A Program schedule version crosses an owner, Program, or version-lineage boundary.',
+        jsonb_build_object(
+          'scheduleId', version.schedule_id,
+          'programId', version.program_id,
+          'sourceProgramVersionId', version.source_program_version_id,
+          'parentVersionId', version.parent_version_id
+        )
+      FROM user_program_schedule_versions version
+      LEFT JOIN user_program_schedules schedule ON schedule.id = version.schedule_id
+      LEFT JOIN user_program_versions source_version
+        ON source_version.id = version.source_program_version_id
+      LEFT JOIN user_program_schedule_versions parent
+        ON parent.id = version.parent_version_id
+      WHERE schedule.id IS NULL
+        OR schedule.user_id <> version.user_id
+        OR schedule.program_id <> version.program_id
+        OR source_version.id IS NULL
+        OR source_version.program_id <> version.program_id
+        OR (
+          version.parent_version_id IS NOT NULL
+          AND (
+            parent.id IS NULL
+            OR parent.schedule_id <> version.schedule_id
+            OR parent.user_id <> version.user_id
+            OR parent.program_id <> version.program_id
+            OR parent.version_no >= version.version_no
+          )
+        )
+
+      UNION ALL
+      SELECT 'scheduled_program_event.relationships', 'error',
+        'scheduled_program_event', event.id::text,
+        'A scheduled Program event crosses schedule intent or routine lineage boundaries.',
+        jsonb_build_object(
+          'scheduleId', event.schedule_id,
+          'scheduleVersionId', event.schedule_version_id,
+          'sourceProgramVersionId', event.source_program_version_id,
+          'routineLineageId', event.routine_lineage_id
+        )
+      FROM user_scheduled_program_events event
+      LEFT JOIN user_program_schedules schedule ON schedule.id = event.schedule_id
+      LEFT JOIN user_program_schedule_versions version
+        ON version.id = event.schedule_version_id
+      LEFT JOIN user_templates routine
+        ON routine.program_version_id = event.source_program_version_id
+        AND routine.lineage_id = event.routine_lineage_id
+      LEFT JOIN pg_timezone_names timezone ON timezone.name = event.timezone
+      WHERE schedule.id IS NULL
+        OR schedule.user_id <> event.user_id
+        OR schedule.program_id <> event.program_id
+        OR version.id IS NULL
+        OR version.schedule_id <> event.schedule_id
+        OR version.user_id <> event.user_id
+        OR version.program_id <> event.program_id
+        OR version.source_program_version_id <> event.source_program_version_id
+        OR timezone.name IS NULL
+        OR (event.kind = 'resistance' AND routine.id IS NULL)
+        OR (event.kind <> 'resistance' AND event.routine_lineage_id IS NOT NULL)
+
+      UNION ALL
+      SELECT 'workout.program_schedule_snapshot', 'error', 'workout_session',
+        session.id::text,
+        'A workout has incomplete or contradictory self-contained Program schedule evidence.',
+        jsonb_build_object('programScheduleSnapshot', session.program_schedule_snapshot)
+      FROM user_sessions session
+      LEFT JOIN pg_timezone_names snapshot_timezone
+        ON snapshot_timezone.name = session.program_schedule_snapshot->>'timezone'
+      WHERE session.program_schedule_snapshot IS NOT NULL
+        AND (
+          jsonb_typeof(session.program_schedule_snapshot) <> 'object'
+          OR session.program_schedule_snapshot->>'schemaVersion' <> '1'
+          OR NOT (session.program_schedule_snapshot ? 'scheduledProgramEventId')
+          OR NOT (session.program_schedule_snapshot ? 'programScheduleId')
+          OR NOT (session.program_schedule_snapshot ? 'programScheduleVersionId')
+          OR NOT (session.program_schedule_snapshot ? 'programScheduleVersionHash')
+          OR NOT (session.program_schedule_snapshot ? 'scheduleSourceProgramVersionId')
+          OR NOT (session.program_schedule_snapshot ? 'resolvedProgramVersionId')
+          OR NOT (session.program_schedule_snapshot ? 'sourcePhaseId')
+          OR NOT (session.program_schedule_snapshot ? 'sourcePhaseName')
+          OR NOT (session.program_schedule_snapshot ? 'scheduleKind')
+          OR NOT (session.program_schedule_snapshot ? 'eventKind')
+          OR NOT (session.program_schedule_snapshot ? 'sourceEventId')
+          OR NOT (session.program_schedule_snapshot ? 'eventRevision')
+          OR NOT (session.program_schedule_snapshot ? 'originalLocalDate')
+          OR NOT (session.program_schedule_snapshot ? 'currentLocalDate')
+          OR NOT (session.program_schedule_snapshot ? 'timezone')
+          OR NOT (session.program_schedule_snapshot ? 'nominalProgramWeek')
+          OR NOT (session.program_schedule_snapshot ? 'cyclePosition')
+          OR NOT (session.program_schedule_snapshot ? 'routineLineageId')
+          OR session.program_schedule_snapshot->>'programScheduleVersionHash'
+            !~ '^[0-9a-f]{64}$'
+          OR session.program_schedule_snapshot->>'scheduleSourceProgramVersionId'
+            !~ '^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
+          OR session.program_schedule_snapshot->>'resolvedProgramVersionId'
+            !~ '^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
+          OR length(btrim(session.program_schedule_snapshot->>'sourcePhaseName')) = 0
+          OR session.program_schedule_snapshot->>'eventRevision' !~ '^\d+$'
+          OR session.program_schedule_snapshot->>'nominalProgramWeek' !~ '^[1-9]\d*$'
+          OR session.program_schedule_snapshot->>'cyclePosition' !~ '^[1-9]\d*$'
+          OR session.program_schedule_snapshot->>'originalLocalDate'
+            !~ '^\d{4}-\d{2}-\d{2}$'
+          OR session.program_schedule_snapshot->>'currentLocalDate'
+            !~ '^\d{4}-\d{2}-\d{2}$'
+          OR snapshot_timezone.name IS NULL
+          OR session.program_schedule_snapshot->>'scheduleKind'
+            NOT IN ('fixed_7_day', 'rolling')
+          OR session.program_schedule_snapshot->>'eventKind' <> 'resistance'
+          OR (
+            session.source_program_version_id::text IS DISTINCT FROM
+              session.program_schedule_snapshot->>'resolvedProgramVersionId'
+            OR session.source_day_lineage_id::text IS DISTINCT FROM
+              session.program_schedule_snapshot->>'routineLineageId'
+          )
+        )
 
       UNION ALL
       SELECT 'program_version.import_event', 'error', 'program_version', pv.id::text,

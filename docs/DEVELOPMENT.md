@@ -308,6 +308,22 @@ setup/log validation, and schema 31 upgrade plus restore omission. Recovery
 manifest 14 and the durable
 table count stay unchanged.
 
+The adaptive schedule foundation adds migration 0081, snapshot schema 33,
+recovery manifest 15, and three owner-scoped tables. It does not backfill or
+synthesize schedules for existing Programs, so routine-only Today and Start
+remain unchanged. Schedule publication and missed-day adjustments are
+idempotent, owner-scoped operations; scheduled resistance Start freezes a
+self-contained schedule snapshot while cardio, recovery, and rest remain
+separate event types. A schedule replacement is accepted only while every
+current occurrence is untouched; any started, resolved, or adjusted occurrence
+makes publication fail without changing the schedule.
+
+Run the focused schedule contract with:
+
+```bash
+npx vitest run tests/unit/program-schedule.test.ts tests/unit/program-schedules-db.test.ts tests/unit/program-scheduled-start-db.test.ts tests/unit/program-schedule-restore-db.test.ts
+```
+
 `test:e2e:superset-prep` owns the 390 by 844 default-text and 320 by 700
 enlarged-text preparation journey, including current-action-first DOM order,
 keyboard focus, target size, overflow, pre/post-acknowledgement reload, and
@@ -379,7 +395,7 @@ R01 lifecycle verification is split across
 `tests/unit/v2-r01-lifecycle-audit-db.test.ts`, portability, restore, and
 adversarial omission tests plus the dedicated browser journey. The database
 test uses a disposable fully migrated database and must continue to match the
-65-table recovery manifest exactly. The browser spec is dedicated and excluded
+68-table recovery manifest exactly. The browser spec is dedicated and excluded
 from the general Playwright configuration so its authenticated page loads
 cannot consume another suite's background-job fixtures.
 

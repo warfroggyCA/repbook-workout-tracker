@@ -32,6 +32,11 @@ import {
   programDrafts,
 } from "./program";
 import {
+  programSchedules,
+  programScheduleVersions,
+  scheduledProgramEvents,
+} from "./schedule";
+import {
   workoutSessions,
   sessionExerciseGroups,
   sessionExercises,
@@ -72,6 +77,9 @@ export const usersRelations = relations(users, ({ one, many }) => ({
   plateInventory: many(plateInventory),
   barbellConfigs: many(barbellConfigs),
   programs: many(programs),
+  programSchedules: many(programSchedules),
+  programScheduleVersions: many(programScheduleVersions),
+  scheduledProgramEvents: many(scheduledProgramEvents),
   sessions: many(workoutSessions),
   sessionEquipmentSnapshots: many(sessionEquipmentSnapshots),
   sessionEquipmentSelectionReceipts: many(sessionEquipmentSelectionReceipts),
@@ -461,6 +469,8 @@ export const programsRelations = relations(programs, ({ one, many }) => ({
     references: [programVersions.id],
     relationName: "programCurrentVersion",
   }),
+  schedule: one(programSchedules),
+  scheduledEvents: many(scheduledProgramEvents),
   drafts: many(programDrafts),
 }));
 
@@ -487,8 +497,113 @@ export const programVersionsRelations = relations(
     publishedDrafts: many(programDrafts, {
       relationName: "programDraftPublishedVersion",
     }),
+    scheduleVersions: many(programScheduleVersions, {
+      relationName: "programScheduleVersionSourceProgramVersion",
+    }),
+    scheduledEvents: many(scheduledProgramEvents, {
+      relationName: "scheduledEventSourceProgramVersion",
+    }),
     templates: many(workoutTemplates),
   })
+);
+
+export const programSchedulesRelations = relations(
+  programSchedules,
+  ({ one, many }) => ({
+    user: one(users, {
+      fields: [programSchedules.userId],
+      references: [users.id],
+    }),
+    program: one(programs, {
+      fields: [programSchedules.programId],
+      references: [programs.id],
+    }),
+    currentVersion: one(programScheduleVersions, {
+      fields: [programSchedules.currentVersionId],
+      references: [programScheduleVersions.id],
+      relationName: "programScheduleCurrentVersion",
+    }),
+    versions: many(programScheduleVersions, {
+      relationName: "programScheduleVersionRoot",
+    }),
+    events: many(scheduledProgramEvents),
+  }),
+);
+
+export const programScheduleVersionsRelations = relations(
+  programScheduleVersions,
+  ({ one, many }) => ({
+    user: one(users, {
+      fields: [programScheduleVersions.userId],
+      references: [users.id],
+    }),
+    program: one(programs, {
+      fields: [programScheduleVersions.programId],
+      references: [programs.id],
+    }),
+    schedule: one(programSchedules, {
+      fields: [programScheduleVersions.scheduleId],
+      references: [programSchedules.id],
+      relationName: "programScheduleVersionRoot",
+    }),
+    currentForSchedule: one(programSchedules, {
+      fields: [programScheduleVersions.id],
+      references: [programSchedules.currentVersionId],
+      relationName: "programScheduleCurrentVersion",
+    }),
+    parentVersion: one(programScheduleVersions, {
+      fields: [programScheduleVersions.parentVersionId],
+      references: [programScheduleVersions.id],
+      relationName: "programScheduleVersionParent",
+    }),
+    childVersions: many(programScheduleVersions, {
+      relationName: "programScheduleVersionParent",
+    }),
+    sourceProgramVersion: one(programVersions, {
+      fields: [programScheduleVersions.sourceProgramVersionId],
+      references: [programVersions.id],
+      relationName: "programScheduleVersionSourceProgramVersion",
+    }),
+    events: many(scheduledProgramEvents),
+  }),
+);
+
+export const scheduledProgramEventsRelations = relations(
+  scheduledProgramEvents,
+  ({ one }) => ({
+    user: one(users, {
+      fields: [scheduledProgramEvents.userId],
+      references: [users.id],
+    }),
+    program: one(programs, {
+      fields: [scheduledProgramEvents.programId],
+      references: [programs.id],
+    }),
+    schedule: one(programSchedules, {
+      fields: [scheduledProgramEvents.scheduleId],
+      references: [programSchedules.id],
+    }),
+    scheduleVersion: one(programScheduleVersions, {
+      fields: [scheduledProgramEvents.scheduleVersionId],
+      references: [programScheduleVersions.id],
+    }),
+    sourceProgramVersion: one(programVersions, {
+      fields: [scheduledProgramEvents.sourceProgramVersionId],
+      references: [programVersions.id],
+      relationName: "scheduledEventSourceProgramVersion",
+    }),
+    routineTemplate: one(workoutTemplates, {
+      fields: [
+        scheduledProgramEvents.sourceProgramVersionId,
+        scheduledProgramEvents.routineLineageId,
+      ],
+      references: [
+        workoutTemplates.programVersionId,
+        workoutTemplates.lineageId,
+      ],
+      relationName: "scheduledEventRoutine",
+    }),
+  }),
 );
 
 export const programDraftsRelations = relations(programDrafts, ({ one }) => ({
@@ -518,6 +633,9 @@ export const workoutTemplatesRelations = relations(
     programVersion: one(programVersions, {
       fields: [workoutTemplates.programVersionId],
       references: [programVersions.id],
+    }),
+    scheduledEvents: many(scheduledProgramEvents, {
+      relationName: "scheduledEventRoutine",
     }),
     exercises: many(workoutTemplateExercises),
     sessionSnapshots: many(sessionExerciseGroups),

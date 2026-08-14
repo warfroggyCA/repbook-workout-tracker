@@ -6,7 +6,7 @@ import { assertCanonicalSnapshotTableCoverage } from "@/services/recovery-manife
 import { canonicalizeProgramDraftIdentity } from "@/services/program-document-integrity";
 import { externalAnalysisImportDigestSchema } from "@/lib/external-analysis-import";
 
-export const SNAPSHOT_SCHEMA_VERSION = "32";
+export const SNAPSHOT_SCHEMA_VERSION = "33";
 
 export type CanonicalSnapshotPayload = {
   schemaVersion: string;
@@ -164,6 +164,15 @@ export async function captureUserSnapshot(
     user_program_versions AS (
       SELECT pv.* FROM program_versions pv
       JOIN user_programs p ON p.id = pv.program_id
+    ),
+    user_program_schedules AS (
+      SELECT * FROM program_schedules WHERE user_id = ${userId}::uuid
+    ),
+    user_program_schedule_versions AS (
+      SELECT * FROM program_schedule_versions WHERE user_id = ${userId}::uuid
+    ),
+    user_scheduled_program_events AS (
+      SELECT * FROM scheduled_program_events WHERE user_id = ${userId}::uuid
     ),
     user_program_drafts AS (
       SELECT draft.* FROM program_drafts draft
@@ -343,6 +352,9 @@ export async function captureUserSnapshot(
       ) || jsonb_build_object(
         'programs', (SELECT COALESCE(jsonb_agg(to_jsonb(r) ORDER BY r.id), '[]'::jsonb) FROM user_programs r),
         'program_versions', (SELECT COALESCE(jsonb_agg(to_jsonb(r) ORDER BY r.id), '[]'::jsonb) FROM user_program_versions r),
+        'program_schedules', (SELECT COALESCE(jsonb_agg(to_jsonb(r) ORDER BY r.id), '[]'::jsonb) FROM user_program_schedules r),
+        'program_schedule_versions', (SELECT COALESCE(jsonb_agg(to_jsonb(r) ORDER BY r.id), '[]'::jsonb) FROM user_program_schedule_versions r),
+        'scheduled_program_events', (SELECT COALESCE(jsonb_agg(to_jsonb(r) ORDER BY r.id), '[]'::jsonb) FROM user_scheduled_program_events r),
         'program_drafts', (SELECT COALESCE(jsonb_agg(to_jsonb(r) ORDER BY r.id), '[]'::jsonb) FROM user_program_drafts r),
         'workout_templates', (SELECT COALESCE(jsonb_agg(to_jsonb(r) ORDER BY r.id), '[]'::jsonb) FROM user_workout_templates r),
         'superset_groups', (SELECT COALESCE(jsonb_agg(to_jsonb(r) ORDER BY r.id), '[]'::jsonb) FROM user_superset_groups r),

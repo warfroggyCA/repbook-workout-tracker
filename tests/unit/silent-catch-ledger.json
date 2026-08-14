@@ -10,6 +10,9 @@
   "src/services/program-activation.ts": [
     "A reviewed schema-three document that cannot project into the version-two preflight contract is rejected with safe review copy."
   ],
+  "src/services/program-schedules.ts": [
+    "An invalid or unmaterializable schedule document is converted into an explicit invalid publication result before any database write."
+  ],
   "src/services/activities.ts": [
     "Intl throws for an invalid timezone; the Zod refinement intentionally converts that into a validation failure."
   ],

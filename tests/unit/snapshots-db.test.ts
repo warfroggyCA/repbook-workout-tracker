@@ -50,6 +50,7 @@ import {
 } from "@/services/snapshot-crypto";
 import {
   captureUserSnapshot,
+  SNAPSHOT_SCHEMA_VERSION,
   snapshotRecordCounts,
 } from "@/services/snapshot-capture";
 import { MemorySnapshotObjectStore } from "@/services/snapshot-store";
@@ -298,7 +299,7 @@ describe("verified off-database snapshots", () => {
 
     const upgraded = upgradeSnapshotPayload(legacy);
 
-    expect(upgraded.schemaVersion).toBe("32");
+    expect(upgraded.schemaVersion).toBe(SNAPSHOT_SCHEMA_VERSION);
     expect(upgraded.tables.workout_sessions[0]).toMatchObject({
       history_revision: 0,
       performed_time_precision: "instant",
@@ -464,7 +465,7 @@ describe("verified off-database snapshots", () => {
     }
 
     const upgraded = upgradeSnapshotPayload(legacy);
-    expect(upgraded.schemaVersion).toBe("32");
+    expect(upgraded.schemaVersion).toBe(SNAPSHOT_SCHEMA_VERSION);
     expect(upgraded.tables.workout_sessions[0]).toMatchObject({
       active_duration_semantics_version: null,
       active_duration_seconds: null,
@@ -3043,7 +3044,7 @@ describe("verified off-database snapshots", () => {
     }));
 
     const upgraded = upgradeSnapshotPayload(legacy);
-    expect(upgraded.schemaVersion).toBe("32");
+    expect(upgraded.schemaVersion).toBe(SNAPSHOT_SCHEMA_VERSION);
     expect(upgraded.tables.program_drafts).toEqual([]);
     expect(upgraded.tables.programs[0]).toMatchObject({
       current_version_id: versionIds[1],
@@ -3118,7 +3119,7 @@ describe("verified off-database snapshots", () => {
 
     const upgraded = upgradeSnapshotPayload(legacy);
 
-    expect(upgraded.schemaVersion).toBe("32");
+    expect(upgraded.schemaVersion).toBe(SNAPSHOT_SCHEMA_VERSION);
     expect(upgraded.tables.barbell_configs[0]).toMatchObject({
       bar_weight: 20.3,
       collar_weight: 2.3,
@@ -3189,7 +3190,7 @@ describe("verified off-database snapshots", () => {
 
     const upgraded = upgradeSnapshotPayload(legacy);
 
-    expect(upgraded.schemaVersion).toBe("32");
+    expect(upgraded.schemaVersion).toBe(SNAPSHOT_SCHEMA_VERSION);
     expect(upgraded.tables.plate_inventory[0]).toMatchObject({ unit: "kg" });
     expect(upgraded.tables.session_exercises).toEqual(
       expect.arrayContaining([
@@ -3293,7 +3294,7 @@ describe("verified off-database snapshots", () => {
         if (!exercise) throw new Error("Snapshot exercise fixture is missing.");
         exercise.target_load = Math.fround(32.3);
         const upgraded = upgradeSnapshotPayload(payload);
-        expect(upgraded.schemaVersion).toBe("32");
+        expect(upgraded.schemaVersion).toBe(SNAPSHOT_SCHEMA_VERSION);
         expect(upgraded.tables.session_exercises).toEqual(
           expect.arrayContaining([
             expect.objectContaining({
@@ -3606,7 +3607,7 @@ describe("verified off-database snapshots", () => {
     ];
 
     const upgraded = upgradeSnapshotPayload(legacy);
-    expect(upgraded.schemaVersion).toBe("32");
+    expect(upgraded.schemaVersion).toBe(SNAPSHOT_SCHEMA_VERSION);
     expect(upgraded.tables.user_profiles[0]).toMatchObject({
       timezone: "America/Toronto",
     });

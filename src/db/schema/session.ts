@@ -37,6 +37,33 @@ import { exercises } from "./exercise";
 import { historyImportBatches } from "./events";
 import { archiveOperations } from "./archive";
 
+/**
+ * Immutable scheduled-start evidence copied onto a workout session. It is
+ * self-contained so History never depends on a mutable or deleted future-plan
+ * row.
+ */
+export type ProgramScheduleSnapshot = {
+  schemaVersion: 1;
+  scheduledProgramEventId: string;
+  programScheduleId: string;
+  programScheduleVersionId: string;
+  programScheduleVersionHash: string;
+  scheduleSourceProgramVersionId: string;
+  resolvedProgramVersionId: string;
+  sourcePhaseId: string;
+  sourcePhaseName: string;
+  scheduleKind: "fixed_7_day" | "rolling";
+  eventKind: "resistance";
+  sourceEventId: string;
+  eventRevision: number;
+  originalLocalDate: string;
+  currentLocalDate: string;
+  timezone: string;
+  nominalProgramWeek: number;
+  cyclePosition: number;
+  routineLineageId: string;
+};
+
 export const workoutSessions = pgTable(
   "workout_sessions",
   {
@@ -67,6 +94,8 @@ export const workoutSessions = pgTable(
     sourceProgramId: uuid("source_program_id"),
     sourceProgramVersionId: uuid("source_program_version_id"),
     sourceDayLineageId: uuid("source_day_lineage_id"),
+    programScheduleSnapshot: jsonb("program_schedule_snapshot")
+      .$type<ProgramScheduleSnapshot>(),
     dataQualityFlags: jsonb("data_quality_flags")
       .$type<string[]>()
       .notNull()
@@ -177,6 +206,64 @@ export const workoutSessions = pgTable(
     check(
       "workout_sessions_compilation_snapshot_check",
       sql`(${t.compilationAcceptanceKey} IS NULL AND ${t.compilationSnapshot} IS NULL) OR (${t.compilationAcceptanceKey} IS NOT NULL AND ${t.compilationSnapshot} IS NOT NULL AND ${t.source} = 'compiler')`
+    ),
+    check(
+      "workout_sessions_program_schedule_snapshot_check",
+      sql`${t.programScheduleSnapshot} IS NULL OR (
+        jsonb_typeof(${t.programScheduleSnapshot}) = 'object'
+        AND ${t.sourceProgramId} IS NOT NULL
+        AND ${t.sourceProgramVersionId} IS NOT NULL
+        AND ${t.sourceDayLineageId} IS NOT NULL
+        AND ${t.programScheduleSnapshot} ?& ARRAY[
+          'schemaVersion', 'scheduledProgramEventId', 'programScheduleId',
+          'programScheduleVersionId', 'programScheduleVersionHash',
+          'scheduleSourceProgramVersionId', 'resolvedProgramVersionId',
+          'sourcePhaseId', 'sourcePhaseName', 'scheduleKind', 'eventKind',
+          'sourceEventId', 'eventRevision',
+          'originalLocalDate', 'currentLocalDate', 'timezone',
+          'nominalProgramWeek', 'cyclePosition', 'routineLineageId'
+        ]
+        AND jsonb_typeof(${t.programScheduleSnapshot}->'schemaVersion') = 'number'
+        AND jsonb_typeof(${t.programScheduleSnapshot}->'scheduledProgramEventId') = 'string'
+        AND jsonb_typeof(${t.programScheduleSnapshot}->'programScheduleId') = 'string'
+        AND jsonb_typeof(${t.programScheduleSnapshot}->'programScheduleVersionId') = 'string'
+        AND jsonb_typeof(${t.programScheduleSnapshot}->'programScheduleVersionHash') = 'string'
+        AND jsonb_typeof(${t.programScheduleSnapshot}->'scheduleSourceProgramVersionId') = 'string'
+        AND jsonb_typeof(${t.programScheduleSnapshot}->'resolvedProgramVersionId') = 'string'
+        AND jsonb_typeof(${t.programScheduleSnapshot}->'sourcePhaseId') = 'string'
+        AND jsonb_typeof(${t.programScheduleSnapshot}->'sourcePhaseName') = 'string'
+        AND jsonb_typeof(${t.programScheduleSnapshot}->'scheduleKind') = 'string'
+        AND jsonb_typeof(${t.programScheduleSnapshot}->'eventKind') = 'string'
+        AND jsonb_typeof(${t.programScheduleSnapshot}->'sourceEventId') = 'string'
+        AND jsonb_typeof(${t.programScheduleSnapshot}->'eventRevision') = 'number'
+        AND jsonb_typeof(${t.programScheduleSnapshot}->'originalLocalDate') = 'string'
+        AND jsonb_typeof(${t.programScheduleSnapshot}->'currentLocalDate') = 'string'
+        AND jsonb_typeof(${t.programScheduleSnapshot}->'timezone') = 'string'
+        AND jsonb_typeof(${t.programScheduleSnapshot}->'nominalProgramWeek') = 'number'
+        AND jsonb_typeof(${t.programScheduleSnapshot}->'cyclePosition') = 'number'
+        AND jsonb_typeof(${t.programScheduleSnapshot}->'routineLineageId') = 'string'
+        AND (${t.programScheduleSnapshot}->>'schemaVersion') = '1'
+        AND ${t.programScheduleSnapshot}->>'scheduleKind' IN ('fixed_7_day', 'rolling')
+        AND ${t.programScheduleSnapshot}->>'eventKind' = 'resistance'
+        AND ${t.programScheduleSnapshot}->>'resolvedProgramVersionId' = ${t.sourceProgramVersionId}::text
+        AND ${t.programScheduleSnapshot}->>'routineLineageId' = ${t.sourceDayLineageId}::text
+        AND ${t.programScheduleSnapshot}->>'scheduledProgramEventId' ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
+        AND ${t.programScheduleSnapshot}->>'programScheduleId' ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
+        AND ${t.programScheduleSnapshot}->>'programScheduleVersionId' ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
+        AND ${t.programScheduleSnapshot}->>'scheduleSourceProgramVersionId' ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
+        AND ${t.programScheduleSnapshot}->>'resolvedProgramVersionId' ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
+        AND ${t.programScheduleSnapshot}->>'sourcePhaseId' ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
+        AND ${t.programScheduleSnapshot}->>'sourceEventId' ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
+        AND ${t.programScheduleSnapshot}->>'routineLineageId' ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
+        AND ${t.programScheduleSnapshot}->>'programScheduleVersionHash' ~ '^[0-9a-f]{64}$'
+        AND length(btrim(${t.programScheduleSnapshot}->>'sourcePhaseName')) > 0
+        AND length(btrim(${t.programScheduleSnapshot}->>'timezone')) > 0
+        AND ${t.programScheduleSnapshot}->>'originalLocalDate' ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'
+        AND ${t.programScheduleSnapshot}->>'currentLocalDate' ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'
+        AND ${t.programScheduleSnapshot}->>'eventRevision' ~ '^[0-9]+$'
+        AND ${t.programScheduleSnapshot}->>'nominalProgramWeek' ~ '^[1-9][0-9]*$'
+        AND ${t.programScheduleSnapshot}->>'cyclePosition' ~ '^[1-9][0-9]*$'
+      )`
     ),
   ]
 );

@@ -43,6 +43,19 @@ Before application changes, read:
   no exercise anchor; lift ramp-ups use the owning same-day slot lineage. Never
   duplicate either item as exercise guidance or infer equipment compatibility
   from an exercise or equipment display name.
+- Routine templates remain the simple source of exercise order and targets.
+  Program phases and schedules reference stable routine lineage; they never
+  clone routine contents or encode periodization in exercise notes.
+- A scheduled Program event is mutable future intent. Workout Start resolves it
+  against the current Program version and freezes the exact schedule and
+  prescription evidence on the session. Completed workout history remains
+  authoritative even if the future calendar later changes or is restored.
+- A published schedule can be replaced only while all of its occurrences are
+  untouched. Once an event is started, resolved, or adjusted, replacement must
+  fail atomically rather than recreate or erase attendance.
+- Schedule publication, event adjustment, non-resistance completion, and
+  scheduled workout Start lock the schedule root before occurrence rows. Keep
+  that order so future intent cannot race with workout execution.
 
 ## Privacy and security
 

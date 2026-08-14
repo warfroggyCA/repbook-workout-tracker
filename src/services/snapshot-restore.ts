@@ -62,6 +62,11 @@ import {
 import { ANALYSIS_PACKAGE_SOURCE_REVISION_FIELDS } from "@/lib/analysis-package";
 import { analysisPackageOwnerNamespace } from "@/services/analysis-package";
 import { parseSessionEquipmentRequirementsEvidence } from "@/lib/session-equipment-requirements";
+import {
+  materializeProgramScheduleWindow,
+  programScheduleCompletionDate,
+  programScheduleDocumentSchema,
+} from "@/lib/program-schedule";
 
 export type SnapshotRestoreScope = "history" | "full";
 
@@ -78,6 +83,7 @@ const PRE_EXCEPTION_CONTEXT_SNAPSHOT_SCHEMA_VERSION = "28";
 const PRE_REVIEW_SNAPSHOT_SCHEMA_VERSION = "29";
 const PRE_ACTIVE_DURATION_SNAPSHOT_SCHEMA_VERSION = "30";
 const PRE_SESSION_EQUIPMENT_REQUIREMENTS_SNAPSHOT_SCHEMA_VERSION = "31";
+const PRE_PROGRAM_SCHEDULE_SNAPSHOT_SCHEMA_VERSION = "32";
 
 type SnapshotRow = Record<string, unknown>;
 type RestoreRows = Record<string, SnapshotRow[]>;
@@ -1213,6 +1219,7 @@ export function upgradeSnapshotPayload(
     PRE_REVIEW_SNAPSHOT_SCHEMA_VERSION,
     PRE_ACTIVE_DURATION_SNAPSHOT_SCHEMA_VERSION,
     PRE_SESSION_EQUIPMENT_REQUIREMENTS_SNAPSHOT_SCHEMA_VERSION,
+    PRE_PROGRAM_SCHEDULE_SNAPSHOT_SCHEMA_VERSION,
     SNAPSHOT_SCHEMA_VERSION,
   ]);
   if (!supported.has(payload.schemaVersion)) {
@@ -1232,6 +1239,7 @@ export function upgradeSnapshotPayload(
     validateHistoryIdentityAndTiming(upgraded);
     validateWorkoutTimingVersionEvidence(upgraded);
     validateReviewState(upgraded);
+    validateProgramScheduleData(upgraded);
     return upgraded;
   }
 
@@ -1295,6 +1303,7 @@ export function upgradeSnapshotPayload(
       PRE_REVIEW_SNAPSHOT_SCHEMA_VERSION,
       PRE_ACTIVE_DURATION_SNAPSHOT_SCHEMA_VERSION,
       PRE_SESSION_EQUIPMENT_REQUIREMENTS_SNAPSHOT_SCHEMA_VERSION,
+      PRE_PROGRAM_SCHEDULE_SNAPSHOT_SCHEMA_VERSION,
       SNAPSHOT_SCHEMA_VERSION,
     ].includes(upgraded.schemaVersion)
   ) {
@@ -1453,7 +1462,11 @@ export function upgradeSnapshotPayload(
     session.source_program_id ??= null;
     session.source_program_version_id ??= null;
     session.source_day_lineage_id ??= null;
+    session.program_schedule_snapshot ??= null;
   }
+  upgraded.tables.program_schedules ??= [];
+  upgraded.tables.program_schedule_versions ??= [];
+  upgraded.tables.scheduled_program_events ??= [];
   upgraded.tables.session_compiler_proposals ??= [];
   upgraded.tables.session_exercise_groups ??= [];
   upgraded.tables.session_occurrences ??= [];
@@ -1586,6 +1599,7 @@ export function upgradeSnapshotPayload(
   validateHistoryIdentityAndTiming(upgraded);
   validateWorkoutTimingVersionEvidence(upgraded);
   validateReviewState(upgraded);
+  validateProgramScheduleData(upgraded);
   return upgraded;
 }
 
@@ -2122,6 +2136,337 @@ function validateVersionedProgramData(payload: CanonicalSnapshotPayload) {
   }
 }
 
+function validateProgramScheduleData(payload: CanonicalSnapshotPayload) {
+  if (payload.schemaVersion !== SNAPSHOT_SCHEMA_VERSION) return;
+
+  const uuidPattern =
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+  const localDatePattern = /^\d{4}-\d{2}-\d{2}$/;
+  const isUuid = (value: unknown) =>
+    typeof value === "string" && uuidPattern.test(value);
+  const isLocalDate = (value: unknown) => {
+    if (typeof value !== "string" || !localDatePattern.test(value)) return false;
+    const instant = new Date(`${value}T00:00:00.000Z`);
+    return (
+      !Number.isNaN(instant.valueOf()) &&
+      instant.toISOString().slice(0, 10) === value
+    );
+  };
+  const positiveInteger = (value: unknown) =>
+    Number.isInteger(Number(value)) && Number(value) >= 1;
+  const nonnegativeInteger = (value: unknown) =>
+    Number.isInteger(Number(value)) && Number(value) >= 0;
+
+  const programs = new Map(
+    rows(payload, "programs").map((row) => [String(row.id), row]),
+  );
+  const programVersions = new Map(
+    rows(payload, "program_versions").map((row) => [String(row.id), row]),
+  );
+  const routinesByVersionLineage = new Map(
+    rows(payload, "workout_templates").map((row) => [
+      `${String(row.program_version_id)}:${String(row.lineage_id)}`,
+      row,
+    ]),
+  );
+  const schedules = new Map(
+    rows(payload, "program_schedules").map((row) => [String(row.id), row]),
+  );
+  const versions = new Map(
+    rows(payload, "program_schedule_versions").map((row) => [
+      String(row.id),
+      row,
+    ]),
+  );
+  const versionNumbersBySchedule = new Map<string, Set<number>>();
+  const newestVersionBySchedule = new Map<
+    string,
+    { id: string; versionNo: number }
+  >();
+  const parsedDocuments = new Map<
+    string,
+    ReturnType<typeof programScheduleDocumentSchema.parse>
+  >();
+
+  for (const version of versions.values()) {
+    const schedule = schedules.get(String(version.schedule_id));
+    const program = programs.get(String(version.program_id));
+    const sourceProgramVersion = programVersions.get(
+      String(version.source_program_version_id),
+    );
+    const versionNo = Number(version.version_no);
+    if (
+      !schedule ||
+      !program ||
+      schedule.user_id !== version.user_id ||
+      schedule.program_id !== version.program_id ||
+      program.user_id !== version.user_id ||
+      !sourceProgramVersion ||
+      sourceProgramVersion.program_id !== version.program_id ||
+      !positiveInteger(versionNo)
+    ) {
+      throw new Error("Snapshot Program schedule version crosses an owner or Program boundary.");
+    }
+    const usedNumbers =
+      versionNumbersBySchedule.get(String(version.schedule_id)) ?? new Set<number>();
+    if (usedNumbers.has(versionNo)) {
+      throw new Error("Snapshot Program schedule has a duplicate version number.");
+    }
+    usedNumbers.add(versionNo);
+    versionNumbersBySchedule.set(String(version.schedule_id), usedNumbers);
+    const newest = newestVersionBySchedule.get(String(version.schedule_id));
+    if (!newest || versionNo > newest.versionNo) {
+      newestVersionBySchedule.set(String(version.schedule_id), {
+        id: String(version.id),
+        versionNo,
+      });
+    }
+    if (version.parent_version_id != null) {
+      const parent = versions.get(String(version.parent_version_id));
+      if (
+        !parent ||
+        parent.schedule_id !== version.schedule_id ||
+        parent.user_id !== version.user_id ||
+        parent.program_id !== version.program_id ||
+        Number(parent.version_no) >= versionNo
+      ) {
+        throw new Error("Snapshot Program schedule has an invalid parent version.");
+      }
+    }
+    const parsed = programScheduleDocumentSchema.safeParse(version.document);
+    if (
+      Number(version.schema_version) !== 1 ||
+      !parsed.success ||
+      typeof version.content_hash !== "string" ||
+      !/^[0-9a-f]{64}$/.test(version.content_hash) ||
+      version.content_hash !==
+        sha256Hex(Buffer.from(canonicalJson(parsed.data), "utf8"))
+    ) {
+      throw new Error("Snapshot Program schedule version has invalid immutable content.");
+    }
+    parsedDocuments.set(String(version.id), parsed.data);
+  }
+
+  const schedulePrograms = new Set<string>();
+  for (const schedule of schedules.values()) {
+    const program = programs.get(String(schedule.program_id));
+    const current =
+      schedule.current_version_id == null
+        ? null
+        : versions.get(String(schedule.current_version_id));
+    const newest = newestVersionBySchedule.get(String(schedule.id));
+    if (
+      !program ||
+      program.user_id !== schedule.user_id ||
+      schedulePrograms.has(String(schedule.program_id)) ||
+      !current ||
+      current.schedule_id !== schedule.id ||
+      current.user_id !== schedule.user_id ||
+      current.program_id !== schedule.program_id ||
+      !newest ||
+      newest.id !== current.id
+    ) {
+      throw new Error("Snapshot Program schedule root has an invalid current version.");
+    }
+    schedulePrograms.add(String(schedule.program_id));
+  }
+
+  const eventSequences = new Set<string>();
+  const eventsByVersion = new Map<string, SnapshotRow[]>();
+  for (const event of rows(payload, "scheduled_program_events")) {
+    const schedule = schedules.get(String(event.schedule_id));
+    const version = versions.get(String(event.schedule_version_id));
+    const document = parsedDocuments.get(String(event.schedule_version_id));
+    const phase = document?.phases.find(
+      (candidate) => candidate.id === event.source_phase_id,
+    );
+    const sourceEvent = phase?.schedule.days
+      .map((day) => day.event)
+      .find((candidate) => candidate.id === event.source_event_id);
+    const sequenceKey = `${String(event.schedule_version_id)}:${Number(event.sequence_no)}`;
+    if (
+      !schedule ||
+      !version ||
+      !document ||
+      version.schedule_id !== event.schedule_id ||
+      version.user_id !== event.user_id ||
+      version.program_id !== event.program_id ||
+      version.source_program_version_id !== event.source_program_version_id ||
+      !phase ||
+      phase.name !== event.source_phase_name ||
+      phase.schedule.kind !== event.schedule_kind ||
+      !sourceEvent ||
+      sourceEvent.kind !== event.kind ||
+      canonicalJson(sourceEvent) !== canonicalJson(event.intent_snapshot) ||
+      !positiveInteger(event.sequence_no) ||
+      !positiveInteger(event.cycle_position) ||
+      !positiveInteger(event.program_week) ||
+      eventSequences.has(sequenceKey) ||
+      !isLocalDate(event.original_local_date) ||
+      !isLocalDate(event.current_local_date) ||
+      typeof event.timezone !== "string" ||
+      !isValidIanaTimezone(event.timezone) ||
+      !["scheduled", "started", "completed", "skipped", "superseded", "abandoned"].includes(
+        String(event.status),
+      ) ||
+      ![null, "shift", "manual"].includes(
+        event.adjustment_kind == null ? null : String(event.adjustment_kind),
+      ) ||
+      !nonnegativeInteger(event.revision) ||
+      (["scheduled", "started"].includes(String(event.status))
+        ? event.resolved_at != null
+        : event.resolved_at == null)
+    ) {
+      throw new Error("Snapshot scheduled Program event has invalid intent or lifecycle state.");
+    }
+    eventSequences.add(sequenceKey);
+    const sourceRoutineLineage =
+      sourceEvent.kind === "resistance" ? sourceEvent.routineLineageId : null;
+    if (
+      event.routine_lineage_id !== sourceRoutineLineage ||
+      (sourceRoutineLineage != null &&
+        !routinesByVersionLineage.has(
+          `${String(event.source_program_version_id)}:${sourceRoutineLineage}`,
+        ))
+    ) {
+      throw new Error("Snapshot scheduled Program event has invalid routine lineage.");
+    }
+    const versionEvents =
+      eventsByVersion.get(String(event.schedule_version_id)) ?? [];
+    versionEvents.push(event);
+    eventsByVersion.set(String(event.schedule_version_id), versionEvents);
+  }
+
+  for (const [versionId, document] of parsedDocuments) {
+    const completionDate = programScheduleCompletionDate(document);
+    const dayCount =
+      Math.round(
+        (
+          Date.parse(`${completionDate}T00:00:00.000Z`) -
+          Date.parse(`${document.startsOn}T00:00:00.000Z`)
+        ) / 86_400_000,
+      ) + 1;
+    if (dayCount < 1 || dayCount > 3_650) {
+      throw new Error(
+        "Snapshot Program schedule occurrence window is outside the supported range.",
+      );
+    }
+    const expected = materializeProgramScheduleWindow(document, {
+      startsOn: document.startsOn,
+      endsOn: completionDate,
+    });
+    const actual = eventsByVersion.get(versionId) ?? [];
+    if (
+      expected.length !== dayCount ||
+      actual.length !== expected.length ||
+      new Set(actual.map((event) => String(event.timezone))).size !== 1
+    ) {
+      throw new Error(
+        "Snapshot Program schedule occurrences do not exactly match immutable schedule content.",
+      );
+    }
+    const actualBySequence = new Map(
+      actual.map((event) => [Number(event.sequence_no), event]),
+    );
+    for (let index = 0; index < expected.length; index += 1) {
+      const occurrence = expected[index];
+      const event = actualBySequence.get(index + 1);
+      if (
+        occurrence.state !== "scheduled" ||
+        !event ||
+        event.source_phase_id !== occurrence.phaseId ||
+        event.source_phase_name !== occurrence.phaseName ||
+        event.source_event_id !== occurrence.eventId ||
+        event.kind !== occurrence.eventKind ||
+        event.schedule_kind !== occurrence.scheduleKind ||
+        event.routine_lineage_id !== occurrence.routineLineageId ||
+        canonicalJson(event.intent_snapshot) !==
+          canonicalJson(occurrence.intentSnapshot) ||
+        Number(event.sequence_no) !== index + 1 ||
+        Number(event.cycle_position) !== occurrence.cyclePosition ||
+        Number(event.program_week) !== occurrence.nominalProgramWeek ||
+        event.original_local_date !== occurrence.plannedLocalDate
+      ) {
+        throw new Error(
+          "Snapshot Program schedule occurrences do not exactly match immutable schedule content.",
+        );
+      }
+    }
+  }
+
+  const snapshotKeys = new Set([
+    "schemaVersion",
+    "scheduledProgramEventId",
+    "programScheduleId",
+    "programScheduleVersionId",
+    "programScheduleVersionHash",
+    "scheduleSourceProgramVersionId",
+    "resolvedProgramVersionId",
+    "sourcePhaseId",
+    "sourcePhaseName",
+    "scheduleKind",
+    "eventKind",
+    "sourceEventId",
+    "eventRevision",
+    "originalLocalDate",
+    "currentLocalDate",
+    "timezone",
+    "nominalProgramWeek",
+    "cyclePosition",
+    "routineLineageId",
+  ]);
+  for (const session of rows(payload, "workout_sessions")) {
+    if (!Object.prototype.hasOwnProperty.call(session, "program_schedule_snapshot")) {
+      throw new Error("Snapshot workout is missing Program schedule snapshot state.");
+    }
+    const value = session.program_schedule_snapshot;
+    if (value == null) continue;
+    if (typeof value !== "object" || Array.isArray(value)) {
+      throw new Error("Snapshot workout has an invalid Program schedule snapshot.");
+    }
+    const snapshot = value as SnapshotRow;
+    const actualKeys = Object.keys(snapshot);
+    if (
+      actualKeys.length !== snapshotKeys.size ||
+      actualKeys.some((key) => !snapshotKeys.has(key)) ||
+      snapshot.schemaVersion !== 1 ||
+      ![
+        snapshot.scheduledProgramEventId,
+        snapshot.programScheduleId,
+        snapshot.programScheduleVersionId,
+        snapshot.scheduleSourceProgramVersionId,
+        snapshot.resolvedProgramVersionId,
+        snapshot.sourcePhaseId,
+        snapshot.sourceEventId,
+      ].every(isUuid) ||
+      typeof snapshot.programScheduleVersionHash !== "string" ||
+      !/^[0-9a-f]{64}$/.test(snapshot.programScheduleVersionHash) ||
+      typeof snapshot.sourcePhaseName !== "string" ||
+      snapshot.sourcePhaseName.trim().length === 0 ||
+      !["fixed_7_day", "rolling"].includes(
+        String(snapshot.scheduleKind),
+      ) ||
+      snapshot.eventKind !== "resistance" ||
+      !nonnegativeInteger(snapshot.eventRevision) ||
+      !isLocalDate(snapshot.originalLocalDate) ||
+      !isLocalDate(snapshot.currentLocalDate) ||
+      typeof snapshot.timezone !== "string" ||
+      !isValidIanaTimezone(snapshot.timezone) ||
+      !positiveInteger(snapshot.nominalProgramWeek) ||
+      !positiveInteger(snapshot.cyclePosition) ||
+      !isUuid(snapshot.routineLineageId)
+    ) {
+      throw new Error("Snapshot workout has an invalid Program schedule snapshot.");
+    }
+    if (
+      session.source_program_version_id !== snapshot.resolvedProgramVersionId ||
+      session.source_day_lineage_id !== snapshot.routineLineageId
+    ) {
+      throw new Error("Snapshot workout Program and schedule lineage disagree.");
+    }
+  }
+}
+
 function validateSessionOccurrenceData(payload: CanonicalSnapshotPayload) {
   if (payload.schemaVersion !== SNAPSHOT_SCHEMA_VERSION) return;
 
@@ -2410,6 +2755,7 @@ export function validateSnapshotPayload(
       PRE_REVIEW_SNAPSHOT_SCHEMA_VERSION,
       PRE_ACTIVE_DURATION_SNAPSHOT_SCHEMA_VERSION,
       PRE_SESSION_EQUIPMENT_REQUIREMENTS_SNAPSHOT_SCHEMA_VERSION,
+      PRE_PROGRAM_SCHEDULE_SNAPSHOT_SCHEMA_VERSION,
       SNAPSHOT_SCHEMA_VERSION,
     ].includes(payload.schemaVersion)
   ) {
@@ -2452,6 +2798,7 @@ export function validateSnapshotPayload(
       PRE_REVIEW_SNAPSHOT_SCHEMA_VERSION,
       PRE_ACTIVE_DURATION_SNAPSHOT_SCHEMA_VERSION,
       PRE_SESSION_EQUIPMENT_REQUIREMENTS_SNAPSHOT_SCHEMA_VERSION,
+      PRE_PROGRAM_SCHEDULE_SNAPSHOT_SCHEMA_VERSION,
       SNAPSHOT_SCHEMA_VERSION,
     ].includes(payload.schemaVersion)
   ) {
@@ -2497,6 +2844,55 @@ export function validateSnapshotPayload(
     "program_versions",
     "restored_from_version_id",
     "program_versions"
+  );
+  requireReferences(payload, "program_schedules", "program_id", "programs");
+  requireOptionalReferences(
+    payload,
+    "program_schedules",
+    "current_version_id",
+    "program_schedule_versions",
+  );
+  requireReferences(
+    payload,
+    "program_schedule_versions",
+    "schedule_id",
+    "program_schedules",
+  );
+  requireReferences(
+    payload,
+    "program_schedule_versions",
+    "program_id",
+    "programs",
+  );
+  requireReferences(
+    payload,
+    "program_schedule_versions",
+    "source_program_version_id",
+    "program_versions",
+  );
+  requireOptionalReferences(
+    payload,
+    "program_schedule_versions",
+    "parent_version_id",
+    "program_schedule_versions",
+  );
+  requireReferences(
+    payload,
+    "scheduled_program_events",
+    "schedule_id",
+    "program_schedules",
+  );
+  requireReferences(
+    payload,
+    "scheduled_program_events",
+    "schedule_version_id",
+    "program_schedule_versions",
+  );
+  requireReferences(
+    payload,
+    "scheduled_program_events",
+    "source_program_version_id",
+    "program_versions",
   );
   requireReferences(payload, "workout_templates", "program_version_id", "program_versions");
   requireReferences(payload, "superset_groups", "workout_template_id", "workout_templates");
@@ -2611,6 +3007,7 @@ export function validateSnapshotPayload(
       PRE_REVIEW_SNAPSHOT_SCHEMA_VERSION,
       PRE_ACTIVE_DURATION_SNAPSHOT_SCHEMA_VERSION,
       PRE_SESSION_EQUIPMENT_REQUIREMENTS_SNAPSHOT_SCHEMA_VERSION,
+      PRE_PROGRAM_SCHEDULE_SNAPSHOT_SCHEMA_VERSION,
       SNAPSHOT_SCHEMA_VERSION,
     ].includes(payload.schemaVersion)
   ) {
@@ -2771,6 +3168,7 @@ export function validateSnapshotPayload(
     validateSetExceptionContext(payload);
     validateReviewState(payload);
     validateVersionedProgramData(payload);
+    validateProgramScheduleData(payload);
     validateSessionCompilerIdentity(payload);
     validateSessionOccurrenceData(payload);
     validateContextualNoteData(payload);

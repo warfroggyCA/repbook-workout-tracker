@@ -461,10 +461,33 @@ async function publishDocumentAtomically(
           )
         )
       FOR UPDATE OF recommendation
+    ), blocking_scheduled_lineage AS MATERIALIZED (
+      SELECT event.id
+      FROM current_program program
+      JOIN program_schedules schedule
+        ON schedule.program_id = program.id
+       AND schedule.user_id = ${userId}::uuid
+      JOIN scheduled_program_events event
+        ON event.schedule_id = schedule.id
+       AND event.schedule_version_id = schedule.current_version_id
+       AND event.program_id = program.id
+       AND event.user_id = ${userId}::uuid
+      WHERE event.status = 'scheduled'
+        AND event.kind = 'resistance'
+        AND event.routine_lineage_id IS NOT NULL
+        AND NOT EXISTS (
+          SELECT 1
+          FROM template_input next_day
+          WHERE next_day.lineage_id = event.routine_lineage_id
+        )
+      FOR UPDATE OF event
     ), gate AS MATERIALIZED (
       SELECT program.* FROM current_program program
-      WHERE (${isDraft}::boolean AND (SELECT count(*) FROM target_draft) = 1)
-         OR (${isRecommendation}::boolean AND (SELECT count(*) FROM target_recommendation) = 1)
+      WHERE NOT EXISTS (SELECT 1 FROM blocking_scheduled_lineage)
+        AND (
+          (${isDraft}::boolean AND (SELECT count(*) FROM target_draft) = 1)
+          OR (${isRecommendation}::boolean AND (SELECT count(*) FROM target_recommendation) = 1)
+        )
     ), available_exercises AS MATERIALIZED (
       SELECT count(*)::int AS valid_count
       FROM slot_input slot
