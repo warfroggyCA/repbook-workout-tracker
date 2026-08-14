@@ -188,6 +188,59 @@ function parseWarmupInstruction(
   return { item, ambiguities };
 }
 
+function parseCanonicalExerciseLine(line: string) {
+  const exercise = EXERCISE_LINE.exec(line);
+  if (!exercise?.groups) return null;
+
+  const name = exercise.groups.name?.trim();
+  const sets = Number(exercise.groups.sets);
+  const repMin = Number(exercise.groups.repMin);
+  const repMax = Number(exercise.groups.repMax ?? exercise.groups.repMin);
+  if (
+    !name ||
+    !Number.isSafeInteger(sets) ||
+    sets < 1 ||
+    sets > 20 ||
+    !Number.isSafeInteger(repMin) ||
+    !Number.isSafeInteger(repMax) ||
+    repMin < 1 ||
+    repMax < repMin ||
+    repMax > 100
+  ) {
+    return null;
+  }
+
+  const tail = EXERCISE_TAIL.exec(exercise.groups.tail ?? "");
+  if (!tail?.groups) return null;
+  const load = tail.groups.load == null ? null : Number(tail.groups.load);
+  const loadUnit = tail.groups.loadUnit?.toLowerCase() as
+    | "kg"
+    | "lb"
+    | undefined;
+  const restSec =
+    tail.groups.rest == null || tail.groups.restUnit == null
+      ? null
+      : restSeconds(tail.groups.rest, tail.groups.restUnit);
+  if (
+    (load !== null && (!Number.isFinite(load) || load < 0 || !loadUnit)) ||
+    (tail.groups.rest != null && restSec === null)
+  ) {
+    return null;
+  }
+
+  return {
+    rawName: name,
+    sets,
+    reps: { kind: "range" as const, min: repMin, max: repMax },
+    load,
+    loadUnit: loadUnit ?? null,
+    restSec,
+    supersetKey: exercise.groups.group?.toUpperCase() ?? null,
+    notes: null,
+    rampUps: [],
+  };
+}
+
 /**
  * Parses Repbook's documented canonical paste format without an AI call.
  * `Warm-up:` creates day preparation. An adjacent `Ramp-up:` after an
@@ -302,56 +355,9 @@ function parseCanonicalRoutineTextInternal(
       continue;
     }
 
-    const exercise = EXERCISE_LINE.exec(line);
-    if (!exercise?.groups) return null;
-
-    const name = exercise.groups.name?.trim();
-    const sets = Number(exercise.groups.sets);
-    const repMin = Number(exercise.groups.repMin);
-    const repMax = Number(exercise.groups.repMax ?? exercise.groups.repMin);
-    if (
-      !name ||
-      !Number.isSafeInteger(sets) ||
-      sets < 1 ||
-      sets > 20 ||
-      !Number.isSafeInteger(repMin) ||
-      !Number.isSafeInteger(repMax) ||
-      repMin < 1 ||
-      repMax < repMin ||
-      repMax > 100
-    ) {
-      return null;
-    }
-
-    const tail = EXERCISE_TAIL.exec(exercise.groups.tail ?? "");
-    if (!tail?.groups) return null;
-    const load = tail.groups.load == null ? null : Number(tail.groups.load);
-    const loadUnit = tail.groups.loadUnit?.toLowerCase() as
-      | "kg"
-      | "lb"
-      | undefined;
-    const restSec =
-      tail.groups.rest == null || tail.groups.restUnit == null
-        ? null
-        : restSeconds(tail.groups.rest, tail.groups.restUnit);
-    if (
-      (load !== null && (!Number.isFinite(load) || load < 0 || !loadUnit)) ||
-      (tail.groups.rest != null && restSec === null)
-    ) {
-      return null;
-    }
-
-    currentDay.exercises.push({
-      rawName: name,
-      sets,
-      reps: { kind: "range", min: repMin, max: repMax },
-      load,
-      loadUnit: loadUnit ?? null,
-      restSec,
-      supersetKey: exercise.groups.group?.toUpperCase() ?? null,
-      notes: null,
-      rampUps: [],
-    });
+    const exercise = parseCanonicalExerciseLine(line);
+    if (!exercise) return null;
+    currentDay.exercises.push(exercise);
     canAttachExerciseDetails = true;
   }
 
@@ -427,14 +433,20 @@ function hasInvalidCanonicalExerciseNotes(input: string): boolean {
       continue;
     }
 
-    if (EXERCISE_RAMP_LINE.test(line)) {
-      if (!hasCurrentExercise || !canAttachExerciseDetails) {
+    const ramp = EXERCISE_RAMP_LINE.exec(line);
+    if (ramp) {
+      const parsedRamp = parseWarmupInstruction(
+        ramp[1] ?? "",
+        "exercise.rampUps[0]",
+        0,
+      );
+      if (!hasCurrentExercise || !canAttachExerciseDetails || !parsedRamp) {
         canAttachExerciseDetails = false;
         continue;
       }
       continue;
     }
-    if (EXERCISE_LINE.test(line)) {
+    if (parseCanonicalExerciseLine(line)) {
       hasCurrentExercise = true;
       canAttachExerciseDetails = true;
       currentExerciseHasNotes = false;

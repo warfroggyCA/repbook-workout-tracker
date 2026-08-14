@@ -343,6 +343,20 @@ Main workout:
 Barbell Bench Press 3x6-8, rest 120 sec
 Exercise notes:   `),
     ).toEqual({ envelope: null, invalidExerciseNotes: true });
+    expect(
+      parseCanonicalRoutineTextWithDiagnostics(`Program: Synthetic Free-form Notes
+Day 1 — Focus
+Barbell Bench Press 3x6-8, rest 120 sec
+Use a 3x5 card to track the session.
+Exercise notes: This cannot attach across free-form text.`),
+    ).toEqual({ envelope: null, invalidExerciseNotes: true });
+    expect(
+      parseCanonicalRoutineTextWithDiagnostics(`Program: Synthetic Malformed Ramp
+Day 1 — Focus
+Barbell Bench Press 3x6-8, rest 120 sec
+Ramp-up: Empty bar | reps=
+Exercise notes: This cannot attach across a malformed ramp-up.`),
+    ).toEqual({ envelope: null, invalidExerciseNotes: true });
   });
 
   it("scales the AI fallback output allowance to the routine size", () => {

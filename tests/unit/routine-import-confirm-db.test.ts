@@ -243,7 +243,7 @@ Ramp-up: Empty bar | reps=10`)!;
 Day 1 — Strength
 Main workout:
 Barbell Bench Press 3x8, rest 2 min
-
+Use a 3x5 card to track the session.
 Exercise notes: This must not be attached by an AI fallback.`,
           clientImportId: crypto.randomUUID(),
         }),
@@ -404,7 +404,7 @@ Exercise notes: Keep the synthetic working sets controlled.`;
 Day 1 — Strength
 Main workout:
 Barbell Bench Press 3x8, rest 2 min
-
+Use a 3x5 card to track the session.
 Exercise notes: This prior AI stage must not publish.`,
     );
 
