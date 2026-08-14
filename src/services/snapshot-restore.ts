@@ -1788,6 +1788,7 @@ function validateVersionedProgramData(payload: CanonicalSnapshotPayload) {
     }
   }
   const activeProgramUsers = new Set<string>();
+  const usableProgramUsers = new Set<string>();
   for (const program of programs.values()) {
     const current =
       program.current_version_id == null
@@ -1804,6 +1805,8 @@ function validateVersionedProgramData(payload: CanonicalSnapshotPayload) {
       throw new Error("Snapshot Program current version belongs to another Program.");
     }
     const usable = program.status === "active" || program.status === "inactive";
+    const owner = String(program.user_id);
+    if (usable) usableProgramUsers.add(owner);
     if (
       (!usable && program.status !== "archived") ||
       (usable && program.archived_at != null) ||
@@ -1816,11 +1819,15 @@ function validateVersionedProgramData(payload: CanonicalSnapshotPayload) {
       throw new Error("Snapshot Program current version is not its newest version.");
     }
     if (program.status === "active" && program.archived_at == null) {
-      const owner = String(program.user_id);
       if (activeProgramUsers.has(owner)) {
         throw new Error("Snapshot owner has more than one active Program.");
       }
       activeProgramUsers.add(owner);
+    }
+  }
+  for (const owner of usableProgramUsers) {
+    if (!activeProgramUsers.has(owner)) {
+      throw new Error("Snapshot owner has usable Programs but no active Program.");
     }
   }
 

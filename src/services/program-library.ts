@@ -106,12 +106,19 @@ export async function switchActiveProgram(
       SELECT set_config('workout_tracker.program_publish', 'authorized', true) AS allowed
       WHERE NOT EXISTS (SELECT 1 FROM existing_receipt)
     ), owner_mutex AS MATERIALIZED (
-      SELECT profile.id
-      FROM user_profiles profile
-      CROSS JOIN switch_authorization
+      UPDATE user_profiles profile
+      SET timezone = profile.timezone
+      FROM switch_authorization
       WHERE profile.user_id = ${userId}::uuid
         AND NOT EXISTS (SELECT 1 FROM existing_receipt)
-      FOR UPDATE OF profile
+        AND NOT EXISTS (
+          SELECT 1
+          FROM workout_sessions session
+          WHERE session.user_id = ${userId}::uuid
+            AND session.status = 'in_progress'
+            AND session.archived_at IS NULL
+        )
+      RETURNING profile.id
     ), locked_programs AS MATERIALIZED (
       SELECT program.*
       FROM programs program

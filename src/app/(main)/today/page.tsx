@@ -185,6 +185,8 @@ export default async function TodayPage({
   const isAlternatePreview =
     previewTemplate != null &&
     previewTemplate.template.id !== today.nextTemplate?.template.id;
+  const scheduledAlternateBlocked =
+    isAlternatePreview && today.schedule != null;
   const selectedTemplate = previewTemplate ?? today.nextTemplate;
   const lastDone = selectedTemplate
     ? today.lastDoneByTemplateId[selectedTemplate.template.id]
@@ -405,9 +407,15 @@ export default async function TodayPage({
                 </h2>
               </CardHeader>
               <CardContent className="flex flex-col gap-3">
-                {isAlternatePreview && (
+                {isAlternatePreview && !scheduledAlternateBlocked && (
                   <p className="text-sm text-muted-foreground">
                     Nothing starts until you choose Start workout.
+                  </p>
+                )}
+                {scheduledAlternateBlocked && (
+                  <p className="rounded-lg border bg-muted/35 px-3 py-2.5 text-sm text-muted-foreground">
+                    This Program is following a schedule. Change or skip the
+                    scheduled event before starting a different routine.
                   </p>
                 )}
                 {gap != null && gap >= 7 && (
@@ -416,26 +424,28 @@ export default async function TodayPage({
                     than usual and settle back into the movements.
                   </p>
                 )}
-                <WorkoutStartForm
-                  templateId={selectedTemplate.template.id}
-                  startRequestKey={startRequestKey}
-                  fallbackTimezone={user.profile.timezone}
-                  retryLabel={selectedTemplate.template.name}
-                  buttonClassName="h-auto min-h-12 w-full whitespace-normal py-3 text-center text-base leading-tight"
-                  scheduledStart={
-                    !isAlternatePreview && today.schedule?.nextEvent?.kind === "resistance"
-                      ? {
-                          scheduledProgramEventId: today.schedule.nextEvent.id,
-                          expectedEventRevision: today.schedule.nextEvent.revision,
-                          programScheduleVersionId: today.schedule.scheduleVersionId,
-                          programScheduleVersionHash: today.schedule.scheduleVersionHash,
-                        }
-                      : undefined
-                  }
-                >
-                  <Play className="size-4" />
-                  {isAlternatePreview ? "Start workout" : "Train as planned"}
-                </WorkoutStartForm>
+                {!scheduledAlternateBlocked && (
+                  <WorkoutStartForm
+                    templateId={selectedTemplate.template.id}
+                    startRequestKey={startRequestKey}
+                    fallbackTimezone={user.profile.timezone}
+                    retryLabel={selectedTemplate.template.name}
+                    buttonClassName="h-auto min-h-12 w-full whitespace-normal py-3 text-center text-base leading-tight"
+                    scheduledStart={
+                      !isAlternatePreview && today.schedule?.nextEvent?.kind === "resistance"
+                        ? {
+                            scheduledProgramEventId: today.schedule.nextEvent.id,
+                            expectedEventRevision: today.schedule.nextEvent.revision,
+                            programScheduleVersionId: today.schedule.scheduleVersionId,
+                            programScheduleVersionHash: today.schedule.scheduleVersionHash,
+                          }
+                        : undefined
+                    }
+                  >
+                    <Play className="size-4" />
+                    {isAlternatePreview ? "Start workout" : "Train as planned"}
+                  </WorkoutStartForm>
+                )}
                 {isAlternatePreview && (
                   <Button
                     render={<Link href="/today" />}
@@ -535,9 +545,13 @@ export default async function TodayPage({
               >
                 <summary className="flex min-h-12 cursor-pointer list-none items-center justify-between gap-3 rounded-2xl px-4 py-3 font-medium outline-none focus-visible:ring-3 focus-visible:ring-ring/50">
                   <span>
-                    Choose another Program day
+                    {today.schedule
+                      ? "Preview another Program day"
+                      : "Choose another Program day"}
                     <span className="mt-0.5 block text-xs font-normal text-muted-foreground">
-                      Secondary option
+                      {today.schedule
+                        ? "Preview only while this schedule is active"
+                        : "Secondary option"}
                     </span>
                   </span>
                   <ChevronDown className="size-4 shrink-0 text-muted-foreground" />

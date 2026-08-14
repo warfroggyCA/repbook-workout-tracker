@@ -1354,6 +1354,42 @@ export async function startWorkoutSession(
         AND ws.user_id = ${userId}::uuid
         AND ws.start_request_key = ${startRequestKey}::text
       LIMIT 1
+    ), owner_mutex AS MATERIALIZED (
+      UPDATE user_profiles profile
+      SET timezone = profile.timezone
+      WHERE profile.user_id = ${userId}::uuid
+        AND NOT EXISTS (SELECT 1 FROM existing_request)
+        AND NOT EXISTS (
+          SELECT 1
+          FROM workout_sessions active
+          WHERE active.user_id = ${userId}::uuid
+            AND active.status = 'in_progress'
+            AND active.archived_at IS NULL
+        )
+        AND EXISTS (
+          SELECT 1
+          FROM workout_templates candidate
+          JOIN program_versions version
+            ON version.id = candidate.program_version_id
+          JOIN programs program
+            ON program.id = version.program_id
+          WHERE candidate.id = ${templateId}::uuid
+            AND program.user_id = ${userId}::uuid
+            AND program.status = 'active'
+            AND program.archived_at IS NULL
+            AND program.current_version_id = version.id
+            AND (
+              ${scheduledStart?.scheduledProgramEventId ?? null}::uuid IS NOT NULL
+              OR NOT EXISTS (
+                SELECT 1
+                FROM program_schedules schedule
+                WHERE schedule.user_id = program.user_id
+                  AND schedule.program_id = program.id
+                  AND schedule.current_version_id IS NOT NULL
+              )
+            )
+        )
+      RETURNING profile.id
     ), existing_active AS MATERIALIZED (
       SELECT ws.id, false AS inserted, 'active'::text AS selected_by,
              ws.start_request_key, ws.start_request_hash
@@ -1366,7 +1402,8 @@ export async function startWorkoutSession(
       LIMIT 1
     ), locked_program_schedule AS MATERIALIZED (
       SELECT schedule.*
-      FROM program_schedules schedule
+      FROM owner_mutex
+      CROSS JOIN program_schedules schedule
       JOIN scheduled_program_events event
         ON event.schedule_id = schedule.id
        AND event.user_id = schedule.user_id
@@ -1442,7 +1479,8 @@ export async function startWorkoutSession(
                warmupItems: sql`wt.warmup_items`,
              })} AS effective_warmup_items,
              profile.timezone AS profile_timezone
-      FROM workout_templates wt
+      FROM owner_mutex
+      CROSS JOIN workout_templates wt
       JOIN program_versions version ON version.id = wt.program_version_id
       JOIN programs program ON program.id = version.program_id
       JOIN user_profiles profile ON profile.user_id = program.user_id
