@@ -331,6 +331,7 @@ Exercise notes: A blank line makes this note detached.`),
     expect(
       parseCanonicalRoutineTextWithDiagnostics(`Program: Synthetic Separated Notes
 Day 1 — Focus
+Main workout:
 Barbell Bench Press 3x6-8, rest 120 sec
 
 Exercise notes: A blank line makes this note detached.`),
