@@ -76,7 +76,7 @@ test("keeps ordinary completion minimal and makes exception evidence reversible,
   await expect(currentEntry.getByText("Technique issue", { exact: true }))
     .not.toBeVisible();
   await currentEntry.getByRole("button", { name: "Log set", exact: true }).click();
-  await expect(currentCard.getByTestId("active-set-save-receipt"))
+  await expect(currentCard.getByTestId("completed-sets"))
     .toContainText("Acknowledged by Repbook");
   await dismissRest(page);
 
@@ -174,7 +174,7 @@ test("keeps ordinary completion minimal and makes exception evidence reversible,
 
   await context.setOffline(false);
   await page.evaluate(() => window.dispatchEvent(new Event("online")));
-  const receipt = currentCard.getByTestId("active-set-save-receipt");
+  const receipt = currentCard.getByTestId("completed-sets");
   await expect(receipt).toContainText("Acknowledged by Repbook");
   await expect(receipt).toContainText("RIR 2");
   await expect(receipt).toContainText("Technique: Bracing");

@@ -141,6 +141,52 @@ describe("trusted exercise catalog", () => {
     });
   });
 
+  it("requires an owner choice for an unqualified family label with material variants", async () => {
+    const family = { name: "Lat Pulldown" };
+    const db = fakeDb([
+      exercise("cable-lat-pulldown", "Lat Pulldown", "cable", {
+        aliases: [{ alias: "Pulldown" }],
+        family,
+        loadSemantics: "machine_stack",
+      }),
+      exercise(
+        "plate-loaded-lat-pulldown",
+        "Plate-Loaded Lat Pulldown",
+        "machine",
+        {
+          aliases: [{ alias: "Plate Loaded Pulldown" }],
+          family,
+          loadSemantics: "machine_stack",
+        },
+      ),
+    ]);
+
+    await expect(resolveExerciseName(db, "Lat Pulldown", "user")).resolves.toMatchObject({
+      exerciseId: null,
+      exerciseName: null,
+      matchType: "none",
+      requiresOwnerChoice: true,
+      candidates: [
+        { id: "cable-lat-pulldown", equipment: ["cable"] },
+        { id: "plate-loaded-lat-pulldown", equipment: ["machine"] },
+      ],
+    });
+    await expect(
+      resolveExerciseName(db, "Lat Pulldown (Cable)", "user"),
+    ).resolves.toMatchObject({
+      exerciseId: "cable-lat-pulldown",
+      matchType: "exact",
+      requiresOwnerChoice: false,
+    });
+    await expect(
+      resolveExerciseName(db, "Plate-Loaded Lat Pulldown", "user"),
+    ).resolves.toMatchObject({
+      exerciseId: "plate-loaded-lat-pulldown",
+      matchType: "exact",
+      requiresOwnerChoice: false,
+    });
+  });
+
   it("activates only reviewed exact setup variants without reclassifying generic machines or bars", () => {
     const byName = (name: string) =>
       exerciseLibrary.find((exercise) => exercise.name === name);

@@ -16,7 +16,10 @@ vi.mock("@/app/actions/sessions", () => ({
 }));
 
 import { syncNextOccurrenceMutation } from "@/components/session/occurrence-mutation-outbox-sync";
-import { deploymentRecoveryRequired } from "@/lib/deployment-recovery";
+import {
+  deploymentRecoveryRequired,
+  documentRecoveryReason,
+} from "@/lib/deployment-recovery";
 
 class MemoryStorage implements OccurrenceMutationOutboxStorage {
   values = new Map<string, string>();
@@ -238,6 +241,60 @@ describe("occurrence mutation outbox sync", () => {
 
     await syncNextOccurrenceMutation(entry().ownerId);
     expect(actionMocks.mutateOccurrence).toHaveBeenCalledOnce();
+  });
+
+  it("releases a never-settling mutation and replays its exact identity only in a new document", async () => {
+    actionMocks.mutateOccurrence.mockReturnValueOnce(
+      new Promise(() => undefined),
+    );
+
+    await syncNextOccurrenceMutation(entry().ownerId, 0, 5);
+
+    expect(readOccurrenceMutationOutbox(storage).entries[0]).toMatchObject({
+      clientKey: entry().clientKey,
+      ownerId: entry().ownerId,
+      sessionId: entry().sessionId,
+      occurrenceId: entry().occurrenceId,
+      expectedRevision: entry().expectedRevision,
+      operation: entry().operation,
+      status: "queued",
+      attemptCount: 1,
+      lastError:
+        "Repbook did not confirm this workout change in time. It is safe on this device. Reload and retry safely.",
+    });
+    expect(documentRecoveryReason()).toBe("action_timeout");
+    const firstCommand = actionMocks.mutateOccurrence.mock.calls[0]?.[0];
+
+    expect(
+      retryOccurrenceMutationOutboxEntry(storage, entry().clientKey),
+    ).toMatchObject({ ok: true });
+    await syncNextOccurrenceMutation(entry().ownerId, 0, 5);
+    expect(actionMocks.mutateOccurrence).toHaveBeenCalledOnce();
+
+    const nextEvents = new EventTarget();
+    vi.stubGlobal("window", {
+      localStorage: storage,
+      dispatchEvent: nextEvents.dispatchEvent.bind(nextEvents),
+    });
+    actionMocks.mutateOccurrence.mockResolvedValueOnce({
+      outcome: "replayed",
+      occurrence: {
+        id: entry().occurrenceId,
+        state: "skipped",
+        reason: "user_skipped",
+        note: null,
+        revision: 1,
+        resolvedAt: "2026-07-21T12:00:01.000Z",
+      },
+    });
+
+    await syncNextOccurrenceMutation(entry().ownerId, 0, 5);
+
+    expect(actionMocks.mutateOccurrence).toHaveBeenCalledTimes(2);
+    expect(actionMocks.mutateOccurrence.mock.calls[1]?.[0]).toEqual(
+      firstCommand,
+    );
+    expect(readOccurrenceMutationOutbox(storage).entries).toEqual([]);
   });
 
   it("retains stale or conflicting changes for explicit review instead of rewriting them", async () => {

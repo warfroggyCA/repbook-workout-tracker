@@ -67,7 +67,6 @@ import type {
   LoggedSet,
   SessionExerciseData,
   SessionOccurrenceData,
-  SetAcknowledgementReceipt,
 } from "./types";
 import type { ExerciseProgressProjection } from "@/lib/session-guidance";
 import type { MachineLoadConfig } from "@/engine/machine-load-math";
@@ -80,7 +79,12 @@ import {
   effortChoiceForLegacyRpe,
 } from "@/lib/active-workout-language";
 import { activeWorkoutScrollBehavior } from "@/lib/active-workout-motion";
-import { reportDeploymentMismatch } from "@/lib/deployment-recovery";
+import {
+  isDocumentActionTimeout,
+  reportDeploymentMismatch,
+  reportDocumentActionTimeout,
+  withDocumentActionDeadline,
+} from "@/lib/deployment-recovery";
 import {
   fetchWorkoutExerciseOptions,
   WorkoutExerciseOptionsRequestError,
@@ -111,7 +115,6 @@ import { formatPainEvidence } from "@/lib/pain-evidence";
 import type { OccurrenceMutationOutboxEntry } from "@/lib/occurrence-mutation-outbox";
 import {
   CompletedSetCorrection,
-  type CorrectedSetValues,
 } from "@/components/history/completed-set-correction";
 import {
   LIMITATION_CAUSES,
@@ -237,71 +240,6 @@ function formatSetTarget(
     parts.push(occurrence.plannedLoadText.trim());
   }
   return parts.length > 0 ? parts.join(" · ") : "No numeric target";
-}
-
-function ActiveSetSaveReceipt({
-  receipt,
-  currentExerciseId,
-  historyRevision,
-  onAcknowledged,
-}: {
-  receipt: SetAcknowledgementReceipt;
-  currentExerciseId: string;
-  historyRevision: number;
-  onAcknowledged: (result: {
-    values: CorrectedSetValues;
-    historyRevision: number;
-  }) => void;
-}) {
-  return (
-    <div
-      id={`active-set-save-receipt-${receipt.sessionExerciseId}-${receipt.set.setNo}`}
-      data-testid="active-set-save-receipt"
-      role="status"
-      className="mt-2 rounded-lg border border-emerald-600/30 bg-emerald-600/10 p-3 text-sm"
-    >
-      <div className="flex flex-wrap items-start justify-between gap-2">
-        <div className="min-w-0">
-          <p className="break-words font-semibold tabular-nums">
-            Saved · {receipt.sessionExerciseId !== currentExerciseId
-              ? `${receipt.exerciseName} · `
-              : ""}
-            Set {receipt.set.setNo} · {formatLoggedSet(receipt.set, receipt.metricType)}
-          </p>
-          {formatLoggedExceptionContext(receipt.set).length > 0 && (
-            <p className="mt-1 text-xs text-muted-foreground">
-              {formatLoggedExceptionContext(receipt.set).join(" · ")}
-            </p>
-          )}
-        </div>
-        {(receipt.set.metricType ?? receipt.metricType) === "activity" ? (
-          <span className="text-xs text-muted-foreground">
-            Correction unavailable for this legacy shape
-          </span>
-        ) : (
-          <CompletedSetCorrection
-            setId={receipt.set.id}
-            setNo={receipt.set.setNo}
-            weight={receipt.set.weight}
-            weightUnit={receipt.set.weightUnit}
-            reps={receipt.set.reps}
-            distanceKm={receipt.set.distanceKm ?? null}
-            durationSeconds={receipt.set.durationSeconds ?? null}
-            metricType={receipt.set.metricType ?? receipt.metricType}
-            rpe={receipt.set.rpe}
-            note={receipt.set.note}
-            historyRevision={historyRevision}
-            source="active_workout"
-            onAcknowledged={onAcknowledged}
-          />
-        )}
-      </div>
-      <p className="mt-2 border-t border-emerald-700/20 pt-2 text-xs text-muted-foreground">
-        Acknowledged by Repbook. Wrong value? Correct the saved set; the
-        original remains in Edit history.
-      </p>
-    </div>
-  );
 }
 
 function PendingSetSaveStatus({
@@ -507,7 +445,6 @@ type Props = {
   occurrenceMutationEntries?: OccurrenceMutationOutboxEntry[];
   occurrenceRuntimeSaveStates?: Record<string, "saving" | "retrying">;
   acknowledgedOccurrenceIds?: string[];
-  acknowledgementReceipt?: SetAcknowledgementReceipt | null;
   isCurrentExercise?: boolean;
   nextActionLabel?: string | null;
   warmupResolved?: boolean;
@@ -741,7 +678,6 @@ export function ExerciseCard({
   occurrenceMutationEntries = [],
   occurrenceRuntimeSaveStates = {},
   acknowledgedOccurrenceIds = [],
-  acknowledgementReceipt = null,
   isCurrentExercise = false,
   nextActionLabel = null,
   warmupResolved = false,
@@ -1166,6 +1102,9 @@ export function ExerciseCard({
         appendFocusRequestRef.current = null;
         return;
       }
+      // A retained uncertain request may replay an earlier stable occurrence
+      // identity instead of the newly proposed client ID.
+      appendFocusRequestRef.current = appended.id;
       const plannedWeight =
         appended.plannedLoad != null && appended.plannedLoadUnit != null
           ? convertWeight(
@@ -1250,58 +1189,6 @@ export function ExerciseCard({
   const exactActiveBlockerCanLog =
     unconfirmedSet != null && !activeLoggingBlocked;
   const prioritizeCurrentAction = nextActionLabel != null;
-  const latestAcknowledgedSet = prioritizeCurrentAction
-    ? [...exercise.sets]
-        .filter(
-          (set) => set.saveState === "saved" && set.setNo < nextSetNo,
-        )
-        .sort((left, right) => right.setNo - left.setNo)[0] ?? null
-    : null;
-  const displayedAcknowledgementReceipt =
-    acknowledgementReceipt ??
-    (isCurrentExercise && prioritizeCurrentAction && latestAcknowledgedSet
-      ? {
-          sessionExerciseId: exercise.id,
-          exerciseName: exercise.name,
-          metricType:
-            latestAcknowledgedSet.metricType ??
-            exercise.metricType ??
-            "weight_reps",
-          set: latestAcknowledgedSet,
-        }
-      : null);
-
-  function handleAcknowledgementCorrection(result: {
-    values: CorrectedSetValues;
-    historyRevision: number;
-  }) {
-    if (!displayedAcknowledgementReceipt) return;
-    if (displayedAcknowledgementReceipt.sessionExerciseId === exercise.id) {
-      onPatch({
-        sets: exercise.sets.map((candidate) =>
-          candidate.id === displayedAcknowledgementReceipt.set.id
-            ? {
-                ...candidate,
-                ...result.values,
-                correctionCount: (candidate.correctionCount ?? 0) + 1,
-              }
-            : candidate,
-        ),
-      });
-    }
-    onHistoryRevisionChange(result.historyRevision);
-    const measurement = readActiveWorkoutMeasurements().find(
-      (record) =>
-        (displayedAcknowledgementReceipt.set.clientKey != null &&
-          record.clientKey === displayedAcknowledgementReceipt.set.clientKey) ||
-        record.setId === displayedAcknowledgementReceipt.set.id,
-    );
-    if (measurement) {
-      patchActiveWorkoutMeasurement(measurement.clientKey, {
-        corrections: measurement.corrections + 1,
-      });
-    }
-  }
   // A failed or delayed write owns its occurrence until acknowledgement. Put
   // that exact recovery row ahead of the later blocked row so the user never
   // has to hunt for the action that can move the workout forward.
@@ -2164,22 +2051,16 @@ export function ExerciseCard({
               );
             })}
 
-            {displayedAcknowledgementReceipt && (
-              <ActiveSetSaveReceipt
-                receipt={displayedAcknowledgementReceipt}
-                currentExerciseId={exercise.id}
-                historyRevision={historyRevision}
-                onAcknowledged={handleAcknowledgementCorrection}
-              />
-            )}
-
-            <details className="mt-1 rounded-lg border bg-muted/15 text-sm">
+            <details
+              data-testid="completed-sets"
+              className="mt-1 rounded-lg border bg-muted/15 text-sm"
+            >
               <summary className="flex min-h-[44px] cursor-pointer list-none items-center justify-between gap-2 rounded-lg px-2 py-1 font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
-                <span>Exercise progress &amp; extras</span>
+                <span>Completed sets</span>
                 <span className="shrink-0 text-xs font-normal text-muted-foreground">
                   {exercise.sets.filter(
                     (set) => set.saveState == null || set.saveState === "saved",
-                  ).length} logged
+                  ).length} completed
                 </span>
               </summary>
               <div className="space-y-2 border-t p-2">
@@ -2198,8 +2079,6 @@ export function ExerciseCard({
                           occurrenceForRow,
                           workingOccurrences,
                         );
-                  const noteForSet = plannedNote(i);
-
                   if (set) {
                     return (
                       <div
@@ -2313,21 +2192,26 @@ export function ExerciseCard({
                     );
                   }
 
-                  return (
-                    <div
-                      key={`future-${i}`}
-                      className="rounded-md border border-dashed px-3 py-2 text-muted-foreground"
-                    >
-                      <div className="flex items-center justify-between">
-                        <span>Set {i + 1}</span>
-                        <span>Upcoming</span>
-                      </div>
-                      {noteForSet && (
-                        <p className="mt-1 text-xs">{noteForSet}</p>
-                      )}
-                    </div>
-                  );
+                  return null;
                 })}
+                {exercise.sets.filter(
+                  (set) => set.saveState == null || set.saveState === "saved",
+                ).length === 0 && (
+                  <p className="rounded-md border border-dashed px-3 py-2 text-muted-foreground">
+                    No completed sets yet.
+                  </p>
+                )}
+              </div>
+            </details>
+
+            <details className="mt-1 rounded-lg border bg-muted/15 text-sm">
+              <summary className="flex min-h-[44px] cursor-pointer list-none items-center justify-between gap-2 rounded-lg px-2 py-1 font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
+                <span>Extra sets</span>
+                <span className="shrink-0 text-xs font-normal text-muted-foreground">
+                  Add only if needed
+                </span>
+              </summary>
+              <div className="space-y-2 border-t p-2">
                 <Button
                   type="button"
                   variant="outline"
@@ -2776,10 +2660,12 @@ export function ExerciseCard({
               onClick={() =>
                 startTransition(async () => {
                   try {
-                    const result = await confirmExerciseUnskipped({
-                      sessionExerciseId: exercise.id,
-                      expectedHistoryRevision: historyRevision,
-                    });
+                    const result = await withDocumentActionDeadline(
+                      confirmExerciseUnskipped({
+                        sessionExerciseId: exercise.id,
+                        expectedHistoryRevision: historyRevision,
+                      }),
+                    );
                     if (!result.ok) {
                       toast.error(result.message);
                       if (result.code === "unskip_stale") router.refresh();
@@ -2787,6 +2673,13 @@ export function ExerciseCard({
                     }
                     onHistoryRevisionChange(result.historyRevision);
                   } catch (error) {
+                    if (isDocumentActionTimeout(error)) {
+                      reportDocumentActionTimeout();
+                      toast.error(
+                        "Repbook did not confirm the restore in time. Reload before trying again.",
+                      );
+                      return;
+                    }
                     if (reportDeploymentMismatch(error)) return;
                     toast.error("The exercise could not be restored.");
                     return;
@@ -3473,11 +3366,13 @@ function SkipDrawer({
                 onRequestStart(reason);
                 startTransition(async () => {
                   try {
-                    const result = await skipExercise({
-                      sessionExerciseId: exerciseId,
-                      reason,
-                      expectedHistoryRevision,
-                    });
+                    const result = await withDocumentActionDeadline(
+                      skipExercise({
+                        sessionExerciseId: exerciseId,
+                        reason,
+                        expectedHistoryRevision,
+                      }),
+                    );
                     if (!result.ok) {
                       if (onRequestFailure(reason, result.code)) {
                         toast.error(result.message);
@@ -3485,9 +3380,16 @@ function SkipDrawer({
                       return;
                     }
                     onDone(reason, result.historyRevision);
-                  } catch {
+                  } catch (error) {
                     if (onRequestFailure(reason)) {
-                      toast.error("The exercise could not be skipped.");
+                      if (isDocumentActionTimeout(error)) {
+                        reportDocumentActionTimeout();
+                        toast.error(
+                          "Repbook did not confirm the skip in time. Reload to reconcile the retained request safely.",
+                        );
+                      } else {
+                        toast.error("The exercise could not be skipped.");
+                      }
                     }
                     return;
                   }

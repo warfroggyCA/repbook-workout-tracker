@@ -50,6 +50,7 @@ import {
 } from "@/services/routine-import";
 import {
   buildEquipmentAvailability,
+  equipmentRequirementLabel,
   missingRequirements,
 } from "@/engine/equipment-filter";
 import { isPatternAllowedForSuggestions } from "@/engine/constraint-filter";
@@ -446,9 +447,20 @@ export async function parseRoutineText(
         candidates: res.candidates.map((candidate) => ({
           id: candidate.id,
           name: candidate.name,
+          ...(res.requiresOwnerChoice
+            ? {
+                why: `Equipment: ${candidate.equipment
+                  .map(equipmentRequirementLabel)
+                  .join(" + ")}`,
+              }
+            : {}),
         })),
       });
-      if (res.matchType === "none" && res.candidates.length > 0) {
+      if (
+        res.matchType === "none" &&
+        res.candidates.length > 0 &&
+        !res.requiresOwnerChoice
+      ) {
         mapRequest.push({
           rawName,
           candidates: res.candidates.map((candidate) => ({
@@ -528,7 +540,7 @@ export async function parseRoutineText(
           matchType: m.matchType,
           candidates: base.candidates.map((c) => ({
             ...c,
-            why: whyById.get(c.id),
+            why: whyById.get(c.id) ?? c.why,
           })),
         });
       }

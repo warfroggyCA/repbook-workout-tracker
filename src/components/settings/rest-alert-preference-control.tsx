@@ -18,7 +18,7 @@ import { cn } from "@/lib/utils";
 
 const DETAILS: Record<RestAlertPreference, string> = {
   visual_only: "On-screen ready state",
-  sound: "Sound when allowed",
+  sound: "Foreground sound (default)",
   vibration: "Vibration when supported",
   sound_and_vibration: "Both when available",
 };

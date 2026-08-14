@@ -21,7 +21,10 @@ export const REST_ALERT_PREFERENCE_OPTIONS = [
 
 export type RestAlertPreference =
   (typeof REST_ALERT_PREFERENCE_OPTIONS)[number]["value"];
-export const DEFAULT_REST_ALERT_PREFERENCE: RestAlertPreference = "visual_only";
+// A rest timer is expected to call the lifter back to the next set. New
+// browser/device installs therefore request a foreground sound by default.
+// An explicitly saved visual-only preference remains authoritative.
+export const DEFAULT_REST_ALERT_PREFERENCE: RestAlertPreference = "sound";
 
 export const REST_COMPLETION_TONE_PATTERN = [
   { delaySec: 0, frequencyHz: 880, durationSec: 0.14 },
@@ -30,6 +33,24 @@ export const REST_COMPLETION_TONE_PATTERN = [
   { delaySec: 0.6, frequencyHz: 1175, durationSec: 0.14 },
   { delaySec: 0.8, frequencyHz: 1175, durationSec: 0.2 },
 ] as const;
+
+/**
+ * Starts an effectively silent source while the owner gesture is still active.
+ * Mobile WebKit may refuse delayed Web Audio unless a source was started from
+ * a gesture, even when an AudioContext was created and resume() was requested.
+ */
+export function primeRestAudioContext(context: AudioContext) {
+  const oscillator = context.createOscillator();
+  const gain = context.createGain();
+  const startsAt = context.currentTime;
+  oscillator.type = "sine";
+  oscillator.frequency.setValueAtTime(440, startsAt);
+  gain.gain.setValueAtTime(0.0001, startsAt);
+  oscillator.connect(gain);
+  gain.connect(context.destination);
+  oscillator.start(startsAt);
+  oscillator.stop(startsAt + 0.02);
+}
 
 export type RestAlertPreferenceStorage = Pick<
   Storage,
@@ -65,7 +86,7 @@ export function parseRestAlertPreference(raw: string | null): RestAlertPreferenc
       return (value as StoredPreference).preference;
     }
   } catch {
-    // Invalid device preference falls back to the non-signalling default.
+    // Invalid device preference falls back to the current product default.
   }
   return DEFAULT_REST_ALERT_PREFERENCE;
 }

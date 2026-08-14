@@ -1617,6 +1617,90 @@ describe("retained session equipment requirements persistence", () => {
     ]);
   }, 30_000);
 
+  it("classifies owned broad cable as incompatible when exact setup evidence is absent", async () => {
+    const database = await createMigratedTestDatabase();
+    databases.push(database);
+    const ownerId = crypto.randomUUID();
+    const exerciseId = crypto.randomUUID();
+    const sessionId = crypto.randomUUID();
+    const cableItemId = crypto.randomUUID();
+    const cableRequirementId = crypto.randomUUID();
+    const exactRequirementId = crypto.randomUUID();
+    await database.client.exec(`
+      INSERT INTO users (id, email)
+      VALUES ('${ownerId}', 'prep-owned-cable-incomplete@example.test');
+      INSERT INTO user_profiles (user_id, unit, timezone)
+      VALUES ('${ownerId}', 'lb', 'America/Toronto');
+      INSERT INTO exercises (
+        id, name, movement_pattern, primary_muscles, load_type,
+        metric_type, load_semantics
+      ) VALUES (
+        '${exerciseId}', 'Owned cable without reviewed profile', 'vertical_pull',
+        '["back", "biceps"]'::jsonb, 'external', 'weight_reps', 'machine_stack'
+      );
+      INSERT INTO workout_sessions (
+        id, user_id, timezone, local_date, started_at, status, history_revision
+      ) VALUES (
+        '${sessionId}', '${ownerId}', 'America/Toronto', '2026-08-10',
+        '2026-08-10T13:00:00Z', 'in_progress', 0
+      );
+      INSERT INTO session_exercises (
+        session_id, exercise_id, order_idx,
+        equipment_requirements_semantics_version,
+        equipment_requirements_snapshot
+      ) VALUES (
+        '${sessionId}', '${exerciseId}', 0, 1,
+        jsonb_build_object(
+          'sourceExerciseId', '${exerciseId}',
+          'broad', jsonb_build_array(jsonb_build_object(
+            'sourceRequirementId', '${cableRequirementId}',
+            'equipmentType', 'cable',
+            'equipmentDefinition', NULL,
+            'minWeight', NULL
+          )),
+          'exact', jsonb_build_object(
+            'sourceRequirementId', '${exactRequirementId}',
+            'requiredProfileKind', 'cable_machine',
+            'requiredEquipmentDefinition', NULL,
+            'requiredAttachmentKind', 'lat_bar',
+            'requiredAttachmentDefinition', NULL,
+            'requiresKnownGeometry', true
+          )
+        )
+      );
+      INSERT INTO equipment_items (
+        id, user_id, type, label, available
+      ) VALUES (
+        '${cableItemId}', '${ownerId}', 'cable', 'Saved cable station', true
+      );
+    `);
+
+    const projection = await resolveSessionPreparationEquipmentProjection(
+      database.db,
+      ownerId,
+      sessionId,
+      0,
+    );
+    expect(projection).toMatchObject({
+      state: "unavailable",
+      evidenceState: "retained",
+      statusText:
+        "Some requirements are unavailable or have no compatible saved setup.",
+    });
+    expect(projection?.rows.map((row) => [
+      row.label,
+      row.status,
+      row.statusText,
+    ])).toEqual([
+      ["cable station", "incompatible", "No compatible saved setup"],
+      [
+        "lat bar attachment",
+        "unavailable",
+        "Unavailable in saved equipment",
+      ],
+    ]);
+  }, 30_000);
+
   it("upgrades 0079 without a backfill and installs the immutable tuple guard", async () => {
     const database = await createTestDatabaseAtMigration(
       "0079_active_workout_duration_evidence",

@@ -4,15 +4,18 @@ import { RefreshCw } from "lucide-react";
 import { useEffect, useRef, useSyncExternalStore } from "react";
 import { Button } from "@/components/ui/button";
 import {
-  deploymentRecoveryRequired,
-  getDeploymentRecoveryServerSnapshot,
+  documentRecoveryReason,
+  getDocumentRecoveryReasonServerSnapshot,
   subscribeToDeploymentRecovery,
+  type DocumentRecoveryReason,
 } from "@/lib/deployment-recovery";
 
 export function DeploymentUpdateNoticeView({
   onReload,
+  reason = "deployment_update",
 }: {
   onReload: () => void;
+  reason?: DocumentRecoveryReason;
 }) {
   const noticeRef = useRef<HTMLElement>(null);
 
@@ -33,11 +36,14 @@ export function DeploymentUpdateNoticeView({
         <RefreshCw className="mt-0.5 size-5 shrink-0" aria-hidden="true" />
         <div className="min-w-0 flex-1">
           <h2 id="repbook-update-title" className="font-semibold">
-            Repbook was updated
+            {reason === "action_timeout"
+              ? "Repbook did not confirm a save"
+              : "Repbook was updated"}
           </h2>
           <p className="mt-1 text-sm leading-relaxed">
-            Your pending workout changes are safe on this device. Reload once
-            to connect to the new version; saving will resume automatically.
+            {reason === "action_timeout"
+              ? "Your pending workout changes are safe on this device. Reload once to retry the exact same changes safely."
+              : "Your pending workout changes are safe on this device. Reload once to connect to the new version; saving will resume automatically."}
           </p>
           <Button
             type="button"
@@ -46,7 +52,9 @@ export function DeploymentUpdateNoticeView({
             className="mt-3 w-full border-amber-500/60 bg-background text-foreground sm:w-auto"
             onClick={onReload}
           >
-            Reload Repbook
+            {reason === "action_timeout"
+              ? "Reload and retry safely"
+              : "Reload Repbook"}
           </Button>
         </div>
       </div>
@@ -55,13 +63,16 @@ export function DeploymentUpdateNoticeView({
 }
 
 export function DeploymentUpdateNotice() {
-  const recoveryRequired = useSyncExternalStore(
+  const recoveryReason = useSyncExternalStore(
     subscribeToDeploymentRecovery,
-    deploymentRecoveryRequired,
-    getDeploymentRecoveryServerSnapshot,
+    documentRecoveryReason,
+    getDocumentRecoveryReasonServerSnapshot,
   );
 
-  return recoveryRequired ? (
-    <DeploymentUpdateNoticeView onReload={() => window.location.reload()} />
+  return recoveryReason ? (
+    <DeploymentUpdateNoticeView
+      reason={recoveryReason}
+      onReload={() => window.location.reload()}
+    />
   ) : null;
 }

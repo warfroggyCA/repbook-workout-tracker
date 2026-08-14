@@ -67,13 +67,13 @@ describe("WorkoutGuidanceSummary", () => {
       "flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1 text-sm",
     );
     expect(html).toContain(
-      "min-w-0 flex-1 basis-48 break-words leading-snug max-[360px]:line-clamp-2",
+      "min-w-0 flex-1 basis-48 break-words leading-snug max-[639px]:line-clamp-2",
     );
     expect(html).toContain("Long Resistance Band With Door Anchor");
     expect(html).toContain("Prepare:</span>");
     expect(html).not.toContain("Use now:</span>");
     expect(html).toContain("break-words text-xs text-muted-foreground");
-    expect(html).toContain("max-[360px]:sr-only");
+    expect(html).toContain("max-[639px]:sr-only");
     expect(html).not.toContain("max-[360px]:hidden");
     expect(html).not.toContain("truncate");
   });

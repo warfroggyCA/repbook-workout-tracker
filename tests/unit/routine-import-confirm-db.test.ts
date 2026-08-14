@@ -6,6 +6,7 @@ import { migrate } from "drizzle-orm/pglite/migrator";
 import { eq } from "drizzle-orm";
 import * as schema from "@/db/schema";
 import {
+  exerciseFamilies,
   exercises,
   exerciseEquipmentRequirements,
   aiParsingEvents,
@@ -429,6 +430,87 @@ Barbell Incline Press 3x8, rest 90 sec`,
       expect(await db.query.importEvents.findFirst()).toMatchObject({
         status: "parsed",
       });
+    } finally {
+      if (previousAnthropicKey === undefined) {
+        delete process.env.ANTHROPIC_API_KEY;
+      } else {
+        process.env.ANTHROPIC_API_KEY = previousAnthropicKey;
+      }
+      if (previousOpenAIKey === undefined) {
+        delete process.env.OPENAI_API_KEY;
+      } else {
+        process.env.OPENAI_API_KEY = previousOpenAIKey;
+      }
+    }
+  }, 30_000);
+
+  it("keeps an unqualified material family variant unselected for owner review", async () => {
+    const [family] = await db.insert(exerciseFamilies).values({
+      key: `lat-pulldown-${crypto.randomUUID()}`,
+      name: "Lat Pulldown",
+      movementPattern: "vertical_pull",
+      primaryMuscles: ["back", "biceps"],
+    }).returning({ id: exerciseFamilies.id });
+    const [cable, plateLoaded] = await db.insert(exercises).values([
+      {
+        familyId: family.id,
+        name: "Lat Pulldown",
+        movementPattern: "vertical_pull" as const,
+        primaryMuscles: ["back", "biceps"],
+        loadType: "external",
+        loadSemantics: "machine_stack" as const,
+        variantKey: "cable_lat_bar",
+        variantAttributes: { machine: "cable", attachment: "lat_bar" },
+      },
+      {
+        familyId: family.id,
+        name: "Plate-Loaded Lat Pulldown",
+        movementPattern: "vertical_pull" as const,
+        primaryMuscles: ["back", "biceps"],
+        loadType: "external",
+        loadSemantics: "machine_stack" as const,
+        variantKey: "plate_loaded_machine",
+        variantAttributes: { machine: "plate_loaded" },
+      },
+    ]).returning({ id: exercises.id });
+    await db.insert(exerciseEquipmentRequirements).values([
+      { exerciseId: cable.id, equipmentType: "cable" },
+      { exerciseId: plateLoaded.id, equipmentType: "machine" },
+    ]);
+
+    const previousAnthropicKey = process.env.ANTHROPIC_API_KEY;
+    const previousOpenAIKey = process.env.OPENAI_API_KEY;
+    delete process.env.ANTHROPIC_API_KEY;
+    delete process.env.OPENAI_API_KEY;
+    try {
+      const result = await parseRoutineText({
+        text: `Program: Pulldown choice
+Day 1 — Pull
+Lat Pulldown 3x8, rest 90 sec`,
+        clientImportId: crypto.randomUUID(),
+      });
+
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.mappings).toEqual([{
+        rawName: "Lat Pulldown",
+        exerciseId: null,
+        exerciseName: null,
+        matchType: "none",
+        candidates: [
+          {
+            id: cable.id,
+            name: "Lat Pulldown",
+            why: "Equipment: cable station",
+          },
+          {
+            id: plateLoaded.id,
+            name: "Plate-Loaded Lat Pulldown",
+            why: "Equipment: machine",
+          },
+        ],
+      }]);
+      expect(await db.query.aiParsingEvents.findMany()).toHaveLength(0);
     } finally {
       if (previousAnthropicKey === undefined) {
         delete process.env.ANTHROPIC_API_KEY;

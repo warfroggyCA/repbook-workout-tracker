@@ -133,8 +133,17 @@ test("keeps warm-up actions singular, reversible, durable, and usable with minim
     name: `Mark ${completedLabel} complete`,
     exact: true,
   });
-  await complete.focus();
-  await page.keyboard.press("Enter");
+  await panel.getByRole("button", { name: "Hide full plan", exact: true })
+    .click();
+  await complete.press("Enter");
+  const completedDisclosure = panel.getByRole("button", {
+    name: /Completed warm-ups · 1/,
+  });
+  await expect(completedDisclosure).toBeVisible();
+  await expect(completedDisclosure).toHaveAttribute("aria-expanded", "false");
+  await expect(completedRow).not.toBeVisible();
+  await completedDisclosure.click();
+  await expect(completedDisclosure).toHaveAttribute("aria-expanded", "true");
   await expect(completedRow.getByRole("button", { name: "Undo completion" }))
     .toBeVisible();
   await waitForSaved(completedRow);

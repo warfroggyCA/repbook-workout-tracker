@@ -71,7 +71,7 @@ export const WorkoutGuidanceSummary = memo(function WorkoutGuidanceSummary({
               : ""}
             {guidance.totals.skipped > 0 ? ` · ${guidance.totals.skipped} skipped` : ""}
           </span>
-          <p className="min-w-0 flex-1 basis-48 break-words leading-snug max-[360px]:line-clamp-2">
+          <p className="min-w-0 flex-1 basis-48 break-words leading-snug max-[639px]:line-clamp-2">
             <span className="font-medium">Now:</span>{" "}
             {guidance.currentAction
               ? formatSessionGuidanceAction(guidance.currentAction)
@@ -85,13 +85,13 @@ export const WorkoutGuidanceSummary = memo(function WorkoutGuidanceSummary({
             deferNextActionToCurrentCard &&
             guidance.currentAction?.kind === "working_set"
           ) && (
-          <p className="break-words text-xs text-muted-foreground max-[360px]:sr-only">
+          <p className="break-words text-xs text-muted-foreground max-[639px]:sr-only">
             <span className="font-medium text-foreground">Next:</span>{" "}
             {formatSessionGuidanceAction(guidance.nextAction)}
           </p>
         )}
         {prepCue && (
-          <p className="break-words text-xs text-muted-foreground max-[360px]:sr-only">
+          <p className="break-words text-xs text-muted-foreground max-[639px]:sr-only">
             <span className="font-medium text-foreground">{prepLabel}:</span>{" "}
             {prepCue}
           </p>
@@ -117,7 +117,7 @@ export const WorkoutGuidanceSummary = memo(function WorkoutGuidanceSummary({
                 target.focus({ preventScroll: true });
               });
             }}
-            className="mt-1 inline-flex min-h-11 items-center rounded-md px-1 text-xs font-semibold underline underline-offset-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+            className="mt-1 inline-flex min-h-11 items-center rounded-md px-1 text-xs font-semibold underline underline-offset-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 max-[639px]:hidden"
           >
             {`View ${guidance.activeGroup.name} group & prep`}
           </a>

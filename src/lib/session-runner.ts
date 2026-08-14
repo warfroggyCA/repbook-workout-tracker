@@ -126,8 +126,7 @@ export function mergeSessionOutboxSets(
       const saveState =
         entry.status === "needs_attention"
           ? "failed"
-          : runtimeSaveStates[entry.clientKey] ??
-            (entry.attemptCount > 0 ? "retrying" : "pending");
+          : runtimeSaveStates[entry.clientKey] ?? "pending";
       const index = sets.findIndex((set) => set.clientKey === entry.clientKey);
       const queuedSet: LoggedSet = {
         id: `outbox-${entry.clientKey}`,

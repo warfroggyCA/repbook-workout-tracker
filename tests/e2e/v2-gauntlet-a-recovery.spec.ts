@@ -80,15 +80,12 @@ test("recovers offline and timeout-after-commit sets exactly, then reviews aband
 
   await context.setOffline(false);
   await page.evaluate(() => window.dispatchEvent(new Event("online")));
-  await expect(current.getByTestId("active-set-save-receipt"))
-    .toContainText("Saved · Set 1");
+  await expect(current.getByTestId("completed-sets"))
+    .toContainText("1 completed");
   await expectSetQueueLength(page, 0);
   await page.reload({ waitUntil: "domcontentloaded" });
   current = page.getByTestId("current-exercise-card");
-  await current
-    .locator("details", { hasText: "Exercise progress & extras" })
-    .locator(":scope > summary")
-    .click();
+  await current.getByTestId("completed-sets").locator(":scope > summary").click();
   await expect(
     current.locator('[id^="logged-set-"]').filter({ hasText: "Set 1" }),
   ).toBeVisible();
@@ -115,8 +112,8 @@ test("recovers offline and timeout-after-commit sets exactly, then reviews aband
   current = page.getByTestId("current-exercise-card");
   entry = current.getByTestId("current-set-entry");
   await entry.getByRole("button", { name: "Log set", exact: true }).click();
-  await expect(current.getByTestId("active-set-save-receipt"))
-    .toContainText("Saved · Set 2");
+  await expect(current.getByTestId("completed-sets"))
+    .toContainText("2 completed");
   await expectSetQueueLength(page, 0);
   expect(afterCommitInterceptions).toBe(1);
   await page.unrouteAll({ behavior: "wait" });

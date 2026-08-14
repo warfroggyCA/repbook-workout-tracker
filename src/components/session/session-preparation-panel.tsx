@@ -343,7 +343,7 @@ export function SessionPreparationPanel({
     );
   }
 
-  if (hasAcknowledgedWork && !needsVisibleAttention) {
+  if (hasAcknowledgedWork) {
     return (
       <details
         id="session-equipment-preparation"
@@ -357,7 +357,9 @@ export function SessionPreparationPanel({
               {projection.rows.length} {projection.rows.length === 1 ? "item" : "items"} · {summaryStatus}
             </span>
           </span>
-          <span className="shrink-0 text-xs text-muted-foreground">Show details</span>
+          <span className="shrink-0 text-xs text-muted-foreground">
+            {needsVisibleAttention ? "Review" : "Show details"}
+          </span>
         </summary>
         <div className="border-t px-4 py-3">
           <PreparationContents

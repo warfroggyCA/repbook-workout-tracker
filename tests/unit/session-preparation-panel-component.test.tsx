@@ -124,7 +124,7 @@ describe("SessionPreparationPanel", () => {
     expect(noneNeeded).not.toContain("does not have a saved equipment list");
   });
 
-  it("keeps attention visible after acknowledged work", () => {
+  it("keeps post-start attention in a named collapsed disclosure", () => {
     const html = renderToStaticMarkup(
       <SessionPreparationPanel
         projection={projection({
@@ -139,9 +139,11 @@ describe("SessionPreparationPanel", () => {
       />,
     );
 
-    expect(html).toMatch(/^<section /);
+    expect(html).toMatch(/^<details /);
+    expect(html).not.toMatch(/^<details [^>]*open/);
     expect(html).toContain("Workout equipment");
-    expect(html).toContain("Equipment update");
+    expect(html).toContain("1 item · 1 item needs attention");
+    expect(html).toContain(">Review<");
     expect(html).toContain("Equipment unknown");
     expect(html).toContain("Review warm-up");
     expect(html).toContain("Some exercises are missing saved equipment details");
@@ -187,10 +189,10 @@ describe("SessionPreparationPanel", () => {
     );
 
     expect(html).toContain("Previous exercise requirements are withheld");
-    expect(html).toContain("Wait for the updated exercise requirements");
     expect(html).not.toContain("Use the saved equipment list");
     expect(html).not.toContain(">0 items<");
-    expect(html).toMatch(/^<section /);
+    expect(html).toMatch(/^<details /);
+    expect(html).not.toMatch(/^<details [^>]*open/);
   });
 
   it("collapses an all-confirmed post-acknowledgement list to a named native disclosure", () => {

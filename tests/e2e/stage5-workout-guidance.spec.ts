@@ -219,17 +219,16 @@ test("keeps Stage 5 guidance truthful, persistent, and usable on narrow mobile s
 
   await signIn(page);
   await page.goto("/settings");
-  const visualOnly = page.getByRole("radio", {
-    name: /Visual only/,
+  const defaultSound = page.getByRole("radio").filter({
+    hasText: "Foreground sound (default)",
   });
-  await expect(visualOnly).toHaveAttribute("aria-checked", "true");
+  await expect(defaultSound).toHaveAttribute("aria-checked", "true");
   await page
     .getByRole("button", { name: "Test selected cue", exact: true })
     .click();
   await expect(
     page.getByText(
-      "Visual ready cues only. No sound or vibration is requested.",
-      { exact: true },
+      /The selected cue (?:was requested|was blocked by this browser|is unavailable in this browser)/,
     ),
   ).toBeVisible();
   await page.getByRole("radio", { name: /Extra large/ }).click();

@@ -472,10 +472,23 @@ export function retainedPrimaryRequirementRowHasSavedSetup(input: {
       : null;
     if (broad.length === 0 && exact == null) return false;
     if (broad.some((requirement) => requirement.equipmentType === "plates")) {
-      return exact == null && broad.every((requirement) =>
+      return broad.every((requirement) =>
         requirement.equipmentDefinition == null && input.hasPlates
       );
     }
+    // A projected broad row answers only whether the frozen broad requirement
+    // is represented in saved inventory. Exact profile, geometry, and
+    // attachment predicates belong to the separate executable-setup verdict;
+    // requiring them here would mislabel owned equipment as unavailable rather
+    // than present but incompatible.
+    if (broad.length > 0) {
+      return input.inventory.some((candidate) =>
+        candidate.available &&
+        retainedPrimaryEquipmentCandidateMatchesBroad(broad, candidate)
+      );
+    }
+    // Exact-only rows have no broad identity to prove presence, so their
+    // retained exact evidence remains authoritative and deliberately strict.
     if (exact != null) {
       if (
         exact.requiredProfileKind == null &&
@@ -491,15 +504,10 @@ export function retainedPrimaryRequirementRowHasSavedSetup(input: {
         );
       }
       return input.exactCandidates.some((candidate) =>
-        retainedExactPrimaryMatchesCandidate(exact, candidate) &&
-        (broad.length === 0 ||
-          retainedPrimaryEquipmentCandidateMatchesBroad(broad, candidate))
+        retainedExactPrimaryMatchesCandidate(exact, candidate)
       );
     }
-    return input.inventory.some((candidate) =>
-      candidate.available &&
-      retainedPrimaryEquipmentCandidateMatchesBroad(broad, candidate)
-    );
+    return false;
   });
 }
 
