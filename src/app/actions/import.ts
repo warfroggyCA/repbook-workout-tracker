@@ -37,7 +37,10 @@ import {
 } from "@/ai/tasks/exercise-map/schema";
 import { EXERCISE_MAP_SYSTEM } from "@/ai/tasks/exercise-map/prompt";
 import { sanitizeExerciseMappings } from "@/ai/tasks/exercise-map/validate";
-import { resolveExerciseName } from "@/services/exercise-map";
+import {
+  loadVisibleExercises,
+  resolveExerciseNameFromLibrary,
+} from "@/services/exercise-map";
 import {
   getLibraryWithAvailability,
   buildRoutineImportStagePayload,
@@ -177,7 +180,7 @@ async function failRoutineParse(
  * Plan §5 pipeline, first two states: ImportEvent(raw) → parsed. Contract 3
  * (routine_parse) runs first with rawNames verbatim; contract 4
  * (exercise_map) then chooses ONLY among deterministic candidates from
- * resolveExerciseName. Nothing touches program tables here — that requires
+ * the owner-visible exercise library. Nothing touches program tables here — that requires
  * confirmImport.
  */
 export async function parseRoutineText(
@@ -312,7 +315,7 @@ export async function parseRoutineText(
     return {
       ok: false,
       reason:
-        "Your current Program was not changed, and the paste was not retained. Repbook could not safely stage the routine for review. Retry later.",
+        "Repbook could not prepare the routine review. Try again. Your current Program was not changed, and the paste was not retained.",
     };
   }
 
@@ -426,14 +429,24 @@ export async function parseRoutineText(
   const mappingByRaw = new Map<string, ImportMapping>();
   const mapRequest: ExerciseMapRequest = [];
   try {
+    // A Program may repeat movements across several days. Load the visible
+    // catalog once so a larger review does not issue one full catalog query
+    // for every distinct pasted name.
+    const visibleExercises = await loadVisibleExercises(db, user.id);
     for (const rawName of rawNames) {
-      const res = await resolveExerciseName(db, rawName, user.id);
+      const res = resolveExerciseNameFromLibrary(visibleExercises, rawName);
       mappingByRaw.set(rawName, {
         rawName,
         exerciseId: res.exerciseId,
         exerciseName: res.exerciseName,
         matchType: res.matchType,
-        candidates: res.candidates,
+        // The resolution service returns private matching metadata that is
+        // useful while ranking candidates, but the staged review contract
+        // intentionally retains only the stable identity and display name.
+        candidates: res.candidates.map((candidate) => ({
+          id: candidate.id,
+          name: candidate.name,
+        })),
       });
       if (res.matchType === "none" && res.candidates.length > 0) {
         mapRequest.push({

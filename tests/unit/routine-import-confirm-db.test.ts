@@ -320,9 +320,50 @@ Exercise notes: Keep the synthetic working sets controlled.`;
     })).resolves.toEqual({
       ok: false,
       reason:
-        "Your current Program was not changed, and the paste was not retained. Repbook could not safely stage the routine for review. Retry later.",
+        "Repbook could not prepare the routine review. Try again. Your current Program was not changed, and the paste was not retained.",
     });
     expect(await db.query.importEvents.findMany()).toHaveLength(1);
+  }, 30_000);
+
+  it("stages a deterministic review when an exercise needs a compatible catalog choice", async () => {
+    const previousAnthropicKey = process.env.ANTHROPIC_API_KEY;
+    const previousOpenAIKey = process.env.OPENAI_API_KEY;
+    delete process.env.ANTHROPIC_API_KEY;
+    delete process.env.OPENAI_API_KEY;
+    try {
+      const result = await parseRoutineText({
+        text: `Program: Synthetic candidate review
+Day 1 — Press
+Barbell Incline Press 3x8, rest 90 sec`,
+        clientImportId: crypto.randomUUID(),
+      });
+
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.mappings).toEqual([
+        {
+          rawName: "Barbell Incline Press",
+          exerciseId: null,
+          exerciseName: null,
+          matchType: "none",
+          candidates: [{ id: exerciseId, name: "Barbell Bench Press" }],
+        },
+      ]);
+      expect(await db.query.importEvents.findFirst()).toMatchObject({
+        status: "parsed",
+      });
+    } finally {
+      if (previousAnthropicKey === undefined) {
+        delete process.env.ANTHROPIC_API_KEY;
+      } else {
+        process.env.ANTHROPIC_API_KEY = previousAnthropicKey;
+      }
+      if (previousOpenAIKey === undefined) {
+        delete process.env.OPENAI_API_KEY;
+      } else {
+        process.env.OPENAI_API_KEY = previousOpenAIKey;
+      }
+    }
   }, 30_000);
 
   it("publishes schema-3 warm-ups and exact reviewed intent once under retry", async () => {
