@@ -49,11 +49,24 @@ export default async function ProgramPage(props: PageProps<"/program">) {
     <main className="p-4 sm:p-6 lg:p-8">
       {presentation && selected ? (
         <div className="mx-auto max-w-5xl">
-          <nav aria-label="Program actions" className="mb-4 flex flex-wrap gap-2">
-            <Button variant="outline" render={<Link href="/program/library" />} nativeButton={false}>
+          <nav
+            aria-label="Program actions"
+            className="mb-4 flex flex-wrap gap-2"
+          >
+            <Button
+              variant="outline"
+              size="touch"
+              render={<Link href="/program/library" />}
+              nativeButton={false}
+            >
               <Library /> Programs
             </Button>
-            <Button variant="outline" render={<Link href="/program/schedule" />} nativeButton={false}>
+            <Button
+              variant="outline"
+              size="touch"
+              render={<Link href="/program/schedule" />}
+              nativeButton={false}
+            >
               <CalendarDays /> Schedule
             </Button>
           </nav>
