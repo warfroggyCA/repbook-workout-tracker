@@ -176,6 +176,9 @@ test("reviews and publishes a multi-day Program into an ordered active workout",
   const easyBikeCheck = easyBike.getByRole("checkbox", { name: "Mark Easy bike warm-up complete", exact: true });
   await easyBikeCheck.focus();
   await page.keyboard.press("Enter");
+  await warmup
+    .getByRole("button", { name: "Review full plan", exact: true })
+    .click();
   await expect(easyBike.getByRole("button", { name: "Undo completion", exact: true })).toBeVisible();
   await expect(easyBike.getByText("Saved", { exact: true })).toBeVisible();
   const emptyBar = warmup.locator("li").filter({ hasText: "Empty bar" }).first();
@@ -186,13 +189,15 @@ test("reviews and publishes a multi-day Program into an ordered active workout",
   await expect(emptyBar.getByText("Saved", { exact: true })).toBeVisible();
 
   const current = page.getByTestId("current-exercise-card");
-  await expect(current).toContainText("3×5–5 @ 60 kg");
+  await expect(current).toContainText("Set 1 of 3");
+  await expect(current).toContainText("5 reps · 60 kg");
   await current.getByLabel("Total load").fill("60");
   await current.getByRole("textbox", { name: "Reps", exact: true }).fill("5");
   await current.getByRole("button", { name: "Log set", exact: true }).click();
   await expect(page.locator('[id^="logged-set-"]').first()).toContainText("60 lb");
 
   await page.getByRole("button", { name: /^(?:Review workout finish|Finish workout)$/ }).click();
+  await page.getByText("Optional note and fatigue", { exact: true }).click();
   await page.getByPlaceholder("Session note (optional) — how did it go?").fill("PII-01 synthetic journey");
   await page.getByRole("button", { name: "Save workout", exact: true }).click();
   await expect(page).toHaveURL(/\/history\/[0-9a-f-]+\?finished=1$/);

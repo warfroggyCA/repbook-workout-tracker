@@ -52,7 +52,7 @@ export function routineImportFailureMessage(
     case "provider_failure":
       return "AI parsing is temporarily unavailable. Retry later, or use the canonical routine format, which works without AI." + unchanged;
     case "persistence_failure":
-      return "Repbook could not safely stage the parsed routine for review. Retry later." + unchanged;
+      return "Repbook parsed the routine but could not open the review. Try again." + unchanged;
     case "usage_control":
       return "AI parsing is temporarily limited. Wait, then retry, or use the canonical routine format, which works without AI." + unchanged;
     case "unsupported_rep_sequence":
