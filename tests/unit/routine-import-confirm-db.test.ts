@@ -264,6 +264,36 @@ Exercise notes: This must not be attached by an AI fallback.`,
     expect(await db.query.aiParsingEvents.findMany()).toHaveLength(0);
   });
 
+  it("rejects an empty canonical exercise notes heading before an available AI fallback", async () => {
+    const previousOpenAIKey = process.env.OPENAI_API_KEY;
+    process.env.OPENAI_API_KEY = "synthetic-test-key";
+    try {
+      await expect(
+        parseRoutineText({
+          text: `Program: Empty notes
+Day 1 — Strength
+Main workout:
+Barbell Bench Press 3x8, rest 2 min
+Exercise notes:   `,
+          clientImportId: crypto.randomUUID(),
+        }),
+      ).resolves.toEqual({
+        ok: false,
+        reason:
+          "An Exercise notes line is blank, duplicated, too long, or separated from its exercise. Fix that line and parse again. Your current Program was not changed.",
+      });
+    } finally {
+      if (previousOpenAIKey === undefined) {
+        delete process.env.OPENAI_API_KEY;
+      } else {
+        process.env.OPENAI_API_KEY = previousOpenAIKey;
+      }
+    }
+
+    expect(await db.query.importEvents.findMany()).toHaveLength(0);
+    expect(await db.query.aiParsingEvents.findMany()).toHaveLength(0);
+  });
+
   it("stages a deterministic paste once and resumes the same review on retry", async () => {
     const clientImportId = crypto.randomUUID();
     const text = `Program: Retry-safe import
@@ -376,6 +406,33 @@ Main workout:
 Barbell Bench Press 3x8, rest 2 min
 
 Exercise notes: This prior AI stage must not publish.`,
+    );
+
+    await expect(confirmImport(staged.input)).resolves.toEqual({
+      ok: false,
+      reason:
+        "This review contains an Exercise notes line that cannot be attached safely. Nothing was published; discard it, fix that line, and parse the routine again.",
+    });
+    expect(await db.query.programVersions.findMany()).toHaveLength(0);
+    expect(mocked.createSafetySnapshot).not.toHaveBeenCalled();
+    await expect(
+      db.query.importEvents.findFirst({
+        where: eq(importEvents.id, staged.eventId),
+      }),
+    ).resolves.toMatchObject({ status: "parsed" });
+  });
+
+  it("rejects a prior AI stage with an empty canonical exercise notes heading", async () => {
+    const staged = await stageReview(
+      null,
+      { routineParse: null, exerciseMap: null },
+      null,
+      "ai-structured-output/1",
+      `Program: Prior empty-notes AI review
+Day 1 — Strength
+Main workout:
+Barbell Bench Press 3x8, rest 2 min
+Exercise notes:   `,
     );
 
     await expect(confirmImport(staged.input)).resolves.toEqual({
