@@ -97,6 +97,7 @@ describe("reviewed Program import confirmation", () => {
     },
     reps: RepSpec | null = null,
     parserVersion = CANONICAL_ROUTINE_PARSER_VERSION,
+    rawPayload = "synthetic private paste",
   ) {
     const envelope = parseCanonicalRoutineText(`Program: Reviewed import
 Day 1 — Strength
@@ -123,7 +124,7 @@ Ramp-up: Empty bar | reps=10`)!;
       .values({
         userId,
         source: "paste",
-        rawPayload: "synthetic private paste",
+        rawPayload,
         parsedPayload: stage,
         status: "parsed",
       })
@@ -232,6 +233,36 @@ Ramp-up: Empty bar | reps=10`)!;
     expect(await db.query.importEvents.findMany()).toHaveLength(0);
   });
 
+  it("rejects detached canonical exercise notes before an available AI fallback", async () => {
+    const previousOpenAIKey = process.env.OPENAI_API_KEY;
+    process.env.OPENAI_API_KEY = "synthetic-test-key";
+    try {
+      await expect(
+        parseRoutineText({
+          text: `Program: Detached notes
+Day 1 — Strength
+Barbell Bench Press 3x8, rest 2 min
+
+Exercise notes: This must not be attached by an AI fallback.`,
+          clientImportId: crypto.randomUUID(),
+        }),
+      ).resolves.toEqual({
+        ok: false,
+        reason:
+          "An Exercise notes line is blank, duplicated, too long, or separated from its exercise. Fix that line and parse again. Your current Program was not changed.",
+      });
+    } finally {
+      if (previousOpenAIKey === undefined) {
+        delete process.env.OPENAI_API_KEY;
+      } else {
+        process.env.OPENAI_API_KEY = previousOpenAIKey;
+      }
+    }
+
+    expect(await db.query.importEvents.findMany()).toHaveLength(0);
+    expect(await db.query.aiParsingEvents.findMany()).toHaveLength(0);
+  });
+
   it("stages a deterministic paste once and resumes the same review on retry", async () => {
     const clientImportId = crypto.randomUUID();
     const text = `Program: Retry-safe import
@@ -322,6 +353,33 @@ Exercise notes: Keep the synthetic working sets controlled.`;
       ok: false,
       reason:
         "This review was created by an older Program parser. Nothing was published; discard it and parse the routine again.",
+    });
+    expect(await db.query.programVersions.findMany()).toHaveLength(0);
+    expect(mocked.createSafetySnapshot).not.toHaveBeenCalled();
+    await expect(
+      db.query.importEvents.findFirst({
+        where: eq(importEvents.id, staged.eventId),
+      }),
+    ).resolves.toMatchObject({ status: "parsed" });
+  });
+
+  it("rejects a prior AI stage with detached canonical exercise notes", async () => {
+    const staged = await stageReview(
+      null,
+      { routineParse: null, exerciseMap: null },
+      null,
+      "ai-structured-output/1",
+      `Program: Prior AI review
+Day 1 — Strength
+Barbell Bench Press 3x8, rest 2 min
+
+Exercise notes: This prior AI stage must not publish.`,
+    );
+
+    await expect(confirmImport(staged.input)).resolves.toEqual({
+      ok: false,
+      reason:
+        "This review contains an Exercise notes line that cannot be attached safely. Nothing was published; discard it, fix that line, and parse the routine again.",
     });
     expect(await db.query.programVersions.findMany()).toHaveLength(0);
     expect(mocked.createSafetySnapshot).not.toHaveBeenCalled();

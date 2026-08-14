@@ -5,6 +5,7 @@ import {
   collectSupersetRestTimings,
   inspectRoutineTextStructure,
   parseCanonicalRoutineText,
+  parseCanonicalRoutineTextWithDiagnostics,
 } from "@/ai/tasks/routine-parse/deterministic";
 import { normalizeRoutineParseDraftEnvelope } from "@/ai/tasks/routine-parse/normalize";
 import {
@@ -327,6 +328,13 @@ Barbell Bench Press 3x6-8, rest 120 sec
 
 Exercise notes: A blank line makes this note detached.`),
     ).toBeNull();
+    expect(
+      parseCanonicalRoutineTextWithDiagnostics(`Program: Synthetic Separated Notes
+Day 1 — Focus
+Barbell Bench Press 3x6-8, rest 120 sec
+
+Exercise notes: A blank line makes this note detached.`),
+    ).toEqual({ envelope: null, invalidExerciseNotes: true });
   });
 
   it("scales the AI fallback output allowance to the routine size", () => {
