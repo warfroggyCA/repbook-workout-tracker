@@ -19,8 +19,6 @@ const UNKNOWN_VALUE = /^(?:\?|unknown|not stated)$/iu;
 
 export const CANONICAL_ROUTINE_PARSER_VERSION = "canonical-routine-text/4";
 
-class InvalidCanonicalExerciseNotesError extends Error {}
-
 export type RoutineTextStructure = Readonly<{
   characterCount: number;
   dayCount: number;
@@ -273,7 +271,7 @@ function parseCanonicalRoutineTextInternal(
         notes.length === 0 ||
         notes.length > 2_000
       ) {
-        throw new InvalidCanonicalExerciseNotesError();
+        return null;
       }
       currentExercise.notes = notes;
       continue;
@@ -383,21 +381,82 @@ function parseCanonicalRoutineTextInternal(
   return normalizeRoutineParseDraftEnvelope(draft.data, input);
 }
 
+function hasInvalidCanonicalExerciseNotes(input: string): boolean {
+  const lines = input.split(/\r?\n/u).map((line) => line.trim());
+  let hasCurrentExercise = false;
+  let canAttachExerciseDetails = false;
+  let currentExerciseHasNotes = false;
+
+  for (const line of lines) {
+    if (!line) {
+      canAttachExerciseDetails = false;
+      continue;
+    }
+    if (PROGRAM_HEADING.test(line)) {
+      hasCurrentExercise = false;
+      canAttachExerciseDetails = false;
+      currentExerciseHasNotes = false;
+      continue;
+    }
+    if (DAY_HEADING.test(line)) {
+      hasCurrentExercise = false;
+      canAttachExerciseDetails = false;
+      currentExerciseHasNotes = false;
+      continue;
+    }
+    if (DAY_WARMUP_LINE.test(line)) {
+      canAttachExerciseDetails = false;
+      continue;
+    }
+
+    const exerciseNotes = EXERCISE_NOTES_LINE.exec(line);
+    if (exerciseNotes) {
+      const notes = exerciseNotes[1]?.trim() ?? "";
+      if (
+        !hasCurrentExercise ||
+        !canAttachExerciseDetails ||
+        currentExerciseHasNotes ||
+        notes.length === 0 ||
+        notes.length > 2_000
+      ) {
+        return true;
+      }
+      currentExerciseHasNotes = true;
+      continue;
+    }
+
+    if (EXERCISE_RAMP_LINE.test(line)) {
+      if (!hasCurrentExercise || !canAttachExerciseDetails) {
+        canAttachExerciseDetails = false;
+        continue;
+      }
+      continue;
+    }
+    if (EXERCISE_LINE.test(line)) {
+      hasCurrentExercise = true;
+      canAttachExerciseDetails = true;
+      currentExerciseHasNotes = false;
+      continue;
+    }
+
+    // A free-form line may be reviewed by AI, but it still breaks adjacency.
+    canAttachExerciseDetails = false;
+  }
+
+  return false;
+}
+
 export function parseCanonicalRoutineTextWithDiagnostics(input: string): {
   envelope: RoutineParseResult | null;
   invalidExerciseNotes: boolean;
 } {
-  try {
-    return {
-      envelope: parseCanonicalRoutineTextInternal(input),
-      invalidExerciseNotes: false,
-    };
-  } catch (error) {
-    if (error instanceof InvalidCanonicalExerciseNotesError) {
-      return { envelope: null, invalidExerciseNotes: true };
-    }
-    throw error;
+  if (hasInvalidCanonicalExerciseNotes(input)) {
+    return { envelope: null, invalidExerciseNotes: true };
   }
+  return {
+    envelope: parseCanonicalRoutineTextInternal(input),
+    invalidExerciseNotes: false,
+  };
 }
 
 export function parseCanonicalRoutineText(

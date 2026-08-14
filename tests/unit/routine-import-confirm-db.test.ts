@@ -241,6 +241,7 @@ Ramp-up: Empty bar | reps=10`)!;
         parseRoutineText({
           text: `Program: Detached notes
 Day 1 — Strength
+Main workout:
 Barbell Bench Press 3x8, rest 2 min
 
 Exercise notes: This must not be attached by an AI fallback.`,
@@ -371,6 +372,7 @@ Exercise notes: Keep the synthetic working sets controlled.`;
       "ai-structured-output/1",
       `Program: Prior AI review
 Day 1 — Strength
+Main workout:
 Barbell Bench Press 3x8, rest 2 min
 
 Exercise notes: This prior AI stage must not publish.`,
