@@ -17,7 +17,7 @@ const EXERCISE_TAIL =
   /^\s*(?:@\s*(?<load>\d+(?:\.\d+)?)\s*(?<loadUnit>lb|kg))?\s*(?:,\s*)?(?:rest\s+(?<rest>\d+(?:\.\d+)?)\s*(?<restUnit>sec(?:ond)?s?|s|min(?:ute)?s?|m))?\s*$/iu;
 const UNKNOWN_VALUE = /^(?:\?|unknown|not stated)$/iu;
 
-export const CANONICAL_ROUTINE_PARSER_VERSION = "canonical-routine-text/3";
+export const CANONICAL_ROUTINE_PARSER_VERSION = "canonical-routine-text/4";
 
 export type RoutineTextStructure = Readonly<{
   characterCount: number;
