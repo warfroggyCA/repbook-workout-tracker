@@ -200,9 +200,8 @@ export function parseCanonicalRoutineText(
 ): RoutineParseResult | null {
   const lines = input
     .split(/\r?\n/u)
-    .map((line) => line.trim())
-    .filter(Boolean);
-  if (lines.length === 0) return null;
+    .map((line) => line.trim());
+  if (!lines.some(Boolean)) return null;
 
   let programName: string | null = null;
   const days: RoutineParseDraftData["days"] = [];
@@ -210,6 +209,11 @@ export function parseCanonicalRoutineText(
   let canAttachExerciseDetails = false;
 
   for (const line of lines) {
+    if (!line) {
+      canAttachExerciseDetails = false;
+      continue;
+    }
+
     const program = PROGRAM_HEADING.exec(line);
     if (program) {
       if (programName !== null || days.length > 0) return null;
