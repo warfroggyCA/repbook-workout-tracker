@@ -4,9 +4,13 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { UnrecognizedActionError } from "next/dist/client/components/unrecognized-action-error";
 import { DeploymentUpdateNoticeView } from "@/components/deployment-update-notice";
 import {
+  DocumentActionTimeoutError,
   deploymentRecoveryRequired,
+  documentRecoveryReason,
+  reportDocumentActionTimeout,
   reportDeploymentMismatch,
   subscribeToDeploymentRecovery,
+  withDocumentActionDeadline,
 } from "@/lib/deployment-recovery";
 
 afterEach(() => {
@@ -39,6 +43,28 @@ describe("deployment recovery", () => {
     unsubscribe();
   });
 
+  it("bounds a missing action acknowledgement and requires a new document", async () => {
+    const fakeWindow = new EventTarget();
+    vi.stubGlobal("window", fakeWindow);
+    const changed = vi.fn();
+    const unsubscribe = subscribeToDeploymentRecovery(changed);
+
+    await expect(
+      withDocumentActionDeadline(new Promise(() => undefined), 5),
+    ).rejects.toBeInstanceOf(DocumentActionTimeoutError);
+    expect(deploymentRecoveryRequired()).toBe(false);
+
+    reportDocumentActionTimeout();
+    expect(deploymentRecoveryRequired()).toBe(true);
+    expect(documentRecoveryReason()).toBe("action_timeout");
+    expect(changed).toHaveBeenCalledOnce();
+    unsubscribe();
+
+    vi.stubGlobal("window", new EventTarget());
+    expect(deploymentRecoveryRequired()).toBe(false);
+    expect(documentRecoveryReason()).toBeNull();
+  });
+
   it("keeps the reload recovery concise, touch-sized, and in page flow", () => {
     const html = renderToStaticMarkup(
       <DeploymentUpdateNoticeView onReload={() => undefined} />,
@@ -51,5 +77,18 @@ describe("deployment recovery", () => {
     expect(html).toContain("min-h-11");
     expect(html).not.toMatch(/class="[^"]*\bfixed\b/);
     expect(html).not.toMatch(/class="[^"]*\bsticky\b/);
+  });
+
+  it("truthfully explains timeout recovery without claiming a deployment", () => {
+    const html = renderToStaticMarkup(
+      <DeploymentUpdateNoticeView
+        reason="action_timeout"
+        onReload={() => undefined}
+      />,
+    );
+    expect(html).toContain("Repbook did not confirm a save");
+    expect(html).toContain("pending workout changes are safe on this device");
+    expect(html).toContain("Reload and retry safely");
+    expect(html).not.toContain("Repbook was updated");
   });
 });

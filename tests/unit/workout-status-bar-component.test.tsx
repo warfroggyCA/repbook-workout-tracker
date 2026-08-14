@@ -71,6 +71,7 @@ describe("WorkoutStatusBar", () => {
 
     expect(html).toContain("Set 2 of 3 · Resting");
     expect(html).toContain("1:15");
+    expect(html).toContain('aria-label="Rest alert: sound"');
     expect(html).toContain('aria-label="Decrease rest by 15 seconds"');
     expect(html).toContain('aria-label="Increase rest by 15 seconds"');
     expect(html).toContain('aria-label="Skip rest"');
@@ -80,6 +81,25 @@ describe("WorkoutStatusBar", () => {
     expect(html).toContain("bg-amber-100");
     expect(html).toContain("grid-cols-[minmax(0,1fr)_auto_auto]");
     expect(html).toContain("col-span-3");
+    expect(html).toContain("min-[360px]:col-span-2");
+    expect(html).toContain("row-start-2");
+  });
+
+  it("shows an explicitly visual-only timer mode instead of implying sound", () => {
+    const html = renderToStaticMarkup(
+      <WorkoutStatusBar
+        action={action}
+        exercise={exercise}
+        timer={{ phase: "running" } as never}
+        restRemainingSec={45}
+        restAlertPreference="visual_only"
+        {...callbacks}
+      />,
+    );
+
+    expect(html).toContain('aria-label="Rest alert: visual only"');
+    expect(html).toContain(">Visual</span>");
+    expect(html).not.toContain('aria-label="Rest alert: sound"');
   });
 
   it("turns the working-set dock into the immediate primary log action", () => {
@@ -226,6 +246,8 @@ describe("WorkoutStatusBar", () => {
     expect(html).not.toContain(">Continue<");
     expect(html).toContain("grid-cols-[minmax(0,1fr)_auto_auto]");
     expect(html).toContain("col-span-3");
+    expect(html).toContain("min-[360px]:col-span-2");
+    expect(html).toContain("row-start-2");
     expect(html).toContain("w-full");
     expect(html).toContain("min-[520px]:flex");
     expect(html).toContain("border-emerald-600");

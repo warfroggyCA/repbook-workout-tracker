@@ -75,8 +75,12 @@ import {
 } from "@/lib/set-exception-context";
 import { formatPainEvidence } from "@/lib/pain-evidence";
 import {
+  DOCUMENT_ACTION_DEADLINE_MS,
   deploymentRecoveryRequired,
+  isDocumentActionTimeout,
+  reportDocumentActionTimeout,
   reportDeploymentMismatch,
+  withDocumentActionDeadline,
 } from "@/lib/deployment-recovery";
 
 const activeOwners = new Set<string>();
@@ -87,6 +91,10 @@ export const WORKOUT_DEVICE_STATUS_CLASS_NAME =
 
 const TRANSIENT_SET_FAILURE =
   "We couldn't save this set yet. We'll keep trying when you're back online.";
+const TIMED_OUT_SET_FAILURE =
+  "Repbook did not confirm this set in time. It is safe on this device. Reload and retry safely.";
+const TIMED_OUT_EQUIPMENT_FAILURE =
+  "Repbook did not confirm this equipment choice in time. It is safe on this device. Reload and retry safely.";
 const UPDATED_SET_FAILURE =
   "Repbook was updated. This set is safe on this device and will retry after you reload.";
 const UPDATED_EQUIPMENT_FAILURE =
@@ -178,6 +186,7 @@ export async function syncNextEntry(
   ownerId: string,
   drainReady = false,
   drainDepth = 0,
+  actionDeadlineMs = DOCUMENT_ACTION_DEADLINE_MS,
 ) {
   if (deploymentRecoveryRequired()) return;
   if (activeOwners.has(ownerId)) {
@@ -210,22 +219,29 @@ export async function syncNextEntry(
           retrying: entry.attemptCount > 0 || entry.lastAttemptAtISO != null,
         });
         try {
-          const result = await setSessionEquipmentSelection(entry.operation === "select"
-            ? {
-                operation: "select",
-                sessionExerciseId: entry.sessionExerciseId,
-                equipmentItemId: entry.equipmentItemId!,
-                attachmentItemId: entry.attachmentItemId,
-                expectedCurrentSnapshotId: entry.expectedCurrentSnapshotId,
-                clientKey: entry.clientKey,
-                provenance: entry.provenance!,
-              }
-            : {
-                operation: "clear",
-                sessionExerciseId: entry.sessionExerciseId,
-                expectedCurrentSnapshotId: entry.expectedCurrentSnapshotId,
-                clientKey: entry.clientKey,
-              });
+          const result = await withDocumentActionDeadline(
+            setSessionEquipmentSelection(
+              entry.operation === "select"
+                ? {
+                    operation: "select",
+                    sessionExerciseId: entry.sessionExerciseId,
+                    equipmentItemId: entry.equipmentItemId!,
+                    attachmentItemId: entry.attachmentItemId,
+                    expectedCurrentSnapshotId:
+                      entry.expectedCurrentSnapshotId,
+                    clientKey: entry.clientKey,
+                    provenance: entry.provenance!,
+                  }
+                : {
+                    operation: "clear",
+                    sessionExerciseId: entry.sessionExerciseId,
+                    expectedCurrentSnapshotId:
+                      entry.expectedCurrentSnapshotId,
+                    clientKey: entry.clientKey,
+                  },
+            ),
+            actionDeadlineMs,
+          );
           if (result.outcome === "applied" || result.outcome === "no_change" || result.outcome === "replayed") {
             const bound = bindWorkoutSetsToEquipmentSelectionUnlocked(
               entry.clientKey,
@@ -264,19 +280,22 @@ export async function syncNextEntry(
           markEquipmentSelectionNeedsAttentionUnlocked(entry.clientKey, reason);
           publishEquipmentSelectionOutboxEvent({ type: "failed", clientKey: entry.clientKey, sessionExerciseId: entry.sessionExerciseId });
         } catch (error) {
-          const deploymentMismatch = reportDeploymentMismatch(error);
-          const marked = markEquipmentSelectionTransientFailureUnlocked(
+          const timedOut = isDocumentActionTimeout(error);
+          if (timedOut) reportDocumentActionTimeout();
+          const deploymentMismatch = !timedOut && reportDeploymentMismatch(error);
+          markEquipmentSelectionTransientFailureUnlocked(
             entry.clientKey,
-            deploymentMismatch
+            timedOut
+              ? TIMED_OUT_EQUIPMENT_FAILURE
+              : deploymentMismatch
               ? UPDATED_EQUIPMENT_FAILURE
               : "The server could not be reached. This equipment choice will retry automatically.",
           );
           publishEquipmentSelectionOutboxEvent({
-            type: marked.ok && marked.entry?.status !== "needs_attention" ? "saving" : "failed",
+            type: "failed",
             clientKey: entry.clientKey,
             sessionExerciseId: entry.sessionExerciseId,
-            ...(marked.ok && marked.entry?.status !== "needs_attention" ? { retrying: true } : {}),
-          } as Parameters<typeof publishEquipmentSelectionOutboxEvent>[0]);
+          });
         }
         return;
       }
@@ -288,7 +307,10 @@ export async function syncNextEntry(
         retrying: entry.attemptCount > 0 || entry.lastAttemptAtISO != null,
       });
       try {
-        const result = await logSet(serverSetCommand(entry));
+        const result = await withDocumentActionDeadline(
+          logSet(serverSetCommand(entry)),
+          actionDeadlineMs,
+        );
         if (result.outcome !== "saved") {
           const orderBlocker = result.outcome === "set_order_conflict"
             ? result.blocker
@@ -372,16 +394,15 @@ export async function syncNextEntry(
           }
         }
         if (!restPersisted) {
-          const marked = recordWorkoutSetTransientFailureUnlocked(
+          recordWorkoutSetTransientFailureUnlocked(
             entry.clientKey,
             "The set was saved, but this device could not retain its rest timer. It will retry safely.",
           );
           publishWorkoutSetOutboxEvent({
-            type: marked.ok && marked.entry?.status !== "needs_attention" ? "saving" : "failed",
+            type: "failed",
             clientKey: entry.clientKey,
             sessionId: entry.sessionId,
-            ...(marked.ok && marked.entry?.status !== "needs_attention" ? { retrying: true } : {}),
-          } as Parameters<typeof publishWorkoutSetOutboxEvent>[0]);
+          });
           return;
         }
         const removed = removeWorkoutSetUnlocked(entry.clientKey);
@@ -409,25 +430,22 @@ export async function syncNextEntry(
           entry,
         });
       } catch (error) {
-        const deploymentMismatch = reportDeploymentMismatch(error);
-        const marked = recordWorkoutSetTransientFailureUnlocked(
+        const timedOut = isDocumentActionTimeout(error);
+        if (timedOut) reportDocumentActionTimeout();
+        const deploymentMismatch = !timedOut && reportDeploymentMismatch(error);
+        recordWorkoutSetTransientFailureUnlocked(
           entry.clientKey,
-          deploymentMismatch ? UPDATED_SET_FAILURE : TRANSIENT_SET_FAILURE,
+          timedOut
+            ? TIMED_OUT_SET_FAILURE
+            : deploymentMismatch
+              ? UPDATED_SET_FAILURE
+              : TRANSIENT_SET_FAILURE,
         );
-        if (marked.ok && marked.entry?.status !== "needs_attention") {
-          publishWorkoutSetOutboxEvent({
-            type: "saving",
-            clientKey: entry.clientKey,
-            sessionId: entry.sessionId,
-            retrying: true,
-          });
-        } else {
-          publishWorkoutSetOutboxEvent({
-            type: "failed",
-            clientKey: entry.clientKey,
-            sessionId: entry.sessionId,
-          });
-        }
+        publishWorkoutSetOutboxEvent({
+          type: "failed",
+          clientKey: entry.clientKey,
+          sessionId: entry.sessionId,
+        });
       }
     });
   } finally {
@@ -446,6 +464,7 @@ export async function syncNextEntry(
       ownerId,
       drainReady || queuedDrainReady === true,
       drainDepth + 1,
+      actionDeadlineMs,
     );
   }
 }
@@ -743,6 +762,9 @@ export function WorkoutSetOutboxTray({
   const attentionCount = entries.filter(
     (entry) => entry.status === "needs_attention"
   ).length + quarantined.length;
+  const hasAttemptedQueuedSet = entries.some(
+    (entry) => entry.status === "queued" && entry.attemptCount > 0,
+  );
 
   useEffect(() => {
     if (confirmQuarantine) {
@@ -819,7 +841,9 @@ export function WorkoutSetOutboxTray({
         )}
         {storageError || attentionCount > 0
           ? "Sets need attention"
-          : `${entries.length} set${entries.length === 1 ? "" : "s"} saving`}
+          : hasAttemptedQueuedSet
+            ? `${entries.length} set${entries.length === 1 ? "" : "s"} waiting to retry`
+            : `${entries.length} set${entries.length === 1 ? "" : "s"} saving`}
       </DrawerTrigger>
       <DrawerContent className="[--drawer-content-max-height:calc(100dvh-2rem)]">
           <DrawerHeader>
@@ -929,7 +953,7 @@ export function WorkoutSetOutboxTray({
                         ? "Save failed"
                         : index === 0
                           ? entry.attemptCount > 0
-                            ? "Retrying"
+                            ? "Waiting to retry"
                             : "Saving"
                           : "Waiting its turn"}
                     </Badge>

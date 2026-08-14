@@ -294,6 +294,25 @@ secondary exercise tools into keyboard-accessible native disclosures without
 hiding pending writes, retry, skipped recovery, rest, finish, or saved-set
 correction.
 
+The Day One recovery follow-up bounds every recorded-work acknowledgement that
+owns active-workout progress. A never-answering set, equipment, occurrence,
+skip reconciliation, extra-set, or Finish action must retain the exact command,
+release local queue ownership, require a document reload, and replay
+idempotently. Finish must also wait for recovery-marker hydration and must not
+bypass unreadable recorded-work storage. Focused recovery verification lives in
+the deployment-recovery and set/equipment/occurrence outbox tests plus
+`session-runner-exit` and `exercise-card-component`.
+
+The same follow-up keeps acknowledged warm-ups and sets in closed disclosures,
+places correction with the saved set, reveals the next current set after save,
+keeps exercise setup above its work until acknowledgement, compacts mobile
+superset context, and prevents the fixed timer controls from overlapping at
+intermediate phone widths. New-device rest alerts default to foreground sound;
+the timer exposes the effective mode and the set-log gesture primes Web Audio.
+An installed-iPhone PWA field check remains required before release because
+automated WebKit cannot establish device sound, silent-mode, Bluetooth, or
+background behavior.
+
 The retained equipment-preparation tranche adds migration 0080 and snapshot
 schema 32 without backfilling older workouts. Start, Session Compiler
 acceptance, workout-only add, substitution, version restore, snapshot capture,
@@ -307,6 +326,12 @@ history-revision and inventory-evidence races, retained-only
 setup/log validation, and schema 31 upgrade plus restore omission. Recovery
 manifest 14 and the durable
 table count stay unchanged.
+
+Broad saved-equipment presence and exact executability remain distinct: a
+saved cable station with incomplete reviewed geometry is incompatible, never
+unavailable. Ambiguous imported loading-family names require an explicit
+stable-ID choice, while explicit cable and plate-loaded names stay
+deterministic. Existing active and completed sessions are not remapped.
 
 The adaptive schedule foundation adds migration 0081, snapshot schema 33,
 recovery manifest 15, and three owner-scoped tables. It does not backfill or

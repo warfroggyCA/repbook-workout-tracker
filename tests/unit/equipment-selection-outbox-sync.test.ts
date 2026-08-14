@@ -5,7 +5,9 @@ import { enqueueWorkoutSetOutboxEntry, readWorkoutSetOutbox, type WorkoutSetOutb
 import {
   enqueueEquipmentSelectionOutboxEntry,
   readEquipmentSelectionOutbox,
+  retryEquipmentSelection,
 } from "@/lib/equipment-selection-outbox";
+import { documentRecoveryReason } from "@/lib/deployment-recovery";
 
 const actionMocks = vi.hoisted(() => ({
   logSet: vi.fn(),
@@ -156,6 +158,62 @@ describe("equipment and set command sync", () => {
     expect(actionMocks.setSessionEquipmentSelection.mock.calls.map(([input]) =>
       input.sessionExerciseId,
     )).toEqual([exercise, secondExercise]);
+    expect(readEquipmentSelectionOutbox(storage).entries).toEqual([]);
+  });
+
+  it("releases a never-settling selection and replays its exact identity only in a new document", async () => {
+    enqueueEquipmentSelectionOutboxEntry(storage, {
+      clientKey: selectionA, ownerId: owner, sessionId: session,
+      sessionExerciseId: exercise, operation: "select",
+      equipmentItemId: "10000000-0000-4000-8000-000000000031",
+      attachmentItemId: null, expectedCurrentSnapshotId: null,
+      predecessorSelectionClientKey: null, provenance: "user_selected",
+      equipmentLabel: "Olympic bar", attachmentLabel: null,
+    }, 1000);
+    actionMocks.setSessionEquipmentSelection.mockReturnValueOnce(
+      new Promise(() => undefined),
+    );
+
+    await syncNextEntry(owner, false, 0, 5);
+
+    expect(readEquipmentSelectionOutbox(storage).entries[0]).toMatchObject({
+      clientKey: selectionA,
+      ownerId: owner,
+      sessionId: session,
+      sessionExerciseId: exercise,
+      equipmentItemId: "10000000-0000-4000-8000-000000000031",
+      status: "queued",
+      attemptCount: 1,
+      lastError:
+        "Repbook did not confirm this equipment choice in time. It is safe on this device. Reload and retry safely.",
+    });
+    expect(documentRecoveryReason()).toBe("action_timeout");
+    const firstCommand =
+      actionMocks.setSessionEquipmentSelection.mock.calls[0]?.[0];
+
+    await expect(retryEquipmentSelection(selectionA)).resolves.toMatchObject({
+      ok: true,
+    });
+    await syncNextEntry(owner, false, 0, 5);
+    expect(actionMocks.setSessionEquipmentSelection).toHaveBeenCalledOnce();
+
+    const nextEvents = new EventTarget();
+    vi.stubGlobal("window", {
+      localStorage: storage,
+      dispatchEvent: nextEvents.dispatchEvent.bind(nextEvents),
+    });
+    actionMocks.setSessionEquipmentSelection.mockResolvedValueOnce({
+      outcome: "replayed",
+      snapshotId: snapshotA,
+      occurrenceStates: [],
+    });
+
+    await syncNextEntry(owner, false, 0, 5);
+
+    expect(actionMocks.setSessionEquipmentSelection).toHaveBeenCalledTimes(2);
+    expect(actionMocks.setSessionEquipmentSelection.mock.calls[1]?.[0]).toEqual(
+      firstCommand,
+    );
     expect(readEquipmentSelectionOutbox(storage).entries).toEqual([]);
   });
 

@@ -95,10 +95,11 @@ test("keeps a set pending until acknowledgement, then reviews and retains a corr
   });
   await expect(guidance).toContainText("Now: Rest after RKC Plank, set 1");
   await expect(guidance).toContainText("Next: Barbell Back Squat, set 1");
-  const acknowledgement = plank.getByTestId("active-set-save-receipt");
-  await expect(page.getByTestId("active-set-save-receipt")).toHaveCount(1);
+  const acknowledgement = plank.getByTestId("completed-sets");
+  await expect(page.getByTestId("active-set-save-receipt")).toHaveCount(0);
   await expect(acknowledgement).toContainText("45 sec");
   await expect(acknowledgement).toContainText("Acknowledged by Repbook");
+  await acknowledgement.locator(":scope > summary").click();
   await expect(
     acknowledgement.getByRole("button", { name: "Correct set" }),
   ).toBeVisible();
@@ -126,10 +127,7 @@ test("keeps a set pending until acknowledgement, then reviews and retains a corr
   await expect(plankDisclosure).toHaveAttribute("aria-expanded", "false");
   await waitForHydratedReactHandler(plankDisclosure);
   await plankDisclosure.click();
-  await plank
-    .locator("details", { hasText: "Exercise progress & extras" })
-    .locator(":scope > summary")
-    .click();
+  await acknowledgement.locator(":scope > summary").click();
   await expect(plank.getByText("1:00", { exact: true })).toBeVisible();
   await expect(plank).toContainText(
     "1 saved correction · original retained in Edit history",

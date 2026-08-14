@@ -3,6 +3,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { UnrecognizedActionError } from "next/dist/client/components/unrecognized-action-error";
 import {
+  WORKOUT_SET_OUTBOX_STATUS_EVENT,
   WORKOUT_SET_OUTBOX_MAX_AUTO_ATTEMPTS,
   enqueueWorkoutSetOutboxEntry,
   markWorkoutSetNeedsAttention,
@@ -10,6 +11,7 @@ import {
   readWorkoutSetOutbox,
   retryWorkoutSet,
   type NewWorkoutSetOutboxEntry,
+  type WorkoutSetOutboxClientEvent,
   type WorkoutSetOutboxStorage,
 } from "@/lib/workout-set-outbox";
 
@@ -27,7 +29,10 @@ import {
   readRestTimer,
   writeRestTimer,
 } from "@/lib/rest-timer";
-import { deploymentRecoveryRequired } from "@/lib/deployment-recovery";
+import {
+  deploymentRecoveryRequired,
+  documentRecoveryReason,
+} from "@/lib/deployment-recovery";
 
 class MemoryStorage implements WorkoutSetOutboxStorage {
   values = new Map<string, string>();
@@ -84,10 +89,17 @@ const savedOccurrenceId = "60000000-0000-4000-8000-000000000001";
 
 describe("workout set outbox sync classification", () => {
   let storage: MemoryStorage;
+  let statusEvents: WorkoutSetOutboxClientEvent[];
 
   beforeEach(() => {
     storage = new MemoryStorage();
     const events = new EventTarget();
+    statusEvents = [];
+    events.addEventListener(WORKOUT_SET_OUTBOX_STATUS_EVENT, (event) => {
+      statusEvents.push(
+        (event as CustomEvent<WorkoutSetOutboxClientEvent>).detail,
+      );
+    });
     vi.stubGlobal("window", {
       localStorage: storage,
       dispatchEvent: events.dispatchEvent.bind(events),
@@ -142,6 +154,21 @@ describe("workout set outbox sync classification", () => {
       lastError:
         "We couldn't save this set yet. We'll keep trying when you're back online.",
     });
+    expect(statusEvents.at(-1)).toEqual({
+      type: "failed",
+      clientKey: entry().clientKey,
+      sessionId: entry().sessionId,
+    });
+
+    const snapshot = readWorkoutSetOutbox(storage);
+    const html = renderToStaticMarkup(createElement(WorkoutSetOutboxTray, {
+      entries: snapshot.entries,
+      quarantined: [],
+      storageError: null,
+      onWake: () => undefined,
+    }));
+    expect(html).toContain("1 set waiting to retry");
+    expect(html).not.toContain(">Retrying<");
   });
 
   it("retains a stale-build set and stops retrying until the app reloads", async () => {
@@ -161,6 +188,52 @@ describe("workout set outbox sync classification", () => {
 
     await syncNextEntry(entry().ownerId);
     expect(actionMocks.logSet).toHaveBeenCalledOnce();
+  });
+
+  it("releases a never-settling save and replays its exact identity only in a new document", async () => {
+    actionMocks.logSet.mockReturnValueOnce(new Promise(() => undefined));
+
+    await syncNextEntry(entry().ownerId, false, 0, 5);
+
+    expect(readWorkoutSetOutbox(storage).entries[0]).toMatchObject({
+      clientKey: entry().clientKey,
+      ownerId: entry().ownerId,
+      sessionId: entry().sessionId,
+      sessionExerciseId: entry().sessionExerciseId,
+      setNo: entry().setNo,
+      weight: entry().weight,
+      reps: entry().reps,
+      status: "queued",
+      attemptCount: 1,
+      lastError:
+        "Repbook did not confirm this set in time. It is safe on this device. Reload and retry safely.",
+    });
+    expect(documentRecoveryReason()).toBe("action_timeout");
+    const firstCommand = actionMocks.logSet.mock.calls[0]?.[0];
+
+    await expect(retryWorkoutSet(entry().clientKey)).resolves.toMatchObject({
+      ok: true,
+    });
+    await syncNextEntry(entry().ownerId, false, 0, 5);
+    expect(actionMocks.logSet).toHaveBeenCalledOnce();
+
+    const nextEvents = new EventTarget();
+    vi.stubGlobal("window", {
+      localStorage: storage,
+      dispatchEvent: nextEvents.dispatchEvent.bind(nextEvents),
+    });
+    actionMocks.logSet.mockResolvedValueOnce({
+      outcome: "saved",
+      setId: savedSetId,
+      occurrenceId: savedOccurrenceId,
+      occurrenceRevision: 1,
+    });
+
+    await syncNextEntry(entry().ownerId, false, 0, 5);
+
+    expect(actionMocks.logSet).toHaveBeenCalledTimes(2);
+    expect(actionMocks.logSet.mock.calls[1]?.[0]).toEqual(firstCommand);
+    expect(readWorkoutSetOutbox(storage).entries).toEqual([]);
   });
 
   it("parks a named workout-not-active outcome for explicit review", async () => {

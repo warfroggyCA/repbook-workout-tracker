@@ -4,6 +4,7 @@ import {
   REST_COMPLETION_TONE_PATTERN,
   parseRestAlertPreference,
   planRestCueTransition,
+  primeRestAudioContext,
   requestedRestCueChannels,
   restCueOutcome,
   restCueOutcomeMessage,
@@ -19,11 +20,11 @@ class MemoryStorage implements RestAlertPreferenceStorage {
 }
 
 describe("rest alert preference", () => {
-  it("uses the non-signalling default for absent, malformed, or unsupported values", () => {
+  it("requests foreground sound by default for absent or invalid device preferences", () => {
     expect(parseRestAlertPreference(null)).toBe(DEFAULT_REST_ALERT_PREFERENCE);
-    expect(parseRestAlertPreference("bad-json")).toBe("visual_only");
-    expect(parseRestAlertPreference(JSON.stringify({ version: 1, preference: "alarm" }))).toBe("visual_only");
-    expect(parseRestAlertPreference(JSON.stringify({ version: 1, preference: "sound", extra: true }))).toBe("visual_only");
+    expect(parseRestAlertPreference("bad-json")).toBe("sound");
+    expect(parseRestAlertPreference(JSON.stringify({ version: 1, preference: "alarm" }))).toBe("sound");
+    expect(parseRestAlertPreference(JSON.stringify({ version: 1, preference: "sound", extra: true }))).toBe("sound");
   });
 
   it("round-trips each exact versioned preference", () => {
@@ -82,6 +83,35 @@ describe("rest alert preference", () => {
         (tone) => tone.durationSec > 0 && tone.durationSec <= 0.2,
       ),
     ).toBe(true);
+  });
+
+  it("starts a silent source immediately so a user gesture can unlock delayed audio", () => {
+    const calls: string[] = [];
+    const oscillator = {
+      type: "square",
+      frequency: { setValueAtTime: (value: number, at: number) => calls.push(`frequency:${value}:${at}`) },
+      connect: () => calls.push("oscillator:connect"),
+      start: (at: number) => calls.push(`start:${at}`),
+      stop: (at: number) => calls.push(`stop:${at}`),
+    };
+    const gain = {
+      gain: { setValueAtTime: (value: number, at: number) => calls.push(`gain:${value}:${at}`) },
+      connect: () => calls.push("gain:connect"),
+    };
+    primeRestAudioContext({
+      currentTime: 3,
+      destination: {},
+      createOscillator: () => oscillator,
+      createGain: () => gain,
+    } as unknown as AudioContext);
+    expect(calls).toEqual([
+      "frequency:440:3",
+      "gain:0.0001:3",
+      "oscillator:connect",
+      "gain:connect",
+      "start:3",
+      "stop:3.02",
+    ]);
   });
 
   it("consumes missed background milestones without replaying them on return", () => {

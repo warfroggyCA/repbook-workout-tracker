@@ -970,14 +970,17 @@ and fabricated fallback values are never used. The exact source workout and
 set provenance remain attached to the projection.
 
 The mobile active-exercise card keeps the current set, previous comparable
-evidence, required inputs, save/retry state, acknowledgement correction, and
-next action primary. Ordinary completed/upcoming rows and extra work live in
-`Exercise progress & extras`; notes, coaching, form, and replacement controls
-live in `More for this exercise`. Pending or failed writes and skipped recovery
-remain exposed, and the existing fixed workout-status bar remains the sole
-rest/ready/finish authority. The set and equipment device-save entry points use
-a separate fixed safe-area slot above that bar, so interruption recovery stays
-reachable after reload without covering the current workout action.
+evidence, required inputs, save/retry state, and next action primary. After an
+acknowledgement, focus and scroll reveal the next current set; acknowledged
+sets move into a closed `Completed sets` disclosure with correction beside each
+saved set instead of a separate receipt panel. Resolved warm-up items likewise
+remain available in a completed disclosure. Exercise setup precedes its work
+and collapses only after acknowledged work; a queued, retrying, or failed set
+cannot make setup disappear. Group work uses a compact mobile summary with the
+immutable member order and preparation details in its native disclosure.
+Notes, coaching, form, and replacement controls live in `More for this
+exercise`. Pending or failed writes and skipped recovery remain exposed, and
+the fixed workout-status bar remains the sole rest/ready/finish authority.
 An exercise-skip confirmation also retains the exact reason in a session-scoped
 recovery pointer. After a Server Action refresh or interruption-time reload, the
 runner idempotently reconciles that intent before set logging can resume and
@@ -996,6 +999,24 @@ recovery pointer and durable device queues survive the same-origin navigation;
 the old runner becomes inactive on page hide, and a newly mounted runner
 reconciles the exact session before logging or Finish can resume. Navigation
 outside an active workout keeps the ordinary client-side path.
+
+Active-workout mutations that can otherwise occupy Next.js's sequential
+document action channel have a bounded acknowledgement wait. Set logging,
+equipment selection, occurrence mutation, exercise skip reconciliation,
+extra-set creation, and Finish retain their exact device command or recovery
+pointer before dispatch. If the server does not answer within the deadline,
+Repbook releases its local queue lock, stops same-document retries, and requires
+a native reload before idempotently replaying the same identity. Extra-set and
+Finish commands also retain their exact occurrence or note, fatigue, and
+duration input. A storage failure sends nothing. Finish remains blocked while
+recorded work or an unreadable recorded-work copy is unresolved; a verified
+foreign owner/session copy remains separate and non-blocking.
+
+Rest alerts default to foreground sound for a new device, while an explicit
+visual-only choice remains preserved locally. Logging a set primes Web Audio
+during the owner gesture, and the active timer names its current alert mode.
+Browser, device-volume, silent-mode, Bluetooth, and background restrictions
+remain external constraints; the visual timer is always the truthful fallback.
 
 The runner reconciles refreshed occurrence props by stable ID and monotonic
 revision because a Next.js refresh may preserve Client Component state. A
@@ -1046,7 +1067,9 @@ item satisfies every same-type predicate, and its exact profile, geometry, and
 compatible attachment predicates also match. Independently available but
 mutually incompatible items therefore remain attention as `No compatible
 saved setup`, not false coverage or a false claim that the saved items are
-missing.
+missing. A saved broad item such as a cable station therefore establishes
+presence even when its exact reviewed geometry is incomplete; exact attachment
+and profile requirements remain strict stable-identity checks.
 
 The projection is fenced to the expected workout history revision and to an
 evidence digest covering the retained exercise rows and saved inventory/profile
@@ -1062,9 +1085,17 @@ owns it. The list describes saved inventory coverage, not whether the owner
 physically gathered anything, and creates no preparation-complete fact.
 Unknown, unavailable, and incompatible rows stay visible and never block the
 workout. Exact load, plate, stack, attachment, and geometry guidance remains
-exercise-local; only the current exercise and unknown, unavailable,
+exercise-local and uses the retained prescribed target when available, so a
+reviewed bar or plate-loaded machine can show setup-stage plate math before the
+performed value is entered. Only the current exercise and unknown, unavailable,
 incompatible, pending, failed, or stale setup evidence stays expanded, while
 ordinary future setup panels use keyboard-native disclosure.
+
+Routine import does not silently choose between materially different loading
+variants that share a family label. An unqualified name such as `Lat Pulldown`
+requires the owner to select the stable cable or plate-loaded identity; explicit
+variant names remain deterministic. This affects future Program publication
+only and never rewrites an active workout or completed History.
 
 Snapshot schema 32 round-trips the retained tuple and upgrades schema 31 rows
 to explicit null evidence. Recovery manifest 14 keeps the same durable-table

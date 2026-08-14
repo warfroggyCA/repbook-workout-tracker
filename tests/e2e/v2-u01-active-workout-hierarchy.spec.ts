@@ -112,13 +112,6 @@ async function expectReachableTarget(locator: Locator) {
   expect(result.width).toBeGreaterThanOrEqual(44);
 }
 
-async function expectFullyInViewport(locator: Locator) {
-  await expect.poll(() => locator.evaluate((element) => {
-    const rect = element.getBoundingClientRect();
-    return rect.top >= 0 && rect.bottom <= window.innerHeight;
-  })).toBe(true);
-}
-
 async function expectPrimaryActionUnobstructed(locator: Locator) {
   await expect(locator).toBeVisible();
   await expect.poll(() => locator.evaluate((element) => {
@@ -143,6 +136,7 @@ async function expectPrimaryActionUnobstructed(locator: Locator) {
       rect.top + rect.height / 2,
     );
     const result = {
+      viewportWidth: window.innerWidth,
       aboveViewportTop: rect.top >= top,
       aboveObstruction: rect.bottom <= bottom,
       horizontallyContained: rect.left >= 0 && rect.right <= window.innerWidth,
@@ -162,6 +156,22 @@ async function expectPrimaryActionUnobstructed(locator: Locator) {
         element.getAttribute("data-testid") ??
         element.textContent?.trim().slice(0, 80) ??
         element.tagName,
+      hitIdentity:
+        hit?.getAttribute("aria-label") ??
+        hit?.getAttribute("data-testid") ??
+        hit?.textContent?.trim().slice(0, 80) ??
+        hit?.tagName ??
+        null,
+      parentClass: element.parentElement?.className ?? null,
+      finishRect: (() => {
+        const finish = document.querySelector<HTMLElement>(
+          '[aria-label="Review workout finish"], [aria-label="Finish workout"]',
+        );
+        const bounds = finish?.getBoundingClientRect();
+        return bounds == null
+          ? null
+          : { top: Math.round(bounds.top), bottom: Math.round(bounds.bottom) };
+      })(),
     };
     return result.aboveViewportTop && result.aboveObstruction &&
       result.horizontallyContained && result.hitTestable
@@ -531,8 +541,8 @@ test("keeps attention continuous through warm-up, first set, and exact recovery 
         });
         await expect(blockerLog).toBeEnabled();
         await blockerLog.click();
-        await expect(page.getByTestId("active-set-save-receipt")).toContainText(
-          "Saved · Set 1",
+        await expect(page.getByTestId("set-save-announcement")).toContainText(
+          "set 1 saved",
         );
         await expect.poll(() => page.evaluate(() => {
           const raw = localStorage.getItem(
@@ -760,13 +770,16 @@ test("keeps the ordinary active set current-first, unobstructed, and acknowledge
       setOptions.locator(":scope > summary"),
     ];
     for (const action of orderedVisibleActions) await expect(action).toBeVisible();
-    const actionBounds = await Promise.all(
-      orderedVisibleActions.map((action) => action.boundingBox()),
-    );
-    expect(actionBounds.every((bounds) => bounds !== null)).toBe(true);
-    for (let index = 1; index < actionBounds.length; index += 1) {
-      expect(actionBounds[index]!.y).toBeGreaterThan(actionBounds[index - 1]!.y);
-    }
+    await page.evaluate(() => document.fonts.ready);
+    await expect.poll(async () => {
+      const actionBounds = await Promise.all(
+        orderedVisibleActions.map((action) => action.boundingBox()),
+      );
+      return actionBounds.every((bounds) => bounds !== null) &&
+        actionBounds.slice(1).every(
+          (bounds, index) => bounds!.y > actionBounds[index]!.y,
+        );
+    }).toBe(true);
 
     const primaryTargets = [
       currentEntry.getByLabel("Total load", { exact: true }),
@@ -788,15 +801,27 @@ test("keeps the ordinary active set current-first, unobstructed, and acknowledge
       name: "Log set",
       exact: true,
     });
+    const currentEquipmentSetup = page
+      .getByTestId("exercise-equipment-setup")
+      .filter({ hasText: "Barbell Back Squat" });
+    await expect(currentEquipmentSetup).toHaveAttribute("open", "");
+    expect(await currentEquipmentSetup.evaluate((setup) => {
+      const card = document.querySelector('[data-testid="current-exercise-card"]');
+      return card != null && Boolean(
+        setup.compareDocumentPosition(card) & Node.DOCUMENT_POSITION_FOLLOWING,
+      );
+    })).toBe(true);
     await logSet.click();
-    const receipt = currentCard.getByTestId("active-set-save-receipt");
-    await expect(receipt).toContainText("Saved · Set 1");
-    await expect(receipt).toContainText("Acknowledged by Repbook");
-    await expect(
-      receipt.getByRole("button", { name: "Correct set", exact: true }),
-    ).toBeVisible();
-    await expect(receipt).toBeVisible();
-    await expectFullyInViewport(receipt);
+    await expect(page.getByTestId("set-save-announcement")).toContainText(
+      "Barbell Back Squat, set 1 saved.",
+    );
+    await expect(page.getByTestId("active-set-save-receipt")).toHaveCount(0);
+    const completedSets = currentCard.getByTestId("completed-sets");
+    await expect(completedSets).not.toHaveAttribute("open", "");
+    await expect(completedSets.locator(":scope > summary")).toContainText(
+      "1 completed",
+    );
+    await expect(currentEquipmentSetup).not.toHaveAttribute("open", "");
     await expect(currentEntry).toContainText("Set 2 of 3");
     const restingGeometry = await compactGeometry(page);
     expect(
@@ -855,7 +880,14 @@ test("keeps the ordinary active set current-first, unobstructed, and acknowledge
     await page.evaluate(() => new Promise<void>((resolve) =>
       requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
     ));
-    await expectFullyInViewport(receipt);
+    await completedSets.locator(":scope > summary").focus();
+    await page.keyboard.press("Enter");
+    await expect(completedSets).toHaveAttribute("open", "");
+    await expect(
+      completedSets.getByRole("button", { name: "Correct set", exact: true }),
+    ).toBeVisible();
+    await page.keyboard.press("Space");
+    await expect(completedSets).not.toHaveAttribute("open", "");
     expect(
       await page.evaluate(
         () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
@@ -976,7 +1008,7 @@ test("fits the complete primary logging action at 390x844 with keyboard disclosu
     await expect(setOptions).not.toHaveAttribute("open", "");
 
     const progress = currentCard.locator("details", {
-      hasText: "Exercise progress & extras",
+      hasText: "Completed sets",
     });
     const progressSummary = progress.locator(":scope > summary");
     await progressSummary.focus();
@@ -1045,7 +1077,8 @@ test("fits the complete primary logging action at 390x844 with keyboard disclosu
     expect(extraLargeGeometry.disclosures.map((item) => item.summary)).toEqual(
       expect.arrayContaining([
         expect.stringContaining("Set options"),
-        expect.stringContaining("Exercise progress & extras"),
+        expect.stringContaining("Completed sets"),
+        expect.stringContaining("Extra sets"),
         expect.stringContaining("More for this exercise"),
         expect.stringContaining("Warm-up guidance · reference"),
       ]),

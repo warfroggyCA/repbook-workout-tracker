@@ -263,9 +263,10 @@ test("keeps truthful saved-equipment preparation compact beside the current acti
   await currentCard
     .getByRole("button", { name: "Log set", exact: true })
     .click();
-  const receipt = page.getByTestId("active-set-save-receipt");
-  await expect(receipt).toHaveCount(1);
-  await expect(receipt).toContainText("Acknowledged by Repbook");
+  await expect(page.getByTestId("active-set-save-receipt")).toHaveCount(0);
+  const completedSets = currentCard.getByTestId("completed-sets");
+  await expect(completedSets).toContainText("1 completed");
+  await expect(completedSets).toContainText("Acknowledged by Repbook");
   await expect(page.getByTestId("active-workout-sticky-summary")).toContainText(
     "1/13 planned",
   );
@@ -292,23 +293,38 @@ async function expectReachableGroupSurface(
   width: number,
 ) {
   await page.setViewportSize({ width, height: 700 });
-  await page
-    .getByRole("link", { name: "View Superset group & prep", exact: true })
-    .click();
+  const mobileDetails = group.locator("details").first();
+  if (!(await mobileDetails.evaluate((element) =>
+    (element as HTMLDetailsElement).open
+  ))) {
+    await mobileDetails.locator(":scope > summary").click();
+  }
+  await group.focus();
+  await group.scrollIntoViewIfNeeded();
+  await group.evaluate((element) => {
+    const stickySummary = document.querySelector(
+      '[aria-label="Workout progress and upcoming work"]',
+    )?.parentElement;
+    const visibleTop = (stickySummary?.getBoundingClientRect().bottom ?? 0) + 8;
+    const top = element.getBoundingClientRect().top;
+    if (top < visibleTop) window.scrollBy(0, top - visibleTop);
+  });
   await expect(group).toBeInViewport();
   await expect(group).toBeFocused();
   await expectNoHorizontalOverflow(page);
   const geometry = await group.evaluate((element) => {
     const box = element.getBoundingClientRect();
-    const links = Array.from(element.querySelectorAll("a")).map((link) => {
-      const linkBox = link.getBoundingClientRect();
-      return {
-        width: linkBox.width,
-        height: linkBox.height,
-        left: linkBox.left,
-        right: linkBox.right,
-      };
-    });
+    const links = Array.from(element.querySelectorAll("a"))
+      .map((link) => {
+        const linkBox = link.getBoundingClientRect();
+        return {
+          width: linkBox.width,
+          height: linkBox.height,
+          left: linkBox.left,
+          right: linkBox.right,
+        };
+      })
+      .filter((link) => link.width > 0 && link.height > 0);
     const navigation = document.querySelector("nav.fixed");
     const navigationRect = navigation?.getBoundingClientRect() ?? null;
     const navigationVisible =
@@ -416,6 +432,13 @@ test("presents immutable superset order, truthful progress, and next-member equi
   );
   await expect(group).toContainText("Prepare for Pallof Press");
   await expect(group).toContainText("Preparation is guidance only");
+  const mobileGroupDetails = group.locator("details").first();
+  if (!(await mobileGroupDetails.evaluate((element) =>
+    (element as HTMLDetailsElement).open
+  ))) {
+    await mobileGroupDetails.locator(":scope > summary").click();
+  }
+  await expect(mobileGroupDetails).toHaveAttribute("open", "");
   await expect(group.getByRole("link")).toHaveCount(2);
   await expect(
     group.getByRole("link", { name: /1\. Dumbbell Lateral Raise/ }),
@@ -453,26 +476,22 @@ test("presents immutable superset order, truthful progress, and next-member equi
     }),
   ).toBeVisible();
 
-  const firstMember = group.getByRole("link", {
+  const firstMember = mobileGroupDetails.getByRole("link", {
     name: /1\. Dumbbell Lateral Raise/,
   });
-  const secondMember = group.getByRole("link", {
+  const secondMember = mobileGroupDetails.getByRole("link", {
     name: /2\. Pallof Press/,
   });
-  const groupAccess = page.getByRole("link", {
-    name: "View Superset group & prep",
-    exact: true,
-  });
+  const groupAccess = mobileGroupDetails.locator(":scope > summary");
+  await groupAccess.click();
+  await expect(mobileGroupDetails).not.toHaveAttribute("open", "");
   await groupAccess.focus();
   await expect(groupAccess).toBeFocused();
   await page.keyboard.press("Enter");
-  await expect(group).toBeFocused();
-  await expect
-    .poll(() => group.evaluate((element) => element.matches(":focus-visible")))
-    .toBe(true);
-  await page.keyboard.press("Tab");
+  await expect(mobileGroupDetails).toHaveAttribute("open", "");
+  await firstMember.focus();
   await expect(firstMember).toBeFocused();
-  await page.keyboard.press("Tab");
+  await secondMember.focus();
   await expect(secondMember).toBeFocused();
   await page.keyboard.press("Enter");
   await expect(page).toHaveURL(/#exercise-/);

@@ -511,7 +511,7 @@ test("keeps the full live workout usable through warm-up, skip, replace, continu
     const log = currentSet.getByRole("button", { name: "Log set", exact: true });
     await expectReachableTarget(log);
     await log.click();
-    const receipt = current.getByTestId("active-set-save-receipt");
+    const receipt = current.getByTestId("completed-sets");
     await expect(receipt).toContainText(`Set ${setNo}`);
     await expect(receipt).toContainText("Acknowledged by Repbook");
     await dismissRest(page);
@@ -639,8 +639,8 @@ test("keeps the full live workout usable through warm-up, skip, replace, continu
   });
   await expectReachableTarget(logReplacement);
   await logReplacement.click();
-  await expect(replacement.getByTestId("active-set-save-receipt"))
-    .toContainText("Saved · Set 1");
+  await expect(replacement.getByTestId("completed-sets"))
+    .toContainText("1 completed");
   await expect(
     page.getByRole("complementary", { name: "Workout status" })
       .getByRole("button", { name: "Skip rest", exact: true }),

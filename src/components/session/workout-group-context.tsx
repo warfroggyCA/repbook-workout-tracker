@@ -91,11 +91,88 @@ export function WorkoutGroupContext({
   return (
     <section
       aria-labelledby={`active-group-heading-${group.groupId}`}
-      className="scroll-mt-40 rounded-xl border-2 border-violet-400/60 bg-violet-50/70 p-3 shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 dark:bg-violet-950/20"
+      className="scroll-mt-40 rounded-xl border-2 border-violet-400/60 bg-violet-50/70 p-3 shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 max-[639px]:p-2 dark:bg-violet-950/20"
       id="active-workout-group"
       data-testid="active-workout-group"
       tabIndex={0}
     >
+      <details className="sm:hidden">
+        <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-2 rounded-lg px-1 py-1 text-sm font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
+          <span className="min-w-0 break-words">
+            {group.name} · {roundLabel} · member {group.currentMemberOrder} of{" "}
+            {group.memberCount}
+          </span>
+          <span className="shrink-0 text-xs text-muted-foreground">Details</span>
+        </summary>
+        <div className="border-t pt-2">
+          <p className="text-sm">
+            <span className="font-semibold">
+              {group.activeRest ? "Next member:" : "Current member:"}
+            </span>{" "}
+            {group.currentMemberName}
+          </p>
+          {group.upNextMemberName && (
+            <p className="text-sm">
+              <span className="font-semibold">Up next:</span>{" "}
+              {group.upNextMemberName}
+            </p>
+          )}
+          <p className="mt-1 text-xs text-muted-foreground">
+            Group progress: {progressText(group.totals)} · {completionLabel}
+          </p>
+          <p className="text-xs text-muted-foreground">
+            {group.activeRest && activeRestLabel
+              ? `${activeRestLabel}${group.activeRest.phase === "ready" ? " complete" : group.activeRest.phase === "skipped" ? " skipped" : " in progress"}.`
+              : group.restAfterCurrent.seconds == null
+                ? "Rest after the current set is not recorded."
+                : group.restAfterCurrent.seconds > 0
+                  ? `${plannedRestLabel}: ${formatRestTime(group.restAfterCurrent.seconds)}.`
+                  : "No rest is planned after the current set."}
+          </p>
+          <ol className="mt-2 grid gap-2">
+            {group.members.map((member) => {
+              const isCurrent = member.order === group.currentMemberOrder;
+              const isUpNext = member.order === group.upNextMemberOrder;
+              return (
+                <li key={`mobile-${member.sessionExerciseId}`}>
+                  <a
+                    href={`#exercise-${encodeURIComponent(member.sessionExerciseId)}`}
+                    aria-current={isCurrent ? "step" : undefined}
+                    className={cn(
+                      "block min-h-11 rounded-lg border bg-background/80 px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+                      isCurrent && "border-foreground",
+                    )}
+                  >
+                    <span className="font-semibold">
+                      {member.order}. {member.exerciseName}
+                    </span>
+                    <span className="block text-xs text-muted-foreground">
+                      {isCurrent ? "Current member · " : isUpNext ? "Up next · " : ""}
+                      {progressText(member.totals)}
+                    </span>
+                  </a>
+                </li>
+              );
+            })}
+          </ol>
+          {preparationMemberName && preparationCue.status !== "none" && (
+            <div className="mt-2 rounded-lg border border-dashed bg-background/85 px-3 py-2 text-sm">
+              <p className="font-semibold">Prepare for {preparationMemberName}</p>
+              <p className="text-xs font-medium">
+                {equipmentStatusLabel(preparationCue.status)}
+              </p>
+              {upcomingDetails && (
+                <p className="break-words text-xs">{upcomingDetails}</p>
+              )}
+              <p className="break-words text-xs text-muted-foreground">
+                {preparationCue.message}
+              </p>
+            </div>
+          )}
+        </div>
+      </details>
+
+      <div className="max-[639px]:hidden">
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div>
           <p className="text-xs font-semibold uppercase tracking-[0.12em] text-foreground">
@@ -204,6 +281,7 @@ export function WorkoutGroupContext({
           </p>
         </div>
       )}
+      </div>
     </section>
   );
 }

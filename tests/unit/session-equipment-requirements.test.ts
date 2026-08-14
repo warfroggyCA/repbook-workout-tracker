@@ -868,6 +868,57 @@ describe("retained session equipment requirement contract", () => {
     })]);
   });
 
+  it("keeps owned broad cable present when its exact profile is incomplete", () => {
+    const retained: SessionEquipmentRequirementsSnapshot = {
+      sourceExerciseId: EXERCISE_A,
+      broad: [{
+        sourceRequirementId: REQUIREMENT_A,
+        equipmentType: "cable",
+        equipmentDefinition: null,
+        minWeight: null,
+      }],
+      exact: {
+        sourceRequirementId: EXACT_A,
+        requiredProfileKind: "cable_machine",
+        requiredEquipmentDefinition: null,
+        requiredAttachmentKind: "lat_bar",
+        requiredAttachmentDefinition: null,
+        requiresKnownGeometry: true,
+      },
+    };
+    const savedCable = {
+      equipmentItemId: "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+      equipmentType: "cable",
+      equipmentDefinitionId: null,
+      attrs: {},
+      available: true,
+    };
+    const snapshots = new Map([[SESSION_A, retained]]);
+
+    expect(retainedPrimaryRequirementRowHasSavedSetup({
+      rowKey: "type:cable",
+      sourceSessionExerciseIds: [SESSION_A],
+      snapshotsBySessionExerciseId: snapshots,
+      inventory: [savedCable],
+      hasPlates: false,
+      exactCandidates: [],
+    })).toBe(true);
+    expect(retainedExerciseHasExecutableSetup({
+      snapshot: retained,
+      inventory: [savedCable],
+      hasPlates: false,
+      exactCandidates: [],
+    })).toBe(false);
+    expect(retainedPrimaryRequirementRowHasSavedSetup({
+      rowKey: "type:cable",
+      sourceSessionExerciseIds: [SESSION_A],
+      snapshotsBySessionExerciseId: snapshots,
+      inventory: [],
+      hasPlates: false,
+      exactCandidates: [],
+    })).toBe(false);
+  });
+
   it("distinguishes a saved incompatible row from a missing requirement", () => {
     const projection = projectSessionEquipmentPreparation([{
       sessionExerciseId: SESSION_A,

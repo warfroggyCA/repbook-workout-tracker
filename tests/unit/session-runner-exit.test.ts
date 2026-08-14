@@ -142,6 +142,47 @@ describe("workout exit readiness", () => {
       finishBlockedByRecordedWork({ ...EMPTY, equipmentHasError: true }),
     ).toBe(false);
   });
+
+  it("does not let the runner downgrade unreadable recorded work to a non-blocking foreign copy", () => {
+    const source = readFileSync(
+      "src/components/session/session-runner.tsx",
+      "utf8",
+    );
+    expect(source).toContain(
+      "quarantinedSetCount: latestSetQueue.quarantined.length",
+    );
+    expect(source).toContain(
+      "occurrenceHasError: latestOccurrenceQueue.error != null",
+    );
+    expect(source).toContain(
+      "Finish is blocked so it cannot silently",
+    );
+    expect(source).not.toContain(
+      "separate or unreadable device copy",
+    );
+  });
+
+  it("retains and replays the exact extra-set command across an unconfirmed action", () => {
+    const source = readFileSync(
+      "src/components/session/session-runner.tsx",
+      "utf8",
+    );
+    const retain = source.indexOf("!writeAppendSetRecovery(");
+    const dispatch = source.indexOf("appendWorkoutSet(command)");
+    expect(retain).toBeGreaterThan(-1);
+    expect(dispatch).toBeGreaterThan(retain);
+    expect(source).toContain(
+      "withDocumentActionDeadline(\n        appendWorkoutSet(command)",
+    );
+    expect(source).toContain("reportDocumentActionTimeout()");
+    expect(source).toMatch(
+      /retained\.sessionExerciseId,\s+retained\.occurrenceId,\s+retained\.expectedSetNo/,
+    );
+    expect(source).toContain("appendRecoveryMarker != null ||");
+    expect(source).toContain(
+      "Reload Repbook to retry the retained extra set safely.",
+    );
+  });
 });
 
 describe("occurrence discard continuity", () => {
@@ -197,6 +238,20 @@ describe("interrupted skip recovery", () => {
     expect(source).toContain("if (!runnerActiveRef.current) return;\n              patchExercise");
   });
 
+  it("bounds un-skip reconciliation so its retained marker cannot trap the document", () => {
+    const source = readFileSync(
+      "src/components/session/session-runner.tsx",
+      "utf8",
+    );
+    expect(source).toContain(
+      "withDocumentActionDeadline(\n        confirmExerciseUnskipped({",
+    );
+    expect(source).toContain("reportDocumentActionTimeout()");
+    expect(source).toContain(
+      "Reload to reconcile the retained request safely.",
+    );
+  });
+
   it("keeps both workout-header exits independent of a pending App Router action", () => {
     const source = readFileSync(
       "src/components/session/session-runner.tsx",
@@ -220,7 +275,26 @@ describe("atomic finish handoff", () => {
       "const latestOccurrenceQueue = getOccurrenceMutationOutboxSnapshot()",
     );
     expect(source.indexOf("finishBlockedByRecordedWork(freshExitQueues)")).toBeLessThan(
-      source.indexOf("const result = await completeSession({"),
+      source.indexOf("completeSession(command)"),
+    );
+  });
+
+  it("retains an exact finish command before a bounded completion action", () => {
+    const source = readFileSync(
+      "src/components/session/session-runner.tsx",
+      "utf8",
+    );
+    const retain = source.indexOf("!writeFinishRecovery(");
+    const dispatch = source.indexOf("completeSession(command)");
+    expect(retain).toBeGreaterThan(-1);
+    expect(dispatch).toBeGreaterThan(retain);
+    expect(source).toContain(
+      "withDocumentActionDeadline(\n            completeSession(command)",
+    );
+    expect(source).toContain("readFinishRecovery(");
+    expect(source).toContain("!finishRecoveryHydrated ||");
+    expect(source).toContain(
+      "Your exact finish details are retained. Reload to retry safely.",
     );
   });
 });

@@ -137,11 +137,14 @@ import {
   type RestCueMilestone,
 } from "@/lib/rest-timer";
 import {
+  DEFAULT_REST_ALERT_PREFERENCE,
   planRestCueTransition,
+  primeRestAudioContext,
   readRestAlertPreference,
   REST_COMPLETION_TONE_PATTERN,
   requestedRestCueChannels,
   restCueOutcome,
+  subscribeToRestAlertPreference,
   type RestAlertPreference,
 } from "@/lib/rest-alert-preference";
 import {
@@ -152,10 +155,16 @@ import {
   type SessionGuidanceFocusAction,
 } from "@/lib/session-guidance";
 import {
+  deploymentRecoveryRequired,
+  isDocumentActionTimeout,
+  reportDeploymentMismatch,
+  reportDocumentActionTimeout,
+  withDocumentActionDeadline,
+} from "@/lib/deployment-recovery";
+import {
   workingSetDisplayPosition,
   workingSetOccurrenceOrderIsEligible,
 } from "@/lib/session-occurrences";
-import { reportDeploymentMismatch } from "@/lib/deployment-recovery";
 import {
   patchActiveWorkoutMeasurement,
   readActiveWorkoutMeasurements,
@@ -251,6 +260,159 @@ function actionTargetId(action: SessionGuidanceFocusAction | null): string {
 
 function skipRecoveryStorageKey(ownerId: string, sessionId: string) {
   return `workout-tracker:skip-recovery:v1:${ownerId}:${sessionId}`;
+}
+
+function appendSetRecoveryStorageKey(ownerId: string, sessionId: string) {
+  return `workout-tracker:append-set-recovery:v1:${ownerId}:${sessionId}`;
+}
+
+function finishRecoveryStorageKey(ownerId: string, sessionId: string) {
+  return `workout-tracker:finish-recovery:v1:${ownerId}:${sessionId}`;
+}
+
+type FinishRecoveryCommand = {
+  sessionId: string;
+  note?: string;
+  fatigue?: number;
+  durationDecision:
+    | { basis: "wall_clock_no_stale_signal" }
+    | { basis: "interruption_unknown" }
+    | { basis: "owner_reported"; activeDurationSeconds: number };
+};
+
+function finishDurationDecisionIsValid(
+  value: unknown,
+): value is FinishRecoveryCommand["durationDecision"] {
+  if (value == null || typeof value !== "object") return false;
+  const decision = value as Record<string, unknown>;
+  if (
+    decision.basis === "wall_clock_no_stale_signal" ||
+    decision.basis === "interruption_unknown"
+  ) {
+    return true;
+  }
+  return decision.basis === "owner_reported" &&
+    typeof decision.activeDurationSeconds === "number" &&
+    Number.isInteger(decision.activeDurationSeconds) &&
+    decision.activeDurationSeconds >= 0 &&
+    decision.activeDurationSeconds <= 604_800;
+}
+
+function readFinishRecovery(
+  storage: Storage,
+  key: string,
+  sessionId: string,
+): FinishRecoveryCommand | null {
+  try {
+    const raw = storage.getItem(key);
+    if (raw == null) return null;
+    const parsed = JSON.parse(raw) as Partial<FinishRecoveryCommand>;
+    if (
+      parsed.sessionId !== sessionId ||
+      (parsed.note != null &&
+        (typeof parsed.note !== "string" || parsed.note.length > 2_000)) ||
+      (parsed.fatigue != null &&
+        (typeof parsed.fatigue !== "number" ||
+          !Number.isInteger(parsed.fatigue) ||
+          parsed.fatigue < 1 ||
+          parsed.fatigue > 5)) ||
+      !finishDurationDecisionIsValid(parsed.durationDecision)
+    ) {
+      return null;
+    }
+    return {
+      sessionId: parsed.sessionId,
+      ...(parsed.note == null ? {} : { note: parsed.note }),
+      ...(parsed.fatigue == null ? {} : { fatigue: parsed.fatigue }),
+      durationDecision: parsed.durationDecision,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function writeFinishRecovery(
+  storage: Storage,
+  key: string,
+  command: FinishRecoveryCommand,
+) {
+  try {
+    storage.setItem(key, JSON.stringify(command));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function removeFinishRecovery(storage: Storage, key: string) {
+  try {
+    storage.removeItem(key);
+  } catch {
+    // The retained command remains visible as unresolved recovery state.
+  }
+}
+
+type AppendSetRecoveryMarker = {
+  sessionExerciseId: string;
+  occurrenceId: string;
+  expectedSetNo: number;
+};
+
+function readAppendSetRecovery(
+  storage: Storage,
+  key: string,
+): AppendSetRecoveryMarker | null {
+  try {
+    const raw = storage.getItem(key);
+    if (raw == null) return null;
+    const parsed = JSON.parse(raw) as Partial<AppendSetRecoveryMarker>;
+    if (
+      typeof parsed.sessionExerciseId !== "string" ||
+      parsed.sessionExerciseId.length === 0 ||
+      typeof parsed.occurrenceId !== "string" ||
+      parsed.occurrenceId.length === 0 ||
+      typeof parsed.expectedSetNo !== "number" ||
+      !Number.isInteger(parsed.expectedSetNo) ||
+      parsed.expectedSetNo < 1 ||
+      parsed.expectedSetNo > 100
+    ) {
+      return null;
+    }
+    return {
+      sessionExerciseId: parsed.sessionExerciseId,
+      occurrenceId: parsed.occurrenceId,
+      expectedSetNo: parsed.expectedSetNo,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function writeAppendSetRecovery(
+  storage: Storage,
+  key: string,
+  marker: AppendSetRecoveryMarker,
+) {
+  try {
+    storage.setItem(key, JSON.stringify(marker));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function removeAppendSetRecovery(
+  storage: Storage,
+  key: string,
+  occurrenceId: string,
+) {
+  try {
+    const current = readAppendSetRecovery(storage, key);
+    if (current?.occurrenceId !== occurrenceId) return;
+    storage.removeItem(key);
+  } catch {
+    // The marker remains visible as unresolved recovery state in this runner.
+  }
 }
 
 type SkipRecoveryMarker = {
@@ -416,6 +578,11 @@ function getServerHydrationSnapshot() {
 }
 
 export function SessionRunner(props: SessionRunnerProps) {
+  const restAlertPreference = useSyncExternalStore(
+    subscribeToRestAlertPreference,
+    () => readRestAlertPreference(window.localStorage),
+    () => DEFAULT_REST_ALERT_PREFERENCE,
+  );
   const router = useRouter();
   const [skipRecoveryRunnerInstanceId] = useState(() => createClientUuid());
   const runnerActiveRef = useRef(true);
@@ -467,6 +634,22 @@ export function SessionRunner(props: SessionRunnerProps) {
     props.ownerId,
     props.sessionId,
   );
+  const appendRecoveryKey = appendSetRecoveryStorageKey(
+    props.ownerId,
+    props.sessionId,
+  );
+  const finishRecoveryKey = finishRecoveryStorageKey(
+    props.ownerId,
+    props.sessionId,
+  );
+  const [appendRecoveryMarker, setAppendRecoveryMarker] = useState<
+    AppendSetRecoveryMarker | null
+  >(null);
+  const [appendRecoveryHydrated, setAppendRecoveryHydrated] = useState(false);
+  const [finishRecoveryCommand, setFinishRecoveryCommand] = useState<
+    FinishRecoveryCommand | null
+  >(null);
+  const [finishRecoveryHydrated, setFinishRecoveryHydrated] = useState(false);
   const previousCurrentActionIdRef = useRef<string | null>(null);
   const previousCurrentActionKindRef = useRef<
     SessionGuidanceFocusAction["kind"] | null
@@ -489,9 +672,29 @@ export function SessionRunner(props: SessionRunnerProps) {
   const [finishNote, setFinishNote] = useState("");
   const [fatigue, setFatigue] = useState<number | null>(null);
   const [warmupPlanOpen, setWarmupPlanOpen] = useState(false);
+  const [completedWarmupsOpen, setCompletedWarmupsOpen] = useState(false);
   const [finishing, setFinishing] = useState(false);
   const [finishError, setFinishError] = useState<string | null>(null);
   const [recordedEnqueueCount, setRecordedEnqueueCount] = useState(0);
+
+  useEffect(() => {
+    const frame = window.requestAnimationFrame(() => {
+      const retained = readFinishRecovery(
+        window.localStorage,
+        finishRecoveryKey,
+        props.sessionId,
+      );
+      setFinishRecoveryCommand(retained);
+      setFinishRecoveryHydrated(true);
+      if (retained != null) {
+        setFinishOpen(true);
+        setFinishError(
+          "Repbook retained your exact finish details. Save workout to retry them safely.",
+        );
+      }
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [finishRecoveryKey, props.sessionId]);
 
   useEffect(() => {
     runnerActiveRef.current = true;
@@ -519,13 +722,6 @@ export function SessionRunner(props: SessionRunnerProps) {
   const [runtimeSaveStates, setRuntimeSaveStates] = useState<
     Record<string, "saving" | "retrying">
   >({});
-  const pendingSetAcknowledgementAnchorRef = useRef<{
-    clientKey: string;
-    elementId: string;
-    receiptElementId: string;
-    viewportTop: number;
-  } | null>(null);
-  const pendingSetAcknowledgementFrameRef = useRef<number | null>(null);
   const [acknowledgedOccurrenceIds, setAcknowledgedOccurrenceIds] = useState<
     string[]
   >([]);
@@ -923,15 +1119,6 @@ export function SessionRunner(props: SessionRunnerProps) {
     if (needsRefresh) router.refresh();
   }, [failedSetEntries, router]);
 
-  useEffect(
-    () => () => {
-      if (pendingSetAcknowledgementFrameRef.current != null) {
-        window.cancelAnimationFrame(pendingSetAcknowledgementFrameRef.current);
-      }
-    },
-    [],
-  );
-
   const shownExercises = useMemo(() => {
     const serverComparisons = new Map(
       props.exercises.map((exercise) => [
@@ -1083,26 +1270,6 @@ export function SessionRunner(props: SessionRunnerProps) {
         ? guidance.current?.sessionExerciseId ?? null
         : null;
   const currentActionTargetId = actionTargetId(guidance.currentAction);
-  const latestAcknowledgementTargetId = latestSetAcknowledgement
-    ? `active-set-save-receipt-${latestSetAcknowledgement.sessionExerciseId}-${latestSetAcknowledgement.set.setNo}`
-    : null;
-  const latestAcknowledgementIsWorkoutOnly =
-    latestSetAcknowledgement != null &&
-    shownExercises.some(
-      (exercise) =>
-        exercise.id === latestSetAcknowledgement.sessionExerciseId &&
-        exercise.modificationType === "added",
-    );
-  const acknowledgementPresentationExerciseId =
-    latestSetAcknowledgement != null &&
-    (guidance.currentAction?.kind === "working_set" ||
-      guidance.currentAction?.kind === "rest")
-      ? guidance.currentAction.kind === "rest" &&
-        latestAcknowledgementIsWorkoutOnly
-        ? latestSetAcknowledgement.sessionExerciseId
-        : currentActionSessionExerciseId ??
-          latestSetAcknowledgement.sessionExerciseId
-      : null;
   useEffect(() => {
     if (
       currentActionKind !== "working_set" ||
@@ -1127,7 +1294,6 @@ export function SessionRunner(props: SessionRunnerProps) {
   useEffect(() => {
     const disclosureGeneration = exerciseDisclosureGenerationRef.current;
     const previousActionId = previousCurrentActionIdRef.current;
-    const previousActionKind = previousCurrentActionKindRef.current;
     if (skipRecoveryExerciseId != null) {
       previousCurrentActionIdRef.current = currentActionId;
       previousCurrentActionKindRef.current = currentActionKind;
@@ -1164,25 +1330,12 @@ export function SessionRunner(props: SessionRunnerProps) {
     // acknowledged and the scheduled reveal/focus has actually run. A queue
     // or RSC reconciliation render can otherwise cancel the frame after this
     // effect has claimed the handoff, leaving the next card open but unfocused.
-    const acknowledgementBelongsToPreviousAction =
-      previousOccurrence?.kind === "working_set" &&
-      latestAcknowledgementTargetId ===
-        `active-set-save-receipt-${previousOccurrence.sessionExerciseId}-${previousOccurrence.kindOrdinal + 1}`;
-    const shouldRevealLatestAcknowledgement =
-      currentActionKind === "rest" ||
-      previousActionKind === "rest" ||
-      acknowledgementBelongsToPreviousAction;
-
     let focusFrame = 0;
     let scrollFrame = 0;
     const revealCurrentAction = () => {
       if (
         exerciseDisclosureGenerationRef.current !== disclosureGeneration
       ) return;
-      if (pendingSetAcknowledgementAnchorRef.current != null) {
-        scrollFrame = window.requestAnimationFrame(revealCurrentAction);
-        return;
-      }
       if (!reconcileInitialCurrentAction) {
         lastConsumedWorkoutHashRef.current = currentActionTargetId;
         window.history.replaceState(
@@ -1199,13 +1352,7 @@ export function SessionRunner(props: SessionRunnerProps) {
           exerciseDisclosureGenerationRef.current !== disclosureGeneration
         ) return;
         const target = document.getElementById(currentActionTargetId);
-        const acknowledgement =
-          shouldRevealLatestAcknowledgement && latestAcknowledgementTargetId
-            ? document.getElementById(latestAcknowledgementTargetId)
-            : null;
-        if (acknowledgement) {
-          revealWorkoutTarget(acknowledgement, "auto");
-        } else if (currentActionKind !== "rest") {
+        if (currentActionKind !== "rest") {
           if (target) {
             revealWorkoutTarget(target, activeWorkoutScrollBehavior());
           }
@@ -1232,7 +1379,6 @@ export function SessionRunner(props: SessionRunnerProps) {
     currentActionSequenceIdx,
     currentActionSessionExerciseId,
     currentActionTargetId,
-    latestAcknowledgementTargetId,
     occurrences,
     skipRecoveryExerciseId,
   ]);
@@ -1346,55 +1492,6 @@ export function SessionRunner(props: SessionRunnerProps) {
           }))
         );
         return;
-      }
-      const acknowledgedRowId =
-        `logged-set-${detail.entry.sessionExerciseId}-${detail.entry.setNo}`;
-      const acknowledgedRow = document.getElementById(acknowledgedRowId);
-      if (acknowledgedRow) {
-        const bounds = acknowledgedRow.getBoundingClientRect();
-        if (bounds.bottom >= 0 && bounds.top <= window.innerHeight) {
-          pendingSetAcknowledgementAnchorRef.current = {
-            clientKey: detail.clientKey,
-            elementId: acknowledgedRowId,
-            receiptElementId:
-              `active-set-save-receipt-${detail.entry.sessionExerciseId}-${detail.entry.setNo}`,
-            viewportTop: bounds.top,
-          };
-          if (pendingSetAcknowledgementFrameRef.current != null) {
-            window.cancelAnimationFrame(
-              pendingSetAcknowledgementFrameRef.current,
-            );
-          }
-          let framesRemaining = 30;
-          const keepAcknowledgementInPlace = () => {
-            const anchor = pendingSetAcknowledgementAnchorRef.current;
-            if (!anchor || anchor.clientKey !== detail.clientKey) return;
-            const row =
-              document.getElementById(anchor.receiptElementId) ??
-              document.getElementById(anchor.elementId);
-            if (row?.textContent?.includes("Saved")) {
-              const offset =
-                row.getBoundingClientRect().top - anchor.viewportTop;
-              if (Math.abs(offset) > 1) {
-                window.scrollBy({
-                  left: 0,
-                  top: offset,
-                  behavior: "auto",
-                });
-              }
-            }
-            framesRemaining -= 1;
-            if (framesRemaining > 0) {
-              pendingSetAcknowledgementFrameRef.current =
-                window.requestAnimationFrame(keepAcknowledgementInPlace);
-              return;
-            }
-            pendingSetAcknowledgementAnchorRef.current = null;
-            pendingSetAcknowledgementFrameRef.current = null;
-          };
-          pendingSetAcknowledgementFrameRef.current =
-            window.requestAnimationFrame(keepAcknowledgementInPlace);
-        }
       }
       const saved: LoggedSet = {
         id: detail.setId,
@@ -1588,12 +1685,13 @@ export function SessionRunner(props: SessionRunnerProps) {
   );
   const exitQueues: WorkoutExitQueues = {
     unsyncedSetCount: sessionEntries.length,
-    // Unreadable copies have no trustworthy session identity. Keep them in
-    // the global review tray, but never attribute them to this workout.
-    quarantinedSetCount: 0,
-    setHasError: false,
+    // Unreadable recorded-work copies have no trustworthy session identity.
+    // That uncertainty is exactly why Finish must wait for explicit review;
+    // completing first could abandon the occurrence that the copy belongs to.
+    quarantinedSetCount: outbox.quarantined.length,
+    setHasError: outbox.error != null,
     unsyncedOccurrenceCount: sessionOccurrenceEntries.length,
-    occurrenceHasError: false,
+    occurrenceHasError: occurrenceOutbox.error != null,
     unsyncedEquipmentCount: sessionEquipmentEntries.length,
     quarantinedEquipmentCount: equipmentSelectionOutbox.quarantined.length,
     equipmentHasError: equipmentSelectionOutbox.error != null,
@@ -1602,10 +1700,13 @@ export function SessionRunner(props: SessionRunnerProps) {
   // setup ("awaiting information") is guidance and must never trap the workout.
   const finishBlocked =
     skipRecoveryExerciseId != null ||
+    !appendRecoveryHydrated ||
+    appendRecoveryMarker != null ||
+    !finishRecoveryHydrated ||
     recordedEnqueueCount > 0 ||
     finishBlockedByRecordedWork(exitQueues);
   const equipmentGuidancePending = equipmentSyncPending(exitQueues);
-  const unscopableDeviceCopiesPending =
+  const foreignDeviceCopiesPending =
     outbox.entries.some(
       (entry) =>
         entry.ownerId !== props.ownerId || entry.sessionId !== props.sessionId,
@@ -1613,7 +1714,8 @@ export function SessionRunner(props: SessionRunnerProps) {
     occurrenceOutbox.entries.some(
       (entry) =>
         entry.ownerId !== props.ownerId || entry.sessionId !== props.sessionId,
-    ) ||
+    );
+  const unreadableRecordedCopiesPending =
     outbox.quarantined.length > 0 ||
     outbox.error != null ||
     occurrenceOutbox.error != null;
@@ -1677,10 +1779,12 @@ export function SessionRunner(props: SessionRunnerProps) {
       current?.exerciseId === exercise.id ? null : current,
     );
     try {
-      const result = await confirmExerciseUnskipped({
-        sessionExerciseId: exercise.id,
-        expectedHistoryRevision: effectiveHistoryRevision,
-      });
+      const result = await withDocumentActionDeadline(
+        confirmExerciseUnskipped({
+          sessionExerciseId: exercise.id,
+          expectedHistoryRevision: effectiveHistoryRevision,
+        }),
+      );
       if (!runnerActiveRef.current) return;
       if (!result.ok) {
         failSkipRecovery(
@@ -1692,12 +1796,17 @@ export function SessionRunner(props: SessionRunnerProps) {
         return;
       }
       setHistoryRevision(result.historyRevision);
-    } catch {
+    } catch (error) {
       if (!runnerActiveRef.current) return;
+      if (isDocumentActionTimeout(error)) {
+        reportDocumentActionTimeout();
+      }
       failSkipRecovery(
         exercise.id,
         reason,
-        "Repbook could not confirm the saved exercise state. The exercise remains paused so you can try again safely.",
+        isDocumentActionTimeout(error)
+          ? "Repbook did not confirm the saved exercise state in time. Reload to reconcile the retained request safely."
+          : "Repbook could not confirm the saved exercise state. The exercise remains paused so you can try again safely.",
       );
       return;
     }
@@ -1924,6 +2033,9 @@ export function SessionRunner(props: SessionRunnerProps) {
       if (!audioContextRef.current && typeof AudioContext !== "undefined") {
         audioContextRef.current = new AudioContext();
       }
+      if (audioContextRef.current) {
+        primeRestAudioContext(audioContextRef.current);
+      }
       if (audioContextRef.current?.state === "suspended") {
         void audioContextRef.current.resume().catch(() => {
           audioCueBlockedRef.current = true;
@@ -2128,11 +2240,25 @@ export function SessionRunner(props: SessionRunnerProps) {
           ? "Wait while Repbook confirms the exercise skip before finishing."
           : skipRecoveryExerciseId != null
             ? "Resolve the exercise skip before finishing."
+            : appendRecoveryMarker != null
+              ? "Reload or wait while Repbook confirms the extra set before finishing."
           : "Retry save or discard the current workout's device copies below before finishing.",
       );
       return;
     }
-    if (!durationReviewReady || effectiveDurationChoice == null) {
+    if (
+      finishRecoveryCommand != null &&
+      deploymentRecoveryRequired()
+    ) {
+      setFinishError(
+        "Reload Repbook to retry the retained finish request safely.",
+      );
+      return;
+    }
+    if (
+      finishRecoveryCommand == null &&
+      (!durationReviewReady || effectiveDurationChoice == null)
+    ) {
       setFinishError(
         timing.reviewRequired
           ? "Choose a defensible active time or explicitly keep it unknown."
@@ -2140,6 +2266,18 @@ export function SessionRunner(props: SessionRunnerProps) {
       );
       return;
     }
+    const command: FinishRecoveryCommand = finishRecoveryCommand ?? {
+      sessionId: props.sessionId,
+      ...(finishNote ? { note: finishNote } : {}),
+      ...(fatigue == null ? {} : { fatigue }),
+      durationDecision:
+        effectiveDurationChoice === "owner_reported"
+          ? {
+              basis: "owner_reported",
+              activeDurationSeconds: ownerReportedSeconds!,
+            }
+          : { basis: effectiveDurationChoice! },
+    };
     setFinishing(true);
     setFinishError(null);
     try {
@@ -2154,31 +2292,32 @@ export function SessionRunner(props: SessionRunnerProps) {
                 entry.ownerId === props.ownerId &&
                 entry.sessionId === props.sessionId,
             ).length,
-            quarantinedSetCount: 0,
-            setHasError: false,
+            quarantinedSetCount: latestSetQueue.quarantined.length,
+            setHasError: latestSetQueue.error != null,
             unsyncedOccurrenceCount: latestOccurrenceQueue.entries.filter(
               (entry) =>
                 entry.ownerId === props.ownerId &&
                 entry.sessionId === props.sessionId,
             ).length,
-            occurrenceHasError: false,
+            occurrenceHasError: latestOccurrenceQueue.error != null,
           };
           if (finishBlockedByRecordedWork(freshExitQueues)) {
             return { blocked: true as const, result: null };
           }
+          if (
+            !writeFinishRecovery(
+              window.localStorage,
+              finishRecoveryKey,
+              command,
+            )
+          ) {
+            throw new Error("finish_recovery_storage_unavailable");
+          }
+          setFinishRecoveryCommand(command);
           await clearMatchingRestTimer();
-          const result = await completeSession({
-            sessionId: props.sessionId,
-            note: finishNote || undefined,
-            fatigue: fatigue ?? undefined,
-            durationDecision:
-              effectiveDurationChoice === "owner_reported"
-                ? {
-                    basis: "owner_reported",
-                    activeDurationSeconds: ownerReportedSeconds!,
-                  }
-                : { basis: effectiveDurationChoice },
-          });
+          const result = await withDocumentActionDeadline(
+            completeSession(command),
+          );
           return { blocked: false as const, result };
         }),
       );
@@ -2191,19 +2330,39 @@ export function SessionRunner(props: SessionRunnerProps) {
       }
       const result = completion.result;
       if (result?.ok === false) {
+        removeFinishRecovery(window.localStorage, finishRecoveryKey);
+        setFinishRecoveryCommand(null);
         setFinishError(result.message);
         setFinishing(false);
       }
     } catch (error) {
+      if (
+        error instanceof Error &&
+        error.message === "finish_recovery_storage_unavailable"
+      ) {
+        setFinishError(
+          "Repbook cannot safely retain this finish request on your device, so nothing was sent. Free device storage or reload, then try again.",
+        );
+        setFinishing(false);
+        return;
+      }
+      if (isDocumentActionTimeout(error)) {
+        reportDocumentActionTimeout();
+        setFinishError(
+          "Repbook did not confirm the workout finish in time. Your exact finish details are retained. Reload to retry safely.",
+        );
+        setFinishing(false);
+        return;
+      }
       if (reportDeploymentMismatch(error)) {
         setFinishError(
-          "Repbook was updated. Your pending workout changes are safe on this device. Reload once, then finish again.",
+          "Repbook was updated. Your exact finish details are retained on this device. Reload once, then finish again.",
         );
         setFinishing(false);
         return;
       }
       setFinishError(
-        "The workout was not saved. Review the latest timing and try again.",
+        "Repbook could not confirm the workout finish. Your exact finish details are retained; try Save workout again or reload.",
       );
       setFinishing(false);
     }
@@ -2304,18 +2463,61 @@ export function SessionRunner(props: SessionRunnerProps) {
     });
   }
 
-  async function handleAppendSet(
+  const handleAppendSet = useCallback(async (
     sessionExerciseId: string,
     occurrenceId: string,
     expectedSetNo: number,
-  ) {
+  ) => {
+    const retained = readAppendSetRecovery(
+      window.localStorage,
+      appendRecoveryKey,
+    );
+    if (retained != null && deploymentRecoveryRequired()) {
+      setAppendRecoveryMarker(retained);
+      toast.error("Reload Repbook to retry the retained extra set safely.");
+      return null;
+    }
+    if (
+      retained != null &&
+      (retained.sessionExerciseId !== sessionExerciseId ||
+        retained.expectedSetNo !== expectedSetNo)
+    ) {
+      setAppendRecoveryMarker(retained);
+      toast.error(
+        "Another extra set still needs confirmation. Reload to retry that exact set safely.",
+      );
+      return null;
+    }
+    const command: AppendSetRecoveryMarker = retained ?? {
+      sessionExerciseId,
+      occurrenceId,
+      expectedSetNo,
+    };
+    if (
+      retained == null &&
+      !writeAppendSetRecovery(
+        window.localStorage,
+        appendRecoveryKey,
+        command,
+      )
+    ) {
+      toast.error(
+        "This browser could not retain the extra-set request. Nothing was sent.",
+      );
+      return null;
+    }
+    setAppendRecoveryMarker(command);
     try {
-      const result = await appendWorkoutSet({
-        sessionExerciseId,
-        occurrenceId,
-        expectedSetNo,
-      });
+      const result = await withDocumentActionDeadline(
+        appendWorkoutSet(command),
+      );
       if (!result.ok) {
+        removeAppendSetRecovery(
+          window.localStorage,
+          appendRecoveryKey,
+          command.occurrenceId,
+        );
+        setAppendRecoveryMarker(null);
         toast.error(result.message);
         return null;
       }
@@ -2353,12 +2555,71 @@ export function SessionRunner(props: SessionRunnerProps) {
               (left, right) => left.sequenceIdx - right.sequenceIdx,
             ),
       );
+      removeAppendSetRecovery(
+        window.localStorage,
+        appendRecoveryKey,
+        command.occurrenceId,
+      );
+      setAppendRecoveryMarker(null);
       return appended;
-    } catch {
-      toast.error("The set could not be added.");
+    } catch (error) {
+      if (isDocumentActionTimeout(error)) {
+        reportDocumentActionTimeout();
+        toast.error(
+          "Repbook did not confirm the extra set in time. Reload to retry the exact request safely.",
+        );
+      } else {
+        toast.error(
+          "Repbook could not confirm the extra set. Try Add extra set again to replay the exact request, or reload.",
+        );
+      }
       return null;
     }
-  }
+  }, [appendRecoveryKey]);
+
+  useEffect(() => {
+    const frame = window.requestAnimationFrame(() => {
+      const retained = readAppendSetRecovery(
+        window.localStorage,
+        appendRecoveryKey,
+      );
+      setAppendRecoveryHydrated(true);
+      if (retained == null) return;
+      setAppendRecoveryMarker(retained);
+      if (
+        occurrences.some(
+          (occurrence) => occurrence.id === retained.occurrenceId,
+        )
+      ) {
+        removeAppendSetRecovery(
+          window.localStorage,
+          appendRecoveryKey,
+          retained.occurrenceId,
+        );
+        setAppendRecoveryMarker(null);
+        return;
+      }
+      if (
+        !exercises.some(
+          (exercise) => exercise.id === retained.sessionExerciseId,
+        )
+      ) {
+        removeAppendSetRecovery(
+          window.localStorage,
+          appendRecoveryKey,
+          retained.occurrenceId,
+        );
+        setAppendRecoveryMarker(null);
+        return;
+      }
+      void handleAppendSet(
+        retained.sessionExerciseId,
+        retained.occurrenceId,
+        retained.expectedSetNo,
+      );
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [appendRecoveryKey, exercises, handleAppendSet, occurrences]);
 
   const restRemainingSec = timer?.phase === "running"
     ? remainingRestSeconds(timer, restNow)
@@ -2761,6 +3022,17 @@ export function SessionRunner(props: SessionRunnerProps) {
   return (
     <main className="mx-auto flex max-w-3xl flex-col gap-3 p-3 pb-[calc(12rem+env(safe-area-inset-bottom))] min-[360px]:pb-[calc(8rem+env(safe-area-inset-bottom))] sm:p-5 sm:pb-[calc(8rem+env(safe-area-inset-bottom))] lg:p-8 lg:pb-24">
       <ContextualNoteScope value={contextualNoteScope} />
+      <p
+        data-testid="set-save-announcement"
+        role="status"
+        aria-live="polite"
+        aria-atomic="true"
+        className="sr-only"
+      >
+        {latestSetAcknowledgement
+          ? `${latestSetAcknowledgement.exerciseName}, set ${latestSetAcknowledgement.set.setNo} saved.`
+          : ""}
+      </p>
       <header className="flex flex-wrap items-center justify-between gap-2 px-1">
         <a
           href="/today"
@@ -2886,6 +3158,24 @@ export function SessionRunner(props: SessionRunnerProps) {
                 {warmupPlanOpen ? "Hide full plan" : "Review full plan"}
               </Button>
             </div>
+            {guidance.warmups.completed > 0 && (
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="order-2 mt-2 min-h-11 w-full justify-between"
+                aria-expanded={completedWarmupsOpen}
+                aria-controls="workout-warmup-plan"
+                onClick={() => setCompletedWarmupsOpen((open) => !open)}
+              >
+                <span>
+                  Completed warm-ups · {guidance.warmups.completed}
+                </span>
+                <span className="text-xs text-muted-foreground">
+                  {completedWarmupsOpen ? "Hide" : "Show"}
+                </span>
+              </Button>
+            )}
             <ul id="workout-warmup-plan" className="order-1 mt-2 space-y-2">
               {occurrences
                 .filter((occurrence) => occurrence.kind !== "working_set")
@@ -2938,6 +3228,10 @@ export function SessionRunner(props: SessionRunnerProps) {
                         !warmupPlanOpen &&
                           actionOccurrenceId(guidance.currentAction) !== occurrence.id &&
                           occurrenceMutation == null &&
+                          !(
+                            completedWarmupsOpen &&
+                            occurrence.outcome === "completed"
+                          ) &&
                           "hidden",
                       )}
                     >
@@ -3142,9 +3436,12 @@ export function SessionRunner(props: SessionRunnerProps) {
               (entry.status === "queued" || entry.status === "needs_attention"),
           );
           const equipmentSetupForcedOpen =
-            equipmentSetupIsCurrent ||
-            equipmentSetupNeedsAttention ||
-            !equipmentSetupMatches;
+            !exercise.sets.some(
+              (set) => set.saveState == null || set.saveState === "saved",
+            ) &&
+            (equipmentSetupIsCurrent ||
+              equipmentSetupNeedsAttention ||
+              !equipmentSetupMatches);
           const equipmentPanel = equipmentSetupMatches ? (
             <EquipmentSetupPanel
               sessionExerciseId={exercise.id}
@@ -3175,6 +3472,30 @@ export function SessionRunner(props: SessionRunnerProps) {
           {currentOccurrence?.sessionExerciseId === exercise.id &&
           guidance.activeGroup ? (
             <WorkoutGroupContext guidance={guidance} />
+          ) : null}
+          {equipmentPanel ? (
+            <details
+              data-testid="exercise-equipment-setup"
+              className={equipmentSetupForcedOpen
+                ? undefined
+                : "rounded-xl border bg-muted/20"}
+              open={equipmentSetupForcedOpen ? true : undefined}
+            >
+              <summary
+                hidden={equipmentSetupForcedOpen}
+                className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 rounded-xl px-3 py-2 text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+              >
+                <span className="min-w-0 break-words">
+                  Equipment setup for {exercise.name}
+                </span>
+                <span className="shrink-0 text-xs text-muted-foreground">
+                  Show
+                </span>
+              </summary>
+              <div className={equipmentSetupForcedOpen ? undefined : "border-t p-2"}>
+                {equipmentPanel}
+              </div>
+            </details>
           ) : null}
           <ExerciseCard
             key={`${exercise.id}:${exercise.exerciseId}:${exercise.metricType}:${exercise.loadType}:${exercise.loadSemantics}`}
@@ -3233,11 +3554,6 @@ export function SessionRunner(props: SessionRunnerProps) {
             )}
             occurrenceRuntimeSaveStates={occurrenceRuntimeSaveStates}
             acknowledgedOccurrenceIds={acknowledgedOccurrenceIds}
-            acknowledgementReceipt={
-              acknowledgementPresentationExerciseId === exercise.id
-                ? latestSetAcknowledgement
-                : null
-            }
             isCurrentExercise={
               currentOccurrence?.sessionExerciseId === exercise.id
             }
@@ -3510,29 +3826,6 @@ export function SessionRunner(props: SessionRunnerProps) {
               onContinue={continueFromPreparation}
             />
           ) : null}
-          {equipmentPanel ? (
-            <details
-              className={equipmentSetupForcedOpen
-                ? undefined
-                : "rounded-xl border bg-muted/20"}
-              open={equipmentSetupForcedOpen ? true : undefined}
-            >
-              <summary
-                hidden={equipmentSetupForcedOpen}
-                className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 rounded-xl px-3 py-2 text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-              >
-                <span className="min-w-0 break-words">
-                  Equipment setup for {exercise.name}
-                </span>
-                <span className="shrink-0 text-xs text-muted-foreground">
-                  Show
-                </span>
-              </summary>
-              <div className={equipmentSetupForcedOpen ? undefined : "border-t p-2"}>
-                {equipmentPanel}
-              </div>
-            </details>
-          ) : null}
           </div>
           );
         })}
@@ -3654,6 +3947,8 @@ export function SessionRunner(props: SessionRunnerProps) {
                       ? "Repbook could not confirm the exercise skip. Review that exercise, retry the skip, or return to the current set before finishing."
                       : skipRecoveryExerciseId != null
                         ? "Resolve the skipped exercise by replacing it or continuing without a replacement before finishing."
+                    : appendRecoveryMarker != null
+                      ? "Repbook is confirming an extra set. Its exact identity is retained on this device; reload to retry safely before finishing."
                     : failedSetEntries.length > 0
                     ? `${failedSetEntries.length} ${failedSetEntries.length === 1 ? "set failed" : "sets failed"} to save. Your recorded ${failedSetEntries.length === 1 ? "attempt is" : "attempts are"} still on this device.`
                     : sessionOccurrenceEntries.length > 0
@@ -3813,12 +4108,20 @@ export function SessionRunner(props: SessionRunnerProps) {
                 )}
               </div>
             )}
-            {unscopableDeviceCopiesPending && (
+            {unreadableRecordedCopiesPending && (
+              <p className="rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-sm text-amber-950 dark:text-amber-100">
+                Repbook found recorded-work device data whose workout ownership
+                cannot be verified. Finish is blocked so it cannot silently
+                discard a set or warm-up change. Close Finish, then use the
+                device-copy attention control to review or explicitly discard
+                it.
+              </p>
+            )}
+            {foreignDeviceCopiesPending && (
               <p className="rounded-md border border-sky-500/40 bg-sky-500/10 p-3 text-sm text-sky-950 dark:text-sky-100">
-                Repbook also found a separate or unreadable device copy that
-                may belong to another workout or account. It does not block
-                Finish and will not be deleted here. Review it separately under
-                the device-copy tray.
+                Repbook also found an identified device copy for another
+                workout or account. It does not block Finish and will not be
+                deleted here. Review it separately under the device-copy tray.
               </p>
             )}
             {equipmentGuidancePending && (
@@ -3946,6 +4249,7 @@ export function SessionRunner(props: SessionRunnerProps) {
           exercise={currentActionExercise}
           timer={timer}
           restRemainingSec={restRemainingSec}
+          restAlertPreference={restAlertPreference}
           onShowCurrent={() => {
             revealCurrentWorkoutAction();
           }}

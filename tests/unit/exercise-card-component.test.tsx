@@ -28,7 +28,6 @@ import {
 import type {
   SessionExerciseData,
   SessionOccurrenceData,
-  SetAcknowledgementReceipt,
 } from "@/components/session/types";
 import type { OccurrenceMutationOutboxEntry } from "@/lib/occurrence-mutation-outbox";
 
@@ -95,10 +94,16 @@ describe("ExerciseCard", () => {
       "src/components/session/exercise-card.tsx",
       "utf8",
     );
-    expect(source).toContain("const result = await confirmExerciseUnskipped({");
+    expect(source).toContain(
+      "withDocumentActionDeadline(\n                      confirmExerciseUnskipped({",
+    );
     expect(source).toContain("expectedHistoryRevision: historyRevision");
     expect(source).toContain("onHistoryRevisionChange(result.historyRevision)");
     expect(source).toContain("if (reportDeploymentMismatch(error)) return");
+    expect(source).toContain("reportDocumentActionTimeout()");
+    expect(source).toContain(
+      "withDocumentActionDeadline(\n                      skipExercise({",
+    );
     expect(source).not.toContain("await unskipExercise(");
     expect(source).toContain("Checking saved skip…");
     expect(source).toContain("!skipRecoverySettlementPending");
@@ -200,12 +205,12 @@ describe("ExerciseCard", () => {
     expect(html).toContain("Add note");
     expect(html).toContain("Pain / no issue");
     expect(html).toContain("Skip exercise");
-    expect(html).toContain("Exercise progress &amp; extras");
+    expect(html).toContain("Completed sets");
     expect(html).toContain("More for this exercise");
     expect(html.indexOf(`id=\"logged-set-${exercise.id}-1\"`)).toBeLessThan(
-      html.indexOf("Exercise progress &amp; extras"),
+      html.indexOf("Completed sets"),
     );
-    expect(html.indexOf("Exercise progress &amp; extras")).toBeLessThan(
+    expect(html.indexOf("Completed sets")).toBeLessThan(
       html.indexOf("Add extra set"),
     );
     expect(html.indexOf("More for this exercise")).toBeLessThan(
@@ -308,7 +313,7 @@ describe("ExerciseCard", () => {
     expect(html).toContain("Previous comparable set unavailable");
     expect(html).toContain('aria-label="Assistance"');
     expect(html).not.toContain("80 lb ×");
-    expect(html.indexOf("Exercise progress &amp; extras")).toBeLessThan(
+    expect(html.indexOf("Completed sets")).toBeLessThan(
       html.indexOf(`id=\"logged-set-${assistedExercise.id}-1\"`),
     );
   });
@@ -471,7 +476,7 @@ describe("ExerciseCard", () => {
     expect(html).not.toContain('aria-label="Pain severity 1"');
     expect(html).toContain("Set exceptions");
     expect(html).toContain("Set options");
-    expect(html).toContain("Exercise progress &amp; extras");
+    expect(html).toContain("Completed sets");
     expect(html).toContain("More for this exercise");
     expect(html.indexOf("Current action")).toBeLessThan(
       html.indexOf("Previous ·"),
@@ -519,7 +524,6 @@ describe("ExerciseCard", () => {
       ],
     };
     const renderCard = (
-      acknowledgementReceipt: SetAcknowledgementReceipt | null = null,
       nextActionLabel: string | null = "Workout complete",
     ) => renderToStaticMarkup(
       <ExerciseCard
@@ -575,7 +579,6 @@ describe("ExerciseCard", () => {
           resolvedAt: null,
           completedSetId: null,
         }}
-        acknowledgementReceipt={acknowledgementReceipt}
         isCurrentExercise
         nextActionLabel={nextActionLabel}
         onPatch={() => undefined}
@@ -592,47 +595,16 @@ describe("ExerciseCard", () => {
     const html = renderCard();
 
     expect(html).toContain("Set 3 of 3");
-    expect(html).toContain(
-      `id="active-set-save-receipt-${afterSkippedSecond.id}-1"`,
-    );
-    expect(html).toContain("Saved · Set 1");
+    expect(html).not.toContain("active-set-save-receipt");
+    expect(html).toContain("Completed sets");
+    expect(html).toContain("1 completed");
     expect(html).toContain("Acknowledged by Repbook");
-    expect(html).toContain("Wrong value? Correct the saved set");
     expect(html).toContain("Correct set");
     expect(html).toContain(
       `id="set-entry-${afterSkippedSecond.id}-00000000-0000-4000-8000-000000000004"`,
     );
-    expect(html).toContain("Set 2");
+    expect(html).not.toContain("Upcoming");
 
-    const sourceExerciseId = "00000000-0000-4000-8000-000000000030";
-    const crossExerciseHtml = renderCard(
-      {
-        sessionExerciseId: sourceExerciseId,
-        exerciseName: "Barbell Bench Press",
-        metricType: "weight_reps",
-        set: {
-          id: "acknowledged-third",
-          clientKey: "acknowledged-third-key",
-          setNo: 3,
-          weight: 135,
-          weightUnit: "lb",
-          reps: 8,
-          metricType: "weight_reps",
-          rpe: null,
-          note: null,
-          saveState: "saved",
-        },
-      },
-      null,
-    );
-    expect(crossExerciseHtml).toContain(
-      `id="active-set-save-receipt-${sourceExerciseId}-3"`,
-    );
-    expect(crossExerciseHtml).toContain(
-      "Saved · Barbell Bench Press · Set 3",
-    );
-    expect(crossExerciseHtml).toContain("135 lb × 8 reps");
-    expect(crossExerciseHtml).toContain("Acknowledged by Repbook");
   });
 
   it("names and links the exact earlier occurrence that blocks a retained attempt", () => {
@@ -784,30 +756,12 @@ describe("ExerciseCard", () => {
             kindOrdinal: 1,
           },
         ]}
-        acknowledgementReceipt={{
-          sessionExerciseId: failedAttempt.id,
-          exerciseName: failedAttempt.name,
-          metricType: "weight_reps",
-          set: {
-            id: "saved-blocker",
-            clientKey: "saved-blocker-key",
-            setNo: 1,
-            weight: 95,
-            weightUnit: "lb",
-            reps: 8,
-            metricType: "weight_reps",
-            rpe: null,
-            note: null,
-            saveState: "saved",
-          },
-        }}
         onRefreshWorkout={() => undefined}
       />,
     );
-    expect(acknowledgedBlocker).toContain(
-      `id="active-set-save-receipt-${failedAttempt.id}-1"`,
-    );
-    expect(acknowledgedBlocker).toContain("Saved · Set 1");
+    expect(acknowledgedBlocker).not.toContain("active-set-save-receipt");
+    expect(acknowledgedBlocker).toContain("Completed sets");
+    expect(acknowledgedBlocker).toContain("1 completed");
     expect(acknowledgedBlocker).toContain("Acknowledged by Repbook");
     expect(acknowledgedBlocker).toContain("Save failed");
 
@@ -996,7 +950,7 @@ describe("ExerciseCard", () => {
     expect(saved).toContain("skipped");
     expect(saved).toContain("Saved");
     expect(saved.indexOf("Set 1")).toBeLessThan(
-      saved.indexOf("Exercise progress &amp; extras"),
+      saved.indexOf("Completed sets"),
     );
   });
 

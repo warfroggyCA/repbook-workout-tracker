@@ -2124,12 +2124,13 @@ test("keeps the final set acknowledgement visible through background return", as
   await page.bringToFront();
   await expect(page).toHaveURL(/#workout-rest-status$/);
   await expect(workoutStatus).toContainText("Resting");
-  const acknowledgement = nextSet.getByTestId("active-set-save-receipt");
-  await expect(page.getByTestId("active-set-save-receipt")).toHaveCount(1);
-  await expect(acknowledgement).toContainText(
-    `Saved · ${firstName} · Set 3`,
-  );
+  const acknowledgement = page.getByTestId("completed-sets")
+    .filter({ hasText: "3 completed" })
+    .first();
+  await expect(page.getByTestId("active-set-save-receipt")).toHaveCount(0);
+  await expect(acknowledgement).toContainText("Set 3");
   await expect(acknowledgement).toContainText("Acknowledged by Repbook");
+  await acknowledgement.locator(":scope > summary").click();
   await expect(
     acknowledgement.getByRole("button", { name: "Correct set" }),
   ).toBeVisible();
@@ -2795,7 +2796,7 @@ test("retries a set automatically after one server 500 and still finishes", asyn
   await nextSet.locator('input[inputmode="numeric"]').first().fill("8");
   await nextSet.getByRole("button", { name: "Log set", exact: true }).click();
 
-  await expect(nextSet.getByTestId("active-set-save-receipt"))
+  await expect(nextSet.getByTestId("completed-sets"))
     .toContainText("Acknowledged by Repbook");
   expect(actionRequests).toBeGreaterThanOrEqual(2);
   await page.getByRole("button", { name: /^(?:Review workout finish|Finish workout)$/ }).click();

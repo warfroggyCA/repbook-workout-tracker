@@ -17,6 +17,8 @@ export type ExerciseResolution = {
     loadSemantics: string;
     equipment: string[];
   } | null;
+  /** A materially different family variant must be selected by stable ID. */
+  requiresOwnerChoice?: boolean;
   candidates: Array<{
     id: string;
     name: string;
@@ -196,15 +198,65 @@ function compactCandidate(exercise: VisibleExercise) {
   };
 }
 
+function executionSignature(exercise: VisibleExercise) {
+  return [
+    exercise.loadType,
+    exercise.metricType,
+    exercise.loadSemantics,
+    exercise.equipmentRequirements
+      .map((item) => item.equipmentType)
+      .sort()
+      .join("+"),
+  ].join("|");
+}
+
+/**
+ * A catalog's unqualified family label is not enough evidence to choose one
+ * materially different execution variant. Qualified canonical names and
+ * explicit equipment hints remain deterministic.
+ */
+function requiresMaterialFamilyVariantChoice(
+  visible: VisibleExercise[],
+  rawName: string,
+) {
+  const hints = extractExerciseIdentity(rawName);
+  if (hints.equipment || hints.assistance) return false;
+  const literalName = normalizeLiteralExerciseText(rawName);
+  const familyNames = new Set(
+    visible.flatMap((exercise) =>
+      exercise.family &&
+        normalizeLiteralExerciseText(exercise.family.name) === literalName &&
+        normalizeLiteralExerciseText(exercise.name) === literalName
+        ? [normalizeLiteralExerciseText(exercise.family.name)]
+        : []
+    ),
+  );
+  if (familyNames.size !== 1) return false;
+  const [familyName] = familyNames;
+  const familyVariants = visible.filter(
+    (exercise) =>
+      exercise.family != null &&
+      normalizeLiteralExerciseText(exercise.family.name) === familyName,
+  );
+  return new Set(familyVariants.map(executionSignature)).size > 1;
+}
+
 function findDeterministicMatch(visible: VisibleExercise[], rawName: string) {
   const hints = extractExerciseIdentity(rawName);
   const literalName = normalizeLiteralExerciseText(rawName);
   const compatible = visible.filter((exercise) => compatibleWithHints(exercise, hints));
+  const requiresOwnerChoice = requiresMaterialFamilyVariantChoice(
+    visible,
+    rawName,
+  );
 
   const exactName = compatible.filter(
     (exercise) => normalizeLiteralExerciseText(exercise.name) === literalName
   );
-  if (exactName.length === 1) return { exercise: exactName[0], matchType: "exact" as const };
+  if (exactName.length === 1 && !requiresOwnerChoice) {
+    return { exercise: exactName[0], matchType: "exact" as const };
+  }
+  if (requiresOwnerChoice) return null;
 
   const semanticName = compatible.filter(
     (exercise) => removeIdentityWords(exercise.name) === hints.semanticName
@@ -288,6 +340,10 @@ export function resolveExerciseNameFromLibrary(
   visible: VisibleExercise[],
   rawName: string
 ): ExerciseResolution {
+  const requiresOwnerChoice = requiresMaterialFamilyVariantChoice(
+    visible,
+    rawName,
+  );
   const deterministic = findDeterministicMatch(visible, rawName);
   if (deterministic) {
     return {
@@ -296,6 +352,7 @@ export function resolveExerciseNameFromLibrary(
       exerciseName: deterministic.exercise.name,
       matchType: deterministic.matchType,
       matchedExercise: compactCandidate(deterministic.exercise),
+      requiresOwnerChoice: false,
       candidates: [],
     };
   }
@@ -322,6 +379,7 @@ export function resolveExerciseNameFromLibrary(
     exerciseName: null,
     matchType: "none",
     matchedExercise: null,
+    requiresOwnerChoice,
     candidates,
   };
 }

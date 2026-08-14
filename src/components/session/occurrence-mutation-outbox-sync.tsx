@@ -29,14 +29,20 @@ import {
   type OccurrenceMutationOutboxEntry,
 } from "@/lib/occurrence-mutation-outbox";
 import {
+  DOCUMENT_ACTION_DEADLINE_MS,
   deploymentRecoveryRequired,
+  isDocumentActionTimeout,
+  reportDocumentActionTimeout,
   reportDeploymentMismatch,
+  withDocumentActionDeadline,
 } from "@/lib/deployment-recovery";
 
 const activeOwners = new Set<string>();
 const pendingOwnerWakes = new Set<string>();
 const TRANSIENT_FAILURE =
   "We couldn't save this yet. We'll keep trying when you're back online.";
+const TIMED_OUT_FAILURE =
+  "Repbook did not confirm this workout change in time. It is safe on this device. Reload and retry safely.";
 const UPDATED_APP_FAILURE =
   "Repbook was updated. This workout change is safe on this device and will retry after you reload.";
 
@@ -50,6 +56,7 @@ function operationLabel(operation: OccurrenceMutationOutboxEntry["operation"]) {
 export async function syncNextOccurrenceMutation(
   ownerId: string,
   drainDepth = 0,
+  actionDeadlineMs = DOCUMENT_ACTION_DEADLINE_MS,
 ) {
   if (deploymentRecoveryRequired()) return;
   if (activeOwners.has(ownerId)) {
@@ -74,14 +81,17 @@ export async function syncNextOccurrenceMutation(
         retrying: entry.attemptCount > 0 || entry.lastAttemptAtISO != null,
       });
       try {
-        const result = await mutateOccurrence({
-          occurrenceId: entry.occurrenceId,
-          clientKey: entry.clientKey,
-          expectedRevision: entry.expectedRevision,
-          operation: entry.operation,
-          reason: entry.reason,
-          note: entry.note,
-        });
+        const result = await withDocumentActionDeadline(
+          mutateOccurrence({
+            occurrenceId: entry.occurrenceId,
+            clientKey: entry.clientKey,
+            expectedRevision: entry.expectedRevision,
+            operation: entry.operation,
+            reason: entry.reason,
+            note: entry.note,
+          }),
+          actionDeadlineMs,
+        );
         if (result.outcome === "saved" || result.outcome === "replayed") {
           const removed = removeOccurrenceMutationUnlocked(entry.clientKey);
           if (!removed.ok) {
@@ -112,10 +122,16 @@ export async function syncNextOccurrenceMutation(
           sessionId: entry.sessionId,
         });
       } catch (error) {
-        const deploymentMismatch = reportDeploymentMismatch(error);
+        const timedOut = isDocumentActionTimeout(error);
+        if (timedOut) reportDocumentActionTimeout();
+        const deploymentMismatch = !timedOut && reportDeploymentMismatch(error);
         markOccurrenceMutationTransientFailureUnlocked(
           entry.clientKey,
-          deploymentMismatch ? UPDATED_APP_FAILURE : TRANSIENT_FAILURE,
+          timedOut
+            ? TIMED_OUT_FAILURE
+            : deploymentMismatch
+              ? UPDATED_APP_FAILURE
+              : TRANSIENT_FAILURE,
         );
         publishOccurrenceMutationOutboxEvent({
           type: "failed",
@@ -129,7 +145,11 @@ export async function syncNextOccurrenceMutation(
     activeOwners.delete(ownerId);
   }
   if (queuedWake && drainDepth < 100) {
-    await syncNextOccurrenceMutation(ownerId, drainDepth + 1);
+    await syncNextOccurrenceMutation(
+      ownerId,
+      drainDepth + 1,
+      actionDeadlineMs,
+    );
   }
 }
 
