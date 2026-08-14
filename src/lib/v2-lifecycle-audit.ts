@@ -106,7 +106,7 @@ function serverDurableLifecycle(input: {
       ),
     snapshot: owned(
       "src/services/snapshot-capture.ts",
-      "Canonical snapshot capture is derived from recovery manifest 13.",
+      "Canonical snapshot capture is derived from recovery manifest 15.",
     ),
     restore: owned(
       "src/services/snapshot-restore.ts",
@@ -135,7 +135,7 @@ function serverDurableLifecycle(input: {
       ),
     recovery: owned(
       "src/services/recovery-manifest.ts",
-      "Recovery manifest 13 owns table inclusion, ownership, retention, ordering, and integrity checks.",
+      "Recovery manifest 15 owns table inclusion, ownership, retention, ordering, and integrity checks.",
     ),
   };
 }
@@ -205,6 +205,44 @@ export const REPBOOK_V2_FIELD_FAMILIES = [
           "superseded_by_id",
         ],
       },
+      {
+        table: "program_schedules",
+        fields: ["user_id", "program_id", "current_version_id"],
+      },
+      {
+        table: "program_schedule_versions",
+        fields: [
+          "user_id",
+          "program_id",
+          "schedule_id",
+          "version_no",
+          "parent_version_id",
+          "source_program_version_id",
+          "schema_version",
+          "document",
+          "content_hash",
+        ],
+      },
+      {
+        table: "scheduled_program_events",
+        fields: [
+          "user_id",
+          "program_id",
+          "schedule_id",
+          "schedule_version_id",
+          "source_program_version_id",
+          "source_phase_id",
+          "source_event_id",
+          "kind",
+          "schedule_kind",
+          "routine_lineage_id",
+          "intent_snapshot",
+          "current_local_date",
+          "timezone",
+          "status",
+          "revision",
+        ],
+      },
     ],
     lifecycle: serverDurableLifecycle({
       creation: owned(
@@ -244,6 +282,7 @@ export const REPBOOK_V2_FIELD_FAMILIES = [
           "source_program_id",
           "source_program_version_id",
           "source_day_lineage_id",
+          "program_schedule_snapshot",
           "status",
           "timezone",
           "local_date",

@@ -49,6 +49,13 @@ export type LifecycleCheckpoint = (boundary: string) => void | Promise<void>;
 
 const noCheckpoint: LifecycleCheckpoint = () => undefined;
 
+export type ScheduledWorkoutStartIdentity = {
+  scheduledProgramEventId: string;
+  expectedEventRevision: number;
+  programScheduleVersionId: string;
+  programScheduleVersionHash: string;
+};
+
 function deterministicRfcUuidSql(seed: SQL) {
   const digest = sql`md5(${seed})`;
   return sql`(
@@ -67,6 +74,7 @@ export type SessionLifecycleDependencies = {
   now?: () => Date;
   timezone?: string;
   startRequestKey?: string;
+  scheduledStart?: ScheduledWorkoutStartIdentity;
 };
 
 export type WorkoutStartResult =
@@ -96,13 +104,30 @@ export function buildWorkoutStartRequestHash(input: {
   templateId: string;
   timezone: string;
   timeBudgetMin: number | null;
+  scheduledStart?: ScheduledWorkoutStartIdentity;
 }) {
+  const payload = input.scheduledStart == null
+    ? {
+        templateId: input.templateId,
+        timezone: input.timezone,
+        timeBudgetMin: input.timeBudgetMin,
+      }
+    : {
+        templateId: input.templateId,
+        timezone: input.timezone,
+        timeBudgetMin: input.timeBudgetMin,
+        scheduledStart: {
+          scheduledProgramEventId:
+            input.scheduledStart.scheduledProgramEventId,
+          expectedEventRevision: input.scheduledStart.expectedEventRevision,
+          programScheduleVersionId:
+            input.scheduledStart.programScheduleVersionId,
+          programScheduleVersionHash:
+            input.scheduledStart.programScheduleVersionHash,
+        },
+      };
   return createHash("sha256")
-    .update(JSON.stringify({
-      templateId: input.templateId,
-      timezone: input.timezone,
-      timeBudgetMin: input.timeBudgetMin,
-    }))
+    .update(JSON.stringify(payload))
     .digest("hex");
 }
 
@@ -176,7 +201,8 @@ export async function cleanupIncompleteWorkoutCreation(
       -- The protected-delete trigger recognizes this transaction-local value.
       SELECT set_config('workout_tracker.authorized_delete', 'permanent', true)
     ), eligible AS MATERIALIZED (
-      SELECT ws.id
+      SELECT ws.id, ws.source_program_id, ws.source_day_lineage_id,
+             ws.program_schedule_snapshot
       FROM workout_sessions ws
       CROSS JOIN authorized
       WHERE ws.id = ${sessionId}::uuid
@@ -188,15 +214,61 @@ export async function cleanupIncompleteWorkoutCreation(
           JOIN completed_sets cs ON cs.session_exercise_id = se.id
           WHERE se.session_id = ws.id
         )
+    ), reopened_scheduled_event AS (
+      UPDATE scheduled_program_events event
+      SET status = 'scheduled',
+          revision = event.revision + 1,
+          resolved_at = NULL,
+          updated_at = statement_timestamp()
+      FROM eligible session
+      JOIN program_schedule_versions schedule_version
+        ON schedule_version.id =
+          (session.program_schedule_snapshot->>'programScheduleVersionId')::uuid
+       AND schedule_version.content_hash =
+          session.program_schedule_snapshot->>'programScheduleVersionHash'
+      WHERE session.program_schedule_snapshot IS NOT NULL
+        AND event.id =
+          (session.program_schedule_snapshot->>'scheduledProgramEventId')::uuid
+        AND event.user_id = ${userId}::uuid
+        AND event.program_id = session.source_program_id
+        AND event.schedule_id =
+          (session.program_schedule_snapshot->>'programScheduleId')::uuid
+        AND event.schedule_version_id = schedule_version.id
+        AND event.source_program_version_id =
+          (session.program_schedule_snapshot->>'scheduleSourceProgramVersionId')::uuid
+        AND event.source_phase_id =
+          (session.program_schedule_snapshot->>'sourcePhaseId')::uuid
+        AND event.source_event_id =
+          (session.program_schedule_snapshot->>'sourceEventId')::uuid
+        AND event.routine_lineage_id = session.source_day_lineage_id
+        AND event.routine_lineage_id =
+          (session.program_schedule_snapshot->>'routineLineageId')::uuid
+        AND event.kind = 'resistance'
+        AND event.schedule_kind =
+          session.program_schedule_snapshot->>'scheduleKind'
+        AND event.status = 'started'
+        AND event.revision =
+          (session.program_schedule_snapshot->>'eventRevision')::integer + 1
+      RETURNING event.id
+    ), cleanup_gate AS MATERIALIZED (
+      SELECT eligible.*
+      FROM eligible
+      WHERE (
+        eligible.program_schedule_snapshot IS NULL
+        AND (SELECT count(*) FROM reopened_scheduled_event) = 0
+      ) OR (
+        eligible.program_schedule_snapshot IS NOT NULL
+        AND (SELECT count(*) FROM reopened_scheduled_event) = 1
+      )
     ), deleted_exercises AS (
       DELETE FROM session_exercises se
-      USING eligible
-      WHERE se.session_id = eligible.id
+      USING cleanup_gate
+      WHERE se.session_id = cleanup_gate.id
       RETURNING se.id
     ), deleted_session AS (
       DELETE FROM workout_sessions ws
-      USING eligible
-      WHERE ws.id = eligible.id
+      USING cleanup_gate
+      WHERE ws.id = cleanup_gate.id
         AND (SELECT count(*) FROM deleted_exercises) >= 0
       RETURNING ws.id
     )
@@ -1234,6 +1306,7 @@ export async function startWorkoutSession(
 ): Promise<WorkoutStartResult> {
   const validatedTimeBudget = sessionTimeBudgetSchema.parse(timeBudgetMin);
   const startRequestKey = dependencies.startRequestKey?.toLowerCase() ?? null;
+  const scheduledStart = dependencies.scheduledStart ?? null;
   if (
     startRequestKey != null &&
     (!START_REQUEST_UUID_PATTERN.test(startRequestKey) ||
@@ -1242,12 +1315,31 @@ export async function startWorkoutSession(
   ) {
     throw new Error("A valid Start request identity and timezone are required.");
   }
+  if (
+    scheduledStart != null &&
+    (
+      !START_REQUEST_UUID_PATTERN.test(
+        scheduledStart.scheduledProgramEventId,
+      ) ||
+      !Number.isInteger(scheduledStart.expectedEventRevision) ||
+      scheduledStart.expectedEventRevision < 0 ||
+      !START_REQUEST_UUID_PATTERN.test(
+        scheduledStart.programScheduleVersionId,
+      ) ||
+      !/^[0-9a-f]{64}$/.test(
+        scheduledStart.programScheduleVersionHash,
+      )
+    )
+  ) {
+    throw new Error("A valid scheduled Start identity is required.");
+  }
   const startRequestHash = startRequestKey == null
     ? null
     : buildWorkoutStartRequestHash({
         templateId,
         timezone: dependencies.timezone!,
         timeBudgetMin: validatedTimeBudget ?? null,
+        ...(scheduledStart == null ? {} : { scheduledStart }),
       });
   const checkpoint = dependencies.checkpoint ?? noCheckpoint;
   const startedAt = (dependencies.now ?? (() => new Date()))();
@@ -1272,11 +1364,77 @@ export async function startWorkoutSession(
         AND NOT EXISTS (SELECT 1 FROM existing_request)
       ORDER BY ws.started_at, ws.id
       LIMIT 1
+    ), locked_program_schedule AS MATERIALIZED (
+      SELECT schedule.*
+      FROM program_schedules schedule
+      JOIN scheduled_program_events event
+        ON event.schedule_id = schedule.id
+       AND event.user_id = schedule.user_id
+       AND event.program_id = schedule.program_id
+       AND event.schedule_version_id = schedule.current_version_id
+      WHERE ${scheduledStart?.scheduledProgramEventId ?? null}::uuid IS NOT NULL
+        AND event.id =
+          ${scheduledStart?.scheduledProgramEventId ?? null}::uuid
+        AND event.user_id = ${userId}::uuid
+        AND event.schedule_version_id =
+          ${scheduledStart?.programScheduleVersionId ?? null}::uuid
+        AND NOT EXISTS (SELECT 1 FROM existing_request)
+        AND NOT EXISTS (SELECT 1 FROM existing_active)
+      FOR UPDATE OF schedule
+    ), owned_scheduled_event AS MATERIALIZED (
+      SELECT event.*, schedule_version.content_hash AS schedule_version_hash
+      FROM scheduled_program_events event
+      JOIN locked_program_schedule schedule
+        ON schedule.id = event.schedule_id
+       AND schedule.user_id = event.user_id
+       AND schedule.program_id = event.program_id
+       AND schedule.current_version_id = event.schedule_version_id
+      JOIN program_schedule_versions schedule_version
+        ON schedule_version.id = event.schedule_version_id
+       AND schedule_version.schedule_id = event.schedule_id
+       AND schedule_version.user_id = event.user_id
+       AND schedule_version.program_id = event.program_id
+       AND schedule_version.source_program_version_id =
+         event.source_program_version_id
+      WHERE ${scheduledStart?.scheduledProgramEventId ?? null}::uuid IS NOT NULL
+        AND event.id =
+          ${scheduledStart?.scheduledProgramEventId ?? null}::uuid
+        AND event.user_id = ${userId}::uuid
+        AND event.schedule_version_id =
+          ${scheduledStart?.programScheduleVersionId ?? null}::uuid
+        AND schedule_version.content_hash =
+          ${scheduledStart?.programScheduleVersionHash ?? null}::text
+        AND event.revision =
+          ${scheduledStart?.expectedEventRevision ?? null}::integer
+        AND event.status = 'scheduled'
+        AND event.kind = 'resistance'
+        AND event.routine_lineage_id IS NOT NULL
+        AND NOT EXISTS (SELECT 1 FROM existing_request)
+        AND NOT EXISTS (SELECT 1 FROM existing_active)
+      FOR UPDATE OF event
     ), owned_template AS MATERIALIZED (
       SELECT wt.id, wt.name, wt.warmup_notes, wt.warmup_items,
              program.id AS source_program_id,
              version.id AS source_program_version_id,
              wt.lineage_id AS source_day_lineage_id,
+             scheduled.id AS scheduled_program_event_id,
+             scheduled.schedule_id AS program_schedule_id,
+             scheduled.schedule_version_id AS program_schedule_version_id,
+             scheduled.schedule_version_hash,
+             scheduled.source_program_version_id AS
+               schedule_source_program_version_id,
+             scheduled.source_phase_id,
+             scheduled.source_phase_name,
+             scheduled.schedule_kind,
+             scheduled.kind AS scheduled_event_kind,
+             scheduled.source_event_id,
+             scheduled.revision AS scheduled_event_revision,
+             scheduled.original_local_date,
+             scheduled.current_local_date,
+             scheduled.timezone AS scheduled_timezone,
+             scheduled.program_week,
+             scheduled.cycle_position,
+             scheduled.routine_lineage_id,
              ${actionableProgramDayWarmupItemsSql({
                lineageId: sql`wt.lineage_id`,
                fallbackItemKey: sql`wt.id`,
@@ -1288,17 +1446,31 @@ export async function startWorkoutSession(
       JOIN program_versions version ON version.id = wt.program_version_id
       JOIN programs program ON program.id = version.program_id
       JOIN user_profiles profile ON profile.user_id = program.user_id
-      WHERE wt.id = ${templateId}::uuid
-        AND program.user_id = ${userId}::uuid
+      LEFT JOIN owned_scheduled_event scheduled
+        ON scheduled.program_id = program.id
+       AND scheduled.user_id = program.user_id
+       AND scheduled.routine_lineage_id = wt.lineage_id
+      WHERE program.user_id = ${userId}::uuid
         AND program.status = 'active'
         AND program.archived_at IS NULL
         AND program.current_version_id = version.id
+        AND (
+          (
+            ${scheduledStart?.scheduledProgramEventId ?? null}::uuid IS NULL
+            AND wt.id = ${templateId}::uuid
+          )
+          OR (
+            ${scheduledStart?.scheduledProgramEventId ?? null}::uuid IS NOT NULL
+            AND scheduled.id IS NOT NULL
+          )
+        )
     ), upserted_session AS (
       INSERT INTO workout_sessions (
         id, user_id, template_id, template_name, time_budget_min,
         start_request_key, start_request_hash,
         started_at, timezone, local_date, day_warmup_notes, day_warmup_items,
-        source_program_id, source_program_version_id, source_day_lineage_id
+        source_program_id, source_program_version_id, source_day_lineage_id,
+        program_schedule_snapshot
       )
       SELECT
         ${sessionId}::uuid,
@@ -1318,7 +1490,32 @@ export async function startWorkoutSession(
         template.effective_warmup_items,
         template.source_program_id,
         template.source_program_version_id,
-        template.source_day_lineage_id
+        template.source_day_lineage_id,
+        CASE WHEN template.scheduled_program_event_id IS NULL
+          THEN NULL::jsonb
+          ELSE jsonb_build_object(
+            'schemaVersion', 1,
+            'scheduledProgramEventId', template.scheduled_program_event_id,
+            'programScheduleId', template.program_schedule_id,
+            'programScheduleVersionId', template.program_schedule_version_id,
+            'programScheduleVersionHash', template.schedule_version_hash,
+            'scheduleSourceProgramVersionId',
+              template.schedule_source_program_version_id,
+            'resolvedProgramVersionId', template.source_program_version_id,
+            'sourcePhaseId', template.source_phase_id,
+            'sourcePhaseName', template.source_phase_name,
+            'scheduleKind', template.schedule_kind,
+            'eventKind', template.scheduled_event_kind,
+            'sourceEventId', template.source_event_id,
+            'eventRevision', template.scheduled_event_revision,
+            'originalLocalDate', template.original_local_date,
+            'currentLocalDate', template.current_local_date,
+            'timezone', template.scheduled_timezone,
+            'nominalProgramWeek', template.program_week,
+            'cyclePosition', template.cycle_position,
+            'routineLineageId', template.routine_lineage_id
+          )
+        END
       FROM owned_template template
       WHERE NOT EXISTS (SELECT 1 FROM existing_request)
         AND NOT EXISTS (SELECT 1 FROM existing_active)
@@ -1330,12 +1527,40 @@ export async function startWorkoutSession(
       RETURNING id, id = ${sessionId}::uuid AS inserted,
                 'upsert'::text AS selected_by,
                 start_request_key, start_request_hash
+    ), claimed_scheduled_event AS (
+      UPDATE scheduled_program_events event
+      SET status = 'started',
+          revision = event.revision + 1,
+          updated_at = statement_timestamp()
+      FROM upserted_session inserted
+      JOIN owned_template template ON template.scheduled_program_event_id IS NOT NULL
+      WHERE event.id = template.scheduled_program_event_id
+        AND event.user_id = ${userId}::uuid
+        AND event.schedule_id = template.program_schedule_id
+        AND event.schedule_version_id = template.program_schedule_version_id
+        AND event.source_program_version_id =
+          template.schedule_source_program_version_id
+        AND event.source_event_id = template.source_event_id
+        AND event.routine_lineage_id = template.routine_lineage_id
+        AND event.status = 'scheduled'
+        AND event.revision = template.scheduled_event_revision
+      RETURNING event.id
+    ), start_integrity AS MATERIALIZED (
+      SELECT 1 / CASE
+        WHEN ${scheduledStart?.scheduledProgramEventId ?? null}::uuid IS NOT NULL
+          AND EXISTS (SELECT 1 FROM upserted_session)
+          AND (SELECT count(*) FROM claimed_scheduled_event) <> 1
+        THEN 0 ELSE 1 END AS valid
     ), selected_session AS MATERIALIZED (
       SELECT * FROM existing_request
       UNION ALL
       SELECT * FROM existing_active
       UNION ALL
-      SELECT * FROM upserted_session
+      SELECT inserted.*
+      FROM upserted_session inserted
+      CROSS JOIN start_integrity
+      WHERE ${scheduledStart?.scheduledProgramEventId ?? null}::uuid IS NULL
+         OR EXISTS (SELECT 1 FROM claimed_scheduled_event)
     ), inserted_groups AS (
       INSERT INTO session_exercise_groups (
         session_id, source_group_id, lineage_id, provenance, name, order_idx,
@@ -3210,6 +3435,34 @@ export async function completeWorkoutSession(
         AND resolved.status = 'in_progress'
         AND resolved.duration_rejection_code IS NULL
       RETURNING ws.*
+    ), completed_scheduled_event AS (
+      UPDATE scheduled_program_events event
+      SET status = 'completed',
+          revision = event.revision + 1,
+          resolved_at = ${finishedAt.toISOString()}::timestamptz,
+          updated_at = statement_timestamp()
+      FROM transitioned session
+      WHERE session.program_schedule_snapshot IS NOT NULL
+        AND event.id =
+          (session.program_schedule_snapshot->>'scheduledProgramEventId')::uuid
+        AND event.user_id = ${user.id}::uuid
+        AND event.program_id = session.source_program_id
+        AND event.schedule_id =
+          (session.program_schedule_snapshot->>'programScheduleId')::uuid
+        AND event.schedule_version_id =
+          (session.program_schedule_snapshot->>'programScheduleVersionId')::uuid
+        AND event.source_program_version_id =
+          (session.program_schedule_snapshot->>'scheduleSourceProgramVersionId')::uuid
+        AND event.source_event_id =
+          (session.program_schedule_snapshot->>'sourceEventId')::uuid
+        AND event.routine_lineage_id = session.source_day_lineage_id
+        AND event.routine_lineage_id =
+          (session.program_schedule_snapshot->>'routineLineageId')::uuid
+        AND event.kind = 'resistance'
+        AND event.status = 'started'
+        AND event.revision =
+          (session.program_schedule_snapshot->>'eventRevision')::integer + 1
+      RETURNING event.id
     ), abandoned_occurrences AS (
       UPDATE session_occurrences occurrence
       SET outcome = 'abandoned',
@@ -3371,6 +3624,34 @@ export async function abandonWorkoutSession(
       WHERE ws.id = owned.id
         AND owned.status = 'in_progress'
       RETURNING ws.*
+    ), abandoned_scheduled_event AS (
+      UPDATE scheduled_program_events event
+      SET status = 'abandoned',
+          revision = event.revision + 1,
+          resolved_at = ${finishedAt.toISOString()}::timestamptz,
+          updated_at = statement_timestamp()
+      FROM transitioned session
+      WHERE session.program_schedule_snapshot IS NOT NULL
+        AND event.id =
+          (session.program_schedule_snapshot->>'scheduledProgramEventId')::uuid
+        AND event.user_id = ${userId}::uuid
+        AND event.program_id = session.source_program_id
+        AND event.schedule_id =
+          (session.program_schedule_snapshot->>'programScheduleId')::uuid
+        AND event.schedule_version_id =
+          (session.program_schedule_snapshot->>'programScheduleVersionId')::uuid
+        AND event.source_program_version_id =
+          (session.program_schedule_snapshot->>'scheduleSourceProgramVersionId')::uuid
+        AND event.source_event_id =
+          (session.program_schedule_snapshot->>'sourceEventId')::uuid
+        AND event.routine_lineage_id = session.source_day_lineage_id
+        AND event.routine_lineage_id =
+          (session.program_schedule_snapshot->>'routineLineageId')::uuid
+        AND event.kind = 'resistance'
+        AND event.status = 'started'
+        AND event.revision =
+          (session.program_schedule_snapshot->>'eventRevision')::integer + 1
+      RETURNING event.id
     ), abandoned_occurrences AS (
       UPDATE session_occurrences occurrence
       SET outcome = 'abandoned',

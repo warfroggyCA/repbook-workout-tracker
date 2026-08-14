@@ -8,6 +8,7 @@ export * from "./equipment";
 export * from "./exercise";
 export * from "./execution-requirement";
 export * from "./program";
+export * from "./schedule";
 export * from "./session";
 export * from "./compiler";
 export * from "./activity";

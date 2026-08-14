@@ -250,7 +250,7 @@ describe("0069 bodyweight Bulgarian split-squat performed variant", () => {
     // the remaining additive migrations before exercising current services.
     await migrateTestDatabaseThrough(
       database,
-      "0080_session_equipment_requirements_snapshot",
+      "0081_adaptive_program_schedule",
     );
 
     const options = await getExerciseReplacementOptions(

@@ -10,7 +10,6 @@ import {
   recordVersions,
   sessionExercises,
   users,
-  workoutSessions,
 } from "@/db/schema";
 import {
   addWorkoutExercise,
@@ -273,7 +272,7 @@ describe("retained session equipment requirements persistence", () => {
       new Date("2026-08-10T13:00:00.000Z"),
       "retained-requirement-test",
     );
-    expect(captured.schemaVersion).toBe("32");
+    expect(captured.schemaVersion).toBe("33");
     expect(captured.tables.session_exercises).toContainEqual(
       expect.objectContaining({
         id: planned.id,
@@ -288,7 +287,7 @@ describe("retained session equipment requirements persistence", () => {
       delete row.equipment_requirements_snapshot;
     }
     const upgraded = upgradeSnapshotPayload(schema31);
-    expect(upgraded.schemaVersion).toBe("32");
+    expect(upgraded.schemaVersion).toBe("33");
     expect(upgraded.tables.session_exercises).toContainEqual(
       expect.objectContaining({
         id: planned.id,
@@ -1632,14 +1631,13 @@ describe("retained session equipment requirements persistence", () => {
       primaryMuscles: ["core"],
       loadType: "bodyweight",
     }).returning({ id: exercises.id });
-    const [{ id: sessionId }] = await database.db.insert(workoutSessions).values({
-      userId,
-      templateName: "Legacy active workout",
-      status: "in_progress",
-      startedAt: new Date("2026-08-10T12:00:00.000Z"),
-      timezone: "America/Toronto",
-      localDate: "2026-08-10",
-    }).returning({ id: workoutSessions.id });
+    const legacySession = await database.client.query<{ id: string }>(`
+      INSERT INTO workout_sessions (
+        user_id, template_name, status, started_at, timezone, local_date
+      ) VALUES ($1::uuid, $2, 'in_progress', $3::timestamptz, $4, $5::date)
+      RETURNING id
+    `, [userId, "Legacy active workout", "2026-08-10T12:00:00.000Z", "America/Toronto", "2026-08-10"]);
+    const sessionId = legacySession.rows[0]!.id;
     const inserted = await database.client.query<{ id: string }>(`
       INSERT INTO session_exercises (session_id, exercise_id)
       VALUES ($1::uuid, $2::uuid)

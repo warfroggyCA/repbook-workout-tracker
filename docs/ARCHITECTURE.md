@@ -115,6 +115,54 @@ snapshot, restore, export, Coach, alternatives, and audit participation. That
 schema/recovery tranche is deliberately separate; this contract never infers
 physical compatibility from display names or from “cable station” alone.
 
+## Program phases and scheduling
+
+Routine templates remain the simple, stable source of exercises, order, sets,
+repetitions, loads, rest, groups, warm-ups, and notes. The separate
+`program-schedule/1` document references routine lineage only. It adds finite,
+contiguous phases and either fixed seven-day or rolling rotations without
+copying routines or changing the routine parser.
+
+A schedule publication is an immutable version pinned to the active
+Program version. Its durable occurrences represent future intent and distinguish
+resistance, cardio, recovery, and rest. Rolling rotations continue across
+calendar-week boundaries. A missed event changes only through an explicit skip,
+manual reschedule, or rolling-tail shift; same-day resistance compression is
+rejected.
+
+A schedule version can be replaced only before any occurrence has been started,
+completed, skipped, abandoned, manually rescheduled, or shifted. Publication
+then fails atomically and leaves the existing schedule graph untouched. This
+deliberately small Phase 1 rule prevents schedule edits from recreating
+attendance or silently discarding an overdue event; a later cutover design must
+preserve those same facts before post-use replacement can be enabled.
+Publication locks the schedule root and every current occurrence before this
+check. Event adjustment, non-resistance completion, and scheduled workout Start
+use the same root-first order, so calendar intent and workout execution cannot
+both win a race.
+
+Workout Start locks the exact scheduled resistance occurrence, resolves its
+routine lineage against the then-current Program version, and creates the
+session in the same database statement. The session stores a self-contained
+schedule snapshot alongside the existing frozen exercise prescription. A later
+routine, Program, phase, schedule, or calendar change cannot reinterpret that
+workout. Completion and abandonment update the plan occurrence when it still
+matches, but the workout remains the authoritative performed record.
+
+Migration 0081 adds the schedule root, immutable schedule versions, operational
+events, and the nullable workout snapshot without backfilling existing Programs
+or sessions. Snapshot schema 33 and recovery manifest 15 add all three schedule
+tables to full backup and restore. History-only restore preserves the destination
+calendar and restores the self-contained session snapshot with workout history.
+Full restore recomputes every immutable schedule version's canonical occurrence
+window and rejects missing, extra, or falsified dates, phase/event identities,
+routine lineage, week, cycle, or timezone evidence before replacement.
+
+This architecture tranche intentionally adds no schedule editor, program-plan
+parser, RIR overrides, progression engine, monitoring inputs, or automatic Coach
+adaptation. Those later capabilities must compose with this boundary and remain
+explicitly reviewed; they must not expand the routine parser or mutate history.
+
 ## Persisted evidence
 
 Completed workouts, session exercises, sets, pain observations, local dates,
@@ -1052,7 +1100,7 @@ performed-fact obligation.
 ## R01 cross-cutting lifecycle audit
 
 `src/services/recovery-manifest.ts` remains the only durable-table inventory.
-Recovery manifest 13 classifies every migrated base table exactly once and owns
+Recovery manifest 15 classifies every migrated base table exactly once and owns
 account scope, archive/permanent-delete behavior, capture, restore ordering,
 retention, and integrity checks. R01 does not duplicate that table registry.
 
@@ -1067,7 +1115,7 @@ owners. Each non-applicable lifecycle requires an explicit bounded reason.
 
 Database introspection rejects an audited table or field absent from the exact
 migrated schema. Consistency tests reject a table absent from recovery manifest
-13, a missing lifecycle owner, an unexplained exclusion, a device queue absent
+15, a missing lifecycle owner, an unexplained exclusion, a device queue absent
 from the sign-out inventory, or an implemented product package still marked as
 future. The audit exposed and corrected that last case for the already-live A05
 selective import bridge and the omitted D01 implementation marker. R01 adds no

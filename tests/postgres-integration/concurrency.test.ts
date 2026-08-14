@@ -82,6 +82,10 @@ import {
   createSuggestedDayIntent,
   createSuggestedSlotIntent,
 } from "@/lib/program-document";
+import {
+  adjustScheduledProgramEvent,
+  publishProgramSchedule,
+} from "@/services/program-schedules";
 
 const url = process.env.TEST_DATABASE_URL;
 if (!url) throw new Error("TEST_DATABASE_URL is required for PostgreSQL integration tests.");
@@ -598,6 +602,96 @@ async function lockWorkoutSession(sessionId: string): Promise<HeldProgramLock> {
     [sessionId],
   );
   return { client, backendPid: Number(backendPid) };
+}
+
+async function lockProgramSchedule(scheduleId: string): Promise<HeldProgramLock> {
+  const client = await pool.connect();
+  await client.query("BEGIN");
+  const [{ backend_pid: backendPid }] = resultRows<{ backend_pid: number }>(
+    await client.query("SELECT pg_backend_pid()::int AS backend_pid"),
+  );
+  await client.query(
+    "SELECT id FROM program_schedules WHERE id = $1 FOR UPDATE",
+    [scheduleId],
+  );
+  return { client, backendPid: Number(backendPid) };
+}
+
+function scheduleRaceDocument(routineLineageId: string, phaseName: string) {
+  return {
+    schemaVersion: "program-schedule/1" as const,
+    startsOn: "2026-08-10",
+    targetEndsOn: "2026-08-16",
+    phases: [{
+      id: crypto.randomUUID(),
+      name: phaseName,
+      order: 1,
+      boundary: {
+        kind: "program_week_range" as const,
+        startWeek: 1,
+        endWeek: 1,
+      },
+      schedule: {
+        kind: "fixed_7_day" as const,
+        days: Array.from({ length: 7 }, (_, index) => ({
+          isoWeekday: index + 1,
+          event: index === 0
+            ? {
+                id: crypto.randomUUID(),
+                kind: "resistance" as const,
+                routineLineageId,
+              }
+            : {
+                id: crypto.randomUUID(),
+                kind: "rest" as const,
+              },
+        })),
+      },
+    }],
+  };
+}
+
+async function createScheduleRaceFixture(label: string) {
+  const fixture = await createProgramFixture(label);
+  const [template] = await db
+    .select({
+      id: workoutTemplates.id,
+      lineageId: workoutTemplates.lineageId,
+    })
+    .from(workoutTemplates)
+    .where(eq(workoutTemplates.id, fixture.templateId));
+  if (!template) throw new Error("Schedule race routine missing.");
+  const document = scheduleRaceDocument(template.lineageId, "Original");
+  const published = await publishProgramSchedule(db, fixture.userId, {
+    programId: fixture.programId,
+    sourceProgramVersionId: fixture.versionId,
+    expectedCurrentScheduleVersionId: null,
+    requestId: crypto.randomUUID(),
+    timezone: "America/Toronto",
+    document,
+  });
+  if (published.outcome !== "published") {
+    throw new Error("Schedule race publication failed.");
+  }
+  const [event] = await db
+    .select()
+    .from(schema.scheduledProgramEvents)
+    .where(and(
+      eq(
+        schema.scheduledProgramEvents.scheduleVersionId,
+        published.scheduleVersionId,
+      ),
+      eq(schema.scheduledProgramEvents.kind, "resistance"),
+    ));
+  if (!event) throw new Error("Schedule race occurrence missing.");
+  return {
+    ...fixture,
+    routineLineageId: template.lineageId,
+    scheduleId: published.scheduleId,
+    scheduleVersionId: published.scheduleVersionId,
+    scheduleVersionHash: published.contentHash,
+    event,
+  };
 }
 
 async function releaseProgramLock(lock: HeldProgramLock) {
@@ -3390,6 +3484,194 @@ describe.sequential("real PostgreSQL parallel invariants", () => {
       `));
       expect(decisions).toBe(0);
       expect(adaptations).toBe(0);
+    }
+  }, 60_000);
+
+  it("serializes schedule replacement against scheduled workout Start", async () => {
+    const fixture = await createScheduleRaceFixture("schedule Start race");
+    const held = await lockProgramSchedule(fixture.scheduleId);
+    const replacement = publishProgramSchedule(db, fixture.userId, {
+      programId: fixture.programId,
+      sourceProgramVersionId: fixture.versionId,
+      expectedCurrentScheduleVersionId: fixture.scheduleVersionId,
+      requestId: crypto.randomUUID(),
+      timezone: "America/Toronto",
+      document: scheduleRaceDocument(
+        fixture.routineLineageId,
+        "Replacement",
+      ),
+    });
+    const started = startWorkoutSession(
+      db,
+      fixture.userId,
+      fixture.templateId,
+      undefined,
+      {
+        startRequestKey: crypto.randomUUID(),
+        timezone: "America/Toronto",
+        scheduledStart: {
+          scheduledProgramEventId: fixture.event.id,
+          expectedEventRevision: fixture.event.revision,
+          programScheduleVersionId: fixture.scheduleVersionId,
+          programScheduleVersionHash: fixture.scheduleVersionHash,
+        },
+      },
+    );
+    await releaseWhenContended(held, [replacement, started], 2);
+    const [replacementResult, startResult] = await Promise.allSettled([
+      replacement,
+      started,
+    ]);
+    const replacementWon =
+      replacementResult.status === "fulfilled" &&
+      replacementResult.value.outcome === "published";
+    const startWon =
+      startResult.status === "fulfilled" &&
+      startResult.value.outcome === "created";
+    expect(Number(replacementWon) + Number(startWon)).toBe(1);
+
+    const [root] = await db
+      .select()
+      .from(schema.programSchedules)
+      .where(eq(schema.programSchedules.id, fixture.scheduleId));
+    const versions = await db
+      .select()
+      .from(schema.programScheduleVersions)
+      .where(eq(
+        schema.programScheduleVersions.scheduleId,
+        fixture.scheduleId,
+      ));
+    const events = await db
+      .select()
+      .from(schema.scheduledProgramEvents)
+      .where(eq(
+        schema.scheduledProgramEvents.scheduleId,
+        fixture.scheduleId,
+      ));
+    const sessions = await db
+      .select()
+      .from(workoutSessions)
+      .where(eq(workoutSessions.userId, fixture.userId));
+
+    if (startWon) {
+      expect(replacementResult).toMatchObject({
+        status: "fulfilled",
+        value: { outcome: "conflict" },
+      });
+      expect(root.currentVersionId).toBe(fixture.scheduleVersionId);
+      expect(versions).toHaveLength(1);
+      expect(sessions).toHaveLength(1);
+      expect(events).toEqual(expect.arrayContaining([
+        expect.objectContaining({
+          id: fixture.event.id,
+          scheduleVersionId: fixture.scheduleVersionId,
+          status: "started",
+          revision: 1,
+        }),
+      ]));
+    } else {
+      expect(startResult.status).toBe("rejected");
+      if (startResult.status === "rejected") {
+        expect(startResult.reason).toBeInstanceOf(StaleWorkoutTemplateError);
+      }
+      expect(versions).toHaveLength(2);
+      expect(sessions).toHaveLength(0);
+      expect(root.currentVersionId).not.toBe(fixture.scheduleVersionId);
+      expect(events).toEqual(expect.arrayContaining([
+        expect.objectContaining({
+          id: fixture.event.id,
+          status: "superseded",
+        }),
+        expect.objectContaining({
+          scheduleVersionId: root.currentVersionId,
+          kind: "resistance",
+          status: "scheduled",
+        }),
+      ]));
+    }
+  }, 60_000);
+
+  it("serializes schedule replacement against missed-day adjustment", async () => {
+    const fixture = await createScheduleRaceFixture("schedule adjustment race");
+    const held = await lockProgramSchedule(fixture.scheduleId);
+    const replacement = publishProgramSchedule(db, fixture.userId, {
+      programId: fixture.programId,
+      sourceProgramVersionId: fixture.versionId,
+      expectedCurrentScheduleVersionId: fixture.scheduleVersionId,
+      requestId: crypto.randomUUID(),
+      timezone: "America/Toronto",
+      document: scheduleRaceDocument(
+        fixture.routineLineageId,
+        "Replacement",
+      ),
+    });
+    const adjustment = adjustScheduledProgramEvent(db, fixture.userId, {
+      eventId: fixture.event.id,
+      expectedRevision: fixture.event.revision,
+      requestId: crypto.randomUUID(),
+      adjustment: {
+        kind: "manual_reschedule",
+        toLocalDate: "2026-08-12",
+      },
+    });
+    await releaseWhenContended(held, [replacement, adjustment], 2);
+    const [replacementResult, adjustmentResult] = await Promise.all([
+      replacement,
+      adjustment,
+    ]);
+    const replacementWon = replacementResult.outcome === "published";
+    const adjustmentWon = adjustmentResult.outcome === "applied";
+    expect(Number(replacementWon) + Number(adjustmentWon)).toBe(1);
+
+    const [root] = await db
+      .select()
+      .from(schema.programSchedules)
+      .where(eq(schema.programSchedules.id, fixture.scheduleId));
+    const versions = await db
+      .select()
+      .from(schema.programScheduleVersions)
+      .where(eq(
+        schema.programScheduleVersions.scheduleId,
+        fixture.scheduleId,
+      ));
+    const events = await db
+      .select()
+      .from(schema.scheduledProgramEvents)
+      .where(eq(
+        schema.scheduledProgramEvents.scheduleId,
+        fixture.scheduleId,
+      ));
+
+    if (adjustmentWon) {
+      expect(replacementResult).toEqual({ outcome: "conflict" });
+      expect(root.currentVersionId).toBe(fixture.scheduleVersionId);
+      expect(versions).toHaveLength(1);
+      expect(events).toEqual(expect.arrayContaining([
+        expect.objectContaining({
+          id: fixture.event.id,
+          status: "scheduled",
+          revision: 1,
+          adjustmentKind: "manual",
+          currentLocalDate: "2026-08-12",
+        }),
+      ]));
+    } else {
+      expect(adjustmentResult).toEqual({ outcome: "conflict" });
+      expect(versions).toHaveLength(2);
+      expect(root.currentVersionId).not.toBe(fixture.scheduleVersionId);
+      expect(events).toEqual(expect.arrayContaining([
+        expect.objectContaining({
+          id: fixture.event.id,
+          status: "superseded",
+          revision: 1,
+        }),
+        expect.objectContaining({
+          scheduleVersionId: root.currentVersionId,
+          kind: "resistance",
+          status: "scheduled",
+          revision: 0,
+        }),
+      ]));
     }
   }, 60_000);
 });
