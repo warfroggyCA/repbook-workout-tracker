@@ -154,7 +154,7 @@ Exercise note: Control the return without turning the movement into a row.`;
 
     expect(parsed).not.toBeNull();
     expect(CANONICAL_ROUTINE_PARSER_VERSION).toBe(
-      "canonical-routine-text/3",
+      "canonical-routine-text/4",
     );
     expect(inspectRoutineTextStructure(source).exerciseCount).toBe(2);
     expect(parsed?.data.days[0]?.exercises.map((exercise) => exercise.notes)).toEqual([

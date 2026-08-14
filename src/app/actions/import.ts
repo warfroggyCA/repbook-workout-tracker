@@ -833,6 +833,16 @@ export async function confirmImport(
         "This review no longer matches the staged paste. Discard it and parse again.",
     };
   }
+  if (
+    stagedPayload.parserVersion.startsWith("canonical-routine-text/") &&
+    stagedPayload.parserVersion !== CANONICAL_ROUTINE_PARSER_VERSION
+  ) {
+    return {
+      ok: false,
+      reason:
+        "This review was created by an older Program parser. Nothing was published; discard it and parse the routine again.",
+    };
+  }
   if (programInputRequiresExactPerSetSupport(stagedPayload.envelope.data)) {
     return {
       ok: false,

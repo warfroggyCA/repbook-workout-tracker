@@ -96,6 +96,7 @@ describe("reviewed Program import confirmation", () => {
       exerciseMap: null,
     },
     reps: RepSpec | null = null,
+    parserVersion = CANONICAL_ROUTINE_PARSER_VERSION,
   ) {
     const envelope = parseCanonicalRoutineText(`Program: Reviewed import
 Day 1 — Strength
@@ -113,7 +114,7 @@ Ramp-up: Empty bar | reps=10`)!;
         matchType: "alias",
         candidates: [{ id: exerciseId, name: "Barbell Bench Press" }],
       }],
-      parserVersion: CANONICAL_ROUTINE_PARSER_VERSION,
+      parserVersion,
       aiEventIds,
       baseProgramVersionId,
     });
@@ -308,6 +309,28 @@ Exercise notes: Keep the synthetic working sets controlled.`;
     });
     expect(await db.query.programVersions.findMany()).toHaveLength(1);
   }, 30_000);
+
+  it("rejects a staged review created by an older canonical parser", async () => {
+    const staged = await stageReview(
+      null,
+      { routineParse: null, exerciseMap: null },
+      null,
+      "canonical-routine-text/3",
+    );
+
+    await expect(confirmImport(staged.input)).resolves.toEqual({
+      ok: false,
+      reason:
+        "This review was created by an older Program parser. Nothing was published; discard it and parse the routine again.",
+    });
+    expect(await db.query.programVersions.findMany()).toHaveLength(0);
+    expect(mocked.createSafetySnapshot).not.toHaveBeenCalled();
+    await expect(
+      db.query.importEvents.findFirst({
+        where: eq(importEvents.id, staged.eventId),
+      }),
+    ).resolves.toMatchObject({ status: "parsed" });
+  });
 
   it("requires a durable exact-equipment-fit attestation", async () => {
     const staged = await stageReview();
