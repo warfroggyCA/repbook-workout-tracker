@@ -368,8 +368,7 @@ describe("scheduled Program workout lifecycle", () => {
     };
   }
 
-  it("keeps routine-only Start and its request hash unchanged", async () => {
-    const startRequestKey = crypto.randomUUID();
+  it("keeps the routine-only Start request hash unchanged", () => {
     const expectedHash = sha256Hex(
       Buffer.from(
         JSON.stringify({
@@ -387,33 +386,6 @@ describe("scheduled Program workout lifecycle", () => {
         timeBudgetMin: 45,
       }),
     ).toBe(expectedHash);
-
-    const started = await startWorkoutSession(
-      database.db,
-      userId,
-      otherTemplateId,
-      45,
-      {
-        startRequestKey,
-        timezone: "America/Toronto",
-        now: () => STARTED_AT,
-      },
-    );
-    expect(started).toMatchObject({ outcome: "created", existing: false });
-    expect(
-      await database.db.query.workoutSessions.findFirst({
-        where: eq(workoutSessions.id, started.sessionId),
-      }),
-    ).toMatchObject({
-      templateId: otherTemplateId,
-      startRequestHash: expectedHash,
-      programScheduleSnapshot: null,
-    });
-    expect(
-      await database.db.query.scheduledProgramEvents.findFirst({
-        where: eq(scheduledProgramEvents.id, scheduledEventId),
-      }),
-    ).toMatchObject({ status: "scheduled", revision: 0 });
   });
 
   it("atomically claims a scheduled event and retains a full immutable snapshot", async () => {
@@ -467,6 +439,24 @@ describe("scheduled Program workout lifecycle", () => {
         timezone: "America/Toronto",
         now: () => STARTED_AT,
         scheduledStart: scheduledIdentity(),
+      },
+    )).rejects.toBeInstanceOf(StaleWorkoutTemplateError);
+    expect(await database.db.query.workoutSessions.findMany()).toHaveLength(0);
+    expect(await database.db.query.scheduledProgramEvents.findFirst({
+      where: eq(scheduledProgramEvents.id, scheduledEventId),
+    })).toMatchObject({ status: "scheduled", revision: 0 });
+  });
+
+  it("rejects a routine-only Start while the Program schedule is authoritative", async () => {
+    await expect(startWorkoutSession(
+      database.db,
+      userId,
+      otherTemplateId,
+      45,
+      {
+        startRequestKey: crypto.randomUUID(),
+        timezone: "America/Toronto",
+        now: () => STARTED_AT,
       },
     )).rejects.toBeInstanceOf(StaleWorkoutTemplateError);
     expect(await database.db.query.workoutSessions.findMany()).toHaveLength(0);
@@ -547,14 +537,18 @@ describe("scheduled Program workout lifecycle", () => {
   });
 
   it("does not claim a scheduled event when another workout is active", async () => {
-    const active = await startWorkoutSession(
-      database.db,
+    const [active] = await database.db.insert(workoutSessions).values({
       userId,
-      otherTemplateId,
-    );
+      templateId: otherTemplateId,
+      templateName: "Already active workout",
+      status: "in_progress",
+      startedAt: STARTED_AT,
+      timezone: "America/Toronto",
+      localDate: "2026-08-10",
+    }).returning({ id: workoutSessions.id });
     await expect(scheduledStart()).resolves.toMatchObject({
       outcome: "active_workout_exists",
-      activeSessionId: active.sessionId,
+      activeSessionId: active.id,
       existing: true,
     });
     expect(

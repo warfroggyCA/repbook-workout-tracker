@@ -138,8 +138,10 @@ attendance or silently discarding an overdue event; a later cutover design must
 preserve those same facts before post-use replacement can be enabled.
 Publication locks the schedule root and every current occurrence before this
 check. Event adjustment, non-resistance completion, and scheduled workout Start
-use the same root-first order, so calendar intent and workout execution cannot
-both win a race.
+use the same schedule-root-first order. Workout Start first claims the shared
+owner-profile mutex used by Program switching, then takes the schedule locks,
+so switching, calendar intent, and workout execution cannot win conflicting
+races.
 
 Workout Start locks the exact scheduled resistance occurrence, resolves its
 routine lineage against the then-current Program version, and creates the
@@ -168,9 +170,11 @@ multiple named Programs, but exactly one remains active and therefore supplies
 Today, Program editing, and current recommendations. Switching changes only the
 two Program status rows in one owner-scoped statement, is blocked during an
 active workout, expires suggestions tied to the prior current plan, and never
-edits immutable Program versions or completed sessions. Routine import makes
-the destination explicit: publish a new version of the active Program, or keep
-that Program saved and activate a new named Program.
+edits immutable Program versions or completed sessions. Switching and workout
+Start contend on one owner-profile write whose eligibility is rechecked after a
+wait, so neither can commit against a stale view of the other. Routine import
+makes the destination explicit: publish a new version of the active Program,
+or keep that Program saved and activate a new named Program.
 
 The owner-facing schedule editor is deliberately narrower than the document
 contract: it authors one fixed seven-day or rolling phase with resistance,
@@ -179,8 +183,11 @@ remain executable and are shown without being flattened. Once any event is
 used or adjusted, the editor becomes read-only and Today owns the explicit
 complete, skip, reschedule, and rolling-shift actions. Today passes the exact
 scheduled occurrence identity into Start, so routine-only Start remains the
-legacy fallback only when no schedule exists. Snapshot schema 34 preserves
-saved inactive Programs; recovery manifest 15 retains the same table inventory.
+legacy fallback only when no schedule exists; alternate routines stay
+preview-only until the scheduled event is explicitly changed. Snapshot schema
+34 preserves saved inactive Programs and restore requires exactly one active
+Program whenever usable Programs exist; recovery manifest 15 retains the same
+table inventory.
 
 ## Persisted evidence
 

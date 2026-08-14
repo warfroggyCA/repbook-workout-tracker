@@ -53,9 +53,13 @@ Before application changes, read:
 - A published schedule can be replaced only while all of its occurrences are
   untouched. Once an event is started, resolved, or adjusted, replacement must
   fail atomically rather than recreate or erase attendance.
+- Program switching and workout Start first contend on the same owner-profile
+  write. Keep that shared mutex and its eligibility recheck so a switch and a
+  new active workout cannot both win.
 - Schedule publication, event adjustment, non-resistance completion, and
-  scheduled workout Start lock the schedule root before occurrence rows. Keep
-  that order so future intent cannot race with workout execution.
+  scheduled workout Start lock the schedule root before occurrence rows;
+  scheduled Start takes that lock after the owner mutex. Keep those orders so
+  future intent cannot race with workout execution.
 
 ## Privacy and security
 

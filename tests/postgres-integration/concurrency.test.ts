@@ -86,6 +86,7 @@ import {
   adjustScheduledProgramEvent,
   publishProgramSchedule,
 } from "@/services/program-schedules";
+import { switchActiveProgram } from "@/services/program-library";
 
 const url = process.env.TEST_DATABASE_URL;
 if (!url) throw new Error("TEST_DATABASE_URL is required for PostgreSQL integration tests.");
@@ -613,6 +614,19 @@ async function lockProgramSchedule(scheduleId: string): Promise<HeldProgramLock>
   await client.query(
     "SELECT id FROM program_schedules WHERE id = $1 FOR UPDATE",
     [scheduleId],
+  );
+  return { client, backendPid: Number(backendPid) };
+}
+
+async function lockUserProfile(userId: string): Promise<HeldProgramLock> {
+  const client = await pool.connect();
+  await client.query("BEGIN");
+  const [{ backend_pid: backendPid }] = resultRows<{ backend_pid: number }>(
+    await client.query("SELECT pg_backend_pid()::int AS backend_pid"),
+  );
+  await client.query(
+    "SELECT id FROM user_profiles WHERE user_id = $1 FOR UPDATE",
+    [userId],
   );
   return { client, backendPid: Number(backendPid) };
 }
@@ -3484,6 +3498,103 @@ describe.sequential("real PostgreSQL parallel invariants", () => {
       `));
       expect(decisions).toBe(0);
       expect(adaptations).toBe(0);
+    }
+  }, 60_000);
+
+  it("serializes Program switching against workout Start", async () => {
+    const first = await createProgramFixture("Program switch Start race");
+    const second = await activateProgramAtomically(db, {
+      userId: first.userId,
+      loadUnit: "lb",
+      programName: "Program switch Start race second Program",
+      days: [{
+        name: "Program switch Start race second Day",
+        exercises: [{
+          exerciseId: first.exerciseId,
+          sets: 1,
+          repMin: 6,
+          repMax: 8,
+          targetLoad: 100,
+          restSec: 90,
+          supersetKey: null,
+          notes: null,
+        }],
+      }],
+      changeSummary: "Create switch-race target",
+      auditAction: "program.activate",
+      auditSummary: "Create switch-race target",
+      expectedCurrentProgramVersionId: first.versionId,
+      destination: "create_new_active",
+    });
+    if (!second.ok) throw new Error(second.reason);
+    const [secondTemplate] = await db
+      .select({ id: workoutTemplates.id })
+      .from(workoutTemplates)
+      .where(eq(
+        workoutTemplates.programVersionId,
+        second.programVersionId,
+      ));
+    if (!secondTemplate) throw new Error("Second Program routine missing.");
+
+    const held = await lockUserProfile(first.userId);
+    const started = startWorkoutSession(
+      db,
+      first.userId,
+      secondTemplate.id,
+      undefined,
+      {
+        startRequestKey: crypto.randomUUID(),
+        timezone: "America/Toronto",
+      },
+    );
+    const switched = switchActiveProgram(db, first.userId, {
+      targetProgramId: first.programId,
+      expectedActiveProgramId: second.programId,
+      requestId: crypto.randomUUID(),
+    });
+    await releaseWhenContended(held, [started, switched], 2);
+    const [startResult, switchResult] = await Promise.allSettled([
+      started,
+      switched,
+    ]);
+    const startWon =
+      startResult.status === "fulfilled" &&
+      startResult.value.outcome === "created";
+    const switchWon =
+      switchResult.status === "fulfilled" &&
+      switchResult.value.outcome === "switched";
+    expect(Number(startWon) + Number(switchWon)).toBe(1);
+
+    const currentPrograms = await db
+      .select({ id: programs.id, status: programs.status })
+      .from(programs)
+      .where(eq(programs.userId, first.userId));
+    const sessions = await db
+      .select()
+      .from(workoutSessions)
+      .where(eq(workoutSessions.userId, first.userId));
+    if (startWon) {
+      expect(switchResult).toMatchObject({
+        status: "fulfilled",
+        value: { outcome: expect.stringMatching(/active_workout|conflict/) },
+      });
+      expect(currentPrograms).toEqual(expect.arrayContaining([
+        expect.objectContaining({ id: second.programId, status: "active" }),
+        expect.objectContaining({ id: first.programId, status: "inactive" }),
+      ]));
+      expect(sessions).toEqual([
+        expect.objectContaining({ sourceProgramId: second.programId }),
+      ]);
+    } else {
+      expect(startResult.status).toBe("rejected");
+      if (startResult.status === "rejected") {
+        expect(startResult.reason).toBeInstanceOf(StaleWorkoutTemplateError);
+      }
+      expect(currentPrograms).toEqual(expect.arrayContaining([
+        expect.objectContaining({ id: first.programId, status: "active" }),
+        expect.objectContaining({ id: second.programId, status: "inactive" }),
+      ]));
+      expect(sessions).toHaveLength(0);
     }
   }, 60_000);
 

@@ -136,6 +136,15 @@ describe("named Program library", () => {
       expect.objectContaining({ id: second.programId, status: "active" }),
     ]));
     expect(() => validateSnapshotPayload(snapshot, userId)).not.toThrow();
+    const noActiveProgram = structuredClone(snapshot);
+    for (const program of noActiveProgram.tables.programs as Array<
+      Record<string, unknown>
+    >) {
+      if (program.status === "active") program.status = "inactive";
+    }
+    expect(() => validateSnapshotPayload(noActiveProgram, userId)).toThrow(
+      /usable Programs but no active Program/,
+    );
 
     const requestId = crypto.randomUUID();
     await expect(switchActiveProgram(database.db, userId, {
