@@ -1354,9 +1354,9 @@ export async function startWorkoutSession(
         AND ws.user_id = ${userId}::uuid
         AND ws.start_request_key = ${startRequestKey}::text
       LIMIT 1
-    ), owner_mutex AS MATERIALIZED (
-      UPDATE user_profiles profile
-      SET timezone = profile.timezone
+    ), owner_candidate AS MATERIALIZED (
+      SELECT profile.id, profile.updated_at
+      FROM user_profiles profile
       WHERE profile.user_id = ${userId}::uuid
         AND NOT EXISTS (SELECT 1 FROM existing_request)
         AND NOT EXISTS (
@@ -1389,6 +1389,15 @@ export async function startWorkoutSession(
               )
             )
         )
+    ), owner_mutex AS MATERIALIZED (
+      UPDATE user_profiles profile
+      SET updated_at = greatest(
+        statement_timestamp(),
+        profile.updated_at + interval '1 microsecond'
+      )
+      FROM owner_candidate candidate
+      WHERE profile.id = candidate.id
+        AND profile.updated_at = candidate.updated_at
       RETURNING profile.id
     ), existing_active AS MATERIALIZED (
       SELECT ws.id, false AS inserted, 'active'::text AS selected_by,

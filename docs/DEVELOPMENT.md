@@ -328,9 +328,9 @@ that editor. Today uses the current scheduled occurrence when one exists,
 passes its exact version, hash, event, and revision into resistance Start, and
 keeps cardio, recovery, and rest as non-resistance events. Alternate routines
 remain preview-only while a schedule exists. Program switching and workout
-Start share an owner-profile mutex, and schema-34 restore rejects a usable
-Program library with no active Program. Parser internals and canonical routine
-syntax are unchanged.
+Start share an owner-profile compare-and-swap mutex, and schema-34 restore
+rejects a usable Program library with no active Program. Parser internals and
+canonical routine syntax are unchanged.
 
 Run the focused named Program and tracker schedule contract with:
 

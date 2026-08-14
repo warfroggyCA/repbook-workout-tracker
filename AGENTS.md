@@ -54,8 +54,8 @@ Before application changes, read:
   untouched. Once an event is started, resolved, or adjusted, replacement must
   fail atomically rather than recreate or erase attendance.
 - Program switching and workout Start first contend on the same owner-profile
-  write. Keep that shared mutex and its eligibility recheck so a switch and a
-  new active workout cannot both win.
+  compare-and-swap revision. Keep that shared mutex so a stale contender cannot
+  proceed after the other operation commits.
 - Schedule publication, event adjustment, non-resistance completion, and
   scheduled workout Start lock the schedule root before occurrence rows;
   scheduled Start takes that lock after the owner mutex. Keep those orders so

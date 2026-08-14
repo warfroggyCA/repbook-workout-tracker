@@ -139,9 +139,9 @@ preserve those same facts before post-use replacement can be enabled.
 Publication locks the schedule root and every current occurrence before this
 check. Event adjustment, non-resistance completion, and scheduled workout Start
 use the same schedule-root-first order. Workout Start first claims the shared
-owner-profile mutex used by Program switching, then takes the schedule locks,
-so switching, calendar intent, and workout execution cannot win conflicting
-races.
+owner-profile compare-and-swap revision used by Program switching, then takes
+the schedule locks, so a contender with a stale revision cannot let switching,
+calendar intent, and workout execution win conflicting races.
 
 Workout Start locks the exact scheduled resistance occurrence, resolves its
 routine lineage against the then-current Program version, and creates the
@@ -171,10 +171,10 @@ Today, Program editing, and current recommendations. Switching changes only the
 two Program status rows in one owner-scoped statement, is blocked during an
 active workout, expires suggestions tied to the prior current plan, and never
 edits immutable Program versions or completed sessions. Switching and workout
-Start contend on one owner-profile write whose eligibility is rechecked after a
-wait, so neither can commit against a stale view of the other. Routine import
-makes the destination explicit: publish a new version of the active Program,
-or keep that Program saved and activate a new named Program.
+Start contend on one owner-profile compare-and-swap revision, so the second
+operation cannot commit from a statement snapshot taken before the first one.
+Routine import makes the destination explicit: publish a new version of the
+active Program, or keep that Program saved and activate a new named Program.
 
 The owner-facing schedule editor is deliberately narrower than the document
 contract: it authors one fixed seven-day or rolling phase with resistance,
