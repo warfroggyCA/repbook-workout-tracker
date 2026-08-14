@@ -146,6 +146,7 @@ Warm-up: Easy bike | load=2 minutes easy
 Barbell Bench Press 3x6-8, rest 120 sec
 Ramp-up: Empty bar | reps=10 | load=empty bar
 Exercise notes: Keep two comfortable repetitions in reserve.
+
 Lat Pulldown 3x8-12, rest 75 sec
 Exercise note: Control the return without turning the movement into a row.`;
 
@@ -318,6 +319,13 @@ Day 1 — Focus
 Barbell Bench Press 3x6-8, rest 120 sec
 Exercise notes: First retained instruction.
 Exercise notes: Conflicting second instruction.`),
+    ).toBeNull();
+    expect(
+      parseCanonicalRoutineText(`Program: Synthetic Separated Notes
+Day 1 — Focus
+Barbell Bench Press 3x6-8, rest 120 sec
+
+Exercise notes: A blank line makes this note detached.`),
     ).toBeNull();
   });
 
