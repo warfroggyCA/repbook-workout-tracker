@@ -336,6 +336,13 @@ Barbell Bench Press 3x6-8, rest 120 sec
 
 Exercise notes: A blank line makes this note detached.`),
     ).toEqual({ envelope: null, invalidExerciseNotes: true });
+    expect(
+      parseCanonicalRoutineTextWithDiagnostics(`Program: Synthetic Empty Notes
+Day 1 — Focus
+Main workout:
+Barbell Bench Press 3x6-8, rest 120 sec
+Exercise notes:   `),
+    ).toEqual({ envelope: null, invalidExerciseNotes: true });
   });
 
   it("scales the AI fallback output allowance to the routine size", () => {

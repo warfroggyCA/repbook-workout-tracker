@@ -10,6 +10,7 @@ const PROGRAM_HEADING = /^Program\s*:\s*(.+)$/iu;
 const DAY_HEADING = /^Day\s+\d+\b(?:\s*[\u2013\u2014-]\s*.+)?$/iu;
 const DAY_WARMUP_LINE = /^Warm[ -]?up\s*:\s*(.+)$/iu;
 const EXERCISE_RAMP_LINE = /^Ramp[ -]?up\s*:\s*(.+)$/iu;
+const EXERCISE_NOTES_HEADER = /^Exercise notes?\s*:/iu;
 const EXERCISE_NOTES_LINE = /^Exercise notes?\s*:\s*(.+)$/iu;
 const EXERCISE_LINE =
   /^(?:(?<group>[A-Za-z])(?<member>\d+)\s+)?(?<name>.+?)\s+(?<sets>\d{1,2})\s*[x\u00d7]\s*(?<repMin>\d{1,3})(?:\s*[\u2013\u2014-]\s*(?<repMax>\d{1,3}))?(?<tail>.*)$/u;
@@ -409,8 +410,9 @@ function hasInvalidCanonicalExerciseNotes(input: string): boolean {
       continue;
     }
 
-    const exerciseNotes = EXERCISE_NOTES_LINE.exec(line);
-    if (exerciseNotes) {
+    if (EXERCISE_NOTES_HEADER.test(line)) {
+      const exerciseNotes = EXERCISE_NOTES_LINE.exec(line);
+      if (!exerciseNotes) return true;
       const notes = exerciseNotes[1]?.trim() ?? "";
       if (
         !hasCurrentExercise ||
