@@ -28,6 +28,62 @@ export async function getActiveProgramVersion(db: Db, userId: string) {
   return { program, version };
 }
 
+/** Active Program plus its next scheduled event, kept in one Today read. */
+export async function getActiveProgramVersionWithSchedule(
+  db: Db,
+  userId: string,
+) {
+  const row = await db.query.programs.findFirst({
+    where: and(
+      eq(programs.userId, userId),
+      eq(programs.status, "active"),
+      isNull(programs.archivedAt),
+    ),
+    with: {
+      currentVersion: true,
+      schedule: {
+        with: {
+          currentVersion: {
+            with: {
+              events: {
+                where: (event, { eq: equals }) =>
+                  equals(event.status, "scheduled"),
+                orderBy: (event, { asc }) => [
+                  asc(event.currentLocalDate),
+                  asc(event.sequenceNo),
+                ],
+                limit: 1,
+              },
+            },
+          },
+        },
+      },
+    },
+  });
+  if (
+    !row?.currentVersionId ||
+    !row.currentVersion ||
+    row.currentVersion.id !== row.currentVersionId ||
+    row.currentVersion.programId !== row.id
+  ) {
+    return null;
+  }
+  const { currentVersion: version, schedule: scheduleRow, ...program } = row;
+  const scheduleVersion = scheduleRow?.currentVersion;
+  const schedule =
+    scheduleRow?.currentVersionId &&
+    scheduleVersion?.id === scheduleRow.currentVersionId &&
+    scheduleVersion.scheduleId === scheduleRow.id &&
+    scheduleVersion.programId === program.id
+      ? {
+          schedule: scheduleRow,
+          version: scheduleVersion,
+          nextEvent: scheduleVersion.events[0] ?? null,
+        }
+      : null;
+  return { program, version, schedule };
+}
+
 /** Template by id, only when it belongs to the user's current active version. */
 export async function getOwnedTemplate(
   db: Db,

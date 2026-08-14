@@ -1462,6 +1462,7 @@ export async function startWorkoutSession(
           OR (
             ${scheduledStart?.scheduledProgramEventId ?? null}::uuid IS NOT NULL
             AND scheduled.id IS NOT NULL
+            AND wt.id = ${templateId}::uuid
           )
         )
     ), upserted_session AS (

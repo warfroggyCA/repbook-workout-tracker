@@ -62,6 +62,8 @@ export type AtomicProgramActivationInput = {
   expectedSetupDraft?: unknown;
   /** The active Program version captured for review; null means no active Program existed. */
   expectedCurrentProgramVersionId?: string | null;
+  /** Replace the active Program version by default, or keep it as a saved inactive Program. */
+  destination?: "replace_active" | "create_new_active";
   completeSetup?: boolean;
   /** True only when the immediately preceding user-facing review showed or edited the structured intent. */
   structuredIntentReviewed?: boolean;
@@ -419,6 +421,7 @@ export async function activateProgramAtomically(
   const currentProgramExpectationProvided =
     input.expectedCurrentProgramVersionId !== undefined;
   const completeSetup = input.completeSetup ?? false;
+  const createNewActive = input.destination === "create_new_active";
   const documentSchemaVersion = explicitIntentRequested
     ? 3
     : structuredIntentReviewed
@@ -477,6 +480,25 @@ export async function activateProgramAtomically(
         AND program.status = 'active'
         AND program.archived_at IS NULL
       FOR UPDATE OF program
+    ), active_schedule_conflict AS MATERIALIZED (
+      SELECT event.id
+      FROM current_programs current
+      JOIN program_schedules schedule
+        ON schedule.program_id = current.id
+       AND schedule.user_id = ${input.userId}::uuid
+      JOIN scheduled_program_events event
+        ON event.schedule_id = schedule.id
+       AND event.schedule_version_id = schedule.current_version_id
+       AND event.user_id = schedule.user_id
+      WHERE event.status IN ('scheduled', 'started')
+      LIMIT 1
+    ), active_workout_conflict AS MATERIALIZED (
+      SELECT session.id
+      FROM workout_sessions session
+      WHERE session.user_id = ${input.userId}::uuid
+        AND session.status = 'in_progress'
+        AND session.archived_at IS NULL
+      LIMIT 1
     ), activation_gate AS MATERIALIZED (
       SELECT profile.id
       FROM target_profile profile
@@ -487,6 +509,14 @@ export async function activateProgramAtomically(
           OR profile.setup_state->'routineDraft' = ${JSON.stringify(expectedSetupDraft)}::jsonb
         )
         AND (SELECT count(*) FROM valid_ai_events) = ${aiEventIds.length}::int
+        AND (
+          ${createNewActive}::boolean
+          OR NOT EXISTS (SELECT 1 FROM active_schedule_conflict)
+        )
+        AND (
+          NOT ${createNewActive}::boolean
+          OR NOT EXISTS (SELECT 1 FROM active_workout_conflict)
+        )
         AND (
           ${!currentProgramExpectationProvided}::boolean
           OR (
@@ -506,15 +536,32 @@ export async function activateProgramAtomically(
           WHERE exercise.id IS NULL
              OR (exercise.user_id IS NOT NULL AND exercise.user_id <> ${input.userId}::uuid)
         )
+    ), deactivated_current AS (
+      UPDATE programs program
+      SET status = 'inactive'
+      FROM activation_gate
+      WHERE ${createNewActive}::boolean
+        AND program.id IN (SELECT id FROM current_programs)
+        AND program.user_id = ${input.userId}::uuid
+        AND program.status = 'active'
+      RETURNING program.id
     ), new_program AS (
       INSERT INTO programs (id, user_id, name, status, current_version_id)
       SELECT ${programId}::uuid, ${input.userId}::uuid, ${input.programName}, 'active', ${programVersionId}::uuid
       FROM activation_gate
-      WHERE NOT EXISTS (SELECT 1 FROM current_programs)
+      WHERE (
+        NOT ${createNewActive}::boolean
+        AND NOT EXISTS (SELECT 1 FROM current_programs)
+      ) OR (
+        ${createNewActive}::boolean
+        AND (SELECT count(*) FROM deactivated_current) =
+          (SELECT count(*) FROM current_programs)
+      )
       RETURNING *
     ), target_program AS MATERIALIZED (
       SELECT id, current_version_id, version_no, before_data
       FROM current_programs
+      WHERE NOT ${createNewActive}::boolean
       UNION ALL
       SELECT id, NULL::uuid, 0, to_jsonb(new_program)
       FROM new_program
@@ -604,7 +651,7 @@ export async function activateProgramAtomically(
       WHERE recommendation.user_id = ${input.userId}::uuid
         AND recommendation.status = 'pending'
         AND recommendation.archived_at IS NULL
-        AND EXISTS (SELECT 1 FROM updated_program)
+        AND EXISTS (SELECT 1 FROM activated_program)
       RETURNING recommendation.id
     ), discarded_stale_drafts AS (
       UPDATE program_drafts draft
@@ -700,7 +747,9 @@ export async function activateProgramAtomically(
         jsonb_build_object(
           'programId', activated_program.id,
           'importEventId', ${importEventId}::text,
-          'replacedPrograms', 0,
+          'destination', ${createNewActive ? "create_new_active" : "replace_active"}::text,
+          'previousActiveProgramId', (SELECT id FROM deactivated_current),
+          'replacedPrograms', (SELECT count(*) FROM deactivated_current),
           'programVersionIds', (SELECT jsonb_agg(id) FROM program_versions_ledger)
         )
       FROM new_version
@@ -711,7 +760,9 @@ export async function activateProgramAtomically(
       (SELECT count(*)::int FROM activation_gate) AS gates,
       (SELECT id::text FROM activated_program) AS program_id,
       (SELECT id::text FROM new_version) AS version_id,
-      0::int AS archived_programs,
+      (SELECT count(*)::int FROM deactivated_current) AS archived_programs,
+      EXISTS (SELECT 1 FROM active_schedule_conflict) AS schedule_conflict,
+      EXISTS (SELECT 1 FROM active_workout_conflict) AS active_workout_conflict,
       (SELECT count(*)::int FROM inserted_templates) AS templates,
       (SELECT count(*)::int FROM inserted_groups) AS groups,
       (SELECT count(*)::int FROM inserted_slots) AS slots,
@@ -740,7 +791,11 @@ export async function activateProgramAtomically(
   ) {
     return {
       ok: false,
-      reason: importEventId
+      reason: row?.active_workout_conflict === true && createNewActive
+        ? "Finish or discard the active workout before adding a new active Program."
+        : row?.schedule_conflict === true && !createNewActive
+        ? "This active Program has an unfinished schedule. Add these routines as a new Program, or finish the current schedule before replacing it."
+        : importEventId
         ? "This routine import was already confirmed or is no longer current."
         : "The setup routine changed before activation. Review it and try again.",
     };

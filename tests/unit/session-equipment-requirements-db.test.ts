@@ -272,7 +272,7 @@ describe("retained session equipment requirements persistence", () => {
       new Date("2026-08-10T13:00:00.000Z"),
       "retained-requirement-test",
     );
-    expect(captured.schemaVersion).toBe("33");
+    expect(captured.schemaVersion).toBe("34");
     expect(captured.tables.session_exercises).toContainEqual(
       expect.objectContaining({
         id: planned.id,
@@ -287,7 +287,7 @@ describe("retained session equipment requirements persistence", () => {
       delete row.equipment_requirements_snapshot;
     }
     const upgraded = upgradeSnapshotPayload(schema31);
-    expect(upgraded.schemaVersion).toBe("33");
+    expect(upgraded.schemaVersion).toBe("34");
     expect(upgraded.tables.session_exercises).toContainEqual(
       expect.objectContaining({
         id: planned.id,

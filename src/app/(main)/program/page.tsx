@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { and, desc, eq, sql } from "drizzle-orm";
-import { WandSparkles } from "lucide-react";
+import { CalendarDays, Library, WandSparkles } from "lucide-react";
 import { ProgramViewer } from "@/components/program/program-viewer";
 import { Button } from "@/components/ui/button";
 import { getDb } from "@/db";
@@ -49,6 +49,14 @@ export default async function ProgramPage(props: PageProps<"/program">) {
     <main className="p-4 sm:p-6 lg:p-8">
       {presentation && selected ? (
         <div className="mx-auto max-w-5xl">
+          <nav aria-label="Program actions" className="mb-4 flex flex-wrap gap-2">
+            <Button variant="outline" render={<Link href="/program/library" />} nativeButton={false}>
+              <Library /> Programs
+            </Button>
+            <Button variant="outline" render={<Link href="/program/schedule" />} nativeButton={false}>
+              <CalendarDays /> Schedule
+            </Button>
+          </nav>
           {recentProposal && (
             <section className="mb-4 flex flex-col gap-3 rounded-2xl border bg-card p-4 shadow-[var(--shadow-soft)] sm:flex-row sm:items-center sm:justify-between">
               <div>
@@ -287,7 +295,7 @@ export default async function ProgramPage(props: PageProps<"/program">) {
             <Button
               className="mt-4"
               variant="outline"
-              render={<Link href="/program/import" />}
+              render={<Link href="/program/import?destination=new" />}
               nativeButton={false}
             >
               Import routine

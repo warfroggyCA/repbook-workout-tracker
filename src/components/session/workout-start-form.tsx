@@ -19,6 +19,12 @@ type Props = {
   variant?: "default" | "outline";
   formClassName?: string;
   buttonClassName?: string;
+  scheduledStart?: {
+    scheduledProgramEventId: string;
+    expectedEventRevision: number;
+    programScheduleVersionId: string;
+    programScheduleVersionHash: string;
+  };
 };
 
 function StartButton({
@@ -65,6 +71,7 @@ export function WorkoutStartForm({
   variant = "default",
   formClassName,
   buttonClassName,
+  scheduledStart,
 }: Props) {
   const timezoneInput = useRef<HTMLInputElement>(null);
   const errorAlert = useRef<HTMLParagraphElement>(null);
@@ -106,6 +113,14 @@ export function WorkoutStartForm({
         name="startRequestKey"
         value={effectiveStartRequestKey}
       />
+      {scheduledStart && (
+        <>
+          <input type="hidden" name="scheduledProgramEventId" value={scheduledStart.scheduledProgramEventId} />
+          <input type="hidden" name="expectedEventRevision" value={scheduledStart.expectedEventRevision} />
+          <input type="hidden" name="programScheduleVersionId" value={scheduledStart.programScheduleVersionId} />
+          <input type="hidden" name="programScheduleVersionHash" value={scheduledStart.programScheduleVersionHash} />
+        </>
+      )}
       <StartButton
         variant={variant}
         className={buttonClassName}

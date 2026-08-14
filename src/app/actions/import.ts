@@ -743,6 +743,9 @@ const confirmDaySchema = z
 const confirmSchema = z
   .object({
     schemaVersion: z.literal("program-input-review/1"),
+    destination: z
+      .enum(["replace_active", "create_new_active"])
+      .default("replace_active"),
     importEventId: z.string().uuid(),
     stageDigest: z.string().regex(/^[a-f0-9]{64}$/u),
     baseProgramVersionId: z.string().uuid().nullable(),
@@ -752,12 +755,13 @@ const confirmSchema = z
   })
   .strict();
 
-export type ConfirmImportInput = z.infer<typeof confirmSchema>;
+export type ConfirmImportInput = z.input<typeof confirmSchema>;
+type ConfirmImportParsed = z.output<typeof confirmSchema>;
 
 async function readExactConfirmedImport(
   db: Db,
   userId: string,
-  parsed: ConfirmImportInput,
+  parsed: ConfirmImportParsed,
 ): Promise<{ ok: true; programVersionId: string } | null> {
   const completed = await db.query.importEvents.findFirst({
     where: and(
@@ -765,10 +769,12 @@ async function readExactConfirmedImport(
       eq(importEvents.userId, userId),
     ),
   });
+  const normalizedReceipt = confirmSchema.safeParse(completed?.confirmedPayload);
   if (
     completed?.status !== "confirmed" ||
     !completed.resultProgramVersionId ||
-    canonicalJson(completed.confirmedPayload) !== canonicalJson(parsed)
+    !normalizedReceipt.success ||
+    canonicalJson(normalizedReceipt.data) !== canonicalJson(parsed)
   ) {
     return null;
   }
@@ -825,9 +831,11 @@ export async function confirmImport(
   });
   if (!event) return { ok: false, reason: "Import not found." };
   if (event.status === "confirmed") {
+    const normalizedReceipt = confirmSchema.safeParse(event.confirmedPayload);
     if (
       event.resultProgramVersionId &&
-      canonicalJson(event.confirmedPayload) === canonicalJson(parsed)
+      normalizedReceipt.success &&
+      canonicalJson(normalizedReceipt.data) === canonicalJson(parsed)
     ) {
       return {
         ok: true,
@@ -1023,6 +1031,7 @@ export async function confirmImport(
     aiEventIds,
     confirmedPayload: parsed,
     expectedCurrentProgramVersionId: parsed.baseProgramVersionId,
+    destination: parsed.destination,
     structuredIntentReviewed: true,
   });
   if (!activated.ok) {

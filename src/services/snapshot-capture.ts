@@ -6,7 +6,7 @@ import { assertCanonicalSnapshotTableCoverage } from "@/services/recovery-manife
 import { canonicalizeProgramDraftIdentity } from "@/services/program-document-integrity";
 import { externalAnalysisImportDigestSchema } from "@/lib/external-analysis-import";
 
-export const SNAPSHOT_SCHEMA_VERSION = "33";
+export const SNAPSHOT_SCHEMA_VERSION = "34";
 
 export type CanonicalSnapshotPayload = {
   schemaVersion: string;
@@ -144,7 +144,7 @@ export function normalizeSnapshotProgramDrafts(
 
 /**
  * One SQL statement means PostgreSQL supplies one MVCC view for every table in
- * the snapshot, including active and archived rows.
+ * the snapshot, including active, saved inactive, and archived rows.
  */
 export async function captureUserSnapshot(
   db: Db,

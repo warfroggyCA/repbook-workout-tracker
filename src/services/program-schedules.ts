@@ -4,6 +4,7 @@ import { z } from "zod";
 import type { Db } from "@/db";
 import { resultRows } from "@/db/result";
 import {
+  programScheduleVersions,
   programSchedules,
   scheduledProgramEvents,
 } from "@/db/schema";
@@ -434,26 +435,65 @@ export async function getCurrentProgramSchedule(
   ) {
     return null;
   }
-  const root = await db.query.programSchedules.findFirst({
-    where: and(
-      eq(programSchedules.userId, userId),
-      eq(programSchedules.programId, programId),
-    ),
-    with: { currentVersion: true },
-  });
-  if (!root?.currentVersion) return null;
-  const nextEvent = await db.query.scheduledProgramEvents.findFirst({
-    where: and(
-      eq(scheduledProgramEvents.userId, userId),
-      eq(scheduledProgramEvents.scheduleVersionId, root.currentVersion.id),
-      eq(scheduledProgramEvents.status, "scheduled"),
-    ),
-    orderBy: [
+  const [current] = await db
+    .select({
+      schedule: programSchedules,
+      version: programScheduleVersions,
+      nextEvent: scheduledProgramEvents,
+    })
+    .from(programSchedules)
+    .innerJoin(
+      programScheduleVersions,
+      eq(programScheduleVersions.id, programSchedules.currentVersionId),
+    )
+    .leftJoin(
+      scheduledProgramEvents,
+      and(
+        eq(scheduledProgramEvents.userId, userId),
+        eq(
+          scheduledProgramEvents.scheduleVersionId,
+          programScheduleVersions.id,
+        ),
+        eq(scheduledProgramEvents.status, "scheduled"),
+      ),
+    )
+    .where(
+      and(
+        eq(programSchedules.userId, userId),
+        eq(programSchedules.programId, programId),
+      ),
+    )
+    .orderBy(
       asc(scheduledProgramEvents.currentLocalDate),
       asc(scheduledProgramEvents.sequenceNo),
-    ],
-  });
-  return { schedule: root, version: root.currentVersion, nextEvent };
+    )
+    .limit(1);
+  return current ?? null;
+}
+
+export async function getProgramScheduleEditorState(
+  db: Db,
+  userId: string,
+  programId: string,
+) {
+  const current = await getCurrentProgramSchedule(db, userId, programId);
+  if (!current) return null;
+  const usage = resultRows(await db.execute(sql`
+    SELECT EXISTS (
+      SELECT 1
+      FROM scheduled_program_events event
+      WHERE event.user_id = ${userId}::uuid
+        AND event.program_id = ${programId}::uuid
+        AND event.schedule_version_id = ${current.version.id}::uuid
+        AND (
+          event.status <> 'scheduled'
+          OR event.revision <> 0
+          OR event.adjustment_kind IS NOT NULL
+          OR event.resolved_at IS NOT NULL
+        )
+    ) AS in_use
+  `))[0];
+  return { ...current, inUse: usage?.in_use === true };
 }
 
 export type ScheduledEventAdjustment =

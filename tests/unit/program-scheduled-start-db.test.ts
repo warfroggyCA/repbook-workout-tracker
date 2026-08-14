@@ -246,12 +246,16 @@ describe("scheduled Program workout lifecycle", () => {
 
   async function scheduledStart(
     overrides: Partial<ScheduledWorkoutStartIdentity> = {},
-    options: { requestKey?: string; evaluateStartCounts?: () => boolean } = {},
+    options: {
+      requestKey?: string;
+      evaluateStartCounts?: () => boolean;
+      templateId?: string;
+    } = {},
   ) {
     return startWorkoutSession(
       database.db,
       userId,
-      scheduledTemplateId,
+      options.templateId ?? scheduledTemplateId,
       45,
       {
         startRequestKey: options.requestKey ?? crypto.randomUUID(),
@@ -452,6 +456,25 @@ describe("scheduled Program workout lifecycle", () => {
     ).toMatchObject({ status: "started", revision: 1, resolvedAt: null });
   });
 
+  it("rejects a scheduled Start paired with a different submitted routine", async () => {
+    await expect(startWorkoutSession(
+      database.db,
+      userId,
+      otherTemplateId,
+      45,
+      {
+        startRequestKey: crypto.randomUUID(),
+        timezone: "America/Toronto",
+        now: () => STARTED_AT,
+        scheduledStart: scheduledIdentity(),
+      },
+    )).rejects.toBeInstanceOf(StaleWorkoutTemplateError);
+    expect(await database.db.query.workoutSessions.findMany()).toHaveLength(0);
+    expect(await database.db.query.scheduledProgramEvents.findFirst({
+      where: eq(scheduledProgramEvents.id, scheduledEventId),
+    })).toMatchObject({ status: "scheduled", revision: 0 });
+  });
+
   it("does not let later Program or schedule versions reinterpret Start history", async () => {
     const started = await scheduledStart();
     const before = await database.db.query.workoutSessions.findFirst({
@@ -562,7 +585,7 @@ describe("scheduled Program workout lifecycle", () => {
   it("resolves the scheduled routine lineage against the current Program version", async () => {
     const { nextProgramVersionId, nextTemplateId } =
       await advanceProgramWithRoutine(scheduledRoutineLineageId);
-    const started = await scheduledStart();
+    const started = await scheduledStart({}, { templateId: nextTemplateId });
     expect(
       await database.db.query.workoutSessions.findFirst({
         where: eq(workoutSessions.id, started.sessionId),

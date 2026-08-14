@@ -26,6 +26,7 @@ import { QuickLogCard } from "@/components/quick-log/quick-log-card";
 import { ExerciseFamilyIcon } from "@/components/exercises/exercise-family-icon";
 import { WorkoutStartForm } from "@/components/session/workout-start-form";
 import { ActiveWorkoutDiscard } from "@/components/session/active-workout-actions";
+import { ScheduledEventActions } from "@/components/program/scheduled-event-actions";
 import {
   Alert,
   AlertDescription,
@@ -34,6 +35,13 @@ import {
 import { acceptanceWorkoutNow } from "@/lib/acceptance-workout-clock";
 
 function whyThisProgramDay(today: TodayData) {
+  if (today.schedule?.nextEvent) {
+    const event = today.schedule.nextEvent;
+    return `${event.phaseName} · week ${event.programWeek} · scheduled ${formatRelativeLocalDate(
+      event.currentLocalDate,
+      today.currentLocalDate,
+    )}.`;
+  }
   if (today.nextTemplateReason.kind === "after_completed_program_day") {
     return `Next after ${today.nextTemplateReason.previousTemplateName}, completed ${formatRelativeLocalDate(
       today.nextTemplateReason.previousLocalDate,
@@ -44,6 +52,23 @@ function whyThisProgramDay(today: TodayData) {
     return "First in the current rotation because your Program changed.";
   }
   return "First in the Program because no Program day is complete yet.";
+}
+
+function scheduledEventDescription(event: NonNullable<TodayData["schedule"]>["nextEvent"]) {
+  if (!event) return "";
+  if (event.kind === "cardio" && event.intentSnapshot.kind === "cardio") {
+    const duration = event.intentSnapshot.durationMinutes.min === event.intentSnapshot.durationMinutes.max
+      ? `${event.intentSnapshot.durationMinutes.min} minutes`
+      : `${event.intentSnapshot.durationMinutes.min}–${event.intentSnapshot.durationMinutes.max} minutes`;
+    return [event.intentSnapshot.modality, duration, event.intentSnapshot.intensity]
+      .filter(Boolean)
+      .join(" · ");
+  }
+  return event.kind === "recovery"
+    ? "Intentional recovery day"
+    : event.kind === "rest"
+      ? "Intentional rest day"
+      : "Scheduled resistance workout";
 }
 
 function ProgramDecisionStatus({ count }: { count: number }) {
@@ -149,7 +174,6 @@ export default async function TodayPage({
 
   if (!today) redirect("/setup");
 
-  const next = today.nextTemplate!;
   // Server-issued identity keeps the HTML form, pre-hydration submission, and
   // hydrated retries on one exact Start intent.
   const startRequestKey = randomUUID();
@@ -159,12 +183,15 @@ export default async function TodayPage({
       ) ?? null)
     : null;
   const isAlternatePreview =
-    previewTemplate != null && previewTemplate.template.id !== next.template.id;
-  const selectedTemplate = isAlternatePreview ? previewTemplate : next;
-  const lastDone = today.lastDoneByTemplateId[selectedTemplate.template.id];
+    previewTemplate != null &&
+    previewTemplate.template.id !== today.nextTemplate?.template.id;
+  const selectedTemplate = previewTemplate ?? today.nextTemplate;
+  const lastDone = selectedTemplate
+    ? today.lastDoneByTemplateId[selectedTemplate.template.id]
+    : null;
   const gap = today.daysSinceLastSession;
   const alternateTemplates = today.allTemplates.filter(
-    (template) => template.template.id !== next.template.id
+    (template) => template.template.id !== today.nextTemplate?.template.id
   );
   const activeTimingNeedsReview =
     today.inProgressTiming?.reviewRequired ?? false;
@@ -358,7 +385,7 @@ export default async function TodayPage({
               )}
             </CardContent>
           </Card>
-        ) : (
+        ) : selectedTemplate ? (
           <div className="flex flex-col gap-3">
             <Card
               data-testid="today-decision"
@@ -369,7 +396,9 @@ export default async function TodayPage({
                 <p className="text-xs font-medium uppercase tracking-[0.12em] text-primary">
                   {isAlternatePreview
                     ? "Workout preview"
-                    : "Next in your Program"}
+                    : today.schedule?.nextEvent
+                      ? `Scheduled · ${today.schedule.nextEvent.phaseName}`
+                      : "Next in your Program"}
                 </p>
                 <h2 className="text-xl font-semibold leading-tight sm:text-2xl">
                   {selectedTemplate.template.name}
@@ -393,6 +422,16 @@ export default async function TodayPage({
                   fallbackTimezone={user.profile.timezone}
                   retryLabel={selectedTemplate.template.name}
                   buttonClassName="h-auto min-h-12 w-full whitespace-normal py-3 text-center text-base leading-tight"
+                  scheduledStart={
+                    !isAlternatePreview && today.schedule?.nextEvent?.kind === "resistance"
+                      ? {
+                          scheduledProgramEventId: today.schedule.nextEvent.id,
+                          expectedEventRevision: today.schedule.nextEvent.revision,
+                          programScheduleVersionId: today.schedule.scheduleVersionId,
+                          programScheduleVersionHash: today.schedule.scheduleVersionHash,
+                        }
+                      : undefined
+                  }
                 >
                   <Play className="size-4" />
                   {isAlternatePreview ? "Start workout" : "Train as planned"}
@@ -423,6 +462,21 @@ export default async function TodayPage({
                     </p>
                   )}
                 </div>
+                {!isAlternatePreview && today.schedule?.nextEvent && (
+                  <details className="rounded-xl border bg-muted/20 p-3">
+                    <summary className="min-h-11 cursor-pointer text-sm font-medium">Change this scheduled event</summary>
+                    <div className="mt-3">
+                      <ScheduledEventActions
+                        eventId={today.schedule.nextEvent.id}
+                        revision={today.schedule.nextEvent.revision}
+                        eventKind={today.schedule.nextEvent.kind}
+                        scheduleKind={today.schedule.nextEvent.scheduleKind}
+                        currentLocalDate={today.schedule.nextEvent.currentLocalDate}
+                        allowComplete={false}
+                      />
+                    </div>
+                  </details>
+                )}
                 <details
                   open={isAlternatePreview}
                   data-testid="planned-exercise-preview"
@@ -524,6 +578,51 @@ export default async function TodayPage({
               </details>
             )}
           </div>
+        ) : (
+          <Card data-testid="today-decision" size="sm" className="border-primary/40">
+            <CardHeader className="gap-1">
+              <p className="text-xs font-medium uppercase tracking-[0.12em] text-primary">
+                {today.schedule?.complete ? "Program schedule complete" : `Scheduled · ${today.schedule?.nextEvent?.phaseName ?? "Program"}`}
+              </p>
+              <h2 className="text-xl font-semibold leading-tight sm:text-2xl">
+                {today.schedule?.complete
+                  ? "No scheduled event remains"
+                  : today.schedule?.nextEvent?.routineUnavailable
+                    ? "Scheduled routine unavailable"
+                    : today.schedule?.nextEvent?.kind === "cardio"
+                      ? "Cardio"
+                      : today.schedule?.nextEvent?.kind === "recovery"
+                        ? "Recovery"
+                        : "Rest"}
+              </h2>
+              {today.schedule?.nextEvent && (
+                <CardDescription>
+                  {scheduledEventDescription(today.schedule.nextEvent)} · {formatRelativeLocalDate(today.schedule.nextEvent.currentLocalDate, today.currentLocalDate)}
+                </CardDescription>
+              )}
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {today.schedule?.nextEvent?.routineUnavailable ? (
+                <Alert>
+                  <AlertCircle className="size-4" />
+                  <AlertTitle>The routine changed</AlertTitle>
+                  <AlertDescription>This scheduled routine is not present in the active Program version. Nothing was substituted. Review the Program and schedule before training.</AlertDescription>
+                </Alert>
+              ) : today.schedule?.nextEvent ? (
+                <ScheduledEventActions
+                  eventId={today.schedule.nextEvent.id}
+                  revision={today.schedule.nextEvent.revision}
+                  eventKind={today.schedule.nextEvent.kind}
+                  scheduleKind={today.schedule.nextEvent.scheduleKind}
+                  currentLocalDate={today.schedule.nextEvent.currentLocalDate}
+                  allowComplete
+                />
+              ) : (
+                <p className="text-sm leading-6 text-muted-foreground">Completed workouts and schedule outcomes remain in History. Create another schedule when you are ready.</p>
+              )}
+              <ProgramDecisionStatus count={pendingRecs.length} />
+            </CardContent>
+          </Card>
         )}
       </section>
 

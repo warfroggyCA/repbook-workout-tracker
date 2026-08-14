@@ -318,6 +318,23 @@ separate event types. A schedule replacement is accepted only while every
 current occurrence is untouched; any started, resolved, or adjusted occurrence
 makes publication fail without changing the schedule.
 
+The named Program and tracker-facing schedule slice adds migration 0082 and
+snapshot schema 34 without adding another table or changing recovery manifest
+15. `active` and `inactive` are both usable, versioned Programs; the database
+still permits only one active Program per owner. `/program/library` owns
+explicit switching and `/program/schedule` intentionally authors only one
+simple fixed or rolling phase. Advanced schedule documents remain read-only in
+that editor. Today uses the current scheduled occurrence when one exists,
+passes its exact version, hash, event, and revision into resistance Start, and
+keeps cardio, recovery, and rest as non-resistance events. Parser internals and
+canonical routine syntax are unchanged.
+
+Run the focused named Program and tracker schedule contract with:
+
+```bash
+npx vitest run tests/unit/named-program-library-migration.test.ts tests/unit/program-library-db.test.ts tests/unit/program-schedules-db.test.ts tests/unit/program-scheduled-start-db.test.ts tests/unit/start-session-route-freshness.test.ts tests/unit/recovery-manifest-db.test.ts
+```
+
 Run the focused schedule contract with:
 
 ```bash

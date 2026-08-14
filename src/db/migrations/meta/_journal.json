@@ -575,6 +575,13 @@
       "when": 1786684271000,
       "tag": "0081_adaptive_program_schedule",
       "breakpoints": true
+    },
+    {
+      "idx": 82,
+      "version": "7",
+      "when": 1786712650523,
+      "tag": "0082_named_program_library",
+      "breakpoints": true
     }
   ]
 }
