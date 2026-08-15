@@ -1270,6 +1270,8 @@ export function SessionRunner(props: SessionRunnerProps) {
         ? guidance.current?.sessionExerciseId ?? null
         : null;
   const currentActionTargetId = actionTargetId(guidance.currentAction);
+  const restingWorkingSetTargetId =
+    currentActionKind === "rest" ? actionTargetId(guidance.current) : null;
   useEffect(() => {
     if (
       currentActionKind !== "working_set" ||
@@ -1352,10 +1354,11 @@ export function SessionRunner(props: SessionRunnerProps) {
           exerciseDisclosureGenerationRef.current !== disclosureGeneration
         ) return;
         const target = document.getElementById(currentActionTargetId);
-        if (currentActionKind !== "rest") {
-          if (target) {
-            revealWorkoutTarget(target, activeWorkoutScrollBehavior());
-          }
+        const revealTarget = restingWorkingSetTargetId == null
+          ? target
+          : document.getElementById(restingWorkingSetTargetId);
+        if (revealTarget) {
+          revealWorkoutTarget(revealTarget, activeWorkoutScrollBehavior());
         }
         const focusTarget = target == null
           ? null
@@ -1380,6 +1383,7 @@ export function SessionRunner(props: SessionRunnerProps) {
     currentActionSessionExerciseId,
     currentActionTargetId,
     occurrences,
+    restingWorkingSetTargetId,
     skipRecoveryExerciseId,
   ]);
   const groupContextByExerciseId = useMemo(
