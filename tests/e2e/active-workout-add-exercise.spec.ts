@@ -182,9 +182,9 @@ test("adds a reviewed workout-only exercise without editing the Program", async 
     "Added during this workout. It has no Program slot or progression target, and your Program remains unchanged.",
   );
   await expect(addedCard).toContainText("Set 1");
-  await expect(addedCard).toContainText("Set 2");
   await addedCard.getByRole("button", { name: "Log set", exact: true }).click();
   await expect(addedCard).toContainText("1/2 done · Workout only");
+  await expect(addedCard).toContainText("Set 2");
   await expect(
     page.locator('section[aria-labelledby^="session-exercise-heading-"]'),
   ).toHaveCount(plannedHeadingsBefore + 1);
