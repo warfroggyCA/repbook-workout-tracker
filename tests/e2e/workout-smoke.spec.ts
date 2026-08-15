@@ -1579,6 +1579,7 @@ test("signs in and completes a durable workout flow", async ({ page }) => {
   await expect(
     nextSet.getByRole("button", { name: "Log set", exact: true })
   ).toBeEnabled();
+  await openNativeDetails(firstExercise.getByTestId("completed-sets"));
   await firstExercise
     .getByRole("button", { name: "Correct set", exact: true })
     .first()
@@ -1682,7 +1683,7 @@ test("keeps every active-workout route reachable with one scroll surface", async
 
   await expect(currentCard.getByRole("button", { name: "Log set", exact: true })).toBeVisible();
   await openNativeDetails(currentCard.locator("details", {
-    hasText: "Exercise progress & extras",
+    hasText: "Extra sets",
   }));
   const addExtraSet = currentCard.getByRole("button", {
     name: "Add extra set",
@@ -1833,8 +1834,7 @@ test("keeps every active-workout route reachable with one scroll surface", async
   if (!plannedExerciseName) {
     throw new Error("The planned exercise name was not available.");
   }
-  const plannedSetThree = plannedCard.getByText("Set 3", { exact: true });
-  await expect(plannedSetThree).toBeVisible();
+  await expect(plannedCard.getByText("Set 1 of 3", { exact: true })).toBeVisible();
   for (let setNo = 1; setNo <= 3; setNo += 1) {
     await openNativeDetails(plannedCard.locator("details", {
       hasText: "Set exceptions",
@@ -1864,7 +1864,7 @@ test("keeps every active-workout route reachable with one scroll surface", async
     plannedCard.getByText("skipped", { exact: true }),
   ).toHaveCount(3);
   await openNativeDetails(plannedCard.locator("details", {
-    hasText: "Exercise progress & extras",
+    hasText: "Extra sets",
   }));
   const addSet = plannedCard.getByRole("button", {
     name: "Add extra set",
@@ -1890,6 +1890,8 @@ test("keeps every active-workout route reachable with one scroll surface", async
       return Math.abs(after - before);
     })
     .toBeLessThan(1);
+  const plannedSetThree = plannedCard.getByText("Set 3", { exact: true });
+  await expect(plannedSetThree).toBeVisible();
   const positions = await Promise.all([
     plannedSetThree.evaluate((element) => element.getBoundingClientRect().top),
     addedSet.evaluate((element) => element.getBoundingClientRect().top),
@@ -1936,11 +1938,11 @@ test("keeps every active-workout route reachable with one scroll surface", async
   ).toHaveValue(addedReps);
   await expect(
     refreshedCard.locator("details", {
-      hasText: "Exercise progress & extras",
+      hasText: "Extra sets",
     }),
   ).not.toHaveAttribute("open", "");
   await openNativeDetails(refreshedCard.locator("details", {
-    hasText: "Exercise progress & extras",
+    hasText: "Extra sets",
   }));
   await expect(
     refreshedCard.getByRole("button", {
@@ -2124,16 +2126,19 @@ test("keeps the final set acknowledgement visible through background return", as
   await page.bringToFront();
   await expect(page).toHaveURL(/#workout-rest-status$/);
   await expect(workoutStatus).toContainText("Resting");
-  const acknowledgement = page.getByTestId("completed-sets")
-    .filter({ hasText: "3 completed" })
-    .first();
+  const completedExercise = page.getByRole("region", { name: firstName });
+  await completedExercise.locator(":scope > button").click();
+  const acknowledgement = completedExercise.getByTestId("completed-sets");
   await expect(page.getByTestId("active-set-save-receipt")).toHaveCount(0);
+  await expect(acknowledgement).toContainText("3 completed");
+  await acknowledgement.locator(":scope > summary").click();
   await expect(acknowledgement).toContainText("Set 3");
   await expect(acknowledgement).toContainText("Acknowledged by Repbook");
-  await acknowledgement.locator(":scope > summary").click();
-  await expect(
-    acknowledgement.getByRole("button", { name: "Correct set" }),
-  ).toBeVisible();
+  const correctionButtons = acknowledgement.getByRole("button", {
+    name: "Correct set",
+  });
+  await expect(correctionButtons).toHaveCount(3);
+  await expect(correctionButtons.last()).toBeVisible();
   await expect(acknowledgement).toBeInViewport();
   await backgroundPage.close();
   await page.unrouteAll({ behavior: "wait" });
@@ -2420,10 +2425,17 @@ test("confirms one complete quick log and shows its stored units in History", as
   await expect(page.getByText("→ Barbell Back Squat", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Save", exact: true }).click();
 
-  const quickLog = page.getByRole("link", { name: /Quick log/ }).first();
+  await page.getByRole("link", { name: "View full history", exact: true }).click();
+  const ownerToday = page.locator("[data-calendar-action]").last();
+  await expect(ownerToday).toHaveAttribute("aria-haspopup", "dialog");
+  await ownerToday.click();
+  const quickLog = page
+    .getByRole("dialog", { name: "Choose a record" })
+    .getByRole("link", { name: /Quick log/ })
+    .first();
   await expect(quickLog).toBeVisible();
   await quickLog.click();
-  await expect(page).toHaveURL(/\/history\/[0-9a-f-]+$/);
+  await expect(page).toHaveURL(/\/history\/[0-9a-f-]+(?:\?.*)?$/);
   await expect(page.getByText(/100 kg × 8/)).toBeVisible();
   await expect(page.getByText(/100 kg × 7/)).toBeVisible();
   expect(browserErrors).toEqual([]);
@@ -2739,9 +2751,7 @@ test("keeps an offline set visible and waits for acknowledgement before the next
   await expect.poll(() => actionRequests).toBe(1);
 
   await page.reload();
-  await openNativeDetails(firstExercise.locator("details", {
-    hasText: "Exercise progress & extras",
-  }));
+  await openNativeDetails(firstExercise.getByTestId("completed-sets"));
   const savedSet = firstExercise
     .locator('[id^="logged-set-"]')
     .filter({ hasText: "Set 1" })
