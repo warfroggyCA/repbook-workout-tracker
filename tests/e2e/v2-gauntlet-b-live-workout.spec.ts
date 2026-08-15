@@ -504,6 +504,7 @@ test("keeps the full live workout usable through warm-up, skip, replace, continu
   ).toHaveAttribute("aria-expanded", "true");
   await expectActiveViewportBudget(page);
 
+  const completedSquat = exerciseCard(page, "Barbell Back Squat");
   for (let setNo = 1; setNo <= 3; setNo += 1) {
     const current = page.getByTestId("current-exercise-card");
     const currentSet = current.getByTestId("current-set-entry");
@@ -511,7 +512,16 @@ test("keeps the full live workout usable through warm-up, skip, replace, continu
     const log = currentSet.getByRole("button", { name: "Log set", exact: true });
     await expectReachableTarget(log);
     await log.click();
-    const receipt = current.getByTestId("completed-sets");
+    if (setNo === 3) {
+      await expect(completedSquat).toContainText("3/3 planned performed");
+      const completedSquatToggle = completedSquat.locator(":scope > button");
+      await expect(completedSquatToggle).toHaveAttribute(
+        "aria-expanded",
+        "false",
+      );
+      await completedSquatToggle.click();
+    }
+    const receipt = completedSquat.getByTestId("completed-sets");
     await expect(receipt).toContainText(`Set ${setNo}`);
     await expect(receipt).toContainText("Acknowledged by Repbook");
     await dismissRest(page);

@@ -2429,7 +2429,18 @@ test("confirms one complete quick log and shows its stored units in History", as
   await expect(quickLogInput).toHaveValue("");
 
   await page.getByRole("link", { name: "View full history", exact: true }).click();
-  const ownerToday = page.locator("[data-calendar-action]").last();
+  const ownerDateParts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Toronto",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(new Date());
+  const ownerDate = Object.fromEntries(
+    ownerDateParts.map((part) => [part.type, part.value]),
+  );
+  const ownerToday = page.locator(
+    `[data-calendar-action][data-calendar-date="${ownerDate.year}-${ownerDate.month}-${ownerDate.day}"]`,
+  );
   await expect(ownerToday).toHaveAttribute("aria-haspopup", "dialog");
   await ownerToday.click();
   const quickLog = page
