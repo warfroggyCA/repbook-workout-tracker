@@ -2,10 +2,12 @@ import { describe, expect, it } from "vitest";
 import {
   DEFAULT_REST_ALERT_PREFERENCE,
   REST_COMPLETION_TONE_PATTERN,
+  REST_COUNTDOWN_TICK_PATTERN,
   parseRestAlertPreference,
   planRestCueTransition,
   primeRestAudioContext,
   requestedRestCueChannels,
+  restCountdownCueKey,
   restCueOutcome,
   restCueOutcomeMessage,
   writeRestAlertPreference,
@@ -69,20 +71,55 @@ describe("rest alert preference", () => {
     }).milestonesToAttempt).toEqual([]);
   });
 
-  it("uses five short, separated tones for the completion cue", () => {
-    expect(REST_COMPLETION_TONE_PATTERN).toHaveLength(5);
+  it("requests one foreground sound tick for each second from 9 through 1", () => {
+    const input = {
+      generationId: "timer-a",
+      preference: "sound" as const,
+      foreground: true,
+      tenSecondMilestoneDue: false,
+    };
+    expect(restCountdownCueKey({ ...input, remainingSec: 9, previousCueKey: null }))
+      .toBe("timer-a:9");
+    expect(restCountdownCueKey({ ...input, remainingSec: 9, previousCueKey: "timer-a:9" }))
+      .toBeNull();
+    expect(restCountdownCueKey({ ...input, remainingSec: 1, previousCueKey: "timer-a:2" }))
+      .toBe("timer-a:1");
+    expect(restCountdownCueKey({ ...input, remainingSec: 10, previousCueKey: null }))
+      .toBeNull();
+    expect(restCountdownCueKey({ ...input, remainingSec: 0, previousCueKey: null }))
+      .toBeNull();
+    expect(restCountdownCueKey({ ...input, remainingSec: 8, previousCueKey: null, foreground: false }))
+      .toBeNull();
+    expect(restCountdownCueKey({ ...input, remainingSec: 8, previousCueKey: null, preference: "visual_only" }))
+      .toBeNull();
+  });
+
+  it("uses a louder multi-second alarm and a distinct mechanical countdown tick", () => {
+    expect(REST_COMPLETION_TONE_PATTERN).toHaveLength(8);
     expect(REST_COMPLETION_TONE_PATTERN.map((tone) => tone.delaySec)).toEqual([
       0,
-      0.2,
-      0.4,
-      0.6,
-      0.8,
+      0.32,
+      0.64,
+      0.96,
+      1.28,
+      1.6,
+      1.92,
+      2.36,
     ]);
     expect(
       REST_COMPLETION_TONE_PATTERN.every(
-        (tone) => tone.durationSec > 0 && tone.durationSec <= 0.2,
+        (tone) =>
+          tone.durationSec >= 0.24 &&
+          tone.peakGain >= 0.42 &&
+          tone.wave === "square",
       ),
     ).toBe(true);
+    expect(REST_COUNTDOWN_TICK_PATTERN).toHaveLength(2);
+    expect(REST_COUNTDOWN_TICK_PATTERN[0]).toMatchObject({
+      frequencyHz: 1180,
+      peakGain: 0.34,
+      wave: "square",
+    });
   });
 
   it("starts a silent source immediately so a user gesture can unlock delayed audio", () => {

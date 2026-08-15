@@ -93,13 +93,12 @@ async function skipCurrentSet(dock: Locator) {
     name: "Skip set",
     exact: true,
   });
-  const exceptionDetails = currentCard.locator("details", {
-    hasText: "Set exceptions",
-  });
-  if ((await exceptionDetails.count()) === 0) {
-    await dock.locator("button").first().click();
+  if (!(await skipSet.isVisible())) {
+    await openNativeDetails(
+      currentCard.locator("details").filter({ hasText: /^Set options/ }),
+    );
   }
-  await openNativeDetails(exceptionDetails);
+  await expect(skipSet).toBeVisible();
   await waitForScrollToSettle(page);
   await skipSet.evaluate((element) => {
     element.scrollIntoView({ block: "center" });
@@ -220,7 +219,7 @@ test("keeps Stage 5 guidance truthful, persistent, and usable on narrow mobile s
   await signIn(page);
   await page.goto("/settings");
   const defaultSound = page.getByRole("radio").filter({
-    hasText: "Foreground sound (default)",
+    hasText: "Countdown ticks + finish alarm (default)",
   });
   await expect(defaultSound).toHaveAttribute("aria-checked", "true");
   await page
@@ -429,9 +428,12 @@ test("keeps Stage 5 guidance truthful, persistent, and usable on narrow mobile s
   ).toBe(true);
   await screenshot(page, "02-ready-state-collapsed-320-extra-large.png");
 
-  await persistentDock
-    .getByRole("button", { name: "Dismiss rest timer", exact: true })
-    .click();
+  const dismissRest = persistentDock.getByRole("button", {
+    name: "Dismiss rest timer",
+    exact: true,
+  });
+  await dismissRest.click();
+  await expect(dismissRest).toHaveCount(0);
   await skipCurrentSet(persistentDock);
   await expect(
     page.getByRole("region", {
@@ -539,10 +541,10 @@ test("keeps Stage 5 guidance truthful, persistent, and usable on narrow mobile s
   });
   await startProgramDay(page, "Day A — Squat", false);
   const groupDock = page.getByTestId("current-exercise-card");
+  await openNativeDetails(
+    groupDock.locator("details").filter({ hasText: /^Set options/ }),
+  );
   await expect.poll(() => equipmentSelectionStarted).toBe(true);
-  await openNativeDetails(groupDock.locator("details", {
-    hasText: "Set exceptions",
-  }));
   await expect(
     groupDock.getByRole("button", { name: "Skip set", exact: true }),
   ).toBeDisabled();
@@ -574,8 +576,9 @@ test("keeps Stage 5 guidance truthful, persistent, and usable on narrow mobile s
     name: "Workout progress and upcoming work",
   });
   await expect(durableGroupGuidance).toContainText("9 skipped");
-  await expect(durableGroupGuidance).toContainText(
-    /Next: Superset, round 1, member 2 of 2: Pallof Press, set 1/,
+  await expect(durableGroupGuidance).not.toContainText("Next:");
+  await expect(page.getByTestId("current-exercise-card")).toContainText(
+    "Superset, round 1, member 2 of 2: Pallof Press, set 1",
   );
   await expect(durableGroupGuidance).toContainText(
     /Now: Superset, round 1, member 1 of 2: Dumbbell Lateral Raise, set 1/,

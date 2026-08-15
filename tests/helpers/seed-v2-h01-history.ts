@@ -261,6 +261,7 @@ export async function seedV2H01HistoryFixture() {
     {
       id: ids.finishedSet,
       sessionExerciseId: ids.finishedSessionExercise,
+      clientKey: ids.finishedSetClientKey,
       setNo: 1,
       reps: 8,
       metricType: "reps",

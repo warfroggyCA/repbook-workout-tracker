@@ -608,6 +608,12 @@ workload and strength estimates do not apply. Missing performed semantics remain
 legacy partial, malformed partial tuples remain unsupported, and neither is
 inferred from current Program or catalogue metadata.
 
+The performed set identity and measurement remain primary on each History
+card, with correction directly reachable. Provenance, semantic support,
+calculation eligibility, load meaning, setup meaning, and revision evidence
+remain explicit inside one closed set-details disclosure so repeated evidence
+copy does not obscure the recorded result.
+
 Tracker-started and Session Compiler workouts are native Repbook provenance;
 retrospective owner entry, import, and unclassified legacy sources remain
 distinct. The correction headline follows the newest applicable set or workout
@@ -1015,6 +1021,8 @@ foreign owner/session copy remains separate and non-blocking.
 Rest alerts default to foreground sound for a new device, while an explicit
 visual-only choice remains preserved locally. Logging a set primes Web Audio
 during the owner gesture, and the active timer names its current alert mode.
+Sound-enabled foreground timers use a local audible tick at 10 and each
+remaining second, followed by a stronger multi-second finish alarm.
 Browser, device-volume, silent-mode, Bluetooth, and background restrictions
 remain external constraints; the visual timer is always the truthful fallback.
 

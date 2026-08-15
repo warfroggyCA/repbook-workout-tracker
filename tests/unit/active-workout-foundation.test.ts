@@ -50,7 +50,7 @@ describe("active workout foundation", () => {
 
   it("keeps device-only measurements bounded, inspectable, and clearable", () => {
     const storage = memoryStorage();
-    const now = new Date("2026-07-16T12:00:00.000Z");
+    const now = new Date();
     for (let index = 0; index < ACTIVE_WORKOUT_MEASUREMENT_LIMIT + 5; index += 1) {
       writeActiveWorkoutMeasurement(
         {
