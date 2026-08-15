@@ -3101,6 +3101,7 @@ async function logWorkoutSetAttempt(
     };
   }
   if (
+    row.outcome === "workout_not_active" ||
     row.outcome === "set_number_conflict" ||
     row.outcome === "equipment_selection_required" ||
     row.outcome === "equipment_selection_conflict" ||

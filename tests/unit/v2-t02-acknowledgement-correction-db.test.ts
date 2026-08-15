@@ -81,6 +81,45 @@ describe("V2 T02 acknowledgement and correction ledger", () => {
     });
   });
 
+  it("acknowledges an exact committed set after the workout ends without accepting new evidence", async () => {
+    const first = await logWorkoutSet(
+      database.db,
+      fixture.userId,
+      fixture.commands.loaded,
+    );
+    expect(first).toMatchObject({ outcome: "saved" });
+
+    await database.db
+      .update(workoutSessions)
+      .set({ status: "completed", finishedAt: new Date() })
+      .where(eq(workoutSessions.id, fixture.sessionId));
+
+    await expect(
+      logWorkoutSet(database.db, fixture.userId, fixture.commands.loaded),
+    ).resolves.toEqual(first);
+    await expect(
+      logWorkoutSet(database.db, fixture.userId, {
+        ...fixture.commands.loaded,
+        reps: 4,
+      }),
+    ).resolves.toEqual({ outcome: "retry_identity_conflict" });
+    await expect(
+      logWorkoutSet(database.db, fixture.userId, {
+        ...fixture.commands.loaded,
+        clientKey: crypto.randomUUID(),
+      }),
+    ).resolves.toEqual({ outcome: "workout_not_active" });
+
+    expect(
+      await database.db.query.completedSets.findMany({
+        where: eq(
+          completedSets.sessionExerciseId,
+          fixture.sessionExerciseIds.loaded,
+        ),
+      }),
+    ).toHaveLength(1);
+  });
+
   it("corrects a timed assertion with stable identity, a revision fence, and complete evidence", async () => {
     const saved = await logWorkoutSet(
       database.db,

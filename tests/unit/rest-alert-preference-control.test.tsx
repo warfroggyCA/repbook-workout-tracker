@@ -8,6 +8,7 @@ describe("RestAlertPreferenceControl", () => {
     expect(html).toContain("Rest timer alert");
     expect(html).toContain("Visual only");
     expect(html).toMatch(/aria-checked="true"[\s\S]*>Sound<\/span>/);
+    expect(html).toContain("Countdown ticks + finish alarm (default)");
     expect(html).toContain("Sound + vibration");
     expect(html).toContain("Test selected cue");
     expect(html).toContain("only to this browser/device");

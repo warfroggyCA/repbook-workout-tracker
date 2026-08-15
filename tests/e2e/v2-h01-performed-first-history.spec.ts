@@ -111,13 +111,15 @@ test("presents performed evidence first without rewriting or inflating History",
       name: "H01 Bodyweight Bulgarian Split Squat",
     }),
   ).toBeVisible();
-  await expect(performed.getByText("Supported performed meaning", { exact: true })).toHaveCount(2);
-  await expect(performed.getByText("Legacy partial meaning", { exact: true })).toBeVisible();
+  await expect(performed.getByRole("button", { name: "Correct set" })).toHaveCount(3);
   await expect(
-    performed.getByText(
-      "Not used in completed calculations because this legacy set's performed meaning is incomplete.",
-      { exact: true },
-    ),
+    performed.getByText("Supported performed meaning", { exact: true }).first(),
+  ).toBeHidden();
+  await expect(
+    performed.getByText("Legacy partial meaning", { exact: true }),
+  ).toBeHidden();
+  await expect(
+    performed.getByText("Set details · calculations unavailable", { exact: true }),
   ).toBeVisible();
   await expect(performed.getByText("Legacy acknowledged working set", { exact: true })).toBeVisible();
   await expect(performed.getByText("Extra imported working set", { exact: true })).toBeVisible();
@@ -132,15 +134,33 @@ test("presents performed evidence first without rewriting or inflating History",
   const correctionEvidence = performed.locator("details", {
     hasText: "Correction and restore evidence",
   });
+  await expect(correctionEvidence).not.toHaveAttribute("open", "");
   await correctionEvidence.locator("summary").focus();
   await expect(correctionEvidence.locator("summary")).toBeFocused();
   await correctionEvidence.locator("summary").press("Enter");
   await expect(correctionEvidence).toHaveAttribute("open", "");
+  await expect(
+    correctionEvidence.getByText("Supported performed meaning", { exact: true }),
+  ).toBeVisible();
   await expect(correctionEvidence).toContainText("Corrected from History");
   await expect(correctionEvidence).toContainText("Repetitions: 10 → 12");
   await expect(correctionEvidence).toContainText("Recovery snapshot restored");
   await expect(correctionEvidence).toContainText("Repetitions: 12 → 11");
   await expect(correctionEvidence).toContainText(ids.snapshot);
+
+  const legacySetDetails = page.locator(
+    `#performed-set-${ids.importedLegacySet} details`,
+  );
+  await legacySetDetails.locator("summary").click();
+  await expect(
+    legacySetDetails.getByText("Legacy partial meaning", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    legacySetDetails.getByText(
+      "Not used in completed calculations because this legacy set's performed meaning is incomplete.",
+      { exact: true },
+    ),
+  ).toBeVisible();
 
   const plannedLink = performed.getByRole("link", { name: "Original plan" });
   await expect(plannedLink).toHaveAttribute(
@@ -187,6 +207,9 @@ test("presents performed evidence first without rewriting or inflating History",
 
   await page.goto(`/history/${ids.finishedEarlySession}`);
   await expect(page.getByText("Finished early", { exact: true }).first()).toBeVisible();
+  const finishedSetDetails = page.locator(`#performed-set-${ids.finishedSet} details`);
+  await expect(finishedSetDetails).not.toHaveAttribute("open", "");
+  await finishedSetDetails.locator("summary").click();
   await expect(page.getByText("Recorded in Repbook", { exact: true }).first()).toBeVisible();
   await expect(page.getByText("Corrected evidence", { exact: true }).first()).toBeVisible();
   await expect(page.getByText(/Timing corrected 1 time/)).toBeVisible();
@@ -196,6 +219,11 @@ test("presents performed evidence first without rewriting or inflating History",
   await page.goto(`/history/${ids.abandonedSession}`);
   await expect(page.getByText("Abandoned workout", { exact: true }).first()).toBeVisible();
   await expect(page.getByText(/1 performed working set/)).toBeVisible();
+  const abandonedSetDetails = page.locator(`#performed-set-${ids.abandonedSet} details`);
+  await expect(abandonedSetDetails.locator("summary")).toHaveText(
+    "Set details · calculations unavailable",
+  );
+  await abandonedSetDetails.locator("summary").click();
   await expect(
     page.getByText(
       "Excluded from completed metrics, progression, and Review because the workout was abandoned.",
@@ -208,4 +236,79 @@ test("presents performed evidence first without rewriting or inflating History",
   await expect(page).toHaveURL(`/session/${ids.activeSession}`);
   expect(mutationRequests).toEqual([]);
   await pageErrors.expectNoUnexpected();
+});
+
+test("clears an exact retained set copy after its workout has ended", async ({
+  page,
+}) => {
+  await signIn(page);
+  await page.goto("/settings");
+  await page.evaluate((fixtureIds) => {
+    localStorage.setItem(
+      "workout-tracker:workout-set-outbox:v1",
+      JSON.stringify({
+        version: 4,
+        entries: [
+          {
+            clientKey: fixtureIds.finishedSetClientKey,
+            ownerId: fixtureIds.user,
+            sessionId: fixtureIds.finishedEarlySession,
+            sessionExerciseId: fixtureIds.finishedSessionExercise,
+            occurrenceId: fixtureIds.finishedOccurrence,
+            expectedOccurrenceRevision: 0,
+            performedExerciseId: fixtureIds.performedExercise,
+            performedSemanticsVersion: 1,
+            performedLoadType: "bodyweight",
+            performedLoadSemantics: "bodyweight",
+            workoutName: "Finished early workout",
+            exerciseName: "H01 Bodyweight Bulgarian Split Squat",
+            setNo: 1,
+            metricType: "reps",
+            weight: null,
+            weightUnit: null,
+            reps: 8,
+            distanceKm: null,
+            durationSeconds: null,
+            rpe: null,
+            rir: null,
+            techniqueIssue: null,
+            limitationCause: null,
+            pain: null,
+            note: null,
+            equipmentSnapshotId: null,
+            loadEntryMeaning: "legacy_unknown",
+            observedCompletedAtISO: null,
+            createdAtISO: new Date().toISOString(),
+            status: "queued",
+            attemptCount: 1,
+            nextAttemptAtISO: null,
+            lastAttemptAtISO: new Date().toISOString(),
+            lastError: "This workout has ended. Check this set before removing it.",
+          },
+        ],
+      }),
+    );
+    window.dispatchEvent(new Event("workout-set-outbox-change"));
+  }, ids);
+
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const raw = localStorage.getItem(
+          "workout-tracker:workout-set-outbox:v1",
+        );
+        if (!raw) return 0;
+        return (JSON.parse(raw) as { entries: unknown[] }).entries.length;
+      }),
+    )
+    .toBe(0);
+  await expect(
+    page.getByRole("button", { name: "Open sets waiting to save" }),
+  ).toHaveCount(0);
+
+  await page.goto(`/history/${ids.finishedEarlySession}`);
+  await expect(page.locator(`#performed-set-${ids.finishedSet}`)).toContainText(
+    "8 reps",
+  );
+  await expect(page.getByText(/1 performed working set/)).toBeVisible();
 });

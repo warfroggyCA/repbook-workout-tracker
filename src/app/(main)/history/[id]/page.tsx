@@ -829,32 +829,23 @@ export default async function SessionDetailPage(
                         semantics,
                         semanticFacet,
                       );
+                    const detailsSummary =
+                      calculationEligibility.kind === "excluded"
+                        ? "Set details · calculations unavailable"
+                        : correctionFacet !== "original"
+                          ? "Set details · corrected"
+                          : "Set details";
                     return (
                       <li
                         key={s.id}
                         id={`performed-set-${s.id}`}
-                        className="rounded-md bg-primary/5 px-2 py-1.5"
+                        className="rounded-lg border bg-background px-3 py-2.5"
                       >
-                        {setup && (
-                          <div className="mb-2 rounded-md border bg-background/70 px-2 py-1.5">
-                            <p className="text-xs font-medium">
-                              Performed setup · {setup.title}
-                            </p>
-                            {setup.details.map((detail) => (
-                              <p
-                                key={detail}
-                                className="mt-0.5 text-xs text-muted-foreground"
-                              >
-                                {detail}
-                              </p>
-                            ))}
-                          </div>
-                        )}
-                        <div className="flex flex-wrap items-center justify-between gap-2">
-                          <span className="text-muted-foreground">
+                        <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+                          <span className="font-medium text-muted-foreground">
                             {setPosition?.label ?? `Set ${s.setNo}`}
                           </span>
-                          <span className="flex items-center gap-1.5">
+                          <span className="ml-auto flex items-center gap-1.5 font-semibold text-foreground">
                             {formatSetMetric(s)}
                             {s.rpe != null && (
                               <span className="text-xs text-muted-foreground">
@@ -872,35 +863,7 @@ export default async function SessionDetailPage(
                               </Badge>
                             ) : null}
                           </span>
-                        </div>
-                        <div
-                          className="mt-2 flex flex-wrap gap-1"
-                          aria-label="Performed evidence facets"
-                        >
-                          <Badge variant="outline">
-                            {HISTORY_PROVENANCE_LABELS[provenanceFacet]}
-                          </Badge>
-                          <Badge variant="outline">
-                            {PERFORMED_SEMANTIC_FACET_LABELS[semanticFacet]}
-                          </Badge>
-                          <Badge variant="outline">
-                            {HISTORY_CORRECTION_LABELS[correctionFacet]}
-                          </Badge>
-                        </div>
-                        <p className="mt-2 text-xs text-muted-foreground">
-                          {calculationEligibility.label}
-                        </p>
-                        <div className="mt-2 flex flex-wrap items-center justify-between gap-2 border-t pt-2">
-                          <span className="text-xs text-muted-foreground">
-                            {setCorrections.length > 0
-                              ? `${setCorrections.length} saved evidence change${setCorrections.length === 1 ? "" : "s"} · prior values retained in revision history`
-                              : "No saved corrections"}
-                          </span>
-                          {s.metricType === "activity" ? (
-                            <span className="text-xs text-muted-foreground">
-                              This legacy measurement shape cannot be corrected here.
-                            </span>
-                          ) : (
+                          {s.metricType === "activity" ? null : (
                             <CompletedSetCorrection
                               setId={s.id}
                               setNo={s.setNo}
@@ -917,89 +880,8 @@ export default async function SessionDetailPage(
                             />
                           )}
                         </div>
-                        {correctionEvidence.length > 0 && (
-                          <details className="mt-2 rounded-md border bg-background/70 px-2 py-1.5">
-                            <summary className="flex min-h-11 cursor-pointer items-center text-xs font-medium">
-                              Correction and restore evidence
-                            </summary>
-                            <ol className="mt-2 space-y-2">
-                              {correctionEvidence.map((version) => (
-                                <li
-                                  key={version.id}
-                                  className="rounded-md bg-muted/40 px-2 py-1.5 text-xs"
-                                >
-                                  <p className="font-medium">
-                                    {version.actionLabel}
-                                  </p>
-                                  {version.readableEnvelope ? (
-                                    <>
-                                      <p className="mt-1 text-muted-foreground">
-                                        {version.categoryLabel}
-                                        {version.reasonNote
-                                          ? ` · ${version.reasonNote}`
-                                          : ""}
-                                      </p>
-                                      <p className="mt-1 text-muted-foreground">
-                                        Source {version.sourceLabel} · History
-                                        revision {version.historyRevisionLabel} ·
-                                        evidence revision {version.ledgerRevisionLabel}
-                                      </p>
-                                      {version.decidedAt && (
-                                        <p className="mt-1 text-muted-foreground">
-                                          Decided {version.decidedAt}
-                                        </p>
-                                      )}
-                                      {version.restoreReference && (
-                                        <p className="mt-1 break-all text-muted-foreground">
-                                          Restore source {version.restoreReference}
-                                        </p>
-                                      )}
-                                    </>
-                                  ) : (
-                                    <p className="mt-1 text-muted-foreground">
-                                      Legacy correction envelope unreadable. Only
-                                      reviewed changed field names are shown.
-                                    </p>
-                                  )}
-                                  {version.deltas.length > 0 ? (
-                                    <ul className="mt-2 space-y-1">
-                                      {version.deltas.map((delta) => (
-                                        <li key={delta.field}>
-                                          {delta.label}: {delta.before} → {delta.after}
-                                        </li>
-                                      ))}
-                                    </ul>
-                                  ) : version.changedFieldLabels.length > 0 ? (
-                                    <p className="mt-2">
-                                      Changed fields: {version.changedFieldLabels.join(", ")}
-                                    </p>
-                                  ) : (
-                                    <p className="mt-2 text-muted-foreground">
-                                      No safe field delta is available.
-                                    </p>
-                                  )}
-                                </li>
-                              ))}
-                            </ol>
-                          </details>
-                        )}
-                        <p className="mt-1 text-xs text-muted-foreground">
-                          Load meaning: {loadMeaning}
-                        </p>
-                        {semantics.exclusionReason != null && (
-                          <p className="mt-1 text-xs text-muted-foreground">
-                            {setMetricExclusionLabel(
-                              semantics.exclusionReason,
-                            )}
-                          </p>
-                        )}
-                        {performedSetup && (
-                          <p className="mt-1 text-xs text-muted-foreground">
-                            Performed setup: {performedSetup}
-                          </p>
-                        )}
                         {s.note && (
-                          <p className="mt-1 text-xs text-muted-foreground">
+                          <p className="mt-2 text-xs text-muted-foreground">
                             {s.note}
                           </p>
                         )}
@@ -1021,6 +903,142 @@ export default async function SessionDetailPage(
                               : ""}
                           </p>
                         )}
+                        <details className="mt-2 rounded-md border bg-muted/20 px-2.5 py-1">
+                          <summary className="flex min-h-11 cursor-pointer items-center text-xs font-medium">
+                            {detailsSummary}
+                          </summary>
+                          <div className="border-t pb-1 pt-2">
+                            {setup && (
+                              <div className="rounded-md border bg-background px-2 py-1.5">
+                                <p className="text-xs font-medium">
+                                  Performed setup · {setup.title}
+                                </p>
+                                {setup.details.map((detail) => (
+                                  <p
+                                    key={detail}
+                                    className="mt-0.5 text-xs text-muted-foreground"
+                                  >
+                                    {detail}
+                                  </p>
+                                ))}
+                              </div>
+                            )}
+                            <div
+                              className="mt-2 flex flex-wrap gap-1"
+                              aria-label="Performed evidence facets"
+                            >
+                              <Badge variant="outline">
+                                {HISTORY_PROVENANCE_LABELS[provenanceFacet]}
+                              </Badge>
+                              <Badge variant="outline">
+                                {PERFORMED_SEMANTIC_FACET_LABELS[semanticFacet]}
+                              </Badge>
+                              <Badge variant="outline">
+                                {HISTORY_CORRECTION_LABELS[correctionFacet]}
+                              </Badge>
+                            </div>
+                            <p className="mt-2 text-xs text-muted-foreground">
+                              {calculationEligibility.label}
+                            </p>
+                            <p className="mt-2 text-xs text-muted-foreground">
+                              {setCorrections.length > 0
+                                ? `${setCorrections.length} saved evidence change${setCorrections.length === 1 ? "" : "s"} · prior values retained in revision history`
+                                : "No saved corrections"}
+                            </p>
+                            {s.metricType === "activity" && (
+                              <p className="mt-1 text-xs text-muted-foreground">
+                                This legacy measurement shape cannot be corrected here.
+                              </p>
+                            )}
+                            {correctionEvidence.length > 0 && (
+                              <div className="mt-3">
+                                <h4 className="text-xs font-medium">
+                                  Correction and restore evidence
+                                </h4>
+                                <ol className="mt-2 space-y-2">
+                                  {correctionEvidence.map((version) => (
+                                    <li
+                                      key={version.id}
+                                      className="rounded-md bg-muted/40 px-2 py-1.5 text-xs"
+                                    >
+                                      <p className="font-medium">
+                                        {version.actionLabel}
+                                      </p>
+                                      {version.readableEnvelope ? (
+                                        <>
+                                          <p className="mt-1 text-muted-foreground">
+                                            {version.categoryLabel}
+                                            {version.reasonNote
+                                              ? ` · ${version.reasonNote}`
+                                              : ""}
+                                          </p>
+                                          <p className="mt-1 text-muted-foreground">
+                                            Source {version.sourceLabel} · History
+                                            revision {version.historyRevisionLabel} ·
+                                            evidence revision{" "}
+                                            {version.ledgerRevisionLabel}
+                                          </p>
+                                          {version.decidedAt && (
+                                            <p className="mt-1 text-muted-foreground">
+                                              Decided {version.decidedAt}
+                                            </p>
+                                          )}
+                                          {version.restoreReference && (
+                                            <p className="mt-1 break-all text-muted-foreground">
+                                              Restore source{" "}
+                                              {version.restoreReference}
+                                            </p>
+                                          )}
+                                        </>
+                                      ) : (
+                                        <p className="mt-1 text-muted-foreground">
+                                          Legacy correction envelope unreadable.
+                                          Only reviewed changed field names are
+                                          shown.
+                                        </p>
+                                      )}
+                                      {version.deltas.length > 0 ? (
+                                        <ul className="mt-2 space-y-1">
+                                          {version.deltas.map((delta) => (
+                                            <li key={delta.field}>
+                                              {delta.label}: {delta.before} →{" "}
+                                              {delta.after}
+                                            </li>
+                                          ))}
+                                        </ul>
+                                      ) : version.changedFieldLabels.length >
+                                        0 ? (
+                                        <p className="mt-2">
+                                          Changed fields:{" "}
+                                          {version.changedFieldLabels.join(", ")}
+                                        </p>
+                                      ) : (
+                                        <p className="mt-2 text-muted-foreground">
+                                          No safe field delta is available.
+                                        </p>
+                                      )}
+                                    </li>
+                                  ))}
+                                </ol>
+                              </div>
+                            )}
+                            <p className="mt-2 text-xs text-muted-foreground">
+                              Load meaning: {loadMeaning}
+                            </p>
+                            {semantics.exclusionReason != null && (
+                              <p className="mt-1 text-xs text-muted-foreground">
+                                {setMetricExclusionLabel(
+                                  semantics.exclusionReason,
+                                )}
+                              </p>
+                            )}
+                            {performedSetup && (
+                              <p className="mt-1 text-xs text-muted-foreground">
+                                Performed setup: {performedSetup}
+                              </p>
+                            )}
+                          </div>
+                        </details>
                       </li>
                     );
                   },

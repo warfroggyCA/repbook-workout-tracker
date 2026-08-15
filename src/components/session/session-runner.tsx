@@ -139,10 +139,13 @@ import {
 import {
   DEFAULT_REST_ALERT_PREFERENCE,
   planRestCueTransition,
+  playRestTonePattern,
   primeRestAudioContext,
   readRestAlertPreference,
   REST_COMPLETION_TONE_PATTERN,
+  REST_COUNTDOWN_TICK_PATTERN,
   requestedRestCueChannels,
+  restCountdownCueKey,
   restCueOutcome,
   subscribeToRestAlertPreference,
   type RestAlertPreference,
@@ -1007,6 +1010,7 @@ export function SessionRunner(props: SessionRunnerProps) {
   }, [equipmentSetupIdentity]);
   const audioContextRef = useRef<AudioContext | null>(null);
   const audioCueBlockedRef = useRef(false);
+  const lastRestCountdownCueRef = useRef<string | null>(null);
   const outbox = useSyncExternalStore(
     subscribeToWorkoutSetOutbox,
     getWorkoutSetOutboxSnapshot,
@@ -2085,22 +2089,22 @@ export function SessionRunner(props: SessionRunnerProps) {
       const context = audioContextRef.current;
       if (context?.state === "running") {
         try {
-          const startsAt = context.currentTime;
           if (milestone === "complete") {
-            for (const tone of REST_COMPLETION_TONE_PATTERN) {
-              playTone(
-                context,
-                tone.frequencyHz,
-                startsAt + tone.delaySec,
-                tone.durationSec,
-              );
-            }
+            playRestTonePattern(context, REST_COMPLETION_TONE_PATTERN);
           } else {
-            playTone(
+            playRestTonePattern(
               context,
-              milestone === "15" ? 660 : 760,
-              startsAt,
-              0.18,
+              milestone === "10"
+                ? REST_COUNTDOWN_TICK_PATTERN
+                : [
+                    {
+                      delaySec: 0,
+                      frequencyHz: 660,
+                      durationSec: 0.18,
+                      peakGain: 0.24,
+                      wave: "square",
+                    },
+                  ],
             );
           }
           soundRequested = true;
@@ -2162,7 +2166,27 @@ export function SessionRunner(props: SessionRunnerProps) {
         preference,
         foreground,
       });
+      const countdownCueKey = restCountdownCueKey({
+        generationId: timer.generationId,
+        remainingSec: currentRemainingSec,
+        previousCueKey: lastRestCountdownCueRef.current,
+        preference,
+        foreground,
+        tenSecondMilestoneDue: plan.milestonesToAttempt.includes("10"),
+      });
       try {
+        if (countdownCueKey != null) {
+          const context = audioContextRef.current;
+          if (context?.state === "running") {
+            try {
+              playRestTonePattern(context, REST_COUNTDOWN_TICK_PATTERN);
+              lastRestCountdownCueRef.current = countdownCueKey;
+              audioCueBlockedRef.current = false;
+            } catch {
+              // The visual countdown remains authoritative if audio fails.
+            }
+          }
+        }
         if (currentRemainingSec === 0) {
           if (!foreground) {
             await refreshRestTimer();
@@ -4353,23 +4377,4 @@ export function SessionRunner(props: SessionRunnerProps) {
       })()}
     </main>
   );
-}
-
-function playTone(
-  context: AudioContext,
-  frequency: number,
-  startsAt: number,
-  duration: number
-) {
-  const oscillator = context.createOscillator();
-  const gain = context.createGain();
-  oscillator.type = "sine";
-  oscillator.frequency.setValueAtTime(frequency, startsAt);
-  gain.gain.setValueAtTime(0.0001, startsAt);
-  gain.gain.exponentialRampToValueAtTime(0.16, startsAt + 0.02);
-  gain.gain.exponentialRampToValueAtTime(0.0001, startsAt + duration);
-  oscillator.connect(gain);
-  gain.connect(context.destination);
-  oscillator.start(startsAt);
-  oscillator.stop(startsAt + duration);
 }

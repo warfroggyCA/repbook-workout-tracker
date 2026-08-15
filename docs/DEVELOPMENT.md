@@ -309,9 +309,17 @@ keeps exercise setup above its work until acknowledgement, compacts mobile
 superset context, and prevents the fixed timer controls from overlapping at
 intermediate phone widths. New-device rest alerts default to foreground sound;
 the timer exposes the effective mode and the set-log gesture primes Web Audio.
+Sound-enabled timers tick locally from 10 through 1 and then play the same
+stronger finish alarm exposed by the Settings test control.
 An installed-iPhone PWA field check remains required before release because
 automated WebKit cannot establish device sound, silent-mode, Bluetooth, or
 background behavior.
+
+An exact retained set command may reconcile after its workout becomes terminal
+only when the owner-scoped saved row and the complete performed evidence match.
+Changed identity reuse still conflicts and a new terminal-workout set remains
+rejected. The T02 database gate and H01 browser fixture cover the no-duplicate
+replay and automatic device-copy removal paths.
 
 The retained equipment-preparation tranche adds migration 0080 and snapshot
 schema 32 without backfilling older workouts. Start, Session Compiler

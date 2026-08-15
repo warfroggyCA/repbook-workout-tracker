@@ -5,7 +5,9 @@ import { BellRing, Volume2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   DEFAULT_REST_ALERT_PREFERENCE,
+  playRestTonePattern,
   REST_ALERT_PREFERENCE_OPTIONS,
+  REST_COMPLETION_TONE_PATTERN,
   readRestAlertPreference,
   requestedRestCueChannels,
   restCueOutcome,
@@ -18,9 +20,9 @@ import { cn } from "@/lib/utils";
 
 const DETAILS: Record<RestAlertPreference, string> = {
   visual_only: "On-screen ready state",
-  sound: "Foreground sound (default)",
+  sound: "Countdown ticks + finish alarm (default)",
   vibration: "Vibration when supported",
-  sound_and_vibration: "Both when available",
+  sound_and_vibration: "Countdown, alarm + vibration when available",
 };
 
 function getSnapshot() {
@@ -39,20 +41,9 @@ async function requestTestSound() {
       await context.close();
       return { requested: false, blocked: true };
     }
-    const oscillator = context.createOscillator();
-    const gain = context.createGain();
-    const start = context.currentTime;
-    oscillator.type = "sine";
-    oscillator.frequency.setValueAtTime(880, start);
-    gain.gain.setValueAtTime(0.0001, start);
-    gain.gain.exponentialRampToValueAtTime(0.12, start + 0.02);
-    gain.gain.exponentialRampToValueAtTime(0.0001, start + 0.3);
-    oscillator.connect(gain);
-    gain.connect(context.destination);
-    oscillator.start(start);
-    oscillator.stop(start + 0.3);
+    playRestTonePattern(context, REST_COMPLETION_TONE_PATTERN);
     const contextToClose = context;
-    window.setTimeout(() => void contextToClose.close(), 400);
+    window.setTimeout(() => void contextToClose.close(), 3_000);
     return { requested: true, blocked: false };
   } catch {
     if (context && context.state !== "closed") void context.close();

@@ -27,12 +27,119 @@ export type RestAlertPreference =
 export const DEFAULT_REST_ALERT_PREFERENCE: RestAlertPreference = "sound";
 
 export const REST_COMPLETION_TONE_PATTERN = [
-  { delaySec: 0, frequencyHz: 880, durationSec: 0.14 },
-  { delaySec: 0.2, frequencyHz: 880, durationSec: 0.14 },
-  { delaySec: 0.4, frequencyHz: 880, durationSec: 0.14 },
-  { delaySec: 0.6, frequencyHz: 1175, durationSec: 0.14 },
-  { delaySec: 0.8, frequencyHz: 1175, durationSec: 0.2 },
+  {
+    delaySec: 0,
+    frequencyHz: 740,
+    durationSec: 0.24,
+    peakGain: 0.42,
+    wave: "square",
+  },
+  {
+    delaySec: 0.32,
+    frequencyHz: 1040,
+    durationSec: 0.24,
+    peakGain: 0.42,
+    wave: "square",
+  },
+  {
+    delaySec: 0.64,
+    frequencyHz: 740,
+    durationSec: 0.24,
+    peakGain: 0.42,
+    wave: "square",
+  },
+  {
+    delaySec: 0.96,
+    frequencyHz: 1040,
+    durationSec: 0.24,
+    peakGain: 0.42,
+    wave: "square",
+  },
+  {
+    delaySec: 1.28,
+    frequencyHz: 740,
+    durationSec: 0.24,
+    peakGain: 0.42,
+    wave: "square",
+  },
+  {
+    delaySec: 1.6,
+    frequencyHz: 1040,
+    durationSec: 0.24,
+    peakGain: 0.42,
+    wave: "square",
+  },
+  {
+    delaySec: 1.92,
+    frequencyHz: 1320,
+    durationSec: 0.34,
+    peakGain: 0.46,
+    wave: "square",
+  },
+  {
+    delaySec: 2.36,
+    frequencyHz: 1320,
+    durationSec: 0.42,
+    peakGain: 0.46,
+    wave: "square",
+  },
 ] as const;
+
+export const REST_COUNTDOWN_TICK_PATTERN = [
+  {
+    delaySec: 0,
+    frequencyHz: 1180,
+    durationSec: 0.055,
+    peakGain: 0.34,
+    wave: "square",
+  },
+  {
+    delaySec: 0.045,
+    frequencyHz: 760,
+    durationSec: 0.075,
+    peakGain: 0.22,
+    wave: "square",
+  },
+] as const;
+
+type RestTone = {
+  delaySec: number;
+  frequencyHz: number;
+  durationSec: number;
+  peakGain: number;
+  wave: OscillatorType;
+};
+
+function playRestTone(
+  context: AudioContext,
+  tone: RestTone,
+  startsAt: number,
+) {
+  const oscillator = context.createOscillator();
+  const gain = context.createGain();
+  oscillator.type = tone.wave;
+  oscillator.frequency.setValueAtTime(tone.frequencyHz, startsAt);
+  gain.gain.setValueAtTime(0.0001, startsAt);
+  gain.gain.exponentialRampToValueAtTime(
+    tone.peakGain,
+    startsAt + Math.min(0.012, tone.durationSec / 3),
+  );
+  gain.gain.exponentialRampToValueAtTime(0.0001, startsAt + tone.durationSec);
+  oscillator.connect(gain);
+  gain.connect(context.destination);
+  oscillator.start(startsAt);
+  oscillator.stop(startsAt + tone.durationSec);
+}
+
+export function playRestTonePattern(
+  context: AudioContext,
+  pattern: readonly RestTone[],
+) {
+  const startsAt = context.currentTime;
+  for (const tone of pattern) {
+    playRestTone(context, tone, startsAt + tone.delaySec);
+  }
+}
 
 /**
  * Starts an effectively silent source while the owner gesture is still active.
@@ -143,6 +250,27 @@ export function requestedRestCueChannels(preference: RestAlertPreference) {
     vibration:
       preference === "vibration" || preference === "sound_and_vibration",
   };
+}
+
+export function restCountdownCueKey(input: {
+  generationId: string;
+  remainingSec: number;
+  previousCueKey: string | null;
+  preference: RestAlertPreference;
+  foreground: boolean;
+  tenSecondMilestoneDue: boolean;
+}) {
+  if (
+    !input.foreground ||
+    !requestedRestCueChannels(input.preference).sound ||
+    input.tenSecondMilestoneDue ||
+    input.remainingSec < 1 ||
+    input.remainingSec > 9
+  ) {
+    return null;
+  }
+  const key = `${input.generationId}:${input.remainingSec}`;
+  return key === input.previousCueKey ? null : key;
 }
 
 const THRESHOLDS: Array<{ milestone: RestCueMilestone; seconds: number }> = [
