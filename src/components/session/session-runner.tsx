@@ -1358,7 +1358,12 @@ export function SessionRunner(props: SessionRunnerProps) {
           ? target
           : document.getElementById(restingWorkingSetTargetId);
         if (revealTarget) {
-          revealWorkoutTarget(revealTarget, activeWorkoutScrollBehavior());
+          revealWorkoutTarget(
+            revealTarget,
+            currentActionKind === "rest"
+              ? "auto"
+              : activeWorkoutScrollBehavior(),
+          );
         }
         const focusTarget = target == null
           ? null
