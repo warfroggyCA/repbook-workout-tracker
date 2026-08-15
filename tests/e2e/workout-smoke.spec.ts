@@ -2424,6 +2424,9 @@ test("confirms one complete quick log and shows its stored units in History", as
   await expect(page.getByText("Confirm before saving", { exact: true })).toBeVisible();
   await expect(page.getByText("→ Barbell Back Squat", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Save", exact: true }).click();
+  const quickLogInput = page.getByPlaceholder(/e\.g\. "Bench 135/);
+  await expect(quickLogInput).toBeVisible();
+  await expect(quickLogInput).toHaveValue("");
 
   await page.getByRole("link", { name: "View full history", exact: true }).click();
   const ownerToday = page.locator("[data-calendar-action]").last();
