@@ -1645,6 +1645,11 @@ test("signs in and completes a durable workout flow", async ({ page }) => {
   await correction.getByRole("button", { name: "Save reviewed correction", exact: true }).click();
   await expect(page.getByText("Set correction acknowledged")).toBeVisible();
   await expect(page.getByText(/100 lb × 9/)).toBeVisible();
+  const correctedSetDetails = page.locator("details").filter({
+    hasText:
+      /2 saved evidence changes · prior values retained in revision history/,
+  });
+  await openNativeDetails(correctedSetDetails);
   await expect(
     page.getByText(/2 saved evidence changes · prior values retained in revision history/),
   ).toBeVisible();
