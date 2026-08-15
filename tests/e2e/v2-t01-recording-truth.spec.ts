@@ -110,17 +110,11 @@ test("records duration and distance as explicit performed measurements without i
   const restoredWalking = page.getByRole("region", { name: "Walking" });
   await expect(restoredPlank).toContainText("1/1 done · Workout only");
   await restoredPlank.getByRole("button", { name: /RKC Plank/ }).click();
-  await restoredPlank
-    .locator("details", { hasText: "Exercise progress & extras" })
-    .locator(":scope > summary")
-    .click();
+  await restoredPlank.getByTestId("completed-sets").locator("summary").click();
   await expect(restoredPlank.getByText("45 sec", { exact: true })).toBeVisible();
   await expect(restoredWalking).toContainText("1/1 done · Workout only");
   await restoredWalking.getByRole("button", { name: /Walking/ }).click();
-  await restoredWalking
-    .locator("details", { hasText: "Exercise progress & extras" })
-    .locator(":scope > summary")
-    .click();
+  await restoredWalking.getByTestId("completed-sets").locator("summary").click();
   await expect(
     restoredWalking.getByText("1.2 km · 10:00", { exact: true }),
   ).toBeVisible();

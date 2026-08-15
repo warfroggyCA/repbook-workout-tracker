@@ -393,8 +393,8 @@ test("refuses incomplete assistance, then preserves assisted work without false 
     .getByRole("button", { name: /Assisted Push-Up/ })
     .click();
   await restoredAssisted
-    .locator("details", { hasText: "Exercise progress & extras" })
-    .locator(":scope > summary")
+    .getByTestId("completed-sets")
+    .locator("summary")
     .click();
   await expect(
     restoredAssisted
