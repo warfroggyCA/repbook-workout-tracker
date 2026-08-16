@@ -214,7 +214,9 @@ describe("ExerciseCard", () => {
     expect(html).toContain(
       `id="logged-set-${exercise.id}-2"`,
     );
-    expect(html).toContain("0/3 planned performed · 2 saving");
+    expect(html).toContain(
+      "0/3 planned performed · 1 saving · 1 needs attention",
+    );
     expect(html).not.toContain("Ramp 1 · 45 lb · 5 reps");
     expect(html).toContain("Warm-up guidance · reference");
     expect(html).toContain("Move smoothly");

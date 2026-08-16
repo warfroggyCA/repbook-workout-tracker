@@ -768,9 +768,28 @@ export function ExerciseCard({
       ? activeOccurrence.kindOrdinal + 1
       : highestLoggedSetNo + 1;
   const nextSetIdx = nextSetNo - 1;
-  const devicePendingSets = exercise.sets.filter(
-    (set) => set.saveState != null && set.saveState !== "saved",
+  const deviceRetryingSets = exercise.sets.filter(
+    (set) => set.saveState === "retrying",
   ).length;
+  const deviceFailedSets = exercise.sets.filter(
+    (set) => set.saveState === "failed",
+  ).length;
+  const deviceSavingSets = exercise.sets.filter(
+    (set) =>
+      set.saveState != null &&
+      set.saveState !== "saved" &&
+      set.saveState !== "retrying" &&
+      set.saveState !== "failed",
+  ).length;
+  const deviceSaveSummary = [
+    deviceRetryingSets > 0
+      ? `Retrying ${deviceRetryingSets} ${deviceRetryingSets === 1 ? "set" : "sets"}`
+      : null,
+    deviceSavingSets > 0 ? `${deviceSavingSets} saving` : null,
+    deviceFailedSets > 0
+      ? `${deviceFailedSets} ${deviceFailedSets === 1 ? "needs" : "need"} attention`
+      : null,
+  ].filter((part): part is string => part != null).join(" · ");
   const comparableProjection = comparisonTemporarilyUnavailable
     ? undefined
     : exercise.previousComparable;
@@ -1495,10 +1514,10 @@ export function ExerciseCard({
             {isSkipped
               ? `Skipped (${exercise.skipReason})`
               : exercise.modificationType === "added"
-                ? `${progress.workoutOnlyPerformed}/${progress.workoutOnly || "–"} done${progress.extraPerformed > 0 ? ` · ${progress.extraPerformed} extra` : ""}${devicePendingSets > 0 ? ` · ${devicePendingSets} saving` : ""} · Workout only`
+                ? `${progress.workoutOnlyPerformed}/${progress.workoutOnly || "–"} done${progress.extraPerformed > 0 ? ` · ${progress.extraPerformed} extra` : ""}${deviceSaveSummary ? ` · ${deviceSaveSummary}` : ""} · Workout only`
                 : isCurrentExercise
-                  ? `${progress.plannedPerformed}/${progress.planned || "–"} done${progress.extraPerformed > 0 ? ` · ${progress.extraPerformed} extra` : ""}${devicePendingSets > 0 ? ` · ${devicePendingSets} saving` : ""}`
-                  : `${progress.plannedPerformed}/${progress.planned || "–"} planned performed${progress.extraPerformed > 0 ? ` · ${progress.extraPerformed} extra` : ""}${devicePendingSets > 0 ? ` · ${devicePendingSets} saving` : ""} · ${targetText} · ${formatRestTime(exercise.restSec)} rest`}
+                  ? `${progress.plannedPerformed}/${progress.planned || "–"} done${progress.extraPerformed > 0 ? ` · ${progress.extraPerformed} extra` : ""}${deviceSaveSummary ? ` · ${deviceSaveSummary}` : ""}`
+                  : `${progress.plannedPerformed}/${progress.planned || "–"} planned performed${progress.extraPerformed > 0 ? ` · ${progress.extraPerformed} extra` : ""}${deviceSaveSummary ? ` · ${deviceSaveSummary}` : ""} · ${targetText} · ${formatRestTime(exercise.restSec)} rest`}
             {exercise.modificationType === "substituted" &&
               ` · instead of ${exercise.plannedExerciseName ?? "planned exercise"}`}
           </p>
