@@ -2123,10 +2123,13 @@ test("keeps the final set acknowledgement visible through background return", as
   });
   await nextSet.getByRole("button", { name: "Log set", exact: true }).click();
   await expect.poll(() => finalStarted).toBe(true);
-  await expect(nextSet.getByRole("heading", { level: 2 })).toHaveText(firstName ?? "");
-  await expect(workoutStatus).toContainText("Set 3 of 3");
-  await expect(workoutStatus).toContainText("Saving");
-  await expect(nextSet.getByText("Saving…", { exact: true })).toBeVisible();
+  await expect(nextSet.getByRole("heading", { level: 2 })).not.toHaveText(firstName);
+  await expect(workoutStatus).toContainText("Resting");
+  await expect(
+    nextSet.getByRole("button", { name: "Log set", exact: true }),
+  ).toBeEnabled();
+  const pendingCompletedExercise = page.getByRole("region", { name: firstName });
+  await expect(pendingCompletedExercise).toContainText("saving");
   const backgroundPage = await context.newPage();
   await backgroundPage.goto("about:blank");
   await backgroundPage.bringToFront();

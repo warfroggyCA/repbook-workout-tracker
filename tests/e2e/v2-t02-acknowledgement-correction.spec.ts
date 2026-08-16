@@ -95,12 +95,12 @@ test("keeps a set pending until acknowledgement, then reviews and retains a corr
   });
   await expect(guidance).toContainText("Now: Rest after RKC Plank, set 1");
   await expect(guidance).toContainText("Next: Barbell Back Squat, set 1");
+  await plankDisclosure.click();
+  await expect(plankDisclosure).toHaveAttribute("aria-expanded", "true");
   const acknowledgement = plank.getByTestId("completed-sets");
   await expect(page.getByTestId("active-set-save-receipt")).toHaveCount(0);
   await expect(acknowledgement).toContainText("45 sec");
   await expect(acknowledgement).toContainText("Acknowledged by Repbook");
-  await plankDisclosure.click();
-  await expect(plankDisclosure).toHaveAttribute("aria-expanded", "true");
   await acknowledgement.locator(":scope > summary").click();
   await expect(
     acknowledgement.getByRole("button", { name: "Correct set" }),
