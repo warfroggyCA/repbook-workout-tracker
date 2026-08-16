@@ -484,7 +484,18 @@ test("keeps Stage 5 guidance truthful, persistent, and usable on narrow mobile s
   });
   await dismissRest.click();
   await expect(dismissRest).toHaveCount(0);
-  await skipCurrentSet(persistentDock);
+  await expect.poll(() => page.evaluate(() => {
+    const raw = window.localStorage.getItem("workout-tracker:rest-timer:v1");
+    return raw == null ? null : JSON.parse(raw).phase;
+  })).toBe("continued");
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await expect(
+    page.getByRole("button", { name: "Dismiss rest timer", exact: true }),
+  ).toHaveCount(0);
+  const resumedDock = page.getByRole("complementary", {
+    name: "Workout status",
+  });
+  await skipCurrentSet(resumedDock);
   await expect(
     page.getByRole("region", {
       name: "Workout progress and upcoming work",

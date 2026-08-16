@@ -648,6 +648,34 @@ export function clearRestTimerForSourceClientKey(
   });
 }
 
+/** Clears only a timer whose source is the exact discarded device command. */
+export function clearRestTimerForExactSourceClientKey(
+  storage: RestTimerStorage,
+  identity: RestTimerIdentity,
+  sourceClientKey: string,
+) {
+  return withRestTimerLock(() => {
+    let current: RestTimerRestoreResult;
+    try {
+      current = parseStoredRestTimer(
+        storage.getItem(REST_TIMER_STORAGE_KEY),
+        identity,
+      );
+    } catch {
+      return "storage_error" as const;
+    }
+    if (current.status !== "restored") return current.status;
+    if (current.timer.sourceClientKey !== sourceClientKey) {
+      return "stale" as const;
+    }
+    return clearRestTimerForIdentityUnlocked(
+      storage,
+      identity,
+      current.timer.generationId,
+    );
+  });
+}
+
 /**
  * Reads and durably stores the normalized ready state produced when a running
  * timer elapsed while the app was away. The raw-value recheck prevents a

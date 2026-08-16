@@ -31,13 +31,13 @@ import {
 import {
   getWorkoutSetOutboxServerSnapshot,
   getWorkoutSetOutboxSnapshot,
+  discardWorkoutSetDeviceCopy,
   discardQuarantinedWorkoutSet,
   publishWorkoutSetOutboxEvent,
   releaseQueuedWorkoutSetBackoff,
   recordWorkoutSetNeedsAttentionUnlocked,
   recordWorkoutSetTransientFailureUnlocked,
   releaseWorkoutSetOrderBlockerOutboxEntry,
-  removeWorkoutSet,
   removeWorkoutSetUnlocked,
   retryWorkoutSet,
   subscribeToWorkoutSetOutbox,
@@ -779,6 +779,7 @@ export function WorkoutSetOutboxTray({
   const [confirmQuarantine, setConfirmQuarantine] =
     useState<QuarantinedWorkoutSetOutboxEntry | null>(null);
   const [quarantineError, setQuarantineError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
   const confirmQuarantineButtonRef = useRef<HTMLButtonElement>(null);
   const quarantineDiscardButtonRefs = useRef(
     new Map<string, HTMLButtonElement>()
@@ -806,8 +807,15 @@ export function WorkoutSetOutboxTray({
   if (entries.length === 0 && quarantined.length === 0 && !storageError) return null;
 
   async function discard(entry: WorkoutSetOutboxEntry) {
-    const removed = await removeWorkoutSet(entry.clientKey);
-    if (!removed.ok) return;
+    setActionError(null);
+    const removed = await discardWorkoutSetDeviceCopy(
+      window.localStorage,
+      entry,
+    );
+    if (!removed.ok) {
+      setActionError(removed.reason);
+      return;
+    }
     publishWorkoutSetOutboxEvent({
       type: "discarded",
       clientKey: entry.clientKey,
@@ -841,6 +849,7 @@ export function WorkoutSetOutboxTray({
       restoreQuarantineFocusKeyRef.current = null;
       setConfirmQuarantine(null);
       setQuarantineError(null);
+      setActionError(null);
     }
   }
 
@@ -887,6 +896,11 @@ export function WorkoutSetOutboxTray({
             {quarantineError && (
               <p role="alert" className="mt-3 rounded-xl border border-destructive/40 bg-destructive/5 p-3 text-sm text-destructive">
                 {quarantineError}
+              </p>
+            )}
+            {actionError && (
+              <p role="alert" className="mt-3 rounded-xl border border-destructive/40 bg-destructive/5 p-3 text-sm text-destructive">
+                {actionError}
               </p>
             )}
             {quarantined.length > 0 && (
