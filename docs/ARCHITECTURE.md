@@ -214,12 +214,14 @@ Neither path rewrites the Program, and the existing one-active-workout and
 replay-safe start protections remain authoritative.
 
 The active workout derives both **Now** and **Next** from the same ordered
-occurrence ledger used to save results. A pending warm-up remains the current
-action until its completion or skip is durably acknowledged; a saving or failed
-request does not advance the display. After acknowledgement, the next grouped
-exercise opens and receives focus. Restoring an earlier action makes that action
-current again. Completed warm-up details collapse without discarding their
-notes, outcomes, or restore controls.
+occurrence ledger used to save results. Warm-up acknowledgement remains
+server-authoritative. A working set first receives a stable client command and
+an exact durable device copy; the client may then present the next occurrence
+immediately while the server acknowledgement is pending. The server ledger
+remains canonical, retries reuse the same command identity, and failed writes
+stay visible and recoverable without rolling the owner back. Restoring an
+earlier action makes that action current again. Completed warm-up details
+collapse without discarding their notes, outcomes, or restore controls.
 
 Rest alerts remain device-local. The ready state is compact and visually
 distinct, while sound and vibration reporting is limited to whether an alert
@@ -333,11 +335,14 @@ batch repair remains blocked.
 
 ## T02 acknowledgement and correction contract
 
-A set is still pending while its write is saving, retrying, or failed. Only a
-server acknowledgement advances workout guidance or exposes correction. The
-client keeps a stable command identity across retry, the service accepts an
-identical replay without duplicating evidence, and reuse of that identity with
-different evidence fails closed. Older outbox formats are quarantined for
+A set is still unacknowledged while its write is saving, retrying, or failed,
+but its exact durable device copy may optimistically advance the active-workout
+display. Only server acknowledgement creates canonical performed history or
+exposes correction. The client keeps a stable command and occurrence identity
+across retry, the service accepts an identical replay without duplicating
+evidence, and reuse of that identity with different evidence fails closed. A
+failed copy remains visible with retry and deliberate discard; it never silently
+disappears or rolls the display back. Older outbox formats are quarantined for
 explicit recovery instead of being guessed into the current contract.
 
 Correction is a reviewed superseding assertion, never an edit in place. The
@@ -437,19 +442,24 @@ repair.
 The immutable occurrence ledger is the only source for canonical current and
 next work. Pending occurrences retain their authored sequence across warm-ups,
 working sets, extras, skips, retries, and corrections; expanding or collapsing
-an exercise card cannot reorder them. A saving, retrying, or failed set remains
-current until the server acknowledges its exact command. Once no pending
+an exercise card cannot reorder them. For responsive working-set entry, an
+exact locally durable command temporarily resolves only that same occurrence in
+the client projection. It does not change server truth or the performed count,
+and the retained row remains recoverable until acknowledgement. Once no pending
 occurrence remains, the session is ready to finish but is not completed until
 the owner explicitly chooses Finish workout.
 
-Rest is a first-class, device-durable focused action created only after the
-exact source occurrence and completed set are acknowledged. Its source identity
-survives reload and background return, while the next ledger occurrence remains
-visible as next work. Saved occurrence evidence classifies positive rest as
-straight-set, between-member, or between-round rest. Zero means explicitly no
-rest, null means unknown rest, and an absent field on a retained legacy command
-means that command must not replace or clear an existing timer. A positive,
-zero, or null rest decision changes the device timer only after acknowledgement.
+Rest is a first-class, device-durable focused action created from the same
+owner gesture that durably queues a working set. It stores a stable timer ID,
+the workout/exercise/occurrence/client command identity, observed start,
+absolute end deadline, original duration, phase, and idempotent cue state. The
+display always derives remaining time from `endsAt - Date.now()`; intervals only
+refresh presentation. Server acknowledgement enriches that same timer with the
+completed-set ID without resetting its deadline. A delayed acknowledgement may
+clear only the timer associated with its own client command, never a newer
+timer. Saved occurrence evidence still classifies positive rest as straight-set,
+between-member, or between-round rest; zero means explicitly no rest and null
+means unknown rest.
 
 Group, member, and round progress is derived from the same occurrence outcomes,
 not from a second execution state. Fully performed work is resolved; a fully
@@ -1023,8 +1033,16 @@ visual-only choice remains preserved locally. Logging a set primes Web Audio
 during the owner gesture, and the active timer names its current alert mode.
 Sound-enabled foreground timers use a local audible tick at 10 and each
 remaining second, followed by a stronger multi-second finish alarm.
-Browser, device-volume, silent-mode, Bluetooth, and background restrictions
-remain external constraints; the visual timer is always the truthful fallback.
+Visibility changes, page restoration, focus, and active-workout rehydration
+reconcile the absolute deadline immediately. Resume during the final seconds
+does not replay missed ticks; resume after expiry claims at most one final cue.
+While a running timer is visible, a feature-detected Screen Wake Lock is
+requested, reacquired after revocation or visibility return, and released on
+completion, cancellation, or unmount. Wake Lock rejection never changes timer
+truth. Browser suspension after manual iPhone lock, device volume, silent mode,
+Bluetooth, and background restrictions remain external constraints; Web Audio
+cannot guarantee a lock-screen alarm and the visual expired state is always the
+truthful fallback.
 
 The runner reconciles refreshed occurrence props by stable ID and monotonic
 revision because a Next.js refresh may preserve Client Component state. A
