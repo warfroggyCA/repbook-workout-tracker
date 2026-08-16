@@ -1365,7 +1365,8 @@ export function SessionRunner(props: SessionRunnerProps) {
       currentActionSequenceIdx < previousOccurrence.sequenceIdx;
     if (
       previousOccurrence?.outcome === "pending" &&
-      !restoredEarlierAction
+      !restoredEarlierAction &&
+      currentActionKind !== "rest"
     ) return;
     // Do not consume a transition until the previous occurrence is locally
     // acknowledged and the scheduled reveal/focus has actually run. A queue
