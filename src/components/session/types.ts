@@ -17,6 +17,8 @@ import type { SessionPreparationEquipmentProjection } from "@/lib/session-equipm
 export type LoggedSet = {
   id: string;
   clientKey: string | null;
+  /** Exact planned action owned by an optimistic device command. */
+  occurrenceId?: string | null;
   setNo: number;
   weight: number | null;
   weightUnit: LoadUnit | null;

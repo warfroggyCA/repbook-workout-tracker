@@ -2,7 +2,10 @@ import { cloneElement } from "react";
 import { readFileSync } from "node:fs";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
-import { formatCompactPlateLoadGuidance } from "@/lib/exercise-card";
+import {
+  exerciseSwipeRevealsRemove,
+  formatCompactPlateLoadGuidance,
+} from "@/lib/exercise-card";
 
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
 vi.mock("@/app/actions/sessions", () => ({
@@ -89,6 +92,13 @@ const exercise: SessionExerciseData = {
 };
 
 describe("ExerciseCard", () => {
+  it("requires a deliberate horizontal swipe before revealing removal", () => {
+    expect(exerciseSwipeRevealsRemove({ deltaX: -63, deltaY: 0 })).toBe(false);
+    expect(exerciseSwipeRevealsRemove({ deltaX: -80, deltaY: 70 })).toBe(false);
+    expect(exerciseSwipeRevealsRemove({ deltaX: -80, deltaY: 12 })).toBe(true);
+    expect(exerciseSwipeRevealsRemove({ deltaX: 90, deltaY: 0 })).toBe(false);
+  });
+
   it("fences the visible un-skip action with the current history revision", () => {
     const source = readFileSync(
       "src/components/session/exercise-card.tsx",
@@ -107,6 +117,17 @@ describe("ExerciseCard", () => {
     expect(source).not.toContain("await unskipExercise(");
     expect(source).toContain("Checking saved skip…");
     expect(source).toContain("!skipRecoverySettlementPending");
+    expect(source).toContain("Remove from today");
+    expect(source).toContain(
+      "Completed sets stay in workout history. The saved routine is unchanged.",
+    );
+    expect(source).toContain(
+      "expectedHistoryRevision: resultHistoryRevision",
+    );
+    expect(source).toContain("restored to today");
+    expect(source).toContain(
+      "To remove it from future workouts, edit the routine separately.",
+    );
   });
 
   it("keeps both read-only exercise catalogs abortable and retryable", () => {
@@ -199,12 +220,15 @@ describe("ExerciseCard", () => {
     expect(html).toContain("Move smoothly");
     expect(html).toContain("Show details");
     expect(html).toContain("<details");
-    expect(html).toContain("Waiting for save acknowledgement");
+    expect(html).toContain("You can continue the workout now");
+    expect(html).toContain("Resolve the retained copy for this set");
     expect(html).not.toContain("Use the Next set dock");
     expect(html).toContain("Workout actions");
     expect(html).toContain("Add note");
     expect(html).toContain("Pain / no issue");
     expect(html).toContain("Skip exercise");
+    expect(html).toContain("Remove from today");
+    expect(html).toContain("do not rewrite the saved Program");
     expect(html).toContain("Completed sets");
     expect(html).toContain("More for this exercise");
     expect(html.indexOf(`id=\"logged-set-${exercise.id}-1\"`)).toBeLessThan(
@@ -216,6 +240,94 @@ describe("ExerciseCard", () => {
     expect(html.indexOf("More for this exercise")).toBeLessThan(
       html.indexOf("Workout actions"),
     );
+  });
+
+  it("wraps a long active title and keeps comparable performance on its own row", () => {
+    const html = renderToStaticMarkup(
+      <ExerciseCard
+        exercise={{
+          ...exercise,
+          name: "Single-Arm Overhead Cable Triceps Extension With Rope Attachment",
+          previousComparable: {
+            status: "available",
+            currentSessionExerciseId: exercise.id,
+            exerciseId: exercise.exerciseId,
+            semantics: {
+              version: 1,
+              metricType: "weight_reps",
+              loadType: "barbell",
+              loadSemantics: "total",
+              loadEntryMeaning: "total_system",
+            },
+            source: {
+              workoutId: "00000000-0000-4000-8000-000000000050",
+              localDate: "2026-08-10",
+              startedAtISO: "2026-08-10T11:00:00.000Z",
+              finishedAtISO: "2026-08-10T12:00:00.000Z",
+              historyHref: "/history/00000000-0000-4000-8000-000000000050",
+              workoutSource: "tracker",
+            },
+            sets: [{
+              setId: "00000000-0000-4000-8000-000000000051",
+              setNo: 2,
+              weight: 42.5,
+              weightUnit: "lb",
+              reps: 8,
+              distanceKm: null,
+              durationSeconds: null,
+              rpe: null,
+              rir: null,
+              observedCompletedAtISO: "2026-08-10T11:40:00.000Z",
+              observedCompletionProvenance: "live_client",
+              observedCompletionQuality: "trustworthy",
+              correctionProvenance: { state: "original", count: 0 },
+            }],
+          },
+        }}
+        historyRevision={0}
+        progress={{
+          sessionExerciseId: exercise.id,
+          exerciseName: exercise.name,
+          total: 3,
+          planned: 3,
+          extra: 0,
+          workoutOnly: 0,
+          performed: 0,
+          plannedPerformed: 0,
+          extraPerformed: 0,
+          workoutOnlyPerformed: 0,
+          skipped: 0,
+          abandoned: 0,
+          pending: 3,
+          legacyUnknown: 0,
+          completedWithoutResult: 0,
+          status: "current",
+        }}
+        expanded={false}
+        isCurrentExercise
+        onToggle={() => undefined}
+        plateConfigs={{}}
+        incrementals={{}}
+        unit="lb"
+        loadEntryMeaning="total_system"
+        onPatch={() => undefined}
+        onQueueSet={async () => true}
+        onRetrySet={async () => undefined}
+        onDiscardSet={async () => undefined}
+        onSkipComplete={() => undefined}
+        onOpenCoach={() => undefined}
+        adjustIntent={null}
+        onAdjustIntentChange={() => undefined}
+      />,
+    );
+
+    expect(html).toContain(
+      "Single-Arm Overhead Cable Triceps Extension With Rope Attachment",
+    );
+    expect(html).toContain("overflow-wrap:anywhere");
+    expect(html).not.toContain("truncate");
+    expect(html).toContain('data-testid="active-exercise-performance-context"');
+    expect(html).toContain("Last:");
   });
 
   it("labels an assisted set as assistance during the active workout", () => {
@@ -805,7 +917,7 @@ describe("ExerciseCard", () => {
       />,
     );
     expect(mismatched).not.toContain('data-testid="current-set-entry"');
-    expect(mismatched).toContain("Waiting for save acknowledgement");
+    expect(mismatched).toContain("Resolve the retained copy for this set");
 
     const fallback = renderToStaticMarkup(
       <ExerciseCard

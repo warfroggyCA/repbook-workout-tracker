@@ -64,7 +64,8 @@ import {
   type QuarantinedEquipmentSelection,
 } from "@/lib/equipment-selection-outbox";
 import {
-  clearRestTimerForIdentity,
+  acknowledgeRestTimerSource,
+  clearRestTimerForSourceClientKey,
   createRestTimer,
   writeRestTimer,
 } from "@/lib/rest-timer";
@@ -374,22 +375,46 @@ export async function syncNextEntry(
         let restPersisted = true;
         if (entry.restAfterSec !== undefined) {
           if (entry.restAfterSec != null && entry.restAfterSec > 0) {
-            const nextRest = createRestTimer({
-              ownerId: entry.ownerId,
-              sessionId: entry.sessionId,
-              now: Date.now(),
-              seconds: entry.restAfterSec,
-              sourceSessionExerciseId: entry.sessionExerciseId,
-              sourceOccurrenceId: result.occurrenceId,
-              sourceCompletedSetId: result.setId,
-            });
-            restPersisted = nextRest != null &&
-              await writeRestTimer(window.localStorage, nextRest);
+            const acknowledged = await acknowledgeRestTimerSource(
+              window.localStorage,
+              { ownerId: entry.ownerId, sessionId: entry.sessionId },
+              {
+                clientKey: entry.clientKey,
+                sessionExerciseId: entry.sessionExerciseId,
+                occurrenceId: result.occurrenceId,
+                completedSetId: result.setId,
+              },
+            );
+            if (
+              acknowledged.status === "updated" ||
+              acknowledged.status === "unchanged" ||
+              acknowledged.status === "stale" ||
+              (acknowledged.status === "unrelated" &&
+                acknowledged.timer.sourceClientKey != null)
+            ) {
+              // An unrelated client-bound timer belongs to a later set. Never
+              // restart an older rest period when its save arrives late.
+              restPersisted = true;
+            } else {
+              const nextRest = createRestTimer({
+                ownerId: entry.ownerId,
+                sessionId: entry.sessionId,
+                now: Date.now(),
+                seconds: entry.restAfterSec,
+                sourceSessionExerciseId: entry.sessionExerciseId,
+                sourceOccurrenceId: result.occurrenceId,
+                sourceClientKey: entry.clientKey,
+                sourceCompletedSetId: result.setId,
+              });
+              restPersisted = nextRest != null &&
+                await writeRestTimer(window.localStorage, nextRest);
+            }
           } else {
-            const cleared = await clearRestTimerForIdentity(window.localStorage, {
-              ownerId: entry.ownerId,
-              sessionId: entry.sessionId,
-            });
+            const cleared = await clearRestTimerForSourceClientKey(
+              window.localStorage,
+              { ownerId: entry.ownerId, sessionId: entry.sessionId },
+              entry.clientKey,
+            );
             restPersisted = cleared !== "storage_error";
           }
         }

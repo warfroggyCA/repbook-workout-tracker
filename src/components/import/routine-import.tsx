@@ -509,8 +509,16 @@ export function RoutineImport({
     const blockers: string[] = [];
     const keptRows = day.rows.filter((row) => !row.discarded);
     const keptLineages = new Set(keptRows.map((row) => row.lineageId));
+    const mappedExerciseIds = keptRows
+      .map((row) => row.exerciseId)
+      .filter((exerciseId): exerciseId is string => exerciseId != null);
     if (!day.name.trim()) blockers.push("name this day");
     if (keptRows.length === 0) blockers.push("keep at least one exercise");
+    if (new Set(mappedExerciseIds).size !== mappedExerciseIds.length) {
+      blockers.push(
+        "remove duplicate exercise matches or map each intended variant separately",
+      );
+    }
     if (!day.intentReviewed) blockers.push("review the day and exercise intent");
     if (!programDayIntentSchema.safeParse(day.intent).success) {
       blockers.push("fix the day planning choices");

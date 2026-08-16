@@ -131,6 +131,7 @@ export function mergeSessionOutboxSets(
       const queuedSet: LoggedSet = {
         id: `outbox-${entry.clientKey}`,
         clientKey: entry.clientKey,
+        occurrenceId: entry.occurrenceId ?? null,
         setNo: entry.setNo,
         weight: entry.weight,
         weightUnit: entry.weightUnit,

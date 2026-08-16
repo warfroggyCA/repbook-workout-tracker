@@ -934,6 +934,17 @@ export async function confirmImport(
         "This review no longer matches the staged days and exercises. Nothing was published; discard it and parse again.",
     };
   }
+  const dayWithDuplicateExercise = parsed.days.find((day) => {
+    const exerciseIds = day.exercises.map((exercise) => exercise.exerciseId);
+    return new Set(exerciseIds).size !== exerciseIds.length;
+  });
+  if (dayWithDuplicateExercise) {
+    return {
+      ok: false,
+      reason:
+        `The day “${dayWithDuplicateExercise.name}” maps more than one slot to the same exercise. Nothing was published; remove the duplicate or map an intended variant separately.`,
+    };
+  }
   const currentProgram = await getActiveProgramVersion(db, user.id);
   if ((currentProgram?.version.id ?? null) !== parsed.baseProgramVersionId) {
     const duplicateResult = await readExactConfirmedImport(db, user.id, parsed);

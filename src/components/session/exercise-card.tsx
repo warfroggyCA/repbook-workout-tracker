@@ -43,6 +43,7 @@ import { formatRestTime } from "@/lib/rest-time";
 import {
   EXERCISE_NOTE_MAX_LENGTH,
   SET_NOTE_MAX_LENGTH,
+  exerciseSwipeRevealsRemove,
   exerciseUsesTotalBarLoad,
   formatCompactPlateLoadGuidance,
   setSaveStateLabel,
@@ -62,6 +63,7 @@ import {
   AlertTriangle,
   MessageSquareText,
   PlayCircle,
+  Trash2,
 } from "lucide-react";
 import type {
   LoggedSet,
@@ -305,7 +307,7 @@ function PendingSetSaveStatus({
               ? "Workout order changed. Refresh to find the exact set that comes first."
               : failed
                 ? `This device copy still owns ${rowLabel}. Retry the save, or discard the device copy to enter or skip ${rowLabel} again.`
-                : `Waiting for Repbook to acknowledge ${rowLabel}. It will not advance until that happens.`}
+                : `${rowLabel} is recorded on this device and saving in the background. You can continue the workout now.`}
         </p>
         {failed && set.lastError && !orderConflict && (
           <p className="mt-2 text-sm text-foreground">{set.lastError}</p>
@@ -509,11 +511,12 @@ export function unconfirmedSetsBlockLogging({
   );
   if (unconfirmedSets.length === 0) return false;
   if (targetOccurrenceId == null) return true;
-  return !unconfirmedSets.every(
-    (set) =>
-      set.clientKey != null &&
-      blockers[set.clientKey]?.blockerOccurrenceId === targetOccurrenceId,
-  );
+  return unconfirmedSets.some((set) => {
+    if (set.occurrenceId === targetOccurrenceId) return true;
+    if (set.occurrenceId != null) return false;
+    return set.clientKey == null ||
+      blockers[set.clientKey]?.blockerOccurrenceId !== targetOccurrenceId;
+  });
 }
 
 export async function runGuardedLogRequest<T>(
@@ -562,7 +565,12 @@ type ReplacementOptions = {
   warnings: Record<string, string>;
 };
 
-export type ExerciseAdjustmentIntent = "note" | "swap" | "replace" | "skip";
+export type ExerciseAdjustmentIntent =
+  | "note"
+  | "swap"
+  | "replace"
+  | "skip"
+  | "remove";
 
 export const REPLACEMENT_CATALOG_LOAD_TIMEOUT_MS = 12_000;
 
@@ -705,6 +713,9 @@ export function ExerciseCard({
   onAdjustIntentChange,
 }: Props) {
   const router = useRouter();
+  const [removeSwipeRevealed, setRemoveSwipeRevealed] = useState(false);
+  const removeSwipeStartRef = useRef<{ x: number; y: number } | null>(null);
+  const [removeSwipeOffset, setRemoveSwipeOffset] = useState(0);
   const plateConfig = plateConfigs[exercise.id];
   const incremental = incrementals[exercise.loadType];
   const usesTotalBarLoad = exerciseUsesTotalBarLoad({
@@ -1024,6 +1035,7 @@ export function ExerciseCard({
         const optimistic: LoggedSet = {
           id: `optimistic-${clientKey}`,
           clientKey,
+          occurrenceId: occurrence?.id ?? null,
           setNo,
           ...performed.measurement,
           rpe: submittedDraft.rpe,
@@ -1189,9 +1201,9 @@ export function ExerciseCard({
   const exactActiveBlockerCanLog =
     unconfirmedSet != null && !activeLoggingBlocked;
   const prioritizeCurrentAction = nextActionLabel != null;
-  // A failed or delayed write owns its occurrence until acknowledgement. Put
-  // that exact recovery row ahead of the later blocked row so the user never
-  // has to hunt for the action that can move the workout forward.
+  // A failed or delayed write still owns its exact occurrence. Keep its
+  // recovery row prominent even though a different locally retained
+  // occurrence may now be logged without rolling the workout backward.
   const prioritizedRowIndex = exactActiveBlockerCanLog
     ? nextSetIdx
     : unconfirmedSet
@@ -1375,13 +1387,75 @@ export function ExerciseCard({
         if (isCurrentPlannedSet) focusChangesRef.current += 1;
       }}
     >
-      <button
-        type="button"
-        onClick={onToggle}
-        aria-expanded={expanded}
-        aria-controls={`session-exercise-details-${exercise.id}`}
-        className="flex w-full items-center justify-between gap-2 p-2 text-left"
-      >
+      <div className="relative overflow-hidden rounded-t-xl">
+        <button
+          type="button"
+          aria-label={`Remove ${exercise.name} from today`}
+          aria-hidden={!removeSwipeRevealed}
+          tabIndex={removeSwipeRevealed ? 0 : -1}
+          className="absolute inset-y-0 right-0 z-0 flex w-24 items-center justify-center gap-1 bg-destructive px-2 text-sm font-semibold text-destructive-foreground"
+          onClick={() => {
+            setRemoveSwipeRevealed(false);
+            setRemoveSwipeOffset(0);
+            onAdjustIntentChange("remove");
+          }}
+        >
+          <Trash2 className="size-4" /> Remove
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            if (removeSwipeRevealed) {
+              setRemoveSwipeRevealed(false);
+              setRemoveSwipeOffset(0);
+              return;
+            }
+            onToggle();
+          }}
+          onTouchStart={(event) => {
+            const touch = event.touches[0];
+            if (!touch) return;
+            removeSwipeStartRef.current = { x: touch.clientX, y: touch.clientY };
+          }}
+          onTouchMove={(event) => {
+            const start = removeSwipeStartRef.current;
+            const touch = event.touches[0];
+            if (!start || !touch) return;
+            const deltaX = touch.clientX - start.x;
+            const deltaY = touch.clientY - start.y;
+            if (Math.abs(deltaX) <= Math.abs(deltaY) * 1.25) return;
+            setRemoveSwipeOffset(
+              Math.max(-96, Math.min(0, removeSwipeRevealed ? deltaX - 96 : deltaX)),
+            );
+          }}
+          onTouchEnd={(event) => {
+            const start = removeSwipeStartRef.current;
+            const touch = event.changedTouches[0];
+            removeSwipeStartRef.current = null;
+            if (!start || !touch) return;
+            const revealed = exerciseSwipeRevealsRemove({
+              deltaX: touch.clientX - start.x,
+              deltaY: touch.clientY - start.y,
+            });
+            setRemoveSwipeRevealed(revealed);
+            setRemoveSwipeOffset(revealed ? -96 : 0);
+          }}
+          onTouchCancel={() => {
+            removeSwipeStartRef.current = null;
+            setRemoveSwipeOffset(removeSwipeRevealed ? -96 : 0);
+          }}
+          aria-expanded={expanded}
+          aria-controls={`session-exercise-details-${exercise.id}`}
+          data-testid="exercise-swipe-surface"
+          className={cn(
+            "relative z-10 flex w-full items-start justify-between gap-2 p-2 text-left transition-transform",
+            isCurrentExercise ? "bg-muted" : "bg-card",
+          )}
+          style={{
+            transform: `translateX(${removeSwipeOffset}px)`,
+            touchAction: "pan-y",
+          }}
+        >
         <ExerciseFamilyIcon
           media={exercise.media}
           family={exercise.family}
@@ -1389,14 +1463,14 @@ export function ExerciseCard({
           movementPattern={exercise.movementPattern}
         />
         <div className="min-w-0 flex-1">
-          <div className="flex min-w-0 items-center gap-2">
+          <div className="flex min-w-0 items-start gap-2">
             <h2
               id={`session-exercise-heading-${exercise.id}`}
               className={cn(
-                "min-w-0 font-medium",
+                "min-w-0 flex-1 break-words [overflow-wrap:anywhere] font-medium",
                 isCurrentExercise
                   ? "break-words text-lg font-semibold leading-tight"
-                  : "truncate",
+                  : "text-base leading-snug",
               )}
             >
               {exercise.name}
@@ -1405,6 +1479,18 @@ export function ExerciseCard({
               <AlertTriangle className="size-3.5 shrink-0 text-amber-500" />
             )}
           </div>
+          {isCurrentExercise && previousComparableSet &&
+          comparableProjection?.status === "available" && (
+            <p
+              data-testid="active-exercise-performance-context"
+              className="mt-1 break-words text-xs font-medium leading-5 text-foreground"
+            >
+              Last: {formatPreviousComparableSet(
+                previousComparableSet,
+                comparableProjection.semantics.metricType,
+              )}
+            </p>
+          )}
           <p className="break-words text-xs leading-5 text-muted-foreground">
             {isSkipped
               ? `Skipped (${exercise.skipReason})`
@@ -1422,21 +1508,26 @@ export function ExerciseCard({
               {groupContext.memberCount}
             </p>
           )}
+          {(exercise.modificationType === "added" || exercise.supersetKey) && (
+            <div className="mt-1 flex flex-wrap gap-1.5">
+              {exercise.modificationType === "added" && (
+                <Badge variant="outline">Workout only</Badge>
+              )}
+              {exercise.supersetKey && (
+                <Badge variant="outline" aria-label="Exercise group">
+                  SS
+                </Badge>
+              )}
+            </div>
+          )}
         </div>
-        <div className="flex items-center gap-1.5">
-          {exercise.modificationType === "added" && (
-            <Badge variant="outline">Workout only</Badge>
-          )}
-          {exercise.supersetKey && (
-            <Badge variant="outline" aria-label="Exercise group">
-              SS
-            </Badge>
-          )}
+        <div className="flex shrink-0 items-center gap-1.5">
           <ChevronDown
             className={cn("size-4 transition-transform", expanded && "rotate-180")}
           />
         </div>
-      </button>
+        </button>
+      </div>
 
       {expanded && !isSkipped && skipConfirmationPending && (
         <div
@@ -2027,7 +2118,7 @@ export function ExerciseCard({
                       <span>Set {i + 1}</span>
                       <span className="text-muted-foreground">
                         {activeLoggingBlocked
-                          ? "Waiting for save acknowledgement"
+                          ? "Resolve the retained copy for this set"
                           : "Reach this set in the workout flow"}
                       </span>
                     </div>
@@ -2304,7 +2395,7 @@ export function ExerciseCard({
             <p className="mt-1 text-xs text-muted-foreground">
               These affect this workout only. They do not rewrite the saved Program.
             </p>
-            <div className="mt-3 grid gap-2 sm:grid-cols-3">
+            <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
               <Button
                 type="button"
                 variant="outline"
@@ -2331,8 +2422,72 @@ export function ExerciseCard({
                   onPatch({ modificationType: "skipped", skipReason: reason });
                 }}
               />
+              <Button
+                type="button"
+                variant="destructive"
+                onClick={() => onAdjustIntentChange("remove")}
+              >
+                <Trash2 className="size-4" /> Remove from today
+              </Button>
             </div>
           </section>
+
+          <RemoveFromTodayDrawer
+            exercise={exercise}
+            expectedHistoryRevision={historyRevision}
+            open={adjustIntent === "remove"}
+            onOpenChange={(open) =>
+              onAdjustIntentChange(open ? "remove" : null)
+            }
+            onRequestStart={onSkipRequestStart}
+            onRequestFailure={onSkipRequestFailure}
+            onRemoved={(resultHistoryRevision) => {
+              const originalModificationType = exercise.substitutedForExerciseId
+                ? "substituted"
+                : "as_planned";
+              onAdjustIntentChange(null);
+              onHistoryRevisionChange(resultHistoryRevision);
+              onPatch({ modificationType: "skipped", skipReason: "other" });
+              onSkipComplete();
+              toast.success(`${exercise.name} removed from today`, {
+                description:
+                  "Completed sets stay in workout history. The saved routine is unchanged.",
+                action: {
+                  label: "Undo",
+                  onClick: async () => {
+                    try {
+                      const restored = await withDocumentActionDeadline(
+                        confirmExerciseUnskipped({
+                          sessionExerciseId: exercise.id,
+                          expectedHistoryRevision: resultHistoryRevision,
+                        }),
+                      );
+                      if (!restored.ok) {
+                        toast.error(restored.message);
+                        if (restored.code === "unskip_stale") router.refresh();
+                        return;
+                      }
+                      onHistoryRevisionChange(restored.historyRevision);
+                      onPatch({
+                        modificationType: originalModificationType,
+                        skipReason: null,
+                      });
+                      toast.success(`${exercise.name} restored to today`);
+                    } catch (error) {
+                      if (isDocumentActionTimeout(error)) {
+                        reportDocumentActionTimeout();
+                        toast.error(
+                          "Repbook did not confirm Undo in time. Reload to reconcile the saved workout safely.",
+                        );
+                      } else {
+                        toast.error("Repbook could not restore the exercise.");
+                      }
+                    }
+                  },
+                },
+              });
+            }}
+          />
 
           <section
             aria-labelledby={`coach-tools-${exercise.id}`}
@@ -3400,6 +3555,103 @@ function SkipDrawer({
             </Button>
           ))}
         </div>
+      </DrawerContent>
+    </Drawer>
+  );
+}
+
+function RemoveFromTodayDrawer({
+  exercise,
+  expectedHistoryRevision,
+  open,
+  onOpenChange,
+  onRequestStart,
+  onRequestFailure,
+  onRemoved,
+}: {
+  exercise: SessionExerciseData;
+  expectedHistoryRevision: number;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onRequestStart: (reason: "other") => void;
+  onRequestFailure: (reason: "other", code?: string) => boolean;
+  onRemoved: (historyRevision: number) => void;
+}) {
+  const [pending, startTransition] = useTransition();
+  const completedSetCount = exercise.sets.filter(
+    (set) => set.saveState == null || set.saveState === "saved",
+  ).length;
+
+  return (
+    <Drawer open={open} onOpenChange={onOpenChange}>
+      <DrawerContent className="[&_button]:min-h-11 [&_button]:min-w-11">
+        <DrawerHeader>
+          <DrawerTitle>Remove {exercise.name} from today?</DrawerTitle>
+        </DrawerHeader>
+        <div className="space-y-3 px-4 pb-2 text-sm leading-6">
+          <p>
+            This removes the remaining work from this active workout only. Your
+            saved routine is unchanged.
+          </p>
+          {completedSetCount > 0 ? (
+            <p className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3">
+              {completedSetCount} completed {completedSetCount === 1 ? "set" : "sets"}
+              {" "}will remain in this workout&apos;s history.
+            </p>
+          ) : null}
+          <p className="text-xs text-muted-foreground">
+            To remove it from future workouts, edit the routine separately.
+          </p>
+        </div>
+        <DrawerFooter>
+          <Button
+            type="button"
+            variant="destructive"
+            disabled={pending}
+            onClick={() => {
+              onRequestStart("other");
+              startTransition(async () => {
+                try {
+                  const result = await withDocumentActionDeadline(
+                    skipExercise({
+                      sessionExerciseId: exercise.id,
+                      reason: "other",
+                      expectedHistoryRevision,
+                    }),
+                  );
+                  if (!result.ok) {
+                    if (onRequestFailure("other", result.code)) {
+                      toast.error(result.message);
+                    }
+                    return;
+                  }
+                  onRemoved(result.historyRevision);
+                } catch (error) {
+                  if (onRequestFailure("other")) {
+                    if (isDocumentActionTimeout(error)) {
+                      reportDocumentActionTimeout();
+                      toast.error(
+                        "Repbook did not confirm the removal in time. Reload to reconcile the retained request safely.",
+                      );
+                    } else {
+                      toast.error("The exercise could not be removed from today.");
+                    }
+                  }
+                }
+              });
+            }}
+          >
+            {pending ? "Removing…" : "Remove from today"}
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            disabled={pending}
+            onClick={() => onOpenChange(false)}
+          >
+            Keep exercise
+          </Button>
+        </DrawerFooter>
       </DrawerContent>
     </Drawer>
   );

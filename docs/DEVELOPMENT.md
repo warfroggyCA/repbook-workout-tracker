@@ -304,16 +304,65 @@ the deployment-recovery and set/equipment/occurrence outbox tests plus
 `session-runner-exit` and `exercise-card-component`.
 
 The same follow-up keeps acknowledged warm-ups and sets in closed disclosures,
-places correction with the saved set, reveals the next current set after save,
-keeps exercise setup above its work until acknowledgement, compacts mobile
+places correction with the saved set, reveals the next current set immediately
+after an exact device-durable enqueue, keeps exercise setup above its work until
+acknowledgement, compacts mobile
 superset context, and prevents the fixed timer controls from overlapping at
 intermediate phone widths. New-device rest alerts default to foreground sound;
 the timer exposes the effective mode and the set-log gesture primes Web Audio.
 Sound-enabled timers tick locally from 10 through 1 and then play the same
 stronger finish alarm exposed by the Settings test control.
+Day 2 reliability coverage adds absolute-deadline restore and missed-expiry cue
+tests, Wake Lock rejection/release/race tests, slow and failed set-outbox
+projection tests, duplicate Program-import rejection, preparation-set ordering,
+equipment-geometry switching, workout-only removal/undo semantics, and narrow
+active-title rendering. The timer must be reconciled on visibility, pageshow,
+focus, and runner rehydration; no test may treat interval execution as elapsed
+time truth.
 An installed-iPhone PWA field check remains required before release because
 automated WebKit cannot establish device sound, silent-mode, Bluetooth, or
 background behavior.
+
+### Day 2 active-workout reliability root causes
+
+The August 16, 2026 candidate confirmed these causes before remediation:
+
+- The timer already retained an absolute end time, but set acknowledgement—not
+  the Log set gesture—created it. Resume could mark an elapsed timer as missed
+  without attempting one idempotent final cue, focus was not a reconciliation
+  event, and no Screen Wake Lock lifecycle existed.
+- Set commands already had stable client IDs and durable retry storage, but the
+  client projection deliberately kept the same occurrence current until the
+  database acknowledged it. That policy made normal latency look like a frozen
+  workout.
+- Snapshot construction already orders general warm-ups first and anchors lift
+  ramps before their exact exercise. The surprise was a presentation problem:
+  later preparation sets were hidden in the collapsed full plan and described
+  too generically. The occurrence-order tests remain the authority against a
+  true mid-exercise insertion regression.
+- Routine import allowed two slots in one day to resolve to the same stable
+  exercise ID. Snapshot creation and rendering preserve distinct stable rows;
+  the missing duplicate guard was at the import review and confirmation trust
+  boundary.
+- Plate and pin guidance already derives from the selected equipment geometry,
+  not the exercise display name. Plate-loaded guidance is unavailable when the
+  active snapshot is selectorized or lacks known machine geometry; the engine
+  must not invent starting resistance, loading points, compatible plates, or a
+  pulley ratio. No private production owner record was inspected for this
+  candidate.
+- Previous comparable evidence was already stable-ID and performed-semantics
+  scoped, but it appeared only deeper in the set card. The active headline did
+  not expose that verified context, and header layout still allowed surrounding
+  controls to constrain long exercise names.
+
+Physical iPhone acceptance must keep normal Auto-Lock enabled and check several
+consecutive timers across backgrounding and manual lock/reopen, with Low Power
+Mode both off and on. Confirm immediate next-set/rest presentation, accurate
+deadline reconciliation, no burst of missed ticks, one resumed expiry alarm at
+most, correct plate-loaded Triceps Pushdown guidance, visible preparation-set
+order, remove/Undo semantics, preserved routine/history, and full portrait title
+wrapping. Manual lock may suspend the PWA; neither Web Audio nor Wake Lock
+guarantees a lock-screen alarm.
 
 An exact retained set command may reconcile after its workout becomes terminal
 only when the owner-scoped saved row and the complete performed evidence match.

@@ -100,11 +100,13 @@ describe("reviewed Program import confirmation", () => {
     reps: RepSpec | null = null,
     parserVersion = CANONICAL_ROUTINE_PARSER_VERSION,
     rawPayload = "synthetic private paste",
+    duplicateExercise = false,
   ) {
     const envelope = parseCanonicalRoutineText(`Program: Reviewed import
 Day 1 — Strength
 Warm-up: Easy bike | load=5 minutes
 Bench Press 3x8 @ 60 kg, rest 2 min
+${duplicateExercise ? "Bench Press 3x8 @ 60 kg, rest 2 min\n" : ""}\
 Ramp-up: Empty bar | reps=10`)!;
     if (reps) envelope.data.days[0]!.exercises[0]!.reps = reps;
     const stage = buildRoutineImportStagePayload({
@@ -141,11 +143,11 @@ Ramp-up: Empty bar | reps=10`)!;
       calibrationEligible: false,
     };
     const dayIntent = {
-      ...createSuggestedDayIntent([{
-        lineageId: row.lineageId,
+      ...createSuggestedDayIntent(day.exercises.map((exercise) => ({
+        lineageId: exercise.lineageId,
         sets: 3,
         restSec: 120,
-      }]),
+      }))),
       orderingPolicy: "preserve" as const,
       pairingPolicy: "preserve" as const,
     };
@@ -161,19 +163,19 @@ Ramp-up: Empty bar | reps=10`)!;
         name: day.name,
         warmupItems: day.warmupItems,
         intent: dayIntent,
-        exercises: [{
-          lineageId: row.lineageId,
+        exercises: day.exercises.map((exercise) => ({
+          lineageId: exercise.lineageId,
           exerciseId,
           sets: 3,
           repMin: 8,
           repMax: 8,
           load: 60,
-          loadUnit: "kg",
+          loadUnit: "kg" as const,
           restSec: 120,
           supersetKey: null,
           notes: null,
           intent: slotIntent,
-        }],
+        })),
       }],
     };
     return { input, eventId: event.id, day, row };
@@ -688,6 +690,24 @@ Exercise notes:   `,
       }],
     });
     expect(result.ok).toBe(false);
+    expect(await db.query.programVersions.findMany()).toHaveLength(0);
+  }, 30_000);
+
+  it("rejects duplicate stable exercise mappings within one imported day", async () => {
+    const staged = await stageReview(
+      null,
+      { routineParse: null, exerciseMap: null },
+      null,
+      CANONICAL_ROUTINE_PARSER_VERSION,
+      "synthetic duplicate private paste",
+      true,
+    );
+
+    await expect(confirmImport(staged.input)).resolves.toEqual({
+      ok: false,
+      reason:
+        "The day “Day 1 — Strength” maps more than one slot to the same exercise. Nothing was published; remove the duplicate or map an intended variant separately.",
+    });
     expect(await db.query.programVersions.findMany()).toHaveLength(0);
   }, 30_000);
 

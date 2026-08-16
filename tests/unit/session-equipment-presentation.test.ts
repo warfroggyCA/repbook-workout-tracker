@@ -505,4 +505,147 @@ describe("active-workout equipment presentation", () => {
     expect(result.setup?.currentGuidance).toContain("nearest lower 40 lb (Pin 4)");
     expect(result.setup?.currentGuidance).toContain("nearest upper 60 lb (Pin 6)");
   });
+
+  it("changes Triceps Pushdown assistance with the selected equipment geometry", () => {
+    const plateLoaded: LoadedEquipmentLoadProfile = {
+      equipmentItemId: "a0000000-0000-4000-8000-000000000001",
+      itemType: "machine",
+      itemLabel: "Plate-loaded cable station",
+      equipmentDefinitionId: null,
+      equipmentDefinitionKey: null,
+      available: true,
+      profile: {
+        kind: "plate_loaded_machine",
+        id: "a1000000-0000-4000-8000-000000000001",
+        geometryCertainty: "known",
+        startingResistance: 10,
+        startingResistanceUnit: "lb",
+        loadingPointCount: 1,
+        balancingRule: "single_point",
+        targetEntryMeaning: "total_system",
+        compatiblePlateIds: [],
+      },
+    };
+    const selectorized: LoadedEquipmentLoadProfile = {
+      equipmentItemId: "a0000000-0000-4000-8000-000000000002",
+      itemType: "cable",
+      itemLabel: "Selectorized cable stack",
+      equipmentDefinitionId: null,
+      equipmentDefinitionKey: null,
+      available: true,
+      profile: {
+        kind: "cable_machine",
+        id: "a1000000-0000-4000-8000-000000000002",
+        geometryCertainty: "known",
+        stackCount: 1,
+        topology: "shared_selection",
+        displayedUnit: "lb",
+        ratioStatus: "known",
+        ratioNumerator: 1,
+        ratioDenominator: 1,
+        stackSteps: [
+          { id: null, stackIndex: 0, stepIndex: 4, displayedLoad: 40, positionLabel: "Pin 4" },
+          { id: null, stackIndex: 0, stepIndex: 5, displayedLoad: 50, positionLabel: "Pin 5" },
+        ],
+        compatibleAttachmentItemIds: [],
+      },
+    };
+    const ownedPlates = [
+      { id: "a2000000-0000-4000-8000-000000000001", denomination: 10, quantity: 4, unit: "lb" as const },
+    ];
+    const basePushdown = {
+      ...exercise,
+      exerciseId: "a3000000-0000-4000-8000-000000000001",
+      loadType: "external",
+      targetLoad: 50,
+      requirements: [{ equipmentType: "machine", minWeight: null }],
+    };
+
+    const plateResult = buildSessionEquipmentPresentation({
+      exercise: {
+        ...basePushdown,
+        exactRequirement: {
+          requiredProfileKind: "plate_loaded_machine",
+          requiredEquipmentDefinitionId: null,
+          requiredAttachmentKind: null,
+          requiredAttachmentDefinitionId: null,
+          requiresKnownGeometry: true,
+        },
+        currentSelection: {
+          id: "a4000000-0000-4000-8000-000000000001",
+          equipmentItemId: plateLoaded.equipmentItemId,
+          attachmentItemId: null,
+          equipmentLabel: plateLoaded.itemLabel,
+          attachmentLabel: null,
+          geometrySnapshot: {
+            version: 1,
+            kind: "plate_loaded_machine",
+            geometryCertainty: "known",
+            startingResistance: 10,
+            startingResistanceUnit: "lb",
+            loadingPointCount: 1,
+            balancingRule: "single_point",
+            targetEntryMeaning: "total_system",
+            compatiblePlates: [{ denomination: 10, quantity: 4, unit: "lb" }],
+          },
+        },
+      },
+      profiles: [plateLoaded, selectorized],
+      inventory: [
+        { type: "machine", available: true, attrs: {} },
+        { type: "cable", available: true, attrs: {} },
+      ],
+      plates: ownedPlates,
+    });
+    expect(plateResult.setup?.machineLoadConfig).not.toBeNull();
+    expect(plateResult.setup?.currentGuidance).toContain("each loading point");
+
+    const selectorizedResult = buildSessionEquipmentPresentation({
+      exercise: {
+        ...basePushdown,
+        requirements: [{ equipmentType: "cable", minWeight: null }],
+        exactRequirement: {
+          requiredProfileKind: "cable_machine",
+          requiredEquipmentDefinitionId: null,
+          requiredAttachmentKind: null,
+          requiredAttachmentDefinitionId: null,
+          requiresKnownGeometry: true,
+        },
+        currentSelection: {
+          id: "a4000000-0000-4000-8000-000000000002",
+          equipmentItemId: selectorized.equipmentItemId,
+          attachmentItemId: null,
+          equipmentLabel: selectorized.itemLabel,
+          attachmentLabel: null,
+          geometrySnapshot: {
+            version: 1,
+            kind: "cable_machine",
+            geometryCertainty: "known",
+            stackCount: 1,
+            topology: "shared_selection",
+            displayedUnit: "lb",
+            ratioStatus: "known",
+            ratioNumerator: 1,
+            ratioDenominator: 1,
+            stackSteps: [
+              { stackIndex: 0, stepIndex: 4, displayedLoad: 40, positionLabel: "Pin 4" },
+              { stackIndex: 0, stepIndex: 5, displayedLoad: 50, positionLabel: "Pin 5" },
+            ],
+          },
+        },
+      },
+      profiles: [plateLoaded, selectorized],
+      inventory: [
+        { type: "machine", available: true, attrs: {} },
+        { type: "cable", available: true, attrs: {} },
+      ],
+      plates: ownedPlates,
+    });
+    expect(selectorizedResult.setup?.machineLoadConfig).toBeNull();
+    expect(selectorizedResult.plateConfig).toBeNull();
+    expect(selectorizedResult.setup?.currentGuidance).toContain("Pin 5");
+    expect(selectorizedResult.setup?.currentGuidance).not.toContain(
+      "each loading point",
+    );
+  });
 });
