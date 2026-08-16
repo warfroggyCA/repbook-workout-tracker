@@ -3,6 +3,7 @@ import {
   acknowledgeRestTimerSource,
   clearRestTimer,
   clearRestTimerForIdentity,
+  clearRestTimerForExactSourceClientKey,
   claimRestCueMilestones,
   adjustStoredRestTimer,
   adjustDurableRestTimer,
@@ -142,6 +143,44 @@ describe("durable rest timer", () => {
       timer: {
         startedAt: 1_000,
         endsAt: 91_000,
+        sourceClientKey: clientKey,
+        sourceCompletedSetId: completedSetId,
+      },
+    });
+  });
+
+  it("keeps a dismissed timer as a tombstone when its delayed save acknowledges", async () => {
+    const storage = new MemoryStorage();
+    const timer = createRestTimer({
+      ownerId,
+      sessionId,
+      generationId,
+      now: 1_000,
+      seconds: 30,
+      sourceSessionExerciseId: sessionExerciseId,
+      sourceOccurrenceId: occurrenceId,
+      sourceClientKey: clientKey,
+    })!;
+    const ready = completeRestTimer(timer, 31_000, "foreground", {
+      sound: "requested",
+      vibration: "not_requested",
+      completion: "requested",
+    });
+    const dismissed = continueAfterRest(ready, 32_000);
+    await writeRestTimer(storage, dismissed);
+
+    const result = await acknowledgeRestTimerSource(
+      storage,
+      { ownerId, sessionId },
+      { clientKey, sessionExerciseId, occurrenceId, completedSetId },
+    );
+
+    expect(result).toMatchObject({
+      status: "updated",
+      timer: {
+        phase: "continued",
+        startedAt: 1_000,
+        endsAt: 31_000,
         sourceClientKey: clientKey,
         sourceCompletedSetId: completedSetId,
       },
@@ -359,6 +398,42 @@ describe("durable rest timer", () => {
     )).toBe("stale");
     expect(storage.value).not.toBeNull();
     expect(await clearRestTimerForIdentity(storage, { ownerId, sessionId }, generationId)).toBe("cleared");
+    expect(storage.value).toBeNull();
+  });
+
+  it("clears only the exact client-bound timer source", async () => {
+    const storage = new MemoryStorage();
+    const sourceLess = createRestTimer({
+      ownerId,
+      sessionId,
+      generationId,
+      now: 1_000,
+      seconds: 30,
+    })!;
+    await writeRestTimer(storage, sourceLess);
+    await expect(clearRestTimerForExactSourceClientKey(
+      storage,
+      { ownerId, sessionId },
+      clientKey,
+    )).resolves.toBe("stale");
+    expect(storage.value).not.toBeNull();
+
+    const matching = createRestTimer({
+      ownerId,
+      sessionId,
+      generationId: "80000000-0000-4000-8000-000000000008",
+      now: 2_000,
+      seconds: 30,
+      sourceSessionExerciseId: sessionExerciseId,
+      sourceOccurrenceId: occurrenceId,
+      sourceClientKey: clientKey,
+    })!;
+    await writeRestTimer(storage, matching);
+    await expect(clearRestTimerForExactSourceClientKey(
+      storage,
+      { ownerId, sessionId },
+      clientKey,
+    )).resolves.toBe("cleared");
     expect(storage.value).toBeNull();
   });
 

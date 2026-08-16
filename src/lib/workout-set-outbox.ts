@@ -14,6 +14,10 @@ import {
   type SetPainContext,
   type TechniqueIssue,
 } from "@/lib/set-exception-context";
+import {
+  clearRestTimerForExactSourceClientKey,
+  type RestTimerStorage,
+} from "@/lib/rest-timer";
 
 export const WORKOUT_SET_OUTBOX_STORAGE_KEY =
   "workout-tracker:workout-set-outbox:v1";
@@ -1383,6 +1387,32 @@ export function releaseQueuedWorkoutSetBackoff(ownerId: string) {
 
 export function removeWorkoutSet(clientKey: string) {
   return browserMutation((storage) => removeWorkoutSetOutboxEntry(storage, clientKey));
+}
+
+const DISCARD_TIMER_FAILURE =
+  "Repbook could not safely clear this set's rest timer. The set is still retained on this device; try again.";
+
+export async function discardWorkoutSetDeviceCopy(
+  storage: WorkoutSetOutboxStorage & RestTimerStorage,
+  entry: Pick<
+    WorkoutSetOutboxEntry,
+    "clientKey" | "ownerId" | "sessionId"
+  >,
+) {
+  return withOutboxLock(async () => {
+    const cleared = await clearRestTimerForExactSourceClientKey(
+      storage,
+      { ownerId: entry.ownerId, sessionId: entry.sessionId },
+      entry.clientKey,
+    );
+    if (cleared === "storage_error") {
+      return { ok: false, reason: DISCARD_TIMER_FAILURE } as const;
+    }
+    return applyBrowserMutation(
+      storage,
+      (current) => removeWorkoutSetOutboxEntry(current, entry.clientKey),
+    );
+  });
 }
 
 export function removeWorkoutSetForOwner(ownerId: string, clientKey: string) {

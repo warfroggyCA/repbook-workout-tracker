@@ -72,11 +72,11 @@ import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import {
   enqueueWorkoutSet,
+  discardWorkoutSetDeviceCopy,
   getWorkoutSetOutboxServerSnapshot,
   getWorkoutSetOutboxSnapshot,
   publishWorkoutSetOutboxEvent,
   releaseWorkoutSetOrderBlockersForOccurrence,
-  removeWorkoutSet,
   retryWorkoutSet,
   subscribeToWorkoutSetOutbox,
   subscribeToWorkoutSetOutboxStatus,
@@ -2099,7 +2099,14 @@ export function SessionRunner(props: SessionRunnerProps) {
 
   async function discardSet(clientKey: string) {
     const entry = sessionEntries.find((candidate) => candidate.clientKey === clientKey);
-    const removed = await removeWorkoutSet(clientKey);
+    if (!entry) {
+      toast.error("This device copy changed. Reopen recovery and try again.");
+      return;
+    }
+    const removed = await discardWorkoutSetDeviceCopy(
+      window.localStorage,
+      entry,
+    );
     if (!removed.ok) {
       toast.error(removed.reason);
       return;
@@ -2191,8 +2198,8 @@ export function SessionRunner(props: SessionRunnerProps) {
     if (!timer) return;
     const continued = continueAfterRest(timer, Date.now());
     if (continued === timer) return;
-    void clearMatchingRestTimer(timer.generationId);
-  }, [clearMatchingRestTimer, timer]);
+    void transitionRestTimer(timer, continued);
+  }, [timer, transitionRestTimer]);
 
   const requestRestCue = useCallback((
     milestone: RestCueMilestone,
