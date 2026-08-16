@@ -665,6 +665,7 @@ export function SessionRunner(props: SessionRunnerProps) {
   const previousCurrentActionKindRef = useRef<
     SessionGuidanceFocusAction["kind"] | null
   >(null);
+  const previousCurrentActionSessionExerciseIdRef = useRef<string | null>(null);
   const exerciseDisclosureGenerationRef = useRef(0);
   const lastConsumedWorkoutHashRef = useRef<string | null>(null);
   const staleWorkoutActionHashRef = useRef(false);
@@ -1308,9 +1309,30 @@ export function SessionRunner(props: SessionRunnerProps) {
   useEffect(() => {
     const disclosureGeneration = exerciseDisclosureGenerationRef.current;
     const previousActionId = previousCurrentActionIdRef.current;
+    const previousActionSessionExerciseId =
+      previousCurrentActionSessionExerciseIdRef.current;
+    const linkedExerciseTarget = decodeURIComponent(
+      window.location.hash.slice(1),
+    );
+    const explicitExerciseOwnsRestFocus =
+      currentActionKind === "rest" &&
+      linkedExerciseTarget.startsWith("exercise-") &&
+      lastConsumedWorkoutHashRef.current === linkedExerciseTarget;
     if (skipRecoveryExerciseId != null) {
       previousCurrentActionIdRef.current = currentActionId;
       previousCurrentActionKindRef.current = currentActionKind;
+      previousCurrentActionSessionExerciseIdRef.current =
+        currentActionSessionExerciseId;
+      return;
+    }
+    // A deliberate exercise deep link (including failed-set recovery) owns
+    // focus while an already-running timer hydrates. The timer remains visible
+    // and accurate, but must not replace the recovery target with its own hash.
+    if (explicitExerciseOwnsRestFocus) {
+      previousCurrentActionIdRef.current = currentActionId;
+      previousCurrentActionKindRef.current = currentActionKind;
+      previousCurrentActionSessionExerciseIdRef.current =
+        currentActionSessionExerciseId;
       return;
     }
     const reconcileStaleHash = staleWorkoutActionHashRef.current;
@@ -1321,10 +1343,15 @@ export function SessionRunner(props: SessionRunnerProps) {
     if (
       !reconcileStaleHash &&
       !reconcileInitialCurrentAction &&
-      (previousActionId == null || previousActionId === currentActionId)
+      (previousActionId == null ||
+        (previousActionId === currentActionId &&
+          previousActionSessionExerciseId ===
+            currentActionSessionExerciseId))
     ) {
       previousCurrentActionIdRef.current = currentActionId;
       previousCurrentActionKindRef.current = currentActionKind;
+      previousCurrentActionSessionExerciseIdRef.current =
+        currentActionSessionExerciseId;
       return;
     }
     staleWorkoutActionHashRef.current = false;
@@ -1385,6 +1412,8 @@ export function SessionRunner(props: SessionRunnerProps) {
           focusTarget.focus({ preventScroll: true });
           previousCurrentActionIdRef.current = currentActionId;
           previousCurrentActionKindRef.current = currentActionKind;
+          previousCurrentActionSessionExerciseIdRef.current =
+            currentActionSessionExerciseId;
         }
       });
     };
@@ -3699,6 +3728,8 @@ export function SessionRunner(props: SessionRunnerProps) {
               // the owner's newer choice.
               previousCurrentActionIdRef.current = currentActionId;
               previousCurrentActionKindRef.current = currentActionKind;
+              previousCurrentActionSessionExerciseIdRef.current =
+                currentActionSessionExerciseId;
               setExpandedId(expandedId === exercise.id ? null : exercise.id);
             }}
             plateConfigs={safePlateConfigs}
