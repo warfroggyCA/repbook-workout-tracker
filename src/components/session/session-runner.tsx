@@ -3123,6 +3123,8 @@ export function SessionRunner(props: SessionRunnerProps) {
   const currentCardOwnsNextAction =
     currentWorkingExercise != null &&
     expandedId === currentWorkingExercise.id &&
+    guidance.nextAction?.kind === "working_set" &&
+    guidance.nextAction.sessionExerciseId === currentWorkingExercise.id &&
     !currentWorkingExercise.sets.some(
       (set) => set.saveState != null && set.saveState !== "saved",
     );
