@@ -1273,6 +1273,26 @@ export function SessionRunner(props: SessionRunnerProps) {
       timer,
     ],
   );
+  const locallyRecordedOccurrenceIds = new Set(
+    sessionEntries.flatMap((entry) =>
+      entry.occurrenceId ? [entry.occurrenceId] : []
+    ),
+  );
+  const activeRestAction =
+    guidance.currentAction?.kind === "rest" ? guidance.currentAction : null;
+  const activeRestSource = activeRestAction?.source ?? null;
+  const straightSetRestContinuation =
+    activeRestAction?.restKind === "straight_set" && activeRestSource
+      ? guidance.actions.find(
+          (action) =>
+            action.kind === "working_set" &&
+            action.sessionExerciseId ===
+              activeRestSource.sessionExerciseId &&
+            action.sequenceIdx > activeRestSource.sequenceIdx &&
+            action.truth === "pending" &&
+            !locallyRecordedOccurrenceIds.has(action.occurrenceId),
+        ) ?? null
+      : null;
   const currentActionId = actionIdentity(guidance.currentAction);
   const currentActionKind = guidance.currentAction?.kind ?? null;
   const currentActionSequenceIdx = guidance.currentAction?.sequenceIdx ?? null;
@@ -1280,11 +1300,14 @@ export function SessionRunner(props: SessionRunnerProps) {
     guidance.currentAction?.kind === "working_set"
       ? guidance.currentAction.sessionExerciseId
       : guidance.currentAction?.kind === "rest"
-        ? guidance.current?.sessionExerciseId ?? null
+        ? straightSetRestContinuation?.sessionExerciseId ??
+          guidance.current?.sessionExerciseId ?? null
         : null;
   const currentActionTargetId = actionTargetId(guidance.currentAction);
   const restingWorkingSetTargetId =
-    currentActionKind === "rest" ? actionTargetId(guidance.current) : null;
+    currentActionKind === "rest"
+      ? actionTargetId(straightSetRestContinuation ?? guidance.current)
+      : null;
   useEffect(() => {
     if (
       currentActionKind !== "working_set" ||
@@ -2838,9 +2861,6 @@ export function SessionRunner(props: SessionRunnerProps) {
         entry.reviewRequired == null &&
         entry.orderBlocker?.occurrenceId === currentActionOccurrence.id,
     );
-  const locallyRecordedOccurrenceIds = new Set(
-    sessionEntries.flatMap((entry) => entry.occurrenceId ? [entry.occurrenceId] : []),
-  );
   function nextPendingOccurrenceForExercise(exerciseId: string) {
     return occurrences.find(
       (occurrence) =>

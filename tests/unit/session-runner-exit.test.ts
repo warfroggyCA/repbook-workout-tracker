@@ -5,6 +5,7 @@ import {
   exitRequiresDeviceCopyAcknowledgement,
   finishBlockedByRecordedWork,
   nextPendingWorkingOccurrence,
+  queuedSetSaveState,
   reconcileServerOccurrences,
   resolveSetLoggingEquipment,
   retainedRecordedWorkCount,
@@ -182,6 +183,28 @@ describe("workout exit readiness", () => {
     expect(source).toContain(
       "Reload Repbook to retry the retained extra set safely.",
     );
+  });
+});
+
+describe("queued set save presentation", () => {
+  it("does not let a stale saving event hide durable retry metadata", () => {
+    expect(queuedSetSaveState({
+      status: "queued",
+      attemptCount: 1,
+      lastAttemptAtISO: "2026-08-16T18:00:00.000Z",
+    }, "saving")).toBe("retrying");
+
+    expect(queuedSetSaveState({
+      status: "queued",
+      attemptCount: 0,
+      lastAttemptAtISO: null,
+    }, "saving")).toBe("saving");
+
+    expect(queuedSetSaveState({
+      status: "needs_attention",
+      attemptCount: 3,
+      lastAttemptAtISO: "2026-08-16T18:00:00.000Z",
+    }, "retrying")).toBe("failed");
   });
 });
 
