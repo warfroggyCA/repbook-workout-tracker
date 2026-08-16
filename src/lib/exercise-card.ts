@@ -18,6 +18,16 @@ function formatNearestBounds(
 }
 
 export const SET_NOTE_MAX_LENGTH = 500;
+
+export const EXERCISE_SWIPE_REVEAL_THRESHOLD_PX = 64;
+
+export function exerciseSwipeRevealsRemove(input: {
+  deltaX: number;
+  deltaY: number;
+}) {
+  return input.deltaX <= -EXERCISE_SWIPE_REVEAL_THRESHOLD_PX &&
+    Math.abs(input.deltaX) > Math.abs(input.deltaY) * 1.25;
+}
 export const EXERCISE_NOTE_MAX_LENGTH = 1000;
 
 export function exerciseUsesTotalBarLoad(input: {

@@ -129,7 +129,7 @@ async function clickCentered(page: Page, locator: Locator) {
 
 async function skipCurrentSet(page: Page) {
   const current = page.getByTestId("current-exercise-card");
-  const currentDisclosure = current.locator(":scope > button").first();
+  const currentDisclosure = current.getByTestId("exercise-swipe-surface");
   await waitForHydratedReactHandler(currentDisclosure);
   await currentDisclosure.evaluate((element) => {
     if (element.getAttribute("aria-expanded") !== "true") {
@@ -224,7 +224,7 @@ test("keeps one ledger-driven current/next/group/rest state through retry, inter
   await expect(guidance).toContainText("Now: Barbell Back Squat, set 1");
 
   const otherExercise = page.getByRole("region", { name: "Dumbbell Bench Press" });
-  await otherExercise.locator(":scope > button").click();
+  await otherExercise.getByTestId("exercise-swipe-surface").click();
   await expect(guidance).toContainText("Now: Barbell Back Squat, set 1");
   await expect(guidance).toContainText("Next: Barbell Back Squat, set 2");
   const showCurrent = status.getByRole("button", {
@@ -234,7 +234,7 @@ test("keeps one ledger-driven current/next/group/rest state through retry, inter
   await expect(showCurrent).toContainText("Show current set");
   await showCurrent.click();
   await expect(
-    page.getByTestId("current-exercise-card").locator(":scope > button").first(),
+    page.getByTestId("current-exercise-card").getByTestId("exercise-swipe-surface"),
   ).toHaveAttribute("aria-expanded", "true");
   await expect(status.getByTestId("active-workout-dock-primary"))
     .toHaveAccessibleName("Log Barbell Back Squat, Set 1");
@@ -280,12 +280,14 @@ test("keeps one ledger-driven current/next/group/rest state through retry, inter
       .getByRole("button", { name: "Log set", exact: true }),
   );
   await expect.poll(() => setRequests).toBe(2);
-  await expect(status).toContainText("Retrying");
+  await expect(
+    page.getByRole("region", { name: "Dumbbell Lateral Raise" }),
+  ).toContainText("Retrying");
   await expect(guidance).toContainText(
-    /Now: Superset, round 1, member 1 of 2: Dumbbell Lateral Raise, set 1/,
+    /Now: Superset, round 1, member 2 of 2: Pallof Press, set 1/,
   );
   await expect(guidance).toContainText(
-    /Next: Superset, round 1, member 2 of 2: Pallof Press, set 1/,
+    /Next: Superset, round 2, member 1 of 2: Dumbbell Lateral Raise, set 2/,
   );
   await expect(status.getByLabel("Rest timer")).toHaveCount(0);
 

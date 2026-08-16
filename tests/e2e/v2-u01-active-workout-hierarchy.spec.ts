@@ -510,7 +510,9 @@ test("keeps attention continuous through warm-up, first set, and exact recovery 
           return {
             inside: active != null && element.contains(active),
             expanded:
-              element.closest("section")?.querySelector(":scope > button")
+              element.closest("section")?.querySelector(
+                '[data-testid="exercise-swipe-surface"]',
+              )
                 ?.getAttribute("aria-expanded") === "true",
             active:
               active?.getAttribute("aria-label") ??
@@ -527,9 +529,6 @@ test("keeps attention continuous through warm-up, first set, and exact recovery 
           expanded: true,
           hash: `#${await blockerEntry.getAttribute("id")}`,
         });
-        await expectPrimaryActionUnobstructed(
-          page.getByTestId("active-workout-dock-primary"),
-        );
         await testInfo.attach("order-blocker-recovery-extra-large-390x844", {
           body: await page.screenshot(),
           contentType: "image/png",
@@ -540,6 +539,7 @@ test("keeps attention continuous through warm-up, first set, and exact recovery 
           exact: true,
         });
         await expect(blockerLog).toBeEnabled();
+        await expectPrimaryActionUnobstructed(blockerLog);
         await blockerLog.click();
         await expect(page.getByTestId("set-save-announcement")).toContainText(
           "set 1 saved",
@@ -868,7 +868,7 @@ test("keeps the ordinary active set current-first, unobstructed, and acknowledge
       name: "Skip rest",
       exact: true,
     })).toHaveCount(0);
-    await expect(currentCard.locator(":scope > button")).toHaveAttribute(
+    await expect(currentCard.getByTestId("exercise-swipe-surface")).toHaveAttribute(
       "aria-expanded",
       "true",
     );

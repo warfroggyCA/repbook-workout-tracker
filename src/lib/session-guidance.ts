@@ -309,7 +309,7 @@ export function formatSessionGuidanceAction(
     return `${action.group.name}, round ${action.group.round}, member ${action.group.member} of ${action.group.memberCount}: ${action.actualExerciseName}, ${setLabel}`;
   }
   if (action.kind === "exercise_warmup" && action.exerciseName) {
-    return `${action.exerciseName} warm-up: ${action.label}`;
+    return `${action.exerciseName} — preparation set: ${action.label}`;
   }
   return action.label;
 }
@@ -436,7 +436,7 @@ function actionHasUnacknowledgedSet(
   if (action?.kind !== "working_set") return false;
   return exerciseById.get(action.sessionExerciseId)?.sets.some(
     (set) =>
-      set.setNo === action.planned.setNumber &&
+      set.occurrenceId === action.occurrenceId &&
       set.saveState != null &&
       set.saveState !== "saved",
   ) ?? false;
@@ -446,24 +446,35 @@ function projectRestGuidance(
   timer: DurableRestTimer | null | undefined,
   actions: SessionGuidanceAction[],
   occurrences: SessionOccurrenceData[],
+  exerciseById: Map<string, SessionExerciseData>,
 ): SessionRestGuidanceAction | null {
   if (!timer || timer.phase === "continued") return null;
   const sourceOccurrence = timer.sourceOccurrenceId == null ||
-      timer.sourceSessionExerciseId == null ||
-      timer.sourceCompletedSetId == null
+      timer.sourceSessionExerciseId == null
     ? null
     : occurrences.find(
         (occurrence) =>
           occurrence.id === timer.sourceOccurrenceId &&
           occurrence.kind === "working_set" &&
           occurrence.sessionExerciseId === timer.sourceSessionExerciseId &&
-          occurrence.completedSetId === timer.sourceCompletedSetId,
+          (timer.sourceCompletedSetId == null ||
+            occurrence.completedSetId === timer.sourceCompletedSetId),
       ) ?? null;
+  const optimisticSourceMatches =
+    sourceOccurrence != null &&
+    timer.sourceClientKey != null &&
+    exerciseById.get(sourceOccurrence.sessionExerciseId ?? "")?.sets.some(
+      (set) =>
+        set.clientKey === timer.sourceClientKey &&
+        set.occurrenceId === sourceOccurrence.id &&
+        set.saveState != null &&
+        set.saveState !== "saved",
+    ) === true;
   const source = sourceOccurrence
     ? actions.find(
         (action) =>
           action.occurrenceId === sourceOccurrence.id &&
-          action.truth === "performed",
+          (action.truth === "performed" || optimisticSourceMatches),
       ) ?? null
     : null;
   const restKind = source?.restAfter.kind === "none" || !source
@@ -719,7 +730,14 @@ export function projectSessionGuidance(input: Input): SessionGuidanceProjection 
       }];
     });
 
-  const pending = actions.filter((action) => action.truth === "pending");
+  // A locally retained set has already captured the performed action. Keep its
+  // durable occurrence truth pending until the server acknowledges it, while
+  // allowing the device UI and rest timer to move to the next action.
+  const pending = actions.filter(
+    (action) =>
+      action.truth === "pending" &&
+      !actionHasUnacknowledgedSet(action, exerciseById),
+  );
   const current = pending[0] ?? null;
   const upNext = pending[1] ?? null;
   const pendingWarmups = input.occurrences
@@ -760,6 +778,7 @@ export function projectSessionGuidance(input: Input): SessionGuidanceProjection 
     input.restTimer,
     actions,
     input.occurrences,
+    exerciseById,
   );
   const acknowledgementPending = actionHasUnacknowledgedSet(
     occurrenceCurrentAction,

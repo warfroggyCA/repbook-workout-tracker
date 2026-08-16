@@ -321,7 +321,7 @@ describe("WorkoutStatusBar", () => {
     );
 
     expect(html).toContain('data-testid="active-workout-dock-primary"');
-    expect(html).toContain('aria-label="Complete Barbell Squat warm-up: Empty bar"');
+    expect(html).toContain('aria-label="Complete Barbell Squat — preparation set: Empty bar"');
     expect(html).toContain("Complete warm-up");
   });
 

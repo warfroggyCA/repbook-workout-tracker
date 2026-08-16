@@ -29,9 +29,12 @@ export type DurableRestTimer = {
   revision: number;
   ownerId: string;
   sessionId: string;
-  /** Exact server-acknowledged result whose post-set rest this timer represents. */
+  /** Device-observed start. `endsAt` remains the countdown source of truth. */
+  startedAt: number;
+  /** Exact device command and, once acknowledged, server result for this rest. */
   sourceSessionExerciseId: string | null;
   sourceOccurrenceId: string | null;
+  sourceClientKey: string | null;
   sourceCompletedSetId: string | null;
   phase: RestTimerPhase;
   endsAt: number;
@@ -96,10 +99,18 @@ const LEGACY_TIMER_KEYS = [
   "completionCueOutcome",
   "attemptedMilestones",
 ] as const;
-const TIMER_KEYS = [
+const PREVIOUS_TIMER_KEYS = [
   ...LEGACY_TIMER_KEYS,
   "sourceSessionExerciseId",
   "sourceOccurrenceId",
+  "sourceCompletedSetId",
+] as const;
+const TIMER_KEYS = [
+  ...LEGACY_TIMER_KEYS,
+  "startedAt",
+  "sourceSessionExerciseId",
+  "sourceOccurrenceId",
+  "sourceClientKey",
   "sourceCompletedSetId",
 ] as const;
 
@@ -151,23 +162,16 @@ export function isDurableRestTimer(value: unknown): value is DurableRestTimer {
     !UUID_PATTERN.test(value.ownerId) ||
     typeof value.sessionId !== "string" ||
     !UUID_PATTERN.test(value.sessionId) ||
-    !(
-      (value.sourceSessionExerciseId === null &&
-        value.sourceOccurrenceId === null &&
-        value.sourceCompletedSetId === null) ||
-      (typeof value.sourceSessionExerciseId === "string" &&
-        UUID_PATTERN.test(value.sourceSessionExerciseId) &&
-        typeof value.sourceOccurrenceId === "string" &&
-        UUID_PATTERN.test(value.sourceOccurrenceId) &&
-        typeof value.sourceCompletedSetId === "string" &&
-        UUID_PATTERN.test(value.sourceCompletedSetId))
-    ) ||
+    typeof value.startedAt !== "number" ||
+    !Number.isSafeInteger(value.startedAt) ||
+    value.startedAt <= 0 ||
     !["running", "ready", "skipped", "continued"].includes(
       String(value.phase),
     ) ||
     typeof value.endsAt !== "number" ||
     !Number.isSafeInteger(value.endsAt) ||
     value.endsAt <= 0 ||
+    value.endsAt < value.startedAt ||
     typeof value.totalSec !== "number" ||
     !Number.isInteger(value.totalSec) ||
     value.totalSec < 1 ||
@@ -187,6 +191,24 @@ export function isDurableRestTimer(value: unknown): value is DurableRestTimer {
   ) {
     return false;
   }
+
+  const noSource = value.sourceSessionExerciseId === null &&
+    value.sourceOccurrenceId === null &&
+    value.sourceClientKey === null &&
+    value.sourceCompletedSetId === null;
+  const associatedSource =
+    typeof value.sourceSessionExerciseId === "string" &&
+    UUID_PATTERN.test(value.sourceSessionExerciseId) &&
+    typeof value.sourceOccurrenceId === "string" &&
+    UUID_PATTERN.test(value.sourceOccurrenceId) &&
+    (value.sourceClientKey === null ||
+      (typeof value.sourceClientKey === "string" &&
+        UUID_PATTERN.test(value.sourceClientKey))) &&
+    (value.sourceCompletedSetId === null ||
+      (typeof value.sourceCompletedSetId === "string" &&
+        UUID_PATTERN.test(value.sourceCompletedSetId))) &&
+    (value.sourceClientKey !== null || value.sourceCompletedSetId !== null);
+  if (!noSource && !associatedSource) return false;
 
   const phase = value.phase as RestTimerPhase;
   if (phase === "running") {
@@ -218,6 +240,7 @@ export function createRestTimer(input: {
   seconds: number;
   sourceSessionExerciseId?: string | null;
   sourceOccurrenceId?: string | null;
+  sourceClientKey?: string | null;
   sourceCompletedSetId?: string | null;
 }): DurableRestTimer | null {
   let generationId = input.generationId;
@@ -231,12 +254,17 @@ export function createRestTimer(input: {
   const endsAt = input.now + input.seconds * 1000;
   const sourceSessionExerciseId = input.sourceSessionExerciseId ?? null;
   const sourceOccurrenceId = input.sourceOccurrenceId ?? null;
+  const sourceClientKey = input.sourceClientKey ?? null;
   const sourceCompletedSetId = input.sourceCompletedSetId ?? null;
   const sourceIsValid =
-    (sourceSessionExerciseId === null && sourceOccurrenceId === null && sourceCompletedSetId === null) ||
-    (typeof sourceSessionExerciseId === "string" && UUID_PATTERN.test(sourceSessionExerciseId) &&
+    (sourceSessionExerciseId === null && sourceOccurrenceId === null &&
+      sourceClientKey === null && sourceCompletedSetId === null) ||
+    (typeof sourceSessionExerciseId === "string" &&
+      UUID_PATTERN.test(sourceSessionExerciseId) &&
       typeof sourceOccurrenceId === "string" && UUID_PATTERN.test(sourceOccurrenceId) &&
-      typeof sourceCompletedSetId === "string" && UUID_PATTERN.test(sourceCompletedSetId));
+      (sourceClientKey === null || UUID_PATTERN.test(sourceClientKey)) &&
+      (sourceCompletedSetId === null || UUID_PATTERN.test(sourceCompletedSetId)) &&
+      (sourceClientKey !== null || sourceCompletedSetId !== null));
   if (
     typeof generationId !== "string" ||
     !UUID_PATTERN.test(generationId) ||
@@ -258,8 +286,10 @@ export function createRestTimer(input: {
     revision: 0,
     ownerId: input.ownerId,
     sessionId: input.sessionId,
+    startedAt: input.now,
     sourceSessionExerciseId,
     sourceOccurrenceId,
+    sourceClientKey,
     sourceCompletedSetId,
     phase: "running",
     endsAt,
@@ -313,14 +343,30 @@ function parseStoredRestTimer(
     const stored = value;
     if (
       stored.version === 1 &&
-      Object.keys(stored).length === LEGACY_TIMER_KEYS.length &&
-      LEGACY_TIMER_KEYS.every((key) => Object.hasOwn(stored, key))
+      ((Object.keys(stored).length === LEGACY_TIMER_KEYS.length &&
+        LEGACY_TIMER_KEYS.every((key) => Object.hasOwn(stored, key))) ||
+        (Object.keys(stored).length === PREVIOUS_TIMER_KEYS.length &&
+          PREVIOUS_TIMER_KEYS.every((key) => Object.hasOwn(stored, key))))
     ) {
       value = {
         ...stored,
-        sourceSessionExerciseId: null,
-        sourceOccurrenceId: null,
-        sourceCompletedSetId: null,
+        startedAt:
+          typeof stored.endsAt === "number" && typeof stored.totalSec === "number"
+            ? stored.endsAt - stored.totalSec * 1000
+            : 0,
+        sourceSessionExerciseId:
+          typeof stored.sourceSessionExerciseId === "string"
+            ? stored.sourceSessionExerciseId
+            : null,
+        sourceOccurrenceId:
+          typeof stored.sourceOccurrenceId === "string"
+            ? stored.sourceOccurrenceId
+            : null,
+        sourceClientKey: null,
+        sourceCompletedSetId:
+          typeof stored.sourceCompletedSetId === "string"
+            ? stored.sourceCompletedSetId
+            : null,
       };
     }
   }
@@ -340,16 +386,140 @@ export function resolveRestTimerSourceOccurrence<
 >(timer: DurableRestTimer, occurrences: readonly T[]): T | null {
   if (
     timer.sourceOccurrenceId == null ||
-    timer.sourceSessionExerciseId == null ||
-    timer.sourceCompletedSetId == null
+    timer.sourceSessionExerciseId == null
   ) {
     return null;
   }
   return occurrences.find((occurrence) =>
     occurrence.id === timer.sourceOccurrenceId &&
     occurrence.sessionExerciseId === timer.sourceSessionExerciseId &&
-    occurrence.completedSetId === timer.sourceCompletedSetId
+    (timer.sourceCompletedSetId == null ||
+      occurrence.completedSetId === timer.sourceCompletedSetId)
   ) ?? null;
+}
+
+/**
+ * Adds the server set identity to the exact optimistic timer without changing
+ * its start or deadline. A later timer is never replaced by an older save.
+ */
+export function acknowledgeRestTimerSource(
+  storage: RestTimerStorage,
+  identity: RestTimerIdentity,
+  input: {
+    clientKey: string;
+    sessionExerciseId: string;
+    occurrenceId: string;
+    completedSetId: string;
+  },
+) {
+  return withRestTimerLock(() => {
+    let current: RestTimerRestoreResult;
+    try {
+      current = parseStoredRestTimer(
+        storage.getItem(REST_TIMER_STORAGE_KEY),
+        identity,
+      );
+    } catch {
+      return { status: "storage_error", timer: null } as const;
+    }
+    if (current.status !== "restored") {
+      return { status: current.status, timer: null } as const;
+    }
+    if (
+      current.timer.sourceClientKey !== input.clientKey ||
+      current.timer.sourceSessionExerciseId !== input.sessionExerciseId ||
+      current.timer.sourceOccurrenceId !== input.occurrenceId
+    ) {
+      return { status: "unrelated", timer: current.timer } as const;
+    }
+    if (current.timer.sourceCompletedSetId === input.completedSetId) {
+      return { status: "unchanged", timer: current.timer } as const;
+    }
+    if (current.timer.sourceCompletedSetId != null) {
+      return { status: "stale", timer: null } as const;
+    }
+    const next: DurableRestTimer = {
+      ...current.timer,
+      revision: current.timer.revision + 1,
+      sourceCompletedSetId: input.completedSetId,
+    };
+    return writeRestTimerCasUnlocked(storage, identity, current.timer, next);
+  });
+}
+
+/**
+ * Claims and attempts the single finish cue when a deadline expired while the
+ * document was suspended. Missed countdown ticks are intentionally ignored.
+ */
+export function deliverMissedRestCompletionCue(
+  storage: RestTimerStorage,
+  identity: RestTimerIdentity,
+  expectedGenerationId: string,
+  requestCue: () => RestCueOutcome,
+): Promise<RestTimerForegroundCompletionResult> {
+  return withRestTimerLock(() => {
+    let current: RestTimerRestoreResult;
+    try {
+      current = parseStoredRestTimer(
+        storage.getItem(REST_TIMER_STORAGE_KEY),
+        identity,
+      );
+    } catch {
+      return { status: "storage_error", timer: null, cueOwned: false } as const;
+    }
+    if (current.status !== "restored") {
+      return { status: current.status, timer: null, cueOwned: false } as const;
+    }
+    const timer = current.timer;
+    if (timer.generationId !== expectedGenerationId) {
+      return { status: "stale", timer: null, cueOwned: false } as const;
+    }
+    if (
+      timer.phase !== "ready" ||
+      timer.completionContext !== "while_away" ||
+      timer.completionCueOutcome?.completion !== "missed_while_away"
+    ) {
+      return { status: "unchanged", timer, cueOwned: false } as const;
+    }
+
+    const claimed: DurableRestTimer = {
+      ...timer,
+      revision: timer.revision + 1,
+      completionCueOutcome: {
+        sound: "not_requested",
+        vibration: "not_requested",
+        completion: "requested",
+      },
+    };
+    const claim = writeRestTimerCasUnlocked(storage, identity, timer, claimed);
+    if (claim.status !== "updated") {
+      return { ...claim, cueOwned: false } as RestTimerForegroundCompletionResult;
+    }
+
+    let outcome = claimed.completionCueOutcome!;
+    try {
+      const requested = requestCue();
+      if (isCueOutcome(requested)) {
+        outcome = { ...requested, completion: "requested" };
+      }
+    } catch {
+      // The durable claim prevents duplicate resume alarms after a failure.
+    }
+    const completed: DurableRestTimer = {
+      ...claimed,
+      revision: claimed.revision + 1,
+      completionCueOutcome: outcome,
+    };
+    const written = writeRestTimerCasUnlocked(
+      storage,
+      identity,
+      claimed,
+      completed,
+    );
+    return written.status === "updated"
+      ? { status: "completed", timer: written.timer, cueOwned: true } as const
+      : { ...written, cueOwned: false } as RestTimerForegroundCompletionResult;
+  });
 }
 
 export function readRestTimer(
@@ -447,6 +617,63 @@ export function clearRestTimerForIdentity(
   return withRestTimerLock(() =>
     clearRestTimerForIdentityUnlocked(storage, identity, expectedGenerationId)
   );
+}
+
+/** Clears only the timer created by this exact queued set. */
+export function clearRestTimerForSourceClientKey(
+  storage: RestTimerStorage,
+  identity: RestTimerIdentity,
+  sourceClientKey: string,
+) {
+  return withRestTimerLock(() => {
+    let current: RestTimerRestoreResult;
+    try {
+      current = parseStoredRestTimer(
+        storage.getItem(REST_TIMER_STORAGE_KEY),
+        identity,
+      );
+    } catch {
+      return "storage_error" as const;
+    }
+    if (current.status !== "restored") return current.status;
+    if (
+      current.timer.sourceClientKey != null &&
+      current.timer.sourceClientKey !== sourceClientKey
+    ) return "stale" as const;
+    return clearRestTimerForIdentityUnlocked(
+      storage,
+      identity,
+      current.timer.generationId,
+    );
+  });
+}
+
+/** Clears only a timer whose source is the exact discarded device command. */
+export function clearRestTimerForExactSourceClientKey(
+  storage: RestTimerStorage,
+  identity: RestTimerIdentity,
+  sourceClientKey: string,
+) {
+  return withRestTimerLock(() => {
+    let current: RestTimerRestoreResult;
+    try {
+      current = parseStoredRestTimer(
+        storage.getItem(REST_TIMER_STORAGE_KEY),
+        identity,
+      );
+    } catch {
+      return "storage_error" as const;
+    }
+    if (current.status !== "restored") return current.status;
+    if (current.timer.sourceClientKey !== sourceClientKey) {
+      return "stale" as const;
+    }
+    return clearRestTimerForIdentityUnlocked(
+      storage,
+      identity,
+      current.timer.generationId,
+    );
+  });
 }
 
 /**

@@ -72,11 +72,11 @@ import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import {
   enqueueWorkoutSet,
+  discardWorkoutSetDeviceCopy,
   getWorkoutSetOutboxServerSnapshot,
   getWorkoutSetOutboxSnapshot,
   publishWorkoutSetOutboxEvent,
   releaseWorkoutSetOrderBlockersForOccurrence,
-  removeWorkoutSet,
   retryWorkoutSet,
   subscribeToWorkoutSetOutbox,
   subscribeToWorkoutSetOutboxStatus,
@@ -125,17 +125,21 @@ import {
   adjustStoredRestTimer,
   claimRestCueMilestones,
   clearRestTimerForIdentity,
+  createRestTimer,
   completeForegroundRestTimer,
   continueAfterRest,
+  deliverMissedRestCompletionCue,
   remainingRestSeconds,
   resolveRestTimerSourceOccurrence,
   restoreAndPersistRestTimer,
   skipRestTimer,
   subscribeToRestTimer,
+  writeRestTimer,
   writeRestTimerCas,
   type DurableRestTimer,
   type RestCueMilestone,
 } from "@/lib/rest-timer";
+import { ScreenWakeLockController } from "@/lib/screen-wake-lock";
 import {
   DEFAULT_REST_ALERT_PREFERENCE,
   planRestCueTransition,
@@ -511,6 +515,9 @@ function revealWorkoutTarget(
   const statusBar = document.querySelector<HTMLElement>(
     '[aria-label="Workout status"]',
   );
+  const deviceSaveStatus = document.querySelector<HTMLElement>(
+    '[aria-label="Device save status"]',
+  );
   const visibleTop = Math.max(
     viewportTop,
     stickySummary?.getBoundingClientRect().bottom ?? viewportTop,
@@ -518,6 +525,7 @@ function revealWorkoutTarget(
   const visibleBottom = Math.min(
     viewportBottom,
     statusBar?.getBoundingClientRect().top ?? viewportBottom,
+    deviceSaveStatus?.getBoundingClientRect().top ?? viewportBottom,
   ) - 12;
   const revealTarget =
     target.querySelector<HTMLElement>(
@@ -657,6 +665,7 @@ export function SessionRunner(props: SessionRunnerProps) {
   const previousCurrentActionKindRef = useRef<
     SessionGuidanceFocusAction["kind"] | null
   >(null);
+  const previousCurrentActionSessionExerciseIdRef = useRef<string | null>(null);
   const exerciseDisclosureGenerationRef = useRef(0);
   const lastConsumedWorkoutHashRef = useRef<string | null>(null);
   const staleWorkoutActionHashRef = useRef(false);
@@ -1264,6 +1273,26 @@ export function SessionRunner(props: SessionRunnerProps) {
       timer,
     ],
   );
+  const locallyRecordedOccurrenceIds = new Set(
+    sessionEntries.flatMap((entry) =>
+      entry.occurrenceId ? [entry.occurrenceId] : []
+    ),
+  );
+  const activeRestAction =
+    guidance.currentAction?.kind === "rest" ? guidance.currentAction : null;
+  const activeRestSource = activeRestAction?.source ?? null;
+  const straightSetRestContinuation =
+    activeRestAction?.restKind === "straight_set" && activeRestSource
+      ? guidance.actions.find(
+          (action) =>
+            action.kind === "working_set" &&
+            action.sessionExerciseId ===
+              activeRestSource.sessionExerciseId &&
+            action.sequenceIdx > activeRestSource.sequenceIdx &&
+            action.truth === "pending" &&
+            !locallyRecordedOccurrenceIds.has(action.occurrenceId),
+        ) ?? null
+      : null;
   const currentActionId = actionIdentity(guidance.currentAction);
   const currentActionKind = guidance.currentAction?.kind ?? null;
   const currentActionSequenceIdx = guidance.currentAction?.sequenceIdx ?? null;
@@ -1271,11 +1300,14 @@ export function SessionRunner(props: SessionRunnerProps) {
     guidance.currentAction?.kind === "working_set"
       ? guidance.currentAction.sessionExerciseId
       : guidance.currentAction?.kind === "rest"
-        ? guidance.current?.sessionExerciseId ?? null
+        ? straightSetRestContinuation?.sessionExerciseId ??
+          guidance.current?.sessionExerciseId ?? null
         : null;
   const currentActionTargetId = actionTargetId(guidance.currentAction);
   const restingWorkingSetTargetId =
-    currentActionKind === "rest" ? actionTargetId(guidance.current) : null;
+    currentActionKind === "rest"
+      ? actionTargetId(straightSetRestContinuation ?? guidance.current)
+      : null;
   useEffect(() => {
     if (
       currentActionKind !== "working_set" ||
@@ -1300,9 +1332,30 @@ export function SessionRunner(props: SessionRunnerProps) {
   useEffect(() => {
     const disclosureGeneration = exerciseDisclosureGenerationRef.current;
     const previousActionId = previousCurrentActionIdRef.current;
+    const previousActionSessionExerciseId =
+      previousCurrentActionSessionExerciseIdRef.current;
+    const linkedExerciseTarget = decodeURIComponent(
+      window.location.hash.slice(1),
+    );
+    const explicitExerciseOwnsRestFocus =
+      currentActionKind === "rest" &&
+      linkedExerciseTarget.startsWith("exercise-") &&
+      lastConsumedWorkoutHashRef.current === linkedExerciseTarget;
     if (skipRecoveryExerciseId != null) {
       previousCurrentActionIdRef.current = currentActionId;
       previousCurrentActionKindRef.current = currentActionKind;
+      previousCurrentActionSessionExerciseIdRef.current =
+        currentActionSessionExerciseId;
+      return;
+    }
+    // A deliberate exercise deep link (including failed-set recovery) owns
+    // focus while an already-running timer hydrates. The timer remains visible
+    // and accurate, but must not replace the recovery target with its own hash.
+    if (explicitExerciseOwnsRestFocus) {
+      previousCurrentActionIdRef.current = currentActionId;
+      previousCurrentActionKindRef.current = currentActionKind;
+      previousCurrentActionSessionExerciseIdRef.current =
+        currentActionSessionExerciseId;
       return;
     }
     const reconcileStaleHash = staleWorkoutActionHashRef.current;
@@ -1313,10 +1366,15 @@ export function SessionRunner(props: SessionRunnerProps) {
     if (
       !reconcileStaleHash &&
       !reconcileInitialCurrentAction &&
-      (previousActionId == null || previousActionId === currentActionId)
+      (previousActionId == null ||
+        (previousActionId === currentActionId &&
+          previousActionSessionExerciseId ===
+            currentActionSessionExerciseId))
     ) {
       previousCurrentActionIdRef.current = currentActionId;
       previousCurrentActionKindRef.current = currentActionKind;
+      previousCurrentActionSessionExerciseIdRef.current =
+        currentActionSessionExerciseId;
       return;
     }
     staleWorkoutActionHashRef.current = false;
@@ -1330,7 +1388,8 @@ export function SessionRunner(props: SessionRunnerProps) {
       currentActionSequenceIdx < previousOccurrence.sequenceIdx;
     if (
       previousOccurrence?.outcome === "pending" &&
-      !restoredEarlierAction
+      !restoredEarlierAction &&
+      currentActionKind !== "rest"
     ) return;
     // Do not consume a transition until the previous occurrence is locally
     // acknowledged and the scheduled reveal/focus has actually run. A queue
@@ -1377,6 +1436,8 @@ export function SessionRunner(props: SessionRunnerProps) {
           focusTarget.focus({ preventScroll: true });
           previousCurrentActionIdRef.current = currentActionId;
           previousCurrentActionKindRef.current = currentActionKind;
+          previousCurrentActionSessionExerciseIdRef.current =
+            currentActionSessionExerciseId;
         }
       });
     };
@@ -1455,6 +1516,34 @@ export function SessionRunner(props: SessionRunnerProps) {
       unsubscribe();
     };
   }, [refreshRestTimer]);
+
+  useEffect(() => {
+    const wakeLock = (navigator as Navigator & {
+      wakeLock?: { request: (type: "screen") => Promise<{
+        released: boolean;
+        release: () => Promise<void>;
+        addEventListener: (type: "release", listener: () => void) => void;
+        removeEventListener: (type: "release", listener: () => void) => void;
+      }> };
+    }).wakeLock;
+    const controller = new ScreenWakeLockController(
+      wakeLock?.request
+        ? () => wakeLock.request("screen")
+        : null,
+      () => document.visibilityState === "visible",
+    );
+    controller.setActive(timer?.phase === "running");
+    const reconcile = () => controller.reconcile();
+    document.addEventListener("visibilitychange", reconcile);
+    window.addEventListener("pageshow", reconcile);
+    window.addEventListener("focus", reconcile);
+    return () => {
+      document.removeEventListener("visibilitychange", reconcile);
+      window.removeEventListener("pageshow", reconcile);
+      window.removeEventListener("focus", reconcile);
+      void controller.dispose();
+    };
+  }, [timer?.generationId, timer?.phase]);
 
   const advanceAfterExercise = useCallback(
     (exerciseId: string) => {
@@ -1677,6 +1766,10 @@ export function SessionRunner(props: SessionRunnerProps) {
   ).join(" · ");
   const warmupOccurrences = occurrences.filter(
     (occurrence) => occurrence.kind !== "working_set",
+  );
+  const remainingExercisePreparations = warmupOccurrences.filter(
+    (occurrence) =>
+      occurrence.kind === "exercise_warmup" && occurrence.outcome === "pending",
   );
   const completedWarmups = guidance.warmups.completed;
   const groupRoundSummary = guidance.groups.flatMap((group) =>
@@ -1955,6 +2048,30 @@ export function SessionRunner(props: SessionRunnerProps) {
         toast.error(queued.reason);
         return false;
       }
+      if (restAfterSec != null && restAfterSec > 0 && occurrence) {
+        const optimisticTimer = createRestTimer({
+          ownerId: props.ownerId,
+          sessionId: props.sessionId,
+          now: Date.parse(observedCompletedAtISO),
+          seconds: restAfterSec,
+          sourceSessionExerciseId: exercise.id,
+          sourceOccurrenceId: occurrence.id,
+          sourceClientKey: set.clientKey,
+        });
+        if (
+          optimisticTimer == null ||
+          !(await writeRestTimer(window.localStorage, optimisticTimer))
+        ) {
+          toast.error(
+            "The set is retained on this device, but this rest timer could not be stored. Use a separate clock for this rest; the set will keep saving.",
+          );
+        }
+      } else if (restAfterSec !== undefined && (!restAfterSec || restAfterSec <= 0)) {
+        await clearRestTimerForIdentity(window.localStorage, {
+          ownerId: props.ownerId,
+          sessionId: props.sessionId,
+        });
+      }
       setExercises((current) =>
         current.map((candidate) =>
           candidate.id !== exercise.id ||
@@ -1982,7 +2099,14 @@ export function SessionRunner(props: SessionRunnerProps) {
 
   async function discardSet(clientKey: string) {
     const entry = sessionEntries.find((candidate) => candidate.clientKey === clientKey);
-    const removed = await removeWorkoutSet(clientKey);
+    if (!entry) {
+      toast.error("This device copy changed. Reopen recovery and try again.");
+      return;
+    }
+    const removed = await discardWorkoutSetDeviceCopy(
+      window.localStorage,
+      entry,
+    );
     if (!removed.ok) {
       toast.error(removed.reason);
       return;
@@ -2074,8 +2198,8 @@ export function SessionRunner(props: SessionRunnerProps) {
     if (!timer) return;
     const continued = continueAfterRest(timer, Date.now());
     if (continued === timer) return;
-    void clearMatchingRestTimer(timer.generationId);
-  }, [clearMatchingRestTimer, timer]);
+    void transitionRestTimer(timer, continued);
+  }, [timer, transitionRestTimer]);
 
   const requestRestCue = useCallback((
     milestone: RestCueMilestone,
@@ -2138,6 +2262,59 @@ export function SessionRunner(props: SessionRunnerProps) {
             audioContextRef.current.state !== "closed")),
     });
   }, []);
+
+  useEffect(() => {
+    const resumeAudio = () => {
+      if (document.visibilityState !== "visible") return;
+      const context = audioContextRef.current;
+      if (context?.state === "suspended") {
+        void context.resume().catch(() => {
+          audioCueBlockedRef.current = true;
+        });
+      }
+    };
+    document.addEventListener("visibilitychange", resumeAudio);
+    window.addEventListener("pageshow", resumeAudio);
+    window.addEventListener("focus", resumeAudio);
+    return () => {
+      document.removeEventListener("visibilitychange", resumeAudio);
+      window.removeEventListener("pageshow", resumeAudio);
+      window.removeEventListener("focus", resumeAudio);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (
+      !timer ||
+      timer.phase !== "ready" ||
+      timer.completionContext !== "while_away" ||
+      timer.completionCueOutcome?.completion !== "missed_while_away" ||
+      document.visibilityState !== "visible"
+    ) {
+      return;
+    }
+    const preference = readRestAlertPreference(window.localStorage);
+    void (async () => {
+      const context = audioContextRef.current;
+      if (context?.state === "suspended") {
+        await context.resume().catch(() => {
+          audioCueBlockedRef.current = true;
+        });
+      }
+      const result = await deliverMissedRestCompletionCue(
+        window.localStorage,
+        { ownerId: props.ownerId, sessionId: props.sessionId },
+        timer.generationId,
+        () => requestRestCue("complete", preference),
+      );
+      if (result.timer) setTimer(result.timer);
+    })();
+  }, [
+    props.ownerId,
+    props.sessionId,
+    requestRestCue,
+    timer,
+  ]);
 
   useEffect(() => {
     if (!timer || timer.phase !== "running") {
@@ -2248,15 +2425,18 @@ export function SessionRunner(props: SessionRunnerProps) {
     const onPageShow = (event: PageTransitionEvent) => {
       void tick(event.persisted ? false : document.visibilityState === "visible");
     };
+    const onFocus = () => void tick(document.visibilityState === "visible");
     const interval = window.setInterval(() => void tick(), 250);
     document.addEventListener("visibilitychange", onVisibilityChange);
     window.addEventListener("pageshow", onPageShow);
+    window.addEventListener("focus", onFocus);
     void tick();
     return () => {
       disposed = true;
       window.clearInterval(interval);
       document.removeEventListener("visibilitychange", onVisibilityChange);
       window.removeEventListener("pageshow", onPageShow);
+      window.removeEventListener("focus", onFocus);
     };
   }, [
     props.ownerId,
@@ -2693,14 +2873,19 @@ export function SessionRunner(props: SessionRunnerProps) {
       (occurrence) =>
         occurrence.sessionExerciseId === exerciseId &&
         occurrence.kind === "working_set" &&
-        occurrence.outcome === "pending",
+        occurrence.outcome === "pending" &&
+        !locallyRecordedOccurrenceIds.has(occurrence.id),
     ) ?? null;
   }
 
   function nextLoggableOccurrenceForExercise(exerciseId: string) {
     const occurrence = nextPendingOccurrenceForExercise(exerciseId);
     return occurrence &&
-      workingSetOccurrenceOrderIsEligible(occurrence, occurrences)
+      workingSetOccurrenceOrderIsEligible(
+        occurrence,
+        occurrences,
+        locallyRecordedOccurrenceIds,
+      )
       ? occurrence
       : null;
   }
@@ -2945,8 +3130,10 @@ export function SessionRunner(props: SessionRunnerProps) {
   const currentCardOwnsNextAction =
     currentWorkingExercise != null &&
     expandedId === currentWorkingExercise.id &&
-    !currentWorkingExercise.sets.some(
-      (set) => set.saveState != null && set.saveState !== "saved",
+    !shownExercises.some((exercise) =>
+      exercise.sets.some(
+        (set) => set.saveState != null && set.saveState !== "saved",
+      )
     );
   const hasAcknowledgedWork = occurrences.some(
     (occurrence) =>
@@ -3191,6 +3378,19 @@ export function SessionRunner(props: SessionRunnerProps) {
                 {warmupPlanOpen ? "Hide full plan" : "Review full plan"}
               </Button>
             </div>
+            {remainingExercisePreparations.length > 0 && (
+              <p
+                data-testid="remaining-exercise-preparations"
+                className="order-2 mt-2 rounded-md border border-violet-300/40 bg-background/60 px-3 py-2 text-xs leading-5 text-violet-900 dark:text-violet-100"
+              >
+                Preparation sets still scheduled: {remainingExercisePreparations
+                  .map((occurrence) =>
+                    plannedExerciseNameForOccurrence(occurrence) ?? "Exercise",
+                  )
+                  .filter((name, index, names) => names.indexOf(name) === index)
+                  .join(", ")}.
+              </p>
+            )}
             {guidance.warmups.completed > 0 && (
               <Button
                 type="button"
@@ -3270,11 +3470,13 @@ export function SessionRunner(props: SessionRunnerProps) {
                     >
                       <div className="min-w-0 flex-1">
                         <p className="font-medium">
-                          {occurrence.label ?? "Warm-up item"}
+                          {occurrence.kind === "exercise_warmup" && exerciseName
+                            ? `${exerciseName} — Preparation set`
+                            : occurrence.label ?? "Warm-up item"}
                         </p>
-                        {exerciseName && (
+                        {occurrence.kind === "exercise_warmup" && (
                           <p className="text-xs text-muted-foreground">
-                            For {exerciseName}
+                            {occurrence.label ?? "Exercise-specific preparation"}
                           </p>
                         )}
                         {prescription && (
@@ -3556,6 +3758,8 @@ export function SessionRunner(props: SessionRunnerProps) {
               // the owner's newer choice.
               previousCurrentActionIdRef.current = currentActionId;
               previousCurrentActionKindRef.current = currentActionKind;
+              previousCurrentActionSessionExerciseIdRef.current =
+                currentActionSessionExerciseId;
               setExpandedId(expandedId === exercise.id ? null : exercise.id);
             }}
             plateConfigs={safePlateConfigs}

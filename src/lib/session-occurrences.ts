@@ -67,6 +67,7 @@ export function isAppendedExtraSetOccurrence(
 export function workingSetOccurrenceOrderIsEligible(
   candidate: WorkingSetOrderOccurrence,
   occurrences: WorkingSetOrderOccurrence[],
+  locallyRecordedOccurrenceIds: ReadonlySet<string> = new Set(),
 ) {
   if (candidate.kind !== "working_set" || candidate.outcome !== "pending") {
     return false;
@@ -78,6 +79,7 @@ export function workingSetOccurrenceOrderIsEligible(
       earlier.kind === "working_set" &&
       earlier.kindOrdinal < candidate.kindOrdinal &&
       earlier.outcome === "pending" &&
+      !locallyRecordedOccurrenceIds.has(earlier.id) &&
       (!isAppendedExtraSetOccurrence(candidate) ||
         isAppendedExtraSetOccurrence(earlier)),
   );
@@ -89,7 +91,8 @@ export function workingSetOccurrenceOrderIsEligible(
       earlier.groupSnapshotId === candidate.groupSnapshotId &&
       earlier.kind === "working_set" &&
       earlier.sequenceIdx < candidate.sequenceIdx &&
-      earlier.outcome === "pending",
+      earlier.outcome === "pending" &&
+      !locallyRecordedOccurrenceIds.has(earlier.id),
   );
 }
 

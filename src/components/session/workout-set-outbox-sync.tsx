@@ -31,13 +31,13 @@ import {
 import {
   getWorkoutSetOutboxServerSnapshot,
   getWorkoutSetOutboxSnapshot,
+  discardWorkoutSetDeviceCopy,
   discardQuarantinedWorkoutSet,
   publishWorkoutSetOutboxEvent,
   releaseQueuedWorkoutSetBackoff,
   recordWorkoutSetNeedsAttentionUnlocked,
   recordWorkoutSetTransientFailureUnlocked,
   releaseWorkoutSetOrderBlockerOutboxEntry,
-  removeWorkoutSet,
   removeWorkoutSetUnlocked,
   retryWorkoutSet,
   subscribeToWorkoutSetOutbox,
@@ -64,7 +64,8 @@ import {
   type QuarantinedEquipmentSelection,
 } from "@/lib/equipment-selection-outbox";
 import {
-  clearRestTimerForIdentity,
+  acknowledgeRestTimerSource,
+  clearRestTimerForSourceClientKey,
   createRestTimer,
   writeRestTimer,
 } from "@/lib/rest-timer";
@@ -374,22 +375,46 @@ export async function syncNextEntry(
         let restPersisted = true;
         if (entry.restAfterSec !== undefined) {
           if (entry.restAfterSec != null && entry.restAfterSec > 0) {
-            const nextRest = createRestTimer({
-              ownerId: entry.ownerId,
-              sessionId: entry.sessionId,
-              now: Date.now(),
-              seconds: entry.restAfterSec,
-              sourceSessionExerciseId: entry.sessionExerciseId,
-              sourceOccurrenceId: result.occurrenceId,
-              sourceCompletedSetId: result.setId,
-            });
-            restPersisted = nextRest != null &&
-              await writeRestTimer(window.localStorage, nextRest);
+            const acknowledged = await acknowledgeRestTimerSource(
+              window.localStorage,
+              { ownerId: entry.ownerId, sessionId: entry.sessionId },
+              {
+                clientKey: entry.clientKey,
+                sessionExerciseId: entry.sessionExerciseId,
+                occurrenceId: result.occurrenceId,
+                completedSetId: result.setId,
+              },
+            );
+            if (
+              acknowledged.status === "updated" ||
+              acknowledged.status === "unchanged" ||
+              acknowledged.status === "stale" ||
+              (acknowledged.status === "unrelated" &&
+                acknowledged.timer.sourceClientKey != null)
+            ) {
+              // An unrelated client-bound timer belongs to a later set. Never
+              // restart an older rest period when its save arrives late.
+              restPersisted = true;
+            } else {
+              const nextRest = createRestTimer({
+                ownerId: entry.ownerId,
+                sessionId: entry.sessionId,
+                now: Date.now(),
+                seconds: entry.restAfterSec,
+                sourceSessionExerciseId: entry.sessionExerciseId,
+                sourceOccurrenceId: result.occurrenceId,
+                sourceClientKey: entry.clientKey,
+                sourceCompletedSetId: result.setId,
+              });
+              restPersisted = nextRest != null &&
+                await writeRestTimer(window.localStorage, nextRest);
+            }
           } else {
-            const cleared = await clearRestTimerForIdentity(window.localStorage, {
-              ownerId: entry.ownerId,
-              sessionId: entry.sessionId,
-            });
+            const cleared = await clearRestTimerForSourceClientKey(
+              window.localStorage,
+              { ownerId: entry.ownerId, sessionId: entry.sessionId },
+              entry.clientKey,
+            );
             restPersisted = cleared !== "storage_error";
           }
         }
@@ -754,6 +779,7 @@ export function WorkoutSetOutboxTray({
   const [confirmQuarantine, setConfirmQuarantine] =
     useState<QuarantinedWorkoutSetOutboxEntry | null>(null);
   const [quarantineError, setQuarantineError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
   const confirmQuarantineButtonRef = useRef<HTMLButtonElement>(null);
   const quarantineDiscardButtonRefs = useRef(
     new Map<string, HTMLButtonElement>()
@@ -781,8 +807,15 @@ export function WorkoutSetOutboxTray({
   if (entries.length === 0 && quarantined.length === 0 && !storageError) return null;
 
   async function discard(entry: WorkoutSetOutboxEntry) {
-    const removed = await removeWorkoutSet(entry.clientKey);
-    if (!removed.ok) return;
+    setActionError(null);
+    const removed = await discardWorkoutSetDeviceCopy(
+      window.localStorage,
+      entry,
+    );
+    if (!removed.ok) {
+      setActionError(removed.reason);
+      return;
+    }
     publishWorkoutSetOutboxEvent({
       type: "discarded",
       clientKey: entry.clientKey,
@@ -816,6 +849,7 @@ export function WorkoutSetOutboxTray({
       restoreQuarantineFocusKeyRef.current = null;
       setConfirmQuarantine(null);
       setQuarantineError(null);
+      setActionError(null);
     }
   }
 
@@ -862,6 +896,11 @@ export function WorkoutSetOutboxTray({
             {quarantineError && (
               <p role="alert" className="mt-3 rounded-xl border border-destructive/40 bg-destructive/5 p-3 text-sm text-destructive">
                 {quarantineError}
+              </p>
+            )}
+            {actionError && (
+              <p role="alert" className="mt-3 rounded-xl border border-destructive/40 bg-destructive/5 p-3 text-sm text-destructive">
+                {actionError}
               </p>
             )}
             {quarantined.length > 0 && (

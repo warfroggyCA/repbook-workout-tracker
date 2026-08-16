@@ -147,7 +147,7 @@ describe("session action labels", () => {
       sequenceIdx: 1,
       label: "Empty bar ×10",
       exerciseName: "Barbell Bench Press",
-    })).toBe("Barbell Bench Press warm-up: Empty bar ×10");
+    })).toBe("Barbell Bench Press — preparation set: Empty bar ×10");
   });
 });
 
@@ -799,8 +799,10 @@ describe("V2 T05 execution semantics", () => {
         revision: 0,
         ownerId: "owner",
         sessionId: "session",
+        startedAt: 100_000,
         sourceSessionExerciseId: first.id,
         sourceOccurrenceId: "member-a-r1",
+        sourceClientKey: null,
         sourceCompletedSetId: "saved-member-a",
         phase: "running",
         endsAt: 120_000,
@@ -836,11 +838,64 @@ describe("V2 T05 execution semantics", () => {
     });
   });
 
-  it("keeps a failed current save ahead of an older rest timer until acknowledgement", () => {
+  it("binds immediate rest to its exact device-retained source before acknowledgement", () => {
+    const item = exercise("optimistic-rest", {
+      sets: [
+        set("client-set-one", {
+          clientKey: "client-set-one",
+          occurrenceId: "set-one",
+          saveState: "saving",
+        }),
+      ],
+    });
+    const projection = projectSessionGuidance({
+      exercises: [item],
+      exerciseGroups: noGroups,
+      equipmentSetups: {},
+      occurrences: [
+        occurrence("set-one", item.id, 0, { kindOrdinal: 0 }),
+        occurrence("set-two", item.id, 1, { kindOrdinal: 1 }),
+      ],
+      restTimer: {
+        version: 1,
+        generationId: "optimistic-rest",
+        revision: 0,
+        ownerId: "owner",
+        sessionId: "session",
+        startedAt: 100_000,
+        sourceSessionExerciseId: item.id,
+        sourceOccurrenceId: "set-one",
+        sourceClientKey: "client-set-one",
+        sourceCompletedSetId: null,
+        phase: "running",
+        endsAt: 160_000,
+        totalSec: 60,
+        readyAt: null,
+        completionContext: null,
+        completionCueOutcome: null,
+        attemptedMilestones: [],
+      },
+    });
+
+    expect(projection.currentAction).toMatchObject({
+      kind: "rest",
+      source: { occurrenceId: "set-one", actualExerciseName: item.name },
+    });
+    expect(projection.nextAction).toMatchObject({
+      kind: "working_set",
+      occurrenceId: "set-two",
+    });
+  });
+
+  it("keeps a failed device set retained without rolling the workout back", () => {
     const item = exercise("ack", {
       sets: [
         set("acknowledged-one", { setNo: 1 }),
-        set("optimistic-two", { setNo: 2, saveState: "failed" }),
+        set("optimistic-two", {
+          setNo: 2,
+          saveState: "failed",
+          occurrenceId: "set-two",
+        }),
       ],
     });
     const projection = projectSessionGuidance({
@@ -861,8 +916,10 @@ describe("V2 T05 execution semantics", () => {
         revision: 0,
         ownerId: "owner",
         sessionId: "session",
+        startedAt: 60_000,
         sourceSessionExerciseId: item.id,
         sourceOccurrenceId: "set-one",
+        sourceClientKey: null,
         sourceCompletedSetId: "acknowledged-one",
         phase: "running",
         endsAt: 120_000,
@@ -875,10 +932,14 @@ describe("V2 T05 execution semantics", () => {
     });
 
     expect(projection.currentAction).toMatchObject({
-      kind: "working_set",
-      occurrenceId: "set-two",
+      kind: "rest",
+      source: { occurrenceId: "set-one" },
     });
     expect(projection.nextAction).toBeNull();
+    expect(projection.completion).toMatchObject({
+      state: "in_progress",
+      pendingOccurrences: 1,
+    });
   });
 
   it("makes a mixed resolved ledger ready to finish while preserving limited evidence", () => {

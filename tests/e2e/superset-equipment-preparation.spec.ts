@@ -41,7 +41,7 @@ async function startDayA(page: Page) {
 
 async function openCurrentExerciseCard(page: Page) {
   const card = page.getByTestId("current-exercise-card");
-  const toggle = card.locator(":scope > button");
+  const toggle = card.getByTestId("exercise-swipe-surface");
   await waitForHydratedReactHandler(toggle);
   if ((await toggle.getAttribute("aria-expanded")) !== "true") {
     await toggle.click();
@@ -455,7 +455,7 @@ test("presents immutable superset order, truthful progress, and next-member equi
       exact: true,
     }),
   }).first();
-  const laterMemberToggle = laterMemberCard.locator(":scope > button");
+  const laterMemberToggle = laterMemberCard.getByTestId("exercise-swipe-surface");
   await laterMemberToggle.click();
   await expect(laterMemberToggle).toHaveAttribute("aria-expanded", "true");
   await expect(laterMemberCard).toContainText(
@@ -517,7 +517,7 @@ test("presents immutable superset order, truthful progress, and next-member equi
   await expect(currentCard.getByRole("heading", { level: 2 })).toHaveText(
     "Dumbbell Lateral Raise",
   );
-  const currentToggle = currentCard.locator(":scope > button");
+  const currentToggle = currentCard.getByTestId("exercise-swipe-surface");
   await expect(currentToggle).toHaveAttribute("aria-expanded", "true");
   await currentToggle.click();
   await expect(currentToggle).toHaveAttribute("aria-expanded", "false");
@@ -612,7 +612,7 @@ test("presents immutable superset order, truthful progress, and next-member equi
   await expect(currentCard.getByRole("heading", { level: 2 })).toHaveText(
     "Pallof Press",
   );
-  await expect(currentCard.locator(":scope > button")).toHaveAttribute(
+  await expect(currentCard.getByTestId("exercise-swipe-surface")).toHaveAttribute(
     "aria-expanded",
     "true",
   );

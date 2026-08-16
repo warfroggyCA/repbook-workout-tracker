@@ -191,6 +191,30 @@ async function discardWorkout(page: Page) {
 test("keeps Stage 5 guidance truthful, persistent, and usable on narrow mobile screens", async ({
   page,
 }) => {
+  await page.addInitScript(() => {
+    const metrics = { requests: 0, releases: 0 };
+    Object.defineProperty(window, "__wakeLockTestMetrics", { value: metrics });
+    Object.defineProperty(navigator, "wakeLock", {
+      configurable: true,
+      value: {
+        request: async () => {
+          metrics.requests += 1;
+          const sentinel = new EventTarget() as EventTarget & {
+            released: boolean;
+            release: () => Promise<void>;
+          };
+          sentinel.released = false;
+          sentinel.release = async () => {
+            if (sentinel.released) return;
+            sentinel.released = true;
+            metrics.releases += 1;
+            sentinel.dispatchEvent(new Event("release"));
+          };
+          return sentinel;
+        },
+      },
+    });
+  });
   const browserErrors: string[] = [];
   const requestFailures: string[] = [];
   const httpErrors: string[] = [];
@@ -277,12 +301,38 @@ test("keeps Stage 5 guidance truthful, persistent, and usable on narrow mobile s
   await waitForHydratedReactHandler(firstLogSet);
   await firstLogSet.click();
   await expect.poll(() => saveStarted).toBe(true);
-  await expect(
-    statusBar.getByText(/Saving/, { exact: false }),
-  ).toBeVisible();
+  await expect(dock).toContainText("saving");
   await expect(guidance).toContainText("0/14");
-  await expect(guidance).toContainText("Now: Romanian Deadlift, set 1");
+  await expect(guidance).toContainText(
+    "Now: Rest after Romanian Deadlift, set 1",
+  );
   await expect(guidance).toContainText("Next: Romanian Deadlift, set 2");
+  await expect(statusBar).toContainText("Resting");
+  await expect.poll(() => page.evaluate(() =>
+    (window as unknown as { __wakeLockTestMetrics: { requests: number } })
+      .__wakeLockTestMetrics.requests,
+  )).toBe(1);
+  const remainingBeforeDelay = await statusBar
+    .getByLabel("Rest timer")
+    .locator("span.tabular-nums")
+    .first()
+    .textContent();
+  await page.waitForTimeout(2_000);
+  await expect(guidance).toContainText(
+    "Now: Rest after Romanian Deadlift, set 1",
+  );
+  const remainingAfterDelay = await statusBar
+    .getByLabel("Rest timer")
+    .locator("span.tabular-nums")
+    .first()
+    .textContent();
+  const timerSeconds = (value: string | null) => {
+    const [minutes, seconds] = (value ?? "").split(":").map(Number);
+    return minutes * 60 + seconds;
+  };
+  expect(timerSeconds(remainingAfterDelay)).toBeLessThan(
+    timerSeconds(remainingBeforeDelay),
+  );
   releaseSave();
   await expect(guidance).toContainText("1/14");
   await expect(guidance).toContainText(
@@ -434,7 +484,18 @@ test("keeps Stage 5 guidance truthful, persistent, and usable on narrow mobile s
   });
   await dismissRest.click();
   await expect(dismissRest).toHaveCount(0);
-  await skipCurrentSet(persistentDock);
+  await expect.poll(() => page.evaluate(() => {
+    const raw = window.localStorage.getItem("workout-tracker:rest-timer:v1");
+    return raw == null ? null : JSON.parse(raw).phase;
+  })).toBe("continued");
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await expect(
+    page.getByRole("button", { name: "Dismiss rest timer", exact: true }),
+  ).toHaveCount(0);
+  const resumedDock = page.getByRole("complementary", {
+    name: "Workout status",
+  });
+  await skipCurrentSet(resumedDock);
   await expect(
     page.getByRole("region", {
       name: "Workout progress and upcoming work",

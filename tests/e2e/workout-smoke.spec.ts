@@ -1550,8 +1550,11 @@ test("signs in and completes a durable workout flow", async ({ page }) => {
     .getByRole("button", { name: "Log set", exact: true })
     .click();
   await expect.poll(() => saveStarted).toBe(true);
-  await expect(workoutStatus).toContainText("Saving");
-  await expect(nextSet.getByRole("button", { name: "Log set", exact: true })).toHaveCount(0);
+  await expect(workoutStatus).toContainText("Resting");
+  await expect(
+    nextSet.getByRole("button", { name: "Log set", exact: true }),
+  ).toBeEnabled();
+  await expect(firstExercise).toContainText("saving");
   releaseSave();
   await expect(workoutStatus).toContainText("Resting");
   await expect(workoutStatus.getByText(/next set ready/i)).toHaveCount(0);
@@ -1864,7 +1867,7 @@ test("keeps every active-workout route reachable with one scroll surface", async
   await expect(
     page.getByTestId("current-exercise-card").getByRole("heading", { level: 2 }),
   ).not.toHaveText(plannedExerciseName);
-  await plannedCard.locator(":scope > button").click();
+  await plannedCard.getByTestId("exercise-swipe-surface").click();
   await expect(
     plannedCard.getByText("skipped", { exact: true }),
   ).toHaveCount(3);
@@ -1923,7 +1926,7 @@ test("keeps every active-workout route reachable with one scroll surface", async
   const refreshedCard = page.getByRole("region", {
     name: plannedExerciseName,
   });
-  const refreshedCardToggle = refreshedCard.locator(":scope > button");
+  const refreshedCardToggle = refreshedCard.getByTestId("exercise-swipe-surface");
   await expect(refreshedCardToggle).toHaveAttribute("aria-expanded", "false");
   await refreshedCardToggle.click();
   await expect(refreshedCardToggle).toHaveAttribute("aria-expanded", "true");
@@ -2120,10 +2123,13 @@ test("keeps the final set acknowledgement visible through background return", as
   });
   await nextSet.getByRole("button", { name: "Log set", exact: true }).click();
   await expect.poll(() => finalStarted).toBe(true);
-  await expect(nextSet.getByRole("heading", { level: 2 })).toHaveText(firstName ?? "");
-  await expect(workoutStatus).toContainText("Set 3 of 3");
-  await expect(workoutStatus).toContainText("Saving");
-  await expect(nextSet.getByText("Saving…", { exact: true })).toBeVisible();
+  await expect(nextSet.getByRole("heading", { level: 2 })).not.toHaveText(firstName);
+  await expect(workoutStatus).toContainText("Resting");
+  await expect(
+    nextSet.getByRole("button", { name: "Log set", exact: true }),
+  ).toBeEnabled();
+  const pendingCompletedExercise = page.getByRole("region", { name: firstName });
+  await expect(pendingCompletedExercise).toContainText("saving");
   const backgroundPage = await context.newPage();
   await backgroundPage.goto("about:blank");
   await backgroundPage.bringToFront();
@@ -2132,7 +2138,7 @@ test("keeps the final set acknowledgement visible through background return", as
   await expect(page).toHaveURL(/#workout-rest-status$/);
   await expect(workoutStatus).toContainText("Resting");
   const completedExercise = page.getByRole("region", { name: firstName });
-  await completedExercise.locator(":scope > button").click();
+  await completedExercise.getByTestId("exercise-swipe-surface").click();
   const acknowledgement = completedExercise.getByTestId("completed-sets");
   await expect(page.getByTestId("active-set-save-receipt")).toHaveCount(0);
   await expect(acknowledgement).toContainText("3 completed");
@@ -2696,7 +2702,7 @@ test("loads each History calendar window on demand", async ({ page }) => {
   expect(browserErrors).toEqual([]);
 });
 
-test("keeps an offline set visible and waits for acknowledgement before the next set", async ({
+test("keeps an offline set visible while the next set stays available", async ({
   page,
   context,
 }) => {
@@ -2733,7 +2739,9 @@ test("keeps an offline set visible and waits for acknowledgement before the next
     )
     .toBe(offlineSetNote);
 
-  await expect(nextSet.getByRole("button", { name: "Log set", exact: true })).toHaveCount(0);
+  await expect(
+    nextSet.getByRole("button", { name: "Log set", exact: true }),
+  ).toBeEnabled();
 
   await page.getByRole("button", { name: /^(?:Review workout finish|Finish workout)$/ }).click();
   await expect(
@@ -2885,11 +2893,11 @@ test("a parked set pauses only its exercise while another exercise saves", async
   await expect(firstExercise.getByText("Save failed", { exact: true })).toBeVisible();
   expect(failedExerciseRequests).toBeGreaterThanOrEqual(2);
 
-  await secondExercise.locator(":scope > button").click();
+  await secondExercise.getByTestId("exercise-swipe-surface").click();
   await secondExercise.locator('input[inputmode="decimal"]').first().fill("50");
   await secondExercise.locator('input[inputmode="numeric"]').first().fill("10");
   await secondExercise.getByRole("button", { name: "Log set", exact: true }).click();
-  await expect(secondExercise.locator(":scope > button")).toContainText(
+  await expect(secondExercise.getByTestId("exercise-swipe-surface")).toContainText(
     "1/3 planned performed",
   );
   await expect.poll(() => page.evaluate(() => {
@@ -2901,7 +2909,7 @@ test("a parked set pauses only its exercise while another exercise saves", async
     return (envelope.entries ?? []).map((entry) => entry.sessionExerciseId);
   })).toEqual([firstExerciseId]);
 
-  const firstExerciseToggle = firstExercise.locator(":scope > button");
+  const firstExerciseToggle = firstExercise.getByTestId("exercise-swipe-surface");
   if ((await firstExerciseToggle.getAttribute("aria-expanded")) !== "true") {
     await firstExerciseToggle.click();
   }

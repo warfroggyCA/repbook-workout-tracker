@@ -151,5 +151,8 @@ A2 Push-up 3x10, rest 60 sec`)!;
     expect(html).toContain("Push-up, rest after each paired round");
     expect(html).toContain("Authored set targets: 8 / 8 / 6");
     expect(html).toContain("cannot store different rep targets for individual sets");
+    expect(html).toContain(
+      "remove duplicate exercise matches or map each intended variant separately",
+    );
   });
 });

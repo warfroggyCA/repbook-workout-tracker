@@ -5,6 +5,7 @@ import { UnrecognizedActionError } from "next/dist/client/components/unrecognize
 import {
   WORKOUT_SET_OUTBOX_STATUS_EVENT,
   WORKOUT_SET_OUTBOX_MAX_AUTO_ATTEMPTS,
+  discardWorkoutSetDeviceCopy,
   enqueueWorkoutSetOutboxEntry,
   markWorkoutSetNeedsAttention,
   markWorkoutSetTransientFailure,
@@ -25,6 +26,8 @@ import {
 } from "@/components/session/workout-set-outbox-sync";
 import {
   REST_TIMER_STORAGE_KEY,
+  completeRestTimer,
+  continueAfterRest,
   createRestTimer,
   readRestTimer,
   writeRestTimer,
@@ -37,6 +40,7 @@ import {
 class MemoryStorage implements WorkoutSetOutboxStorage {
   values = new Map<string, string>();
   rejectRestWrites = false;
+  rejectRestRemovals = false;
 
   getItem(key: string) {
     return this.values.get(key) ?? null;
@@ -50,6 +54,9 @@ class MemoryStorage implements WorkoutSetOutboxStorage {
   }
 
   removeItem(key: string) {
+    if (this.rejectRestRemovals && key === REST_TIMER_STORAGE_KEY) {
+      throw new Error("rest storage unavailable");
+    }
     this.values.delete(key);
   }
 }
@@ -434,6 +441,130 @@ describe("workout set outbox sync classification", () => {
       sourceOccurrenceId: savedOccurrenceId,
       sourceCompletedSetId: savedSetId,
     });
+  });
+
+  it("does not restart a dismissed optimistic timer after delayed acknowledgement", async () => {
+    storage.values.clear();
+    const queued = {
+      ...entry(),
+      occurrenceId: savedOccurrenceId,
+      expectedOccurrenceRevision: 0,
+      restAfterSec: 30,
+    };
+    enqueueWorkoutSetOutboxEntry(storage, queued);
+    const optimistic = createRestTimer({
+      ownerId: queued.ownerId,
+      sessionId: queued.sessionId,
+      generationId: "70000000-0000-4000-8000-000000000001",
+      now: 1_000,
+      seconds: 30,
+      sourceSessionExerciseId: queued.sessionExerciseId,
+      sourceOccurrenceId: savedOccurrenceId,
+      sourceClientKey: queued.clientKey,
+    })!;
+    const dismissed = continueAfterRest(
+      completeRestTimer(optimistic, 31_000, "foreground", {
+        sound: "requested",
+        vibration: "not_requested",
+        completion: "requested",
+      }),
+      32_000,
+    );
+    await writeRestTimer(storage, dismissed);
+    actionMocks.logSet.mockResolvedValueOnce({
+      outcome: "saved",
+      setId: savedSetId,
+      occurrenceId: savedOccurrenceId,
+      occurrenceRevision: 1,
+    });
+
+    await syncNextEntry(queued.ownerId);
+
+    expect(readWorkoutSetOutbox(storage).entries).toEqual([]);
+    expect(readRestTimer(storage, {
+      ownerId: queued.ownerId,
+      sessionId: queued.sessionId,
+    }).timer).toMatchObject({
+      phase: "continued",
+      startedAt: 1_000,
+      endsAt: 31_000,
+      sourceClientKey: queued.clientKey,
+      sourceCompletedSetId: savedSetId,
+    });
+  });
+
+  it("discards only the matching set timer and preserves a later timer", async () => {
+    storage.values.clear();
+    const queued = { ...entry(), restAfterSec: 30 };
+    enqueueWorkoutSetOutboxEntry(storage, queued);
+    const matching = createRestTimer({
+      ownerId: queued.ownerId,
+      sessionId: queued.sessionId,
+      generationId: "70000000-0000-4000-8000-000000000001",
+      now: 1_000,
+      seconds: 30,
+      sourceSessionExerciseId: queued.sessionExerciseId,
+      sourceOccurrenceId: savedOccurrenceId,
+      sourceClientKey: queued.clientKey,
+    })!;
+    await writeRestTimer(storage, matching);
+
+    await expect(discardWorkoutSetDeviceCopy(storage, queued)).resolves.toMatchObject({ ok: true });
+    expect(readWorkoutSetOutbox(storage).entries).toEqual([]);
+    expect(readRestTimer(storage, {
+      ownerId: queued.ownerId,
+      sessionId: queued.sessionId,
+    }).timer).toBeNull();
+
+    enqueueWorkoutSetOutboxEntry(storage, queued);
+    const laterClientKey = "80000000-0000-4000-8000-000000000008";
+    const later = createRestTimer({
+      ownerId: queued.ownerId,
+      sessionId: queued.sessionId,
+      generationId: "90000000-0000-4000-8000-000000000009",
+      now: 2_000,
+      seconds: 60,
+      sourceSessionExerciseId: queued.sessionExerciseId,
+      sourceOccurrenceId: "60000000-0000-4000-8000-000000000002",
+      sourceClientKey: laterClientKey,
+    })!;
+    await writeRestTimer(storage, later);
+
+    await expect(discardWorkoutSetDeviceCopy(storage, queued)).resolves.toMatchObject({ ok: true });
+    expect(readRestTimer(storage, {
+      ownerId: queued.ownerId,
+      sessionId: queued.sessionId,
+    }).timer).toMatchObject({
+      generationId: later.generationId,
+      sourceClientKey: laterClientKey,
+    });
+  });
+
+  it("retains the device copy when its matching timer cannot be cleared", async () => {
+    storage.values.clear();
+    const queued = { ...entry(), restAfterSec: 30 };
+    enqueueWorkoutSetOutboxEntry(storage, queued);
+    await writeRestTimer(storage, createRestTimer({
+      ownerId: queued.ownerId,
+      sessionId: queued.sessionId,
+      generationId: "70000000-0000-4000-8000-000000000001",
+      now: 1_000,
+      seconds: 30,
+      sourceSessionExerciseId: queued.sessionExerciseId,
+      sourceOccurrenceId: savedOccurrenceId,
+      sourceClientKey: queued.clientKey,
+    })!);
+    storage.rejectRestRemovals = true;
+
+    await expect(discardWorkoutSetDeviceCopy(storage, queued)).resolves.toMatchObject({
+      ok: false,
+      reason: expect.stringContaining("still retained"),
+    });
+    expect(readWorkoutSetOutbox(storage).entries).toHaveLength(1);
+    expect(readRestTimer(storage, {
+      ownerId: queued.ownerId,
+      sessionId: queued.sessionId,
+    }).timer).toMatchObject({ sourceClientKey: queued.clientKey });
   });
 
   it("keeps an acknowledged set recoverable when its rest timer cannot be retained", async () => {
