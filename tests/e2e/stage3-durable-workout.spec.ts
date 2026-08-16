@@ -287,7 +287,7 @@ test("publishes and preserves durable warm-up and grouped workout outcomes", asy
   await workingSkip.getByRole("button", { name: "Skip item", exact: true }).click();
   await expect(nextSet.getByRole("heading", { level: 2 })).toHaveText("Band Lat Pulldown");
   await expect(page.getByRole("button", { name: "Open unsaved workout changes" })).toHaveCount(0);
-  const currentExerciseToggle = nextSet.locator(":scope > button");
+  const currentExerciseToggle = nextSet.getByTestId("exercise-swipe-surface");
   await expect(currentExerciseToggle).toHaveAttribute("aria-expanded", "true");
 
   await openNativeDetails(nextSet.locator("details", {
@@ -318,7 +318,7 @@ test("publishes and preserves durable warm-up and grouped workout outcomes", asy
   await picker.getByRole("button", { name: "Use for this workout", exact: true }).click();
   await expect(alternatives).toHaveCount(0);
   await expect(nextSet.getByRole("heading", { level: 2 })).toHaveText(performedExercise);
-  await expect(nextSet.locator(":scope > button")).toHaveAttribute(
+  await expect(nextSet.getByTestId("exercise-swipe-surface")).toHaveAttribute(
     "aria-expanded",
     "true",
   );

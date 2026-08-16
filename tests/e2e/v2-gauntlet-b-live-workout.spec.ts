@@ -313,10 +313,10 @@ test("keeps the full live workout usable through warm-up, skip, replace, continu
   ).toBe(false);
   let incompatible = exerciseCard(page, "Suspension Push-Up");
   if (
-    (await incompatible.locator(":scope > button").getAttribute("aria-expanded")) !==
+    (await incompatible.getByTestId("exercise-swipe-surface").getAttribute("aria-expanded")) !==
     "true"
   ) {
-    await incompatible.locator(":scope > button").click();
+    await incompatible.getByTestId("exercise-swipe-surface").click();
   }
   let releaseInterruptedSkip!: () => void;
   const interruptedSkipMayFinish = new Promise<void>((resolve) => {
@@ -500,7 +500,7 @@ test("keeps the full live workout usable through warm-up, skip, replace, continu
     page.getByRole("button", { name: /^Log Barbell Back Squat/ }),
   ).toBeVisible();
   await expect(
-    exerciseCard(page, "Barbell Back Squat").locator(":scope > button"),
+    exerciseCard(page, "Barbell Back Squat").getByTestId("exercise-swipe-surface"),
   ).toHaveAttribute("aria-expanded", "true");
   await expectActiveViewportBudget(page);
 
@@ -514,7 +514,7 @@ test("keeps the full live workout usable through warm-up, skip, replace, continu
     await log.click();
     if (setNo === 3) {
       await expect(completedSquat).toContainText("3/3 planned performed");
-      const completedSquatToggle = completedSquat.locator(":scope > button");
+      const completedSquatToggle = completedSquat.getByTestId("exercise-swipe-surface");
       await expect(completedSquatToggle).toHaveAttribute(
         "aria-expanded",
         "false",
@@ -529,11 +529,11 @@ test("keeps the full live workout usable through warm-up, skip, replace, continu
   }
 
   await expect(
-    exerciseCard(page, "Dumbbell Lateral Raise").locator(":scope > button"),
+    exerciseCard(page, "Dumbbell Lateral Raise").getByTestId("exercise-swipe-surface"),
   ).toHaveAttribute("aria-expanded", "true");
 
   incompatible = exerciseCard(page, "Suspension Push-Up");
-  await incompatible.locator(":scope > button").click();
+  await incompatible.getByTestId("exercise-swipe-surface").click();
   await incompatible.getByRole("button", { name: "Un-skip", exact: true }).click();
   await openMoreForExercise(incompatible);
   await expect(
