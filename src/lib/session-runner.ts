@@ -19,6 +19,24 @@ export function shouldShowMissingWarmupMessage(input: {
 
 export type RuntimeSetSaveState = "saving" | "retrying";
 
+export function queuedSetSaveState(
+  entry: Pick<
+    WorkoutSetOutboxEntry,
+    "status" | "attemptCount" | "lastAttemptAtISO"
+  >,
+  runtimeState: RuntimeSetSaveState | undefined,
+): LoggedSet["saveState"] {
+  if (entry.status === "needs_attention") return "failed";
+  if (
+    runtimeState === "retrying" ||
+    (runtimeState === "saving" &&
+      (entry.attemptCount > 0 || entry.lastAttemptAtISO != null))
+  ) {
+    return "retrying";
+  }
+  return runtimeState ?? "pending";
+}
+
 export function skipRecoveryNeedsReconciliation(input: {
   markerRunnerInstanceId: string | null;
   currentRunnerInstanceId: string;
@@ -123,10 +141,10 @@ export function mergeSessionOutboxSets(
   return exercises.map((exercise) => {
     const sets = [...exercise.sets];
     for (const entry of queuedByExercise.get(exercise.id) ?? []) {
-      const saveState =
-        entry.status === "needs_attention"
-          ? "failed"
-          : runtimeSaveStates[entry.clientKey] ?? "pending";
+      const saveState = queuedSetSaveState(
+        entry,
+        runtimeSaveStates[entry.clientKey],
+      );
       const index = sets.findIndex((set) => set.clientKey === entry.clientKey);
       const queuedSet: LoggedSet = {
         id: `outbox-${entry.clientKey}`,
