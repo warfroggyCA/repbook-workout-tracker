@@ -510,7 +510,9 @@ test("keeps attention continuous through warm-up, first set, and exact recovery 
           return {
             inside: active != null && element.contains(active),
             expanded:
-              element.closest("section")?.querySelector(":scope > button")
+              element.closest("section")?.querySelector(
+                '[data-testid="exercise-swipe-surface"]',
+              )
                 ?.getAttribute("aria-expanded") === "true",
             active:
               active?.getAttribute("aria-label") ??
@@ -868,7 +870,7 @@ test("keeps the ordinary active set current-first, unobstructed, and acknowledge
       name: "Skip rest",
       exact: true,
     })).toHaveCount(0);
-    await expect(currentCard.locator(":scope > button")).toHaveAttribute(
+    await expect(currentCard.getByTestId("exercise-swipe-surface")).toHaveAttribute(
       "aria-expanded",
       "true",
     );
