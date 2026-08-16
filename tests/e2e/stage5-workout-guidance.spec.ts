@@ -301,9 +301,7 @@ test("keeps Stage 5 guidance truthful, persistent, and usable on narrow mobile s
   await waitForHydratedReactHandler(firstLogSet);
   await firstLogSet.click();
   await expect.poll(() => saveStarted).toBe(true);
-  await expect(
-    statusBar.getByText(/Saving/, { exact: false }),
-  ).toBeVisible();
+  await expect(dock).toContainText("saving");
   await expect(guidance).toContainText("0/14");
   await expect(guidance).toContainText(
     "Now: Rest after Romanian Deadlift, set 1",
