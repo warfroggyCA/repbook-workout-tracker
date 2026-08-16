@@ -515,6 +515,9 @@ function revealWorkoutTarget(
   const statusBar = document.querySelector<HTMLElement>(
     '[aria-label="Workout status"]',
   );
+  const deviceSaveStatus = document.querySelector<HTMLElement>(
+    '[aria-label="Device save status"]',
+  );
   const visibleTop = Math.max(
     viewportTop,
     stickySummary?.getBoundingClientRect().bottom ?? viewportTop,
@@ -522,6 +525,7 @@ function revealWorkoutTarget(
   const visibleBottom = Math.min(
     viewportBottom,
     statusBar?.getBoundingClientRect().top ?? viewportBottom,
+    deviceSaveStatus?.getBoundingClientRect().top ?? viewportBottom,
   ) - 12;
   const revealTarget =
     target.querySelector<HTMLElement>(

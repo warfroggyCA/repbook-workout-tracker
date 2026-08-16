@@ -280,12 +280,14 @@ test("keeps one ledger-driven current/next/group/rest state through retry, inter
       .getByRole("button", { name: "Log set", exact: true }),
   );
   await expect.poll(() => setRequests).toBe(2);
-  await expect(status).toContainText("Retrying");
+  await expect(
+    page.getByRole("region", { name: "Dumbbell Lateral Raise" }),
+  ).toContainText("Retrying");
   await expect(guidance).toContainText(
-    /Now: Superset, round 1, member 1 of 2: Dumbbell Lateral Raise, set 1/,
+    /Now: Superset, round 1, member 2 of 2: Pallof Press, set 1/,
   );
   await expect(guidance).toContainText(
-    /Next: Superset, round 1, member 2 of 2: Pallof Press, set 1/,
+    /Next: Superset, round 2, member 1 of 2: Dumbbell Lateral Raise, set 2/,
   );
   await expect(status.getByLabel("Rest timer")).toHaveCount(0);
 

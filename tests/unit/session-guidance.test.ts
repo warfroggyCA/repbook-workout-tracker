@@ -838,6 +838,55 @@ describe("V2 T05 execution semantics", () => {
     });
   });
 
+  it("binds immediate rest to its exact device-retained source before acknowledgement", () => {
+    const item = exercise("optimistic-rest", {
+      sets: [
+        set("client-set-one", {
+          clientKey: "client-set-one",
+          occurrenceId: "set-one",
+          saveState: "saving",
+        }),
+      ],
+    });
+    const projection = projectSessionGuidance({
+      exercises: [item],
+      exerciseGroups: noGroups,
+      equipmentSetups: {},
+      occurrences: [
+        occurrence("set-one", item.id, 0, { kindOrdinal: 0 }),
+        occurrence("set-two", item.id, 1, { kindOrdinal: 1 }),
+      ],
+      restTimer: {
+        version: 1,
+        generationId: "optimistic-rest",
+        revision: 0,
+        ownerId: "owner",
+        sessionId: "session",
+        startedAt: 100_000,
+        sourceSessionExerciseId: item.id,
+        sourceOccurrenceId: "set-one",
+        sourceClientKey: "client-set-one",
+        sourceCompletedSetId: null,
+        phase: "running",
+        endsAt: 160_000,
+        totalSec: 60,
+        readyAt: null,
+        completionContext: null,
+        completionCueOutcome: null,
+        attemptedMilestones: [],
+      },
+    });
+
+    expect(projection.currentAction).toMatchObject({
+      kind: "rest",
+      source: { occurrenceId: "set-one", actualExerciseName: item.name },
+    });
+    expect(projection.nextAction).toMatchObject({
+      kind: "working_set",
+      occurrenceId: "set-two",
+    });
+  });
+
   it("keeps a failed device set retained without rolling the workout back", () => {
     const item = exercise("ack", {
       sets: [
