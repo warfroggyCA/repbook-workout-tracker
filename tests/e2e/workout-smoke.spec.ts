@@ -2702,7 +2702,7 @@ test("loads each History calendar window on demand", async ({ page }) => {
   expect(browserErrors).toEqual([]);
 });
 
-test("keeps an offline set visible and waits for acknowledgement before the next set", async ({
+test("keeps an offline set visible while the next set stays available", async ({
   page,
   context,
 }) => {
@@ -2739,7 +2739,9 @@ test("keeps an offline set visible and waits for acknowledgement before the next
     )
     .toBe(offlineSetNote);
 
-  await expect(nextSet.getByRole("button", { name: "Log set", exact: true })).toHaveCount(0);
+  await expect(
+    nextSet.getByRole("button", { name: "Log set", exact: true }),
+  ).toBeEnabled();
 
   await page.getByRole("button", { name: /^(?:Review workout finish|Finish workout)$/ }).click();
   await expect(
