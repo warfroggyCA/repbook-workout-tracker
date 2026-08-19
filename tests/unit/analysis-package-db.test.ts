@@ -18,6 +18,7 @@ import {
 } from "@/db/schema";
 import { activateProgramAtomically } from "@/services/program-activation";
 import {
+  analysisSourceRowContentHash,
   createAnalysisPackage,
   deleteAnalysisPackageManifest,
   finalizeAnalysisPackage,
@@ -27,6 +28,7 @@ import {
 import { captureUserSnapshot } from "@/services/snapshot-capture";
 import { analysisPackageCoreSchema } from "@/lib/analysis-package";
 import { runPrivacyRetention } from "@/services/privacy-retention";
+import { getExternalAnalysisSourceBindingFreshness } from "@/services/external-analysis-validation";
 
 describe("versioned external-analysis package", () => {
   let client: PGlite;
@@ -182,6 +184,67 @@ describe("versioned external-analysis package", () => {
     await client.close();
   });
 
+  it("keeps analysis-package/1 source hashes stable across additive reporting columns", () => {
+    const legacyWorkout = {
+      id: "11111111-1111-4111-8111-111111111111",
+      status: "completed",
+      history_revision: 0,
+    };
+    const postMigrationWorkout = {
+      ...legacyWorkout,
+      planned_duration_semantics_version: null,
+      planned_duration_min_minutes: null,
+      planned_duration_max_minutes: null,
+      planned_duration_source: null,
+      completion_semantics_version: null,
+      completion_state: null,
+      completion_reason: null,
+    };
+    expect(
+      analysisSourceRowContentHash("workout_sessions", postMigrationWorkout),
+    ).toBe(analysisSourceRowContentHash("workout_sessions", legacyWorkout));
+
+    const legacyOccurrence = {
+      id: "22222222-2222-4222-8222-222222222222",
+      outcome: "abandoned",
+      outcome_reason: "finished_early",
+      revision: 0,
+    };
+    expect(
+      analysisSourceRowContentHash("session_occurrences", {
+        ...legacyOccurrence,
+        resolution_semantics_version: null,
+        resolution_reason_code: null,
+      }),
+    ).toBe(
+      analysisSourceRowContentHash("session_occurrences", legacyOccurrence),
+    );
+
+    const legacySessionExercise = {
+      id: "33333333-3333-4333-8333-333333333333",
+      target_sets: 4,
+      prescribed_semantics_version: 1,
+    };
+    expect(
+      analysisSourceRowContentHash("session_exercises", {
+        ...legacySessionExercise,
+        prescribed_counting_semantics_version: null,
+        prescribed_counting_basis: null,
+      }),
+    ).toBe(
+      analysisSourceRowContentHash("session_exercises", legacySessionExercise),
+    );
+
+    expect(
+      analysisSourceRowContentHash("workout_sessions", {
+        ...postMigrationWorkout,
+        history_revision: 1,
+      }),
+    ).not.toBe(
+      analysisSourceRowContentHash("workout_sessions", legacyWorkout),
+    );
+  });
+
   it("creates one deterministic, purpose-bounded package and retains only its manifest", async () => {
     const now = new Date("2026-08-08T16:00:00.000Z");
     const packageId = "11111111-1111-4111-8111-111111111111";
@@ -265,6 +328,15 @@ describe("versioned external-analysis package", () => {
       binding.contentHashes.length === binding.ids.length &&
       binding.versionTokens?.length === binding.ids.length,
     )).toBe(true);
+    const retainedScope = manifests[0]!.scope as { sourceEvidenceRevision: string };
+    await expect(
+      getExternalAnalysisSourceBindingFreshness(
+        db,
+        userId,
+        manifests[0]!.sourceBindings,
+        retainedScope.sourceEvidenceRevision,
+      ),
+    ).resolves.toEqual({ ok: true });
     expect(JSON.stringify(manifests[0])).not.toContain("Recovery walk");
     expect(JSON.stringify(manifests[0])).not.toContain("Analysis Program");
 

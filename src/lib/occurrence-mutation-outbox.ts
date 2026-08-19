@@ -1,3 +1,15 @@
+import {
+  INCOMPLETE_SESSION_REASONS,
+  type IncompleteSessionReason,
+} from "@/lib/session-completion-semantics";
+
+function incompleteSessionReasonIsValid(
+  value: unknown,
+): value is IncompleteSessionReason {
+  return typeof value === "string" &&
+    INCOMPLETE_SESSION_REASONS.includes(value as IncompleteSessionReason);
+}
+
 export const OCCURRENCE_MUTATION_OUTBOX_STORAGE_KEY =
   "workout-tracker:occurrence-mutation-outbox:v1";
 export const OCCURRENCE_MUTATION_OUTBOX_CHANGE_EVENT =
@@ -26,6 +38,7 @@ export type OccurrenceMutationOutboxEntry = {
   expectedRevision: number;
   operation: OccurrenceMutationOperation;
   reason: string | null;
+  reasonCode?: IncompleteSessionReason | null;
   note: string | null;
   createdAtISO: string;
   status: "queued" | "needs_attention";
@@ -109,11 +122,13 @@ function isEntry(value: unknown): value is OccurrenceMutationOutboxEntry {
   if (!isRecord(value)) return false;
   const operationPayloadValid =
     (value.operation === "skip" &&
-      typeof value.reason === "string" &&
-      value.reason.trim().length > 0) ||
-    (value.operation === "note" && value.reason === null) ||
+      ((typeof value.reason === "string" && value.reason.trim().length > 0) ||
+        incompleteSessionReasonIsValid(value.reasonCode))) ||
+    (value.operation === "note" && value.reason === null &&
+      (value.reasonCode == null)) ||
     ((value.operation === "complete" || value.operation === "restore") &&
       value.reason === null &&
+      value.reasonCode == null &&
       value.note === null);
   return (
     typeof value.clientKey === "string" &&
@@ -136,6 +151,8 @@ function isEntry(value: unknown): value is OccurrenceMutationOutboxEntry {
     operationPayloadValid &&
     (value.reason === null ||
       (typeof value.reason === "string" && value.reason.length <= 160)) &&
+    (value.reasonCode == null ||
+      incompleteSessionReasonIsValid(value.reasonCode)) &&
     (value.note === null ||
       (typeof value.note === "string" && value.note.length <= 500)) &&
     isDate(value.createdAtISO) &&
@@ -261,6 +278,7 @@ function sameMutation(
     entry.expectedRevision === input.expectedRevision &&
     entry.operation === input.operation &&
     entry.reason === input.reason &&
+    (entry.reasonCode ?? null) === (input.reasonCode ?? null) &&
     entry.note === input.note
   );
 }

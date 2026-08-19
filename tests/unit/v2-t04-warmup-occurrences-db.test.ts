@@ -431,7 +431,7 @@ describe("V2 T04 warm-up occurrence truth", () => {
       clientKey: completeKey,
       expectedRevision: 2,
       operation: "restore",
-    })).resolves.toEqual({ outcome: "conflict" });
+    })).resolves.toEqual({ outcome: "retry_identity_conflict" });
 
     const restored = await mutateWorkoutOccurrence(database.db, userId, {
       occurrenceId: warmup.id,

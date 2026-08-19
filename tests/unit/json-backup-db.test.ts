@@ -323,7 +323,7 @@ describe("canonical user-held JSON backup", () => {
     expect(execute).toHaveBeenCalledTimes(1);
     expect(validateUserHeldJsonBackup(JSON.parse(JSON.stringify(backup)), userId))
       .toMatchObject({
-        schemaVersion: "34",
+        schemaVersion: "35",
         exportedAt: "2026-07-13T16:00:00.000Z",
         appVersion: "phase-6-test",
       });

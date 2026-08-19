@@ -3,7 +3,7 @@ import { PGlite } from "@electric-sql/pglite";
 import { drizzle } from "drizzle-orm/pglite";
 import type { PgliteDatabase } from "drizzle-orm/pglite";
 import { migrate } from "drizzle-orm/pglite/migrator";
-import { eq, sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import * as schema from "@/db/schema";
 import {
   adaptationEvents,
@@ -68,6 +68,7 @@ import {
   upgradeSnapshotPayload,
   validateSnapshotPayload,
 } from "@/services/snapshot-restore";
+import { buildJsonBackup } from "@/services/export";
 import { evaluateApplicationIntegrity } from "@/services/recovery-health";
 import { createContextualNote, editContextualNote } from "@/services/contextual-notes";
 import { updateSetWithVersion } from "@/services/record-versions";
@@ -260,6 +261,1016 @@ describe("verified off-database snapshots", () => {
       expect.arrayContaining([expect.objectContaining({ id: activityId })])
     );
   }, 30_000);
+
+  it("upgrades schema 34 reporting evidence to explicit unknowns and rejects incoherent schema 35 tuples", async () => {
+    const [occurrence] = await db
+      .insert(sessionOccurrences)
+      .values({
+        sessionId,
+        sessionExerciseId,
+        kind: "working_set",
+        origin: "planned",
+        sequenceIdx: 0,
+        kindOrdinal: 0,
+        plannedExerciseId: exerciseId,
+        outcome: "abandoned",
+        outcomeReason: "finished_early",
+        resolvedAt: new Date("2026-07-01T15:00:00.000Z"),
+      })
+      .returning({ id: sessionOccurrences.id });
+    const current = await captureUserSnapshot(
+      db,
+      userId,
+      new Date("2026-08-18T16:00:00.000Z"),
+      "reporting-schema-35",
+    );
+    const legacy = structuredClone(current);
+    legacy.schemaVersion = "34";
+    for (const workout of legacy.tables.workout_sessions as Array<
+      Record<string, unknown>
+    >) {
+      delete workout.planned_duration_semantics_version;
+      delete workout.planned_duration_min_minutes;
+      delete workout.planned_duration_max_minutes;
+      delete workout.planned_duration_source;
+      delete workout.completion_semantics_version;
+      delete workout.completion_state;
+      delete workout.completion_reason;
+    }
+    for (const row of legacy.tables.session_occurrences as Array<
+      Record<string, unknown>
+    >) {
+      delete row.resolution_semantics_version;
+      delete row.resolution_reason_code;
+    }
+    for (const exercise of legacy.tables.session_exercises as Array<
+      Record<string, unknown>
+    >) {
+      delete exercise.prescribed_counting_semantics_version;
+      delete exercise.prescribed_counting_basis;
+    }
+
+    const upgraded = upgradeSnapshotPayload(legacy);
+    expect(upgraded.schemaVersion).toBe("35");
+    expect(upgraded.tables.workout_sessions).toContainEqual(
+      expect.objectContaining({
+        id: sessionId,
+        planned_duration_semantics_version: null,
+        planned_duration_min_minutes: null,
+        planned_duration_max_minutes: null,
+        planned_duration_source: null,
+        completion_semantics_version: null,
+        completion_state: null,
+        completion_reason: null,
+      }),
+    );
+    expect(upgraded.tables.session_occurrences).toContainEqual(
+      expect.objectContaining({
+        id: occurrence.id,
+        outcome_reason: "finished_early",
+        resolution_semantics_version: null,
+        resolution_reason_code: null,
+      }),
+    );
+    expect(upgraded.tables.session_exercises).toContainEqual(
+      expect.objectContaining({
+        id: sessionExerciseId,
+        prescribed_counting_semantics_version: null,
+        prescribed_counting_basis: null,
+      }),
+    );
+    expect(() => validateSnapshotPayload(upgraded, userId)).not.toThrow();
+
+    const invalidPlannedDuration = structuredClone(upgraded);
+    (
+      invalidPlannedDuration.tables.workout_sessions[0] as Record<
+        string,
+        unknown
+      >
+    ).planned_duration_semantics_version = 1;
+    expect(() =>
+      validateSnapshotPayload(invalidPlannedDuration, userId),
+    ).toThrow(/incoherent planned-duration evidence/);
+
+    const invalidCompletion = structuredClone(upgraded);
+    Object.assign(
+      invalidCompletion.tables.workout_sessions[0] as Record<string, unknown>,
+      {
+        status: "abandoned",
+        completion_semantics_version: 1,
+        completion_state: "abandoned",
+        completion_reason: "fatigue",
+      },
+    );
+    expect(() => validateSnapshotPayload(invalidCompletion, userId)).toThrow(
+      /incoherent completion outcome evidence/,
+    );
+
+    const invalidOccurrence = structuredClone(upgraded);
+    Object.assign(
+      invalidOccurrence.tables.session_occurrences[0] as Record<
+        string,
+        unknown
+      >,
+      {
+        outcome: "skipped",
+        resolution_semantics_version: 1,
+        resolution_reason_code: "session_completed",
+      },
+    );
+    expect(() => validateSnapshotPayload(invalidOccurrence, userId)).toThrow(
+      /incoherent structured resolution evidence/,
+    );
+
+    const invalidCountingTuple = structuredClone(upgraded);
+    const invalidCountingExercise = (
+      invalidCountingTuple.tables.session_exercises as Array<
+        Record<string, unknown>
+      >
+    ).find((exercise) => exercise.id === sessionExerciseId);
+    if (!invalidCountingExercise) {
+      throw new Error("Snapshot counting fixture is missing.");
+    }
+    invalidCountingExercise.prescribed_counting_semantics_version = 1;
+    expect(() =>
+      validateSnapshotPayload(invalidCountingTuple, userId),
+    ).toThrow(/incoherent prescribed counting meaning/);
+
+    const countingWithoutEligiblePrescription = structuredClone(upgraded);
+    const ineligibleCountingExercise = (
+      countingWithoutEligiblePrescription.tables.session_exercises as Array<
+        Record<string, unknown>
+      >
+    ).find((exercise) => exercise.id === sessionExerciseId);
+    if (!ineligibleCountingExercise) {
+      throw new Error("Snapshot counting eligibility fixture is missing.");
+    }
+    Object.assign(ineligibleCountingExercise, {
+      prescribed_counting_semantics_version: 1,
+      prescribed_counting_basis: "not_applicable",
+    });
+    expect(() =>
+      validateSnapshotPayload(countingWithoutEligiblePrescription, userId),
+    ).toThrow(/incoherent prescribed counting meaning/);
+
+    const countingWithUnsupportedMetric = structuredClone(upgraded);
+    const unsupportedCountingExercise = (
+      countingWithUnsupportedMetric.tables.session_exercises as Array<
+        Record<string, unknown>
+      >
+    ).find((exercise) => exercise.id === sessionExerciseId);
+    if (!unsupportedCountingExercise) {
+      throw new Error("Snapshot unsupported counting fixture is missing.");
+    }
+    Object.assign(unsupportedCountingExercise, {
+      prescribed_semantics_version: 1,
+      prescribed_exercise_name: "Timed hold",
+      prescribed_metric_type: "duration",
+      prescribed_load_type: "none",
+      prescribed_load_semantics: "none",
+      prescribed_counting_semantics_version: 1,
+      prescribed_counting_basis: "not_applicable",
+    });
+    expect(() =>
+      validateSnapshotPayload(countingWithUnsupportedMetric, userId),
+    ).toThrow(/incoherent prescribed counting meaning/);
+
+    const mismatchedTerminalReason = structuredClone(upgraded);
+    Object.assign(
+      mismatchedTerminalReason.tables.workout_sessions[0] as Record<
+        string,
+        unknown
+      >,
+      {
+        status: "completed",
+        completion_semantics_version: 1,
+        completion_state: "completed_with_remaining_work",
+        completion_reason: "time_limit_reached",
+      },
+    );
+    Object.assign(
+      mismatchedTerminalReason.tables.session_occurrences[0] as Record<
+        string,
+        unknown
+      >,
+      {
+        outcome: "abandoned",
+        resolution_semantics_version: 1,
+        resolution_reason_code: "fatigue",
+      },
+    );
+    expect(() =>
+      validateSnapshotPayload(mismatchedTerminalReason, userId),
+    ).toThrow(/terminal occurrence reason disagrees/);
+  });
+
+  it("rejects contradictory current terminal session reconciliation", async () => {
+    const [occurrence] = await db
+      .insert(sessionOccurrences)
+      .values({
+        sessionId,
+        sessionExerciseId,
+        kind: "working_set",
+        origin: "planned",
+        sequenceIdx: 0,
+        kindOrdinal: 0,
+        plannedExerciseId: exerciseId,
+        outcome: "pending",
+      })
+      .returning({ id: sessionOccurrences.id });
+    const source = await captureUserSnapshot(
+      db,
+      userId,
+      new Date("2026-08-18T16:05:00.000Z"),
+      "reporting-reconciliation",
+    );
+    const workout = (payload: typeof source) => {
+      const row = (
+        payload.tables.workout_sessions as Array<Record<string, unknown>>
+      ).find((candidate) => candidate.id === sessionId);
+      if (!row) throw new Error("Snapshot workout fixture is missing.");
+      return row;
+    };
+    const plannedOccurrence = (payload: typeof source) => {
+      const row = (
+        payload.tables.session_occurrences as Array<Record<string, unknown>>
+      ).find((candidate) => candidate.id === occurrence.id);
+      if (!row) throw new Error("Snapshot occurrence fixture is missing.");
+      return row;
+    };
+    const exercise = (payload: typeof source) => {
+      const row = (
+        payload.tables.session_exercises as Array<Record<string, unknown>>
+      ).find((candidate) => candidate.id === sessionExerciseId);
+      if (!row) throw new Error("Snapshot exercise fixture is missing.");
+      return row;
+    };
+    const retainCompletion = (
+      payload: typeof source,
+      state:
+        | "completed_as_prescribed"
+        | "completed_with_changes"
+        | "completed_with_remaining_work"
+        | "completed_without_prescription",
+      reason: string | null = null,
+    ) => Object.assign(workout(payload), {
+      status: "completed",
+      completion_semantics_version: 1,
+      completion_state: state,
+      completion_reason: reason,
+    });
+
+    const pendingTerminal = structuredClone(source);
+    retainCompletion(pendingTerminal, "completed_as_prescribed");
+    expect(() => validateSnapshotPayload(pendingTerminal, userId)).toThrow(
+      /terminal workout retains pending planned occurrences/,
+    );
+
+    const prescribedWithSkippedWork = structuredClone(source);
+    retainCompletion(prescribedWithSkippedWork, "completed_as_prescribed");
+    Object.assign(plannedOccurrence(prescribedWithSkippedWork), {
+      outcome: "skipped",
+      outcome_reason: "fatigue",
+      resolution_semantics_version: 1,
+      resolution_reason_code: "fatigue",
+    });
+    expect(() =>
+      validateSnapshotPayload(prescribedWithSkippedWork, userId),
+    ).toThrow(/completed-as-prescribed workout contradicts/);
+
+    const prescribedWithExerciseChange = structuredClone(source);
+    retainCompletion(prescribedWithExerciseChange, "completed_as_prescribed");
+    Object.assign(plannedOccurrence(prescribedWithExerciseChange), {
+      outcome: "completed",
+      completed_set_id: setId,
+    });
+    Object.assign(exercise(prescribedWithExerciseChange), {
+      modification_type: "skipped",
+      skip_reason: "fatigue",
+    });
+    expect(() =>
+      validateSnapshotPayload(prescribedWithExerciseChange, userId),
+    ).toThrow(/completed-as-prescribed workout contradicts/);
+
+    const changesWithoutEvidence = structuredClone(source);
+    retainCompletion(changesWithoutEvidence, "completed_with_changes");
+    Object.assign(plannedOccurrence(changesWithoutEvidence), {
+      outcome: "completed",
+      completed_set_id: setId,
+    });
+    expect(() =>
+      validateSnapshotPayload(changesWithoutEvidence, userId),
+    ).toThrow(/completed-with-changes workout has no retained plan change/);
+
+    const changesWithEvidence = structuredClone(source);
+    retainCompletion(changesWithEvidence, "completed_with_changes");
+    Object.assign(plannedOccurrence(changesWithEvidence), {
+      outcome: "skipped",
+      outcome_reason: "fatigue",
+      resolution_semantics_version: 1,
+      resolution_reason_code: "fatigue",
+    });
+    changesWithEvidence.tables.audit_logs.push({
+      id: crypto.randomUUID(),
+      user_id: userId,
+      actor_type: "user",
+      action: "session.complete",
+      entity_type: "workout_session",
+      entity_id: sessionId,
+      summary: "Completed reconciliation fixture",
+      cause_ref: {
+        completionSemanticsVersion: 1,
+        completionState: "completed_with_changes",
+        completionReason: null,
+        finishCommandHash: "a".repeat(64),
+      },
+      idempotency_key: null,
+      created_at: "2026-08-18T16:06:00.000Z",
+    });
+    expect(() =>
+      validateSnapshotPayload(changesWithEvidence, userId),
+    ).not.toThrow();
+
+    const retrospectiveWithoutFinishReceipt = structuredClone(source);
+    retainCompletion(
+      retrospectiveWithoutFinishReceipt,
+      "completed_with_changes",
+    );
+    Object.assign(workout(retrospectiveWithoutFinishReceipt), {
+      source: "history_manual",
+    });
+    Object.assign(plannedOccurrence(retrospectiveWithoutFinishReceipt), {
+      outcome: "skipped",
+      outcome_reason: "fatigue",
+      resolution_semantics_version: 1,
+      resolution_reason_code: "fatigue",
+    });
+    expect(() =>
+      validateSnapshotPayload(retrospectiveWithoutFinishReceipt, userId),
+    ).not.toThrow();
+
+    const standaloneWithoutPrescription = structuredClone(source);
+    retainCompletion(
+      standaloneWithoutPrescription,
+      "completed_without_prescription",
+    );
+    Object.assign(plannedOccurrence(standaloneWithoutPrescription), {
+      origin: "ad_hoc",
+      outcome: "completed",
+      completed_set_id: setId,
+    });
+    Object.assign(exercise(standaloneWithoutPrescription), {
+      modification_type: "added",
+    });
+    expect(() =>
+      validateSnapshotPayload(standaloneWithoutPrescription, userId),
+    ).not.toThrow();
+
+    const prescribedWithoutPrescription = structuredClone(source);
+    retainCompletion(
+      prescribedWithoutPrescription,
+      "completed_without_prescription",
+    );
+    Object.assign(plannedOccurrence(prescribedWithoutPrescription), {
+      outcome: "completed",
+      completed_set_id: setId,
+    });
+    expect(() =>
+      validateSnapshotPayload(prescribedWithoutPrescription, userId),
+    ).toThrow(/completed-without-prescription workout retains prescribed plan evidence/);
+
+    const remainingWithoutAbandonedWork = structuredClone(source);
+    retainCompletion(
+      remainingWithoutAbandonedWork,
+      "completed_with_remaining_work",
+      "fatigue",
+    );
+    Object.assign(plannedOccurrence(remainingWithoutAbandonedWork), {
+      outcome: "skipped",
+      outcome_reason: "fatigue",
+      resolution_semantics_version: 1,
+      resolution_reason_code: "fatigue",
+    });
+    expect(() =>
+      validateSnapshotPayload(remainingWithoutAbandonedWork, userId),
+    ).toThrow(/lacks a matching abandoned planned occurrence/);
+  });
+
+  it.each(["full", "history"] as const)(
+    "round-trips a completed-without-prescription workout through %s restore",
+    async (scope) => {
+      const [standaloneSession] = await db
+        .insert(workoutSessions)
+        .values({
+          userId,
+          templateName: "Quick log",
+          status: "completed",
+          source: "tracker",
+          startedAt: new Date("2026-08-17T12:00:00.000Z"),
+          finishedAt: new Date("2026-08-17T12:10:00.000Z"),
+          timezone: "America/Toronto",
+          localDate: "2026-08-17",
+          completionSemanticsVersion: 1,
+          completionState: "completed_without_prescription",
+          completionReason: null,
+        })
+        .returning({ id: workoutSessions.id });
+      const [standaloneExercise] = await db
+        .insert(sessionExercises)
+        .values({
+          sessionId: standaloneSession.id,
+          exerciseId,
+          modificationType: "added",
+          orderIdx: 0,
+        })
+        .returning({ id: sessionExercises.id });
+      const [standaloneSet] = await db
+        .insert(completedSets)
+        .values({
+          sessionExerciseId: standaloneExercise.id,
+          setNo: 1,
+          weight: 40,
+          weightUnit: "kg",
+          reps: 10,
+        })
+        .returning({ id: completedSets.id });
+      await db.insert(sessionOccurrences).values({
+        sessionId: standaloneSession.id,
+        sessionExerciseId: standaloneExercise.id,
+        kind: "working_set",
+        origin: "ad_hoc",
+        sequenceIdx: 0,
+        kindOrdinal: 0,
+        plannedExerciseId: exerciseId,
+        outcome: "completed",
+        completedSetId: standaloneSet.id,
+        resolvedAt: new Date("2026-08-17T12:05:00.000Z"),
+      });
+
+      const captured = await captureUserSnapshot(
+        db,
+        userId,
+        new Date("2026-08-18T16:07:00.000Z"),
+        "reporting-without-prescription",
+      );
+      expect(() => validateSnapshotPayload(captured, userId)).not.toThrow();
+      expect(
+        (captured.tables.audit_logs as Array<Record<string, unknown>>).some(
+          (audit) =>
+            audit.action === "session.complete" &&
+            audit.entity_id === standaloneSession.id,
+        ),
+      ).toBe(false);
+
+      const snapshot = await createDataSnapshot(
+        db,
+        userId,
+        {
+          name: `Without-prescription reporting semantics ${scope}`,
+          reason: "manual",
+        },
+        {
+          store,
+          keyring,
+          now: new Date("2026-08-18T16:08:00.000Z"),
+          appVersion: "reporting-schema-35",
+        },
+      );
+      if (!snapshot.ok) throw new Error(snapshot.reason);
+
+      await db.transaction(async (tx) => {
+        await tx.execute(sql`
+          SELECT set_config(
+            'workout_tracker.authorized_delete',
+            'snapshot_restore',
+            true
+          )
+        `);
+        await tx
+          .delete(workoutSessions)
+          .where(eq(workoutSessions.id, standaloneSession.id));
+      });
+
+      const preview = await getSnapshotRestorePreview(
+        db,
+        userId,
+        snapshot.snapshotId,
+        scope,
+        { store, keyring },
+      );
+      const restored = await restoreDataSnapshot(
+        db,
+        userId,
+        {
+          snapshotId: snapshot.snapshotId,
+          scope,
+          previewFingerprint: preview.fingerprint,
+          confirmation: "RESTORE",
+        },
+        { store, keyring, appVersion: "reporting-schema-35" },
+      );
+      expect(restored).toMatchObject({ ok: true, scope });
+      expect(
+        await db.query.workoutSessions.findFirst({
+          where: eq(workoutSessions.id, standaloneSession.id),
+        }),
+      ).toMatchObject({
+        status: "completed",
+        completionSemanticsVersion: 1,
+        completionState: "completed_without_prescription",
+        completionReason: null,
+      });
+      expect(
+        await db.query.sessionOccurrences.findFirst({
+          where: eq(sessionOccurrences.completedSetId, standaloneSet.id),
+        }),
+      ).toMatchObject({ origin: "ad_hoc", outcome: "completed" });
+    },
+    45_000,
+  );
+
+  it.each(["full", "history"] as const)(
+    "round-trips owner-choice abandonment and a structured skip through canonical backup and %s restore",
+    async (scope) => {
+      const [terminalSession] = await db
+        .insert(workoutSessions)
+        .values({
+          userId,
+          templateName: "Abandoned reporting workout",
+          status: "abandoned",
+          startedAt: new Date("2026-08-17T14:00:00.000Z"),
+          finishedAt: new Date("2026-08-17T14:45:00.000Z"),
+          timezone: "America/Toronto",
+          localDate: "2026-08-17",
+          plannedDurationSemanticsVersion: 1,
+          plannedDurationMinMinutes: 45,
+          plannedDurationMaxMinutes: 45,
+          plannedDurationSource: "program_day_target",
+          completionSemanticsVersion: 1,
+          completionState: "abandoned",
+          completionReason: "user_choice",
+        })
+        .returning({ id: workoutSessions.id });
+      const [terminalExercise] = await db
+        .insert(sessionExercises)
+        .values({
+          sessionId: terminalSession.id,
+          exerciseId,
+          orderIdx: 0,
+        })
+        .returning({ id: sessionExercises.id });
+      const [occurrence] = await db
+        .insert(sessionOccurrences)
+        .values({
+          sessionId: terminalSession.id,
+          sessionExerciseId: terminalExercise.id,
+          kind: "working_set",
+          origin: "planned",
+          sequenceIdx: 0,
+          kindOrdinal: 0,
+          plannedExerciseId: exerciseId,
+          outcome: "skipped",
+          outcomeReason: "equipment unavailable",
+          resolutionSemanticsVersion: 1,
+          resolutionReasonCode: "equipment_unavailable_incompatible",
+          resolvedAt: new Date("2026-07-01T15:00:00.000Z"),
+        })
+        .returning({ id: sessionOccurrences.id });
+      const [terminalOccurrence] = await db
+        .insert(sessionOccurrences)
+        .values({
+          sessionId: terminalSession.id,
+          sessionExerciseId: terminalExercise.id,
+          kind: "working_set",
+          origin: "planned",
+          sequenceIdx: 1,
+          kindOrdinal: 1,
+          plannedExerciseId: exerciseId,
+          outcome: "abandoned",
+          outcomeReason: "workout_abandoned",
+          resolutionSemanticsVersion: 1,
+          resolutionReasonCode: "user_choice",
+          resolvedAt: new Date("2026-07-01T15:00:00.000Z"),
+        })
+        .returning({ id: sessionOccurrences.id });
+
+      const backup = await buildJsonBackup(db, userId, undefined, {
+        now: new Date("2026-08-18T16:10:00.000Z"),
+        appVersion: "reporting-schema-35",
+      });
+      expect(backup.schemaVersion).toBe("35");
+      expect(backup.canonical.tables.workout_sessions).toContainEqual(
+        expect.objectContaining({
+          id: terminalSession.id,
+          planned_duration_min_minutes: 45,
+          completion_state: "abandoned",
+          completion_reason: "user_choice",
+        }),
+      );
+      expect(backup.canonical.tables.session_occurrences).toContainEqual(
+        expect.objectContaining({
+          id: occurrence.id,
+          outcome: "skipped",
+          outcome_reason: "equipment unavailable",
+          resolution_reason_code: "equipment_unavailable_incompatible",
+        }),
+      );
+      expect(backup.canonical.tables.session_occurrences).toContainEqual(
+        expect.objectContaining({
+          id: terminalOccurrence.id,
+          outcome: "abandoned",
+          resolution_reason_code: "user_choice",
+        }),
+      );
+
+      const snapshot = await createDataSnapshot(
+        db,
+        userId,
+        { name: `Reporting semantics ${scope}`, reason: "manual" },
+        {
+          store,
+          keyring,
+          now: new Date("2026-08-18T16:11:00.000Z"),
+          appVersion: "reporting-schema-35",
+        },
+      );
+      if (!snapshot.ok) throw new Error(snapshot.reason);
+
+      await db.transaction(async (tx) => {
+        await tx.execute(sql`
+          SELECT set_config(
+            'workout_tracker.authorized_delete',
+            'snapshot_restore',
+            true
+          )
+        `);
+        await tx
+          .delete(workoutSessions)
+          .where(eq(workoutSessions.id, terminalSession.id));
+      });
+
+      const preview = await getSnapshotRestorePreview(
+        db,
+        userId,
+        snapshot.snapshotId,
+        scope,
+        { store, keyring },
+      );
+      const restored = await restoreDataSnapshot(
+        db,
+        userId,
+        {
+          snapshotId: snapshot.snapshotId,
+          scope,
+          previewFingerprint: preview.fingerprint,
+          confirmation: "RESTORE",
+        },
+        { store, keyring, appVersion: "reporting-schema-35" },
+      );
+      expect(restored).toMatchObject({ ok: true, scope });
+      expect(
+        await db.query.workoutSessions.findFirst({
+          where: eq(workoutSessions.id, terminalSession.id),
+        }),
+      ).toMatchObject({
+        plannedDurationSemanticsVersion: 1,
+        plannedDurationMinMinutes: 45,
+        plannedDurationMaxMinutes: 45,
+        plannedDurationSource: "program_day_target",
+        completionSemanticsVersion: 1,
+        completionState: "abandoned",
+        completionReason: "user_choice",
+      });
+      expect(
+        await db.query.sessionOccurrences.findFirst({
+          where: eq(sessionOccurrences.id, occurrence.id),
+        }),
+      ).toMatchObject({
+        outcome: "skipped",
+        outcomeReason: "equipment unavailable",
+        resolutionSemanticsVersion: 1,
+        resolutionReasonCode: "equipment_unavailable_incompatible",
+      });
+      expect(
+        await db.query.sessionOccurrences.findFirst({
+          where: eq(sessionOccurrences.id, terminalOccurrence.id),
+        }),
+      ).toMatchObject({
+        outcome: "abandoned",
+        outcomeReason: "workout_abandoned",
+        resolutionSemanticsVersion: 1,
+        resolutionReasonCode: "user_choice",
+      });
+    },
+    30_000,
+  );
+
+  it.each(["full", "history"] as const)(
+    "round-trips retained prescribed-counting meaning through %s restore",
+    async (scope) => {
+      const [countedExercise] = await db
+        .insert(sessionExercises)
+        .values({
+          sessionId,
+          exerciseId,
+          orderIdx: 1,
+          prescribedSemanticsVersion: 1,
+          prescribedExerciseName: "Snapshot Squat",
+          prescribedMetricType: "weight_reps",
+          prescribedLoadType: "barbell",
+          prescribedLoadSemantics: "total",
+          prescribedCountingSemanticsVersion: 1,
+          prescribedCountingBasis: "not_applicable",
+        })
+        .returning({ id: sessionExercises.id });
+      const snapshot = await createDataSnapshot(
+        db,
+        userId,
+        { name: `Prescribed counting ${scope}`, reason: "manual" },
+        {
+          store,
+          keyring,
+          now: new Date("2026-08-18T16:15:00.000Z"),
+          appVersion: "reporting-schema-35",
+        },
+      );
+      if (!snapshot.ok) throw new Error(snapshot.reason);
+
+      const verified = await readVerifiedDataSnapshot(
+        db,
+        userId,
+        snapshot.snapshotId,
+        { store, keyring },
+      );
+      expect(verified.payload.tables.session_exercises).toContainEqual(
+        expect.objectContaining({
+          id: countedExercise.id,
+          prescribed_counting_semantics_version: 1,
+          prescribed_counting_basis: "not_applicable",
+        }),
+      );
+
+      await db
+        .delete(sessionExercises)
+        .where(eq(sessionExercises.id, countedExercise.id));
+      const preview = await getSnapshotRestorePreview(
+        db,
+        userId,
+        snapshot.snapshotId,
+        scope,
+        { store, keyring },
+      );
+      const restored = await restoreDataSnapshot(
+        db,
+        userId,
+        {
+          snapshotId: snapshot.snapshotId,
+          scope,
+          previewFingerprint: preview.fingerprint,
+          confirmation: "RESTORE",
+        },
+        { store, keyring, appVersion: "reporting-schema-35" },
+      );
+      expect(restored).toMatchObject({ ok: true, scope });
+      expect(
+        await db.query.sessionExercises.findFirst({
+          where: eq(sessionExercises.id, countedExercise.id),
+        }),
+      ).toMatchObject({
+        prescribedSemanticsVersion: 1,
+        prescribedMetricType: "weight_reps",
+        prescribedCountingSemanticsVersion: 1,
+        prescribedCountingBasis: "not_applicable",
+      });
+    },
+    30_000,
+  );
+
+  it.each(["full", "history"] as const)(
+    "round-trips a Finish receipt and preserves exact replay conflicts through %s restore",
+    async (scope) => {
+      const [terminalSession] = await db
+        .insert(workoutSessions)
+        .values({
+          userId,
+          templateName: "Time-limited reporting workout",
+          status: "in_progress",
+          startedAt: new Date("2026-08-16T14:00:00.000Z"),
+          timezone: "America/Toronto",
+          localDate: "2026-08-16",
+          plannedDurationSemanticsVersion: 1,
+          plannedDurationMinMinutes: 45,
+          plannedDurationMaxMinutes: 45,
+          plannedDurationSource: "program_day_target",
+        })
+        .returning({ id: workoutSessions.id });
+      const [terminalExercise] = await db
+        .insert(sessionExercises)
+        .values({
+          sessionId: terminalSession.id,
+          exerciseId,
+          orderIdx: 0,
+        })
+        .returning({ id: sessionExercises.id });
+      const [occurrence] = await db
+        .insert(sessionOccurrences)
+        .values({
+          sessionId: terminalSession.id,
+          sessionExerciseId: terminalExercise.id,
+          kind: "working_set",
+          origin: "planned",
+          sequenceIdx: 0,
+          kindOrdinal: 0,
+          plannedExerciseId: exerciseId,
+          outcome: "pending",
+        })
+        .returning({ id: sessionOccurrences.id });
+      const lifecycleUser = {
+        id: userId,
+        coachingPrefs: {
+          aggressiveness: "moderate" as const,
+          deloadSuggestions: true,
+          substitutionSuggestions: true,
+          weeklyReview: true,
+        },
+      };
+      const finishInput = {
+        sessionId: terminalSession.id,
+        completionReason: "time_limit_reached" as const,
+      };
+      await expect(
+        completeWorkoutSession(db, lifecycleUser, finishInput, {
+          now: () => new Date("2026-08-16T15:00:00.000Z"),
+        }),
+      ).resolves.toMatchObject({ outcome: "completed" });
+      const receipt = await db.query.auditLogs.findFirst({
+        where: and(
+          eq(auditLogs.userId, userId),
+          eq(auditLogs.action, "session.complete"),
+          eq(auditLogs.entityId, terminalSession.id),
+        ),
+      });
+      expect(receipt?.causeRef).toMatchObject({
+        completionSemanticsVersion: 1,
+        completionState: "completed_with_remaining_work",
+        completionReason: "time_limit_reached",
+        finishCommandHash: expect.stringMatching(/^[0-9a-f]{64}$/),
+      });
+      const captured = await captureUserSnapshot(
+        db,
+        userId,
+        new Date("2026-08-18T16:19:00.000Z"),
+        "reporting-finish-receipt",
+      );
+      expect(() => validateSnapshotPayload(captured, userId)).not.toThrow();
+      const missingReceipt = structuredClone(captured);
+      missingReceipt.tables.audit_logs = (
+        missingReceipt.tables.audit_logs as Array<Record<string, unknown>>
+      ).filter((audit) => audit.id !== receipt?.id);
+      expect(() => validateSnapshotPayload(missingReceipt, userId)).toThrow(
+        /missing its exact durable finish-command receipt/,
+      );
+      const compilerMissingReceipt = structuredClone(missingReceipt);
+      const compilerSession = (
+        compilerMissingReceipt.tables.workout_sessions as Array<
+          Record<string, unknown>
+        >
+      ).find((workout) => workout.id === terminalSession.id);
+      if (!compilerSession) {
+        throw new Error("Snapshot compiler Finish fixture is missing.");
+      }
+      compilerSession.source = "compiler";
+      expect(() =>
+        validateSnapshotPayload(compilerMissingReceipt, userId),
+      ).toThrow(/missing its exact durable finish-command receipt/);
+      const malformedReceipt = structuredClone(captured);
+      const malformedAudit = (
+        malformedReceipt.tables.audit_logs as Array<Record<string, unknown>>
+      ).find((audit) => audit.id === receipt?.id);
+      if (!malformedAudit) {
+        throw new Error("Snapshot Finish receipt fixture is missing.");
+      }
+      (malformedAudit.cause_ref as Record<string, unknown>).finishCommandHash =
+        "unsupported";
+      expect(() => validateSnapshotPayload(malformedReceipt, userId)).toThrow(
+        /missing its exact durable finish-command receipt/,
+      );
+
+      const snapshot = await createDataSnapshot(
+        db,
+        userId,
+        { name: `Time-limit reporting semantics ${scope}`, reason: "manual" },
+        {
+          store,
+          keyring,
+          now: new Date("2026-08-18T16:20:00.000Z"),
+          appVersion: "reporting-schema-35",
+        },
+      );
+      if (!snapshot.ok) throw new Error(snapshot.reason);
+
+      await db.transaction(async (tx) => {
+        await tx.execute(sql`
+          SELECT set_config(
+            'workout_tracker.authorized_delete',
+            'snapshot_restore',
+            true
+          )
+        `);
+        if (receipt) {
+          await tx.delete(auditLogs).where(eq(auditLogs.id, receipt.id));
+        }
+        await tx
+          .delete(workoutSessions)
+          .where(eq(workoutSessions.id, terminalSession.id));
+      });
+
+      const preview = await getSnapshotRestorePreview(
+        db,
+        userId,
+        snapshot.snapshotId,
+        scope,
+        { store, keyring },
+      );
+      expect(
+        preview.tables.find((table) => table.table === "audit_logs"),
+      ).toMatchObject({ added: 1 });
+      const restored = await restoreDataSnapshot(
+        db,
+        userId,
+        {
+          snapshotId: snapshot.snapshotId,
+          scope,
+          previewFingerprint: preview.fingerprint,
+          confirmation: "RESTORE",
+        },
+        { store, keyring, appVersion: "reporting-schema-35" },
+      );
+      expect(restored).toMatchObject({ ok: true, scope });
+      expect(
+        await db.query.auditLogs.findFirst({
+          where: and(
+            eq(auditLogs.userId, userId),
+            eq(auditLogs.action, "session.complete"),
+            eq(auditLogs.entityId, terminalSession.id),
+          ),
+        }),
+      ).toMatchObject({
+        id: receipt?.id,
+        causeRef: expect.objectContaining({
+          finishCommandHash: (receipt?.causeRef as Record<string, unknown>)
+            ?.finishCommandHash,
+        }),
+      });
+      expect(
+        await db.query.workoutSessions.findFirst({
+          where: eq(workoutSessions.id, terminalSession.id),
+        }),
+      ).toMatchObject({
+        status: "completed",
+        plannedDurationSemanticsVersion: 1,
+        plannedDurationMinMinutes: 45,
+        plannedDurationMaxMinutes: 45,
+        plannedDurationSource: "program_day_target",
+        completionSemanticsVersion: 1,
+        completionState: "completed_with_remaining_work",
+        completionReason: "time_limit_reached",
+      });
+      expect(
+        await db.query.sessionOccurrences.findFirst({
+          where: eq(sessionOccurrences.id, occurrence.id),
+        }),
+      ).toMatchObject({
+        outcome: "abandoned",
+        outcomeReason: "session_end:time_limit_reached",
+        resolutionSemanticsVersion: 1,
+        resolutionReasonCode: "time_limit_reached",
+      });
+      await expect(
+        completeWorkoutSession(db, lifecycleUser, finishInput, {
+          now: () => new Date("2026-08-18T16:30:00.000Z"),
+        }),
+      ).resolves.toMatchObject({
+        outcome: "already_finished",
+        alreadyFinished: true,
+      });
+      for (const changedInput of [
+        { ...finishInput, note: "Changed retained note" },
+        { ...finishInput, fatigue: 1 },
+        { ...finishInput, completionReason: "fatigue" as const },
+      ]) {
+        await expect(
+          completeWorkoutSession(db, lifecycleUser, changedInput, {
+            now: () => new Date("2026-08-18T16:31:00.000Z"),
+          }),
+        ).resolves.toMatchObject({
+          outcome: "finish_payload_conflict",
+          alreadyFinished: true,
+        });
+      }
+    },
+    45_000,
+  );
 
   it("upgrades schema 25 without treating server recording time as observed completion", async () => {
     const legacy = await captureUserSnapshot(
@@ -3245,10 +4256,28 @@ describe("verified off-database snapshots", () => {
       "cross-version-source"
     );
     let nonce = 20;
-    for (const schemaVersion of ["26", "25", "18", "17", "16"] as const) {
+    for (const schemaVersion of ["34", "26", "25", "18", "17", "16"] as const) {
       for (const scope of ["full", "history"] as const) {
         const payload = structuredClone(source);
         payload.schemaVersion = schemaVersion;
+        if (schemaVersion === "34") {
+          for (const workout of payload.tables.workout_sessions as Array<
+            Record<string, unknown>
+          >) {
+            delete workout.planned_duration_semantics_version;
+            delete workout.planned_duration_min_minutes;
+            delete workout.planned_duration_max_minutes;
+            delete workout.planned_duration_source;
+            delete workout.completion_semantics_version;
+            delete workout.completion_state;
+            delete workout.completion_reason;
+          }
+          for (const occurrence of payload.tables
+            .session_occurrences as Array<Record<string, unknown>>) {
+            delete occurrence.resolution_semantics_version;
+            delete occurrence.resolution_reason_code;
+          }
+        }
         if (schemaVersion === "26") {
           for (const completed of payload.tables.completed_sets as Array<
             Record<string, unknown>

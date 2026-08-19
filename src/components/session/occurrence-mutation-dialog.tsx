@@ -9,6 +9,7 @@ import {
 } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import type { SessionOccurrenceData } from "./types";
+import type { IncompleteSessionReason } from "@/lib/session-completion-semantics";
 
 export function formatOccurrencePrescription(
   occurrence: SessionOccurrenceData,
@@ -38,12 +39,18 @@ export function formatOccurrencePrescription(
 }
 
 export const OCCURRENCE_SKIP_REASONS = [
-  { value: "time", label: "Short on time" },
-  { value: "pain", label: "Pain or discomfort" },
+  { value: "time_limit_reached", label: "Session time limit reached" },
   { value: "fatigue", label: "Fatigue" },
-  { value: "equipment", label: "Equipment unavailable" },
-  { value: "other", label: "Other" },
-] as const;
+  { value: "pain_discomfort", label: "Pain or discomfort" },
+  { value: "equipment_unavailable_incompatible", label: "Equipment unavailable or incompatible" },
+  { value: "user_choice", label: "User choice" },
+  { value: "technical_app_issue", label: "Technical or app issue" },
+  { value: "interruption", label: "Interruption" },
+  { value: "program_change", label: "Program change" },
+] as const satisfies ReadonlyArray<{
+  value: IncompleteSessionReason;
+  label: string;
+}>;
 
 type OccurrenceMutationDialogProps = {
   open: boolean;
@@ -53,6 +60,7 @@ type OccurrenceMutationDialogProps = {
   initialNote: string | null;
   onConfirm: (input: {
     reason: string | null;
+    reasonCode: IncompleteSessionReason | null;
     note: string | null;
   }) => Promise<boolean>;
 };
@@ -67,22 +75,27 @@ export function OccurrenceMutationDialog({
 }: OccurrenceMutationDialogProps) {
   const titleId = useId();
   const descriptionId = useId();
-  const [reason, setReason] = useState<string>(OCCURRENCE_SKIP_REASONS[0].value);
+  const [reason, setReason] = useState<string>("");
   const [note, setNote] = useState(initialNote ?? "");
   const [saving, setSaving] = useState(false);
 
   function resetAndClose() {
-    setReason(OCCURRENCE_SKIP_REASONS[0].value);
+    setReason("");
     setNote(initialNote ?? "");
     onOpenChange(false);
   }
 
   async function submit() {
-    if (saving) return;
+    if (saving || (mode === "skip" && !incompleteSessionReasonIsValid(reason))) {
+      return;
+    }
     setSaving(true);
     try {
       const saved = await onConfirm({
         reason: mode === "skip" ? reason : null,
+        reasonCode: mode === "skip" && incompleteSessionReasonIsValid(reason)
+          ? reason
+          : null,
         note: note.trim() || null,
       });
       if (saved) resetAndClose();
@@ -173,6 +186,9 @@ export function OccurrenceMutationDialogForm({
             onChange={(event) => onReasonChange(event.target.value)}
             disabled={saving}
           >
+            <option value="" disabled>
+              Choose a reason
+            </option>
             {OCCURRENCE_SKIP_REASONS.map((choice) => (
               <option key={choice.value} value={choice.value}>
                 {choice.label}
@@ -208,7 +224,7 @@ export function OccurrenceMutationDialogForm({
         <Button
           type="button"
           className="min-h-11"
-          disabled={saving}
+          disabled={saving || (mode === "skip" && !reason)}
           onClick={onSubmit}
         >
           {saving
@@ -220,4 +236,10 @@ export function OccurrenceMutationDialogForm({
       </DialogFooter>
     </>
   );
+}
+
+function incompleteSessionReasonIsValid(
+  value: string,
+): value is IncompleteSessionReason {
+  return OCCURRENCE_SKIP_REASONS.some((reason) => reason.value === value);
 }

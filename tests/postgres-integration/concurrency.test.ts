@@ -58,6 +58,7 @@ import {
   addWorkoutExercise,
   appendWorkoutSetOccurrence,
   completeWorkoutSession,
+  mutateWorkoutOccurrence,
   startWorkoutSession,
   StaleWorkoutTemplateError,
 } from "@/services/session-lifecycle";
@@ -950,6 +951,192 @@ describe.sequential("real PostgreSQL parallel invariants", () => {
     ).rejects.toThrow();
   });
 
+  it("reconciles concurrent Finish retries against the durable full payload", async () => {
+    const sameFixture = await createProgramFixture("finish exact retry race");
+    const sameStarted = await startWorkoutSession(
+      db,
+      sameFixture.userId,
+      sameFixture.templateId,
+    );
+    const sameInput = {
+      sessionId: sameStarted.sessionId,
+      note: "One retained finish note",
+      fatigue: 3,
+      completionReason: "time_limit_reached" as const,
+    };
+    const sameLock = await lockWorkoutSession(sameStarted.sessionId);
+    const sameReady = createStartBarrier(2);
+    const sameOperations = Array.from({ length: 2 }, async () => {
+      await sameReady();
+      return completeWorkoutSession(
+        db,
+        { id: sameFixture.userId, coachingPrefs },
+        sameInput,
+      );
+    });
+    await releaseWhenContended(sameLock, sameOperations, 2);
+    const sameResults = await Promise.all(sameOperations);
+    expect(sameResults.map((result) => result.outcome).sort()).toEqual([
+      "already_finished",
+      "completed",
+    ]);
+    const [sameClosure] = resultRows<{
+      notes: number;
+      fatigue: number;
+      audits: number;
+      progression_jobs: number;
+    }>(await db.execute(sql`
+      SELECT
+        (SELECT count(*)::int FROM session_notes
+          WHERE session_id = ${sameStarted.sessionId}::uuid) AS notes,
+        (SELECT count(*)::int FROM fatigue_logs
+          WHERE session_id = ${sameStarted.sessionId}::uuid) AS fatigue,
+        (SELECT count(*)::int FROM audit_logs
+          WHERE action = 'session.complete'
+            AND entity_id = ${sameStarted.sessionId}::text) AS audits,
+        (SELECT count(*)::int FROM progression_jobs
+          WHERE session_id = ${sameStarted.sessionId}::uuid) AS progression_jobs
+    `));
+    expect(sameClosure).toEqual({
+      notes: 1,
+      fatigue: 1,
+      audits: 1,
+      progression_jobs: 1,
+    });
+
+    const changedFixture = await createProgramFixture("finish changed retry race");
+    const changedStarted = await startWorkoutSession(
+      db,
+      changedFixture.userId,
+      changedFixture.templateId,
+    );
+    const changedLock = await lockWorkoutSession(changedStarted.sessionId);
+    const changedReady = createStartBarrier(2);
+    const changedOperations = [
+      (async () => {
+        await changedReady();
+        return completeWorkoutSession(
+          db,
+          { id: changedFixture.userId, coachingPrefs },
+          {
+            sessionId: changedStarted.sessionId,
+            note: "First device payload",
+            fatigue: 2,
+            completionReason: "time_limit_reached",
+          },
+        );
+      })(),
+      (async () => {
+        await changedReady();
+        return completeWorkoutSession(
+          db,
+          { id: changedFixture.userId, coachingPrefs },
+          {
+            sessionId: changedStarted.sessionId,
+            note: "Second device payload",
+            fatigue: 4,
+            completionReason: "fatigue",
+          },
+        );
+      })(),
+    ];
+    await releaseWhenContended(changedLock, changedOperations, 2);
+    const changedResults = await Promise.all(changedOperations);
+    expect(changedResults.map((result) => result.outcome).sort()).toEqual([
+      "completed",
+      "finish_payload_conflict",
+    ]);
+    expect(changedResults.find(
+      (result) => result.outcome === "finish_payload_conflict",
+    )).toMatchObject({
+      alreadyFinished: true,
+      reason: expect.stringContaining("different retained finish details"),
+    });
+    const [changedClosure] = resultRows<{
+      notes: number;
+      fatigue: number;
+      audits: number;
+      progression_jobs: number;
+    }>(await db.execute(sql`
+      SELECT
+        (SELECT count(*)::int FROM session_notes
+          WHERE session_id = ${changedStarted.sessionId}::uuid) AS notes,
+        (SELECT count(*)::int FROM fatigue_logs
+          WHERE session_id = ${changedStarted.sessionId}::uuid) AS fatigue,
+        (SELECT count(*)::int FROM audit_logs
+          WHERE action = 'session.complete'
+            AND entity_id = ${changedStarted.sessionId}::text) AS audits,
+        (SELECT count(*)::int FROM progression_jobs
+          WHERE session_id = ${changedStarted.sessionId}::uuid) AS progression_jobs
+    `));
+    expect(changedClosure).toEqual({
+      notes: 1,
+      fatigue: 1,
+      audits: 1,
+      progression_jobs: 1,
+    });
+  });
+
+  it("reconciles concurrent structured occurrence retries by client identity", async () => {
+    const runRace = async (
+      label: string,
+      reasons: readonly ["time_limit_reached", "time_limit_reached" | "fatigue"],
+    ) => {
+      const fixture = await createProgramFixture(label);
+      const started = await startWorkoutSession(
+        db,
+        fixture.userId,
+        fixture.templateId,
+      );
+      const [occurrence] = await db
+        .select({ id: sessionOccurrences.id })
+        .from(sessionOccurrences)
+        .where(eq(sessionOccurrences.sessionId, started.sessionId));
+      if (!occurrence) throw new Error("Occurrence race fixture missing.");
+      const clientKey = crypto.randomUUID();
+      const lock = await lockWorkoutSession(started.sessionId);
+      const ready = createStartBarrier(2);
+      const operations = reasons.map(async (reasonCode) => {
+        await ready();
+        return mutateWorkoutOccurrence(db, fixture.userId, {
+          occurrenceId: occurrence.id,
+          clientKey,
+          expectedRevision: 0,
+          operation: "skip",
+          reasonCode,
+        });
+      });
+      await releaseWhenContended(lock, operations, 2);
+      const results = await Promise.all(operations);
+      const [receiptCount] = resultRows<{ count: number }>(await db.execute(sql`
+        SELECT count(*)::int AS count
+        FROM session_occurrence_mutations
+        WHERE occurrence_id = ${occurrence.id}::uuid
+          AND client_key = ${clientKey}::text
+      `));
+      expect(receiptCount?.count).toBe(1);
+      return results;
+    };
+
+    const exactResults = await runRace(
+      "occurrence exact retry race",
+      ["time_limit_reached", "time_limit_reached"],
+    );
+    expect(exactResults.map((result) => result.outcome).sort()).toEqual([
+      "replayed",
+      "saved",
+    ]);
+
+    const changedResults = await runRace(
+      "occurrence changed retry race",
+      ["time_limit_reached", "fatigue"],
+    );
+    expect(changedResults.map((result) => result.outcome).sort()).toEqual([
+      "retry_identity_conflict",
+      "saved",
+    ]);
+  });
+
   it("keeps stable exercise and source-workout identities in the History report", async () => {
     const fixture = await createProgramFixture(
       "history workspace identities",
@@ -1426,7 +1613,10 @@ describe.sequential("real PostgreSQL parallel invariants", () => {
       return completeWorkoutSession(
         db,
         { id: fixture.userId, coachingPrefs },
-        { sessionId: fixture.sessionId },
+        {
+          sessionId: fixture.sessionId,
+          completionReason: "user_choice",
+        },
       );
     })();
 
@@ -1443,7 +1633,10 @@ describe.sequential("real PostgreSQL parallel invariants", () => {
       finished = await completeWorkoutSession(
         db,
         { id: fixture.userId, coachingPrefs },
-        { sessionId: fixture.sessionId },
+        {
+          sessionId: fixture.sessionId,
+          completionReason: "user_choice",
+        },
       );
     }
     expect(finished).toMatchObject({ outcome: "completed" });

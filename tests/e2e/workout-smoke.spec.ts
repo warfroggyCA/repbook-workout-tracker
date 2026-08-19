@@ -1498,6 +1498,7 @@ test("answers all five History questions without mixing independent activity int
 
 test("signs in and completes a durable workout flow", async ({ page }) => {
   test.setTimeout(120_000);
+  await page.setViewportSize({ width: 390, height: 844 });
   const browserErrors: string[] = [];
   page.on("console", (message) => {
     if (message.type() === "error") browserErrors.push(message.text());
@@ -1619,6 +1620,17 @@ test("signs in and completes a durable workout flow", async ({ page }) => {
   await page.getByRole("button", { name: /^(?:Review workout finish|Finish workout)$/ }).click();
   const finish = page.getByRole("dialog", { name: "Finish workout" });
   await expect(finish).toBeVisible();
+  const saveWorkout = finish.getByRole("button", {
+    name: "Save workout",
+    exact: true,
+  });
+  const incompleteReason = finish.getByLabel(
+    "Why is the remaining planned work not being completed?",
+  );
+  await expect(incompleteReason).toHaveValue("");
+  await expect(saveWorkout).toBeDisabled();
+  await incompleteReason.selectOption("time_limit_reached");
+  await expect(saveWorkout).toBeEnabled();
   await openNativeDetails(finish.locator("details", {
     hasText: "Optional note and fatigue",
   }));
@@ -1626,10 +1638,14 @@ test("signs in and completes a durable workout flow", async ({ page }) => {
     .getByPlaceholder("Session note (optional) — how did it go?")
     .fill("Phase 1 browser verification");
   await finish.getByRole("button", { name: "3", exact: true }).click();
-  await finish.getByRole("button", { name: "Save workout", exact: true }).click();
+  await saveWorkout.click();
 
   await expect(page).toHaveURL(/\/history\/[0-9a-f-]+\?finished=1$/);
   await expect(page.getByText("Phase 1 browser verification")).toBeVisible();
+  await expect(
+    page.getByText("Completed with planned work remaining", { exact: true }),
+  ).toBeVisible();
+  await expect(page.getByText(/retained reason is time limit reached/)).toBeVisible();
   await expect(page.getByText(/100 lb × 8/)).toBeVisible();
   await page.getByRole("button", { name: "Correct set", exact: true }).first().click();
   const correction = page.getByRole("dialog", { name: "Correct saved set 1" });
@@ -2539,7 +2555,7 @@ test("downloads one canonical full backup with intact workout relationships", as
     canonical: { tables: Record<string, Array<Record<string, unknown>>> };
   };
   expect(backup.format).toBe("workout-tracker-canonical-backup");
-  expect(backup.schemaVersion).toBe("34");
+  expect(backup.schemaVersion).toBe("35");
   expect(backup.canonical.tables.users).toHaveLength(1);
   expect(backup.canonical.tables.workout_sessions.length).toBeGreaterThan(0);
   expect(backup.recordCounts.workout_sessions).toBe(

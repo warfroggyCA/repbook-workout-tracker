@@ -40,6 +40,7 @@ function calendarSession(
       supported: 10,
       atOrAboveRate: 90,
     },
+    targetDenominatorComplete: true,
     targetHitRate: 90,
     skipped: 0,
     painEvents: 0,

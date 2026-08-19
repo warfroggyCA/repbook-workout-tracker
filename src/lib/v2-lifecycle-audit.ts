@@ -289,6 +289,11 @@ export const REPBOOK_V2_FIELD_FAMILIES = [
           "start_request_key",
           "start_request_hash",
           "history_revision",
+          "planned_duration_semantics_version",
+          "planned_duration_min_minutes",
+          "planned_duration_max_minutes",
+          "planned_duration_source",
+          "time_budget_min",
         ],
       },
       {
@@ -348,8 +353,16 @@ export const REPBOOK_V2_FIELD_FAMILIES = [
     packages: ["T03", "T04", "T05"],
     durability: "database",
     meaning:
-      "Planned, ad-hoc, warm-up, skipped, abandoned, and completed occurrences retain exact order, outcome, revision, and optional performed-result linkage.",
+      "Planned, ad-hoc, warm-up, skipped, abandoned, and completed occurrences retain exact order, outcome, structured resolution reason, revision, and optional performed-result linkage; terminal session meaning remains separate.",
     storage: [
+      {
+        table: "workout_sessions",
+        fields: [
+          "completion_semantics_version",
+          "completion_state",
+          "completion_reason",
+        ],
+      },
       {
         table: "session_occurrences",
         fields: [
@@ -361,6 +374,8 @@ export const REPBOOK_V2_FIELD_FAMILIES = [
           "planned_exercise_id",
           "outcome",
           "outcome_reason",
+          "resolution_semantics_version",
+          "resolution_reason_code",
           "outcome_note",
           "revision",
           "completed_set_id",

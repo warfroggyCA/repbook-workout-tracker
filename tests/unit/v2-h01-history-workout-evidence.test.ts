@@ -25,7 +25,7 @@ const supportedLoaded: SetMetricContainment = {
 };
 
 describe("H01 performed-first History evidence", () => {
-  it("keeps completed, finished-early, abandoned, and in-progress terminal states exact", () => {
+  it("keeps structured completion separate from unsupported legacy terminal text", () => {
     const skipped = {
       id: "skip",
       kind: "working_set",
@@ -44,8 +44,18 @@ describe("H01 performed-first History evidence", () => {
       "completed",
     );
     expect(classifyHistoryTerminalState("completed", [finishedEarly])).toBe(
-      "finished_early",
+      "legacy_incomplete_outcome_unknown",
     );
+    expect(classifyHistoryTerminalState("completed", [skipped], {
+      semanticsVersion: 1,
+      state: "completed_with_remaining_work",
+      reason: "time_limit_reached",
+    })).toBe("completed_with_remaining_work");
+    expect(classifyHistoryTerminalState("completed", [], {
+      semanticsVersion: 1,
+      state: "completed_without_prescription",
+      reason: null,
+    })).toBe("completed_without_prescription");
     expect(classifyHistoryTerminalState("abandoned", [finishedEarly])).toBe(
       "abandoned",
     );

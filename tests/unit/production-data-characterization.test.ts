@@ -127,6 +127,8 @@ describe("unit, calendar, and backup production findings", () => {
         prescribedMetricType: "weight_reps",
         prescribedLoadType: "barbell",
         prescribedLoadSemantics: "total",
+        prescribedCountingSemanticsVersion: 1,
+        prescribedCountingBasis: "not_applicable",
         targetSets: 1,
         targetRepsMin: 8,
         targetRepsMax: 8,
@@ -410,12 +412,12 @@ describe("unit, calendar, and backup production findings", () => {
     });
     expect(digest.sessions[0]?.exercises[0]).toMatchObject({
       target: "1×8–8 @ 100 kg",
-      sets: "100 kg×8",
+      sets: "100 kg load × 8 reps",
     });
     expect(csv).toContain("weight_unit");
     expect(csv).toContain(",100,kg,8,");
     expect(csv).toContain("America/Toronto,2026-07-12");
-    expect(backup.schemaVersion).toBe("34");
+    expect(backup.schemaVersion).toBe("35");
     expect(backup.canonical.tables.workout_sessions[0]).toMatchObject({
       id: session.id,
       timezone: "America/Toronto",

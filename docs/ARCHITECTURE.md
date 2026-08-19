@@ -1180,6 +1180,84 @@ automatic provider transmission. The artifact creates no durable entity,
 receipt, migration, snapshot, recovery, Review, Coach, Program, workout, or
 performed-fact obligation.
 
+## Training reporting V2
+
+Training reporting is a deterministic, versioned projection over retained
+workout evidence. The occurrence ledger and performed-set rows remain the
+source records; the report never rewrites a completed session, changes the
+Program, or turns a Coach proposal into a fact. `src/lib/training-report.ts`
+owns reporting facets, coverage gates, duration adherence, confidence, warm-up
+compaction, and Coach-summary rule contracts. `src/services/digest.ts` builds a
+coherent owner-scoped evidence projection and renders the external brief in
+this order: Coach Summary, compact session summaries, period analysis, and a
+detailed derivation appendix. History and Coach use the same all-planned target
+denominator rules; a supported subset percentage cannot become an overall
+attainment claim unless its coverage, sample-size, and session-span gates pass.
+
+Migration `0083_reporting_session_outcomes` adds nullable, versioned tuples for
+the Program duration frozen at Start, terminal session completion meaning,
+structured skipped/ended occurrence causes, and the bounded prescribed
+counting-basis evidence supported by current writers. Current standalone Quick
+Log and unlinked retrospective entries are explicitly `completed_without_prescription`;
+they are not relabelled as plan changes or legacy unknowns. New terminal writes use
+canonical causes for time limit, fatigue, pain/discomfort, equipment, user
+choice, technical/app issue, interruption, and Program change. Elapsed time
+never selects a cause. A workout with remaining planned work requires the
+owner to choose one cause, and the same retained finish command replays by exact
+payload identity. Planned-duration and finalized completion meaning are
+immutable outside the authorized snapshot-restore path.
+
+Migration `0084_restore_finish_command_receipts` extends the existing guarded
+snapshot-restore wrapper so a schema-35 full or history restore also preserves
+the one owner-scoped `session.complete` receipt that proves the exact active
+Finish payload committed for a versioned completed workout. Restore validates the
+receipt against the retained completion tuple, merges rather than replaces
+destination audit history, and rejects missing, cross-owner, stale, duplicate,
+or contradictory receipts. This keeps exact retry and changed-payload conflict
+semantics intact after recovery. Completed-without-prescription and reviewed
+retrospective writers use their own existing idempotency/provenance contracts
+and do not manufacture an active-Finish receipt. The migration does not add a
+new table or reinterpret an older workout that has no versioned completion
+tuple.
+
+The prescribed-counting writer is deliberately conservative. It freezes
+`not_applicable` only when a current Program Start or accepted compiler proposal
+proves a non-unilateral loaded or assisted repetition prescription. Older rows,
+unilateral work, plain/bodyweight repetitions, and duration holds remain
+explicitly unknown unless a future owner-facing writer stores total, per-side,
+alternating-total, or hold meaning. Reports keep their raw values visible, state
+the missing basis, and exclude unsupported target/progression conclusions.
+
+`reporting-exercise-family/1` groups frozen exact variant labels into broad
+movement families only for exposure context. Exact exercise identity remains
+the progression, target, trend, and record unit. Current substitutions or
+workout-only additions whose performed label/family meaning was not frozen are
+`Unclassified`; mutable catalog metadata cannot silently reinterpret their
+history. Legacy performed rows and missing outcome ledgers remain visible with
+unknown plan linkage and cannot improve coverage.
+
+Family-level volume is a separately covered reporting facet, not a raw sum of
+every set. It normalizes only supported, calculation-eligible loaded sets into
+the owner's configured unit, reports eligible retained-set rows over all
+retained rows, and excludes non-load, legacy, substituted/unclassified, or
+counting-basis-unknown evidence from the numeric total. Family volume never
+merges exact variants for progression, targets, records, or top-set trends.
+
+Snapshot schema 35 adds the new tuples as explicit null unknowns when upgrading
+schema 34 and validates their row and cross-table coherence on restore. It also
+captures the durable Finish receipt for versioned completed workouts so a
+restored client command can be reconciled exactly. Recovery manifest 15 keeps
+the same table inventory while extending its field obligations. Analysis-package
+schema 1 intentionally excludes these additive report-only columns from its
+version-1 row hash so a metadata-only migration does not stale an otherwise
+unchanged manifest. The unversioned set CSV remains unchanged.
+
+Warm-up detail expands from evidence the current recorder actually retains:
+notes, structured pain/equipment causes, and explicit workout-only/change
+origin. The current schema has no independent performed warm-up load/failure
+measurement, so the report does not infer unusual load or failure by mining
+free text; an explicit note remains visible verbatim.
+
 ## R01 cross-cutting lifecycle audit
 
 `src/services/recovery-manifest.ts` remains the only durable-table inventory.

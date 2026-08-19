@@ -28,7 +28,7 @@ describe("Repbook v2 H04 pain consistency database contract", () => {
   afterEach(async () => database.close());
 
   it("keeps no-issue distinct while positive evidence stays proposal-only", async () => {
-    const now = new Date();
+    const now = new Date("2026-08-18T16:00:00.000Z");
     const [user] = await database.db
       .insert(users)
       .values({ email: `v2-h04-${crypto.randomUUID()}@example.com` })

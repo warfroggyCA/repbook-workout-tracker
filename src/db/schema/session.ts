@@ -111,6 +111,19 @@ export const workoutSessions = pgTable(
     activeDurationSeconds: integer("active_duration_seconds"),
     activeDurationBasis: text("active_duration_basis"),
     status: sessionStatusEnum("status").notNull().default("in_progress"),
+    // Immutable reviewed Program duration evidence captured at workout Start.
+    // This is distinct from time_budget_min, which is the available session cap.
+    plannedDurationSemanticsVersion: integer(
+      "planned_duration_semantics_version",
+    ),
+    plannedDurationMinMinutes: integer("planned_duration_min_minutes"),
+    plannedDurationMaxMinutes: integer("planned_duration_max_minutes"),
+    plannedDurationSource: text("planned_duration_source"),
+    // Versioned terminal meaning for new lifecycle writes. Legacy terminal
+    // rows retain a null tuple rather than receiving inferred meaning.
+    completionSemanticsVersion: integer("completion_semantics_version"),
+    completionState: text("completion_state"),
+    completionReason: text("completion_reason"),
     timeBudgetMin: integer("time_budget_min"),
     // Owner-scoped idempotency identity for an explicit Today Start intent.
     // Legacy/imported/compiler sessions intentionally retain null here.
@@ -177,6 +190,73 @@ export const workoutSessions = pgTable(
     check(
       "workout_sessions_time_budget_check",
       sql`${t.timeBudgetMin} IS NULL OR ${t.timeBudgetMin} BETWEEN 5 AND 600`
+    ),
+    check(
+      "workout_sessions_planned_duration_tuple_check",
+      sql`(
+        ${t.plannedDurationSemanticsVersion} IS NULL
+        AND ${t.plannedDurationMinMinutes} IS NULL
+        AND ${t.plannedDurationMaxMinutes} IS NULL
+        AND ${t.plannedDurationSource} IS NULL
+      ) OR (
+        ${t.plannedDurationSemanticsVersion} = 1
+        AND ${t.plannedDurationMinMinutes} IS NOT NULL
+        AND ${t.plannedDurationMaxMinutes} IS NOT NULL
+        AND ${t.plannedDurationSource} IS NOT NULL
+        AND ${t.plannedDurationMinMinutes} BETWEEN 5 AND 600
+        AND ${t.plannedDurationMaxMinutes} BETWEEN ${t.plannedDurationMinMinutes} AND 600
+        AND ${t.plannedDurationSource} IN (
+          'program_day_target',
+          'program_day_duration_override'
+        )
+      )`
+    ),
+    check(
+      "workout_sessions_completion_tuple_check",
+      sql`(
+        ${t.completionSemanticsVersion} IS NULL
+        AND ${t.completionState} IS NULL
+        AND ${t.completionReason} IS NULL
+      ) OR (
+        ${t.completionSemanticsVersion} = 1
+        AND ${t.completionState} IS NOT NULL
+        AND (
+          (
+            ${t.status} = 'completed'
+            AND ${t.completionState} = 'completed_without_prescription'
+            AND ${t.completionReason} IS NULL
+            AND ${t.templateId} IS NULL
+            AND ${t.sourceProgramId} IS NULL
+            AND ${t.sourceProgramVersionId} IS NULL
+            AND ${t.sourceDayLineageId} IS NULL
+          ) OR (
+            ${t.status} = 'completed'
+            AND ${t.completionState} IN (
+              'completed_as_prescribed',
+              'completed_with_changes'
+            )
+            AND ${t.completionReason} IS NULL
+          ) OR (
+            ${t.status} = 'completed'
+            AND ${t.completionState} = 'completed_with_remaining_work'
+            AND ${t.completionReason} IS NOT NULL
+            AND ${t.completionReason} IN (
+              'time_limit_reached',
+              'fatigue',
+              'pain_discomfort',
+              'equipment_unavailable_incompatible',
+              'user_choice',
+              'technical_app_issue',
+              'interruption',
+              'program_change'
+            )
+          ) OR (
+            ${t.status} = 'abandoned'
+            AND ${t.completionState} = 'abandoned'
+            AND ${t.completionReason} = 'user_choice'
+          )
+        )
+      )`
     ),
     check(
       "workout_sessions_active_duration_tuple_check",
@@ -444,6 +524,12 @@ export const sessionExercises = pgTable(
     prescribedMetricType: metricTypeEnum("prescribed_metric_type"),
     prescribedLoadType: text("prescribed_load_type"),
     prescribedLoadSemantics: loadSemanticsEnum("prescribed_load_semantics"),
+    // Frozen prescribed repetition-count meaning. Null/null remains explicit
+    // unknown for unilateral, non-repetition, ad hoc, and legacy rows.
+    prescribedCountingSemanticsVersion: integer(
+      "prescribed_counting_semantics_version",
+    ),
+    prescribedCountingBasis: text("prescribed_counting_basis"),
     // Retained requirement meaning for pre-session preparation and later set
     // validation. Null/null is an explicit legacy or unsupported state.
     equipmentRequirementsSemanticsVersion: integer(
@@ -528,6 +614,22 @@ export const sessionExercises = pgTable(
     check(
       "session_exercises_prescribed_semantics_check",
       sql`num_nonnulls(${t.prescribedSemanticsVersion}, ${t.prescribedExerciseName}, ${t.prescribedMetricType}, ${t.prescribedLoadType}, ${t.prescribedLoadSemantics}) IN (0, 5) AND (${t.prescribedSemanticsVersion} IS NULL OR (${t.prescribedSemanticsVersion} = 1 AND length(btrim(${t.prescribedExerciseName})) BETWEEN 1 AND 300 AND length(btrim(${t.prescribedLoadType})) BETWEEN 1 AND 50))`
+    ),
+    check(
+      "session_exercises_prescribed_counting_tuple_check",
+      sql`(
+        ${t.prescribedCountingSemanticsVersion} IS NULL
+        AND ${t.prescribedCountingBasis} IS NULL
+      ) OR (
+        ${t.prescribedCountingSemanticsVersion} IS NOT NULL
+        AND ${t.prescribedCountingSemanticsVersion} = 1
+        AND ${t.prescribedCountingBasis} IS NOT NULL
+        AND ${t.prescribedCountingBasis} = 'not_applicable'
+        AND ${t.prescribedSemanticsVersion} IS NOT NULL
+        AND ${t.prescribedSemanticsVersion} = 1
+        AND ${t.prescribedMetricType} IS NOT NULL
+        AND ${t.prescribedMetricType} IN ('weight_reps', 'assisted_reps')
+      )`,
     ),
     check(
       "session_exercises_equipment_requirements_snapshot_check",
@@ -701,6 +803,8 @@ export const sessionOccurrences = pgTable(
     groupMemberOrderIdx: integer("group_member_order_idx"),
     outcome: text("outcome").notNull().default("pending"),
     outcomeReason: text("outcome_reason"),
+    resolutionSemanticsVersion: integer("resolution_semantics_version"),
+    resolutionReasonCode: text("resolution_reason_code"),
     outcomeNote: text("outcome_note"),
     revision: integer("revision").notNull().default(0),
     resolvedAt: timestamp("resolved_at", { withTimezone: true }),
@@ -768,6 +872,44 @@ export const sessionOccurrences = pgTable(
     check(
       "session_occurrences_outcome_valid",
       sql`${t.outcome} IN ('pending', 'completed', 'skipped', 'abandoned', 'legacy_unrecorded')`,
+    ),
+    check(
+      "session_occurrences_resolution_reason_tuple_check",
+      sql`(
+        ${t.resolutionSemanticsVersion} IS NULL
+        AND ${t.resolutionReasonCode} IS NULL
+      ) OR (
+        ${t.resolutionSemanticsVersion} = 1
+        AND ${t.resolutionReasonCode} IS NOT NULL
+        AND (
+          (
+            ${t.outcome} = 'skipped'
+            AND ${t.resolutionReasonCode} IN (
+              'time_limit_reached',
+              'fatigue',
+              'pain_discomfort',
+              'equipment_unavailable_incompatible',
+              'user_choice',
+              'technical_app_issue',
+              'interruption',
+              'program_change'
+            )
+          ) OR (
+            ${t.outcome} = 'abandoned'
+            AND ${t.resolutionReasonCode} IN (
+              'time_limit_reached',
+              'fatigue',
+              'pain_discomfort',
+              'equipment_unavailable_incompatible',
+              'user_choice',
+              'technical_app_issue',
+              'interruption',
+              'program_change',
+              'session_completed'
+            )
+          )
+        )
+      )`,
     ),
     check(
       "session_occurrences_order_valid",

@@ -4,21 +4,27 @@ import type { Db } from "@/db";
 import { resultRows } from "@/db/result";
 import { aiParsingEvents, exercises } from "@/db/schema";
 import {
-  logParseData,
-  logParseSchema,
   RPE_HINT_VALUES,
+  storedLogParseSchema,
 } from "@/ai/tasks/log-parse/schema";
 import {
   resolveFutureSetWriterMetricType,
   validateSetWriterShape,
   type PerformedMetricType,
 } from "@/lib/set-metric-semantics";
+import {
+  incompleteSessionReasonSchema,
+  OCCURRENCE_RESOLUTION_SEMANTICS_VERSION,
+  SESSION_COMPLETION_SEMANTICS_VERSION,
+  type IncompleteSessionReason,
+} from "@/lib/session-completion-semantics";
 
 export type ApplyQuickLogData = {
   parsingEventId: string;
   exerciseByEntry: Record<string, string>;
   discardedEntries: number[];
   painSeverityByEntry: Record<string, number>;
+  skipReasonByEntry: Record<string, IncompleteSessionReason>;
 };
 
 export type QuickLogCheckpoint = (boundary: string) => void | Promise<void>;
@@ -35,7 +41,7 @@ type PreparedQuickLogEntry = {
   sessionExerciseId?: string;
   exerciseId?: string;
   metricType?: PerformedMetricType;
-  skipReason?: string;
+  skipReason?: IncompleteSessionReason;
   sets?: Array<{
     id: string;
     setNo: number;
@@ -74,12 +80,8 @@ export async function applyQuickLogToDatabase(
       : { ok: false, reason: "This older quick log was already saved." };
   }
 
-  const envelope = logParseSchema.safeParse(event.parsedJson);
+  const envelope = storedLogParseSchema.safeParse(event.parsedJson);
   if (!envelope.success) {
-    return { ok: false, reason: "Stored parse is invalid and cannot be saved." };
-  }
-  const dataCheck = logParseData.safeParse(envelope.data.data);
-  if (!dataCheck.success) {
     return { ok: false, reason: "Stored parse is invalid and cannot be saved." };
   }
 
@@ -97,6 +99,7 @@ export async function applyQuickLogToDatabase(
   for (const key of [
     ...Object.keys(input.exerciseByEntry),
     ...Object.keys(input.painSeverityByEntry),
+    ...Object.keys(input.skipReasonByEntry),
   ]) {
     const index = Number(key);
     if (!Number.isInteger(index) || String(index) !== key || index < 0 || index >= entryCount) {
@@ -185,12 +188,21 @@ export async function applyQuickLogToDatabase(
           })),
         });
       } else {
+        const selectedReason = incompleteSessionReasonSchema.safeParse(
+          input.skipReasonByEntry[String(index)],
+        );
+        if (!selectedReason.success) {
+          return {
+            ok: false,
+            reason: `Choose why "${entry.rawExercise}" was skipped before saving.`,
+          };
+        }
         prepared.push({
           index,
           kind: "skip",
           sessionExerciseId: randomUUID(),
           exerciseId,
-          skipReason: entry.reason ?? "other",
+          skipReason: selectedReason.data,
         });
       }
       continue;
@@ -222,6 +234,7 @@ export async function applyQuickLogToDatabase(
     exerciseByEntry: input.exerciseByEntry,
     discardedEntries: input.discardedEntries,
     painSeverityByEntry: input.painSeverityByEntry,
+    skipReasonByEntry: input.skipReasonByEntry,
   });
 
   await checkpoint("quick-log-ready");
@@ -302,7 +315,8 @@ export async function applyQuickLogToDatabase(
     ), created_session AS (
       INSERT INTO workout_sessions (
         id, user_id, template_name, status, source, started_at, finished_at,
-        timezone, local_date
+        timezone, local_date, completion_semantics_version,
+        completion_state, completion_reason
       )
       SELECT
         claimed.session_id,
@@ -313,7 +327,10 @@ export async function applyQuickLogToDatabase(
         now(),
         now(),
         claimed.timezone,
-        timezone(claimed.timezone, now())::date
+        timezone(claimed.timezone, now())::date,
+        ${SESSION_COMPLETION_SEMANTICS_VERSION}::integer,
+        'completed_without_prescription',
+        NULL::text
       FROM claimed
       WHERE NOT claimed.appending
       RETURNING id
@@ -393,6 +410,8 @@ export async function applyQuickLogToDatabase(
         completed.set_no - 1 AS kind_ordinal,
         'completed'::text AS outcome,
         NULL::text AS outcome_reason,
+        NULL::integer AS resolution_semantics_version,
+        NULL::text AS resolution_reason_code,
         completed.logged_at AS resolved_at,
         (item.value->>'index')::integer AS entry_order,
         completed.set_no AS set_order
@@ -411,6 +430,8 @@ export async function applyQuickLogToDatabase(
         0,
         'skipped'::text,
         exercise.skip_reason::text,
+        ${OCCURRENCE_RESOLUTION_SEMANTICS_VERSION}::integer,
+        exercise.skip_reason::text,
         now(),
         (item.value->>'index')::integer,
         0
@@ -422,6 +443,7 @@ export async function applyQuickLogToDatabase(
       INSERT INTO session_occurrences (
         session_id, session_exercise_id, kind, origin, sequence_idx,
         kind_ordinal, planned_exercise_id, outcome, outcome_reason,
+        resolution_semantics_version, resolution_reason_code,
         resolved_at, completed_set_id
       )
       SELECT
@@ -435,6 +457,8 @@ export async function applyQuickLogToDatabase(
         row.planned_exercise_id,
         row.outcome,
         row.outcome_reason,
+        row.resolution_semantics_version,
+        row.resolution_reason_code,
         row.resolved_at,
         row.completed_set_id
       FROM occurrence_rows row

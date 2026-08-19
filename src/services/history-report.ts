@@ -32,7 +32,6 @@ import {
 } from "@/lib/workout-duration-quality";
 import {
   buildPrescriptionOutcomeSummary,
-  classifyPrescriptionOutcome,
   classifySetMetricContainment,
   summarizePrescriptionOutcomes,
   type PrescriptionOutcome,
@@ -68,6 +67,38 @@ import type {
   ReviewedExerciseMapping,
   ReviewedMappingStatus,
 } from "@/lib/history-exercise-evidence";
+import {
+  assessMeasurementSemantics,
+  buildCoverageMetric,
+  classifyReportingTargetOutcome,
+  deriveMeasurementKind,
+  resolveFrozenCountingBasis,
+} from "@/lib/training-report";
+import { projectReportingExerciseFamily } from "@/lib/reporting-exercise-family";
+
+function targetCoverageInsight(targetOutcomes: {
+  supported: number;
+  unknown: number;
+  atOrAboveRate: number | null;
+}, denominatorComplete = true) {
+  const coverage = buildCoverageMetric({
+    numerator: targetOutcomes.supported,
+    denominator: targetOutcomes.supported + targetOutcomes.unknown,
+    zeroDenominator: "not_applicable",
+  });
+  const rawStatistic = targetOutcomes.atOrAboveRate == null
+    ? "No supported subset statistic is available."
+    : `Within the ${targetOutcomes.supported} evaluable outcomes, ${targetOutcomes.atOrAboveRate}% were at or above target.`;
+  return {
+    tone: "neutral" as const,
+    title: "Target-attainment coverage",
+    detail: !denominatorComplete
+      ? `${coverage.numerator} of ${coverage.denominator} quantified planned outcomes were evaluable${coverage.percentage == null ? "" : ` (${coverage.percentage}%)`}. ${rawStatistic} The retained historical plan denominator is incomplete, so no overall attainment conclusion is supported.`
+      : coverage.percentage == null
+      ? "No planned outcome is available for an attainment conclusion."
+      : `${coverage.numerator} of ${coverage.denominator} planned outcomes were evaluable (${coverage.percentage}%). ${rawStatistic} An overall conclusion is withheld unless the shared coverage, sample-size, and session-span gates pass.`,
+  };
+}
 
 export const HISTORY_RANGES = [
   { key: "4w", label: "4 weeks", days: 28 },
@@ -129,6 +160,7 @@ export type HistoryCalendarSessionInput = {
   activeDurationBasis?: string | null;
   excludeDurationFromAnalytics?: boolean;
   occurrences: Array<{
+    sessionExerciseId?: string | null;
     kind: "day_warmup" | "exercise_warmup" | "working_set";
     origin: "planned" | "ad_hoc" | "imported" | "legacy";
     outcome: "pending" | "completed" | "skipped" | "abandoned" | "legacy_unrecorded";
@@ -141,12 +173,16 @@ export type HistoryCalendarSessionInput = {
     plannedLoadText?: string | null;
   }>;
   exercises: Array<{
+    id?: string;
+    targetSets?: number | null;
     modificationType: "as_planned" | "substituted" | "added" | "skipped";
     prescribedSemanticsVersion?: number | null;
     prescribedExerciseName?: string | null;
     prescribedMetricType?: HistorySetInput["metricType"] | null;
     prescribedLoadType?: string | null;
     prescribedLoadSemantics?: string | null;
+    prescribedCountingSemanticsVersion?: number | null;
+    prescribedCountingBasis?: string | null;
     exercise?: {
       loadType: string;
       metricType?: HistorySetInput["metricType"];
@@ -215,6 +251,8 @@ export type HistorySessionInput = {
   sourceDayLineageId?: string | null;
   occurrences: HistoryCalendarSessionInput["occurrences"];
   exercises: Array<{
+    id?: string;
+    targetSets?: number | null;
     modificationType: "as_planned" | "substituted" | "added" | "skipped";
     skipReason: string | null;
     prescribedSemanticsVersion?: number | null;
@@ -222,6 +260,8 @@ export type HistorySessionInput = {
     prescribedMetricType?: HistorySetInput["metricType"] | null;
     prescribedLoadType?: string | null;
     prescribedLoadSemantics?: string | null;
+    prescribedCountingSemanticsVersion?: number | null;
+    prescribedCountingBasis?: string | null;
     substitutionReason?: string | null;
     plannedSlotLinked?: boolean;
     plannedExerciseName?: string | null;
@@ -286,6 +326,8 @@ type HistoryTargetExercise = Pick<
   | "prescribedMetricType"
   | "prescribedLoadType"
   | "prescribedLoadSemantics"
+  | "prescribedCountingSemanticsVersion"
+  | "prescribedCountingBasis"
   | "exercise"
 >;
 
@@ -320,8 +362,10 @@ function targetOutcomeForHistorySet(input: {
   }
   const occurrence = occurrences[0];
   const usesPrescribedMeaning = exercise.prescribedSemanticsVersion === 1;
+  const recordedMetricType =
+    set.metricType ?? exercise.exercise.metricType ?? "weight_reps";
   const semantics = classifySetMetricContainment({
-    recordedMetricType: set.metricType ?? exercise.exercise.metricType ?? "weight_reps",
+    recordedMetricType,
     prescribedSemanticsVersion: exercise.prescribedSemanticsVersion,
     performedSemanticsVersion: set.performedSemanticsVersion,
     performedLoadType: set.performedLoadType,
@@ -340,8 +384,28 @@ function targetOutcomeForHistorySet(input: {
     reps: set.reps,
     excludeFromAnalytics: set.excludeFromAnalytics,
   });
-  return classifyPrescriptionOutcome({
-    semantics,
+  const countingBasis = resolveFrozenCountingBasis({
+    semanticsVersion: usesPrescribedMeaning
+      ? exercise.prescribedCountingSemanticsVersion
+      : null,
+    basis: usesPrescribedMeaning ? exercise.prescribedCountingBasis : null,
+  });
+  const kind = deriveMeasurementKind({
+    metricType: recordedMetricType,
+    loadSemantics: usesPrescribedMeaning
+      ? exercise.prescribedLoadSemantics ?? null
+      : exercise.exercise.loadSemantics ?? null,
+  });
+  return classifyReportingTargetOutcome({
+    setSemantics: semantics,
+    measurementKind: kind,
+    countingBasis,
+    originalPlanned: true,
+    performed: true,
+    completed: true,
+    asPlanned: exercise.modificationType === "as_planned",
+    exactOccurrenceLinkage:
+      occurrences.length === 1 && occurrences[0]?.origin === "planned",
     reps: set.reps,
     weight: set.weight,
     weightUnit: set.weightUnit ?? null,
@@ -349,9 +413,106 @@ function targetOutcomeForHistorySet(input: {
     targetRepsMax: occurrence.plannedRepsMax ?? null,
     targetLoad: occurrence.plannedLoad ?? null,
     targetLoadUnit: occurrence.plannedLoadUnit ?? null,
-    targetLoadPercent: occurrence.plannedLoadPercent,
-    targetLoadText: occurrence.plannedLoadText,
+    targetLoadPercent: occurrence.plannedLoadPercent ?? null,
+    targetLoadText: occurrence.plannedLoadText ?? null,
   });
+}
+
+function plannedTargetEvidenceForHistorySession(
+  session: Pick<HistoryCalendarSessionInput, "occurrences" | "exercises">,
+) {
+  const completedOccurrencesBySetId = completedWorkingOccurrencesBySetId(
+    session.occurrences,
+  );
+  const exerciseById = new Map(
+    session.exercises.flatMap((exercise) =>
+      exercise.id == null ? [] : [[exercise.id, exercise] as const],
+    ),
+  );
+  const exerciseBySetId = new Map(
+    session.exercises.flatMap((exercise) =>
+      exercise.sets.map((set) => [set.id, exercise] as const),
+    ),
+  );
+  const setById = new Map(
+    session.exercises.flatMap((exercise) =>
+      exercise.sets.map((set) => [set.id, set] as const),
+    ),
+  );
+  const plannedWorkingOccurrences = session.occurrences.filter(
+    (occurrence) =>
+      occurrence.kind === "working_set" && occurrence.origin === "planned",
+  );
+  const outcomes: PrescriptionOutcome[] = plannedWorkingOccurrences.map(
+    (occurrence) => {
+      if (
+        occurrence.outcome !== "completed" ||
+        occurrence.completedSetId == null
+      ) {
+        return "unknown";
+      }
+      const set = setById.get(occurrence.completedSetId);
+      const exercise =
+        (occurrence.sessionExerciseId != null
+          ? exerciseById.get(occurrence.sessionExerciseId)
+          : undefined) ?? exerciseBySetId.get(occurrence.completedSetId);
+      if (!set || !exercise) return "unknown";
+      return targetOutcomeForHistorySet({
+        set,
+        exercise: {
+          modificationType: exercise.modificationType,
+          prescribedSemanticsVersion: exercise.prescribedSemanticsVersion,
+          prescribedMetricType: exercise.prescribedMetricType,
+          prescribedLoadType: exercise.prescribedLoadType,
+          prescribedLoadSemantics: exercise.prescribedLoadSemantics,
+          prescribedCountingSemanticsVersion:
+            exercise.prescribedCountingSemanticsVersion,
+          prescribedCountingBasis: exercise.prescribedCountingBasis,
+          exercise: {
+            id: exercise.id ?? "history-exercise",
+            name: exercise.prescribedExerciseName ?? "Exercise",
+            loadType: exercise.exercise?.loadType ?? "unknown",
+            metricType:
+              exercise.exercise?.metricType ?? set.metricType ?? "weight_reps",
+            loadSemantics: exercise.exercise?.loadSemantics ?? "none",
+            primaryMuscles: [],
+          },
+        },
+        occurrences:
+          completedOccurrencesBySetId.get(occurrence.completedSetId) ?? [],
+      }) ?? "unknown";
+    },
+  );
+
+  let denominatorComplete = true;
+  for (const exercise of session.exercises) {
+    if (exercise.modificationType === "added") continue;
+    const setIds = new Set(exercise.sets.map((set) => set.id));
+    const plannedLedgerCount = session.occurrences.filter(
+      (occurrence) =>
+        occurrence.kind === "working_set" &&
+        occurrence.origin === "planned" &&
+        ((exercise.id != null &&
+          occurrence.sessionExerciseId === exercise.id) ||
+          (occurrence.completedSetId != null &&
+            setIds.has(occurrence.completedSetId))),
+    ).length;
+    const targetSets = exercise.targetSets;
+    if (
+      Number.isInteger(targetSets) &&
+      targetSets != null &&
+      targetSets >= 1 &&
+      targetSets <= 100
+    ) {
+      const missing = Math.max(targetSets - plannedLedgerCount, 0);
+      outcomes.push(...Array.from({ length: missing }, () => "unknown" as const));
+      if (plannedLedgerCount > targetSets) denominatorComplete = false;
+    } else if (plannedLedgerCount === 0) {
+      denominatorComplete = false;
+    }
+  }
+
+  return { outcomes, denominatorComplete };
 }
 
 export function buildHistoryCalendarSessions(
@@ -361,9 +522,6 @@ export function buildHistoryCalendarSessions(
   return [...sessions]
     .sort((a, b) => b.startedAt.getTime() - a.startedAt.getTime())
     .map((session) => {
-      const targetOccurrencesBySetId = completedWorkingOccurrencesBySetId(
-        session.occurrences,
-      );
       const sets = session.exercises.flatMap((exercise) =>
         exercise.sets
           .filter((set) => !set.isWarmup)
@@ -388,34 +546,9 @@ export function buildHistoryCalendarSessions(
             }),
           }))
       );
+      const targetEvidence = plannedTargetEvidenceForHistorySession(session);
       const targetOutcomes = summarizePrescriptionOutcomes(
-        session.exercises.flatMap((exercise) =>
-          exercise.sets.flatMap((set) => {
-            if (set.isWarmup) return [];
-            const outcome = targetOutcomeForHistorySet({
-              set,
-              exercise: {
-                modificationType: exercise.modificationType,
-                prescribedSemanticsVersion:
-                  exercise.prescribedSemanticsVersion,
-                prescribedMetricType: exercise.prescribedMetricType,
-                prescribedLoadType: exercise.prescribedLoadType,
-                prescribedLoadSemantics: exercise.prescribedLoadSemantics,
-                exercise: {
-                  id: "calendar-exercise",
-                  name: exercise.prescribedExerciseName ?? "Exercise",
-                  loadType: exercise.exercise?.loadType ?? "unknown",
-                  metricType:
-                    exercise.exercise?.metricType ?? set.metricType ?? "weight_reps",
-                  loadSemantics: exercise.exercise?.loadSemantics ?? "none",
-                  primaryMuscles: [],
-                },
-              },
-              occurrences: targetOccurrencesBySetId.get(set.id) ?? [],
-            });
-            return outcome == null ? [] : [outcome];
-          }),
-        ),
+        targetEvidence.outcomes,
       );
       const duration = analyticsWorkoutDurationMinutes(
         session.startedAt,
@@ -455,6 +588,7 @@ export function buildHistoryCalendarSessions(
           )
         ),
         targetOutcomes,
+        targetDenominatorComplete: targetEvidence.denominatorComplete,
         targetHitRate: targetOutcomes.atOrAboveRate,
         skipped: session.exercises.filter(
           (exercise) => exercise.modificationType === "skipped"
@@ -524,7 +658,15 @@ export function summarizeHistory(
   let timedActivitySeconds = 0;
   let distanceKm = 0;
   let excludedMetricSets = 0;
-  const prescriptionOutcomes: PrescriptionOutcome[] = [];
+  const targetEvidence = chronological.map((session) =>
+    plannedTargetEvidenceForHistorySession(session),
+  );
+  const prescriptionOutcomes: PrescriptionOutcome[] = targetEvidence.flatMap(
+    (entry) => entry.outcomes,
+  );
+  const targetDenominatorComplete = targetEvidence.every(
+    (entry) => entry.denominatorComplete,
+  );
   let rpeTotal = 0;
   let rpeCount = 0;
   let skippedExercises = 0;
@@ -656,9 +798,17 @@ export function summarizeHistory(
       exerciseStats.sessions.add(session.id);
       exerciseStats.sets += sets.length;
 
-      const familyKey = sessionExercise.exercise.family?.id ?? `exercise:${sessionExercise.exercise.id}`;
+      const familyProjection = projectReportingExerciseFamily({
+        exerciseName,
+        catalogFamily: null,
+        movementPattern: null,
+      });
+      if (!usesPrescribedMeaning) {
+        familyProjection.family = "Unclassified";
+      }
+      const familyKey = `reporting-family:${familyProjection.family}`;
       const familyStats = familyMap.get(familyKey) ?? {
-        name: sessionExercise.exercise.family?.name ?? exerciseName,
+        name: familyProjection.family,
         sessions: new Set<string>(),
         exercises: new Set<string>(),
         sets: 0,
@@ -695,6 +845,23 @@ export function summarizeHistory(
           reps: set.reps,
           excludeFromAnalytics: set.excludeFromAnalytics,
         });
+        const measurementAssessment = assessMeasurementSemantics({
+          measurementKind: deriveMeasurementKind({
+            metricType: set.metricType ?? metricType,
+            loadSemantics:
+              set.performedSemanticsVersion === 1
+                ? set.performedLoadSemantics ?? null
+                : null,
+          }),
+          countingBasis: resolveFrozenCountingBasis({
+            semanticsVersion: usesPrescribedMeaning
+              ? sessionExercise.prescribedCountingSemanticsVersion
+              : null,
+            basis: usesPrescribedMeaning
+              ? sessionExercise.prescribedCountingBasis
+              : null,
+          }),
+        });
         if (semantics.exclusionReason != null) {
           semanticExclusions.set(
             semantics.exclusionReason,
@@ -705,9 +872,16 @@ export function summarizeHistory(
           excludedMetricSets += 1;
           continue;
         }
+        if (
+          !measurementAssessment.progressionEligible &&
+          semantics.exclusionReason == null
+        ) {
+          excludedMetricSets += 1;
+        }
         if (set.reps != null) {
           totalReps += set.reps;
           if (
+            measurementAssessment.progressionEligible &&
             semantics.personalRecordEligible &&
             semantics.measurementMeaning === "reps"
           ) {
@@ -730,6 +904,7 @@ export function summarizeHistory(
         if (set.durationSeconds != null) timedActivitySeconds += set.durationSeconds;
         if (set.distanceKm != null) distanceKm += set.distanceKm;
         if (
+          measurementAssessment.progressionEligible &&
           semantics.loadedWorkEligible &&
           set.weight != null &&
           set.reps != null
@@ -756,14 +931,6 @@ export function summarizeHistory(
               reps: set.reps,
             };
           }
-        }
-        const prescriptionOutcome = targetOutcomeForHistorySet({
-          set,
-          exercise: sessionExercise,
-          occurrences: targetOccurrencesBySetId.get(set.id) ?? [],
-        });
-        if (prescriptionOutcome != null) {
-          prescriptionOutcomes.push(prescriptionOutcome);
         }
         if (set.rpe != null) {
           rpeTotal += set.rpe;
@@ -1134,18 +1301,7 @@ export function summarizeHistory(
     });
   }
 
-  if (targetOutcomes.atOrAboveRate != null) {
-    insights.push({
-      tone: targetOutcomes.atOrAboveRate >= 80 ? "positive" : targetOutcomes.atOrAboveRate < 60 ? "watch" : "neutral",
-      title:
-        targetOutcomes.atOrAboveRate >= 80
-          ? "Most working sets are landing on target"
-          : targetOutcomes.atOrAboveRate < 60
-            ? "Targets are being missed often"
-            : "Target completion is mixed",
-      detail: `${targetOutcomes.atOrAboveRate}% of ${targetOutcomes.supported} planned sets with supported targets landed at or above them. ${targetOutcomes.unknown} planned set outcomes remain unknown.`,
-    });
-  }
+  insights.push(targetCoverageInsight(targetOutcomes, targetDenominatorComplete));
 
   if (highPainEvents > 0) {
     insights.push({
@@ -1216,6 +1372,7 @@ export function summarizeHistory(
       excludedDurationSessions,
       averageDurationMin,
       targetOutcomes,
+      targetDenominatorComplete,
       targetHitRate: targetOutcomes.atOrAboveRate,
       averageRpe: rpeCount ? round(rpeTotal / rpeCount, 1) : null,
     },
@@ -1486,6 +1643,9 @@ export async function getHistoryReport(
              se.source_slot_lineage_id,
              se.source_exercise_key, se.source_exercise_name,
              se.prescribed_semantics_version,
+             se.prescribed_counting_semantics_version,
+             se.prescribed_counting_basis,
+             se.target_sets,
              se.modification_type, se.skip_reason, se.substitution_reason,
              s.status, s.template_id, s.local_date, s.week_start,
              s.source AS session_source, s.import_batch_id,
@@ -1560,19 +1720,29 @@ export async function getHistoryReport(
     ), occurrences AS MATERIALIZED (
       SELECT * FROM selected_occurrences WHERE status = 'completed'
     ), working_sets AS MATERIALIZED (
-      SELECT o.*, occurrence.origin AS occurrence_origin,
+      SELECT o.*, occurrence.id AS occurrence_id,
+             occurrence.origin AS occurrence_origin,
              cs.id AS set_id, cs.set_no, cs.weight, cs.weight_unit,
              cs.reps, cs.rpe,
              cs.metric_type AS set_metric_type,
              cs.load_entry_meaning,
              cs.distance_km, cs.duration_seconds, cs.exclude_from_analytics,
-             ${eligibleTotalSystemLoadSql(workingSetSemantics)}
-               AS loaded_work_eligible,
+             (
+               ${eligibleTotalSystemLoadSql(workingSetSemantics)}
+               AND o.prescribed_counting_semantics_version = 1
+               AND o.prescribed_counting_basis = 'not_applicable'
+             ) AS loaded_work_eligible,
+             (
+               o.prescribed_counting_semantics_version = 1
+               AND o.prescribed_counting_basis = 'not_applicable'
+             ) AS counting_basis_supported,
              ${eligiblePrescriptionOutcomeSql(workingSetSemantics)}
                AS prescription_outcome_eligible,
              CASE
-               WHEN o.modification_type = 'as_planned'
+              WHEN o.modification_type = 'as_planned'
                  AND occurrence.origin = 'planned'
+                 AND o.prescribed_counting_semantics_version = 1
+                 AND o.prescribed_counting_basis = 'not_applicable'
                THEN CASE
                  WHEN occurrence.occurrence_count = 1
                  THEN ${prescriptionOutcomeSql(workingSetOutcome)}
@@ -1603,6 +1773,69 @@ export async function getHistoryReport(
         LIMIT 1
       ) occurrence ON true
       WHERE o.reviewed_mapping_status IN ('not_applicable', 'confirmed')
+    ), terminal_target_sets AS MATERIALIZED (
+      SELECT occurrence.id AS occurrence_id,
+             CASE
+               WHEN o.modification_type = 'as_planned'
+                 AND occurrence.origin = 'planned'
+                 AND o.prescribed_counting_semantics_version = 1
+                 AND o.prescribed_counting_basis = 'not_applicable'
+               THEN CASE
+                 WHEN occurrence.occurrence_count = 1
+                 THEN ${prescriptionOutcomeSql(workingSetOutcome)}
+                 ELSE 'unknown'
+               END
+               ELSE 'unknown'
+             END AS prescription_outcome
+      FROM selected_occurrences o
+      JOIN completed_sets cs ON cs.session_exercise_id = o.session_exercise_id
+        AND cs.archived_at IS NULL
+        AND NOT cs.is_warmup
+      JOIN LATERAL (
+        SELECT candidate.*, count(*) OVER ()::int AS occurrence_count
+        FROM session_occurrences candidate
+        WHERE candidate.completed_set_id = cs.id
+          AND candidate.session_exercise_id = o.session_exercise_id
+          AND candidate.kind = 'working_set'
+          AND candidate.outcome = 'completed'
+        ORDER BY candidate.sequence_idx, candidate.id
+        LIMIT 1
+      ) occurrence ON true
+      WHERE o.reviewed_mapping_status IN ('not_applicable', 'confirmed')
+    ), planned_outcomes AS MATERIALIZED (
+      SELECT ledger.id::text AS evidence_id,
+             ledger.session_id,
+             CASE
+               WHEN ledger.outcome = 'completed'
+                 THEN coalesce(ws.prescription_outcome, 'unknown')
+               ELSE 'unknown'
+             END AS prescription_outcome
+      FROM selected_sessions s
+      JOIN session_occurrences ledger ON ledger.session_id = s.id
+      LEFT JOIN terminal_target_sets ws ON ws.occurrence_id = ledger.id
+      WHERE ledger.kind = 'working_set'
+        AND ledger.origin = 'planned'
+
+      UNION ALL
+
+      SELECT o.session_exercise_id::text || ':legacy-plan:' || slot.ordinality::text,
+             o.session_id,
+             'unknown'::text AS prescription_outcome
+      FROM selected_occurrences o
+      CROSS JOIN LATERAL (
+        SELECT count(*)::int AS planned_count
+        FROM session_occurrences ledger
+        WHERE ledger.session_exercise_id = o.session_exercise_id
+          AND ledger.kind = 'working_set'
+          AND ledger.origin = 'planned'
+      ) ledger_count
+      CROSS JOIN LATERAL generate_series(
+        1,
+        greatest(o.target_sets - ledger_count.planned_count, 0)
+      )
+        WITH ORDINALITY AS slot(value, ordinality)
+      WHERE o.modification_type <> 'added'
+        AND o.target_sets BETWEEN 1 AND 100
     ), retained_exercise_sets_raw AS MATERIALIZED (
       SELECT o.*, cs.id AS set_id, cs.set_no, cs.weight, cs.weight_unit,
              cs.reps, cs.metric_type AS set_metric_type,
@@ -1950,8 +2183,15 @@ export async function getHistoryReport(
       ORDER BY avoid DESC, cautious DESC, body_part
       LIMIT 5
     ), family_rows AS (
-      SELECT coalesce(o.family_id::text, 'exercise:' || o.exercise_id::text) AS family_key,
-             coalesce(o.family_name, o.exercise_name) AS family,
+      SELECT 'exercise:' || o.exercise_id::text AS family_key,
+             o.exercise_name AS family,
+             (o.prescribed_semantics_version = 1
+               AND o.modification_type NOT IN ('substituted', 'added'))
+               AS family_projection_supported,
+             array_agg(DISTINCT o.session_id::text ORDER BY o.session_id::text)
+               AS session_ids,
+             array_agg(DISTINCT o.exercise_id::text ORDER BY o.exercise_id::text)
+               AS exercise_ids,
              count(DISTINCT o.session_id)::int AS sessions,
              count(DISTINCT o.exercise_id)::int AS exercises,
              count(ws.set_id)::int AS sets,
@@ -1961,7 +2201,7 @@ export async function getHistoryReport(
              END), 0))::int AS volume
       FROM occurrences o
       JOIN working_sets ws ON ws.session_exercise_id = o.session_exercise_id
-      GROUP BY family_key, family
+      GROUP BY family_key, family, family_projection_supported
     ), semantic_exclusion_rows AS (
       SELECT metric_exclusion_reason AS reason, count(*)::int AS count
       FROM working_sets
@@ -1992,42 +2232,48 @@ export async function getHistoryReport(
                WHEN NOT ws.loaded_work_eligible THEN 0
                ELSE ws.normalized_weight * ws.reps
              END), 0))::int AS volume,
-             CASE WHEN count(ws.set_id) FILTER (
-               WHERE ws.modification_type = 'as_planned'
-                 AND ws.occurrence_origin = 'planned'
-                 AND ws.prescription_outcome <> 'unknown'
+             CASE WHEN (
+               SELECT count(*) FROM planned_outcomes planned
+               WHERE planned.session_id = s.id
+                 AND planned.prescription_outcome <> 'unknown'
              ) > 0 THEN round(
-               count(ws.set_id) FILTER (
-                 WHERE ws.modification_type = 'as_planned'
-                   AND ws.occurrence_origin = 'planned'
-                   AND ws.prescription_outcome IN ('at', 'above')
-               ) * 100.0 /
-               count(ws.set_id) FILTER (
-                 WHERE ws.modification_type = 'as_planned'
-                   AND ws.occurrence_origin = 'planned'
-                   AND ws.prescription_outcome <> 'unknown'
-               )
+               (SELECT count(*) FROM planned_outcomes planned
+                WHERE planned.session_id = s.id
+                  AND planned.prescription_outcome IN ('at', 'above')) * 100.0 /
+               (SELECT count(*) FROM planned_outcomes planned
+                WHERE planned.session_id = s.id
+                  AND planned.prescription_outcome <> 'unknown')
              )::int ELSE NULL END AS target_hit_rate,
-             count(ws.set_id) FILTER (
-               WHERE ws.modification_type = 'as_planned'
-                 AND ws.occurrence_origin = 'planned'
-                 AND ws.prescription_outcome = 'below'
-             )::int AS target_below,
-             count(ws.set_id) FILTER (
-               WHERE ws.modification_type = 'as_planned'
-                 AND ws.occurrence_origin = 'planned'
-                 AND ws.prescription_outcome = 'at'
-             )::int AS target_at,
-             count(ws.set_id) FILTER (
-               WHERE ws.modification_type = 'as_planned'
-                 AND ws.occurrence_origin = 'planned'
-                 AND ws.prescription_outcome = 'above'
-             )::int AS target_above,
-             count(ws.set_id) FILTER (
-               WHERE ws.modification_type = 'as_planned'
-                 AND ws.occurrence_origin = 'planned'
-                 AND ws.prescription_outcome = 'unknown'
-             )::int AS target_unknown,
+             (SELECT count(*)::int FROM planned_outcomes planned
+               WHERE planned.session_id = s.id
+                 AND planned.prescription_outcome = 'below') AS target_below,
+             (SELECT count(*)::int FROM planned_outcomes planned
+               WHERE planned.session_id = s.id
+                 AND planned.prescription_outcome = 'at') AS target_at,
+             (SELECT count(*)::int FROM planned_outcomes planned
+               WHERE planned.session_id = s.id
+                 AND planned.prescription_outcome = 'above') AS target_above,
+             (SELECT count(*)::int FROM planned_outcomes planned
+               WHERE planned.session_id = s.id
+                 AND planned.prescription_outcome = 'unknown') AS target_unknown,
+             NOT EXISTS (
+               SELECT 1 FROM selected_occurrences planned_exercise
+               WHERE planned_exercise.session_id = s.id
+                 AND planned_exercise.modification_type <> 'added'
+                 AND (
+                   ((planned_exercise.target_sets IS NULL OR
+                     planned_exercise.target_sets NOT BETWEEN 1 AND 100) AND
+                    (SELECT count(*) FROM session_occurrences ledger
+                     WHERE ledger.session_exercise_id = planned_exercise.session_exercise_id
+                       AND ledger.kind = 'working_set'
+                       AND ledger.origin = 'planned') = 0) OR
+                   (planned_exercise.target_sets BETWEEN 1 AND 100 AND
+                    (SELECT count(*) FROM session_occurrences ledger
+                     WHERE ledger.session_exercise_id = planned_exercise.session_exercise_id
+                       AND ledger.kind = 'working_set'
+                       AND ledger.origin = 'planned') > planned_exercise.target_sets)
+                 )
+             ) AS target_denominator_complete,
              (SELECT count(*)::int FROM session_exercises se
                WHERE se.session_id = s.id AND se.modification_type = 'skipped') AS skipped,
              (SELECT count(*)::int FROM pain_logs pl
@@ -2054,28 +2300,44 @@ export async function getHistoryReport(
         WHERE NOT exclude_from_analytics), 0) / 60.0)::int AS timed_activity_minutes,
       round(coalesce((SELECT sum(distance_km) FROM working_sets
         WHERE NOT exclude_from_analytics), 0)::numeric, 2)::float8 AS distance_km,
-      (SELECT count(*)::int FROM working_sets WHERE exclude_from_analytics) AS excluded_metric_sets,
+      (SELECT count(*)::int FROM working_sets
+        WHERE exclude_from_analytics
+           OR (
+             coalesce(set_metric_type::text, exercise_metric_type::text) IN (
+               'weight_reps', 'assisted_reps', 'reps', 'duration'
+             )
+             AND NOT coalesce(counting_basis_supported, false)
+           )) AS excluded_metric_sets,
       (SELECT count(*)::int FROM completed_sessions
         WHERE duration_excluded) AS excluded_duration_sessions,
       (SELECT round(avg(effective_duration_minutes))::int
         FROM completed_sessions
         WHERE NOT duration_excluded) AS average_duration_min,
-      (SELECT count(*)::int FROM working_sets
-        WHERE modification_type = 'as_planned'
-          AND occurrence_origin = 'planned'
-          AND prescription_outcome = 'below') AS target_below,
-      (SELECT count(*)::int FROM working_sets
-        WHERE modification_type = 'as_planned'
-          AND occurrence_origin = 'planned'
-          AND prescription_outcome = 'at') AS target_at,
-      (SELECT count(*)::int FROM working_sets
-        WHERE modification_type = 'as_planned'
-          AND occurrence_origin = 'planned'
-          AND prescription_outcome = 'above') AS target_above,
-      (SELECT count(*)::int FROM working_sets
-        WHERE modification_type = 'as_planned'
-          AND occurrence_origin = 'planned'
-          AND prescription_outcome = 'unknown') AS target_unknown,
+      (SELECT count(*)::int FROM planned_outcomes
+        WHERE prescription_outcome = 'below') AS target_below,
+      (SELECT count(*)::int FROM planned_outcomes
+        WHERE prescription_outcome = 'at') AS target_at,
+      (SELECT count(*)::int FROM planned_outcomes
+        WHERE prescription_outcome = 'above') AS target_above,
+      (SELECT count(*)::int FROM planned_outcomes
+        WHERE prescription_outcome = 'unknown') AS target_unknown,
+      NOT EXISTS (
+        SELECT 1 FROM selected_occurrences planned_exercise
+        WHERE planned_exercise.modification_type <> 'added'
+          AND (
+            ((planned_exercise.target_sets IS NULL OR
+              planned_exercise.target_sets NOT BETWEEN 1 AND 100) AND
+             (SELECT count(*) FROM session_occurrences ledger
+              WHERE ledger.session_exercise_id = planned_exercise.session_exercise_id
+                AND ledger.kind = 'working_set'
+                AND ledger.origin = 'planned') = 0) OR
+            (planned_exercise.target_sets BETWEEN 1 AND 100 AND
+             (SELECT count(*) FROM session_occurrences ledger
+              WHERE ledger.session_exercise_id = planned_exercise.session_exercise_id
+                AND ledger.kind = 'working_set'
+                AND ledger.origin = 'planned') > planned_exercise.target_sets)
+          )
+      ) AS target_denominator_complete,
       (SELECT avg(rpe)::float8 FROM working_sets
         WHERE NOT exclude_from_analytics AND rpe IS NOT NULL) AS average_rpe,
       (SELECT count(*)::int FROM occurrences WHERE modification_type = 'skipped') AS skipped_exercises,
@@ -2190,6 +2452,7 @@ export async function getHistoryReport(
           'durationMin', duration_min, 'durationExcluded', duration_excluded,
           'sets', sets, 'volume', volume,
           'targetHitRate', target_hit_rate,
+          'targetDenominatorComplete', target_denominator_complete,
           'targetBelow', target_below, 'targetAt', target_at,
           'targetAbove', target_above, 'targetUnknown', target_unknown,
           'skipped', skipped,
@@ -2506,6 +2769,7 @@ export async function getHistoryReport(
     above: Number(row.target_above),
     unknown: Number(row.target_unknown),
   });
+  const targetDenominatorComplete = Boolean(row.target_denominator_complete);
   const averageFatigue =
     row.average_fatigue == null ? null : round(Number(row.average_fatigue), 1);
   const fatigueCheckIns = Number(row.fatigue_check_ins);
@@ -2563,23 +2827,7 @@ export async function getHistoryReport(
           : `Best-set reps are up ${strongestProgress.repChange ?? 0} from the first exposure in this period.`,
     });
   }
-  if (targetOutcomes.atOrAboveRate != null) {
-    insights.push({
-      tone:
-        targetOutcomes.atOrAboveRate >= 80
-          ? "positive"
-          : targetOutcomes.atOrAboveRate < 60
-            ? "watch"
-            : "neutral",
-      title:
-        targetOutcomes.atOrAboveRate >= 80
-          ? "Most working sets are landing on target"
-          : targetOutcomes.atOrAboveRate < 60
-            ? "Targets are being missed often"
-            : "Target completion is mixed",
-      detail: `${targetOutcomes.atOrAboveRate}% of ${targetOutcomes.supported} planned sets with supported targets landed at or above them. ${targetOutcomes.unknown} planned set outcomes remain unknown.`,
-    });
-  }
+  insights.push(targetCoverageInsight(targetOutcomes, targetDenominatorComplete));
   if (highPainEvents > 0) {
     insights.push({
       tone: "watch",
@@ -2623,6 +2871,7 @@ export async function getHistoryReport(
         above: Number(session.targetAbove),
         unknown: Number(session.targetUnknown),
       }),
+      targetDenominatorComplete: Boolean(session.targetDenominatorComplete),
       targetHitRate:
         session.targetHitRate == null ? null : Number(session.targetHitRate),
       skipped: Number(session.skipped),
@@ -2655,6 +2904,46 @@ export async function getHistoryReport(
     },
     records,
   });
+  const reportingFamilies = new Map<
+    string,
+    {
+      sessions: Set<string>;
+      exercises: Set<string>;
+      sets: number;
+      volume: number;
+    }
+  >();
+  for (const rowFamily of row.families as Array<Record<string, unknown>>) {
+    const projection = Boolean(rowFamily.family_projection_supported)
+      ? projectReportingExerciseFamily({
+          exerciseName: String(rowFamily.family),
+          catalogFamily: null,
+          movementPattern: null,
+        })
+      : projectReportingExerciseFamily({
+          exerciseName: "Unclassified",
+          catalogFamily: null,
+          movementPattern: null,
+        });
+    if (!Boolean(rowFamily.family_projection_supported)) {
+      projection.family = "Unclassified";
+    }
+    const current = reportingFamilies.get(projection.family) ?? {
+      sessions: new Set<string>(),
+      exercises: new Set<string>(),
+      sets: 0,
+      volume: 0,
+    };
+    for (const id of (rowFamily.session_ids as unknown[] | null) ?? []) {
+      current.sessions.add(String(id));
+    }
+    for (const id of (rowFamily.exercise_ids as unknown[] | null) ?? []) {
+      current.exercises.add(String(id));
+    }
+    current.sets += Number(rowFamily.sets);
+    current.volume += Number(rowFamily.volume);
+    reportingFamilies.set(projection.family, current);
+  }
   return {
     overview: {
       completedSessions,
@@ -2674,6 +2963,7 @@ export async function getHistoryReport(
       excludedDurationSessions: Number(row.excluded_duration_sessions),
       averageDurationMin,
       targetOutcomes,
+      targetDenominatorComplete,
       targetHitRate: targetOutcomes.atOrAboveRate,
       averageRpe:
         row.average_rpe == null ? null : round(Number(row.average_rpe), 1),
@@ -2690,14 +2980,16 @@ export async function getHistoryReport(
     exerciseProgress,
     exerciseEvidence,
     records,
-    families: (row.families as Array<Record<string, unknown>>).map((family) => ({
-      familyKey: String(family.family_key),
-      family: String(family.family),
-      sessions: Number(family.sessions),
-      exercises: Number(family.exercises),
-      sets: Number(family.sets),
-      volume: Number(family.volume),
-    })),
+    families: [...reportingFamilies.entries()]
+      .map(([family, evidence]) => ({
+        familyKey: `reporting-family:${family}`,
+        family,
+        sessions: evidence.sessions.size,
+        exercises: evidence.exercises.size,
+        sets: evidence.sets,
+        volume: evidence.volume,
+      }))
+      .sort((left, right) => right.sets - left.sets || right.sessions - left.sessions),
     recovery: {
       averageFatigue,
       fatigueCheckIns,
@@ -2747,7 +3039,18 @@ export async function getHistoryCalendarRecords(
       targetLoadText: sql`occurrence.planned_load_text`,
     };
     const calendarPrescriptionOutcome = sql`CASE
-      WHEN occurrence.occurrence_count = 1
+      WHEN se.modification_type = 'as_planned'
+        AND occurrence.origin = 'planned'
+        AND se.prescribed_counting_semantics_version = 1
+        AND se.prescribed_counting_basis = 'not_applicable'
+        AND (
+          SELECT count(*)
+          FROM session_occurrences exact_link
+          WHERE exact_link.completed_set_id = cs.id
+            AND exact_link.session_exercise_id = se.id
+            AND exact_link.kind = 'working_set'
+            AND exact_link.outcome = 'completed'
+        ) = 1
       THEN ${prescriptionOutcomeSql(calendarSetOutcome)}
       ELSE 'unknown'
     END`;
@@ -2774,6 +3077,50 @@ export async function getHistoryCalendarRecords(
                    ${MAX_ANALYTICS_WORKOUT_DURATION_MINUTES}
                ) AS duration_excluded
         FROM visible_workout_durations visible_workout_duration
+      ), calendar_planned_outcomes AS MATERIALIZED (
+        SELECT occurrence.id::text AS evidence_id,
+               occurrence.session_id,
+               CASE
+                 WHEN occurrence.outcome = 'completed'
+                   AND cs.id IS NOT NULL
+                   THEN ${calendarPrescriptionOutcome}::text
+                 ELSE 'unknown'
+               END AS prescription_outcome
+        FROM visible_workouts ws
+        JOIN session_occurrences occurrence ON occurrence.session_id = ws.id
+        JOIN session_exercises se
+          ON se.id = occurrence.session_exercise_id
+         AND se.session_id = ws.id
+        JOIN exercises e ON e.id = se.exercise_id
+        LEFT JOIN completed_sets cs
+          ON cs.id = occurrence.completed_set_id
+         AND cs.session_exercise_id = se.id
+         AND cs.archived_at IS NULL
+         AND NOT cs.is_warmup
+        WHERE occurrence.kind = 'working_set'
+          AND occurrence.origin = 'planned'
+
+        UNION ALL
+
+        SELECT se.id::text || ':legacy-plan:' || slot.ordinality::text,
+               se.session_id,
+               'unknown'::text AS prescription_outcome
+        FROM visible_workouts ws
+        JOIN session_exercises se ON se.session_id = ws.id
+        CROSS JOIN LATERAL (
+          SELECT count(*)::int AS planned_count
+          FROM session_occurrences ledger
+          WHERE ledger.session_exercise_id = se.id
+            AND ledger.kind = 'working_set'
+            AND ledger.origin = 'planned'
+        ) ledger_count
+        CROSS JOIN LATERAL generate_series(
+          1,
+          greatest(se.target_sets - ledger_count.planned_count, 0)
+        )
+          WITH ORDINALITY AS slot(value, ordinality)
+        WHERE se.modification_type <> 'added'
+          AND se.target_sets BETWEEN 1 AND 100
       ), workout_records AS (
         SELECT
           'workout'::text AS record_type,
@@ -2799,6 +3146,8 @@ export async function getHistoryCalendarRecords(
           coalesce(metrics.target_at, 0)::int AS target_at,
           coalesce(metrics.target_above, 0)::int AS target_above,
           coalesce(metrics.target_unknown, 0)::int AS target_unknown,
+          coalesce(metrics.target_denominator_complete, true)
+            AS target_denominator_complete,
           coalesce(metrics.skipped, 0)::int AS skipped,
           coalesce(pain.events, 0)::int AS pain_events,
           NULL::float8 AS distance_km,
@@ -2820,42 +3169,42 @@ export async function getHistoryCalendarRecords(
                 THEN cs.weight * ${KG_TO_LB} * cs.reps
               ELSE cs.weight / ${KG_TO_LB} * cs.reps
             END), 0))::int AS volume,
-            count(cs.id) FILTER (
-              WHERE NOT cs.is_warmup
-                AND se.modification_type = 'as_planned'
-                AND occurrence.origin = 'planned'
-                AND ${calendarPrescriptionOutcome}::text <> 'unknown'
-            )::int AS targetable,
-            count(cs.id) FILTER (
-              WHERE NOT cs.is_warmup
-                AND se.modification_type = 'as_planned'
-                AND occurrence.origin = 'planned'
-                AND ${calendarPrescriptionOutcome}::text IN ('at', 'above')
-            )::int AS targets_met,
-            count(cs.id) FILTER (
-              WHERE NOT cs.is_warmup
-                AND se.modification_type = 'as_planned'
-                AND occurrence.origin = 'planned'
-                AND ${calendarPrescriptionOutcome}::text = 'below'
-            )::int AS target_below,
-            count(cs.id) FILTER (
-              WHERE NOT cs.is_warmup
-                AND se.modification_type = 'as_planned'
-                AND occurrence.origin = 'planned'
-                AND ${calendarPrescriptionOutcome}::text = 'at'
-            )::int AS target_at,
-            count(cs.id) FILTER (
-              WHERE NOT cs.is_warmup
-                AND se.modification_type = 'as_planned'
-                AND occurrence.origin = 'planned'
-                AND ${calendarPrescriptionOutcome}::text = 'above'
-            )::int AS target_above,
-            count(cs.id) FILTER (
-              WHERE NOT cs.is_warmup
-                AND se.modification_type = 'as_planned'
-                AND occurrence.origin = 'planned'
-                AND ${calendarPrescriptionOutcome}::text = 'unknown'
-            )::int AS target_unknown,
+            (SELECT count(*)::int FROM calendar_planned_outcomes planned
+              WHERE planned.session_id = ws.id
+                AND planned.prescription_outcome <> 'unknown') AS targetable,
+            (SELECT count(*)::int FROM calendar_planned_outcomes planned
+              WHERE planned.session_id = ws.id
+                AND planned.prescription_outcome IN ('at', 'above')) AS targets_met,
+            (SELECT count(*)::int FROM calendar_planned_outcomes planned
+              WHERE planned.session_id = ws.id
+                AND planned.prescription_outcome = 'below') AS target_below,
+            (SELECT count(*)::int FROM calendar_planned_outcomes planned
+              WHERE planned.session_id = ws.id
+                AND planned.prescription_outcome = 'at') AS target_at,
+            (SELECT count(*)::int FROM calendar_planned_outcomes planned
+              WHERE planned.session_id = ws.id
+                AND planned.prescription_outcome = 'above') AS target_above,
+            (SELECT count(*)::int FROM calendar_planned_outcomes planned
+              WHERE planned.session_id = ws.id
+                AND planned.prescription_outcome = 'unknown') AS target_unknown,
+            NOT EXISTS (
+              SELECT 1 FROM session_exercises planned_exercise
+              WHERE planned_exercise.session_id = ws.id
+                AND planned_exercise.modification_type <> 'added'
+                AND (
+                  ((planned_exercise.target_sets IS NULL OR
+                    planned_exercise.target_sets NOT BETWEEN 1 AND 100) AND
+                   (SELECT count(*) FROM session_occurrences ledger
+                    WHERE ledger.session_exercise_id = planned_exercise.id
+                      AND ledger.kind = 'working_set'
+                      AND ledger.origin = 'planned') = 0) OR
+                  (planned_exercise.target_sets BETWEEN 1 AND 100 AND
+                   (SELECT count(*) FROM session_occurrences ledger
+                    WHERE ledger.session_exercise_id = planned_exercise.id
+                      AND ledger.kind = 'working_set'
+                      AND ledger.origin = 'planned') > planned_exercise.target_sets)
+                )
+            ) AS target_denominator_complete,
             count(DISTINCT se.id) FILTER (WHERE se.modification_type = 'skipped')::int AS skipped
           FROM session_exercises se
           JOIN exercises e ON e.id = se.exercise_id
@@ -2911,6 +3260,7 @@ export async function getHistoryCalendarRecords(
           NULL::int AS target_at,
           NULL::int AS target_above,
           NULL::int AS target_unknown,
+          NULL::boolean AS target_denominator_complete,
           NULL::int AS skipped,
           NULL::int AS pain_events,
           ha.distance_km,
@@ -2991,6 +3341,7 @@ export async function getHistoryCalendarRecords(
           above: Number(row.target_above),
           unknown: Number(row.target_unknown),
         }),
+        targetDenominatorComplete: Boolean(row.target_denominator_complete),
         targetHitRate:
           row.target_hit_rate == null ? null : Number(row.target_hit_rate),
         skipped: Number(row.skipped),
@@ -3025,7 +3376,18 @@ export async function getHistoryCalendarRecords(
       with: {
         exercises: {
           orderBy: sessionExercises.orderIdx,
-          columns: { modificationType: true },
+          columns: {
+            id: true,
+            targetSets: true,
+            modificationType: true,
+            prescribedSemanticsVersion: true,
+            prescribedExerciseName: true,
+            prescribedMetricType: true,
+            prescribedLoadType: true,
+            prescribedLoadSemantics: true,
+            prescribedCountingSemanticsVersion: true,
+            prescribedCountingBasis: true,
+          },
           with: {
             exercise: {
               columns: {
@@ -3063,6 +3425,7 @@ export async function getHistoryCalendarRecords(
         occurrences: {
           orderBy: sessionOccurrences.sequenceIdx,
           columns: {
+            sessionExerciseId: true,
             kind: true,
             origin: true,
             outcome: true,

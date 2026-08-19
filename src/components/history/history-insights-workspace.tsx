@@ -143,6 +143,15 @@ function InsightsOverview({
   context: HistoryContext;
   unit: string;
 }) {
+  const targetCoverageTotal =
+    report.overview.targetOutcomes.supported +
+    report.overview.targetOutcomes.unknown;
+  const targetCoveragePercent = targetCoverageTotal === 0
+    ? null
+    : Math.round(
+        (report.overview.targetOutcomes.supported / targetCoverageTotal) *
+          1_000,
+      ) / 10;
   return (
     <div className="flex min-w-0 flex-col gap-5">
       <section aria-labelledby="strength-overview-heading">
@@ -298,9 +307,11 @@ function InsightsOverview({
             ))}
           </dl>
           <p className="mt-3 text-xs text-muted-foreground">
-            {report.overview.targetOutcomes.atOrAboveRate == null
-              ? "No supported planned-set comparisons in this period."
-              : `${report.overview.targetOutcomes.atOrAboveRate}% of supported comparisons were at or above their retained target.`}
+            {!report.overview.targetDenominatorComplete
+              ? `${report.overview.targetOutcomes.supported} of ${targetCoverageTotal} quantified retained planned outcomes were evaluable${targetCoveragePercent == null ? "." : ` (${targetCoveragePercent}%).`} ${report.overview.targetOutcomes.atOrAboveRate == null ? "No supported-subset statistic is available." : `Within that subset, ${report.overview.targetOutcomes.atOrAboveRate}% were at or above target.`} At least one legacy exercise has no trustworthy planned-outcome count, so the full denominator is incomplete and no overall conclusion is supported.`
+              : targetCoveragePercent == null
+              ? "No planned outcome is available for an attainment conclusion."
+              : `${report.overview.targetOutcomes.supported} of ${targetCoverageTotal} planned outcomes were evaluable (${targetCoveragePercent}%). ${report.overview.targetOutcomes.atOrAboveRate == null ? "No supported-subset statistic is available." : `Within that subset, ${report.overview.targetOutcomes.atOrAboveRate}% were at or above target.`} Overall conclusions require the shared coverage, sample-size, and session-span gates.`}
           </p>
         </CardContent>
       </Card>
@@ -391,12 +402,12 @@ function InsightsOverview({
         <dl className="mt-3 grid gap-3 text-sm sm:grid-cols-2 lg:grid-cols-3">
           <div>
             <dt className="text-xs text-muted-foreground">
-              Planned sets at or above target
+              Target-attainment coverage
             </dt>
             <dd className="mt-1 font-medium tabular-nums">
-              {report.overview.targetOutcomes.atOrAboveRate == null
+              {targetCoveragePercent == null
                 ? "—"
-                : `${report.overview.targetOutcomes.atOrAboveRate}%`}
+                : `${report.overview.targetOutcomes.supported}/${targetCoverageTotal} (${targetCoveragePercent}%)${report.overview.targetDenominatorComplete ? "" : " among quantified outcomes; denominator incomplete"}`}
             </dd>
           </div>
           <div>

@@ -20,6 +20,11 @@ import {
 import type { NormalizedActivity } from "@/services/activities";
 import { historyRevisionLockSql } from "@/services/history-revision-lock";
 import { restoreWorkoutTimingVersion } from "@/services/workout-timing-corrections";
+import {
+  INCOMPLETE_SESSION_REASONS,
+  OCCURRENCE_RESOLUTION_SEMANTICS_VERSION,
+  type IncompleteSessionReason,
+} from "@/lib/session-completion-semantics";
 
 export const VERSIONED_ENTITY_TYPES = [
   "health_activity",
@@ -85,7 +90,13 @@ export type SessionExerciseVersionUpdate = {
   notes?: string | null;
   exerciseId?: string;
   modificationType?: "as_planned" | "substituted" | "added" | "skipped";
-  skipReason?: "time" | "pain" | "fatigue" | "equipment" | "other" | null;
+  skipReason?:
+    | "time"
+    | "pain"
+    | "equipment"
+    | "other"
+    | IncompleteSessionReason
+    | null;
   substitutedForExerciseId?: string | null;
   substitutionReason?: "variety" | "equipment_busy" | "discomfort" | "other" | null;
   substitutedAt?: Date | null;
@@ -848,7 +859,7 @@ export async function updateSessionExerciseWithVersion(
   } = {}
 ): Promise<VersionedEditResult> {
   const versionId = options.versionId ?? randomUUID();
-  const occurrenceMutationClientKey = randomUUID();
+  const occurrenceMutationClientKey = versionId;
   const substitutionRestoreMutationClientKey = randomUUID();
   const changesOccurrenceState =
     action === "session_exercise.skip" ||
@@ -864,12 +875,27 @@ export async function updateSessionExerciseWithVersion(
     : action === "session_exercise.substitute"
       ? `exercise:substituted:${versionId}`
     : null;
+  const structuredSkipReason =
+    action === "session_exercise.skip" &&
+    INCOMPLETE_SESSION_REASONS.includes(
+      values.skipReason as IncompleteSessionReason,
+    )
+      ? values.skipReason as IncompleteSessionReason
+      : null;
+  const legacyOccurrencePayload = {
+    operation: occurrenceOperation,
+    reason: occurrenceReason,
+    source: "exercise_state",
+  };
   const occurrencePayloadHash = createHash("sha256")
-    .update(JSON.stringify({
-      operation: occurrenceOperation,
-      reason: occurrenceReason,
-      source: "exercise_state",
-    }))
+    .update(JSON.stringify(structuredSkipReason == null
+      ? legacyOccurrencePayload
+      : {
+          ...legacyOccurrencePayload,
+          reasonCode: structuredSkipReason,
+          resolutionSemanticsVersion:
+            OCCURRENCE_RESOLUTION_SEMANTICS_VERSION,
+        }))
     .digest("hex");
   const substitutionRestorePayloadHash = createHash("sha256")
     .update(JSON.stringify({
@@ -1103,6 +1129,17 @@ export async function updateSessionExerciseWithVersion(
             ELSE 'pending'
           END,
           outcome_reason = ${occurrenceReason},
+          resolution_semantics_version = CASE
+            WHEN ${action === "session_exercise.skip"}::boolean
+              AND ${structuredSkipReason}::text IS NOT NULL
+              THEN ${OCCURRENCE_RESOLUTION_SEMANTICS_VERSION}::integer
+            ELSE NULL
+          END,
+          resolution_reason_code = CASE
+            WHEN ${action === "session_exercise.skip"}::boolean
+              THEN ${structuredSkipReason}::text
+            ELSE NULL
+          END,
           equipment_snapshot_id = CASE
             WHEN ${action === "session_exercise.substitute"}::boolean
               THEN NULL
@@ -1139,6 +1176,8 @@ export async function updateSessionExerciseWithVersion(
       UPDATE session_occurrences occurrence
       SET outcome = 'pending',
           outcome_reason = NULL,
+          resolution_semantics_version = NULL,
+          resolution_reason_code = NULL,
           equipment_snapshot_id = NULL,
           revision = occurrence.revision + 1,
           resolved_at = NULL,
@@ -1157,8 +1196,8 @@ export async function updateSessionExerciseWithVersion(
         occurrence_id, client_key, operation, canonical_payload_hash,
         expected_revision, resulting_revision, result_code
       )
-      SELECT occurrence.id, ${occurrenceMutationClientKey}::uuid,
-             ${occurrenceOperation}, ${occurrencePayloadHash},
+      SELECT occurrence.id, ${occurrenceMutationClientKey}::text,
+             ${occurrenceOperation}, ${occurrencePayloadHash}::text,
              occurrence.expected_revision, occurrence.resulting_revision, 'applied'
       FROM updated_occurrences occurrence
       RETURNING id
@@ -1869,6 +1908,17 @@ async function restoreSessionExerciseVersion(
       sourceVersionId: versionId,
     }))
     .digest("hex");
+  const reskipOccurrencePayloadHash = createHash("sha256")
+    .update(JSON.stringify({
+      operation: "skip",
+      source: "exercise_version_restore",
+      sourceVersionId: versionId,
+    }))
+    .digest("hex");
+  const canonicalSkipReasonsSql = sql.join(
+    INCOMPLETE_SESSION_REASONS.map((reason) => sql`${reason}::text`),
+    sql`, `,
+  );
   const query = sql`
     WITH selected_version AS MATERIALIZED (
       SELECT *
@@ -2068,6 +2118,91 @@ async function restoreSessionExerciseVersion(
           version.before_data->'set_notes'
         )
       RETURNING se.*
+    ), selected_occurrence_receipts AS MATERIALIZED (
+      SELECT mutation.*
+      FROM selected_version version
+      JOIN session_occurrence_mutations mutation
+        ON mutation.client_key = version.id::text
+       AND mutation.result_code = 'applied'
+    ), restored_aggregate_skips AS (
+      UPDATE session_occurrences occurrence
+      SET outcome = 'pending',
+          outcome_reason = NULL,
+          resolution_semantics_version = NULL,
+          resolution_reason_code = NULL,
+          revision = occurrence.revision + 1,
+          resolved_at = NULL,
+          completed_set_id = NULL
+      FROM selected_version version
+      JOIN restored ON restored.id = version.entity_id
+      JOIN selected_occurrence_receipts receipt
+        ON receipt.operation = 'skip'
+      WHERE version.before_data->>'modification_type' <> 'skipped'
+        AND version.after_data->>'modification_type' = 'skipped'
+        AND occurrence.id = receipt.occurrence_id
+        AND occurrence.session_exercise_id = restored.id
+        AND occurrence.session_id = restored.session_id
+        AND occurrence.outcome = 'skipped'
+        AND occurrence.outcome_reason =
+          'exercise:' || coalesce(version.after_data->>'skip_reason', 'other')
+        AND occurrence.revision = receipt.resulting_revision
+      RETURNING occurrence.id, occurrence.revision - 1 AS expected_revision,
+                occurrence.revision AS resulting_revision
+    ), restored_aggregate_unskips AS (
+      UPDATE session_occurrences occurrence
+      SET outcome = 'skipped',
+          outcome_reason =
+            'exercise:' || coalesce(version.before_data->>'skip_reason', 'other'),
+          resolution_semantics_version = CASE
+            WHEN version.before_data->>'skip_reason' IN (
+              ${canonicalSkipReasonsSql}
+            ) THEN ${OCCURRENCE_RESOLUTION_SEMANTICS_VERSION}::integer
+            ELSE NULL
+          END,
+          resolution_reason_code = CASE
+            WHEN version.before_data->>'skip_reason' IN (
+              ${canonicalSkipReasonsSql}
+            ) THEN version.before_data->>'skip_reason'
+            ELSE NULL
+          END,
+          revision = occurrence.revision + 1,
+          resolved_at = now(),
+          completed_set_id = NULL
+      FROM selected_version version
+      JOIN restored ON restored.id = version.entity_id
+      JOIN selected_occurrence_receipts receipt
+        ON receipt.operation = 'restore'
+      WHERE version.before_data->>'modification_type' = 'skipped'
+        AND version.after_data->>'modification_type' <> 'skipped'
+        AND occurrence.id = receipt.occurrence_id
+        AND occurrence.session_exercise_id = restored.id
+        AND occurrence.session_id = restored.session_id
+        AND occurrence.outcome = 'pending'
+        AND occurrence.revision = receipt.resulting_revision
+      RETURNING occurrence.id, occurrence.revision - 1 AS expected_revision,
+                occurrence.revision AS resulting_revision
+    ), restored_aggregate_skip_receipts AS (
+      INSERT INTO session_occurrence_mutations (
+        occurrence_id, client_key, operation, canonical_payload_hash,
+        expected_revision, resulting_revision, result_code
+      )
+      SELECT occurrence.id, ${rollbackVersionId}::text,
+             'restore', ${occurrencePayloadHash}::text,
+             occurrence.expected_revision, occurrence.resulting_revision,
+             'applied'
+      FROM restored_aggregate_skips occurrence
+      RETURNING id
+    ), restored_aggregate_unskip_receipts AS (
+      INSERT INTO session_occurrence_mutations (
+        occurrence_id, client_key, operation, canonical_payload_hash,
+        expected_revision, resulting_revision, result_code
+      )
+      SELECT occurrence.id, ${rollbackVersionId}::text,
+             'skip', ${reskipOccurrencePayloadHash}::text,
+             occurrence.expected_revision, occurrence.resulting_revision,
+             'applied'
+      FROM restored_aggregate_unskips occurrence
+      RETURNING id
     ), revised_session AS (
       UPDATE workout_sessions session
       SET history_revision = session.history_revision + 1
@@ -2092,6 +2227,8 @@ async function restoreSessionExerciseVersion(
       UPDATE session_occurrences occurrence
       SET outcome = 'pending',
           outcome_reason = NULL,
+          resolution_semantics_version = NULL,
+          resolution_reason_code = NULL,
           revision = occurrence.revision + 1,
           resolved_at = NULL,
           completed_set_id = NULL

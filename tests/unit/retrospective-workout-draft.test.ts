@@ -6,6 +6,7 @@ import {
   initializeRetrospectiveDraft,
   parseRetrospectiveDraft,
   retrospectiveDraftKey,
+  retrospectiveLegacyDraftKey,
   selectPerformedDraftExercise,
 } from "@/lib/retrospective-workout-draft";
 import type { ProgramPresentation } from "@/lib/program-presentation";
@@ -85,7 +86,11 @@ describe("retrospective workout browser draft", () => {
     expect(completed.occurrenceId).toBe(unknown.occurrenceId);
     expect(skipped.occurrenceId).toBe(unknown.occurrenceId);
     expect(completed.outcome).toBe("completed");
-    expect(skipped).toMatchObject({ outcome: "skipped", skipReason: "other" });
+    expect(skipped).toMatchObject({
+      outcome: "skipped",
+      skipReason: null,
+      legacySkipReason: null,
+    });
   });
 
   it("adds one independently identified completed set", () => {
@@ -173,5 +178,47 @@ describe("retrospective workout browser draft", () => {
     expect(retrospectiveDraftKey("owner-a", "2026-07-23")).not.toBe(
       retrospectiveDraftKey("owner-a", "2026-07-22"),
     );
+    expect(retrospectiveLegacyDraftKey("owner-a", "2026-07-23")).not.toBe(
+      retrospectiveDraftKey("owner-a", "2026-07-23"),
+    );
+  });
+
+  it("recovers a v1 skipped draft without reclassifying its legacy reason", () => {
+    const id = ids();
+    const draft = initializeRetrospectiveDraft({
+      ownerId: "owner-a",
+      localDate: "2026-07-23",
+      timezone: "America/Toronto",
+      id,
+    });
+    const [exercise] = draftExercisesForProgramDay(day, id);
+    const legacy = {
+      ...draft,
+      version: 1,
+      exercises: [{
+        ...exercise,
+        outcomes: [{
+          occurrenceId: exercise.outcomes[0].occurrenceId,
+          outcome: "skipped",
+          skipReason: "time",
+          note: "Old browser draft",
+        }],
+      }],
+    };
+
+    expect(parseRetrospectiveDraft(JSON.stringify(legacy), {
+      ownerId: "owner-a",
+      localDate: "2026-07-23",
+    })).toMatchObject({
+      version: 2,
+      exercises: [{
+        outcomes: [{
+          outcome: "skipped",
+          skipReason: null,
+          legacySkipReason: "time",
+          note: "Old browser draft",
+        }],
+      }],
+    });
   });
 });

@@ -495,7 +495,7 @@ describe("A05 selective external-analysis Review bridge", () => {
     await expect(buildJsonBackup(db, ownerId, undefined, {
       now: new Date("2026-08-08T20:00:00.000Z"),
       appVersion: "a05-stale-restore",
-    })).resolves.toMatchObject({ schemaVersion: "34" });
+    })).resolves.toMatchObject({ schemaVersion: "35" });
 
     const store = new MemorySnapshotObjectStore();
     const key = Buffer.alloc(32, 77);
@@ -666,7 +666,7 @@ describe("A05 selective external-analysis Review bridge", () => {
     await expect(buildJsonBackup(db, ownerId, undefined, {
       now: new Date("2026-08-08T22:00:00.000Z"),
       appVersion: "a05-sibling-decisions",
-    })).resolves.toMatchObject({ schemaVersion: "34" });
+    })).resolves.toMatchObject({ schemaVersion: "35" });
   }, 30_000);
 
   it("rolls back the receipt cursor with a failed external decision", async () => {

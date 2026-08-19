@@ -1,5 +1,6 @@
 // Intent suite: proves reviewed quick logs apply atomically, replay by durable
 // identity, retain parse provenance, and respect visibility and ordering.
+import { readFileSync } from "node:fs";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
 import {
@@ -15,8 +16,14 @@ import {
   users,
   workoutSessions,
 } from "@/db/schema";
-import type { LogEntry } from "@/ai/tasks/log-parse/schema";
-import { applyQuickLogToDatabase } from "@/services/quick-log-apply";
+import type {
+  LogEntry,
+  StoredLogEntry,
+} from "@/ai/tasks/log-parse/schema";
+import {
+  applyQuickLogToDatabase,
+  type ApplyQuickLogData,
+} from "@/services/quick-log-apply";
 import {
   createMigratedTestDatabase,
   createStartBarrier,
@@ -53,7 +60,7 @@ describe("quick-log all-or-nothing application", () => {
   afterEach(async () => database.close());
 
   async function createParsingEvent(
-    entries: LogEntry[] = [
+    entries: StoredLogEntry[] = [
       {
         kind: "sets",
         rawExercise: "Squat",
@@ -62,7 +69,7 @@ describe("quick-log all-or-nothing application", () => {
         ],
       },
     ]
-  ) {
+  ): Promise<ApplyQuickLogData> {
     const parsedJson = {
       data: { entries },
       confidence: 1,
@@ -92,6 +99,7 @@ describe("quick-log all-or-nothing application", () => {
       ),
       discardedEntries: [],
       painSeverityByEntry: {},
+      skipReasonByEntry: {},
     };
   }
 
@@ -131,6 +139,7 @@ describe("quick-log all-or-nothing application", () => {
       { kind: "pain", bodyPart: "knee", severity: 2, rawExercise: null },
       { kind: "note", text: "Felt controlled" },
     ]);
+    input.skipReasonByEntry["1"] = "user_choice";
     const ready = createStartBarrier(8);
     const results = await runSimultaneously(8, () =>
       applyQuickLogToDatabase(database.db, userId, input, {
@@ -145,6 +154,16 @@ describe("quick-log all-or-nothing application", () => {
       results.flatMap((result) => (result.ok ? [result.sessionId] : []))
     );
     expect(sessionIds.size).toBe(1);
+    await expect(
+      database.db.query.workoutSessions.findFirst({
+        where: eq(workoutSessions.id, [...sessionIds][0]),
+      }),
+    ).resolves.toMatchObject({
+      status: "completed",
+      completionSemanticsVersion: 1,
+      completionState: "completed_without_prescription",
+      completionReason: null,
+    });
     expect(await durableCounts()).toEqual({
       sessions: 1,
       exercises: 2,
@@ -212,7 +231,9 @@ describe("quick-log all-or-nothing application", () => {
         kindOrdinal: 0,
         plannedExerciseId: exerciseId,
         outcome: "skipped",
-        outcomeReason: "time",
+        outcomeReason: "user_choice",
+        resolutionSemanticsVersion: 1,
+        resolutionReasonCode: "user_choice",
         completedSetId: null,
       }),
     ]);
@@ -223,6 +244,41 @@ describe("quick-log all-or-nothing application", () => {
     ).toMatchObject({
       confirmed: true,
       resultSessionId: [...sessionIds][0],
+      confirmedPayload: expect.objectContaining({
+        skipReasonByEntry: { "1": "user_choice" },
+      }),
+    });
+  });
+
+  it("does not reinterpret a legacy parsed skip without an explicit owner reason", async () => {
+    const input = await createParsingEvent([
+      { kind: "skip", rawExercise: "Squat", reason: "time" },
+    ]);
+
+    await expect(
+      applyQuickLogToDatabase(database.db, userId, input),
+    ).resolves.toEqual({
+      ok: false,
+      reason: 'Choose why "Squat" was skipped before saving.',
+    });
+    expect(await durableCounts()).toEqual({
+      sessions: 0,
+      exercises: 0,
+      sets: 0,
+      occurrences: 0,
+      pain: 0,
+      notes: 0,
+      audits: 0,
+    });
+    await expect(database.db.query.aiParsingEvents.findFirst({
+      where: eq(aiParsingEvents.id, input.parsingEventId),
+    })).resolves.toMatchObject({
+      confirmed: false,
+      parsedJson: expect.objectContaining({
+        data: expect.objectContaining({
+          entries: [expect.objectContaining({ reason: "time" })],
+        }),
+      }),
     });
   });
 
@@ -688,5 +744,27 @@ describe("quick-log all-or-nothing application", () => {
       }),
     ]);
     expect(await database.db.select().from(workoutSessions)).toHaveLength(1);
+    await expect(
+      database.db.query.workoutSessions.findFirst({
+        where: eq(workoutSessions.id, session.id),
+      }),
+    ).resolves.toMatchObject({
+      status: "in_progress",
+      completionSemanticsVersion: null,
+      completionState: null,
+      completionReason: null,
+    });
+  });
+
+  it("keeps Save disabled until every retained skip has an explicit reason", () => {
+    const source = readFileSync(
+      "src/components/quick-log/quick-log-card.tsx",
+      "utf8",
+    );
+
+    expect(source).toContain("const hasUnconfirmedSkipReason = entries.some(");
+    expect(source).toContain("!discarded.includes(index)");
+    expect(source).toContain('disabled={pending || hasUnconfirmedSkipReason}');
+    expect(source).toContain('<option value="">Choose a reason</option>');
   });
 });

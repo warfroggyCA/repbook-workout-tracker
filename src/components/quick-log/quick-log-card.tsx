@@ -12,6 +12,11 @@ import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import { Check, Mic, X } from "lucide-react";
+import {
+  INCOMPLETE_SESSION_REASONS,
+  INCOMPLETE_SESSION_REASON_LABELS,
+  type IncompleteSessionReason,
+} from "@/lib/session-completion-semantics";
 
 type ParseOk = Extract<QuickLogParseResponse, { ok: true }>;
 
@@ -22,6 +27,9 @@ export function QuickLogCard() {
   const [error, setError] = useState<string | null>(null);
   const [choices, setChoices] = useState<Record<string, string>>({});
   const [severities, setSeverities] = useState<Record<string, number>>({});
+  const [skipReasons, setSkipReasons] = useState<
+    Record<string, IncompleteSessionReason>
+  >({});
   const [discarded, setDiscarded] = useState<number[]>([]);
   const [pending, startTransition] = useTransition();
 
@@ -29,6 +37,7 @@ export function QuickLogCard() {
     setParsed(null);
     setChoices({});
     setSeverities({});
+    setSkipReasons({});
     setDiscarded([]);
     setError(null);
   }
@@ -60,6 +69,7 @@ export function QuickLogCard() {
         exerciseByEntry: choices,
         discardedEntries: discarded,
         painSeverityByEntry: severities,
+        skipReasonByEntry: skipReasons,
       });
       if (!result.ok) {
         setError(result.reason);
@@ -105,6 +115,12 @@ export function QuickLogCard() {
   }
 
   const entries = parsed.envelope.data.entries;
+  const hasUnconfirmedSkipReason = entries.some(
+    (entry, index) =>
+      entry.kind === "skip" &&
+      !discarded.includes(index) &&
+      !skipReasons[String(index)],
+  );
 
   return (
     <div className="rounded-xl border border-primary/40 p-3">
@@ -173,10 +189,47 @@ export function QuickLogCard() {
                     </>
                   )}
                   {entry.kind === "skip" && (
-                    <p>
-                      <Badge variant="outline">skipped</Badge> {entry.rawExercise}
-                      {entry.reason ? ` (${entry.reason})` : ""}
-                    </p>
+                    <div>
+                      <p>
+                        <Badge variant="outline">skipped</Badge>{" "}
+                        {entry.rawExercise}
+                      </p>
+                      {entry.reasonCode && (
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          Parsed suggestion:{" "}
+                          {INCOMPLETE_SESSION_REASON_LABELS[entry.reasonCode]}
+                        </p>
+                      )}
+                      {!isDiscarded && (
+                        <label className="mt-2 block text-xs font-medium">
+                          Skip reason
+                          <select
+                            aria-label={`${entry.rawExercise} skip reason`}
+                            className="mt-1 min-h-10 w-full rounded-md border bg-background px-2 py-1 text-xs"
+                            value={skipReasons[String(idx)] ?? ""}
+                            onChange={(event) =>
+                              setSkipReasons((current) => {
+                                const next = { ...current };
+                                if (event.target.value) {
+                                  next[String(idx)] = event.target
+                                    .value as IncompleteSessionReason;
+                                } else {
+                                  delete next[String(idx)];
+                                }
+                                return next;
+                              })
+                            }
+                          >
+                            <option value="">Choose a reason</option>
+                            {INCOMPLETE_SESSION_REASONS.map((reason) => (
+                              <option key={reason} value={reason}>
+                                {INCOMPLETE_SESSION_REASON_LABELS[reason]}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                      )}
+                    </div>
                   )}
                   {entry.kind === "pain" && (
                     <div>
@@ -240,7 +293,12 @@ export function QuickLogCard() {
       )}
 
       <div className="mt-3 flex gap-2">
-        <Button size="sm" className="flex-1" disabled={pending} onClick={handleSave}>
+        <Button
+          size="sm"
+          className="flex-1"
+          disabled={pending || hasUnconfirmedSkipReason}
+          onClick={handleSave}
+        >
           {pending ? "Saving…" : "Save"}
         </Button>
         <Button size="sm" variant="outline" onClick={reset}>

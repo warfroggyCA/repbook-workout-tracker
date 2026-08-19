@@ -43,11 +43,17 @@ import { WorkoutActiveDurationCorrection } from "@/components/history/workout-ac
 import { formatWallClockDuration } from "@/lib/active-session-timing";
 import { filterRecommendationsEligibleForAction } from "@/services/recommendation-evidence-eligibility";
 import {
-  classifyPrescriptionOutcome,
   classifySetMetricContainment,
   setMetricExclusionLabel,
   summarizePrescriptionOutcomes,
 } from "@/lib/set-metric-semantics";
+import {
+  classifyReportingTargetOutcome,
+  deriveMeasurementKind,
+  formatNonLoadQuantity,
+  resolveFrozenCountingBasis,
+  type CountingBasis,
+} from "@/lib/training-report";
 import { workingSetDisplayPosition } from "@/lib/session-occurrences";
 import {
   LIMITATION_CAUSE_LABELS,
@@ -292,6 +298,11 @@ export default async function SessionDetailPage(
   const terminalState = classifyHistoryTerminalState(
     session.status,
     session.occurrences,
+    {
+      semanticsVersion: session.completionSemanticsVersion,
+      state: session.completionState,
+      reason: session.completionReason,
+    },
   );
   const provenanceFacet = classifyHistoryProvenance({
     source: session.source,
@@ -385,6 +396,23 @@ export default async function SessionDetailPage(
           reps: set.reps,
           excludeFromAnalytics: set.excludeFromAnalytics,
         });
+        const usesPrescribedMeaning =
+          sessionExercise.prescribedSemanticsVersion === 1 &&
+          sessionExercise.modificationType === "as_planned";
+        const countingBasis = resolveFrozenCountingBasis({
+          semanticsVersion: usesPrescribedMeaning
+            ? sessionExercise.prescribedCountingSemanticsVersion
+            : null,
+          basis: usesPrescribedMeaning
+            ? sessionExercise.prescribedCountingBasis
+            : null,
+        });
+        const measurementKind = deriveMeasurementKind({
+          metricType: set.metricType,
+          loadSemantics: set.performedSemanticsVersion === 1
+            ? set.performedLoadSemantics
+            : null,
+        });
         return {
           set,
           sessionExercise,
@@ -394,13 +422,22 @@ export default async function SessionDetailPage(
             performedLoadSemantics: set.performedLoadSemantics,
           }),
           semantics,
+          targetOccurrenceId:
+            occurrence?.origin === "planned" ? occurrence.id : null,
           targetOutcome:
             sessionExercise.modificationType !== "as_planned" ||
             plannedOccurrences.length === 0
               ? null
               : occurrence?.origin === "planned"
-                ? classifyPrescriptionOutcome({
-                    semantics,
+                ? classifyReportingTargetOutcome({
+                    setSemantics: semantics,
+                    measurementKind,
+                    countingBasis,
+                    originalPlanned: true,
+                    performed: true,
+                    completed: true,
+                    asPlanned: true,
+                    exactOccurrenceLinkage: occurrences.length === 1,
                     reps: set.reps,
                     weight: set.weight,
                     weightUnit: set.weightUnit,
@@ -420,11 +457,49 @@ export default async function SessionDetailPage(
     performedSetEvidence.map(({ set, targetOutcome }) => [set.id, targetOutcome]),
   );
   const totalSets = performedSetEvidence.length;
-  const targetOutcomes = summarizePrescriptionOutcomes(
-    performedSetEvidence.flatMap(({ targetOutcome }) =>
-      targetOutcome == null ? [] : [targetOutcome],
+  const targetOutcomeByOccurrenceId = new Map(
+    performedSetEvidence.flatMap(({ targetOccurrenceId, targetOutcome }) =>
+      targetOccurrenceId == null || targetOutcome == null
+        ? []
+        : [[targetOccurrenceId, targetOutcome] as const],
     ),
   );
+  const plannedTargetResults = session.occurrences
+    .filter(
+      (occurrence) =>
+        occurrence.kind === "working_set" && occurrence.origin === "planned",
+    )
+    .map(
+      (occurrence) =>
+        targetOutcomeByOccurrenceId.get(occurrence.id) ?? "unknown",
+    );
+  let targetDenominatorComplete = true;
+  for (const exercise of session.exercises) {
+    if (exercise.modificationType === "added") continue;
+    const plannedLedgerCount = session.occurrences.filter(
+      (occurrence) =>
+        occurrence.kind === "working_set" &&
+        occurrence.origin === "planned" &&
+        occurrence.sessionExerciseId === exercise.id,
+    ).length;
+    if (
+      Number.isInteger(exercise.targetSets) &&
+      exercise.targetSets != null &&
+      exercise.targetSets >= 1 &&
+      exercise.targetSets <= 100
+    ) {
+      const missing = Math.max(exercise.targetSets - plannedLedgerCount, 0);
+      plannedTargetResults.push(
+        ...Array.from({ length: missing }, () => "unknown" as const),
+      );
+      if (plannedLedgerCount > exercise.targetSets) {
+        targetDenominatorComplete = false;
+      }
+    } else if (plannedLedgerCount === 0) {
+      targetDenominatorComplete = false;
+    }
+  }
+  const targetOutcomes = summarizePrescriptionOutcomes(plannedTargetResults);
   const timingCorrectionCount = timingVersions.filter(
     (version) =>
       version.action === "workout_session.timing_correction" ||
@@ -546,6 +621,9 @@ export default async function SessionDetailPage(
             {targetOutcomes.unknown > 0
               ? ` · ${targetOutcomes.unknown} target outcome${targetOutcomes.unknown === 1 ? "" : "s"} unknown`
               : ""}
+            {!targetDenominatorComplete
+              ? " · quantified target denominator incomplete"
+              : ""}
           </p>
           {timingCorrectionCount > 0 && (
             <p className="mt-1 text-xs text-muted-foreground">
@@ -649,12 +727,24 @@ export default async function SessionDetailPage(
         </section>
       )}
 
-      {terminalState === "finished_early" && (
+      {terminalState === "completed_with_remaining_work" && (
         <section className="rounded-xl border border-amber-400/50 bg-amber-50/60 p-4 text-sm dark:bg-amber-950/20">
-          <h2 className="font-medium">Finished early</h2>
+          <h2 className="font-medium">Planned work remained</h2>
           <p className="mt-1 text-muted-foreground">
             Completed working sets remain performed evidence. Items left when
-            you finished stay in the original plan as not completed.
+            the session ended stay in the original plan as not completed. The
+            retained reason is {session.completionReason?.replaceAll("_", " ") ?? "unknown"}.
+          </p>
+        </section>
+      )}
+
+      {terminalState === "legacy_incomplete_outcome_unknown" && (
+        <section className="rounded-xl border border-amber-400/50 bg-amber-50/60 p-4 text-sm dark:bg-amber-950/20">
+          <h2 className="font-medium">Legacy incomplete outcome</h2>
+          <p className="mt-1 text-muted-foreground">
+            Older occurrence text indicates work remained, but it does not
+            prove why the session ended. Completed working sets remain
+            performed evidence; the historical cause stays unsupported.
           </p>
         </section>
       )}
@@ -802,6 +892,18 @@ export default async function SessionDetailPage(
                       reps: s.reps,
                       excludeFromAnalytics: s.excludeFromAnalytics,
                     });
+                    const displayCountingBasis = resolveFrozenCountingBasis({
+                      semanticsVersion:
+                        se.prescribedSemanticsVersion === 1 &&
+                        se.modificationType === "as_planned"
+                          ? se.prescribedCountingSemanticsVersion
+                          : null,
+                      basis:
+                        se.prescribedSemanticsVersion === 1 &&
+                        se.modificationType === "as_planned"
+                          ? se.prescribedCountingBasis
+                          : null,
+                    });
                     const occurrence =
                       completedWorkingOccurrencesBySetId.get(s.id)?.[0];
                     const targetOutcome = targetOutcomeBySetId.get(s.id) ?? null;
@@ -846,7 +948,13 @@ export default async function SessionDetailPage(
                             {setPosition?.label ?? `Set ${s.setNo}`}
                           </span>
                           <span className="ml-auto flex items-center gap-1.5 font-semibold text-foreground">
-                            {formatSetMetric(s)}
+                            {formatSetMetric(s, {
+                              countingBasis: displayCountingBasis,
+                              loadSemantics:
+                                s.performedSemanticsVersion === 1
+                                  ? s.performedLoadSemantics
+                                  : null,
+                            })}
                             {s.rpe != null && (
                               <span className="text-xs text-muted-foreground">
                                 RPE {s.rpe}
@@ -1149,6 +1257,13 @@ export default async function SessionDetailPage(
               const archivedResult = occurrence.outcome === "completed"
                 && occurrence.completedSetId != null
                 && !activeSetIds.has(occurrence.completedSetId);
+              const displayedOutcomeReason =
+                occurrence.resolutionSemanticsVersion === 1 &&
+                occurrence.resolutionReasonCode != null
+                  ? occurrence.resolutionReasonCode.replaceAll("_", " ")
+                  : occurrence.outcomeReason != null
+                    ? `${occurrence.outcomeReason.replaceAll("_", " ")} (legacy wording; cause unsupported)`
+                    : null;
               const prescription: string[] = [];
               if (occurrence.plannedRepsMin != null) {
                 prescription.push(
@@ -1196,12 +1311,12 @@ export default async function SessionDetailPage(
                       : {prescription.join(" · ")}
                     </p>
                   )}
-                  {(occurrence.outcomeReason || occurrence.outcomeNote) && (
+                  {(displayedOutcomeReason || occurrence.outcomeNote) && (
                     <p className="mt-1 text-xs text-muted-foreground">
-                      {occurrence.outcomeReason
-                        ? `Reason: ${occurrence.outcomeReason.replaceAll("_", " ")}`
+                      {displayedOutcomeReason
+                        ? `Reason: ${displayedOutcomeReason}`
                         : ""}
-                      {occurrence.outcomeReason && occurrence.outcomeNote ? " · " : ""}
+                      {displayedOutcomeReason && occurrence.outcomeNote ? " · " : ""}
                       {occurrence.outcomeNote ? `Note: ${occurrence.outcomeNote}` : ""}
                     </p>
                   )}
@@ -1257,7 +1372,24 @@ export default async function SessionDetailPage(
                   {exercise.exercise.name} · source set {set.setNo}
                 </p>
                 <p className="mt-1 text-xs text-muted-foreground">
-                  {formatSetMetric(set)} · set ID {set.id}
+                  {formatSetMetric(set, {
+                    countingBasis: resolveFrozenCountingBasis({
+                      semanticsVersion:
+                        exercise.prescribedSemanticsVersion === 1 &&
+                        exercise.modificationType === "as_planned"
+                          ? exercise.prescribedCountingSemanticsVersion
+                          : null,
+                      basis:
+                        exercise.prescribedSemanticsVersion === 1 &&
+                        exercise.modificationType === "as_planned"
+                          ? exercise.prescribedCountingBasis
+                          : null,
+                    }),
+                    loadSemantics:
+                      set.performedSemanticsVersion === 1
+                        ? set.performedLoadSemantics
+                        : null,
+                  })} · set ID {set.id}
                   {set.sourceSetIndex != null
                     ? ` · source index ${set.sourceSetIndex}`
                     : ""}
@@ -1426,22 +1558,41 @@ function formatSetMetric(set: {
     distanceKm: number | null;
     durationSeconds: number | null;
     metricType: string;
-}) {
+}, options: {
+  countingBasis: CountingBasis;
+  loadSemantics: string | null;
+} = { countingBasis: "unknown", loadSemantics: null }) {
   const parts: string[] = [];
   if (set.distanceKm != null) parts.push(`${set.distanceKm} km`);
-  if (set.durationSeconds != null) {
+  if (set.durationSeconds != null && set.metricType === "duration") {
+    parts.push(formatNonLoadQuantity({
+      measurementKind: "duration",
+      value: set.durationSeconds,
+      countingBasis: options.countingBasis,
+    }));
+  } else if (set.durationSeconds != null) {
     const minutes = Math.floor(set.durationSeconds / 60);
     const seconds = set.durationSeconds % 60;
     parts.push(`${minutes}:${String(seconds).padStart(2, "0")}`);
   }
   if (set.reps != null) {
-    const reps = `${set.reps} rep${set.reps === 1 ? "" : "s"}`;
+    const repetitionBasisSuffix = options.countingBasis === "unknown"
+      ? " (repetition counting basis unknown)"
+      : "";
+    const reps = `${set.reps} rep${set.reps === 1 ? "" : "s"}${repetitionBasisSuffix}`;
     parts.push(
       set.metricType === "assisted_reps" && set.weight != null
         ? `Assistance: ${set.weight} ${requiredWeightUnit(set.weightUnit)} · ${reps}`
         : set.weight != null
         ? `${set.weight} ${requiredWeightUnit(set.weightUnit)} × ${reps}`
-        : reps
+        : formatNonLoadQuantity({
+            measurementKind:
+              options.loadSemantics === "bodyweight"
+                ? "bodyweight_repetitions"
+                : "repetitions",
+            value: set.reps,
+            countingBasis: options.countingBasis,
+          })
     );
   }
   if (!parts.length) return set.metricType === "activity" ? "Completed" : "No numeric metric";

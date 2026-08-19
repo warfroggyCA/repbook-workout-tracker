@@ -172,7 +172,12 @@ describe("V2 T03 planned-order portability", () => {
       fixture.userId,
       new Date(Date.now() - 7 * 24 * 60 * 60 * 1000),
     );
-    expect(digest.targetOutcomes.atOrAboveRate).toBe(100);
+    expect(digest.targetOutcomes.atOrAboveRate).toBeNull();
+    expect(digest.reporting.targetAttainment.coverage).toMatchObject({
+      numerator: 0,
+      denominator: 9,
+      percentage: 0,
+    });
     const session = digest.sessions.find(
       (item) => item.template === "T01 truthful recording",
     );
@@ -191,22 +196,26 @@ describe("V2 T03 planned-order portability", () => {
     });
     const brief = renderCoachingBrief(digest);
     expect(brief).toContain("Occurrence outcomes:");
-    expect(brief).toContain("Extra set 1: completed with a retained performed result; extra");
+    expect(brief).toContain(
+      "Extra set 1: completed with a retained performed result; origin ad_hoc; role extra",
+    );
     expect(brief).not.toContain("Planned occurrence outcomes:");
 
     const calendar = await getHistoryCalendarRecords(database.db, fixture.userId);
     expect(
       calendar.find((record) => record.recordType === "workout" && record.id === fixture.sessionId),
-    ).toMatchObject({ sets: 2, targetHitRate: 100 });
+    ).toMatchObject({ sets: 2, targetHitRate: null });
     const history = await getHistoryReport(database.db, fixture.userId, "all", 3);
     expect(history.overview).toMatchObject({
       workingSets: 3,
-      targetHitRate: 100,
+      targetHitRate: null,
     });
     expect(history.insights).toContainEqual(
       expect.objectContaining({
-        detail:
-          "100% of 1 planned sets with supported targets landed at or above them. 0 planned set outcomes remain unknown.",
+        title: "Target-attainment coverage",
+        detail: expect.stringContaining(
+          "0 of 9 planned outcomes were evaluable (0%). No supported subset statistic is available.",
+        ),
       }),
     );
   });

@@ -135,11 +135,17 @@ describe("versioned recovery ownership manifest", () => {
     expect(RECOVERY_MANIFEST_BY_TABLE.completed_sets.integrityChecks).toContain(
       "immutable versioned performed measurement and load semantics",
     );
+    expect(
+      RECOVERY_MANIFEST_BY_TABLE.session_exercises.integrityChecks,
+    ).toContain(
+      "immutable nullable prescribed-counting tuple bound to an eligible retained repetition metric",
+    );
     expect(RECOVERY_MANIFEST_BY_TABLE.audit_logs).toMatchObject({
       restore: { full: "merge", history: "merge" },
       integrityChecks: expect.arrayContaining([
         "workout-timing version link",
         "monotonic workout-timing restore transition",
+        "exact Finish command receipt merge",
       ]),
     });
     expect(RECOVERY_MANIFEST_BY_TABLE.record_versions.integrityChecks).toContain(
@@ -204,7 +210,7 @@ describe("versioned recovery ownership manifest", () => {
       new Date("2026-08-14T16:01:00.000Z"),
       "schedule-recovery-test",
     );
-    expect(current.schemaVersion).toBe("34");
+    expect(current.schemaVersion).toBe("35");
     expect(current.tables.program_schedules).toEqual([]);
     expect(current.tables.program_schedule_versions).toEqual([]);
     expect(current.tables.scheduled_program_events).toEqual([]);
@@ -223,7 +229,7 @@ describe("versioned recovery ownership manifest", () => {
     delete (schema32.tables.workout_sessions[0] as Record<string, unknown>)
       .program_schedule_snapshot;
     const upgraded = upgradeSnapshotPayload(schema32);
-    expect(upgraded.schemaVersion).toBe("34");
+    expect(upgraded.schemaVersion).toBe("35");
     expect(upgraded.tables.program_schedules).toEqual([]);
     expect(upgraded.tables.program_schedule_versions).toEqual([]);
     expect(upgraded.tables.scheduled_program_events).toEqual([]);
@@ -236,7 +242,7 @@ describe("versioned recovery ownership manifest", () => {
     const schema33 = structuredClone(current);
     schema33.schemaVersion = "33";
     const upgraded33 = upgradeSnapshotPayload(schema33);
-    expect(upgraded33.schemaVersion).toBe("34");
+    expect(upgraded33.schemaVersion).toBe("35");
     expect(() => validateSnapshotPayload(upgraded33, user.id)).not.toThrow();
 
     const omittedField = structuredClone(current);

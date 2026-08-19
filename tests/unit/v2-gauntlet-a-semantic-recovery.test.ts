@@ -90,7 +90,10 @@ describe("Repbook v2 Gauntlet A semantic recovery", () => {
       new Date(Date.now() - 7 * 24 * 60 * 60 * 1000),
       new Date(Date.now() + 60 * 1000),
     );
-    expect(JSON.stringify(digest)).not.toContain(fixture.sessionId);
+    expect(digest.sessions).toContainEqual(
+      expect.objectContaining({ id: fixture.sessionId, status: "abandoned" }),
+    );
+    expect(digest.cadence.completedSessions).toBe(1);
     expect(await database.db.select().from(progressionJobs)).toHaveLength(0);
 
     const backup = await buildJsonBackup(

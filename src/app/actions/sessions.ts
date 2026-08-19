@@ -69,6 +69,7 @@ import {
 import { SET_CORRECTION_CATEGORIES } from "@/lib/set-correction";
 import { correctCompletedWorkoutActiveDuration } from "@/services/workout-timing-corrections";
 import { ACTIVE_WORKOUT_DURATION_BASES } from "@/lib/workout-duration-quality";
+import { incompleteSessionReasonSchema } from "@/lib/session-completion-semantics";
 
 const appendSetSchema = z.object({
   sessionExerciseId: z.string().uuid(),
@@ -624,7 +625,10 @@ export async function appendWorkoutSet(input: z.infer<typeof appendSetSchema>) {
 
 const skipSchema = z.object({
   sessionExerciseId: z.string().uuid(),
-  reason: z.enum(["time", "pain", "fatigue", "equipment", "other"]),
+  reason: z.union([
+    z.enum(["time", "pain", "fatigue", "equipment", "other"]),
+    incompleteSessionReasonSchema,
+  ]),
   expectedHistoryRevision: z.number().int().nonnegative(),
 });
 
@@ -717,6 +721,7 @@ const occurrenceMutationSchema = z.object({
   expectedRevision: z.number().int().min(0),
   operation: z.enum(["complete", "skip", "restore", "note"]),
   reason: z.string().trim().min(1).max(160).nullable().optional(),
+  reasonCode: incompleteSessionReasonSchema.nullable().optional(),
   note: z.string().trim().max(500).nullable().optional(),
 });
 
@@ -1030,6 +1035,7 @@ const completeSchema = z.object({
       z.object({ basis: z.literal("interruption_unknown") }),
     ])
     .optional(),
+  completionReason: incompleteSessionReasonSchema.optional(),
 });
 
 export async function completeSession(input: z.infer<typeof completeSchema>) {
@@ -1044,7 +1050,10 @@ export async function completeSession(input: z.infer<typeof completeSchema>) {
   );
   if (
     result.outcome === "duration_review_required" ||
-    result.outcome === "invalid_duration_review"
+    result.outcome === "invalid_duration_review" ||
+    result.outcome === "completion_reason_required" ||
+    result.outcome === "completion_reason_not_applicable" ||
+    result.outcome === "finish_payload_conflict"
   ) {
     return actionFailure(result.outcome, result.reason);
   }

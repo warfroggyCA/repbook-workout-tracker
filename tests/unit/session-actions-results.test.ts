@@ -505,7 +505,10 @@ describe("session action named results", () => {
     expect(csv).toContain("Reviewed after the workout");
     expect(JSON.stringify(backup.canonical)).toContain("set.completed_correction");
     expect(JSON.stringify(backup.canonical)).toContain("Reviewed after the workout");
-    expect(JSON.stringify(coachContext.trainingDigest)).not.toContain("47.5");
+    expect(JSON.stringify(coachContext.trainingDigest)).toContain("47.5");
+    expect(JSON.stringify(coachContext.trainingDigest)).toContain(
+      "exclude from conclusions",
+    );
     expect(coachContext.trainingDigest.dataGaps).toContain(
       "1 set metric has limited calculation eligibility and is preserved but excluded from unsupported conclusions."
     );

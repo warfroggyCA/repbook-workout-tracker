@@ -1,11 +1,21 @@
 import type { ProgramPresentation } from "@/lib/program-presentation";
 import type { ExerciseDiscoveryItem } from "@/lib/exercise-discovery";
 import type { ExerciseAlternativeReason } from "@/lib/exercise-alternatives";
+import { LEGACY_RETROSPECTIVE_SKIP_REASONS } from "@/lib/retrospective-workout";
+import {
+  incompleteSessionReasonSchema,
+  type IncompleteSessionReason,
+} from "@/lib/session-completion-semantics";
 import { z } from "zod";
 
-export const RETROSPECTIVE_DRAFT_VERSION = 1 as const;
+export const RETROSPECTIVE_DRAFT_VERSION = 2 as const;
 export const RETROSPECTIVE_DRAFT_LOCAL_PREFIX =
+  "workout-tracker:retrospective-workout:v2";
+export const RETROSPECTIVE_LEGACY_DRAFT_LOCAL_PREFIX =
   "workout-tracker:retrospective-workout:v1";
+
+type LegacyRetrospectiveSkipReason =
+  (typeof LEGACY_RETROSPECTIVE_SKIP_REASONS)[number];
 
 export type RetrospectiveOutcomeDraft =
   | {
@@ -15,7 +25,8 @@ export type RetrospectiveOutcomeDraft =
   | {
       occurrenceId: string;
       outcome: "skipped";
-      skipReason: "time" | "pain" | "fatigue" | "equipment" | "other";
+      skipReason: IncompleteSessionReason | null;
+      legacySkipReason: LegacyRetrospectiveSkipReason | null;
       note: string;
     }
   | {
@@ -91,7 +102,22 @@ const outcomeDraftSchema = z.discriminatedUnion("outcome", [
   z.object({
     occurrenceId: z.string().uuid(),
     outcome: z.literal("skipped"),
-    skipReason: z.enum(["time", "pain", "fatigue", "equipment", "other"]),
+    skipReason: incompleteSessionReasonSchema.nullable(),
+    legacySkipReason: z.enum(LEGACY_RETROSPECTIVE_SKIP_REASONS).nullable(),
+    note: z.string(),
+  }),
+  completedOutcomeDraftSchema,
+]);
+
+const legacyOutcomeDraftSchema = z.discriminatedUnion("outcome", [
+  z.object({
+    occurrenceId: z.string().uuid(),
+    outcome: z.literal("legacy_unrecorded"),
+  }),
+  z.object({
+    occurrenceId: z.string().uuid(),
+    outcome: z.literal("skipped"),
+    skipReason: z.enum(LEGACY_RETROSPECTIVE_SKIP_REASONS),
     note: z.string(),
   }),
   completedOutcomeDraftSchema,
@@ -131,6 +157,27 @@ const retrospectiveDraftSchema = z.object({
   sessionNote: z.string().max(8_000),
   recordAnotherWorkout: z.boolean(),
   step: z.enum(["facts", "review"]),
+});
+
+const legacyRetrospectiveDraftSchema = retrospectiveDraftSchema.extend({
+  version: z.literal(1),
+  exercises: z.array(
+    z.object({
+      id: z.string().uuid(),
+      exerciseId: z.string().uuid(),
+      sourceTemplateExerciseId: z.string().uuid().nullable(),
+      plannedExerciseId: z.string().uuid().nullable().default(null),
+      plannedExerciseName: z.string().min(1).nullable().default(null),
+      plannedSetCount: z.number().int().min(0).max(100).default(0),
+      substitutionReason: z
+        .enum(["variety", "equipment_busy", "discomfort", "other"])
+        .nullable()
+        .default(null),
+      name: z.string().min(1),
+      metricType: z.string().min(1),
+      outcomes: z.array(legacyOutcomeDraftSchema).min(1).max(100),
+    }),
+  ).max(100),
 });
 
 function newCompletedOutcome(id: IdFactory): RetrospectiveOutcomeDraft {
@@ -189,6 +236,13 @@ export function retrospectiveDraftKey(ownerId: string, localDate: string) {
   return `${RETROSPECTIVE_DRAFT_LOCAL_PREFIX}:${ownerId}:${localDate}`;
 }
 
+export function retrospectiveLegacyDraftKey(
+  ownerId: string,
+  localDate: string,
+) {
+  return `${RETROSPECTIVE_LEGACY_DRAFT_LOCAL_PREFIX}:${ownerId}:${localDate}`;
+}
+
 export function draftExercisesForProgramDay(
   day: ProgramPresentation["days"][number],
   id: IdFactory = () => crypto.randomUUID(),
@@ -242,7 +296,8 @@ export function changeDraftOutcome(
     return {
       occurrenceId: current.occurrenceId,
       outcome,
-      skipReason: "other",
+      skipReason: null,
+      legacySkipReason: null,
       note: "",
     };
   }
@@ -295,17 +350,46 @@ export function parseRetrospectiveDraft(
 ): RetrospectiveWorkoutDraft | null {
   if (!raw) return null;
   try {
-    const parsed = retrospectiveDraftSchema.safeParse(JSON.parse(raw));
+    const value = JSON.parse(raw);
+    const current = retrospectiveDraftSchema.safeParse(value);
+    const legacy = current.success
+      ? null
+      : legacyRetrospectiveDraftSchema.safeParse(value);
+    if (!current.success && (!legacy || !legacy.success)) return null;
+    let parsed: RetrospectiveWorkoutDraft;
+    if (current.success) {
+      parsed = current.data;
+    } else {
+      if (!legacy?.success) return null;
+      const legacyDraft = legacy.data;
+      parsed = {
+        ...legacyDraft,
+        version: RETROSPECTIVE_DRAFT_VERSION,
+        exercises: legacyDraft.exercises.map((exercise) => ({
+          ...exercise,
+          outcomes: exercise.outcomes.map((outcome) =>
+            outcome.outcome === "skipped"
+              ? {
+                  occurrenceId: outcome.occurrenceId,
+                  outcome: "skipped" as const,
+                  skipReason: null,
+                  legacySkipReason: outcome.skipReason,
+                  note: outcome.note,
+                }
+              : outcome,
+          ),
+        })),
+      };
+    }
     if (
-      !parsed.success ||
-      parsed.data.ownerId !== expected.ownerId ||
-      parsed.data.localDate !== expected.localDate
+      parsed.ownerId !== expected.ownerId ||
+      parsed.localDate !== expected.localDate
     ) {
       return null;
     }
     return {
-      ...parsed.data,
-      exercises: parsed.data.exercises.map((exercise) =>
+      ...parsed,
+      exercises: parsed.exercises.map((exercise) =>
         exercise.sourceTemplateExerciseId &&
         exercise.plannedExerciseId == null
           ? {

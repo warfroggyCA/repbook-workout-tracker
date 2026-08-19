@@ -1007,6 +1007,10 @@ describe("Live Coach durable workout conversation", () => {
         finishedAt: new Date("2026-07-11T19:00:00.000Z"),
       })
       .where(eq(workoutSessions.id, sessionId));
+    await db
+      .update(coachingInsights)
+      .set({ createdAt: new Date("2026-07-11T18:30:00.000Z") })
+      .where(eq(coachingInsights.sessionId, sessionId));
     const [digest, csv, backup, snapshot] = await Promise.all([
       buildTrainingDigest(
         db,
@@ -1019,7 +1023,15 @@ describe("Live Coach durable workout conversation", () => {
       captureUserSnapshot(db, userId, new Date("2026-07-12T00:00:00.000Z"), "test"),
     ]);
     expect(digest.liveCoachContext.messages).toHaveLength(2);
-    expect(JSON.stringify(digest.sessions)).not.toContain("assisted reps");
+    expect(digest.sessions[0]?.exercises[0]?.sets).not.toContain(
+      "assisted reps",
+    );
+    expect(
+      digest.sessions[0]?.exercises[0]?.performedSets.some((set) =>
+        set.metrics.includes("assisted reps") &&
+        set.metrics.includes("exclude from conclusions"),
+      ),
+    ).toBe(true);
     expect(JSON.stringify(digest.sessions)).not.toContain(
       "Preserved assisted fact must not become a loaded Coach claim.",
     );
@@ -1033,7 +1045,7 @@ describe("Live Coach durable workout conversation", () => {
     );
     expect(csv).toContain("The first set felt harder");
     expect(csv).toContain("Hold the load for the next set");
-    expect(backup.schemaVersion).toBe("34");
+    expect(backup.schemaVersion).toBe("35");
     expect(backup.canonical.tables.coaching_insights).toHaveLength(4);
     expect(snapshot.schemaVersion).toBe(SNAPSHOT_SCHEMA_VERSION);
     expect(snapshot.tables.coaching_insights).toHaveLength(4);

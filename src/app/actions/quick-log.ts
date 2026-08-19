@@ -6,10 +6,10 @@ import { getDb } from "@/db";
 import { aiParsingEvents } from "@/db/schema";
 import { getCurrentUser } from "@/lib/user";
 import { isAIAvailable, AIUnavailableError } from "@/ai/provider";
-import type { AIEnvelope } from "@/ai/envelope";
 import {
   logParseSchema,
-  type LogEntry,
+  QUICK_LOG_PARSE_SEMANTICS_VERSION,
+  type LogParseResult,
 } from "@/ai/tasks/log-parse/schema";
 import { LOG_PARSE_SYSTEM } from "@/ai/tasks/log-parse/prompt";
 import { parseCleanLog } from "@/engine/quick-log-regex";
@@ -26,12 +26,13 @@ import {
   AIControlError,
   runControlledStructuredGeneration,
 } from "@/services/ai-control";
+import { incompleteSessionReasonSchema } from "@/lib/session-completion-semantics";
 
 export type QuickLogParseResponse =
   | {
       ok: true;
       parsingEventId: string;
-      envelope: AIEnvelope<{ entries: LogEntry[] }>;
+      envelope: LogParseResult;
       resolutions: ExerciseResolution[];
       source: "regex" | "ai";
     }
@@ -47,7 +48,7 @@ export async function parseQuickLog(input: string): Promise<QuickLogParseRespons
   const user = await getCurrentUser();
   const db = await getDb();
 
-  let envelope: AIEnvelope<{ entries: LogEntry[] }>;
+  let envelope: LogParseResult;
   let source: "regex" | "ai";
   let model: string | null = null;
   let latencyMs: number | null = null;
@@ -55,7 +56,10 @@ export async function parseQuickLog(input: string): Promise<QuickLogParseRespons
   const clean = parseCleanLog(text, user.profile.unit);
   if (clean) {
     envelope = {
-      data: { entries: clean },
+      data: {
+        semanticsVersion: QUICK_LOG_PARSE_SEMANTICS_VERSION,
+        entries: clean,
+      },
       confidence: 1,
       ambiguities: [],
       clarifyingQuestions: [],
@@ -142,6 +146,11 @@ const applySchema = z.object({
   discardedEntries: z.array(z.number().int()).default([]),
   /** user-resolved severities for pain entries that had none. */
   painSeverityByEntry: z.record(z.string(), z.number().int().min(0).max(10)).default({}),
+  /** explicit owner-selected reason for each retained skip entry. */
+  skipReasonByEntry: z.record(
+    z.string(),
+    incompleteSessionReasonSchema,
+  ).default({}),
 });
 
 export type ApplyQuickLogInput = z.infer<typeof applySchema>;

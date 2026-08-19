@@ -201,11 +201,38 @@ export function analysisSourceRowContentHash(
   entity: AnalysisPackageSourceBindingEntity,
   row: unknown,
 ): string {
+  // analysis-package/1 binds the source shape it originally exposed. New
+  // nullable columns must not make a still-valid retained manifest stale only
+  // because an additive migration changed to_jsonb(row). New package schemas
+  // can deliberately bind these fields when they add them to their allowlist.
+  const excludedV1HashFields: Partial<
+    Record<AnalysisPackageSourceBindingEntity, ReadonlySet<string>>
+  > = {
+    programs: new Set(["recommendation_revision"]),
+    workout_sessions: new Set([
+      "planned_duration_semantics_version",
+      "planned_duration_min_minutes",
+      "planned_duration_max_minutes",
+      "planned_duration_source",
+      "completion_semantics_version",
+      "completion_state",
+      "completion_reason",
+    ]),
+    session_exercises: new Set([
+      "prescribed_counting_semantics_version",
+      "prescribed_counting_basis",
+    ]),
+    session_occurrences: new Set([
+      "resolution_semantics_version",
+      "resolution_reason_code",
+    ]),
+  };
+  const excluded = excludedV1HashFields[entity];
   const normalized =
-    entity === "programs" && row && typeof row === "object" && !Array.isArray(row)
+    excluded && row && typeof row === "object" && !Array.isArray(row)
       ? Object.fromEntries(
           Object.entries(row as Record<string, unknown>).filter(
-            ([key]) => key !== "recommendation_revision",
+            ([key]) => !excluded.has(key),
           ),
         )
       : row;

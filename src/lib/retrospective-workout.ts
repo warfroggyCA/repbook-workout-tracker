@@ -4,6 +4,10 @@ import {
   localDateToUtcDate,
   workoutLocalDate,
 } from "@/lib/workout-calendar";
+import {
+  incompleteSessionReasonSchema,
+  OCCURRENCE_RESOLUTION_SEMANTICS_VERSION,
+} from "@/lib/session-completion-semantics";
 
 const uuid = z.string().uuid();
 const localDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
@@ -30,7 +34,19 @@ const completedSetSchema = z.object({
     .default(null),
 });
 
-const outcomeSchema = z.discriminatedUnion("outcome", [
+export const LEGACY_RETROSPECTIVE_SKIP_REASONS = [
+  "time",
+  "pain",
+  "fatigue",
+  "equipment",
+  "other",
+] as const;
+
+const legacyRetrospectiveSkipReasonSchema = z.enum(
+  LEGACY_RETROSPECTIVE_SKIP_REASONS,
+);
+
+const outcomeSchema = z.union([
   z.object({
     occurrenceId: uuid,
     ordinal: z.number().int().min(0).max(999),
@@ -41,7 +57,20 @@ const outcomeSchema = z.discriminatedUnion("outcome", [
     occurrenceId: uuid,
     ordinal: z.number().int().min(0).max(999),
     outcome: z.literal("skipped"),
-    reason: z.enum(["time", "pain", "fatigue", "equipment", "other"]),
+    resolutionSemanticsVersion: z.literal(
+      OCCURRENCE_RESOLUTION_SEMANTICS_VERSION,
+    ),
+    reasonCode: incompleteSessionReasonSchema,
+    note: nullableText(4_000),
+  }),
+  // Pre-taxonomy requests remain valid inputs for retry/backward compatibility.
+  // Their free-text category is retained as legacy evidence and is never mapped
+  // into a current canonical reason without a fresh owner choice.
+  z.object({
+    occurrenceId: uuid,
+    ordinal: z.number().int().min(0).max(999),
+    outcome: z.literal("skipped"),
+    reason: legacyRetrospectiveSkipReasonSchema,
     note: nullableText(4_000),
   }),
   z.object({

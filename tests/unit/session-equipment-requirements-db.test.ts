@@ -272,7 +272,7 @@ describe("retained session equipment requirements persistence", () => {
       new Date("2026-08-10T13:00:00.000Z"),
       "retained-requirement-test",
     );
-    expect(captured.schemaVersion).toBe("34");
+    expect(captured.schemaVersion).toBe("35");
     expect(captured.tables.session_exercises).toContainEqual(
       expect.objectContaining({
         id: planned.id,
@@ -287,7 +287,7 @@ describe("retained session equipment requirements persistence", () => {
       delete row.equipment_requirements_snapshot;
     }
     const upgraded = upgradeSnapshotPayload(schema31);
-    expect(upgraded.schemaVersion).toBe("34");
+    expect(upgraded.schemaVersion).toBe("35");
     expect(upgraded.tables.session_exercises).toContainEqual(
       expect.objectContaining({
         id: planned.id,
@@ -1733,9 +1733,14 @@ describe("retained session equipment requirements persistence", () => {
       database,
       "0080_session_equipment_requirements_snapshot",
     );
-    expect(await database.db.query.sessionExercises.findFirst({
-      where: eq(sessionExercises.id, sessionExerciseId),
-    })).toMatchObject({
+    expect((await database.db.select({
+      equipmentRequirementsSemanticsVersion:
+        sessionExercises.equipmentRequirementsSemanticsVersion,
+      equipmentRequirementsSnapshot:
+        sessionExercises.equipmentRequirementsSnapshot,
+    }).from(sessionExercises).where(
+      eq(sessionExercises.id, sessionExerciseId),
+    ))[0]).toMatchObject({
       equipmentRequirementsSemanticsVersion: null,
       equipmentRequirementsSnapshot: null,
     });
@@ -1758,9 +1763,14 @@ describe("retained session equipment requirements persistence", () => {
           )
       WHERE id = ${sessionExerciseId}::uuid
     `)).rejects.toBeDefined();
-    expect(await database.db.query.sessionExercises.findFirst({
-      where: eq(sessionExercises.id, sessionExerciseId),
-    })).toMatchObject({
+    expect((await database.db.select({
+      equipmentRequirementsSemanticsVersion:
+        sessionExercises.equipmentRequirementsSemanticsVersion,
+      equipmentRequirementsSnapshot:
+        sessionExercises.equipmentRequirementsSnapshot,
+    }).from(sessionExercises).where(
+      eq(sessionExercises.id, sessionExerciseId),
+    ))[0]).toMatchObject({
       equipmentRequirementsSemanticsVersion: null,
       equipmentRequirementsSnapshot: null,
     });
