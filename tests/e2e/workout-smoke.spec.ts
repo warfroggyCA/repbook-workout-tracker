@@ -1869,7 +1869,7 @@ test("keeps every active-workout route reachable with one scroll surface", async
     const skipDialog = page.getByRole("dialog", {
       name: `Skip set ${setNo} of ${plannedExerciseName}?`,
     });
-    await skipDialog.getByLabel("Reason").selectOption("time");
+    await skipDialog.getByLabel("Reason").selectOption("time_limit_reached");
     await skipDialog
       .getByRole("button", { name: "Skip item", exact: true })
       .click();
@@ -2084,6 +2084,9 @@ test("keeps pain and substitution lineage reconstructable through History", asyn
   await nextSet.getByRole("button", { name: "Log set", exact: true }).click();
   await expect(workoutStatus).toContainText(/Resting|Next set/);
   await workoutStatus.getByRole("button", { name: /^(?:Review workout finish|Finish workout)$/ }).click();
+  await page
+    .getByLabel("Why is the remaining planned work not being completed?")
+    .selectOption("user_choice");
   await page.getByRole("button", { name: "Save workout", exact: true }).click();
   await expect(page).toHaveURL(/\/history\/[0-9a-f-]+\?finished=1$/);
 
@@ -2819,6 +2822,9 @@ test("keeps an offline set visible while the next set stays available", async ({
   });
   await waitForReactHandler(finishWorkout);
   await finishWorkout.click();
+  await page
+    .getByLabel("Why is the remaining planned work not being completed?")
+    .selectOption("user_choice");
   await page.getByRole("button", { name: "Save workout", exact: true }).click();
   await expect(page).toHaveURL(/\/history\/[0-9a-f-]+\?finished=1$/);
   await expect(page.getByText(offlineSetNote, { exact: true })).toBeVisible();
@@ -2853,6 +2859,9 @@ test("retries a set automatically after one server 500 and still finishes", asyn
     .toContainText("Acknowledged by Repbook");
   expect(actionRequests).toBeGreaterThanOrEqual(2);
   await page.getByRole("button", { name: /^(?:Review workout finish|Finish workout)$/ }).click();
+  await page
+    .getByLabel("Why is the remaining planned work not being completed?")
+    .selectOption("user_choice");
   await page
     .getByRole("button", { name: "Save workout", exact: true })
     .click();
@@ -2939,6 +2948,9 @@ test("a parked set pauses only its exercise while another exercise saves", async
   await removeParkedSet.click();
   await page.getByRole("button", { name: /^(?:Review workout finish|Finish workout)$/ }).click();
   await page
+    .getByLabel("Why is the remaining planned work not being completed?")
+    .selectOption("technical_app_issue");
+  await page
     .getByRole("button", { name: "Save workout", exact: true })
     .click();
   await expect(page).toHaveURL(/\/history\/[0-9a-f-]+\?finished=1$/);
@@ -2981,6 +2993,9 @@ test("keeps a stale-tab rejection visible until the user resolves it", async ({
   });
   await waitForReactHandler(finishWorkout);
   await finishWorkout.click();
+  await page
+    .getByLabel("Why is the remaining planned work not being completed?")
+    .selectOption("user_choice");
   const saveWorkout = page.getByRole("button", {
     name: "Save workout",
     exact: true,

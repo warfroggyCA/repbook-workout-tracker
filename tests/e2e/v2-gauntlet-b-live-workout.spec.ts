@@ -210,7 +210,12 @@ async function skipForEquipment(card: Locator, page: Page) {
   await openMoreForExercise(card);
   await card.getByRole("button", { name: "Skip exercise", exact: true }).click();
   const dialog = page.getByRole("dialog", { name: "Skip exercise — why?" });
-  await dialog.getByRole("button", { name: "equipment", exact: true }).click();
+  await dialog
+    .getByRole("button", {
+      name: "Equipment unavailable or incompatible",
+      exact: true,
+    })
+    .click();
   await expect(card.getByRole("status")).toContainText("Exercise skipped");
 }
 
@@ -345,7 +350,7 @@ test("keeps the full live workout usable through warm-up, skip, replace, continu
     if (
       request.method() === "POST" &&
       request.headers()["next-action"] &&
-      postData.includes('"reason":"equipment"')
+      postData.includes('"reason":"equipment_unavailable_incompatible"')
     ) {
       interruptedSkipRequests += 1;
       if (interruptedSkipRequests === 1) {
@@ -367,7 +372,10 @@ test("keeps the full live workout usable through warm-up, skip, replace, continu
     .click();
   await page
     .getByRole("dialog", { name: "Skip exercise — why?" })
-    .getByRole("button", { name: "equipment", exact: true })
+    .getByRole("button", {
+      name: "Equipment unavailable or incompatible",
+      exact: true,
+    })
     .click();
   await expect.poll(() => interruptedSkipRequests).toBe(1);
   await expect.poll(() => page.evaluate(() =>
@@ -442,7 +450,9 @@ test("keeps the full live workout usable through warm-up, skip, replace, continu
   await expectReachableTarget(failedSkipRecovery);
   await expect(failedSkipRecovery).toContainText("Review or try again");
   await expect(page.getByRole("button", { name: /^Log / })).toHaveCount(0);
-  await expect(incompatible).toContainText("equipment skip");
+  await expect(incompatible).toContainText(
+    "equipment unavailable or incompatible skip",
+  );
   await expect.poll(() => page.evaluate(() => {
     const key = Object.keys(window.sessionStorage).find((candidate) =>
       candidate.startsWith("workout-tracker:skip-recovery:v1:")
@@ -452,7 +462,9 @@ test("keeps the full live workout usable through warm-up, skip, replace, continu
   await page.reload({ waitUntil: "networkidle" });
   incompatible = exerciseCard(page, "Suspension Push-Up");
   await expect(incompatible).toContainText("Skip was not confirmed");
-  await expect(incompatible).toContainText("equipment skip");
+  await expect(incompatible).toContainText(
+    "equipment unavailable or incompatible skip",
+  );
   await expect.poll(() => interruptedSkipRequests).toBe(1);
   await expect(page.getByRole("button", { name: /^Log / })).toHaveCount(0);
   const rehydratedFailedSkipRecovery = page.getByRole("button", {
@@ -471,7 +483,10 @@ test("keeps the full live workout usable through warm-up, skip, replace, continu
     .click();
   await page
     .getByRole("dialog", { name: "Skip exercise — why?" })
-    .getByRole("button", { name: "equipment", exact: true })
+    .getByRole("button", {
+      name: "Equipment unavailable or incompatible",
+      exact: true,
+    })
     .click();
   await expect(incompatible.getByRole("status")).toContainText(
     "Exercise skipped",
@@ -703,6 +718,9 @@ test("keeps the full live workout usable through warm-up, skip, replace, continu
     name: "Save workout",
     exact: true,
   });
+  await finishDialog
+    .getByLabel("Why is the remaining planned work not being completed?")
+    .selectOption("user_choice");
   await expectReachableTarget(save);
   await save.click();
   await expect(page).toHaveURL(/\/history\/[0-9a-f-]+\?finished=1$/);

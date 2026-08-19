@@ -109,6 +109,9 @@ test("recovers a six-day interruption without rewriting source timestamps", asyn
   const activeMinutes = finishDialog.getByTestId("owner-reported-active-minutes");
   await activeMinutes.fill("60");
   await expect(finishDialog).toContainText("Active time: 60 min · owner reported");
+  await finishDialog
+    .getByLabel("Why is the remaining planned work not being completed?")
+    .selectOption("interruption");
   await expectTouchTarget(save);
   await save.click();
   await expect(page).toHaveURL(new RegExp(`/history/${sessionId}\\?finished=1$`));

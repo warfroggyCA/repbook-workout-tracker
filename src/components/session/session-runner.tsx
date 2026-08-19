@@ -184,22 +184,9 @@ import {
 import { createUpdatingSessionEquipmentProjection } from "@/lib/session-equipment-requirements";
 import {
   INCOMPLETE_SESSION_REASONS,
+  INCOMPLETE_SESSION_REASON_LABELS,
   type IncompleteSessionReason,
 } from "@/lib/session-completion-semantics";
-
-const INCOMPLETE_SESSION_REASON_LABELS: Record<
-  IncompleteSessionReason,
-  string
-> = {
-  time_limit_reached: "Session time limit reached",
-  fatigue: "Fatigue",
-  pain_discomfort: "Pain or discomfort",
-  equipment_unavailable_incompatible: "Equipment unavailable or incompatible",
-  user_choice: "Stopped by choice",
-  technical_app_issue: "Technical or app issue",
-  interruption: "Interruption",
-  program_change: "Program changed during the session",
-};
 
 function incompleteSessionReasonIsValid(
   value: unknown,
@@ -496,6 +483,12 @@ function removeAppendSetRecovery(
 
 type LegacySkipReason = "time" | "pain" | "equipment" | "other";
 type SkipRecoveryReason = LegacySkipReason | IncompleteSessionReason;
+
+function skipRecoveryReasonLabel(reason: SkipRecoveryReason) {
+  return incompleteSessionReasonIsValid(reason)
+    ? INCOMPLETE_SESSION_REASON_LABELS[reason].toLowerCase()
+    : reason;
+}
 
 type SkipRecoveryMarker = {
   exerciseId: string;
@@ -961,7 +954,7 @@ export function SessionRunner(props: SessionRunnerProps) {
           unconfirmed
           ? {
               exerciseId: linkedExercise.id,
-              message: `Repbook could not confirm the ${storedMarker.reason} skip after the reload. Review the exercise, then try skipping again or return to the current set.`,
+              message: `Repbook could not confirm the ${skipRecoveryReasonLabel(storedMarker.reason)} skip after the reload. Review the exercise, then try skipping again or return to the current set.`,
             }
           : null,
       );
@@ -996,7 +989,7 @@ export function SessionRunner(props: SessionRunnerProps) {
             failSkipRecovery(
               storedMarker.exerciseId,
               storedMarker.reason,
-              `${result.message} Review the ${storedMarker.reason} skip, then try again or return to the current set.`,
+              `${result.message} Review the ${skipRecoveryReasonLabel(storedMarker.reason)} skip, then try again or return to the current set.`,
             );
             if (result.code === "skip_stale") router.refresh();
             return;
@@ -1029,7 +1022,7 @@ export function SessionRunner(props: SessionRunnerProps) {
           failSkipRecovery(
             storedMarker.exerciseId,
             storedMarker.reason,
-            `Repbook could not confirm the ${storedMarker.reason} skip after the reload. Review the exercise, then try again or return to the current set.`,
+            `Repbook could not confirm the ${skipRecoveryReasonLabel(storedMarker.reason)} skip after the reload. Review the exercise, then try again or return to the current set.`,
           );
         });
       }
@@ -4168,7 +4161,7 @@ export function SessionRunner(props: SessionRunnerProps) {
               failSkipRecovery(
                 exercise.id,
                 reason,
-                `Repbook did not confirm the ${reason} skip. Review the exercise, then try again or return to the current set.`,
+                `Repbook did not confirm the ${skipRecoveryReasonLabel(reason)} skip. Review the exercise, then try again or return to the current set.`,
               );
               if (code === "skip_stale") router.refresh();
               return true;

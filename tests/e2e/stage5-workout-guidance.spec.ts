@@ -118,7 +118,7 @@ async function skipCurrentSet(dock: Locator) {
     .toBe(true);
   await skipSet.click();
   const dialog = page.getByRole("dialog", { name: /^Skip set / });
-  await dialog.getByLabel("Reason").selectOption("time");
+  await dialog.getByLabel("Reason").selectOption("time_limit_reached");
   await dialog.getByRole("button", { name: "Skip item", exact: true }).click();
   await expect(dialog).toHaveCount(0);
   await expect

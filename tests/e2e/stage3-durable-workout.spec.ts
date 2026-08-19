@@ -280,7 +280,7 @@ test("publishes and preserves durable warm-up and grouped workout outcomes", asy
   const workingSkip = page.getByRole("dialog", {
     name: "Skip set 1 of Barbell Overhead Press?",
   });
-  await workingSkip.getByLabel("Reason").selectOption("pain");
+  await workingSkip.getByLabel("Reason").selectOption("pain_discomfort");
   await workingSkip
     .getByLabel("Optional note")
     .fill("Shoulder discomfort during setup.");
@@ -347,6 +347,9 @@ test("publishes and preserves durable warm-up and grouped workout outcomes", asy
   await expect(finish).toContainText(
     "Superset 1, round 1: 2 of 3 performed · 1 skipped",
   );
+  await finish
+    .getByLabel("Why is the remaining planned work not being completed?")
+    .selectOption("user_choice");
   await screenshot(page, "07-early-finish-partial-group-truth.png");
   await finish.getByRole("button", { name: "Save workout", exact: true }).click();
   await expect(page).toHaveURL(/\/history\/[0-9a-f-]+\?finished=1$/);
@@ -359,7 +362,7 @@ test("publishes and preserves durable warm-up and grouped workout outcomes", asy
     "Planned: 8 reps · 45 lb · Move smoothly and brace before every rep.",
   );
   await expect(outcomes).toContainText("Barbell Overhead Press · set 1");
-  await expect(outcomes).toContainText("Reason: pain");
+  await expect(outcomes).toContainText("Reason: Pain or discomfort");
   await expect(outcomes).toContainText("Note: Shoulder discomfort during setup.");
   await expect(outcomes).toContainText("Group round 1 · member 2 · 15s rest after");
   await expect(outcomes).toContainText("Group round 1 · member 3 · 30s rest after");

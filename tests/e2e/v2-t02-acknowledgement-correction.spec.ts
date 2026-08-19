@@ -8,6 +8,14 @@ import {
 
 const SET_OUTBOX_KEY = "workout-tracker:workout-set-outbox:v1";
 
+function deferred() {
+  let resolvePromise!: () => void;
+  const promise = new Promise<void>((resolve) => {
+    resolvePromise = resolve;
+  });
+  return { promise, resolve: resolvePromise };
+}
+
 async function signInAndStartWorkout(page: Page) {
   await installNextDevelopmentRefreshControl(page);
   await page.goto("/sign-in");
@@ -69,7 +77,9 @@ test("keeps a set pending until acknowledgement, then reviews and retains a corr
   const plank = page.getByRole("region", { name: "RKC Plank" });
   await plank.getByRole("button", { name: /RKC Plank/ }).click();
 
-  let delayNextAction = true;
+  let delayNextAction = false;
+  const releaseNextAction = deferred();
+  const nextActionHeld = deferred();
   await page.route("**/*", async (route) => {
     const request = route.request();
     if (
@@ -78,18 +88,27 @@ test("keeps a set pending until acknowledgement, then reviews and retains a corr
       request.headers()["next-action"]
     ) {
       delayNextAction = false;
-      await new Promise((resolve) => setTimeout(resolve, 1_250));
+      nextActionHeld.resolve();
+      await releaseNextAction.promise;
     }
     await route.continue();
   });
 
   await plank.getByLabel("Duration in seconds").fill("45");
-  await plank.getByRole("button", { name: "Log set", exact: true }).click();
-  await expect(plank.getByRole("status")).toContainText("Saving");
+  // Arm the delay only for the submission under test. Background server
+  // actions can otherwise consume it before Log set is clicked in slower CI.
+  delayNextAction = true;
+  const logSetClick = plank
+    .getByRole("button", { name: "Log set", exact: true })
+    .click();
+  await nextActionHeld.promise;
   await expect(plank.getByRole("button", { name: "Correct set" })).toHaveCount(0);
-  await expect(plank).toContainText("1/1 done · Workout only");
+  await expect(plank).toContainText("0/1 done · 1 saving · Workout only");
   const plankDisclosure = plank.getByRole("button", { name: /RKC Plank/ });
   await expect(plankDisclosure).toHaveAttribute("aria-expanded", "false");
+  releaseNextAction.resolve();
+  await logSetClick;
+  await expect(plank).toContainText("1/1 done · Workout only");
   const guidance = page.getByRole("region", {
     name: "Workout progress and upcoming work",
   });
