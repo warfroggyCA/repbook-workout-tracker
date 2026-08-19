@@ -21,6 +21,18 @@ type PerSideSumsResult = {
   truncated: boolean;
 };
 
+function preferredPlateList(candidate: number[], current: number[]): boolean {
+  if (candidate.length !== current.length) {
+    return candidate.length < current.length;
+  }
+  for (let index = 0; index < candidate.length; index += 1) {
+    if (candidate[index] !== current[index]) {
+      return candidate[index] > current[index];
+    }
+  }
+  return false;
+}
+
 /** A deterministic, bounded set of achievable per-side sums. */
 function perSideSums(plates: PlateMathConfig["plates"]): PerSideSumsResult {
   const sums = new Map<number, number[]>([[0, []]]);
@@ -33,12 +45,19 @@ function perSideSums(plates: PlateMathConfig["plates"]): PerSideSumsResult {
     for (const [sum, combo] of current) {
       for (let n = 1; n <= countPerSide; n++) {
         const next = round2(sum + denomination * n);
-        if (sums.has(next)) continue;
+        const candidate = [...combo, ...Array(n).fill(denomination)];
+        const existing = sums.get(next);
+        if (existing) {
+          if (preferredPlateList(candidate, existing)) {
+            sums.set(next, candidate);
+          }
+          continue;
+        }
         if (sums.size >= MAX_PLATE_SUM_ENTRIES) {
           truncated = true;
           break enumeration;
         }
-        sums.set(next, [...combo, ...Array(n).fill(denomination)]);
+        sums.set(next, candidate);
       }
     }
   }

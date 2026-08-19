@@ -17,6 +17,13 @@ export function shouldShowMissingWarmupMessage(input: {
   return !input.dayWarmupNotes && !input.hasStructuredWarmup;
 }
 
+export function restTimerSecondsAfterQueuedSet(input: {
+  plannedRestSeconds: number | null | undefined;
+  pendingActionCount: number;
+}): number | null | undefined {
+  return input.pendingActionCount > 1 ? input.plannedRestSeconds : null;
+}
+
 export type RuntimeSetSaveState = "saving" | "retrying";
 
 export function queuedSetSaveState(

@@ -454,12 +454,15 @@ owner gesture that durably queues a working set. It stores a stable timer ID,
 the workout/exercise/occurrence/client command identity, observed start,
 absolute end deadline, original duration, phase, and idempotent cue state. The
 display always derives remaining time from `endsAt - Date.now()`; intervals only
-refresh presentation. Server acknowledgement enriches that same timer with the
-completed-set ID without resetting its deadline. A delayed acknowledgement may
-clear only the timer associated with its own client command, never a newer
-timer. Saved occurrence evidence still classifies positive rest as straight-set,
-between-member, or between-round rest; zero means explicitly no rest and null
-means unknown rest.
+refresh presentation. The status bar describes that source-bound timer in terms
+of the next actionable destination so an exercise boundary is explicit. When
+the queued set exhausts the actionable ledger, no timer is created and the
+status bar moves directly to ready-to-finish. Server acknowledgement enriches
+an existing timer with the completed-set ID without resetting its deadline. A
+delayed acknowledgement may clear only the timer associated with its own client
+command, never a newer timer. Saved occurrence evidence still classifies
+positive rest as straight-set, between-member, or between-round rest; zero
+means explicitly no rest and null means unknown rest.
 
 Group, member, and round progress is derived from the same occurrence outcomes,
 not from a second execution state. Fully performed work is resolved; a fully
@@ -1113,9 +1116,12 @@ Unknown, unavailable, and incompatible rows stay visible and never block the
 workout. Exact load, plate, stack, attachment, and geometry guidance remains
 exercise-local and uses the retained prescribed target when available, so a
 reviewed bar or plate-loaded machine can show setup-stage plate math before the
-performed value is entered. Only the current exercise and unknown, unavailable,
-incompatible, pending, failed, or stale setup evidence stays expanded, while
-ordinary future setup panels use keyboard-native disclosure.
+performed value is entered. When more than one available plate combination
+loads the exact same weight, the plate engine minimizes plate count first and
+then prefers heavier denominations, while still respecting the retained plate
+inventory. Only the current exercise and unknown, unavailable, incompatible,
+pending, failed, or stale setup evidence stays expanded, while ordinary future
+setup panels use keyboard-native disclosure.
 
 Routine import does not silently choose between materially different loading
 variants that share a family label. An unqualified name such as `Lat Pulldown`

@@ -85,6 +85,30 @@ describe("WorkoutStatusBar", () => {
     expect(html).toContain("row-start-2");
   });
 
+  it("names the action the rest period is preparing for", () => {
+    const html = renderToStaticMarkup(
+      <WorkoutStatusBar
+        action={{
+          kind: "rest",
+          actionId: "rest-1",
+          sequenceIdx: 0,
+          phase: "running",
+          restKind: "straight_set",
+          totalSec: 75,
+          source: null,
+          destination: action,
+        }}
+        exercise={exercise}
+        timer={{ phase: "running" } as never}
+        restRemainingSec={75}
+        {...callbacks}
+      />,
+    );
+
+    expect(html).toContain("Resting before Barbell Squat, set 2");
+    expect(html).not.toContain("Rest after");
+  });
+
   it("shows an explicitly visual-only timer mode instead of implying sound", () => {
     const html = renderToStaticMarkup(
       <WorkoutStatusBar

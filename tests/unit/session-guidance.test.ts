@@ -149,6 +149,62 @@ describe("session action labels", () => {
       exerciseName: "Barbell Bench Press",
     })).toBe("Barbell Bench Press — preparation set: Empty bar ×10");
   });
+
+  it("describes rest by the next workout action instead of the completed set", () => {
+    const item = exercise("rest-destination", {
+      sets: [set("saved-one")],
+    });
+    const occurrences = [
+      occurrence("set-one", item.id, 0, {
+        kindOrdinal: 0,
+        outcome: "completed",
+        completedSetId: "saved-one",
+      }),
+      occurrence("set-two", item.id, 1, { kindOrdinal: 1 }),
+    ];
+    const restTimer = {
+      version: 1 as const,
+      generationId: "rest-destination",
+      revision: 0,
+      ownerId: "owner",
+      sessionId: "session",
+      startedAt: 100_000,
+      sourceSessionExerciseId: item.id,
+      sourceOccurrenceId: "set-one",
+      sourceClientKey: null,
+      sourceCompletedSetId: "saved-one",
+      phase: "running" as const,
+      endsAt: 160_000,
+      totalSec: 60,
+      readyAt: null,
+      completionContext: null,
+      completionCueOutcome: null,
+      attemptedMilestones: [],
+    };
+    const running = projectSessionGuidance({
+      exercises: [item],
+      exerciseGroups: noGroups,
+      equipmentSetups: {},
+      occurrences,
+      restTimer,
+    });
+    const ready = projectSessionGuidance({
+      exercises: [item],
+      exerciseGroups: noGroups,
+      equipmentSetups: {},
+      occurrences,
+      restTimer: { ...restTimer, phase: "ready", readyAt: 160_000 },
+    });
+
+    expect(running.currentAction?.kind).toBe("rest");
+    expect(formatSessionGuidanceAction(running.currentAction!)).toBe(
+      "Resting before Exercise rest-destination, set 2",
+    );
+    expect(formatSessionGuidanceAction(ready.currentAction!)).toBe(
+      "Rest complete before Exercise rest-destination, set 2",
+    );
+    expect(running.completion.pendingActions).toBe(1);
+  });
 });
 
 describe("GUIDE-02 session guidance truth", () => {
@@ -939,6 +995,7 @@ describe("V2 T05 execution semantics", () => {
     expect(projection.completion).toMatchObject({
       state: "in_progress",
       pendingOccurrences: 1,
+      pendingActions: 0,
     });
   });
 
@@ -958,6 +1015,7 @@ describe("V2 T05 execution semantics", () => {
     expect(projection.completion).toEqual({
       state: "ready_to_finish",
       pendingOccurrences: 0,
+      pendingActions: 0,
       limitedEvidenceOccurrences: 1,
       evidenceLimited: true,
     });

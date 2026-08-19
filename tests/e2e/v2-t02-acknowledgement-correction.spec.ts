@@ -112,7 +112,9 @@ test("keeps a set pending until acknowledgement, then reviews and retains a corr
   const guidance = page.getByRole("region", {
     name: "Workout progress and upcoming work",
   });
-  await expect(guidance).toContainText("Now: Rest after RKC Plank, set 1");
+  await expect(guidance).toContainText(
+    "Now: Resting before Barbell Back Squat, set 1",
+  );
   await expect(guidance).toContainText("Next: Barbell Back Squat, set 1");
   await plankDisclosure.click();
   await expect(plankDisclosure).toHaveAttribute("aria-expanded", "true");
