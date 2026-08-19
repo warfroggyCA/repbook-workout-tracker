@@ -85,7 +85,7 @@ export default async function EditActivityPage(props: EditActivityPageProps) {
               title: activity.title,
               startedAtISO: activity.startedAt.toISOString(),
               timezone: activity.timezone,
-              durationMinutes: activity.durationSeconds / 60,
+              durationSeconds: activity.durationSeconds,
               distanceValue:
                 original.distanceValue ?? activity.distanceKm ?? null,
               distanceUnit: original.distanceUnit ?? "km",

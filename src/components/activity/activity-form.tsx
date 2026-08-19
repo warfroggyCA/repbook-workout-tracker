@@ -18,9 +18,11 @@ import {
   ACTIVITY_TYPES,
   activityUsesSpeed,
   dateTimeLocalInZoneToDate,
+  formatActivityDurationInput,
   formatActivityPace,
   formatActivitySpeed,
   formatDateTimeLocalInZone,
+  parseActivityDurationInput,
   type ActivityInput,
   type ActivityIntensity,
   type ActivityType,
@@ -28,15 +30,17 @@ import {
   type ElevationUnit,
 } from "@/lib/activities";
 
+type ExactActivityInput = Extract<ActivityInput, { durationSeconds: number }>;
 export type ActivityFormInitialValues = Omit<
-  ActivityInput,
+  ExactActivityInput,
   | "durationMinutes"
+  | "durationSeconds"
   | "distanceValue"
   | "elevationValue"
   | "averageHeartRateBpm"
   | "energyKcal"
 > & {
-  durationMinutes: number;
+  durationSeconds: number;
   distanceValue: number | null;
   elevationValue: number | null;
   averageHeartRateBpm: number | null;
@@ -109,8 +113,10 @@ function ActivityFormFields({
         )
       : nowForDateTimeInput()
   );
-  const [durationMinutes, setDurationMinutes] = useState(
-    initialValues ? String(initialValues.durationMinutes) : ""
+  const [duration, setDuration] = useState(
+    initialValues
+      ? formatActivityDurationInput(initialValues.durationSeconds)
+      : ""
   );
   const [distanceValue, setDistanceValue] = useState(
     initialValues?.distanceValue == null
@@ -146,15 +152,15 @@ function ActivityFormFields({
   const [pending, startTransition] = useTransition();
 
   const pacePreview = useMemo(() => {
-    const minutes = Number(durationMinutes);
+    const durationSeconds = parseActivityDurationInput(duration);
     const distance = Number(distanceValue);
-    if (!(minutes > 0) || !(distance > 0)) return null;
+    if (durationSeconds == null || !(distance > 0)) return null;
     const distanceKm = distanceUnit === "mi" ? distance * 1.609344 : distance;
-    const secondsPerKm = (minutes * 60) / distanceKm;
+    const secondsPerKm = durationSeconds / distanceKm;
     return activityUsesSpeed(activityType)
       ? formatActivitySpeed(secondsPerKm)
       : formatActivityPace(secondsPerKm);
-  }, [activityType, distanceUnit, distanceValue, durationMinutes]);
+  }, [activityType, distanceUnit, distanceValue, duration]);
 
   function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -168,13 +174,18 @@ function ActivityFormFields({
       setError("Choose a valid activity date and time.");
       return;
     }
+    const durationSeconds = parseActivityDurationInput(duration);
+    if (durationSeconds == null) {
+      setError("Enter duration as minutes or minutes:seconds, such as 37:15.");
+      return;
+    }
 
     const input: ActivityInput = {
       activityType,
       title: title.trim() || null,
       startedAtISO: startedAt.toISOString(),
       timezone,
-      durationMinutes: Number(durationMinutes),
+      durationSeconds,
       distanceValue: optionalNumber(distanceValue),
       distanceUnit,
       intensity: intensity || null,
@@ -240,19 +251,24 @@ function ActivityFormFields({
           </p>
         </div>
         <div className="flex flex-col gap-2">
-          <Label htmlFor="activity-duration">Duration (minutes)</Label>
+          <Label htmlFor="activity-duration">
+            Duration (minutes or minutes:seconds)
+          </Label>
           <Input
             id="activity-duration"
-            type="number"
+            type="text"
             inputMode="numeric"
-            min={1}
-            max={10_080}
-            step={1}
+            maxLength={8}
+            pattern="[0-9]+(?::[0-5][0-9])?"
             required
-            value={durationMinutes}
-            onChange={(event) => setDurationMinutes(event.target.value)}
-            placeholder="42"
+            aria-describedby="activity-duration-help"
+            value={duration}
+            onChange={(event) => setDuration(event.target.value)}
+            placeholder="37:15"
           />
+          <p id="activity-duration-help" className="text-xs text-muted-foreground">
+            Use 37:15 for 37 minutes 15 seconds. Whole minutes are also accepted.
+          </p>
         </div>
         <div className="flex flex-col gap-2">
           <Label htmlFor="activity-distance">Distance (optional)</Label>

@@ -1228,6 +1228,21 @@ explicitly unknown unless a future owner-facing writer stores total, per-side,
 alternating-total, or hold meaning. Reports keep their raw values visible, state
 the missing basis, and exclude unsupported target/progression conclusions.
 
+Independent manual activities retain exact duration seconds. The current
+activity form accepts whole minutes or minute-and-second precision and submits
+exact seconds; the action continues to accept the earlier whole-minute request
+shape for cached-client compatibility, but rejects both representations in one
+request. This changes no table or snapshot contract. Activity detail and the
+training brief preserve a non-minute remainder rather than rounding it away.
+
+Retrospective performed-set duration remains a different fact from workout
+active duration. The retrospective UI directs a standalone timed activity to
+`/activity/new` and labels exercise duration as a set measurement. Recording a
+timed set does not populate, sum, correct, or backfill the session
+`active_duration_*` tuple. A genuine retrospective workout can still use its
+separate exact-start and optional workout-duration controls; unknown session
+duration remains excluded from duration analysis.
+
 `reporting-exercise-family/1` groups frozen exact variant labels into broad
 movement families only for exposure context. Exact exercise identity remains
 the progression, target, trend, and record unit. Current substitutions or

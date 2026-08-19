@@ -655,6 +655,18 @@ describe("training-report deterministic semantics", () => {
       notableOccurrenceIds: ["pain"],
       expandDetails: true,
     });
+
+    const unresolved = summarizeWarmups([
+      warmup("unresolved", { outcome: "historical_unknown" }),
+    ]);
+    expect(unresolved).toMatchObject({
+      planned: 1,
+      completed: 0,
+      historicalUnknown: 1,
+    });
+    expect(formatWarmupSummary(unresolved)).toBe(
+      "Warm-up: 0 of 1 planned element completed. 1 historical outcome is unknown.",
+    );
   });
 
   it("requires evidence-linked, bounded, deterministic Coach Summary sections", () => {

@@ -201,6 +201,57 @@ one session; tied causes; low reason coverage; historical rows with current
 catalog conflicts; unclassified exercises; per-side ambiguity; warm-up notes
 or pain; empty/stale/manual activity feeds; and retry after reload.
 
+### Owner-evidence addendum: timed activity versus workout duration
+
+A performed set duration and whole-workout active duration are independent
+facts. A retrospective exercise can retain an exact distance and set duration
+while the session's active-duration tuple remains explicitly unknown. Reporting
+must show both facts without copying the set duration into the workout, and no
+migration, backfill, correction, or current-catalog inference may reinterpret an
+existing record.
+
+The independent-activity table already stores duration in exact seconds, but
+the current manual activity form and action accept only whole minutes. Extend
+that input additively so new clients can submit exact seconds while cached or
+older clients that submit integer minutes remain valid. Reject requests that
+supply both representations or neither. This is an API/form compatibility
+change only: it adds no column, migration, snapshot field, recovery obligation,
+or strength-progression input.
+
+Use a synthetic standalone walking fixture, with values distinct from owner
+evidence, to prove that:
+
+- the activity form accepts minute-and-second precision and persists the exact
+  seconds;
+- distance and pace use that exact duration;
+- the independent-activity detail and training brief retain the precise
+  duration;
+- no workout session is created, so the workout active-duration-unavailable
+  warning is absent; and
+- an equivalent retrospective workout fixture retains its performed set
+  distance/duration while the workout active duration stays unknown and
+  excluded from duration analysis.
+
+The retrospective UI should lead a standalone walk, run, or similar dated
+activity to **Record activity**. It must also state that a set's duration does
+not establish whole-workout active duration. If the entry genuinely represents
+a workout, the existing exact-start/optional-workout-duration controls remain
+the explicit way to supply session timing; Repbook must not infer it by summing
+or selecting set durations in an arbitrary multi-set workout.
+
+The Day Three warm-up complaint is a separate execution-selection problem.
+This reporting layer correctly prevents an uncompleted occurrence from becoming
+performed evidence, but it cannot prove that the owner declined a warm-up:
+`skipped`, `session ended`, and `historical outcome unknown` do not mean
+`not selected for this workout`. Do not manufacture a skip or user-choice fact.
+The smallest safe follow-up is an explicit workout-level preparation selection
+contract that preserves authored Program warm-up intent, records which elements
+the owner chose for this session before they can block the upcoming-action
+queue, and leaves unchosen elements non-performed without rewriting completed
+history. That follow-up requires its own active-workout, retry/reload, session
+compiler, History/reporting, snapshot/restore, and mobile-browser acceptance
+matrix and is not implemented in this reporting branch.
+
 ## 17. Rollout sequence
 
 1. Land pure reporting semantics and focused tests.
@@ -271,3 +322,14 @@ or pain; empty/stale/manual activity feeds; and retry after reload.
 23. Additive migration, old-client behavior, backup/export/restore round trips,
     focused semantic tests, broader regressions, build, and representative
     browser verification all pass before the branch is proposed for merge.
+24. A synthetic independent activity accepts minute-and-second precision,
+    persists exact seconds, renders that precision in its detail/report output,
+    and creates no workout-duration warning.
+25. The same synthetic measurement recorded as a retrospective performed set
+    remains visible while workout active duration stays unknown; no set value is
+    promoted, summed, backfilled, or silently reinterpreted as session duration.
+26. Current exact-second activity input and legacy whole-minute activity input
+    are both accepted, while an ambiguous request containing both is rejected.
+27. Retrospective entry visibly directs standalone timed activities to
+    **Record activity** and explains that set duration and workout active
+    duration are separate facts.

@@ -2,6 +2,7 @@ import { z } from "zod";
 import {
   ACTIVITY_INTENSITIES,
   ACTIVITY_TYPES,
+  MAX_ACTIVITY_DURATION_SECONDS,
   type ActivityInput,
 } from "@/lib/activities";
 
@@ -33,7 +34,13 @@ export const activityInputSchema = z.object({
         return false;
       }
     }, "Choose a valid timezone."),
-  durationMinutes: z.number().int().min(1).max(10_080),
+  durationSeconds: z
+    .number()
+    .int()
+    .min(1)
+    .max(MAX_ACTIVITY_DURATION_SECONDS)
+    .optional(),
+  durationMinutes: z.number().int().min(1).max(10_080).optional(),
   distanceValue: z.number().finite().positive().max(10_000).nullable(),
   distanceUnit: z.enum(["km", "mi"]),
   intensity: z.enum(intensityIds).nullable(),
@@ -42,6 +49,16 @@ export const activityInputSchema = z.object({
   averageHeartRateBpm: z.number().int().min(20).max(260).nullable(),
   energyKcal: z.number().finite().positive().max(100_000).nullable(),
   notes: z.string().trim().max(4_000).nullable(),
+}).superRefine((value, context) => {
+  const supplied = Number(value.durationSeconds != null) +
+    Number(value.durationMinutes != null);
+  if (supplied !== 1) {
+    context.addIssue({
+      code: "custom",
+      path: ["durationSeconds"],
+      message: "Provide one activity duration in exact seconds or whole minutes.",
+    });
+  }
 });
 
 export type NormalizedActivity = ReturnType<typeof normalizeActivityInput>;
@@ -76,7 +93,7 @@ export function normalizeActivityInput(input: ActivityInput, now = new Date()) {
     throw new Error("Activities cannot be recorded in the future.");
   }
 
-  const durationSeconds = parsed.durationMinutes * 60;
+  const durationSeconds = parsed.durationSeconds ?? parsed.durationMinutes! * 60;
   const distanceKm =
     parsed.distanceValue == null
       ? null

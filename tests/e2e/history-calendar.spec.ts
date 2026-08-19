@@ -39,12 +39,15 @@ async function signIn(page: Page, email: string) {
 async function recordActivity(
   page: Page,
   title: string,
-  localStart: string
+  localStart: string,
+  duration = "30",
 ) {
   await page.goto("/activity/new");
   await page.getByLabel("Title (optional)").fill(title);
   await page.getByLabel("Date and start time").fill(localStart);
-  await page.getByLabel("Duration (minutes)").fill("30");
+  await page
+    .getByLabel("Duration (minutes or minutes:seconds)")
+    .fill(duration);
   const save = page.getByRole("button", {
     name: "Record activity",
     exact: true,
@@ -162,6 +165,22 @@ test("calendar-first History opens a recoverable retrospective entry flow", asyn
     page.getByRole("heading", {
       name: `Record workout on ${primaryLabel}`,
     }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", {
+      name: "Record standalone activity",
+      exact: true,
+    }),
+  ).toHaveAttribute("href", "/activity/new");
+  await expect(
+    page.getByText(
+      /set duration and whole-workout active duration remain separate facts/i,
+    ),
+  ).toBeVisible();
+  await expect(
+    page.getByText(
+      /choose Exact local start and enter its separate workout duration/i,
+    ),
   ).toBeVisible();
   await expect(page.getByText("Enter only facts you remember.")).toBeVisible();
   await page.getByRole("radio", { name: /Performed from Program/ }).click();
@@ -289,8 +308,11 @@ test("calendar-first History opens a recoverable retrospective entry flow", asyn
   await recordActivity(
     page,
     `H1 ${browserName} first activity`,
-    `${targetDate}T10:00`
+    `${targetDate}T10:00`,
+    "37:15",
   );
+  await expect(page.getByText("37 min 15 sec", { exact: true })).toBeVisible();
+  await expect(page.getByText(/Time and duration unknown/)).toHaveCount(0);
   await recordActivity(
     page,
     `H1 ${browserName} second activity`,

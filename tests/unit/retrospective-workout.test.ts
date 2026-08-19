@@ -23,7 +23,7 @@ import {
   restoreArchiveOperation,
 } from "@/services/archive";
 import { buildJsonBackup, buildSetsCsv } from "@/services/export";
-import { buildTrainingDigest } from "@/services/digest";
+import { buildTrainingDigest, renderCoachingBrief } from "@/services/digest";
 import {
   getHistoryCalendarRecords,
   getHistoryReport,
@@ -1011,6 +1011,79 @@ describe("retrospective workout service", () => {
         durationSeconds: 60,
       }),
     ]);
+  });
+
+  it("keeps a performed set duration separate from unknown workout active duration", async () => {
+    const [{ id: walkingExerciseId }] = await database.db
+      .insert(exercises)
+      .values({
+        name: "Synthetic walking activity",
+        activityClass: "conditioning",
+        movementPattern: "locomotion",
+        primaryMuscles: ["legs"],
+        metricType: "distance_duration",
+        loadType: "bodyweight",
+        loadSemantics: "bodyweight",
+      })
+      .returning({ id: exercises.id });
+    const reviewed: RetrospectiveWorkoutInput = input({
+      timing: { precision: "date_only" },
+    });
+    reviewed.exercises[0].exerciseId = walkingExerciseId;
+    const completed = reviewed.exercises[0].outcomes[0];
+    if (completed.outcome !== "completed") throw new Error("Fixture mismatch.");
+    completed.completedSet.weight = null;
+    completed.completedSet.weightUnit = null;
+    completed.completedSet.reps = null;
+    completed.completedSet.distanceKm = 3.6;
+    completed.completedSet.durationSeconds = 2_235;
+
+    await expect(
+      createRetrospectiveWorkout(database.db, userId, reviewed, {
+        now: () => now,
+      }),
+    ).resolves.toMatchObject({ ok: true, outcome: "created" });
+
+    const session = await database.db.query.workoutSessions.findFirst({
+      where: eq(workoutSessions.id, reviewed.sessionId),
+    });
+    expect(session).toMatchObject({
+      performedTimePrecision: "date_only",
+      activeDurationSemanticsVersion: null,
+      activeDurationSeconds: null,
+      activeDurationBasis: null,
+      excludeDurationFromAnalytics: true,
+    });
+    const [set] = await database.db
+      .select()
+      .from(completedSets)
+      .where(eq(completedSets.id, completed.completedSet.id));
+    expect(set).toMatchObject({
+      metricType: "distance_duration",
+      distanceKm: 3.6,
+      durationSeconds: 2_235,
+    });
+
+    const [report, digest] = await Promise.all([
+      getHistoryReport(database.db, userId, "all", 3, now),
+      buildTrainingDigest(
+        database.db,
+        userId,
+        new Date("2026-07-01T00:00:00.000Z"),
+        now,
+      ),
+    ]);
+    expect(
+      report.recentSessions.find((item) => item.id === reviewed.sessionId),
+    ).toMatchObject({ durationMin: null, durationExcluded: true });
+    expect(
+      digest.sessions.find((item) => item.id === reviewed.sessionId),
+    ).toMatchObject({ durationMin: null, durationExcludedFromPeriodAnalysis: true });
+    const brief = renderCoachingBrief(digest);
+    expect(brief).toContain("3.6 km · 37 min 15 sec duration");
+    expect(brief).toContain(
+      "no supported active duration is available; this session is excluded",
+    );
   });
 
   it("rejects invalid linked substitution identities and unsupported performed exercises", async () => {
