@@ -159,7 +159,7 @@ async function skipCurrentSet(page: Page) {
   await expect(skip).toBeEnabled();
   await clickCentered(page, skip);
   const dialog = page.getByRole("dialog", { name: /^Skip .+\?$/ });
-  await dialog.getByLabel("Reason").selectOption("time");
+  await dialog.getByLabel("Reason").selectOption("time_limit_reached");
   await dialog.getByRole("button", { name: "Skip item", exact: true }).click();
   await expect(dialog).toHaveCount(0);
   await expect.poll(async () => {

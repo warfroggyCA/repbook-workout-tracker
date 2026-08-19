@@ -56,6 +56,10 @@ import {
 } from "@/lib/training-report";
 import { workingSetDisplayPosition } from "@/lib/session-occurrences";
 import {
+  INCOMPLETE_SESSION_REASON_LABELS,
+  type IncompleteSessionReason,
+} from "@/lib/session-completion-semantics";
+import {
   LIMITATION_CAUSE_LABELS,
   TECHNIQUE_ISSUE_LABELS,
   type LimitationCause,
@@ -1260,7 +1264,12 @@ export default async function SessionDetailPage(
               const displayedOutcomeReason =
                 occurrence.resolutionSemanticsVersion === 1 &&
                 occurrence.resolutionReasonCode != null
-                  ? occurrence.resolutionReasonCode.replaceAll("_", " ")
+                  ? occurrence.resolutionReasonCode in
+                    INCOMPLETE_SESSION_REASON_LABELS
+                    ? INCOMPLETE_SESSION_REASON_LABELS[
+                        occurrence.resolutionReasonCode as IncompleteSessionReason
+                      ]
+                    : occurrence.resolutionReasonCode.replaceAll("_", " ")
                   : occurrence.outcomeReason != null
                     ? `${occurrence.outcomeReason.replaceAll("_", " ")} (legacy wording; cause unsupported)`
                     : null;

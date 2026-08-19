@@ -175,7 +175,7 @@ test("keeps warm-up actions singular, reversible, durable, and usable with minim
   let skippedRow = warmupRow(page.locator("#workout-warmup"), skippedLabel);
   await skippedRow.getByRole("button", { name: "Skip", exact: true }).click();
   dialog = page.getByRole("dialog");
-  await dialog.getByLabel("Reason").selectOption("time");
+  await dialog.getByLabel("Reason").selectOption("time_limit_reached");
   await dialog.getByLabel("Optional note").fill("Short session today");
   await dialog.getByRole("button", { name: "Skip item", exact: true }).click();
   await expect(dialog).toHaveCount(0);

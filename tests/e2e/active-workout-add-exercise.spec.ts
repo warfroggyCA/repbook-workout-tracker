@@ -403,10 +403,16 @@ test("refuses incomplete assistance, then preserves assisted work without false 
   await page
     .getByRole("button", { name: "Finish Workout", exact: true })
     .click();
+  await page
+    .getByLabel("Why is the remaining planned work not being completed?")
+    .selectOption("user_choice");
   await page.getByRole("button", { name: "Save workout", exact: true }).click();
   await expect(page).toHaveURL(/\/history\/[0-9a-f-]+\?finished=1$/);
   await expect(
-    page.getByText("Assistance: 40 lb · 8 reps", { exact: true }),
+    page.getByText(
+      "Assistance: 40 lb · 8 reps (repetition counting basis unknown)",
+      { exact: true },
+    ),
   ).toBeVisible();
 
   await page.goto("/history?view=exercises&range=all");

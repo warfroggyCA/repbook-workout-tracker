@@ -49,7 +49,7 @@ async function skipCurrentSet(page: Page) {
   await expect(skip).toBeEnabled();
   await skip.click();
   const dialog = page.getByRole("dialog", { name: /^Skip set .+\?$/ });
-  await dialog.getByLabel("Reason").selectOption("time");
+  await dialog.getByLabel("Reason").selectOption("time_limit_reached");
   await dialog.getByRole("button", { name: "Skip item", exact: true }).click();
   await expect(dialog).toHaveCount(0);
   await expect.poll(async () => {
@@ -132,6 +132,9 @@ test("keeps planned work authoritative around extra-before-plan and grouped work
   await fatigueThree.focus();
   await fatigueThree.press("Space");
   await expect(fatigueThree).toHaveAttribute("aria-pressed", "true");
+  await finish
+    .getByLabel("Why is the remaining planned work not being completed?")
+    .selectOption("user_choice");
   await finish.getByRole("button", { name: "Save workout", exact: true }).click();
   await expect(page).toHaveURL(/\/history\/[0-9a-f-]+\?finished=1$/);
   await expect(page.getByText(/extra set 1/i).first()).toBeVisible();

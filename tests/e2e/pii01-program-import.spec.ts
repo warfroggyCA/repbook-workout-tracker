@@ -197,6 +197,9 @@ test("reviews and publishes a multi-day Program into an ordered active workout",
   await expect(page.locator('[id^="logged-set-"]').first()).toContainText("60 lb");
 
   await page.getByRole("button", { name: /^(?:Review workout finish|Finish workout)$/ }).click();
+  await page
+    .getByLabel("Why is the remaining planned work not being completed?")
+    .selectOption("user_choice");
   await page.getByText("Optional note and fatigue", { exact: true }).click();
   await page.getByPlaceholder("Session note (optional) — how did it go?").fill("PII-01 synthetic journey");
   await page.getByRole("button", { name: "Save workout", exact: true }).click();

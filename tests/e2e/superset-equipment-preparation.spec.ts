@@ -62,7 +62,7 @@ async function skipCurrentSet(page: Page) {
   }));
   await card.getByRole("button", { name: "Skip set", exact: true }).click();
   const dialog = page.getByRole("dialog", { name: /^Skip set / });
-  await dialog.getByLabel("Reason").selectOption("time");
+  await dialog.getByLabel("Reason").selectOption("time_limit_reached");
   await dialog.getByRole("button", { name: "Skip item", exact: true }).click();
   await expect(dialog).toHaveCount(0);
   await expect
@@ -556,7 +556,7 @@ test("presents immutable superset order, truthful progress, and next-member equi
     .getByRole("button", { name: "Skip set", exact: true })
     .click();
   const groupSkip = page.getByRole("dialog", { name: /^Skip set / });
-  await groupSkip.getByLabel("Reason").selectOption("time");
+  await groupSkip.getByLabel("Reason").selectOption("time_limit_reached");
   await groupSkip
     .getByRole("button", { name: "Skip item", exact: true })
     .click();
