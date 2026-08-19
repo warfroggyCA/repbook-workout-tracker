@@ -585,7 +585,7 @@ test("presents immutable superset order, truthful progress, and next-member equi
   })).toEqual([{
     occurrenceId: currentOccurrenceId,
     operation: "skip",
-    reason: "time",
+    reason: "time_limit_reached",
     label: "Working set",
     status: "queued",
   }]);
