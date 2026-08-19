@@ -88,6 +88,9 @@ export async function syncNextOccurrenceMutation(
             expectedRevision: entry.expectedRevision,
             operation: entry.operation,
             reason: entry.reason,
+            ...(entry.reasonCode == null
+              ? {}
+              : { reasonCode: entry.reasonCode }),
             note: entry.note,
           }),
           actionDeadlineMs,

@@ -418,7 +418,7 @@ describe("workout lifecycle ownership and atomicity invariants", () => {
           weeklyReview: true,
         },
       },
-      { sessionId: started.sessionId },
+      { sessionId: started.sessionId, completionReason: "user_choice" },
       { now: () => new Date("2026-07-21T17:00:00.000Z") },
     );
 
@@ -603,6 +603,7 @@ describe("workout lifecycle ownership and atomicity invariants", () => {
           basis: "owner_reported",
           activeDurationSeconds: 3_600,
         },
+        completionReason: "interruption",
       },
       { now: () => new Date("2026-07-20T16:00:00.000Z") },
     );
@@ -651,6 +652,7 @@ describe("workout lifecycle ownership and atomicity invariants", () => {
           basis: "owner_reported",
           activeDurationSeconds: 0,
         },
+        completionReason: "user_choice",
       },
       { now: () => finishedAt },
     )).resolves.toMatchObject({ outcome: "completed" });
@@ -1742,7 +1744,12 @@ describe("workout lifecycle ownership and atomicity invariants", () => {
       completeWorkoutSession(
         database.db,
         user,
-        { sessionId, note: "Must survive", fatigue: 3 },
+        {
+          sessionId,
+          note: "Must survive",
+          fatigue: 3,
+          completionReason: "user_choice",
+        },
         {
           checkpoint: failAfterBoundary("after-completion-statement"),
         }
@@ -1752,7 +1759,12 @@ describe("workout lifecycle ownership and atomicity invariants", () => {
     const retry = await completeWorkoutSession(
       database.db,
       user,
-      { sessionId, note: "Must survive", fatigue: 3 }
+      {
+        sessionId,
+        note: "Must survive",
+        fatigue: 3,
+        completionReason: "user_choice",
+      }
     );
     expect(retry.alreadyFinished).toBe(true);
     expect(await database.db.select().from(sessionNotes)).toHaveLength(1);
@@ -1781,7 +1793,12 @@ describe("workout lifecycle ownership and atomicity invariants", () => {
       completeWorkoutSession(
         database.db,
         user,
-        { sessionId, note: "One note", fatigue: 3 },
+        {
+          sessionId,
+          note: "One note",
+          fatigue: 3,
+          completionReason: "user_choice",
+        },
         {
           checkpoint: async (boundary) => {
             if (boundary === "before-completion-statement") await ready();
@@ -1823,6 +1840,7 @@ describe("workout lifecycle ownership and atomicity invariants", () => {
         sessionId,
         note: "Must roll back",
         fatigue: 4,
+        completionReason: "user_choice",
       })
     ).rejects.toThrow();
 
@@ -2216,7 +2234,7 @@ describe("workout lifecycle ownership and atomicity invariants", () => {
           weeklyReview: true,
         },
       },
-      { sessionId: completed.sessionId },
+      { sessionId: completed.sessionId, completionReason: "user_choice" },
     );
     await expect(
       abandonWorkoutSession(database.db, userId, completed.sessionId),

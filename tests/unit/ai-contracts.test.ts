@@ -25,6 +25,7 @@ describe("log_parse schema (plan §13 contract 5)", () => {
     //  Skipped curls because I ran out of time."
     const parsed = logParseSchema.safeParse({
       data: {
+        semanticsVersion: 2,
         entries: [
           {
             kind: "sets",
@@ -36,7 +37,11 @@ describe("log_parse schema (plan §13 contract 5)", () => {
             ],
           },
           { kind: "pain", bodyPart: "shoulder", severity: null, rawExercise: "Bench" },
-          { kind: "skip", rawExercise: "curls", reason: "time" },
+          {
+            kind: "skip",
+            rawExercise: "curls",
+            reasonCode: "time_limit_reached",
+          },
         ],
       },
       confidence: 0.8,
@@ -53,6 +58,7 @@ describe("log_parse schema (plan §13 contract 5)", () => {
     expect(
       logParseSchema.safeParse({
         data: {
+          semanticsVersion: 2,
           entries: [
             { kind: "sets", rawExercise: "Bench", sets: [{ weight: 135, weightUnit: "lb", reps: 8, rpeHint: "brutal" }] },
           ],
@@ -63,6 +69,7 @@ describe("log_parse schema (plan §13 contract 5)", () => {
     expect(
       logParseSchema.safeParse({
         data: {
+          semanticsVersion: 2,
           entries: [{ kind: "pain", bodyPart: "shoulder", severity: 15, rawExercise: null }],
         },
         ...cleanEnvelope,
@@ -71,7 +78,9 @@ describe("log_parse schema (plan §13 contract 5)", () => {
   });
 
   it("rejects payloads missing the envelope", () => {
-    expect(logParseSchema.safeParse({ data: { entries: [] } }).success).toBe(false);
+    expect(logParseSchema.safeParse({
+      data: { semanticsVersion: 2, entries: [] },
+    }).success).toBe(false);
   });
 });
 

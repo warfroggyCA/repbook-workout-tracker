@@ -143,6 +143,22 @@ function isFakeEnabled(): boolean {
   );
 }
 
+function fakeTargetConclusion(status: string | undefined, eligible: boolean) {
+  if (eligible) {
+    return "The shared coverage, sample-size, and session-span gates pass.";
+  }
+  switch (status) {
+    case "incomplete_denominator":
+      return "The retained planned-outcome denominator is incomplete, so no overall attainment conclusion is supported.";
+    case "insufficient_sample_size":
+      return "The evaluable sample is too small for an overall attainment conclusion.";
+    case "insufficient_session_span":
+      return "The evaluable outcomes span too few sessions for an overall attainment conclusion.";
+    default:
+      return "Coverage is insufficient for an overall attainment conclusion.";
+  }
+}
+
 export function isAIAvailable(): boolean {
   return (
     !!optionalEnv("ANTHROPIC_API_KEY") ||
@@ -369,6 +385,20 @@ class FakeProvider implements AIProvider {
             currentPreference?: { sessionsPerWeek?: number };
           };
           targetOutcomes?: { atOrAboveRate?: number | null };
+          reporting?: {
+            targetAttainment?: {
+              coverage?: {
+                numerator?: number;
+                denominator?: number;
+                percentage?: number | null;
+              };
+              rawStatistic?: {
+                evaluable?: number;
+                atOrAbovePercentage?: number | null;
+              };
+              conclusion?: { eligible?: boolean; status?: string };
+            };
+          };
           fatigue?: unknown[];
           pain?: Array<{ severity?: number; bodyPart?: string }>;
           dataGaps?: string[];
@@ -376,7 +406,19 @@ class FakeProvider implements AIProvider {
       };
       const digest = context.trainingDigest;
       const sessionCount = digest?.cadence?.completedSessions ?? 0;
-      const targetHitRate = digest?.targetOutcomes?.atOrAboveRate;
+      const targetAttainment = digest?.reporting?.targetAttainment;
+      const targetCoverage = targetAttainment?.coverage;
+      const targetHitRate = targetAttainment?.rawStatistic?.atOrAbovePercentage;
+      const targetConclusionEligible =
+        targetAttainment?.conclusion?.eligible === true;
+      const targetConclusionDetail = fakeTargetConclusion(
+        targetAttainment?.conclusion?.status,
+        targetConclusionEligible,
+      );
+      const targetCoverageDetail =
+        targetCoverage?.denominator == null || targetCoverage.denominator === 0
+        ? "Target-attainment coverage is unavailable, so no attainment conclusion is supported."
+        : `Target-attainment coverage is ${targetCoverage.numerator ?? 0} of ${targetCoverage.denominator} ${targetAttainment?.conclusion?.status === "incomplete_denominator" ? "quantified retained planned" : "planned"} outcomes${targetCoverage.percentage == null ? "" : ` (${targetCoverage.percentage}%)`}. ${targetHitRate == null ? "No supported-subset percentage is available." : `Within the evaluable subset, ${targetHitRate}% were at or above target.`} ${targetConclusionDetail}`;
       const cadenceAverage = digest?.cadence?.averageSessionsPerCompleteWeek;
       const completeWeeks = digest?.cadence?.completeWeeks ?? 0;
       const currentPreference =
@@ -399,12 +441,14 @@ class FakeProvider implements AIProvider {
                 : "A baseline comes first",
             detail:
               sessionCount > 0
-                ? targetHitRate == null
-                  ? "There are completed sessions, but too few measurable targets to judge target consistency."
-                  : `${targetHitRate}% of working sets with measurable targets landed on target in this window.`
+                ? targetCoverageDetail
                 : "Complete a few workouts and add the finish-workout fatigue check-in to unlock useful comparisons.",
             tone:
-              targetHitRate != null && targetHitRate < 60 ? "watch" : "neutral",
+              targetConclusionEligible &&
+              targetHitRate != null &&
+              targetHitRate < 60
+                ? "watch"
+                : "neutral",
             evidence: [
               `${sessionCount} completed workout${sessionCount === 1 ? "" : "s"} in the 12-week review window`,
               ...(cadenceAverage == null
@@ -412,9 +456,15 @@ class FakeProvider implements AIProvider {
                 : [
                     `${cadenceAverage} sessions per complete calendar week across ${completeWeeks} complete weeks${currentPreference == null ? "" : `; current preference ${currentPreference}/week`}`,
                   ]),
-              ...(targetHitRate == null
+              ...(targetCoverage?.denominator == null ||
+              targetCoverage.denominator === 0
                 ? []
-                : [`${targetHitRate}% of supported planned-set comparisons landed at or above target`]),
+                : [
+                    `${targetCoverage.numerator ?? 0} of ${targetCoverage.denominator} planned outcomes were evaluable${targetCoverage.percentage == null ? "" : ` (${targetCoverage.percentage}%)`}`,
+                    ...(targetHitRate == null
+                      ? []
+                      : [`Within that subset, ${targetHitRate}% landed at or above target`]),
+                  ]),
             ],
           },
         ],
@@ -449,6 +499,17 @@ class FakeProvider implements AIProvider {
           trainingDigest?: {
             cadence?: { completedSessions?: number };
             targetOutcomes?: { atOrAboveRate?: number | null };
+            reporting?: {
+              targetAttainment?: {
+                coverage?: {
+                  numerator?: number;
+                  denominator?: number;
+                  percentage?: number | null;
+                };
+                rawStatistic?: { atOrAbovePercentage?: number | null };
+                conclusion?: { eligible?: boolean; status?: string };
+              };
+            };
             dataGaps?: string[];
           };
         };
@@ -456,8 +517,10 @@ class FakeProvider implements AIProvider {
       const sessionCount =
         input.context?.trainingDigest?.cadence?.completedSessions ?? 0;
       const sampleCount = input.context?.sampleData?.sessionCount ?? 0;
-      const targetHitRate =
-        input.context?.trainingDigest?.targetOutcomes?.atOrAboveRate;
+      const targetAttainment =
+        input.context?.trainingDigest?.reporting?.targetAttainment;
+      const targetCoverage = targetAttainment?.coverage;
+      const targetHitRate = targetAttainment?.rawStatistic?.atOrAbovePercentage;
       if (opts.task === "live_coaching") {
         const exercise = input.liveWorkout?.selectedExercise;
         const fixture = {
@@ -492,9 +555,21 @@ class FakeProvider implements AIProvider {
             : "There are not enough completed workouts to answer that from your own training yet. Log a few exposures with sets and effort, then ask again for a grounded comparison.",
         evidence: [
           `${sessionCount} completed workout${sessionCount === 1 ? "" : "s"} in the current review window`,
-          ...(targetHitRate == null
+          ...(targetCoverage?.denominator == null ||
+          targetCoverage.denominator === 0
             ? []
-            : [`${targetHitRate}% of supported planned-set comparisons landed at or above target`]),
+            : [
+                `${targetCoverage.numerator ?? 0} of ${targetCoverage.denominator} planned outcomes were evaluable${targetCoverage.percentage == null ? "" : ` (${targetCoverage.percentage}%)`}`,
+                ...(targetHitRate == null
+                  ? []
+                  : [`Within that subset, ${targetHitRate}% landed at or above target`]),
+                ...(targetAttainment?.conclusion?.eligible
+                  ? []
+                  : [fakeTargetConclusion(
+                      targetAttainment?.conclusion?.status,
+                      false,
+                    )]),
+              ]),
           ...(input.question ? [`Question reviewed: ${input.question}`] : []),
         ],
         dataGaps: input.context?.trainingDigest?.dataGaps ?? [],

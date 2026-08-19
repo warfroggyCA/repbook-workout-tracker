@@ -10,6 +10,7 @@ import { canonicalJson, sha256Hex } from "@/services/snapshot-crypto";
 import { workoutReplacementUnavailableReason } from "@/lib/exercise-replacements";
 import { getExerciseDiscoveryLibrary } from "@/services/exercise-discovery";
 import { actionableProgramDayWarmupItemsSql } from "@/services/program-warmup-compatibility";
+import { SESSION_COMPLETION_SEMANTICS_VERSION } from "@/lib/session-completion-semantics";
 
 export type RetrospectiveWorkoutDependencies = {
   now?: () => Date;
@@ -432,6 +433,52 @@ export async function createRetrospectiveWorkout(
           ${parsed.recordAnotherWorkout}
           OR EXISTS (SELECT 1 FROM duplicate_reservation)
         )
+    ), completion_classification AS MATERIALIZED (
+      SELECT
+        EXISTS (
+          SELECT 1
+          FROM reviewed_outcomes reviewed
+          WHERE reviewed.outcome->>'outcome' = 'legacy_unrecorded'
+        )
+        OR EXISTS (
+          SELECT 1
+          FROM owned_program
+          WHERE jsonb_array_length(owned_program.effective_warmup_items) > 0
+        )
+        OR EXISTS (
+          SELECT 1
+          FROM reviewed_exercises reviewed
+          JOIN workout_template_exercises slot
+            ON slot.id =
+               (reviewed.value->>'sourceTemplateExerciseId')::uuid
+          WHERE jsonb_array_length(slot.warmup_sets) > 0
+        ) AS has_unknown_outcomes,
+        EXISTS (
+          SELECT 1
+          FROM reviewed_outcomes reviewed
+          WHERE reviewed.outcome->>'outcome' = 'skipped'
+        )
+        OR EXISTS (
+          SELECT 1
+          FROM reviewed_exercises reviewed
+          LEFT JOIN workout_template_exercises slot
+            ON slot.id =
+               (reviewed.value->>'sourceTemplateExerciseId')::uuid
+           AND slot.workout_template_id = ${link?.templateId ?? null}::uuid
+          LEFT JOIN LATERAL (
+            SELECT active.sets
+            FROM exercise_prescriptions active
+            WHERE active.template_exercise_id = slot.id
+              AND active.superseded_by_id IS NULL
+            ORDER BY active.created_at DESC, active.id DESC
+            LIMIT 1
+          ) target ON true
+          WHERE slot.id IS NULL
+             OR slot.exercise_id <>
+                (reviewed.value->>'exerciseId')::uuid
+             OR jsonb_array_length(reviewed.value->'outcomes') >
+                coalesce(target.sets, 0)
+        ) AS has_plan_changes
     ), inserted_session AS (
       INSERT INTO workout_sessions (
         id, user_id, template_id, template_name, day_warmup_notes,
@@ -439,7 +486,8 @@ export async function createRetrospectiveWorkout(
         performed_time_precision, source_program_id, source_program_version_id,
         source_day_lineage_id, data_quality_flags,
         exclude_duration_from_analytics, status, started_at, timezone,
-        local_date, finished_at
+        local_date, finished_at, completion_semantics_version,
+        completion_state, completion_reason
       )
       SELECT
         ${parsed.sessionId}::uuid,
@@ -463,8 +511,22 @@ export async function createRetrospectiveWorkout(
         ${normalized.startedAt.toISOString()}::timestamptz,
         ${parsed.timezone},
         ${parsed.localDate}::date,
-        ${normalized.finishedAt?.toISOString() ?? null}::timestamptz
+        ${normalized.finishedAt?.toISOString() ?? null}::timestamptz,
+        CASE WHEN completion_classification.has_unknown_outcomes
+          THEN NULL::integer
+          ELSE ${SESSION_COMPLETION_SEMANTICS_VERSION}::integer
+        END,
+        CASE
+          WHEN completion_classification.has_unknown_outcomes THEN NULL::text
+          WHEN ${link == null}::boolean
+            THEN 'completed_without_prescription'
+          WHEN completion_classification.has_plan_changes
+            THEN 'completed_with_changes'
+          ELSE 'completed_as_prescribed'
+        END,
+        NULL::text
       FROM eligible
+      CROSS JOIN completion_classification
       LEFT JOIN owned_program ON true
       RETURNING id, user_id
     ), inserted_groups AS (
@@ -799,7 +861,8 @@ export async function createRetrospectiveWorkout(
         planned_reps_max, planned_load, planned_load_unit,
         planned_load_percent, planned_load_text, planned_rest_sec,
         planned_note, group_snapshot_id, group_round,
-        group_member_order_idx, outcome, outcome_reason, outcome_note,
+        group_member_order_idx, outcome, outcome_reason,
+        resolution_semantics_version, resolution_reason_code, outcome_note,
         resolved_at, completed_set_id
       )
       SELECT
@@ -824,6 +887,8 @@ export async function createRetrospectiveWorkout(
         NULL::integer,
         NULL::integer,
         'legacy_unrecorded',
+        NULL::text,
+        NULL::integer,
         NULL::text,
         NULL::text,
         NULL::timestamptz,
@@ -911,7 +976,15 @@ export async function createRetrospectiveWorkout(
              ELSE source.round_number END,
         source.occurrence_group_member_order_idx,
         source.outcome->>'outcome',
-        source.outcome->>'reason',
+        CASE WHEN source.outcome->>'outcome' = 'skipped'
+          THEN coalesce(
+            source.outcome->>'reasonCode',
+            source.outcome->>'reason'
+          )
+          ELSE NULL::text
+        END,
+        (source.outcome->>'resolutionSemanticsVersion')::integer,
+        source.outcome->>'reasonCode',
         source.outcome->>'note',
         CASE WHEN source.outcome->>'outcome' = 'legacy_unrecorded'
              THEN NULL::timestamptz ELSE statement_timestamp() END,

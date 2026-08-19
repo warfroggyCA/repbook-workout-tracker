@@ -69,8 +69,17 @@ function benchExercise(
   >,
 ) {
   return {
+    id: "bench-session-exercise",
+    targetSets: sets.length,
     modificationType: "as_planned" as const,
     skipReason: null,
+    prescribedSemanticsVersion: 1,
+    prescribedExerciseName: "Barbell Bench Press",
+    prescribedMetricType: "weight_reps" as const,
+    prescribedLoadType: "barbell",
+    prescribedLoadSemantics: "total",
+    prescribedCountingSemanticsVersion: 1,
+    prescribedCountingBasis: "not_applicable",
     exercise: {
       id: "bench",
       name: "Barbell Bench Press",
@@ -397,8 +406,8 @@ describe("summarizeHistory", () => {
       exercise: "Barbell Bench Press",
     });
     expect(report.families[0]).toMatchObject({
-      familyKey: "exercise:bench",
-      family: "Barbell Bench Press",
+      familyKey: "reporting-family:Chest Press",
+      family: "Chest Press",
     });
     expect(report.recovery).toMatchObject({
       averageFatigue: 3.5,

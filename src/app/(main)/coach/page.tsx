@@ -125,6 +125,15 @@ export default async function CoachPage() {
       columns: { id: true, templateName: true },
     }),
   ]);
+  const targetCoverageTotal =
+    report.overview.targetOutcomes.supported +
+    report.overview.targetOutcomes.unknown;
+  const targetCoveragePercent = targetCoverageTotal === 0
+    ? null
+    : Math.round(
+        (report.overview.targetOutcomes.supported / targetCoverageTotal) *
+          1_000,
+      ) / 10;
 
   const latestReviewRow = insightRows.find((row) =>
     ["manual_review", "weekly", "post_workout"].includes(row.kind)
@@ -732,13 +741,13 @@ export default async function CoachPage() {
               }
             />
             <Metric
-              label="Planned sets at or above"
-              value={
-                report.overview.targetOutcomes.atOrAboveRate == null
-                  ? "—"
-                  : `${report.overview.targetOutcomes.atOrAboveRate}%`
-              }
-              hint={`${report.overview.targetOutcomes.below} below · ${report.overview.targetOutcomes.at} at · ${report.overview.targetOutcomes.above} above · ${report.overview.targetOutcomes.unknown} unknown`}
+              label="Target-attainment coverage"
+              value={targetCoverageTotal === 0
+                ? "—"
+                : `${report.overview.targetOutcomes.supported}/${targetCoverageTotal}${report.overview.targetDenominatorComplete ? "" : " quantified"}`}
+              hint={targetCoveragePercent == null
+                ? "No planned outcomes available"
+                : `${targetCoveragePercent}% evaluable among quantified outcomes · supported subset ${report.overview.targetOutcomes.atOrAboveRate == null ? "has no statistic" : `${report.overview.targetOutcomes.atOrAboveRate}% at/above`}${report.overview.targetDenominatorComplete ? "" : " · full denominator incomplete; no overall conclusion"}`}
             />
             <Metric
               label="Avg. effort"

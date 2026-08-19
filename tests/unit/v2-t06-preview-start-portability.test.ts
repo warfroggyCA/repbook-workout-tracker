@@ -55,8 +55,8 @@ describe("Repbook v2 T06 Start portability", () => {
       new Date("2026-08-02T18:00:00.000Z"),
       "v2-t06-portability",
     );
-    expect(SNAPSHOT_SCHEMA_VERSION).toBe("34");
-    expect(captured.schemaVersion).toBe("34");
+    expect(SNAPSHOT_SCHEMA_VERSION).toBe("35");
+    expect(captured.schemaVersion).toBe("35");
     expect(
       (captured.tables.workout_sessions as Array<Record<string, unknown>>)
         .find((row) => row.id === started.sessionId),
@@ -177,7 +177,9 @@ describe("Repbook v2 T06 Start portability", () => {
             prescribed_exercise_name = NULL,
             prescribed_metric_type = NULL,
             prescribed_load_type = NULL,
-            prescribed_load_semantics = NULL
+            prescribed_load_semantics = NULL,
+            prescribed_counting_semantics_version = NULL,
+            prescribed_counting_basis = NULL
         WHERE id = ${sessionExercise.id}::uuid
       `);
     });
@@ -203,17 +205,12 @@ describe("Repbook v2 T06 Start portability", () => {
     expect(performedHistory.overview).toMatchObject({
       workingSets: 1,
       totalReps: 8,
-      loadedVolume: 800,
+      loadedVolume: 0,
       targetHitRate: null,
-      excludedMetricSets: 0,
+      excludedMetricSets: 1,
       semanticExclusions: [],
     });
-    expect(performedDigest.trends).toEqual([
-      expect.objectContaining({
-        exercise: currentCatalogName,
-        topSets: [expect.stringContaining("100 lb×8")],
-      }),
-    ]);
+    expect(performedDigest.trends).toEqual([]);
     expect(performedDigest.sessions[0]?.exercises[0]).toMatchObject({
       target: null,
       sets: expect.stringContaining("100 lb"),

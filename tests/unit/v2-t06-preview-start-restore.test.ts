@@ -137,10 +137,12 @@ describe("Repbook v2 T06 Start recovery", () => {
       delete exercise.prescribed_metric_type;
       delete exercise.prescribed_load_type;
       delete exercise.prescribed_load_semantics;
+      delete exercise.prescribed_counting_semantics_version;
+      delete exercise.prescribed_counting_basis;
     }
 
     const upgraded = upgradeSnapshotPayload(legacy);
-    expect(upgraded.schemaVersion).toBe("34");
+    expect(upgraded.schemaVersion).toBe("35");
     expect(
       (upgraded.tables.workout_sessions as Array<Record<string, unknown>>)
         .find((row) => row.id === started.sessionId),
@@ -155,6 +157,8 @@ describe("Repbook v2 T06 Start recovery", () => {
       prescribed_metric_type: null,
       prescribed_load_type: null,
       prescribed_load_semantics: null,
+      prescribed_counting_semantics_version: null,
+      prescribed_counting_basis: null,
     });
     expect(() => validateSnapshotPayload(upgraded, fixture.userId)).not.toThrow();
 

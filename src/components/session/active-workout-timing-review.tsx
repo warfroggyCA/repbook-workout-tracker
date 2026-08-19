@@ -20,6 +20,7 @@ type Props = {
   reviewRequired: boolean;
   choice: ActiveDurationChoice | null;
   ownerReportedMinutes: string;
+  readOnly?: boolean;
   onChoiceChange: (choice: ActiveDurationChoice) => void;
   onOwnerReportedMinutesChange: (value: string) => void;
 };
@@ -31,6 +32,7 @@ function ChoiceRow({
   name,
   onChange,
   value,
+  disabled = false,
 }: {
   checked: boolean;
   description: string;
@@ -38,15 +40,20 @@ function ChoiceRow({
   name: string;
   onChange: () => void;
   value: ActiveDurationChoice;
+  disabled?: boolean;
 }) {
   return (
-    <label className="flex min-h-11 cursor-pointer items-start gap-3 rounded-lg border bg-background px-3 py-2.5 outline-none has-[:focus-visible]:ring-3 has-[:focus-visible]:ring-ring/50">
+    <label className={cn(
+      "flex min-h-11 items-start gap-3 rounded-lg border bg-background px-3 py-2.5 outline-none has-[:focus-visible]:ring-3 has-[:focus-visible]:ring-ring/50",
+      disabled ? "cursor-not-allowed opacity-70" : "cursor-pointer",
+    )}>
       <input
         type="radio"
         className="mt-0.5 size-4 shrink-0"
         name={name}
         value={value}
         checked={checked}
+        disabled={disabled}
         onChange={onChange}
       />
       <span className="min-w-0">
@@ -65,6 +72,7 @@ export function ActiveWorkoutTimingReview({
   reviewRequired,
   choice,
   ownerReportedMinutes,
+  readOnly = false,
   onChoiceChange,
   onOwnerReportedMinutesChange,
 }: Props) {
@@ -131,6 +139,7 @@ export function ActiveWorkoutTimingReview({
             onChange={() => onChoiceChange("owner_reported")}
             label="Enter active time"
             description="Use the time you can personally confirm, excluding the interruption."
+            disabled={readOnly}
           />
           <ChoiceRow
             name={name}
@@ -139,6 +148,7 @@ export function ActiveWorkoutTimingReview({
             onChange={() => onChoiceChange("interruption_unknown")}
             label="Active time is unknown"
             description="Keep the workout, but exclude its duration from time-based insights."
+            disabled={readOnly}
           />
         </fieldset>
       ) : !interruptionSelected ? (
@@ -148,6 +158,7 @@ export function ActiveWorkoutTimingReview({
           size="sm"
           className="mt-2 min-h-11 w-full justify-start px-2"
           onClick={() => onChoiceChange("owner_reported")}
+          disabled={readOnly}
         >
           I was interrupted
         </Button>
@@ -163,6 +174,7 @@ export function ActiveWorkoutTimingReview({
             onChange={() => onChoiceChange("wall_clock_no_stale_signal")}
             label="Use wall-clock time"
             description="No long interruption affected this workout."
+            disabled={readOnly}
           />
           <ChoiceRow
             name={name}
@@ -171,6 +183,7 @@ export function ActiveWorkoutTimingReview({
             onChange={() => onChoiceChange("owner_reported")}
             label="Enter active time"
             description="Exclude the time you were away."
+            disabled={readOnly}
           />
           <ChoiceRow
             name={name}
@@ -179,6 +192,7 @@ export function ActiveWorkoutTimingReview({
             onChange={() => onChoiceChange("interruption_unknown")}
             label="Active time is unknown"
             description="Keep the workout without using its duration in insights."
+            disabled={readOnly}
           />
         </fieldset>
       )}
@@ -203,6 +217,7 @@ export function ActiveWorkoutTimingReview({
               type="number"
               className="min-h-11"
               value={ownerReportedMinutes}
+              disabled={readOnly}
               onChange={(event) =>
                 onOwnerReportedMinutesChange(event.currentTarget.value)
               }

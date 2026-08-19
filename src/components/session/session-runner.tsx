@@ -182,6 +182,31 @@ import {
   type ActiveSessionTiming,
 } from "@/lib/active-session-timing";
 import { createUpdatingSessionEquipmentProjection } from "@/lib/session-equipment-requirements";
+import {
+  INCOMPLETE_SESSION_REASONS,
+  type IncompleteSessionReason,
+} from "@/lib/session-completion-semantics";
+
+const INCOMPLETE_SESSION_REASON_LABELS: Record<
+  IncompleteSessionReason,
+  string
+> = {
+  time_limit_reached: "Session time limit reached",
+  fatigue: "Fatigue",
+  pain_discomfort: "Pain or discomfort",
+  equipment_unavailable_incompatible: "Equipment unavailable or incompatible",
+  user_choice: "Stopped by choice",
+  technical_app_issue: "Technical or app issue",
+  interruption: "Interruption",
+  program_change: "Program changed during the session",
+};
+
+function incompleteSessionReasonIsValid(
+  value: unknown,
+): value is IncompleteSessionReason {
+  return typeof value === "string" &&
+    INCOMPLETE_SESSION_REASONS.includes(value as IncompleteSessionReason);
+}
 
 function useActiveTiming(
   startedAtISO: string,
@@ -274,18 +299,25 @@ function appendSetRecoveryStorageKey(ownerId: string, sessionId: string) {
 }
 
 function finishRecoveryStorageKey(ownerId: string, sessionId: string) {
+  return `workout-tracker:finish-recovery:v2:${ownerId}:${sessionId}`;
+}
+
+function legacyFinishRecoveryStorageKey(ownerId: string, sessionId: string) {
   return `workout-tracker:finish-recovery:v1:${ownerId}:${sessionId}`;
 }
 
-type FinishRecoveryCommand = {
+type FinishRecoveryInput = {
   sessionId: string;
   note?: string;
   fatigue?: number;
+  completionReason?: IncompleteSessionReason;
   durationDecision:
     | { basis: "wall_clock_no_stale_signal" }
     | { basis: "interruption_unknown" }
     | { basis: "owner_reported"; activeDurationSeconds: number };
 };
+
+type FinishRecoveryCommand = FinishRecoveryInput & { version: 2 };
 
 function finishDurationDecisionIsValid(
   value: unknown,
@@ -314,6 +346,46 @@ function readFinishRecovery(
     const raw = storage.getItem(key);
     if (raw == null) return null;
     const parsed = JSON.parse(raw) as Partial<FinishRecoveryCommand>;
+    if (
+      parsed.version !== 2 ||
+      parsed.sessionId !== sessionId ||
+      (parsed.note != null &&
+        (typeof parsed.note !== "string" || parsed.note.length > 2_000)) ||
+      (parsed.fatigue != null &&
+        (typeof parsed.fatigue !== "number" ||
+          !Number.isInteger(parsed.fatigue) ||
+          parsed.fatigue < 1 ||
+          parsed.fatigue > 5)) ||
+      (parsed.completionReason != null &&
+        !incompleteSessionReasonIsValid(parsed.completionReason)) ||
+      !finishDurationDecisionIsValid(parsed.durationDecision)
+    ) {
+      return null;
+    }
+    return {
+      version: 2,
+      sessionId: parsed.sessionId,
+      ...(parsed.note == null ? {} : { note: parsed.note }),
+      ...(parsed.fatigue == null ? {} : { fatigue: parsed.fatigue }),
+      ...(parsed.completionReason == null
+        ? {}
+        : { completionReason: parsed.completionReason }),
+      durationDecision: parsed.durationDecision,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function readLegacyFinishRecovery(
+  storage: Storage,
+  key: string,
+  sessionId: string,
+): FinishRecoveryInput | null {
+  try {
+    const raw = storage.getItem(key);
+    if (raw == null) return null;
+    const parsed = JSON.parse(raw) as Partial<FinishRecoveryInput>;
     if (
       parsed.sessionId !== sessionId ||
       (parsed.note != null &&
@@ -422,23 +494,27 @@ function removeAppendSetRecovery(
   }
 }
 
+type LegacySkipReason = "time" | "pain" | "equipment" | "other";
+type SkipRecoveryReason = LegacySkipReason | IncompleteSessionReason;
+
 type SkipRecoveryMarker = {
   exerciseId: string;
   pageTimeOrigin: number;
   runnerInstanceId: string | null;
-  reason: "time" | "pain" | "fatigue" | "equipment" | "other";
+  reason: SkipRecoveryReason;
   phase: "pending" | "unconfirmed";
   expectedHistoryRevision: number;
 };
 
 function skipRecoveryReason(value: unknown): SkipRecoveryMarker["reason"] {
-  return value === "time" ||
-      value === "pain" ||
-      value === "fatigue" ||
-      value === "equipment" ||
-      value === "other"
-    ? value
-    : "other";
+  return typeof value === "string" &&
+      (["time", "pain", "equipment", "other"] as const).includes(
+        value as LegacySkipReason,
+      )
+    ? value as LegacySkipReason
+    : incompleteSessionReasonIsValid(value)
+      ? value
+      : "user_choice";
 }
 
 function readSkipRecovery(
@@ -462,9 +538,13 @@ function readSkipRecovery(
       (parsed.phase != null &&
         parsed.phase !== "pending" &&
         parsed.phase !== "unconfirmed") ||
-      !["time", "pain", "fatigue", "equipment", "other"].includes(
-        parsed.reason ?? "",
-      )
+      !(
+        typeof parsed.reason === "string" &&
+        (["time", "pain", "equipment", "other"] as const).includes(
+          parsed.reason as LegacySkipReason,
+        )
+      ) &&
+      !incompleteSessionReasonIsValid(parsed.reason)
     ) {
       return null;
     }
@@ -653,6 +733,10 @@ export function SessionRunner(props: SessionRunnerProps) {
     props.ownerId,
     props.sessionId,
   );
+  const legacyFinishRecoveryKey = legacyFinishRecoveryStorageKey(
+    props.ownerId,
+    props.sessionId,
+  );
   const [appendRecoveryMarker, setAppendRecoveryMarker] = useState<
     AppendSetRecoveryMarker | null
   >(null);
@@ -683,10 +767,13 @@ export function SessionRunner(props: SessionRunnerProps) {
   );
   const [finishNote, setFinishNote] = useState("");
   const [fatigue, setFatigue] = useState<number | null>(null);
+  const [completionReason, setCompletionReason] =
+    useState<IncompleteSessionReason | null>(null);
   const [warmupPlanOpen, setWarmupPlanOpen] = useState(false);
   const [completedWarmupsOpen, setCompletedWarmupsOpen] = useState(false);
   const [finishing, setFinishing] = useState(false);
   const [finishError, setFinishError] = useState<string | null>(null);
+  const [finishConflictDetected, setFinishConflictDetected] = useState(false);
   const [recordedEnqueueCount, setRecordedEnqueueCount] = useState(0);
 
   useEffect(() => {
@@ -699,14 +786,43 @@ export function SessionRunner(props: SessionRunnerProps) {
       setFinishRecoveryCommand(retained);
       setFinishRecoveryHydrated(true);
       if (retained != null) {
+        setFinishNote(retained.note ?? "");
+        setFatigue(retained.fatigue ?? null);
+        setCompletionReason(retained.completionReason ?? null);
+        setDurationChoice(retained.durationDecision.basis);
+        setOwnerReportedMinutes(
+          retained.durationDecision.basis === "owner_reported"
+            ? String(retained.durationDecision.activeDurationSeconds / 60)
+            : "",
+        );
         setFinishOpen(true);
         setFinishError(
           "Repbook retained your exact finish details. Save workout to retry them safely.",
         );
+        return;
+      }
+      const legacy = readLegacyFinishRecovery(
+        window.localStorage,
+        legacyFinishRecoveryKey,
+        props.sessionId,
+      );
+      if (legacy != null) {
+        setFinishNote(legacy.note ?? "");
+        setFatigue(legacy.fatigue ?? null);
+        setDurationChoice(legacy.durationDecision.basis);
+        setOwnerReportedMinutes(
+          legacy.durationDecision.basis === "owner_reported"
+            ? String(legacy.durationDecision.activeDurationSeconds / 60)
+            : "",
+        );
+        setFinishOpen(true);
+        setFinishError(
+          "Repbook recovered finish details saved by an older app version. Review them and choose an explicit reason for any remaining planned work before retrying.",
+        );
       }
     });
     return () => window.cancelAnimationFrame(frame);
-  }, [finishRecoveryKey, props.sessionId]);
+  }, [finishRecoveryKey, legacyFinishRecoveryKey, props.sessionId]);
 
   useEffect(() => {
     runnerActiveRef.current = true;
@@ -1761,6 +1877,10 @@ export function SessionRunner(props: SessionRunnerProps) {
   const extraPerformed = guidance.totals.extraPerformed;
   const workoutOnlyPerformed = guidance.totals.workoutOnlyPerformed;
   const pendingWorking = guidance.totals.pending;
+  const pendingPlannedOccurrences = occurrences.filter(
+    (occurrence) =>
+      occurrence.origin === "planned" && occurrence.outcome === "pending",
+  ).length;
   const nonPerformedSummary = sessionNonPerformedOutcomeParts(
     guidance.totals,
   ).join(" · ");
@@ -2479,10 +2599,24 @@ export function SessionRunner(props: SessionRunnerProps) {
       );
       return;
     }
+    if (
+      finishRecoveryCommand == null &&
+      pendingPlannedOccurrences > 0 &&
+      completionReason == null
+    ) {
+      setFinishError(
+        "Choose why the remaining planned work was not completed. Repbook will preserve that reason without inferring it from elapsed time.",
+      );
+      return;
+    }
     const command: FinishRecoveryCommand = finishRecoveryCommand ?? {
+      version: 2,
       sessionId: props.sessionId,
       ...(finishNote ? { note: finishNote } : {}),
       ...(fatigue == null ? {} : { fatigue }),
+      ...(pendingPlannedOccurrences > 0 && completionReason != null
+        ? { completionReason }
+        : {}),
       durationDecision:
         effectiveDurationChoice === "owner_reported"
           ? {
@@ -2527,9 +2661,12 @@ export function SessionRunner(props: SessionRunnerProps) {
             throw new Error("finish_recovery_storage_unavailable");
           }
           setFinishRecoveryCommand(command);
+          removeFinishRecovery(window.localStorage, legacyFinishRecoveryKey);
           await clearMatchingRestTimer();
+          const { version: _recoveryVersion, ...completionInput } = command;
+          void _recoveryVersion;
           const result = await withDocumentActionDeadline(
-            completeSession(command),
+            completeSession(completionInput),
           );
           return { blocked: false as const, result };
         }),
@@ -2543,8 +2680,12 @@ export function SessionRunner(props: SessionRunnerProps) {
       }
       const result = completion.result;
       if (result?.ok === false) {
-        removeFinishRecovery(window.localStorage, finishRecoveryKey);
-        setFinishRecoveryCommand(null);
+        setFinishConflictDetected(result.code === "finish_payload_conflict");
+        if (result.code !== "finish_payload_conflict") {
+          removeFinishRecovery(window.localStorage, finishRecoveryKey);
+          removeFinishRecovery(window.localStorage, legacyFinishRecoveryKey);
+          setFinishRecoveryCommand(null);
+        }
         setFinishError(result.message);
         setFinishing(false);
       }
@@ -2584,13 +2725,18 @@ export function SessionRunner(props: SessionRunnerProps) {
   async function applyOccurrenceMutation(
     occurrence: SessionOccurrenceData,
     operation: OccurrenceMutationOperation,
-    input: { reason?: string | null; note?: string | null } = {},
+    input: {
+      reason?: string | null;
+      reasonCode?: IncompleteSessionReason | null;
+      note?: string | null;
+    } = {},
   ) {
     if (equipmentConfirmationBlocks(occurrence)) {
       toast.error("Wait for this exercise's equipment setup to be confirmed first.");
       return false;
     }
     const reason = input.reason?.trim() || null;
+    const reasonCode = input.reasonCode ?? null;
     const note = input.note?.trim() || null;
     const existing = sessionOccurrenceEntries.find(
       (entry) => entry.occurrenceId === occurrence.id,
@@ -2600,6 +2746,7 @@ export function SessionRunner(props: SessionRunnerProps) {
       existing.expectedRevision === occurrence.revision &&
       existing.operation === operation &&
       existing.reason === reason &&
+      (existing.reasonCode ?? null) === reasonCode &&
       existing.note === note
     ) {
       toast.info("This workout-item change is already saving.");
@@ -2635,6 +2782,7 @@ export function SessionRunner(props: SessionRunnerProps) {
         expectedRevision: occurrence.revision,
         operation,
         reason,
+        reasonCode,
         note,
         createdAtISO: new Date().toISOString(),
       });
@@ -3959,7 +4107,7 @@ export function SessionRunner(props: SessionRunnerProps) {
             onAppendSet={(occurrenceId, expectedSetNo) =>
               handleAppendSet(exercise.id, occurrenceId, expectedSetNo)
             }
-            onSkipSet={async ({ reason, note }, requestedOccurrence) => {
+            onSkipSet={async ({ reason, reasonCode, note }, requestedOccurrence) => {
               const occurrence =
                 requestedOccurrence ??
                 nextPendingOccurrenceForExercise(exercise.id);
@@ -3969,7 +4117,7 @@ export function SessionRunner(props: SessionRunnerProps) {
               const skipped = await applyOccurrenceMutation(
                 occurrence,
                 "skip",
-                { reason, note },
+                { reason, reasonCode, note },
               );
               if (skipped) toast.info("Set skip is saving.");
               return skipped;
@@ -4374,6 +4522,7 @@ export function SessionRunner(props: SessionRunnerProps) {
               reviewRequired={timing.reviewRequired}
               choice={effectiveDurationChoice}
               ownerReportedMinutes={ownerReportedMinutes}
+              readOnly={finishRecoveryCommand != null}
               onChoiceChange={(choice) => {
                 setDurationChoice(choice);
                 setFinishError(null);
@@ -4383,13 +4532,78 @@ export function SessionRunner(props: SessionRunnerProps) {
                 setFinishError(null);
               }}
             />
+            {pendingPlannedOccurrences > 0 && (
+              <div className="rounded-lg border bg-background p-3">
+                <label
+                  htmlFor="completion-reason"
+                  className="text-sm font-medium"
+                >
+                  Why is the remaining planned work not being completed?
+                </label>
+                <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                  Required because {pendingPlannedOccurrences}{" "}
+                  {pendingPlannedOccurrences === 1
+                    ? "planned item remains"
+                    : "planned items remain"}. Elapsed time does not choose this
+                  reason automatically.
+                </p>
+                <select
+                  id="completion-reason"
+                  value={completionReason ?? ""}
+                  onChange={(event) => {
+                    const value = event.target.value;
+                    setCompletionReason(
+                      incompleteSessionReasonIsValid(value) ? value : null,
+                    );
+                    setFinishError(null);
+                  }}
+                  className="mt-3 min-h-11 w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-xs outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  aria-required="true"
+                  disabled={finishRecoveryCommand != null}
+                >
+                  <option value="">Choose a reason</option>
+                  {INCOMPLETE_SESSION_REASONS.map((reason) => (
+                    <option key={reason} value={reason}>
+                      {INCOMPLETE_SESSION_REASON_LABELS[reason]}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
             {finishError && (
-              <p
-                role="alert"
-                className="rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive"
-              >
-                {finishError}
-              </p>
+              <div className="space-y-3 rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">
+                <p role="alert">{finishError}</p>
+                {finishConflictDetected && (
+                  <div className="flex flex-col gap-2 sm:flex-row">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => router.push(`/history/${props.sessionId}`)}
+                    >
+                      Review saved workout
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      onClick={() => {
+                        removeFinishRecovery(
+                          window.localStorage,
+                          finishRecoveryKey,
+                        );
+                        removeFinishRecovery(
+                          window.localStorage,
+                          legacyFinishRecoveryKey,
+                        );
+                        setFinishRecoveryCommand(null);
+                        setFinishConflictDetected(false);
+                        setFinishError(null);
+                      }}
+                    >
+                      Discard retained device request
+                    </Button>
+                  </div>
+                )}
+              </div>
             )}
             <details className="rounded-lg border bg-background">
               <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 rounded-lg px-3 py-2 font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
@@ -4404,6 +4618,7 @@ export function SessionRunner(props: SessionRunnerProps) {
                   value={finishNote}
                   onChange={(e) => setFinishNote(e.target.value)}
                   rows={2}
+                  disabled={finishRecoveryCommand != null}
                 />
                 <div>
                   <p
@@ -4424,6 +4639,7 @@ export function SessionRunner(props: SessionRunnerProps) {
                         size="touch"
                         className="flex-1"
                         aria-pressed={fatigue === n}
+                        disabled={finishRecoveryCommand != null}
                         onClick={() => setFatigue(fatigue === n ? null : n)}
                       >
                         {n}
@@ -4436,12 +4652,26 @@ export function SessionRunner(props: SessionRunnerProps) {
                 </div>
               </div>
             </details>
+            {finishRecoveryCommand != null && !finishConflictDetected && (
+              <p className="text-xs leading-5 text-muted-foreground">
+                These finish details are read-only because Repbook is retrying
+                the exact request retained on this device.
+              </p>
+            )}
             </div>
           </div>
           <DrawerFooter className="border-t bg-popover pt-3 pb-[max(1rem,env(safe-area-inset-bottom))]">
             <Button
               onClick={handleFinish}
-              disabled={finishing || finishBlocked || !durationReviewReady}
+              disabled={
+                finishing ||
+                finishConflictDetected ||
+                finishBlocked ||
+                !durationReviewReady ||
+                (finishRecoveryCommand == null &&
+                  pendingPlannedOccurrences > 0 &&
+                  completionReason == null)
+              }
               size="lg"
             >
               {finishing ? "Saving…" : "Save workout"}
@@ -4569,11 +4799,11 @@ export function SessionRunner(props: SessionRunnerProps) {
             mode={occurrenceAction.mode}
             itemLabel={itemLabel}
             initialNote={occurrence.outcomeNote}
-            onConfirm={({ reason, note }) =>
+            onConfirm={({ reason, reasonCode, note }) =>
               applyOccurrenceMutation(
                 occurrence,
                 occurrenceAction.mode === "skip" ? "skip" : "note",
-                { reason, note },
+                { reason, reasonCode, note },
               )
             }
           />

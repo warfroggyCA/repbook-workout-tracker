@@ -335,6 +335,9 @@ describe("retrospective workout service", () => {
       historyRevision: 0,
       sourceProgramId: null,
       performedTimePrecision: "instant",
+      completionSemanticsVersion: 1,
+      completionState: "completed_without_prescription",
+      completionReason: null,
     });
     const [set] = await database.db
       .select()
@@ -356,6 +359,87 @@ describe("retrospective workout service", () => {
       .where(eq(sessionOccurrences.sessionId, reviewed.sessionId));
     expect(occurrence.plannedRestSec).toBeNull();
     expect(await database.db.select().from(progressionJobs)).toHaveLength(0);
+  });
+
+  it("classifies a fully supported linked workout as completed as prescribed", async () => {
+    const {
+      noWarmupVersionId,
+      noWarmupTemplateId,
+      noWarmupDayLineageId,
+      noWarmupSlotId,
+    } = await database.db.transaction(async (tx) => {
+      const [{ id: nextVersionId }] = await tx
+        .insert(programVersions)
+        .values({
+          programId,
+          versionNo: 2,
+          name: "History Program without warm-up",
+          parentVersionId: versionId,
+        })
+        .returning({ id: programVersions.id });
+      const [{ id: nextTemplateId, lineageId: nextDayLineageId }] = await tx
+        .insert(workoutTemplates)
+        .values({
+          programVersionId: nextVersionId,
+          name: "Day B without warm-up",
+          warmupItems: [],
+        })
+        .returning({
+          id: workoutTemplates.id,
+          lineageId: workoutTemplates.lineageId,
+        });
+      const [{ id: nextSlotId }] = await tx
+        .insert(workoutTemplateExercises)
+        .values({
+          workoutTemplateId: nextTemplateId,
+          exerciseId,
+          orderIdx: 0,
+        })
+        .returning({ id: workoutTemplateExercises.id });
+      await tx.insert(exercisePrescriptions).values({
+        templateExerciseId: nextSlotId,
+        sets: 1,
+        repRangeMin: 8,
+        repRangeMax: 10,
+        targetLoad: 100,
+        targetLoadUnit: "lb",
+      });
+      await tx
+        .update(programs)
+        .set({ currentVersionId: nextVersionId })
+        .where(eq(programs.id, programId));
+      return {
+        noWarmupVersionId: nextVersionId,
+        noWarmupTemplateId: nextTemplateId,
+        noWarmupDayLineageId: nextDayLineageId,
+        noWarmupSlotId: nextSlotId,
+      };
+    });
+    const reviewed = input();
+    reviewed.link = {
+      kind: "program_day",
+      programId,
+      programVersionId: noWarmupVersionId,
+      templateId: noWarmupTemplateId,
+      dayLineageId: noWarmupDayLineageId,
+    };
+    reviewed.exercises[0].sourceTemplateExerciseId = noWarmupSlotId;
+
+    await expect(
+      createRetrospectiveWorkout(database.db, userId, reviewed, {
+        now: () => now,
+      }),
+    ).resolves.toMatchObject({ ok: true, outcome: "created" });
+    await expect(
+      database.db.query.workoutSessions.findFirst({
+        where: eq(workoutSessions.id, reviewed.sessionId),
+      }),
+    ).resolves.toMatchObject({
+      status: "completed",
+      completionSemanticsVersion: 1,
+      completionState: "completed_as_prescribed",
+      completionReason: null,
+    });
   });
 
   it("preserves linked Program intent while saving a substitution and an extra performed set", async () => {
@@ -847,6 +931,16 @@ describe("retrospective workout service", () => {
       [2, 0, "skipped", 15],
       [2, 1, "completed", 0],
     ]);
+    await expect(
+      database.db.query.workoutSessions.findFirst({
+        where: eq(workoutSessions.id, reviewed.sessionId),
+      }),
+    ).resolves.toMatchObject({
+      status: "completed",
+      completionSemanticsVersion: null,
+      completionState: null,
+      completionReason: null,
+    });
     const report = await getHistoryReport(database.db, userId, "all", 3, now, {
       timezone: "America/Toronto",
       unit: "lb",
@@ -1009,6 +1103,14 @@ describe("retrospective workout service", () => {
         now: () => now,
       }),
     ).toMatchObject({ ok: true, outcome: "created" });
+    await expect(database.db.query.sessionOccurrences.findFirst({
+      where: eq(sessionOccurrences.id, reviewed.exercises[0].outcomes[0].occurrenceId),
+    })).resolves.toMatchObject({
+      outcome: "skipped",
+      outcomeReason: "pain",
+      resolutionSemanticsVersion: null,
+      resolutionReasonCode: null,
+    });
 
     const report = await getHistoryReport(database.db, userId, "all", 3, now, {
       timezone: "America/Toronto",
@@ -1021,6 +1123,34 @@ describe("retrospective workout service", () => {
     expect(
       programFit.evidence.some((item) => item.value.includes("1 as planned")),
     ).toBe(false);
+  });
+
+  it("persists an explicitly classified retrospective skip as structured evidence", async () => {
+    const reviewed: RetrospectiveWorkoutInput = input();
+    const occurrenceId = crypto.randomUUID();
+    reviewed.exercises[0].outcomes = [{
+      occurrenceId,
+      ordinal: 0,
+      outcome: "skipped",
+      resolutionSemanticsVersion: 1,
+      reasonCode: "equipment_unavailable_incompatible",
+      note: "The remembered setup could not support this movement.",
+    }];
+
+    await expect(createRetrospectiveWorkout(
+      database.db,
+      userId,
+      reviewed,
+      { now: () => now },
+    )).resolves.toMatchObject({ ok: true, outcome: "created" });
+    await expect(database.db.query.sessionOccurrences.findFirst({
+      where: eq(sessionOccurrences.id, occurrenceId),
+    })).resolves.toMatchObject({
+      outcome: "skipped",
+      outcomeReason: "equipment_unavailable_incompatible",
+      resolutionSemanticsVersion: 1,
+      resolutionReasonCode: "equipment_unavailable_incompatible",
+    });
   });
 
   it("flows through export, canonical backup, Archive, and restore", async () => {

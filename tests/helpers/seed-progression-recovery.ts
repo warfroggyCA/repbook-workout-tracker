@@ -139,7 +139,7 @@ async function main() {
         aggressiveness: "aggressive",
       },
     },
-    { sessionId }
+    { sessionId, completionReason: "time_limit_reached" }
   );
   if (completed.alreadyFinished || !completed.progressionJobId) {
     throw new Error("The progression recovery job was not queued.");

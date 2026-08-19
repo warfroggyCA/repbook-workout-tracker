@@ -526,6 +526,7 @@ test("exact local times refuse DST gaps and require an overlap choice", async ({
   await page.getByRole("radio", { name: /Performed from Program/ }).click();
   await page.getByLabel("Program day", { exact: true }).selectOption({ index: 1 });
   await page.getByLabel(/set 1 outcome/i).selectOption("skipped");
+  await page.getByLabel("Skip reason").selectOption("user_choice");
   await page.getByRole("button", { name: "Review workout" }).click();
   await expect(page.getByText(/does not exist in America\/Toronto/)).toBeVisible();
 

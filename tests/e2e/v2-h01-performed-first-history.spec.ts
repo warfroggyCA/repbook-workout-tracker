@@ -206,7 +206,9 @@ test("presents performed evidence first without rewriting or inflating History",
   }
 
   await page.goto(`/history/${ids.finishedEarlySession}`);
-  await expect(page.getByText("Finished early", { exact: true }).first()).toBeVisible();
+  await expect(
+    page.getByText("Completed; legacy incomplete outcome", { exact: true }).first(),
+  ).toBeVisible();
   const finishedSetDetails = page.locator(`#performed-set-${ids.finishedSet} details`);
   await expect(finishedSetDetails).not.toHaveAttribute("open", "");
   await finishedSetDetails.locator("summary").click();
@@ -214,7 +216,7 @@ test("presents performed evidence first without rewriting or inflating History",
   await expect(page.getByText("Corrected evidence", { exact: true }).first()).toBeVisible();
   await expect(page.getByText(/Timing corrected 1 time/)).toBeVisible();
   await expect(page.getByText(/1 performed working set/)).toBeVisible();
-  await expect(page.getByText(/Items left when you finished stay in the original plan/)).toBeVisible();
+  await expect(page.getByText(/Older occurrence text indicates work remained/)).toBeVisible();
 
   await page.goto(`/history/${ids.abandonedSession}`);
   await expect(page.getByText("Abandoned workout", { exact: true }).first()).toBeVisible();

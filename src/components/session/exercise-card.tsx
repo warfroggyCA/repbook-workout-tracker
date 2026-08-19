@@ -98,6 +98,7 @@ import {
   writeActiveWorkoutMeasurement,
 } from "@/lib/active-workout-measurements";
 import { OccurrenceMutationDialog } from "./occurrence-mutation-dialog";
+import type { IncompleteSessionReason } from "@/lib/session-completion-semantics";
 import { OccurrenceSaveStatus } from "./occurrence-save-status";
 import {
   isAppendedExtraSetOccurrence,
@@ -457,7 +458,11 @@ type Props = {
   } | null;
   occurrenceChangesBlocked?: boolean;
   onSkipSet?: (
-    input: { reason: string | null; note: string | null },
+    input: {
+      reason: string | null;
+      reasonCode: IncompleteSessionReason | null;
+      note: string | null;
+    },
     occurrence?: SessionOccurrenceData | null,
   ) => Promise<boolean>;
   onRetryOccurrenceMutation?: (
@@ -475,10 +480,10 @@ type Props = {
   onHistoryRevisionChange?: (historyRevision: number) => void;
   onOpenCoach: () => void;
   onSkipRequestStart?: (
-    reason: "time" | "pain" | "fatigue" | "equipment" | "other",
+    reason: IncompleteSessionReason,
   ) => void;
   onSkipRequestFailure?: (
-    reason: "time" | "pain" | "fatigue" | "equipment" | "other",
+    reason: IncompleteSessionReason,
     code?: string,
   ) => boolean;
   skipConfirmationPending?: boolean;
@@ -2466,7 +2471,7 @@ export function ExerciseCard({
                 : "as_planned";
               onAdjustIntentChange(null);
               onHistoryRevisionChange(resultHistoryRevision);
-              onPatch({ modificationType: "skipped", skipReason: "other" });
+              onPatch({ modificationType: "skipped", skipReason: "user_choice" });
               onSkipComplete();
               toast.success(`${exercise.name} removed from today`, {
                 description:
@@ -3507,19 +3512,34 @@ function SkipDrawer({
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onRequestStart: (
-    reason: "time" | "pain" | "fatigue" | "equipment" | "other",
+    reason: IncompleteSessionReason,
   ) => void;
   onRequestFailure: (
-    reason: "time" | "pain" | "fatigue" | "equipment" | "other",
+    reason: IncompleteSessionReason,
     code?: string,
   ) => boolean;
   onDone: (
-    reason: "time" | "pain" | "fatigue" | "equipment" | "other",
+    reason: IncompleteSessionReason,
     historyRevision: number,
   ) => void;
 }) {
   const [pending, startTransition] = useTransition();
-  const reasons = ["time", "pain", "fatigue", "equipment", "other"] as const;
+  const reasons = [
+    { value: "time_limit_reached", label: "Time limit reached" },
+    { value: "fatigue", label: "Fatigue" },
+    { value: "pain_discomfort", label: "Pain or discomfort" },
+    {
+      value: "equipment_unavailable_incompatible",
+      label: "Equipment unavailable or incompatible",
+    },
+    { value: "user_choice", label: "User choice" },
+    { value: "technical_app_issue", label: "Technical or app issue" },
+    { value: "interruption", label: "Interruption" },
+    { value: "program_change", label: "Program change" },
+  ] as const satisfies ReadonlyArray<{
+    value: IncompleteSessionReason;
+    label: string;
+  }>;
 
   return (
     <Drawer open={open} onOpenChange={onOpenChange}>
@@ -3533,29 +3553,29 @@ function SkipDrawer({
         <div className="flex flex-wrap gap-2 px-4 pb-6">
           {reasons.map((reason) => (
             <Button
-              key={reason}
+              key={reason.value}
               variant="outline"
               disabled={pending}
               onClick={() => {
-                onRequestStart(reason);
+                onRequestStart(reason.value);
                 startTransition(async () => {
                   try {
                     const result = await withDocumentActionDeadline(
                       skipExercise({
                         sessionExerciseId: exerciseId,
-                        reason,
+                        reason: reason.value,
                         expectedHistoryRevision,
                       }),
                     );
                     if (!result.ok) {
-                      if (onRequestFailure(reason, result.code)) {
+                      if (onRequestFailure(reason.value, result.code)) {
                         toast.error(result.message);
                       }
                       return;
                     }
-                    onDone(reason, result.historyRevision);
+                    onDone(reason.value, result.historyRevision);
                   } catch (error) {
-                    if (onRequestFailure(reason)) {
+                    if (onRequestFailure(reason.value)) {
                       if (isDocumentActionTimeout(error)) {
                         reportDocumentActionTimeout();
                         toast.error(
@@ -3570,7 +3590,7 @@ function SkipDrawer({
                 });
               }}
             >
-              {reason}
+              {reason.label}
             </Button>
           ))}
         </div>
@@ -3592,8 +3612,8 @@ function RemoveFromTodayDrawer({
   expectedHistoryRevision: number;
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onRequestStart: (reason: "other") => void;
-  onRequestFailure: (reason: "other", code?: string) => boolean;
+  onRequestStart: (reason: "user_choice") => void;
+  onRequestFailure: (reason: "user_choice", code?: string) => boolean;
   onRemoved: (historyRevision: number) => void;
 }) {
   const [pending, startTransition] = useTransition();
@@ -3628,25 +3648,25 @@ function RemoveFromTodayDrawer({
             variant="destructive"
             disabled={pending}
             onClick={() => {
-              onRequestStart("other");
+              onRequestStart("user_choice");
               startTransition(async () => {
                 try {
                   const result = await withDocumentActionDeadline(
                     skipExercise({
                       sessionExerciseId: exercise.id,
-                      reason: "other",
+                      reason: "user_choice",
                       expectedHistoryRevision,
                     }),
                   );
                   if (!result.ok) {
-                    if (onRequestFailure("other", result.code)) {
+                    if (onRequestFailure("user_choice", result.code)) {
                       toast.error(result.message);
                     }
                     return;
                   }
                   onRemoved(result.historyRevision);
                 } catch (error) {
-                  if (onRequestFailure("other")) {
+                  if (onRequestFailure("user_choice")) {
                     if (isDocumentActionTimeout(error)) {
                       reportDocumentActionTimeout();
                       toast.error(

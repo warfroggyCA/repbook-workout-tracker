@@ -414,6 +414,30 @@ Start share an owner-profile compare-and-swap mutex, and schema-34 restore
 rejects a usable Program library with no active Program. Parser internals and
 canonical routine syntax are unchanged.
 
+Training reporting V2 adds migrations 0083 and 0084 plus snapshot schema 35
+without adding a durable table or changing recovery manifest 15. Migration 0083
+adds the reporting lifecycle tuples; migration 0084 preserves the exact durable
+Finish-command receipt through guarded full/history restore. The feature requires explicit
+remaining-work reasons, freezes supported Program duration/counting meaning,
+keeps old nulls unknown, and makes the Coach brief and History target coverage
+use the full planned-outcome denominator. Its focused gate is:
+
+```bash
+npx vitest run tests/unit/training-report.test.ts tests/unit/reporting-exercise-family.test.ts tests/unit/training-report-digest-db.test.ts
+npx vitest run tests/unit/reporting-session-outcomes-db.test.ts tests/unit/session-lifecycle-characterization.test.ts tests/unit/session-runner-exit.test.ts tests/unit/occurrence-mutation-dialog.test.tsx
+npx vitest run tests/unit/history-report.test.ts tests/unit/history-calendar.test.tsx tests/unit/v2-h01-history-workout-evidence.test.ts tests/unit/v2-h02-cadence-targets-time-db.test.ts
+npx vitest run tests/unit/snapshots-db.test.ts tests/unit/analysis-package-db.test.ts tests/unit/recovery-manifest-db.test.ts --maxWorkers=1 --no-file-parallelism
+npm run db:verify
+npm run db:verify-production-upgrade
+```
+
+The native two-connection finish and occurrence-retry races require a guarded,
+disposable `TEST_DATABASE_URL`; they must run in protected PostgreSQL CI when
+that variable is unavailable locally. The representative workout smoke journey
+at mobile width proves that Finish remains disabled until an explicit reason is
+selected and that the structured reason is visible in saved History. Run that
+focused Playwright test before the broader browser inventory.
+
 Run the focused named Program and tracker schedule contract with:
 
 ```bash

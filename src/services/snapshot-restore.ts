@@ -67,6 +67,14 @@ import {
   programScheduleCompletionDate,
   programScheduleDocumentSchema,
 } from "@/lib/program-schedule";
+import {
+  INCOMPLETE_SESSION_REASONS,
+  OCCURRENCE_RESOLUTION_SEMANTICS_VERSION,
+  PLANNED_DURATION_SEMANTICS_VERSION,
+  PLANNED_DURATION_SOURCES,
+  SESSION_COMPLETION_SEMANTICS_VERSION,
+  TERMINAL_OCCURRENCE_RESOLUTION_REASONS,
+} from "@/lib/session-completion-semantics";
 
 export type SnapshotRestoreScope = "history" | "full";
 
@@ -85,6 +93,7 @@ const PRE_ACTIVE_DURATION_SNAPSHOT_SCHEMA_VERSION = "30";
 const PRE_SESSION_EQUIPMENT_REQUIREMENTS_SNAPSHOT_SCHEMA_VERSION = "31";
 const PRE_PROGRAM_SCHEDULE_SNAPSHOT_SCHEMA_VERSION = "32";
 const PRE_NAMED_PROGRAM_LIBRARY_SNAPSHOT_SCHEMA_VERSION = "33";
+const PRE_REPORTING_SESSION_OUTCOMES_SNAPSHOT_SCHEMA_VERSION = "34";
 
 type SnapshotRow = Record<string, unknown>;
 type RestoreRows = Record<string, SnapshotRow[]>;
@@ -110,6 +119,7 @@ const WORKOUT_TIMING_FACT_VERSION_FIELDS = new Set([
   "data_quality_flags",
   ...ACTIVE_DURATION_VERSION_FIELDS,
 ]);
+const FINISH_COMMAND_HASH_PATTERN = /^[0-9a-f]{64}$/;
 
 function stringArray(value: unknown): string[] {
   return Array.isArray(value)
@@ -478,6 +488,315 @@ function validateUnitAndCalendarIdentity(payload: CanonicalSnapshotPayload) {
       );
     }
   }
+
+}
+
+function validateReportingSessionOutcomeSemantics(
+  payload: CanonicalSnapshotPayload,
+) {
+  if (payload.schemaVersion !== SNAPSHOT_SCHEMA_VERSION) return;
+
+  const sessionsById = new Map(
+    rows(payload, "workout_sessions").map((session) => [
+      String(session.id),
+      session,
+    ]),
+  );
+  const exercisesBySessionId = new Map<string, SnapshotRow[]>();
+  for (const exercise of rows(payload, "session_exercises")) {
+    const sessionId = String(exercise.session_id);
+    exercisesBySessionId.set(sessionId, [
+      ...(exercisesBySessionId.get(sessionId) ?? []),
+      exercise,
+    ]);
+  }
+  const occurrencesBySessionId = new Map<string, SnapshotRow[]>();
+  for (const occurrence of rows(payload, "session_occurrences")) {
+    const sessionId = String(occurrence.session_id);
+    occurrencesBySessionId.set(sessionId, [
+      ...(occurrencesBySessionId.get(sessionId) ?? []),
+      occurrence,
+    ]);
+  }
+  const plannedDurationKeys = [
+    "planned_duration_semantics_version",
+    "planned_duration_min_minutes",
+    "planned_duration_max_minutes",
+    "planned_duration_source",
+  ] as const;
+  const completionKeys = [
+    "completion_semantics_version",
+    "completion_state",
+    "completion_reason",
+  ] as const;
+  for (const session of rows(payload, "workout_sessions")) {
+    if (
+      [...plannedDurationKeys, ...completionKeys].some(
+        (key) => !Object.hasOwn(session, key),
+      )
+    ) {
+      throw new Error(
+        "Snapshot workout is missing reporting duration or completion state.",
+      );
+    }
+
+    const plannedValues = plannedDurationKeys.map((key) => session[key]);
+    if (!plannedValues.every((value) => value == null)) {
+      const min = session.planned_duration_min_minutes;
+      const max = session.planned_duration_max_minutes;
+      if (
+        session.planned_duration_semantics_version !==
+          PLANNED_DURATION_SEMANTICS_VERSION ||
+        typeof min !== "number" ||
+        !Number.isInteger(min) ||
+        min < 5 ||
+        min > 600 ||
+        typeof max !== "number" ||
+        !Number.isInteger(max) ||
+        max < min ||
+        max > 600 ||
+        !PLANNED_DURATION_SOURCES.includes(
+          session.planned_duration_source as never,
+        )
+      ) {
+        throw new Error(
+          "Snapshot workout has incoherent planned-duration evidence.",
+        );
+      }
+    }
+
+    const completionValues = completionKeys.map((key) => session[key]);
+    if (completionValues.every((value) => value == null)) continue;
+    const completedWithoutReason =
+      session.status === "completed" &&
+      (session.completion_state === "completed_as_prescribed" ||
+        session.completion_state === "completed_with_changes") &&
+      session.completion_reason == null;
+    const completedWithoutPrescription =
+      session.status === "completed" &&
+      session.completion_state === "completed_without_prescription" &&
+      session.completion_reason == null;
+    const completedWithRemainingWork =
+      session.status === "completed" &&
+      session.completion_state === "completed_with_remaining_work" &&
+      INCOMPLETE_SESSION_REASONS.includes(session.completion_reason as never);
+    const abandoned =
+      session.status === "abandoned" &&
+      session.completion_state === "abandoned" &&
+      session.completion_reason === "user_choice";
+    if (
+      session.completion_semantics_version !==
+        SESSION_COMPLETION_SEMANTICS_VERSION ||
+      (!completedWithoutReason &&
+        !completedWithoutPrescription &&
+        !completedWithRemainingWork &&
+        !abandoned)
+    ) {
+      throw new Error(
+        "Snapshot workout has incoherent completion outcome evidence.",
+      );
+    }
+  }
+
+  const resolutionKeys = [
+    "resolution_semantics_version",
+    "resolution_reason_code",
+  ] as const;
+  for (const occurrence of rows(payload, "session_occurrences")) {
+    if (resolutionKeys.some((key) => !Object.hasOwn(occurrence, key))) {
+      throw new Error(
+        "Snapshot occurrence is missing structured resolution state.",
+      );
+    }
+    const values = resolutionKeys.map((key) => occurrence[key]);
+    if (values.every((value) => value == null)) continue;
+    if (
+      occurrence.resolution_semantics_version !==
+        OCCURRENCE_RESOLUTION_SEMANTICS_VERSION ||
+      !(
+        (occurrence.outcome === "skipped" &&
+          INCOMPLETE_SESSION_REASONS.includes(
+            occurrence.resolution_reason_code as never,
+          )) ||
+        (occurrence.outcome === "abandoned" &&
+          TERMINAL_OCCURRENCE_RESOLUTION_REASONS.includes(
+            occurrence.resolution_reason_code as never,
+          ))
+      )
+    ) {
+      throw new Error(
+        "Snapshot occurrence has incoherent structured resolution evidence.",
+      );
+    }
+    if (occurrence.outcome !== "abandoned") continue;
+
+    const session = sessionsById.get(String(occurrence.session_id));
+    const expectedReason =
+      session?.completion_semantics_version !==
+        SESSION_COMPLETION_SEMANTICS_VERSION
+        ? null
+        : session.completion_state === "completed_with_remaining_work"
+          ? session.completion_reason
+          : session.completion_state === "abandoned"
+            ? "user_choice"
+            : session.completion_state === "completed_as_prescribed" ||
+                session.completion_state === "completed_with_changes"
+              ? "session_completed"
+              : null;
+    if (
+      expectedReason == null ||
+      occurrence.resolution_reason_code !== expectedReason
+    ) {
+      throw new Error(
+        "Snapshot terminal occurrence reason disagrees with its workout completion outcome.",
+      );
+    }
+  }
+
+  for (const session of rows(payload, "workout_sessions")) {
+    if (
+      session.completion_semantics_version !==
+      SESSION_COMPLETION_SEMANTICS_VERSION
+    ) {
+      continue;
+    }
+    const sessionOccurrences =
+      occurrencesBySessionId.get(String(session.id)) ?? [];
+    const plannedOccurrences = sessionOccurrences.filter(
+      (occurrence) => occurrence.origin === "planned",
+    );
+    if (
+      plannedOccurrences.some((occurrence) => occurrence.outcome === "pending")
+    ) {
+      throw new Error(
+        "Snapshot terminal workout retains pending planned occurrences.",
+      );
+    }
+
+    const hasRetainedPlanChange =
+      plannedOccurrences.some(
+        (occurrence) => occurrence.outcome !== "completed",
+      ) ||
+      (exercisesBySessionId.get(String(session.id)) ?? []).some(
+        (exercise) =>
+          exercise.modification_type === "substituted" ||
+          exercise.modification_type === "skipped",
+      );
+    if (
+      session.completion_state === "completed_without_prescription" &&
+      (session.template_id != null ||
+        session.source_program_id != null ||
+        session.source_program_version_id != null ||
+        session.source_day_lineage_id != null ||
+        plannedOccurrences.length > 0 ||
+        (exercisesBySessionId.get(String(session.id)) ?? []).some(
+          (exercise) => exercise.planned_from_template_exercise_id != null,
+        ))
+    ) {
+      throw new Error(
+        "Snapshot completed-without-prescription workout retains prescribed plan evidence.",
+      );
+    }
+    if (
+      session.completion_state === "completed_as_prescribed" &&
+      hasRetainedPlanChange
+    ) {
+      throw new Error(
+        "Snapshot completed-as-prescribed workout contradicts its retained plan execution.",
+      );
+    }
+    if (
+      session.completion_state === "completed_with_changes" &&
+      !hasRetainedPlanChange
+    ) {
+      throw new Error(
+        "Snapshot completed-with-changes workout has no retained plan change.",
+      );
+    }
+    if (
+      session.completion_state === "completed_with_remaining_work" &&
+      !plannedOccurrences.some(
+        (occurrence) =>
+          occurrence.outcome === "abandoned" &&
+          occurrence.resolution_semantics_version ===
+            OCCURRENCE_RESOLUTION_SEMANTICS_VERSION &&
+          occurrence.resolution_reason_code === session.completion_reason,
+      )
+    ) {
+      throw new Error(
+        "Snapshot completed-with-remaining-work workout lacks a matching abandoned planned occurrence.",
+      );
+    }
+  }
+}
+
+function validateFinishCommandReceipts(payload: CanonicalSnapshotPayload) {
+  if (payload.schemaVersion !== SNAPSHOT_SCHEMA_VERSION) return;
+
+  const sessionsById = new Map(
+    rows(payload, "workout_sessions").map((session) => [
+      String(session.id),
+      session,
+    ]),
+  );
+  const completionAuditsBySessionId = new Map<string, SnapshotRow[]>();
+  for (const audit of rows(payload, "audit_logs")) {
+    if (
+      audit.action !== "session.complete" ||
+      audit.entity_type !== "workout_session" ||
+      typeof audit.entity_id !== "string"
+    ) {
+      continue;
+    }
+    completionAuditsBySessionId.set(audit.entity_id, [
+      ...(completionAuditsBySessionId.get(audit.entity_id) ?? []),
+      audit,
+    ]);
+  }
+  for (const session of rows(payload, "workout_sessions")) {
+    if (
+      session.source !== "history_manual" &&
+      session.status === "completed" &&
+      session.completion_semantics_version ===
+        SESSION_COMPLETION_SEMANTICS_VERSION &&
+      session.completion_state !== "completed_without_prescription" &&
+      (completionAuditsBySessionId.get(String(session.id))?.length ?? 0) !== 1
+    ) {
+      throw new Error(
+        "Snapshot completed workout is missing its exact durable finish-command receipt.",
+      );
+    }
+  }
+  for (const [sessionId, receipts] of completionAuditsBySessionId) {
+    const session = sessionsById.get(sessionId);
+    const receipt = receipts[0];
+    const cause =
+      receipt?.cause_ref &&
+      typeof receipt.cause_ref === "object" &&
+      !Array.isArray(receipt.cause_ref)
+        ? (receipt.cause_ref as SnapshotRow)
+        : null;
+    if (
+      receipts.length !== 1 ||
+      session == null ||
+      session.status !== "completed" ||
+      session.completion_semantics_version !==
+        SESSION_COMPLETION_SEMANTICS_VERSION ||
+      receipt?.user_id !== session.user_id ||
+      receipt.actor_type !== "user" ||
+      cause == null ||
+      typeof cause.finishCommandHash !== "string" ||
+      !FINISH_COMMAND_HASH_PATTERN.test(cause.finishCommandHash) ||
+      cause.completionSemanticsVersion !==
+        SESSION_COMPLETION_SEMANTICS_VERSION ||
+      cause.completionState !== session.completion_state ||
+      cause.completionReason !== session.completion_reason
+    ) {
+      throw new Error(
+        "Snapshot completed workout is missing its exact durable finish-command receipt.",
+      );
+    }
+  }
 }
 
 const START_REQUEST_KEY_PATTERN =
@@ -531,19 +850,44 @@ function validateStartAndPrescribedSemantics(payload: CanonicalSnapshotPayload) 
       throw new Error("Snapshot workout exercise is missing prescribed meaning state.");
     }
     const values = tupleKeys.map((key) => exercise[key]);
-    if (values.every((value) => value == null)) continue;
+    if (!values.every((value) => value == null)) {
+      if (
+        exercise.prescribed_semantics_version !== 1 ||
+        typeof exercise.prescribed_exercise_name !== "string" ||
+        exercise.prescribed_exercise_name.trim().length < 1 ||
+        exercise.prescribed_exercise_name.trim().length > 300 ||
+        !PRESCRIBED_METRIC_TYPES.has(String(exercise.prescribed_metric_type)) ||
+        typeof exercise.prescribed_load_type !== "string" ||
+        exercise.prescribed_load_type.trim().length < 1 ||
+        exercise.prescribed_load_type.trim().length > 50 ||
+        !PRESCRIBED_LOAD_SEMANTICS.has(String(exercise.prescribed_load_semantics))
+      ) {
+        throw new Error("Snapshot workout exercise has incoherent prescribed meaning.");
+      }
+    }
+
+    const countingTupleKeys = [
+      "prescribed_counting_semantics_version",
+      "prescribed_counting_basis",
+    ] as const;
+    if (countingTupleKeys.some((key) => !Object.hasOwn(exercise, key))) {
+      throw new Error(
+        "Snapshot workout exercise is missing prescribed counting meaning.",
+      );
+    }
+    const countingValues = countingTupleKeys.map((key) => exercise[key]);
     if (
-      exercise.prescribed_semantics_version !== 1 ||
-      typeof exercise.prescribed_exercise_name !== "string" ||
-      exercise.prescribed_exercise_name.trim().length < 1 ||
-      exercise.prescribed_exercise_name.trim().length > 300 ||
-      !PRESCRIBED_METRIC_TYPES.has(String(exercise.prescribed_metric_type)) ||
-      typeof exercise.prescribed_load_type !== "string" ||
-      exercise.prescribed_load_type.trim().length < 1 ||
-      exercise.prescribed_load_type.trim().length > 50 ||
-      !PRESCRIBED_LOAD_SEMANTICS.has(String(exercise.prescribed_load_semantics))
+      !countingValues.every((value) => value == null) &&
+      (exercise.prescribed_counting_semantics_version !== 1 ||
+        exercise.prescribed_counting_basis !== "not_applicable" ||
+        exercise.prescribed_semantics_version !== 1 ||
+        !["weight_reps", "assisted_reps"].includes(
+          String(exercise.prescribed_metric_type),
+        ))
     ) {
-      throw new Error("Snapshot workout exercise has incoherent prescribed meaning.");
+      throw new Error(
+        "Snapshot workout exercise has incoherent prescribed counting meaning.",
+      );
     }
   }
 }
@@ -1222,6 +1566,7 @@ export function upgradeSnapshotPayload(
     PRE_SESSION_EQUIPMENT_REQUIREMENTS_SNAPSHOT_SCHEMA_VERSION,
     PRE_PROGRAM_SCHEDULE_SNAPSHOT_SCHEMA_VERSION,
     PRE_NAMED_PROGRAM_LIBRARY_SNAPSHOT_SCHEMA_VERSION,
+    PRE_REPORTING_SESSION_OUTCOMES_SNAPSHOT_SCHEMA_VERSION,
     SNAPSHOT_SCHEMA_VERSION,
   ]);
   if (!supported.has(payload.schemaVersion)) {
@@ -1235,6 +1580,8 @@ export function upgradeSnapshotPayload(
     reconcileSnapshotCompletedSetOutcomes(upgraded);
     sanitizeSnapshotPrivacy(upgraded);
     validateUnitAndCalendarIdentity(upgraded);
+    validateReportingSessionOutcomeSemantics(upgraded);
+    validateFinishCommandReceipts(upgraded);
     validateStartAndPrescribedSemantics(upgraded);
     validateSessionEquipmentRequirements(upgraded);
     validateSetExceptionContext(upgraded);
@@ -1307,6 +1654,7 @@ export function upgradeSnapshotPayload(
       PRE_SESSION_EQUIPMENT_REQUIREMENTS_SNAPSHOT_SCHEMA_VERSION,
       PRE_PROGRAM_SCHEDULE_SNAPSHOT_SCHEMA_VERSION,
       PRE_NAMED_PROGRAM_LIBRARY_SNAPSHOT_SCHEMA_VERSION,
+      PRE_REPORTING_SESSION_OUTCOMES_SNAPSHOT_SCHEMA_VERSION,
       SNAPSHOT_SCHEMA_VERSION,
     ].includes(upgraded.schemaVersion)
   ) {
@@ -1434,6 +1782,16 @@ export function upgradeSnapshotPayload(
     session.active_duration_semantics_version ??= null;
     session.active_duration_seconds ??= null;
     session.active_duration_basis ??= null;
+    // Schema 35 introduces reporting evidence for future writes. Older
+    // snapshots cannot prove either a planned duration or a terminal reason,
+    // so the upgrade preserves explicit unknowns instead of inferring them.
+    session.planned_duration_semantics_version ??= null;
+    session.planned_duration_min_minutes ??= null;
+    session.planned_duration_max_minutes ??= null;
+    session.planned_duration_source ??= null;
+    session.completion_semantics_version ??= null;
+    session.completion_state ??= null;
+    session.completion_reason ??= null;
     if (
       session.source_program_id == null &&
       session.source_program_version_id == null &&
@@ -1497,6 +1855,8 @@ export function upgradeSnapshotPayload(
     exercise.prescribed_metric_type ??= null;
     exercise.prescribed_load_type ??= null;
     exercise.prescribed_load_semantics ??= null;
+    exercise.prescribed_counting_semantics_version ??= null;
+    exercise.prescribed_counting_basis ??= null;
     // Older formats cannot prove what equipment requirements meant when the
     // workout exercise was created. Never backfill from the current catalog.
     exercise.equipment_requirements_semantics_version = null;
@@ -1539,6 +1899,8 @@ export function upgradeSnapshotPayload(
   }
   for (const occurrence of rows(upgraded, "session_occurrences")) {
     occurrence.equipment_snapshot_id ??= null;
+    occurrence.resolution_semantics_version ??= null;
+    occurrence.resolution_reason_code ??= null;
   }
   for (const recommendation of rows(upgraded, "recommendations")) {
     recommendation.progression_job_id ??= null;
@@ -1596,6 +1958,8 @@ export function upgradeSnapshotPayload(
   reconcileSnapshotCompletedSetOutcomes(upgraded);
   upgraded.schemaVersion = SNAPSHOT_SCHEMA_VERSION;
   validateUnitAndCalendarIdentity(upgraded);
+  validateReportingSessionOutcomeSemantics(upgraded);
+  validateFinishCommandReceipts(upgraded);
   validateStartAndPrescribedSemantics(upgraded);
   validateSessionEquipmentRequirements(upgraded);
   validateSetExceptionContext(upgraded);
@@ -2773,6 +3137,7 @@ export function validateSnapshotPayload(
       PRE_SESSION_EQUIPMENT_REQUIREMENTS_SNAPSHOT_SCHEMA_VERSION,
       PRE_PROGRAM_SCHEDULE_SNAPSHOT_SCHEMA_VERSION,
       PRE_NAMED_PROGRAM_LIBRARY_SNAPSHOT_SCHEMA_VERSION,
+      PRE_REPORTING_SESSION_OUTCOMES_SNAPSHOT_SCHEMA_VERSION,
       SNAPSHOT_SCHEMA_VERSION,
     ].includes(payload.schemaVersion)
   ) {
@@ -2817,6 +3182,7 @@ export function validateSnapshotPayload(
       PRE_SESSION_EQUIPMENT_REQUIREMENTS_SNAPSHOT_SCHEMA_VERSION,
       PRE_PROGRAM_SCHEDULE_SNAPSHOT_SCHEMA_VERSION,
       PRE_NAMED_PROGRAM_LIBRARY_SNAPSHOT_SCHEMA_VERSION,
+      PRE_REPORTING_SESSION_OUTCOMES_SNAPSHOT_SCHEMA_VERSION,
       SNAPSHOT_SCHEMA_VERSION,
     ].includes(payload.schemaVersion)
   ) {
@@ -3027,6 +3393,7 @@ export function validateSnapshotPayload(
       PRE_SESSION_EQUIPMENT_REQUIREMENTS_SNAPSHOT_SCHEMA_VERSION,
       PRE_PROGRAM_SCHEDULE_SNAPSHOT_SCHEMA_VERSION,
       PRE_NAMED_PROGRAM_LIBRARY_SNAPSHOT_SCHEMA_VERSION,
+      PRE_REPORTING_SESSION_OUTCOMES_SNAPSHOT_SCHEMA_VERSION,
       SNAPSHOT_SCHEMA_VERSION,
     ].includes(payload.schemaVersion)
   ) {
@@ -3182,6 +3549,8 @@ export function validateSnapshotPayload(
   }
   if (payload.schemaVersion === SNAPSHOT_SCHEMA_VERSION) {
     validateUnitAndCalendarIdentity(payload);
+    validateReportingSessionOutcomeSemantics(payload);
+    validateFinishCommandReceipts(payload);
     validateStartAndPrescribedSemantics(payload);
     validateSessionEquipmentRequirements(payload);
     validateSetExceptionContext(payload);
@@ -3222,6 +3591,16 @@ function targetRows(
   const snapshotWorkoutIds = new Set(
     rows(payload, "workout_sessions").map((row) => String(row.id)),
   );
+  const snapshotFinishReceiptSessionIds = new Set(
+    rows(payload, "workout_sessions")
+      .filter(
+        (row) =>
+          row.status === "completed" &&
+          row.completion_semantics_version ===
+            SESSION_COMPLETION_SEMANTICS_VERSION,
+      )
+      .map((row) => String(row.id)),
+  );
   const snapshotWorkoutTimingVersions = rows(payload, "record_versions").filter(
     (row) =>
       row.user_id === userId &&
@@ -3254,14 +3633,19 @@ function targetRows(
     } else if (table === "audit_logs") {
       result[table] = tableRows.filter((row) => {
         const versionId = auditVersionId(row);
-        return (
+        const timingAudit =
           row.user_id === userId &&
           row.entity_type === "workout_session" &&
           snapshotWorkoutIds.has(String(row.entity_id)) &&
           WORKOUT_TIMING_VERSION_ACTIONS.has(String(row.action)) &&
           versionId != null &&
-          snapshotWorkoutTimingVersionIds.has(versionId)
-        );
+          snapshotWorkoutTimingVersionIds.has(versionId);
+        const finishReceipt =
+          row.user_id === userId &&
+          row.entity_type === "workout_session" &&
+          row.action === "session.complete" &&
+          snapshotFinishReceiptSessionIds.has(String(row.entity_id));
+        return timingAudit || finishReceipt;
       });
     } else if (
       table === "exercise_aliases" ||

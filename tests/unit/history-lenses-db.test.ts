@@ -56,7 +56,7 @@ describe("History lens database evidence", () => {
       .insert(exercises)
       .values([
         {
-          name: `Lens Bench ${crypto.randomUUID()}`,
+          name: `Bench Press ${crypto.randomUUID()}`,
           movementPattern: "horizontal_push" as const,
           primaryMuscles: ["chest"],
           loadType: "barbell",
@@ -186,6 +186,8 @@ describe("History lens database evidence", () => {
           prescribedMetricType: "weight_reps" as const,
           prescribedLoadType: "barbell",
           prescribedLoadSemantics: "total" as const,
+          prescribedCountingSemanticsVersion: 1,
+          prescribedCountingBasis: "not_applicable" as const,
           plannedFromTemplateExerciseId: slotByExerciseId.get(benchId),
           modificationType: "as_planned" as const,
           orderIdx: 0,
@@ -315,6 +317,8 @@ describe("History lens database evidence", () => {
         prescribedMetricType: "weight_reps",
         prescribedLoadType: "barbell",
         prescribedLoadSemantics: "total",
+        prescribedCountingSemanticsVersion: 1,
+        prescribedCountingBasis: "not_applicable",
         plannedFromTemplateExerciseId: slotByExerciseId.get(benchId),
         modificationType: "as_planned",
         orderIdx: 0,
@@ -515,7 +519,7 @@ describe("History lens database evidence", () => {
 
     expect(records.evidence[0]).toMatchObject({
       label: benchName,
-      value: "200 lb × 1",
+      value: "105 lb × 10",
     });
     // Scoped to the reported values: labels embed generated exercise names
     // whose UUID suffix can itself contain "999" and fail this by chance.
@@ -551,15 +555,15 @@ describe("History lens database evidence", () => {
     expect(benchProgress).toMatchObject({
       exerciseId: benchId,
       first: { sourceSessionId: firstSessionId },
-      latest: { sourceSessionId: importedSessionId },
+      latest: { sourceSessionId: secondSessionId },
     });
     expect(benchRecord).toMatchObject({
       exerciseId: benchId,
-      sourceSessionId: importedSessionId,
+      sourceSessionId: secondSessionId,
     });
     expect(
       report.families.some(
-        (family) => family.familyKey === `exercise:${benchId}`,
+        (family) => family.familyKey === "reporting-family:Chest Press",
       ),
     ).toBe(true);
 
@@ -597,7 +601,7 @@ describe("History lens database evidence", () => {
     });
     expect(
       restored.lenses.find((lens) => lens.key === "records")!.evidence[0].value,
-    ).toBe("200 lb × 1");
+    ).toBe("105 lb × 10");
     expect(
       restored.lenses.find((lens) => lens.key === "pain-constraints")!.limitation,
     ).toContain("2 of 3 positive pain reports name an exercise");

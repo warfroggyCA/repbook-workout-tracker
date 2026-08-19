@@ -21,26 +21,55 @@ export type HistoryOccurrenceEvidence = {
 export type HistoryTerminalState =
   | "in_progress"
   | "completed"
-  | "finished_early"
+  | "completed_without_prescription"
+  | "completed_with_remaining_work"
+  | "legacy_incomplete_outcome_unknown"
   | "abandoned";
 
 export function classifyHistoryTerminalState(
   status: HistorySessionStatus,
   occurrences: HistoryOccurrenceEvidence[],
+  completion?: {
+    semanticsVersion: number | null;
+    state: string | null;
+    reason: string | null;
+  },
 ): HistoryTerminalState {
   if (status === "in_progress") return "in_progress";
   if (status === "abandoned") return "abandoned";
+  if (
+    completion?.semanticsVersion === 1 &&
+    completion.state === "completed_without_prescription" &&
+    completion.reason == null
+  ) {
+    return "completed_without_prescription";
+  }
+  if (
+    completion?.semanticsVersion === 1 &&
+    completion.state === "completed_with_remaining_work" &&
+    completion.reason != null
+  ) {
+    return "completed_with_remaining_work";
+  }
   return occurrences.some(
     (occurrence) =>
       occurrence.outcome === "abandoned" &&
       occurrence.outcomeReason === "finished_early",
   )
-    ? "finished_early"
+    ? "legacy_incomplete_outcome_unknown"
     : "completed";
 }
 
 export function historyTerminalLabel(state: HistoryTerminalState) {
-  if (state === "finished_early") return "Finished early";
+  if (state === "completed_without_prescription") {
+    return "Completed without a prescription";
+  }
+  if (state === "completed_with_remaining_work") {
+    return "Completed with planned work remaining";
+  }
+  if (state === "legacy_incomplete_outcome_unknown") {
+    return "Completed; legacy incomplete outcome";
+  }
   if (state === "abandoned") return "Abandoned workout";
   if (state === "in_progress") return "Workout in progress";
   return "Completed workout";

@@ -46,11 +46,17 @@ import {
   initializeRetrospectiveDraft,
   parseRetrospectiveDraft,
   retrospectiveDraftKey,
+  retrospectiveLegacyDraftKey,
   selectPerformedDraftExercise,
   type RetrospectiveExerciseDraft,
   type RetrospectiveOutcomeDraft,
   type RetrospectiveWorkoutDraft,
 } from "@/lib/retrospective-workout-draft";
+import {
+  INCOMPLETE_SESSION_REASONS,
+  INCOMPLETE_SESSION_REASON_LABELS,
+  OCCURRENCE_RESOLUTION_SEMANTICS_VERSION,
+} from "@/lib/session-completion-semantics";
 
 const subscribeToHydration = () => () => undefined;
 const getClientHydrationSnapshot = () => true;
@@ -261,11 +267,18 @@ function buildInput(
           };
         }
         if (outcome.outcome === "skipped") {
+          if (!outcome.skipReason) {
+            throw new Error(
+              `${exercise.name}, set ${ordinal + 1}: choose why it was skipped.`,
+            );
+          }
           return {
             occurrenceId: outcome.occurrenceId,
             ordinal,
             outcome: "skipped" as const,
-            reason: outcome.skipReason,
+            resolutionSemanticsVersion:
+              OCCURRENCE_RESOLUTION_SEMANTICS_VERSION,
+            reasonCode: outcome.skipReason,
             note: outcome.note.trim() || null,
           };
         }
@@ -629,11 +642,13 @@ function RetrospectiveWorkoutFields({
 }) {
   const router = useRouter();
   const storageKey = retrospectiveDraftKey(ownerId, localDate);
+  const legacyStorageKey = retrospectiveLegacyDraftKey(ownerId, localDate);
+  const storedDraft = () => parseRetrospectiveDraft(
+    localStorage.getItem(storageKey) ?? localStorage.getItem(legacyStorageKey),
+    { ownerId, localDate },
+  );
   const [draft, setDraft] = useState<RetrospectiveWorkoutDraft>(() => {
-    const stored = parseRetrospectiveDraft(localStorage.getItem(storageKey), {
-      ownerId,
-      localDate,
-    });
+    const stored = storedDraft();
     return (
       stored ??
       initializeRetrospectiveDraft({ ownerId, localDate, timezone })
@@ -644,10 +659,7 @@ function RetrospectiveWorkoutFields({
     title: string;
     description: string;
   } | null>(() =>
-    parseRetrospectiveDraft(localStorage.getItem(storageKey), {
-      ownerId,
-      localDate,
-    })
+    storedDraft()
       ? {
           state: "recovered",
           title: "Recovered this browser’s draft",
@@ -686,6 +698,7 @@ function RetrospectiveWorkoutFields({
   useEffect(() => {
     try {
       localStorage.setItem(storageKey, JSON.stringify(draft));
+      localStorage.removeItem(legacyStorageKey);
     } catch {
       queueMicrotask(() => {
         setNotice({
@@ -696,7 +709,7 @@ function RetrospectiveWorkoutFields({
         });
       });
     }
-  }, [draft, storageKey]);
+  }, [draft, legacyStorageKey, storageKey]);
 
   function updateExercise(
     exerciseIndex: number,
@@ -776,6 +789,7 @@ function RetrospectiveWorkoutFields({
         const result = await recordRetrospectiveWorkout(input);
         if (result.ok) {
           localStorage.removeItem(storageKey);
+          localStorage.removeItem(legacyStorageKey);
           router.replace(
             buildWorkoutHistoryHref(result.sessionId, historyContext),
           );
@@ -1484,7 +1498,7 @@ function RetrospectiveWorkoutFields({
                           <select
                             id={`${outcome.occurrenceId}-skip-reason`}
                             className={selectClassName}
-                            value={outcome.skipReason}
+                            value={outcome.skipReason ?? ""}
                             onChange={(event) =>
                               updateExercise(exerciseIndex, (current) => ({
                                 ...current,
@@ -1494,20 +1508,29 @@ function RetrospectiveWorkoutFields({
                                     candidate.outcome === "skipped"
                                       ? {
                                           ...candidate,
-                                          skipReason: event.target
-                                            .value as typeof candidate.skipReason,
+                                          skipReason:
+                                            (event.target.value ||
+                                              null) as typeof candidate.skipReason,
                                         }
                                       : candidate,
                                 ),
                               }))
                             }
                           >
-                            <option value="time">Time</option>
-                            <option value="pain">Pain</option>
-                            <option value="fatigue">Fatigue</option>
-                            <option value="equipment">Equipment</option>
-                            <option value="other">Other</option>
+                            <option value="">Choose a reason</option>
+                            {INCOMPLETE_SESSION_REASONS.map((reason) => (
+                              <option key={reason} value={reason}>
+                                {INCOMPLETE_SESSION_REASON_LABELS[reason]}
+                              </option>
+                            ))}
                           </select>
+                          {outcome.legacySkipReason && (
+                            <p className="mt-1 text-xs text-muted-foreground">
+                              Recovered legacy reason: {outcome.legacySkipReason}.
+                              Choose the current reason explicitly; Repbook will
+                              not reinterpret the older category.
+                            </p>
+                          )}
                         </div>
                         <div>
                           <Label htmlFor={`${outcome.occurrenceId}-skip-note`}>

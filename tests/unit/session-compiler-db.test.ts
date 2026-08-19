@@ -103,6 +103,15 @@ describe("Session Compiler durable review and acceptance", () => {
 
   it("stores a reviewable proposal and atomically accepts exactly one immutable workout without changing the Program", async () => {
     const before = await getCurrentProgramDocument(database.db, userId);
+    const sourceExercises = await database.db
+      .select({ id: exercises.id })
+      .from(exercises);
+    const unilateralSource = sourceExercises[0];
+    const bilateralSource = sourceExercises[1];
+    await database.db
+      .update(exercises)
+      .set({ isUnilateral: true })
+      .where(eq(exercises.id, unilateralSource.id));
     const clientMutationId = crypto.randomUUID();
     const request = { dayLineageId, requestedMinutes: 60, energy: "usual" as const, clientMutationId };
     const proposal = await createSessionCompilerProposal(database.db, userId, request);
@@ -131,8 +140,51 @@ describe("Session Compiler durable review and acceptance", () => {
         }),
       }),
     ]));
+    expect(compilerExercises.find(
+      (exercise) => exercise.exerciseId === unilateralSource.id,
+    )).toMatchObject({
+      prescribedCountingSemanticsVersion: null,
+      prescribedCountingBasis: null,
+    });
+    expect(compilerExercises.find(
+      (exercise) => exercise.exerciseId === bilateralSource.id,
+    )).toMatchObject({
+      prescribedCountingSemanticsVersion: 1,
+      prescribedCountingBasis: "not_applicable",
+    });
+    await database.db
+      .update(exercises)
+      .set({ isUnilateral: false })
+      .where(eq(exercises.id, unilateralSource.id));
+    await database.db
+      .update(exercises)
+      .set({ isUnilateral: true })
+      .where(eq(exercises.id, bilateralSource.id));
+    const frozenCompilerExercises = await database.db
+      .select()
+      .from(sessionExercises);
+    expect(frozenCompilerExercises.find(
+      (exercise) => exercise.exerciseId === unilateralSource.id,
+    )).toMatchObject({
+      prescribedCountingSemanticsVersion: null,
+      prescribedCountingBasis: null,
+    });
+    expect(frozenCompilerExercises.find(
+      (exercise) => exercise.exerciseId === bilateralSource.id,
+    )).toMatchObject({
+      prescribedCountingSemanticsVersion: 1,
+      prescribedCountingBasis: "not_applicable",
+    });
     const session = await database.db.query.workoutSessions.findFirst({ where: eq(workoutSessions.id, first.sessionId) });
-    expect(session).toMatchObject({ source: "compiler", compilationAcceptanceKey: acceptanceKey });
+    expect(session).toMatchObject({
+      source: "compiler",
+      compilationAcceptanceKey: acceptanceKey,
+      timeBudgetMin: 60,
+      plannedDurationSemanticsVersion: 1,
+      plannedDurationMinMinutes: 30,
+      plannedDurationMaxMinutes: 60,
+      plannedDurationSource: "program_day_target",
+    });
     expect(session?.compilationSnapshot).toMatchObject({ proposalId: proposal.id, proposalHash: proposal.contentHash });
     const decided = await database.db.query.sessionCompilerProposals.findFirst({ where: eq(sessionCompilerProposals.id, proposal.id) });
     expect(decided).toMatchObject({ status: "accepted", acceptedSessionId: first.sessionId, acceptanceKey });
@@ -163,7 +215,7 @@ describe("Session Compiler durable review and acceptance", () => {
     expect(csv).toContain(versionId);
     expect(csv).toContain(dayLineageId);
     const backup = await buildJsonBackup(database.db, userId);
-    expect(backup.schemaVersion).toBe("34");
+    expect(backup.schemaVersion).toBe("35");
     expect(backup.canonical.tables.session_compiler_proposals).toContainEqual(
       expect.objectContaining({ id: proposal.id, accepted_session_id: first.sessionId, content_hash: proposal.contentHash }),
     );
@@ -539,7 +591,7 @@ describe("Session Compiler durable review and acceptance", () => {
       created.snapshotId,
       { store, keyring }
     );
-    expect(captured.payload.schemaVersion).toBe("34");
+    expect(captured.payload.schemaVersion).toBe("35");
     expect(captured.payload.tables.session_compiler_proposals).toContainEqual(
       expect.objectContaining({
         id: proposal.id,

@@ -111,6 +111,13 @@ export const skipReasonEnum = pgEnum("skip_reason", [
   "fatigue",
   "equipment",
   "other",
+  "time_limit_reached",
+  "pain_discomfort",
+  "equipment_unavailable_incompatible",
+  "user_choice",
+  "technical_app_issue",
+  "interruption",
+  "program_change",
 ]);
 
 export const substitutionReasonEnum = pgEnum("substitution_reason", [

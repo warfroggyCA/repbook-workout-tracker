@@ -20,6 +20,7 @@ import {
   upgradeStoredProgramDocumentToV3,
 } from "@/lib/program-document";
 import { sessionEquipmentRequirementsSnapshotExpression } from "@/services/session-equipment-requirements";
+import { PLANNED_DURATION_SEMANTICS_VERSION } from "@/lib/session-completion-semantics";
 
 export class SessionCompilerIneligibleError extends Error {
   constructor(message: string) {
@@ -333,6 +334,11 @@ export async function acceptSessionCompilerProposal(
     : [];
   const dayWarmupsJson = JSON.stringify(dayWarmupItems);
   const snapshotJson = JSON.stringify(snapshot);
+  const plannedDuration = input.day.intent.durationOverride ??
+    input.day.intent.targetDuration;
+  const plannedDurationSource = input.day.intent.durationOverride == null
+    ? "program_day_target"
+    : "program_day_duration_override";
   await dependencies.checkpoint?.("before-accept-statement");
   const result = resultRows(await db.execute(sql`
     WITH replay AS MATERIALIZED (
@@ -379,7 +385,11 @@ export async function acceptSessionCompilerProposal(
       INSERT INTO workout_sessions (
         id, user_id, template_id, template_name, day_warmup_notes,
         day_warmup_items, source,
-        time_budget_min, compilation_acceptance_key, compilation_snapshot,
+        time_budget_min,
+        planned_duration_semantics_version,
+        planned_duration_min_minutes, planned_duration_max_minutes,
+        planned_duration_source,
+        compilation_acceptance_key, compilation_snapshot,
         started_at, timezone, local_date,
         source_program_id, source_program_version_id, source_day_lineage_id
       )
@@ -387,6 +397,10 @@ export async function acceptSessionCompilerProposal(
         ${sessionId}::uuid, ${userId}::uuid, template.id, template.name,
         template.warmup_notes, ${dayWarmupsJson}::jsonb, 'compiler',
         ${input.requestedMinutes}::integer,
+        ${PLANNED_DURATION_SEMANTICS_VERSION}::integer,
+        ${plannedDuration.minMinutes}::integer,
+        ${plannedDuration.maxMinutes}::integer,
+        ${plannedDurationSource}::text,
         ${acceptanceKey}, ${snapshotJson}::jsonb, ${acceptedAt.toISOString()}::timestamptz,
         ${timezone}, timezone(${timezone}, ${acceptedAt.toISOString()}::timestamptz)::date,
         proposal.program_id, proposal.program_version_id, template.lineage_id
@@ -437,6 +451,7 @@ export async function acceptSessionCompilerProposal(
         prescribed_semantics_version, prescribed_exercise_name,
         prescribed_metric_type, prescribed_load_type,
         prescribed_load_semantics,
+        prescribed_counting_semantics_version, prescribed_counting_basis,
         equipment_requirements_semantics_version,
         equipment_requirements_snapshot,
         order_idx, superset_key, group_snapshot_id, group_member_order_idx,
@@ -455,6 +470,18 @@ export async function acceptSessionCompilerProposal(
         row.prescribed_metric_type::metric_type,
         row.prescribed_load_type,
         row.prescribed_load_semantics::load_semantics,
+        CASE
+          WHEN NOT source_exercise.is_unilateral
+            AND row.prescribed_metric_type IN ('weight_reps', 'assisted_reps')
+            THEN 1
+          ELSE NULL
+        END,
+        CASE
+          WHEN NOT source_exercise.is_unilateral
+            AND row.prescribed_metric_type IN ('weight_reps', 'assisted_reps')
+            THEN 'not_applicable'
+          ELSE NULL
+        END,
         1,
         ${sessionEquipmentRequirementsSnapshotExpression(sql`row.exercise_id::uuid`)},
         row.order_idx,
@@ -481,6 +508,12 @@ export async function acceptSessionCompilerProposal(
         rep_max integer, target_load numeric, target_load_unit text, notes text,
         warmup_notes text, warmup_sets jsonb, set_notes jsonb
       )
+      JOIN exercises source_exercise
+        ON source_exercise.id = row.exercise_id::uuid
+       AND (
+         source_exercise.user_id IS NULL
+         OR source_exercise.user_id = ${userId}::uuid
+       )
       LEFT JOIN inserted_groups session_group
         ON session_group.lineage_id = row.superset_key::uuid
       RETURNING *

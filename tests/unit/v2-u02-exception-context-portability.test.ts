@@ -71,7 +71,7 @@ describe("V2 U02 exception context portability", () => {
       ))),
       fixture.userId,
     );
-    expect(backup.schemaVersion).toBe("34");
+    expect(backup.schemaVersion).toBe("35");
     expect(backup.canonical.tables.completed_sets).toContainEqual(
       expect.objectContaining({
         id: saved.setId,

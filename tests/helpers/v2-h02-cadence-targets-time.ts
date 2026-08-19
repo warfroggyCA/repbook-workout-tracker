@@ -250,6 +250,8 @@ export async function seedV2H02CadenceTargetsTime(
         prescribedMetricType: "weight_reps",
         prescribedLoadType: "barbell",
         prescribedLoadSemantics: "total",
+        prescribedCountingSemanticsVersion: 1,
+        prescribedCountingBasis: "not_applicable",
         targetSets: 1,
         targetRepsMin: 1,
         targetRepsMax: 1,

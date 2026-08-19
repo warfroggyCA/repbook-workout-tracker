@@ -298,7 +298,7 @@ describe("atomic finish handoff", () => {
       "const latestOccurrenceQueue = getOccurrenceMutationOutboxSnapshot()",
     );
     expect(source.indexOf("finishBlockedByRecordedWork(freshExitQueues)")).toBeLessThan(
-      source.indexOf("completeSession(command)"),
+      source.indexOf("completeSession(completionInput)"),
     );
   });
 
@@ -308,13 +308,16 @@ describe("atomic finish handoff", () => {
       "utf8",
     );
     const retain = source.indexOf("!writeFinishRecovery(");
-    const dispatch = source.indexOf("completeSession(command)");
+    const dispatch = source.indexOf("completeSession(completionInput)");
     expect(retain).toBeGreaterThan(-1);
     expect(dispatch).toBeGreaterThan(retain);
     expect(source).toContain(
-      "withDocumentActionDeadline(\n            completeSession(command)",
+      "withDocumentActionDeadline(\n            completeSession(completionInput)",
     );
     expect(source).toContain("readFinishRecovery(");
+    expect(source).toContain("workout-tracker:finish-recovery:v2:");
+    expect(source).toContain("workout-tracker:finish-recovery:v1:");
+    expect(source).toContain("readLegacyFinishRecovery(");
     expect(source).toContain("!finishRecoveryHydrated ||");
     expect(source).toContain(
       "Your exact finish details are retained. Reload to retry safely.",

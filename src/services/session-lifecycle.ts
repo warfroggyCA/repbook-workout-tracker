@@ -44,6 +44,13 @@ import {
   type SetPainContext,
   type TechniqueIssue,
 } from "@/lib/set-exception-context";
+import {
+  incompleteSessionReasonSchema,
+  OCCURRENCE_RESOLUTION_SEMANTICS_VERSION,
+  PLANNED_DURATION_SEMANTICS_VERSION,
+  SESSION_COMPLETION_SEMANTICS_VERSION,
+  type IncompleteSessionReason,
+} from "@/lib/session-completion-semantics";
 
 export type LifecycleCheckpoint = (boundary: string) => void | Promise<void>;
 
@@ -382,6 +389,7 @@ export type MutateWorkoutOccurrenceInput = {
   expectedRevision: number;
   operation: "complete" | "skip" | "restore" | "note";
   reason?: string | null;
+  reasonCode?: IncompleteSessionReason | null;
   note?: string | null;
 };
 
@@ -392,12 +400,20 @@ export type MutateWorkoutOccurrenceResult =
         id: string;
         state: string;
         reason: string | null;
+        resolutionSemanticsVersion: number | null;
+        resolutionReasonCode: string | null;
         note: string | null;
         revision: number;
         resolvedAt: string | null;
       };
     }
-  | { outcome: "conflict" | "workout_not_active" | "not_found" };
+  | {
+      outcome:
+        | "conflict"
+        | "retry_identity_conflict"
+        | "workout_not_active"
+        | "not_found";
+    };
 
 export type AppendWorkoutSetInput = {
   sessionExerciseId: string;
@@ -1043,8 +1059,18 @@ export async function mutateWorkoutOccurrence(
   if (!Number.isInteger(input.expectedRevision) || input.expectedRevision < 0) {
     throw new Error("An occurrence mutation needs a valid expected revision.");
   }
-  if (input.operation === "skip" && !input.reason?.trim()) {
+  const reasonCode = input.reasonCode == null
+    ? null
+    : incompleteSessionReasonSchema.parse(input.reasonCode);
+  if (
+    input.operation === "skip" &&
+    !input.reason?.trim() &&
+    reasonCode == null
+  ) {
     throw new Error("Skipping an occurrence requires a reason.");
+  }
+  if (input.operation !== "skip" && reasonCode != null) {
+    throw new Error("Only an explicit occurrence skip can carry a reason code.");
   }
   if (input.operation === "note" && input.reason?.trim()) {
     throw new Error("A workout-item note cannot carry a skip reason.");
@@ -1057,13 +1083,21 @@ export async function mutateWorkoutOccurrence(
       "Completing or restoring a workout item cannot carry note or skip fields.",
     );
   }
+  const legacyCanonicalPayload = {
+    operation: input.operation,
+    expectedRevision: input.expectedRevision,
+    reason: input.reason?.trim() || null,
+    note: input.note?.trim() || null,
+  };
   const canonicalPayloadHash = createHash("sha256")
-    .update(JSON.stringify({
-      operation: input.operation,
-      expectedRevision: input.expectedRevision,
-      reason: input.reason?.trim() || null,
-      note: input.note?.trim() || null,
-    }))
+    .update(JSON.stringify(reasonCode == null
+      ? legacyCanonicalPayload
+      : {
+          ...legacyCanonicalPayload,
+          reasonCode,
+          resolutionSemanticsVersion:
+            OCCURRENCE_RESOLUTION_SEMANTICS_VERSION,
+        }))
     .digest("hex");
   const mutationId = randomUUID();
   const row = resultRows(await db.execute(sql`
@@ -1078,7 +1112,7 @@ export async function mutateWorkoutOccurrence(
       SELECT receipt.*
       FROM session_occurrence_mutations receipt
       JOIN visible ON visible.id = receipt.occurrence_id
-      WHERE receipt.client_key = ${input.clientKey}
+      WHERE receipt.client_key = ${input.clientKey}::text
     ), owned AS MATERIALIZED (
       SELECT occurrence.*
       FROM session_occurrences occurrence
@@ -1132,9 +1166,25 @@ export async function mutateWorkoutOccurrence(
             ELSE occurrence.outcome
           END,
           outcome_reason = CASE ${input.operation}
-            WHEN 'skip' THEN ${input.reason?.trim() || null}
+            WHEN 'skip' THEN coalesce(
+              ${input.reason?.trim() || null}::text,
+              ${reasonCode}::text
+            )
             WHEN 'restore' THEN NULL
             ELSE occurrence.outcome_reason
+          END,
+          resolution_semantics_version = CASE ${input.operation}
+            WHEN 'skip' THEN CASE WHEN ${reasonCode}::text IS NULL
+              THEN NULL
+              ELSE ${OCCURRENCE_RESOLUTION_SEMANTICS_VERSION}::integer
+            END
+            WHEN 'restore' THEN NULL
+            ELSE occurrence.resolution_semantics_version
+          END,
+          resolution_reason_code = CASE ${input.operation}
+            WHEN 'skip' THEN ${reasonCode}::text
+            WHEN 'restore' THEN NULL
+            ELSE occurrence.resolution_reason_code
           END,
           outcome_note = CASE ${input.operation}
             WHEN 'note' THEN ${input.note?.trim() || null}
@@ -1233,8 +1283,8 @@ export async function mutateWorkoutOccurrence(
         id, occurrence_id, client_key, operation, canonical_payload_hash,
         expected_revision, resulting_revision, result_code
       )
-      SELECT ${mutationId}::uuid, updated.id, ${input.clientKey},
-             ${input.operation}, ${canonicalPayloadHash},
+      SELECT ${mutationId}::uuid, updated.id, ${input.clientKey}::text,
+             ${input.operation}, ${canonicalPayloadHash}::text,
              ${input.expectedRevision}, updated.revision, 'applied'
       FROM updated
       RETURNING *
@@ -1244,14 +1294,14 @@ export async function mutateWorkoutOccurrence(
       SELECT occurrence.*
       FROM session_occurrences occurrence
       JOIN existing_receipt receipt ON receipt.occurrence_id = occurrence.id
-      WHERE receipt.canonical_payload_hash = ${canonicalPayloadHash}
+      WHERE receipt.canonical_payload_hash = ${canonicalPayloadHash}::text
       LIMIT 1
     )
     SELECT
       CASE
         WHEN EXISTS (
           SELECT 1 FROM existing_receipt
-          WHERE canonical_payload_hash <> ${canonicalPayloadHash}
+          WHERE canonical_payload_hash <> ${canonicalPayloadHash}::text
         ) THEN 'conflict'
         WHEN EXISTS (SELECT 1 FROM existing_receipt) THEN 'replayed'
         WHEN EXISTS (SELECT 1 FROM updated) THEN 'saved'
@@ -1265,6 +1315,8 @@ export async function mutateWorkoutOccurrence(
       selected.id,
       selected.outcome AS state,
       selected.outcome_reason,
+      selected.resolution_semantics_version,
+      selected.resolution_reason_code,
       selected.outcome_note,
       selected.revision,
       selected.resolved_at
@@ -1272,27 +1324,75 @@ export async function mutateWorkoutOccurrence(
     LEFT JOIN selected ON true
   `))[0];
   if (!row) throw new Error("The occurrence mutation returned no outcome.");
-  if (row.outcome === "saved" || row.outcome === "replayed") {
-    return {
-      outcome: row.outcome,
-      occurrence: {
-        id: String(row.id),
-        state: String(row.state),
-        reason: row.outcome_reason == null ? null : String(row.outcome_reason),
-        note: row.outcome_note == null ? null : String(row.outcome_note),
-        revision: Number(row.revision),
-        resolvedAt: row.resolved_at == null
+  const successResult = (
+    outcome: "saved" | "replayed",
+    selected: Record<string, unknown>,
+  ): MutateWorkoutOccurrenceResult => ({
+    outcome,
+    occurrence: {
+      id: String(selected.id),
+      state: String(selected.state),
+      reason: selected.outcome_reason == null
+        ? null
+        : String(selected.outcome_reason),
+      resolutionSemanticsVersion:
+        selected.resolution_semantics_version == null
           ? null
-          : new Date(String(row.resolved_at)).toISOString(),
-      },
-    };
+          : Number(selected.resolution_semantics_version),
+      resolutionReasonCode: selected.resolution_reason_code == null
+        ? null
+        : String(selected.resolution_reason_code),
+      note: selected.outcome_note == null
+        ? null
+        : String(selected.outcome_note),
+      revision: Number(selected.revision),
+      resolvedAt: selected.resolved_at == null
+        ? null
+        : new Date(String(selected.resolved_at)).toISOString(),
+    },
+  });
+  if (row.outcome === "saved" || row.outcome === "replayed") {
+    return successResult(row.outcome, row);
+  }
+  if (row.outcome === "conflict") {
+    // A concurrent delivery can wait on the occurrence row after this
+    // statement's READ COMMITTED snapshot was taken. Reconcile the durable
+    // receipt in a fresh statement before calling that exact replay stale.
+    const receipt = resultRows(await db.execute(sql`
+      SELECT
+        mutation.canonical_payload_hash,
+        occurrence.id,
+        occurrence.outcome AS state,
+        occurrence.outcome_reason,
+        occurrence.resolution_semantics_version,
+        occurrence.resolution_reason_code,
+        occurrence.outcome_note,
+        occurrence.revision,
+        occurrence.resolved_at
+      FROM session_occurrence_mutations mutation
+      JOIN session_occurrences occurrence
+        ON occurrence.id = mutation.occurrence_id
+      JOIN workout_sessions session ON session.id = occurrence.session_id
+      WHERE mutation.occurrence_id = ${input.occurrenceId}::uuid
+        AND mutation.client_key = ${input.clientKey}::text
+        AND session.user_id = ${userId}::uuid
+      LIMIT 1
+    `))[0];
+    if (receipt) {
+      if (receipt.canonical_payload_hash !== canonicalPayloadHash) {
+        return { outcome: "retry_identity_conflict" };
+      }
+      return successResult("replayed", receipt);
+    }
   }
   if (
     row.outcome === "conflict" ||
     row.outcome === "workout_not_active" ||
     row.outcome === "not_found"
   ) {
-    return { outcome: row.outcome };
+    return {
+      outcome: row.outcome,
+    };
   }
   throw new Error("The occurrence mutation returned an unsupported outcome.");
 }
@@ -1344,6 +1444,36 @@ export async function startWorkoutSession(
   const checkpoint = dependencies.checkpoint ?? noCheckpoint;
   const startedAt = (dependencies.now ?? (() => new Date()))();
   const sessionId = randomUUID();
+  const overrideDurationMin = sql`CASE
+    WHEN (wt.intent->'durationOverride'->>'minMinutes') ~ '^[0-9]+$'
+    THEN (wt.intent->'durationOverride'->>'minMinutes')::integer
+    ELSE NULL
+  END`;
+  const overrideDurationMax = sql`CASE
+    WHEN (wt.intent->'durationOverride'->>'maxMinutes') ~ '^[0-9]+$'
+    THEN (wt.intent->'durationOverride'->>'maxMinutes')::integer
+    ELSE NULL
+  END`;
+  const targetDurationMin = sql`CASE
+    WHEN (wt.intent->'targetDuration'->>'minMinutes') ~ '^[0-9]+$'
+    THEN (wt.intent->'targetDuration'->>'minMinutes')::integer
+    ELSE NULL
+  END`;
+  const targetDurationMax = sql`CASE
+    WHEN (wt.intent->'targetDuration'->>'maxMinutes') ~ '^[0-9]+$'
+    THEN (wt.intent->'targetDuration'->>'maxMinutes')::integer
+    ELSE NULL
+  END`;
+  const overrideDurationValid = sql`(
+    version.document_schema_version IN (2, 3)
+    AND ${overrideDurationMin} BETWEEN 5 AND 600
+    AND ${overrideDurationMax} BETWEEN ${overrideDurationMin} AND 600
+  )`;
+  const targetDurationValid = sql`(
+    version.document_schema_version IN (2, 3)
+    AND ${targetDurationMin} BETWEEN 5 AND 600
+    AND ${targetDurationMax} BETWEEN ${targetDurationMin} AND 600
+  )`;
   await checkpoint("before-start-statement");
   const query = sql`
     WITH existing_request AS MATERIALIZED (
@@ -1481,6 +1611,22 @@ export async function startWorkoutSession(
              scheduled.program_week,
              scheduled.cycle_position,
              scheduled.routine_lineage_id,
+             CASE
+               WHEN ${overrideDurationValid} THEN ${overrideDurationMin}
+               WHEN ${targetDurationValid} THEN ${targetDurationMin}
+               ELSE NULL
+             END AS planned_duration_min_minutes,
+             CASE
+               WHEN ${overrideDurationValid} THEN ${overrideDurationMax}
+               WHEN ${targetDurationValid} THEN ${targetDurationMax}
+               ELSE NULL
+             END AS planned_duration_max_minutes,
+             CASE
+               WHEN ${overrideDurationValid}
+                 THEN 'program_day_duration_override'
+               WHEN ${targetDurationValid} THEN 'program_day_target'
+               ELSE NULL
+             END AS planned_duration_source,
              ${actionableProgramDayWarmupItemsSql({
                lineageId: sql`wt.lineage_id`,
                fallbackItemKey: sql`wt.id`,
@@ -1515,6 +1661,9 @@ export async function startWorkoutSession(
     ), upserted_session AS (
       INSERT INTO workout_sessions (
         id, user_id, template_id, template_name, time_budget_min,
+        planned_duration_semantics_version,
+        planned_duration_min_minutes, planned_duration_max_minutes,
+        planned_duration_source,
         start_request_key, start_request_hash,
         started_at, timezone, local_date, day_warmup_notes, day_warmup_items,
         source_program_id, source_program_version_id, source_day_lineage_id,
@@ -1526,6 +1675,13 @@ export async function startWorkoutSession(
         template.id,
         template.name,
         ${validatedTimeBudget ?? null}::integer,
+        CASE WHEN template.planned_duration_source IS NULL
+          THEN NULL
+          ELSE ${PLANNED_DURATION_SEMANTICS_VERSION}::integer
+        END,
+        template.planned_duration_min_minutes,
+        template.planned_duration_max_minutes,
+        template.planned_duration_source,
         ${startRequestKey}::text,
         ${startRequestHash}::text,
         ${startedAt.toISOString()}::timestamptz,
@@ -1654,6 +1810,7 @@ export async function startWorkoutSession(
         prescribed_semantics_version, prescribed_exercise_name,
         prescribed_metric_type, prescribed_load_type,
         prescribed_load_semantics,
+        prescribed_counting_semantics_version, prescribed_counting_basis,
         equipment_requirements_semantics_version,
         equipment_requirements_snapshot,
         order_idx, superset_key, group_snapshot_id, group_member_order_idx,
@@ -1671,6 +1828,18 @@ export async function startWorkoutSession(
         catalog.metric_type,
         catalog.load_type,
         catalog.load_semantics,
+        CASE
+          WHEN NOT catalog.is_unilateral
+            AND catalog.metric_type IN ('weight_reps', 'assisted_reps')
+            THEN 1
+          ELSE NULL
+        END,
+        CASE
+          WHEN NOT catalog.is_unilateral
+            AND catalog.metric_type IN ('weight_reps', 'assisted_reps')
+            THEN 'not_applicable'
+          ELSE NULL
+        END,
         1,
         ${sessionEquipmentRequirementsSnapshotExpression(sql`slot.exercise_id`)},
         slot.order_idx,
@@ -3304,6 +3473,7 @@ export async function completeWorkoutSession(
     note?: string;
     fatigue?: number;
     durationDecision?: WorkoutCompletionDurationDecision | null;
+    completionReason?: IncompleteSessionReason | null;
   },
   dependencies: SessionLifecycleDependencies = {}
 ) {
@@ -3312,6 +3482,9 @@ export async function completeWorkoutSession(
   const finishedAt = now();
   const progressionJobId = randomUUID();
   const note = input.note?.trim() || null;
+  const completionReason = input.completionReason == null
+    ? null
+    : incompleteSessionReasonSchema.parse(input.completionReason);
   const durationDecisionBasis = input.durationDecision?.basis ?? null;
   const ownerReportedDurationInputValid =
     input.durationDecision?.basis !== "owner_reported" ||
@@ -3327,8 +3500,33 @@ export async function completeWorkoutSession(
       ? input.durationDecision.activeDurationSeconds
       : null;
   const finishMutationHash = createHash("sha256")
-    .update(JSON.stringify({ operation: "abandon", reason: "finished_early" }))
+    .update(JSON.stringify({
+      operation: "abandon",
+      reason: completionReason ?? "session_completed",
+      resolutionSemanticsVersion: OCCURRENCE_RESOLUTION_SEMANTICS_VERSION,
+    }))
     .digest("hex");
+  const finishCommandHash = createHash("sha256")
+    .update(JSON.stringify({
+      operation: "complete_session",
+      commandSemanticsVersion: 1,
+      sessionId: input.sessionId,
+      note,
+      fatigue: input.fatigue ?? null,
+      durationDecision: durationDecisionBasis == null
+        ? null
+        : {
+            basis: durationDecisionBasis,
+            activeDurationSeconds: input.durationDecision?.basis ===
+              "owner_reported"
+                ? input.durationDecision.activeDurationSeconds
+                : null,
+          },
+      completionReason,
+    }))
+    .digest("hex");
+  const finishPayloadConflictReason =
+    "This workout was already completed with different retained finish details. Review the saved workout before discarding the device copy.";
   await checkpoint("before-completion-statement");
   const query = sql`
     WITH history_revision_lock AS MATERIALIZED (
@@ -3363,10 +3561,48 @@ export async function completeWorkoutSession(
           ELSE NULL
         END AS duration_review_reason
       FROM owned
+    ), completion_context AS MATERIALIZED (
+      SELECT
+        context.*,
+        EXISTS (
+          SELECT 1
+          FROM session_occurrences occurrence
+          WHERE occurrence.session_id = context.id
+            AND occurrence.origin = 'planned'
+            AND occurrence.outcome = 'pending'
+        ) AS has_pending_planned_work,
+        EXISTS (
+          SELECT 1
+          FROM session_occurrences occurrence
+          WHERE occurrence.session_id = context.id
+            AND occurrence.origin = 'planned'
+            AND occurrence.outcome <> 'completed'
+        ) OR EXISTS (
+          SELECT 1
+          FROM session_exercises exercise
+          WHERE exercise.session_id = context.id
+            AND exercise.modification_type IN ('substituted', 'skipped')
+        ) AS has_plan_changes,
+        (
+          SELECT audit.cause_ref->>'finishCommandHash'
+          FROM audit_logs audit
+          WHERE audit.user_id = ${user.id}::uuid
+            AND audit.action = 'session.complete'
+            AND audit.entity_type = 'workout_session'
+            AND audit.entity_id = context.id::text
+          ORDER BY audit.created_at DESC, audit.id DESC
+          LIMIT 1
+        ) AS existing_finish_command_hash
+      FROM duration_context context
     ), duration_validation AS MATERIALIZED (
       SELECT
         context.*,
         CASE
+          WHEN context.status <> 'in_progress'
+            AND context.existing_finish_command_hash IS NOT NULL
+            AND context.existing_finish_command_hash <>
+              ${finishCommandHash}::text
+            THEN 'finish_payload_conflict'
           WHEN context.status <> 'in_progress' THEN NULL
           WHEN context.duration_review_reason IS NOT NULL
             AND ${durationDecisionBasis}::text IS NULL
@@ -3389,9 +3625,22 @@ export async function completeWorkoutSession(
               'interruption_unknown'
             )
             THEN 'invalid_duration_review'
+          WHEN context.status = 'in_progress'
+            AND context.has_pending_planned_work
+            AND ${completionReason}::text IS NULL
+            THEN 'completion_reason_required'
+          WHEN context.status = 'in_progress'
+            AND NOT context.has_pending_planned_work
+            AND ${completionReason}::text IS NOT NULL
+            THEN 'completion_reason_not_applicable'
           ELSE NULL
         END AS duration_rejection_code,
         CASE
+          WHEN context.status <> 'in_progress'
+            AND context.existing_finish_command_hash IS NOT NULL
+            AND context.existing_finish_command_hash <>
+              ${finishCommandHash}::text
+            THEN ${finishPayloadConflictReason}::text
           WHEN context.status <> 'in_progress' THEN NULL
           WHEN context.duration_review_reason IS NOT NULL
             AND ${durationDecisionBasis}::text IS NULL
@@ -3421,9 +3670,19 @@ export async function completeWorkoutSession(
               'interruption_unknown'
             )
             THEN 'The active-duration review choice is not supported.'
+          WHEN context.status = 'in_progress'
+            AND context.has_pending_planned_work
+            AND ${completionReason}::text IS NULL
+            THEN
+              'Choose why the workout is ending while planned work remains.'
+          WHEN context.status = 'in_progress'
+            AND NOT context.has_pending_planned_work
+            AND ${completionReason}::text IS NOT NULL
+            THEN
+              'No planned work remains, so an incomplete-work reason does not apply.'
           ELSE NULL
         END AS duration_rejection_reason
-      FROM duration_context context
+      FROM completion_context context
     ), duration_resolution AS MATERIALIZED (
       SELECT
         validated.*,
@@ -3456,6 +3715,20 @@ export async function completeWorkoutSession(
             resolved.resolved_active_duration_semantics_version,
           active_duration_seconds = resolved.resolved_active_duration_seconds,
           active_duration_basis = resolved.resolved_active_duration_basis,
+          completion_semantics_version =
+            ${SESSION_COMPLETION_SEMANTICS_VERSION}::integer,
+          completion_state = CASE
+            WHEN resolved.has_pending_planned_work
+              THEN 'completed_with_remaining_work'
+            WHEN resolved.has_plan_changes
+              THEN 'completed_with_changes'
+            ELSE 'completed_as_prescribed'
+          END,
+          completion_reason = CASE
+            WHEN resolved.has_pending_planned_work
+              THEN ${completionReason}::text
+            ELSE NULL
+          END,
           exclude_duration_from_analytics =
             resolved.exclude_duration_from_analytics OR
             resolved.resolved_active_duration_seconds IS NULL OR
@@ -3515,7 +3788,20 @@ export async function completeWorkoutSession(
     ), abandoned_occurrences AS (
       UPDATE session_occurrences occurrence
       SET outcome = 'abandoned',
-          outcome_reason = 'finished_early',
+          outcome_reason = CASE
+            WHEN transitioned.completion_state =
+              'completed_with_remaining_work'
+              THEN 'session_end:' || transitioned.completion_reason
+            ELSE 'session_completed'
+          END,
+          resolution_semantics_version =
+            ${OCCURRENCE_RESOLUTION_SEMANTICS_VERSION}::integer,
+          resolution_reason_code = CASE
+            WHEN transitioned.completion_state =
+              'completed_with_remaining_work'
+              THEN transitioned.completion_reason
+            ELSE 'session_completed'
+          END,
           revision = occurrence.revision + 1,
           resolved_at = ${finishedAt.toISOString()}::timestamptz
       FROM transitioned
@@ -3562,7 +3848,12 @@ export async function completeWorkoutSession(
             transitioned.active_duration_semantics_version,
           'activeDurationSeconds', transitioned.active_duration_seconds,
           'activeDurationBasis', transitioned.active_duration_basis,
-          'wallClockElapsedSeconds', wall_clock.wall_clock_elapsed_seconds
+          'wallClockElapsedSeconds', wall_clock.wall_clock_elapsed_seconds,
+          'completionSemanticsVersion',
+            transitioned.completion_semantics_version,
+          'completionState', transitioned.completion_state,
+          'completionReason', transitioned.completion_reason,
+          'finishCommandHash', ${finishCommandHash}::text
         )
       FROM transitioned
       JOIN duration_resolution wall_clock ON wall_clock.id = transitioned.id
@@ -3608,6 +3899,7 @@ export async function completeWorkoutSession(
       resolved.duration_rejection_reason,
       resolved.wall_clock_elapsed_seconds,
       (resolved.duration_review_reason IS NOT NULL) AS duration_review_required,
+      resolved.existing_finish_command_hash,
       coalesce(
         (SELECT id FROM queued_progression),
         (
@@ -3622,13 +3914,53 @@ export async function completeWorkoutSession(
   const row = resultRows(await db.execute(query))[0];
   if (!row) throw new Error("Session not found");
   await checkpoint("after-completion-statement");
+  if (
+    !Boolean(row.transitioned) &&
+    row.status !== "in_progress" &&
+    row.existing_finish_command_hash == null
+  ) {
+    // Under READ COMMITTED a concurrent Finish can wait for the workout row
+    // while the statement's earlier audit snapshot still predates the winning
+    // transaction. Re-read the durable receipt before accepting a terminal
+    // row as an exact replay.
+    const receipt = resultRows(await db.execute(sql`
+      SELECT audit.cause_ref->>'finishCommandHash' AS finish_command_hash
+      FROM audit_logs audit
+      JOIN workout_sessions session
+        ON session.id::text = audit.entity_id
+      WHERE audit.user_id = ${user.id}::uuid
+        AND session.user_id = ${user.id}::uuid
+        AND session.id = ${input.sessionId}::uuid
+        AND audit.action = 'session.complete'
+        AND audit.entity_type = 'workout_session'
+      ORDER BY audit.created_at DESC, audit.id DESC
+      LIMIT 1
+    `))[0];
+    const receiptHash = receipt?.finish_command_hash == null
+      ? null
+      : String(receipt.finish_command_hash);
+    if (receiptHash != null && receiptHash !== finishCommandHash) {
+      return {
+        outcome: "finish_payload_conflict",
+        sessionId: input.sessionId,
+        alreadyFinished: true,
+        progressionJobId: null,
+        wallClockElapsedSeconds: Number(row.wall_clock_elapsed_seconds),
+        reviewRequired: Boolean(row.duration_review_required),
+        reason: finishPayloadConflictReason,
+      } as const;
+    }
+  }
   if (row.duration_rejection_code) {
     return {
       outcome: String(row.duration_rejection_code) as
         | "duration_review_required"
-        | "invalid_duration_review",
+        | "invalid_duration_review"
+        | "completion_reason_required"
+        | "completion_reason_not_applicable"
+        | "finish_payload_conflict",
       sessionId: input.sessionId,
-      alreadyFinished: false,
+      alreadyFinished: row.duration_rejection_code === "finish_payload_conflict",
       progressionJobId: null,
       wallClockElapsedSeconds: Number(row.wall_clock_elapsed_seconds),
       reviewRequired: Boolean(row.duration_review_required),
@@ -3654,7 +3986,11 @@ export async function abandonWorkoutSession(
   const checkpoint = dependencies.checkpoint ?? noCheckpoint;
   const finishedAt = (dependencies.now ?? (() => new Date()))();
   const abandonMutationHash = createHash("sha256")
-    .update(JSON.stringify({ operation: "abandon", reason: "workout_abandoned" }))
+    .update(JSON.stringify({
+      operation: "abandon",
+      reason: "user_choice",
+      resolutionSemanticsVersion: OCCURRENCE_RESOLUTION_SEMANTICS_VERSION,
+    }))
     .digest("hex");
   await checkpoint("before-abandon-statement");
   const query = sql`
@@ -3668,7 +4004,11 @@ export async function abandonWorkoutSession(
     ), transitioned AS (
       UPDATE workout_sessions ws
       SET status = 'abandoned',
-          finished_at = ${finishedAt.toISOString()}::timestamptz
+          finished_at = ${finishedAt.toISOString()}::timestamptz,
+          completion_semantics_version =
+            ${SESSION_COMPLETION_SEMANTICS_VERSION}::integer,
+          completion_state = 'abandoned',
+          completion_reason = 'user_choice'
       FROM owned
       WHERE ws.id = owned.id
         AND owned.status = 'in_progress'
@@ -3705,6 +4045,9 @@ export async function abandonWorkoutSession(
       UPDATE session_occurrences occurrence
       SET outcome = 'abandoned',
           outcome_reason = 'workout_abandoned',
+          resolution_semantics_version =
+            ${OCCURRENCE_RESOLUTION_SEMANTICS_VERSION}::integer,
+          resolution_reason_code = 'user_choice',
           revision = occurrence.revision + 1,
           resolved_at = ${finishedAt.toISOString()}::timestamptz
       FROM transitioned

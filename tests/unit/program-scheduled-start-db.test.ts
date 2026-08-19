@@ -625,7 +625,10 @@ describe("scheduled Program workout lifecycle", () => {
               weeklyReview: true,
             },
           },
-          { sessionId: started.sessionId },
+          {
+            sessionId: started.sessionId,
+            completionReason: "user_choice",
+          },
           { now: () => new Date("2026-08-10T17:00:00.000Z") },
         );
       } else {
@@ -667,7 +670,10 @@ describe("scheduled Program workout lifecycle", () => {
           weeklyReview: true,
         },
       },
-      { sessionId: started.sessionId },
+      {
+        sessionId: started.sessionId,
+        completionReason: "user_choice",
+      },
       { now: () => new Date("2026-08-10T17:00:00.000Z") },
     );
     expect(

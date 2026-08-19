@@ -153,8 +153,15 @@ describe("V2 T04 warm-up occurrence portability", () => {
         }),
       ]);
     const brief = renderCoachingBrief(digest);
-    expect(brief.match(/T04 day mobility/g)).toHaveLength(1);
-    expect(brief.match(/T04 press rehearsal/g)).toHaveLength(1);
+    const compact = brief.slice(
+      brief.indexOf("## Compact workout summaries"),
+      brief.indexOf("## Target attainment and confidence"),
+    );
+    const audit = brief.slice(brief.indexOf("## Detailed audit appendix"));
+    expect(compact.match(/T04 day mobility/g)).toHaveLength(1);
+    expect(compact.match(/T04 press rehearsal/g)).toHaveLength(1);
+    expect(audit.match(/T04 day mobility/g)).toHaveLength(1);
+    expect(audit.match(/T04 press rehearsal/g)).toHaveLength(1);
     expect(brief).not.toContain(dayOverview);
     expect(brief).not.toContain(exerciseOverview);
   });

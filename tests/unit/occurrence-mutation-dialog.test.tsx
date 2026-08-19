@@ -58,7 +58,7 @@ describe("occurrence mutation controls", () => {
       <OccurrenceMutationDialogForm
         mode="skip"
         itemLabel="set 2 of Back squat"
-        reason="time"
+        reason="time_limit_reached"
         note=""
         saving={false}
         onReasonChange={() => undefined}
@@ -75,6 +75,27 @@ describe("occurrence mutation controls", () => {
     for (const reason of OCCURRENCE_SKIP_REASONS) {
       expect(html).toContain(reason.label);
     }
+    expect(html).toContain("Choose a reason");
+  });
+
+  it("requires an explicit skip reason before enabling confirmation", () => {
+    const html = renderToStaticMarkup(
+      <OccurrenceMutationDialogForm
+        mode="skip"
+        itemLabel="set 2 of Back squat"
+        reason=""
+        note=""
+        saving={false}
+        onReasonChange={() => undefined}
+        onNoteChange={() => undefined}
+        onCancel={() => undefined}
+        onSubmit={() => undefined}
+      />,
+    );
+
+    const skipButton = html.match(/<button[^>]*>Skip item<\/button>/)?.[0];
+    expect(skipButton).toBeDefined();
+    expect(skipButton).toContain('disabled=""');
   });
 
   it("presents the existing note when a warm-up note is edited", () => {
@@ -82,7 +103,7 @@ describe("occurrence mutation controls", () => {
       <OccurrenceMutationDialogForm
         mode="note"
         itemLabel="Bench press: Warm-up set 1"
-        reason="time"
+        reason="time_limit_reached"
         note="Shoulder felt good"
         saving={false}
         onReasonChange={() => undefined}
@@ -104,7 +125,7 @@ describe("occurrence mutation controls", () => {
       <OccurrenceMutationDialogForm
         mode="note"
         itemLabel="Warm-up set 1"
-        reason="time"
+        reason="time_limit_reached"
         note="   "
         saving={false}
         onReasonChange={() => undefined}

@@ -582,6 +582,20 @@
       "when": 1786712650523,
       "tag": "0082_named_program_library",
       "breakpoints": true
+    },
+    {
+      "idx": 83,
+      "version": "7",
+      "when": 1787086921000,
+      "tag": "0083_reporting_session_outcomes",
+      "breakpoints": true
+    },
+    {
+      "idx": 84,
+      "version": "7",
+      "when": 1787086922000,
+      "tag": "0084_restore_finish_command_receipts",
+      "breakpoints": true
     }
   ]
 }
