@@ -427,6 +427,7 @@ npx vitest run tests/unit/training-report.test.ts tests/unit/reporting-exercise-
 npx vitest run tests/unit/reporting-session-outcomes-db.test.ts tests/unit/session-lifecycle-characterization.test.ts tests/unit/session-runner-exit.test.ts tests/unit/occurrence-mutation-dialog.test.tsx
 npx vitest run tests/unit/history-report.test.ts tests/unit/history-calendar.test.tsx tests/unit/v2-h01-history-workout-evidence.test.ts tests/unit/v2-h02-cadence-targets-time-db.test.ts
 npx vitest run tests/unit/snapshots-db.test.ts tests/unit/analysis-package-db.test.ts tests/unit/recovery-manifest-db.test.ts --maxWorkers=1 --no-file-parallelism
+npx vitest run tests/unit/activities.test.ts tests/unit/retrospective-workout.test.ts tests/unit/training-report-digest-db.test.ts --maxWorkers=1 --no-file-parallelism
 npm run db:verify
 npm run db:verify-production-upgrade
 ```
@@ -437,6 +438,14 @@ that variable is unavailable locally. The representative workout smoke journey
 at mobile width proves that Finish remains disabled until an explicit reason is
 selected and that the structured reason is visible in saved History. Run that
 focused Playwright test before the broader browser inventory.
+
+The owner-evidence activity acceptance uses synthetic distance and duration
+values. `test:e2e:history-calendar` proves that retrospective entry directs a
+standalone timed activity to **Record activity**, that minute-and-second input
+round-trips exactly on activity detail, and that the independent activity does
+not receive a workout active-duration warning. The retrospective service test
+separately proves that an exact performed-set duration does not become workout
+active duration.
 
 Run the focused named Program and tracker schedule contract with:
 

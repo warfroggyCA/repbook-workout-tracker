@@ -8,13 +8,20 @@ import type { ActivityInput } from "@/lib/activities";
 import {
   activityDateKey,
   dateTimeLocalInZoneToDate,
+  formatActivityDuration,
+  formatActivityDurationInput,
   formatActivitySpeed,
   formatDateTimeLocalInZone,
+  parseActivityDurationInput,
 } from "@/lib/activities";
 
 const now = new Date("2026-07-10T18:00:00.000Z");
 
-function input(overrides: Partial<ActivityInput> = {}): ActivityInput {
+type LegacyActivityInput = Extract<ActivityInput, { durationMinutes: number }>;
+
+function input(
+  overrides: Partial<Omit<LegacyActivityInput, "durationMinutes">> = {},
+): LegacyActivityInput {
   return {
     activityType: "walk",
     title: "Power walk",
@@ -48,6 +55,39 @@ describe("manual health activities", () => {
       elevationUnit: "ft",
     });
     expect(activity.source).toBe("manual");
+  });
+
+  it("preserves an exact minute-and-second duration without changing legacy minute input", () => {
+    const base = input();
+    const precise = normalizeActivityInput(
+      {
+        ...base,
+        durationMinutes: undefined,
+        durationSeconds: 2_235,
+        distanceValue: 3.6,
+      } satisfies ActivityInput,
+      now,
+    );
+
+    expect(precise.durationSeconds).toBe(2_235);
+    expect(precise.averagePaceSecondsPerKm).toBeCloseTo(620.833333);
+    expect(formatActivityDuration(precise.durationSeconds)).toBe(
+      "37 min 15 sec",
+    );
+    expect(formatActivityDurationInput(precise.durationSeconds)).toBe("37:15");
+    expect(parseActivityDurationInput("37:15")).toBe(2_235);
+    expect(parseActivityDurationInput("37")).toBe(2_220);
+    expect(parseActivityDurationInput("37:75")).toBeNull();
+    expect(normalizeActivityInput(input(), now).durationSeconds).toBe(2_520);
+  });
+
+  it("rejects ambiguous activity duration representations", () => {
+    expect(
+      activityInputSchema.safeParse({
+        ...input(),
+        durationSeconds: 2_235,
+      }).success,
+    ).toBe(false);
   });
 
   it("converts miles to kilometers without losing the entered measurement", () => {

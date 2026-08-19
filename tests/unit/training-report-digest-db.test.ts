@@ -406,8 +406,8 @@ async function seedReportingPeriod(db: Db) {
       title: "Recovery walk",
       startedAt: new Date("2026-08-18T12:00:00.000Z"),
       timezone: "UTC",
-      durationSeconds: 30 * 60,
-      distanceKm: 2.5,
+      durationSeconds: 2_235,
+      distanceKm: 3.6,
       source: "manual",
       fingerprint: `report-${crypto.randomUUID()}`,
     })
@@ -513,6 +513,7 @@ describe("training reporting digest integration", () => {
     expect(brief).toContain("planned in 2 sessions; performed in 1 session");
     expect(brief).toContain("Eligible loaded-volume evidence: 2 of 2 retained set rows (100%)");
     expect(brief).toContain("source manual");
+    expect(brief).toContain("Recovery walk, 37 min 15 sec, 3.6 km");
     expect(brief).toContain(`[health_activity:${fixture.activityId}]`);
     expect(brief).toContain("## Detailed audit appendix");
     expect(brief).toContain(

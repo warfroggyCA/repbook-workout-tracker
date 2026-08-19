@@ -338,7 +338,9 @@ test("History has clear empty and sparse states without mixing activity into str
   await page.goto("/activity/new");
   await page.getByLabel("Title (optional)").fill("Sparse history walk");
   await page.getByLabel("Date and start time").fill("2026-07-20T09:00");
-  await page.getByLabel("Duration (minutes)").fill("30");
+  await page
+    .getByLabel("Duration (minutes or minutes:seconds)")
+    .fill("30");
   const save = page.getByRole("button", {
     name: "Record activity",
     exact: true,

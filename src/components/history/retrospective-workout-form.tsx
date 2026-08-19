@@ -9,7 +9,14 @@ import {
   useSyncExternalStore,
   useTransition,
 } from "react";
-import { AlertCircle, ArrowLeft, CheckCircle2, Plus, Trash2 } from "lucide-react";
+import {
+  AlertCircle,
+  ArrowLeft,
+  CheckCircle2,
+  Footprints,
+  Plus,
+  Trash2,
+} from "lucide-react";
 import { recordRetrospectiveWorkout } from "@/app/actions/history";
 import { ExercisePicker } from "@/components/exercises/exercise-picker";
 import { Badge } from "@/components/ui/badge";
@@ -509,10 +516,11 @@ function CompletedSetFields({
       {showsDuration && (
         <div>
           <Label htmlFor={`${outcome.occurrenceId}-duration`}>
-            Duration (seconds)
+            Set duration (seconds)
           </Label>
           <Input
             id={`${outcome.occurrenceId}-duration`}
+            aria-describedby={`${outcome.occurrenceId}-duration-help`}
             inputMode="numeric"
             min="0"
             type="number"
@@ -524,6 +532,13 @@ function CompletedSetFields({
               }))
             }
           />
+          <p
+            id={`${outcome.occurrenceId}-duration-help`}
+            className="mt-1 text-xs text-muted-foreground"
+          >
+            This performed-set measurement does not establish the workout&apos;s
+            active duration.
+          </p>
         </div>
       )}
       <div>
@@ -1072,6 +1087,36 @@ function RetrospectiveWorkoutFields({
           time you enter stays separate from when this workout is saved.
         </p>
       </header>
+
+      <Card className="border-success/20 bg-success/3">
+        <CardContent className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-start gap-3">
+            <span className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-success/10 text-success">
+              <Footprints className="size-4" aria-hidden="true" />
+            </span>
+            <div>
+              <p className="text-sm font-medium">
+                Recording a standalone timed activity?
+              </p>
+              <p className="mt-0.5 max-w-2xl text-xs leading-relaxed text-muted-foreground">
+                Use Record activity for a walk, run, or similar activity on its
+                own. It keeps exact duration and distance without creating a
+                workout. Keep this form for activity that genuinely belonged to
+                a workout; set duration and whole-workout active duration remain
+                separate facts. For a timed workout, choose Exact local start
+                and enter its separate workout duration below.
+              </p>
+            </div>
+          </div>
+          <Button
+            render={<Link href="/activity/new" />}
+            nativeButton={false}
+            variant="outline"
+          >
+            Record standalone activity
+          </Button>
+        </CardContent>
+      </Card>
 
       {notice && <StateNotice {...notice} />}
 

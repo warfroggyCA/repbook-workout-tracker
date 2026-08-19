@@ -23,13 +23,13 @@ export type ActivityType = (typeof ACTIVITY_TYPES)[number]["id"];
 export type ActivityIntensity = (typeof ACTIVITY_INTENSITIES)[number]["id"];
 export type DistanceUnit = "km" | "mi";
 export type ElevationUnit = "m" | "ft";
+export const MAX_ACTIVITY_DURATION_SECONDS = 7 * 24 * 60 * 60;
 
-export type ActivityInput = {
+type ActivityInputBase = {
   activityType: ActivityType;
   title: string | null;
   startedAtISO: string;
   timezone: string;
-  durationMinutes: number;
   distanceValue: number | null;
   distanceUnit: DistanceUnit;
   intensity: ActivityIntensity | null;
@@ -39,6 +39,18 @@ export type ActivityInput = {
   energyKcal: number | null;
   notes: string | null;
 };
+
+export type ActivityInput = ActivityInputBase & (
+  | {
+      durationSeconds: number;
+      durationMinutes?: never;
+    }
+  | {
+      /** Legacy whole-minute input retained for cached clients. */
+      durationSeconds?: never;
+      durationMinutes: number;
+    }
+);
 
 export function activityTypeLabel(value: string) {
   return ACTIVITY_TYPES.find((option) => option.id === value)?.label ?? value;
@@ -52,11 +64,34 @@ export function activityIntensityLabel(value: string | null) {
 }
 
 export function formatActivityDuration(seconds: number) {
-  const totalMinutes = Math.round(seconds / 60);
-  const hours = Math.floor(totalMinutes / 60);
-  const minutes = totalMinutes % 60;
-  if (!hours) return `${minutes} min`;
-  return minutes ? `${hours} hr ${minutes} min` : `${hours} hr`;
+  const totalSeconds = Math.round(seconds);
+  const hours = Math.floor(totalSeconds / 3_600);
+  const minutes = Math.floor((totalSeconds % 3_600) / 60);
+  const remainingSeconds = totalSeconds % 60;
+  const parts: string[] = [];
+  if (hours > 0) parts.push(`${hours} hr`);
+  if (minutes > 0) parts.push(`${minutes} min`);
+  if (remainingSeconds > 0 || parts.length === 0) {
+    parts.push(`${remainingSeconds} sec`);
+  }
+  return parts.join(" ");
+}
+
+export function formatActivityDurationInput(seconds: number) {
+  const minutes = Math.floor(seconds / 60);
+  const remainingSeconds = seconds % 60;
+  return remainingSeconds === 0
+    ? String(minutes)
+    : `${minutes}:${String(remainingSeconds).padStart(2, "0")}`;
+}
+
+export function parseActivityDurationInput(value: string) {
+  const match = /^(\d{1,5})(?::([0-5]\d))?$/u.exec(value.trim());
+  if (!match) return null;
+  const seconds = Number(match[1]) * 60 + Number(match[2] ?? "0");
+  return seconds >= 1 && seconds <= MAX_ACTIVITY_DURATION_SECONDS
+    ? seconds
+    : null;
 }
 
 export function formatActivityDistance(distanceKm: number) {

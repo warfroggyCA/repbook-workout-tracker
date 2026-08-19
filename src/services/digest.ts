@@ -27,7 +27,10 @@ import {
   ACTIVITY_ANALYTICS_RULE,
   summarizeActivities,
 } from "@/services/activity-report";
-import { activityDateKey } from "@/lib/activities";
+import {
+  activityDateKey,
+  formatActivityDuration,
+} from "@/lib/activities";
 import { convertWeight, weightInPounds } from "@/lib/units";
 import { workoutLocalDate } from "@/lib/workout-calendar";
 import { PRODUCT_NAME } from "@/lib/product-identity";
@@ -2197,7 +2200,7 @@ function formatDigestSet(set: {
       }),
     );
   } else if (set.durationSeconds != null) {
-    parts.push(`${set.durationSeconds} seconds duration`);
+    parts.push(`${formatActivityDuration(set.durationSeconds)} duration`);
   }
   if (set.reps != null) {
     const repetitionBasis = exercise.countingBasis;
@@ -2467,7 +2470,7 @@ export function renderCoachingBrief(digest: TrainingDigest): string {
     ),
     ...digest.independentActivities.recent.map(
       (activity) =>
-        `- Recent observed activity: ${activityDateKey(new Date(activity.startedAtISO), activity.timezone)} ${activity.title ?? activity.label}, ${Math.round(activity.durationSeconds / 60)} min${activity.distanceKm != null ? `, ${activity.distanceKm} km` : ""}${activity.intensity ? `, ${activity.intensity} intensity` : ""}; source ${activity.source}. [health_activity:${activity.id}]`,
+        `- Recent observed activity: ${activityDateKey(new Date(activity.startedAtISO), activity.timezone)} ${activity.title ?? activity.label}, ${formatActivityDuration(activity.durationSeconds)}${activity.distanceKm != null ? `, ${activity.distanceKm} km` : ""}${activity.intensity ? `, ${activity.intensity} intensity` : ""}; source ${activity.source}. [health_activity:${activity.id}]`,
     ),
     "",
     "## Pain, fatigue, and retained proposals",
