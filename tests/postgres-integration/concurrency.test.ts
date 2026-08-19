@@ -1167,7 +1167,7 @@ describe.sequential("real PostgreSQL parallel invariants", () => {
       sourceSessionId: job.sessionId,
     });
     expect(report.families[0]).toMatchObject({
-      familyKey: `exercise:${fixture.exerciseId}`,
+      familyKey: "reporting-family:Squat",
     });
   });
 
