@@ -102,7 +102,12 @@ test("keeps calendar cadence and planned-set outcomes separate and trustworthy",
   await expect(page.getByText("At", { exact: true }).locator("..")).toContainText("2");
   await expect(page.getByText("Above", { exact: true }).locator("..")).toContainText("1");
   await expect(page.getByText("Unknown", { exact: true }).locator("..")).toContainText("1");
-  await expect(page.getByText(/75% of supported comparisons were at or above/)).toBeVisible();
+  await expect(
+    page.getByText(/4 of 5 planned outcomes were evaluable \(80%\)/),
+  ).toBeVisible();
+  await expect(
+    page.getByText(/Within that subset, 75% were at or above target/),
+  ).toBeVisible();
   if (narrowMobile) await expectNoHorizontalOverflow(page);
 
   await page.goto(`/history/${V2_H02_IDS.firstSession}`);
@@ -123,8 +128,13 @@ test("keeps calendar cadence and planned-set outcomes separate and trustworthy",
 
   await page.goto("/coach");
   await applyEnlargedText(page, narrowMobile);
-  await expect(page.getByText("Planned sets at or above", { exact: true })).toBeVisible();
-  await expect(page.getByText("75%", { exact: true })).toBeVisible();
+  await expect(
+    page.getByText("Target-attainment coverage", { exact: true }),
+  ).toBeVisible();
+  await expect(page.getByText("4/5", { exact: true })).toBeVisible();
+  await expect(
+    page.getByText(/80% evaluable among quantified outcomes · supported subset 75% at\/above/),
+  ).toBeVisible();
 
   if (narrowMobile) await expectNoHorizontalOverflow(page);
 
