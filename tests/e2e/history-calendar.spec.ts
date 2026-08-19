@@ -236,7 +236,12 @@ test("calendar-first History opens a recoverable retrospective entry flow", asyn
     ),
   ).toBeVisible();
   await expect(page.getByText("Extra set 1", { exact: true })).toBeVisible();
-  await expect(page.getByText("20 lb × 12 reps", { exact: true })).toBeVisible();
+  await expect(
+    page.getByText(
+      "20 lb × 12 reps (repetition counting basis unknown)",
+      { exact: true },
+    ),
+  ).toBeVisible();
 
   await page.getByRole("button", { name: "Back to history" }).click();
   await expect(page).toHaveURL(/\/history\?/);
