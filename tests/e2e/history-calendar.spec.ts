@@ -516,7 +516,12 @@ test("an unconfirmed save keeps the exact draft and safely retries", async ({
       .getByLabel("Workout evidence status")
       .getByText("Entered after the workout", { exact: true }),
   ).toBeVisible();
-  await expect(page.getByText("47.5 lb × 9 reps", { exact: true })).toBeVisible();
+  await expect(
+    page.getByText(
+      "47.5 lb × 9 reps (repetition counting basis unknown)",
+      { exact: true },
+    ),
+  ).toBeVisible();
 });
 
 test("exact local times refuse DST gaps and require an overlap choice", async ({
