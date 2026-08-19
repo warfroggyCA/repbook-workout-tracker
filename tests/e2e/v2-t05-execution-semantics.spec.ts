@@ -311,7 +311,7 @@ test("keeps one ledger-driven current/next/group/rest state through retry, inter
   );
   await expect(status.getByLabel("Rest timer")).toBeVisible();
   await expect(guidance).toContainText(
-    "Now: Round rest after Pallof Press, set 1",
+    "Now: Resting before Superset, round 2, member 1 of 2: Dumbbell Lateral Raise, set 2",
   );
   await expect(guidance).toContainText(
     /Next: Superset, round 2, member 1 of 2: Dumbbell Lateral Raise, set 2/,
@@ -324,7 +324,9 @@ test("keeps one ledger-driven current/next/group/rest state through retry, inter
   await expect(restoredStatus.getByLabel("Rest timer")).toBeVisible();
   await expect(
     page.getByRole("region", { name: "Workout progress and upcoming work" }),
-  ).toContainText("Now: Round rest after Pallof Press, set 1");
+  ).toContainText(
+    "Now: Resting before Superset, round 2, member 1 of 2: Dumbbell Lateral Raise, set 2",
+  );
   await clickCentered(
     page,
     restoredStatus.getByRole("button", { name: "Skip rest", exact: true }),
@@ -350,8 +352,14 @@ test("keeps one ledger-driven current/next/group/rest state through retry, inter
     page.getByRole("region", { name: "Workout progress and upcoming work" }),
   ).toContainText("Now: Barbell Back Squat, extra set 1");
   await expect(status).toContainText("Extra set 1");
-  await skipCurrentSet(page);
+  await clickCentered(
+    page,
+    page
+      .getByTestId("current-exercise-card")
+      .getByRole("button", { name: "Log set", exact: true }),
+  );
   await expect(status).toContainText("Ready to finish");
+  await expect(status.getByLabel("Rest timer")).toHaveCount(0);
   await expect(
     page.getByRole("region", { name: "Workout progress and upcoming work" }),
   ).toContainText("All actions resolved");

@@ -94,6 +94,7 @@ export type SessionRestGuidanceAction = {
   restKind: Exclude<SessionRestKind, "none">;
   totalSec: number;
   source: SessionGuidanceAction | null;
+  destination: SessionOccurrenceGuidanceAction | null;
 };
 
 export type SessionOccurrenceGuidanceAction =
@@ -231,6 +232,7 @@ export type SessionGuidanceProjection = {
   completion: {
     state: "in_progress" | "ready_to_finish";
     pendingOccurrences: number;
+    pendingActions: number;
     limitedEvidenceOccurrences: number;
     evidenceLimited: boolean;
   };
@@ -286,22 +288,15 @@ export function sessionNonPerformedOutcomeParts(
 
 export function formatSessionGuidanceAction(
   action: SessionGuidanceFocusAction,
-) {
+): string {
   if (action.kind === "rest") {
-    const restLabel = action.restKind === "between_members"
-      ? "Member rest"
-      : action.restKind === "between_rounds"
-        ? "Round rest"
-        : action.restKind === "straight_set"
-          ? "Rest"
-          : "Rest timer";
-    const phase = action.phase === "running"
-      ? ""
+    const restLabel = action.phase === "running"
+      ? "Resting"
       : action.phase === "ready"
-        ? " complete"
-        : " skipped";
-    if (!action.source) return `${restLabel}${phase}`;
-    return `${restLabel}${phase} after ${action.source.actualExerciseName}, ${action.source.position.lowercaseLabel}`;
+        ? "Rest complete"
+        : "Rest skipped";
+    if (!action.destination) return restLabel;
+    return `${restLabel} before ${formatSessionGuidanceAction(action.destination)}`;
   }
   if (action.kind === "working_set") {
     const setLabel = action.position.lowercaseLabel;
@@ -447,6 +442,7 @@ function projectRestGuidance(
   actions: SessionGuidanceAction[],
   occurrences: SessionOccurrenceData[],
   exerciseById: Map<string, SessionExerciseData>,
+  destination: SessionOccurrenceGuidanceAction | null,
 ): SessionRestGuidanceAction | null {
   if (!timer || timer.phase === "continued") return null;
   const sourceOccurrence = timer.sourceOccurrenceId == null ||
@@ -488,6 +484,7 @@ function projectRestGuidance(
     restKind,
     totalSec: timer.totalSec,
     source,
+    destination,
   };
 }
 
@@ -779,6 +776,7 @@ export function projectSessionGuidance(input: Input): SessionGuidanceProjection 
     actions,
     input.occurrences,
     exerciseById,
+    occurrenceCurrentAction,
   );
   const acknowledgementPending = actionHasUnacknowledgedSet(
     occurrenceCurrentAction,
@@ -921,6 +919,7 @@ export function projectSessionGuidance(input: Input): SessionGuidanceProjection 
         ? "in_progress"
         : "ready_to_finish",
       pendingOccurrences,
+      pendingActions: pendingActions.length,
       limitedEvidenceOccurrences,
       evidenceLimited: limitedEvidenceOccurrences > 0,
     },

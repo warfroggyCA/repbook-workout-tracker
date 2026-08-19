@@ -304,7 +304,7 @@ test("keeps Stage 5 guidance truthful, persistent, and usable on narrow mobile s
   await expect(dock).toContainText("saving");
   await expect(guidance).toContainText("0/14");
   await expect(guidance).toContainText(
-    "Now: Rest after Romanian Deadlift, set 1",
+    "Now: Resting before Romanian Deadlift, set 2",
   );
   await expect(guidance).toContainText("Next: Romanian Deadlift, set 2");
   await expect(statusBar).toContainText("Resting");
@@ -319,7 +319,7 @@ test("keeps Stage 5 guidance truthful, persistent, and usable on narrow mobile s
     .textContent();
   await page.waitForTimeout(2_000);
   await expect(guidance).toContainText(
-    "Now: Rest after Romanian Deadlift, set 1",
+    "Now: Resting before Romanian Deadlift, set 2",
   );
   const remainingAfterDelay = await statusBar
     .getByLabel("Rest timer")
@@ -336,7 +336,7 @@ test("keeps Stage 5 guidance truthful, persistent, and usable on narrow mobile s
   releaseSave();
   await expect(guidance).toContainText("1/14");
   await expect(guidance).toContainText(
-    "Now: Rest after Romanian Deadlift, set 1",
+    "Now: Resting before Romanian Deadlift, set 2",
   );
   await expect(guidance).toContainText("Next: Romanian Deadlift, set 2");
   await expect(statusBar).toContainText("Resting");
@@ -407,7 +407,7 @@ test("keeps Stage 5 guidance truthful, persistent, and usable on narrow mobile s
   ).toBeVisible();
   await expect(
     page.getByRole("region", { name: "Workout progress and upcoming work" })
-      .getByText(/Now: Rest complete after Romanian Deadlift, set 1/),
+      .getByText(/Now: Rest complete before Romanian Deadlift, set 2/),
   ).toBeVisible();
   const compactNextGuidance = page
     .getByRole("region", { name: "Workout progress and upcoming work" })

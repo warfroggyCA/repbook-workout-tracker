@@ -124,9 +124,10 @@ group ordering, History/Review/export, and recovery evidence. T04 activates
 one-action-per-authored-warm-up truth, reversible acknowledgements, aggregate
 exercise-decision safety, portability, recovery, and desktop/mobile browser
 evidence. T05 activates acknowledgement-ordered current/next guidance,
-source-bound durable rest, group/member/round mixed-resolution state,
-ready-to-finish without implicit completion, portability, recovery, and
-desktop/mobile browser evidence. T06 activates read-only preview, one canonical
+source-bound durable rest described by its next destination, direct
+ready-to-finish when the final actionable set is queued, group/member/round
+mixed-resolution state, portability, recovery, and desktop/mobile browser
+evidence. T06 activates read-only preview, one canonical
 owner-scoped Start intent across retries, truthful active-workout collision
 outcomes, and immutable prescribed exercise meaning across active display,
 History/Review, export, snapshot schema 28, and restore. U01 activates the

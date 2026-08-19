@@ -115,6 +115,7 @@ import {
   nextIncompleteExerciseId,
   previousComparableIsTemporarilyUnavailable,
   reconcileServerOccurrences,
+  restTimerSecondsAfterQueuedSet,
   resolveSetLoggingEquipment,
   shouldShowMissingWarmupMessage,
   skipRecoveryNeedsReconciliation,
@@ -4090,9 +4091,14 @@ export function SessionRunner(props: SessionRunnerProps) {
                 exercise,
                 set,
                 occurrence
-                  ? guidance.actions.find(
-                      (action) => action.occurrenceId === occurrence.id,
-                    )?.restAfter.seconds ?? null
+                  ? restTimerSecondsAfterQueuedSet({
+                      plannedRestSeconds:
+                        guidance.actions.find(
+                          (action) => action.occurrenceId === occurrence.id,
+                        )?.restAfter.seconds ?? null,
+                      pendingActionCount:
+                        guidance.completion.pendingActions,
+                    })
                   : exercise.restSec,
                 occurrence,
               )

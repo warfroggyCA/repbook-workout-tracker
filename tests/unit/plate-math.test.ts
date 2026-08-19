@@ -40,6 +40,33 @@ describe("solvePlates", () => {
     expect(solvePlates(105, homeGym)?.perSide).toEqual([25, 5]);
   });
 
+  it("prefers fewer owned plates when multiple combinations reach the same load", () => {
+    const repeatedFives: PlateMathConfig = {
+      barWeight: 45,
+      collarWeight: 0,
+      plates: [
+        { denomination: 10, countPerSide: 1 },
+        { denomination: 5, countPerSide: 3 },
+      ],
+    };
+
+    expect(solvePlates(75, repeatedFives)?.perSide).toEqual([10, 5]);
+  });
+
+  it("prefers heavier denominations when exact combinations use the same plate count", () => {
+    const equalCountChoices: PlateMathConfig = {
+      barWeight: 45,
+      collarWeight: 0,
+      plates: [
+        { denomination: 10, countPerSide: 1 },
+        { denomination: 7.5, countPerSide: 2 },
+        { denomination: 5, countPerSide: 1 },
+      ],
+    };
+
+    expect(solvePlates(75, equalCountChoices)?.perSide).toEqual([10, 5]);
+  });
+
   it("returns null for unloadable targets", () => {
     expect(solvePlates(96, homeGym)).toBeNull(); // 25.5/side impossible
     expect(solvePlates(40, homeGym)).toBeNull(); // below the bar
