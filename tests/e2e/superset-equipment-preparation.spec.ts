@@ -33,7 +33,6 @@ async function startDayA(page: Page) {
   });
   await preview.click();
   const start = page.getByRole("button", { name: "Start workout", exact: true });
-  await page.getByRole("checkbox", { name: /Include programmed warm-ups/ }).check();
   await waitForHydratedServerAction(start);
   await start.click();
   await expect(page).toHaveURL(/\/session\/[0-9a-f-]+$/);
