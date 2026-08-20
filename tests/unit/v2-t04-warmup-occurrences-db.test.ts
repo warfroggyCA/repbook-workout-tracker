@@ -236,6 +236,51 @@ describe("V2 T04 warm-up occurrence truth", () => {
 
   });
 
+  it("keeps programmed warm-ups out of a workout unless Start explicitly includes them", async () => {
+    const started = await startWorkoutSession(
+      database.db,
+      userId,
+      templateId,
+      undefined,
+      { includeWarmups: false },
+    );
+    const session = await database.db.query.workoutSessions.findFirst({
+      where: eq(workoutSessions.id, started.sessionId),
+    });
+    const [sessionExercise] = await database.db
+      .select()
+      .from(sessionExercises)
+      .where(eq(sessionExercises.sessionId, started.sessionId));
+    const occurrences = await database.db
+      .select()
+      .from(sessionOccurrences)
+      .where(eq(sessionOccurrences.sessionId, started.sessionId))
+      .orderBy(asc(sessionOccurrences.sequenceIdx));
+
+    expect(session).toMatchObject({
+      dayWarmupNotes: overview,
+      dayWarmupItems: [
+        expect.objectContaining({ label: "Dynamic mobility" }),
+        expect.objectContaining({ label: "Exercise-specific setup" }),
+      ],
+    });
+    expect(sessionExercise).toMatchObject({
+      warmupNotes: exerciseOverview,
+      warmupSets: [
+        expect.objectContaining({ label: "Empty bar rehearsal" }),
+        expect.objectContaining({ label: "Controlled ramp" }),
+      ],
+    });
+    expect(occurrences.map((occurrence) => occurrence.kind)).toEqual([
+      "working_set",
+      "working_set",
+    ]);
+    expect(occurrences.map((occurrence) => occurrence.sequenceIdx)).toEqual([
+      0,
+      1,
+    ]);
+  });
+
   it("keeps a three-slot day in general, anchored ramp, and working order", async () => {
     const [baseSlot] = await database.db
       .select()

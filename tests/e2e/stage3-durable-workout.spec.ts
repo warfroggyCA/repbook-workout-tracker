@@ -150,6 +150,7 @@ test("publishes and preserves durable warm-up and grouped workout outcomes", asy
   await page.goto("/today");
   await expect(page.getByRole("heading", { name: "Day B — Hinge" })).toBeVisible();
   const start = page.getByRole("button", { name: "Train as planned", exact: true });
+  await page.getByRole("checkbox", { name: /Include programmed warm-ups/ }).check();
   await waitForHydratedServerAction(start);
   await start.click();
   await expect(page).toHaveURL(/\/session\/[0-9a-f-]+$/);

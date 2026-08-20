@@ -81,6 +81,8 @@ export type SessionLifecycleDependencies = {
   now?: () => Date;
   timezone?: string;
   startRequestKey?: string;
+  /** User-selected execution choice. Omitted by internal callers for legacy inclusion. */
+  includeWarmups?: boolean;
   scheduledStart?: ScheduledWorkoutStartIdentity;
 };
 
@@ -111,18 +113,24 @@ export function buildWorkoutStartRequestHash(input: {
   templateId: string;
   timezone: string;
   timeBudgetMin: number | null;
+  includeWarmups?: boolean;
   scheduledStart?: ScheduledWorkoutStartIdentity;
 }) {
+  const warmupSelection = input.includeWarmups == null
+    ? {}
+    : { includeWarmups: input.includeWarmups };
   const payload = input.scheduledStart == null
     ? {
         templateId: input.templateId,
         timezone: input.timezone,
         timeBudgetMin: input.timeBudgetMin,
+        ...warmupSelection,
       }
     : {
         templateId: input.templateId,
         timezone: input.timezone,
         timeBudgetMin: input.timeBudgetMin,
+        ...warmupSelection,
         scheduledStart: {
           scheduledProgramEventId:
             input.scheduledStart.scheduledProgramEventId,
@@ -1439,8 +1447,12 @@ export async function startWorkoutSession(
         templateId,
         timezone: dependencies.timezone!,
         timeBudgetMin: validatedTimeBudget ?? null,
+        ...(dependencies.includeWarmups == null
+          ? {}
+          : { includeWarmups: dependencies.includeWarmups }),
         ...(scheduledStart == null ? {} : { scheduledStart }),
       });
+  const includeWarmups = dependencies.includeWarmups ?? true;
   const checkpoint = dependencies.checkpoint ?? noCheckpoint;
   const startedAt = (dependencies.now ?? (() => new Date()))();
   const sessionId = randomUUID();
@@ -1889,7 +1901,8 @@ export async function startWorkoutSession(
       JOIN owned_template template ON selected.inserted
       CROSS JOIN LATERAL jsonb_array_elements(template.effective_warmup_items)
         WITH ORDINALITY AS item(value, ordinality)
-      WHERE item.value->>'beforeSlotLineageId' IS NULL
+      WHERE ${includeWarmups}::boolean
+        AND item.value->>'beforeSlotLineageId' IS NULL
     ), anchored_warmup_source AS MATERIALIZED (
       SELECT
         exercise.id AS session_exercise_id,
@@ -1914,7 +1927,8 @@ export async function startWorkoutSession(
         FROM inserted_exercises member
         WHERE member.group_snapshot_id = exercise.group_snapshot_id
       ) group_anchor ON exercise.group_snapshot_id IS NOT NULL
-      WHERE item.value->>'beforeSlotLineageId' IS NOT NULL
+      WHERE ${includeWarmups}::boolean
+        AND item.value->>'beforeSlotLineageId' IS NOT NULL
     ), exercise_warmup_source AS MATERIALIZED (
       SELECT
         exercise.id AS session_exercise_id,
@@ -1935,6 +1949,7 @@ export async function startWorkoutSession(
         FROM inserted_exercises member
         WHERE member.group_snapshot_id = exercise.group_snapshot_id
       ) group_anchor ON exercise.group_snapshot_id IS NOT NULL
+      WHERE ${includeWarmups}::boolean
     ), combined_exercise_warmup_source AS MATERIALIZED (
       SELECT * FROM anchored_warmup_source
       UNION ALL

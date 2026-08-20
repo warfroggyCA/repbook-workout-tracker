@@ -13,6 +13,7 @@ import {
   formatActivitySpeed,
   formatDateTimeLocalInZone,
   parseActivityDurationInput,
+  parseActivityDurationParts,
 } from "@/lib/activities";
 
 const now = new Date("2026-07-10T18:00:00.000Z");
@@ -78,6 +79,11 @@ describe("manual health activities", () => {
     expect(parseActivityDurationInput("37:15")).toBe(2_235);
     expect(parseActivityDurationInput("37")).toBe(2_220);
     expect(parseActivityDurationInput("37:75")).toBeNull();
+    expect(parseActivityDurationParts("42", "30")).toBe(2_550);
+    expect(parseActivityDurationParts("42", "")).toBe(2_520);
+    expect(parseActivityDurationParts("0", "30")).toBe(30);
+    expect(parseActivityDurationParts("42", "60")).toBeNull();
+    expect(parseActivityDurationParts("10080", "1")).toBeNull();
     expect(normalizeActivityInput(input(), now).durationSeconds).toBe(2_520);
   });
 

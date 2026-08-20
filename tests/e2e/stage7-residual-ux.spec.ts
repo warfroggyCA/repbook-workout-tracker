@@ -642,9 +642,7 @@ test("checks every converted micro-label surface at all four app sizes", async (
 
   await page.goto("/activity/new");
   await page.getByLabel("Title (optional)").fill("Stage 7 scaling walk");
-  await page
-    .getByLabel("Duration (minutes or minutes:seconds)")
-    .fill("45");
+  await page.getByLabel("Minutes", { exact: true }).fill("45");
   await page.getByLabel("Distance (optional)").fill("3.5");
   const recordActivity = page.getByRole("button", {
     name: "Record activity",

@@ -93,6 +93,16 @@ describe("startSession route freshness", () => {
   it("invalidates Today before redirecting so browser Back sees the active workout", async () => {
     await startSession(templateId, { status: "idle" }, startForm());
 
+    expect(mocks.buildWorkoutStartRequestHash).toHaveBeenCalledWith(
+      expect.objectContaining({ includeWarmups: false }),
+    );
+    expect(mocks.startWorkoutSession).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.any(String),
+      templateId,
+      undefined,
+      expect.objectContaining({ includeWarmups: false }),
+    );
     expect(mocks.revalidatePath).toHaveBeenCalledWith("/today");
     expect(mocks.revalidatePath.mock.invocationCallOrder[0]).toBeLessThan(
       mocks.redirect.mock.invocationCallOrder[0],
@@ -101,6 +111,38 @@ describe("startSession route freshness", () => {
       "/session/7c18bb2f-26d8-492f-8dbe-af4c57abef97",
       "push",
     );
+  });
+
+  it("binds an explicit warm-up opt-in into the Start identity", async () => {
+    const form = startForm();
+    form.set("includeWarmups", "true");
+
+    await startSession(templateId, { status: "idle" }, form);
+
+    expect(mocks.buildWorkoutStartRequestHash).toHaveBeenCalledWith(
+      expect.objectContaining({ includeWarmups: true }),
+    );
+    expect(mocks.startWorkoutSession).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.any(String),
+      templateId,
+      undefined,
+      expect.objectContaining({ includeWarmups: true }),
+    );
+  });
+
+  it("rejects an unsupported warm-up selection before creating a workout", async () => {
+    const form = startForm();
+    form.set("includeWarmups", "sometimes");
+
+    await expect(
+      startSession(templateId, { status: "idle" }, form),
+    ).resolves.toMatchObject({
+      status: "error",
+      code: "not_created",
+      workoutCreated: false,
+    });
+    expect(mocks.startWorkoutSession).not.toHaveBeenCalled();
   });
 
   it("binds the exact scheduled occurrence into the Start identity", async () => {

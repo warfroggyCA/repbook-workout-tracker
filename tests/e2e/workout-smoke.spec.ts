@@ -1433,9 +1433,7 @@ test("answers all five History questions without mixing independent activity int
 
   await page.goto("/activity/new");
   await page.getByLabel("Title (optional)").fill("Release 1B.3 separation walk");
-  await page
-    .getByLabel("Duration (minutes or minutes:seconds)")
-    .fill("90");
+  await page.getByLabel("Minutes", { exact: true }).fill("90");
   await page.getByLabel("Distance (optional)").fill("7.5");
   const recordActivity = page.getByRole("button", {
     name: "Record activity",

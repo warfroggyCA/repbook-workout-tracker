@@ -15,6 +15,7 @@ type Props = {
   startRequestKey: string;
   fallbackTimezone: string;
   retryLabel: string;
+  hasProgrammedWarmups: boolean;
   children: ReactNode;
   variant?: "default" | "outline";
   formClassName?: string;
@@ -67,6 +68,7 @@ export function WorkoutStartForm({
   startRequestKey,
   fallbackTimezone,
   retryLabel,
+  hasProgrammedWarmups,
   children,
   variant = "default",
   formClassName,
@@ -94,7 +96,7 @@ export function WorkoutStartForm({
   return (
     <form
       action={formAction}
-      className={formClassName}
+      className={cn("space-y-3", formClassName)}
       onSubmit={() => {
         const detected = Intl.DateTimeFormat().resolvedOptions().timeZone;
         if (detected && timezoneInput.current) {
@@ -120,6 +122,24 @@ export function WorkoutStartForm({
           <input type="hidden" name="programScheduleVersionId" value={scheduledStart.programScheduleVersionId} />
           <input type="hidden" name="programScheduleVersionHash" value={scheduledStart.programScheduleVersionHash} />
         </>
+      )}
+      {hasProgrammedWarmups && (
+        <label className="flex min-h-11 cursor-pointer items-start gap-3 rounded-lg border bg-muted/20 px-3 py-2.5 text-left">
+          <input
+            type="checkbox"
+            name="includeWarmups"
+            value="true"
+            className="mt-0.5 size-5 shrink-0 accent-primary"
+          />
+          <span className="min-w-0">
+            <span className="block text-sm font-medium">
+              Include programmed warm-ups
+            </span>
+            <span className="mt-0.5 block text-xs leading-relaxed text-muted-foreground">
+              Off by default. Turn this on only when you want warm-up actions in this workout.
+            </span>
+          </span>
+        </label>
       )}
       <StartButton
         variant={variant}

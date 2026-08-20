@@ -18,11 +18,10 @@ import {
   ACTIVITY_TYPES,
   activityUsesSpeed,
   dateTimeLocalInZoneToDate,
-  formatActivityDurationInput,
   formatActivityPace,
   formatActivitySpeed,
   formatDateTimeLocalInZone,
-  parseActivityDurationInput,
+  parseActivityDurationParts,
   type ActivityInput,
   type ActivityIntensity,
   type ActivityType,
@@ -113,10 +112,15 @@ function ActivityFormFields({
         )
       : nowForDateTimeInput()
   );
-  const [duration, setDuration] = useState(
+  const [durationMinutes, setDurationMinutes] = useState(() =>
     initialValues
-      ? formatActivityDurationInput(initialValues.durationSeconds)
-      : ""
+      ? String(Math.floor(initialValues.durationSeconds / 60))
+      : "",
+  );
+  const [durationSecondsPart, setDurationSecondsPart] = useState(() =>
+    initialValues
+      ? String(initialValues.durationSeconds % 60)
+      : "",
   );
   const [distanceValue, setDistanceValue] = useState(
     initialValues?.distanceValue == null
@@ -152,7 +156,10 @@ function ActivityFormFields({
   const [pending, startTransition] = useTransition();
 
   const pacePreview = useMemo(() => {
-    const durationSeconds = parseActivityDurationInput(duration);
+    const durationSeconds = parseActivityDurationParts(
+      durationMinutes,
+      durationSecondsPart,
+    );
     const distance = Number(distanceValue);
     if (durationSeconds == null || !(distance > 0)) return null;
     const distanceKm = distanceUnit === "mi" ? distance * 1.609344 : distance;
@@ -160,7 +167,13 @@ function ActivityFormFields({
     return activityUsesSpeed(activityType)
       ? formatActivitySpeed(secondsPerKm)
       : formatActivityPace(secondsPerKm);
-  }, [activityType, distanceUnit, distanceValue, duration]);
+  }, [
+    activityType,
+    distanceUnit,
+    distanceValue,
+    durationMinutes,
+    durationSecondsPart,
+  ]);
 
   function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -174,9 +187,14 @@ function ActivityFormFields({
       setError("Choose a valid activity date and time.");
       return;
     }
-    const durationSeconds = parseActivityDurationInput(duration);
+    const durationSeconds = parseActivityDurationParts(
+      durationMinutes,
+      durationSecondsPart,
+    );
     if (durationSeconds == null) {
-      setError("Enter duration as minutes or minutes:seconds, such as 37:15.");
+      setError(
+        "Enter a duration between 1 second and 7 days. Seconds must be from 0 to 59.",
+      );
       return;
     }
 
@@ -250,26 +268,43 @@ function ActivityFormFields({
             Saved with your device timezone.
           </p>
         </div>
-        <div className="flex flex-col gap-2">
-          <Label htmlFor="activity-duration">
-            Duration (minutes or minutes:seconds)
-          </Label>
-          <Input
-            id="activity-duration"
-            type="text"
-            inputMode="numeric"
-            maxLength={8}
-            pattern="[0-9]+(?::[0-5][0-9])?"
-            required
-            aria-describedby="activity-duration-help"
-            value={duration}
-            onChange={(event) => setDuration(event.target.value)}
-            placeholder="37:15"
-          />
+        <fieldset className="flex min-w-0 flex-col gap-2">
+          <legend className="text-sm font-medium">Duration</legend>
+          <div className="grid grid-cols-2 gap-2">
+            <div className="flex min-w-0 flex-col gap-1.5">
+              <Label htmlFor="activity-duration-minutes">Minutes</Label>
+              <Input
+                id="activity-duration-minutes"
+                type="text"
+                inputMode="numeric"
+                maxLength={5}
+                pattern="[0-9]*"
+                required
+                aria-describedby="activity-duration-help"
+                value={durationMinutes}
+                onChange={(event) => setDurationMinutes(event.target.value)}
+                placeholder="42"
+              />
+            </div>
+            <div className="flex min-w-0 flex-col gap-1.5">
+              <Label htmlFor="activity-duration-seconds">Seconds</Label>
+              <Input
+                id="activity-duration-seconds"
+                type="text"
+                inputMode="numeric"
+                maxLength={2}
+                pattern="[0-9]*"
+                aria-describedby="activity-duration-help"
+                value={durationSecondsPart}
+                onChange={(event) => setDurationSecondsPart(event.target.value)}
+                placeholder="30"
+              />
+            </div>
+          </div>
           <p id="activity-duration-help" className="text-xs text-muted-foreground">
-            Use 37:15 for 37 minutes 15 seconds. Whole minutes are also accepted.
+            Enter minutes and seconds separately. Leave seconds blank for whole minutes.
           </p>
-        </div>
+        </fieldset>
         <div className="flex flex-col gap-2">
           <Label htmlFor="activity-distance">Distance (optional)</Label>
           <div className="flex gap-2">
