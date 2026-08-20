@@ -25,6 +25,7 @@ import { formatRelativeLocalDate } from "@/lib/dates";
 import { QuickLogCard } from "@/components/quick-log/quick-log-card";
 import { ExerciseFamilyIcon } from "@/components/exercises/exercise-family-icon";
 import { WorkoutStartForm } from "@/components/session/workout-start-form";
+import { hasProgrammedWarmupActions } from "@/lib/warmup";
 import { ActiveWorkoutDiscard } from "@/components/session/active-workout-actions";
 import { ScheduledEventActions } from "@/components/program/scheduled-event-actions";
 import {
@@ -430,13 +431,12 @@ export default async function TodayPage({
                     startRequestKey={startRequestKey}
                     fallbackTimezone={user.profile.timezone}
                     retryLabel={selectedTemplate.template.name}
-                    hasProgrammedWarmups={
-                      selectedTemplate.template.warmupItems.length > 0 ||
-                      Boolean(selectedTemplate.template.warmupNotes?.trim()) ||
-                      selectedTemplate.slots.some(
-                        ({ slot }) => slot.warmupSets.length > 0,
-                      )
-                    }
+                    hasProgrammedWarmups={hasProgrammedWarmupActions({
+                      dayWarmupItems: selectedTemplate.template.warmupItems,
+                      exerciseWarmupSets: selectedTemplate.slots.map(
+                        ({ slot }) => slot.warmupSets,
+                      ),
+                    })}
                     buttonClassName="h-auto min-h-12 w-full whitespace-normal py-3 text-center text-base leading-tight"
                     scheduledStart={
                       !isAlternatePreview && today.schedule?.nextEvent?.kind === "resistance"

@@ -8,6 +8,16 @@ export type WarmupSetDisplayInput = {
   notes?: string | null;
 };
 
+export function hasProgrammedWarmupActions(input: {
+  dayWarmupItems: readonly unknown[];
+  exerciseWarmupSets: ReadonlyArray<readonly unknown[]>;
+}): boolean {
+  return (
+    input.dayWarmupItems.length > 0 ||
+    input.exerciseWarmupSets.some((sets) => sets.length > 0)
+  );
+}
+
 function normalizedPart(value: string): string {
   return value.trim().replace(/\s+/g, " ").toLocaleLowerCase();
 }
