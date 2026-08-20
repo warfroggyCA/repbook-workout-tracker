@@ -386,12 +386,17 @@ through retained occurrence origin; T03 performs no batch rewrite.
 
 ## T04 warm-up occurrence contract
 
-Free-text day and exercise warm-up overviews are reference guidance. Only an
-authored structured warm-up item creates a checkable occurrence, and normal,
-compiled, and retrospective workout producers use the same boundary. The
-active workout and History show the structured action once; they do not repeat
-the same item inside exercise guidance. Existing overview projections remain
-readable but are not silently converted into performed or skipped evidence.
+Free-text day and exercise warm-up overviews are reference guidance. A Today
+Start defaults to working sets only. The owner must explicitly select
+**Include programmed warm-ups** before Start for authored structured warm-up
+items to become checkable occurrences in that workout. The choice is bound to
+the idempotent Start request; declining it leaves the exact Program and session
+warm-up snapshots intact without creating performed, skipped, or pending
+warm-up facts. Internal compiler and retrospective producers keep their
+explicit source contract. When warm-ups are included, the active workout and
+History show each structured action once; they do not repeat the same item
+inside exercise guidance. Existing overview projections remain readable but
+are not silently converted into performed or skipped evidence.
 Known pending projections retained by the conservative legacy backfill are
 excluded from active controls and rejected at the mutation boundary without
 rewriting the stored row; independently authored structured actions remain

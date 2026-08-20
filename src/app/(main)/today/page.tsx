@@ -430,6 +430,13 @@ export default async function TodayPage({
                     startRequestKey={startRequestKey}
                     fallbackTimezone={user.profile.timezone}
                     retryLabel={selectedTemplate.template.name}
+                    hasProgrammedWarmups={
+                      selectedTemplate.template.warmupItems.length > 0 ||
+                      Boolean(selectedTemplate.template.warmupNotes?.trim()) ||
+                      selectedTemplate.slots.some(
+                        ({ slot }) => slot.warmupSets.length > 0,
+                      )
+                    }
                     buttonClassName="h-auto min-h-12 w-full whitespace-normal py-3 text-center text-base leading-tight"
                     scheduledStart={
                       !isAlternatePreview && today.schedule?.nextEvent?.kind === "resistance"

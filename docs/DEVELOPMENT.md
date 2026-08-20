@@ -121,9 +121,11 @@ adversarial claims for truthful performed measurement. T02 activates the same
 evidence classes for acknowledgement, retry, and reviewed correction, including
 correction-lineage restore. T03 activates planned-order, extra-before/after-plan,
 group ordering, History/Review/export, and recovery evidence. T04 activates
-one-action-per-authored-warm-up truth, reversible acknowledgements, aggregate
-exercise-decision safety, portability, recovery, and desktop/mobile browser
-evidence. T05 activates acknowledgement-ordered current/next guidance,
+default warm-up suppression at Today Start, explicit opt-in bound to Start
+identity, one action per included authored warm-up, retained Program snapshots,
+reversible acknowledgements, aggregate exercise-decision safety, portability,
+recovery, and desktop/mobile browser evidence. T05 activates
+acknowledgement-ordered current/next guidance,
 source-bound durable rest described by its next destination, direct
 ready-to-finish when the final actionable set is queued, group/member/round
 mixed-resolution state, portability, recovery, and desktop/mobile browser
@@ -443,7 +445,8 @@ focused Playwright test before the broader browser inventory.
 The owner-evidence activity acceptance uses synthetic distance and duration
 values. `test:e2e:history-calendar` proves that retrospective entry directs a
 standalone timed activity to **Record activity**, that minute-and-second input
-round-trips exactly on activity detail, and that the independent activity does
+uses separate digit-only mobile fields, round-trips exactly on activity detail,
+and that the independent activity does
 not receive a workout active-duration warning. The retrospective service test
 separately proves that an exact performed-set duration does not become workout
 active duration.

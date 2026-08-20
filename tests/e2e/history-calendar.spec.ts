@@ -42,12 +42,18 @@ async function recordActivity(
   localStart: string,
   duration = "30",
 ) {
+  const [minutes, seconds = ""] = duration.split(":");
   await page.goto("/activity/new");
   await page.getByLabel("Title (optional)").fill(title);
   await page.getByLabel("Date and start time").fill(localStart);
-  await page
-    .getByLabel("Duration (minutes or minutes:seconds)")
-    .fill(duration);
+  const minutesInput = page.getByLabel("Minutes", { exact: true });
+  const secondsInput = page.getByLabel("Seconds", { exact: true });
+  await expect(minutesInput).toHaveAttribute("inputmode", "numeric");
+  await expect(secondsInput).toHaveAttribute("inputmode", "numeric");
+  await minutesInput.fill(minutes);
+  if (seconds) {
+    await secondsInput.fill(seconds);
+  }
   const save = page.getByRole("button", {
     name: "Record activity",
     exact: true,
@@ -309,9 +315,9 @@ test("calendar-first History opens a recoverable retrospective entry flow", asyn
     page,
     `H1 ${browserName} first activity`,
     `${targetDate}T10:00`,
-    "37:15",
+    "42:30",
   );
-  await expect(page.getByText("37 min 15 sec", { exact: true })).toBeVisible();
+  await expect(page.getByText("42 min 30 sec", { exact: true })).toBeVisible();
   await expect(page.getByText(/Time and duration unknown/)).toHaveCount(0);
   await recordActivity(
     page,

@@ -56,6 +56,7 @@ async function signInAndStart(page: Page) {
     name: "Train as planned",
     exact: true,
   });
+  await page.getByRole("checkbox", { name: /Include programmed warm-ups/ }).check();
   await waitForHydratedServerAction(start);
   await start.click();
   await expect(page).toHaveURL(/\/session\/[0-9a-f-]+$/);

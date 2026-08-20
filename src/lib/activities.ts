@@ -85,6 +85,22 @@ export function formatActivityDurationInput(seconds: number) {
     : `${minutes}:${String(remainingSeconds).padStart(2, "0")}`;
 }
 
+export function parseActivityDurationParts(
+  minutesValue: string,
+  secondsValue: string,
+) {
+  const minutes = minutesValue.trim();
+  const seconds = secondsValue.trim();
+  if (!/^\d{1,5}$/u.test(minutes)) return null;
+  if (seconds && !/^\d{1,2}$/u.test(seconds)) return null;
+  const secondsPart = seconds ? Number(seconds) : 0;
+  if (secondsPart > 59) return null;
+  const totalSeconds = Number(minutes) * 60 + secondsPart;
+  return totalSeconds >= 1 && totalSeconds <= MAX_ACTIVITY_DURATION_SECONDS
+    ? totalSeconds
+    : null;
+}
+
 export function parseActivityDurationInput(value: string) {
   const match = /^(\d{1,5})(?::([0-5]\d))?$/u.exec(value.trim());
   if (!match) return null;

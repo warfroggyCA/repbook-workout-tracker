@@ -119,6 +119,10 @@ export async function startSession(
   const parsedStartRequestKey = z.string().uuid().safeParse(
     formData.get("startRequestKey"),
   );
+  const parsedIncludeWarmups = z
+    .enum(["true"])
+    .nullable()
+    .safeParse(formData.get("includeWarmups"));
   const scheduledValues = {
     scheduledProgramEventId: formData.get("scheduledProgramEventId"),
     expectedEventRevision: formData.get("expectedEventRevision"),
@@ -148,6 +152,7 @@ export async function startSession(
     !timezoneResult.success ||
     !parsedTemplateId.success ||
     !parsedStartRequestKey.success ||
+    !parsedIncludeWarmups.success ||
     (hasAnyScheduledValue && !parsedScheduledStart?.success)
   ) {
     logDiagnosticEvent("session.start_rejected", {
@@ -163,6 +168,7 @@ export async function startSession(
   }
   const timeBudgetMin = sessionTimeBudgetSchema.parse(undefined);
   const startRequestKey = submittedStartRequestKey!;
+  const includeWarmups = parsedIncludeWarmups.data === "true";
   const scheduledStart = parsedScheduledStart?.success
     ? parsedScheduledStart.data
     : undefined;
@@ -170,6 +176,7 @@ export async function startSession(
     templateId: parsedTemplateId.data,
     timezone: timezoneResult.data,
     timeBudgetMin: timeBudgetMin ?? null,
+    includeWarmups,
     ...(scheduledStart ? { scheduledStart } : {}),
   });
   let result: Awaited<ReturnType<typeof startWorkoutSession>>;
@@ -182,6 +189,7 @@ export async function startSession(
       {
         timezone: timezoneResult.data,
         startRequestKey,
+        includeWarmups,
         now: acceptanceWorkoutNow("start"),
         ...(scheduledStart ? { scheduledStart } : {}),
         ...(acceptanceFailure === "incomplete"
