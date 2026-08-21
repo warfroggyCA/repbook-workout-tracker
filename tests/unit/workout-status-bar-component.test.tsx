@@ -58,6 +58,22 @@ describe("WorkoutStatusBar", () => {
     expect(html).not.toContain("truncate");
   });
 
+  it("makes the one-step early-finish path visible while planned work remains", () => {
+    const html = renderToStaticMarkup(
+      <WorkoutStatusBar
+        action={action}
+        exercise={exercise}
+        timer={null}
+        restRemainingSec={null}
+        pendingPlannedCount={7}
+        {...callbacks}
+      />,
+    );
+
+    expect(html).toContain(">Finish early</button>");
+    expect(html).toContain('aria-label="Review workout finish"');
+  });
+
   it("shows a positive rest countdown without claiming the next set is ready", () => {
     const html = renderToStaticMarkup(
       <WorkoutStatusBar

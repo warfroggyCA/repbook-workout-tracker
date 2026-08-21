@@ -174,7 +174,7 @@ test("keeps contextual observations explicit, durable, private when chosen, and 
   offlineExpected = false;
 
   await page.getByRole("button", { name: "Finish", exact: true }).click();
-  const saveWorkout = page.getByRole("button", { name: "Save workout", exact: true });
+  const saveWorkout = page.getByRole("button", { name: /^(?:Finish early|Save workout)$/ });
   await waitForHydratedReactHandler(saveWorkout);
   await saveWorkout.click();
   await expect(page).toHaveURL(/\/history\/[0-9a-f-]+\?finished=1$/);

@@ -96,8 +96,7 @@ test("recovers a six-day interruption without rewriting source timestamps", asyn
   await expect(finishDialog).toContainText("Wall clock: 6 days");
   await expect(finishDialog).toContainText("Active time unavailable");
   const save = finishDialog.getByRole("button", {
-    name: "Save workout",
-    exact: true,
+    name: /^(?:Finish early|Save workout)$/,
   });
   await expect(save).toBeDisabled();
 
@@ -110,7 +109,7 @@ test("recovers a six-day interruption without rewriting source timestamps", asyn
   await activeMinutes.fill("60");
   await expect(finishDialog).toContainText("Active time: 60 min · owner reported");
   await finishDialog
-    .getByLabel("Why is the remaining planned work not being completed?")
+    .getByLabel("Why are you finishing this workout early?")
     .selectOption("interruption");
   await expectTouchTarget(save);
   await save.click();

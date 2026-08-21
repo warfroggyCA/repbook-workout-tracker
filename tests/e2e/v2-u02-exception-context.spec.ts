@@ -185,9 +185,9 @@ test("keeps ordinary completion minimal and makes exception evidence reversible,
   await status.getByRole("button", { name: /^(?:Review workout finish|Finish workout)$/ }).click();
   const finish = page.getByRole("dialog", { name: "Finish workout" });
   await finish
-    .getByLabel("Why is the remaining planned work not being completed?")
+    .getByLabel("Why are you finishing this workout early?")
     .selectOption("pain_discomfort");
-  await finish.getByRole("button", { name: "Save workout", exact: true }).click();
+  await finish.getByRole("button", { name: /^(?:Finish early|Save workout)$/ }).click();
   await expect(page).toHaveURL(/\/history\/[0-9a-f-]+\?finished=1$/);
   await expect(page.getByText("RIR 2", { exact: true })).toBeVisible();
   await expect(page.getByText("Technique issue: Bracing", { exact: true }))

@@ -510,6 +510,25 @@ test("keeps the full live workout usable through warm-up, skip, replace, continu
   await expectReachableTarget(continueWithout);
   await expectActiveViewportBudget(page);
 
+  const finishEarly = page
+    .getByRole("complementary", { name: "Workout status" })
+    .getByRole("button", { name: "Review workout finish", exact: true });
+  await expect(finishEarly).toHaveText("Finish early");
+  await finishEarly.click();
+  const earlyFinishReview = page.getByRole("dialog", {
+    name: "Finish workout",
+  });
+  await expect(earlyFinishReview).toContainText("Choose one reason for all");
+  await expect(earlyFinishReview).toContainText(
+    "you do not need to skip sets or exercises one at a time",
+  );
+  await expect(earlyFinishReview).not.toContainText(
+    "Resolve the skipped exercise",
+  );
+  await earlyFinishReview
+    .getByRole("button", { name: "Back to workout", exact: true })
+    .click();
+
   await continueWithout.click();
   await expect(resolveSkippedExercise).toHaveCount(0);
   await expect(
@@ -716,11 +735,10 @@ test("keeps the full live workout usable through warm-up, skip, replace, continu
     )
     .toBe(true);
   const save = finishDialog.getByRole("button", {
-    name: "Save workout",
-    exact: true,
+    name: /^(?:Finish early|Save workout)$/,
   });
   await finishDialog
-    .getByLabel("Why is the remaining planned work not being completed?")
+    .getByLabel("Why are you finishing this workout early?")
     .selectOption("user_choice");
   await expectReachableTarget(save);
   await save.click();
