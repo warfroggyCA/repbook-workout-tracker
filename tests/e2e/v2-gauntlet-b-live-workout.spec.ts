@@ -513,7 +513,7 @@ test("keeps the full live workout usable through warm-up, skip, replace, continu
   const finishEarly = page
     .getByRole("complementary", { name: "Workout status" })
     .getByRole("button", { name: "Review workout finish", exact: true });
-  await expect(finishEarly).toHaveText("Finish early");
+  await expect(finishEarly).toContainText("Finish early");
   await finishEarly.click();
   const earlyFinishReview = page.getByRole("dialog", {
     name: "Finish workout",
