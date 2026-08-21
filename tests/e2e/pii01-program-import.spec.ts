@@ -197,7 +197,10 @@ test("reviews and publishes a multi-day Program into an ordered active workout",
   await current.getByRole("button", { name: "Log set", exact: true }).click();
   await expect(page.locator('[id^="logged-set-"]').first()).toContainText("60 lb");
 
-  await page.getByRole("button", { name: /^(?:Review workout finish|Finish workout)$/ }).click();
+  await page
+    .getByRole("complementary", { name: "Workout status" })
+    .getByRole("button", { name: /^(?:Review workout finish|Finish workout)$/ })
+    .click();
   await page
     .getByLabel("Why are you finishing this workout early?")
     .selectOption("user_choice");

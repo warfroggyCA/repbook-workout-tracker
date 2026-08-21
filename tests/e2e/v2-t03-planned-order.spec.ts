@@ -118,7 +118,10 @@ test("keeps planned work authoritative around extra-before-plan and grouped work
   const laterMember = page.getByRole("region", { name: "Pallof Press" });
   await expect(laterMember.getByTestId("current-set-entry")).toHaveCount(0);
 
-  await page.getByRole("button", { name: /^(?:Review workout finish|Finish workout)$/ }).click();
+  await page
+    .getByRole("complementary", { name: "Workout status" })
+    .getByRole("button", { name: /^(?:Review workout finish|Finish workout)$/ })
+    .click();
   const finish = page.getByRole("dialog", { name: "Finish workout" });
   await expect(finish).toContainText("0 of 13 planned sets done");
   await expect(finish).toContainText("1 extra set performed");

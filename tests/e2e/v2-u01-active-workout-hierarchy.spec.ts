@@ -704,9 +704,11 @@ async function discardWorkout(page: Page) {
   await page.reload({ waitUntil: "domcontentloaded" });
   const finishDialog = page.getByRole("dialog", { name: "Finish workout" });
   if (!(await finishDialog.isVisible())) {
-    const finish = page.getByRole("button", {
-      name: /^(?:Review workout finish|Finish workout)$/,
-    });
+    const finish = page
+      .getByRole("complementary", { name: "Workout status" })
+      .getByRole("button", {
+        name: /^(?:Review workout finish|Finish workout)$/,
+      });
     await waitForHydratedReactHandler(finish);
     await finish.click();
   }

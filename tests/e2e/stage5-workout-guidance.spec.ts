@@ -176,7 +176,10 @@ async function waitForSetSkippedNoticesToSettle(page: Page) {
 }
 
 async function discardWorkout(page: Page) {
-  await page.getByRole("button", { name: /^(?:Review workout finish|Finish workout)$/ }).click();
+  await page
+    .getByRole("complementary", { name: "Workout status" })
+    .getByRole("button", { name: /^(?:Review workout finish|Finish workout)$/ })
+    .click();
   const finish = page.getByRole("dialog", { name: "Finish workout" });
   await finish
     .getByRole("button", { name: "Discard workout", exact: true })

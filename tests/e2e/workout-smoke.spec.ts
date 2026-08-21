@@ -128,7 +128,10 @@ async function signInAndStartWorkout(page: import("@playwright/test").Page) {
     await waitForReactHandler(resumeWorkout);
     await resumeWorkout.click();
     await expect(page).toHaveURL(/\/session\/[0-9a-f-]+(?:#.*)?$/);
-    await page.getByRole("button", { name: /^(?:Review workout finish|Finish workout)$/ }).click();
+    await page
+      .getByRole("complementary", { name: "Workout status" })
+      .getByRole("button", { name: /^(?:Review workout finish|Finish workout)$/ })
+      .click();
     await confirmActiveWorkoutDiscard(page);
     await expect(page).toHaveURL(/\/today$/);
   }
@@ -177,7 +180,10 @@ async function abandonActiveWorkout(
   await waitForReactHandler(resumeWorkout);
   await resumeWorkout.click();
   await expect(page).toHaveURL(/\/session\/[0-9a-f-]+(?:#.*)?$/);
-  await page.getByRole("button", { name: /^(?:Review workout finish|Finish workout)$/ }).click();
+  await page
+    .getByRole("complementary", { name: "Workout status" })
+    .getByRole("button", { name: /^(?:Review workout finish|Finish workout)$/ })
+    .click();
   await confirmActiveWorkoutDiscard(page);
   await expect(page).toHaveURL(/\/today$/);
 }
@@ -487,9 +493,11 @@ async function verifyDecisiveToday({
   await expect(
     page.getByRole("heading", { name: "Day C — Bench", exact: true })
   ).toBeVisible();
-  const finishReopenedWorkout = page.getByRole("button", {
-    name: /^(?:Review workout finish|Finish workout)$/,
-  });
+  const finishReopenedWorkout = page
+    .getByRole("complementary", { name: "Workout status" })
+    .getByRole("button", {
+      name: /^(?:Review workout finish|Finish workout)$/,
+    });
   await waitForReactHandler(finishReopenedWorkout);
   await finishReopenedWorkout.click();
   await confirmActiveWorkoutDiscard(page);
@@ -1617,7 +1625,10 @@ test("signs in and completes a durable workout flow", async ({ page }) => {
   await page.keyboard.press("Escape");
   await expect(frictionLog).toHaveCount(0);
 
-  await page.getByRole("button", { name: /^(?:Review workout finish|Finish workout)$/ }).click();
+  await page
+    .getByRole("complementary", { name: "Workout status" })
+    .getByRole("button", { name: /^(?:Review workout finish|Finish workout)$/ })
+    .click();
   const finish = page.getByRole("dialog", { name: "Finish workout" });
   await expect(finish).toBeVisible();
   const saveWorkout = finish.getByRole("button", {
@@ -2172,7 +2183,10 @@ test("keeps the final set acknowledgement visible through background return", as
   await backgroundPage.close();
   await page.unrouteAll({ behavior: "wait" });
 
-  await page.getByRole("button", { name: /^(?:Review workout finish|Finish workout)$/ }).click();
+  await page
+    .getByRole("complementary", { name: "Workout status" })
+    .getByRole("button", { name: /^(?:Review workout finish|Finish workout)$/ })
+    .click();
   await confirmActiveWorkoutDiscard(page);
   await expect(page).toHaveURL(/\/today$/);
 });
@@ -2761,7 +2775,10 @@ test("keeps an offline set visible while the next set stays available", async ({
     nextSet.getByRole("button", { name: "Log set", exact: true }),
   ).toBeEnabled();
 
-  await page.getByRole("button", { name: /^(?:Review workout finish|Finish workout)$/ }).click();
+  await page
+    .getByRole("complementary", { name: "Workout status" })
+    .getByRole("button", { name: /^(?:Review workout finish|Finish workout)$/ })
+    .click();
   await expect(
     page.getByRole("button", { name: /^(?:Finish early|Save workout)$/ })
   ).toBeDisabled();
@@ -2816,9 +2833,11 @@ test("keeps an offline set visible while the next set stays available", async ({
   await page.keyboard.press("Escape");
   await expect(savedCorrection).toHaveCount(0);
 
-  const finishWorkout = page.getByRole("button", {
-    name: /^(?:Review workout finish|Finish workout)$/,
-  });
+  const finishWorkout = page
+    .getByRole("complementary", { name: "Workout status" })
+    .getByRole("button", {
+      name: /^(?:Review workout finish|Finish workout)$/,
+    });
   await waitForReactHandler(finishWorkout);
   await finishWorkout.click();
   await page
@@ -2857,7 +2876,10 @@ test("retries a set automatically after one server 500 and still finishes", asyn
   await expect(nextSet.getByTestId("completed-sets"))
     .toContainText("Acknowledged by Repbook");
   expect(actionRequests).toBeGreaterThanOrEqual(2);
-  await page.getByRole("button", { name: /^(?:Review workout finish|Finish workout)$/ }).click();
+  await page
+    .getByRole("complementary", { name: "Workout status" })
+    .getByRole("button", { name: /^(?:Review workout finish|Finish workout)$/ })
+    .click();
   await page
     .getByLabel("Why are you finishing this workout early?")
     .selectOption("user_choice");
@@ -2945,7 +2967,10 @@ test("a parked set pauses only its exercise while another exercise saves", async
     element.scrollIntoView({ block: "center" })
   );
   await removeParkedSet.click();
-  await page.getByRole("button", { name: /^(?:Review workout finish|Finish workout)$/ }).click();
+  await page
+    .getByRole("complementary", { name: "Workout status" })
+    .getByRole("button", { name: /^(?:Review workout finish|Finish workout)$/ })
+    .click();
   await page
     .getByLabel("Why are you finishing this workout early?")
     .selectOption("technical_app_issue");
@@ -2987,9 +3012,11 @@ test("keeps a stale-tab rejection visible until the user resolves it", async ({
     .getByRole("button", { name: "Log set", exact: true })
     .click();
   await expect(page.getByRole("complementary", { name: "Workout status" })).toContainText(/Resting|Next set/);
-  const finishWorkout = page.getByRole("button", {
-    name: /^(?:Review workout finish|Finish workout)$/,
-  });
+  const finishWorkout = page
+    .getByRole("complementary", { name: "Workout status" })
+    .getByRole("button", {
+      name: /^(?:Review workout finish|Finish workout)$/,
+    });
   await waitForReactHandler(finishWorkout);
   await finishWorkout.click();
   await page
@@ -3010,7 +3037,10 @@ test("keeps a stale-tab rejection visible until the user resolves it", async ({
     .getByRole("button", { name: "Log set", exact: true })
     .click();
   await expect(staleNextSet.getByText(/Save failed/)).toBeVisible();
-  await stalePage.getByRole("button", { name: /^(?:Review workout finish|Finish workout)$/ }).click();
+  await stalePage
+    .getByRole("complementary", { name: "Workout status" })
+    .getByRole("button", { name: /^(?:Review workout finish|Finish workout)$/ })
+    .click();
   await expect(
     stalePage.getByRole("button", { name: /^(?:Finish early|Save workout)$/ })
   ).toBeDisabled();
@@ -3330,9 +3360,11 @@ test("opens failed-set recovery from Settings at 145 percent on iPhone WebKit", 
   });
 
   await context.setOffline(false);
-  const finishTrigger = page.getByRole("button", {
-    name: /^(?:Review workout finish|Finish workout)$/,
-  });
+  const finishTrigger = page
+    .getByRole("complementary", { name: "Workout status" })
+    .getByRole("button", {
+      name: /^(?:Review workout finish|Finish workout)$/,
+    });
   await finishTrigger.click();
   const finishRecovery = page.getByRole("dialog", {
     name: "Finish workout",
@@ -3483,7 +3515,10 @@ test("opens failed-set recovery from Settings at 145 percent on iPhone WebKit", 
     window.dispatchEvent(new Event("workout-set-outbox-change"));
   }, retained.clientKey);
   await page.goto(`/session/${retained.sessionId}`);
-  await page.getByRole("button", { name: /^(?:Review workout finish|Finish workout)$/ }).click();
+  await page
+    .getByRole("complementary", { name: "Workout status" })
+    .getByRole("button", { name: /^(?:Review workout finish|Finish workout)$/ })
+    .click();
   await confirmActiveWorkoutDiscard(page);
   await expect(page).toHaveURL(/\/today$/);
   workoutMayBeActive = false;

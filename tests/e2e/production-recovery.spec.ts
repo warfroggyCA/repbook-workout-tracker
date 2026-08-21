@@ -125,7 +125,10 @@ if (!process.env.PLAYWRIGHT_PRODUCTION_BASE_URL) {
     });
     await expect(staleAlternatives).toBeVisible();
 
-    await page.getByRole("button", { name: /^(?:Review workout finish|Finish workout)$/ }).click();
+    await page
+      .getByRole("complementary", { name: "Workout status" })
+      .getByRole("button", { name: /^(?:Review workout finish|Finish workout)$/ })
+      .click();
     await page
       .getByRole("button", { name: "Discard workout", exact: true })
       .click();

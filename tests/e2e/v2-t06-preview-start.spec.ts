@@ -93,7 +93,9 @@ async function discardActive(page: Page) {
     await resume.click();
     await expect(page).toHaveURL(/\/session\/[0-9a-f-]+$/);
   }
-  const finish = page.getByRole("button", { name: /^(?:Review workout finish|Finish workout)$/ });
+  const finish = page
+    .getByRole("complementary", { name: "Workout status" })
+    .getByRole("button", { name: /^(?:Review workout finish|Finish workout)$/ });
   await waitForHydratedReactHandler(finish);
   await finish.click();
   const finishDialog = page.getByRole("dialog", { name: "Finish workout" });
