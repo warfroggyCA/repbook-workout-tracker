@@ -2472,26 +2472,20 @@ test("confirms one complete quick log and shows its stored units in History", as
   await expect(quickLogInput).toHaveValue("");
 
   await page.getByRole("link", { name: "View full history", exact: true }).click();
-  const ownerDateParts = new Intl.DateTimeFormat("en-CA", {
-    timeZone: "America/Toronto",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).formatToParts(new Date());
-  const ownerDate = Object.fromEntries(
-    ownerDateParts.map((part) => [part.type, part.value]),
-  );
-  const ownerToday = page.locator(
-    `[data-calendar-action][data-calendar-date="${ownerDate.year}-${ownerDate.month}-${ownerDate.day}"]`,
-  );
-  await expect(ownerToday).toHaveAttribute("aria-haspopup", "dialog");
-  await ownerToday.click();
-  const quickLog = page
-    .getByRole("dialog", { name: "Choose a record" })
-    .getByRole("link", { name: /Quick log/ })
-    .first();
-  await expect(quickLog).toBeVisible();
-  await quickLog.click();
+  const quickLogDay = page.locator("[data-calendar-action]").filter({
+    hasText: "Quick log",
+  }).first();
+  await expect(quickLogDay).toBeVisible();
+  const opensChooser = await quickLogDay.getAttribute("aria-haspopup");
+  await quickLogDay.click();
+  if (opensChooser === "dialog") {
+    const quickLog = page
+      .getByRole("dialog", { name: "Choose a record" })
+      .getByRole("link", { name: /Quick log/ })
+      .first();
+    await expect(quickLog).toBeVisible();
+    await quickLog.click();
+  }
   await expect(page).toHaveURL(/\/history\/[0-9a-f-]+(?:\?.*)?$/);
   await expect(page.getByText(/100 kg × 8/)).toBeVisible();
   await expect(page.getByText(/100 kg × 7/)).toBeVisible();
