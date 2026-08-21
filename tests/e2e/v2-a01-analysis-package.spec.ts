@@ -4,6 +4,7 @@ import { expect, test, type Locator, type Page } from "@playwright/test";
 import { canonicalJson } from "@/services/snapshot-crypto";
 import {
   installNextDevelopmentRefreshControl,
+  openNativeDetails,
   waitForHydratedServerAction,
 } from "../helpers/react-readiness";
 import { observeGauntletPageErrors } from "../helpers/v2-gauntlet-a-errors";
@@ -54,6 +55,9 @@ test("previews and downloads one complete owner-controlled package without trans
   page.on("request", (request) => requestedUrls.push(request.url()));
 
   await page.goto("/export");
+  await openNativeDetails(page.locator("details").filter({
+    has: page.getByText("Advanced exports", { exact: true }),
+  }));
   const packageLink = page.locator('a[href="/export/analysis"]');
   await expect(packageLink).toHaveAccessibleName("Prepare analysis package");
   await packageLink.click();

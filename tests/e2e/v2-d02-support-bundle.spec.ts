@@ -2,6 +2,7 @@ import { readFile } from "node:fs/promises";
 import { expect, test, type Locator, type Page } from "@playwright/test";
 import {
   installNextDevelopmentRefreshControl,
+  openNativeDetails,
   waitForHydratedServerAction,
 } from "../helpers/react-readiness";
 import { observeGauntletPageErrors } from "../helpers/v2-gauntlet-a-errors";
@@ -52,6 +53,9 @@ test("previews, minimizes, and deliberately downloads a separate local support b
   page.on("request", (request) => requestedUrls.push(request.url()));
 
   await page.goto("/export");
+  await openNativeDetails(page.locator("details").filter({
+    has: page.getByText("Advanced exports", { exact: true }),
+  }));
   const supportLink = page.locator('a[href="/export/support"]');
   await expect(supportLink).toHaveAccessibleName("Prepare support bundle");
   await expect(page.locator('a[href="/export/analysis"]')).toHaveAccessibleName(
