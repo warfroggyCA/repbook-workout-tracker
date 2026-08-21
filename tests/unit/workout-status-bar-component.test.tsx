@@ -70,7 +70,9 @@ describe("WorkoutStatusBar", () => {
       />,
     );
 
-    expect(html).toContain(">Finish early</button>");
+    expect(html).toContain(">End</span>");
+    expect(html).toContain("Finish early");
+    expect(html).toContain('class="min-[400px]:hidden"');
     expect(html).toContain('aria-label="Review workout finish"');
   });
 

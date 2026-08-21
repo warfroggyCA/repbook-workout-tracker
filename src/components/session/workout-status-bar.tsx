@@ -284,7 +284,12 @@ export function WorkoutStatusBar({
           onClick={onFinish}
           aria-label={canFinishNow ? "Finish workout" : "Review workout finish"}
         >
-          {isFinishingEarly ? "Finish early" : "Finish"}
+          {isFinishingEarly ? (
+            <>
+              <span className="min-[400px]:hidden">End</span>
+              <span className="max-[399px]:hidden">Finish early</span>
+            </>
+          ) : "Finish"}
         </Button>
       </div>
     </aside>
