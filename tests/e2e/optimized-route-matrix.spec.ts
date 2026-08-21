@@ -52,7 +52,7 @@ test("renders every optimized page family under its request nonce", async ({
     ["/settings/setup/constraints", "Settings · Repbook"],
     ["/settings/setup/coaching", "Settings · Repbook"],
     ["/settings/setup/program", "Settings · Repbook"],
-    ["/export", "Export · Repbook"],
+    ["/export", "Downloads & backup · Repbook"],
     ["/archive", "Archive · Repbook"],
     ["/recovery", "Recovery · Repbook"],
     ["/recovery/semantic-consequences", "Recovery · Repbook"],
