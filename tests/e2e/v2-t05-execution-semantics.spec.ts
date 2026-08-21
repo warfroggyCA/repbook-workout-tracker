@@ -186,7 +186,10 @@ async function skipCurrentSet(page: Page) {
 }
 
 async function discardWorkout(page: Page) {
-  await page.getByRole("button", { name: /^(?:Review workout finish|Finish workout)$/ }).click();
+  await page
+    .getByRole("complementary", { name: "Workout status" })
+    .getByRole("button", { name: /^(?:Review workout finish|Finish workout)$/ })
+    .click();
   const finish = page.getByRole("dialog", { name: "Finish workout" });
   await finish.getByRole("button", { name: "Discard workout", exact: true }).click();
   const confirmation = page.getByRole("dialog", { name: /^Discard .+\?$/ });
@@ -363,7 +366,11 @@ test("keeps one ledger-driven current/next/group/rest state through retry, inter
   await expect(
     page.getByRole("region", { name: "Workout progress and upcoming work" }),
   ).toContainText("All actions resolved");
-  await expect(page.getByRole("button", { name: /^(?:Review workout finish|Finish workout)$/ })).toBeVisible();
+  await expect(
+    status.getByRole("button", {
+      name: /^(?:Review workout finish|Finish workout)$/,
+    }),
+  ).toBeVisible();
   expect(
     await page.evaluate(
       () => document.documentElement.scrollWidth - document.documentElement.clientWidth,

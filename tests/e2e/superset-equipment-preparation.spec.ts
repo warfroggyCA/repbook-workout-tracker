@@ -81,7 +81,10 @@ async function skipCurrentSet(page: Page) {
 
 async function discardWorkout(page: Page) {
   if (!/\/session\/[0-9a-f-]+(?:#.*)?$/.test(page.url())) return;
-  await page.getByRole("button", { name: /^(?:Review workout finish|Finish workout)$/ }).click();
+  await page
+    .getByRole("complementary", { name: "Workout status" })
+    .getByRole("button", { name: /^(?:Review workout finish|Finish workout)$/ })
+    .click();
   const finish = page.getByRole("dialog", { name: "Finish workout" });
   await finish
     .getByRole("button", { name: "Discard workout", exact: true })

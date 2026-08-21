@@ -692,7 +692,9 @@ test("keeps the full live workout usable through warm-up, skip, replace, continu
   ).toBeVisible();
   await expectActiveViewportBudget(page);
 
-  const finish = page.getByRole("button", { name: /^(?:Review workout finish|Finish workout)$/ });
+  const finish = page
+    .getByRole("complementary", { name: "Workout status" })
+    .getByRole("button", { name: /^(?:Review workout finish|Finish workout)$/ });
   await expectReachableTarget(finish);
   await finish.click();
   const finishDialog = page.getByRole("dialog", { name: "Finish workout" });
