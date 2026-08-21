@@ -58,7 +58,9 @@ async function addWorkoutOnlyExercise(page: Page, name: string) {
 }
 
 async function discardWorkout(page: Page) {
-  await page.getByRole("button", { name: "Finish Workout", exact: true }).click();
+  await page
+    .getByRole("button", { name: /^(?:Finish early|Finish workout)$/i })
+    .click();
   const finish = page.getByRole("dialog", { name: "Finish workout" });
   await finish.getByRole("button", { name: "Discard workout", exact: true }).click();
   await page

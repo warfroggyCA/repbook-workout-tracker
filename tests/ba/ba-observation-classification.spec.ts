@@ -1006,8 +1006,7 @@ test("classifies all sixteen prior workout observations", async ({
       .click();
 
     const finishWorkout = page.getByRole("button", {
-      name: "Finish Workout",
-      exact: true,
+      name: /^(?:Finish early|Finish workout)$/i,
     });
     await finishWorkout.scrollIntoViewIfNeeded();
     await waitForHydratedReactHandler(finishWorkout);
