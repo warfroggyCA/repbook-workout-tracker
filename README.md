@@ -9,6 +9,11 @@ production-maintenance automation, real workout observations, and owner data
 remain in a separate private operations repository and are intentionally not
 part of this public Git history.
 
+See [`docs/README.md`](docs/README.md) for the documentation authority map. In
+short: this repository owns application behavior and durable public contracts;
+the private operating-record repository owns volatile production status,
+release chronology, and product priority.
+
 ## Technology
 
 Next.js App Router, TypeScript, React, Drizzle ORM, Postgres, Auth.js, Vitest,

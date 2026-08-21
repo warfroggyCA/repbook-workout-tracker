@@ -29,6 +29,7 @@ const requiredDocuments = [
   "README.md",
   "CONTRIBUTING.md",
   "SECURITY.md",
+  "docs/README.md",
   "docs/ARCHITECTURE.md",
   "docs/DEVELOPMENT.md",
   "docs/SECURITY_AND_PRIVACY.md",
