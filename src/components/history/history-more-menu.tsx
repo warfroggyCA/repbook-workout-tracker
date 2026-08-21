@@ -16,14 +16,15 @@ import type {
   BulkActivityArchivePreview,
   SampleHistoryArchivePreview,
 } from "@/services/archive";
+import type { HistoryRangeKey } from "@/services/history-report";
 
 export function HistoryMoreMenu({
-  exportWeeks,
+  briefRange,
   testSessionCount,
   samplePreview,
   activityArchivePreview,
 }: {
-  exportWeeks: string;
+  briefRange: HistoryRangeKey;
   testSessionCount: number;
   samplePreview: SampleHistoryArchivePreview | null;
   activityArchivePreview: BulkActivityArchivePreview;
@@ -44,20 +45,19 @@ export function HistoryMoreMenu({
               History actions
             </Popover.Title>
             <Popover.Description className="mt-0.5 px-1 text-xs text-muted-foreground">
-              Export, refresh, or manage recoverable History records.
+              Prepare a useful download or manage recoverable History records.
             </Popover.Description>
             <div className="mt-3 grid gap-2">
-              <a
-                href={`/api/export/csv?entity=sets&weeks=${exportWeeks}`}
-                download
+              <Link
+                href={`/export?briefRange=${briefRange}#training-brief`}
                 className={buttonVariants({
                   variant: "outline",
                   className: "justify-start",
                 })}
               >
                 <Download className="size-4" aria-hidden="true" />
-                Export this period
-              </a>
+                Prepare training brief
+              </Link>
               <Link
                 href="/export"
                 className={buttonVariants({
@@ -66,7 +66,7 @@ export function HistoryMoreMenu({
                 })}
               >
                 <Download className="size-4" aria-hidden="true" />
-                All export options
+                Downloads &amp; backup
               </Link>
               <HistoryRefreshButton />
               <Link

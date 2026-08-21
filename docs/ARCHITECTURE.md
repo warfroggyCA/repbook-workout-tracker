@@ -1292,6 +1292,13 @@ origin. The current schema has no independent performed warm-up load/failure
 measurement, so the report does not infer unusual load or failure by mining
 free text; an explicit note remains visible verbatim.
 
+The owner-facing download workspace is purpose-first without changing any
+artifact contract. The readable bounded Training Brief is the normal entry
+point, the canonical full JSON backup remains the recovery copy, and raw CSV,
+versioned analysis-package, and redacted support-bundle workflows stay distinct
+under Advanced exports. An all-time History view never silently becomes an
+all-time brief: the workspace explains and selects the bounded 12-week default.
+
 ## R01 cross-cutting lifecycle audit
 
 `src/services/recovery-manifest.ts` remains the only durable-table inventory.

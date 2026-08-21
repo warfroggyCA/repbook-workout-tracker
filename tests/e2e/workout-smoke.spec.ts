@@ -1205,10 +1205,10 @@ test("answers all five History questions without mixing independent activity int
 
   await page.getByRole("button", { name: "More History actions" }).click();
   await expect(
-    page.locator('a[href="/api/export/csv?entity=sets&weeks=all"][download]'),
-  ).toHaveAttribute("href", /\/api\/export\/csv\?entity=sets&weeks=all/);
+    page.getByRole("link", { name: "Prepare training brief", exact: true }),
+  ).toHaveAttribute("href", "/export?briefRange=all#training-brief");
   await expect(
-    page.getByRole("link", { name: "All export options", exact: true }),
+    page.getByRole("link", { name: "Downloads & backup", exact: true }),
   ).toHaveAttribute("href", "/export");
   await expect(
     page.getByRole("link", { name: "Open Archive", exact: true }),
@@ -2557,7 +2557,9 @@ test("downloads one canonical full backup with intact workout relationships", as
   await page.goto("/export");
   await page.waitForLoadState("networkidle");
   const downloadPromise = page.waitForEvent("download");
-  await page.getByRole("button", { name: "Download backup", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Download full backup", exact: true })
+    .click();
   const download = await downloadPromise;
   expect(download.suggestedFilename()).toMatch(
     /^workout-tracker-backup-\d{4}-\d{2}-\d{2}\.json$/

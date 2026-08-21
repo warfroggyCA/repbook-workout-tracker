@@ -454,6 +454,12 @@ not receive a workout active-duration warning. The retrospective service test
 separately proves that an exact performed-set duration does not become workout
 active duration.
 
+The download-workspace acceptance keeps Training Brief and full backup visible
+before the closed Advanced exports section on desktop and narrow WebKit. It
+verifies History carries bounded period context into the brief selector, shows
+an explicit 12-week default for all-time History, and retains the separate CSV,
+analysis-package, support-bundle, and canonical JSON paths.
+
 Run the focused named Program and tracker schedule contract with:
 
 ```bash

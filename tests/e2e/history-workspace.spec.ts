@@ -132,7 +132,10 @@ test("History workspace preserves deep links, Back and Forward, and exact detail
     page.getByText("History actions", { exact: true }),
   ).toBeVisible();
   await expect(
-    page.getByRole("link", { name: "All export options", exact: true }),
+    page.getByRole("link", { name: "Prepare training brief", exact: true }),
+  ).toHaveAttribute("href", "/export?briefRange=all#training-brief");
+  await expect(
+    page.getByRole("link", { name: "Downloads & backup", exact: true }),
   ).toHaveAttribute("href", "/export");
   await expect(
     page.getByRole("link", { name: "Open Archive", exact: true }),
