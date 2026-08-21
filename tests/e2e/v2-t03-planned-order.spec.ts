@@ -133,9 +133,9 @@ test("keeps planned work authoritative around extra-before-plan and grouped work
   await fatigueThree.press("Space");
   await expect(fatigueThree).toHaveAttribute("aria-pressed", "true");
   await finish
-    .getByLabel("Why is the remaining planned work not being completed?")
+    .getByLabel("Why are you finishing this workout early?")
     .selectOption("user_choice");
-  await finish.getByRole("button", { name: "Save workout", exact: true }).click();
+  await finish.getByRole("button", { name: /^(?:Finish early|Save workout)$/ }).click();
   await expect(page).toHaveURL(/\/history\/[0-9a-f-]+\?finished=1$/);
   await expect(page.getByText(/extra set 1/i).first()).toBeVisible();
   await expect(page.getByText("added during workout", { exact: true }).first()).toBeVisible();

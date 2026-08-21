@@ -31,6 +31,7 @@ type Props = {
   onAddNote: () => void;
   onFinish: () => void;
   finishReady?: boolean;
+  pendingPlannedCount?: number;
 };
 
 function saveStatus(exercise: SessionExerciseData | null) {
@@ -64,6 +65,7 @@ export function WorkoutStatusBar({
   onAddNote,
   onFinish,
   finishReady,
+  pendingPlannedCount = 0,
 }: Props) {
   const saving = action?.kind === "working_set" ? saveStatus(exercise) : null;
   const timerRunning = timer?.phase === "running" && restRemainingSec != null;
@@ -99,6 +101,7 @@ export function WorkoutStatusBar({
       : formatSessionGuidanceAction(action)
     : "Workout");
   const canFinishNow = finishReady ?? action == null;
+  const isFinishingEarly = pendingPlannedCount > 0;
   const logsCurrentSet =
     action?.kind === "working_set" &&
     checkingExerciseSkip == null &&
@@ -281,7 +284,7 @@ export function WorkoutStatusBar({
           onClick={onFinish}
           aria-label={canFinishNow ? "Finish workout" : "Review workout finish"}
         >
-          Finish
+          {isFinishingEarly ? "Finish early" : "Finish"}
         </Button>
       </div>
     </aside>

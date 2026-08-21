@@ -119,7 +119,7 @@ test("places one public-UI workout on its captured start-date identity", async (
     .getByRole("complementary", { name: "Workout status", exact: true })
     .getByRole("button", { name: "Finish", exact: true })
     .click();
-  await page.getByRole("button", { name: "Save workout", exact: true }).click();
+  await page.getByRole("button", { name: /^(?:Finish early|Save workout)$/ }).click();
   await expect(page).toHaveURL(/\/history\/[0-9a-f-]+\?finished=1$/);
   await expect(page.getByText(new RegExp(`${expectedWeekday}, Jul ${Number(expectedDate.slice(-2))}`))).toBeVisible();
 

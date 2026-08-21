@@ -404,9 +404,9 @@ test("refuses incomplete assistance, then preserves assisted work without false 
     .getByRole("button", { name: "Finish Workout", exact: true })
     .click();
   await page
-    .getByLabel("Why is the remaining planned work not being completed?")
+    .getByLabel("Why are you finishing this workout early?")
     .selectOption("user_choice");
-  await page.getByRole("button", { name: "Save workout", exact: true }).click();
+  await page.getByRole("button", { name: /^(?:Finish early|Save workout)$/ }).click();
   await expect(page).toHaveURL(/\/history\/[0-9a-f-]+\?finished=1$/);
   await expect(
     page.getByText(

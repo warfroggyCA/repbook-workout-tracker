@@ -1918,8 +1918,20 @@ export function SessionRunner(props: SessionRunnerProps) {
   };
   // Finishing is gated only by unresolved recorded work; a stuck equipment
   // setup ("awaiting information") is guidance and must never trap the workout.
+  const unresolvedExerciseSkip =
+    skipRecoveryExerciseId != null &&
+    (
+      skipConfirmationExerciseId != null ||
+      skipRecoverySettlementPending ||
+      skipConfirmationError?.exerciseId === skipRecoveryExerciseId ||
+      !exercises.some(
+        (exercise) =>
+          exercise.id === skipRecoveryExerciseId &&
+          exercise.modificationType === "skipped",
+      )
+    );
   const finishBlocked =
-    skipRecoveryExerciseId != null ||
+    unresolvedExerciseSkip ||
     !appendRecoveryHydrated ||
     appendRecoveryMarker != null ||
     !finishRecoveryHydrated ||
@@ -4242,7 +4254,9 @@ export function SessionRunner(props: SessionRunnerProps) {
           className="w-full"
           onClick={() => setFinishOpen(true)}
         >
-          <CheckCircle2 className="size-4" /> Finish Workout
+          <CheckCircle2 className="size-4" /> {pendingPlannedOccurrences > 0
+            ? "Finish early"
+            : "Finish workout"}
         </Button>
       </section>
 
@@ -4283,7 +4297,7 @@ export function SessionRunner(props: SessionRunnerProps) {
               <p>
                 {nonPerformedSummary || "All planned sets are accounted for."}
                 {pendingWorking > 0
-                  ? " Any sets left open will be marked not completed."
+                  ? " Any sets left open will be marked not completed with the one reason you choose below."
                   : ""}
               </p>
               {warmupOccurrences.length > 0 && (
@@ -4537,14 +4551,17 @@ export function SessionRunner(props: SessionRunnerProps) {
                   htmlFor="completion-reason"
                   className="text-sm font-medium"
                 >
-                  Why is the remaining planned work not being completed?
+                  Why are you finishing this workout early?
                 </label>
                 <p className="mt-1 text-xs leading-5 text-muted-foreground">
-                  Required because {pendingPlannedOccurrences}{" "}
+                  Choose one reason for all {pendingPlannedOccurrences}{" "}
                   {pendingPlannedOccurrences === 1
-                    ? "planned item remains"
-                    : "planned items remain"}. Elapsed time does not choose this
-                  reason automatically.
+                    ? "remaining planned item"
+                    : "remaining planned items"}. Repbook will close {pendingPlannedOccurrences === 1
+                    ? "it"
+                    : "them"} together—you do not need to skip sets or exercises
+                  one at a time. Elapsed time does not choose the reason
+                  automatically.
                 </p>
                 <select
                   id="completion-reason"
@@ -4673,7 +4690,11 @@ export function SessionRunner(props: SessionRunnerProps) {
               }
               size="lg"
             >
-              {finishing ? "Saving…" : "Save workout"}
+              {finishing
+                ? "Saving…"
+                : pendingPlannedOccurrences > 0
+                  ? "Finish early"
+                  : "Save workout"}
             </Button>
             <ActiveWorkoutDiscard
               ownerId={props.ownerId}
@@ -4776,6 +4797,7 @@ export function SessionRunner(props: SessionRunnerProps) {
           onAddNote={openContextualNoteComposer}
           onFinish={() => setFinishOpen(true)}
           finishReady={guidance.currentAction == null && !finishBlocked}
+          pendingPlannedCount={pendingPlannedOccurrences}
         />
       )}
       {(() => {

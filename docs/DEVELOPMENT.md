@@ -128,8 +128,11 @@ recovery, and desktop/mobile browser evidence. T05 activates
 acknowledgement-ordered current/next guidance,
 source-bound durable rest described by its next destination, direct
 ready-to-finish when the final actionable set is queued, group/member/round
-mixed-resolution state, portability, recovery, and desktop/mobile browser
-evidence. T06 activates read-only preview, one canonical
+mixed-resolution state, and a discoverable bulk Finish-early path that closes
+remaining planned work under one explicit reason without requiring individual
+skips. Confirmed exercise-skip replacement remains optional while uncertain
+recorded work still fails closed. T05 retains portability, recovery, and
+desktop/mobile browser evidence. T06 activates read-only preview, one canonical
 owner-scoped Start intent across retries, truthful active-workout collision
 outcomes, and immutable prescribed exercise meaning across active display,
 History/Review, export, snapshot schema 28, and restore. U01 activates the

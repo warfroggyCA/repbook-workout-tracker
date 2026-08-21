@@ -469,6 +469,14 @@ command, never a newer timer. Saved occurrence evidence still classifies
 positive rest as straight-set, between-member, or between-round rest; zero
 means explicitly no rest and null means unknown rest.
 
+Finish is also the deliberate bulk exit from an active workout. When planned
+occurrences remain, the owner chooses one session-level reason and the existing
+completion transaction resolves every still-pending occurrence together; the
+owner never has to manufacture individual set or exercise skips first. A
+confirmed whole-exercise skip may still offer replacement, but that optional
+choice does not block Finish. An unconfirmed skip or retained recorded-work
+command continues to block completion until its outcome is known.
+
 Group, member, and round progress is derived from the same occurrence outcomes,
 not from a second execution state. Fully performed work is resolved; a fully
 settled mix containing skips, abandonment, or limited evidence is

@@ -1013,8 +1013,7 @@ test("classifies all sixteen prior workout observations", async ({
     await waitForHydratedReactHandler(finishWorkout);
     await finishWorkout.click();
     const saveWorkout = page.getByRole("button", {
-      name: "Save workout",
-      exact: true,
+      name: /^(?:Finish early|Save workout)$/,
     });
     await expect(saveWorkout).toBeEnabled();
     await saveWorkout.click();

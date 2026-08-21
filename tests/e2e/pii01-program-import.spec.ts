@@ -199,11 +199,11 @@ test("reviews and publishes a multi-day Program into an ordered active workout",
 
   await page.getByRole("button", { name: /^(?:Review workout finish|Finish workout)$/ }).click();
   await page
-    .getByLabel("Why is the remaining planned work not being completed?")
+    .getByLabel("Why are you finishing this workout early?")
     .selectOption("user_choice");
   await page.getByText("Optional note and fatigue", { exact: true }).click();
   await page.getByPlaceholder("Session note (optional) — how did it go?").fill("PII-01 synthetic journey");
-  await page.getByRole("button", { name: "Save workout", exact: true }).click();
+  await page.getByRole("button", { name: /^(?:Finish early|Save workout)$/ }).click();
   await expect(page).toHaveURL(/\/history\/[0-9a-f-]+\?finished=1$/);
   await expect(page.getByText("PII-01 synthetic journey", { exact: true })).toBeVisible();
   await expect(page.getByText(/60 lb × 5/)).toBeVisible();

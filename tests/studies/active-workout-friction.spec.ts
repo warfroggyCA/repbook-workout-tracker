@@ -703,7 +703,7 @@ test.describe.serial("matched active-workout friction study", () => {
     } else {
       await page.getByRole("button", { name: "Finish", exact: true }).click();
     }
-    await page.getByRole("button", { name: "Save workout", exact: true }).click();
+    await page.getByRole("button", { name: /^(?:Finish early|Save workout)$/ }).click();
     await expect(page).toHaveURL(/\/history\/[0-9a-f-]+\?finished=1$/);
     const correctedRows = await page.getByText(/100 lb × 8/).count();
     const oldRows = await page.getByText(/95 lb × 8/).count();
