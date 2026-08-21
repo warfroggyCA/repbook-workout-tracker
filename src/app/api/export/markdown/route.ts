@@ -42,7 +42,7 @@ export async function GET(request: Request) {
       "Content-Type": "text/markdown; charset=utf-8",
       ...(download
         ? {
-            "Content-Disposition": `attachment; filename="coaching-brief-${new Date().toISOString().slice(0, 10)}.md"`,
+            "Content-Disposition": `attachment; filename="repbook-training-brief-${new Date().toISOString().slice(0, 10)}.md"`,
           }
         : {}),
     },

@@ -234,6 +234,9 @@ describe("HTTP production perimeter", () => {
     expect(responses[3].headers.get("content-disposition")).toBe(
       `attachment; filename="workout-tracker-snapshot-${snapshotId}.json"`
     );
+    expect(responses[2].headers.get("content-disposition")).toMatch(
+      /^attachment; filename="repbook-training-brief-\d{4}-\d{2}-\d{2}\.md"$/
+    );
   });
 
   it("rejects every mutation route when browser provenance is missing or cross-site", async () => {

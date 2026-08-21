@@ -1,3 +1,6 @@
+import { ChevronDown, Database, Download, FileText } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
   Card,
   CardContent,
@@ -5,160 +8,236 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
+import {
+  resolveTrainingBriefRange,
+  TRAINING_BRIEF_RANGE_OPTIONS,
+} from "@/lib/training-brief-range";
 
-export default function ExportPage() {
+export default async function ExportPage({
+  searchParams,
+}: {
+  searchParams: Promise<{
+    briefRange?: string | string[];
+  }>;
+}) {
+  const { briefRange } = await searchParams;
+  const { option: initialRange, selectedFromAllTime } =
+    resolveTrainingBriefRange(briefRange);
+
   return (
     <main className="p-4 sm:p-6 lg:p-8">
       <div className="mx-auto flex max-w-4xl flex-col gap-4">
         <header className="mb-1">
           <p className="text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">
-            Portable evidence
+            Your records
           </p>
           <h1 className="mt-1 text-2xl font-semibold tracking-tight sm:text-3xl">
-            Export
+            Downloads &amp; backup
           </h1>
           <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
-            Take a copy of the records you own, with their limits and
-            relationships made clear.
+            Start with the readable Training Brief. Use the full backup to keep
+            a recovery copy of everything in Repbook.
           </p>
         </header>
 
-        <Card>
-        <CardHeader>
-          <CardTitle>Versioned analysis package</CardTitle>
-          <CardDescription>
-            Choose one question and preview the exact purpose-bounded JSON
-            before downloading it. Repbook never sends the package for you and
-            retains only a 30-day manifest.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <Button
-            render={<a href="/export/analysis" />}
-            nativeButton={false}
-            variant="outline"
-          >
-            Prepare analysis package
-          </Button>
-        </CardContent>
+        <Card id="training-brief" className="border-primary/40">
+          <CardHeader>
+            <div className="flex flex-wrap items-center gap-2">
+              <CardTitle>Training Brief</CardTitle>
+              <Badge>Recommended</Badge>
+            </div>
+            <CardDescription>
+              A readable Markdown summary for a coach or AI assistant. It leads
+              with the useful conclusions, includes the supporting detail, and
+              states what the evidence cannot establish. Repbook never sends it
+              anywhere for you.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <form
+              action="/api/export/markdown"
+              method="get"
+              className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end"
+            >
+              <div>
+                <label
+                  htmlFor="training-brief-weeks"
+                  className="text-sm font-medium"
+                >
+                  Period to summarize
+                </label>
+                <select
+                  id="training-brief-weeks"
+                  name="weeks"
+                  defaultValue={String(initialRange.weeks)}
+                  className="mt-2 min-h-11 w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-xs outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+                >
+                  {TRAINING_BRIEF_RANGE_OPTIONS.map((option) => (
+                    <option key={option.key} value={option.weeks}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+                {selectedFromAllTime && (
+                  <p className="mt-2 text-xs leading-5 text-muted-foreground">
+                    History is showing all time. A readable brief is
+                    intentionally bounded, so 12 weeks is selected. Choose a
+                    different period if needed.
+                  </p>
+                )}
+              </div>
+              <input type="hidden" name="download" value="1" />
+              <Button type="submit" className="min-h-11 sm:self-end">
+                <Download className="size-4" aria-hidden="true" />
+                Download training brief
+              </Button>
+            </form>
+          </CardContent>
         </Card>
 
         <Card>
-        <CardHeader>
-          <CardTitle>Support bundle</CardTitle>
-          <CardDescription>
-            Select one problem and preview a separate, redacted support file.
-            It is prepared locally, never uploaded automatically, and never
-            reused as an AI analysis package.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <Button
-            render={<a href="/export/support" />}
-            nativeButton={false}
-            variant="outline"
-          >
-            Prepare support bundle
-          </Button>
-        </CardContent>
+          <CardHeader>
+            <div className="flex items-center gap-2">
+              <Database
+                className="size-5 text-muted-foreground"
+                aria-hidden="true"
+              />
+              <CardTitle>Back up all Repbook data</CardTitle>
+            </div>
+            <CardDescription>
+              A complete point-in-time JSON copy of active and archived records,
+              with original identities and relationships. Keep it for recovery;
+              it is not intended as an everyday readable report.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Button
+              render={<a href="/api/export/json" download />}
+              nativeButton={false}
+              variant="outline"
+            >
+              <Download className="size-4" aria-hidden="true" />
+              Download full backup
+            </Button>
+          </CardContent>
         </Card>
 
-        <Card>
-        <CardHeader>
-          <CardTitle>Coaching brief (Markdown)</CardTitle>
-          <CardDescription>
-            A readable summary to paste into Claude, ChatGPT, or hand to a
-            coach. Includes what data is missing so nothing gets invented.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="flex flex-wrap gap-2">
-          <Button
-            render={<a href="/api/export/markdown?weeks=4" target="_blank" />}
-            nativeButton={false}
-            variant="outline"
-          >
-            Last 4 weeks
-          </Button>
-          <Button
-            render={<a href="/api/export/markdown?weeks=8" target="_blank" />}
-            nativeButton={false}
-            variant="outline"
-          >
-            Last 8 weeks
-          </Button>
-          <Button
-            render={
-              <a href="/api/export/markdown?weeks=4&download=1" download />
-            }
-            nativeButton={false}
-            variant="outline"
-          >
-            Download .md
-          </Button>
-        </CardContent>
-        </Card>
+        <details className="group rounded-xl border bg-card text-card-foreground shadow-sm">
+          <summary className="flex min-h-14 cursor-pointer list-none items-center justify-between gap-3 rounded-xl px-6 py-4 outline-none focus-visible:ring-3 focus-visible:ring-ring/50 [&::-webkit-details-marker]:hidden">
+            <span>
+              <span className="block font-semibold">Advanced exports</span>
+              <span className="mt-1 block text-sm font-normal text-muted-foreground">
+                Raw spreadsheets, external-analysis packages, and
+                troubleshooting files.
+              </span>
+            </span>
+            <ChevronDown
+              className="size-5 shrink-0 text-muted-foreground transition-transform group-open:rotate-180 motion-reduce:transition-none"
+              aria-hidden="true"
+            />
+          </summary>
+          <div className="grid gap-6 border-t px-6 py-5">
+            <section aria-labelledby="spreadsheet-export-title">
+              <div className="flex items-center gap-2">
+                <FileText
+                  className="size-4 text-muted-foreground"
+                  aria-hidden="true"
+                />
+                <h2 id="spreadsheet-export-title" className="font-semibold">
+                  Spreadsheet data (CSV)
+                </h2>
+              </div>
+              <p className="mt-1 text-sm leading-6 text-muted-foreground">
+                Raw tables for your own spreadsheet work. These files are less
+                readable and carry fewer relationships than a full backup.
+              </p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <Button
+                  render={
+                    <a href="/api/export/csv?entity=sets&weeks=all" download />
+                  }
+                  nativeButton={false}
+                  variant="outline"
+                >
+                  Set data
+                </Button>
+                <Button
+                  render={
+                    <a href="/api/export/csv?entity=pain&weeks=all" download />
+                  }
+                  nativeButton={false}
+                  variant="outline"
+                >
+                  Pain &amp; fatigue
+                </Button>
+                <Button
+                  render={
+                    <a
+                      href="/api/export/csv?entity=activities&weeks=all"
+                      download
+                    />
+                  }
+                  nativeButton={false}
+                  variant="outline"
+                >
+                  Activities
+                </Button>
+                <Button
+                  render={
+                    <a href="/api/export/csv?entity=coach&weeks=all" download />
+                  }
+                  nativeButton={false}
+                  variant="outline"
+                >
+                  Coach conversations
+                </Button>
+              </div>
+            </section>
 
-        <Card>
-        <CardHeader>
-          <CardTitle>Spreadsheet (CSV)</CardTitle>
-          <CardDescription>
-            Set-level history, recovery records, activities, and saved workout
-            Coach conversations for spreadsheet analysis.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="flex flex-wrap gap-2">
-          <Button
-            render={<a href="/api/export/csv?entity=sets&weeks=all" download />}
-            nativeButton={false}
-            variant="outline"
-          >
-            All sets
-          </Button>
-          <Button
-            render={<a href="/api/export/csv?entity=pain&weeks=all" download />}
-            nativeButton={false}
-            variant="outline"
-          >
-            Pain & fatigue
-          </Button>
-          <Button
-            render={
-              <a href="/api/export/csv?entity=activities&weeks=all" download />
-            }
-            nativeButton={false}
-            variant="outline"
-          >
-            Health activities
-          </Button>
-          <Button
-            render={<a href="/api/export/csv?entity=coach&weeks=all" download />}
-            nativeButton={false}
-            variant="outline"
-          >
-            Workout Coach conversations
-          </Button>
-        </CardContent>
-        </Card>
+            <section
+              aria-labelledby="analysis-export-title"
+              className="border-t pt-5"
+            >
+              <h2 id="analysis-export-title" className="font-semibold">
+                Versioned analysis package
+              </h2>
+              <p className="mt-1 text-sm leading-6 text-muted-foreground">
+                For a carefully bounded external analysis question. Preview the
+                exact purpose-specific JSON before downloading it; Repbook never
+                sends the package for you.
+              </p>
+              <Button
+                render={<a href="/export/analysis" />}
+                nativeButton={false}
+                variant="outline"
+                className="mt-3"
+              >
+                Prepare analysis package
+              </Button>
+            </section>
 
-        <Card>
-        <CardHeader>
-          <CardTitle>Full backup (JSON)</CardTitle>
-          <CardDescription>
-            One verified point-in-time copy of active and archived data with
-            original ids and relationships, in the same format used by Recovery.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <Button
-            render={<a href="/api/export/json" download />}
-            nativeButton={false}
-            variant="outline"
-          >
-            Download backup
-          </Button>
-        </CardContent>
-        </Card>
+            <section
+              aria-labelledby="support-export-title"
+              className="border-t pt-5"
+            >
+              <h2 id="support-export-title" className="font-semibold">
+                Support bundle
+              </h2>
+              <p className="mt-1 text-sm leading-6 text-muted-foreground">
+                Only for troubleshooting. Choose one problem and preview a
+                separate redacted file that is never uploaded automatically.
+              </p>
+              <Button
+                render={<a href="/export/support" />}
+                nativeButton={false}
+                variant="outline"
+                className="mt-3"
+              >
+                Prepare support bundle
+              </Button>
+            </section>
+          </div>
+        </details>
       </div>
     </main>
   );

@@ -103,14 +103,6 @@ export function HistoryWorkspace({
     exerciseId,
     evidenceTier,
   };
-  const exportWeeks = {
-    "4w": "4",
-    "12w": "12",
-    "6m": "26",
-    "1y": "52",
-    all: "all",
-  }[range];
-
   return (
     <main className="mx-auto flex max-w-6xl flex-col gap-5 p-4 sm:p-6 lg:p-8">
       <header className="flex min-w-0 flex-col gap-5">
@@ -132,7 +124,7 @@ export function HistoryWorkspace({
               Record activity
             </Button>
             <HistoryMoreMenu
-              exportWeeks={exportWeeks}
+              briefRange={range}
               testSessionCount={testSessionCount}
               samplePreview={samplePreview}
               activityArchivePreview={activityArchivePreview}

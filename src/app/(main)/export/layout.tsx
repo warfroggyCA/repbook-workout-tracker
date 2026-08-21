@@ -1,9 +1,8 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
 
-export const metadata: Metadata = { title: "Export" };
+export const metadata: Metadata = { title: "Downloads & backup" };
 
 export default function ExportLayout({ children }: { children: ReactNode }) {
   return children;
 }
-
