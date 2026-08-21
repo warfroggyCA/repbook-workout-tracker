@@ -444,7 +444,7 @@ test("keeps Stage 5 guidance truthful, persistent, and usable on narrow mobile s
     const primary = Array.from(element.querySelectorAll("button")).filter(
       (button) =>
         button.textContent?.trim() === "Dismiss rest timer" ||
-        button.textContent?.trim() === "Finish",
+        button.getAttribute("aria-label") === "Review workout finish",
     );
     return {
       dockBottom: element.getBoundingClientRect().bottom,

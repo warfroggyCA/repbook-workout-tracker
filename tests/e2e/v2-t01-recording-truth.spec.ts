@@ -62,7 +62,7 @@ async function expectSetQueueDrained(page: Page) {
 
 async function discardWorkout(page: Page) {
   await page
-    .getByRole("button", { name: "Finish Workout", exact: true })
+    .getByRole("button", { name: /^(?:Finish early|Finish workout)$/i })
     .click();
   const finish = page.getByRole("dialog", { name: "Finish workout" });
   await finish

@@ -63,7 +63,7 @@ async function startWorkout(page: Page) {
 
 async function discardWorkout(page: Page) {
   await page
-    .getByRole("button", { name: "Finish Workout", exact: true })
+    .getByRole("button", { name: /^(?:Finish early|Finish workout)$/i })
     .click();
   const finish = page.getByRole("dialog", { name: "Finish workout" });
   await finish
@@ -356,9 +356,8 @@ test("refuses incomplete assistance, then preserves assisted work without false 
       navigationVisible,
       buttons: Array.from(element.querySelectorAll("button"))
         .filter((button) =>
-          ["Dismiss rest timer", "Finish"].includes(
-            button.textContent?.trim() ?? "",
-          ),
+          button.textContent?.trim() === "Dismiss rest timer" ||
+          button.getAttribute("aria-label") === "Review workout finish",
         )
         .map((button) => {
           const box = button.getBoundingClientRect();
@@ -401,7 +400,7 @@ test("refuses incomplete assistance, then preserves assisted work without false 
       .getByText("Assistance: 40 lb · 8 reps", { exact: true }),
   ).toBeVisible();
   await page
-    .getByRole("button", { name: "Finish Workout", exact: true })
+    .getByRole("button", { name: /^(?:Finish early|Finish workout)$/i })
     .click();
   await page
     .getByLabel("Why are you finishing this workout early?")
