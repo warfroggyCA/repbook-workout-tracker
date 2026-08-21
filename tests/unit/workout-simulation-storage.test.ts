@@ -291,11 +291,12 @@ describe("workout simulation storage", () => {
   it("keeps at most three owner workspaces and deletes any older excess copy", () => {
     const storage = new MemoryStorage();
     const ownerId = source().ownerId;
+    const nowMs = Date.now();
     const values = ["one", "two", "three", "four"].map((suffix, index) =>
       workspace(
         suffix,
         ownerId,
-        new Date(Date.UTC(2026, 6, 22, 12, index)).toISOString(),
+        new Date(nowMs - (4 - index) * 60_000).toISOString(),
       ),
     );
     for (const value of values) {
@@ -306,11 +307,11 @@ describe("workout simulation storage", () => {
     }
 
     expect(
-      listSimulationWorkspaces(storage, ownerId, Date.parse("2026-07-23T00:00:00.000Z")),
+      listSimulationWorkspaces(storage, ownerId, nowMs),
     ).toEqual([values[3], values[2], values[1]]);
     expect(storage.getItem(simulationStorageKey(ownerId, values[0].simulationId))).toBeNull();
 
-    const fifth = workspace("five", ownerId, "2026-07-22T13:00:00.000Z");
+    const fifth = workspace("five", ownerId, new Date(nowMs).toISOString());
     expect(writeSimulationWorkspace(storage, fifth)).toEqual({ ok: false, reason: "limit" });
   });
 
