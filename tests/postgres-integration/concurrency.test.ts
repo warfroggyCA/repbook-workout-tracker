@@ -565,6 +565,7 @@ async function createProgressionJob(fixture: ProgramFixture) {
     weight: 100,
     weightUnit: "lb",
     reps: 8,
+    rpe: fixture.comparableBarbell ? 8 : null,
     clientKey: crypto.randomUUID(),
     equipmentSnapshotId,
     loadEntryMeaning: equipmentSnapshotId ? "total_system" : "legacy_unknown",

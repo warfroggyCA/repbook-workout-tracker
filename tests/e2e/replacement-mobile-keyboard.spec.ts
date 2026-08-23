@@ -544,9 +544,7 @@ test("keeps unrestricted replacement truthful and reachable through mobile keybo
     "Last time:",
   );
   await expect(page.getByText("Old implement and plate details are withheld.")).toHaveCount(0);
-  await expect(page.getByTestId("session-preparation-panel")).not.toContainText(
-    originalExerciseName,
-  );
+  await expect(page.getByTestId("session-preparation-panel")).toHaveCount(0);
   expectedRejectedRequest = false;
   await nextRscPrefetches.settle();
   expect(

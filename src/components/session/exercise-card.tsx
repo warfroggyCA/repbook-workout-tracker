@@ -876,6 +876,12 @@ export function ExerciseCard({
             previousComparableSet.weightUnit != null
           ? "Previous comparable set"
           : null;
+  const compactDefaultWeightSource = defaultWeightSource ===
+      "Previous set in this workout"
+    ? "earlier workout set"
+    : defaultWeightSource === "Previous comparable set"
+      ? "prior comparable"
+      : defaultWeightSource;
   const defaultReps =
     performedMetricType === "weight_reps" ||
       performedMetricType === "reps" ||
@@ -2088,9 +2094,20 @@ export function ExerciseCard({
                         </div>
                       </div>
                       {prioritizeCurrentAction && (
-                        <p className="mb-2 text-xs font-semibold uppercase tracking-[0.1em] text-muted-foreground">Performed measure</p>
+                        <p className="mb-2 grid grid-cols-[auto_minmax(0,1fr)] items-baseline gap-x-2 text-xs font-semibold uppercase tracking-[0.1em] text-muted-foreground">
+                          <span className="whitespace-nowrap">Performed measure</span>
+                          {recordsNumericLoad && defaultWeightSource && (
+                            <span
+                              data-testid="performed-load-prefill-source"
+                              aria-label={`Starting load: ${defaultWeightSource}`}
+                              className="min-w-0 truncate text-right font-normal normal-case tracking-normal"
+                            >
+                              Load: {compactDefaultWeightSource}
+                            </span>
+                          )}
+                        </p>
                       )}
-                      {recordsNumericLoad && defaultWeightSource && (
+                      {!prioritizeCurrentAction && recordsNumericLoad && defaultWeightSource && (
                         <p
                           data-testid="performed-load-prefill-source"
                           className="mb-2 text-xs text-muted-foreground"
