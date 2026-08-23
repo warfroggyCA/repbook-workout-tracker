@@ -404,6 +404,54 @@ async function publishDocumentAtomically(
                   reps: sql`completed.reps`,
                   excludeFromAnalytics: sql`completed.exclude_from_analytics`,
                 })}
+                OR (
+                  recommendation.rule_id = 'double_progression'
+                  AND (
+                    completed.reps < current_target.rep_range_max
+                    OR NOT (
+                      (completed.rpe IS NOT NULL
+                        AND completed.rir IS NULL
+                        AND completed.rpe <= ${cfg.rpeCapForIncrease})
+                      OR
+                      (completed.rir IS NOT NULL
+                        AND completed.rpe IS NULL
+                        AND completed.rir >= ${cfg.rirFloorForIncrease})
+                    )
+                    OR (
+                      ${recommendation?.expectedPayload.kind === "load_change" ? recommendation.expectedPayload.fromLoad : null}::double precision IS NULL
+                      AND (
+                        jsonb_typeof(recommendation.evidence->'signals'->'baselineLoad')
+                          IS DISTINCT FROM 'number'
+                        OR abs(
+                          CASE
+                            WHEN completed.weight_unit::text = ${recommendation?.expectedPayload.kind === "load_change" ? recommendation.expectedPayload.loadUnit : null}::text
+                              THEN completed.weight
+                            WHEN completed.weight_unit = 'kg'::unit
+                              THEN completed.weight * ${KG_TO_LB}::double precision
+                            ELSE completed.weight / ${KG_TO_LB}::double precision
+                          END - CASE
+                            WHEN jsonb_typeof(recommendation.evidence->'signals'->'baselineLoad') = 'number'
+                              THEN (recommendation.evidence->'signals'->>'baselineLoad')::double precision
+                            ELSE NULL
+                          END
+                        ) >= ${LOAD_COMPARISON_EPSILON}::double precision
+                      )
+                    )
+                    OR (
+                      ${recommendation?.expectedPayload.kind === "load_change" ? recommendation.expectedPayload.fromLoad : null}::double precision IS NOT NULL
+                      AND (
+                        CASE
+                          WHEN completed.weight_unit::text = ${recommendation?.expectedPayload.kind === "load_change" ? recommendation.expectedPayload.loadUnit : null}::text
+                            THEN completed.weight
+                          WHEN completed.weight_unit = 'kg'::unit
+                            THEN completed.weight * ${KG_TO_LB}::double precision
+                          ELSE completed.weight / ${KG_TO_LB}::double precision
+                        END
+                      ) + ${LOAD_COMPARISON_EPSILON}::double precision
+                        < ${recommendation?.expectedPayload.kind === "load_change" ? recommendation.expectedPayload.fromLoad : null}::double precision
+                    )
+                  )
+                )
             )
           )
         )
