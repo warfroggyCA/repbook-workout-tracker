@@ -137,11 +137,11 @@ describe("active workout group presentation", () => {
     );
 
     expect(html).toContain("Current exercise group");
-    expect(html).toContain('<details class="sm:hidden">');
-    expect(html).not.toContain('<details class="sm:hidden" open="">');
+    expect(html).toContain('<details class="sm:hidden" open="">');
     expect(html).toContain(
-      "Upper-body pair · Round 1 of 2 · member 1 of 2",
+      "Upper-body pair · Round 1 of 2 · exercise 1 of 2",
     );
+    expect(html).toContain("Superset in progress");
     expect(html).toContain('<div class="max-[639px]:hidden">');
     expect(html).toContain("Upper-body pair");
     expect(html).toContain("Round 1 of 2");

@@ -382,6 +382,7 @@ type SetPainDraft = {
 type ActiveSetDraftCacheEntry = {
   identity: string;
   draft: SetDraft;
+  weightEdited: boolean;
 };
 
 // A server refresh can replace the active SessionRunner when its history
@@ -408,6 +409,12 @@ function copySetDraft(draft: SetDraft): SetDraft {
   };
 }
 
+export function cachedDraftProtectsPreviousWeight(
+  cached: Pick<ActiveSetDraftCacheEntry, "weightEdited"> | null,
+) {
+  return cached?.weightEdited === true;
+}
+
 type SetDraft = {
   weight: number | null;
   weightUnit: LoadUnit | null;
@@ -421,6 +428,31 @@ type SetDraft = {
   pain: SetPainDraft | null;
   note: string;
 };
+
+export function hydratePreviousComparableWeight(input: {
+  draft: SetDraft;
+  weight: number | null;
+  unit: LoadUnit;
+  source: string | null;
+  protectedDraft: boolean;
+  edited: boolean;
+}) {
+  if (
+    input.weight == null ||
+    input.source !== "Previous comparable set" ||
+    input.protectedDraft ||
+    input.edited ||
+    input.draft.weight != null ||
+    input.draft.weightUnit != null
+  ) {
+    return input.draft;
+  }
+  return {
+    ...input.draft,
+    weight: input.weight,
+    weightUnit: input.unit,
+  };
+}
 
 type Props = {
   exercise: SessionExerciseData;
@@ -827,7 +859,23 @@ export function ExerciseCard({
       ? convertWeight(prefillFrom.weight, prefillFrom.weightUnit, unit)
       : exercise.targetLoad != null && exercise.targetLoadUnit != null
         ? convertWeight(exercise.targetLoad, exercise.targetLoadUnit, unit)
-        : null;
+        : previousComparableSet?.weight != null &&
+            previousComparableSet.weightUnit != null
+          ? convertWeight(
+              previousComparableSet.weight,
+              previousComparableSet.weightUnit,
+              unit,
+            )
+          : null;
+  const defaultWeightSource =
+    prefillFrom?.weight != null && prefillFrom.weightUnit != null
+      ? "Previous set in this workout"
+      : exercise.targetLoad != null && exercise.targetLoadUnit != null
+        ? "Program target"
+        : previousComparableSet?.weight != null &&
+            previousComparableSet.weightUnit != null
+          ? "Previous comparable set"
+          : null;
   const defaultReps =
     performedMetricType === "weight_reps" ||
       performedMetricType === "reps" ||
@@ -874,25 +922,72 @@ export function ExerciseCard({
     pain: null,
     note: defaultSetNote,
   };
-  const [draft, setDraftState] = useState<SetDraft>(() => {
+  const [initialDraftState] = useState(() => {
     const activeSetDraftCache = getActiveSetDraftCache();
     const cached = activeSetDraftCache.get(exercise.id);
     if (cached?.identity === draftIdentity) {
-      return copySetDraft(cached.draft);
+      return {
+        draft: copySetDraft(cached.draft),
+        weightEdited: cachedDraftProtectsPreviousWeight(cached),
+      };
     }
     if (cached) activeSetDraftCache.delete(exercise.id);
-    return initialDraft;
+    return { draft: initialDraft, weightEdited: false };
   });
+  const draftWeightEditedRef = useRef(initialDraftState.weightEdited);
+  const [draft, setDraftState] = useState<SetDraft>(initialDraftState.draft);
   const setDraft: React.Dispatch<React.SetStateAction<SetDraft>> = (update) => {
     setDraftState((current) => {
       const next = typeof update === "function" ? update(current) : update;
       getActiveSetDraftCache().set(exercise.id, {
         identity: draftIdentity,
         draft: copySetDraft(next),
+        weightEdited: draftWeightEditedRef.current,
       });
       return next;
     });
   };
+  useEffect(() => {
+    if (
+      !recordsNumericLoad ||
+      defaultWeight == null ||
+      defaultWeightSource !== "Previous comparable set" ||
+      draftWeightEditedRef.current
+    ) {
+      return;
+    }
+    let cancelled = false;
+    queueMicrotask(() => {
+      if (cancelled) return;
+      setDraftState((current) => {
+        const next = hydratePreviousComparableWeight({
+          draft: current,
+          weight: defaultWeight,
+          unit,
+          source: defaultWeightSource,
+          protectedDraft: false,
+          edited: draftWeightEditedRef.current,
+        });
+        if (next === current) return current;
+        getActiveSetDraftCache().set(exercise.id, {
+          identity: draftIdentity,
+          draft: copySetDraft(next),
+          weightEdited: false,
+        });
+        return next;
+      });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    defaultWeight,
+    defaultWeightSource,
+    draftIdentity,
+    exercise.id,
+    recordsNumericLoad,
+    unit,
+  ]);
   const [appendedDraft, setAppendedDraft] = useState<SetDraft>({
     weight: recordsNumericLoad ? appendedWeight ?? defaultWeight : null,
     weightUnit: recordsNumericLoad &&
@@ -1401,7 +1496,8 @@ export function ExerciseCard({
         "scroll-mt-32 rounded-xl border bg-card [&_button]:min-h-11 [&_button]:min-w-11 [&_input]:min-h-11",
         isCurrentExercise &&
           "border-2 border-foreground/70 bg-muted/25 shadow-[var(--shadow-soft)]",
-        exercise.supersetKey && "border-l-4 border-l-primary/50",
+        exercise.supersetKey &&
+          "border-2 border-violet-500/70 bg-violet-50/50 dark:bg-violet-950/20",
         isSkipped && "border-dashed bg-muted/20"
       )}
       onClickCapture={() => {
@@ -1421,6 +1517,10 @@ export function ExerciseCard({
           onClick={() => {
             setRemoveSwipeRevealed(false);
             setRemoveSwipeOffset(0);
+            // The confirmation drawer lives with the expanded exercise tools.
+            // A swipe is available on collapsed cards too, so mount those tools
+            // before opening the destructive confirmation.
+            if (!expanded) onToggle();
             onAdjustIntentChange("remove");
           }}
         >
@@ -1472,7 +1572,7 @@ export function ExerciseCard({
           aria-controls={`session-exercise-details-${exercise.id}`}
           data-testid="exercise-swipe-surface"
           className={cn(
-            "relative z-10 flex w-full items-start justify-between gap-2 p-2 text-left transition-transform",
+            "relative z-10 flex w-full items-start justify-between gap-2 p-2 text-left transition-transform motion-reduce:transition-none",
             isCurrentExercise ? "bg-muted" : "bg-card",
           )}
           style={{
@@ -1527,8 +1627,8 @@ export function ExerciseCard({
               ` · instead of ${exercise.plannedExerciseName ?? "planned exercise"}`}
           </p>
           {groupContext && (
-            <p className="text-xs font-medium text-foreground">
-              {groupContext.name} · member {groupContext.memberOrder} of{" "}
+            <p className="mt-1 rounded-md bg-violet-600 px-2 py-1 text-xs font-bold uppercase tracking-[0.08em] text-white">
+              Superset · {groupContext.name} · Exercise {groupContext.memberOrder} of{" "}
               {groupContext.memberCount}
             </p>
           )}
@@ -1538,8 +1638,12 @@ export function ExerciseCard({
                 <Badge variant="outline">Workout only</Badge>
               )}
               {exercise.supersetKey && (
-                <Badge variant="outline" aria-label="Exercise group">
-                  SS
+                <Badge
+                  variant="outline"
+                  aria-label="Part of a superset"
+                  className="border-violet-500 font-semibold text-violet-900 dark:text-violet-100"
+                >
+                  Superset
                 </Badge>
               )}
             </div>
@@ -1547,7 +1651,10 @@ export function ExerciseCard({
         </div>
         <div className="flex shrink-0 items-center gap-1.5">
           <ChevronDown
-            className={cn("size-4 transition-transform", expanded && "rotate-180")}
+            className={cn(
+              "size-4 transition-transform motion-reduce:transition-none",
+              expanded && "rotate-180",
+            )}
           />
         </div>
         </button>
@@ -1983,11 +2090,22 @@ export function ExerciseCard({
                       {prioritizeCurrentAction && (
                         <p className="mb-2 text-xs font-semibold uppercase tracking-[0.1em] text-muted-foreground">Performed measure</p>
                       )}
+                      {recordsNumericLoad && defaultWeightSource && (
+                        <p
+                          data-testid="performed-load-prefill-source"
+                          className="mb-2 text-xs text-muted-foreground"
+                        >
+                          Starting load: {defaultWeightSource}
+                        </p>
+                      )}
                       <SetEntry
                         metricType={performedMetricType}
                         supported={metricSupported}
                         draft={draft}
                         setDraft={setDraft}
+                        onWeightEdit={() => {
+                          draftWeightEditedRef.current = true;
+                        }}
                         stepWeight={stepWeight}
                         unit={unit}
                         hasWeight={recordsNumericLoad}
@@ -2095,6 +2213,9 @@ export function ExerciseCard({
                               supported={metricSupported}
                               draft={draft}
                               setDraft={setDraft}
+                              onWeightEdit={() => {
+                                draftWeightEditedRef.current = true;
+                              }}
                               stepWeight={stepWeight}
                               unit={unit}
                               hasWeight={recordsNumericLoad}
@@ -2466,9 +2587,6 @@ export function ExerciseCard({
             onRequestStart={onSkipRequestStart}
             onRequestFailure={onSkipRequestFailure}
             onRemoved={(resultHistoryRevision) => {
-              const originalModificationType = exercise.substitutedForExerciseId
-                ? "substituted"
-                : "as_planned";
               onAdjustIntentChange(null);
               onHistoryRevisionChange(resultHistoryRevision);
               onPatch({ modificationType: "skipped", skipReason: "user_choice" });
@@ -2493,7 +2611,7 @@ export function ExerciseCard({
                       }
                       onHistoryRevisionChange(restored.historyRevision);
                       onPatch({
-                        modificationType: originalModificationType,
+                        modificationType: restored.modificationType,
                         skipReason: null,
                       });
                       toast.success(`${exercise.name} restored to today`);
@@ -2905,6 +3023,7 @@ function SetEntry({
   supported,
   draft,
   setDraft,
+  onWeightEdit = () => undefined,
   stepWeight,
   unit,
   hasWeight,
@@ -2918,6 +3037,7 @@ function SetEntry({
   supported: boolean;
   draft: SetDraft;
   setDraft: React.Dispatch<React.SetStateAction<SetDraft>>;
+  onWeightEdit?: () => void;
   stepWeight: (current: number | null, dir: 1 | -1) => number | null;
   unit: string;
   hasWeight: boolean;
@@ -3250,12 +3370,13 @@ function SetEntry({
                 variant="outline"
                 size="icon"
                 className="active-set-stepper shrink-0"
-                onClick={() =>
+                onClick={() => {
+                  onWeightEdit();
                   setDraft((d) => ({
                     ...d,
                     weight: stepWeight(d.weight, -1),
-                  }))
-                }
+                  }));
+                }}
                 aria-label="Decrease weight"
               >
                 <Minus className="size-4" />
@@ -3267,13 +3388,14 @@ function SetEntry({
                   inputMode="decimal"
                   className="pr-8 text-center text-base font-medium"
                   value={draft.weight ?? ""}
-                  onChange={(e) =>
+                  onChange={(e) => {
+                    onWeightEdit();
                     setDraft((d) => ({
                       ...d,
                       weight:
                         e.target.value === "" ? null : Number(e.target.value),
-                    }))
-                  }
+                    }));
+                  }}
                 />
                 <span className="pointer-events-none absolute inset-y-0 right-2 flex items-center text-xs text-muted-foreground">
                   {unit}
@@ -3283,12 +3405,13 @@ function SetEntry({
                 variant="outline"
                 size="icon"
                 className="active-set-stepper shrink-0"
-                onClick={() =>
+                onClick={() => {
+                  onWeightEdit();
                   setDraft((d) => ({
                     ...d,
                     weight: stepWeight(d.weight, 1),
-                  }))
-                }
+                  }));
+                }}
                 aria-label="Increase weight"
               >
                 <Plus className="size-4" />

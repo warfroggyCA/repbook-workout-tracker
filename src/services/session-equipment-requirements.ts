@@ -11,6 +11,7 @@ import {
   retainedExactRequirementRowHasSavedSetup,
   retainedExerciseHasExecutableSetup,
   retainedPrimaryRequirementRowHasSavedSetup,
+  SESSION_EQUIPMENT_REQUIREMENTS_SEMANTICS_VERSION,
   type RetainedExactEquipmentRequirement,
   type RetainedExecutableSetupCandidate,
   type RetainedSavedAttachmentItem,
@@ -265,6 +266,163 @@ function retainedSavedAttachments(
   });
 }
 
+function projectPreparationWithSavedInventory(input: {
+  exerciseRows: PreparationExerciseRow[];
+  inventory: PreparationInventoryRow[];
+  hasPlates: boolean;
+  profiles: LoadedEquipmentLoadProfile[];
+  sourceHistoryRevision: number | null;
+}) {
+  const retainedInventory: RetainedSavedEquipmentItem[] = input.inventory.map(
+    (item) => ({
+      equipmentItemId: item.id,
+      equipmentType: item.type,
+      equipmentDefinitionId: item.definition_id,
+      attrs: item.attrs,
+      available: item.available,
+    }),
+  );
+  const exactCandidates = retainedExecutableCandidates(
+    input.inventory,
+    input.profiles,
+  );
+  const savedAttachments = retainedSavedAttachments(
+    input.inventory,
+    input.profiles,
+  );
+  const executableBySessionExerciseId = new Map<string, boolean>();
+  const snapshotsBySessionExerciseId = new Map<
+    string,
+    SessionEquipmentRequirementsSnapshot
+  >();
+  const exactRequirementsBySessionExerciseId = new Map<
+    string,
+    RetainedExactEquipmentRequirement
+  >();
+  for (const exercise of input.exerciseRows) {
+    const evidence = parseSessionEquipmentRequirementsEvidence(
+      exercise.equipment_requirements_semantics_version == null
+        ? null
+        : Number(exercise.equipment_requirements_semantics_version),
+      exercise.equipment_requirements_snapshot,
+      String(exercise.exercise_id),
+    );
+    if (evidence.state === "retained") {
+      snapshotsBySessionExerciseId.set(
+        String(exercise.session_exercise_id),
+        evidence.snapshot,
+      );
+      if (evidence.snapshot.exact) {
+        exactRequirementsBySessionExerciseId.set(
+          String(exercise.session_exercise_id),
+          evidence.snapshot.exact,
+        );
+      }
+      executableBySessionExerciseId.set(
+        String(exercise.session_exercise_id),
+        retainedExerciseHasExecutableSetup({
+          snapshot: evidence.snapshot,
+          inventory: retainedInventory,
+          hasPlates: input.hasPlates,
+          exactCandidates,
+        }),
+      );
+    }
+  }
+  return projectSessionEquipmentPreparation(
+    input.exerciseRows.map((exercise) => ({
+      sessionExerciseId: String(exercise.session_exercise_id),
+      exerciseId: String(exercise.exercise_id),
+      exerciseLabel: String(exercise.exercise_label),
+      orderIdx: Number(exercise.order_idx),
+      semanticsVersion:
+        exercise.equipment_requirements_semantics_version == null
+          ? null
+          : Number(exercise.equipment_requirements_semantics_version),
+      snapshot: exercise.equipment_requirements_snapshot,
+    })),
+    (row, sourceSessionExerciseIds) => {
+      if (!savedInventorySatisfies(
+        row,
+        retainedInventory,
+        savedAttachments,
+        input.hasPlates,
+        sourceSessionExerciseIds,
+        snapshotsBySessionExerciseId,
+        exactRequirementsBySessionExerciseId,
+        exactCandidates,
+      )) {
+        return "unavailable";
+      }
+      return sourceSessionExerciseIds.every((sessionExerciseId) =>
+        executableBySessionExerciseId.get(sessionExerciseId) === true
+      ) ? "available" : "incompatible";
+    },
+    input.sourceHistoryRevision,
+  );
+}
+
+/**
+ * Read-only pre-Start equipment check for one current Program day. Reviewed
+ * catalogue identities supply requirement meaning; saved owner inventory
+ * supplies availability. Starting the workout remains an independent action.
+ */
+export async function resolveTemplatePreparationEquipmentProjection(
+  db: Db,
+  userId: string,
+  templateId: string,
+): Promise<SessionPreparationEquipmentProjection | null> {
+  const exerciseRows = resultRows<PreparationExerciseRow>(await db.execute(sql`
+    SELECT slot.id AS session_exercise_id,
+           exercise.id AS exercise_id,
+           exercise.name AS exercise_label,
+           slot.order_idx,
+           ${SESSION_EQUIPMENT_REQUIREMENTS_SEMANTICS_VERSION}::integer
+             AS equipment_requirements_semantics_version,
+           ${sessionEquipmentRequirementsSnapshotExpression(sql`slot.exercise_id`)}
+             AS equipment_requirements_snapshot,
+           0::integer AS source_history_revision
+    FROM workout_template_exercises slot
+    JOIN workout_templates template ON template.id = slot.workout_template_id
+    JOIN program_versions version ON version.id = template.program_version_id
+    JOIN programs program ON program.id = version.program_id
+    JOIN exercises exercise ON exercise.id = slot.exercise_id
+    WHERE template.id = ${templateId}::uuid
+      AND program.user_id = ${userId}::uuid
+      AND program.status = 'active'
+      AND program.archived_at IS NULL
+      AND program.current_version_id = version.id
+    ORDER BY slot.order_idx, slot.id
+  `));
+  if (exerciseRows.length === 0) return null;
+
+  const [inventoryResult, plateResult, profiles] = await Promise.all([
+    db.execute(sql`
+      SELECT id, type::text, definition_id, available, attrs
+      FROM equipment_items
+      WHERE user_id = ${userId}::uuid
+      ORDER BY id
+    `),
+    db.execute(sql`
+      SELECT EXISTS (
+        SELECT 1 FROM plate_inventory
+        WHERE user_id = ${userId}::uuid
+          AND quantity > 0
+          AND denomination > 0
+      ) AS has_plates
+    `),
+    loadEquipmentLoadProfiles(db, userId),
+  ]);
+
+  return projectPreparationWithSavedInventory({
+    exerciseRows,
+    inventory: resultRows<PreparationInventoryRow>(inventoryResult),
+    hasPlates: Boolean(resultRows(plateResult)[0]?.has_plates),
+    profiles,
+    sourceHistoryRevision: null,
+  });
+}
+
 /**
  * Owner-scoped, server-side preparation projection. Requirement meaning comes
  * only from the retained session snapshot; current saved inventory supplies
@@ -349,85 +507,11 @@ export async function resolveSessionPreparationEquipmentProjection(
   ) {
     return createUpdatingSessionEquipmentProjection(currentHistoryRevision);
   }
-  const retainedInventory: RetainedSavedEquipmentItem[] = inventory.map(
-    (item) => ({
-      equipmentItemId: item.id,
-      equipmentType: item.type,
-      equipmentDefinitionId: item.definition_id,
-      attrs: item.attrs,
-      available: item.available,
-    }),
-  );
-  const exactCandidates = retainedExecutableCandidates(inventory, profiles);
-  const savedAttachments = retainedSavedAttachments(inventory, profiles);
-  const executableBySessionExerciseId = new Map<string, boolean>();
-  const snapshotsBySessionExerciseId = new Map<
-    string,
-    SessionEquipmentRequirementsSnapshot
-  >();
-  const exactRequirementsBySessionExerciseId = new Map<
-    string,
-    RetainedExactEquipmentRequirement
-  >();
-  for (const exercise of exerciseRows) {
-    const evidence = parseSessionEquipmentRequirementsEvidence(
-      exercise.equipment_requirements_semantics_version == null
-        ? null
-        : Number(exercise.equipment_requirements_semantics_version),
-      exercise.equipment_requirements_snapshot,
-      String(exercise.exercise_id),
-    );
-    if (evidence.state === "retained") {
-      snapshotsBySessionExerciseId.set(
-        String(exercise.session_exercise_id),
-        evidence.snapshot,
-      );
-      if (evidence.snapshot.exact) {
-        exactRequirementsBySessionExerciseId.set(
-          String(exercise.session_exercise_id),
-          evidence.snapshot.exact,
-        );
-      }
-      executableBySessionExerciseId.set(
-        String(exercise.session_exercise_id),
-        retainedExerciseHasExecutableSetup({
-          snapshot: evidence.snapshot,
-          inventory: retainedInventory,
-          hasPlates,
-          exactCandidates,
-        }),
-      );
-    }
-  }
-  return projectSessionEquipmentPreparation(
-    exerciseRows.map((exercise) => ({
-      sessionExerciseId: String(exercise.session_exercise_id),
-      exerciseId: String(exercise.exercise_id),
-      exerciseLabel: String(exercise.exercise_label),
-      orderIdx: Number(exercise.order_idx),
-      semanticsVersion:
-        exercise.equipment_requirements_semantics_version == null
-          ? null
-          : Number(exercise.equipment_requirements_semantics_version),
-      snapshot: exercise.equipment_requirements_snapshot,
-    })),
-    (row, sourceSessionExerciseIds) => {
-      if (!savedInventorySatisfies(
-        row,
-        retainedInventory,
-        savedAttachments,
-        hasPlates,
-        sourceSessionExerciseIds,
-        snapshotsBySessionExerciseId,
-        exactRequirementsBySessionExerciseId,
-        exactCandidates,
-      )) {
-        return "unavailable";
-      }
-      return sourceSessionExerciseIds.every((sessionExerciseId) =>
-        executableBySessionExerciseId.get(sessionExerciseId) === true
-      ) ? "available" : "incompatible";
-    },
+  return projectPreparationWithSavedInventory({
+    exerciseRows,
+    inventory,
+    hasPlates,
+    profiles,
     sourceHistoryRevision,
-  );
+  });
 }

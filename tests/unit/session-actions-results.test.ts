@@ -320,6 +320,34 @@ describe("session action named results", () => {
     });
   });
 
+  it("restores a workout-added exercise as workout-only after remove and Undo", async () => {
+    await database.db
+      .update(sessionExercises)
+      .set({ modificationType: "added" })
+      .where(eq(sessionExercises.id, activeExerciseId));
+
+    await expect(skipExercise({
+      sessionExerciseId: activeExerciseId,
+      reason: "user_choice",
+      expectedHistoryRevision: 0,
+    })).resolves.toMatchObject({ ok: true, historyRevision: 1 });
+    await expect(confirmExerciseUnskipped({
+      sessionExerciseId: activeExerciseId,
+      expectedHistoryRevision: 1,
+    })).resolves.toMatchObject({
+      ok: true,
+      historyRevision: 2,
+      modificationType: "added",
+    });
+    await expect(database.db.query.sessionExercises.findFirst({
+      where: eq(sessionExercises.id, activeExerciseId),
+      columns: { modificationType: true, skipReason: true },
+    })).resolves.toEqual({
+      modificationType: "added",
+      skipReason: null,
+    });
+  });
+
   it("rejects a delayed un-skip after a newer skip choice wins", async () => {
     await expect(skipExercise({
       sessionExerciseId: activeExerciseId,

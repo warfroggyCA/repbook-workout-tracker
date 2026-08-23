@@ -4,6 +4,7 @@ import type { Db } from "@/db";
 import {
   dataSnapshots,
   equipmentDefinitions,
+  equipmentItems,
   exerciseEquipmentRequirements,
   exerciseExecutionRequirements,
   exercises,
@@ -19,7 +20,10 @@ import {
   restoreRecordVersion,
   updateSessionExerciseWithVersion,
 } from "@/services/record-versions";
-import { resolveSessionPreparationEquipmentProjection } from "@/services/session-equipment-requirements";
+import {
+  resolveSessionPreparationEquipmentProjection,
+  resolveTemplatePreparationEquipmentProjection,
+} from "@/services/session-equipment-requirements";
 import { captureUserSnapshot } from "@/services/snapshot-capture";
 import {
   getSnapshotRestorePreview,
@@ -48,6 +52,58 @@ describe("retained session equipment requirements persistence", () => {
   afterEach(async () => {
     await Promise.all(databases.splice(0).map((database) => database.close()));
   });
+
+  it("preflights the current Program day from reviewed identities without blocking Start", async () => {
+    const database = await createMigratedTestDatabase();
+    databases.push(database);
+    const fixture = await seedT06PreviewStart(database.db);
+    const [requirement] = await database.db
+      .insert(exerciseEquipmentRequirements)
+      .values({
+        exerciseId: fixture.exerciseId,
+        equipmentType: "dumbbell",
+        minWeight: 20,
+      })
+      .returning({ id: exerciseEquipmentRequirements.id });
+
+    const missing = await resolveTemplatePreparationEquipmentProjection(
+      database.db,
+      fixture.userId,
+      fixture.templateId,
+    );
+    expect(missing).toMatchObject({
+      state: "unavailable",
+      evidenceState: "retained",
+      sourceHistoryRevision: null,
+      rows: [{
+        sourceExerciseIds: [fixture.exerciseId],
+        sourceRequirementIds: [requirement.id],
+        status: "unavailable",
+      }],
+    });
+    await expect(resolveTemplatePreparationEquipmentProjection(
+      database.db,
+      crypto.randomUUID(),
+      fixture.templateId,
+    )).resolves.toBeNull();
+
+    await database.db.insert(equipmentItems).values({
+      userId: fixture.userId,
+      type: "dumbbell",
+      label: "Synthetic adjustable dumbbells",
+      attrs: { minWeight: 5, maxWeight: 50, increments: [5, 10, 20, 25, 50] },
+      available: true,
+    });
+    await expect(resolveTemplatePreparationEquipmentProjection(
+      database.db,
+      fixture.userId,
+      fixture.templateId,
+    )).resolves.toMatchObject({
+      state: "available",
+      evidenceState: "retained",
+      rows: [{ status: "available" }],
+    });
+  }, 30_000);
 
   it("freezes Start, add, substitution, and version-restore requirement meaning", async () => {
     const database = await createMigratedTestDatabase();

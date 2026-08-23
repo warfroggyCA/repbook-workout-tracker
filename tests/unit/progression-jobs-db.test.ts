@@ -156,6 +156,7 @@ describe("durable progression job handoff", () => {
         weight: 100,
         weightUnit: "lb",
         reps: 8,
+        rpe: 7,
         metricType: "weight_reps",
         equipmentSnapshotId,
         loadEntryMeaning: "total_system",

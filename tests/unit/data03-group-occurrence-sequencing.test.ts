@@ -149,6 +149,61 @@ describe("DATA-03 group occurrence sequencing", () => {
     ).toBe(true);
   });
 
+  it("does not offer a working set before its linked preparation set", () => {
+    const working = {
+      ...buildSequence()[0],
+      sequenceIdx: 11,
+      groupSnapshotId: null,
+      groupRound: null,
+      groupMemberOrderIdx: null,
+    };
+    const preparation = {
+      ...working,
+      id: "00000000-0000-4000-8000-000000000397",
+      kind: "exercise_warmup",
+      sequenceIdx: 10,
+      kindOrdinal: 0,
+    };
+
+    expect(
+      workingSetOccurrenceOrderIsEligible(working, [preparation, working]),
+    ).toBe(false);
+    expect(
+      workingSetOccurrenceOrderIsEligible(
+        working,
+        [{ ...preparation, outcome: "skipped" }, working],
+      ),
+    ).toBe(true);
+  });
+
+  it("does not offer any working set before an earlier day warm-up", () => {
+    const working = {
+      ...buildSequence()[0],
+      sequenceIdx: 2,
+      groupSnapshotId: null,
+      groupRound: null,
+      groupMemberOrderIdx: null,
+    };
+    const dayWarmup = {
+      ...working,
+      id: "00000000-0000-4000-8000-000000000396",
+      sessionExerciseId: null,
+      kind: "day_warmup",
+      sequenceIdx: 0,
+      kindOrdinal: 0,
+    };
+
+    expect(
+      workingSetOccurrenceOrderIsEligible(working, [dayWarmup, working]),
+    ).toBe(false);
+    expect(
+      workingSetOccurrenceOrderIsEligible(
+        working,
+        [{ ...dayWarmup, outcome: "skipped" }, working],
+      ),
+    ).toBe(true);
+  });
+
   it("builds all three members in each round and applies the two explicit rest rules", () => {
     const occurrences = buildSequence();
 

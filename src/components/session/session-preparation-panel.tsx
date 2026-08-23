@@ -344,33 +344,11 @@ export function SessionPreparationPanel({
   }
 
   if (hasAcknowledgedWork) {
-    return (
-      <details
-        id="session-equipment-preparation"
-        data-testid="session-preparation-panel"
-        className="scroll-mt-40 rounded-xl border bg-card shadow-[var(--shadow-soft)]"
-      >
-        <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 rounded-xl px-4 py-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 motion-reduce:transition-none">
-          <span className="min-w-0">
-            <span className="block font-semibold">Workout equipment</span>
-            <span className="block break-words text-xs font-normal text-muted-foreground">
-              {projection.rows.length} {projection.rows.length === 1 ? "item" : "items"} · {summaryStatus}
-            </span>
-          </span>
-          <span className="shrink-0 text-xs text-muted-foreground">
-            {needsVisibleAttention ? "Review" : "Show details"}
-          </span>
-        </summary>
-        <div className="border-t px-4 py-3">
-          <PreparationContents
-            projection={projection}
-            continueTargetId={continueTargetId}
-            continueLabel={continueLabel}
-            onContinue={onContinue}
-          />
-        </div>
-      </details>
-    );
+    // The full-workout inventory belongs before Start. Once performed work is
+    // acknowledged or safely retained on this device, only exercise-local exact setup guidance remains useful;
+    // repeating the global list mid-workout adds noise and can displace the
+    // current set on a phone.
+    return null;
   }
 
   return (

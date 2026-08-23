@@ -96,10 +96,13 @@ export function WorkoutGroupContext({
       data-testid="active-workout-group"
       tabIndex={0}
     >
-      <details className="sm:hidden">
+      <details className="sm:hidden" open>
         <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-2 rounded-lg px-1 py-1 text-sm font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
           <span className="min-w-0 break-words">
-            {group.name} · {roundLabel} · member {group.currentMemberOrder} of{" "}
+            <span className="block text-xs font-bold uppercase tracking-[0.12em] text-violet-900 dark:text-violet-100">
+              Superset in progress
+            </span>
+            {group.name} · {roundLabel} · exercise {group.currentMemberOrder} of{" "}
             {group.memberCount}
           </span>
           <span className="shrink-0 text-xs text-muted-foreground">Details</span>

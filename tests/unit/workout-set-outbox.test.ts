@@ -245,6 +245,47 @@ describe("workout set device queue", () => {
     )?.clientKey).toBe(later.clientKey);
   });
 
+  it("retains a day warm-up blocker across reload and rejects impossible blocker identities", () => {
+    const storage = new MemoryStorage();
+    const later = setInput(2);
+    enqueueWorkoutSetOutboxEntry(storage, later);
+    const blocker = {
+      occurrenceId: "60000000-0000-4000-8000-000000000009",
+      occurrenceRevision: 0,
+      sessionExerciseId: null,
+      exerciseName: "Workout warm-up",
+      kind: "day_warmup" as const,
+      setNo: 0,
+      groupRound: null,
+      origin: "planned",
+      isAddedSet: false,
+      label: "Workout warm-up · warm-up",
+    };
+    expect(markWorkoutSetNeedsAttention(
+      storage,
+      later.clientKey,
+      `Resolve ${blocker.label} first.`,
+      new Date("2026-07-13T12:01:00.000Z"),
+      blocker,
+    )).toMatchObject({ ok: true });
+
+    const reloaded = readWorkoutSetOutbox(storage);
+    expect(reloaded.entries[0]).toMatchObject({ orderBlocker: blocker });
+    expect(reloaded.quarantined).toEqual([]);
+
+    const impossible = {
+      ...reloaded.entries[0],
+      orderBlocker: { ...blocker, kind: "working_set" },
+    };
+    expect(parseWorkoutSetOutbox(JSON.stringify({
+      version: 4,
+      entries: [impossible],
+    }))).toMatchObject({
+      entries: [],
+      quarantined: [expect.objectContaining({ quarantineKey: "entries:0" })],
+    });
+  });
+
   it("lets only the exact earlier occurrence save ahead of its parked later attempt", () => {
     const storage = new MemoryStorage();
     const later = setInput(2);

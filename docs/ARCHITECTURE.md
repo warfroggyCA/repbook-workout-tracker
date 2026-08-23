@@ -1001,6 +1001,14 @@ mapping. Unsafe evidence renders an explicit unavailable state; display names
 and fabricated fallback values are never used. The exact source workout and
 set provenance remain attached to the projection.
 
+The performed-load draft uses one explicit precedence chain: the latest saved
+set in this workout, then the Program target, then the exact previous
+comparable set, otherwise blank. The card labels that source. A delayed
+comparable read may hydrate only an untouched load field; editing repetitions,
+effort, or a note does not block hydration across a server refresh, while any
+deliberate load edit does. Cached drafts retain that distinction instead of
+treating every unsaved field as a load decision.
+
 The mobile active-exercise card keeps the current set, previous comparable
 evidence, required inputs, save/retry state, and next action primary. After an
 acknowledgement, focus and scroll reveal the next current set; acknowledged
@@ -1013,6 +1021,14 @@ immutable member order and preparation details in its native disclosure.
 Notes, coaching, form, and replacement controls live in `More for this
 exercise`. Pending or failed writes and skipped recovery remain exposed, and
 the fixed workout-status bar remains the sole rest/ready/finish authority.
+Included day and exercise preparation actions strictly precede their linked
+working sets. **Skip due to time** is the direct warm-up action and the detailed
+reason flow remains secondary. Once a later working set is recorded, an earlier
+warm-up cannot be restored into the live order; retained device blockers route
+back to the exact warm-up identity rather than constructing a working-set
+target. Superset membership is explicit on every member card. All members in
+the active superset start expanded so the complete round can be read by
+scrolling, while an owner collapse or reopen remains respected.
 An exercise-skip confirmation also retains the exact reason in a session-scoped
 recovery pointer. After a Server Action refresh or interruption-time reload, the
 runner idempotently reconciles that intent before set logging can resume and
@@ -1059,6 +1075,11 @@ truth. Browser suspension after manual iPhone lock, device volume, silent mode,
 Bluetooth, and background restrictions remain external constraints; Web Audio
 cannot guarantee a lock-screen alarm and the visual expired state is always the
 truthful fallback.
+
+Removing a workout exercise affects only that stable session-exercise row.
+Completed sets remain historical evidence, the Program remains unchanged, and
+Undo restores the exact retained pre-removal state, including `added` for a
+workout-only exercise rather than reclassifying it as planned work.
 
 The runner reconciles refreshed occurrence props by stable ID and monotonic
 revision because a Next.js refresh may preserve Client Component state. A
@@ -1120,11 +1141,12 @@ inventory change returns an explicit updating state and withholds straddled
 requirements. Legacy, malformed, unsupported, or partially retained evidence
 remains visibly unknown.
 
-The runner keeps the current action first, then shows one compact,
-stable-ID-deduplicated equipment list: after the warm-up panel when warm-up owns
-the next action, or immediately after the current exercise when a working set
-owns it. The list describes saved inventory coverage, not whether the owner
-physically gathered anything, and creates no preparation-complete fact.
+Today shows the compact stable-ID-deduplicated equipment preflight before Start.
+Once acknowledged work or a retained device set exists, the active workout no
+longer repeats that global inventory panel; exercise-local exact setup remains
+available where it is actionable. The list describes saved inventory coverage,
+not whether the owner physically gathered anything, and creates no
+preparation-complete fact.
 Unknown, unavailable, and incompatible rows stay visible and never block the
 workout. Exact load, plate, stack, attachment, and geometry guidance remains
 exercise-local and uses the retained prescribed target when available, so a
@@ -1141,6 +1163,16 @@ variants that share a family label. An unqualified name such as `Lat Pulldown`
 requires the owner to select the stable cable or plate-loaded identity; explicit
 variant names remain deterministic. This affects future Program publication
 only and never rewrites an active workout or completed History.
+
+Progression remains proposal-only. A load increase requires the configured
+number of exact planned exposures with one explicit non-grinding effort signal
+per set: RPE 8 or lower, or RIR 2 or higher, never both. A blank Program target
+may use one exact repeated performed load as its baseline; mixed loads,
+workout-only extra sets, missing effort, contradictory effort, or retained
+prescription snapshots that differ from the current sets, rep range, or target
+load fail closed. Review explains the evidence, and only explicit approval may
+publish a future Program version; the active workout and completed History are
+never rewritten.
 
 Snapshot schema 32 round-trips the retained tuple and upgrades schema 31 rows
 to explicit null evidence. Recovery manifest 14 keeps the same durable-table

@@ -205,6 +205,61 @@ describe("session action labels", () => {
     );
     expect(running.completion.pendingActions).toBe(1);
   });
+
+  it("never points a source-bound rest backwards to an overtaken preparation set", () => {
+    const item = exercise("overtaken-preparation", {
+      sets: [set("saved-working-set")],
+    });
+    const occurrences = [
+      occurrence("late-preparation", item.id, 0, {
+        kind: "exercise_warmup",
+        label: "Empty bar",
+      }),
+      occurrence("saved-working", item.id, 1, {
+        kindOrdinal: 0,
+        outcome: "completed",
+        completedSetId: "saved-working-set",
+      }),
+      occurrence("next-working", item.id, 2, { kindOrdinal: 1 }),
+    ];
+    const projection = projectSessionGuidance({
+      exercises: [item],
+      exerciseGroups: noGroups,
+      equipmentSetups: {},
+      occurrences,
+      restTimer: {
+        version: 1,
+        generationId: "overtaken-rest",
+        revision: 0,
+        ownerId: "owner",
+        sessionId: "session",
+        startedAt: 100_000,
+        sourceSessionExerciseId: item.id,
+        sourceOccurrenceId: "saved-working",
+        sourceClientKey: null,
+        sourceCompletedSetId: "saved-working-set",
+        phase: "running",
+        endsAt: 160_000,
+        totalSec: 60,
+        readyAt: null,
+        completionContext: null,
+        completionCueOutcome: null,
+        attemptedMilestones: [],
+      },
+    });
+
+    expect(projection.currentAction).toMatchObject({
+      kind: "rest",
+      destination: { occurrenceId: "next-working" },
+    });
+    expect(projection.nextAction).toMatchObject({
+      kind: "working_set",
+      occurrenceId: "next-working",
+    });
+    expect(formatSessionGuidanceAction(projection.currentAction!)).toBe(
+      "Resting before Exercise overtaken-preparation, set 2",
+    );
+  });
 });
 
 describe("GUIDE-02 session guidance truth", () => {

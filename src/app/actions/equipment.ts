@@ -176,5 +176,6 @@ export async function saveEquipmentInventory(
   revalidatePath("/settings/setup");
   revalidatePath("/today");
   revalidatePath("/program");
+  revalidatePath("/session/[id]", "page");
   return result;
 }

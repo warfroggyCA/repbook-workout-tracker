@@ -20,6 +20,7 @@ import {
   resolveReviewEvidence,
 } from "@/services/review-evidence";
 import { ANALYSIS_PACKAGE_SOURCE_BINDING_ENTITIES } from "@/lib/analysis-package";
+import { progressionConfig as cfg } from "@/engine/progression/config";
 
 export type RecommendationCheckpoint = (boundary: string) => void | Promise<void>;
 
@@ -103,6 +104,18 @@ const actionablePayloadSchema = z.discriminatedUnion("kind", [
 
 function sameJson(left: unknown, right: unknown) {
   return JSON.stringify(left) === JSON.stringify(right);
+}
+
+function comparablePerformedBaseline(
+  recommendation: NonNullable<Awaited<ReturnType<typeof getOwnedRecommendation>>>,
+) {
+  const baseline = recommendation.evidence.signals.baselineLoad;
+  return typeof baseline === "number" &&
+    Number.isFinite(baseline) &&
+    baseline > 0 &&
+    baseline <= MAX_STORED_LOAD
+    ? baseline
+    : null;
 }
 
 function sameDecisionPayload(left: unknown, right: RecommendationPayload) {
@@ -259,6 +272,19 @@ export async function approveRecommendationDecision(
   const decisionEdited = edited || externalEdited;
   if (recommendation.status !== "pending") {
     return approveRetryResult(db, recommendation.id, decisionEdited, payload);
+  }
+  if (payload.kind === "load_change" && payload.fromLoad == null) {
+    const baseline = comparablePerformedBaseline(recommendation);
+    if (
+      baseline == null ||
+      payload.toLoad > baseline * (1 + cfg.maxLoadJumpPct)
+    ) {
+      return {
+        ok: false,
+        reason:
+          "This proposal no longer has a valid comparable performed baseline within the progression safety limit.",
+      };
+    }
   }
   const assessment = await resolveReviewEvidence(db, userId, recommendation);
   if (!assessment.actionable) {

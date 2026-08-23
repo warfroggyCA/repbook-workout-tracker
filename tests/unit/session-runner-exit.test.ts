@@ -12,6 +12,7 @@ import {
   sessionScopedDeviceCopies,
   skipRecoveryNeedsReconciliation,
   workoutSaveQueueMessage,
+  workoutSetOrderBlockerTargetId,
   type WorkoutExitQueues,
 } from "@/lib/session-runner";
 import type { SessionOccurrenceData } from "@/components/session/types";
@@ -28,6 +29,20 @@ const EMPTY: WorkoutExitQueues = {
 };
 
 describe("workout exit readiness", () => {
+  it("targets a global day warm-up from a retained set-order blocker", () => {
+    expect(workoutSetOrderBlockerTargetId({
+      occurrenceId: "warmup-1",
+      occurrenceRevision: 0,
+      sessionExerciseId: null,
+      exerciseName: "Warm-up",
+      kind: "day_warmup",
+      setNo: 0,
+      groupRound: null,
+      origin: "planned",
+      isAddedSet: false,
+      label: "Dynamic mobility",
+    })).toBe("warmup-occurrence-warmup-1");
+  });
   it("selects only exact current-session copies for destructive exit", () => {
     const currentSet = { ownerId: "owner", sessionId: "current", clientKey: "current-set" };
     const foreignSet = { ownerId: "owner", sessionId: "foreign", clientKey: "foreign-set" };

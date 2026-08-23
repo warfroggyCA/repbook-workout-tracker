@@ -18,6 +18,7 @@ import {
 } from "@/db/schema";
 import {
   abandonWorkoutSession,
+  logWorkoutSet,
   mutateWorkoutOccurrence,
   startWorkoutSession,
 } from "@/services/session-lifecycle";
@@ -502,6 +503,78 @@ describe("V2 T04 warm-up occurrence truth", () => {
     expect(operations).toEqual(
       expect.arrayContaining(["note", "complete", "restore"]),
     );
+  });
+
+  it("does not restore an earlier warm-up after a later working set is recorded", async () => {
+    const started = await startWorkoutSession(database.db, userId, templateId);
+    const occurrences = await database.db
+      .select()
+      .from(sessionOccurrences)
+      .where(eq(sessionOccurrences.sessionId, started.sessionId))
+      .orderBy(asc(sessionOccurrences.sequenceIdx));
+    const warmups = occurrences.filter(
+      (occurrence) => occurrence.kind !== "working_set",
+    );
+    const firstWorkingSet = occurrences.find(
+      (occurrence) => occurrence.kind === "working_set",
+    );
+    if (!firstWorkingSet?.sessionExerciseId) {
+      throw new Error("The fixture did not create a working set.");
+    }
+
+    for (const warmup of warmups) {
+      await expect(mutateWorkoutOccurrence(database.db, userId, {
+        occurrenceId: warmup.id,
+        clientKey: crypto.randomUUID(),
+        expectedRevision: 0,
+        operation: "complete",
+      })).resolves.toMatchObject({ outcome: "saved" });
+    }
+    await expect(logWorkoutSet(database.db, userId, {
+      sessionExerciseId: firstWorkingSet.sessionExerciseId,
+      occurrenceId: firstWorkingSet.id,
+      expectedOccurrenceRevision: firstWorkingSet.revision,
+      performedExerciseId: exerciseId,
+      performedSemanticsVersion: 1,
+      performedLoadType: "barbell",
+      performedLoadSemantics: "total",
+      metricType: "weight_reps",
+      setNo: 1,
+      weight: 100,
+      weightUnit: "lb",
+      reps: 8,
+      distanceKm: null,
+      durationSeconds: null,
+      rpe: null,
+      rir: null,
+      techniqueIssue: null,
+      limitationCause: null,
+      pain: null,
+      isWarmup: false,
+      note: null,
+      clientKey: crypto.randomUUID(),
+      equipmentSnapshotId: null,
+      loadEntryMeaning: "legacy_unknown",
+      observedCompletedAtISO: null,
+    })).resolves.toMatchObject({ outcome: "saved" });
+
+    const dayWarmup = warmups.find(
+      (occurrence) => occurrence.kind === "day_warmup",
+    );
+    const exerciseWarmup = warmups.find(
+      (occurrence) => occurrence.kind === "exercise_warmup",
+    );
+    if (!dayWarmup || !exerciseWarmup) {
+      throw new Error("The fixture did not create both warm-up kinds.");
+    }
+    for (const warmup of [dayWarmup, exerciseWarmup]) {
+      await expect(mutateWorkoutOccurrence(database.db, userId, {
+        occurrenceId: warmup.id,
+        clientKey: crypto.randomUUID(),
+        expectedRevision: 1,
+        operation: "restore",
+      })).resolves.toEqual({ outcome: "conflict" });
+    }
   });
 
   it("keeps substitution and whole-exercise decisions aggregate while preserving equipped completion reversal", async () => {

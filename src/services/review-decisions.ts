@@ -108,6 +108,8 @@ type DecisionHistoryInput = {
 
 const signalLabels: Record<string, string> = {
   cleanExposures: "Clean completed workouts",
+  baselineLoad: "Comparable performed baseline",
+  baselineSource: "Progression baseline source",
   hardMissExposures: "Repeated hard-miss workouts",
   worstPainSeverity: "Highest positive pain report",
   worstSeverity: "Highest positive pain report",

@@ -120,6 +120,7 @@ import {
   shouldShowMissingWarmupMessage,
   skipRecoveryNeedsReconciliation,
   workoutSaveQueueMessage,
+  workoutSetOrderBlockerTargetId,
   type WorkoutExitQueues,
 } from "@/lib/session-runner";
 import {
@@ -138,6 +139,7 @@ import {
   writeRestTimer,
   writeRestTimerCas,
   type DurableRestTimer,
+  type RestCueChannelOutcome,
   type RestCueMilestone,
 } from "@/lib/rest-timer";
 import { ScreenWakeLockController } from "@/lib/screen-wake-lock";
@@ -145,11 +147,13 @@ import {
   DEFAULT_REST_ALERT_PREFERENCE,
   planRestCueTransition,
   playRestTonePattern,
+  prepareRestAudioContext,
   primeRestAudioContext,
   readRestAlertPreference,
   REST_COMPLETION_TONE_PATTERN,
   REST_COUNTDOWN_TICK_PATTERN,
   requestedRestCueChannels,
+  restSoundChannelState,
   restCountdownCueKey,
   restCueOutcome,
   subscribeToRestAlertPreference,
@@ -699,6 +703,16 @@ export function SessionRunner(props: SessionRunnerProps) {
     );
     return firstOpen?.id ?? null;
   });
+  const [collapsedActiveGroupMemberState, setCollapsedActiveGroupMemberState] =
+    useState<{
+      groupId: string | null;
+      currentActionSessionExerciseId: string | null;
+      ids: Set<string>;
+    }>(() => ({
+      groupId: null,
+      currentActionSessionExerciseId: null,
+      ids: new Set(),
+    }));
   const [skipRecoveryExerciseId, setSkipRecoveryExerciseId] = useState<
     string | null
   >(null);
@@ -1129,6 +1143,9 @@ export function SessionRunner(props: SessionRunnerProps) {
   }, [equipmentSetupIdentity]);
   const audioContextRef = useRef<AudioContext | null>(null);
   const audioCueBlockedRef = useRef(false);
+  const [restSoundState, setRestSoundState] = useState<RestCueChannelOutcome>(
+    "not_requested",
+  );
   const lastRestCountdownCueRef = useRef<string | null>(null);
   const outbox = useSyncExternalStore(
     subscribeToWorkoutSetOutbox,
@@ -1582,6 +1599,29 @@ export function SessionRunner(props: SessionRunnerProps) {
       ),
     [guidance.groups],
   );
+  const activeGroupMemberIds = useMemo(
+    () => new Set(
+      guidance.activeGroup?.members.map((member) => member.sessionExerciseId) ?? [],
+    ),
+    [guidance.activeGroup],
+  );
+  const firstActiveGroupMemberId =
+    guidance.activeGroup?.members[0]?.sessionExerciseId ?? null;
+  const activeGroupId = guidance.activeGroup?.groupId ?? null;
+  const collapsedActiveGroupMemberIds = (() => {
+    if (collapsedActiveGroupMemberState.groupId !== activeGroupId) {
+      return new Set<string>();
+    }
+    const normalized = new Set(collapsedActiveGroupMemberState.ids);
+    if (
+      collapsedActiveGroupMemberState.currentActionSessionExerciseId !==
+        currentActionSessionExerciseId &&
+      currentActionSessionExerciseId != null
+    ) {
+      normalized.delete(currentActionSessionExerciseId);
+    }
+    return normalized;
+  })();
   const safePlateConfigs = useMemo(
     () =>
       Object.fromEntries(
@@ -1654,6 +1694,32 @@ export function SessionRunner(props: SessionRunnerProps) {
       void controller.dispose();
     };
   }, [timer?.generationId, timer?.phase]);
+
+  useEffect(() => {
+    let cancelled = false;
+    queueMicrotask(() => {
+      if (cancelled) return;
+      const preference = readRestAlertPreference(window.localStorage);
+      if (!requestedRestCueChannels(preference).sound) {
+        setRestSoundState("not_requested");
+        return;
+      }
+      if (timer?.phase !== "running") return;
+      const audioWindow = window as typeof window & {
+        webkitAudioContext?: typeof AudioContext;
+      };
+      if (!(audioWindow.AudioContext ?? audioWindow.webkitAudioContext)) {
+        setRestSoundState("unavailable");
+      } else if (audioContextRef.current == null) {
+        // A restored timer has no owner gesture with which to unlock Web Audio.
+        // The next set gesture can safely create and prime a fresh context.
+        setRestSoundState("blocked");
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [restAlertPreference, timer?.generationId, timer?.phase]);
 
   const advanceAfterExercise = useCallback(
     (exerciseId: string) => {
@@ -2290,22 +2356,43 @@ export function SessionRunner(props: SessionRunnerProps) {
 
   function primeRestCue() {
     const preference = readRestAlertPreference(window.localStorage);
-    if (!requestedRestCueChannels(preference).sound) return;
+    if (!requestedRestCueChannels(preference).sound) {
+      setRestSoundState("not_requested");
+      return;
+    }
     audioCueBlockedRef.current = false;
     try {
-      if (!audioContextRef.current && typeof AudioContext !== "undefined") {
-        audioContextRef.current = new AudioContext();
+      const audioWindow = window as typeof window & {
+        webkitAudioContext?: typeof AudioContext;
+      };
+      const AudioContextConstructor =
+        audioWindow.AudioContext ?? audioWindow.webkitAudioContext;
+      if (!AudioContextConstructor) {
+        setRestSoundState("unavailable");
+        return;
       }
-      if (audioContextRef.current) {
-        primeRestAudioContext(audioContextRef.current);
-      }
-      if (audioContextRef.current?.state === "suspended") {
-        void audioContextRef.current.resume().catch(() => {
+      const context = prepareRestAudioContext(
+        audioContextRef.current,
+        AudioContextConstructor,
+      );
+      audioContextRef.current = context;
+      if (context.state === "running") {
+        setRestSoundState("requested");
+      } else {
+        void context.resume().then(() => {
+          // Prime again after a successful WebKit resume. This matters when a
+          // prior timer left the context suspended or interrupted.
+          primeRestAudioContext(context);
+          audioCueBlockedRef.current = false;
+          setRestSoundState("requested");
+        }).catch(() => {
           audioCueBlockedRef.current = true;
+          setRestSoundState("blocked");
         });
       }
     } catch {
       audioCueBlockedRef.current = true;
+      setRestSoundState("blocked");
       // The persistent visual timer remains authoritative when audio is blocked.
     }
   }
@@ -2336,6 +2423,12 @@ export function SessionRunner(props: SessionRunnerProps) {
     let vibrationRequested = false;
 
     if (channels.sound) {
+      const audioWindow = window as typeof window & {
+        webkitAudioContext?: typeof AudioContext;
+      };
+      const audioSupported = Boolean(
+        audioWindow.AudioContext ?? audioWindow.webkitAudioContext,
+      );
       const context = audioContextRef.current;
       if (context?.state === "running") {
         try {
@@ -2359,9 +2452,19 @@ export function SessionRunner(props: SessionRunnerProps) {
           }
           soundRequested = true;
           audioCueBlockedRef.current = false;
+          setRestSoundState("requested");
         } catch {
           soundRequested = false;
+          setRestSoundState("blocked");
         }
+      } else if (context == null) {
+        setRestSoundState(restSoundChannelState({
+          requested: true,
+          audioSupported,
+          contextState: null,
+        }));
+      } else {
+        setRestSoundState("blocked");
       }
     }
 
@@ -2382,7 +2485,14 @@ export function SessionRunner(props: SessionRunnerProps) {
       vibrationRequested,
       soundBlocked:
         channels.sound &&
-        (audioCueBlockedRef.current ||
+        (audioCueBlockedRef.current || (Boolean(
+          (window as typeof window & {
+            webkitAudioContext?: typeof AudioContext;
+          }).AudioContext ??
+          (window as typeof window & {
+            webkitAudioContext?: typeof AudioContext;
+          }).webkitAudioContext,
+        ) && !soundRequested) ||
           (audioContextRef.current != null &&
             audioContextRef.current.state !== "running" &&
             audioContextRef.current.state !== "closed")),
@@ -2393,9 +2503,20 @@ export function SessionRunner(props: SessionRunnerProps) {
     const resumeAudio = () => {
       if (document.visibilityState !== "visible") return;
       const context = audioContextRef.current;
-      if (context?.state === "suspended") {
-        void context.resume().catch(() => {
+      if (context?.state === "closed") {
+        setRestSoundState("blocked");
+      } else if (
+        context != null &&
+        (context.state === "suspended" ||
+          (context.state as string) === "interrupted")
+      ) {
+        void context.resume().then(() => {
+          primeRestAudioContext(context);
+          audioCueBlockedRef.current = false;
+          setRestSoundState("requested");
+        }).catch(() => {
           audioCueBlockedRef.current = true;
+          setRestSoundState("blocked");
         });
       }
     };
@@ -3044,6 +3165,29 @@ export function SessionRunner(props: SessionRunnerProps) {
       : null;
   }
 
+  function revealExerciseCard(exerciseId: string) {
+    setExpandedId(exerciseId);
+    if (!activeGroupMemberIds.has(exerciseId)) return;
+    setCollapsedActiveGroupMemberState((current) => {
+      const ids = current.groupId === activeGroupId
+        ? new Set(current.ids)
+        : new Set<string>();
+      if (
+        current.currentActionSessionExerciseId !==
+          currentActionSessionExerciseId &&
+        currentActionSessionExerciseId != null
+      ) {
+        ids.delete(currentActionSessionExerciseId);
+      }
+      ids.delete(exerciseId);
+      return {
+        groupId: activeGroupId,
+        currentActionSessionExerciseId,
+        ids,
+      };
+    });
+  }
+
   function revealCurrentWorkoutAction() {
     const currentAction = guidance.currentAction;
     if (!currentAction) return;
@@ -3052,7 +3196,7 @@ export function SessionRunner(props: SessionRunnerProps) {
       ? currentAction.source
       : currentAction;
     if (occurrenceAction?.kind === "working_set") {
-      setExpandedId(occurrenceAction.sessionExerciseId);
+      revealExerciseCard(occurrenceAction.sessionExerciseId);
     }
     setFinishOpen(false);
     lastConsumedWorkoutHashRef.current = targetId;
@@ -3087,7 +3231,7 @@ export function SessionRunner(props: SessionRunnerProps) {
   function revealUnsavedSet(entry: WorkoutSetOutboxEntry) {
     const targetId = `exercise-${entry.sessionExerciseId}`;
     setFinishOpen(false);
-    setExpandedId(entry.sessionExerciseId);
+    revealExerciseCard(entry.sessionExerciseId);
     window.history.replaceState(
       window.history.state,
       "",
@@ -3106,15 +3250,18 @@ export function SessionRunner(props: SessionRunnerProps) {
 
   function revealOrderBlocker(targetId: string) {
     const blocker = occurrences.find((occurrence) => {
-      if (occurrence.kind !== "working_set" || !occurrence.sessionExerciseId) {
-        return false;
+      if (occurrence.kind !== "working_set") {
+        return targetId === `warmup-occurrence-${occurrence.id}`;
       }
+      if (!occurrence.sessionExerciseId) return false;
       const position = workingSetDisplayPosition(occurrence, occurrences);
       const prefix = position.kind === "extra" ? "added-set-entry" : "set-entry";
       return `${prefix}-${occurrence.sessionExerciseId}-${occurrence.id}` === targetId;
     });
-    if (blocker?.sessionExerciseId) {
-      setExpandedId(blocker.sessionExerciseId);
+    if (blocker?.kind === "working_set" && blocker.sessionExerciseId) {
+      revealExerciseCard(blocker.sessionExerciseId);
+    } else if (blocker) {
+      setWarmupPlanOpen(true);
     }
     setFinishOpen(false);
     window.history.replaceState(
@@ -3295,6 +3442,11 @@ export function SessionRunner(props: SessionRunnerProps) {
       occurrence.outcome === "skipped" ||
       occurrence.outcome === "abandoned",
   );
+  const hasWorkoutFlowStarted = hasAcknowledgedWork ||
+    sessionEntries.length > 0 ||
+    sessionOccurrenceEntries.some(
+      (entry) => entry.operation === "complete" || entry.operation === "skip",
+    );
   const sessionPreparationChangedOptimistically = shownExercises.some(
     (exercise) =>
       props.exercises.find((source) => source.id === exercise.id)?.exerciseId !==
@@ -3319,7 +3471,7 @@ export function SessionRunner(props: SessionRunnerProps) {
     : guidance.currentAction?.kind === "rest"
       ? "Go to rest"
       : guidance.currentAction?.kind === "working_set"
-        ? hasAcknowledgedWork
+        ? hasWorkoutFlowStarted
           ? "Go to current exercise"
           : "Go to first exercise"
         : guidance.currentAction
@@ -3332,14 +3484,18 @@ export function SessionRunner(props: SessionRunnerProps) {
       if (!blocker) continue;
       blockers[entry.clientKey] = {
         blockerOccurrenceId: blocker.occurrenceId,
-        blockerLabel: blocker.isAddedSet
-          ? "Added set"
-          : blocker.groupRound == null
-            ? `Set ${blocker.setNo}`
-            : `Round ${blocker.groupRound} · Set ${blocker.setNo}`,
+        blockerLabel: blocker.kind === "day_warmup"
+          ? "Warm-up"
+          : blocker.kind === "exercise_warmup"
+            ? "Preparation set"
+            : blocker.isAddedSet
+            ? "Added set"
+            : blocker.groupRound == null
+              ? `Set ${blocker.setNo}`
+              : `Round ${blocker.groupRound} · Set ${blocker.setNo}`,
         blockerExerciseName: blocker.exerciseName,
         blockerTargetId:
-          `${blocker.isAddedSet ? "added-set-entry" : "set-entry"}-${blocker.sessionExerciseId}-${blocker.occurrenceId}`,
+          workoutSetOrderBlockerTargetId(blocker) ?? undefined,
       };
     }
     return blockers;
@@ -3600,6 +3756,18 @@ export function SessionRunner(props: SessionRunnerProps) {
                     ) ?? null;
                   const occurrenceAcknowledged =
                     acknowledgedOccurrenceIds.includes(occurrence.id);
+                  const overtakenByWorkingSet =
+                    occurrences.some(
+                      (candidate) =>
+                        candidate.kind === "working_set" &&
+                        candidate.sequenceIdx > occurrence.sequenceIdx &&
+                        (candidate.outcome === "completed" ||
+                          locallyRecordedOccurrenceIds.has(candidate.id)) &&
+                        (occurrence.kind === "day_warmup" ||
+                          (occurrence.kind === "exercise_warmup" &&
+                            candidate.sessionExerciseId ===
+                              occurrence.sessionExerciseId)),
+                    );
                   return (
                     <li
                       key={occurrence.id}
@@ -3653,6 +3821,14 @@ export function SessionRunner(props: SessionRunnerProps) {
                             {occurrence.outcome.replace("_", " ")}
                           </p>
                         )}
+                        {occurrence.outcome === "pending" &&
+                          overtakenByWorkingSet && (
+                          <p className="mt-1 rounded-md border border-amber-500/40 bg-amber-500/10 px-2 py-1 text-xs font-medium text-amber-950 dark:text-amber-100">
+                            A later working set is already recorded. Resolve this
+                            preparation set now; Repbook will not move a rest
+                            timer backwards to it.
+                          </p>
+                        )}
                       </div>
                       {occurrence.outcome === "pending" ? (
                         <div className="flex w-full flex-wrap gap-2 sm:w-auto">
@@ -3678,7 +3854,27 @@ export function SessionRunner(props: SessionRunnerProps) {
                             type="button"
                             size="sm"
                             className="min-h-11"
-                            variant="outline"
+                            variant="secondary"
+                            disabled={
+                              equipmentChangePending ||
+                              occurrenceMutation != null
+                            }
+                            onClick={() => void applyOccurrenceMutation(
+                              occurrence,
+                              "skip",
+                              {
+                                reason: "Skip due to time",
+                                reasonCode: "time_limit_reached",
+                              },
+                            )}
+                          >
+                            Skip due to time
+                          </Button>
+                          <Button
+                            type="button"
+                            size="sm"
+                            className="min-h-11"
+                            variant="ghost"
                             disabled={
                               equipmentChangePending ||
                               occurrenceMutation != null
@@ -3690,7 +3886,7 @@ export function SessionRunner(props: SessionRunnerProps) {
                               })
                             }
                           >
-                            Skip
+                            Other skip reason
                           </Button>
                           <Button
                             type="button"
@@ -3731,7 +3927,10 @@ export function SessionRunner(props: SessionRunnerProps) {
                                   size="sm"
                                   className="min-h-11"
                                   variant="outline"
-                                  disabled={occurrenceMutation != null}
+                                  disabled={
+                                    occurrenceMutation != null ||
+                                    overtakenByWorkingSet
+                                  }
                                   onClick={() =>
                                     void applyOccurrenceMutation(occurrence, "restore")
                                   }
@@ -3763,7 +3962,10 @@ export function SessionRunner(props: SessionRunnerProps) {
                               size="sm"
                               className="min-h-11"
                               variant="outline"
-                              disabled={occurrenceMutation != null}
+                              disabled={
+                                occurrenceMutation != null ||
+                                overtakenByWorkingSet
+                              }
                               onClick={() =>
                                 void applyOccurrenceMutation(occurrence, "restore")
                               }
@@ -3776,6 +3978,13 @@ export function SessionRunner(props: SessionRunnerProps) {
                               {aggregateRestoreDirection}
                             </p>
                           )}
+                          {!aggregateRestoreBlocked &&
+                            overtakenByWorkingSet && (
+                              <p className="basis-full text-xs text-muted-foreground">
+                                A later working set is already recorded, so this
+                                earlier warm-up cannot be restored.
+                              </p>
+                            )}
                         </div>
                       )}
                       <OccurrenceSaveStatus
@@ -3805,7 +4014,7 @@ export function SessionRunner(props: SessionRunnerProps) {
 
       {!currentActionIsWorkingSet && <SessionPreparationPanel
         projection={sessionPreparation}
-        hasAcknowledgedWork={hasAcknowledgedWork}
+        hasAcknowledgedWork={hasWorkoutFlowStarted}
         continueTargetId={preparationTargetId}
         continueLabel={preparationContinueLabel}
         onContinue={continueFromPreparation}
@@ -3857,8 +4066,18 @@ export function SessionRunner(props: SessionRunnerProps) {
             </p>
           ) : null;
           return (
-          <div key={exercise.id} className="flex flex-col gap-2">
-          {currentOccurrence?.sessionExerciseId === exercise.id &&
+          <div
+            key={exercise.id}
+            data-active-superset-member={
+              activeGroupMemberIds.has(exercise.id) ? "true" : undefined
+            }
+            className={cn(
+              "flex flex-col gap-2",
+              activeGroupMemberIds.has(exercise.id) &&
+                "rounded-xl bg-violet-100/60 p-1.5 ring-2 ring-violet-400/60 dark:bg-violet-950/25",
+            )}
+          >
+          {firstActiveGroupMemberId === exercise.id &&
           guidance.activeGroup ? (
             <WorkoutGroupContext guidance={guidance} />
           ) : null}
@@ -3899,11 +4118,37 @@ export function SessionRunner(props: SessionRunnerProps) {
               )!
             }
             expanded={
-              (skipRecoveryExerciseId ?? expandedId) === exercise.id
+              skipRecoveryExerciseId != null
+                ? skipRecoveryExerciseId === exercise.id
+                : activeGroupMemberIds.has(exercise.id)
+                  ? !collapsedActiveGroupMemberIds.has(exercise.id)
+                  : expandedId === exercise.id
             }
             onToggle={() => {
               if (skipRecoveryExerciseId != null) {
                 setExpandedId(skipRecoveryExerciseId);
+                return;
+              }
+              if (activeGroupMemberIds.has(exercise.id)) {
+                setCollapsedActiveGroupMemberState((current) => {
+                  const next = current.groupId === activeGroupId
+                    ? new Set(current.ids)
+                    : new Set<string>();
+                  if (
+                    current.currentActionSessionExerciseId !==
+                      currentActionSessionExerciseId &&
+                    currentActionSessionExerciseId != null
+                  ) {
+                    next.delete(currentActionSessionExerciseId);
+                  }
+                  if (next.has(exercise.id)) next.delete(exercise.id);
+                  else next.add(exercise.id);
+                  return {
+                    groupId: activeGroupId,
+                    currentActionSessionExerciseId,
+                    ids: next,
+                  };
+                });
                 return;
               }
               exerciseDisclosureGenerationRef.current += 1;
@@ -4216,7 +4461,7 @@ export function SessionRunner(props: SessionRunnerProps) {
           currentOccurrence?.sessionExerciseId === exercise.id ? (
             <SessionPreparationPanel
               projection={sessionPreparation}
-              hasAcknowledgedWork={hasAcknowledgedWork}
+              hasAcknowledgedWork={hasWorkoutFlowStarted}
               continueTargetId={preparationTargetId}
               continueLabel={preparationContinueLabel}
               onContinue={continueFromPreparation}
@@ -4405,7 +4650,7 @@ export function SessionRunner(props: SessionRunnerProps) {
                         {entry.orderBlocker && (
                           <p className="mt-2 text-sm font-medium">
                             Required first: {entry.orderBlocker.label}. Retry
-                            unlocks after that exact set is completed or skipped.
+                            unlocks after that exact action is completed or skipped.
                           </p>
                         )}
                         <div className="mt-3 flex flex-col gap-2 min-[420px]:flex-row">
@@ -4413,13 +4658,23 @@ export function SessionRunner(props: SessionRunnerProps) {
                             <Button
                               type="button"
                               className="flex-1"
+                              disabled={
+                                workoutSetOrderBlockerTargetId(
+                                  entry.orderBlocker,
+                                ) == null
+                              }
                               onClick={() =>
+                                workoutSetOrderBlockerTargetId(
+                                  entry.orderBlocker!,
+                                ) &&
                                 revealOrderBlocker(
-                                  `${entry.orderBlocker!.isAddedSet ? "added-set-entry" : "set-entry"}-${entry.orderBlocker!.sessionExerciseId}-${entry.orderBlocker!.occurrenceId}`,
+                                  workoutSetOrderBlockerTargetId(
+                                    entry.orderBlocker!,
+                                  )!,
                                 )
                               }
                             >
-                              Go to required set
+                              Go to required action
                             </Button>
                           ) : entry.status === "needs_attention" &&
                             entry.reviewRequired !== "stale_occurrence" ? (
@@ -4737,12 +4992,19 @@ export function SessionRunner(props: SessionRunnerProps) {
           timer={timer}
           restRemainingSec={restRemainingSec}
           restAlertPreference={restAlertPreference}
+          restSoundState={restSoundState}
           onShowCurrent={() => {
             revealCurrentWorkoutAction();
           }}
           currentWorkingSetRevealed={
             guidance.currentAction?.kind !== "working_set" ||
-            expandedId === guidance.currentAction.sessionExerciseId
+            (activeGroupMemberIds.has(
+              guidance.currentAction.sessionExerciseId,
+            )
+              ? !collapsedActiveGroupMemberIds.has(
+                  guidance.currentAction.sessionExerciseId,
+                )
+              : expandedId === guidance.currentAction.sessionExerciseId)
           }
           onPrimaryAction={() => {
             if (

@@ -134,6 +134,12 @@ export default async function CoachPage() {
         (report.overview.targetOutcomes.supported / targetCoverageTotal) *
           1_000,
       ) / 10;
+  const readyLoadChangeCount = review.pending.filter(
+    (recommendation) =>
+      recommendation.payload.kind === "load_change" &&
+      recommendation.deferredAt == null &&
+      recommendation.reviewEvidence.actionable,
+  ).length;
 
   const latestReviewRow = insightRows.find((row) =>
     ["manual_review", "weekly", "post_workout"].includes(row.kind)
@@ -292,6 +298,40 @@ export default async function CoachPage() {
           </ul>
         </section>
       ) : null}
+
+      <section
+        className="rounded-xl border bg-card p-4 shadow-[var(--shadow-soft)]"
+        aria-labelledby="progression-criteria-heading"
+      >
+        <div className="flex flex-wrap items-start justify-between gap-2">
+          <div>
+            <h2 id="progression-criteria-heading" className="font-medium">
+              Load progression
+            </h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              {readyLoadChangeCount > 0
+                ? `${readyLoadChangeCount} future load ${readyLoadChangeCount === 1 ? "change is" : "changes are"} ready for review below.`
+                : "No load increase is ready for review right now."}
+            </p>
+          </div>
+          <Badge variant={readyLoadChangeCount > 0 ? "default" : "outline"}>
+            {readyLoadChangeCount > 0 ? "Proposal ready" : "No proposal ready"}
+          </Badge>
+        </div>
+        <p className="mt-3 text-sm">
+          Repbook suggests more weight after the comparable completed workout(s)
+          required by your coaching setting, where every prescribed set reaches
+          the top of its rep range and every cited set has an explicit RPE of 8
+          or lower (or RIR of 2 or higher). Missing effort stays unknown and
+          does not count as a clean workout.
+        </p>
+        <p className="mt-2 text-xs text-muted-foreground">
+          A saved Program target is the normal baseline. If there is no target,
+          the same exact performed load across the comparable sets can establish
+          the baseline. Equipment increments and the 10% safety limit still
+          apply. Any resulting proposal is future-only until you approve it.
+        </p>
+      </section>
 
       <section
         className="flex flex-col gap-3"

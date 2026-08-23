@@ -6,6 +6,9 @@ import {
   sessionExerciseGroups,
   sessionExercises,
   sessionOccurrences,
+  userProfiles,
+  users,
+  workoutSessions,
 } from "@/db/schema";
 import {
   appendWorkoutSetOccurrence,
@@ -36,6 +39,183 @@ describe("V2 T03 planned order and extra-set truth", () => {
   }, 30_000);
 
   afterEach(async () => database.close());
+
+  it("keeps an earlier day warm-up ahead of working-set completion or skip", async () => {
+    const [sessionExercise] = await database.db
+      .insert(sessionExercises)
+      .values({
+        sessionId: fixture.sessionId,
+        exerciseId: fixture.exerciseIds.loaded,
+        orderIdx: 7,
+        targetSets: 1,
+        targetRepsMin: 5,
+        targetRepsMax: 5,
+        targetLoad: 100,
+        targetLoadUnit: "kg",
+      })
+      .returning({ id: sessionExercises.id });
+    const [dayWarmup, working] = await database.db
+      .insert(sessionOccurrences)
+      .values([
+        {
+          sessionId: fixture.sessionId,
+          sessionExerciseId: null,
+          kind: "day_warmup" as const,
+          origin: "planned" as const,
+          sequenceIdx: 7,
+          kindOrdinal: 0,
+          label: "General warm-up",
+        },
+        {
+          sessionId: fixture.sessionId,
+          sessionExerciseId: sessionExercise.id,
+          kind: "working_set" as const,
+          origin: "planned" as const,
+          sequenceIdx: 8,
+          kindOrdinal: 0,
+          plannedExerciseId: fixture.exerciseIds.loaded,
+          plannedRepsMin: 5,
+          plannedRepsMax: 5,
+          plannedLoad: 100,
+          plannedLoadUnit: "kg" as const,
+          plannedRestSec: 90,
+        },
+      ])
+      .returning({ id: sessionOccurrences.id });
+    const command = {
+      ...fixture.commands.loaded,
+      sessionExerciseId: sessionExercise.id,
+      clientKey: "t03-loaded-before-day-warmup",
+    };
+
+    await expect(
+      logWorkoutSet(database.db, fixture.userId, command),
+    ).resolves.toMatchObject({
+      outcome: "set_order_conflict",
+      blocker: {
+        occurrenceId: dayWarmup.id,
+        sessionExerciseId: null,
+        kind: "day_warmup",
+        setNo: 0,
+        label: "Workout warm-up · warm-up",
+      },
+    });
+    await expect(
+      mutateWorkoutOccurrence(database.db, fixture.userId, {
+        occurrenceId: working.id,
+        operation: "skip",
+        reason: "not attempted",
+        expectedRevision: 0,
+        clientKey: "t03-working-skip-before-day-warmup",
+      }),
+    ).resolves.toEqual({ outcome: "conflict" });
+
+    await expect(
+      mutateWorkoutOccurrence(database.db, fixture.userId, {
+        occurrenceId: dayWarmup.id,
+        operation: "skip",
+        reason: "time",
+        expectedRevision: 0,
+        clientKey: "t03-day-warmup-skip",
+      }),
+    ).resolves.toMatchObject({ outcome: "saved" });
+    const saved = await logWorkoutSet(database.db, fixture.userId, {
+        ...command,
+        clientKey: "t03-loaded-after-day-warmup",
+      });
+    expect(saved).toMatchObject({ outcome: "saved" });
+    if (saved.outcome !== "saved") throw new Error(saved.outcome);
+
+    await expect(updateSessionExerciseWithVersion(
+      database.db,
+      fixture.userId,
+      sessionExercise.id,
+      { modificationType: "skipped", skipReason: "user_choice" },
+      "session_exercise.skip",
+      { activeOnly: true },
+    )).resolves.toMatchObject({ ok: true, changed: true });
+    await expect(
+      database.db.query.sessionExercises.findMany({
+        where: eq(sessionExercises.exerciseId, fixture.exerciseIds.loaded),
+        columns: { id: true, modificationType: true },
+        orderBy: asc(sessionExercises.orderIdx),
+      }),
+    ).resolves.toEqual(expect.arrayContaining([
+      {
+        id: fixture.sessionExerciseIds.loaded,
+        modificationType: "as_planned",
+      },
+      { id: sessionExercise.id, modificationType: "skipped" },
+    ]));
+    await expect(
+      database.db.query.completedSets.findFirst({
+        where: eq(completedSets.id, saved.setId),
+        columns: { sessionExerciseId: true },
+      }),
+    ).resolves.toEqual({ sessionExerciseId: sessionExercise.id });
+
+    await expect(updateSessionExerciseWithVersion(
+      database.db,
+      fixture.userId,
+      sessionExercise.id,
+      { modificationType: "as_planned", skipReason: null },
+      "session_exercise.unskip",
+      { activeOnly: true },
+    )).resolves.toMatchObject({ ok: true, changed: true });
+    await expect(
+      database.db.query.sessionExercises.findFirst({
+        where: eq(sessionExercises.id, sessionExercise.id),
+        columns: { modificationType: true },
+      }),
+    ).resolves.toEqual({ modificationType: "as_planned" });
+  });
+
+  it("never lets another owner's day warm-up block this workout", async () => {
+    const [otherUser] = await database.db
+      .insert(users)
+      .values({ email: "t03-other-owner@example.com" })
+      .returning({ id: users.id });
+    await database.db.insert(userProfiles).values({
+      userId: otherUser.id,
+      timezone: "America/Toronto",
+      unit: "lb",
+    });
+    const [otherSession] = await database.db
+      .insert(workoutSessions)
+      .values({
+        userId: otherUser.id,
+        templateName: "Other workout",
+        status: "in_progress",
+        timezone: "America/Toronto",
+        localDate: "2026-08-22",
+      })
+      .returning({ id: workoutSessions.id });
+    await database.db.insert(sessionOccurrences).values({
+      sessionId: otherSession.id,
+      sessionExerciseId: null,
+      kind: "day_warmup",
+      origin: "planned",
+      sequenceIdx: 0,
+      kindOrdinal: 0,
+      label: "Other owner's warm-up",
+    });
+    const working = await database.db.query.sessionOccurrences.findFirst({
+      where: eq(
+        sessionOccurrences.sessionExerciseId,
+        fixture.sessionExerciseIds.loaded,
+      ),
+      columns: { id: true },
+    });
+    if (!working) throw new Error("Expected the owned working occurrence.");
+
+    await expect(mutateWorkoutOccurrence(database.db, fixture.userId, {
+      occurrenceId: working.id,
+      operation: "skip",
+      reason: "owner chose to skip",
+      expectedRevision: 0,
+      clientKey: "t03-cross-session-warmup",
+    })).resolves.toMatchObject({ outcome: "saved" });
+  });
 
   it("keeps planned ordinals pending while an extra is performed before and after the plan", async () => {
     const loadedExerciseId = fixture.sessionExerciseIds.loaded;

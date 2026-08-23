@@ -50,8 +50,10 @@ export type WorkoutSetOutboxStatus = "queued" | "needs_attention";
 export type WorkoutSetOrderBlocker = {
   occurrenceId: string;
   occurrenceRevision: number;
-  sessionExerciseId: string;
+  sessionExerciseId: string | null;
   exerciseName: string;
+  /** Absent only on retained device entries created before preparation blockers. */
+  kind?: "working_set" | "day_warmup" | "exercise_warmup";
   setNo: number;
   groupRound: number | null;
   origin: string;
@@ -434,14 +436,21 @@ function isWorkoutSetOrderBlocker(
     UUID_PATTERN.test(value.occurrenceId) &&
     Number.isInteger(value.occurrenceRevision) &&
     Number(value.occurrenceRevision) >= 0 &&
-    typeof value.sessionExerciseId === "string" &&
-    UUID_PATTERN.test(value.sessionExerciseId) &&
+    ((value.kind === "day_warmup" && value.sessionExerciseId === null) ||
+      (value.kind !== "day_warmup" &&
+        typeof value.sessionExerciseId === "string" &&
+        UUID_PATTERN.test(value.sessionExerciseId))) &&
     typeof value.exerciseName === "string" &&
     value.exerciseName.length > 0 &&
     value.exerciseName.length <= 200 &&
+    (value.kind === undefined ||
+      value.kind === "working_set" ||
+      value.kind === "day_warmup" ||
+      value.kind === "exercise_warmup") &&
     Number.isInteger(value.setNo) &&
-    Number(value.setNo) >= 1 &&
-    Number(value.setNo) <= 50 &&
+    (value.kind === "day_warmup" || value.kind === "exercise_warmup"
+      ? Number(value.setNo) === 0
+      : Number(value.setNo) >= 1 && Number(value.setNo) <= 50) &&
     (value.groupRound === null || (
       Number.isInteger(value.groupRound) && Number(value.groupRound) >= 1
     )) &&

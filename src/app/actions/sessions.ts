@@ -688,14 +688,40 @@ export async function confirmExerciseUnskipped(input: {
   const owned = await requireOwnedSessionExercise(parsed.sessionExerciseId);
   if (!owned.ok) return owned;
   const { user, db, sessionExercise } = owned;
+  let restoreModificationType = sessionExercise.modificationType;
+  if (sessionExercise.modificationType === "skipped") {
+    const skipVersions = await db.query.recordVersions.findMany({
+      where: and(
+        eq(recordVersions.userId, user.id),
+        eq(recordVersions.entityType, "session_exercise"),
+        eq(recordVersions.entityId, sessionExercise.id),
+        eq(recordVersions.action, "session_exercise.skip"),
+      ),
+      orderBy: desc(recordVersions.createdAt),
+    });
+    const retainedType = skipVersions.find((version) =>
+      version.afterData.modification_type === "skipped" &&
+      version.beforeData.modification_type !== "skipped"
+    )?.beforeData.modification_type;
+    const parsedRetainedType = z.enum([
+      "as_planned",
+      "substituted",
+      "added",
+    ]).safeParse(retainedType);
+    if (!parsedRetainedType.success) {
+      return actionFailure(
+        "previous_state_unavailable",
+        "The exercise's previous workout-only state is unavailable. Reload the workout before trying Undo again.",
+      );
+    }
+    restoreModificationType = parsedRetainedType.data;
+  }
   const updated = await updateSessionExerciseWithVersion(
     db,
     user.id,
     sessionExercise.id,
     {
-      modificationType: sessionExercise.substitutedForExerciseId
-        ? "substituted"
-        : "as_planned",
+      modificationType: restoreModificationType,
       skipReason: null,
     },
     "session_exercise.unskip",
@@ -720,7 +746,11 @@ export async function confirmExerciseUnskipped(input: {
     );
   }
   revalidatePath(`/session/${sessionExercise.sessionId}`);
-  return { ...updated, historyRevision: updated.historyRevision };
+  return {
+    ...updated,
+    historyRevision: updated.historyRevision,
+    modificationType: restoreModificationType,
+  };
 }
 
 const occurrenceMutationSchema = z.object({

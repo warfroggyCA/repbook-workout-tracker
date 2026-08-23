@@ -124,7 +124,7 @@ describe("SessionPreparationPanel", () => {
     expect(noneNeeded).not.toContain("does not have a saved equipment list");
   });
 
-  it("keeps post-start attention in a named collapsed disclosure", () => {
+  it("removes the global equipment list after acknowledged work", () => {
     const html = renderToStaticMarkup(
       <SessionPreparationPanel
         projection={projection({
@@ -139,15 +139,7 @@ describe("SessionPreparationPanel", () => {
       />,
     );
 
-    expect(html).toMatch(/^<details /);
-    expect(html).not.toMatch(/^<details [^>]*open/);
-    expect(html).toContain("Workout equipment");
-    expect(html).toContain("1 item · 1 item needs attention");
-    expect(html).toContain(">Review<");
-    expect(html).toContain("Equipment unknown");
-    expect(html).toContain("Review warm-up");
-    expect(html).toContain("Some exercises are missing saved equipment details");
-    expect(html).toContain("1 item shown from saved requirements");
+    expect(html).toBe("");
   });
 
   it("distinguishes saved-but-incompatible equipment from missing equipment", () => {
@@ -188,14 +180,10 @@ describe("SessionPreparationPanel", () => {
       />,
     );
 
-    expect(html).toContain("Previous exercise requirements are withheld");
-    expect(html).not.toContain("Use the saved equipment list");
-    expect(html).not.toContain(">0 items<");
-    expect(html).toMatch(/^<details /);
-    expect(html).not.toMatch(/^<details [^>]*open/);
+    expect(html).toBe("");
   });
 
-  it("collapses an all-confirmed post-acknowledgement list to a named native disclosure", () => {
+  it("does not repeat an all-confirmed list post-acknowledgement", () => {
     const html = renderToStaticMarkup(
       <SessionPreparationPanel
         projection={projection({ rows: [row("confirmed", "available")] })}
@@ -204,10 +192,6 @@ describe("SessionPreparationPanel", () => {
       />,
     );
 
-    expect(html).toMatch(/^<details /);
-    expect(html).not.toMatch(/^<details [^>]*open/);
-    expect(html).toContain("Workout equipment");
-    expect(html).toContain("1 item · Equipment is available.");
-    expect(html).toContain("Show details");
+    expect(html).toBe("");
   });
 });

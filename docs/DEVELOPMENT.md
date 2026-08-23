@@ -325,6 +325,27 @@ equipment-geometry switching, workout-only removal/undo semantics, and narrow
 active-title rendering. The timer must be reconciled on visibility, pageshow,
 focus, and runner rehydration; no test may treat interval execution as elapsed
 time truth.
+The Day One active-workout regression gate is:
+
+```bash
+npx vitest run tests/unit/session-occurrences-data01.test.ts tests/unit/session-guidance.test.ts tests/unit/session-lifecycle-characterization.test.ts tests/unit/v2-t04-warmup-occurrences-db.test.ts tests/unit/exercise-card-component.test.tsx tests/unit/session-actions-results.test.ts tests/unit/progression.test.ts tests/unit/progression-performed-baseline-db.test.ts tests/unit/session-equipment-requirements.test.ts tests/unit/equipment-inventory-contract.test.ts
+npm run test:e2e:v2-t04
+npm run test:e2e:superset-prep
+npm run test:e2e:active-workout-add-exercise
+npm run test:e2e:plate-machine-guidance
+npm run test:e2e:current-action
+```
+
+It covers the one-tap time skip and detailed alternative, strict warm-up and
+rest order, prior-load precedence and remount hydration, explicit future-only
+progression evidence, saved dumbbell increment merging, pre-start equipment
+attention, local cable/plate guidance, superset visibility, stable workout-only
+remove/Undo, offline retained work, reload, duplicate taps, reduced motion,
+keyboard access, and the 390 by 844 and 320 by 700 mobile layouts. This tranche
+adds no migration and does not change snapshot or recovery-manifest versions.
+An offline warm-up decision is durably retained and replayed, but progression
+past that action waits for server acknowledgement; this is recovery, not a
+claim that the complete workout can advance offline.
 An installed-iPhone PWA field check remains required before release because
 automated WebKit cannot establish device sound, silent-mode, Bluetooth, or
 background behavior.
