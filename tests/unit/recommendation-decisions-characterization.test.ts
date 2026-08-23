@@ -233,6 +233,7 @@ describe("recommendation decisions publish immutable Program versions", () => {
         weight: options.fromLoad ?? prescription.targetLoad ?? 100,
         weightUnit: options.loadUnit ?? prescription.targetLoadUnit ?? "lb",
         reps: 8,
+        rpe: 8,
         metricType: "weight_reps",
         performedSemanticsVersion: 1,
         performedLoadType: "barbell",

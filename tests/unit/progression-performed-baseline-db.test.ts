@@ -263,6 +263,77 @@ describe("progression performed baseline", () => {
         "This proposal no longer has a valid comparable performed baseline within the progression safety limit.",
     });
 
+    const citedSetId = recommendation.evidence.setIds?.[0];
+    if (!citedSetId) throw new Error("Expected cited performed-set evidence");
+
+    await database.db
+      .update(completedSets)
+      .set({ weight: 40 })
+      .where(eq(completedSets.id, citedSetId));
+    await expect(
+      approveRecommendationDecision(
+        database.db,
+        user.id,
+        {
+          recommendationId: recommendation.id,
+          expectedReviewRevision: recommendation.reviewRevision,
+          expectedDeferRevision: recommendation.deferRevision,
+        },
+        { publishProgramVersion: publishRecommendationProgramVersion },
+      ),
+    ).resolves.toEqual({
+      ok: false,
+      reason:
+        "The recommendation was not applied because the Program, safety information, equipment, or exercise availability changed. Review the current plan and try again.",
+    });
+
+    await database.db
+      .update(completedSets)
+      .set({ weight: 50, reps: 7 })
+      .where(eq(completedSets.id, citedSetId));
+    await expect(
+      approveRecommendationDecision(
+        database.db,
+        user.id,
+        {
+          recommendationId: recommendation.id,
+          expectedReviewRevision: recommendation.reviewRevision,
+          expectedDeferRevision: recommendation.deferRevision,
+        },
+        { publishProgramVersion: publishRecommendationProgramVersion },
+      ),
+    ).resolves.toEqual({
+      ok: false,
+      reason:
+        "The recommendation was not applied because the Program, safety information, equipment, or exercise availability changed. Review the current plan and try again.",
+    });
+
+    await database.db
+      .update(completedSets)
+      .set({ reps: 8, rir: 1 })
+      .where(eq(completedSets.id, citedSetId));
+    await expect(
+      approveRecommendationDecision(
+        database.db,
+        user.id,
+        {
+          recommendationId: recommendation.id,
+          expectedReviewRevision: recommendation.reviewRevision,
+          expectedDeferRevision: recommendation.deferRevision,
+        },
+        { publishProgramVersion: publishRecommendationProgramVersion },
+      ),
+    ).resolves.toEqual({
+      ok: false,
+      reason:
+        "The recommendation was not applied because the Program, safety information, equipment, or exercise availability changed. Review the current plan and try again.",
+    });
+
+    await database.db
+      .update(completedSets)
+      .set({ rir: 2 })
+      .where(eq(completedSets.id, citedSetId));
+
     await expect(
       approveRecommendationDecision(
         database.db,
