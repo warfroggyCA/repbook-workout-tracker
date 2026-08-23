@@ -747,8 +747,9 @@ describe("ExerciseCard", () => {
     }));
     expect(previousOnlyHtml).toContain('value="100"');
     expect(previousOnlyHtml).toContain(
-      "Starting load: Previous comparable set",
+      'aria-label="Starting load: Previous comparable set"',
     );
+    expect(previousOnlyHtml).toContain("Load: prior comparable");
   });
 
   it("keeps the planned occurrence number after an earlier set is skipped", () => {

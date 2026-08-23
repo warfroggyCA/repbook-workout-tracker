@@ -3831,11 +3831,11 @@ export function SessionRunner(props: SessionRunnerProps) {
                         )}
                       </div>
                       {occurrence.outcome === "pending" ? (
-                        <div className="flex w-full flex-wrap gap-2 sm:w-auto">
+                        <div className="grid w-full grid-cols-2 gap-2 sm:flex sm:w-auto sm:flex-wrap">
                           <Button
                             type="button"
                             size="sm"
-                            className="min-h-11"
+                            className="h-auto min-h-[44px] min-w-0 w-full whitespace-normal px-1.5 py-1 text-center leading-tight sm:w-auto sm:px-2.5"
                             variant="outline"
                             disabled={
                               equipmentChangePending ||
@@ -3853,7 +3853,7 @@ export function SessionRunner(props: SessionRunnerProps) {
                           <Button
                             type="button"
                             size="sm"
-                            className="min-h-11"
+                            className="h-auto min-h-[44px] min-w-0 w-full whitespace-normal px-1.5 py-1 text-center leading-tight sm:w-auto sm:px-2.5"
                             variant="secondary"
                             disabled={
                               equipmentChangePending ||
@@ -3873,8 +3873,9 @@ export function SessionRunner(props: SessionRunnerProps) {
                           <Button
                             type="button"
                             size="sm"
-                            className="min-h-11"
+                            className="h-auto min-h-[44px] min-w-0 w-full whitespace-normal px-1.5 py-1 text-center leading-tight sm:w-auto sm:px-2.5"
                             variant="ghost"
+                            aria-label="Choose another skip reason"
                             disabled={
                               equipmentChangePending ||
                               occurrenceMutation != null
@@ -3886,12 +3887,12 @@ export function SessionRunner(props: SessionRunnerProps) {
                               })
                             }
                           >
-                            Other skip reason
+                            Other
                           </Button>
                           <Button
                             type="button"
                             size="sm"
-                            className="min-h-11"
+                            className="h-auto min-h-[44px] min-w-0 w-full whitespace-normal px-1.5 py-1 text-center leading-tight sm:w-auto sm:px-2.5"
                             variant="outline"
                             role="checkbox"
                             aria-checked="false"
