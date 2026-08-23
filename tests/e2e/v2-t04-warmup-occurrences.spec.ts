@@ -176,9 +176,61 @@ test("keeps warm-up actions singular, reversible, durable, and usable with minim
   await expect(completedRow).toContainText("Note: Setup felt stable");
   await waitForSaved(completedRow);
 
-  const skippedLabel = PRODUCTION_WORKOUT_START_WARMUP[1].label;
-  let skippedRow = warmupRow(page.locator("#workout-warmup"), skippedLabel);
-  await skippedRow.getByRole("button", { name: "Skip", exact: true }).click();
+  const quickSkippedLabel = PRODUCTION_WORKOUT_START_WARMUP[1].label;
+  let quickSkippedRow = warmupRow(
+    page.locator("#workout-warmup"),
+    quickSkippedLabel,
+  );
+  const quickSkip = quickSkippedRow.getByRole("button", {
+    name: "Skip due to time",
+    exact: true,
+  });
+  await page.context().setOffline(true);
+  await quickSkip.dblclick();
+  await expect.poll(() => page.evaluate(() => {
+    const raw = localStorage.getItem(
+      "workout-tracker:occurrence-mutation-outbox:v1",
+    );
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as {
+      entries?: Array<{ operation?: string; reasonCode?: string | null }>;
+    };
+    return (parsed.entries ?? []).map((entry) => ({
+      operation: entry.operation,
+      reasonCode: entry.reasonCode,
+    }));
+  })).toEqual([{
+    operation: "skip",
+    reasonCode: "time_limit_reached",
+  }]);
+  await page.context().setOffline(false);
+  await expect(
+    quickSkippedRow.getByRole("button", { name: "Restore" }),
+  ).toBeVisible();
+  await waitForSaved(quickSkippedRow);
+
+  await page.reload({ waitUntil: "networkidle" });
+  reloadedPanel = page.locator("#workout-warmup");
+  await reloadedPanel
+    .getByRole("button", { name: "Review full plan", exact: true })
+    .click();
+  quickSkippedRow = warmupRow(reloadedPanel, quickSkippedLabel);
+  await expect(quickSkippedRow).toContainText("skipped");
+  await quickSkippedRow.getByRole("button", { name: "Restore" }).click();
+  await expect(
+    quickSkippedRow.getByRole("checkbox", {
+      name: `Mark ${quickSkippedLabel} complete`,
+      exact: true,
+    }),
+  ).toBeVisible();
+  await waitForSaved(quickSkippedRow);
+
+  const skippedLabel = PRODUCTION_WORKOUT_START_WARMUP[2].label;
+  let skippedRow = warmupRow(reloadedPanel, skippedLabel);
+  await skippedRow.getByRole("button", {
+    name: "Other skip reason",
+    exact: true,
+  }).click();
   dialog = page.getByRole("dialog");
   await dialog.getByLabel("Reason").selectOption("time_limit_reached");
   await dialog.getByLabel("Optional note").fill("Short session today");

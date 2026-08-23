@@ -7,6 +7,8 @@ export const progressionConfig = {
   exposuresRequiredForIncrease: 2,
   /** RPE above this disqualifies an exposure from counting as "clean". */
   rpeCapForIncrease: 8,
+  /** RIR below this disqualifies an exposure from counting as "clean". */
+  rirFloorForIncrease: 2,
   /** Never recommend a load jump above this fraction of current load. */
   maxLoadJumpPct: 0.1,
   /** Fallback increment when no plate/dumbbell data constrains the step. */

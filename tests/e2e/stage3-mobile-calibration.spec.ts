@@ -203,7 +203,10 @@ test("keeps new Stage 3 controls usable at the saved iPhone calibration", async 
     .toHaveAttribute("aria-label", "Complete Mobile activation ramp");
 
   const addNote = warmupRow.getByRole("button", { name: "Add note", exact: true });
-  const skip = warmupRow.getByRole("button", { name: "Skip", exact: true });
+  const skip = warmupRow.getByRole("button", {
+    name: "Skip due to time",
+    exact: true,
+  });
   const complete = warmupRow.getByRole("checkbox", { name: "Mark Mobile activation ramp complete", exact: true });
   const initialTouchTargets = await Promise.all([
     touchMetric(addNote, "Add note"),

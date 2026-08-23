@@ -34,6 +34,8 @@ import {
   AlertTitle,
 } from "@/components/ui/alert";
 import { acceptanceWorkoutNow } from "@/lib/acceptance-workout-clock";
+import { WorkoutEquipmentPreflight } from "@/components/dashboard/workout-equipment-preflight";
+import { resolveTemplatePreparationEquipmentProjection } from "@/services/session-equipment-requirements";
 
 function whyThisProgramDay(today: TodayData) {
   if (today.schedule?.nextEvent) {
@@ -198,6 +200,16 @@ export default async function TodayPage({
   );
   const activeTimingNeedsReview =
     today.inProgressTiming?.reviewRequired ?? false;
+  const equipmentPreflight =
+    selectedTemplate &&
+    !today.inProgressSessionId &&
+    !scheduledAlternateBlocked
+    ? await resolveTemplatePreparationEquipmentProjection(
+        db,
+        user.id,
+        selectedTemplate.template.id,
+      )
+    : null;
 
   return (
     <main className="mx-auto flex max-w-5xl flex-col gap-3 px-4 py-0 sm:gap-4 sm:p-6 lg:p-8">
@@ -424,6 +436,9 @@ export default async function TodayPage({
                     {gap} days since your last workout. Start around 10% lighter
                     than usual and settle back into the movements.
                   </p>
+                )}
+                {!scheduledAlternateBlocked && (
+                  <WorkoutEquipmentPreflight projection={equipmentPreflight} />
                 )}
                 {!scheduledAlternateBlocked && (
                   <WorkoutStartForm

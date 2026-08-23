@@ -5,11 +5,13 @@ import {
   REST_COUNTDOWN_TICK_PATTERN,
   parseRestAlertPreference,
   planRestCueTransition,
+  prepareRestAudioContext,
   primeRestAudioContext,
   requestedRestCueChannels,
   restCountdownCueKey,
   restCueOutcome,
   restCueOutcomeMessage,
+  restSoundChannelState,
   writeRestAlertPreference,
   type RestAlertPreferenceStorage,
 } from "@/lib/rest-alert-preference";
@@ -22,6 +24,19 @@ class MemoryStorage implements RestAlertPreferenceStorage {
 }
 
 describe("rest alert preference", () => {
+  it("distinguishes supported but gesture-blocked sound from unavailable audio", () => {
+    expect(restSoundChannelState({
+      requested: true,
+      audioSupported: true,
+      contextState: null,
+    })).toBe("blocked");
+    expect(restSoundChannelState({
+      requested: true,
+      audioSupported: false,
+      contextState: null,
+    })).toBe("unavailable");
+  });
+
   it("requests foreground sound by default for absent or invalid device preferences", () => {
     expect(parseRestAlertPreference(null)).toBe(DEFAULT_REST_ALERT_PREFERENCE);
     expect(parseRestAlertPreference("bad-json")).toBe("sound");
@@ -149,6 +164,48 @@ describe("rest alert preference", () => {
       "start:3",
       "stop:3.02",
     ]);
+  });
+
+  it("primes every consecutive timer gesture and replaces a closed context", () => {
+    const starts: number[] = [];
+    const contexts: Array<AudioContext & { state: AudioContextState }> = [];
+    class FakeAudioContext {
+      currentTime = contexts.length;
+      destination = {};
+      state: AudioContextState = "running";
+      createOscillator() {
+        return {
+          type: "sine" as OscillatorType,
+          frequency: { setValueAtTime: () => undefined },
+          connect: () => undefined,
+          start: (at: number) => starts.push(at),
+          stop: () => undefined,
+        };
+      }
+      createGain() {
+        return {
+          gain: { setValueAtTime: () => undefined },
+          connect: () => undefined,
+        };
+      }
+      constructor() {
+        contexts.push(this as unknown as AudioContext & {
+          state: AudioContextState;
+        });
+      }
+    }
+    const Constructor = FakeAudioContext as unknown as new () => AudioContext;
+
+    const first = prepareRestAudioContext(null, Constructor);
+    const second = prepareRestAudioContext(first, Constructor);
+    expect(second).toBe(first);
+    expect(starts).toHaveLength(2);
+
+    Object.defineProperty(first, "state", { value: "closed" });
+    const third = prepareRestAudioContext(first, Constructor);
+    expect(third).not.toBe(first);
+    expect(contexts).toHaveLength(2);
+    expect(starts).toHaveLength(3);
   });
 
   it("consumes missed background milestones without replaying them on return", () => {

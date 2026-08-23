@@ -6,9 +6,21 @@ import type {
 import type { EquipmentSelectionOccurrenceState } from "@/services/session-equipment-selection";
 import type {
   WorkoutSetLoadEntryMeaning,
+  WorkoutSetOrderBlocker,
   WorkoutSetOutboxEntry,
   WorkoutSetOutboxSnapshot,
 } from "@/lib/workout-set-outbox";
+
+export function workoutSetOrderBlockerTargetId(
+  blocker: WorkoutSetOrderBlocker,
+): string | null {
+  if (blocker.kind === "day_warmup" || blocker.kind === "exercise_warmup") {
+    return `warmup-occurrence-${blocker.occurrenceId}`;
+  }
+  if (blocker.sessionExerciseId == null) return null;
+  const prefix = blocker.isAddedSet ? "added-set-entry" : "set-entry";
+  return `${prefix}-${blocker.sessionExerciseId}-${blocker.occurrenceId}`;
+}
 
 export function shouldShowMissingWarmupMessage(input: {
   dayWarmupNotes: string | null;

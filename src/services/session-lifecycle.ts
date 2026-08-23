@@ -377,8 +377,9 @@ export type LogWorkoutSetResult =
       blocker: {
         occurrenceId: string;
         occurrenceRevision: number;
-        sessionExerciseId: string;
+        sessionExerciseId: string | null;
         exerciseName: string;
+        kind: "working_set" | "day_warmup" | "exercise_warmup";
         setNo: number;
         groupRound: number | null;
         origin: string;
@@ -1238,24 +1239,54 @@ export async function mutateWorkoutOccurrence(
           )
         )
         AND (
+          ${input.operation} <> 'restore'
+          OR occurrence.kind NOT IN ('day_warmup', 'exercise_warmup')
+          OR NOT EXISTS (
+            SELECT 1
+            FROM session_occurrences later
+            WHERE later.session_id = occurrence.session_id
+              AND later.kind = 'working_set'
+              AND later.outcome = 'completed'
+              AND later.sequence_idx > occurrence.sequence_idx
+              AND (
+                occurrence.kind = 'day_warmup'
+                OR later.session_exercise_id = occurrence.session_exercise_id
+              )
+          )
+        )
+        AND (
           ${input.operation} <> 'skip'
           OR occurrence.kind <> 'working_set'
           OR (
             NOT EXISTS (
               SELECT 1
               FROM session_occurrences earlier
-              WHERE earlier.session_exercise_id = occurrence.session_exercise_id
-                AND earlier.kind = 'working_set'
-                AND earlier.kind_ordinal < occurrence.kind_ordinal
+              WHERE earlier.session_id = occurrence.session_id
                 AND earlier.outcome = 'pending'
                 AND (
-                  NOT (
-                    occurrence.origin = 'ad_hoc'
-                    AND occurrence.planned_note = ${ADDED_WORKOUT_SET_NOTE}
+                  (
+                    earlier.kind = 'day_warmup'
+                    AND earlier.sequence_idx < occurrence.sequence_idx
                   )
                   OR (
-                    earlier.origin = 'ad_hoc'
-                    AND earlier.planned_note = ${ADDED_WORKOUT_SET_NOTE}
+                    earlier.session_exercise_id = occurrence.session_exercise_id
+                    AND earlier.kind = 'exercise_warmup'
+                    AND earlier.sequence_idx < occurrence.sequence_idx
+                  )
+                  OR (
+                    earlier.session_exercise_id = occurrence.session_exercise_id
+                    AND earlier.kind = 'working_set'
+                    AND earlier.kind_ordinal < occurrence.kind_ordinal
+                    AND (
+                      NOT (
+                        occurrence.origin = 'ad_hoc'
+                        AND occurrence.planned_note = ${ADDED_WORKOUT_SET_NOTE}
+                      )
+                      OR (
+                        earlier.origin = 'ad_hoc'
+                        AND earlier.planned_note = ${ADDED_WORKOUT_SET_NOTE}
+                      )
+                    )
                   )
                 )
             )
@@ -2885,7 +2916,9 @@ async function logWorkoutSetAttempt(
         earlier.id,
         earlier.revision,
         earlier.session_exercise_id,
-        earlier.kind_ordinal + 1 AS set_no,
+        earlier.kind,
+        CASE WHEN earlier.kind = 'working_set'
+          THEN earlier.kind_ordinal + 1 ELSE 0 END AS set_no,
         earlier.group_round,
         earlier.origin,
         (
@@ -2896,33 +2929,47 @@ async function logWorkoutSetAttempt(
       FROM owned_occurrence attempted
       JOIN session_occurrences earlier
         ON earlier.session_id = attempted.session_id
-       AND earlier.kind = 'working_set'
        AND earlier.outcome = 'pending'
        AND (
          (
+           earlier.kind = 'day_warmup'
+           AND earlier.sequence_idx < attempted.sequence_idx
+         )
+         OR
+         (
            earlier.session_exercise_id = attempted.session_exercise_id
-           AND earlier.kind_ordinal < attempted.kind_ordinal
            AND (
-             NOT (
-               attempted.origin = 'ad_hoc'
-               AND attempted.planned_note = ${ADDED_WORKOUT_SET_NOTE}
+             (
+               earlier.kind = 'exercise_warmup'
+               AND earlier.sequence_idx < attempted.sequence_idx
              )
              OR (
-               earlier.origin = 'ad_hoc'
-               AND earlier.planned_note = ${ADDED_WORKOUT_SET_NOTE}
+               earlier.kind = 'working_set'
+               AND earlier.kind_ordinal < attempted.kind_ordinal
+               AND (
+                 NOT (
+                   attempted.origin = 'ad_hoc'
+                   AND attempted.planned_note = ${ADDED_WORKOUT_SET_NOTE}
+                 )
+                 OR (
+                   earlier.origin = 'ad_hoc'
+                   AND earlier.planned_note = ${ADDED_WORKOUT_SET_NOTE}
+                 )
+               )
              )
            )
          )
          OR (
            attempted.group_snapshot_id IS NOT NULL
            AND earlier.group_snapshot_id = attempted.group_snapshot_id
+           AND earlier.kind = 'working_set'
            AND earlier.sequence_idx < attempted.sequence_idx
          )
        )
-      JOIN session_exercises blocker_session_exercise
+      LEFT JOIN session_exercises blocker_session_exercise
         ON blocker_session_exercise.id = earlier.session_exercise_id
        AND blocker_session_exercise.session_id = attempted.session_id
-      JOIN exercises blocker_exercise
+      LEFT JOIN exercises blocker_exercise
         ON blocker_exercise.id = blocker_session_exercise.exercise_id
       ORDER BY earlier.sequence_idx, earlier.kind_ordinal, earlier.id
       LIMIT 1
@@ -3258,8 +3305,9 @@ async function logWorkoutSetAttempt(
       , (SELECT revision FROM blocking_owned_occurrence) AS blocker_occurrence_revision
       , (SELECT session_exercise_id FROM blocking_owned_occurrence)
           AS blocker_session_exercise_id
-      , (SELECT exercise_name FROM blocking_owned_occurrence)
+      , (SELECT coalesce(exercise_name, 'Workout warm-up') FROM blocking_owned_occurrence)
           AS blocker_exercise_name
+      , (SELECT kind FROM blocking_owned_occurrence) AS blocker_kind
       , (SELECT set_no FROM blocking_owned_occurrence) AS blocker_set_no
       , (SELECT group_round FROM blocking_owned_occurrence) AS blocker_group_round
       , (SELECT origin FROM blocking_owned_occurrence) AS blocker_origin
@@ -3441,8 +3489,12 @@ async function logWorkoutSetAttempt(
       if (
         row.blocker_occurrence_id == null ||
         row.blocker_occurrence_revision == null ||
-        row.blocker_session_exercise_id == null ||
         row.blocker_exercise_name == null ||
+        (row.blocker_kind !== "working_set" &&
+          row.blocker_kind !== "day_warmup" &&
+          row.blocker_kind !== "exercise_warmup") ||
+        ((row.blocker_kind === "day_warmup") !==
+          (row.blocker_session_exercise_id == null)) ||
         row.blocker_set_no == null ||
         typeof row.blocker_origin !== "string" ||
         typeof row.blocker_is_added_set !== "boolean"
@@ -3454,19 +3506,27 @@ async function logWorkoutSetAttempt(
         ? null
         : Number(row.blocker_group_round);
       const exerciseName = String(row.blocker_exercise_name);
+      const kind = row.blocker_kind;
       const isAddedSet = row.blocker_is_added_set;
-      const position = isAddedSet
-        ? "added set"
-        : groupRound == null
-          ? `set ${setNo}`
-          : `round ${groupRound}, set ${setNo}`;
+      const position = kind === "day_warmup"
+        ? "warm-up"
+        : kind === "exercise_warmup"
+          ? "preparation set"
+          : isAddedSet
+          ? "added set"
+          : groupRound == null
+            ? `set ${setNo}`
+            : `round ${groupRound}, set ${setNo}`;
       return {
         outcome: "set_order_conflict",
         blocker: {
           occurrenceId: String(row.blocker_occurrence_id),
           occurrenceRevision: Number(row.blocker_occurrence_revision),
-          sessionExerciseId: String(row.blocker_session_exercise_id),
+          sessionExerciseId: row.blocker_session_exercise_id == null
+            ? null
+            : String(row.blocker_session_exercise_id),
           exerciseName,
+          kind,
           setNo,
           groupRound,
           origin: String(row.blocker_origin),

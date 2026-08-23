@@ -57,7 +57,7 @@ test("links every material Review claim to evidence and preserves deliberate own
 
   await expect(supported.getByText("Supported", { exact: true })).toBeVisible();
   await expect(supported).toContainText("progression rules");
-  await expect(supported).toContainText("progression-rules-v1");
+  await expect(supported).toContainText("progression-rules-v2");
   await expect(supported).toContainText("Not scored");
   await expect(supported).toContainText("Proposed future Program effect");
   await expect(supported).toContainText("completed workouts stay unchanged");

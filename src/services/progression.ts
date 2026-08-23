@@ -64,6 +64,39 @@ type LoadSteppers = {
   roundDown: (target: number) => number | null;
 };
 
+type RetainedExposure = Exposure & {
+  prescription: {
+    sets: number;
+    repRangeMin: number;
+    repRangeMax: number;
+    targetLoad: number | null;
+  } | null;
+};
+
+export function retainedPrescriptionMatchesCurrent(
+  retained: RetainedExposure["prescription"],
+  current: {
+    sets: number;
+    repRangeMin: number;
+    repRangeMax: number;
+    targetLoad: number | null;
+  },
+) {
+  if (!retained) return false;
+  const sameLoad =
+    retained.targetLoad == null && current.targetLoad == null
+      ? true
+      : retained.targetLoad != null &&
+        current.targetLoad != null &&
+        Math.abs(retained.targetLoad - current.targetLoad) < 0.000_001;
+  return (
+    retained.sets === current.sets &&
+    retained.repRangeMin === current.repRangeMin &&
+    retained.repRangeMax === current.repRangeMax &&
+    sameLoad
+  );
+}
+
 export type ProgressionReadObservation = {
   stage: string;
   rows: number;
@@ -503,6 +536,12 @@ export async function evaluateSessionProgression(
           cs.weight_unit,
           cs.reps,
           cs.rpe,
+          cs.rir,
+          se.target_sets,
+          se.target_reps_min,
+          se.target_reps_max,
+          se.target_load,
+          se.target_load_unit,
           dense_rank() OVER (
             PARTITION BY requested.current_slot_id
             ORDER BY ws.started_at DESC, ws.id DESC
@@ -520,6 +559,7 @@ export async function evaluateSessionProgression(
           ON occurrence.completed_set_id = cs.id
          AND occurrence.session_exercise_id = se.id
          AND occurrence.kind = 'working_set'
+         AND occurrence.origin = 'planned'
          AND occurrence.outcome = 'completed'
         WHERE ws.user_id = ${userId}::uuid
           AND ws.status = 'completed'
@@ -581,6 +621,12 @@ export async function evaluateSessionProgression(
     weight_unit: "lb" | "kg" | null;
     reps: number;
     rpe: number | null;
+    rir: number | null;
+    target_sets: number | null;
+    target_reps_min: number | null;
+    target_reps_max: number | null;
+    target_load: number | null;
+    target_load_unit: "lb" | "kg" | null;
   }>;
   observeRead?.({ stage: "exposures", rows: exposureRows.length });
   observeRead?.({ stage: "recommendations", rows: recommendationState.length });
@@ -606,7 +652,7 @@ export async function evaluateSessionProgression(
       prescription,
     ])
   );
-  const exposuresBySlot = new Map<string, Exposure[]>();
+  const exposuresBySlot = new Map<string, RetainedExposure[]>();
   for (const row of exposureRows) {
     const slotExposures = exposuresBySlot.get(row.slot_id) ?? [];
     let exposure = slotExposures.find(
@@ -620,6 +666,26 @@ export async function evaluateSessionProgression(
             ? row.started_at
             : new Date(row.started_at),
         sets: [],
+        prescription:
+          row.target_sets != null &&
+          row.target_reps_min != null &&
+          row.target_reps_max != null &&
+          ((row.target_load == null && row.target_load_unit == null) ||
+            (row.target_load != null && row.target_load_unit != null))
+            ? {
+                sets: row.target_sets,
+                repRangeMin: row.target_reps_min,
+                repRangeMax: row.target_reps_max,
+                targetLoad:
+                  row.target_load != null && row.target_load_unit != null
+                    ? convertWeight(
+                        row.target_load,
+                        row.target_load_unit,
+                        profile.unit,
+                      )
+                    : null,
+              }
+            : null,
       };
       slotExposures.push(exposure);
       exposuresBySlot.set(row.slot_id, slotExposures);
@@ -632,6 +698,7 @@ export async function evaluateSessionProgression(
           : null,
       reps: row.reps,
       rpe: row.rpe,
+      rir: row.rir,
     });
   }
 
@@ -642,7 +709,25 @@ export async function evaluateSessionProgression(
     const prescription = prescriptionsBySlot.get(slotKey);
     if (!prescription) continue;
     if (prescription.progressionRuleId === "hold") continue;
-    const exposures = exposuresBySlot.get(slotKey) ?? [];
+    const currentPrescription = {
+      sets: prescription.sets,
+      repRangeMin: prescription.repRangeMin,
+      repRangeMax: prescription.repRangeMax,
+      targetLoad:
+        prescription.targetLoad != null && prescription.targetLoadUnit != null
+          ? convertWeight(
+              prescription.targetLoad,
+              prescription.targetLoadUnit,
+              profile.unit,
+            )
+          : null,
+    };
+    const exposures = (exposuresBySlot.get(slotKey) ?? []).filter((exposure) =>
+      retainedPrescriptionMatchesCurrent(
+        exposure.prescription,
+        currentPrescription,
+      ),
+    );
 
     const recentPain: PainEvent[] = recentPainRows
       .filter((pain) => pain.exerciseId === se.exercise.id)
@@ -657,19 +742,7 @@ export async function evaluateSessionProgression(
     const steppers = steppersForLoadType(se.exercise.loadType, plateConfigs, incrementals);
     const decision = evaluateSlot({
       exerciseName: se.exercise.name,
-      prescription: {
-        sets: prescription.sets,
-        repRangeMin: prescription.repRangeMin,
-        repRangeMax: prescription.repRangeMax,
-        targetLoad:
-          prescription.targetLoad != null && prescription.targetLoadUnit != null
-            ? convertWeight(
-                prescription.targetLoad,
-                prescription.targetLoadUnit,
-                profile.unit
-              )
-            : null,
-      },
+      prescription: currentPrescription,
       exposures,
       recentPain,
       exposuresRequiredForIncrease:

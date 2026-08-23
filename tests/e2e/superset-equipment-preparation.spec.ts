@@ -128,7 +128,7 @@ async function chooseFontSize(
   await page.goto(returnUrl);
 }
 
-test("keeps truthful saved-equipment preparation compact beside the current action", async ({
+test("keeps truthful saved-equipment preparation before work and local setup afterward", async ({
   page,
 }, testInfo) => {
   await signIn(page);
@@ -273,13 +273,16 @@ test("keeps truthful saved-equipment preparation compact beside the current acti
   await expect(page.getByTestId("active-workout-sticky-summary")).toContainText(
     "1/13 planned",
   );
+  await expect(page.getByTestId("session-preparation-panel")).toHaveCount(0);
   await page.reload({ waitUntil: "networkidle" });
-  const collapsedPreparation = page.locator(
-    'details[data-testid="session-preparation-panel"]',
+  await expect(page.getByTestId("session-preparation-panel")).toHaveCount(0);
+  const localSetup = page
+    .getByTestId("current-exercise-card")
+    .locator("xpath=preceding-sibling::details[@data-testid='exercise-equipment-setup'][1]");
+  await expect(localSetup).toBeVisible();
+  await expect(localSetup).toContainText(
+    /Equipment setup for|Current equipment setup/,
   );
-  await expect(collapsedPreparation).toBeVisible();
-  await expect(collapsedPreparation).not.toHaveAttribute("open", "");
-  await expect(collapsedPreparation).toContainText("Workout equipment");
 
   const showCurrent = page.getByRole("complementary", {
     name: "Workout status",
@@ -447,10 +450,8 @@ test("presents immutable superset order, truthful progress, and next-member equi
     group.getByRole("link", { name: /1\. Dumbbell Lateral Raise/ }),
   ).toHaveAttribute("aria-current", "step");
 
-  for (const width of [320, 375, 390, 440]) {
-    await expectReachableGroupSurface(page, group, width);
-  }
-
+  const currentCard = page.getByTestId("current-exercise-card");
+  const currentToggle = currentCard.getByTestId("exercise-swipe-surface");
   const laterMemberCard = page.locator('section[id^="exercise-"]').filter({
     has: page.getByRole("heading", {
       level: 2,
@@ -459,7 +460,19 @@ test("presents immutable superset order, truthful progress, and next-member equi
     }),
   }).first();
   const laterMemberToggle = laterMemberCard.getByTestId("exercise-swipe-surface");
+  await expect(currentToggle).toHaveAttribute("aria-expanded", "true");
+  await expect(laterMemberToggle).toHaveAttribute("aria-expanded", "true");
+
+  for (const width of [320, 375, 390, 440]) {
+    await expectReachableGroupSurface(page, group, width);
+    await expect(currentToggle).toHaveAttribute("aria-expanded", "true");
+    await expect(laterMemberToggle).toHaveAttribute("aria-expanded", "true");
+  }
+
   await laterMemberToggle.click();
+  await expect(laterMemberToggle).toHaveAttribute("aria-expanded", "false");
+  await laterMemberToggle.focus();
+  await page.keyboard.press("Enter");
   await expect(laterMemberToggle).toHaveAttribute("aria-expanded", "true");
   await expect(laterMemberCard).toContainText(
     "Reach this set in the workout flow",
@@ -467,13 +480,8 @@ test("presents immutable superset order, truthful progress, and next-member equi
   await expect(
     laterMemberCard.getByRole("button", { name: "Log set", exact: true }),
   ).toHaveCount(0);
-  await page
-    .getByRole("complementary", { name: "Workout status" })
-    .getByRole("button")
-    .first()
-    .click();
   await expect(
-    page.getByTestId("current-exercise-card").getByRole("button", {
+    currentCard.getByRole("button", {
       name: "Log set",
       exact: true,
     }),
@@ -516,11 +524,9 @@ test("presents immutable superset order, truthful progress, and next-member equi
   await expect(restoredGroup).toContainText("Prepare for Pallof Press");
   await expectNoHorizontalOverflow(page);
 
-  const currentCard = page.getByTestId("current-exercise-card");
   await expect(currentCard.getByRole("heading", { level: 2 })).toHaveText(
     "Dumbbell Lateral Raise",
   );
-  const currentToggle = currentCard.getByTestId("exercise-swipe-surface");
   await expect(currentToggle).toHaveAttribute("aria-expanded", "true");
   await currentToggle.click();
   await expect(currentToggle).toHaveAttribute("aria-expanded", "false");

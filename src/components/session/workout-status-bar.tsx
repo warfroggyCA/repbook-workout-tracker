@@ -9,6 +9,7 @@ import {
 import { cn } from "@/lib/utils";
 import type { DurableRestTimer } from "@/lib/rest-timer";
 import type { RestAlertPreference } from "@/lib/rest-alert-preference";
+import type { RestCueChannelOutcome } from "@/lib/rest-timer";
 import type { SessionExerciseData } from "./types";
 
 type Props = {
@@ -17,6 +18,7 @@ type Props = {
   timer: DurableRestTimer | null;
   restRemainingSec: number | null;
   restAlertPreference?: RestAlertPreference;
+  restSoundState?: RestCueChannelOutcome;
   onShowCurrent: () => void;
   onPrimaryAction?: () => void;
   currentWorkingSetRevealed?: boolean;
@@ -51,6 +53,7 @@ export function WorkoutStatusBar({
   timer,
   restRemainingSec,
   restAlertPreference = "sound",
+  restSoundState = "not_requested",
   onShowCurrent,
   onPrimaryAction,
   currentWorkingSetRevealed = true,
@@ -125,6 +128,20 @@ export function WorkoutStatusBar({
     : showsCurrentSet
       ? "Show current set"
       : status;
+  const restAlertLabel = restAlertPreference === "visual_only"
+    ? "Visual"
+    : restAlertPreference === "vibration"
+      ? "Vibrate"
+      : restSoundState === "blocked"
+        ? "Sound blocked"
+        : restSoundState === "unavailable"
+          ? "Sound unavailable"
+          : restAlertPreference === "sound_and_vibration"
+            ? "Sound + vibrate"
+            : "Sound";
+  const restAlertAriaLabel = restAlertPreference === "visual_only"
+    ? "visual only"
+    : restAlertLabel.toLowerCase();
 
   return (
     <aside
@@ -219,19 +236,13 @@ export function WorkoutStatusBar({
           >
             <span
               className="flex min-w-12 flex-col items-center text-center font-semibold text-amber-950 dark:text-amber-100"
-              aria-label={`Rest alert: ${restAlertPreference.replaceAll("_", " ")}`}
+              aria-label={`Rest alert: ${restAlertAriaLabel}`}
             >
               <span className="text-sm tabular-nums">
                 {Math.floor(restRemainingSec / 60)}:{String(restRemainingSec % 60).padStart(2, "0")}
               </span>
               <span className="text-[9px] leading-none">
-                {restAlertPreference === "visual_only"
-                  ? "Visual"
-                  : restAlertPreference === "vibration"
-                    ? "Vibrate"
-                    : restAlertPreference === "sound_and_vibration"
-                      ? "Sound + vibrate"
-                      : "Sound"}
+                {restAlertLabel}
               </span>
             </span>
             <Button type="button" variant="ghost" size="icon-sm" className="min-h-11 min-w-11" onClick={() => onRestAdjust(-15)} aria-label="Decrease rest by 15 seconds">

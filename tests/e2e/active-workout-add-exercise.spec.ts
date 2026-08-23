@@ -182,7 +182,15 @@ test("adds a reviewed workout-only exercise without editing the Program", async 
     "Added during this workout. It has no Program slot or progression target, and your Program remains unchanged.",
   );
   await expect(addedCard).toContainText("Set 1");
+  await context.setOffline(true);
   await addedCard.getByRole("button", { name: "Log set", exact: true }).click();
+  await expect(preparation).toHaveCount(0);
+  await expect.poll(() => page.evaluate(() => {
+    const raw = localStorage.getItem("workout-tracker:workout-set-outbox:v1");
+    if (!raw) return 0;
+    return (JSON.parse(raw) as { entries?: unknown[] }).entries?.length ?? 0;
+  })).toBe(1);
+  await context.setOffline(false);
   await expect(addedCard).toContainText("1/2 done · Workout only");
   await expect(addedCard).toContainText("Set 2");
   await expect(
@@ -214,7 +222,48 @@ test("adds a reviewed workout-only exercise without editing the Program", async 
 
   await page.reload({ waitUntil: "domcontentloaded" });
   const restoredAddedCard = page.getByRole("region", { name: "Push-Up" });
+  await expect(page.getByTestId("session-preparation-panel")).toHaveCount(0);
   await expect(restoredAddedCard).toContainText("Workout only");
+  await expect(restoredAddedCard).toContainText("1/2 done · Workout only");
+  const swipeSurface = restoredAddedCard.getByTestId(
+    "exercise-swipe-surface",
+  );
+  await swipeSurface.evaluate((element) => {
+    const dispatchTouch = (
+      type: "touchstart" | "touchmove" | "touchend",
+      clientX: number,
+    ) => {
+      const event = new Event(type, { bubbles: true, cancelable: true });
+      const touch = { clientX, clientY: 40 };
+      Object.defineProperty(event, "touches", {
+        value: type === "touchend" ? [] : [touch],
+      });
+      Object.defineProperty(event, "changedTouches", { value: [touch] });
+      element.dispatchEvent(event);
+    };
+    dispatchTouch("touchstart", 300);
+    dispatchTouch("touchmove", 205);
+    dispatchTouch("touchend", 205);
+  });
+  const swipeRemove = restoredAddedCard.getByRole("button", {
+    name: "Remove Push-Up from today",
+    exact: true,
+  });
+  await expect(swipeRemove).toHaveAttribute("aria-hidden", "false");
+  await swipeRemove.click();
+  const removeDialog = page.getByRole("dialog", {
+    name: "Remove Push-Up from today?",
+  });
+  await expect(removeDialog).toContainText(
+    "1 completed set will remain in this workout's history.",
+  );
+  await removeDialog
+    .getByRole("button", { name: "Remove from today", exact: true })
+    .click();
+  await expect(removeDialog).toHaveCount(0);
+  const undo = page.getByRole("button", { name: "Undo", exact: true });
+  await expect(undo).toBeVisible();
+  await undo.click();
   await expect(restoredAddedCard).toContainText("1/2 done · Workout only");
   await discardWorkout(page);
 

@@ -926,6 +926,21 @@ export async function publishRecommendationProgramVersion(
   if (!evidenceAssessment.actionable) {
     return { ok: false, reason: "invalid" };
   }
+  if (
+    input.appliedPayload.kind === "load_change" &&
+    input.expectedPayload.kind === "load_change" &&
+    input.expectedPayload.fromLoad == null
+  ) {
+    const baseline = recommendation.evidence.signals.baselineLoad;
+    if (
+      typeof baseline !== "number" ||
+      !Number.isFinite(baseline) ||
+      baseline <= 0 ||
+      input.appliedPayload.toLoad > baseline * (1 + cfg.maxLoadJumpPct)
+    ) {
+      return { ok: false, reason: "invalid" };
+    }
+  }
   const document = structuredClone(current);
   let found = false;
   for (const day of document.days) {

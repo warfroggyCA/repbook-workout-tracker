@@ -229,7 +229,10 @@ test("publishes and preserves durable warm-up and grouped workout outcomes", asy
   await expect(reloadedWarmupRow).toContainText(
     "Note: Offline warm-up note survives reconnect.",
   );
-  await reloadedWarmupRow.getByRole("button", { name: "Skip", exact: true }).click();
+  await reloadedWarmupRow.getByRole("button", {
+    name: "Other skip reason",
+    exact: true,
+  }).click();
   const warmupSkip = page.getByRole("dialog", { name: "Skip Activation ramp?" });
   await warmupSkip.getByLabel("Reason").selectOption("fatigue");
   await warmupSkip

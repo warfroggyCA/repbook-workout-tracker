@@ -1,4 +1,5 @@
 import type {
+  RestCueChannelOutcome,
   RestCueMilestone,
   RestCueOutcome,
 } from "@/lib/rest-timer";
@@ -159,6 +160,17 @@ export function primeRestAudioContext(context: AudioContext) {
   oscillator.stop(startsAt + 0.02);
 }
 
+export function prepareRestAudioContext(
+  current: AudioContext | null,
+  AudioContextConstructor: new () => AudioContext,
+) {
+  const context = current == null || current.state === "closed"
+    ? new AudioContextConstructor()
+    : current;
+  primeRestAudioContext(context);
+  return context;
+}
+
 export type RestAlertPreferenceStorage = Pick<
   Storage,
   "getItem" | "setItem" | "removeItem"
@@ -250,6 +262,16 @@ export function requestedRestCueChannels(preference: RestAlertPreference) {
     vibration:
       preference === "vibration" || preference === "sound_and_vibration",
   };
+}
+
+export function restSoundChannelState(input: {
+  requested: boolean;
+  audioSupported: boolean;
+  contextState: AudioContextState | "interrupted" | null;
+}): RestCueChannelOutcome {
+  if (!input.requested) return "not_requested";
+  if (!input.audioSupported) return "unavailable";
+  return input.contextState === "running" ? "requested" : "blocked";
 }
 
 export function restCountdownCueKey(input: {

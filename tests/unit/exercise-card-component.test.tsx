@@ -24,7 +24,9 @@ vi.mock("@/app/actions/sessions", () => ({
 vi.mock("@/app/actions/archive", () => ({ restoreArchiveOperation: vi.fn() }));
 
 import {
+  cachedDraftProtectsPreviousWeight,
   ExerciseCard,
+  hydratePreviousComparableWeight,
   runGuardedLogRequest,
   unconfirmedSetsBlockLogging,
 } from "@/components/session/exercise-card";
@@ -92,6 +94,92 @@ const exercise: SessionExerciseData = {
 };
 
 describe("ExerciseCard", () => {
+  it("hydrates a compatible previous load only into an untouched blank draft", () => {
+    const blank = {
+      weight: null,
+      weightUnit: null,
+      reps: 8,
+      distanceKm: null,
+      durationSeconds: null,
+      rpe: null,
+      rir: null,
+      techniqueIssue: null,
+      limitationCause: null,
+      pain: null,
+      note: "",
+    } as const;
+
+    expect(hydratePreviousComparableWeight({
+      draft: { ...blank, reps: 9, rpe: 7 },
+      weight: 115,
+      unit: "lb",
+      source: "Previous comparable set",
+      protectedDraft: false,
+      edited: false,
+    })).toMatchObject({ weight: 115, weightUnit: "lb", reps: 9, rpe: 7 });
+    expect(hydratePreviousComparableWeight({
+      draft: { ...blank },
+      weight: 115,
+      unit: "lb",
+      source: "Previous comparable set",
+      protectedDraft: false,
+      edited: true,
+    })).toEqual(blank);
+    expect(hydratePreviousComparableWeight({
+      draft: { ...blank },
+      weight: 115,
+      unit: "lb",
+      source: "Previous comparable set",
+      protectedDraft: true,
+      edited: false,
+    })).toEqual(blank);
+    expect(hydratePreviousComparableWeight({
+      draft: { ...blank, weight: 120, weightUnit: "lb" },
+      weight: 115,
+      unit: "lb",
+      source: "Previous comparable set",
+      protectedDraft: false,
+      edited: false,
+    })).toMatchObject({ weight: 120, weightUnit: "lb" });
+  });
+
+  it("keeps a reps-only cached draft eligible for previous-load hydration after a remount", () => {
+    const cachedRepsOnlyDraft = {
+      weight: null,
+      weightUnit: null,
+      reps: 9,
+      distanceKm: null,
+      durationSeconds: null,
+      rpe: 7,
+      rir: null,
+      techniqueIssue: null,
+      limitationCause: null,
+      pain: null,
+      note: "Felt steady",
+    } as const;
+
+    expect(cachedDraftProtectsPreviousWeight({ weightEdited: false }))
+      .toBe(false);
+    expect(hydratePreviousComparableWeight({
+      draft: cachedRepsOnlyDraft,
+      weight: 115,
+      unit: "lb",
+      source: "Previous comparable set",
+      protectedDraft: cachedDraftProtectsPreviousWeight({
+        weightEdited: false,
+      }),
+      edited: false,
+    })).toMatchObject({
+      weight: 115,
+      weightUnit: "lb",
+      reps: 9,
+      rpe: 7,
+      note: "Felt steady",
+    });
+    expect(cachedDraftProtectsPreviousWeight({ weightEdited: true }))
+      .toBe(true);
+  });
+
   it("requires a deliberate horizontal swipe before revealing removal", () => {
     expect(exerciseSwipeRevealsRemove({ deltaX: -63, deltaY: 0 })).toBe(false);
     expect(exerciseSwipeRevealsRemove({ deltaX: -80, deltaY: 70 })).toBe(false);
@@ -118,6 +206,12 @@ describe("ExerciseCard", () => {
     expect(source).toContain("Checking saved skip…");
     expect(source).toContain("!skipRecoverySettlementPending");
     expect(source).toContain("Remove from today");
+    expect(source).toContain(
+      "transition-transform motion-reduce:transition-none",
+    );
+    const drawerSource = readFileSync("src/components/ui/drawer.tsx", "utf8");
+    expect(drawerSource.match(/motion-reduce:transition-none/g)).toHaveLength(2);
+    expect(drawerSource.match(/motion-reduce:duration-0/g)).toHaveLength(2);
     expect(source).toContain(
       "Completed sets stay in workout history. The saved routine is unchanged.",
     );
@@ -628,6 +722,33 @@ describe("ExerciseCard", () => {
     expect(unavailableHtml).not.toContain("100 lb × 7 reps");
     expect(unavailableHtml).toContain('aria-label="Total load"');
     expect(unavailableHtml).toContain('value="95"');
+
+    const previousOnlyId = "00000000-0000-4000-8000-000000000060";
+    const previousOnlyHtml = renderToStaticMarkup(cloneElement(card, {
+      exercise: {
+        ...current,
+        id: previousOnlyId,
+        targetLoad: null,
+        targetLoadUnit: null,
+        previousComparable: current.previousComparable?.status === "available"
+          ? {
+              ...current.previousComparable,
+              currentSessionExerciseId: previousOnlyId,
+            }
+          : current.previousComparable,
+      },
+      activeOccurrence: {
+        ...card.props.activeOccurrence,
+        id: "00000000-0000-4000-8000-000000000061",
+        sessionExerciseId: previousOnlyId,
+        plannedLoad: null,
+        plannedLoadUnit: null,
+      },
+    }));
+    expect(previousOnlyHtml).toContain('value="100"');
+    expect(previousOnlyHtml).toContain(
+      "Starting load: Previous comparable set",
+    );
   });
 
   it("keeps the planned occurrence number after an earlier set is skipped", () => {

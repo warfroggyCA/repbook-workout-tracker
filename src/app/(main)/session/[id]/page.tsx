@@ -29,7 +29,7 @@ import type {
   SessionExerciseData,
   SessionRunnerProps,
 } from "@/components/session/types";
-import type { PlateMathConfig, IncrementalLoadConfig } from "@/engine/plate-math";
+import type { PlateMathConfig } from "@/engine/plate-math";
 import { loadEquipmentLoadProfiles } from "@/services/equipment-load-profiles";
 import { buildSessionEquipmentPresentation } from "@/lib/session-equipment-presentation";
 import { sessionEquipmentGeometrySnapshotSchema } from "@/lib/session-equipment-snapshot-contract";
@@ -57,6 +57,7 @@ import {
 import {
   resolveSessionPreparationEquipmentProjection,
 } from "@/services/session-equipment-requirements";
+import { mergeIncrementalEquipmentConfigs } from "@/services/progression";
 
 function techniqueIssue(value: string | null): TechniqueIssue | null {
   return TECHNIQUE_ISSUES.includes(value as TechniqueIssue)
@@ -375,19 +376,7 @@ async function renderSessionPage(
     if (presentation.plateConfig) plateConfigs[sessionExercise.id] = presentation.plateConfig;
   }
 
-  const incrementals: Record<string, IncrementalLoadConfig> = {};
-  for (const item of equipment) {
-    if (
-      (item.type === "dumbbell" || item.type === "kettlebell") &&
-      item.available
-    ) {
-      incrementals[item.type] = {
-        minWeight: item.attrs.minWeight,
-        maxWeight: item.attrs.maxWeight,
-        increments: item.attrs.increments,
-      };
-    }
-  }
+  const incrementals = mergeIncrementalEquipmentConfigs(equipment);
 
   const previousComparableByExercise = await getPreviousComparableSets(
     db,

@@ -73,6 +73,17 @@ export function workingSetOccurrenceOrderIsEligible(
     return false;
   }
 
+  const earlierWarmupIsPending = occurrences.some(
+    (earlier) =>
+      (earlier.kind === "day_warmup" ||
+        (earlier.kind === "exercise_warmup" &&
+          earlier.sessionExerciseId === candidate.sessionExerciseId)) &&
+      earlier.sequenceIdx < candidate.sequenceIdx &&
+      earlier.outcome === "pending" &&
+      !locallyRecordedOccurrenceIds.has(earlier.id),
+  );
+  if (earlierWarmupIsPending) return false;
+
   const earlierSetForExerciseIsPending = occurrences.some(
     (earlier) =>
       earlier.sessionExerciseId === candidate.sessionExerciseId &&

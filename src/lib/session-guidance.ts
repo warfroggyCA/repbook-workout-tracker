@@ -442,7 +442,8 @@ function projectRestGuidance(
   actions: SessionGuidanceAction[],
   occurrences: SessionOccurrenceData[],
   exerciseById: Map<string, SessionExerciseData>,
-  destination: SessionOccurrenceGuidanceAction | null,
+  pendingActions: SessionOccurrenceGuidanceAction[],
+  fallbackDestination: SessionOccurrenceGuidanceAction | null,
 ): SessionRestGuidanceAction | null {
   if (!timer || timer.phase === "continued") return null;
   const sourceOccurrence = timer.sourceOccurrenceId == null ||
@@ -476,6 +477,12 @@ function projectRestGuidance(
   const restKind = source?.restAfter.kind === "none" || !source
     ? "unknown"
     : source.restAfter.kind;
+  // A source-bound rest may coexist with an older unresolved preparation item
+  // after recovery from a stale client. Never describe that rest as leading
+  // backwards to work that predates the set which started it.
+  const destination = source
+    ? pendingActions.find((action) => action.sequenceIdx > source.sequenceIdx) ?? null
+    : fallbackDestination;
   return {
     kind: "rest",
     actionId: `rest:${timer.generationId}`,
@@ -776,6 +783,7 @@ export function projectSessionGuidance(input: Input): SessionGuidanceProjection 
     actions,
     input.occurrences,
     exerciseById,
+    pendingActions,
     occurrenceCurrentAction,
   );
   const acknowledgementPending = actionHasUnacknowledgedSet(
@@ -786,7 +794,7 @@ export function projectSessionGuidance(input: Input): SessionGuidanceProjection 
     activeRest && !acknowledgementPending ? activeRest : occurrenceCurrentAction;
   const nextAction: SessionOccurrenceGuidanceAction | null =
     activeRest && !acknowledgementPending
-    ? occurrenceCurrentAction
+    ? activeRest.destination
     : occurrenceNextAction;
   const totals = countTruth(actions);
 

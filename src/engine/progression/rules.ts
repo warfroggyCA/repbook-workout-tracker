@@ -11,6 +11,7 @@ export type ExposureSet = {
   weight: number | null;
   reps: number;
   rpe: number | null;
+  rir?: number | null;
 };
 
 export type Exposure = {
@@ -52,7 +53,7 @@ export type RuleDecision = {
 };
 
 /** An exposure is "clean" when every prescribed set hit the top of the rep
- * range at (or above) target load without grinding. */
+ * range at (or above) target load with explicit, non-grinding effort. */
 export function isCleanExposure(
   exposure: Exposure,
   rx: SlotPrescription
@@ -62,8 +63,26 @@ export function isCleanExposure(
     (s) =>
       s.reps >= rx.repRangeMax &&
       (rx.targetLoad == null || (s.weight ?? 0) >= rx.targetLoad) &&
-      (s.rpe == null || s.rpe <= cfg.rpeCapForIncrease)
+      ((s.rpe != null &&
+        s.rir == null &&
+        s.rpe <= cfg.rpeCapForIncrease) ||
+        (s.rir != null &&
+          s.rpe == null &&
+          s.rir >= cfg.rirFloorForIncrease))
   );
+}
+
+function comparablePerformedBaseline(
+  exposures: Exposure[],
+): number | null {
+  const loads = exposures.flatMap((exposure) =>
+    exposure.sets.map((set) => set.weight),
+  );
+  if (loads.length === 0 || loads.some((load) => load == null)) return null;
+  const baseline = loads[0]!;
+  return baseline > 0 && loads.every((load) => load === baseline)
+    ? baseline
+    : null;
 }
 
 /** An exposure is a "hard miss" when ≥2 sets fell well short of the floor. */
@@ -142,16 +161,20 @@ export function evaluateSlot(input: EvaluateSlotInput): RuleDecision | null {
     input.exposuresRequiredForIncrease ?? cfg.exposuresRequiredForIncrease
   );
   const recent = exposures.slice(0, required);
+  const progressionBaseline =
+    rx.targetLoad ?? comparablePerformedBaseline(recent);
   if (
-    rx.targetLoad != null &&
+    progressionBaseline != null &&
     recent.length >= required &&
-    recent.every((e) => isCleanExposure(e, rx))
+    recent.every((e) =>
+      isCleanExposure(e, { ...rx, targetLoad: progressionBaseline }),
+    )
   ) {
-    const next = input.nextLoadUp(rx.targetLoad);
+    const next = input.nextLoadUp(progressionBaseline);
     if (next != null) {
-      const cappedMax = rx.targetLoad * (1 + cfg.maxLoadJumpPct);
+      const cappedMax = progressionBaseline * (1 + cfg.maxLoadJumpPct);
       const toLoad = next <= cappedMax ? next : null;
-      if (toLoad != null && toLoad > rx.targetLoad) {
+      if (toLoad != null && toLoad > progressionBaseline) {
         const dates = recent
           .map((e) =>
             e.date.toLocaleDateString(undefined, { month: "short", day: "numeric" })
@@ -162,12 +185,17 @@ export function evaluateSlot(input: EvaluateSlotInput): RuleDecision | null {
           kind: "load_change",
           toLoad,
           reason:
-            `${rx.sets}×${rx.repRangeMax} at ${rx.targetLoad} without grinding, ` +
+            `${rx.sets}×${rx.repRangeMax} at ${progressionBaseline} with explicit RPE ${cfg.rpeCapForIncrease} or lower (or RIR ${cfg.rirFloorForIncrease} or higher), ` +
             `${required} sessions running (${dates}). Next: ${toLoad}.`,
           evidence: {
             signals: {
               cleanExposures: required,
-              fromLoad: rx.targetLoad,
+              ...(rx.targetLoad == null
+                ? {
+                    baselineLoad: progressionBaseline,
+                    baselineSource: "Comparable performed sets",
+                  }
+                : { fromLoad: rx.targetLoad }),
               toLoad,
             },
             sessionIds: recent.map((e) => e.sessionId),

@@ -1013,13 +1013,20 @@ export function WorkoutSetOutboxTray({
                   {entry.orderBlocker && (
                     <p className="mt-2 text-sm font-medium">
                       Required first: {entry.orderBlocker.label}. Retry unlocks
-                      after that set is completed or skipped.
+                      after that {entry.orderBlocker.kind === "day_warmup"
+                        ? "warm-up"
+                        : entry.orderBlocker.kind === "exercise_warmup"
+                          ? "preparation set"
+                        : "set"} is completed or skipped.
                     </p>
                   )}
                   <div className="mt-3 flex flex-wrap gap-2">
                     <Link
                       href={entry.orderBlocker
-                        ? `/session/${entry.sessionId}#${entry.orderBlocker.isAddedSet ? "added-set-entry" : "set-entry"}-${entry.orderBlocker.sessionExerciseId}-${entry.orderBlocker.occurrenceId}`
+                        ? entry.orderBlocker.kind === "day_warmup" ||
+                            entry.orderBlocker.kind === "exercise_warmup"
+                          ? `/session/${entry.sessionId}#warmup-occurrence-${entry.orderBlocker.occurrenceId}`
+                          : `/session/${entry.sessionId}#${entry.orderBlocker.isAddedSet ? "added-set-entry" : "set-entry"}-${entry.orderBlocker.sessionExerciseId}-${entry.orderBlocker.occurrenceId}`
                         : `/session/${entry.sessionId}#exercise-${entry.sessionExerciseId}`}
                       onClick={(event) => {
                         const drawer = event.currentTarget.closest('[role="dialog"]');
@@ -1058,7 +1065,11 @@ export function WorkoutSetOutboxTray({
                       })}
                     >
                       <ArrowLeft className="size-3.5" /> {entry.orderBlocker
-                        ? "Go to required set"
+                        ? entry.orderBlocker.kind === "day_warmup"
+                          ? "Go to warm-up"
+                          : entry.orderBlocker.kind === "exercise_warmup"
+                            ? "Go to preparation set"
+                          : "Go to required set"
                         : "Return to exercise"}
                     </Link>
                     {!entry.orderBlocker &&

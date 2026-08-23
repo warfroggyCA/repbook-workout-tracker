@@ -6,7 +6,7 @@ import type {
 } from "@/db/schema";
 
 export const REVIEW_EVIDENCE_SCHEMA_VERSION = "review-evidence-v1" as const;
-export const PROGRESSION_REVIEW_SOURCE_VERSION = "progression-rules-v1" as const;
+export const PROGRESSION_REVIEW_SOURCE_VERSION = "progression-rules-v2" as const;
 
 export const recommendationReviewEvidenceSchema = z.object({
   schemaVersion: z.literal(REVIEW_EVIDENCE_SCHEMA_VERSION),

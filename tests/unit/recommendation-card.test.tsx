@@ -109,4 +109,5 @@ describe("RecommendationCard", () => {
       "Switch to: Dumbbell Bench Press",
     );
   });
+
 });

@@ -144,6 +144,38 @@ describe("WorkoutStatusBar", () => {
     expect(html).not.toContain('aria-label="Rest alert: sound"');
   });
 
+  it("states when requested timer sound is blocked or unavailable", () => {
+    const blocked = renderToStaticMarkup(
+      <WorkoutStatusBar
+        action={action}
+        exercise={exercise}
+        timer={{ phase: "running" } as never}
+        restRemainingSec={45}
+        restAlertPreference="sound"
+        restSoundState="blocked"
+        {...callbacks}
+      />,
+    );
+    const unavailable = renderToStaticMarkup(
+      <WorkoutStatusBar
+        action={action}
+        exercise={exercise}
+        timer={{ phase: "running" } as never}
+        restRemainingSec={45}
+        restAlertPreference="sound"
+        restSoundState="unavailable"
+        {...callbacks}
+      />,
+    );
+
+    expect(blocked).toContain('aria-label="Rest alert: sound blocked"');
+    expect(blocked).toContain(">Sound blocked</span>");
+    expect(unavailable).toContain(
+      'aria-label="Rest alert: sound unavailable"',
+    );
+    expect(unavailable).toContain(">Sound unavailable</span>");
+  });
+
   it("turns the working-set dock into the immediate primary log action", () => {
     const html = renderToStaticMarkup(
       <WorkoutStatusBar

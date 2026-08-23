@@ -9,7 +9,10 @@ import {
   type EvaluateSlotInput,
 } from "@/engine/progression/rules";
 import { validateLoadIncrease } from "@/engine/progression/validate";
-import { steppersForLoadType } from "@/services/progression";
+import {
+  retainedPrescriptionMatchesCurrent,
+  steppersForLoadType,
+} from "@/services/progression";
 
 const rx: SlotPrescription = {
   sets: 3,
@@ -59,6 +62,27 @@ const cleanExposure = () =>
     [95, 8, 8],
   ]);
 
+describe("retained prescription evidence", () => {
+  it("does not reinterpret old exposure facts through a later Program edit", () => {
+    const retained = {
+      sets: 3,
+      repRangeMin: 6,
+      repRangeMax: 8,
+      targetLoad: 115,
+    };
+    expect(retainedPrescriptionMatchesCurrent(retained, retained)).toBe(true);
+    expect(retainedPrescriptionMatchesCurrent(retained, {
+      ...retained,
+      repRangeMax: 6,
+    })).toBe(false);
+    expect(retainedPrescriptionMatchesCurrent(retained, {
+      ...retained,
+      targetLoad: 120,
+    })).toBe(false);
+    expect(retainedPrescriptionMatchesCurrent(null, retained)).toBe(false);
+  });
+});
+
 describe("isCleanExposure", () => {
   it("requires every set at top of range, at load, without grinding", () => {
     expect(isCleanExposure(cleanExposure(), rx)).toBe(true);
@@ -68,8 +92,28 @@ describe("isCleanExposure", () => {
     expect(isCleanExposure(exposure([[95, 8], [95, 8]]), rx)).toBe(false); // missing a set
   });
 
-  it("treats missing RPE as acceptable (no data ≠ grinding)", () => {
-    expect(isCleanExposure(exposure([[95, 8], [95, 8], [95, 8]]), rx)).toBe(true);
+  it("requires explicit effort instead of treating missing RPE as clean", () => {
+    expect(isCleanExposure(exposure([[95, 8], [95, 8], [95, 8]]), rx)).toBe(false);
+  });
+
+  it("accepts explicit RIR only when it preserves the same effort ceiling", () => {
+    const withRir = (rir: number): Exposure => ({
+      sessionId: `rir-${rir}`,
+      date: new Date(),
+      sets: [1, 2, 3].map((setNo) => ({
+        id: `rir-${rir}-${setNo}`,
+        weight: 95,
+        reps: 8,
+        rpe: null,
+        rir,
+      })),
+    });
+    expect(isCleanExposure(withRir(2), rx)).toBe(true);
+    expect(isCleanExposure(withRir(1), rx)).toBe(false);
+    expect(isCleanExposure({
+      ...withRir(2),
+      sets: withRir(2).sets.map((set) => ({ ...set, rpe: 7 })),
+    }, rx)).toBe(false);
   });
 });
 
@@ -114,11 +158,47 @@ describe("double progression", () => {
   });
 
   it("does NOT fire when the older exposure was dirty", () => {
-    expect(
-      evaluate({
-        exposures: [cleanExposure(), exposure([[95, 8], [95, 7], [95, 7]])],
-      })
-    ).toBeNull();
+    expect(evaluate({
+      exposures: [cleanExposure(), exposure([[95, 8, 7], [95, 7, 7], [95, 7, 7]])],
+    })).toBeNull();
+  });
+
+  it("explains that missing effort prevents a clean exposure", () => {
+    expect(evaluate({
+      exposures: [
+        cleanExposure(),
+        exposure([[95, 8], [95, 8], [95, 8]]),
+      ],
+    })).toBeNull();
+  });
+
+  it("uses two exact comparable performed loads when the Program has no target", () => {
+    const noTarget = { ...rx, targetLoad: null };
+    const decision = evaluate({
+      prescription: noTarget,
+      exposures: [cleanExposure(), cleanExposure()],
+    });
+    expect(decision).toMatchObject({
+      ruleId: "double_progression",
+      kind: "load_change",
+      toLoad: 100,
+      evidence: {
+        signals: {
+          baselineLoad: 95,
+          baselineSource: "Comparable performed sets",
+        },
+      },
+    });
+  });
+
+  it("does not invent a baseline from differing performed loads", () => {
+    expect(evaluate({
+      prescription: { ...rx, targetLoad: null },
+      exposures: [
+        cleanExposure(),
+        exposure([[90, 8, 7], [90, 8, 7], [90, 8, 8]]),
+      ],
+    })).toBeNull();
   });
 
   it("cites both sessions and all sets as evidence", () => {
