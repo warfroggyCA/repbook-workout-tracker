@@ -3875,7 +3875,7 @@ export function SessionRunner(props: SessionRunnerProps) {
                             size="sm"
                             className="h-auto min-h-[44px] min-w-0 w-full whitespace-normal px-1.5 py-1 text-center leading-tight sm:w-auto sm:px-2.5"
                             variant="ghost"
-                            aria-label="Choose another skip reason"
+                            aria-label="Other skip reason"
                             disabled={
                               equipmentChangePending ||
                               occurrenceMutation != null
