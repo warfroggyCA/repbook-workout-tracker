@@ -1,7 +1,14 @@
 "use client";
 
 import { useState } from "react";
-import { Download, FileCheck2, ShieldCheck, Trash2 } from "lucide-react";
+import {
+  Check,
+  ClipboardCopy,
+  Download,
+  FileCheck2,
+  ShieldCheck,
+  Trash2,
+} from "lucide-react";
 import {
   ANALYSIS_PACKAGE_SCHEMA_VERSION,
   ANALYSIS_QUESTIONS,
@@ -53,6 +60,9 @@ export function AnalysisPackageBuilder({
     useState<AnalysisPackageManifestSummary[]>(initialManifests);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [copyStatus, setCopyStatus] = useState<"idle" | "copied" | "error">(
+    "idle",
+  );
 
   async function refreshManifests() {
     const response = await fetch("/api/export/analysis", {
@@ -73,6 +83,7 @@ export function AnalysisPackageBuilder({
     setError(null);
     setExactPreview(null);
     setPackageValue(null);
+    setCopyStatus("idle");
     try {
       const response = await fetch("/api/export/analysis", {
         method: "POST",
@@ -111,6 +122,20 @@ export function AnalysisPackageBuilder({
     URL.revokeObjectURL(url);
   }
 
+  async function copyJson() {
+    if (exactPreview == null) return;
+    if (!navigator.clipboard?.writeText) {
+      setCopyStatus("error");
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(exactPreview);
+      setCopyStatus("copied");
+    } catch {
+      setCopyStatus("error");
+    }
+  }
+
   function downloadInstructions() {
     if (!packageValue) return;
     const instructions = buildExternalAnalysisInstructions(packageValue);
@@ -138,6 +163,7 @@ export function AnalysisPackageBuilder({
       if (packageValue?.packageId === id) {
         setPackageValue(null);
         setExactPreview(null);
+        setCopyStatus("idle");
       }
       await refreshManifests();
     } catch (caught) {
@@ -251,10 +277,31 @@ export function AnalysisPackageBuilder({
               >
                 {exactPreview}
               </pre>
-              <Button onClick={download} className="min-h-11">
-                <Download className="size-4" aria-hidden="true" />
-                Download exact JSON
-              </Button>
+              <div className="flex flex-wrap gap-2">
+                <Button onClick={() => void copyJson()} className="min-h-11">
+                  {copyStatus === "copied" ? (
+                    <Check className="size-4" aria-hidden="true" />
+                  ) : (
+                    <ClipboardCopy className="size-4" aria-hidden="true" />
+                  )}
+                  {copyStatus === "copied" ? "JSON copied" : "Copy JSON"}
+                </Button>
+                <Button onClick={download} variant="outline" className="min-h-11">
+                  <Download className="size-4" aria-hidden="true" />
+                  Download exact JSON
+                </Button>
+              </div>
+              <p
+                className={copyStatus === "error" ? "text-sm text-destructive" : "sr-only"}
+                role={copyStatus === "error" ? "alert" : "status"}
+                aria-live="polite"
+              >
+                {copyStatus === "copied"
+                  ? "Exact JSON copied to your clipboard."
+                  : copyStatus === "error"
+                    ? "Clipboard access was denied or is unavailable."
+                    : ""}
+              </p>
             </CardContent>
           </Card>
 

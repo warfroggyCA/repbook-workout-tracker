@@ -174,21 +174,21 @@ export function HistoryWorkspace({
           })}
         </nav>
 
-        <div className="rounded-2xl border bg-card p-4">
-          <div>
-            <h2 className="text-xl font-semibold tracking-tight sm:text-2xl">
-              {activeView.label}
-            </h2>
-            <p className="mt-1 max-w-3xl text-sm leading-relaxed text-muted-foreground">
-              {activeView.description}
-            </p>
-            {view !== "calendar" && (
+        {view !== "calendar" && (
+          <div className="rounded-2xl border bg-card p-4">
+            <div>
+              <h2 className="text-xl font-semibold tracking-tight sm:text-2xl">
+                {activeView.label}
+              </h2>
+              <p className="mt-1 max-w-3xl text-sm leading-relaxed text-muted-foreground">
+                {activeView.description}
+              </p>
               <p className="mt-2 text-xs text-muted-foreground">
                 Showing {rangeLabel.toLowerCase()}.
               </p>
-            )}
+            </div>
           </div>
-        </div>
+        )}
       </header>
 
       {view !== "calendar" && (

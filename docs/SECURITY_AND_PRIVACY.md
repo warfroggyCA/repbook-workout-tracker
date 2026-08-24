@@ -81,6 +81,22 @@ to a provider. The owner remains responsible for reviewing the external
 provider's privacy and retention settings. A02 retains no response and exposes
 no import path.
 
+The Complete AI report is a separate authenticated read path over available
+non-archived training evidence. Its readable summary and the revision-tracked
+portion of its report-only source appendix are accepted only when they share
+the same evidence revision and cutoff. Session notes and saved user-authored
+Live Coach messages remain explicitly labeled retrieval-time context outside
+that revision. The response is private and no-store, contains no account
+identity, archive metadata, private contextual notes, raw assistant/provider
+material, request/retry keys, or worker identifiers, and prepends instructions
+that treat workout names, notes, and saved messages as untrusted data. The
+browser requests and writes
+the exact report bytes to the device clipboard only after the owner taps the
+primary control. Repbook makes no external provider request, retains no report
+body, and records only the existing coarse Markdown-export receipt. Clipboard
+denial or unavailability remains visible and does not create a false copied
+state.
+
 External responses use closed `analysis-response/1`. Validation binds the exact
 package ID, owner namespace, versions, digest, evidence cutoff, expiry, question,
 evidence IDs, supported measurement units, bounded text and collections, and

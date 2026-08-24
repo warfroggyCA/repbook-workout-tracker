@@ -2,10 +2,15 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
 import type { Db } from "@/db";
 import {
+  coachingInsights,
   completedSets,
   exercises,
+  fatigueLogs,
   healthActivities,
+  progressionJobs,
+  recommendations,
   sessionExercises,
+  sessionNotes,
   sessionOccurrences,
   userProfiles,
   users,
@@ -16,6 +21,8 @@ import {
   buildTrainingDigest,
   renderCoachingBrief,
 } from "@/services/digest";
+import { buildLlmTrainingSource } from "@/services/llm-training-source";
+import { createContextualNote } from "@/services/contextual-notes";
 import { getHistoryReport } from "@/services/history-report";
 import {
   createMigratedTestDatabase,
@@ -230,6 +237,9 @@ async function seedReportingPeriod(db: Db) {
         targetSets: 32,
         targetRepsMin: 8,
         targetRepsMax: 10,
+        notes: sessionIndex === 0
+          ? "Keep shoulder blades steady on every set."
+          : null,
         prescribedSemanticsVersion: 1,
         prescribedExerciseName: exerciseName,
         prescribedMetricType: "weight_reps",
@@ -513,7 +523,9 @@ describe("training reporting digest integration", () => {
     expect(brief).toContain("planned in 2 sessions; performed in 1 session");
     expect(brief).toContain("Eligible loaded-volume evidence: 2 of 2 retained set rows (100%)");
     expect(brief).toContain("source manual");
-    expect(brief).toContain("Recovery walk, 37 min 15 sec, 3.6 km");
+    expect(brief).toContain(
+      "Recovery walk, 37 min 15 sec, 3.6 km",
+    );
     expect(brief).toContain(`[health_activity:${fixture.activityId}]`);
     expect(brief).toContain("## Detailed audit appendix");
     expect(brief).toContain(
@@ -536,6 +548,310 @@ describe("training reporting digest integration", () => {
     }
     expect(brief.indexOf("Performed set 1:")).toBeGreaterThan(
       brief.indexOf("## Detailed audit appendix"),
+    );
+  });
+
+  it("reads all retained evidence when the report range is unbounded", async () => {
+    const fixture = await seedReportingPeriod(database.db);
+    await database.db.insert(healthActivities).values([
+      ...Array.from({ length: 7 }, (_, index) => ({
+        userId: fixture.userId,
+        activityType: "walking" as const,
+        title: `Earlier retained walk ${index + 1}`,
+        startedAt: new Date(`2026-01-${String(index + 3).padStart(2, "0")}T12:00:00.000Z`),
+        timezone: "UTC",
+        durationSeconds: 1_200 + index,
+        source: "manual" as const,
+        fingerprint: `all-time-${crypto.randomUUID()}`,
+      })),
+      {
+        userId: fixture.userId,
+        activityType: "cycling" as const,
+        title: "Excluded retained ride",
+        startedAt: new Date("2026-01-02T12:00:00.000Z"),
+        timezone: "UTC",
+        durationSeconds: 2_400,
+        distanceKm: 12.5,
+        elevationGainM: 259.08,
+        notes: "Easy conversational pace despite the hills.",
+        originalMetrics: {
+          distanceValue: 7.77,
+          distanceUnit: "mi" as const,
+          elevationValue: 850,
+          elevationUnit: "ft" as const,
+        },
+        source: "manual" as const,
+        excludeFromAnalytics: true,
+        fingerprint: `all-time-excluded-${crypto.randomUUID()}`,
+      },
+    ]);
+
+    const allTime = await buildTrainingDigest(
+      database.db,
+      fixture.userId,
+      null,
+      NOW,
+    );
+    const bounded = await buildTrainingDigest(
+      database.db,
+      fixture.userId,
+      new Date("2026-08-01T00:00:00.000Z"),
+      NOW,
+    );
+
+    expect(allTime.range.since.toISOString()).toBe(
+      "2026-01-02T12:00:00.000Z",
+    );
+    expect(allTime.independentActivities.overview.totalActivities).toBe(
+      bounded.independentActivities.overview.totalActivities + 7,
+    );
+    expect(allTime.independentActivities.recent).toHaveLength(5);
+    expect(allTime.independentActivities.recent).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ title: "Earlier retained walk 1" }),
+      ]),
+    );
+    expect(allTime.independentActivities.retained).toHaveLength(9);
+    expect(allTime.independentActivities.retained).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          title: "Earlier retained walk 1",
+          durationSeconds: 1_200,
+          excludeFromAnalytics: false,
+        }),
+        expect.objectContaining({
+          title: "Excluded retained ride",
+          distanceKm: 12.5,
+          excludeFromAnalytics: true,
+        }),
+      ]),
+    );
+    const brief = renderCoachingBrief(allTime);
+    expect(brief).toContain("Earlier retained walk 1, 20 min");
+    expect(brief).toContain("Excluded retained ride, 40 min, 12.5 km");
+    expect(brief).toContain("original recorded distance 7.77 mi");
+    expect(brief).toContain("original recorded elevation 850 ft");
+    expect(brief).toContain("Easy conversational pace despite the hills.");
+    expect(brief).toContain("analytics excluded by retained record");
+    expect(brief).toContain(
+      'Exercise note: "Keep shoulder blades steady on every set."',
+    );
+  });
+
+  it("preserves detailed retained training fields in the private report source", async () => {
+    const fixture = await seedReportingPeriod(database.db);
+    await database.db
+      .update(completedSets)
+      .set({
+        rir: 2,
+        note: "Left one clean rep in reserve.",
+        techniqueIssue: "control",
+        limitationCause: "mobility",
+        targetMet: true,
+        restTakenSec: 75,
+      })
+      .where(eq(completedSets.id, fixture.setIds[0]!));
+    await database.db.insert(sessionNotes).values({
+      sessionId: fixture.sessionIds[0]!,
+      text: "Whole-session note retained verbatim.",
+      createdAt: new Date("2026-08-17T19:04:00.000Z"),
+    });
+    await database.db.insert(fatigueLogs).values({
+      userId: fixture.userId,
+      sessionId: fixture.sessionIds[0]!,
+      severity: 4,
+      note: "Sleep was interrupted the night before.",
+      createdAt: new Date("2026-08-17T19:05:00.000Z"),
+    });
+    await database.db.insert(healthActivities).values({
+      userId: fixture.userId,
+      activityType: "cycling",
+      title: "Retained source ride",
+      startedAt: new Date("2026-08-16T12:00:00.000Z"),
+      timezone: "UTC",
+      durationSeconds: 2_400,
+      distanceKm: 12.5,
+      notes: "Easy ride with one long hill.",
+      source: "manual",
+      sourceRecordId: "provider-private-record-id",
+      sourceMetadata: { rawProviderPayload: "must-not-leave-repbook" },
+      originalMetrics: { distanceValue: 7.77, distanceUnit: "mi" },
+      fingerprint: `source-${crypto.randomUUID()}`,
+    });
+    const capturedContext = {
+      schemaVersion: 1 as const,
+      destination: "history" as const,
+      workflow: null,
+      workoutPhase: "review" as const,
+      originatedFromSimulation: false,
+      programDay: null,
+      plannedExercise: null,
+      performedExercise: null,
+      occurrence: null,
+      loadRepetitions: null,
+      restContext: null,
+      reviewContext: null,
+    };
+    await createContextualNote(database.db, fixture.userId, {
+      clientKey: crypto.randomUUID(),
+      body: "Coach-visible context retained.",
+      coachVisible: true,
+      inputMode: "typed",
+      attachmentKind: "general",
+      capturedContext,
+      recordedAt: "2026-08-17T20:00:00.000Z",
+    });
+    await createContextualNote(database.db, fixture.userId, {
+      clientKey: crypto.randomUUID(),
+      body: "Private context must stay out.",
+      coachVisible: false,
+      inputMode: "typed",
+      attachmentKind: "general",
+      capturedContext,
+      recordedAt: "2026-08-17T20:01:00.000Z",
+    });
+    const [{ id: abandonedSessionId }] = await database.db
+      .insert(workoutSessions)
+      .values({
+        userId: fixture.userId,
+        templateName: "Retained abandoned workout",
+        status: "abandoned",
+        startedAt: new Date("2026-08-15T18:00:00.000Z"),
+        finishedAt: new Date("2026-08-15T18:10:00.000Z"),
+        timezone: "UTC",
+        localDate: "2026-08-15",
+      })
+      .returning({ id: workoutSessions.id });
+    await database.db.insert(coachingInsights).values([
+      {
+        userId: fixture.userId,
+        kind: "live_user",
+        contentMd: "Was this set strong enough to progress?",
+        dataDigest: {},
+        sessionId: fixture.sessionIds[0]!,
+        author: "user",
+        messageKind: "question",
+        inputMode: "text",
+        responseStatus: "saved",
+        createdAt: new Date("2026-08-17T20:02:00.000Z"),
+      },
+      {
+        userId: fixture.userId,
+        kind: "live_user",
+        contentMd: "I stopped this workout early.",
+        dataDigest: {},
+        sessionId: abandonedSessionId,
+        author: "user",
+        messageKind: "observation",
+        inputMode: "text",
+        responseStatus: "saved",
+        createdAt: new Date("2026-08-15T18:09:00.000Z"),
+      },
+    ]);
+    const [{ id: progressionJobId }] = await database.db
+      .insert(progressionJobs)
+      .values({
+        userId: fixture.userId,
+        sessionId: fixture.sessionIds[0]!,
+        coachingPrefs: {
+          aggressiveness: "moderate",
+          deloadSuggestions: true,
+          substitutionSuggestions: true,
+          weeklyReview: true,
+        },
+        status: "pending",
+        createdAt: new Date("2026-08-17T20:03:00.000Z"),
+        updatedAt: new Date("2026-08-17T20:03:00.000Z"),
+      })
+      .returning({ id: progressionJobs.id });
+    await database.db.insert(recommendations).values({
+      userId: fixture.userId,
+      source: "rule",
+      status: "rejected",
+      decidedAt: new Date("2026-08-17T20:05:00.000Z"),
+      ruleId: "report-source-privacy-fixture",
+      progressionJobId,
+      payload: {
+        kind: "hold",
+        templateExerciseId: crypto.randomUUID(),
+        reason: "Retain current load for review.",
+      },
+      reason: "Retain current load for review.",
+      evidence: { signals: {} },
+      createdAt: new Date("2026-08-17T20:04:00.000Z"),
+    });
+
+    const source = await buildLlmTrainingSource(
+      database.db,
+      fixture.userId,
+      NOW,
+    );
+    const serialized = JSON.stringify(source);
+
+    expect(source.schemaVersion).toBe("llm-training-source/1");
+    expect(source.workoutSessions).toHaveLength(4);
+    expect(source.sessionEquipmentSnapshots.length).toBeGreaterThan(0);
+    expect(serialized).toContain('"rir":2');
+    expect(serialized).toContain("Left one clean rep in reserve.");
+    expect(serialized).toContain('\"techniqueIssue\":\"control\"');
+    expect(serialized).toContain('\"limitationCause\":\"mobility\"');
+    expect(serialized).toContain("Whole-session note retained verbatim.");
+    expect(serialized).toContain("Sleep was interrupted the night before.");
+    expect(serialized).toContain("Easy ride with one long hill.");
+    expect(serialized).toContain('"distanceValue":7.77');
+    expect(serialized).toContain("Coach-visible context retained.");
+    expect(serialized).toContain("Was this set strong enough to progress?");
+    expect(serialized).toContain("I stopped this workout early.");
+    expect(serialized).toContain("report-source-privacy-fixture");
+    expect(serialized).not.toContain("Private context must stay out.");
+    expect(serialized).not.toContain("provider-private-record-id");
+    expect(serialized).not.toContain("must-not-leave-repbook");
+    expect(serialized).not.toContain(fixture.userId);
+    expect(serialized).not.toContain('"clientKey"');
+    expect(serialized).not.toContain('"fingerprint"');
+    expect(serialized).not.toContain('"sourceMetadata"');
+    expect(serialized).not.toContain(progressionJobId);
+    expect(serialized).not.toContain('"progressionJobId"');
+  });
+
+  it("retries the source projection when tracked evidence changes mid-read", async () => {
+    const fixture = await seedReportingPeriod(database.db);
+    let checkpointCalls = 0;
+
+    const source = await buildLlmTrainingSource(
+      database.db,
+      fixture.userId,
+      NOW,
+      {
+        afterStartingEvidenceRead: async (attempt) => {
+          checkpointCalls += 1;
+          if (attempt !== 0) return;
+          await database.db
+            .insert(healthActivities)
+            .values({
+              userId: fixture.userId,
+              activityType: "walking",
+              title: "Inserted during first source read",
+              startedAt: new Date("2026-08-14T12:00:00.000Z"),
+              timezone: "UTC",
+              durationSeconds: 1_200,
+              source: "manual",
+              fingerprint: `mid-read-${crypto.randomUUID()}`,
+            });
+        },
+      },
+    );
+
+    expect(checkpointCalls).toBe(2);
+    const [owner] = await database.db
+      .select({ revision: users.analysisEvidenceRevision })
+      .from(users)
+      .where(eq(users.id, fixture.userId));
+    expect(source.evidenceRevision).toBe(String(owner!.revision));
+    expect(source.independentActivities).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ title: "Inserted during first source read" }),
+      ]),
     );
   });
 

@@ -88,7 +88,7 @@ test("History workspace preserves deep links, Back and Forward, and exact detail
   ).toHaveAttribute("aria-current", "page");
   await expect(
     page.getByRole("heading", { name: "Calendar", exact: true }),
-  ).toBeVisible();
+  ).toHaveCount(0);
   await expect(
     page.getByRole("navigation", { name: "History time period" }),
   ).toHaveCount(0);
@@ -150,10 +150,17 @@ test("History workspace preserves deep links, Back and Forward, and exact detail
     page.getByRole("link", { name: "Insights", exact: true }),
   ).toHaveAttribute("aria-current", "page");
   await expect(
-    page.getByRole("heading", { name: "Strength overview", exact: true }),
+    page.getByRole("heading", { name: "Current progress", exact: true }),
   ).toBeVisible();
   await expect(
-    page.getByRole("heading", { name: "Five questions", exact: true }),
+    page.getByRole("heading", { name: "Explore the evidence", exact: true }),
+  ).toBeVisible();
+  await expect(page.getByText("Unknown", { exact: true })).toBeVisible();
+  await expect(
+    page.getByText(
+      "Evaluable and unknown outcomes stay separate.",
+      { exact: true },
+    ),
   ).toBeVisible();
   await expect(page.getByText("Training calendar", { exact: true })).toHaveCount(
     0,
@@ -179,7 +186,8 @@ test("History workspace preserves deep links, Back and Forward, and exact detail
   });
 
   const progressLink = page.getByRole("link", {
-    name: /^Progress\b/,
+    name: "Open progress evidence",
+    exact: true,
   });
   await progressLink.click();
   await expect(page).toHaveURL(
@@ -248,7 +256,7 @@ test("History workspace preserves deep links, Back and Forward, and exact detail
   ).toBeVisible();
   await page.goForward();
   await expect(
-    page.getByRole("heading", { name: "Strength overview", exact: true }),
+    page.getByRole("heading", { name: "Current progress", exact: true }),
   ).toBeVisible();
 
   await page.goto(
@@ -269,7 +277,7 @@ test("History workspace preserves deep links, Back and Forward, and exact detail
   );
   await expect(
     page.getByRole("heading", { name: "Calendar", exact: true }),
-  ).toBeVisible();
+  ).toHaveCount(0);
   await expect(page.getByText("Training calendar", { exact: true })).toBeVisible();
 
   await page.setViewportSize({ width: 390, height: 844 });
@@ -334,7 +342,7 @@ test("History has clear empty and sparse states without mixing activity into str
     }),
   ).toBeVisible();
   await expect(
-    page.getByRole("heading", { name: "Strength overview", exact: true }),
+    page.getByRole("heading", { name: "Current progress", exact: true }),
   ).toBeVisible();
   await expect(page.getByText("0", { exact: true }).first()).toBeVisible();
 
@@ -421,6 +429,20 @@ test("History remains operable at mobile widths and extra-large text", async ({
       } else {
         await expect(rangeNavigation).toBeVisible();
       }
+      if (path === "/history?range=all&view=insights") {
+        const overviewActions = page.getByRole("link").filter({
+          hasText: /^(Open progress evidence|View exact exercises)$/,
+        });
+        await expect(
+          page.getByRole("heading", { name: "Current progress", exact: true }),
+        ).toBeVisible();
+        await expect(overviewActions).toHaveCount(2);
+        expect(
+          (await overviewActions.evaluateAll((links) =>
+            links.map((link) => link.getBoundingClientRect().height),
+          )).every((height) => height >= 44),
+        ).toBe(true);
+      }
       if (viewport.width >= 1024) {
         const [headingBox, sidebarBox] = await Promise.all([
           page.getByRole("heading", { name: "History", exact: true }).boundingBox(),
@@ -454,6 +476,11 @@ test("History remains operable at mobile widths and extra-large text", async ({
   await page.goto("/history?range=all");
   await page.screenshot({
     path: resolve(evidenceDirectory, "calendar-mobile-extra-large.png"),
+    fullPage: true,
+  });
+  await page.goto("/history?range=all&view=insights");
+  await page.screenshot({
+    path: resolve(evidenceDirectory, "insights-mobile-extra-large.png"),
     fullPage: true,
   });
   await page.goto("/history?range=all&view=exercises");

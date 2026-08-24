@@ -43,6 +43,17 @@ test("previews and downloads one complete owner-controlled package without trans
   browserName,
   page,
 }) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: {
+        writeText: async (value: string) => {
+          (window as unknown as { __repbookClipboard?: string })
+            .__repbookClipboard = value;
+        },
+      },
+    });
+  });
   await signIn(page);
   const pageErrors = observeGauntletPageErrors(
     page,
@@ -132,6 +143,16 @@ test("previews and downloads one complete owner-controlled package without trans
   expect(exactText).not.toContain(EMAIL);
   expect(exactText).not.toContain("synthetic H01 browser fixture");
   expect(exactText).not.toContain("SYNTHETIC PRIVATE NOTE MUST NOT LEAVE REPBOOK");
+
+  await page.getByRole("button", { name: "Copy JSON", exact: true }).click();
+  await expect(
+    page.getByRole("button", { name: "JSON copied", exact: true }),
+  ).toBeVisible();
+  expect(
+    await page.evaluate(
+      () => (window as unknown as { __repbookClipboard?: string }).__repbookClipboard,
+    ),
+  ).toBe(exactText);
 
   const { integrity, ...core } = packageValue;
   const digest = createHash("sha256")

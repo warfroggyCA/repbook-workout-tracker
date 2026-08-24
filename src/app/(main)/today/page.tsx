@@ -37,26 +37,6 @@ import { acceptanceWorkoutNow } from "@/lib/acceptance-workout-clock";
 import { WorkoutEquipmentPreflight } from "@/components/dashboard/workout-equipment-preflight";
 import { resolveTemplatePreparationEquipmentProjection } from "@/services/session-equipment-requirements";
 
-function whyThisProgramDay(today: TodayData) {
-  if (today.schedule?.nextEvent) {
-    const event = today.schedule.nextEvent;
-    return `${event.phaseName} · week ${event.programWeek} · scheduled ${formatRelativeLocalDate(
-      event.currentLocalDate,
-      today.currentLocalDate,
-    )}.`;
-  }
-  if (today.nextTemplateReason.kind === "after_completed_program_day") {
-    return `Next after ${today.nextTemplateReason.previousTemplateName}, completed ${formatRelativeLocalDate(
-      today.nextTemplateReason.previousLocalDate,
-      today.currentLocalDate
-    )}.`;
-  }
-  if (today.nextTemplateReason.kind === "program_changed") {
-    return "First in the current rotation because your Program changed.";
-  }
-  return "First in the Program because no Program day is complete yet.";
-}
-
 function scheduledEventDescription(event: NonNullable<TodayData["schedule"]>["nextEvent"]) {
   if (!event) return "";
   if (event.kind === "cardio" && event.intentSnapshot.kind === "cardio") {
@@ -283,16 +263,24 @@ export default async function TodayPage({
                 : "border-primary/50"
             }
           >
-            <CardHeader className="gap-1">
-              <p className={
-                activeTimingNeedsReview
-                  ? "text-xs font-medium uppercase tracking-[0.12em] text-amber-800 dark:text-amber-300"
-                  : "text-xs font-medium uppercase tracking-[0.12em] text-primary"
-              }>
-                {activeTimingNeedsReview
-                  ? "Workout needs attention"
-                  : "Active workout"}
-              </p>
+            <CardHeader className="gap-1.5">
+              <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
+                <p className={
+                  activeTimingNeedsReview
+                    ? "text-xs font-medium uppercase tracking-[0.12em] text-amber-800 dark:text-amber-300"
+                    : "text-xs font-medium uppercase tracking-[0.12em] text-primary"
+                }>
+                  {activeTimingNeedsReview
+                    ? "Workout needs attention"
+                    : "Active workout"}
+                </p>
+                <span
+                  data-testid="today-program-label"
+                  className="max-w-full break-words rounded-full bg-muted px-2.5 py-1 text-xs font-medium leading-tight text-muted-foreground"
+                >
+                  {today.programName}
+                </span>
+              </div>
               <h2 className="text-xl font-semibold leading-tight sm:text-2xl">
                 {today.inProgressSessionName ?? "Workout in progress"}
               </h2>
@@ -407,17 +395,29 @@ export default async function TodayPage({
               size="sm"
               className="border-primary/40"
             >
-              <CardHeader className="gap-1">
-                <p className="text-xs font-medium uppercase tracking-[0.12em] text-primary">
-                  {isAlternatePreview
-                    ? "Workout preview"
-                    : today.schedule?.nextEvent
-                      ? `Scheduled · ${today.schedule.nextEvent.phaseName}`
-                      : "Next in your Program"}
-                </p>
+              <CardHeader className="gap-1.5">
+                <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
+                  <p className="text-xs font-medium uppercase tracking-[0.12em] text-primary">
+                    {isAlternatePreview
+                      ? "Workout preview"
+                      : today.schedule?.nextEvent
+                        ? `Scheduled · ${today.schedule.nextEvent.phaseName}`
+                        : "Next in your Program"}
+                  </p>
+                  <span
+                    data-testid="today-program-label"
+                    className="max-w-full break-words rounded-full bg-muted px-2.5 py-1 text-xs font-medium leading-tight text-muted-foreground"
+                  >
+                    {today.programName}
+                  </span>
+                </div>
                 <h2 className="text-xl font-semibold leading-tight sm:text-2xl">
                   {selectedTemplate.template.name}
                 </h2>
+                <CardDescription>
+                  {selectedTemplate.slots.length} exercise
+                  {selectedTemplate.slots.length === 1 ? "" : "s"}
+                </CardDescription>
               </CardHeader>
               <CardContent className="flex flex-col gap-3">
                 {isAlternatePreview && !scheduledAlternateBlocked && (
@@ -479,21 +479,6 @@ export default async function TodayPage({
                   </Button>
                 )}
                 <ProgramDecisionStatus count={pendingRecs.length} />
-                <div
-                  data-testid="today-supporting-context"
-                  className="space-y-1"
-                >
-                  <CardDescription>
-                    {today.programName} · {selectedTemplate.slots.length}{" "}
-                    exercises
-                  </CardDescription>
-                  {!isAlternatePreview && (
-                    <p className="text-xs leading-relaxed">
-                      <span className="font-medium">Why this day:</span>{" "}
-                      {whyThisProgramDay(today)}
-                    </p>
-                  )}
-                </div>
                 {!isAlternatePreview && today.schedule?.nextEvent && (
                   <details className="rounded-xl border bg-muted/20 p-3">
                     <summary className="min-h-11 cursor-pointer text-sm font-medium">Change this scheduled event</summary>
@@ -617,9 +602,17 @@ export default async function TodayPage({
         ) : (
           <Card data-testid="today-decision" size="sm" className="border-primary/40">
             <CardHeader className="gap-1">
-              <p className="text-xs font-medium uppercase tracking-[0.12em] text-primary">
-                {today.schedule?.complete ? "Program schedule complete" : `Scheduled · ${today.schedule?.nextEvent?.phaseName ?? "Program"}`}
-              </p>
+              <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
+                <p className="text-xs font-medium uppercase tracking-[0.12em] text-primary">
+                  {today.schedule?.complete ? "Program schedule complete" : `Scheduled · ${today.schedule?.nextEvent?.phaseName ?? "Program"}`}
+                </p>
+                <span
+                  data-testid="today-program-label"
+                  className="max-w-full break-words rounded-full bg-muted px-2.5 py-1 text-xs font-medium leading-tight text-muted-foreground"
+                >
+                  {today.programName}
+                </span>
+              </div>
               <h2 className="text-xl font-semibold leading-tight sm:text-2xl">
                 {today.schedule?.complete
                   ? "No scheduled event remains"

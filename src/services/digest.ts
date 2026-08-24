@@ -29,6 +29,7 @@ import {
 } from "@/services/activity-report";
 import {
   activityDateKey,
+  activityTypeLabel,
   formatActivityDuration,
 } from "@/lib/activities";
 import { convertWeight, weightInPounds } from "@/lib/units";
@@ -179,7 +180,7 @@ class TrainingDigestEvidenceChangedError extends Error {}
 async function buildTrainingDigestOnce(
   db: Db,
   userId: string,
-  since: Date,
+  since: Date | null,
   now = new Date(),
   afterStartingEvidenceRead?: () => Promise<void>,
 ) {
@@ -196,7 +197,9 @@ async function buildTrainingDigestOnce(
     where: eq(userProfiles.userId, userId),
   });
   if (!profile) throw new Error("Profile not found");
-  const sinceLocalDate = workoutLocalDate(since, profile.timezone);
+  const requestedSinceLocalDate = since == null
+    ? null
+    : workoutLocalDate(since, profile.timezone);
   const untilLocalDate = workoutLocalDate(now, profile.timezone);
   const [
     userConstraints,
@@ -222,7 +225,9 @@ async function buildTrainingDigestOnce(
         where: and(
           eq(workoutSessions.userId, userId),
           isNull(workoutSessions.archivedAt),
-          gte(workoutSessions.localDate, sinceLocalDate),
+          requestedSinceLocalDate == null
+            ? undefined
+            : gte(workoutSessions.localDate, requestedSinceLocalDate),
           lte(workoutSessions.localDate, untilLocalDate),
           lte(workoutSessions.startedAt, now),
         ),
@@ -252,7 +257,7 @@ async function buildTrainingDigestOnce(
         where: and(
           eq(healthActivities.userId, userId),
           isNull(healthActivities.archivedAt),
-          gte(healthActivities.startedAt, since),
+          since == null ? undefined : gte(healthActivities.startedAt, since),
           lte(healthActivities.startedAt, now),
         ),
         orderBy: healthActivities.startedAt,
@@ -276,7 +281,7 @@ async function buildTrainingDigestOnce(
           and(
             eq(painLogs.userId, userId),
             isNull(painLogs.archivedAt),
-            gte(painLogs.createdAt, since),
+            since == null ? undefined : gte(painLogs.createdAt, since),
             lte(painLogs.createdAt, now),
             or(isNull(painLogs.sessionId), isNull(workoutSessions.archivedAt))
           )
@@ -292,7 +297,7 @@ async function buildTrainingDigestOnce(
           and(
             eq(fatigueLogs.userId, userId),
             isNull(fatigueLogs.archivedAt),
-            gte(fatigueLogs.createdAt, since),
+            since == null ? undefined : gte(fatigueLogs.createdAt, since),
             lte(fatigueLogs.createdAt, now),
             or(
               isNull(fatigueLogs.sessionId),
@@ -304,7 +309,7 @@ async function buildTrainingDigestOnce(
         where: and(
           eq(recommendations.userId, userId),
           isNull(recommendations.archivedAt),
-          gte(recommendations.createdAt, since),
+          since == null ? undefined : gte(recommendations.createdAt, since),
           lte(recommendations.createdAt, now),
         ),
         with: { exercise: true },
@@ -333,7 +338,9 @@ async function buildTrainingDigestOnce(
             isNull(coachingInsights.archivedAt),
             isNull(workoutSessions.archivedAt),
             eq(workoutSessions.status, "completed"),
-            gte(workoutSessions.localDate, sinceLocalDate),
+            requestedSinceLocalDate == null
+              ? undefined
+              : gte(workoutSessions.localDate, requestedSinceLocalDate),
             lte(workoutSessions.localDate, untilLocalDate),
             lte(coachingInsights.createdAt, now),
           )
@@ -405,6 +412,23 @@ async function buildTrainingDigestOnce(
         .orderBy(workoutSessions.localDate),
     ]);
 
+  const allEvidenceDates = [
+    ...sessions.map((session) => session.startedAt),
+    ...activities.map((activity) => activity.startedAt),
+    ...pain.map((entry) => entry.date),
+    ...fatigue.map((entry) => entry.createdAt),
+    ...recs.map((entry) => entry.createdAt),
+    ...liveCoachMessages.map((entry) => entry.createdAt),
+  ];
+  const effectiveSince = since ?? allEvidenceDates.reduce<Date>(
+    (earliest, value) => value < earliest ? value : earliest,
+    now,
+  );
+  const sinceLocalDate = requestedSinceLocalDate ?? (
+    sessions.map((session) => session.localDate).sort()[0] ??
+      workoutLocalDate(effectiveSince, profile.timezone)
+  );
+
   const currentProgressionBaselineDate = globalProgressionCandidates.find(
     (candidate) => {
       if (activeProgram == null || candidate.sourceProgramId !== activeProgram.id) {
@@ -449,7 +473,7 @@ async function buildTrainingDigestOnce(
     },
   )?.localDate ?? null;
 
-  const activityReport = summarizeActivities(activities, since, now);
+  const activityReport = summarizeActivities(activities, effectiveSince, now);
 
   const terminalSessions = sessions.filter(
     (session) =>
@@ -1469,7 +1493,7 @@ async function buildTrainingDigestOnce(
   }
   const reportWindowRef = {
     kind: "report_window" as const,
-    id: `${since.toISOString()}/${now.toISOString()}`,
+    id: `${effectiveSince.toISOString()}/${now.toISOString()}`,
     revision: null,
   };
   const durationSessions = completed.flatMap((session) => {
@@ -1675,7 +1699,7 @@ async function buildTrainingDigestOnce(
   }
 
   return {
-    range: { since, until: now },
+    range: { since: effectiveSince, until: now },
     reporting: {
       evidenceRevision: startingEvidenceRevision,
       supplementalContextBoundary:
@@ -2083,6 +2107,27 @@ async function buildTrainingDigestOnce(
       byType: activityReport.byType,
       weekly: activityReport.weekly,
       recent: activityReport.recent,
+      retained: [...activities]
+        .sort((a, b) => b.startedAt.getTime() - a.startedAt.getTime())
+        .map((activity) => ({
+          id: activity.id,
+          activityType: activity.activityType,
+          label: activityTypeLabel(activity.activityType),
+          title: activity.title,
+          startedAtISO: activity.startedAt.toISOString(),
+          timezone: activity.timezone,
+          durationSeconds: activity.durationSeconds,
+          distanceKm: activity.distanceKm,
+          averagePaceSecondsPerKm: activity.averagePaceSecondsPerKm,
+          intensity: activity.intensity,
+          elevationGainM: activity.elevationGainM,
+          averageHeartRateBpm: activity.averageHeartRateBpm,
+          energyKcal: activity.energyKcal,
+          notes: activity.notes,
+          originalMetrics: activity.originalMetrics,
+          source: activity.source,
+          excludeFromAnalytics: activity.excludeFromAnalytics,
+        })),
       sources: activitySources,
     },
     recommendations: recs.map((r) => ({
@@ -2112,7 +2157,7 @@ async function buildTrainingDigestOnce(
 export async function buildTrainingDigest(
   db: Db,
   userId: string,
-  since: Date,
+  since: Date | null,
   now = new Date(),
   testHooks?: {
     afterStartingEvidenceRead?: (attempt: number) => Promise<void>;
@@ -2468,10 +2513,19 @@ export function renderCoachingBrief(digest: TrainingDigest): string {
     ...digest.independentActivities.sources.map((source) =>
       `- ${source.integration} (${source.source}): ${source.activityCount} included activities${source.excludedActivityCount ? `; ${source.excludedActivityCount} excluded from analytics` : ""}; observed record range ${source.observedDateRange ? `${source.observedDateRange.fromDateKey} to ${source.observedDateRange.throughDateKey}` : "unknown"}; latest observed activity ${source.latestObservedDateKey ?? "unknown"}; latest sync ${source.latestSyncedAt ? fmtDate(source.latestSyncedAt) : "not recorded"}; completeness ${source.completeness.replaceAll("_", " ")}; feed may be incomplete: ${source.feedMayBeIncomplete ? "yes" : "no"}. Source record IDs are listed in the audit appendix.`,
     ),
-    ...digest.independentActivities.recent.map(
-      (activity) =>
-        `- Recent observed activity: ${activityDateKey(new Date(activity.startedAtISO), activity.timezone)} ${activity.title ?? activity.label}, ${formatActivityDuration(activity.durationSeconds)}${activity.distanceKm != null ? `, ${activity.distanceKm} km` : ""}${activity.intensity ? `, ${activity.intensity} intensity` : ""}; source ${activity.source}. [health_activity:${activity.id}]`,
-    ),
+    ...digest.independentActivities.retained.map((activity) => {
+      const originalDistance =
+        activity.originalMetrics.distanceValue != null &&
+        activity.originalMetrics.distanceUnit != null
+          ? `${activity.originalMetrics.distanceValue} ${activity.originalMetrics.distanceUnit}`
+          : "not retained";
+      const originalElevation =
+        activity.originalMetrics.elevationValue != null &&
+        activity.originalMetrics.elevationUnit != null
+          ? `${activity.originalMetrics.elevationValue} ${activity.originalMetrics.elevationUnit}`
+          : "not retained";
+      return `- Retained activity: ${activityDateKey(new Date(activity.startedAtISO), activity.timezone)} ${activity.title ?? activity.label}, ${formatActivityDuration(activity.durationSeconds)}, ${activity.distanceKm == null ? "distance not recorded" : `${activity.distanceKm} km normalized`}; original recorded distance ${originalDistance}; average pace ${activity.averagePaceSecondsPerKm == null ? "not recorded" : `${activity.averagePaceSecondsPerKm} sec/km normalized`}; intensity ${activity.intensity ?? "not recorded"}; elevation gain ${activity.elevationGainM == null ? "not recorded" : `${activity.elevationGainM} m normalized`}; original recorded elevation ${originalElevation}; average heart rate ${activity.averageHeartRateBpm == null ? "not recorded" : `${activity.averageHeartRateBpm} bpm`}; energy ${activity.energyKcal == null ? "not recorded" : `${activity.energyKcal} kcal`}; notes ${activity.notes == null ? "not recorded" : `"${activity.notes}"`}; source ${activity.source}; analytics ${activity.excludeFromAnalytics ? "excluded by retained record" : "included"}. [health_activity:${activity.id}]`;
+    }),
     "",
     "## Pain, fatigue, and retained proposals",
   );
@@ -2594,6 +2648,9 @@ export function renderCoachingBrief(digest: TrainingDigest): string {
         lines.push(
           `    - Performed set ${set.setNo}: ${set.metrics}. Occurrence links: ${set.occurrenceIds.join(", ") || "legacy/unlinked"}. [completed_set:${set.id}]`,
         );
+      }
+      if (exercise.note) {
+        lines.push(`    - Exercise note: "${exercise.note}".`);
       }
     }
   }
