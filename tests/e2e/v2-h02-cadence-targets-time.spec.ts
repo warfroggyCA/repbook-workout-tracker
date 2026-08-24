@@ -1,6 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 import {
   installNextDevelopmentRefreshControl,
+  openNativeDetails,
   waitForHydratedServerAction,
 } from "../helpers/react-readiness";
 import { observeGauntletPageErrors } from "../helpers/v2-gauntlet-a-errors";
@@ -35,7 +36,7 @@ async function applyEnlargedText(page: Page, enabled: boolean) {
   });
 }
 
-async function expectedCompleteWeekSummary(page: Page) {
+async function expectedCompleteWeekAverage(page: Page) {
   const weekday = await page.evaluate(() =>
     new Intl.DateTimeFormat("en-CA", {
       timeZone: "America/Toronto",
@@ -47,14 +48,14 @@ async function expectedCompleteWeekSummary(page: Page) {
   // partial first and current weeks remain excluded by the product contract.
   // Tuesday is distinct: the -23-day fixture session falls in the first
   // partial week and the -1-day session falls in the current partial week.
-  const expectedByWeekday: Record<string, { average: string; weeks: string }> = {
-    Mon: { average: "1.25", weeks: "4 complete Monday–Sunday weeks" },
-    Tue: { average: "1", weeks: "3 complete Monday–Sunday weeks" },
-    Wed: { average: "1.33", weeks: "3 complete Monday–Sunday weeks" },
-    Thu: { average: "1.33", weeks: "3 complete Monday–Sunday weeks" },
-    Fri: { average: "1.33", weeks: "3 complete Monday–Sunday weeks" },
-    Sat: { average: "1.33", weeks: "3 complete Monday–Sunday weeks" },
-    Sun: { average: "1.33", weeks: "3 complete Monday–Sunday weeks" },
+  const expectedByWeekday: Record<string, string> = {
+    Mon: "1.25",
+    Tue: "1",
+    Wed: "1.33",
+    Thu: "1.33",
+    Fri: "1.33",
+    Sat: "1.33",
+    Sun: "1.33",
   };
   const expected = expectedByWeekday[weekday];
   if (!expected) throw new Error(`Unsupported Toronto weekday: ${weekday}`);
@@ -83,19 +84,25 @@ test("keeps calendar cadence and planned-set outcomes separate and trustworthy",
   await page.goto("/history?view=insights&range=4w");
   await applyEnlargedText(page, narrowMobile);
   await expect(page.getByRole("heading", { level: 2, name: "Insights" })).toBeVisible();
-  await expect(page.getByRole("heading", { level: 3, name: "Training cadence" })).toBeVisible();
-  const expectedCadence = await expectedCompleteWeekSummary(page);
-  const cadenceSummary = page.getByText("Per complete week").locator("..");
-  await expect(cadenceSummary).toContainText(expectedCadence.average);
-  await expect(cadenceSummary).toContainText(expectedCadence.weeks);
-  await expect(page.getByText("Median gap").locator("..")).toContainText("5.5 days");
-  await expect(page.getByText("Current gap").locator("..")).toContainText("1 day");
+  await expect(page.getByRole("heading", { level: 3, name: "Current progress" })).toBeVisible();
+  const reportMeasurements = page.locator("details").filter({
+    hasText: "More report measurements",
+  });
+  await openNativeDetails(reportMeasurements);
+  const expectedCadence = await expectedCompleteWeekAverage(page);
+  await expect(page.getByText("Workouts per complete week").locator("..")).toContainText(expectedCadence);
+  await expect(page.getByText("Median workout gap").locator("..")).toContainText("5.5 days");
+  await expect(page.getByText("Current workout gap").locator("..")).toContainText("1 day");
   await expect(page.getByText(/Current preference: 3 sessions per week/)).toBeVisible();
   await expect(page.getByText(/not an adherence percentage/)).toBeVisible();
   await expect(page.getByText("Program-day exposure", { exact: true })).toBeVisible();
-  await expect(page.getByText("Push renamed / Strength A", { exact: true })).toBeVisible();
-  await expect(page.getByText("Strength B", { exact: true })).toBeVisible();
-  await expect(page.getByText(/2 completed workouts were not linked to a Program day/)).toBeVisible();
+  await expect(page.getByRole("listitem").filter({
+    hasText: "Push renamed / Strength A",
+  })).toBeVisible();
+  await expect(page.getByRole("listitem").filter({
+    hasText: "Strength B",
+  })).toBeVisible();
+  await expect(page.getByText(/2 completed workouts are not linked to a Program day/)).toBeVisible();
 
   await expect(page.getByRole("heading", { level: 3, name: "Planned set outcomes" })).toBeVisible();
   await expect(page.getByText("Below", { exact: true }).locator("..")).toContainText("1");
@@ -103,7 +110,7 @@ test("keeps calendar cadence and planned-set outcomes separate and trustworthy",
   await expect(page.getByText("Above", { exact: true }).locator("..")).toContainText("1");
   await expect(page.getByText("Unknown", { exact: true }).locator("..")).toContainText("1");
   await expect(
-    page.getByText(/4 of 5 planned outcomes were evaluable \(80%\)/),
+    page.getByText(/4 of 5 quantified outcomes were evaluable \(80%\)/),
   ).toBeVisible();
   await expect(
     page.getByText(/Within that subset, 75% were at or above target/),
