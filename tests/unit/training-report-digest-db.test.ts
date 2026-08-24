@@ -720,6 +720,7 @@ describe("training reporting digest integration", () => {
         finishedAt: new Date("2026-08-15T18:10:00.000Z"),
         timezone: "UTC",
         localDate: "2026-08-15",
+        sourceWorkoutKey: "private-retrospective-request-key",
       })
       .returning({ id: workoutSessions.id });
     await database.db.insert(coachingInsights).values([
@@ -808,6 +809,8 @@ describe("training reporting digest integration", () => {
     expect(serialized).not.toContain("must-not-leave-repbook");
     expect(serialized).not.toContain(fixture.userId);
     expect(serialized).not.toContain('"clientKey"');
+    expect(serialized).not.toContain("private-retrospective-request-key");
+    expect(serialized).not.toContain('"sourceWorkoutKey"');
     expect(serialized).not.toContain('"fingerprint"');
     expect(serialized).not.toContain('"sourceMetadata"');
     expect(serialized).not.toContain(progressionJobId);
