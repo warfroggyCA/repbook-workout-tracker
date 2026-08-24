@@ -1464,13 +1464,13 @@ test("answers all five History questions without mixing independent activity int
   await page.goto("/history?view=insights");
   const activitySummary = page
     .getByRole("heading", {
-      name: "Independent activity summary",
+      name: "Independent activities",
       exact: true,
     })
     .locator("xpath=ancestor::*[@data-slot='card'][1]");
-  await expect(activitySummary).toContainText("activities");
-  await expect(activitySummary).toContainText("90");
-  await expect(activitySummary).toContainText("7.5");
+  await expect(activitySummary).toContainText("1 activity");
+  await expect(activitySummary).toContainText("90 min");
+  await expect(activitySummary).toContainText("7.5 km");
   await page.goto("/history?view=insights&lens=work-capacity");
   await expect(
     page
