@@ -89,6 +89,16 @@ function renderCalendar(
 }
 
 describe("HistoryCalendar date actions", () => {
+  it("keeps the calendar heading and controls without the redundant instructions", () => {
+    const html = renderCalendar([calendarSession("workout-one", "Day One")]);
+
+    expect(html).toContain("<h2>Training calendar</h2>");
+    expect(html).toContain("Today");
+    expect(html).not.toContain(
+      "One record opens directly; multiple records open a chooser",
+    );
+  });
+
   it("places a workout on its recorded local date instead of its UTC date", () => {
     const html = renderCalendar(
       [

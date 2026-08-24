@@ -1,6 +1,7 @@
 import { ChevronDown, Database, Download, FileText } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { CopyCompleteReportButton } from "@/components/export/copy-complete-report-button";
 import {
   Card,
   CardContent,
@@ -35,22 +36,34 @@ export default async function ExportPage({
             Downloads &amp; backup
           </h1>
           <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
-            Start with the readable Training Brief. Use the full backup to keep
-            a recovery copy of everything in Repbook.
+            Download a readable report or keep a full recovery copy of your
+            Repbook data.
           </p>
         </header>
 
-        <Card id="training-brief" className="border-primary/40">
+        <Card className="border-primary/50 bg-primary/3">
           <CardHeader>
             <div className="flex flex-wrap items-center gap-2">
-              <CardTitle>Training Brief</CardTitle>
+              <CardTitle>Complete AI report</CardTitle>
               <Badge>Recommended</Badge>
             </div>
             <CardDescription>
-              A readable Markdown summary for a coach or AI assistant. It leads
-              with the useful conclusions, includes the supporting detail, and
-              states what the evidence cannot establish. Repbook never sends it
-              anywhere for you.
+              Creates one all-time training report with instructions already
+              written for an AI assistant, then copies it to your clipboard.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <CopyCompleteReportButton />
+          </CardContent>
+        </Card>
+
+        <Card id="training-brief">
+          <CardHeader>
+            <CardTitle>Training Brief</CardTitle>
+            <CardDescription>
+              A readable Markdown report for a coach or AI assistant. It covers
+              the period you choose, includes supporting details and gaps, and
+              is never sent anywhere by Repbook.
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -105,9 +118,9 @@ export default async function ExportPage({
               <CardTitle>Back up all Repbook data</CardTitle>
             </div>
             <CardDescription>
-              A complete point-in-time JSON copy of active and archived records,
-              with original identities and relationships. Keep it for recovery;
-              it is not intended as an everyday readable report.
+              A complete JSON copy of active and archived records for recovery.
+              It keeps original identities and relationships, but is not meant
+              to be read like a report.
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -127,8 +140,7 @@ export default async function ExportPage({
             <span>
               <span className="block font-semibold">Advanced exports</span>
               <span className="mt-1 block text-sm font-normal text-muted-foreground">
-                Raw spreadsheets, external-analysis packages, and
-                troubleshooting files.
+                Spreadsheets, analysis packages, and troubleshooting files.
               </span>
             </span>
             <ChevronDown
@@ -148,8 +160,8 @@ export default async function ExportPage({
                 </h2>
               </div>
               <p className="mt-1 text-sm leading-6 text-muted-foreground">
-                Raw tables for your own spreadsheet work. These files are less
-                readable and carry fewer relationships than a full backup.
+                Raw tables for spreadsheet work. They contain fewer
+                relationships than the full backup.
               </p>
               <div className="mt-3 flex flex-wrap gap-2">
                 <Button
@@ -202,9 +214,8 @@ export default async function ExportPage({
                 Versioned analysis package
               </h2>
               <p className="mt-1 text-sm leading-6 text-muted-foreground">
-                For a carefully bounded external analysis question. Preview the
-                exact purpose-specific JSON before downloading it; Repbook never
-                sends the package for you.
+                Choose one analysis question, then preview the exact JSON before
+                downloading it. Repbook never sends it for you.
               </p>
               <Button
                 render={<a href="/export/analysis" />}
@@ -224,8 +235,8 @@ export default async function ExportPage({
                 Support bundle
               </h2>
               <p className="mt-1 text-sm leading-6 text-muted-foreground">
-                Only for troubleshooting. Choose one problem and preview a
-                separate redacted file that is never uploaded automatically.
+                Choose one problem and preview a redacted troubleshooting file.
+                Repbook never uploads it automatically.
               </p>
               <Button
                 render={<a href="/export/support" />}

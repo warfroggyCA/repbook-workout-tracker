@@ -28,7 +28,6 @@ import {
 import {
   Card,
   CardContent,
-  CardDescription,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
@@ -533,13 +532,8 @@ export function HistoryCalendar({
         <div>
           <CardTitle className="flex items-center gap-2">
             <CalendarDays className="size-4 text-primary" />
-            <h3>Training calendar</h3>
+            <h2>Training calendar</h2>
           </CardTitle>
-          <CardDescription>
-            One record opens directly. Dates with workouts and activities let
-            you choose the exact entry or record another workout. An empty past
-            date starts a reviewed retrospective entry.
-          </CardDescription>
         </div>
         <div className="flex flex-wrap items-center gap-1 sm:justify-end">
           <Button variant="outline" size="sm" onClick={showToday}>

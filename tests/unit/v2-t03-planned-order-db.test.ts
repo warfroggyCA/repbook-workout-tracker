@@ -186,6 +186,7 @@ describe("V2 T03 planned order and extra-set truth", () => {
         userId: otherUser.id,
         templateName: "Other workout",
         status: "in_progress",
+        startedAt: new Date("2026-08-22T16:00:00.000Z"),
         timezone: "America/Toronto",
         localDate: "2026-08-22",
       })

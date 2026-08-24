@@ -239,9 +239,10 @@ async function verifyDecisiveToday({
   await expect(
     page.getByRole("heading", { name: "Day B — Hinge", exact: true })
   ).toBeVisible();
-  await expect(decision).toContainText(
-    "Why this day: Next after Day A — Squat, completed today."
-  );
+  const programLabel = page.getByTestId("today-program-label");
+  await expect(programLabel).toBeVisible();
+  await expect(programLabel).not.toHaveText("");
+  await expect(decision.getByText(/Why this day:/)).toHaveCount(0);
   await expect(trainAsPlanned).toBeVisible();
   await expect(decisionStatus).toBeVisible();
   await expect(page.getByText("Adapt today", { exact: true })).toHaveCount(0);
@@ -254,13 +255,14 @@ async function verifyDecisiveToday({
     const status = element.querySelector(
       '[aria-label^="Program decision status"]'
     );
-    const supporting = element.querySelector(
-      '[data-testid="today-supporting-context"]'
+    const program = element.querySelector(
+      '[data-testid="today-program-label"]'
     );
     const bottomNavigation = document.querySelector("nav.fixed");
-    if (!primary || !status || !supporting || !bottomNavigation) return null;
+    if (!primary || !status || !program || !bottomNavigation) return null;
     const primaryRect = primary.getBoundingClientRect();
     const statusRect = status.getBoundingClientRect();
+    const programRect = program.getBoundingClientRect();
     const navigationRect = bottomNavigation.getBoundingClientRect();
     return {
       primaryBottom: Math.round(primaryRect.bottom),
@@ -268,16 +270,19 @@ async function verifyDecisiveToday({
       navigationTop: Math.round(navigationRect.top),
       primaryClipped: primary.scrollWidth > primary.clientWidth + 1,
       statusClipped: status.scrollWidth > status.clientWidth + 1,
+      programClipped:
+        program.scrollWidth > program.clientWidth + 1 ||
+        programRect.right > document.documentElement.clientWidth + 1,
       pageOverflow:
         document.documentElement.scrollWidth >
         document.documentElement.clientWidth + 1,
-      decisionPrecedesSupporting:
+      programPrecedesDecision:
         Boolean(
-          primary.compareDocumentPosition(status) &
+          program.compareDocumentPosition(primary) &
             Node.DOCUMENT_POSITION_FOLLOWING
         ) &&
         Boolean(
-          status.compareDocumentPosition(supporting) &
+          primary.compareDocumentPosition(status) &
             Node.DOCUMENT_POSITION_FOLLOWING
         ),
     };
@@ -291,8 +296,9 @@ async function verifyDecisiveToday({
   );
   expect(firstViewport?.primaryClipped).toBe(false);
   expect(firstViewport?.statusClipped).toBe(false);
+  expect(firstViewport?.programClipped).toBe(false);
   expect(firstViewport?.pageOverflow).toBe(false);
-  expect(firstViewport?.decisionPrecedesSupporting).toBe(true);
+  expect(firstViewport?.programPrecedesDecision).toBe(true);
 
   for (const viewport of responsiveViewports) {
     await page.setViewportSize(viewport);
@@ -536,9 +542,8 @@ async function verifyNoHistoryToday({
       exact: true,
     })
   ).toBeVisible();
-  await expect(decision).toContainText(
-    "Why this day: First in the Program because no Program day is complete yet."
-  );
+  await expect(page.getByTestId("today-program-label")).toBeVisible();
+  await expect(decision.getByText(/Why this day:/)).toHaveCount(0);
   await expect(
     page.getByRole("button", { name: "Train as planned", exact: true })
   ).toBeVisible();
@@ -1183,7 +1188,7 @@ test("answers all five History questions without mixing independent activity int
   await page.goto("/history?range=all");
   await expect(
     page.getByRole("heading", { name: "Calendar", exact: true }),
-  ).toBeVisible();
+  ).toHaveCount(0);
   await expect(
     page.getByRole("heading", { name: "Training calendar", exact: true }),
   ).toBeVisible();
@@ -1196,7 +1201,7 @@ test("answers all five History questions without mixing independent activity int
 
   await page.getByRole("link", { name: "Insights", exact: true }).click();
   await expect(
-    page.getByRole("heading", { name: "Five questions", exact: true }),
+    page.getByRole("heading", { name: "Explore the evidence", exact: true }),
   ).toBeVisible();
   await expect(
     page.getByRole("heading", { name: "Training calendar", exact: true }),
@@ -1329,7 +1334,7 @@ test("answers all five History questions without mixing independent activity int
   ).toBeVisible();
   await page.goto("/history?range=all&view=insights");
   await expect(
-    page.getByRole("heading", { name: "Five questions", exact: true }),
+    page.getByRole("heading", { name: "Explore the evidence", exact: true }),
   ).toBeVisible();
 
   await page.goto("/settings");

@@ -1325,11 +1325,25 @@ measurement, so the report does not infer unusual load or failure by mining
 free text; an explicit note remains visible verbatim.
 
 The owner-facing download workspace is purpose-first without changing any
-artifact contract. The readable bounded Training Brief is the normal entry
-point, the canonical full JSON backup remains the recovery copy, and raw CSV,
-versioned analysis-package, and redacted support-bundle workflows stay distinct
-under Advanced exports. An all-time History view never silently becomes an
-all-time brief: the workspace explains and selects the bounded 12-week default.
+recovery or analysis-package artifact contract. The primary Complete AI report
+assembles one unbounded view of available non-archived training evidence. It
+combines the readable coaching brief with a report-only JSON source appendix
+that preserves retained workout, set, occurrence, equipment-snapshot,
+activity, pain, fatigue, AI-visible note, recommendation-decision, and saved
+user-authored Live Coach fields. Revision-tracked evidence is accepted only
+after a matching start/end revision check; session notes and saved user
+messages are labeled retrieval-time supplemental context. Account identity,
+archive metadata, private notes, raw assistant/provider material, request/retry
+keys, and worker identifiers remain excluded. The route prepends deterministic
+provider-neutral review instructions and returns a private no-store Markdown
+response. Only an explicit browser tap may copy those exact bytes to the device
+clipboard; Repbook does not transmit the report to an external provider. The
+bounded Training Brief remains available for a chosen period, the canonical
+full JSON backup remains the recovery copy, and raw CSV, versioned
+analysis-package, and redacted support-bundle workflows
+stay distinct under Advanced exports. An all-time History link still never
+silently changes the bounded Training Brief: the workspace explains and selects
+the 12-week default for that separate artifact.
 
 ## R01 cross-cutting lifecycle audit
 

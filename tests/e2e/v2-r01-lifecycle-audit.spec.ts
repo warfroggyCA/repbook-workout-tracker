@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "@playwright/test";
 import {
   installNextDevelopmentRefreshControl,
   waitForHydratedServerAction,
@@ -6,6 +6,73 @@ import {
 import { observeGauntletPageErrors } from "../helpers/v2-gauntlet-a-errors";
 
 const EMAIL = "owner@example.com";
+
+async function waitForReactHandler(locator: Locator) {
+  await expect.poll(async () => {
+    if ((await locator.count()) !== 1) return false;
+    return locator.evaluate((element) => {
+      const propsKey = Object.getOwnPropertyNames(element).find((name) =>
+        name.startsWith("__reactProps$"),
+      );
+      if (!propsKey) return false;
+      const props = (element as unknown as Record<string, unknown>)[propsKey];
+      return typeof props === "object" && props !== null &&
+        typeof (props as { onClick?: unknown }).onClick === "function";
+    });
+  }, { timeout: 30_000 }).toBe(true);
+}
+
+async function installClipboardHarness(
+  page: Page,
+  mode: "copy" | "deny" = "copy",
+) {
+  await page.addInitScript(({ clipboardMode }) => {
+    class TestClipboardItem {
+      private readonly values: Record<string, Blob | Promise<Blob>>;
+
+      constructor(values: Record<string, Blob | Promise<Blob>>) {
+        this.values = values;
+      }
+
+      async getType(type: string) {
+        const value = await this.values[type];
+        if (!value) throw new Error(`Missing clipboard type ${type}.`);
+        return value;
+      }
+    }
+
+    Object.defineProperty(globalThis, "ClipboardItem", {
+      configurable: true,
+      value: TestClipboardItem,
+    });
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: {
+        write: async (items: TestClipboardItem[]) => {
+          if (clipboardMode === "deny") {
+            throw new DOMException(
+              "Clipboard permission denied.",
+              "NotAllowedError",
+            );
+          }
+          const blob = await items[0]!.getType("text/plain");
+          (window as unknown as { __repbookClipboard?: string })
+            .__repbookClipboard = await blob.text();
+        },
+        writeText: async (value: string) => {
+          if (clipboardMode === "deny") {
+            throw new DOMException(
+              "Clipboard permission denied.",
+              "NotAllowedError",
+            );
+          }
+          (window as unknown as { __repbookClipboard?: string })
+            .__repbookClipboard = value;
+        },
+      },
+    });
+  }, { clipboardMode: mode });
+}
 
 async function signIn(page: Page) {
   await installNextDevelopmentRefreshControl(page);
@@ -21,6 +88,7 @@ test("keeps portable facts, AI packages, support diagnostics, Review, and Coach 
   browserName,
   page,
 }) => {
+  await installClipboardHarness(page);
   await signIn(page);
   const pageErrors = observeGauntletPageErrors(page, browserName);
   const externalRequests: string[] = [];
@@ -29,10 +97,20 @@ test("keeps portable facts, AI packages, support diagnostics, Review, and Coach 
     if (host !== "127.0.0.1") externalRequests.push(request.url());
   });
 
+  await page.goto("/settings");
+  const extraLarge = page.getByRole("radio", { name: /Extra large/ });
+  await waitForReactHandler(extraLarge);
+  await extraLarge.click();
+  await expect(page.getByText("Saved to your profile.", { exact: true })).toBeVisible();
+
   await page.goto("/export");
+  await expect.poll(() =>
+    page.evaluate(() => document.documentElement.dataset.fontSize)
+  ).toBe("extra-large");
   await expect(
     page.getByRole("heading", { name: "Downloads & backup" }),
   ).toBeVisible();
+  await expect(page.getByText("Complete AI report", { exact: true })).toBeVisible();
   await expect(page.getByText("Training Brief", { exact: true })).toBeVisible();
   await expect(page.getByText("Recommended", { exact: true })).toBeVisible();
   await expect(
@@ -45,7 +123,24 @@ test("keeps portable facts, AI packages, support diagnostics, Review, and Coach 
   await expect(
     page.getByText("Spreadsheet data (CSV)", { exact: true }),
   ).not.toBeVisible();
-  await expect(page.getByText(/never sends it anywhere for you/i)).toBeVisible();
+  await expect(page.getByText(/never sent anywhere by Repbook/i)).toBeVisible();
+  const completeReportButton = page.getByRole("button", {
+    name: "Create complete report & copy",
+    exact: true,
+  });
+  expect((await completeReportButton.boundingBox())?.height ?? 0)
+    .toBeGreaterThanOrEqual(44);
+  await completeReportButton.click();
+  await expect(
+    page.getByText("Complete report copied to your clipboard.", { exact: true }),
+  ).toBeVisible();
+  const copiedReport = await page.evaluate(
+    () => (window as unknown as { __repbookClipboard?: string }).__repbookClipboard,
+  );
+  expect(copiedReport).toContain("# Instructions for the language model");
+  expect(copiedReport).toContain("# Repbook training record");
+  expect(copiedReport).toContain("# Training brief");
+  expect(copiedReport).not.toContain(EMAIL);
   await expect
     .poll(() =>
       page.evaluate(
@@ -73,7 +168,7 @@ test("keeps portable facts, AI packages, support diagnostics, Review, and Coach 
   await expect(
     page.getByText("Spreadsheet data (CSV)", { exact: true }),
   ).toBeVisible();
-  await expect(page.getByText(/never uploaded automatically/i)).toBeVisible();
+  await expect(page.getByText(/never uploads it automatically/i)).toBeVisible();
 
   await page.goto("/history?range=all");
   await page.getByRole("button", { name: "More History actions" }).click();
@@ -120,6 +215,49 @@ test("keeps portable facts, AI packages, support diagnostics, Review, and Coach 
   ).toBeVisible();
   await expect(page.getByText(/Live Coach stays with the workout/i)).toBeVisible();
 
+  await page.goto("/settings");
+  const defaultSize = page.getByRole("radio", { name: /Default 115%/ });
+  await waitForReactHandler(defaultSize);
+  await defaultSize.click();
+  await expect(page.getByText("Saved to your profile.", { exact: true })).toBeVisible();
+
   expect(externalRequests).toEqual([]);
   await pageErrors.expectNoUnexpected();
+});
+
+test("reports clipboard denial and report preparation failures", async ({
+  page,
+}) => {
+  await installClipboardHarness(page, "deny");
+  await signIn(page);
+  await page.goto("/export");
+
+  const copyButton = page.getByRole("button", {
+    name: "Create complete report & copy",
+    exact: true,
+  });
+  await copyButton.click();
+  await expect(
+    page.getByText("Clipboard permission denied.", { exact: true }),
+  ).toBeVisible();
+
+  await page.route("**/api/export/llm-report", (route) =>
+    route.fulfill({ status: 500, contentType: "text/plain", body: "failed" }),
+  );
+  await page.evaluate(() => {
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: {
+        write: async (items: Array<{ getType(type: string): Promise<Blob> }>) => {
+          await items[0]!.getType("text/plain");
+        },
+      },
+    });
+  });
+  await copyButton.click();
+  await expect(
+    page.getByText("The report could not be prepared. Try again.", {
+      exact: true,
+    }),
+  ).toBeVisible();
 });

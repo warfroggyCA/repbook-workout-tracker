@@ -25,7 +25,15 @@ const mocks = vi.hoisted(() => ({
   buildActivitiesCsv: vi.fn(async () => "date,activity\n"),
   buildLiveCoachCsv: vi.fn(async () => "date,message\n"),
   buildJsonBackup: vi.fn(async () => ({ schemaVersion: "test" })),
-  buildTrainingDigest: vi.fn(async () => ({ weeks: 4 })),
+  buildTrainingDigest: vi.fn(async () => ({
+    weeks: 4,
+    reporting: { evidenceRevision: "7" },
+  })),
+  buildLlmTrainingSource: vi.fn(async () => ({
+    schemaVersion: "llm-training-source/1",
+    evidenceRevision: "7",
+    workoutSessions: [],
+  })),
   renderCoachingBrief: vi.fn(() => "# Coaching brief"),
   recordExport: vi.fn(async () => undefined),
   sinceDate: vi.fn((weeks: number | null) =>
@@ -77,6 +85,9 @@ vi.mock("@/services/digest", () => ({
   buildTrainingDigest: mocks.buildTrainingDigest,
   renderCoachingBrief: mocks.renderCoachingBrief,
 }));
+vi.mock("@/services/llm-training-source", () => ({
+  buildLlmTrainingSource: mocks.buildLlmTrainingSource,
+}));
 vi.mock("@/services/hevy-staging", () => ({
   stageHevyImport: mocks.stageHevyImport,
 }));
@@ -107,6 +118,7 @@ vi.mock("@/services/program-drafts", () => ({
 
 import { GET as getCsvExport } from "@/app/api/export/csv/route";
 import { GET as getJsonExport } from "@/app/api/export/json/route";
+import { GET as getLlmReport } from "@/app/api/export/llm-report/route";
 import { GET as getMarkdownExport } from "@/app/api/export/markdown/route";
 import { POST as stageHevy } from "@/app/api/import/hevy/stage/route";
 import { POST as saveCoachMessage } from "@/app/api/live-coach/messages/route";
@@ -201,6 +213,62 @@ describe("HTTP production perimeter", () => {
     assertSensitive(response);
   });
 
+  it("builds an all-time private LLM report without a download wrapper", async () => {
+    const response = await getLlmReport();
+
+    expect(response.status).toBe(200);
+    assertSensitive(response);
+    expect(response.headers.get("content-type")).toContain("text/markdown");
+    expect(response.headers.get("content-disposition")).toBeNull();
+    const body = await response.text();
+    expect(body).toContain("# Repbook training record");
+    expect(body).toContain("<repbook-retained-source-records>");
+    expect(mocks.buildTrainingDigest).toHaveBeenCalledWith(
+      expect.anything(),
+      "user-1",
+      null,
+      expect.any(Date),
+    );
+    expect(mocks.buildLlmTrainingSource).toHaveBeenCalledWith(
+      expect.anything(),
+      "user-1",
+      expect.any(Date),
+    );
+    const digestCall = mocks.buildTrainingDigest.mock.calls[0] as unknown as [
+      unknown,
+      string,
+      null,
+      Date,
+    ];
+    const sourceCall = mocks.buildLlmTrainingSource.mock.calls[0] as unknown as [
+      unknown,
+      string,
+      Date,
+    ];
+    expect(sourceCall[2]).toBe(digestCall[3]);
+    expect(mocks.recordExport).toHaveBeenCalledWith(
+      expect.anything(),
+      "user-1",
+      "markdown",
+      { range: "all", purpose: "llm_ready_training_report" },
+    );
+  });
+
+  it("rebuilds the complete report when its two evidence views do not match", async () => {
+    mocks.buildLlmTrainingSource.mockResolvedValueOnce({
+      schemaVersion: "llm-training-source/1",
+      evidenceRevision: "6",
+      workoutSessions: [],
+    });
+
+    const response = await getLlmReport();
+
+    expect(response.status).toBe(200);
+    expect(mocks.buildTrainingDigest).toHaveBeenCalledTimes(2);
+    expect(mocks.buildLlmTrainingSource).toHaveBeenCalledTimes(2);
+    expect(mocks.recordExport).toHaveBeenCalledOnce();
+  });
+
   it("returns a bounded retry response when an export is already running", async () => {
     mocks.runExpensiveOperation.mockResolvedValueOnce({
       ok: false,
@@ -223,6 +291,7 @@ describe("HTTP production perimeter", () => {
       getMarkdownExport(
         new Request("http://localhost/api/export/markdown?weeks=4&download=1")
       ),
+      getLlmReport(),
       downloadSnapshot(new Request("http://localhost"), {
         params: Promise.resolve({ id: snapshotId }),
       }),
@@ -231,12 +300,13 @@ describe("HTTP production perimeter", () => {
       expect(response.status).toBe(200);
       assertSensitive(response);
     }
-    expect(responses[3].headers.get("content-disposition")).toBe(
+    expect(responses[4].headers.get("content-disposition")).toBe(
       `attachment; filename="workout-tracker-snapshot-${snapshotId}.json"`
     );
     expect(responses[2].headers.get("content-disposition")).toMatch(
       /^attachment; filename="repbook-training-brief-\d{4}-\d{2}-\d{2}\.md"$/
     );
+    expect(responses[3].headers.get("content-disposition")).toBeNull();
   });
 
   it("rejects every mutation route when browser provenance is missing or cross-site", async () => {
