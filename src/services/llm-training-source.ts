@@ -268,6 +268,7 @@ async function buildLlmTrainingSourceOnce(
       } = session;
       return {
         ...reportRecord(sessionRow, new Set([
+          "sourceWorkoutKey",
           "startRequestKey",
           "startRequestHash",
           "compilationAcceptanceKey",

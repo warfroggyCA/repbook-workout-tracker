@@ -278,10 +278,10 @@ function InsightsOverview({
           />
           <MetricCard
             label="Loaded volume"
-            value={report.overview.loadedVolume === 0
+            value={report.overview.loadedSets === 0
               ? "Not available"
               : `${number.format(report.overview.loadedVolume)} ${unit}`}
-            detail={report.overview.loadedVolume === 0
+            detail={report.overview.loadedSets === 0
               ? "No eligible loaded sets"
               : "Eligible loaded sets only"}
             icon={BarChart3}

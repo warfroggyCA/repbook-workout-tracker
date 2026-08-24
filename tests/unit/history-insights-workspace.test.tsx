@@ -61,6 +61,25 @@ describe("HistoryInsightsWorkspace overview", () => {
     expect(html).not.toContain("0 lb");
   });
 
+  it("preserves a recorded zero loaded volume", () => {
+    const { report, activityReport } = emptyReports();
+    const html = renderOverview({
+      activityReport,
+      report: {
+        ...report,
+        overview: {
+          ...report.overview,
+          loadedSets: 1,
+          loadedVolume: 0,
+        },
+      },
+    });
+
+    expect(html).toContain("0 lb");
+    expect(html).toContain("Eligible loaded sets only");
+    expect(html).not.toContain("No eligible loaded sets");
+  });
+
   it("keeps unknown and incomplete planned outcomes distinct from zero", () => {
     const { report, activityReport } = emptyReports();
     const html = renderOverview({

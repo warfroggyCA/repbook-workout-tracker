@@ -654,6 +654,7 @@ export function summarizeHistory(
         : (chronological[0]?.localDate ?? nowLocalDate);
   let workingSets = 0;
   let totalReps = 0;
+  let loadedSets = 0;
   let loadedVolume = 0;
   let timedActivitySeconds = 0;
   let distanceKm = 0;
@@ -917,6 +918,7 @@ export function summarizeHistory(
             displayUnit
           );
           const volume = normalizedWeight * set.reps;
+          loadedSets += 1;
           loadedVolume += volume;
           weekly.volume += volume;
           exerciseStats.volume += volume;
@@ -1360,6 +1362,7 @@ export function summarizeHistory(
       abandonedSessions: abandoned.length,
       workingSets,
       totalReps,
+      loadedSets,
       loadedVolume: Math.round(loadedVolume),
       timedActivityMinutes: Math.round(timedActivitySeconds / 60),
       distanceKm: round(distanceKm, 2),
@@ -2294,6 +2297,8 @@ export async function getHistoryReport(
       (SELECT count(*)::int FROM working_sets) AS working_sets,
       coalesce((SELECT sum(reps)::int FROM working_sets
         WHERE NOT exclude_from_analytics), 0) AS total_reps,
+      (SELECT count(*)::int FROM working_sets
+        WHERE loaded_work_eligible) AS loaded_sets,
       round(coalesce((SELECT sum(normalized_weight * reps) FROM working_sets
         WHERE loaded_work_eligible), 0))::int AS loaded_volume,
       round(coalesce((SELECT sum(duration_seconds) FROM working_sets
@@ -2950,6 +2955,7 @@ export async function getHistoryReport(
       abandonedSessions,
       workingSets,
       totalReps: Number(row.total_reps),
+      loadedSets: Number(row.loaded_sets),
       loadedVolume: Number(row.loaded_volume),
       timedActivityMinutes: Number(row.timed_activity_minutes),
       distanceKm: Number(row.distance_km),
