@@ -268,7 +268,7 @@ export default async function TodayPage({
                 <p className={
                   activeTimingNeedsReview
                     ? "text-xs font-medium uppercase tracking-[0.12em] text-amber-800 dark:text-amber-300"
-                    : "text-xs font-medium uppercase tracking-[0.12em] text-primary"
+                    : "hidden text-xs font-medium uppercase tracking-[0.12em] text-primary sm:block"
                 }>
                   {activeTimingNeedsReview
                     ? "Workout needs attention"
@@ -276,7 +276,9 @@ export default async function TodayPage({
                 </p>
                 <span
                   data-testid="today-program-label"
-                  className="max-w-full break-words rounded-full bg-muted px-2.5 py-1 text-xs font-medium leading-tight text-muted-foreground"
+                  className={activeTimingNeedsReview
+                    ? "max-w-full break-words rounded-full bg-muted px-2.5 py-1 text-xs font-medium leading-tight text-muted-foreground"
+                    : "max-w-full break-words text-xs font-medium leading-tight text-muted-foreground"}
                 >
                   {today.programName}
                 </span>
@@ -285,15 +287,17 @@ export default async function TodayPage({
                 {today.inProgressSessionName ?? "Workout in progress"}
               </h2>
               <CardDescription className="leading-relaxed">
-                {today.inProgressSessionStartedAtISO
-                  ? `Started ${new Intl.DateTimeFormat("en-CA", {
+                {today.inProgressSessionStartedAtISO && (
+                  <span className="hidden sm:inline">
+                    {`Started ${new Intl.DateTimeFormat("en-CA", {
                       dateStyle: "medium",
                       timeStyle: "short",
                       timeZone: user.profile.timezone,
                     })
                       .format(new Date(today.inProgressSessionStartedAtISO))
-                      .replace(/\.$/, "")}. `
-                  : ""}
+                      .replace(/\.$/, "")}. `}
+                  </span>
+                )}
                 <span className="sm:hidden">
                   Saved sets and notes are retained.
                 </span>
