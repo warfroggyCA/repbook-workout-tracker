@@ -111,8 +111,11 @@ test("selectively imports external evidence into owner-controlled Review", async
   await page.getByLabel("Import this labelled external observation").check();
   await page.getByLabel("Import this proposal into Review").check();
   await page.getByRole("button", { name: "Import selected into Review" }).click();
-  await expect(page.getByRole("status")).toContainText("Selected items are in Review");
-  await expect(page.getByRole("status")).toContainText("The raw response was discarded");
+  const importStatus = page.getByRole("status").filter({
+    hasText: "Selected items are in Review",
+  });
+  await expect(importStatus).toContainText("Selected items are in Review");
+  await expect(importStatus).toContainText("The raw response was discarded");
   await expect(page.getByLabel("Returned JSON")).toHaveValue("");
 
   await page.getByRole("link", { name: "Open Review and decisions" }).click();

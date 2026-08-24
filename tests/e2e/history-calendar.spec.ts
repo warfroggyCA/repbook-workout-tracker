@@ -124,10 +124,10 @@ test("calendar-first History opens a recoverable retrospective entry flow", asyn
   await prefetches.settle();
   errors.length = 0;
 
-  const viewHeading = page.getByRole("heading", {
+  await expect(page.getByRole("heading", {
     name: "Calendar",
     exact: true,
-  });
+  })).toHaveCount(0);
   const calendarTitle = page.getByRole("heading", {
     name: "Training calendar",
     exact: true,
@@ -136,15 +136,12 @@ test("calendar-first History opens a recoverable retrospective entry flow", asyn
     name: "Needs attention",
     exact: true,
   });
-  const [viewBox, calendarBox, attentionBox] = await Promise.all([
-    viewHeading.boundingBox(),
+  const [calendarBox, attentionBox] = await Promise.all([
     calendarTitle.boundingBox(),
     attention.boundingBox(),
   ]);
-  expect(viewBox).not.toBeNull();
   expect(calendarBox).not.toBeNull();
   expect(attentionBox).not.toBeNull();
-  expect(viewBox!.y).toBeLessThan(calendarBox!.y);
   expect(calendarBox!.y).toBeLessThan(attentionBox!.y);
 
   const selectedPastDate = page.getByRole("link", {
