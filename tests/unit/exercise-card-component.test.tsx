@@ -219,8 +219,9 @@ describe("ExerciseCard", () => {
       "expectedHistoryRevision: resultHistoryRevision",
     );
     expect(source).toContain("restored to today");
+    expect(source).toContain("Remove from future");
     expect(source).toContain(
-      "To remove it from future workouts, edit the routine separately.",
+      "nothing changes in future workouts",
     );
   });
 
@@ -336,6 +337,58 @@ describe("ExerciseCard", () => {
     expect(html.indexOf("More for this exercise")).toBeLessThan(
       html.indexOf("Workout actions"),
     );
+  });
+
+  it("names an exercise preparation blocker and links to its exact action", () => {
+    const html = renderToStaticMarkup(
+      <ExerciseCard
+        exercise={{ ...exercise, sets: [] }}
+        historyRevision={0}
+        progress={{
+          sessionExerciseId: exercise.id,
+          exerciseName: exercise.name,
+          total: 3,
+          planned: 3,
+          extra: 0,
+          workoutOnly: 0,
+          performed: 0,
+          plannedPerformed: 0,
+          extraPerformed: 0,
+          workoutOnlyPerformed: 0,
+          skipped: 0,
+          abandoned: 0,
+          pending: 3,
+          legacyUnknown: 0,
+          completedWithoutResult: 0,
+          status: "not_started",
+        }}
+        expanded
+        onToggle={() => undefined}
+        plateConfigs={{}}
+        incrementals={{}}
+        unit="lb"
+        preparationBlocker={{
+          blockerOccurrenceId: "00000000-0000-4000-8000-000000000020",
+          blockerLabel: "preparation set",
+          blockerExerciseName: "Barbell Squat",
+          blockerTargetId:
+            "warmup-occurrence-00000000-0000-4000-8000-000000000020",
+        }}
+        onRevealBlocker={() => undefined}
+        onPatch={() => undefined}
+        onQueueSet={async () => true}
+        onRetrySet={async () => undefined}
+        onDiscardSet={async () => undefined}
+        onSkipComplete={() => undefined}
+        onOpenCoach={() => undefined}
+        adjustIntent={null}
+        onAdjustIntentChange={() => undefined}
+      />,
+    );
+
+    expect(html).toContain("Complete Barbell Squat preparation set first");
+    expect(html).toContain("Go to preparation set");
+    expect(html).not.toContain("Reach this set in the workout flow");
   });
 
   it("wraps a long active title and keeps comparable performance on its own row", () => {

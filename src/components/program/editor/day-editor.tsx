@@ -17,7 +17,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { moveItem, moveProgramGroupMember, moveProgramSlotUnit, replaceProgramExercise, resizeProgramSlotSets, updateProgramDayWarmupOverview, updateProgramSlotInDay } from "@/lib/program-editor-client";
+import { moveItem, moveProgramGroupMember, moveProgramSlotUnit, removeProgramSlotFromDay, replaceProgramExercise, resizeProgramSlotSets, updateProgramDayWarmupOverview, updateProgramSlotInDay } from "@/lib/program-editor-client";
 import { programDocumentV3Schema, type ProgramDocumentDayV3 } from "@/lib/program-document";
 import { formatRestTime } from "@/lib/rest-time";
 import { cn } from "@/lib/utils";
@@ -919,34 +919,9 @@ export const DayEditor = memo(function DayEditor({ editor, canReview = false }: 
                           )
                         }
                         onRemove={() => {
-                          updateDay(dayIndex, (current) => {
-                            const exercises = current.exercises.filter(
-                              (_, index) => index !== slotIndex,
-                            );
-                            const retainedAnchors =
-                              current.intent.identity.anchorSlotLineageIds.filter(
-                                (lineageId) =>
-                                  exercises.some(
-                                    (exercise) =>
-                                      exercise.lineageId === lineageId,
-                                  ),
-                              );
-                            return {
-                              ...current,
-                              exercises,
-                              intent: {
-                                ...current.intent,
-                                identity: {
-                                  ...current.intent.identity,
-                                  anchorSlotLineageIds:
-                                    current.intent.identity.kind === "anchor_slots" &&
-                                    retainedAnchors.length === 0
-                                      ? [exercises[0].lineageId]
-                                      : retainedAnchors,
-                                },
-                              },
-                            };
-                          });
+                          updateDay(dayIndex, (current) =>
+                            removeProgramSlotFromDay(current, slot.lineageId),
+                          );
                           requestAnimationFrame(() =>
                             dayHeadingRefs.current.get(day.lineageId)?.focus(),
                           );

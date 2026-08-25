@@ -476,6 +476,12 @@ type Props = {
     expectedSetNo: number,
   ) => Promise<SessionOccurrenceData | null>;
   activeOccurrence?: SessionOccurrenceData | null;
+  preparationBlocker?: SetOrderBlocker | null;
+  futureProgramRemoval?: {
+    href: string;
+    dayName: string;
+    plannedExerciseName: string;
+  } | null;
   workingOccurrences?: SessionOccurrenceData[];
   occurrenceMutationEntries?: OccurrenceMutationOutboxEntry[];
   occurrenceRuntimeSaveStates?: Record<string, "saving" | "retrying">;
@@ -719,6 +725,8 @@ export function ExerciseCard({
   onQueueSet,
   onAppendSet = async () => null,
   activeOccurrence = null,
+  preparationBlocker = null,
+  futureProgramRemoval = null,
   workingOccurrences = [],
   occurrenceMutationEntries = [],
   occurrenceRuntimeSaveStates = {},
@@ -2275,15 +2283,33 @@ export function ExerciseCard({
                   );
                 }
                 return (
-                  <div key={`active-${i}`} className="rounded-md border border-primary/40 px-3 py-2 text-sm">
-                    <div className="flex items-center justify-between gap-3">
+                  <div
+                    key={`active-${i}`}
+                    className="rounded-md border border-primary/40 px-3 py-2 text-sm"
+                  >
+                    <div className="flex flex-wrap items-center justify-between gap-2">
                       <span>Set {i + 1}</span>
-                      <span className="text-muted-foreground">
+                      <span className="min-w-0 break-words text-right text-muted-foreground">
                         {activeLoggingBlocked
                           ? "Resolve the retained copy for this set"
+                          : preparationBlocker
+                            ? `Complete ${preparationBlocker.blockerExerciseName ?? exercise.name} preparation set first`
                           : "Reach this set in the workout flow"}
                       </span>
                     </div>
+                    {preparationBlocker?.blockerTargetId && onRevealBlocker ? (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="mt-2 h-auto min-h-11 w-full whitespace-normal"
+                        onClick={() =>
+                          onRevealBlocker(preparationBlocker.blockerTargetId!)
+                        }
+                      >
+                        Go to preparation set
+                      </Button>
+                    ) : null}
                     {plannedNote(i) && (
                       <p className="mt-1 text-muted-foreground">{plannedNote(i)}</p>
                     )}
@@ -2596,6 +2622,7 @@ export function ExerciseCard({
 
           <RemoveFromTodayDrawer
             exercise={exercise}
+            futureProgramRemoval={futureProgramRemoval}
             expectedHistoryRevision={historyRevision}
             open={adjustIntent === "remove"}
             onOpenChange={(open) =>
@@ -3741,6 +3768,7 @@ function SkipDrawer({
 
 function RemoveFromTodayDrawer({
   exercise,
+  futureProgramRemoval,
   expectedHistoryRevision,
   open,
   onOpenChange,
@@ -3749,6 +3777,7 @@ function RemoveFromTodayDrawer({
   onRemoved,
 }: {
   exercise: SessionExerciseData;
+  futureProgramRemoval: Props["futureProgramRemoval"];
   expectedHistoryRevision: number;
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -3769,8 +3798,8 @@ function RemoveFromTodayDrawer({
         </DrawerHeader>
         <div className="space-y-3 px-4 pb-2 text-sm leading-6">
           <p>
-            This removes the remaining work from this active workout only. Your
-            saved routine is unchanged.
+            Choose whether to remove the remaining work from this active workout
+            only, or prepare a separate change for future workouts.
           </p>
           {completedSetCount > 0 ? (
             <p className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3">
@@ -3778,9 +3807,22 @@ function RemoveFromTodayDrawer({
               {" "}will remain in this workout&apos;s history.
             </p>
           ) : null}
-          <p className="text-xs text-muted-foreground">
-            To remove it from future workouts, edit the routine separately.
-          </p>
+          {futureProgramRemoval ? (
+            <p className="text-xs text-muted-foreground">
+              The future option opens the Program editor for review. It does not
+              change this active workout, and nothing changes in future workouts
+              until you publish the Program draft.
+              {futureProgramRemoval.plannedExerciseName !== exercise.name
+                ? ` It targets the planned ${futureProgramRemoval.plannedExerciseName} slot.`
+                : ""}
+            </p>
+          ) : (
+            <p className="text-xs text-muted-foreground">
+              This workout does not retain a current Program slot that Repbook
+              can edit safely. Open the Program separately to change future
+              workouts.
+            </p>
+          )}
         </div>
         <DrawerFooter>
           <Button
@@ -3822,6 +3864,17 @@ function RemoveFromTodayDrawer({
           >
             {pending ? "Removing…" : "Remove from today"}
           </Button>
+          {futureProgramRemoval ? (
+            <Link
+              href={futureProgramRemoval.href}
+              className={cn(
+                buttonVariants({ variant: "outline" }),
+                "h-auto min-h-11 whitespace-normal text-center",
+              )}
+            >
+              <Trash2 className="size-4" /> Remove from future {futureProgramRemoval.dayName} workouts
+            </Link>
+          ) : null}
           <Button
             type="button"
             variant="outline"

@@ -206,6 +206,76 @@ describe("session action labels", () => {
     expect(running.completion.pendingActions).toBe(1);
   });
 
+  it("keeps a later exercise preparation visible as the exact rest destination", () => {
+    const press = exercise("press", {
+      name: "Barbell Overhead Press",
+      orderIdx: 0,
+      sets: [set("press-set")],
+    });
+    const row = exercise("row", { name: "Barbell Row", orderIdx: 1 });
+    const occurrences = [
+      occurrence("press-work", press.id, 0, {
+        outcome: "completed",
+        completedSetId: "press-set",
+        plannedRestSec: 90,
+      }),
+      occurrence("row-preparation", row.id, 1, {
+        kind: "exercise_warmup",
+        kindOrdinal: 0,
+        label: "Empty bar",
+        plannedRepsMin: 8,
+        plannedRepsMax: 8,
+        plannedLoad: null,
+        plannedLoadUnit: null,
+        plannedLoadText: "empty bar",
+      }),
+      occurrence("row-work", row.id, 2, { kindOrdinal: 0 }),
+    ];
+    const occurrenceIds = occurrences.map((item) => item.id);
+    const projection = projectSessionGuidance({
+      exercises: [press, row],
+      exerciseGroups: noGroups,
+      equipmentSetups: {},
+      occurrences,
+      restTimer: {
+        version: 1,
+        generationId: "row-preparation-rest",
+        revision: 0,
+        ownerId: "owner",
+        sessionId: "session",
+        startedAt: 0,
+        sourceSessionExerciseId: press.id,
+        sourceOccurrenceId: "press-work",
+        sourceCompletedSetId: "press-set",
+        sourceClientKey: null,
+        totalSec: 90,
+        endsAt: 90_000,
+        phase: "running",
+        readyAt: null,
+        completionContext: null,
+        completionCueOutcome: null,
+        attemptedMilestones: [],
+      },
+    });
+
+    expect(projection.currentAction).toMatchObject({
+      kind: "rest",
+      destination: {
+        kind: "exercise_warmup",
+        occurrenceId: "row-preparation",
+        exerciseName: "Barbell Row",
+      },
+    });
+    expect(formatSessionGuidanceAction(projection.currentAction!)).toBe(
+      "Resting before Barbell Row — preparation set: Empty bar",
+    );
+    expect(projection.nextAction).toMatchObject({
+      kind: "exercise_warmup",
+      occurrenceId: "row-preparation",
+    });
+    expect(occurrences.map((item) => item.id)).toEqual(occurrenceIds);
+  });
+
   it("never points a source-bound rest backwards to an overtaken preparation set", () => {
     const item = exercise("overtaken-preparation", {
       sets: [set("saved-working-set")],

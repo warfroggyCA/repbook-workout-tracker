@@ -16,6 +16,7 @@ import { canCreateSuperset } from "@/lib/program-editor-client";
 import { fitRoutineSetNotes, moveRoutineItem } from "@/lib/routine-builder";
 import {
   nextIncompleteExerciseId,
+  futureProgramRemovalOption,
   mergeEquipmentSelectionOccurrenceStates,
   previousComparableIsTemporarilyUnavailable,
   workoutSaveQueueMessage,
@@ -224,6 +225,36 @@ describe("routine-builder editing rules", () => {
 });
 
 describe("session-runner workflow rules", () => {
+  it("offers future Program removal only for an exact retained planned slot", () => {
+    const planned = exercise("planned", {
+      exerciseId: "00000000-0000-4000-8000-000000000021",
+      sourceSlotLineageId: "00000000-0000-4000-8000-000000000022",
+    });
+    expect(futureProgramRemovalOption({
+      sourceProgramId: "00000000-0000-4000-8000-000000000023",
+      sourceDayLineageId: "00000000-0000-4000-8000-000000000024",
+      dayName: "Day 3",
+      exercise: planned,
+    })).toEqual({
+      href: "/program/edit?intent=remove&program=00000000-0000-4000-8000-000000000023&day=00000000-0000-4000-8000-000000000024&slot=00000000-0000-4000-8000-000000000022&exercise=00000000-0000-4000-8000-000000000021",
+      dayName: "Day 3",
+      plannedExerciseName: "planned",
+    });
+
+    expect(futureProgramRemovalOption({
+      sourceProgramId: "00000000-0000-4000-8000-000000000023",
+      sourceDayLineageId: "00000000-0000-4000-8000-000000000024",
+      dayName: "Day 3",
+      exercise: { ...planned, modificationType: "added" },
+    })).toBeNull();
+    expect(futureProgramRemovalOption({
+      sourceProgramId: null,
+      sourceDayLineageId: null,
+      dayName: "Legacy workout",
+      exercise: planned,
+    })).toBeNull();
+  });
+
   it("merges authoritative equipment occurrence state without rolling back a newer revision", () => {
     const received = {
       id: occurrenceState.id,
