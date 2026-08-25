@@ -47,6 +47,8 @@ export type SetAcknowledgementReceipt = {
 export type SessionExerciseData = {
   id: string;
   exerciseId: string;
+  /** Stable Program-slot identity retained when this workout was started. */
+  sourceSlotLineageId?: string | null;
   name: string;
   family: string | null;
   loadType: string;
@@ -161,6 +163,9 @@ export type SessionRunnerProps = {
   sessionId: string;
   historyRevision: number;
   templateName: string;
+  /** Stable Program/day identities retained when this workout was started. */
+  sourceProgramId?: string | null;
+  sourceDayLineageId?: string | null;
   dayWarmupNotes: string | null;
   occurrences: SessionOccurrenceData[];
   exerciseGroups: SessionExerciseGroupData[];

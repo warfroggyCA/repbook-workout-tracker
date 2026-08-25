@@ -20,6 +20,7 @@ import {
   programDocumentFromRoutineDraft,
   programEditorResponseJson,
   programEditorSafeFilePart,
+  removeProgramSlotFromDay,
   replaceProgramExercise,
   resizeProgramSlotSets,
   resizeSetNotes,
@@ -208,6 +209,104 @@ describe("Program editor client rules", () => {
       null,
       null,
     ]);
+  });
+
+  it("removes a Program slot with its anchored warm-up and repairs day identity", () => {
+    const day = document().days[0];
+    const withAnchors = {
+      ...day,
+      warmupItems: [{
+        key: "00000000-0000-4000-8000-000000000013",
+        beforeSlotLineageId: IDs.slotA,
+        label: "Empty bar",
+        reps: 8,
+        load: null,
+        loadUnit: null,
+        loadPercent: null,
+        loadText: "empty bar",
+        notes: null,
+      }],
+      intent: {
+        ...day.intent,
+        identity: {
+          ...day.intent.identity,
+          kind: "anchor_slots" as const,
+          anchorSlotLineageIds: [IDs.slotA],
+        },
+      },
+    };
+
+    const removed = removeProgramSlotFromDay(withAnchors, IDs.slotA);
+
+    expect(removed.exercises.map((slot) => slot.lineageId)).toEqual([
+      IDs.slotB,
+    ]);
+    expect(removed.warmupItems).toEqual([]);
+    expect(removed.intent.identity.anchorSlotLineageIds).toEqual([IDs.slotB]);
+    expect(() => programDocumentV3Schema.parse({
+      ...document(),
+      days: [removed],
+    })).not.toThrow();
+  });
+
+  it("preserves round rest when removing one member dissolves a two-exercise group", () => {
+    const day = document().days[0];
+    const withDistinctRest = {
+      ...day,
+      supersets: day.supersets.map((group) => ({
+        ...group,
+        restBetweenRoundsSec: 75,
+        restAfterRoundSec: 75,
+      })),
+      exercises: day.exercises.map((slot) => ({ ...slot, restSec: 0 })),
+    };
+
+    const removed = removeProgramSlotFromDay(withDistinctRest, IDs.slotB);
+
+    expect(removed.supersets).toEqual([]);
+    expect(removed.exercises[0]).toMatchObject({
+      lineageId: IDs.slotA,
+      supersetKey: null,
+      groupMemberOrderIdx: null,
+      restSec: 75,
+    });
+  });
+
+  it("keeps a three-exercise group and reindexes its remaining members", () => {
+    const day = document().days[0];
+    const third = {
+      ...createDefaultProgramSlot(IDs.exerciseC, IDs.slotC),
+      supersetKey: IDs.group,
+      groupMemberOrderIdx: 2,
+    };
+
+    const removed = removeProgramSlotFromDay(
+      { ...day, exercises: [...day.exercises, third] },
+      IDs.slotB,
+    );
+
+    expect(removed.supersets).toHaveLength(1);
+    expect(removed.exercises.map((slot) => ({
+      lineageId: slot.lineageId,
+      order: slot.groupMemberOrderIdx,
+    }))).toEqual([
+      { lineageId: IDs.slotA, order: 0 },
+      { lineageId: IDs.slotC, order: 1 },
+    ]);
+  });
+
+  it("refuses to remove the only exercise from a Program day", () => {
+    const day = document().days[0];
+    const only = normalizeDaySupersets({
+      ...day,
+      exercises: [{
+        ...day.exercises[0],
+        supersetKey: null,
+        groupMemberOrderIdx: null,
+      }],
+    });
+
+    expect(removeProgramSlotFromDay(only, IDs.slotA)).toBe(only);
   });
 
   it("creates supersets only from two ungrouped exercises", () => {

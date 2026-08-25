@@ -11,6 +11,7 @@ import {
   parseProgramReviewResponse,
   programEditorResponseJson as responseJson,
   programEditorSafeFilePart,
+  removeProgramSlotFromDay,
   updateProgramDocumentDay,
   type ProgramHistoryEntry,
   type ProgramReview,
@@ -26,7 +27,24 @@ import {
 import { buildProgramUpdateProposal, type ProgramUpdateMode, type ProgramUpdateProposal } from "@/lib/program-update-reconciliation";
 import { useDraftAutosave } from "@/components/program/editor/use-draft-autosave";
 
-export function useProgramEditorController({ ownerId, library, initialDayId }: { ownerId: string; library: ExerciseDiscoveryItem[]; initialDayId: string | null }) {
+export type ProgramSlotRemovalRequest = {
+  programId: string;
+  dayLineageId: string;
+  slotLineageId: string;
+  exerciseId: string;
+};
+
+export function useProgramEditorController({
+  ownerId,
+  library,
+  initialDayId,
+  initialRemovalRequest,
+}: {
+  ownerId: string;
+  library: ExerciseDiscoveryItem[];
+  initialDayId: string | null;
+  initialRemovalRequest: ProgramSlotRemovalRequest | null;
+}) {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState("edit");
   const [activeDayId, setActiveDayId] = useState<string | null>(initialDayId);
@@ -40,7 +58,11 @@ export function useProgramEditorController({ ownerId, library, initialDayId }: {
   const [coachMessage, setCoachMessage] = useState<string | null>(null);
   const [pairingDayId, setPairingDayId] = useState<string | null>(null);
   const [pairingSlotIds, setPairingSlotIds] = useState<string[]>([]);
-  const [expandedSlotId, setExpandedSlotId] = useState<string | null>(null);
+  const [expandedSlotId, setExpandedSlotId] = useState<string | null>(
+    initialRemovalRequest?.slotLineageId ?? null,
+  );
+  const [pendingFutureRemovalRequest, setPendingFutureRemovalRequest] =
+    useState<ProgramSlotRemovalRequest | null>(initialRemovalRequest);
   const [coachProposal, setCoachProposal] = useState<{
     proposal: ProgramUpdateProposal;
     warnings: string[];
@@ -89,6 +111,113 @@ export function useProgramEditorController({ ownerId, library, initialDayId }: {
     () => new Map(library.map((item) => [item.id, item])),
     [library],
   );
+
+  const futureRemovalTarget = useMemo(() => {
+    const request = pendingFutureRemovalRequest;
+    if (!request || !document) return null;
+    if (conflictDraft) {
+      return {
+        status: "blocked" as const,
+        message:
+          "Resolve the newer Program draft before staging this removal. Repbook has not changed either copy.",
+      };
+    }
+    if (document.programId !== request.programId) {
+      return {
+        status: "blocked" as const,
+        message:
+          "This workout came from a different Program. Repbook will not guess which current exercise to remove.",
+      };
+    }
+    const day = document.days.find(
+      (candidate) => candidate.lineageId === request.dayLineageId,
+    );
+    if (!day) {
+      return {
+        status: "blocked" as const,
+        message:
+          "That workout day is no longer present in the current Program draft. Nothing was removed.",
+      };
+    }
+    const slot = day.exercises.find(
+      (candidate) => candidate.lineageId === request.slotLineageId,
+    );
+    if (!slot) {
+      return {
+        status: "blocked" as const,
+        message:
+          "That planned exercise is already absent from this Program day. Nothing was removed.",
+      };
+    }
+    if (slot.exerciseId !== request.exerciseId) {
+      return {
+        status: "blocked" as const,
+        message:
+          "That Program slot now contains a different exercise. Repbook will not remove the replacement automatically.",
+      };
+    }
+    if (day.exercises.length === 1) {
+      return {
+        status: "blocked" as const,
+        message:
+          "A Program day must keep at least one exercise. Add another exercise or remove the whole day in the Program editor.",
+      };
+    }
+    return {
+      status: "ready" as const,
+      dayName: day.name,
+      exerciseName:
+        exerciseById.get(slot.exerciseId)?.name ?? "this exercise",
+    };
+  }, [
+    conflictDraft,
+    document,
+    exerciseById,
+    pendingFutureRemovalRequest,
+  ]);
+
+  function clearFutureRemovalRequest() {
+    const day = documentRef.current?.days.find(
+      (candidate) =>
+        candidate.lineageId === pendingFutureRemovalRequest?.dayLineageId,
+    );
+    setPendingFutureRemovalRequest(null);
+    router.replace(
+      day ? `/program/edit?day=${encodeURIComponent(day.lineageId)}` : "/program/edit",
+      { scroll: false },
+    );
+  }
+
+  function stageFutureRemoval() {
+    const request = pendingFutureRemovalRequest;
+    if (!request || futureRemovalTarget?.status !== "ready") return;
+    updateDocument((current) => {
+      if (current.programId !== request.programId) return current;
+      return {
+        ...current,
+        days: current.days.map((day) => {
+          if (day.lineageId !== request.dayLineageId) return day;
+          const slot = day.exercises.find(
+            (candidate) => candidate.lineageId === request.slotLineageId,
+          );
+          if (
+            !slot ||
+            slot.exerciseId !== request.exerciseId ||
+            day.exercises.length === 1
+          ) {
+            return day;
+          }
+          return removeProgramSlotFromDay(day, request.slotLineageId);
+        }),
+      };
+    });
+    setExpandedSlotId(null);
+    setActiveTab("edit");
+    setMessage(
+      `${futureRemovalTarget.exerciseName} is staged for removal from future ${futureRemovalTarget.dayName} workouts. Review and publish the draft to apply it.`,
+    );
+    clearFutureRemovalRequest();
+  }
 
   const updateDocument = useCallback(
     (updater: (current: ProgramDocumentV3) => ProgramDocumentV3) => {
@@ -449,6 +578,7 @@ export function useProgramEditorController({ ownerId, library, initialDayId }: {
     review, activeTab, activeDayId, reviewing, publishing, discarding, restoringId,
     coachPrompt, coachMode, coachBuilding, coachMessage, pairingDayId, pairingSlotIds,
     expandedSlotId, coachProposal, acceptedCoachChanges, confirmDiscard, confirmRestore,
+    pendingFutureRemovalRequest, futureRemovalTarget,
     publishedVersion, comparison, inspection, inspectingId, conflictCopyMessage,
     dayHeadingRefs, slotHeadingRefs, inspectionHeadingRef, documentRef, draftRef,
     revisionRef, pendingMutationRef, dirtyRef, exerciseById,
@@ -459,6 +589,7 @@ export function useProgramEditorController({ ownerId, library, initialDayId }: {
     setInspection, setConflictCopyMessage, persistLocal, removeLocal, applyServerDraft,
     loadDraft, savePending, updateDocument, buildCoachProposal, updateDay, addExercise,
     addDay, moveSlotToDay, requestReview, publish, discard, restoreVersion,
+    clearFutureRemovalRequest, stageFutureRemoval,
     compareVersion, inspectVersion, exportDraft,
   };
 }

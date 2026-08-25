@@ -592,6 +592,64 @@ export function normalizeDaySupersets(
   };
 }
 
+/**
+ * Remove one exact Program slot while preserving the remaining day's valid
+ * warm-up anchors, identity anchors, group order, and standalone rest meaning.
+ */
+export function removeProgramSlotFromDay(
+  day: ProgramDocumentDayV3,
+  slotLineageId: string,
+): ProgramDocumentDayV3 {
+  const removedSlot = day.exercises.find(
+    (slot) => slot.lineageId === slotLineageId,
+  );
+  if (!removedSlot || day.exercises.length === 1) return day;
+
+  const removedGroup = removedSlot.supersetKey
+    ? day.supersets.find((group) => group.key === removedSlot.supersetKey) ?? null
+    : null;
+  const removedGroupMembers = removedSlot.supersetKey
+    ? day.exercises.filter(
+        (slot) => slot.supersetKey === removedSlot.supersetKey,
+      )
+    : [];
+  let exercises = day.exercises.filter(
+    (slot) => slot.lineageId !== slotLineageId,
+  );
+
+  if (removedGroup && removedGroupMembers.length === 2) {
+    exercises = exercises.map((slot) =>
+      slot.supersetKey === removedGroup.key
+        ? { ...slot, restSec: removedGroup.restAfterRoundSec }
+        : slot,
+    );
+  }
+
+  const retainedAnchors = day.intent.identity.anchorSlotLineageIds.filter(
+    (lineageId) =>
+      exercises.some((exercise) => exercise.lineageId === lineageId),
+  );
+
+  return normalizeDaySupersets({
+    ...day,
+    warmupItems: day.warmupItems.filter(
+      (item) => item.beforeSlotLineageId !== slotLineageId,
+    ),
+    exercises,
+    intent: {
+      ...day.intent,
+      identity: {
+        ...day.intent.identity,
+        anchorSlotLineageIds:
+          day.intent.identity.kind === "anchor_slots" &&
+          retainedAnchors.length === 0
+            ? [exercises[0]!.lineageId]
+            : retainedAnchors,
+      },
+    },
+  });
+}
+
 export function canCreateSuperset(day: ProgramDocumentDayV3) {
   return day.exercises.filter((slot) => slot.supersetKey == null).length >= 2;
 }

@@ -222,6 +222,12 @@ remains canonical, retries reuse the same command identity, and failed writes
 stay visible and recoverable without rolling the owner back. Restoring an
 earlier action makes that action current again. Completed warm-up details
 collapse without discarding their notes, outcomes, or restore controls.
+Pending exercise preparation remains visible in the warm-up summary even while
+the owner is resting before it, so a later working card cannot appear
+inexplicably unavailable. A working set blocked by its linked preparation names
+that exact preparation occurrence and can reveal and focus it. These views are
+derived from the immutable occurrence ledger; they never create a late warm-up
+or bypass the authored order.
 
 Rest alerts remain device-local. The ready state is compact and visually
 distinct, while sound and vibration reporting is limited to whether an alert
@@ -584,6 +590,15 @@ for workouts started from that point forward. A workout already in progress
 keeps its original Program, day, exercise, target, warm-up, and group snapshots.
 Completed and imported History, earlier Program versions, recommendations,
 decisions, and accepted adaptations are not rewritten or inferred by the edit.
+
+Removing an exercise from an active workout and removing its Program slot are
+separate owner actions. **Remove from today** affects only remaining work in the
+active session. When the session retains exact source Program, day, and slot
+lineage, the workout may instead open the Program editor at that exact slot and
+ask the owner to stage its removal from future workouts. The editor fails closed
+for missing, stale, mismatched, or conflicting lineage, and the staged removal
+does not affect the active workout, current published Program, or completed
+History. It takes effect only after the ordinary Review and Publish flow.
 
 Discard removes only the open draft. A stale base, conflicting tab, obsolete
 review, malformed document, or publication failure preserves recoverable owner

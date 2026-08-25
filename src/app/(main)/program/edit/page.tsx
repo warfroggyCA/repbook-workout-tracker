@@ -20,5 +20,25 @@ export default async function ProgramEditPage(props: PageProps<"/program/edit">)
 
   const query = await props.searchParams;
   const initialDayId = typeof query.day === "string" ? query.day : null;
-  return <ProgramEditor ownerId={user.id} library={library} initialDayId={initialDayId} />;
+  const initialRemovalRequest =
+    query.intent === "remove" &&
+    typeof query.program === "string" &&
+    typeof query.day === "string" &&
+    typeof query.slot === "string" &&
+    typeof query.exercise === "string"
+      ? {
+          programId: query.program,
+          dayLineageId: query.day,
+          slotLineageId: query.slot,
+          exerciseId: query.exercise,
+        }
+      : null;
+  return (
+    <ProgramEditor
+      ownerId={user.id}
+      library={library}
+      initialDayId={initialDayId}
+      initialRemovalRequest={initialRemovalRequest}
+    />
+  );
 }

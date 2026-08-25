@@ -110,6 +110,7 @@ import {
 import {
   equipmentSyncPending,
   finishBlockedByRecordedWork,
+  futureProgramRemovalOption,
   mergeSessionOutboxSets,
   mergeEquipmentSelectionOccurrenceStates,
   nextIncompleteExerciseId,
@@ -265,7 +266,13 @@ function WarmupPanel({
       aria-labelledby="workout-warmup-heading"
       className="scroll-mt-4 flex flex-col rounded-xl border border-violet-300/60 bg-violet-50/60 p-4 dark:bg-violet-950/20"
     >
-      <h2 id="workout-warmup-heading" className="font-semibold">Warm-up</h2>
+      <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+        <h2 id="workout-warmup-heading" className="font-semibold">Warm-up</h2>
+        <p className="text-xs text-muted-foreground">
+          {completed} completed
+          {skipped > 0 ? ` · ${skipped} skipped` : ""} · {remaining} remaining
+        </p>
+      </div>
       {children}
     </section>
   );
@@ -1951,6 +1958,10 @@ export function SessionRunner(props: SessionRunnerProps) {
     (occurrence) =>
       occurrence.kind === "exercise_warmup" && occurrence.outcome === "pending",
   );
+  const disclosedExercisePreparations = remainingExercisePreparations.filter(
+    (occurrence) =>
+      occurrence.id !== actionOccurrenceId(guidance.currentAction),
+  );
   const completedWarmups = guidance.warmups.completed;
   const groupRoundSummary = guidance.groups.flatMap((group) =>
     group.rounds.map((round) => ({
@@ -3165,6 +3176,18 @@ export function SessionRunner(props: SessionRunnerProps) {
       : null;
   }
 
+  function pendingPreparationForExercise(exerciseId: string) {
+    const workingOccurrence = nextPendingOccurrenceForExercise(exerciseId);
+    if (!workingOccurrence) return null;
+    return occurrences.find(
+      (occurrence) =>
+        occurrence.kind === "exercise_warmup" &&
+        occurrence.sessionExerciseId === exerciseId &&
+        occurrence.outcome === "pending" &&
+        occurrence.sequenceIdx < workingOccurrence.sequenceIdx,
+    ) ?? null;
+  }
+
   function revealExerciseCard(exerciseId: string) {
     setExpandedId(exerciseId);
     if (!activeGroupMemberIds.has(exerciseId)) return;
@@ -3688,18 +3711,30 @@ export function SessionRunner(props: SessionRunnerProps) {
                 {warmupPlanOpen ? "Hide full plan" : "Review full plan"}
               </Button>
             </div>
-            {remainingExercisePreparations.length > 0 && (
-              <p
+            {disclosedExercisePreparations.length > 0 && (
+              <div
                 data-testid="remaining-exercise-preparations"
-                className="order-2 mt-2 rounded-md border border-violet-300/40 bg-background/60 px-3 py-2 text-xs leading-5 text-violet-900 dark:text-violet-100"
+                className="order-2 mt-2 space-y-2 rounded-md border border-violet-300/40 bg-background/60 px-3 py-2 text-xs leading-5 text-violet-900 dark:text-violet-100"
               >
-                Preparation sets still scheduled: {remainingExercisePreparations
-                  .map((occurrence) =>
-                    plannedExerciseNameForOccurrence(occurrence) ?? "Exercise",
-                  )
-                  .filter((name, index, names) => names.indexOf(name) === index)
-                  .join(", ")}.
-              </p>
+                {disclosedExercisePreparations.map((occurrence) => {
+                  const exerciseName =
+                    plannedExerciseNameForOccurrence(occurrence) ?? "Exercise";
+                  const prescription = formatOccurrencePrescription(occurrence);
+                  const upNextAfterRest =
+                    activeRestAction?.destination?.kind === "exercise_warmup" &&
+                    activeRestAction.destination.occurrenceId === occurrence.id;
+                  return (
+                    <div key={`preparation-preview-${occurrence.id}`}>
+                      <p className="font-semibold">
+                        {upNextAfterRest
+                          ? `Up next after rest: ${exerciseName} preparation set`
+                          : `Later, before ${exerciseName}: preparation set`}
+                      </p>
+                      <p>{prescription ?? occurrence.label ?? "Details not recorded"}</p>
+                    </div>
+                  );
+                })}
+              </div>
             )}
             {guidance.warmups.completed > 0 && (
               <Button
@@ -4176,6 +4211,24 @@ export function SessionRunner(props: SessionRunnerProps) {
             activeOccurrence={
               nextLoggableOccurrenceForExercise(exercise.id)
             }
+            preparationBlocker={(() => {
+              const preparation = pendingPreparationForExercise(exercise.id);
+              return preparation
+                ? {
+                    blockerOccurrenceId: preparation.id,
+                    blockerLabel: "preparation set",
+                    blockerExerciseName:
+                      plannedExerciseNameForOccurrence(preparation) ?? exercise.name,
+                    blockerTargetId: `warmup-occurrence-${preparation.id}`,
+                  }
+                : null;
+            })()}
+            futureProgramRemoval={futureProgramRemovalOption({
+              sourceProgramId: props.sourceProgramId,
+              sourceDayLineageId: props.sourceDayLineageId,
+              dayName: props.templateName,
+              exercise,
+            })}
             workingOccurrences={occurrences.filter(
               (occurrence) =>
                 occurrence.sessionExerciseId === exercise.id &&

@@ -409,6 +409,7 @@ async function renderSessionPage(
     return {
       id: se.id,
       exerciseId: se.exerciseId,
+      sourceSlotLineageId: se.sourceSlotLineageId,
       name: usesPrescribedMeaning
         ? se.prescribedExerciseName!
         : se.exercise.name,
@@ -492,6 +493,8 @@ async function renderSessionPage(
     sessionId: session.id,
     historyRevision: session.historyRevision,
     templateName: session.templateName ?? "Workout",
+    sourceProgramId: session.sourceProgramId,
+    sourceDayLineageId: session.sourceDayLineageId,
     dayWarmupNotes: session.dayWarmupNotes,
     occurrences: actionableOccurrences.map((occurrence) => {
       return {

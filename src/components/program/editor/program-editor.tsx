@@ -14,17 +14,25 @@ import { DayEditor } from "@/components/program/editor/day-editor";
 import { ReviewDialog } from "@/components/program/editor/review-dialog";
 import { HistoryPanel } from "@/components/program/editor/history-panel";
 import { useProgramEditorController } from "@/components/program/editor/use-program-editor-controller";
+import type { ProgramSlotRemovalRequest } from "@/components/program/editor/use-program-editor-controller";
 import { ProgramEditorDocumentContext, ProgramEditorStatusContext } from "@/components/program/editor/editor-store";
 export function ProgramEditor({
   ownerId,
   library,
   initialDayId,
+  initialRemovalRequest = null,
 }: {
   ownerId: string;
   library: ExerciseDiscoveryItem[];
   initialDayId: string | null;
+  initialRemovalRequest?: ProgramSlotRemovalRequest | null;
 }) {
-  const editor = useProgramEditorController({ ownerId, library, initialDayId });
+  const editor = useProgramEditorController({
+    ownerId,
+    library,
+    initialDayId,
+    initialRemovalRequest,
+  });
   const {
     draft, document, revision, pendingMutationId, status, message, conflictDraft,
     review, activeTab, discarding, restoringId, confirmDiscard, confirmRestore,
@@ -33,6 +41,8 @@ export function ProgramEditor({
     setConflictDraft, setActiveTab, setConfirmDiscard, setConfirmRestore,
     setConflictCopyMessage, persistLocal, removeLocal, applyServerDraft,
     loadDraft, savePending, discard, restoreVersion, exportDraft,
+    pendingFutureRemovalRequest, futureRemovalTarget,
+    clearFutureRemovalRequest, stageFutureRemoval,
   } = editor;
   if (!document || !draft) {
     return (
@@ -298,6 +308,25 @@ export function ProgramEditor({
           </Alert>
         )}
 
+        {pendingFutureRemovalRequest &&
+        futureRemovalTarget?.status === "blocked" ? (
+          <Alert className="mb-5 border-amber-500/50">
+            <CircleAlert />
+            <AlertTitle>Future removal needs review</AlertTitle>
+            <AlertDescription>
+              <p>{futureRemovalTarget.message}</p>
+              <Button
+                type="button"
+                variant="outline"
+                className="mt-3 min-h-11"
+                onClick={clearFutureRemovalRequest}
+              >
+                Continue in Program editor
+              </Button>
+            </AlertDescription>
+          </Alert>
+        ) : null}
+
         <Tabs value={activeTab} onValueChange={setActiveTab}>
           <TabsList className="mb-5 grid h-auto w-full grid-cols-3 gap-1 p-1 sm:w-fit">
             <TabsTrigger value="edit" className="min-h-11 px-3">
@@ -326,6 +355,25 @@ export function ProgramEditor({
         </Tabs>
       </div>
 
+      <ConfirmDialog
+        open={
+          pendingFutureRemovalRequest != null &&
+          futureRemovalTarget?.status === "ready"
+        }
+        onOpenChange={(open) => !open && clearFutureRemovalRequest()}
+        title={`Remove ${
+          futureRemovalTarget?.status === "ready"
+            ? futureRemovalTarget.exerciseName
+            : "exercise"
+        } from future workouts?`}
+        description={`This stages its removal from ${
+          futureRemovalTarget?.status === "ready"
+            ? futureRemovalTarget.dayName
+            : "this Program day"
+        }. Your active workout, completed History, and current published Program stay unchanged until you review and publish this draft.`}
+        confirmLabel="Stage future removal"
+        onConfirm={stageFutureRemoval}
+      />
       <ConfirmDialog
         open={confirmDiscard}
         onOpenChange={setConfirmDiscard}

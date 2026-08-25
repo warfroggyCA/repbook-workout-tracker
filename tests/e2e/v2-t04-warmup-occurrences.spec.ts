@@ -64,6 +64,14 @@ test("keeps warm-up actions singular, reversible, durable, and usable with minim
   const actions = panel.locator("li");
 
   await expect(panel).toContainText("Complete the current warm-up action below.");
+  await expect(panel).toContainText(
+    `0 completed · ${PRODUCTION_WORKOUT_START_WARMUP.length} remaining`,
+  );
+  const remainingPreparations = page.getByTestId(
+    "remaining-exercise-preparations",
+  );
+  await expect(remainingPreparations).toContainText("Later, before");
+  await expect(remainingPreparations).toContainText("preparation set");
   await expect(actions).toHaveCount(PRODUCTION_WORKOUT_START_WARMUP.length);
   await expect(warmupRow(panel, PRODUCTION_WORKOUT_START_WARMUP[0].label))
     .toBeVisible();
