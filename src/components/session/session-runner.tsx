@@ -120,6 +120,7 @@ import {
   resolveSetLoggingEquipment,
   shouldShowMissingWarmupMessage,
   skipRecoveryNeedsReconciliation,
+  warmupOccurrenceWasOvertaken,
   workoutSaveQueueMessage,
   workoutSetOrderBlockerTargetId,
   type WorkoutExitQueues,
@@ -1966,7 +1967,12 @@ export function SessionRunner(props: SessionRunnerProps) {
   );
   const disclosedExercisePreparations = remainingExercisePreparations.filter(
     (occurrence) =>
-      occurrence.id !== actionOccurrenceId(guidance.currentAction),
+      occurrence.id !== actionOccurrenceId(guidance.currentAction) &&
+      !warmupOccurrenceWasOvertaken({
+        occurrence,
+        occurrences,
+        locallyRecordedOccurrenceIds,
+      }),
   );
   const completedWarmups = guidance.warmups.completed;
   const groupRoundSummary = guidance.groups.flatMap((group) =>
@@ -3798,17 +3804,11 @@ export function SessionRunner(props: SessionRunnerProps) {
                   const occurrenceAcknowledged =
                     acknowledgedOccurrenceIds.includes(occurrence.id);
                   const overtakenByWorkingSet =
-                    occurrences.some(
-                      (candidate) =>
-                        candidate.kind === "working_set" &&
-                        candidate.sequenceIdx > occurrence.sequenceIdx &&
-                        (candidate.outcome === "completed" ||
-                          locallyRecordedOccurrenceIds.has(candidate.id)) &&
-                        (occurrence.kind === "day_warmup" ||
-                          (occurrence.kind === "exercise_warmup" &&
-                            candidate.sessionExerciseId ===
-                              occurrence.sessionExerciseId)),
-                    );
+                    warmupOccurrenceWasOvertaken({
+                      occurrence,
+                      occurrences,
+                      locallyRecordedOccurrenceIds,
+                    });
                   return (
                     <li
                       key={occurrence.id}
