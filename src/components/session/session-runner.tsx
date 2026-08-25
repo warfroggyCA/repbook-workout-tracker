@@ -266,11 +266,17 @@ function WarmupPanel({
       aria-labelledby="workout-warmup-heading"
       className="scroll-mt-4 flex flex-col rounded-xl border border-violet-300/60 bg-violet-50/60 p-4 dark:bg-violet-950/20"
     >
-      <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+      <div className="flex items-baseline justify-between gap-3">
         <h2 id="workout-warmup-heading" className="font-semibold">Warm-up</h2>
-        <p className="text-xs text-muted-foreground">
-          {completed} completed
-          {skipped > 0 ? ` · ${skipped} skipped` : ""} · {remaining} remaining
+        <p className="whitespace-nowrap text-xs text-muted-foreground max-[360px]:text-[0.65rem]">
+          <span className="max-[360px]:hidden">
+            {completed} completed
+            {skipped > 0 ? ` · ${skipped} skipped` : ""} · {remaining} remaining
+          </span>
+          <span className="hidden max-[360px]:inline">
+            {completed} done
+            {skipped > 0 ? ` · ${skipped} skip` : ""} · {remaining} left
+          </span>
         </p>
       </div>
       {children}
