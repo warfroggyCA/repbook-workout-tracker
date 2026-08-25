@@ -19,6 +19,7 @@ import {
   futureProgramRemovalOption,
   mergeEquipmentSelectionOccurrenceStates,
   previousComparableIsTemporarilyUnavailable,
+  warmupOccurrenceWasOvertaken,
   workoutSaveQueueMessage,
   workoutFinishIsBlocked,
 } from "@/lib/session-runner";
@@ -225,6 +226,43 @@ describe("routine-builder editing rules", () => {
 });
 
 describe("session-runner workflow rules", () => {
+  it("does not present an overtaken preparation as future work", () => {
+    const preparation: SessionOccurrenceData = {
+      ...occurrenceState,
+      id: "00000000-0000-4000-8000-000000000091",
+      kind: "exercise_warmup",
+      sequenceIdx: 1,
+      outcome: "pending",
+      completedSetId: null,
+    };
+    const laterWorkingSet: SessionOccurrenceData = {
+      ...occurrenceState,
+      id: "00000000-0000-4000-8000-000000000092",
+      sequenceIdx: 2,
+      outcome: "completed",
+      completedSetId: "00000000-0000-4000-8000-000000000093",
+    };
+
+    expect(warmupOccurrenceWasOvertaken({
+      occurrence: preparation,
+      occurrences: [preparation, laterWorkingSet],
+      locallyRecordedOccurrenceIds: new Set(),
+    })).toBe(true);
+    expect(warmupOccurrenceWasOvertaken({
+      occurrence: preparation,
+      occurrences: [{
+        ...laterWorkingSet,
+        sessionExerciseId: "00000000-0000-4000-8000-000000000094",
+      }],
+      locallyRecordedOccurrenceIds: new Set(),
+    })).toBe(false);
+    expect(warmupOccurrenceWasOvertaken({
+      occurrence: preparation,
+      occurrences: [{ ...laterWorkingSet, outcome: "pending" }],
+      locallyRecordedOccurrenceIds: new Set([laterWorkingSet.id]),
+    })).toBe(true);
+  });
+
   it("offers future Program removal only for an exact retained planned slot", () => {
     const planned = exercise("planned", {
       exerciseId: "00000000-0000-4000-8000-000000000021",

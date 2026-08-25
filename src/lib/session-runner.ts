@@ -29,6 +29,23 @@ export function shouldShowMissingWarmupMessage(input: {
   return !input.dayWarmupNotes && !input.hasStructuredWarmup;
 }
 
+export function warmupOccurrenceWasOvertaken(input: {
+  occurrence: SessionOccurrenceData;
+  occurrences: SessionOccurrenceData[];
+  locallyRecordedOccurrenceIds: ReadonlySet<string>;
+}) {
+  if (input.occurrence.kind === "working_set") return false;
+  return input.occurrences.some(
+    (candidate) =>
+      candidate.kind === "working_set" &&
+      candidate.sequenceIdx > input.occurrence.sequenceIdx &&
+      (candidate.outcome === "completed" ||
+        input.locallyRecordedOccurrenceIds.has(candidate.id)) &&
+      (input.occurrence.kind === "day_warmup" ||
+        candidate.sessionExerciseId === input.occurrence.sessionExerciseId),
+  );
+}
+
 export function futureProgramRemovalOption(input: {
   sourceProgramId: string | null | undefined;
   sourceDayLineageId: string | null | undefined;
