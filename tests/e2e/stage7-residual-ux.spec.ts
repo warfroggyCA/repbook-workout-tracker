@@ -650,7 +650,7 @@ test("checks every converted micro-label surface at all four app sizes", async (
   });
   await waitForHydratedFormSubmit(recordActivity);
   await recordActivity.click();
-  await expect(page).toHaveURL(/\/activity\/[0-9a-f-]+$/);
+  await expect(page).toHaveURL(/\/activity\/[0-9a-f-]+(?:\?.*)?$/);
 
   await page.goto("/coach");
   const activityContext = page.getByRole("region", {
