@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import type { SessionExerciseData } from "@/components/session/types";
+import type {
+  SessionExerciseData,
+  SessionOccurrenceData,
+} from "@/components/session/types";
 import { resolveSetStartingLoad } from "@/lib/set-starting-load";
 
 function exercise(
@@ -40,6 +43,39 @@ function exercise(
   };
 }
 
+function occurrence(
+  patch: Partial<SessionOccurrenceData> = {},
+): SessionOccurrenceData {
+  return {
+    id: "00000000-0000-4000-8000-000000000003",
+    sessionExerciseId: "00000000-0000-4000-8000-000000000001",
+    kind: "working_set",
+    origin: "planned",
+    sequenceIdx: 0,
+    kindOrdinal: 0,
+    label: null,
+    plannedExerciseId: "00000000-0000-4000-8000-000000000002",
+    plannedNote: null,
+    plannedRepsMin: 12,
+    plannedRepsMax: 20,
+    plannedLoad: 15,
+    plannedLoadUnit: "lb",
+    plannedLoadPercent: null,
+    plannedLoadText: null,
+    plannedRestSec: 75,
+    groupSnapshotId: null,
+    groupRound: null,
+    groupMemberOrderIdx: null,
+    outcome: "pending",
+    outcomeReason: null,
+    outcomeNote: null,
+    revision: 0,
+    resolvedAt: null,
+    completedSetId: null,
+    ...patch,
+  };
+}
+
 describe("set starting load preview", () => {
   it("uses the same performed-set then Program then comparable precedence", () => {
     const base = exercise({
@@ -74,6 +110,20 @@ describe("set starting load preview", () => {
     })).toMatchObject({
       status: "available",
       weight: 15,
+      source: "Program target",
+    });
+  });
+
+  it("keeps the current session target ahead of a stale occurrence snapshot", () => {
+    expect(resolveSetStartingLoad({
+      exercise: exercise({ targetLoad: 100, targetLoadUnit: "lb" }),
+      setNumber: 1,
+      unit: "lb",
+      loadEntryMeaning: "total_system",
+      occurrence: occurrence({ plannedLoad: 95, plannedLoadUnit: "lb" }),
+    })).toMatchObject({
+      status: "available",
+      weight: 100,
       source: "Program target",
     });
   });

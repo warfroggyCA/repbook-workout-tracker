@@ -75,9 +75,9 @@ export function resolveSetStartingLoad(input: {
     };
   }
 
-  const plannedLoad = input.occurrence?.plannedLoad ?? input.exercise.targetLoad;
+  const plannedLoad = input.exercise.targetLoad ?? input.occurrence?.plannedLoad;
   const plannedLoadUnit =
-    input.occurrence?.plannedLoadUnit ?? input.exercise.targetLoadUnit;
+    input.exercise.targetLoadUnit ?? input.occurrence?.plannedLoadUnit;
   if (plannedLoad != null && plannedLoadUnit != null) {
     return {
       status: "available",
