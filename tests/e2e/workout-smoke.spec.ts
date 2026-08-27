@@ -1454,7 +1454,7 @@ test("answers all five History questions without mixing independent activity int
   });
   await waitForHydratedFormSubmit(recordActivity);
   await recordActivity.click();
-  await expect(page).toHaveURL(/\/activity\/[0-9a-f-]+$/);
+  await expect(page).toHaveURL(/\/activity\/[0-9a-f-]+(?:\?.*)?$/);
   await expect(
     page.getByRole("heading", {
       name: "Release 1B.3 separation walk",
