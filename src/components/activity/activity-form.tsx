@@ -28,6 +28,11 @@ import {
   type DistanceUnit,
   type ElevationUnit,
 } from "@/lib/activities";
+import {
+  buildActivityHistoryHref,
+  type HistoryContext,
+} from "@/lib/history-navigation";
+import type { RecentActivityPreset } from "@/services/activities";
 
 type ExactActivityInput = Extract<ActivityInput, { durationSeconds: number }>;
 export type ActivityFormInitialValues = Omit<
@@ -68,6 +73,9 @@ export function ActivityForm({
 }: {
   activityId?: string;
   initialValues?: ActivityFormInitialValues;
+  initialCalendarDate?: string;
+  recentPresets?: RecentActivityPreset[];
+  newActivityHistoryContext?: HistoryContext;
   successHref?: string;
   cancelHref?: string;
 }) {
@@ -91,11 +99,17 @@ export function ActivityForm({
 function ActivityFormFields({
   activityId,
   initialValues,
+  initialCalendarDate,
+  recentPresets = [],
+  newActivityHistoryContext,
   successHref,
   cancelHref = "/history",
 }: {
   activityId?: string;
   initialValues?: ActivityFormInitialValues;
+  initialCalendarDate?: string;
+  recentPresets?: RecentActivityPreset[];
+  newActivityHistoryContext?: HistoryContext;
   successHref?: string;
   cancelHref?: string;
 }) {
@@ -104,13 +118,19 @@ function ActivityFormFields({
     initialValues?.activityType ?? "walk"
   );
   const [title, setTitle] = useState(initialValues?.title ?? "");
-  const [startedAtLocal, setStartedAtLocal] = useState(() =>
-    initialValues
-      ? formatDateTimeLocalInZone(
-          new Date(initialValues.startedAtISO),
-          initialValues.timezone
-        )
-      : nowForDateTimeInput()
+  const initialStartedAtLocal = initialValues
+    ? formatDateTimeLocalInZone(
+        new Date(initialValues.startedAtISO),
+        initialValues.timezone,
+      )
+    : nowForDateTimeInput();
+  const [startedDate, setStartedDate] = useState(
+    initialCalendarDate ?? initialStartedAtLocal.slice(0, 10),
+  );
+  const [startedTime, setStartedTime] = useState(
+    initialCalendarDate && !initialValues
+      ? ""
+      : initialStartedAtLocal.slice(11),
   );
   const [durationMinutes, setDurationMinutes] = useState(() =>
     initialValues
@@ -182,7 +202,10 @@ function ActivityFormFields({
       initialValues?.timezone ??
       Intl.DateTimeFormat().resolvedOptions().timeZone ??
       "UTC";
-    const startedAt = dateTimeLocalInZoneToDate(startedAtLocal, timezone);
+    const startedAt = dateTimeLocalInZoneToDate(
+      `${startedDate}T${startedTime}`,
+      timezone,
+    );
     if (!startedAt) {
       setError("Choose a valid activity date and time.");
       return;
@@ -222,13 +245,45 @@ function ActivityFormFields({
         setError(result.reason);
         return;
       }
-      router.push(successHref ?? `/activity/${result.id}`);
+      router.push(
+        successHref ??
+          (newActivityHistoryContext
+            ? buildActivityHistoryHref(result.id, newActivityHistoryContext)
+            : `/activity/${result.id}`),
+      );
       router.refresh();
     });
   }
 
   return (
     <form onSubmit={handleSubmit} className="flex flex-col gap-6">
+      {recentPresets.length > 0 && !activityId && (
+        <section aria-labelledby="recent-activity-presets-heading">
+          <p id="recent-activity-presets-heading" className="text-sm font-medium">
+            Start from a recent activity
+          </p>
+          <div className="mt-2 flex flex-wrap gap-2">
+            {recentPresets.map((preset) => (
+              <Button
+                key={`${preset.activityType}:${preset.title.toLocaleLowerCase()}`}
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setActivityType(preset.activityType);
+                  setTitle(preset.title);
+                }}
+              >
+                {preset.title}
+              </Button>
+            ))}
+          </div>
+          <p className="mt-1 text-xs text-muted-foreground">
+            A shortcut copies only the activity type and title. Enter the date,
+            time, duration, and measurements for this activity.
+          </p>
+        </section>
+      )}
       <div className="grid gap-4 sm:grid-cols-2">
         <div className="flex flex-col gap-2">
           <Label htmlFor="activity-type">Activity type</Label>
@@ -255,19 +310,36 @@ function ActivityFormFields({
             placeholder="Power walk, waterfront route…"
           />
         </div>
-        <div className="flex flex-col gap-2">
-          <Label htmlFor="activity-started">Date and start time</Label>
-          <Input
-            id="activity-started"
-            type="datetime-local"
-            required
-            value={startedAtLocal}
-            onChange={(event) => setStartedAtLocal(event.target.value)}
-          />
+        <fieldset className="flex min-w-0 flex-col gap-2">
+          <legend className="text-sm font-medium">Date and start time</legend>
+          <div className="grid grid-cols-2 gap-2">
+            <div className="flex min-w-0 flex-col gap-1.5">
+              <Label htmlFor="activity-started-date">Date</Label>
+              <Input
+                id="activity-started-date"
+                type="date"
+                required
+                value={startedDate}
+                onChange={(event) => setStartedDate(event.target.value)}
+              />
+            </div>
+            <div className="flex min-w-0 flex-col gap-1.5">
+              <Label htmlFor="activity-started-time">Start time</Label>
+              <Input
+                id="activity-started-time"
+                type="time"
+                required
+                value={startedTime}
+                onChange={(event) => setStartedTime(event.target.value)}
+              />
+            </div>
+          </div>
           <p className="text-xs text-muted-foreground">
-            Saved with your device timezone.
+            {initialCalendarDate && !initialValues
+              ? "The selected calendar date is prefilled. Enter the actual start time; it will be saved with your device timezone."
+              : "Saved with your device timezone."}
           </p>
-        </div>
+        </fieldset>
         <fieldset className="flex min-w-0 flex-col gap-2">
           <legend className="text-sm font-medium">Duration</legend>
           <div className="grid grid-cols-2 gap-2">

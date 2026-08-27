@@ -141,15 +141,13 @@ describe("HistoryCalendar date actions", () => {
     expect(html).not.toContain('href="/history/workout-two?');
   });
 
-  it("renders past empty dates as retrospective actions", () => {
+  it("renders past empty dates as workout-or-activity chooser actions", () => {
     const html = renderCalendar([calendarSession("workout-one", "Day One")]);
 
     expect(html).toContain(
-      "/history/record?range=all&amp;calendarView=month&amp;calendarDate=2026-07-07&amp;date=2026-07-07"
+      "Tuesday, July 7, 2026: Add a workout or activity"
     );
-    expect(html).toContain(
-      "Tuesday, July 7, 2026: Record a workout"
-    );
+    expect(html).toContain('aria-haspopup="dialog"');
   });
 
   it("routes an empty owner-today date to Today and keeps future dates inert", () => {
@@ -169,7 +167,9 @@ describe("HistoryCalendar date actions", () => {
         view
       );
 
-      expect(html).toContain("Tuesday, July 7, 2026: Record a workout");
+      expect(html).toContain(
+        "Tuesday, July 7, 2026: Add a workout or activity",
+      );
       expect(html).toContain("Saturday, July 11, 2026: No history");
       expect(html).toContain('href="/today"');
     }

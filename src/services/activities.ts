@@ -1,10 +1,67 @@
+import { sql } from "drizzle-orm";
 import { z } from "zod";
+import type { Db } from "@/db";
+import { resultRows } from "@/db/result";
 import {
   ACTIVITY_INTENSITIES,
   ACTIVITY_TYPES,
   MAX_ACTIVITY_DURATION_SECONDS,
   type ActivityInput,
+  type ActivityType,
 } from "@/lib/activities";
+
+export type RecentActivityPreset = {
+  activityType: ActivityType;
+  title: string;
+};
+
+function normalizedPresetTitle(title: string) {
+  return title.trim().replace(/\s+/g, " ").toLocaleLowerCase();
+}
+
+export function recentNamedActivityPresets(
+  records: Array<{ activityType: string; title: string | null }>,
+  limit = 6,
+): RecentActivityPreset[] {
+  const supportedTypes = new Set(ACTIVITY_TYPES.map((option) => option.id));
+  const seen = new Set<string>();
+  const presets: RecentActivityPreset[] = [];
+  for (const record of records) {
+    const title = record.title?.trim().replace(/\s+/g, " ") ?? "";
+    if (!title || !supportedTypes.has(record.activityType as ActivityType)) continue;
+    const key = `${record.activityType}:${normalizedPresetTitle(title)}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    presets.push({
+      activityType: record.activityType as ActivityType,
+      title,
+    });
+    if (presets.length >= limit) break;
+  }
+  return presets;
+}
+
+/** Recent manual names are shortcuts only; no prior measurements are copied. */
+export async function getRecentNamedActivityPresets(
+  db: Db,
+  userId: string,
+): Promise<RecentActivityPreset[]> {
+  const rows = resultRows(await db.execute(sql`
+    SELECT activity_type, title
+    FROM health_activities
+    WHERE user_id = ${userId}::uuid
+      AND source = 'manual'
+      AND archived_at IS NULL
+      AND title IS NOT NULL
+      AND btrim(title) <> ''
+    ORDER BY started_at DESC, id DESC
+    LIMIT 50
+  `));
+  return recentNamedActivityPresets(rows.map((row) => ({
+    activityType: String(row.activity_type),
+    title: row.title == null ? null : String(row.title),
+  })));
+}
 
 const activityTypeIds = ACTIVITY_TYPES.map((option) => option.id) as [
   ActivityInput["activityType"],

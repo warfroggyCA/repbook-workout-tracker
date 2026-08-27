@@ -40,9 +40,7 @@ export function warmupOccurrenceWasOvertaken(input: {
       candidate.kind === "working_set" &&
       candidate.sequenceIdx > input.occurrence.sequenceIdx &&
       (candidate.outcome === "completed" ||
-        input.locallyRecordedOccurrenceIds.has(candidate.id)) &&
-      (input.occurrence.kind === "day_warmup" ||
-        candidate.sessionExerciseId === input.occurrence.sessionExerciseId),
+        input.locallyRecordedOccurrenceIds.has(candidate.id)),
   );
 }
 

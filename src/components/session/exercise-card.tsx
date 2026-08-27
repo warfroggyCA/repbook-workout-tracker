@@ -115,6 +115,10 @@ import {
 import type { PreviousComparableSetEvidence } from "@/services/previous-comparable-sets";
 import { createClientUuid } from "@/lib/client-uuid";
 import { formatPainEvidence } from "@/lib/pain-evidence";
+import {
+  resolveSetStartingLoad,
+  setStartingLoadPreviewText,
+} from "@/lib/set-starting-load";
 import type { OccurrenceMutationOutboxEntry } from "@/lib/occurrence-mutation-outbox";
 import {
   CompletedSetCorrection,
@@ -862,28 +866,20 @@ export function ExerciseCard({
       .filter((set) => set.setNo < nextSetNo)
       .sort((left, right) => right.setNo - left.setNo)[0] ?? null;
 
-  const defaultWeight =
-    prefillFrom?.weight != null && prefillFrom.weightUnit != null
-      ? convertWeight(prefillFrom.weight, prefillFrom.weightUnit, unit)
-      : exercise.targetLoad != null && exercise.targetLoadUnit != null
-        ? convertWeight(exercise.targetLoad, exercise.targetLoadUnit, unit)
-        : previousComparableSet?.weight != null &&
-            previousComparableSet.weightUnit != null
-          ? convertWeight(
-              previousComparableSet.weight,
-              previousComparableSet.weightUnit,
-              unit,
-            )
-          : null;
-  const defaultWeightSource =
-    prefillFrom?.weight != null && prefillFrom.weightUnit != null
-      ? "Previous set in this workout"
-      : exercise.targetLoad != null && exercise.targetLoadUnit != null
-        ? "Program target"
-        : previousComparableSet?.weight != null &&
-            previousComparableSet.weightUnit != null
-          ? "Previous comparable set"
-          : null;
+  const startingLoad = resolveSetStartingLoad({
+    exercise,
+    setNumber: nextSetNo,
+    unit,
+    loadEntryMeaning,
+    occurrence: activeOccurrence,
+    comparisonTemporarilyUnavailable,
+  });
+  const defaultWeight = startingLoad.status === "available"
+    ? startingLoad.weight
+    : null;
+  const defaultWeightSource = startingLoad.status === "available"
+    ? startingLoad.source
+    : null;
   const compactDefaultWeightSource = defaultWeightSource ===
       "Previous set in this workout"
     ? "earlier workout set"
@@ -2313,6 +2309,12 @@ export function ExerciseCard({
                     {plannedNote(i) && (
                       <p className="mt-1 text-muted-foreground">{plannedNote(i)}</p>
                     )}
+                    <p
+                      data-testid="upcoming-set-load-preview"
+                      className="mt-1 text-xs font-medium text-foreground"
+                    >
+                      Starting load: {setStartingLoadPreviewText(startingLoad)}
+                    </p>
                   </div>
                 );
               }

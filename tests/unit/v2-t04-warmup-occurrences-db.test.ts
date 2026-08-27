@@ -420,12 +420,12 @@ describe("V2 T04 warm-up occurrence truth", () => {
     }))).toEqual([
       { kind: "day_warmup", label: "General preparation", link: null, plannedExerciseId: null, sequence: 0, ordinal: 0 },
       { kind: "exercise_warmup", label: "Slot one anchor", link: sessionExerciseRows[0].id, plannedExerciseId: exerciseId, sequence: 1, ordinal: 0 },
-      { kind: "working_set", label: null, link: sessionExerciseRows[0].id, plannedExerciseId: exerciseId, sequence: 2, ordinal: 0 },
-      { kind: "working_set", label: null, link: sessionExerciseRows[0].id, plannedExerciseId: exerciseId, sequence: 3, ordinal: 1 },
-      { kind: "exercise_warmup", label: "Slot two legacy ramp", link: sessionExerciseRows[1].id, plannedExerciseId: alternateExerciseId, sequence: 4, ordinal: 0 },
-      { kind: "working_set", label: null, link: sessionExerciseRows[1].id, plannedExerciseId: alternateExerciseId, sequence: 5, ordinal: 0 },
-      { kind: "exercise_warmup", label: "Slot three anchor one", link: sessionExerciseRows[2].id, plannedExerciseId: thirdExercise.id, sequence: 6, ordinal: 0 },
-      { kind: "exercise_warmup", label: "Slot three anchor two", link: sessionExerciseRows[2].id, plannedExerciseId: thirdExercise.id, sequence: 7, ordinal: 1 },
+      { kind: "exercise_warmup", label: "Slot two legacy ramp", link: sessionExerciseRows[1].id, plannedExerciseId: alternateExerciseId, sequence: 2, ordinal: 0 },
+      { kind: "exercise_warmup", label: "Slot three anchor one", link: sessionExerciseRows[2].id, plannedExerciseId: thirdExercise.id, sequence: 3, ordinal: 0 },
+      { kind: "exercise_warmup", label: "Slot three anchor two", link: sessionExerciseRows[2].id, plannedExerciseId: thirdExercise.id, sequence: 4, ordinal: 1 },
+      { kind: "working_set", label: null, link: sessionExerciseRows[0].id, plannedExerciseId: exerciseId, sequence: 5, ordinal: 0 },
+      { kind: "working_set", label: null, link: sessionExerciseRows[0].id, plannedExerciseId: exerciseId, sequence: 6, ordinal: 1 },
+      { kind: "working_set", label: null, link: sessionExerciseRows[1].id, plannedExerciseId: alternateExerciseId, sequence: 7, ordinal: 0 },
       { kind: "working_set", label: null, link: sessionExerciseRows[2].id, plannedExerciseId: thirdExercise.id, sequence: 8, ordinal: 0 },
     ]);
   });

@@ -222,12 +222,13 @@ remains canonical, retries reuse the same command identity, and failed writes
 stay visible and recoverable without rolling the owner back. Restoring an
 earlier action makes that action current again. Completed warm-up details
 collapse without discarding their notes, outcomes, or restore controls.
-Pending exercise preparation remains visible in the warm-up summary even while
-the owner is resting before it, so a later working card cannot appear
-inexplicably unavailable. A working set blocked by its linked preparation names
-that exact preparation occurrence and can reveal and focus it. These views are
-derived from the immutable occurrence ledger; they never create a late warm-up
-or bypass the authored order.
+When warm-ups were included at Start, every pending preparation remains visible
+in one opening warm-up sequence. All selected preparation must be resolved
+before any working set becomes available, so a later working card cannot appear
+inexplicably unavailable during the workout. A blocked working set names the
+opening preparation and can reveal and focus it. These views are derived from
+the immutable occurrence ledger; they never create a late warm-up or bypass the
+authored order.
 
 Rest alerts remain device-local. The ready state is compact and visually
 distinct, while sound and vibration reporting is limited to whether an alert
@@ -408,16 +409,17 @@ excluded from active controls and rejected at the mutation boundary without
 rewriting the stored row; independently authored structured actions remain
 actionable.
 
-For schema-3 Program days, `beforeSlotLineageId` gives a structured item its
-execution position. Null or absent means general day preparation at the workout
-start; a same-day slot lineage means lift-specific preparation immediately
-before that exercise's first working occurrence. Unknown and cross-day anchors
-are invalid. Normal Start and Session Compiler materialize anchored items as
-linked `exercise_warmup` occurrences and interleave them with working
-occurrences, including group member order. Older slot-level warm-up sets remain
-linked legacy actions after any newly anchored items for that same exercise.
-The Program editor may retime the item only to another slot in that day and
-does not copy an anchored item across days.
+For schema-3 Program days, `beforeSlotLineageId` identifies the lift that a
+structured preparation item supports. Null or absent means general day
+preparation; a same-day slot lineage means lift-specific preparation. Unknown
+and cross-day anchors are invalid. Normal Start and Session Compiler materialize
+general items first, then all linked `exercise_warmup` occurrences in Program
+slot order, then every working occurrence. Older slot-level warm-up sets remain
+linked legacy actions after newly anchored items for that same exercise. The
+Program editor may retarget the item only to another slot in that day and does
+not copy an anchored item across days. Existing active and completed sessions
+keep their frozen occurrence order; the opening-only rule applies when a new
+workout is started.
 
 Program paste publication has a server-side emergency stop independent of the
 anchor-aware readers. `PROGRAM_TEXT_IMPORT_ENABLED=false` blocks new parse and
@@ -451,7 +453,8 @@ repair.
 ## T05 current, next, group, and rest contract
 
 The immutable occurrence ledger is the only source for canonical current and
-next work. Pending occurrences retain their authored sequence across warm-ups,
+next work. Newly started workouts place every selected warm-up before working
+sets; pending occurrences retain their frozen sequence across warm-ups,
 working sets, extras, skips, retries, and corrections; expanding or collapsing
 an exercise card cannot reorder them. For responsive working-set entry, an
 exact locally durable command temporarily resolves only that same occurrence in
@@ -1032,12 +1035,16 @@ saved set instead of a separate receipt panel. Resolved warm-up items likewise
 remain available in a completed disclosure. Exercise setup precedes its work
 and collapses only after acknowledged work; a queued, retrying, or failed set
 cannot make setup disappear. Group work uses a compact mobile summary with the
-immutable member order and preparation details in its native disclosure.
+immutable member order, preparation details, and the next member's read-only
+starting-load preview in its native disclosure. The preview uses the same
+earlier-workout-set, Program-target, then compatible-history precedence as the
+editable set. It explicitly says when no weight entry applies or when no
+starting load is available, and never makes a future set editable.
 Notes, coaching, form, and replacement controls live in `More for this
 exercise`. Pending or failed writes and skipped recovery remain exposed, and
 the fixed workout-status bar remains the sole rest/ready/finish authority.
-Included day and exercise preparation actions strictly precede their linked
-working sets. **Skip due to time** is the direct warm-up action and the detailed
+Included day and exercise preparation actions strictly precede every working
+set. **Skip due to time** is the direct warm-up action and the detailed
 reason flow remains secondary. Once a later working set is recorded, an earlier
 warm-up cannot be restored into the live order; retained device blockers route
 back to the exact warm-up identity rather than constructing a working-set
@@ -1300,6 +1307,14 @@ exact seconds; the action continues to accept the earlier whole-minute request
 shape for cached-client compatibility, but rejects both representations in one
 request. This changes no table or snapshot contract. Activity detail and the
 training brief preserve a non-minute remainder rather than rounding it away.
+An empty past History date opens a truthful choice between a retrospective
+workout and an independent activity. Activity entry retains the selected date
+and calendar return context but leaves its start time blank until the owner
+enters it. Recent non-archived manual activity names are optional shortcuts:
+selecting one copies only its generic activity type and title, never prior
+duration, distance, intensity, or other measurements. A named Power Walk
+therefore remains a `walk` activity with a reusable title, not a separate
+stored activity type.
 
 Retrospective performed-set duration remains a different fact from workout
 active duration. The retrospective UI directs a standalone timed activity to
