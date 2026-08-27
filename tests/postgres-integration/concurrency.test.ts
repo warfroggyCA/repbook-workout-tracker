@@ -1380,8 +1380,8 @@ describe.sequential("real PostgreSQL parallel invariants", () => {
     expect(occurrences).toEqual([
       expect.objectContaining({ sequenceIdx: 0, kind: "day_warmup", label: "General preparation" }),
       expect.objectContaining({ sequenceIdx: 1, kind: "exercise_warmup", label: "Ramp 1" }),
-      expect.objectContaining({ sequenceIdx: 2, kind: "working_set", label: null }),
-      expect.objectContaining({ sequenceIdx: 3, kind: "exercise_warmup", label: "Ramp 2" }),
+      expect.objectContaining({ sequenceIdx: 2, kind: "exercise_warmup", label: "Ramp 2" }),
+      expect.objectContaining({ sequenceIdx: 3, kind: "working_set", label: null }),
       expect.objectContaining({ sequenceIdx: 4, kind: "working_set", label: null }),
     ]);
   });
