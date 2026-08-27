@@ -3,6 +3,7 @@ import {
   activityFingerprint,
   activityInputSchema,
   normalizeActivityInput,
+  recentNamedActivityPresets,
 } from "@/services/activities";
 import type { ActivityInput } from "@/lib/activities";
 import {
@@ -141,6 +142,19 @@ describe("manual health activities", () => {
 
   it("can present the same normalized pace as cycling speed", () => {
     expect(formatActivitySpeed(180)).toBe("20.0 km/h");
+  });
+
+  it("offers recent named manual activities without copying measurements", () => {
+    expect(recentNamedActivityPresets([
+      { activityType: "walk", title: " Power   Walk " },
+      { activityType: "walk", title: "power walk" },
+      { activityType: "hike", title: "Power Walk" },
+      { activityType: "unknown", title: "Unsupported" },
+      { activityType: "run", title: null },
+    ])).toEqual([
+      { activityType: "walk", title: "Power Walk" },
+      { activityType: "hike", title: "Power Walk" },
+    ]);
   });
 
   it("round-trips the recorded wall time and date in its own timezone", () => {

@@ -194,3 +194,12 @@ export function buildRetrospectiveWorkoutHref(
   params.set("date", localDate);
   return `/history/record?${params.toString()}`;
 }
+
+export function buildNewActivityHref(
+  localDate: string,
+  context: HistoryContext,
+) {
+  const params = contextParams(context);
+  params.set("date", localDate);
+  return `/activity/new?${params.toString()}`;
+}

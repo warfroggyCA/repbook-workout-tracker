@@ -189,6 +189,7 @@ import {
   type ActiveSessionTiming,
 } from "@/lib/active-session-timing";
 import { createUpdatingSessionEquipmentProjection } from "@/lib/session-equipment-requirements";
+import { resolveSetStartingLoad } from "@/lib/set-starting-load";
 import {
   INCOMPLETE_SESSION_REASONS,
   INCOMPLETE_SESSION_REASON_LABELS,
@@ -3471,6 +3472,41 @@ export function SessionRunner(props: SessionRunnerProps) {
         (set) => set.saveState != null && set.saveState !== "saved",
       )
     );
+  const activeGroupProjection = guidance.activeGroup;
+  const activeGroupUpNextAction = activeGroupProjection
+    ? guidance.actions.find((action) => {
+        const group = action.group;
+        return action.truth === "pending" &&
+          group?.id === activeGroupProjection.groupId &&
+          group.round >= activeGroupProjection.currentRound &&
+          group.member === activeGroupProjection.upNextMemberOrder;
+      }) ?? null
+    : null;
+  const activeGroupUpNextExercise = activeGroupUpNextAction
+    ? shownExercises.find(
+        (exercise) => exercise.id === activeGroupUpNextAction.sessionExerciseId,
+      ) ?? null
+    : null;
+  const activeGroupUpNextOccurrence = activeGroupUpNextAction
+    ? occurrences.find(
+        (occurrence) => occurrence.id === activeGroupUpNextAction.occurrenceId,
+      ) ?? null
+    : null;
+  const activeGroupUpNextLoadPreview = activeGroupUpNextExercise &&
+      activeGroupUpNextAction
+    ? resolveSetStartingLoad({
+        exercise: activeGroupUpNextExercise,
+        setNumber: activeGroupUpNextAction.planned.setNumber,
+        unit: props.unit,
+        loadEntryMeaning:
+          equipmentLoadMeanings[activeGroupUpNextExercise.id] ??
+          safeEquipmentSetups[activeGroupUpNextExercise.id]?.loadEntryMeaning ??
+          null,
+        occurrence: activeGroupUpNextOccurrence,
+        comparisonTemporarilyUnavailable:
+          comparisonUnavailableByExerciseId[activeGroupUpNextExercise.id] ?? true,
+      })
+    : null;
   const hasAcknowledgedWork = occurrences.some(
     (occurrence) =>
       occurrence.outcome === "completed" ||
@@ -3740,7 +3776,7 @@ export function SessionRunner(props: SessionRunnerProps) {
                       <p className="font-semibold">
                         {upNextAfterRest
                           ? `Up next after rest: ${exerciseName} preparation set`
-                          : `Later, before ${exerciseName}: preparation set`}
+                          : `Opening warm-up: ${exerciseName} preparation set`}
                       </p>
                       <p>{prescription ?? occurrence.label ?? "Details not recorded"}</p>
                     </div>
@@ -4121,7 +4157,10 @@ export function SessionRunner(props: SessionRunnerProps) {
           >
           {firstActiveGroupMemberId === exercise.id &&
           guidance.activeGroup ? (
-            <WorkoutGroupContext guidance={guidance} />
+            <WorkoutGroupContext
+              guidance={guidance}
+              upNextLoadPreview={activeGroupUpNextLoadPreview}
+            />
           ) : null}
           {equipmentPanel ? (
             <details

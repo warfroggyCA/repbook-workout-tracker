@@ -149,7 +149,7 @@ describe("DATA-03 group occurrence sequencing", () => {
     ).toBe(true);
   });
 
-  it("does not offer a working set before its linked preparation set", () => {
+  it("does not offer a working set before any opening preparation set", () => {
     const working = {
       ...buildSequence()[0],
       sequenceIdx: 11,
@@ -160,6 +160,7 @@ describe("DATA-03 group occurrence sequencing", () => {
     const preparation = {
       ...working,
       id: "00000000-0000-4000-8000-000000000397",
+      sessionExerciseId: "00000000-0000-4000-8000-000000000396",
       kind: "exercise_warmup",
       sequenceIdx: 10,
       kindOrdinal: 0,

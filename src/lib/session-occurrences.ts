@@ -75,9 +75,7 @@ export function workingSetOccurrenceOrderIsEligible(
 
   const earlierWarmupIsPending = occurrences.some(
     (earlier) =>
-      (earlier.kind === "day_warmup" ||
-        (earlier.kind === "exercise_warmup" &&
-          earlier.sessionExerciseId === candidate.sessionExerciseId)) &&
+      (earlier.kind === "day_warmup" || earlier.kind === "exercise_warmup") &&
       earlier.sequenceIdx < candidate.sequenceIdx &&
       earlier.outcome === "pending" &&
       !locallyRecordedOccurrenceIds.has(earlier.id),
@@ -354,38 +352,17 @@ export function buildWarmupOccurrences(input: {
       plan.plannedRestSec,
       plan.kindOrdinal,
     );
-  if (!input.workingOccurrences) {
-    return [
-      ...generalPlans,
-      ...orderedExercises.flatMap(
-        (exercise) => exercisePlans.get(exercise.sessionExerciseId) ?? [],
-      ),
-    ].map(buildPlan);
-  }
-
-  const occurrences = generalPlans.map(buildPlan);
-  const emittedExerciseWarmups = new Set<string>();
-  for (const working of [...input.workingOccurrences].sort(
+  const occurrences = [
+    ...generalPlans,
+    ...orderedExercises.flatMap(
+      (exercise) => exercisePlans.get(exercise.sessionExerciseId) ?? [],
+    ),
+  ].map(buildPlan);
+  for (const working of [...(input.workingOccurrences ?? [])].sort(
     (left, right) => left.sequenceIdx - right.sequenceIdx,
   )) {
-    const sessionExerciseId = working.sessionExerciseId;
-    if (
-      sessionExerciseId != null &&
-      !emittedExerciseWarmups.has(sessionExerciseId)
-    ) {
-      for (const plan of exercisePlans.get(sessionExerciseId) ?? []) {
-        occurrences.push(buildPlan(plan));
-      }
-      emittedExerciseWarmups.add(sessionExerciseId);
-    }
     occurrences.push({ ...working, sequenceIdx });
     sequenceIdx += 1;
-  }
-  for (const exercise of orderedExercises) {
-    if (emittedExerciseWarmups.has(exercise.sessionExerciseId)) continue;
-    for (const plan of exercisePlans.get(exercise.sessionExerciseId) ?? []) {
-      occurrences.push(buildPlan(plan));
-    }
   }
   return occurrences;
 }

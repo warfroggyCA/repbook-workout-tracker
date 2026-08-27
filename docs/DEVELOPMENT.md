@@ -362,11 +362,11 @@ The August 16, 2026 candidate confirmed these causes before remediation:
   client projection deliberately kept the same occurrence current until the
   database acknowledged it. That policy made normal latency look like a frozen
   workout.
-- Snapshot construction already orders general warm-ups first and anchors lift
-  ramps before their exact exercise. The surprise was a presentation problem:
-  later preparation sets were hidden in the collapsed full plan and described
-  too generically. The occurrence-order tests remain the authority against a
-  true mid-exercise insertion regression.
+- Snapshot construction now orders general warm-ups first, then every
+  lift-linked ramp in Program order, then all working sets. The occurrence-order
+  tests are the authority against reintroducing a mid-workout preparation
+  blocker. Sessions created before this change keep their frozen occurrence
+  sequence.
 - Routine import allowed two slots in one day to resolve to the same stable
   exercise ID. Snapshot creation and rendering preserve distinct stable rows;
   the missing duplicate guard was at the import review and confirmation trust

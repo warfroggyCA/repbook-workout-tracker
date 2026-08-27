@@ -38,6 +38,7 @@ import { ALTERNATIVE_REASONS } from "@/lib/exercise-alternatives";
 import { workoutReplacementUnavailableReason } from "@/lib/exercise-replacements";
 import type { ProgramPresentation } from "@/lib/program-presentation";
 import {
+  buildNewActivityHref,
   buildWorkoutHistoryHref,
   type HistoryContext,
 } from "@/lib/history-navigation";
@@ -1109,7 +1110,9 @@ function RetrospectiveWorkoutFields({
             </div>
           </div>
           <Button
-            render={<Link href="/activity/new" />}
+            render={
+              <Link href={buildNewActivityHref(localDate, historyContext)} />
+            }
             nativeButton={false}
             variant="outline"
           >

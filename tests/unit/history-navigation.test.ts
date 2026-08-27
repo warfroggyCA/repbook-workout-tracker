@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   buildHistoryHref,
+  buildNewActivityHref,
   buildRetrospectiveWorkoutHref,
   buildWorkoutHistoryHref,
   firstSearchParam,
@@ -144,6 +145,18 @@ describe("history navigation", () => {
       }),
     ).toBe(
       "/history/record?range=all&calendarView=month&calendarDate=2026-07-08&date=2026-07-08",
+    );
+  });
+
+  it("carries a selected past date and calendar return context into activity entry", () => {
+    expect(
+      buildNewActivityHref("2026-07-08", {
+        range: "all",
+        calendarView: "month",
+        calendarDate: "2026-07-08",
+      }),
+    ).toBe(
+      "/activity/new?range=all&calendarView=month&calendarDate=2026-07-08&date=2026-07-08",
     );
   });
 });

@@ -431,6 +431,8 @@ test("presents immutable superset order, truthful progress, and next-member equi
   await expect(group).toContainText(
     "Up next in group: 2 of 2 · Pallof Press",
   );
+  await expect(group.getByTestId("up-next-group-load-preview").first())
+    .toContainText("Starting load: No weight entry for this exercise");
   await expect(group).toContainText("Round 1 of 2");
   await expect(group).toContainText("0 of 4 performed");
   await expect(group).toContainText(
@@ -477,6 +479,8 @@ test("presents immutable superset order, truthful progress, and next-member equi
   await expect(laterMemberCard).toContainText(
     "Reach this set in the workout flow",
   );
+  await expect(laterMemberCard.getByTestId("upcoming-set-load-preview"))
+    .toContainText("Starting load: No weight entry for this exercise");
   await expect(
     laterMemberCard.getByRole("button", { name: "Log set", exact: true }),
   ).toHaveCount(0);

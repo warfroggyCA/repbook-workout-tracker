@@ -5,6 +5,10 @@ import type {
 } from "@/lib/session-guidance";
 import { formatRestTime } from "@/lib/rest-time";
 import { cn } from "@/lib/utils";
+import {
+  setStartingLoadPreviewText,
+  type SetStartingLoadPreview,
+} from "@/lib/set-starting-load";
 
 function progressText(totals: GroupProgressProjection["totals"]) {
   return [
@@ -42,8 +46,10 @@ function equipmentDetails(cue: EquipmentPreparationCue) {
 
 export function WorkoutGroupContext({
   guidance,
+  upNextLoadPreview = null,
 }: {
   guidance: SessionGuidanceProjection;
+  upNextLoadPreview?: SetStartingLoadPreview | null;
 }) {
   const group = guidance.activeGroup;
   if (!group) return null;
@@ -115,10 +121,20 @@ export function WorkoutGroupContext({
             {group.currentMemberName}
           </p>
           {group.upNextMemberName && (
-            <p className="text-sm">
-              <span className="font-semibold">Up next:</span>{" "}
-              {group.upNextMemberName}
-            </p>
+            <div className="text-sm">
+              <p>
+                <span className="font-semibold">Up next:</span>{" "}
+                {group.upNextMemberName}
+              </p>
+              {upNextLoadPreview && (
+                <p
+                  data-testid="up-next-group-load-preview"
+                  className="text-xs font-medium text-violet-950 dark:text-violet-100"
+                >
+                  Starting load: {setStartingLoadPreviewText(upNextLoadPreview)}
+                </p>
+              )}
+            </div>
           )}
           <p className="mt-1 text-xs text-muted-foreground">
             Group progress: {progressText(group.totals)} · {completionLabel}
@@ -201,11 +217,21 @@ export function WorkoutGroupContext({
         {group.currentMemberName}
       </p>
       {group.upNextMemberName && (
-        <p className="text-sm">
-          <span className="font-semibold">Up next in group:</span>{" "}
-          {group.upNextMemberOrder} of {group.memberCount} ·{" "}
-          {group.upNextMemberName}
-        </p>
+        <div className="text-sm">
+          <p>
+            <span className="font-semibold">Up next in group:</span>{" "}
+            {group.upNextMemberOrder} of {group.memberCount} ·{" "}
+            {group.upNextMemberName}
+          </p>
+          {upNextLoadPreview && (
+            <p
+              data-testid="up-next-group-load-preview"
+              className="text-xs font-medium text-violet-950 dark:text-violet-100"
+            >
+              Starting load: {setStartingLoadPreviewText(upNextLoadPreview)}
+            </p>
+          )}
+        </div>
       )}
       <p className="mt-1 text-xs text-muted-foreground">
         Group progress: {progressText(group.totals)} · {completionLabel}

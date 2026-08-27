@@ -222,7 +222,7 @@ describe("DATA-01 durable warm-up occurrences", () => {
     expect(built[3].plannedNote).toBe("Match work-set grip");
   });
 
-  it("interleaves anchored and legacy ramps immediately before each exercise's first working occurrence", () => {
+  it("places every anchored and legacy ramp before the first working occurrence", () => {
     const slotLineages = {
       bench: "50000000-0000-4000-8000-000000000001",
       row: "50000000-0000-4000-8000-000000000002",
@@ -289,11 +289,11 @@ describe("DATA-01 durable warm-up occurrences", () => {
     }))).toEqual([
       { kind: "day_warmup", label: "General preparation", sessionExerciseId: null, sequenceIdx: 0, kindOrdinal: 0, groupRound: null, memberOrder: null },
       { kind: "exercise_warmup", label: "Bench ramp", sessionExerciseId: BENCH_SESSION_EXERCISE_ID, sequenceIdx: 1, kindOrdinal: 0, groupRound: null, memberOrder: null },
-      { kind: "working_set", label: null, sessionExerciseId: BENCH_SESSION_EXERCISE_ID, sequenceIdx: 2, kindOrdinal: 0, groupRound: null, memberOrder: null },
-      { kind: "exercise_warmup", label: "Row legacy ramp", sessionExerciseId: ROW_SESSION_EXERCISE_ID, sequenceIdx: 3, kindOrdinal: 0, groupRound: null, memberOrder: null },
-      { kind: "working_set", label: null, sessionExerciseId: ROW_SESSION_EXERCISE_ID, sequenceIdx: 4, kindOrdinal: 0, groupRound: 1, memberOrder: 0 },
-      { kind: "exercise_warmup", label: "Press ramp one", sessionExerciseId: PRESS_SESSION_EXERCISE_ID, sequenceIdx: 5, kindOrdinal: 0, groupRound: null, memberOrder: null },
-      { kind: "exercise_warmup", label: "Press ramp two", sessionExerciseId: PRESS_SESSION_EXERCISE_ID, sequenceIdx: 6, kindOrdinal: 1, groupRound: null, memberOrder: null },
+      { kind: "exercise_warmup", label: "Row legacy ramp", sessionExerciseId: ROW_SESSION_EXERCISE_ID, sequenceIdx: 2, kindOrdinal: 0, groupRound: null, memberOrder: null },
+      { kind: "exercise_warmup", label: "Press ramp one", sessionExerciseId: PRESS_SESSION_EXERCISE_ID, sequenceIdx: 3, kindOrdinal: 0, groupRound: null, memberOrder: null },
+      { kind: "exercise_warmup", label: "Press ramp two", sessionExerciseId: PRESS_SESSION_EXERCISE_ID, sequenceIdx: 4, kindOrdinal: 1, groupRound: null, memberOrder: null },
+      { kind: "working_set", label: null, sessionExerciseId: BENCH_SESSION_EXERCISE_ID, sequenceIdx: 5, kindOrdinal: 0, groupRound: null, memberOrder: null },
+      { kind: "working_set", label: null, sessionExerciseId: ROW_SESSION_EXERCISE_ID, sequenceIdx: 6, kindOrdinal: 0, groupRound: 1, memberOrder: 0 },
       { kind: "working_set", label: null, sessionExerciseId: PRESS_SESSION_EXERCISE_ID, sequenceIdx: 7, kindOrdinal: 0, groupRound: 1, memberOrder: 1 },
       { kind: "working_set", label: null, sessionExerciseId: ROW_SESSION_EXERCISE_ID, sequenceIdx: 8, kindOrdinal: 1, groupRound: 2, memberOrder: 0 },
       { kind: "working_set", label: null, sessionExerciseId: PRESS_SESSION_EXERCISE_ID, sequenceIdx: 9, kindOrdinal: 1, groupRound: 2, memberOrder: 1 },

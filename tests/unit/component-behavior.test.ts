@@ -255,7 +255,7 @@ describe("session-runner workflow rules", () => {
         sessionExerciseId: "00000000-0000-4000-8000-000000000094",
       }],
       locallyRecordedOccurrenceIds: new Set(),
-    })).toBe(false);
+    })).toBe(true);
     expect(warmupOccurrenceWasOvertaken({
       occurrence: preparation,
       occurrences: [{ ...laterWorkingSet, outcome: "pending" }],

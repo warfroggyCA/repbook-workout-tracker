@@ -388,6 +388,7 @@ describe("ExerciseCard", () => {
 
     expect(html).toContain("Complete Barbell Squat preparation set first");
     expect(html).toContain("Go to preparation set");
+    expect(html).toContain("Starting load: 95 lb · Program target");
     expect(html).not.toContain("Reach this set in the workout flow");
   });
 

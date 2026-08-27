@@ -35,6 +35,7 @@ import { cn } from "@/lib/utils";
 import {
   buildActivityHistoryHref,
   buildHistoryHref,
+  buildNewActivityHref,
   buildRetrospectiveWorkoutHref,
   buildWorkoutHistoryHref,
   type HistoryCalendarView,
@@ -226,22 +227,20 @@ function CalendarDayAction({
 
   if (key < ownerToday) {
     return (
-      <Link
-        href={buildRetrospectiveWorkoutHref(key, {
-          range,
-          calendarView: view,
-          calendarDate: key,
-        })}
-        prefetch={false}
-        aria-label={`${label}: Record a workout`}
+      <button
+        type="button"
+        aria-haspopup="dialog"
+        aria-expanded={selected}
+        aria-label={`${label}: Add a workout or activity`}
         data-calendar-action
         data-calendar-date={key}
         tabIndex={focused ? 0 : -1}
         onFocus={() => onFocus(key)}
+        onClick={() => onChoose(key)}
         className={className}
       >
         {children}
-      </Link>
+      </button>
     );
   }
 
@@ -816,40 +815,67 @@ export function HistoryCalendar({
         >
           <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-x-hidden overflow-y-auto sm:max-w-lg">
             <DialogHeader>
-              <DialogTitle>Choose a record</DialogTitle>
+              <DialogTitle>
+                {chooserRecords.length > 0 ? "Choose a record" : "Add to this day"}
+              </DialogTitle>
               <DialogDescription>
-                {chooserKey ? fullDateLabel(dateFromKey(chooserKey)) : ""} · {" "}
-                {chooserRecords.length} records
+                {chooserKey ? fullDateLabel(dateFromKey(chooserKey)) : ""}
+                {chooserRecords.length > 0
+                  ? ` · ${chooserRecords.length} records`
+                  : " · Choose what you want to record."}
               </DialogDescription>
             </DialogHeader>
-            <HistoryDayRecordList
-              records={chooserRecords}
-              range={range}
-              view={view}
-              date={chooserKey ?? dateKey(anchor)}
-              unit={unit}
-            />
+            {chooserRecords.length > 0 && (
+              <HistoryDayRecordList
+                records={chooserRecords}
+                range={range}
+                view={view}
+                date={chooserKey ?? dateKey(anchor)}
+                unit={unit}
+              />
+            )}
             {chooserKey && chooserKey <= ownerToday && (
-              <Button
-                render={
-                  <Link
-                    href={
-                      chooserKey === ownerToday
-                        ? "/today"
-                        : buildRetrospectiveWorkoutHref(chooserKey, {
-                            range,
-                            calendarView: view,
-                            calendarDate: chooserKey,
-                          })
-                    }
-                  />
-                }
-                nativeButton={false}
-                size="touch"
-                className="w-full whitespace-normal text-center leading-snug"
-              >
-                Record another workout
-              </Button>
+              <div className="grid gap-2 sm:grid-cols-2">
+                <Button
+                  render={
+                    <Link
+                      href={buildNewActivityHref(chooserKey, {
+                        range,
+                        calendarView: view,
+                        calendarDate: chooserKey,
+                      })}
+                    />
+                  }
+                  nativeButton={false}
+                  size="touch"
+                  variant="outline"
+                  className="w-full whitespace-normal text-center leading-snug"
+                >
+                  Record activity
+                </Button>
+                <Button
+                  render={
+                    <Link
+                      href={
+                        chooserKey === ownerToday
+                          ? "/today"
+                          : buildRetrospectiveWorkoutHref(chooserKey, {
+                              range,
+                              calendarView: view,
+                              calendarDate: chooserKey,
+                            })
+                      }
+                    />
+                  }
+                  nativeButton={false}
+                  size="touch"
+                  className="w-full whitespace-normal text-center leading-snug"
+                >
+                  {chooserRecords.length > 0
+                    ? "Record another workout"
+                    : "Record workout"}
+                </Button>
+              </div>
             )}
           </DialogContent>
         </Dialog>

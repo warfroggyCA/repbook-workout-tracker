@@ -45,7 +45,9 @@ async function recordActivity(
   const [minutes, seconds = ""] = duration.split(":");
   await page.goto("/activity/new");
   await page.getByLabel("Title (optional)").fill(title);
-  await page.getByLabel("Date and start time").fill(localStart);
+  const [date, time] = localStart.split("T");
+  await page.getByLabel("Date", { exact: true }).fill(date);
+  await page.getByLabel("Start time", { exact: true }).fill(time);
   const minutesInput = page.getByLabel("Minutes", { exact: true });
   const secondsInput = page.getByLabel("Seconds", { exact: true });
   await expect(minutesInput).toHaveAttribute("inputmode", "numeric");
@@ -60,7 +62,7 @@ async function recordActivity(
   });
   await waitForReactHandler(save);
   await save.click();
-  await expect(page).toHaveURL(/\/activity\/[0-9a-f-]+$/);
+  await expect(page).toHaveURL(/\/activity\/[0-9a-f-]+(?:\?.*)?$/);
 }
 
 function ownerLocalDate(offsetDays = 0) {
@@ -144,8 +146,8 @@ test("calendar-first History opens a recoverable retrospective entry flow", asyn
   expect(attentionBox).not.toBeNull();
   expect(calendarBox!.y).toBeLessThan(attentionBox!.y);
 
-  const selectedPastDate = page.getByRole("link", {
-    name: `${primaryLabel}: Record a workout`,
+  const selectedPastDate = page.getByRole("button", {
+    name: `${primaryLabel}: Add a workout or activity`,
     exact: true,
   });
   await expect(selectedPastDate).toBeVisible();
@@ -161,6 +163,26 @@ test("calendar-first History opens a recoverable retrospective entry flow", asyn
   ).toBeFocused();
 
   await selectedPastDate.click();
+  const emptyDayChooser = page.getByRole("dialog", { name: "Add to this day" });
+  const activityEntry = emptyDayChooser.getByRole("button", {
+    name: "Record activity",
+    exact: true,
+  });
+  await expect(activityEntry).toHaveAttribute(
+    "href",
+    new RegExp(`/activity/new\\?.*date=${primaryDate}`),
+  );
+  await activityEntry.click();
+  await expect(page.getByLabel("Date", { exact: true })).toHaveValue(primaryDate);
+  await expect(page.getByLabel("Start time", { exact: true })).toHaveValue("");
+  await page.goBack();
+  await page.getByRole("button", {
+    name: `${primaryLabel}: Add a workout or activity`,
+    exact: true,
+  }).click();
+  await page.getByRole("dialog", { name: "Add to this day" })
+    .getByRole("button", { name: "Record workout", exact: true })
+    .click();
   await expect(page).toHaveURL(
     new RegExp(`/history/record\\?.*date=${primaryDate}`),
   );
@@ -174,7 +196,7 @@ test("calendar-first History opens a recoverable retrospective entry flow", asyn
       name: "Record standalone activity",
       exact: true,
     }),
-  ).toHaveAttribute("href", "/activity/new");
+  ).toHaveAttribute("href", new RegExp(`/activity/new\\?.*date=${primaryDate}`));
   await expect(
     page.getByText(
       /set duration and whole-workout active duration remain separate facts/i,
@@ -310,23 +332,34 @@ test("calendar-first History opens a recoverable retrospective entry flow", asyn
       : "Thursday, January 2, 2020";
   await recordActivity(
     page,
-    `H1 ${browserName} first activity`,
+    "Power Walk",
     `${targetDate}T10:00`,
     "42:30",
   );
   await expect(page.getByText("42 min 30 sec", { exact: true })).toBeVisible();
   await expect(page.getByText(/Time and duration unknown/)).toHaveCount(0);
-  await recordActivity(
-    page,
-    `H1 ${browserName} second activity`,
-    `${targetDate}T16:00`
-  );
+  await page.goto("/activity/new");
+  const powerWalkPreset = page.getByRole("button", {
+    name: "Power Walk",
+    exact: true,
+  });
+  await expect(powerWalkPreset).toBeVisible();
+  await powerWalkPreset.click();
+  await expect(page.getByLabel("Activity type")).toHaveValue("walk");
+  await expect(page.getByLabel("Title (optional)")).toHaveValue("Power Walk");
+  await expect(page.getByLabel("Minutes", { exact: true })).toHaveValue("");
+  await page.getByLabel("Title (optional)").fill(`H1 ${browserName} second activity`);
+  await page.getByLabel("Date", { exact: true }).fill(targetDate);
+  await page.getByLabel("Start time", { exact: true }).fill("16:00");
+  await page.getByLabel("Minutes", { exact: true }).fill("30");
+  await page.getByRole("button", { name: "Record activity", exact: true }).click();
+  await expect(page).toHaveURL(/\/activity\/[0-9a-f-]+(?:\?.*)?$/);
   await page.goto(
     `/history?range=all&calendarView=year&calendarDate=${targetDate}`
   );
   const chooser = page.getByRole("dialog", { name: "Choose a record" });
   await expect(chooser).toContainText(targetLabel);
-  await expect(chooser).toContainText(`H1 ${browserName} first activity`);
+  await expect(chooser).toContainText("Power Walk");
   await expect(chooser).toContainText(`H1 ${browserName} second activity`);
   await chooser
     .getByRole("button", { name: "Record another workout", exact: true })

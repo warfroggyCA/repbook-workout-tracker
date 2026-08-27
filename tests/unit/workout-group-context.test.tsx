@@ -133,7 +133,15 @@ describe("active workout group presentation", () => {
       equipmentSetups: { [row.id]: setup(row) },
     });
     const html = renderToStaticMarkup(
-      <WorkoutGroupContext guidance={guidance} />,
+      <WorkoutGroupContext
+        guidance={guidance}
+        upNextLoadPreview={{
+          status: "available",
+          weight: 30,
+          unit: "lb",
+          source: "Program target",
+        }}
+      />,
     );
 
     expect(html).toContain("Current exercise group");
@@ -147,6 +155,7 @@ describe("active workout group presentation", () => {
     expect(html).toContain("Round 1 of 2");
     expect(html).toContain("Current member:</span> 1 of 2 · Press");
     expect(html).toContain("Up next in group:</span> 2 of 2 · Row");
+    expect(html).toContain("Starting load: 30 lb · Program target");
     expect(html).toContain("No rest is planned after the current set.");
     expect(html).toContain('href="#exercise-press"');
     expect(html).toContain('aria-current="step"');
