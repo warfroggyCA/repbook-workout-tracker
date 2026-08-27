@@ -346,11 +346,13 @@ describe("Session Compiler durable review and acceptance", () => {
     const occurrences = await database.db.select().from(sessionOccurrences)
       .where(eq(sessionOccurrences.sessionId, accepted.sessionId))
       .orderBy(sessionOccurrences.sequenceIdx);
+    expect(occurrences.map((occurrence) => occurrence.sequenceIdx))
+      .toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8]);
     expect(occurrences.map((occurrence) => occurrence.kind)).toEqual([
       "day_warmup",
       "exercise_warmup",
-      "working_set",
       "exercise_warmup",
+      "working_set",
       "working_set",
       "working_set",
       "working_set",

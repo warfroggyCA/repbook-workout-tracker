@@ -579,7 +579,11 @@ export async function acceptSessionCompilerProposal(
         row_number() OVER (
           PARTITION BY source.session_exercise_id
           ORDER BY source.source_order, source.local_order
-        )::integer - 1 AS kind_ordinal
+        )::integer - 1 AS kind_ordinal,
+        row_number() OVER (
+          ORDER BY source.order_idx, source.source_order,
+            source.local_order, source.session_exercise_id
+        )::integer - 1 AS global_ordinal
       FROM combined_exercise_warmup_source source
     ), working_source AS MATERIALIZED (
       SELECT
@@ -628,41 +632,6 @@ export async function acceptSessionCompilerProposal(
             source.session_exercise_id
         ) AS next_round_number
       FROM working_source source
-    ), exercise_event_order AS MATERIALIZED (
-      SELECT
-        'warmup'::text AS event_kind,
-        source.session_exercise_id,
-        source.kind_ordinal AS item_ordinal,
-        source.unit_order_idx,
-        1::integer AS round_number,
-        coalesce(source.group_member_order_idx, 0) AS member_order_idx,
-        source.order_idx,
-        0::integer AS event_order,
-        source.source_order,
-        source.local_order
-      FROM ordered_exercise_warmups source
-      UNION ALL
-      SELECT
-        'working'::text AS event_kind,
-        source.session_exercise_id,
-        source.round_number - 1 AS item_ordinal,
-        source.unit_order_idx,
-        source.round_number,
-        coalesce(source.group_member_order_idx, 0) AS member_order_idx,
-        source.order_idx,
-        1::integer AS event_order,
-        0::integer AS source_order,
-        0::integer AS local_order
-      FROM ordered_working source
-    ), sequenced_exercise_events AS MATERIALIZED (
-      SELECT source.*,
-        row_number() OVER (
-          ORDER BY source.unit_order_idx, source.round_number,
-            source.member_order_idx, source.order_idx, source.event_order,
-            source.source_order, source.local_order,
-            source.session_exercise_id
-        )::integer - 1 AS global_ordinal
-      FROM exercise_event_order source
     ), inserted_occurrences AS (
       INSERT INTO session_occurrences (
         session_id, session_exercise_id, kind, origin, sequence_idx,
@@ -684,7 +653,7 @@ export async function acceptSessionCompilerProposal(
       UNION ALL
       SELECT
         source.session_id, source.session_exercise_id, 'exercise_warmup',
-        'planned', (SELECT count(*) FROM day_warmup_source) + event.global_ordinal,
+        'planned', (SELECT count(*) FROM day_warmup_source) + source.global_ordinal,
         source.kind_ordinal, source.value->>'label', source.planned_exercise_id,
         (source.value->>'reps')::integer, (source.value->>'reps')::integer,
         (source.value->>'load')::numeric, (source.value->>'loadUnit')::unit,
@@ -692,14 +661,12 @@ export async function acceptSessionCompilerProposal(
         NULL::integer, source.value->>'notes', NULL::uuid, NULL::integer,
         NULL::integer, 'pending'
       FROM ordered_exercise_warmups source
-      JOIN sequenced_exercise_events event
-        ON event.event_kind = 'warmup'
-       AND event.session_exercise_id = source.session_exercise_id
-       AND event.item_ordinal = source.kind_ordinal
       UNION ALL
       SELECT
         source.session_id, source.session_exercise_id, 'working_set', 'planned',
-        (SELECT count(*) FROM day_warmup_source) + event.global_ordinal,
+        (SELECT count(*) FROM day_warmup_source)
+          + (SELECT count(*) FROM ordered_exercise_warmups)
+          + source.global_ordinal,
         source.round_number - 1, NULL::text, source.planned_exercise_id,
         source.target_reps_min, source.target_reps_max, source.target_load,
         source.target_load_unit, NULL::numeric, NULL::text,
@@ -714,10 +681,6 @@ export async function acceptSessionCompilerProposal(
         CASE WHEN source.group_snapshot_id IS NULL THEN NULL ELSE source.round_number END,
         source.group_member_order_idx, 'pending'
       FROM ordered_working source
-      JOIN sequenced_exercise_events event
-        ON event.event_kind = 'working'
-       AND event.session_exercise_id = source.session_exercise_id
-       AND event.item_ordinal = source.round_number - 1
       RETURNING id
     ), creation_counts AS MATERIALIZED (
       SELECT
