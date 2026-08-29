@@ -244,7 +244,15 @@ async function verifyDecisiveToday({
   await expect(programLabel).not.toHaveText("");
   await expect(decision.getByText(/Why this day:/)).toHaveCount(0);
   await expect(trainAsPlanned).toBeVisible();
-  await expect(decisionStatus).toBeVisible();
+  const hasPendingDecision = (await decisionStatus.count()) > 0;
+  if (hasPendingDecision) {
+    await expect(decisionStatus).toBeVisible();
+    await expect(decisionStatus).toContainText(/Program changes? pending/);
+  } else {
+    await expect(
+      decision.getByText("No Program changes pending", { exact: true }),
+    ).toHaveCount(0);
+  }
   await expect(page.getByText("Adapt today", { exact: true })).toHaveCount(0);
   await expect(alternateDays).not.toHaveAttribute("open", "");
   await expect(alternateSummary).toBeVisible();
@@ -325,7 +333,11 @@ async function verifyDecisiveToday({
         ""
       )
     )
-    .toMatch(/^(Program decision status|Workout options|Preview planned exercises)/);
+    .toMatch(
+      hasPendingDecision
+        ? /^(Program decision status|Workout options|Preview planned exercises)/
+        : /^(Workout options|Preview planned exercises)/,
+    );
   await alternateSummary.focus();
   await expect(alternateSummary).toBeFocused();
   await alternateSummary.press("Enter");
