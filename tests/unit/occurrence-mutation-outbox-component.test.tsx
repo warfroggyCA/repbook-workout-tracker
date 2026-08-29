@@ -52,11 +52,11 @@ describe("occurrence mutation queue presentation", () => {
     expect(saving).toContain("Open unsaved workout changes");
     expect(saving).toContain("1 change saving");
     expect(saving).toContain(
-      "bottom-[var(--active-workout-overlay-bottom,calc(4rem+env(safe-area-inset-bottom)+0.75rem))]",
+      "bottom-[calc(var(--active-workout-overlay-bottom,calc(1.25rem+env(safe-area-inset-bottom)))+3.5rem)]",
     );
     expect(saving).toContain("min-h-11");
     expect(saving).toContain(
-      "lg:bottom-[var(--active-workout-overlay-bottom,5.75rem)]",
+      "lg:bottom-[calc(var(--active-workout-overlay-bottom,2.25rem)+3.5rem)]",
     );
 
     const attention = renderToStaticMarkup(
