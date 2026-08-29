@@ -348,7 +348,8 @@ provides a disabled, busy **Starting workout…** control and polite confirmatio
 message. Content-free Performance API marks cover Start submit/pending, cockpit
 usability, set tap/local retention/UI advance/acknowledgement, and rendered
 recovery. They are for tests and local diagnostics only and carry no athlete
-payload.
+payload. The set UI-advance mark is emitted from the committed local projection
+in a layout effect, rather than from a scheduler-sensitive animation frame.
 
 The focused Package 1 gate is:
 

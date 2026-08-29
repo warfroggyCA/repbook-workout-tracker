@@ -6,6 +6,7 @@ import {
   useCallback,
   useEffect,
   useId,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -1191,6 +1192,21 @@ export function SessionRunner(props: SessionRunnerProps) {
       ),
     [outbox.entries, props.ownerId, props.sessionId]
   );
+  const projectedWorkoutSetClientKeysRef = useRef<Set<string> | null>(null);
+  useLayoutEffect(() => {
+    const projectedClientKeys = new Set(
+      sessionEntries.map((entry) => entry.clientKey),
+    );
+    const previousClientKeys = projectedWorkoutSetClientKeysRef.current;
+    if (previousClientKeys != null) {
+      for (const clientKey of projectedClientKeys) {
+        if (!previousClientKeys.has(clientKey)) {
+          markWorkoutInteraction(WORKOUT_INTERACTION_MARKS.setUiAdvanced);
+        }
+      }
+    }
+    projectedWorkoutSetClientKeysRef.current = projectedClientKeys;
+  }, [sessionEntries]);
   const failedSetEntries = useMemo(
     () => sessionEntries.filter((entry) => entry.status === "needs_attention"),
     [sessionEntries],
@@ -2308,9 +2324,6 @@ export function SessionRunner(props: SessionRunnerProps) {
             : { ...candidate, sets: [...candidate.sets, set] },
         ),
       );
-      window.requestAnimationFrame(() => {
-        markWorkoutInteraction(WORKOUT_INTERACTION_MARKS.setUiAdvanced);
-      });
       // Rest-timer reconciliation has its own cross-tab lock and ordering
       // contract. Once the set is durably retained it must not delay the
       // athlete-facing advance, so reconcile it without extending this
