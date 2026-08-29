@@ -162,7 +162,7 @@ test("publishes and preserves durable warm-up and grouped workout outcomes", asy
     name: "Workout progress and upcoming work",
   });
   const workoutStatus = page.getByRole("complementary", { name: "Workout status" });
-  await expect(workoutGuidance).toContainText("Now: Activation ramp");
+  await expect(workoutGuidance).not.toContainText("Now:");
   await expect(workoutGuidance).toContainText(
     "Next: Superset 1, round 1, member 1 of 3: Romanian Deadlift, set 1",
   );
@@ -259,27 +259,37 @@ test("publishes and preserves durable warm-up and grouped workout outcomes", asy
   await expect(page.locator("#workout-warmup")).toContainText(
     "Warm-up complete",
   );
-  await expect(workoutGuidance).toContainText(
-    "Now: Superset 1, round 1, member 1 of 3: Romanian Deadlift, set 1",
+  await expect(workoutGuidance).not.toContainText("Now:");
+  await expect(page.getByTestId("active-workout-primary")).toHaveAttribute(
+    "aria-label",
+    /Romanian Deadlift/i,
   );
-  await expect(workoutStatus).toContainText("Romanian Deadlift");
+  await expect(workoutStatus.getByRole("button", {
+    name: /Show Romanian Deadlift/i,
+  })).toHaveCount(0);
+  await expect(page.getByTestId("active-log-set")).toHaveAccessibleName("Log set");
+  await expect(workoutStatus.getByTestId("active-workout-dock-primary")).toHaveCount(0);
   await screenshot(page, "03-warmup-restored-and-completed.png");
   await waitForEquipmentSelectionsToSettle(page);
 
   const nextSet = page.getByTestId("current-exercise-card");
   await expect(nextSet.getByRole("heading", { level: 2 })).toHaveText("Romanian Deadlift");
   await nextSet.getByRole("button", { name: "Log set", exact: true }).click();
-  await expect(nextSet.getByRole("heading", { level: 2 })).toHaveText("Barbell Overhead Press");
+  await expect(nextSet).toHaveCount(0);
+  await expect(workoutStatus.getByLabel("Rest timer")).toContainText(
+    /Next: .*Barbell Overhead Press/,
+  );
   await expect(workoutStatus.getByLabel("Rest timer")).toContainText(/0:1[0-5]/);
   await screenshot(page, "04-triset-next-action-and-member-rest.png");
   await workoutStatus.getByRole("button", { name: "Skip rest", exact: true }).click();
   await workoutStatus
     .getByRole("button", { name: "Dismiss rest timer", exact: true })
     .click();
+  await expect(nextSet.getByRole("heading", { level: 2 })).toHaveText(
+    "Barbell Overhead Press",
+  );
 
-  await openNativeDetails(nextSet.locator("details", {
-    hasText: "Set exceptions",
-  }));
+  await openNativeDetails(nextSet.getByTestId("active-exercise-details"));
   await nextSet.getByRole("button", { name: "Skip set", exact: true }).click();
   const workingSkip = page.getByRole("dialog", {
     name: "Skip set 1 of Barbell Overhead Press?",
@@ -294,9 +304,7 @@ test("publishes and preserves durable warm-up and grouped workout outcomes", asy
   const currentExerciseToggle = nextSet.getByTestId("exercise-swipe-surface");
   await expect(currentExerciseToggle).toHaveAttribute("aria-expanded", "true");
 
-  await openNativeDetails(nextSet.locator("details", {
-    hasText: "More for this exercise",
-  }));
+  await openNativeDetails(nextSet.getByTestId("active-exercise-details"));
   await nextSet.getByRole("button", { name: "View alternatives", exact: true }).click();
   const alternatives = page.getByRole("dialog", {
     name: "Use an alternative for this workout",

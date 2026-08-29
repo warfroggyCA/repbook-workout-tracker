@@ -66,10 +66,15 @@ async function completeWarmupsToFirstWorkingSet(page: Page) {
     await waitForHydratedReactHandler(currentWarmup);
     await currentWarmup.click();
   }
-  await expect(page.getByTestId("active-workout-dock-primary")).toHaveAttribute(
-    "aria-label",
-    /Log Barbell Back Squat, Set 1/i,
-  );
+  await expect(page.getByTestId("active-workout-dock-primary")).toHaveCount(0);
+  await expect(currentSetDockAction(page)).toHaveCount(0);
+  await expect(page.getByTestId("active-log-set")).toHaveAccessibleName("Log set");
+}
+
+function currentSetDockAction(page: Page) {
+  return page
+    .getByRole("complementary", { name: "Workout status" })
+    .getByRole("button", { name: /^Show / });
 }
 
 async function expectReachableTarget(locator: Locator) {
@@ -273,13 +278,8 @@ test.describe("reduced-motion active workout", () => {
       await signInAndStartDayA(page, { textSize: "Extra large" });
       await completeWarmupsToFirstWorkingSet(page);
 
-      const firstWorkingSetAction = page.getByTestId(
-        "active-workout-dock-primary",
-      );
-      await expect(firstWorkingSetAction).toHaveAttribute(
-        "aria-label",
-        /Log Barbell Back Squat, Set 1/i,
-      );
+      const firstWorkingSetAction = page.getByTestId("active-log-set");
+      await expect(firstWorkingSetAction).toHaveAccessibleName("Log set");
       await expectPrimaryActionUnobstructed(firstWorkingSetAction);
 
       await page.getByRole("button", {
@@ -360,13 +360,8 @@ test("keeps attention continuous through warm-up, first set, and exact recovery 
             );
           }
         }
-        const firstWorkingSetAction = page.getByTestId(
-          "active-workout-dock-primary",
-        );
-        await expect(firstWorkingSetAction).toHaveAttribute(
-          "aria-label",
-          /Log Barbell Back Squat, Set 1/i,
-        );
+        const firstWorkingSetAction = page.getByTestId("active-log-set");
+        await expect(firstWorkingSetAction).toHaveAccessibleName("Log set");
         await waitForHydratedReactHandler(firstWorkingSetAction);
         await expectPrimaryActionUnobstructed(firstWorkingSetAction);
         await testInfo.attach("first-working-set-extra-large-390x844", {
@@ -588,20 +583,17 @@ test("keeps attention continuous through warm-up, first set, and exact recovery 
 });
 
 async function revealCurrentFromStatusBar(page: Page) {
-  const workoutStatus = page.getByRole("complementary", {
-    name: "Workout status",
-  });
-  const reveal = workoutStatus.locator("button").first();
+  const toggle = page
+    .getByTestId("current-exercise-card")
+    .getByTestId("exercise-swipe-surface");
+  if ((await toggle.getAttribute("aria-expanded")) === "true") {
+    await toggle.click();
+  }
+  await expect(toggle).toHaveAttribute("aria-expanded", "false");
+  const reveal = currentSetDockAction(page);
   await waitForHydratedReactHandler(reveal);
   await expectReachableTarget(reveal);
-  const label = await reveal.getAttribute("aria-label");
-  if (label?.startsWith("Show ")) {
-    await reveal.click();
-  } else {
-    expect(label).toMatch(/^Log /);
-    await expectPrimaryActionUnobstructed(reveal);
-    await expectReachableTarget(page.getByTestId("active-log-set"));
-  }
+  await reveal.click();
   await expect.poll(() => page.evaluate(() => {
     const log = document.querySelector<HTMLElement>(
       '[data-testid="active-log-set"]',
@@ -744,19 +736,23 @@ test("keeps the ordinary active set current-first, unobstructed, and acknowledge
     await signInAndStartDayA(page);
     await completeWarmupsToFirstWorkingSet(page);
 
-    const currentCard = page.getByTestId("current-exercise-card");
+    const currentCard = page.locator('section[id^="exercise-"]').filter({
+      has: page.getByRole("heading", {
+        name: "Barbell Back Squat",
+        exact: true,
+      }),
+    });
+    await expect(currentCard).toHaveAttribute("data-current-set", "true");
     const currentEntry = currentCard.getByTestId("current-set-entry");
     await expect(currentEntry).toBeVisible();
-    await expect(currentEntry).toContainText("Current action");
+    await expect(currentEntry).toContainText("Current set");
     await expect(currentEntry).toContainText("Set 1 of 3");
     await expect(currentEntry).toContainText("Performed measure");
     await expect(currentEntry).toContainText("Next action");
     await expect(currentEntry).toContainText("Barbell Back Squat, set 2");
 
-    const setOptions = currentEntry.locator("details", {
-      hasText: "Set options",
-    });
-    await expect(setOptions).not.toHaveAttribute("open", "");
+    const exerciseDetails = currentCard.getByTestId("active-exercise-details");
+    await expect(exerciseDetails).not.toHaveAttribute("open", "");
     await expect(
       currentEntry.getByRole("button", { name: "Log set", exact: true }),
     ).toHaveCount(1);
@@ -765,12 +761,12 @@ test("keeps the ordinary active set current-first, unobstructed, and acknowledge
     ).not.toContainText("Next:");
 
     const orderedVisibleActions = [
-      currentEntry.getByText("Current action", { exact: true }),
+      currentEntry.getByText("Current set", { exact: false }),
       currentEntry.getByTestId("previous-comparable-set"),
       currentEntry.getByText("Performed measure", { exact: true }),
       currentEntry.getByRole("button", { name: "Log set", exact: true }),
       currentEntry.getByText("Next action", { exact: true }),
-      setOptions.locator(":scope > summary"),
+      exerciseDetails.locator(":scope > summary"),
     ];
     for (const action of orderedVisibleActions) await expect(action).toBeVisible();
     await page.evaluate(() => document.fonts.ready);
@@ -788,7 +784,7 @@ test("keeps the ordinary active set current-first, unobstructed, and acknowledge
       currentEntry.getByLabel("Total load", { exact: true }),
       currentEntry.getByRole("textbox", { name: "Reps", exact: true }),
       currentEntry.getByRole("button", { name: "Log set", exact: true }),
-      setOptions.locator("summary"),
+      exerciseDetails.locator(":scope > summary"),
     ];
     for (const target of primaryTargets) await expectReachableTarget(target);
 
@@ -807,48 +803,31 @@ test("keeps the ordinary active set current-first, unobstructed, and acknowledge
     const currentEquipmentSetup = page
       .getByTestId("exercise-equipment-setup")
       .filter({ hasText: "Barbell Back Squat" });
-    await expect(currentEquipmentSetup).toHaveAttribute("open", "");
-    expect(await currentEquipmentSetup.evaluate((setup) => {
-      const card = document.querySelector('[data-testid="current-exercise-card"]');
-      return card != null && Boolean(
-        setup.compareDocumentPosition(card) & Node.DOCUMENT_POSITION_FOLLOWING,
-      );
-    })).toBe(true);
+    await expect(currentEquipmentSetup).toHaveCount(0);
     await logSet.click();
     await expect(page.getByTestId("set-save-announcement")).toContainText(
       "Barbell Back Squat, set 1 saved.",
     );
     await expect(page.getByTestId("active-set-save-receipt")).toHaveCount(0);
     const completedSets = currentCard.getByTestId("completed-sets");
-    await expect(completedSets).not.toHaveAttribute("open", "");
-    await expect(completedSets.locator(":scope > summary")).toContainText(
-      "1 completed",
+    await expect(exerciseDetails.locator(":scope > summary")).toContainText(
+      "Completed sets",
     );
-    await expect(currentEquipmentSetup).not.toHaveAttribute("open", "");
-    await expect(currentEntry).toContainText("Set 2 of 3");
-    const restingGeometry = await compactGeometry(page);
-    expect(
-      restingGeometry,
-      JSON.stringify(restingGeometry),
-    ).toMatchObject({
-      targetBeforeOrBesidePrevious: true,
-      evidenceBeforeInput: true,
-      inputBeforeLog: true,
-      logClearsDock: true,
-    });
-    expect(restingGeometry.disclosures.every((item) => !item.open)).toBe(true);
-    expect(
-      restingGeometry.disclosures.every(
-        (item) => item.height <= item.summaryHeight + 2,
-      ),
-      JSON.stringify(restingGeometry.disclosures),
-    ).toBe(true);
-    expect(restingGeometry.horizontalOverflow).toBeLessThanOrEqual(1);
-    await expect(setOptions.getByLabel("RIR (0–10)")).not.toBeVisible();
-    await expect(setOptions.getByLabel("Set note (optional)")).not.toBeVisible();
+    await expect(currentEquipmentSetup).toHaveCount(0);
+    await expect(currentEntry).toHaveCount(0);
+    await expect(exerciseDetails.getByLabel("RIR (0–10)")).not.toBeVisible();
+    await expect(exerciseDetails.getByLabel("Set note (optional)")).not.toBeVisible();
     const workoutStatus = page.getByRole("complementary", {
       name: "Workout status",
     });
+    await expect(workoutStatus.getByTestId("rest-cockpit")).toBeVisible();
+    expect(
+      await page.evaluate(
+        () =>
+          document.documentElement.scrollWidth -
+          document.documentElement.clientWidth,
+      ),
+    ).toBeLessThanOrEqual(1);
     const skipRest = workoutStatus.getByRole("button", {
       name: "Skip rest",
       exact: true,
@@ -861,12 +840,17 @@ test("keeps the ordinary active set current-first, unobstructed, and acknowledge
     });
     await expectPrimaryActionUnobstructed(dismissRest);
     await dismissRest.click();
-    const setTwoDockAction = page.getByTestId("active-workout-dock-primary");
+    const setTwoToggle = currentCard.getByTestId("exercise-swipe-surface");
+    await setTwoToggle.click();
+    await expect(setTwoToggle).toHaveAttribute("aria-expanded", "false");
+    const setTwoDockAction = currentSetDockAction(page);
     await expect(setTwoDockAction).toHaveAttribute(
       "aria-label",
-      /Log Barbell Back Squat, Set 2/i,
+      /Show Barbell Back Squat, Set 2/i,
     );
     await expectPrimaryActionUnobstructed(setTwoDockAction);
+    await setTwoDockAction.click();
+    await expect(page.getByTestId("active-log-set")).toHaveAccessibleName("Log set");
     await expect(workoutStatus.getByRole("button", {
       name: "Skip rest",
       exact: true,
@@ -875,6 +859,7 @@ test("keeps the ordinary active set current-first, unobstructed, and acknowledge
       "aria-expanded",
       "true",
     );
+    await expect(currentEntry).toContainText("Set 2 of 3");
     const setTwoEntryId = await currentEntry.getAttribute("id");
     expect(setTwoEntryId).not.toBeNull();
     await expect.poll(() => page.evaluate(() => window.location.hash)).toBe(
@@ -883,14 +868,15 @@ test("keeps the ordinary active set current-first, unobstructed, and acknowledge
     await page.evaluate(() => new Promise<void>((resolve) =>
       requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
     ));
-    await completedSets.locator(":scope > summary").focus();
+    await exerciseDetails.locator(":scope > summary").focus();
     await page.keyboard.press("Enter");
-    await expect(completedSets).toHaveAttribute("open", "");
+    await expect(exerciseDetails).toHaveAttribute("open", "");
+    await expect(completedSets).toBeVisible();
     await expect(
       completedSets.getByRole("button", { name: "Correct set", exact: true }),
     ).toBeVisible();
     await page.keyboard.press("Space");
-    await expect(completedSets).not.toHaveAttribute("open", "");
+    await expect(exerciseDetails).not.toHaveAttribute("open", "");
     expect(
       await page.evaluate(
         () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
@@ -963,23 +949,19 @@ test("fits the complete primary logging action at 390x844 with keyboard disclosu
     }).toPass({ timeout: 25_000 });
     expect(terminalComparison).not.toBeNull();
     await expect(log).toBeVisible();
-    await expect(currentEntry).toContainText("Current action");
+    await expect(currentEntry).toContainText("Current set");
     await expect(page.getByTestId("active-set-save-receipt")).toHaveCount(0);
-    await expect(page.getByTestId("active-workout-dock-primary")).toHaveAttribute(
-      "aria-label",
-      /Log Barbell Back Squat, Set 1/i,
-    );
+    await expect(page.getByTestId("active-workout-dock-primary")).toHaveCount(0);
+    await expect(currentSetDockAction(page)).toHaveCount(0);
     await revealCurrentFromStatusBar(page);
-    await expect(currentEntry).toContainText("Current action");
+    await expect(currentEntry).toContainText("Current set");
     await expect(page.getByTestId("active-set-save-receipt")).toHaveCount(0);
-    await expect(page.getByTestId("active-workout-dock-primary")).toHaveAttribute(
-      "aria-label",
-      /Log Barbell Back Squat, Set 1/i,
-    );
+    await expect(page.getByTestId("active-workout-dock-primary")).toHaveCount(0);
+    await expect(currentSetDockAction(page)).toHaveCount(0);
 
     const geometry = await compactGeometry(page);
     expect(geometry, JSON.stringify(geometry)).toMatchObject({
-      targetBeforePrevious: true,
+      targetBeforeOrBesidePrevious: true,
       previousBeforeInput: true,
       inputBeforeLog: true,
       logClearsDock: true,
@@ -996,50 +978,33 @@ test("fits the complete primary logging action at 390x844 with keyboard disclosu
     expect(geometry.horizontalOverflow).toBeLessThanOrEqual(1);
     await expect(page.getByRole("button", { name: "Log set", exact: true })).toHaveCount(1);
 
-    const setOptions = currentEntry.locator("details", {
-      hasText: "Set options",
-    });
-    const setOptionsSummary = setOptions.locator(":scope > summary");
-    await setOptionsSummary.focus();
+    const exerciseDetails = currentCard.getByTestId("active-exercise-details");
+    const exerciseDetailsSummary = exerciseDetails.locator(":scope > summary");
+    await exerciseDetailsSummary.focus();
     await page.keyboard.press("Enter");
-    await expect(setOptions).toHaveAttribute("open", "");
-    await expect(setOptions.getByLabel("RIR (0–10)")).toBeVisible();
+    await expect(exerciseDetails).toHaveAttribute("open", "");
+    await expect(exerciseDetails.getByLabel("RIR (0–10)")).toBeVisible();
     await expect(
-      setOptions.getByRole("button", { name: "Skip set", exact: true }),
+      exerciseDetails.getByRole("button", { name: "Skip set", exact: true }),
+    ).toBeVisible();
+    await expect(exerciseDetails.getByTestId("completed-sets")).toBeVisible();
+    await expect(
+      exerciseDetails.getByRole("heading", { name: "Extra sets", exact: true }),
+    ).toBeVisible();
+    await expect(
+      exerciseDetails.getByRole("heading", { name: "Exercise actions", exact: true }),
     ).toBeVisible();
     await page.keyboard.press("Space");
-    await expect(setOptions).not.toHaveAttribute("open", "");
-
-    const progress = currentCard.locator("details", {
-      hasText: "Completed sets",
-    });
-    const progressSummary = progress.locator(":scope > summary");
-    await progressSummary.focus();
-    await page.keyboard.press("Enter");
-    await expect(progress).toHaveAttribute("open", "");
-    await page.keyboard.press("Space");
-    await expect(progress).not.toHaveAttribute("open", "");
-
-    const more = currentCard.locator("details", {
-      hasText: "More for this exercise",
-    });
-    const moreSummary = more.locator(":scope > summary");
-    await moreSummary.focus();
-    await page.keyboard.press("Enter");
-    await expect(more).toHaveAttribute("open", "");
-    await page.keyboard.press("Space");
-    await expect(more).not.toHaveAttribute("open", "");
+    await expect(exerciseDetails).not.toHaveAttribute("open", "");
 
     await discardWorkout(page);
     await signInAndStartDayA(page, { extraLarge: true });
     await completeWarmupsToFirstWorkingSet(page);
     const extraLargeEntry = page.getByTestId("current-set-entry");
-    await expect(extraLargeEntry).toContainText("Current action");
+    await expect(extraLargeEntry).toContainText("Current set");
     await expect(page.getByTestId("active-set-save-receipt")).toHaveCount(0);
-    await expect(page.getByTestId("active-workout-dock-primary")).toHaveAttribute(
-      "aria-label",
-      /Log Barbell Back Squat, Set 1/i,
-    );
+    await expect(page.getByTestId("active-workout-dock-primary")).toHaveCount(0);
+    await expect(currentSetDockAction(page)).toHaveCount(0);
     await revealCurrentFromStatusBar(page);
     for (const target of [
       extraLargeEntry.getByTestId("current-set-target"),
@@ -1050,18 +1015,16 @@ test("fits the complete primary logging action at 390x844 with keyboard disclosu
     ]) {
       await expectReachableTarget(target);
     }
-    await expect(extraLargeEntry).toContainText("Current action");
+    await expect(extraLargeEntry).toContainText("Current set");
     await expect(page.getByTestId("active-set-save-receipt")).toHaveCount(0);
-    await expect(page.getByTestId("active-workout-dock-primary")).toHaveAttribute(
-      "aria-label",
-      /Log Barbell Back Squat, Set 1/i,
-    );
+    await expect(page.getByTestId("active-workout-dock-primary")).toHaveCount(0);
+    await expect(currentSetDockAction(page)).toHaveCount(0);
     const extraLargeGeometry = await compactGeometry(page);
     expect(
       extraLargeGeometry,
       JSON.stringify(extraLargeGeometry),
     ).toMatchObject({
-      targetBeforePrevious: true,
+      targetBeforeOrBesidePrevious: true,
       previousBeforeInput: true,
       inputBeforeLog: true,
       logClearsDock: true,
@@ -1079,9 +1042,6 @@ test("fits the complete primary logging action at 390x844 with keyboard disclosu
     ).toBe(true);
     expect(extraLargeGeometry.disclosures.map((item) => item.summary)).toEqual(
       expect.arrayContaining([
-        expect.stringContaining("Set options"),
-        expect.stringContaining("Completed sets"),
-        expect.stringContaining("Extra sets"),
         expect.stringContaining("More for this exercise"),
         expect.stringContaining("Warm-up guidance · reference"),
       ]),

@@ -1533,9 +1533,7 @@ test("signs in and completes a durable workout flow", async ({ page }) => {
   const reps = nextSet.getByRole("textbox", { name: "Reps", exact: true });
   await weight.fill("95");
   await reps.fill("8");
-  await openNativeDetails(nextSet.locator("details", {
-    hasText: "Optional effort and set note",
-  }));
+  await openNativeDetails(nextSet.getByTestId("active-exercise-details"));
   await nextSet.getByRole("button", { name: /^Hard — RPE 8;/ }).click();
   await expect(nextSet.getByText("Selected: Hard — RPE 8", {
     exact: true,
@@ -1721,9 +1719,9 @@ test("keeps every active-workout route reachable with one scroll surface", async
   });
 
   await expect(currentCard.getByRole("button", { name: "Log set", exact: true })).toBeVisible();
-  await openNativeDetails(currentCard.locator("details", {
-    hasText: "Extra sets",
-  }));
+  await openNativeDetails(
+    currentCard.getByTestId("active-exercise-details"),
+  );
   const addExtraSet = currentCard.getByRole("button", {
     name: "Add extra set",
     exact: true,
@@ -1733,15 +1731,6 @@ test("keeps every active-workout route reachable with one scroll surface", async
   await expect(currentCard).toContainText(
     "Adds ad-hoc work without changing the planned set order.",
   );
-  await openNativeDetails(currentCard.locator("details", {
-    hasText: "Optional effort and set note",
-  }));
-  await openNativeDetails(currentCard.locator("details", {
-    hasText: "Set exceptions",
-  }));
-  await openNativeDetails(currentCard.locator("details", {
-    hasText: "More for this exercise",
-  }));
   await expect(currentCard.getByRole("button", { name: "Skip set", exact: true })).toBeVisible();
   await expect(currentCard.getByRole("button", { name: "Ask Coach", exact: true })).toBeVisible();
   await expect(currentCard.getByRole("button", { name: "Form guide", exact: true })).toBeVisible();
@@ -1875,9 +1864,9 @@ test("keeps every active-workout route reachable with one scroll surface", async
   }
   await expect(plannedCard.getByText("Set 1 of 3", { exact: true })).toBeVisible();
   for (let setNo = 1; setNo <= 3; setNo += 1) {
-    await openNativeDetails(plannedCard.locator("details", {
-      hasText: "Set exceptions",
-    }));
+    await openNativeDetails(
+      plannedCard.getByTestId("active-exercise-details"),
+    );
     await plannedCard
       .getByRole("button", { name: "Skip set", exact: true })
       .click();
@@ -1902,9 +1891,9 @@ test("keeps every active-workout route reachable with one scroll surface", async
   await expect(
     plannedCard.getByText("skipped", { exact: true }),
   ).toHaveCount(3);
-  await openNativeDetails(plannedCard.locator("details", {
-    hasText: "Extra sets",
-  }));
+  await openNativeDetails(
+    plannedCard.getByTestId("active-exercise-details"),
+  );
   const addSet = plannedCard.getByRole("button", {
     name: "Add extra set",
     exact: true,
@@ -1976,13 +1965,11 @@ test("keeps every active-workout route reachable with one scroll surface", async
       .locator('input[inputmode="numeric"]'),
   ).toHaveValue(addedReps);
   await expect(
-    refreshedCard.locator("details", {
-      hasText: "Extra sets",
-    }),
+    refreshedCard.getByTestId("active-exercise-details"),
   ).not.toHaveAttribute("open", "");
-  await openNativeDetails(refreshedCard.locator("details", {
-    hasText: "Extra sets",
-  }));
+  await openNativeDetails(
+    refreshedCard.getByTestId("active-exercise-details"),
+  );
   await expect(
     refreshedCard.getByRole("button", {
       name: "Add extra set",
@@ -2032,9 +2019,7 @@ test("keeps pain and substitution lineage reconstructable through History", asyn
   const painNote = "Sharp at the bottom before changing movements.";
   const setNote = "Comfortable range on the substituted movement.";
 
-  await openNativeDetails(nextSet.locator("details", {
-    hasText: "More for this exercise",
-  }));
+  await openNativeDetails(nextSet.getByTestId("active-exercise-details"));
   await nextSet.getByRole("button", { name: "Pain / no issue", exact: true }).click();
   const pain = page.getByRole("dialog", { name: "Pain / no-issue evidence" });
   const severity = pain.getByRole("slider");
@@ -2080,9 +2065,7 @@ test("keeps pain and substitution lineage reconstructable through History", asyn
   await waitForEquipmentSelectionsToSettle(page);
   await nextSet.getByLabel("Total load").fill("45");
 
-  await openNativeDetails(nextSet.locator("details", {
-    hasText: "More for this exercise",
-  }));
+  await openNativeDetails(nextSet.getByTestId("active-exercise-details"));
   await nextSet.getByRole("button", { name: "Add note", exact: true }).click();
   const noteDialog = page.getByRole("dialog", {
     name: new RegExp(`Add note for ${performedExercise}`),
@@ -2092,9 +2075,7 @@ test("keeps pain and substitution lineage reconstructable through History", asyn
   await expect(page.getByText("Exercise note saved", { exact: true })).toBeVisible();
   await expect(noteDialog).toHaveCount(0);
 
-  await openNativeDetails(nextSet.locator("details", {
-    hasText: "Optional effort and set note",
-  }));
+  await openNativeDetails(nextSet.getByTestId("active-exercise-details"));
   await nextSet.getByLabel("Set note (optional)", { exact: true }).fill(setNote);
   await nextSet.getByRole("button", { name: "Log set", exact: true }).click();
   await expect(workoutStatus).toContainText(/Resting|Next set/);
@@ -2746,9 +2727,7 @@ test("keeps an offline set visible while the next set stays available", async ({
   const workoutStatus = page.getByRole("complementary", { name: "Workout status" });
   const weight = nextSet.getByLabel("Total load");
   const reps = nextSet.getByRole("textbox", { name: "Reps", exact: true });
-  await openNativeDetails(nextSet.locator("details", {
-    hasText: "Optional effort and set note",
-  }));
+  await openNativeDetails(nextSet.getByTestId("active-exercise-details"));
   const note = nextSet.getByLabel("Set note (optional)");
   await weight.fill("95");
   await reps.fill("8");
@@ -3307,9 +3286,7 @@ test("opens failed-set recovery from Settings at 145 percent on iPhone WebKit", 
   await expect(totalLoad).toHaveValue("80");
   await reps.fill("10");
   await expect(reps).toHaveValue("10");
-  await openNativeDetails(currentSet.locator("details", {
-    hasText: "Optional effort and set note",
-  }));
+  await openNativeDetails(currentSet.getByTestId("active-exercise-details"));
   await currentSet.getByRole("button", { name: /^Hard / }).click();
   await context.setOffline(true);
   await logSet.click();

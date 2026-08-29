@@ -293,12 +293,15 @@ round-trips it and upgrades schema 30 rows to null evidence. Recovery manifest
 14 keeps the same durable-table inventory and restores an active-duration
 correction together with its linked version and audit evidence. Legacy or
 explicitly unknown active time remains unavailable to duration analytics. The
-logging point now shows only exact, semantically compatible previous-set
-evidence with a source link or an explicit unavailable state. The 390 by 844
-surface keeps the current action primary and moves ordinary progress and
-secondary exercise tools into keyboard-accessible native disclosures without
-hiding pending writes, retry, skipped recovery, rest, finish, or saved-set
-correction.
+logging point now projects existing lifecycle state through the pure
+`ActiveWorkoutViewModel`; that projection is not another store. One cockpit
+owns exact, semantically compatible previous-set evidence, performed inputs,
+and the ordinary Log set action. The fixed status bar omits that action while
+the cockpit is revealed and offers a neutral return after collapse. At 390 by
+844 and 320 by 700 with enlarged text, normal rest replaces set editing, the
+exercise queue retains ledger order, and secondary tools remain in one
+keyboard-accessible native disclosure without hiding pending writes, retry,
+skipped recovery, finish, or saved-set correction.
 
 The Day One recovery follow-up bounds every recorded-work acknowledgement that
 owns active-workout progress. A never-answering set, equipment, occurrence,
@@ -311,8 +314,9 @@ the deployment-recovery and set/equipment/occurrence outbox tests plus
 
 The same follow-up keeps acknowledged warm-ups and sets in closed disclosures,
 places correction with the saved set, reveals the next current set immediately
-after an exact device-durable enqueue, keeps exercise setup above its work until
-acknowledgement, compacts mobile
+after an exact device-durable enqueue, and shows exercise setup above its work
+only while a choice, change, ambiguity, queued equipment action, or safety issue
+needs attention. It compacts mobile
 superset context, and prevents the fixed timer controls from overlapping at
 intermediate phone widths. New-device rest alerts default to foreground sound;
 the timer exposes the effective mode and the set-log gesture primes Web Audio.

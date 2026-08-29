@@ -43,6 +43,7 @@ import {
   publishLiveCoachClientEvent,
   streamLiveCoachResponse,
 } from "@/lib/live-coach-client";
+import { LIVE_COACH_OUTBOX_OFFSET_CLASS_NAME } from "@/lib/active-workout-layout";
 import type { LiveCoachMessage } from "@/services/live-coaching";
 
 type SavedMessageResponse =
@@ -395,7 +396,7 @@ function LiveCoachOutboxTray({
       <Button
         type="button"
         variant={attentionCount > 0 || storageError ? "destructive" : "secondary"}
-        className="fixed right-3 bottom-20 z-30 max-w-[calc(100vw-1.5rem)] shadow-lg lg:bottom-4"
+        className={`fixed right-3 z-30 max-w-[calc(100vw-1.5rem)] shadow-lg ${LIVE_COACH_OUTBOX_OFFSET_CLASS_NAME}`}
         onClick={() => setOpen(true)}
         aria-label="Open Live Coach outbox"
       >

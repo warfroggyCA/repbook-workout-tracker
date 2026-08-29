@@ -77,6 +77,7 @@ import {
   writeRestTimer,
 } from "@/lib/rest-timer";
 import { effortChoiceForLegacyRpe } from "@/lib/active-workout-language";
+import { WORKOUT_SET_OUTBOX_OFFSET_CLASS_NAME } from "@/lib/active-workout-layout";
 import {
   LIMITATION_CAUSE_LABELS,
   TECHNIQUE_ISSUE_LABELS,
@@ -97,7 +98,7 @@ const subscribeToStaticBrowserCapability = () => () => undefined;
 const getUnsupportedServerCapability = () => false;
 
 export const WORKOUT_DEVICE_STATUS_CLASS_NAME =
-  "fixed right-3 bottom-[calc(7.5rem+env(safe-area-inset-bottom))] z-30 flex max-w-[calc(100vw-1.5rem)] flex-wrap justify-end gap-2 lg:bottom-[5.75rem]";
+  `fixed right-3 z-30 flex max-w-[calc(100vw-1.5rem)] flex-wrap justify-end gap-2 ${WORKOUT_SET_OUTBOX_OFFSET_CLASS_NAME}`;
 
 export const WORKOUT_DELIVERY_PAUSED_MESSAGE =
   "Automatic saving is paused because this browser cannot safely protect workout changes across tabs. Keep this device copy and try again in an updated browser.";

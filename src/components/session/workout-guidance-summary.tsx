@@ -16,10 +16,12 @@ export const WorkoutGuidanceSummary = memo(function WorkoutGuidanceSummary({
   guidance,
   compact = false,
   deferNextActionToCurrentCard = false,
+  deferCurrentActionToCockpit = false,
 }: {
   guidance: SessionGuidanceProjection;
   compact?: boolean;
   deferNextActionToCurrentCard?: boolean;
+  deferCurrentActionToCockpit?: boolean;
 }) {
   const currentEquipment = equipmentDetails(guidance.currentEquipment);
   const equipment = equipmentDetails(guidance.upcomingEquipment);
@@ -71,26 +73,24 @@ export const WorkoutGuidanceSummary = memo(function WorkoutGuidanceSummary({
               : ""}
             {guidance.totals.skipped > 0 ? ` · ${guidance.totals.skipped} skipped` : ""}
           </span>
-          <p className="min-w-0 flex-1 basis-48 break-words leading-snug max-[639px]:line-clamp-2">
-            <span className="font-medium">Now:</span>{" "}
-            {guidance.currentAction
-              ? formatSessionGuidanceAction(guidance.currentAction)
-              : guidance.completion.evidenceLimited
-                ? "Actions resolved · evidence needs review"
-                : "All actions resolved"}
-          </p>
+          {!deferCurrentActionToCockpit && (
+            <p className="min-w-0 flex-1 basis-48 break-words leading-snug max-[639px]:line-clamp-2">
+              <span className="font-medium">Now:</span>{" "}
+              {guidance.currentAction
+                ? formatSessionGuidanceAction(guidance.currentAction)
+                : guidance.completion.evidenceLimited
+                  ? "Actions resolved · evidence needs review"
+                  : "All actions resolved"}
+            </p>
+          )}
         </div>
-        {guidance.nextAction &&
-          !(
-            deferNextActionToCurrentCard &&
-            guidance.currentAction?.kind === "working_set"
-          ) && (
+        {guidance.nextAction && !deferNextActionToCurrentCard && (
           <p className="break-words text-xs text-muted-foreground max-[639px]:sr-only">
             <span className="font-medium text-foreground">Next:</span>{" "}
             {formatSessionGuidanceAction(guidance.nextAction)}
           </p>
         )}
-        {prepCue && (
+        {prepCue && !deferCurrentActionToCockpit && (
           <p className="break-words text-xs text-muted-foreground max-[639px]:sr-only">
             <span className="font-medium text-foreground">{prepLabel}:</span>{" "}
             {prepCue}

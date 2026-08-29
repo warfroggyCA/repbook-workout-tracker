@@ -196,7 +196,7 @@ test("keeps new Stage 3 controls usable at the saved iPhone calibration", async 
   await expect(page.locator("#workout-warmup")).not.toContainText(
     "checkable warm-up sequence is not available yet",
   );
-  await expect(workoutGuidance).toContainText("Now: Mobile activation ramp");
+  await expect(workoutGuidance).not.toContainText("Now:");
   await expect(statusBar).toContainText("Mobile activation ramp");
   await expect(statusBar).toContainText("Complete warm-up");
   await expect(statusBar.getByTestId("active-workout-dock-primary"))
@@ -354,11 +354,11 @@ test("keeps new Stage 3 controls usable at the saved iPhone calibration", async 
   });
   await logSet.scrollIntoViewIfNeeded();
   await logSet.click();
-  await expect(statusBar).toContainText("Resting");
-  await expect(statusBar).toContainText(currentExerciseName ?? "");
-  await expect(
-    statusBar.getByRole("region", { name: "Rest timer" }),
-  ).toBeVisible();
+  await expect(currentExercise).toHaveCount(0);
+  const restCockpit = statusBar.getByRole("region", { name: "Rest timer" });
+  await expect(restCockpit).toBeVisible();
+  await expect(restCockpit).toContainText("Rest");
+  await expect(restCockpit).toContainText(currentExerciseName ?? "");
   await expect(
     statusBar.getByRole("button", { name: "Decrease rest by 15 seconds" }),
   ).toBeVisible();
@@ -384,20 +384,18 @@ test("keeps new Stage 3 controls usable at the saved iPhone calibration", async 
     const currentHeading = document.querySelector<HTMLElement>(
       '[data-testid="current-exercise-card"] h2',
     );
-    const nextIdentity = document.querySelector<HTMLElement>(
-      '[aria-label="Workout progress and upcoming work"] p',
+    const restDestination = document.querySelector<HTMLElement>(
+      '[data-testid="rest-cockpit"] p:nth-of-type(2)',
     );
     return {
       dock: dock?.getBoundingClientRect().toJSON() ?? null,
       tabs: tabsRect?.toJSON() ?? null,
       tabsVisible,
       viewportBottom: window.innerHeight,
-      currentHeadingFits:
-        currentHeading != null &&
-        currentHeading.scrollWidth <= currentHeading.clientWidth + 1,
-      nextIdentityFits:
-        nextIdentity != null &&
-        nextIdentity.scrollWidth <= nextIdentity.clientWidth + 1,
+      currentHeadingAbsent: currentHeading == null,
+      restDestinationFits:
+        restDestination != null &&
+        restDestination.scrollWidth <= restDestination.clientWidth + 1,
     };
   });
   expect(enlargedLayout.dock).not.toBeNull();
@@ -409,8 +407,8 @@ test("keeps new Stage 3 controls usable at the saved iPhone calibration", async 
   expect(
     (enlargedLayout.dock?.y ?? 0) + (enlargedLayout.dock?.height ?? 0),
   ).toBeLessThanOrEqual(enlargedLayout.viewportBottom + 1);
-  expect(enlargedLayout.currentHeadingFits).toBe(true);
-  expect(enlargedLayout.nextIdentityFits).toBe(true);
+  expect(enlargedLayout.currentHeadingAbsent).toBe(true);
+  expect(enlargedLayout.restDestinationFits).toBe(true);
   await screenshot(page, "05-extra-large-rest-dock.png");
 
   const metrics = {

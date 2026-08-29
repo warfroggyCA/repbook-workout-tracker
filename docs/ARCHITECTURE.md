@@ -579,10 +579,17 @@ controls use native progressive disclosure after the ordinary path. Prior-set,
 warm-up-reference, coaching, and workout-only context remain available below
 the active flow instead of preceding it.
 
-The compact sticky summary keeps current identity and progress, but defers its
-duplicate next line while the expanded current card owns that guidance. If the
-card is collapsed or the focused action is warm-up or rest, the sticky summary
-continues to show next work. U01 changes no occurrence ordering, writer,
+The expanded cockpit is the sole ordinary working-set commit surface. While it
+is revealed, the fixed status bar does not repeat the Log set action; after an
+owner collapse it offers a neutral route back to the exact current set. During
+normal rest, the rest cockpit replaces set editing and names the next ordered
+destination. Exact retained-set recovery may still reopen its linked set.
+
+The compact summary keeps progress but defers current identity to the cockpit,
+rest, or recovery surface. It also defers its duplicate next line while the
+expanded current card owns that guidance. After an owner collapse, next work
+returns to the summary and the fixed status bar names the exact current action
+as a neutral return route. U01 changes no occurrence ordering, writer,
 acknowledgement, correction, rest, group, persistence, export, recovery, or
 historical semantics and adds no schema migration.
 
@@ -1071,8 +1078,10 @@ acknowledgement, focus and scroll reveal the next current set; acknowledged
 sets move into a closed `Completed sets` disclosure with correction beside each
 saved set instead of a separate receipt panel. Resolved warm-up items likewise
 remain available in a completed disclosure. Exercise setup precedes its work
-and collapses only after acknowledged work; a queued, retrying, or failed set
-cannot make setup disappear. Group work uses a compact mobile summary with the
+only when a physical change, choice, ambiguity, queued equipment action, or
+safety issue needs attention. A safely resolved unchanged setup stays out of
+ordinary logging, while pending or failed equipment work remains visible until
+resolved. Group work uses a compact mobile summary with the
 immutable member order, preparation details, and the next member's read-only
 starting-load preview in its native disclosure. The preview uses the same
 earlier-workout-set, Program-target, then compatible-history precedence as the

@@ -166,10 +166,10 @@ describe("workout set outbox sync classification", () => {
     expect(html).not.toMatch(/class="[^"]*\bfixed\b/);
     expect(WORKOUT_DEVICE_STATUS_CLASS_NAME).toContain("fixed");
     expect(WORKOUT_DEVICE_STATUS_CLASS_NAME).toContain(
-      "bottom-[calc(7.5rem+env(safe-area-inset-bottom))]",
+      "bottom-[var(--active-workout-overlay-bottom,calc(7.5rem+env(safe-area-inset-bottom)))]",
     );
     expect(WORKOUT_DEVICE_STATUS_CLASS_NAME).toContain(
-      "lg:bottom-[5.75rem]",
+      "lg:bottom-[var(--active-workout-overlay-bottom,5.75rem)]",
     );
     expect(WORKOUT_DEVICE_STATUS_CLASS_NAME).toContain("z-30");
   });

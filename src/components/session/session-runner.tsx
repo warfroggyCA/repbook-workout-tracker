@@ -52,6 +52,8 @@ import { OccurrenceSaveStatus } from "./occurrence-save-status";
 import { WorkoutMeasurementsDrawer } from "./workout-measurements-drawer";
 import { EquipmentSetupPanel } from "./equipment-setup-panel";
 import { SessionPreparationPanel } from "./session-preparation-panel";
+import { ExerciseQueue } from "./exercise-queue";
+import { WorkoutRecoveryStatus } from "./workout-recovery-status";
 import { ContextualNoteScope } from "@/components/contextual-notes/contextual-note-scope";
 import { AddWorkoutExercise } from "./add-workout-exercise";
 import { openContextualNoteComposer, type ContextualNoteScopeValue } from "@/lib/contextual-note-ui";
@@ -59,6 +61,7 @@ import { createClientUuid } from "@/lib/client-uuid";
 import { activeWorkoutScrollBehavior } from "@/lib/active-workout-motion";
 import {
   buildPerformedSetMeasurement,
+  isSupportedSetWriterSemanticDefinition,
   resolveFutureSetWriterMetricType,
   type PerformedLoadSemantics,
 } from "@/lib/set-metric-semantics";
@@ -204,6 +207,7 @@ import {
   INCOMPLETE_SESSION_REASON_LABELS,
   type IncompleteSessionReason,
 } from "@/lib/session-completion-semantics";
+import { projectActiveWorkoutViewModel } from "@/lib/active-workout-view-model";
 
 function incompleteSessionReasonIsValid(
   value: unknown,
@@ -785,6 +789,8 @@ export function SessionRunner(props: SessionRunnerProps) {
   const exerciseDisclosureGenerationRef = useRef(0);
   const lastConsumedWorkoutHashRef = useRef<string | null>(null);
   const staleWorkoutActionHashRef = useRef(false);
+  const [explicitSetRecoveryOccurrenceId, setExplicitSetRecoveryOccurrenceId] =
+    useState<string | null>(null);
   const [timer, setTimer] = useState<DurableRestTimer | null>(null);
   const [restTimerHydrated, setRestTimerHydrated] = useState(false);
   const [restNow, setRestNow] = useState(() => Date.now());
@@ -1392,7 +1398,10 @@ export function SessionRunner(props: SessionRunnerProps) {
               (exercise) => exercise.id === linkedOccurrence.sessionExerciseId,
             )
           : null);
-      if (!linkedExercise) return;
+      if (!linkedExercise) {
+        setExplicitSetRecoveryOccurrenceId(null);
+        return;
+      }
 
       lastConsumedWorkoutHashRef.current = targetId;
       if (linkedOccurrence) {
@@ -1403,12 +1412,14 @@ export function SessionRunner(props: SessionRunnerProps) {
           linkedOccurrence.outcome !== "pending" ||
           linkedOccurrence.id !== firstPendingOccurrence?.id
         ) {
+          setExplicitSetRecoveryOccurrenceId(null);
           staleWorkoutActionHashRef.current = true;
           return;
         }
       }
 
       staleWorkoutActionHashRef.current = false;
+      setExplicitSetRecoveryOccurrenceId(linkedOccurrence?.id ?? null);
       setExpandedId(linkedExercise.id);
       requestAnimationFrame(() => {
         requestAnimationFrame(() => {
@@ -3619,14 +3630,12 @@ export function SessionRunner(props: SessionRunnerProps) {
           (exercise) => exercise.id === currentWorkingAction.sessionExerciseId,
         ) ?? null
       : null;
-  const currentCardOwnsNextAction =
+  const currentWorkingSetRevealed =
     currentWorkingExercise != null &&
-    expandedId === currentWorkingExercise.id &&
-    !shownExercises.some((exercise) =>
-      exercise.sets.some(
-        (set) => set.saveState != null && set.saveState !== "saved",
-      )
-    );
+    (activeGroupMemberIds.has(currentWorkingExercise.id)
+      ? !collapsedActiveGroupMemberIds.has(currentWorkingExercise.id)
+      : expandedId === currentWorkingExercise.id);
+  const currentCardOwnsNextAction = currentWorkingSetRevealed;
   const activeGroupProjection = guidance.activeGroup;
   const activeGroupUpNextAction = activeGroupProjection
     ? guidance.actions.find((action) => {
@@ -3736,6 +3745,94 @@ export function SessionRunner(props: SessionRunnerProps) {
   );
   const currentActionIsWorkingSet =
     guidance.currentAction?.kind === "working_set";
+  const currentPreparationBlocker = currentWorkingAction == null
+    ? null
+    : pendingPreparationForExercise(currentWorkingAction.sessionExerciseId);
+  const currentMetricType = currentWorkingExercise == null
+    ? null
+    : resolveFutureSetWriterMetricType({
+        metricType: currentWorkingExercise.metricType ?? "weight_reps",
+        loadSemantics: currentWorkingExercise.loadSemantics,
+      });
+  const currentActionBlockingReason = unresolvedExerciseSkip
+    ? "Resolve the exercise skip before continuing."
+    : currentWorkingAction == null || currentWorkingExercise == null
+      ? null
+      : currentPreparationBlocker != null
+        ? `Complete ${plannedExerciseNameForOccurrence(currentPreparationBlocker) ?? currentWorkingExercise.name} preparation first.`
+        : retainedFailuresForCurrentExercise.length > 0 &&
+            !allowLogWithRetainedFailure
+          ? "Resolve the retained set copy before logging this set."
+          : currentActionOccurrence != null &&
+              equipmentConfirmationBlocks(currentActionOccurrence)
+            ? "Confirm the equipment setup before logging this set."
+            : currentMetricType != null &&
+                !isSupportedSetWriterSemanticDefinition({
+                  metricType: currentMetricType,
+                  loadSemantics: currentWorkingExercise.loadSemantics,
+                })
+              ? "This exercise measurement cannot be logged safely."
+              : null;
+  const completionBlocker = !finishBlocked
+    ? null
+    : unresolvedExerciseSkip
+      ? "Resolve the exercise skip before finishing."
+      : !appendRecoveryHydrated || !finishRecoveryHydrated
+        ? "Repbook is checking retained workout actions."
+        : appendRecoveryMarker != null
+          ? "Confirm the retained extra-set request before finishing."
+          : unreadableRecordedCopiesPending
+            ? "Review unreadable recorded-work copies before finishing."
+            : "Retry or discard retained workout actions before finishing.";
+  const activeWorkoutViewModel = useMemo(
+    () => projectActiveWorkoutViewModel({
+      guidance,
+      exercises: shownExercises,
+      occurrences,
+      unit: props.unit,
+      loadEntryMeaningByExerciseId: Object.fromEntries(
+        shownExercises.map((exercise) => [
+          exercise.id,
+          equipmentLoadMeanings[exercise.id] ??
+            safeEquipmentSetups[exercise.id]?.loadEntryMeaning ??
+            null,
+        ]),
+      ),
+      comparisonUnavailableByExerciseId,
+      currentActionBlockingReason,
+      restRemainingSeconds: restRemainingSec,
+      finishBlocked,
+      completionBlocker,
+      unreadableRecordedWork: unreadableRecordedCopiesPending,
+      occurrenceQueueError: occurrenceOutbox.error != null,
+      unresolvedExerciseSkip,
+    }),
+    [
+      comparisonUnavailableByExerciseId,
+      completionBlocker,
+      currentActionBlockingReason,
+      equipmentLoadMeanings,
+      finishBlocked,
+      guidance,
+      occurrenceOutbox.error,
+      occurrences,
+      props.unit,
+      restRemainingSec,
+      safeEquipmentSetups,
+      shownExercises,
+      unreadableRecordedCopiesPending,
+      unresolvedExerciseSkip,
+    ],
+  );
+  const explicitSetRecoveryOccurrence =
+    explicitSetRecoveryOccurrenceId == null
+      ? null
+      : occurrences.find(
+          (occurrence) =>
+            occurrence.id === explicitSetRecoveryOccurrenceId &&
+            occurrence.kind === "working_set" &&
+            occurrence.outcome === "pending",
+        ) ?? null;
   const continueFromPreparation = useCallback(
     (event: ReactMouseEvent<HTMLAnchorElement>) => {
       event.preventDefault();
@@ -3776,7 +3873,7 @@ export function SessionRunner(props: SessionRunnerProps) {
   );
 
   return (
-    <main className="mx-auto flex max-w-3xl flex-col gap-3 p-3 pb-[calc(12rem+env(safe-area-inset-bottom))] min-[360px]:pb-[calc(8rem+env(safe-area-inset-bottom))] sm:p-5 sm:pb-[calc(8rem+env(safe-area-inset-bottom))] lg:p-8 lg:pb-24">
+    <main className="mx-auto flex max-w-3xl flex-col gap-3 p-3 pb-[calc(14rem+env(safe-area-inset-bottom))] min-[360px]:pb-[calc(11rem+env(safe-area-inset-bottom))] sm:p-5 sm:pb-[calc(11rem+env(safe-area-inset-bottom))] lg:p-8 lg:pb-40">
       <ContextualNoteScope value={contextualNoteScope} />
       <p
         data-testid="set-save-announcement"
@@ -3839,9 +3936,30 @@ export function SessionRunner(props: SessionRunnerProps) {
         <WorkoutGuidanceSummary
           guidance={guidance}
           compact
-          deferNextActionToCurrentCard={currentCardOwnsNextAction}
+          deferCurrentActionToCockpit={
+            activeWorkoutViewModel.displayMode !== "finish"
+          }
+          deferNextActionToCurrentCard={
+            currentCardOwnsNextAction ||
+            activeWorkoutViewModel.displayMode === "rest"
+          }
         />
       </div>
+
+      <WorkoutRecoveryStatus
+        items={activeWorkoutViewModel.recovery}
+        onResolve={(item) => {
+          if (item.kind === "unresolved_exercise_skip") {
+            revealSkippedExerciseRecovery();
+            return;
+          }
+          const entry = failedSetEntries.find(
+            (candidate) =>
+              candidate.sessionExerciseId === item.sessionExerciseId,
+          );
+          if (entry) revealUnsavedSet(entry);
+        }}
+      />
 
       {timing.reviewRequired && (
         <section
@@ -3915,10 +4033,17 @@ export function SessionRunner(props: SessionRunnerProps) {
               </Button>
             </div>
             {disclosedExercisePreparations.length > 0 && (
-              <div
+              <details
                 data-testid="remaining-exercise-preparations"
                 className="order-2 mt-2 space-y-2 rounded-md border border-violet-300/40 bg-background/60 px-3 py-2 text-xs leading-5 text-violet-900 dark:text-violet-100"
               >
+                <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-2 font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
+                  <span>Later preparation</span>
+                  <span className="text-muted-foreground">
+                    {disclosedExercisePreparations.length} remaining
+                  </span>
+                </summary>
+                <div className="space-y-2 border-t pt-2">
                 {disclosedExercisePreparations.map((occurrence) => {
                   const exerciseName =
                     plannedExerciseNameForOccurrence(occurrence) ?? "Exercise";
@@ -3937,7 +4062,8 @@ export function SessionRunner(props: SessionRunnerProps) {
                     </div>
                   );
                 })}
-              </div>
+                </div>
+              </details>
             )}
             {guidance.warmups.completed > 0 && (
               <Button
@@ -4245,34 +4371,40 @@ export function SessionRunner(props: SessionRunnerProps) {
       </WarmupPanel>
       )}
 
-      {!currentActionIsWorkingSet && <SessionPreparationPanel
+      {!currentActionIsWorkingSet &&
+      activeWorkoutViewModel.displayMode !== "rest" &&
+      activeWorkoutViewModel.equipmentAttention.length > 0 ? (
+      <SessionPreparationPanel
         projection={sessionPreparation}
         hasAcknowledgedWork={hasWorkoutFlowStarted}
         continueTargetId={preparationTargetId}
         continueLabel={preparationContinueLabel}
         onContinue={continueFromPreparation}
-      />}
+      />
+      ) : null}
 
-      <div className="flex flex-col gap-3">
-        {shownExercises.map((exercise) => {
+      <ExerciseQueue items={activeWorkoutViewModel.queue}>
+        {activeWorkoutViewModel.queue.map((queueItem) => {
+          const exercise = shownExercises.find(
+            (candidate) => candidate.id === queueItem.sessionExerciseId,
+          );
+          if (!exercise) return null;
           const equipmentSetup = props.equipmentSetups[exercise.id] ?? null;
           const equipmentSetupMatches = equipmentSetup != null &&
             sessionEquipmentSetupMatchesExercise(exercise, equipmentSetup);
-          const equipmentSetupIsCurrent =
-            currentActionOccurrence?.sessionExerciseId === exercise.id ||
-            currentOccurrence?.sessionExerciseId === exercise.id;
           const equipmentSetupNeedsAttention = sessionEquipmentEntries.some(
             (entry) =>
               entry.sessionExerciseId === exercise.id &&
               (entry.status === "queued" || entry.status === "needs_attention"),
           );
+          const equipmentProjectionNeedsAttention =
+            activeWorkoutViewModel.equipmentAttention.some(
+              (item) => item.sessionExerciseId === exercise.id,
+            );
           const equipmentSetupForcedOpen =
-            !exercise.sets.some(
-              (set) => set.saveState == null || set.saveState === "saved",
-            ) &&
-            (equipmentSetupIsCurrent ||
-              equipmentSetupNeedsAttention ||
-              !equipmentSetupMatches);
+            equipmentProjectionNeedsAttention ||
+            equipmentSetupNeedsAttention ||
+            !equipmentSetupMatches;
           const equipmentPanel = equipmentSetupMatches ? (
             <EquipmentSetupPanel
               sessionExerciseId={exercise.id}
@@ -4301,6 +4433,7 @@ export function SessionRunner(props: SessionRunnerProps) {
           return (
           <div
             key={exercise.id}
+            role="listitem"
             data-active-superset-member={
               activeGroupMemberIds.has(exercise.id) ? "true" : undefined
             }
@@ -4317,16 +4450,13 @@ export function SessionRunner(props: SessionRunnerProps) {
               upNextLoadPreview={activeGroupUpNextLoadPreview}
             />
           ) : null}
-          {equipmentPanel ? (
+          {equipmentPanel && equipmentSetupForcedOpen ? (
             <details
               data-testid="exercise-equipment-setup"
-              className={equipmentSetupForcedOpen
-                ? undefined
-                : "rounded-xl border bg-muted/20"}
-              open={equipmentSetupForcedOpen ? true : undefined}
+              open
             >
               <summary
-                hidden={equipmentSetupForcedOpen}
+                hidden
                 className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 rounded-xl px-3 py-2 text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
               >
                 <span className="min-w-0 break-words">
@@ -4336,10 +4466,14 @@ export function SessionRunner(props: SessionRunnerProps) {
                   Show
                 </span>
               </summary>
-              <div className={equipmentSetupForcedOpen ? undefined : "border-t p-2"}>
+              <div>
                 {equipmentPanel}
               </div>
             </details>
+          ) : equipmentPanel ? (
+            <div hidden aria-hidden="true">
+              {equipmentPanel}
+            </div>
           ) : null}
           <ExerciseCard
             key={`${exercise.id}:${exercise.exerciseId}:${exercise.metricType}:${exercise.loadType}:${exercise.loadSemantics}`}
@@ -4409,7 +4543,15 @@ export function SessionRunner(props: SessionRunnerProps) {
               null
             }
             activeOccurrence={
-              nextLoggableOccurrenceForExercise(exercise.id)
+              activeWorkoutViewModel.displayMode === "rest"
+                ? explicitSetRecoveryOccurrence?.sessionExerciseId === exercise.id
+                  ? explicitSetRecoveryOccurrence
+                  : null
+                : nextLoggableOccurrenceForExercise(exercise.id)
+            }
+            resting={
+              activeWorkoutViewModel.displayMode === "rest" &&
+              explicitSetRecoveryOccurrence?.sessionExerciseId !== exercise.id
             }
             preparationBlocker={(() => {
               const preparation = pendingPreparationForExercise(exercise.id);
@@ -4445,7 +4587,9 @@ export function SessionRunner(props: SessionRunnerProps) {
             occurrenceRuntimeSaveStates={occurrenceRuntimeSaveStates}
             acknowledgedOccurrenceIds={acknowledgedOccurrenceIds}
             isCurrentExercise={
-              currentOccurrence?.sessionExerciseId === exercise.id
+              activeWorkoutViewModel.displayMode === "rest"
+                ? explicitSetRecoveryOccurrence?.sessionExerciseId === exercise.id
+                : currentOccurrence?.sessionExerciseId === exercise.id
             }
             nextActionLabel={
               guidance.currentAction?.kind === "working_set" &&
@@ -4724,6 +4868,7 @@ export function SessionRunner(props: SessionRunnerProps) {
             }
           />
           {currentActionIsWorkingSet &&
+          activeWorkoutViewModel.equipmentAttention.length > 0 &&
           currentOccurrence?.sessionExerciseId === exercise.id ? (
             <SessionPreparationPanel
               projection={sessionPreparation}
@@ -4736,7 +4881,7 @@ export function SessionRunner(props: SessionRunnerProps) {
           </div>
           );
         })}
-      </div>
+      </ExerciseQueue>
 
       <AddWorkoutExercise
         ownerId={props.ownerId}
@@ -4765,9 +4910,7 @@ export function SessionRunner(props: SessionRunnerProps) {
           className="w-full"
           onClick={() => setFinishOpen(true)}
         >
-          <CheckCircle2 className="size-4" /> {pendingPlannedOccurrences > 0
-            ? "Finish early"
-            : "Finish workout"}
+          <CheckCircle2 className="size-4" /> Finish workout
         </Button>
       </section>
 
@@ -5211,11 +5354,7 @@ export function SessionRunner(props: SessionRunnerProps) {
               }
               size="lg"
             >
-              {finishing
-                ? "Saving…"
-                : pendingPlannedOccurrences > 0
-                  ? "Finish early"
-                  : "Save workout"}
+              {finishing ? "Saving…" : "Save workout"}
             </Button>
             <ActiveWorkoutDiscard
               ownerId={props.ownerId}
@@ -5259,18 +5398,15 @@ export function SessionRunner(props: SessionRunnerProps) {
           restRemainingSec={restRemainingSec}
           restAlertPreference={restAlertPreference}
           restSoundState={restSoundState}
+          restDestinationLabel={
+            activeWorkoutViewModel.rest?.destinationLabel ?? null
+          }
           onShowCurrent={() => {
             revealCurrentWorkoutAction();
           }}
           currentWorkingSetRevealed={
             guidance.currentAction?.kind !== "working_set" ||
-            (activeGroupMemberIds.has(
-              guidance.currentAction.sessionExerciseId,
-            )
-              ? !collapsedActiveGroupMemberIds.has(
-                  guidance.currentAction.sessionExerciseId,
-                )
-              : expandedId === guidance.currentAction.sessionExerciseId)
+            currentWorkingSetRevealed
           }
           onPrimaryAction={() => {
             if (
@@ -5292,7 +5428,6 @@ export function SessionRunner(props: SessionRunnerProps) {
             if (logSet && !logSet.disabled) logSet.click();
             else revealCurrentWorkoutAction();
           }}
-          allowLogWithRetainedFailure={allowLogWithRetainedFailure}
           checkingExerciseSkip={
             (skipConfirmationExerciseId ??
               (skipRecoverySettlementPending

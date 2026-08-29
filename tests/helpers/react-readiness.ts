@@ -136,8 +136,8 @@ export async function waitForEquipmentSelectionsToSettle(page: Page) {
   await expect
     .poll(
       async () => {
-        // Exact future-exercise setup remains mounted inside a closed native
-        // disclosure so its durable automatic selection can settle without
+        // Exact future-exercise setup remains mounted outside the visible
+        // common path so its durable automatic selection can settle without
         // lengthening the initial workout surface.
         const regions = page.locator(
           'section[aria-label^="Equipment setup for "]',

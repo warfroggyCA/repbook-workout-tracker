@@ -1,6 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 import {
   installNextDevelopmentRefreshControl,
+  openNativeDetails,
   waitForEquipmentSelectionsToSettle,
   waitForHydratedReactHandler,
   waitForHydratedServerAction,
@@ -184,16 +185,21 @@ test("keeps retained sets responsive before acknowledgement, then reviews a corr
   const guidance = page.getByRole("region", {
     name: "Workout progress and upcoming work",
   });
-  await expect(guidance).toContainText("Now: Resting");
-  await expect(guidance).not.toContainText("Resting before");
+  const rest = page
+    .getByRole("complementary", { name: "Workout status" })
+    .getByRole("region", { name: "Rest timer" });
+  await expect(rest).toBeVisible();
+  await expect(rest).toContainText("No further work");
+  await expect(guidance).not.toContainText("Now:");
   await expect(guidance).not.toContainText("Next:");
   await plankDisclosure.click();
   await expect(plankDisclosure).toHaveAttribute("aria-expanded", "true");
+  const exerciseDetails = plank.getByTestId("active-exercise-details");
+  await openNativeDetails(exerciseDetails);
   const acknowledgement = plank.getByTestId("completed-sets");
   await expect(page.getByTestId("active-set-save-receipt")).toHaveCount(0);
   await expect(acknowledgement).toContainText("45 sec");
   await expect(acknowledgement).toContainText("Acknowledged by Repbook");
-  await acknowledgement.locator(":scope > summary").click();
   await expect(
     acknowledgement.getByRole("button", { name: "Correct set" }).first(),
   ).toBeVisible();
@@ -224,7 +230,7 @@ test("keeps retained sets responsive before acknowledgement, then reviews a corr
   await expect(plankDisclosure).toHaveAttribute("aria-expanded", "false");
   await waitForHydratedReactHandler(plankDisclosure);
   await plankDisclosure.click();
-  await acknowledgement.locator(":scope > summary").click();
+  await openNativeDetails(exerciseDetails);
   await expect(plank.getByText("1:00", { exact: true })).toBeVisible();
   await expect(plank).toContainText(
     "1 saved correction · original retained in Edit history",

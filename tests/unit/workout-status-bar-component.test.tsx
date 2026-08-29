@@ -32,7 +32,7 @@ const action = {
 } as unknown as SessionGuidanceAction;
 
 describe("WorkoutStatusBar", () => {
-  it("keeps current-set identity, note, and finish in a thin non-scrolling bar", () => {
+  it("keeps note and finish in a thin bar without duplicating the revealed current set", () => {
     const html = renderToStaticMarkup(
       <WorkoutStatusBar
         action={action}
@@ -44,12 +44,10 @@ describe("WorkoutStatusBar", () => {
     );
 
     expect(html).toContain('aria-label="Workout status"');
-    expect(html).toContain("Barbell Squat");
-    expect(html).toContain("Set 2 of 3 · Next set");
+    expect(html).not.toContain("Barbell Squat");
+    expect(html).not.toContain("Set 2 of 3");
     expect(html).toContain('aria-label="Add training note"');
     expect(html).toContain("Finish");
-    expect(html).toContain("min-h-11 min-w-0 flex-1");
-    expect(html).toContain("max-[360px]:sr-only");
     expect(html).toContain("bottom-[env(safe-area-inset-bottom)]");
     expect(html).not.toContain(
       "bottom-[calc(4rem+env(safe-area-inset-bottom))]",
@@ -58,7 +56,7 @@ describe("WorkoutStatusBar", () => {
     expect(html).not.toContain("truncate");
   });
 
-  it("makes the one-step early-finish path visible while planned work remains", () => {
+  it("keeps finish wording simple while planned work remains", () => {
     const html = renderToStaticMarkup(
       <WorkoutStatusBar
         action={action}
@@ -70,9 +68,9 @@ describe("WorkoutStatusBar", () => {
       />,
     );
 
-    expect(html).toContain(">End</span>");
-    expect(html).toContain("Finish early");
-    expect(html).toContain('class="min-[400px]:hidden"');
+    expect(html).toContain(">Finish</button>");
+    expect(html).not.toContain("Finish early");
+    expect(html).not.toContain(">End</span>");
     expect(html).toContain('aria-label="Review workout finish"');
   });
 
@@ -87,7 +85,7 @@ describe("WorkoutStatusBar", () => {
       />,
     );
 
-    expect(html).toContain("Set 2 of 3 · Resting");
+    expect(html).toContain("Next: Barbell Squat, set 2");
     expect(html).toContain("1:15");
     expect(html).toContain('aria-label="Rest alert: sound"');
     expect(html).toContain('aria-label="Decrease rest by 15 seconds"');
@@ -97,10 +95,10 @@ describe("WorkoutStatusBar", () => {
     expect(html).toContain('data-rest-state="running"');
     expect(html).toContain("border-amber-500");
     expect(html).toContain("bg-amber-100");
-    expect(html).toContain("grid-cols-[minmax(0,1fr)_auto_auto]");
-    expect(html).toContain("col-span-3");
-    expect(html).toContain("min-[360px]:col-span-2");
-    expect(html).toContain("row-start-2");
+    expect(html).toContain('data-testid="rest-cockpit"');
+    expect(html).not.toContain('data-testid="active-workout-dock-primary"');
+    expect(html).not.toContain(">Log set</span>");
+    expect(html).not.toContain("Set 2 of 3 · Resting");
   });
 
   it("names the action the rest period is preparing for", () => {
@@ -123,7 +121,7 @@ describe("WorkoutStatusBar", () => {
       />,
     );
 
-    expect(html).toContain("Resting before Barbell Squat, set 2");
+    expect(html).toContain("Next: Barbell Squat, set 2");
     expect(html).not.toContain("Rest after");
   });
 
@@ -176,7 +174,7 @@ describe("WorkoutStatusBar", () => {
     expect(unavailable).toContain(">Sound unavailable</span>");
   });
 
-  it("turns the working-set dock into the immediate primary log action", () => {
+  it("keeps the working-set dock as neutral navigation while the cockpit owns logging", () => {
     const html = renderToStaticMarkup(
       <WorkoutStatusBar
         action={action}
@@ -185,13 +183,15 @@ describe("WorkoutStatusBar", () => {
         restRemainingSec={null}
         {...callbacks}
         onPrimaryAction={() => undefined}
+        currentWorkingSetRevealed={false}
       />,
     );
 
-    expect(html).toContain('data-testid="active-workout-dock-primary"');
-    expect(html).toContain('aria-label="Log Barbell Squat, Set 2"');
-    expect(html).toContain("Set 2 of 3 · Log set");
-    expect(html).toContain("bg-primary text-primary-foreground");
+    expect(html).not.toContain('data-testid="active-workout-dock-primary"');
+    expect(html).toContain('aria-label="Show Barbell Squat, Set 2"');
+    expect(html).toContain("Set 2 of 3 · Show current set");
+    expect(html).not.toContain(">Log set</span>");
+    expect(html).not.toContain("bg-primary text-primary-foreground");
   });
 
   it("truthfully reveals a collapsed current set before offering to log it", () => {
@@ -295,13 +295,14 @@ describe("WorkoutStatusBar", () => {
         restRemainingSec={null}
         {...callbacks}
         onPrimaryAction={() => undefined}
-        allowLogWithRetainedFailure
+        currentWorkingSetRevealed={false}
       />,
     );
 
-    expect(html).toContain('data-testid="active-workout-dock-primary"');
-    expect(html).toContain("Set 2 of 3 · Log set");
-    expect(html).not.toContain("Set 2 of 3 · Failed");
+    expect(html).not.toContain('data-testid="active-workout-dock-primary"');
+    expect(html).toContain('aria-label="Show Barbell Squat, Set 2"');
+    expect(html).toContain("Set 2 of 3 · Failed · Show current set");
+    expect(html).not.toContain(">Log set</span>");
   });
 
   it("names the ready-state transition instead of using a generic continue action", () => {
@@ -315,15 +316,11 @@ describe("WorkoutStatusBar", () => {
       />,
     );
 
-    expect(html).toContain("Set 2 of 3 · Ready");
+    expect(html).toContain("Rest complete");
+    expect(html).toContain("Next: Barbell Squat, set 2");
     expect(html).toContain("Dismiss rest timer");
     expect(html).not.toContain(">Continue<");
-    expect(html).toContain("grid-cols-[minmax(0,1fr)_auto_auto]");
-    expect(html).toContain("col-span-3");
-    expect(html).toContain("min-[360px]:col-span-2");
-    expect(html).toContain("row-start-2");
-    expect(html).toContain("w-full");
-    expect(html).toContain("min-[520px]:flex");
+    expect(html).toContain('data-testid="rest-cockpit"');
     expect(html).toContain("border-emerald-600");
     expect(html).toContain('aria-live="polite"');
   });
@@ -343,11 +340,12 @@ describe("WorkoutStatusBar", () => {
         exercise={exercise}
         timer={null}
         restRemainingSec={null}
+        currentWorkingSetRevealed={false}
         {...callbacks}
       />,
     );
 
-    expect(html).toContain("Extra set 1 · Next set");
+    expect(html).toContain("Extra set 1 · Show current set");
     expect(html).not.toContain("Set 4 of 3");
   });
 
