@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import { Popover } from "@base-ui/react/popover";
 import {
@@ -12,6 +13,7 @@ import { Button, buttonVariants } from "@/components/ui/button";
 import { HistoryRefreshButton } from "@/components/history/history-refresh-button";
 import { TestDataControls } from "@/components/history/test-data-controls";
 import { BulkActivityArchiveButton } from "@/components/history/bulk-activity-archive-button";
+import { ContextualNoteManager } from "@/components/contextual-notes/contextual-note-manager";
 import type {
   BulkActivityArchivePreview,
   SampleHistoryArchivePreview,
@@ -29,8 +31,10 @@ export function HistoryMoreMenu({
   samplePreview: SampleHistoryArchivePreview | null;
   activityArchivePreview: BulkActivityArchivePreview;
 }) {
+  const [open, setOpen] = useState(false);
+
   return (
-    <Popover.Root>
+    <Popover.Root open={open} onOpenChange={setOpen}>
       <Popover.Trigger
         render={<Button variant="outline" aria-label="More History actions" />}
       >
@@ -38,7 +42,7 @@ export function HistoryMoreMenu({
         More
         <ChevronDown className="size-3.5" aria-hidden="true" />
       </Popover.Trigger>
-      <Popover.Portal>
+      <Popover.Portal keepMounted>
         <Popover.Positioner sideOffset={8} align="end" className="z-50">
           <Popover.Popup className="w-[min(20rem,calc(100vw-2rem))] rounded-2xl border bg-popover p-3 text-popover-foreground shadow-lg outline-none transition data-ending-style:scale-95 data-ending-style:opacity-0 data-starting-style:scale-95 data-starting-style:opacity-0">
             <Popover.Title className="px-1 text-sm font-semibold">
@@ -69,6 +73,12 @@ export function HistoryMoreMenu({
                 Downloads &amp; backup
               </Link>
               <HistoryRefreshButton />
+              <div
+                className="[&_[data-slot=button]]:w-full [&_[data-slot=button]]:justify-start [&_[data-slot=button]]:border [&_[data-slot=button]]:bg-background"
+                onClick={() => setOpen(false)}
+              >
+                <ContextualNoteManager />
+              </div>
               <Link
                 href="/archive"
                 className={buttonVariants({

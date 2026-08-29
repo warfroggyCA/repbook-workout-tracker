@@ -114,6 +114,24 @@ npx vitest run tests/unit/server-log.test.ts tests/unit/ai-provider-error.test.t
 npx vitest run tests/unit/v2-d02-support-bundle.test.ts --maxWorkers=1 --no-file-parallelism
 ```
 
+The migration-free product-polish hierarchy gate is:
+
+```bash
+npx vitest run tests/unit/workout-summary.test.ts tests/unit/today-lineage-db.test.ts tests/unit/live03-pain-substitution-continuity.test.tsx --maxWorkers=1 --no-file-parallelism
+npx playwright test tests/e2e/workout-smoke.spec.ts -g "makes Today one decisive|keeps the no-history|confirms one complete quick log"
+npm run test:e2e:v2-h01
+npm run test:e2e:v2-h02
+npm run test:e2e:v2-t04
+npx playwright test --config=playwright.phase2.config.ts
+```
+
+It proves the reduced Today query budget and one-primary-action hierarchy,
+explicit warm-up opt-in, deterministic completed-workout summary, truthful
+unknown and provenance states, stable deep links into the closed technical
+record, contextual note entry and offline recovery, and desktop plus narrow
+mobile behavior. It adds no schema, migration, historical rewrite, calculation
+formula, Coach decision, import, export, or authentication change.
+
 The semantic test validates all synthetic F01-F17 scenarios and every required
 verification-matrix cell; by itself it proves contract consistency only. The
 T01 tests activate the mapped database, browser, portability, recovery, and

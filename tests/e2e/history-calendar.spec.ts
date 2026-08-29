@@ -267,11 +267,7 @@ test("calendar-first History opens a recoverable retrospective entry flow", asyn
   await expect(page.getByText("Extra set 1: Completed")).toBeVisible();
   await page.getByRole("button", { name: "Save completed workout" }).click();
   await expect(page).toHaveURL(/\/history\/[0-9a-f-]+\?/);
-  await expect(
-    page
-      .getByLabel("Workout evidence status")
-      .getByText("Entered after the workout", { exact: true }),
-  ).toBeVisible();
+  await expect(page.getByText(/Entered after the workout/).first()).toBeVisible();
   await expect(page.getByText("Linked to Program day")).toBeVisible();
   await expect(page.getByText(/Time and duration unknown/)).toBeVisible();
   await expect(
@@ -444,6 +440,7 @@ test("corrects completed workout timing with an explicit review", async ({
   await waitForReactHandler(sourceWorkout);
   await sourceWorkout.click();
   await expect(page).toHaveURL(/\/history\/[0-9a-f-]+\?/);
+  await page.locator("#technical-record > summary").click();
   await page
     .getByRole("button", { name: "Correct workout timing", exact: true })
     .click();
@@ -468,12 +465,18 @@ test("corrects completed workout timing with an explicit review", async ({
   await expect(
     page.getByText(new RegExp(`${correctedSummary} · 9:30`)),
   ).toBeVisible();
-  await expect(page.getByText(/Timing corrected 1 time/)).toBeVisible();
+  await expect(
+    page
+      .getByTestId("workout-summary")
+      .getByText(/Record context:.*Corrected evidence/),
+  ).toBeVisible();
   await page.reload();
   await expect(
     page.getByText(new RegExp(`${correctedSummary} · 9:30`)),
   ).toBeVisible();
 
+  await page.locator("#technical-record > summary").click();
+  await expect(page.getByText(/Timing corrected 1 time/)).toBeVisible();
   await page
     .getByRole("button", { name: "Correct workout timing", exact: true })
     .click();
@@ -569,11 +572,7 @@ test("an unconfirmed save keeps the exact draft and safely retries", async ({
   await context.setOffline(false);
   await page.getByRole("button", { name: "Save completed workout" }).click();
   await expect(page).toHaveURL(/\/history\/[0-9a-f-]+\?/);
-  await expect(
-    page
-      .getByLabel("Workout evidence status")
-      .getByText("Entered after the workout", { exact: true }),
-  ).toBeVisible();
+  await expect(page.getByText(/Entered after the workout/).first()).toBeVisible();
   await expect(
     page.getByText(
       "47.5 lb × 9 reps (repetition counting basis unknown)",

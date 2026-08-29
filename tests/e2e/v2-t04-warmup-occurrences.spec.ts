@@ -32,6 +32,7 @@ async function signInAndStart(page: Page) {
     name: "Train as planned",
     exact: true,
   });
+  await page.locator("summary").filter({ hasText: "Workout options" }).click();
   const includeWarmups = page.getByRole("checkbox", {
     name: /Include programmed warm-ups/,
   });

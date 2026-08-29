@@ -2,9 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { usePathname } from "next/navigation";
-import { FilePenLine, LockKeyhole, RotateCcw, Trash2 } from "lucide-react";
+import { LockKeyhole, RotateCcw, Trash2 } from "lucide-react";
 import { LiveCoachDictation } from "@/components/session/live-coach-dictation";
-import { ContextualNoteManager } from "@/components/contextual-notes/contextual-note-manager";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -333,82 +332,76 @@ export function ContextualNoteProvider({
   const pending = outbox.entries.filter(
     (entry) => entry.status !== "needs_attention",
   );
+  const showOutboxStatus =
+    outbox.error != null || needsAttention.length > 0 || pending.length > 0;
 
   return (
     <>
-      <div
-        className={
-          pathname.startsWith("/session/")
-            ? "hidden"
-            : "flex min-h-14 flex-wrap items-center justify-end gap-2 px-4 py-2"
-        }
-      >
-        {outbox.error ? (
-          <StateNotice
-            className="mr-auto flex-1"
-            state="needs_attention"
-            title="The device note queue cannot be read"
-            description={outbox.error}
-          />
-        ) : needsAttention.length > 0 ? (
-          <StateNotice
-            className="mr-auto flex-1"
-            state="needs_attention"
-            title={`${needsAttention.length} note${needsAttention.length === 1 ? " needs" : "s need"} attention`}
-            description="The text remains on this device. Retry it or remove it explicitly."
-            action={needsAttention.map((entry) => (
-              <span key={entry.clientKey} className="flex flex-wrap gap-2">
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  onClick={() =>
-                    void mutateContextualNoteOutboxInBrowser(ownerId, (storage) =>
-                      retryContextualNoteOutboxEntry(
-                        storage,
-                        ownerId,
-                        entry.clientKey,
-                        entry.payloadHash,
-                      ),
-                    )
-                  }
-                >
-                  <RotateCcw aria-hidden="true" /> Retry
-                </Button>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="ghost"
-                  onClick={() => {
-                    if (!window.confirm("Remove this unsaved device copy? This cannot be undone.")) return;
-                    void mutateContextualNoteOutboxInBrowser(ownerId, (storage) =>
-                      removeContextualNoteOutboxEntry(
-                        storage,
-                        ownerId,
-                        entry.clientKey,
-                        entry.payloadHash,
-                      ),
-                    );
-                  }}
-                >
-                  <Trash2 aria-hidden="true" /> Remove
-                </Button>
-              </span>
-            ))}
-          />
-        ) : pending.length > 0 ? (
-          <StateNotice
-            className="mr-auto flex-1"
-            state={pending.some((entry) => entry.status === "syncing") ? "saving" : "pending"}
-            title={pending.some((entry) => entry.status === "syncing") ? "Saving note…" : "Note waiting to save"}
-            description="The reviewed text is retained on this device until the server acknowledges it."
-          />
-        ) : null}
-        <Button data-testid="contextual-note-trigger" type="button" size="touch" variant="outline" onClick={() => beginComposer()}>
-          <FilePenLine aria-hidden="true" /> Add note
-        </Button>
-        <ContextualNoteManager />
-      </div>
+      {showOutboxStatus && (
+        <div className="flex min-h-14 flex-wrap items-center px-4 py-2">
+          {outbox.error ? (
+            <StateNotice
+              className="mr-auto flex-1"
+              state="needs_attention"
+              title="The device note queue cannot be read"
+              description={outbox.error}
+            />
+          ) : needsAttention.length > 0 ? (
+            <StateNotice
+              className="mr-auto flex-1"
+              state="needs_attention"
+              title={`${needsAttention.length} note${needsAttention.length === 1 ? " needs" : "s need"} attention`}
+              description="The text remains on this device. Retry it or remove it explicitly."
+              action={needsAttention.map((entry) => (
+                <span key={entry.clientKey} className="flex flex-wrap gap-2">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={() =>
+                      void mutateContextualNoteOutboxInBrowser(ownerId, (storage) =>
+                        retryContextualNoteOutboxEntry(
+                          storage,
+                          ownerId,
+                          entry.clientKey,
+                          entry.payloadHash,
+                        ),
+                      )
+                    }
+                  >
+                    <RotateCcw aria-hidden="true" /> Retry
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => {
+                      if (!window.confirm("Remove this unsaved device copy? This cannot be undone.")) return;
+                      void mutateContextualNoteOutboxInBrowser(ownerId, (storage) =>
+                        removeContextualNoteOutboxEntry(
+                          storage,
+                          ownerId,
+                          entry.clientKey,
+                          entry.payloadHash,
+                        ),
+                      );
+                    }}
+                  >
+                    <Trash2 aria-hidden="true" /> Remove
+                  </Button>
+                </span>
+              ))}
+            />
+          ) : pending.length > 0 ? (
+            <StateNotice
+              className="mr-auto flex-1"
+              state={pending.some((entry) => entry.status === "syncing") ? "saving" : "pending"}
+              title={pending.some((entry) => entry.status === "syncing") ? "Saving note…" : "Note waiting to save"}
+              description="The reviewed text is retained on this device until the server acknowledges it."
+            />
+          ) : null}
+        </div>
+      )}
       {children}
 
       <Drawer open={open} onOpenChange={setOpen} showSwipeHandle>

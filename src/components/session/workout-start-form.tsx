@@ -2,6 +2,7 @@
 
 import { useActionState, useEffect, useId, useRef, type ReactNode } from "react";
 import { useFormStatus } from "react-dom";
+import { ChevronDown } from "lucide-react";
 import { startSession } from "@/app/actions/sessions";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -124,22 +125,36 @@ export function WorkoutStartForm({
         </>
       )}
       {hasProgrammedWarmups && (
-        <label className="flex min-h-11 cursor-pointer items-start gap-3 rounded-lg border bg-muted/20 px-3 py-2.5 text-left">
-          <input
-            type="checkbox"
-            name="includeWarmups"
-            value="true"
-            className="mt-0.5 size-5 shrink-0 accent-primary"
-          />
-          <span className="min-w-0">
-            <span className="block text-sm font-medium">
-              Include programmed warm-ups
+        <details className="group rounded-lg border bg-muted/20">
+          <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 rounded-lg px-3 py-2.5 text-sm font-medium outline-none focus-visible:ring-3 focus-visible:ring-ring/50">
+            <span>
+              Workout options
+              <span className="mt-0.5 block text-xs font-normal text-muted-foreground">
+                Programmed warm-ups are off
+              </span>
             </span>
-            <span className="mt-0.5 block text-xs leading-relaxed text-muted-foreground">
-              Off by default. Turn this on only when you want warm-up actions in this workout.
+            <ChevronDown
+              className="size-4 shrink-0 transition-transform group-open:rotate-180"
+              aria-hidden="true"
+            />
+          </summary>
+          <label className="flex min-h-11 cursor-pointer items-start gap-3 border-t px-3 py-2.5 text-left">
+            <input
+              type="checkbox"
+              name="includeWarmups"
+              value="true"
+              className="mt-0.5 size-5 shrink-0 accent-primary"
+            />
+            <span className="min-w-0">
+              <span className="block text-sm font-medium">
+                Include programmed warm-ups
+              </span>
+              <span className="mt-0.5 block text-xs leading-relaxed text-muted-foreground">
+                Select this to add the saved warm-up actions to this workout.
+              </span>
             </span>
-          </span>
-        </label>
+          </label>
+        </details>
       )}
       <StartButton
         variant={variant}

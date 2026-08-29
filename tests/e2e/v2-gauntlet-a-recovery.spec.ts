@@ -156,6 +156,6 @@ test("recovers offline and timeout-after-commit sets exactly, then reviews aband
 
   await page.goto(`/history/${sessionId}`);
   await expect(page.getByText("Abandoned workout", { exact: true })).toBeVisible();
-  await expect(page.getByText(/2 performed working sets/)).toBeVisible();
+  await expect(page.getByText(/2 working sets/)).toBeVisible();
   await pageErrors.expectNoUnexpected();
 });

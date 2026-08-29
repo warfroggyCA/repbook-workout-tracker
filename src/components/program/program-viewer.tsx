@@ -2,7 +2,7 @@
 
 import { useCallback, useMemo, useState } from "react";
 import Link from "next/link";
-import { ChevronDown, Pencil, Play, Upload } from "lucide-react";
+import { ChevronDown, FilePenLine, Pencil, Play, Upload } from "lucide-react";
 import { ExerciseFamilyIcon } from "@/components/exercises/exercise-family-icon";
 import { ProgramDayTabs } from "@/components/program/program-day-tabs";
 import { Badge } from "@/components/ui/badge";
@@ -10,7 +10,10 @@ import { Button } from "@/components/ui/button";
 import type { ProgramPresentation } from "@/lib/program-presentation";
 import { formatRestTime } from "@/lib/rest-time";
 import { ContextualNoteScope } from "@/components/contextual-notes/contextual-note-scope";
-import type { ContextualNoteScopeValue } from "@/lib/contextual-note-ui";
+import {
+  openContextualNoteComposer,
+  type ContextualNoteScopeValue,
+} from "@/lib/contextual-note-ui";
 
 function progressionLabel(rule: string) {
   return rule === "double_progression"
@@ -114,6 +117,15 @@ export function ProgramViewer({
           </div>
         </div>
         <div className="grid gap-2 [grid-template-columns:repeat(auto-fit,minmax(min(100%,10rem),1fr))]">
+          <Button
+            type="button"
+            className="min-h-11 min-w-0 whitespace-normal"
+            variant="outline"
+            data-testid="contextual-note-trigger"
+            onClick={openContextualNoteComposer}
+          >
+            <FilePenLine /> Add note
+          </Button>
           <Button
             className="min-h-11 min-w-0 whitespace-normal"
             variant="outline"

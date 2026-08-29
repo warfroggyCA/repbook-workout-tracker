@@ -19,7 +19,7 @@
       "maxRecentPRs": 3
     },
     "todayData": { "maxQueries": 6 },
-    "todayPage": { "maxQueries": 9 },
+    "todayPage": { "maxQueries": 7 },
     "historyPage": {
       "maxQueries": 4,
       "maxRecentSessions": 12,
