@@ -329,6 +329,11 @@ combined equipment/set stream. Browsers without that guarantee keep the exact
 device copies, make no delivery attempt, disable retry, and show **Saving
 paused** with recovery guidance.
 
+Rest-timer reconciliation begins only after that durable enqueue and retains its
+own cross-tab ordering contract, but it is not awaited by the athlete-facing UI
+advance. Storage failure still produces an explicit timer warning while the set
+continues saving from its retained device copy.
+
 The latest acknowledged explicit rest outcome is retained temporarily under
 `workout-tracker:workout-rest-intent-receipts:v1`. It is a bounded local-only
 ordering receipt, not workout history: it contains no exercise, load,

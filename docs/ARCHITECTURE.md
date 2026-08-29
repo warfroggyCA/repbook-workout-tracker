@@ -489,6 +489,11 @@ command, never a newer timer. Saved occurrence evidence still classifies
 positive rest as straight-set, between-member, or between-round rest; zero
 means explicitly no rest and null means unknown rest.
 
+Once the set command is durable, the athlete-facing projection advances without
+awaiting rest-timer reconciliation. That timer work keeps its separate cross-tab
+lock, ordering checks, and visible failure notice, but cannot extend the set-log
+interaction's awaited path.
+
 Rest reconciliation orders explicit outcomes by the command's monotonic
 creation time and stable client key. Retained commands are the immediate source
 of truth. The latest acknowledged outcome is also held in one minimal,

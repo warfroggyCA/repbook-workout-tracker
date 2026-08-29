@@ -2300,118 +2300,6 @@ export function SessionRunner(props: SessionRunnerProps) {
         return false;
       }
       markWorkoutInteraction(WORKOUT_INTERACTION_MARKS.setRetainedLocally);
-      if (restAfterSec != null && restAfterSec > 0 && occurrence) {
-        const optimisticTimer = createRestTimer({
-          ownerId: props.ownerId,
-          sessionId: props.sessionId,
-          now: Date.parse(observedCompletedAtISO),
-          seconds: restAfterSec,
-          sourceSessionExerciseId: exercise.id,
-          sourceOccurrenceId: occurrence.id,
-          sourceClientKey: clientKey,
-        });
-        const restPersisted = optimisticTimer != null &&
-          await withOutboxLock(async () => {
-            const retainedEntries = getWorkoutSetOutboxSnapshot().entries;
-            const retainedCommand = retainedEntries.find(
-              (entry) =>
-                entry.clientKey === clientKey &&
-                entry.ownerId === props.ownerId &&
-                entry.sessionId === props.sessionId,
-            );
-            if (!retainedCommand) {
-              // Another tab already acknowledged or discarded this command;
-              // its reconciled rest state is newer than this delayed write.
-              return true;
-            }
-            const receipt = getWorkoutRestIntentReceipt(
-              window.localStorage,
-              retainedCommand,
-            );
-            if (!receipt.ok) return false;
-            const acknowledgedLaterClientKey =
-              receipt.receipt != null &&
-                workoutRestIntentReceiptSupersedesEntry(
-                  receipt.receipt,
-                  retainedCommand,
-                )
-                ? receipt.receipt.clientKey
-                : null;
-            const laterIntentClientKeys = [
-              ...laterWorkoutSetRestIntentClientKeys(
-                retainedEntries,
-                retainedCommand,
-              ),
-              ...(acknowledgedLaterClientKey != null
-                ? [acknowledgedLaterClientKey]
-                : []),
-            ];
-            if (laterIntentClientKeys.length > 0) {
-              const cleared =
-                await clearRestTimerForSupersedingSourceClientKey(
-                  window.localStorage,
-                  { ownerId: props.ownerId, sessionId: props.sessionId },
-                  clientKey,
-                  laterIntentClientKeys,
-                );
-              return cleared !== "storage_error";
-            }
-            return writeRestTimer(window.localStorage, optimisticTimer);
-          });
-        if (!restPersisted) {
-          toast.error(
-            "The set is retained on this device, but this rest timer could not be stored. Use a separate clock for this rest; the set will keep saving.",
-          );
-        }
-      } else if (restAfterSec !== undefined && (!restAfterSec || restAfterSec <= 0)) {
-        const cleared = await withOutboxLock(() => {
-          const retainedEntries = getWorkoutSetOutboxSnapshot().entries;
-          const retainedCommand = retainedEntries.find(
-            (entry) =>
-              entry.clientKey === clientKey &&
-              entry.ownerId === props.ownerId &&
-              entry.sessionId === props.sessionId,
-          );
-          if (!retainedCommand) {
-            // Reconciliation already owns the timer after this exact command
-            // leaves the durable queue; do not let a delayed UI task replace it.
-            return "stale" as const;
-          }
-          const receipt = getWorkoutRestIntentReceipt(
-            window.localStorage,
-            retainedCommand,
-          );
-          if (!receipt.ok) return "storage_error" as const;
-          const acknowledgedLaterClientKey =
-            receipt.receipt != null &&
-              workoutRestIntentReceiptSupersedesEntry(
-                receipt.receipt,
-                retainedCommand,
-              )
-              ? receipt.receipt.clientKey
-              : null;
-          const laterIntentClientKeys = [
-            ...laterWorkoutSetRestIntentClientKeys(
-              retainedEntries,
-              retainedCommand,
-            ),
-            ...(acknowledgedLaterClientKey != null
-              ? [acknowledgedLaterClientKey]
-              : []),
-          ];
-          return clearRestTimerForSupersedingSourceClientKey(
-            window.localStorage,
-            { ownerId: props.ownerId, sessionId: props.sessionId },
-            clientKey,
-            laterIntentClientKeys,
-          );
-        });
-        if (cleared === "storage_error") {
-          toast.error(
-            "The set is retained on this device, but Repbook could not clear the prior rest timer. The set will keep saving.",
-          );
-        }
-      }
       setExercises((current) =>
         current.map((candidate) =>
           candidate.id !== exercise.id ||
@@ -2423,6 +2311,133 @@ export function SessionRunner(props: SessionRunnerProps) {
       window.requestAnimationFrame(() => {
         markWorkoutInteraction(WORKOUT_INTERACTION_MARKS.setUiAdvanced);
       });
+      // Rest-timer reconciliation has its own cross-tab lock and ordering
+      // contract. Once the set is durably retained it must not delay the
+      // athlete-facing advance, so reconcile it without extending this
+      // interaction's awaited path.
+      void (async () => {
+        try {
+          if (restAfterSec != null && restAfterSec > 0 && occurrence) {
+            const optimisticTimer = createRestTimer({
+              ownerId: props.ownerId,
+              sessionId: props.sessionId,
+              now: Date.parse(observedCompletedAtISO),
+              seconds: restAfterSec,
+              sourceSessionExerciseId: exercise.id,
+              sourceOccurrenceId: occurrence.id,
+              sourceClientKey: clientKey,
+            });
+            const restPersisted = optimisticTimer != null &&
+              await withOutboxLock(async () => {
+                const retainedEntries = getWorkoutSetOutboxSnapshot().entries;
+                const retainedCommand = retainedEntries.find(
+                  (entry) =>
+                    entry.clientKey === clientKey &&
+                    entry.ownerId === props.ownerId &&
+                    entry.sessionId === props.sessionId,
+                );
+                if (!retainedCommand) {
+                  // Another tab already acknowledged or discarded this command;
+                  // its reconciled rest state is newer than this delayed write.
+                  return true;
+                }
+                const receipt = getWorkoutRestIntentReceipt(
+                  window.localStorage,
+                  retainedCommand,
+                );
+                if (!receipt.ok) return false;
+                const acknowledgedLaterClientKey =
+                  receipt.receipt != null &&
+                    workoutRestIntentReceiptSupersedesEntry(
+                      receipt.receipt,
+                      retainedCommand,
+                    )
+                    ? receipt.receipt.clientKey
+                    : null;
+                const laterIntentClientKeys = [
+                  ...laterWorkoutSetRestIntentClientKeys(
+                    retainedEntries,
+                    retainedCommand,
+                  ),
+                  ...(acknowledgedLaterClientKey != null
+                    ? [acknowledgedLaterClientKey]
+                    : []),
+                ];
+                if (laterIntentClientKeys.length > 0) {
+                  const cleared =
+                    await clearRestTimerForSupersedingSourceClientKey(
+                      window.localStorage,
+                      { ownerId: props.ownerId, sessionId: props.sessionId },
+                      clientKey,
+                      laterIntentClientKeys,
+                    );
+                  return cleared !== "storage_error";
+                }
+                return writeRestTimer(window.localStorage, optimisticTimer);
+              });
+            if (!restPersisted) {
+              toast.error(
+                "The set is retained on this device, but this rest timer could not be stored. Use a separate clock for this rest; the set will keep saving.",
+              );
+            }
+          } else if (
+            restAfterSec !== undefined &&
+            (!restAfterSec || restAfterSec <= 0)
+          ) {
+            const cleared = await withOutboxLock(() => {
+              const retainedEntries = getWorkoutSetOutboxSnapshot().entries;
+              const retainedCommand = retainedEntries.find(
+                (entry) =>
+                  entry.clientKey === clientKey &&
+                  entry.ownerId === props.ownerId &&
+                  entry.sessionId === props.sessionId,
+              );
+              if (!retainedCommand) {
+                // Reconciliation already owns the timer after this exact command
+                // leaves the durable queue; do not let a delayed UI task replace it.
+                return "stale" as const;
+              }
+              const receipt = getWorkoutRestIntentReceipt(
+                window.localStorage,
+                retainedCommand,
+              );
+              if (!receipt.ok) return "storage_error" as const;
+              const acknowledgedLaterClientKey =
+                receipt.receipt != null &&
+                  workoutRestIntentReceiptSupersedesEntry(
+                    receipt.receipt,
+                    retainedCommand,
+                  )
+                  ? receipt.receipt.clientKey
+                  : null;
+              const laterIntentClientKeys = [
+                ...laterWorkoutSetRestIntentClientKeys(
+                  retainedEntries,
+                  retainedCommand,
+                ),
+                ...(acknowledgedLaterClientKey != null
+                  ? [acknowledgedLaterClientKey]
+                  : []),
+              ];
+              return clearRestTimerForSupersedingSourceClientKey(
+                window.localStorage,
+                { ownerId: props.ownerId, sessionId: props.sessionId },
+                clientKey,
+                laterIntentClientKeys,
+              );
+            });
+            if (cleared === "storage_error") {
+              toast.error(
+                "The set is retained on this device, but Repbook could not clear the prior rest timer. The set will keep saving.",
+              );
+            }
+          }
+        } catch {
+          toast.error(
+            "The set is retained on this device, but Repbook could not reconcile its rest timer. Use a separate clock if needed; the set will keep saving.",
+          );
+        }
+      })();
       return true;
     } finally {
       setRecordedEnqueueCount((count) => Math.max(0, count - 1));
