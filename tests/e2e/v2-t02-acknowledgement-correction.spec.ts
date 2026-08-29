@@ -138,6 +138,33 @@ test("keeps retained sets responsive before acknowledgement, then reviews a corr
   await expect(plankDisclosure).toHaveAttribute("aria-expanded", "true");
   await logSetClick;
 
+  const restStatus = page.getByRole("complementary", {
+    name: "Workout status",
+  });
+  const interSetRest = restStatus.getByRole("region", { name: "Rest timer" });
+  await expect(interSetRest).toBeVisible();
+  const skipRest = interSetRest.getByRole("button", {
+    name: "Skip rest",
+    exact: true,
+  });
+  if (await skipRest.isVisible()) await skipRest.click();
+  const dismissRest = restStatus.getByRole("button", {
+    name: "Dismiss rest timer",
+    exact: true,
+  });
+  await expect(dismissRest).toBeVisible();
+  await dismissRest.click();
+  await expect(
+    page
+      .getByTestId("current-exercise-card")
+      .getByRole("heading", { level: 2 }),
+  ).toHaveText("Barbell Back Squat");
+  await page.evaluate(() => new Promise<void>((resolve) => {
+    requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+  }));
+  await plankDisclosure.click();
+  await expect(plankDisclosure).toHaveAttribute("aria-expanded", "true");
+
   await plank.getByLabel("Duration in seconds").fill("45");
   const secondLogSetClick = plank
     .getByRole("button", { name: "Log set", exact: true })
