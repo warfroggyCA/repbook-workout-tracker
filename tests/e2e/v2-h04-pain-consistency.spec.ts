@@ -73,9 +73,14 @@ test("keeps pain, no-issue, exception identity, and proposals consistent", async
   await expect(page.getByText("Limited by: Strength or fatigue", { exact: true })).toBeVisible();
 
   await page.goto(`/history/${h01.finishedEarlySession}`);
-  const noIssue = page
+  const technicalRecord = page.locator("details#technical-record");
+  const noIssue = technicalRecord
     .getByRole("heading", { name: "Pain / no-issue evidence" })
     .locator("..");
+  await expect(technicalRecord).not.toHaveAttribute("open", "");
+  await expect(noIssue).not.toBeVisible();
+  await technicalRecord.locator(":scope > summary").click();
+  await expect(technicalRecord).toHaveAttribute("open", "");
   await expect(noIssue).toContainText("Explicit no-issue report: knee 0/10");
   await expect(noIssue).not.toContainText("Pain not recorded (unknown)");
 
