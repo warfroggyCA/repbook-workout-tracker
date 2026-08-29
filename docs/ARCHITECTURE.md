@@ -235,6 +235,35 @@ distinct, while sound and vibration reporting is limited to whether an alert
 was requested, blocked, or unavailable; the application never claims that a
 person heard or felt it.
 
+## Product-polish hierarchy contract
+
+Today presents the current training decision as its one dominant action. The
+secondary record paths—standalone activity, retrospective workout, contextual
+note, and Quick Log—share one **Add training** sheet instead of permanent
+dashboard cards. A safe equipment preflight and an empty Program-decision state
+render nothing. Programmed warm-ups remain off by default and are available
+under the Start form's explicit **Workout options** disclosure. The Today page
+does not load dashboard statistics or recent-workout rows; its owner-scoped
+query budget is seven.
+
+Completed-workout History derives one four-question summary from retained facts:
+what happened, what changed against compatible frozen targets, what was notable,
+and whether anything needs the owner's decision next time. The derivation is
+pure and deterministic. Unsupported targets, missing duration, missing pain
+evidence, legacy outcomes, and mixed units remain explicit limitations; no AI
+inference fills them. Performed evidence and plan comparison follow the summary.
+Corrections, archive, the full occurrence ledger, retained source rows, source
+lineage, and non-positive pain evidence live in the final closed **Technical
+record** disclosure. Positive pain evidence remains prominent before performed
+work, and recommendations remain separate from recorded facts.
+
+The contextual-note provider owns composition and durable device-queue recovery
+without rendering an always-present global toolbar. Routes provide contextual
+entry points instead: Today's Add sheet, the active-workout status bar, Program,
+and History's More menus. A real pending or failed device copy still surfaces on
+every route, including an active workout, until it is acknowledged or explicitly
+resolved.
+
 ## Pain safety hold
 
 `src/lib/pain-evidence.ts` owns `pain-evidence-v1`: missing evidence is

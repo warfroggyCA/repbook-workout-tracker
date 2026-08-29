@@ -40,6 +40,9 @@ import { CompletedSetCorrection } from "@/components/history/completed-set-corre
 import { shouldExcludeWorkoutDuration } from "@/lib/workout-duration-quality";
 import { WorkoutTimingCorrection } from "@/components/history/workout-timing-correction";
 import { WorkoutActiveDurationCorrection } from "@/components/history/workout-active-duration-correction";
+import { WorkoutSummary } from "@/components/history/workout-summary";
+import { TechnicalRecordDetails } from "@/components/history/technical-record-details";
+import { HistoryWorkoutMoreMenu } from "@/components/history/history-workout-more-menu";
 import { formatWallClockDuration } from "@/lib/active-session-timing";
 import { filterRecommendationsEligibleForAction } from "@/services/recommendation-evidence-eligibility";
 import {
@@ -84,6 +87,7 @@ import {
   historyTerminalLabel,
   performedWorkingSetIds,
 } from "@/lib/history-workout-evidence";
+import { buildWorkoutSummaryViewModel } from "@/lib/workout-summary";
 
 function techniqueIssueLabel(value: string | null) {
   return value != null && value in TECHNIQUE_ISSUE_LABELS
@@ -526,6 +530,101 @@ export default async function SessionDetailPage(
       exercise.notes != null ||
       exercise.warmupNotes != null,
   );
+  const performedExerciseCount = session.exercises.filter(
+    (exercise) =>
+      (performedSetsBySessionExerciseId.get(exercise.id)?.length ?? 0) > 0,
+  ).length;
+  const positivePainEvidenceCount = classifiedPainEvidence.filter(
+    ({ evidence }) => evidence.meaning === "pain",
+  ).length;
+  const explicitNoIssueEvidenceCount = classifiedPainEvidence.filter(
+    ({ evidence }) => evidence.meaning === "explicit_no_issue",
+  ).length;
+  const painEvidenceUnknown =
+    classifiedPainEvidence.length === 0 ||
+    classifiedPainEvidence.some(
+      ({ evidence }) =>
+        evidence.meaning === "unknown" || evidence.meaning === "unsupported",
+    );
+  const hasMixedWeightUnits =
+    new Set(
+      performedSetEvidence.flatMap(({ set }) =>
+        set.weight != null && set.weightUnit != null ? [set.weightUnit] : [],
+      ),
+    ).size > 1;
+  const incompleteReasonLabel =
+    session.completionReason != null &&
+    session.completionReason in INCOMPLETE_SESSION_REASON_LABELS
+      ? INCOMPLETE_SESSION_REASON_LABELS[
+          session.completionReason as IncompleteSessionReason
+        ]
+      : null;
+  const durationSummary =
+    session.performedTimePrecision === "date_only" &&
+    !reviewedDateOnlyActiveDuration
+      ? "Time and duration unknown"
+      : completedDurationSummary(session);
+  const workoutSummary = buildWorkoutSummaryViewModel({
+    terminalState,
+    terminalLabel: historyTerminalLabel(terminalState),
+    performedExerciseCount,
+    workingSetCount: totalSets,
+    warmupCount: performedWarmups.length,
+    durationSummary,
+    durationExcluded,
+    targetOutcomes,
+    targetDenominatorComplete,
+    positivePainEvidenceCount,
+    explicitNoIssueEvidenceCount,
+    painEvidenceUnknown,
+    correctionLabel: HISTORY_CORRECTION_LABELS[workoutCorrectionFacet],
+    hasCorrections: workoutCorrectionFacet !== "original",
+    provenanceLabel: HISTORY_PROVENANCE_LABELS[provenanceFacet],
+    showProvenance: provenanceFacet !== "native",
+    programLinkLabel:
+      session.source === "history_manual"
+        ? session.sourceProgramId
+          ? "Linked to Program day"
+          : "Not linked to Program"
+        : null,
+    hasMixedWeightUnits,
+    pendingDecisionCount: pendingRecs.length,
+    incompleteReasonLabel,
+    timingCanBeReviewed: session.status === "completed",
+  });
+  const painEvidenceSection = (
+    <section
+      id="pain-evidence"
+      className={`scroll-mt-4 rounded-xl border p-3 ${
+        hasPositivePainEvidence ? "border-destructive/40" : ""
+      }`}
+    >
+      <h2 className="mb-1 text-sm font-medium">Pain / no-issue evidence</h2>
+      {classifiedPainEvidence.length === 0 ? (
+        <p className="text-sm text-muted-foreground">
+          Pain not recorded (unknown). This is not evidence that the workout was
+          pain-free.
+        </p>
+      ) : (
+        classifiedPainEvidence.map(({ pain: p, evidence }) => (
+          <p
+            key={p.id}
+            id={`pain-evidence-${p.id}`}
+            className="scroll-mt-24 text-sm text-muted-foreground"
+          >
+            {!p.completedSetId && p.exerciseId && exerciseNames.has(p.exerciseId)
+              ? `${exerciseNames.get(p.exerciseId)} · `
+              : ""}
+            {p.completedSetId && completedSetLabels.has(p.completedSetId)
+              ? `${completedSetLabels.get(p.completedSetId)} · `
+              : ""}
+            {formatPainEvidence(evidence)}
+            {p.note ? ` — ${p.note}` : ""}
+          </p>
+        ))
+      )}
+    </section>
+  );
 
   return (
     <main className="flex flex-col gap-4 p-4">
@@ -577,134 +676,27 @@ export default async function SessionDetailPage(
         }}
       />
       <header className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-        <div>
+        <div className="min-w-0">
           {justFinished && (
             <p className="mb-2 rounded-md bg-green-500/10 px-3 py-2 text-sm text-green-700 dark:text-green-400">
-              Workout saved. Nice work.
+              Workout saved.
             </p>
           )}
-          <h1 className="text-2xl font-semibold">
+          <h1 className="text-2xl font-semibold [overflow-wrap:anywhere]">
             {session.templateName ?? "Workout"}
           </h1>
-          <div className="mt-2 flex flex-wrap gap-2" aria-label="Workout evidence status">
-            <Badge variant="outline">{historyTerminalLabel(terminalState)}</Badge>
-            <Badge variant="outline">
-              {HISTORY_PROVENANCE_LABELS[provenanceFacet]}
-            </Badge>
-            <Badge variant="outline">
-              {HISTORY_CORRECTION_LABELS[workoutCorrectionFacet]}
-            </Badge>
-          </div>
-          {session.source === "history_manual" && (
-            <Badge className="mt-2" variant="outline">
-              {session.sourceProgramId
-                ? "Linked to Program day"
-                : "Not linked to Program"}
-            </Badge>
-          )}
-          <p className="text-sm text-muted-foreground">
+          <p className="mt-1 text-sm text-muted-foreground">
             {formatRecordedLocalDate(session.localDate)}
             {session.performedTimePrecision === "date_only"
-              ? session.activeDurationSemanticsVersion === 1 &&
-                session.activeDurationBasis !== "interruption_unknown" &&
-                session.activeDurationSeconds != null
-                ? ` · Time unknown · ${completedDurationSummary(session)}`
-                : " · Time and duration unknown"
+              ? " · Time not recorded"
               : ` · ${new Intl.DateTimeFormat("en-CA", {
                   timeZone: session.timezone,
                   hour: "numeric",
                   minute: "2-digit",
-                }).format(session.startedAt)} · ${completedDurationSummary(session)}`}
-            {` · ${totalSets} performed working ${totalSets === 1 ? "set" : "sets"}`}
-            {performedWarmups.length > 0
-              ? ` · ${performedWarmups.length} completed ${performedWarmups.length === 1 ? "warm-up" : "warm-ups"}`
-              : ""}
-            {targetOutcomes.supported > 0
-              ? ` · Planned targets: ${targetOutcomes.below} below, ${targetOutcomes.at} at, ${targetOutcomes.above} above`
-              : ""}
-            {targetOutcomes.unknown > 0
-              ? ` · ${targetOutcomes.unknown} target outcome${targetOutcomes.unknown === 1 ? "" : "s"} unknown`
-              : ""}
-            {!targetDenominatorComplete
-              ? " · quantified target denominator incomplete"
-              : ""}
+                }).format(session.startedAt)}`}
           </p>
-          {timingCorrectionCount > 0 && (
-            <p className="mt-1 text-xs text-muted-foreground">
-              Timing corrected {timingCorrectionCount}{" "}
-              {timingCorrectionCount === 1 ? "time" : "times"} · earlier
-              values retained in Edit history
-            </p>
-          )}
-          {activeDurationCorrectionCount > 0 && (
-            <p className="mt-1 text-xs text-muted-foreground">
-              Active duration corrected {activeDurationCorrectionCount}{" "}
-              {activeDurationCorrectionCount === 1 ? "time" : "times"} ·
-              source timestamps retained · earlier values retained in Edit
-              history
-            </p>
-          )}
-          {durationExcluded && (
-            <p className="mt-1 text-xs text-amber-700 dark:text-amber-400">
-              Active duration is unavailable or marked as questionable, so it
-              is excluded from duration insights. Source timing evidence
-              remains unchanged.
-            </p>
-          )}
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          {session.status === "completed" && (
-            <>
-              {((session.finishedAt != null &&
-                session.performedTimePrecision !== "date_only") ||
-                reviewedDateOnlyActiveDuration) && (
-                  <WorkoutActiveDurationCorrection
-                    key={`active-duration:${session.id}:${session.historyRevision}`}
-                    sessionId={session.id}
-                    historyRevision={session.historyRevision}
-                    startedAtISO={session.startedAt.toISOString()}
-                    finishedAtISO={session.finishedAt?.toISOString() ?? null}
-                    activeDurationSemanticsVersion={
-                      session.activeDurationSemanticsVersion
-                    }
-                    activeDurationSeconds={session.activeDurationSeconds}
-                    activeDurationBasis={session.activeDurationBasis}
-                  />
-                )}
-              <WorkoutTimingCorrection
-                key={`source-timing:${session.id}:${session.historyRevision}`}
-                sessionId={session.id}
-                historyRevision={session.historyRevision}
-                startedAtISO={session.startedAt.toISOString()}
-                finishedAtISO={session.finishedAt?.toISOString() ?? null}
-                timezone={session.timezone}
-                localDate={session.localDate}
-                precision={
-                  session.performedTimePrecision === "date_only"
-                    ? "date_only"
-                    : "instant"
-                }
-                excludeDurationFromAnalytics={
-                  session.excludeDurationFromAnalytics
-                }
-                sourceLabel={HISTORY_PROVENANCE_LABELS[provenanceFacet]}
-                programLinkLabel={
-                  session.sourceProgramId
-                    ? "Program-day linkage retained"
-                    : "No Program-day linkage"
-                }
-              />
-            </>
-          )}
-          {totalSets > 0 && (
-            <Button
-              render={<Link href="#performed-exercises" />}
-              nativeButton={false}
-              variant="outline"
-            >
-              Correct logged sets
-            </Button>
-          )}
           <Button
             render={<Link href={reviewReturnHref ?? historyHref} />}
             nativeButton={false}
@@ -712,13 +704,11 @@ export default async function SessionDetailPage(
           >
             <ArrowLeft className="size-4" /> {reviewReturnHref ? "Back to review" : "Back to history"}
           </Button>
-          <WorkoutArchiveButton
-            sessionId={session.id}
-            returnHref={historyHref}
-            counts={archivePreview}
-          />
+          <HistoryWorkoutMoreMenu />
         </div>
       </header>
+
+      <WorkoutSummary summary={workoutSummary} />
 
       {terminalState === "abandoned" && (
         <section className="rounded-xl border border-amber-400/50 bg-amber-50/60 p-4 text-sm dark:bg-amber-950/20">
@@ -753,20 +743,7 @@ export default async function SessionDetailPage(
         </section>
       )}
 
-      {pendingRecs.length > 0 && (
-        <div className="rounded-xl border border-primary/40 p-3">
-          <p className="text-sm font-medium">
-            {pendingRecs.length} Program decision
-            {pendingRecs.length > 1 ? "s" : ""} need review
-          </p>
-          <p className="mb-2 text-xs text-muted-foreground">
-            Nothing changes until you approve it.
-          </p>
-          <Button render={<Link href="/coach" />} nativeButton={false} size="sm">
-            Review decisions
-          </Button>
-        </div>
-      )}
+      {hasPositivePainEvidence && painEvidenceSection}
 
       <section
         id="performed-exercises"
@@ -1175,6 +1152,15 @@ export default async function SessionDetailPage(
           <p className="mt-1 text-xs text-muted-foreground">
             Your original plan stays separate from what you actually did.
           </p>
+          <div className="mt-3 rounded-md border bg-muted/20 p-3">
+            <h3 className="text-sm font-medium">Plan comparison</h3>
+            <p className="mt-1 text-sm font-medium">
+              {workoutSummary.changed.value}
+            </p>
+            <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+              {workoutSummary.changed.detail}
+            </p>
+          </div>
           {session.dayWarmupNotes && (
             <div className="mt-3 rounded-md border border-violet-300/60 bg-violet-50/60 p-3 dark:bg-violet-950/20">
               <h3 className="text-sm font-medium">Original warm-up guidance</h3>
@@ -1240,7 +1226,154 @@ export default async function SessionDetailPage(
               </ul>
             </div>
           )}
+        </section>
+      )}
+
+      {contextualNotes.length > 0 && (
+        <section className="rounded-xl border p-4" aria-labelledby="contextual-notes-heading">
+          <h2 id="contextual-notes-heading" className="font-medium">Training notes</h2>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Your observations are shown with the workout item they describe. Private notes stay out of Coach and Review context.
+          </p>
+          <ol className="mt-3 space-y-2">
+            {contextualNotes.map((note) => {
+              const exerciseName = note.sessionExerciseId
+                ? session.exercises.find((exercise) => exercise.id === note.sessionExerciseId)?.exercise.name
+                : null;
+              const occurrence = note.occurrenceId
+                ? session.occurrences.find((item) => item.id === note.occurrenceId)
+                : null;
+              const placement = note.attachmentKind === "workout"
+                ? "Entire workout"
+                : note.attachmentKind === "rest"
+                  ? `Rest · ${exerciseName ?? "workout item"}`
+                  : note.attachmentKind === "set" || note.attachmentKind === "occurrence"
+                    ? `${exerciseName ?? "Workout item"}${occurrence ? ` · item ${occurrence.sequenceIdx + 1}` : ""}`
+                    : exerciseName ?? "Workout note";
+              return (
+                <li key={note.id} className="rounded-lg bg-muted/40 p-3 text-sm">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span className="font-medium">{placement}</span>
+                    <span className="text-xs text-muted-foreground">
+                      {note.coachVisible ? "Coach-visible" : "Private"} · revision {note.revision}
+                    </span>
+                  </div>
+                  <p className="mt-1 whitespace-pre-wrap leading-6">{note.body}</p>
+                </li>
+              );
+            })}
+          </ol>
+        </section>
+      )}
+
+      {session.notes.length > 0 && (
+        <section className="rounded-xl border p-3">
+          <h2 className="mb-1 text-sm font-medium">Session notes</h2>
+          {session.notes.map((n) => (
+            <p key={n.id} className="text-sm text-muted-foreground">
+              {n.text}
+            </p>
+          ))}
+        </section>
+      )}
+
+      <LiveCoachHistory
+        messages={coachMessages}
+        exerciseNames={Object.fromEntries(
+          session.exercises.map((exercise) => [exercise.id, exercise.exercise.name])
+        )}
+      />
+
+      <TechnicalRecordDetails>
+        <section aria-labelledby="record-actions-heading">
+          <h3 id="record-actions-heading" className="font-medium">
+            Record actions
+          </h3>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Corrections create retained revisions. Archive is recoverable through
+            Archive and Undo.
+          </p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            {session.status === "completed" && (
+              <>
+                {((session.finishedAt != null &&
+                  session.performedTimePrecision !== "date_only") ||
+                  reviewedDateOnlyActiveDuration) && (
+                    <WorkoutActiveDurationCorrection
+                      key={`active-duration:${session.id}:${session.historyRevision}`}
+                      sessionId={session.id}
+                      historyRevision={session.historyRevision}
+                      startedAtISO={session.startedAt.toISOString()}
+                      finishedAtISO={session.finishedAt?.toISOString() ?? null}
+                      activeDurationSemanticsVersion={
+                        session.activeDurationSemanticsVersion
+                      }
+                      activeDurationSeconds={session.activeDurationSeconds}
+                      activeDurationBasis={session.activeDurationBasis}
+                    />
+                  )}
+                <WorkoutTimingCorrection
+                  key={`source-timing:${session.id}:${session.historyRevision}`}
+                  sessionId={session.id}
+                  historyRevision={session.historyRevision}
+                  startedAtISO={session.startedAt.toISOString()}
+                  finishedAtISO={session.finishedAt?.toISOString() ?? null}
+                  timezone={session.timezone}
+                  localDate={session.localDate}
+                  precision={
+                    session.performedTimePrecision === "date_only"
+                      ? "date_only"
+                      : "instant"
+                  }
+                  excludeDurationFromAnalytics={
+                    session.excludeDurationFromAnalytics
+                  }
+                  sourceLabel={HISTORY_PROVENANCE_LABELS[provenanceFacet]}
+                  programLinkLabel={
+                    session.sourceProgramId
+                      ? "Program-day linkage retained"
+                      : "No Program-day linkage"
+                  }
+                />
+              </>
+            )}
+            {totalSets > 0 && (
+              <Button
+                render={<Link href="#performed-exercises" />}
+                nativeButton={false}
+                variant="outline"
+              >
+                Correct logged sets
+              </Button>
+            )}
+            <WorkoutArchiveButton
+              sessionId={session.id}
+              returnHref={historyHref}
+              counts={archivePreview}
+            />
+          </div>
+          {(timingCorrectionCount > 0 || activeDurationCorrectionCount > 0) && (
+            <p className="mt-2 text-xs text-muted-foreground">
+              {timingCorrectionCount > 0
+                ? `Timing corrected ${timingCorrectionCount} ${timingCorrectionCount === 1 ? "time" : "times"}. `
+                : ""}
+              {activeDurationCorrectionCount > 0
+                ? `Active duration corrected ${activeDurationCorrectionCount} ${activeDurationCorrectionCount === 1 ? "time" : "times"}; source timestamps retained. `
+                : ""}
+              Earlier values remain in Edit history.
+            </p>
+          )}
+        </section>
+
           {session.occurrences.length > 0 && (
+            <section aria-labelledby="planned-item-ledger-heading">
+              <h3 id="planned-item-ledger-heading" className="font-medium">
+                Complete planned-item ledger
+              </h3>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Exact planned, completed, skipped, abandoned, and legacy item
+                evidence.
+              </p>
             <ol className="mt-3 flex flex-col gap-2">
               {session.occurrences.map((occurrence) => {
               const exerciseName = occurrence.plannedExerciseId
@@ -1360,9 +1493,8 @@ export default async function SessionDetailPage(
               );
               })}
             </ol>
+            </section>
           )}
-        </section>
-      )}
 
       {retainedSourceSets.length > 0 && (
         <details className="rounded-xl border p-3">
@@ -1410,47 +1542,11 @@ export default async function SessionDetailPage(
           </ul>
         </details>
       )}
-      {contextualNotes.length > 0 && (
-        <section className="rounded-xl border p-4" aria-labelledby="contextual-notes-heading">
-          <h2 id="contextual-notes-heading" className="font-medium">Training notes</h2>
-          <p className="mt-1 text-xs text-muted-foreground">
-            Your observations are shown with the workout item they describe. Private notes stay out of Coach and Review context.
-          </p>
-          <ol className="mt-3 space-y-2">
-            {contextualNotes.map((note) => {
-              const exerciseName = note.sessionExerciseId
-                ? session.exercises.find((exercise) => exercise.id === note.sessionExerciseId)?.exercise.name
-                : null;
-              const occurrence = note.occurrenceId
-                ? session.occurrences.find((item) => item.id === note.occurrenceId)
-                : null;
-              const placement = note.attachmentKind === "workout"
-                ? "Entire workout"
-                : note.attachmentKind === "rest"
-                  ? `Rest · ${exerciseName ?? "workout item"}`
-                  : note.attachmentKind === "set" || note.attachmentKind === "occurrence"
-                    ? `${exerciseName ?? "Workout item"}${occurrence ? ` · item ${occurrence.sequenceIdx + 1}` : ""}`
-                    : exerciseName ?? "Workout note";
-              return (
-                <li key={note.id} className="rounded-lg bg-muted/40 p-3 text-sm">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <span className="font-medium">{placement}</span>
-                    <span className="text-xs text-muted-foreground">
-                      {note.coachVisible ? "Coach-visible" : "Private"} · revision {note.revision}
-                    </span>
-                  </div>
-                  <p className="mt-1 whitespace-pre-wrap leading-6">{note.body}</p>
-                </li>
-              );
-            })}
-          </ol>
-        </section>
-      )}
 
-      <details className="rounded-xl border p-4">
-        <summary className="flex min-h-11 cursor-pointer items-center font-medium">
-          Source and lineage details
-        </summary>
+      <section aria-labelledby="source-lineage-heading">
+        <h3 id="source-lineage-heading" className="font-medium">
+          Source and lineage
+        </h3>
         <dl className="mt-3 grid gap-2 text-sm sm:grid-cols-2">
           <div>
             <dt className="text-xs text-muted-foreground">Source</dt>
@@ -1509,53 +1605,10 @@ export default async function SessionDetailPage(
             </div>
           )}
         </dl>
-      </details>
+      </section>
 
-      <section
-        className={`rounded-xl border p-3 ${
-          hasPositivePainEvidence ? "border-destructive/40" : ""
-        }`}
-      >
-          <h2 className="mb-1 text-sm font-medium">Pain / no-issue evidence</h2>
-          {classifiedPainEvidence.length === 0 ? (
-            <p className="text-sm text-muted-foreground">
-              Pain not recorded (unknown). This is not evidence that the workout was pain-free.
-            </p>
-          ) : classifiedPainEvidence.map(({ pain: p, evidence }) => (
-            <p
-              key={p.id}
-              id={`pain-evidence-${p.id}`}
-              className="scroll-mt-24 text-sm text-muted-foreground"
-            >
-              {!p.completedSetId && p.exerciseId && exerciseNames.has(p.exerciseId)
-                ? `${exerciseNames.get(p.exerciseId)} · `
-                : ""}
-              {p.completedSetId && completedSetLabels.has(p.completedSetId)
-                ? `${completedSetLabels.get(p.completedSetId)} · `
-                : ""}
-              {formatPainEvidence(evidence)}
-              {p.note ? ` — ${p.note}` : ""}
-            </p>
-          ))}
-        </section>
-
-      {session.notes.length > 0 && (
-        <section className="rounded-xl border p-3">
-          <h2 className="mb-1 text-sm font-medium">Session notes</h2>
-          {session.notes.map((n) => (
-            <p key={n.id} className="text-sm text-muted-foreground">
-              {n.text}
-            </p>
-          ))}
-        </section>
-      )}
-
-      <LiveCoachHistory
-        messages={coachMessages}
-        exerciseNames={Object.fromEntries(
-          session.exercises.map((exercise) => [exercise.id, exercise.exercise.name])
-        )}
-      />
+      {!hasPositivePainEvidence && painEvidenceSection}
+      </TechnicalRecordDetails>
     </main>
   );
 }

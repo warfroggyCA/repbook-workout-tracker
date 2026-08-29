@@ -13,7 +13,6 @@ import {
   type TemplateWithSlots,
 } from "./program";
 import { localDateDifference, workoutLocalDate } from "@/lib/workout-calendar";
-import { getDashboardStats } from "./dashboard";
 import { filterRecommendationsEligibleForAction } from "./recommendation-evidence-eligibility";
 import {
   classifyActiveSessionTiming,
@@ -302,7 +301,7 @@ export async function getTodayPageData(
   timezone: string,
   now = new Date(),
 ) {
-  const [today, pendingRows, recentSessions, stats] = await Promise.all([
+  const [today, pendingRows] = await Promise.all([
     getTodayData(db, userId, timezone, now),
     db.query.recommendations.findMany({
       where: and(
@@ -311,24 +310,13 @@ export async function getTodayPageData(
         isNull(recommendations.archivedAt)
       ),
     }),
-    db.query.workoutSessions.findMany({
-      where: and(
-        eq(workoutSessions.userId, userId),
-        eq(workoutSessions.status, "completed"),
-        isNull(workoutSessions.archivedAt)
-      ),
-      orderBy: desc(workoutSessions.startedAt),
-      limit: 3,
-      columns: { id: true, templateName: true, localDate: true },
-    }),
-    getDashboardStats(db, userId),
   ]);
   const pendingRecs = await filterRecommendationsEligibleForAction(
     db,
     userId,
     pendingRows,
   );
-  return { today, pendingRecs, recentSessions, stats };
+  return { today, pendingRecs };
 }
 
 export type LastPerformance = {

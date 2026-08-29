@@ -249,12 +249,14 @@ export function AddWorkoutExercise({
         <Button
           type="button"
           variant="outline"
-          className="min-h-11 w-full sm:w-auto"
+          className="h-auto min-h-11 w-full whitespace-normal py-2 text-center leading-tight sm:w-auto"
           disabled={loadingOptions}
           onClick={() => void openPicker()}
         >
           <Plus className="size-4" />
-          {loadingOptions ? "Loading exercises…" : "Add exercise to this workout"}
+          <span className="min-w-0 whitespace-normal">
+            {loadingOptions ? "Loading exercises…" : "Add exercise to this workout"}
+          </span>
         </Button>
       </div>
 

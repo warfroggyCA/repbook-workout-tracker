@@ -119,7 +119,7 @@ test("keeps calendar cadence and planned-set outcomes separate and trustworthy",
 
   await page.goto(`/history/${V2_H02_IDS.firstSession}`);
   await applyEnlargedText(page, narrowMobile);
-  await expect(page.getByText(/Planned targets: 1 below, 1 at, 0 above/)).toBeVisible();
+  await expect(page.getByText(/1 at target · 1 below target/).first()).toBeVisible();
   await expect(page.getByText("Planned target: below", { exact: true })).toBeVisible();
   await expect(page.getByText("Planned target: at", { exact: true })).toBeVisible();
   if (narrowMobile) await expectNoHorizontalOverflow(page);
@@ -127,8 +127,10 @@ test("keeps calendar cadence and planned-set outcomes separate and trustworthy",
   await page.goto(`/history/${V2_H02_IDS.dateOnlySession}`);
   await applyEnlargedText(page, narrowMobile);
   await expect(page.getByText(/Time and duration unknown/)).toBeVisible();
-  await expect(page.getByText(/1 target outcome unknown/)).toBeVisible();
-  await expect(page.getByText(/2 performed working sets/)).toBeVisible();
+  await expect(
+    page.getByText(/1 planned outcome could not be compared safely/).first(),
+  ).toBeVisible();
+  await expect(page.getByText(/2 working sets/)).toBeVisible();
   await expect(page.getByText("Planned target: unknown", { exact: true })).toHaveCount(1);
   await expect(page.getByText(/^Planned target:/)).toHaveCount(1);
   if (narrowMobile) await expectNoHorizontalOverflow(page);

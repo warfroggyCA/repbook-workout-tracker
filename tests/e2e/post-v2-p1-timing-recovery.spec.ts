@@ -116,6 +116,8 @@ test("recovers a six-day interruption without rewriting source timestamps", asyn
   await expect(page).toHaveURL(new RegExp(`/history/${sessionId}\\?finished=1$`));
   await expect(page.getByText(/Active 1 hr · wall clock 6 days · owner reported/)).toBeVisible();
 
+  const technicalRecord = page.locator("#technical-record");
+  await technicalRecord.locator(":scope > summary").click();
   const correct = page.getByRole("button", {
     name: "Correct active duration",
     exact: true,
@@ -145,7 +147,10 @@ test("recovers a six-day interruption without rewriting source timestamps", asyn
   await expectTouchTarget(saveCorrection);
   await saveCorrection.click();
   await expect(page.getByText(/Active time unavailable · wall clock 6 days/)).toBeVisible();
-  await expect(page.getByText(/source timestamps retained/)).toBeVisible();
+  await technicalRecord.locator(":scope > summary").click();
+  await expect(
+    technicalRecord.getByText(/source timestamps retained/),
+  ).toBeVisible();
   await expectNoHorizontalOverflow(page);
   await pageErrors.expectNoUnexpected();
 });

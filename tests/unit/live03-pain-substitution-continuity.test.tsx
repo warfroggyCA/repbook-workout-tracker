@@ -505,7 +505,7 @@ describe("LIVE-03 History reconstruction", () => {
     const html = renderToStaticMarkup(page);
 
     expect(html).toContain(
-      "Active time unavailable · wall clock 30 min · legacy timing evidence · 1 performed working set · 1 completed warm-up",
+      "1 exercise · 1 working set · 1 completed warm-up · Active time unavailable · wall clock 30 min · legacy timing evidence",
     );
     expect(html).not.toContain("at target");
     expect(html).toContain(
@@ -549,8 +549,9 @@ describe("LIVE-03 History reconstruction", () => {
       } as never);
       const html = renderToStaticMarkup(page);
 
+      expect(html).toContain("Time not recorded");
       expect(html).toContain(
-        "Time unknown · Active 45 min · wall clock unavailable · owner reported",
+        "Active 45 min · wall clock unavailable · owner reported",
       );
       expect(html).not.toContain("Time and duration unknown");
       expect(html).not.toContain("excluded from duration insights");

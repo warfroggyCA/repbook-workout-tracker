@@ -4,16 +4,13 @@ import { redirect } from "next/navigation";
 import {
   AlertCircle,
   ArrowLeft,
-  CheckCircle2,
   ChevronDown,
   ChevronRight,
-  Footprints,
   Play,
 } from "lucide-react";
 import { getDb } from "@/db";
 import { getCurrentUser } from "@/lib/user";
 import { getTodayPageData, type TodayData } from "@/services/today";
-import { TodayStats } from "@/components/dashboard/today-stats";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -22,7 +19,6 @@ import {
   CardHeader,
 } from "@/components/ui/card";
 import { formatRelativeLocalDate } from "@/lib/dates";
-import { QuickLogCard } from "@/components/quick-log/quick-log-card";
 import { ExerciseFamilyIcon } from "@/components/exercises/exercise-family-icon";
 import { WorkoutStartForm } from "@/components/session/workout-start-form";
 import { hasProgrammedWarmupActions } from "@/lib/warmup";
@@ -36,6 +32,7 @@ import {
 import { acceptanceWorkoutNow } from "@/lib/acceptance-workout-clock";
 import { WorkoutEquipmentPreflight } from "@/components/dashboard/workout-equipment-preflight";
 import { resolveTemplatePreparationEquipmentProjection } from "@/services/session-equipment-requirements";
+import { TodayAddMenu } from "@/components/dashboard/today-add-menu";
 
 function scheduledEventDescription(event: NonNullable<TodayData["schedule"]>["nextEvent"]) {
   if (!event) return "";
@@ -55,26 +52,8 @@ function scheduledEventDescription(event: NonNullable<TodayData["schedule"]>["ne
 }
 
 function ProgramDecisionStatus({ count }: { count: number }) {
-  const hasPendingDecision = count > 0;
-  const Icon = hasPendingDecision ? AlertCircle : CheckCircle2;
-  const content = (
-    <>
-      <Icon
-        className={
-          hasPendingDecision
-            ? "size-4 shrink-0 text-amber-700 dark:text-amber-400"
-            : "size-4 shrink-0 text-success"
-        }
-      />
-      <span className="min-w-0 flex-1 text-xs font-medium leading-snug">
-        {hasPendingDecision
-          ? `${count} Program change${count === 1 ? "" : "s"} pending`
-          : "No Program changes pending"}
-      </span>
-    </>
-  );
-
-  return hasPendingDecision ? (
+  if (count === 0) return null;
+  return (
     <Link
       href="/coach"
       aria-label={`Program decision status: ${count} change${
@@ -82,15 +61,11 @@ function ProgramDecisionStatus({ count }: { count: number }) {
       } need${count === 1 ? "s" : ""} review. Open Review and decisions.`}
       className="flex min-h-11 items-center gap-2 rounded-xl border bg-muted/35 px-3 py-2 outline-none hover:bg-muted/65 focus-visible:ring-3 focus-visible:ring-ring/50"
     >
-      {content}
+      <AlertCircle className="size-4 shrink-0 text-amber-700 dark:text-amber-400" />
+      <span className="min-w-0 flex-1 text-xs font-medium leading-snug">
+        {count} Program change{count === 1 ? "" : "s"} pending
+      </span>
     </Link>
-  ) : (
-    <div
-      aria-label="Program decision status"
-      className="flex min-h-11 items-center gap-2 rounded-xl border bg-muted/35 px-3 py-2"
-    >
-      {content}
-    </div>
   );
 }
 
@@ -152,7 +127,7 @@ export default async function TodayPage({
   const user = await getCurrentUser();
   const db = await getDb();
   const now = acceptanceWorkoutNow("finish")?.() ?? new Date();
-  const { today, pendingRecs, recentSessions, stats } =
+  const { today, pendingRecs } =
     await getTodayPageData(db, user.id, user.profile.timezone, now);
 
   if (!today) redirect("/setup");
@@ -659,108 +634,11 @@ export default async function TodayPage({
         )}
       </section>
 
-      <section aria-labelledby="supporting-actions-heading" className="pt-1">
-        <div className="mb-3">
-          <h2 id="supporting-actions-heading" className="text-lg font-semibold">
-            Supporting actions
-          </h2>
-          <p className="mt-0.5 text-sm text-muted-foreground">
-            Record something else without changing the planned workout above.
-          </p>
-        </div>
-        <div className="grid items-start gap-3 lg:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)]">
-          <Card size="sm">
-            <CardContent className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between lg:flex-col lg:items-stretch">
-              <div className="flex items-start gap-3">
-                <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground">
-                  <Footprints className="size-4" />
-                </span>
-                <div>
-                  <h3 className="font-medium">Record activity</h3>
-                  <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">
-                    Save a walk, run, ride, or other activity separately.
-                  </p>
-                </div>
-              </div>
-              <Button
-                render={<Link href="/activity/new" prefetch={false} />}
-                nativeButton={false}
-                variant="outline"
-                className="min-h-11 w-full sm:w-auto lg:w-full"
-              >
-                <Footprints className="size-4" /> Record activity
-              </Button>
-            </CardContent>
-          </Card>
-          <QuickLogCard />
-        </div>
-      </section>
-
-      <section aria-labelledby="recent-training-heading" className="pt-1">
-        <div className="mb-3 flex items-end justify-between gap-3">
-          <div>
-            <h2 id="recent-training-heading" className="text-lg font-semibold">
-              Recent training
-            </h2>
-            <p className="mt-0.5 text-sm text-muted-foreground">
-              Supporting context after today’s choice.
-            </p>
-          </div>
-          <Link href="/history" className="shrink-0 text-sm font-medium text-primary">
-            View full history
-          </Link>
-        </div>
-        <div className="grid items-start gap-3 xl:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]">
-          {stats.hasHistory ? (
-            <TodayStats stats={stats} unit={user.profile.unit} />
-          ) : (
-            <Card className="border-dashed">
-              <CardContent className="py-6">
-                <h3 className="font-medium">No completed workouts yet</h3>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  Statistics and streaks will appear after your first completed
-                  workout.
-                </p>
-              </CardContent>
-            </Card>
-          )}
-
-          <Card>
-            <CardHeader className="flex-row items-center justify-between gap-3">
-              <h3 className="font-semibold">Recent workouts</h3>
-              <Link href="/history" className="text-xs font-medium text-primary">
-                View all
-              </Link>
-            </CardHeader>
-            <CardContent>
-              {recentSessions.length > 0 ? (
-                <div className="flex flex-col divide-y">
-                  {recentSessions.map((session) => (
-                    <Link
-                      key={session.id}
-                      href={`/history/${session.id}`}
-                      className="flex min-h-11 items-center justify-between gap-2 py-3 text-sm"
-                    >
-                      <span className="min-w-0 truncate font-medium">
-                        {session.templateName ?? "Workout"}
-                      </span>
-                      <span className="shrink-0 text-xs text-muted-foreground">
-                        {formatRelativeLocalDate(
-                          session.localDate,
-                          today.currentLocalDate
-                        )}
-                      </span>
-                    </Link>
-                  ))}
-                </div>
-              ) : (
-                <p className="py-3 text-sm text-muted-foreground">
-                  Completed workouts will appear here after your first one.
-                </p>
-              )}
-            </CardContent>
-          </Card>
-        </div>
+      <section
+        aria-label="Add supporting training"
+        className="flex justify-end pt-1"
+      >
+        <TodayAddMenu />
       </section>
     </main>
   );

@@ -76,15 +76,27 @@ test("presents performed evidence first without rewriting or inflating History",
     }),
   ).toBeVisible();
   await expect(page.getByText("Completed workout", { exact: true })).toBeVisible();
-  await expect(page.getByText("Imported evidence", { exact: true }).first()).toBeVisible();
+  await expect(page.getByText(/Imported evidence/).first()).toBeVisible();
   await expect(
-    page.getByText("Restored from recovery snapshot", { exact: true }).first(),
+    page.getByText(/Restored from recovery snapshot/).first(),
   ).toBeVisible();
-  await expect(page.getByText(/3 performed working sets/)).toBeVisible();
+  await expect(page.getByText(/3 working sets/)).toBeVisible();
   await expect(page.getByText(/1 completed warm-up/)).toBeVisible();
+  const summary = page.getByRole("region", { name: "Workout summary" });
+  for (const question of [
+    "What happened?",
+    "What changed?",
+    "Was anything notable?",
+    "Does anything deserve action next time?",
+  ]) {
+    await expect(summary.getByText(question, { exact: true })).toBeVisible();
+  }
 
   const presentationOrder = await page.locator("main > *").evaluateAll((elements) =>
     elements.flatMap((element) => {
+      if (element.getAttribute("data-testid") === "workout-summary") {
+        return ["summary"];
+      }
       if (element.id === "performed-exercises") return ["performed"];
       if (
         element.querySelector(":scope > h2")?.textContent?.trim() ===
@@ -92,16 +104,16 @@ test("presents performed evidence first without rewriting or inflating History",
       ) {
         return ["plan"];
       }
-      if (
-        element.querySelector(":scope > summary")?.textContent?.trim() ===
-        "Retained source records (1)"
-      ) {
-        return ["retained"];
-      }
+      if (element.id === "technical-record") return ["technical"];
       return [];
     }),
   );
-  expect(presentationOrder).toEqual(["performed", "plan", "retained"]);
+  expect(presentationOrder).toEqual([
+    "summary",
+    "performed",
+    "plan",
+    "technical",
+  ]);
 
   const performed = page.getByRole("region", { name: "What you did" });
   await expect(performed.getByText("Completed warm-ups", { exact: true })).toBeVisible();
@@ -167,15 +179,20 @@ test("presents performed evidence first without rewriting or inflating History",
     "href",
     `#occurrence-${ids.importedWarmupOccurrence}`,
   );
-  const performedLink = plan
-    .getByRole("link", { name: "Performed evidence" })
+  const technical = page.locator("#technical-record");
+  await expect(technical).not.toHaveAttribute("open", "");
+  const performedLink = technical
+    .locator(`a[href="#performed-set-${ids.importedSet}"]`)
     .first();
   await expect(performedLink).toHaveAttribute(
     "href",
     `#performed-set-${ids.importedSet}`,
   );
+  await plannedLink.click();
+  await expect(technical).toHaveAttribute("open", "");
+  await expect(page.locator(`#occurrence-${ids.importedWarmupOccurrence}`)).toBeVisible();
 
-  const retained = page.locator("details", {
+  const retained = technical.locator("details", {
     hasText: "Retained source records (1)",
   });
   await expect(retained).not.toHaveAttribute("open", "");
@@ -185,8 +202,9 @@ test("presents performed evidence first without rewriting or inflating History",
   await expect(retained).toContainText("Retained unlinked import row");
   await expect(retained).toContainText("not counted as performed working sets");
 
-  const source = page.locator("details", { hasText: "Source and lineage details" });
-  await source.locator("summary").click();
+  const source = technical
+    .getByRole("heading", { name: "Source and lineage", exact: true })
+    .locator("..");
   await expect(
     source.getByText("History revision", { exact: true }).locator(".."),
   ).toContainText("2");
@@ -199,8 +217,8 @@ test("presents performed evidence first without rewriting or inflating History",
     });
     await expectNoHorizontalOverflow(page);
     await expectTouchTarget(correctionEvidence.locator("summary"));
+    await expectTouchTarget(technical.locator(":scope > summary"));
     await expectTouchTarget(retained.locator("summary"));
-    await expectTouchTarget(source.locator("summary"));
     await expectTouchTarget(plannedLink);
     await expectTouchTarget(performedLink);
   }
@@ -213,14 +231,15 @@ test("presents performed evidence first without rewriting or inflating History",
   await expect(finishedSetDetails).not.toHaveAttribute("open", "");
   await finishedSetDetails.locator("summary").click();
   await expect(page.getByText("Recorded in Repbook", { exact: true }).first()).toBeVisible();
-  await expect(page.getByText("Corrected evidence", { exact: true }).first()).toBeVisible();
+  await expect(page.getByText(/Corrected evidence/).first()).toBeVisible();
+  await page.locator("#technical-record > summary").click();
   await expect(page.getByText(/Timing corrected 1 time/)).toBeVisible();
-  await expect(page.getByText(/1 performed working set/)).toBeVisible();
+  await expect(page.getByText(/1 working set/)).toBeVisible();
   await expect(page.getByText(/Older occurrence text indicates work remained/)).toBeVisible();
 
   await page.goto(`/history/${ids.abandonedSession}`);
   await expect(page.getByText("Abandoned workout", { exact: true }).first()).toBeVisible();
-  await expect(page.getByText(/1 performed working set/)).toBeVisible();
+  await expect(page.getByText(/1 working set/)).toBeVisible();
   const abandonedSetDetails = page.locator(`#performed-set-${ids.abandonedSet} details`);
   await expect(abandonedSetDetails.locator("summary")).toHaveText(
     "Set details · calculations unavailable",
@@ -312,5 +331,5 @@ test("clears an exact retained set copy after its workout has ended", async ({
   await expect(page.locator(`#performed-set-${ids.finishedSet}`)).toContainText(
     "8 reps",
   );
-  await expect(page.getByText(/1 performed working set/)).toBeVisible();
+  await expect(page.getByText(/1 working set/)).toBeVisible();
 });

@@ -252,24 +252,18 @@ async function verifyDecisiveToday({
 
   const firstViewport = await decision.evaluate((element) => {
     const primary = element.querySelector("form button");
-    const status = element.querySelector(
-      '[aria-label^="Program decision status"]'
-    );
     const program = element.querySelector(
       '[data-testid="today-program-label"]'
     );
     const bottomNavigation = document.querySelector("nav.fixed");
-    if (!primary || !status || !program || !bottomNavigation) return null;
+    if (!primary || !program || !bottomNavigation) return null;
     const primaryRect = primary.getBoundingClientRect();
-    const statusRect = status.getBoundingClientRect();
     const programRect = program.getBoundingClientRect();
     const navigationRect = bottomNavigation.getBoundingClientRect();
     return {
       primaryBottom: Math.round(primaryRect.bottom),
-      statusBottom: Math.round(statusRect.bottom),
       navigationTop: Math.round(navigationRect.top),
       primaryClipped: primary.scrollWidth > primary.clientWidth + 1,
-      statusClipped: status.scrollWidth > status.clientWidth + 1,
       programClipped:
         program.scrollWidth > program.clientWidth + 1 ||
         programRect.right > document.documentElement.clientWidth + 1,
@@ -280,10 +274,6 @@ async function verifyDecisiveToday({
         Boolean(
           program.compareDocumentPosition(primary) &
             Node.DOCUMENT_POSITION_FOLLOWING
-        ) &&
-        Boolean(
-          primary.compareDocumentPosition(status) &
-            Node.DOCUMENT_POSITION_FOLLOWING
         ),
     };
   });
@@ -291,11 +281,7 @@ async function verifyDecisiveToday({
   expect(firstViewport?.primaryBottom).toBeLessThanOrEqual(
     firstViewport?.navigationTop ?? 0
   );
-  expect(firstViewport?.statusBottom).toBeLessThanOrEqual(
-    firstViewport?.navigationTop ?? 0
-  );
   expect(firstViewport?.primaryClipped).toBe(false);
-  expect(firstViewport?.statusClipped).toBe(false);
   expect(firstViewport?.programClipped).toBe(false);
   expect(firstViewport?.pageOverflow).toBe(false);
   expect(firstViewport?.programPrecedesDecision).toBe(true);
@@ -313,28 +299,18 @@ async function verifyDecisiveToday({
       .toBe(true);
     const responsiveDecision = await decision.evaluate((element) => {
       const primary = element.querySelector("form button");
-      const status = element.querySelector(
-        '[aria-label^="Program decision status"]'
-      );
-      if (!primary || !status) return null;
+      if (!primary) return null;
       const primaryRect = primary.getBoundingClientRect();
-      const statusRect = status.getBoundingClientRect();
       return {
         primaryBottom: primaryRect.bottom,
-        statusBottom: statusRect.bottom,
         primaryClipped: primary.scrollWidth > primary.clientWidth + 1,
-        statusClipped: status.scrollWidth > status.clientWidth + 1,
       };
     });
     expect(responsiveDecision).not.toBeNull();
     expect(responsiveDecision?.primaryBottom).toBeLessThanOrEqual(
       viewport.height
     );
-    expect(responsiveDecision?.statusBottom).toBeLessThanOrEqual(
-      viewport.height
-    );
     expect(responsiveDecision?.primaryClipped).toBe(false);
-    expect(responsiveDecision?.statusClipped).toBe(false);
   }
   await page.setViewportSize({ width: 320, height: 700 });
 
@@ -349,23 +325,36 @@ async function verifyDecisiveToday({
         ""
       )
     )
-    .toMatch(/^(Program decision status|Preview planned exercises)/);
+    .toMatch(/^(Program decision status|Workout options|Preview planned exercises)/);
   await alternateSummary.focus();
   await expect(alternateSummary).toBeFocused();
   await alternateSummary.press("Enter");
   await expect(alternateDays).toHaveAttribute("open", "");
   await expect(dayC).toBeVisible();
 
+  const addTraining = page.getByRole("button", {
+    name: "Add training",
+    exact: true,
+  });
+  await expect(addTraining).toBeVisible();
+  await addTraining.click();
+  const addTrainingDialog = page.getByRole("dialog", { name: "Add training" });
   await expect(
-    page.getByRole("heading", { name: "Supporting actions", exact: true })
+    addTrainingDialog.getByText("Record activity", { exact: true }),
   ).toBeVisible();
   await expect(
-    page.getByRole("button", { name: "Record activity", exact: true })
+    addTrainingDialog.getByText("Record past workout", { exact: true }),
   ).toBeVisible();
+  await expect(
+    addTrainingDialog.getByText("Add training note", { exact: true }),
+  ).toBeVisible();
+  await expect(page.getByPlaceholder(/e\.g\. "Bench 135/)).toBeHidden();
+  await addTrainingDialog.locator("details > summary").click();
   await expect(page.getByPlaceholder(/e\.g\. "Bench 135/)).toBeVisible();
+  await addTrainingDialog.getByRole("button", { name: "Close", exact: true }).click();
   await expect(
-    page.getByRole("heading", { name: "Recent training", exact: true })
-  ).toBeVisible();
+    page.getByRole("heading", { name: "Recent training", exact: true }),
+  ).toHaveCount(0);
 
   workoutMayBeActive = true;
   await trainAsPlanned.click();
@@ -547,35 +536,20 @@ async function verifyNoHistoryToday({
   await expect(
     page.getByRole("button", { name: "Train as planned", exact: true })
   ).toBeVisible();
-  await expect(decision).toContainText("No Program changes pending");
+  await expect(decision).not.toContainText("No Program changes pending");
   await expect(page.getByText("Adapt today", { exact: true })).toHaveCount(0);
   await expect(page.getByTestId("alternate-program-days")).toHaveCount(0);
 
   await expect(
-    page.getByRole("heading", { name: "Supporting actions", exact: true })
+    page.getByRole("button", { name: "Add training", exact: true }),
   ).toBeVisible();
-  await expect(
-    page.getByRole("button", { name: "Record activity", exact: true })
-  ).toBeVisible();
-  await expect(page.getByPlaceholder(/e\.g\. "Bench 135/)).toBeVisible();
+  await expect(page.getByPlaceholder(/e\.g\. "Bench 135/)).toBeHidden();
   await expect(
     page.getByRole("heading", {
       name: "No completed workouts yet",
       exact: true,
-    })
-  ).toBeVisible();
-  await expect(
-    page.getByText(
-      "Statistics and streaks will appear after your first completed workout.",
-      { exact: true }
-    )
-  ).toBeVisible();
-  await expect(
-    page.getByText(
-      "Completed workouts will appear here after your first one.",
-      { exact: true }
-    )
-  ).toBeVisible();
+    }),
+  ).toHaveCount(0);
   await expect
     .poll(() =>
       page.evaluate(
@@ -2465,6 +2439,9 @@ test("confirms one complete quick log and shows its stored units in History", as
   page.on("pageerror", (error) => browserErrors.push(error.message));
 
   await signIn(page);
+  await page.getByRole("button", { name: "Add training", exact: true }).click();
+  const addTraining = page.getByRole("dialog", { name: "Add training" });
+  await addTraining.locator("details > summary").click();
   await page
     .getByPlaceholder(/e\.g\. "Bench 135/)
     .fill("Barbell Back Squat 100kg x 8,7");
@@ -2476,7 +2453,11 @@ test("confirms one complete quick log and shows its stored units in History", as
   await expect(quickLogInput).toBeVisible();
   await expect(quickLogInput).toHaveValue("");
 
-  await page.getByRole("link", { name: "View full history", exact: true }).click();
+  await addTraining.getByRole("button", { name: "Close", exact: true }).click();
+  await page
+    .getByRole("navigation", { name: "Main navigation" })
+    .getByRole("link", { name: "History", exact: true })
+    .click();
   const quickLogDay = page.locator("[data-calendar-action]").filter({
     hasText: "Quick log",
   }).first();
@@ -2688,15 +2669,12 @@ test("reviews and imports a complete Hevy CSV workout into History", async ({
     await expect(directImportedWorkout).toBeVisible();
     await directImportedWorkout.click();
   }
-  await expect(
-    page
-      .getByLabel("Workout evidence status")
-      .getByText("Imported evidence", { exact: true }),
-  ).toBeVisible();
-  const sourceDetails = page.locator("details", {
-    hasText: "Source and lineage details",
-  });
-  await openNativeDetails(sourceDetails);
+  await expect(page.getByText(/Imported evidence/).first()).toBeVisible();
+  const technical = page.locator("#technical-record");
+  await openNativeDetails(technical);
+  const sourceDetails = technical
+    .getByRole("heading", { name: "Source and lineage", exact: true })
+    .locator("..");
   await expect(sourceDetails).toContainText("Import source");
   await expect(sourceDetails).toContainText("hevy");
   await expect(page.getByText(/135 lb × 8/)).toBeVisible();

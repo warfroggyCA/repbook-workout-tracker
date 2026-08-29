@@ -173,6 +173,7 @@ test("keeps new Stage 3 controls usable at the saved iPhone calibration", async 
   await page.keyboard.press("Enter");
   await expect(page).toHaveURL(/\/today$/);
   const start = page.getByRole("button", { name: "Train as planned", exact: true });
+  await page.locator("summary").filter({ hasText: "Workout options" }).click();
   await page.getByRole("checkbox", { name: /Include programmed warm-ups/ }).check();
   await waitForHydratedServerAction(start);
   await start.click();

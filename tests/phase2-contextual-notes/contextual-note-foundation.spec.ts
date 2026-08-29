@@ -50,10 +50,32 @@ async function assertLayout(page: Page) {
 }
 
 async function openComposer(page: Page) {
-  const workoutTrigger = page.getByTestId("contextual-note-trigger-workout");
-  const trigger = await workoutTrigger.count() > 0
+  const workoutTrigger = page.locator(
+    '[data-testid="contextual-note-trigger-workout"]:visible',
+  );
+  let trigger = await workoutTrigger.count() > 0
     ? workoutTrigger.first()
-    : page.getByTestId("contextual-note-trigger");
+    : page.locator('[data-testid="contextual-note-trigger"]:visible');
+  if (await trigger.count() === 0) {
+    const workoutMore = page.getByRole("button", {
+      name: "More workout actions",
+      exact: true,
+    });
+    if (await workoutMore.count() > 0) {
+      await workoutMore.click();
+      trigger = page.getByRole("button", {
+        name: "Add workout note",
+        exact: true,
+      });
+    } else {
+      await page
+        .getByRole("button", { name: "Add training", exact: true })
+        .click();
+      trigger = page
+        .getByRole("dialog", { name: "Add training" })
+        .getByRole("button", { name: "Add training note", exact: true });
+    }
+  }
   await waitForHydratedReactHandler(trigger);
   await trigger.click();
   await expect(page.getByRole("heading", { name: "Add a training note" })).toBeVisible();
@@ -173,8 +195,18 @@ test("keeps contextual observations explicit, durable, private when chosen, and 
   await expect(page.getByText("Note waiting to save", { exact: true })).toHaveCount(0);
   offlineExpected = false;
 
-  await page.getByRole("button", { name: "Finish", exact: true }).click();
+  await page
+    .getByRole("button", {
+      name: /^(?:Review workout finish|Finish workout)$/,
+    })
+    .click();
   const saveWorkout = page.getByRole("button", { name: /^(?:Finish early|Save workout)$/ });
+  const finishReason = page.getByRole("combobox", {
+    name: "Why are you finishing this workout early?",
+  });
+  if (await finishReason.count()) {
+    await finishReason.selectOption({ label: "User choice" });
+  }
   await waitForHydratedReactHandler(saveWorkout);
   await saveWorkout.click();
   await expect(page).toHaveURL(/\/history\/[0-9a-f-]+\?finished=1$/);
@@ -198,7 +230,13 @@ test("keeps contextual observations explicit, durable, private when chosen, and 
     fullPage: true,
   });
 
-  const reviewNotes = page.getByRole("button", { name: "Review notes", exact: true });
+  await page
+    .getByRole("button", { name: "More workout actions", exact: true })
+    .click();
+  const reviewNotes = page.getByRole("button", {
+    name: "Review notes",
+    exact: true,
+  });
   await waitForHydratedReactHandler(reviewNotes);
   await reviewNotes.click();
   await expect(page.getByRole("heading", { name: "Review saved training notes" })).toBeVisible();

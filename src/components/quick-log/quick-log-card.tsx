@@ -20,7 +20,7 @@ import {
 
 type ParseOk = Extract<QuickLogParseResponse, { ok: true }>;
 
-export function QuickLogCard() {
+export function QuickLogCard({ embedded = false }: { embedded?: boolean }) {
   const router = useRouter();
   const [input, setInput] = useState("");
   const [parsed, setParsed] = useState<ParseOk | null>(null);
@@ -83,10 +83,12 @@ export function QuickLogCard() {
 
   if (!parsed) {
     return (
-      <div className="rounded-xl border p-3">
-        <p className="mb-2 flex items-center gap-1.5 text-sm font-medium">
-          <Mic className="size-3.5" /> Quick log
-        </p>
+      <div className={cn(!embedded && "rounded-xl border p-3")}>
+        {!embedded && (
+          <p className="mb-2 flex items-center gap-1.5 text-sm font-medium">
+            <Mic className="size-3.5" /> Quick log
+          </p>
+        )}
         <Textarea
           placeholder={'e.g. "Bench 135 for 8, 8, 7. Last set was hard. Slight shoulder pinch."'}
           value={input}
@@ -123,12 +125,16 @@ export function QuickLogCard() {
   );
 
   return (
-    <div className="rounded-xl border border-primary/40 p-3">
-      <div className="mb-2 flex items-center justify-between">
+    <div
+      className={cn(
+        !embedded && "rounded-xl border border-primary/40 p-3",
+      )}
+    >
+      <div className="mb-2">
         <p className="text-sm font-medium">Confirm before saving</p>
-        <Badge variant="outline">
-          {parsed.source === "regex" ? "parsed locally" : "parsed by AI"}
-        </Badge>
+        <p className="text-xs text-muted-foreground">
+          Review every entry below. Nothing is saved until you confirm.
+        </p>
       </div>
 
       {parsed.envelope.clarifyingQuestions.length > 0 && (
