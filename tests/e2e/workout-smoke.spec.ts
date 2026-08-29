@@ -409,35 +409,45 @@ async function verifyDecisiveToday({
         '[aria-label^="Program decision status"]'
       );
       const bottomNavigation = document.querySelector("nav.fixed");
-      if (!primary || !status) return null;
+      if (!primary) return null;
       const primaryRect = primary.getBoundingClientRect();
-      const statusRect = status.getBoundingClientRect();
+      const statusRect = status?.getBoundingClientRect() ?? null;
       return {
         primaryBottom: primaryRect.bottom,
-        statusBottom: statusRect.bottom,
+        statusBottom: statusRect?.bottom ?? null,
         navigationTop:
           bottomNavigation?.getBoundingClientRect().top ?? Number.POSITIVE_INFINITY,
         primaryClipped: primary.scrollWidth > primary.clientWidth + 1,
-        statusClipped: status.scrollWidth > status.clientWidth + 1,
+        statusClipped:
+          status == null ? null : status.scrollWidth > status.clientWidth + 1,
       };
     });
     expect(responsiveActiveDecision).not.toBeNull();
     expect(responsiveActiveDecision?.primaryBottom).toBeLessThanOrEqual(
       viewport.height
     );
-    expect(responsiveActiveDecision?.statusBottom).toBeLessThanOrEqual(
-      viewport.height
-    );
+    if (hasPendingDecision) {
+      expect(responsiveActiveDecision?.statusBottom).not.toBeNull();
+      expect(responsiveActiveDecision?.statusBottom).toBeLessThanOrEqual(
+        viewport.height,
+      );
+    } else {
+      expect(responsiveActiveDecision?.statusBottom).toBeNull();
+    }
     if (viewport.width <= 390) {
       expect(responsiveActiveDecision?.primaryBottom).toBeLessThanOrEqual(
         responsiveActiveDecision?.navigationTop ?? 0
       );
-      expect(responsiveActiveDecision?.statusBottom).toBeLessThanOrEqual(
-        responsiveActiveDecision?.navigationTop ?? 0
-      );
+      if (hasPendingDecision) {
+        expect(responsiveActiveDecision?.statusBottom).toBeLessThanOrEqual(
+          responsiveActiveDecision?.navigationTop ?? 0,
+        );
+      }
     }
     expect(responsiveActiveDecision?.primaryClipped).toBe(false);
-    expect(responsiveActiveDecision?.statusClipped).toBe(false);
+    expect(responsiveActiveDecision?.statusClipped).toBe(
+      hasPendingDecision ? false : null,
+    );
   }
   await page.setViewportSize({ width: 320, height: 700 });
   await page.evaluate(() => {
