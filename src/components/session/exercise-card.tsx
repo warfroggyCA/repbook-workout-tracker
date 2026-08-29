@@ -97,6 +97,10 @@ import {
   readActiveWorkoutMeasurements,
   writeActiveWorkoutMeasurement,
 } from "@/lib/active-workout-measurements";
+import {
+  markWorkoutInteraction,
+  WORKOUT_INTERACTION_MARKS,
+} from "@/lib/workout-interaction-performance";
 import { OccurrenceMutationDialog } from "./occurrence-mutation-dialog";
 import type { IncompleteSessionReason } from "@/lib/session-completion-semantics";
 import { OccurrenceSaveStatus } from "./occurrence-save-status";
@@ -475,6 +479,9 @@ type Props = {
     set: LoggedSet,
     occurrence?: SessionOccurrenceData | null,
   ) => Promise<boolean>;
+  onPrepareSetLog?: (
+    occurrence?: SessionOccurrenceData | null,
+  ) => void;
   onAppendSet?: (
     occurrenceId: string,
     expectedSetNo: number,
@@ -727,6 +734,7 @@ export function ExerciseCard({
   comparisonTemporarilyUnavailable = false,
   onPatch,
   onQueueSet,
+  onPrepareSetLog = () => undefined,
   onAppendSet = async () => null,
   activeOccurrence = null,
   preparationBlocker = null,
@@ -1099,6 +1107,7 @@ export function ExerciseCard({
     occurrence: SessionOccurrenceData | null = activeOccurrence,
     submittedDraft: SetDraft = draft,
   ) {
+    markWorkoutInteraction(WORKOUT_INTERACTION_MARKS.setLogTap);
     if (skipConfirmationPending || skipConfirmationError != null) {
       toast.info("Resolve the exercise skip before logging a set.");
       return;
@@ -1947,6 +1956,17 @@ export function ExerciseCard({
                     <div className="mt-2 grid grid-cols-[1fr_auto] gap-2">
                       {skipConfirmationError == null ? (
                         <Button
+                          onPointerDown={() =>
+                            onPrepareSetLog(appendedOccurrence)
+                          }
+                          onKeyDown={(event) => {
+                            if (
+                              !event.repeat &&
+                              (event.key === "Enter" || event.key === " ")
+                            ) {
+                              onPrepareSetLog(appendedOccurrence);
+                            }
+                          }}
                           onClick={() =>
                             handleLog(i + 1, appendedOccurrence, appendedDraft)
                           }
@@ -2149,6 +2169,17 @@ export function ExerciseCard({
                               prioritizeCurrentAction &&
                                 "min-h-12 w-full text-base font-semibold",
                             )}
+                            onPointerDown={() =>
+                              onPrepareSetLog(activeOccurrence)
+                            }
+                            onKeyDown={(event) => {
+                              if (
+                                !event.repeat &&
+                                (event.key === "Enter" || event.key === " ")
+                              ) {
+                                onPrepareSetLog(activeOccurrence);
+                              }
+                            }}
                             onClick={() => handleLog()}
                             disabled={
                               pending ||

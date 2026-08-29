@@ -318,6 +318,49 @@ intermediate phone widths. New-device rest alerts default to foreground sound;
 the timer exposes the effective mode and the set-log gesture primes Web Audio.
 Sound-enabled timers tick locally from 10 through 1 and then play the same
 stronger finish alarm exposed by the Settings test control.
+
+### Product Polish Package 1 interaction contract
+
+Set logging now separates short local outbox mutation from owner-scoped network
+delivery. The local command must be durable before the active-workout projection
+advances, but a delayed Server Action must not block a second enqueue, retry, or
+deliberate discard. Web Locks provide cross-tab single-flight delivery for the
+combined equipment/set stream. Browsers without that guarantee keep the exact
+device copies, make no delivery attempt, disable retry, and show **Saving
+paused** with recovery guidance.
+
+The latest acknowledged explicit rest outcome is retained temporarily under
+`workout-tracker:workout-rest-intent-receipts:v1`. It is a bounded local-only
+ordering receipt, not workout history: it contains no exercise, load,
+repetition, pain, or note content. Older retries must defer to later retained or
+acknowledged rest outcomes across backoff, tabs, and reload. Removing the final
+relevant set prunes the receipt atomically; a receipt-write failure restores the
+exact pre-removal device bytes and reports failure. Active-workout abandonment
+and owner cleanup follow the same fail-closed rule.
+
+Start uses the existing replay-safe request key while native form pending state
+provides a disabled, busy **Starting workout…** control and polite confirmation
+message. Content-free Performance API marks cover Start submit/pending, cockpit
+usability, set tap/local retention/UI advance/acknowledgement, and rendered
+recovery. They are for tests and local diagnostics only and carry no athlete
+payload.
+
+The focused Package 1 gate is:
+
+```bash
+npx vitest run tests/unit/workout-set-outbox.test.ts tests/unit/workout-set-outbox-lock.test.ts tests/unit/workout-set-outbox-sync.test.ts tests/unit/equipment-selection-outbox-sync.test.ts tests/unit/active-workout-discard.test.ts tests/unit/workout-interaction-performance.test.ts tests/unit/workout-start-form-contract.test.ts
+npm run test:e2e:v2-t02
+npm run test:e2e:v2-t05
+npm run test:e2e:v2-t06
+npm run test:e2e:v2-gauntlet-a
+```
+
+T02 deliberately holds the first acknowledgement while a second set reaches
+local retention and UI advance, with both measured under 100 ms. T05 covers the
+older-command-backoff, later terminal acknowledgement, older replay, second-tab,
+and reload sequence. T06 measures truthful Start pending feedback under 100 ms
+while preserving one request identity.
+
 Day 2 reliability coverage adds absolute-deadline restore and missed-expiry cue
 tests, Wake Lock rejection/release/race tests, slow and failed set-outbox
 projection tests, duplicate Program-import rejection, preparation-set ordering,

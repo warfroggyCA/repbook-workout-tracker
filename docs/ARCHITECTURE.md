@@ -352,6 +352,17 @@ failed copy remains visible with retry and deliberate discard; it never silently
 disappears or rolls the display back. Older outbox formats are quarantined for
 explicit recovery instead of being guessed into the current contract.
 
+Local command mutation and remote delivery use separate browser locks. Enqueue,
+retry, discard, selection, and acknowledgement reconciliation hold the shared
+outbox lock only for short local-storage mutations; no Server Action await runs
+under that lock. A separate owner-scoped Web Lock keeps the combined equipment
+and set stream single-flight across tabs while preserving deterministic command
+selection and stable client keys. A second set can therefore be retained and
+advance the local projection while an earlier acknowledgement is delayed. If
+the browser cannot provide a genuine cross-tab Web Lock, automatic delivery
+fails closed: device copies remain unchanged, retry is disabled, and the tray
+reports **Saving paused** instead of claiming a save is in progress.
+
 Correction is a reviewed superseding assertion, never an edit in place. The
 owner reviews the exact original and replacement values, selects a reason, and
 confirms the decision. The service fences the write by owner, workout state,
@@ -478,6 +489,21 @@ command, never a newer timer. Saved occurrence evidence still classifies
 positive rest as straight-set, between-member, or between-round rest; zero
 means explicitly no rest and null means unknown rest.
 
+Rest reconciliation orders explicit outcomes by the command's monotonic
+creation time and stable client key. Retained commands are the immediate source
+of truth. The latest acknowledged outcome is also held in one minimal,
+owner-and-session-scoped local receipt containing only command identity,
+ordering time, and the exact positive, zero, or null rest value. The versioned
+receipt store is bounded to 100 workouts and exists only while an older explicit
+rest command could still replay. This prevents a timed-out older acknowledgement
+from recreating or clearing a newer rest decision after a later command has
+already left the outbox. Reload reconciliation also applies a retained terminal
+no-timer outcome after a crash between enqueue and the immediate timer clear.
+Receipt pruning is part of set/device cleanup: if it cannot complete, the exact
+outbox and receipt bytes are restored and the removal reports failure. These
+receipts never create performed history and require no database, migration,
+snapshot, or recovery-manifest change.
+
 Finish is also the deliberate bulk exit from an active workout. When planned
 occurrences remain, the owner chooses one session-level reason and the existing
 completion transaction resolves every still-pending occurrence together; the
@@ -515,6 +541,13 @@ owner-scoped replay wins before Program freshness, including after the workout
 becomes terminal. Reusing a key for different evidence is a conflict; a
 different active workout is a separate truthful outcome and is never presented
 as if the requested day started.
+
+Submitting Start immediately disables the same control, marks it busy, changes
+its label to **Starting workout…**, and exposes a polite status explaining
+that Repbook is still confirming creation. The visible pending state is measured
+from submit and must appear in under 100 ms in the disposable browser harness.
+It neither rotates the hidden request UUID nor presents an active workout before
+the Server Action confirms or safely reconciles the exact request.
 
 The same atomic Start statement captures version 1 of the prescribed exercise
 name, metric type, load type, and load semantics. Session Compiler acceptance

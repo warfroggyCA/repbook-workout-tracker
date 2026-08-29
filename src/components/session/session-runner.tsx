@@ -73,14 +73,17 @@ import { cn } from "@/lib/utils";
 import {
   enqueueWorkoutSet,
   discardWorkoutSetDeviceCopy,
+  getWorkoutRestIntentReceipt,
   getWorkoutSetOutboxServerSnapshot,
   getWorkoutSetOutboxSnapshot,
+  laterWorkoutSetRestIntentClientKeys,
   publishWorkoutSetOutboxEvent,
   releaseWorkoutSetOrderBlockersForOccurrence,
   retryWorkoutSet,
   subscribeToWorkoutSetOutbox,
   subscribeToWorkoutSetOutboxStatus,
   withOutboxLock,
+  workoutRestIntentReceiptSupersedesEntry,
   WORKOUT_SET_OUTBOX_CHANGE_EVENT,
   type WorkoutSetOutboxClientEvent,
   type WorkoutSetOutboxEntry,
@@ -128,6 +131,7 @@ import {
 import {
   adjustStoredRestTimer,
   claimRestCueMilestones,
+  clearRestTimerForSupersedingSourceClientKey,
   clearRestTimerForIdentity,
   createRestTimer,
   completeForegroundRestTimer,
@@ -183,6 +187,10 @@ import {
   patchActiveWorkoutMeasurement,
   readActiveWorkoutMeasurements,
 } from "@/lib/active-workout-measurements";
+import {
+  markWorkoutInteraction,
+  WORKOUT_INTERACTION_MARKS,
+} from "@/lib/workout-interaction-performance";
 import {
   classifyActiveSessionTiming,
   validateOwnerReportedActiveMinutes,
@@ -785,6 +793,7 @@ export function SessionRunner(props: SessionRunnerProps) {
     new Set(props.occurrences.map((occurrence) => occurrence.id)),
   );
   const requestedOrderConflictRefreshesRef = useRef<Set<string>>(new Set());
+  const lastRenderedRecoverySignatureRef = useRef("");
   const [finishOpen, setFinishOpen] = useState(
     props.initialTimingReviewOpen ?? false,
   );
@@ -798,6 +807,13 @@ export function SessionRunner(props: SessionRunnerProps) {
   const [finishError, setFinishError] = useState<string | null>(null);
   const [finishConflictDetected, setFinishConflictDetected] = useState(false);
   const [recordedEnqueueCount, setRecordedEnqueueCount] = useState(0);
+
+  useEffect(() => {
+    const frame = window.requestAnimationFrame(() => {
+      markWorkoutInteraction(WORKOUT_INTERACTION_MARKS.sessionCockpitUsable);
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, []);
 
   useEffect(() => {
     const frame = window.requestAnimationFrame(() => {
@@ -1179,6 +1195,23 @@ export function SessionRunner(props: SessionRunnerProps) {
     () => sessionEntries.filter((entry) => entry.status === "needs_attention"),
     [sessionEntries],
   );
+  const failedSetRecoverySignature = useMemo(
+    () => failedSetEntries
+      .map((entry) =>
+        `${entry.clientKey}:${entry.attemptCount}:${entry.lastAttemptAtISO ?? "none"}`,
+      )
+      .join("|"),
+    [failedSetEntries],
+  );
+  useEffect(() => {
+    if (
+      failedSetRecoverySignature !== "" &&
+      failedSetRecoverySignature !== lastRenderedRecoverySignatureRef.current
+    ) {
+      markWorkoutInteraction(WORKOUT_INTERACTION_MARKS.setRecoveryRendered);
+    }
+    lastRenderedRecoverySignatureRef.current = failedSetRecoverySignature;
+  }, [failedSetRecoverySignature]);
   useEffect(() => {
     const resolvedBlockerIds = new Set(
       sessionEntries.flatMap((entry) => {
@@ -1805,6 +1838,7 @@ export function SessionRunner(props: SessionRunnerProps) {
         correctionCount: 0,
         saveState: "saved",
       };
+      markWorkoutInteraction(WORKOUT_INTERACTION_MARKS.setAcknowledged);
       setLatestSetAcknowledgement({
         sessionExerciseId: detail.entry.sessionExerciseId,
         exerciseName: detail.entry.exerciseName,
@@ -2163,7 +2197,8 @@ export function SessionRunner(props: SessionRunnerProps) {
     restAfterSec: number | null | undefined = exercise.restSec,
     occurrence: SessionOccurrenceData | null = null,
   ) {
-    if (!set.clientKey) return false;
+    const clientKey = set.clientKey;
+    if (!clientKey) return false;
     const performed = buildPerformedSetMeasurement({
       metricType: set.metricType ?? resolveFutureSetWriterMetricType({
         metricType: exercise.metricType ?? "weight_reps",
@@ -2222,7 +2257,7 @@ export function SessionRunner(props: SessionRunnerProps) {
     setRecordedEnqueueCount((count) => count + 1);
     try {
       const queued = await enqueueWorkoutSet({
-        clientKey: set.clientKey,
+        clientKey,
         ownerId: props.ownerId,
         sessionId: props.sessionId,
         sessionExerciseId: exercise.id,
@@ -2264,6 +2299,7 @@ export function SessionRunner(props: SessionRunnerProps) {
         toast.error(queued.reason);
         return false;
       }
+      markWorkoutInteraction(WORKOUT_INTERACTION_MARKS.setRetainedLocally);
       if (restAfterSec != null && restAfterSec > 0 && occurrence) {
         const optimisticTimer = createRestTimer({
           ownerId: props.ownerId,
@@ -2272,21 +2308,109 @@ export function SessionRunner(props: SessionRunnerProps) {
           seconds: restAfterSec,
           sourceSessionExerciseId: exercise.id,
           sourceOccurrenceId: occurrence.id,
-          sourceClientKey: set.clientKey,
+          sourceClientKey: clientKey,
         });
-        if (
-          optimisticTimer == null ||
-          !(await writeRestTimer(window.localStorage, optimisticTimer))
-        ) {
+        const restPersisted = optimisticTimer != null &&
+          await withOutboxLock(async () => {
+            const retainedEntries = getWorkoutSetOutboxSnapshot().entries;
+            const retainedCommand = retainedEntries.find(
+              (entry) =>
+                entry.clientKey === clientKey &&
+                entry.ownerId === props.ownerId &&
+                entry.sessionId === props.sessionId,
+            );
+            if (!retainedCommand) {
+              // Another tab already acknowledged or discarded this command;
+              // its reconciled rest state is newer than this delayed write.
+              return true;
+            }
+            const receipt = getWorkoutRestIntentReceipt(
+              window.localStorage,
+              retainedCommand,
+            );
+            if (!receipt.ok) return false;
+            const acknowledgedLaterClientKey =
+              receipt.receipt != null &&
+                workoutRestIntentReceiptSupersedesEntry(
+                  receipt.receipt,
+                  retainedCommand,
+                )
+                ? receipt.receipt.clientKey
+                : null;
+            const laterIntentClientKeys = [
+              ...laterWorkoutSetRestIntentClientKeys(
+                retainedEntries,
+                retainedCommand,
+              ),
+              ...(acknowledgedLaterClientKey != null
+                ? [acknowledgedLaterClientKey]
+                : []),
+            ];
+            if (laterIntentClientKeys.length > 0) {
+              const cleared =
+                await clearRestTimerForSupersedingSourceClientKey(
+                  window.localStorage,
+                  { ownerId: props.ownerId, sessionId: props.sessionId },
+                  clientKey,
+                  laterIntentClientKeys,
+                );
+              return cleared !== "storage_error";
+            }
+            return writeRestTimer(window.localStorage, optimisticTimer);
+          });
+        if (!restPersisted) {
           toast.error(
             "The set is retained on this device, but this rest timer could not be stored. Use a separate clock for this rest; the set will keep saving.",
           );
         }
       } else if (restAfterSec !== undefined && (!restAfterSec || restAfterSec <= 0)) {
-        await clearRestTimerForIdentity(window.localStorage, {
-          ownerId: props.ownerId,
-          sessionId: props.sessionId,
+        const cleared = await withOutboxLock(() => {
+          const retainedEntries = getWorkoutSetOutboxSnapshot().entries;
+          const retainedCommand = retainedEntries.find(
+            (entry) =>
+              entry.clientKey === clientKey &&
+              entry.ownerId === props.ownerId &&
+              entry.sessionId === props.sessionId,
+          );
+          if (!retainedCommand) {
+            // Reconciliation already owns the timer after this exact command
+            // leaves the durable queue; do not let a delayed UI task replace it.
+            return "stale" as const;
+          }
+          const receipt = getWorkoutRestIntentReceipt(
+            window.localStorage,
+            retainedCommand,
+          );
+          if (!receipt.ok) return "storage_error" as const;
+          const acknowledgedLaterClientKey =
+            receipt.receipt != null &&
+              workoutRestIntentReceiptSupersedesEntry(
+                receipt.receipt,
+                retainedCommand,
+              )
+              ? receipt.receipt.clientKey
+              : null;
+          const laterIntentClientKeys = [
+            ...laterWorkoutSetRestIntentClientKeys(
+              retainedEntries,
+              retainedCommand,
+            ),
+            ...(acknowledgedLaterClientKey != null
+              ? [acknowledgedLaterClientKey]
+              : []),
+          ];
+          return clearRestTimerForSupersedingSourceClientKey(
+            window.localStorage,
+            { ownerId: props.ownerId, sessionId: props.sessionId },
+            clientKey,
+            laterIntentClientKeys,
+          );
         });
+        if (cleared === "storage_error") {
+          toast.error(
+            "The set is retained on this device, but Repbook could not clear the prior rest timer. The set will keep saving.",
+          );
+        }
       }
       setExercises((current) =>
         current.map((candidate) =>
@@ -2296,6 +2420,9 @@ export function SessionRunner(props: SessionRunnerProps) {
             : { ...candidate, sets: [...candidate.sets, set] },
         ),
       );
+      window.requestAnimationFrame(() => {
+        markWorkoutInteraction(WORKOUT_INTERACTION_MARKS.setUiAdvanced);
+      });
       return true;
     } finally {
       setRecordedEnqueueCount((count) => Math.max(0, count - 1));
@@ -4459,6 +4586,18 @@ export function SessionRunner(props: SessionRunnerProps) {
                 occurrence,
               )
             }
+            onPrepareSetLog={(occurrence) => {
+              const restAfterSec = occurrence
+                ? restTimerSecondsAfterQueuedSet({
+                    plannedRestSeconds:
+                      guidance.actions.find(
+                        (action) => action.occurrenceId === occurrence.id,
+                      )?.restAfter.seconds ?? null,
+                    pendingActionCount: guidance.completion.pendingActions,
+                  })
+                : exercise.restSec;
+              if (restAfterSec != null && restAfterSec > 0) primeRestCue();
+            }}
             onAppendSet={(occurrenceId, expectedSetNo) =>
               handleAppendSet(exercise.id, occurrenceId, expectedSetNo)
             }

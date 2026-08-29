@@ -44,6 +44,26 @@ async function currentExerciseName(page: Page) {
     .innerText();
 }
 
+async function addWorkoutOnlyExercise(page: Page, name: string) {
+  const add = page.getByRole("button", {
+    name: "Add exercise to this workout",
+    exact: true,
+  });
+  await waitForHydratedReactHandler(add);
+  await add.click();
+  const picker = page.getByRole("dialog", {
+    name: "Choose an exercise for this workout",
+  });
+  await picker.getByRole("textbox", { name: "Search exercise library" }).fill(name);
+  await picker
+    .getByRole("button", { name: `View details for ${name}`, exact: true })
+    .click();
+  await picker.getByRole("button", { name: "Review exercise", exact: true }).click();
+  const review = page.getByRole("dialog", { name: "Add exercise to this workout" });
+  await review.getByRole("button", { name: "Add exercise", exact: true }).click();
+  await expect(page.getByRole("region", { name })).toContainText("Workout only");
+}
+
 async function clickCentered(page: Page, locator: Locator) {
   const settleCenteredHitTest = async () => {
     await locator.evaluate((element) => {
@@ -224,6 +244,7 @@ test("keeps one ledger-driven current/next/group/rest state through retry, inter
   await expect(first.getByTestId("added-set-entry")).toContainText(
     "Extra set 1 · Added to this workout",
   );
+  await addWorkoutOnlyExercise(page, "RKC Plank");
   await expect(guidance).toContainText("Now: Barbell Back Squat, set 1");
 
   const otherExercise = page.getByRole("region", { name: "Dumbbell Bench Press" });
@@ -355,12 +376,108 @@ test("keeps one ledger-driven current/next/group/rest state through retry, inter
     page.getByRole("region", { name: "Workout progress and upcoming work" }),
   ).toContainText("Now: Barbell Back Squat, extra set 1");
   await expect(status).toContainText("Extra set 1");
+
+  let finalSetRequests = 0;
+  await page.route("**/session/**", async (route) => {
+    const request = route.request();
+    if (
+      request.method() === "POST" &&
+      request.headers()["next-action"] &&
+      (request.postData() ?? "").includes('"setNo"')
+    ) {
+      finalSetRequests += 1;
+      if (finalSetRequests === 1) {
+        await route.fulfill({ status: 500, body: "Injected T05 final backoff" });
+        return;
+      }
+    }
+    await route.continue();
+  });
+
   await clickCentered(
     page,
     page
       .getByTestId("current-exercise-card")
       .getByRole("button", { name: "Log set", exact: true }),
   );
+  await expect.poll(() => finalSetRequests).toBe(1);
+  let penultimateClientKey: string | null = null;
+  await expect.poll(async () => page.evaluate(() => {
+    const raw = localStorage.getItem("workout-tracker:workout-set-outbox:v1");
+    if (raw == null) return null;
+    const parsed = JSON.parse(raw) as {
+      entries?: Array<{
+        clientKey?: string;
+        attemptCount?: number;
+        nextAttemptAtISO?: string | null;
+      }>;
+    };
+    const retained = parsed.entries?.[0];
+    if (
+      retained?.clientKey == null || retained.attemptCount !== 1 ||
+      retained.nextAttemptAtISO == null
+    ) return null;
+    return retained.clientKey;
+  })).not.toBeNull();
+  penultimateClientKey = await page.evaluate(() => {
+    const raw = localStorage.getItem("workout-tracker:workout-set-outbox:v1")!;
+    const parsed = JSON.parse(raw) as {
+      entries: Array<{ clientKey: string; nextAttemptAtISO: string | null }>;
+    };
+    parsed.entries[0].nextAttemptAtISO = new Date(Date.now() + 60_000).toISOString();
+    localStorage.setItem(
+      "workout-tracker:workout-set-outbox:v1",
+      JSON.stringify(parsed),
+    );
+    window.dispatchEvent(new Event("workout-set-outbox-change"));
+    return parsed.entries[0].clientKey;
+  });
+  await expect(status.getByLabel("Rest timer")).toBeVisible();
+  await expect.poll(() => currentExerciseName(page)).toBe("RKC Plank");
+  await page
+    .getByTestId("current-exercise-card")
+    .getByLabel("Duration in seconds")
+    .fill("45");
+
+  await clickCentered(
+    page,
+    page
+      .getByTestId("current-exercise-card")
+      .getByRole("button", { name: "Log set", exact: true }),
+  );
+  await expect.poll(() => finalSetRequests).toBe(2);
+  await expect.poll(async () => page.evaluate(() => {
+    const raw = localStorage.getItem("workout-tracker:workout-set-outbox:v1");
+    if (raw == null) return [];
+    const parsed = JSON.parse(raw) as { entries?: Array<{ clientKey?: string }> };
+    return parsed.entries?.map((entry) => entry.clientKey) ?? [];
+  })).toEqual([penultimateClientKey]);
+  await expect.poll(async () => page.evaluate(() => {
+    const outboxRaw = localStorage.getItem("workout-tracker:workout-set-outbox:v1");
+    const receiptRaw = localStorage.getItem(
+      "workout-tracker:workout-rest-intent-receipts:v1",
+    );
+    if (outboxRaw == null || receiptRaw == null) return null;
+    const outbox = JSON.parse(outboxRaw) as {
+      entries?: Array<{ clientKey?: string }>;
+    };
+    const receipts = JSON.parse(receiptRaw) as {
+      entries?: Array<{ clientKey?: string; restAfterSec?: number | null }>;
+    };
+    const retainedKey = outbox.entries?.[0]?.clientKey;
+    const receipt = receipts.entries?.[0];
+    return {
+      retainedKey,
+      receiptKey: receipt?.clientKey ?? null,
+      restAfterSec: receipt?.restAfterSec,
+      receiptIsLater: receipt?.clientKey != null && receipt.clientKey !== retainedKey,
+    };
+  })).toEqual({
+    retainedKey: penultimateClientKey,
+    receiptKey: expect.any(String),
+    restAfterSec: null,
+    receiptIsLater: true,
+  });
   await expect(status).toContainText("Ready to finish");
   await expect(status.getByLabel("Rest timer")).toHaveCount(0);
   await expect(
@@ -371,6 +488,68 @@ test("keeps one ledger-driven current/next/group/rest state through retry, inter
       name: /^(?:Review workout finish|Finish workout)$/,
     }),
   ).toBeVisible();
+  await status
+    .getByRole("button", { name: "Review workout finish", exact: true })
+    .click();
+  const retainedFinish = page.getByRole("dialog", { name: "Finish workout" });
+  await expect(retainedFinish.getByText("1 set is still saving.")).toBeVisible();
+  await expect(
+    retainedFinish.getByRole("button", { name: "Save workout", exact: true }),
+  ).toBeDisabled();
+  await retainedFinish
+    .getByRole("button", { name: "Back to workout", exact: true })
+    .click();
+
+  await page.unrouteAll({ behavior: "wait" });
+  const recoveryPage = await context.newPage();
+  const recoveryPageErrors = observeGauntletPageErrors(recoveryPage, browserName);
+  await installNextDevelopmentRefreshControl(recoveryPage);
+  await recoveryPage.goto(page.url(), { waitUntil: "domcontentloaded" });
+  const recoveryStatus = recoveryPage.getByRole("complementary", {
+    name: "Workout status",
+  });
+  await expect(recoveryStatus).toContainText("Ready to finish");
+  await expect(recoveryStatus.getByLabel("Rest timer")).toHaveCount(0);
+  const recoveryTray = recoveryPage.getByRole("button", {
+    name: "Open sets waiting to save",
+  });
+  await waitForHydratedReactHandler(recoveryTray);
+  await recoveryTray.click();
+  const recoveryDrawer = recoveryPage.getByRole("dialog", {
+    name: "Sets waiting to save",
+  });
+  await recoveryDrawer.getByRole("button", { name: "Retry save" }).click();
+  await expect.poll(() => recoveryPage.evaluate(() => {
+    const raw = localStorage.getItem("workout-tracker:workout-set-outbox:v1");
+    if (raw == null) return 0;
+    const parsed = JSON.parse(raw) as { entries?: unknown[] };
+    return parsed.entries?.length ?? 0;
+  })).toBe(0);
+  await expect.poll(() => recoveryPage.evaluate(() =>
+    localStorage.getItem("workout-tracker:rest-timer:v1"),
+  )).toBeNull();
+  await expect.poll(() => recoveryPage.evaluate(() => {
+    const raw = localStorage.getItem(
+      "workout-tracker:workout-rest-intent-receipts:v1",
+    );
+    if (raw == null) return 0;
+    const parsed = JSON.parse(raw) as { entries?: unknown[] };
+    return parsed.entries?.length ?? 0;
+  })).toBe(0);
+  await recoveryPageErrors.expectNoUnexpected();
+  await recoveryPage.close();
+  await expect(status).toContainText("Ready to finish");
+  await expect(status.getByLabel("Rest timer")).toHaveCount(0);
+
+  await page.reload({ waitUntil: "domcontentloaded" });
+  const finalRestoredStatus = page.getByRole("complementary", {
+    name: "Workout status",
+  });
+  await expect(finalRestoredStatus).toContainText("Ready to finish");
+  await expect(finalRestoredStatus.getByLabel("Rest timer")).toHaveCount(0);
+  await expect.poll(() => page.evaluate(() =>
+    localStorage.getItem("workout-tracker:rest-timer:v1"),
+  )).toBeNull();
   expect(
     await page.evaluate(
       () => document.documentElement.scrollWidth - document.documentElement.clientWidth,

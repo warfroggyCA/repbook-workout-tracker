@@ -1,9 +1,12 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  WORKOUT_COMMAND_DELIVERY_LOCK_PREFIX,
   WORKOUT_SET_OUTBOX_LOCK_NAME,
   enqueueWorkoutSetOutboxEntry,
   readWorkoutSetOutbox,
   withOutboxLock,
+  withWorkoutCommandDeliveryLock,
+  workoutCommandDeliveryLockName,
   type NewWorkoutSetOutboxEntry,
   type WorkoutSetOutboxStorage,
 } from "@/lib/workout-set-outbox";
@@ -106,5 +109,72 @@ describe("workout set browser outbox lock", () => {
   it("invokes the mutation directly when Web Locks are unavailable", async () => {
     vi.stubGlobal("navigator", {});
     await expect(withOutboxLock(() => "fallback")).resolves.toBe("fallback");
+  });
+
+  it("serializes delivery per owner while allowing a different owner to proceed", async () => {
+    const tails = new Map<string, Promise<void>>();
+    const requestedNames: string[] = [];
+    const locks = {
+      request: <T>(
+        name: string,
+        _options: { mode: "exclusive" },
+        task: () => T | Promise<T>,
+      ) => {
+        requestedNames.push(name);
+        const previous = tails.get(name) ?? Promise.resolve();
+        const run = previous.then(task);
+        tails.set(name, run.then(() => undefined, () => undefined));
+        return run;
+      },
+    };
+    vi.stubGlobal("navigator", { locks });
+
+    const ownerA = "20000000-0000-4000-8000-000000000001";
+    const ownerB = "20000000-0000-4000-8000-000000000002";
+    let releaseOwnerA!: () => void;
+    const ownerAHold = new Promise<void>((resolve) => {
+      releaseOwnerA = resolve;
+    });
+    let firstOwnerAStarted = false;
+    let secondOwnerAStarted = false;
+    let ownerBStarted = false;
+
+    const firstOwnerA = withWorkoutCommandDeliveryLock(ownerA, async () => {
+      firstOwnerAStarted = true;
+      await ownerAHold;
+    });
+    await expect.poll(() => firstOwnerAStarted).toBe(true);
+    const secondOwnerA = withWorkoutCommandDeliveryLock(ownerA, () => {
+      secondOwnerAStarted = true;
+    });
+    const ownerBDelivery = withWorkoutCommandDeliveryLock(ownerB, () => {
+      ownerBStarted = true;
+    });
+
+    await expect.poll(() => ownerBStarted).toBe(true);
+    expect(secondOwnerAStarted).toBe(false);
+    releaseOwnerA();
+    await Promise.all([firstOwnerA, secondOwnerA, ownerBDelivery]);
+
+    expect(secondOwnerAStarted).toBe(true);
+    expect(requestedNames).toEqual([
+      workoutCommandDeliveryLockName(ownerA),
+      workoutCommandDeliveryLockName(ownerA),
+      workoutCommandDeliveryLockName(ownerB),
+    ]);
+    expect(requestedNames.every((name) =>
+      name.startsWith(`${WORKOUT_COMMAND_DELIVERY_LOCK_PREFIX}:`),
+    )).toBe(true);
+  });
+
+  it("fails closed without Web Locks instead of using a per-realm delivery lock", async () => {
+    vi.stubGlobal("navigator", {});
+    const ownerA = "20000000-0000-4000-8000-000000000001";
+    const delivery = vi.fn(() => "unsafe");
+
+    await expect(
+      withWorkoutCommandDeliveryLock(ownerA, delivery),
+    ).resolves.toBeNull();
+    expect(delivery).not.toHaveBeenCalled();
   });
 });

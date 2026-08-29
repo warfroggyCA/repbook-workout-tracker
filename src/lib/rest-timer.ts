@@ -648,6 +648,43 @@ export function clearRestTimerForSourceClientKey(
   });
 }
 
+/**
+ * Applies an explicit queued rest intent without clearing a timer created by a
+ * command later in the durable workout FIFO. Timers from the exact command,
+ * an older command, or a legacy source-less generation are superseded.
+ */
+export function clearRestTimerForSupersedingSourceClientKey(
+  storage: RestTimerStorage,
+  identity: RestTimerIdentity,
+  sourceClientKey: string,
+  laterSourceClientKeys: readonly string[],
+) {
+  return withRestTimerLock(() => {
+    let current: RestTimerRestoreResult;
+    try {
+      current = parseStoredRestTimer(
+        storage.getItem(REST_TIMER_STORAGE_KEY),
+        identity,
+      );
+    } catch {
+      return "storage_error" as const;
+    }
+    if (current.status !== "restored") return current.status;
+    if (
+      current.timer.sourceClientKey != null &&
+      current.timer.sourceClientKey !== sourceClientKey &&
+      laterSourceClientKeys.includes(current.timer.sourceClientKey)
+    ) {
+      return "stale" as const;
+    }
+    return clearRestTimerForIdentityUnlocked(
+      storage,
+      identity,
+      current.timer.generationId,
+    );
+  });
+}
+
 /** Clears only a timer whose source is the exact discarded device command. */
 export function clearRestTimerForExactSourceClientKey(
   storage: RestTimerStorage,
