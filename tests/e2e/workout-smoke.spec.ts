@@ -1732,6 +1732,27 @@ test("shows one ambient insight without sending it to Coach", async ({
     /Treat it as evidence, not as an automatic Program change\./,
   );
   expect(coachRequests).toEqual([]);
+
+  const nearlyFullQuestion = "x".repeat(790);
+  await coachQuestion.fill(nearlyFullQuestion);
+  await page.keyboard.press("Escape");
+  await expect(coach).toHaveCount(0);
+  await insight.getByRole("button", { name: "Explain", exact: true }).click();
+  await expect(coach).toBeVisible();
+  await expect(coachQuestion).toHaveValue(nearlyFullQuestion);
+  await expect(coach.getByRole("alert")).toHaveText(
+    "There isn't enough room to add this explanation without cutting text. Your current message is unchanged. Send or clear it, then choose Explain again.",
+  );
+  expect(coachRequests).toEqual([]);
+
+  await coachQuestion.fill("");
+  await expect(coach.getByRole("alert")).toHaveCount(0);
+  await page.keyboard.press("Escape");
+  await insight.getByRole("button", { name: "Explain", exact: true }).click();
+  await expect(coachQuestion).toHaveValue(
+    /Explain this deterministic Repbook training insight in plain language\./,
+  );
+  expect(coachRequests).toEqual([]);
   await page.keyboard.press("Escape");
   await expect(coach).toHaveCount(0);
   expect(coachRequests).toEqual([]);
