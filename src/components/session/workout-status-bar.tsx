@@ -239,7 +239,7 @@ export function WorkoutStatusBar({
                 ? `${setPosition.label} · ${workingSetStatus}`
                 : `${setPosition.label} of ${exercise?.targetSets ?? "open"} · ${workingSetStatus}`
               : completesCurrentWarmup
-                ? "Complete warm-up"
+                ? title
                 : status}
           </span>
         </button>
