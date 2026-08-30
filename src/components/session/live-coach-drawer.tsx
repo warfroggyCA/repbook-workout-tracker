@@ -67,6 +67,10 @@ const QUICK_PROMPTS = [
   "What equipment alternative can I use?",
 ] as const;
 
+const LIVE_COACH_MESSAGE_MAX_LENGTH = 800;
+const DRAFT_LENGTH_CONFLICT_MESSAGE =
+  "There isn't enough room to add this explanation without cutting text. Your current message is unchanged. Send or clear it, then choose Explain again.";
+
 type LiveCoachContext = {
   sessionExerciseId: string;
   exerciseName: string;
@@ -126,18 +130,28 @@ export function LiveCoachDrawer({
     getLiveCoachOutboxServerSnapshot
   );
 
+  const applyDraft = useEffectEvent((nextDraft: LiveCoachDraft) => {
+    const current = content.trim();
+    const nextContent = current
+      ? `${current}\n\n${nextDraft.content}`
+      : nextDraft.content;
+    setKind("question");
+    if (nextContent.length > LIVE_COACH_MESSAGE_MAX_LENGTH) {
+      setError(DRAFT_LENGTH_CONFLICT_MESSAGE);
+      return;
+    }
+    appliedDraftIdRef.current = nextDraft.id;
+    setError((current) =>
+      current === DRAFT_LENGTH_CONFLICT_MESSAGE ? null : current,
+    );
+    setContent(nextContent);
+  });
+
   useEffect(() => {
     if (!open || draft == null || appliedDraftIdRef.current === draft.id) {
       return;
     }
-    appliedDraftIdRef.current = draft.id;
-    setKind("question");
-    setContent((current) =>
-      (current.trim().length > 0
-        ? `${current.trim()}\n\n${draft.content}`
-        : draft.content
-      ).slice(0, 800),
-    );
+    applyDraft(draft);
   }, [draft, open]);
 
   function clearStreamedAnswer(responseId: string) {
@@ -430,14 +444,19 @@ export function LiveCoachDrawer({
           <Textarea
             aria-label={kind === "question" ? "Question for Live Coach" : "Workout observation"}
             value={content}
-            onChange={(event) => setContent(event.target.value)}
+            onChange={(event) => {
+              setContent(event.target.value);
+              setError((current) =>
+                current === DRAFT_LENGTH_CONFLICT_MESSAGE ? null : current,
+              );
+            }}
             placeholder={
               kind === "question"
                 ? "Ask about this set, technique, pain, rest, or equipment…"
                 : "What felt different or worth remembering?"
             }
             rows={2}
-            maxLength={800}
+            maxLength={LIVE_COACH_MESSAGE_MAX_LENGTH}
           />
           <LiveCoachDictation
             target={{
