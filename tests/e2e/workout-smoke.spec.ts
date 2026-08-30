@@ -651,23 +651,38 @@ async function verifyReviewAndDecisions({
   await expect(activeReviewLink).toBeVisible();
   await expect(activeReviewLink).toHaveAttribute("aria-current", "page");
 
-  const expectedSectionOrder = [
-    "Decisions needing review",
-    "Recent decisions",
-    "Outcomes ready to assess",
-    "Live Coach stays with the workout",
-    "Secondary coaching tools",
-  ];
-  const topLevelHeadings = await page
-    .getByRole("heading", { level: 2 })
-    .allTextContents();
-  expect(
-    topLevelHeadings.filter((heading) => expectedSectionOrder.includes(heading))
-  ).toEqual(expectedSectionOrder);
-
   const pendingRegion = page.getByRole("region", {
     name: "Decisions needing review",
   });
+  const decisionHistoryDisclosure = page.getByText(
+    "Decision history and supporting evidence",
+    { exact: true },
+  );
+  const coachingToolsDisclosure = page.getByText("Coaching tools", {
+    exact: true,
+  });
+  const decisionHistoryDetails = decisionHistoryDisclosure.locator(
+    "xpath=ancestor::details[1]",
+  );
+  const coachingToolsDetails = coachingToolsDisclosure.locator(
+    "xpath=ancestor::details[1]",
+  );
+  await expect(decisionHistoryDisclosure).toBeVisible();
+  await expect(coachingToolsDisclosure).toBeVisible();
+  expect(await page.evaluate(() => {
+    const pending = document.querySelector(
+      '[aria-labelledby="pending-decisions-heading"]',
+    );
+    const disclosures = [...document.querySelectorAll("main > details")];
+    return Boolean(
+      pending &&
+        disclosures.length === 2 &&
+        pending.compareDocumentPosition(disclosures[0]) &
+          Node.DOCUMENT_POSITION_FOLLOWING &&
+        disclosures[0].compareDocumentPosition(disclosures[1]) &
+          Node.DOCUMENT_POSITION_FOLLOWING,
+    );
+  })).toBe(true);
   await expect(pendingRegion.getByText("2 pending", { exact: true })).toBeVisible();
   await expect(
     pendingRegion.getByText("Decision required", { exact: true })
@@ -675,8 +690,15 @@ async function verifyReviewAndDecisions({
   await expect(
     pendingRegion.getByText("Automatic status", { exact: true })
   ).toHaveCount(1);
+  const calculationDisclosures = pendingRegion.getByText("How calculated", {
+    exact: true,
+  });
+  await expect(calculationDisclosures).toHaveCount(2);
+  for (let index = 0; index < 2; index += 1) {
+    await calculationDisclosures.nth(index).click();
+  }
   await expect(
-    pendingRegion.getByRole("heading", { name: "Observed basis", exact: true })
+    pendingRegion.getByRole("region", { name: "Observed basis", exact: true })
   ).toHaveCount(2);
   await expect(
     pendingRegion.locator("dt").filter({ hasText: "Confidence" })
@@ -726,6 +748,7 @@ async function verifyReviewAndDecisions({
     squatDecisionEvidence.getByRole("status", { name: "Adjusted load" })
   ).toHaveText("110");
 
+  await openNativeDetails(decisionHistoryDetails);
   const recentRegion = page.getByRole("region", { name: "Recent decisions" });
   await expect(recentRegion.getByText("Accepted", { exact: true })).toHaveCount(2);
   await expect(recentRegion.getByText("Rejected", { exact: true })).toHaveCount(1);
@@ -752,6 +775,7 @@ async function verifyReviewAndDecisions({
   );
   await expect(benchOutcome).toContainText("1 positive report · max 4/10");
 
+  await openNativeDetails(coachingToolsDetails);
   const liveCoachContext = page.getByRole("region", {
     name: "Live Coach stays with the workout",
   });
@@ -767,6 +791,7 @@ async function verifyReviewAndDecisions({
   await expect(
     page.getByRole("heading", { name: "Review and decisions", exact: true })
   ).toBeVisible();
+  await openNativeDetails(decisionHistoryDetails);
 
   const latestOutcomeLink = outcomesRegion.getByRole("link").first();
   await waitForReactHandler(latestOutcomeLink);
@@ -788,8 +813,9 @@ async function verifyReviewAndDecisions({
     page.getByRole("heading", { name: "Review and decisions", exact: true })
   ).toBeVisible();
 
+  await openNativeDetails(coachingToolsDetails);
   const secondaryRegion = page.getByRole("region", {
-    name: "Secondary coaching tools",
+    name: "AI Review and Ask Coach",
   });
   await expect(
     secondaryRegion.getByRole("button", {
@@ -801,12 +827,14 @@ async function verifyReviewAndDecisions({
     secondaryRegion.getByRole("textbox", { name: "Question for Coach" })
   ).toBeVisible();
   const coreBeforeTools = await page.evaluate(() => {
-    const outcomes = document.querySelector('[aria-labelledby="outcomes-heading"]');
+    const decisions = document.querySelector(
+      '[aria-labelledby="pending-decisions-heading"]',
+    );
     const secondary = document.querySelector(
       '[aria-labelledby="secondary-tools-heading"]'
     );
-    if (!outcomes || !secondary) return false;
-    return Boolean(outcomes.compareDocumentPosition(secondary) & Node.DOCUMENT_POSITION_FOLLOWING);
+    if (!decisions || !secondary) return false;
+    return Boolean(decisions.compareDocumentPosition(secondary) & Node.DOCUMENT_POSITION_FOLLOWING);
   });
   expect(coreBeforeTools).toBe(true);
 
@@ -929,6 +957,7 @@ async function verifyReviewAndDecisions({
       exact: true,
     })
   ).toHaveCount(0);
+  await openNativeDetails(decisionHistoryDetails);
   await expect(
     recentRegion.getByText("Dismissed", { exact: true })
   ).toHaveCount(1);
@@ -950,6 +979,7 @@ async function verifyReviewAndDecisions({
       exact: true,
     })
   ).toBeVisible();
+  await openNativeDetails(decisionHistoryDetails);
   await expect(recentRegion.getByText("Edited", { exact: true })).toBeVisible();
   await expect(recentRegion.getByText("Rejected", { exact: true })).toHaveCount(1);
   await expect(
@@ -1084,6 +1114,9 @@ test("recovers one ready progression job through concurrent protected drainers",
   await waitForReactHandler(approveSuggestion);
   await approveSuggestion.click();
   await expect(suggestions.getByText(exerciseName, { exact: true })).toHaveCount(0);
+  await page.getByText("Decision history and supporting evidence", {
+    exact: true,
+  }).click();
   await expect(page.getByText("Recent decisions", { exact: true })).toBeVisible();
   await expect(
     page.getByText(exerciseName, { exact: true }).last()
@@ -1128,23 +1161,22 @@ test("shows honest empty Review and decisions states", async ({ page }) => {
   await expect(page.getByText("0 pending", { exact: true })).toBeVisible();
   await expect(
     page.getByText(
-      "No decisions have been proposed yet. Rule-based checks run from completed planned workouts and recorded pain evidence.",
+      "New proposals will appear here.",
       { exact: true }
     )
   ).toBeVisible();
   await expect(
     page.getByText(
-      "No decision history yet. This list begins after you accept, edit, or reject a proposal, dismiss an automatic notice, or when a proposal expires.",
+      "No decisions have been proposed yet. Rule-based checks run from completed planned workouts and recorded pain evidence.",
       { exact: true },
     ),
-  ).toBeVisible();
+  ).toHaveCount(0);
   await expect(
-    page.getByText("No accepted decision has follow-up training to assess yet.", {
-      exact: true,
-    })
-  ).toBeVisible();
-  await expect(page.getByText("No generated review yet", { exact: true })).toBeVisible();
-  await expect(page.getByText("No open-ended answers yet.")).toBeVisible();
+    page.getByText("Decision history and supporting evidence", { exact: true }),
+  ).toHaveCount(0);
+  await expect(page.getByText("Coaching tools", { exact: true })).toBeVisible();
+  await expect(page.getByText("No generated review yet", { exact: true })).toBeHidden();
+  await expect(page.getByText("No open-ended answers yet.")).toBeHidden();
   await expect
     .poll(() =>
       page.evaluate(
@@ -1161,6 +1193,11 @@ test("shows honest empty Review and decisions states", async ({ page }) => {
   await expect
     .poll(() => page.evaluate(() => document.documentElement.dataset.fontSize))
     .toBe("default");
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/coach");
+  expect(
+    await page.evaluate(() => document.documentElement.scrollHeight),
+  ).toBeLessThanOrEqual(844);
 });
 
 test(
@@ -1208,9 +1245,9 @@ test("answers all five History questions without mixing independent activity int
   await expect(
     page.getByRole("heading", { name: "Training calendar", exact: true }),
   ).toBeVisible();
-  await expect(
-    page.getByRole("heading", { name: "Needs attention", exact: true }),
-  ).toBeVisible();
+  expect(
+    await page.getByText("One thing to review", { exact: true }).count(),
+  ).toBeLessThanOrEqual(1);
   await expect(
     page.getByRole("heading", { name: "Five questions", exact: true }),
   ).toHaveCount(0);
@@ -1245,6 +1282,7 @@ test("answers all five History questions without mixing independent activity int
     await expect(
       lens.getByRole("region", { name: "Short answer", exact: true })
     ).toBeVisible();
+    await lens.getByText("Evidence and methodology", { exact: true }).click();
     await expect(
       lens.getByRole("region", { name: "Supporting evidence", exact: true })
     ).toBeVisible();
@@ -1299,6 +1337,9 @@ test("answers all five History questions without mixing independent activity int
     name: "Work capacity",
     exact: true,
   });
+  await capacityLens.getByText("Evidence and methodology", {
+    exact: true,
+  }).click();
   await expect(capacityLens).toContainText(
     "Not enough comparable completed strength work is available to establish a workload trend.",
   );
@@ -1488,19 +1529,27 @@ test("answers all five History questions without mixing independent activity int
   await expect(activitySummary).toContainText("90 min");
   await expect(activitySummary).toContainText("7.5 km");
   await page.goto("/history?view=insights&lens=work-capacity");
+  const activityCapacityLens = page.getByRole("article", {
+    name: "Work capacity",
+    exact: true,
+  });
+  await activityCapacityLens.getByText("Evidence and methodology", {
+    exact: true,
+  }).click();
   await expect(
-    page
-      .getByRole("article", { name: "Work capacity", exact: true })
-      .getByRole("region", {
+    activityCapacityLens.getByRole("region", {
         name: "Independent activity context",
         exact: true,
       })
   ).toContainText("1 independent activity · 90 min");
   for (const [index, title] of lensTitles.entries()) {
     await page.goto(`/history?view=insights&lens=${lensKeys[index]}`);
-    const strengthEvidence = page
-      .getByRole("article", { name: title, exact: true })
-      .getByRole("region", { name: "Supporting evidence", exact: true });
+    const lens = page.getByRole("article", { name: title, exact: true });
+    await lens.getByText("Evidence and methodology", { exact: true }).click();
+    const strengthEvidence = lens.getByRole("region", {
+      name: "Supporting evidence",
+      exact: true,
+    });
     await expect(strengthEvidence).not.toContainText(
       "Release 1B.3 separation walk"
     );

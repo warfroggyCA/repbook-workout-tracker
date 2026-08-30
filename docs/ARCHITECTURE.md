@@ -246,6 +246,25 @@ under the Start form's explicit **Workout options** disclosure. The Today page
 does not load dashboard statistics or recent-workout rows; its owner-scoped
 query budget is seven.
 
+Review is an owner-decision queue, not a coaching dashboard. A pending proposal
+shows its proposed future effect first, then the reason it appeared, then one
+closed **How calculated** disclosure for evidence, limitations, producer,
+source version, rule identity, confidence, and portability. Approval, editing,
+deferral, and rejection stay after that explanation. Deterministic pending
+decisions precede the closed decision-history and coaching-tool regions; an
+empty queue gives one concise no-decision state. Live Coach and external AI
+review remain separate owner-invoked tools and never become the primary Review
+surface.
+
+The History workspace keeps Calendar, Insights, and Exercises as distinct
+lenses without repeating a description panel for the selected view. Calendar
+may show at most one supported **One thing to review** signal immediately above
+the calendar; unsupported or unavailable conclusions produce no signal. Lens
+cards lead with the short answer and decision support, while retained evidence,
+activity context, limitations, and methodology share one closed disclosure.
+This hierarchy changes no report calculation, source record, or recommendation
+state.
+
 Completed-workout History derives one four-question summary from retained facts:
 what happened, what changed against compatible frozen targets, what was notable,
 and whether anything needs the owner's decision next time. The derivation is

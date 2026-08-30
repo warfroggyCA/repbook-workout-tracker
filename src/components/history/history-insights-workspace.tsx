@@ -592,16 +592,18 @@ export function HistoryInsightsWorkspace({
         lens={selected}
         activityReport={activityReport}
         exercisesHref={exercisesHref}
+        detailContent={
+          lens === "work-capacity" ? (
+            <div className="grid gap-3">
+              <WeeklyWorkload report={report} unit={unit} />
+              <ActivitySummary
+                report={activityReport}
+                rangeLabel={rangeLabel}
+              />
+            </div>
+          ) : undefined
+        }
       />
-      {lens === "work-capacity" && (
-        <>
-          <WeeklyWorkload report={report} unit={unit} />
-          <ActivitySummary
-            report={activityReport}
-            rangeLabel={rangeLabel}
-          />
-        </>
-      )}
     </div>
   );
 }

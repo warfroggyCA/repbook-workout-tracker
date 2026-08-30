@@ -37,22 +37,16 @@ const viewOptions = [
   {
     key: "calendar",
     label: "Calendar",
-    description:
-      "Find a date, open a record, or enter a remembered workout without changing the facts it represents.",
     icon: CalendarDays,
   },
   {
     key: "insights",
     label: "Insights",
-    description:
-      "Ask one question at a time and inspect the evidence, limitations, and decision support for this period.",
     icon: Lightbulb,
   },
   {
     key: "exercises",
     label: "Exercises",
-    description:
-      "Review exact-variant progression, best observations, and movement context with links back to source workouts.",
     icon: Dumbbell,
   },
 ] as const;
@@ -93,7 +87,6 @@ export function HistoryWorkspace({
   const rangeLabel =
     HISTORY_RANGES.find((option) => option.key === range)?.label ??
     "Selected period";
-  const activeView = viewOptions.find((option) => option.key === view)!;
   const context: HistoryContext & { range: HistoryRangeKey } = {
     range,
     view,
@@ -171,21 +164,6 @@ export function HistoryWorkspace({
           })}
         </nav>
 
-        {view !== "calendar" && (
-          <div className="ui-surface p-4" data-ui-surface="inset">
-            <div>
-              <h2 className="ui-section-title">
-                {activeView.label}
-              </h2>
-              <p className="mt-1 max-w-3xl text-sm leading-relaxed text-muted-foreground">
-                {activeView.description}
-              </p>
-              <p className="mt-2 text-xs text-muted-foreground">
-                Showing {rangeLabel.toLowerCase()}.
-              </p>
-            </div>
-          </div>
-        )}
       </header>
 
       {view !== "calendar" && (

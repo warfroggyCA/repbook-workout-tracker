@@ -2,6 +2,7 @@ import Link from "next/link";
 import { and, desc, eq, isNull } from "drizzle-orm";
 import {
   CheckCircle2,
+  ChevronDown,
   ClipboardCheck,
   Database,
   MessageSquareText,
@@ -46,7 +47,6 @@ import {
   AlertDescription,
   AlertTitle,
 } from "@/components/ui/alert";
-import { CoachActivityContext } from "@/components/coach/activity-context";
 import {
   LIMITATION_CAUSE_LABELS,
   TECHNIQUE_ISSUE_LABELS,
@@ -56,24 +56,6 @@ import {
 import { formatPainEvidence } from "@/lib/pain-evidence";
 import { externalAnalysisImportDigestSchema } from "@/lib/external-analysis-import";
 import { getExternalAnalysisSourceBindingFreshness } from "@/services/external-analysis-validation";
-
-function Metric({
-  label,
-  value,
-  hint,
-}: {
-  label: string;
-  value: string;
-  hint: string;
-}) {
-  return (
-    <div className="ui-surface p-3" data-ui-surface="inset">
-      <p className="ui-metadata">{label}</p>
-      <p className="ui-value mt-1" data-ui-essential="true">{value}</p>
-      <p className="mt-0.5 text-xs text-muted-foreground">{hint}</p>
-    </div>
-  );
-}
 
 export default async function CoachPage() {
   const user = await getCurrentUser();
@@ -125,22 +107,6 @@ export default async function CoachPage() {
       columns: { id: true, templateName: true },
     }),
   ]);
-  const targetCoverageTotal =
-    report.overview.targetOutcomes.supported +
-    report.overview.targetOutcomes.unknown;
-  const targetCoveragePercent = targetCoverageTotal === 0
-    ? null
-    : Math.round(
-        (report.overview.targetOutcomes.supported / targetCoverageTotal) *
-          1_000,
-      ) / 10;
-  const readyLoadChangeCount = review.pending.filter(
-    (recommendation) =>
-      recommendation.payload.kind === "load_change" &&
-      recommendation.deferredAt == null &&
-      recommendation.reviewEvidence.actionable,
-  ).length;
-
   const latestReviewRow = insightRows.find((row) =>
     ["manual_review", "weekly", "post_workout"].includes(row.kind)
   );
@@ -190,6 +156,13 @@ export default async function CoachPage() {
     timeStyle: "short",
     timeZone: user.profile.timezone,
   });
+  const supportingItemCount =
+    externalObservations.length +
+    review.recentExceptions.length +
+    review.recent.length +
+    review.outcomes.length;
+  const hasDecisionHistoryOrEvidence =
+    supportingItemCount > 0 || review.acceptedDecisionCount > 0;
 
   const toCardData = (
     recommendation: (typeof review.pending)[number]
@@ -238,7 +211,6 @@ export default async function CoachPage() {
       actionable: recommendation.reviewEvidence.actionable,
       producer: recommendation.reviewEvidence.metadata?.producer ?? null,
       sourceVersion: recommendation.reviewEvidence.metadata?.sourceVersion ?? null,
-      generatedAt: recommendation.reviewEvidence.metadata?.generatedAt ?? null,
       limitations: recommendation.reviewEvidence.metadata?.limitations ?? [
         "The complete versioned evidence contract was not retained for this proposal.",
       ],
@@ -265,9 +237,7 @@ export default async function CoachPage() {
           </Badge>
         </div>
         <p className="max-w-3xl text-sm text-muted-foreground sm:text-base">
-          Review proposed Program changes, the evidence behind them, what you
-          decided, and the training recorded afterward. Nothing changes your
-          Program without your approval.
+          Your Program changes only when you approve a proposal.
         </p>
       </header>
 
@@ -281,8 +251,7 @@ export default async function CoachPage() {
               Decisions needing review
             </h2>
             <p className="ui-supporting">
-              These are proposals awaiting your decision. External items are
-              future Review directions, not direct Program changes.
+              Effect, reason, and options.
             </p>
           </div>
           <Badge variant={review.pending.length > 0 ? "default" : "outline"}>
@@ -296,9 +265,7 @@ export default async function CoachPage() {
               Nothing needs your decision right now
             </p>
             <p className="mt-1 text-sm text-muted-foreground">
-              {review.recent.length === 0
-                ? "No decisions have been proposed yet. Rule-based checks run from completed planned workouts and recorded pain evidence."
-                : "Recent decisions remain below, together with any follow-up training that is ready to assess."}
+              New proposals will appear here.
             </p>
           </div>
         ) : (
@@ -317,6 +284,28 @@ export default async function CoachPage() {
         )}
       </section>
 
+      {hasDecisionHistoryOrEvidence ? (
+        <details className="group ui-surface p-4" data-ui-surface="inset">
+          <summary className="flex min-h-11 cursor-pointer list-none flex-wrap items-center justify-between gap-3 rounded-lg outline-none focus-visible:ring-3 focus-visible:ring-ring/50">
+            <span>
+              <span className="ui-section-title block">
+                Decision history and supporting evidence
+              </span>
+              <span className="ui-supporting mt-1 block">
+                Past decisions, recorded context, and follow-up.
+              </span>
+            </span>
+            <span className="flex items-center gap-2">
+              <Badge variant="outline">
+                {supportingItemCount} item{supportingItemCount === 1 ? "" : "s"}
+              </Badge>
+              <ChevronDown
+                className="size-4 text-muted-foreground transition-transform group-open:rotate-180 motion-reduce:transition-none"
+                aria-hidden="true"
+              />
+            </span>
+          </summary>
+          <div className="mt-5 flex flex-col gap-5 border-t pt-5">
       {externalObservations.length > 0 ? (
         <section className="flex flex-col gap-3" aria-labelledby="external-observations-heading">
           <div>
@@ -348,43 +337,7 @@ export default async function CoachPage() {
         </section>
       ) : null}
 
-      <details
-        className="ui-surface p-4"
-        data-ui-surface="inset"
-        aria-labelledby="progression-criteria-heading"
-      >
-        <summary className="flex cursor-pointer list-none flex-wrap items-start justify-between gap-3">
-          <span>
-            <span id="progression-criteria-heading" className="ui-section-title block">
-              How load progression works
-            </span>
-            <span className="ui-supporting mt-1 block">
-              {readyLoadChangeCount > 0
-                ? `${readyLoadChangeCount} future load ${readyLoadChangeCount === 1 ? "change is" : "changes are"} ready for review below.`
-                : "No load increase is ready for review right now."}
-            </span>
-          </span>
-          <Badge variant={readyLoadChangeCount > 0 ? "default" : "outline"}>
-            {readyLoadChangeCount > 0 ? "Proposal ready" : "No proposal ready"}
-          </Badge>
-        </summary>
-        <div className="mt-3 border-t pt-3">
-          <p className="text-sm">
-            Repbook suggests more weight after the comparable completed workout(s)
-            required by your coaching setting, where every prescribed set reaches
-            the top of its rep range and every cited set has an explicit RPE of 8
-            or lower (or RIR of 2 or higher). Missing effort stays unknown and
-            does not count as a clean workout.
-          </p>
-          <p className="mt-2 text-xs text-muted-foreground">
-            A saved Program target is the normal baseline. If there is no target,
-            the same exact performed load across the comparable sets can establish
-            the baseline. Equipment increments and the 10% safety limit still
-            apply. Any resulting proposal is future-only until you approve it.
-          </p>
-        </div>
-      </details>
-
+      {review.recentExceptions.length > 0 ? (
       <section
         className="flex flex-col gap-3"
         aria-labelledby="recent-exception-context-heading"
@@ -398,13 +351,7 @@ export default async function CoachPage() {
             your Program, approve a proposal, or create an adaptation.
           </p>
         </div>
-        {review.recentExceptions.length === 0 ? (
-          <p className="rounded-xl border border-dashed p-4 text-sm text-muted-foreground">
-            No optional effort or issue context is recorded. Ordinary completed
-            sets remain unknown for these fields.
-          </p>
-        ) : (
-          <ol className="grid gap-3 md:grid-cols-2" aria-label="Recent effort and issue context">
+        <ol className="grid gap-3 md:grid-cols-2" aria-label="Recent effort and issue context">
             {review.recentExceptions.map((item) => {
               const details = [
                 item.rir == null ? null : `RIR ${item.rir}`,
@@ -449,10 +396,11 @@ export default async function CoachPage() {
                 </li>
               );
             })}
-          </ol>
-        )}
+        </ol>
       </section>
+      ) : null}
 
+      {review.recent.length > 0 ? (
       <section
         className="flex flex-col gap-3"
         aria-labelledby="recent-decisions-heading"
@@ -466,14 +414,7 @@ export default async function CoachPage() {
             stay distinct.
           </p>
         </div>
-        {review.recent.length === 0 ? (
-          <p className="rounded-xl border border-dashed p-4 text-sm text-muted-foreground">
-            No decision history yet. This list begins after you accept, edit, or
-            reject a proposal, dismiss an automatic notice, or when a proposal
-            expires.
-          </p>
-        ) : (
-          <ol className="flex flex-col gap-2" aria-label="Recent decisions">
+        <ol className="flex flex-col gap-2" aria-label="Recent decisions">
             {review.recent.map((recommendation) => {
               const status = reviewDecisionStatus(recommendation);
               const undoneAt = recommendation.adaptations.find(
@@ -550,10 +491,11 @@ export default async function CoachPage() {
                 </li>
               );
             })}
-          </ol>
-        )}
+        </ol>
       </section>
+      ) : null}
 
+      {review.acceptedDecisionCount > 0 || review.outcomes.length > 0 ? (
       <section
         className="flex flex-col gap-3"
         aria-labelledby="outcomes-heading"
@@ -647,7 +589,29 @@ export default async function CoachPage() {
           </ol>
         )}
       </section>
+      ) : null}
 
+          </div>
+        </details>
+      ) : null}
+
+      <details className="group ui-surface p-4" data-ui-surface="inset">
+        <summary className="flex min-h-11 cursor-pointer list-none flex-wrap items-center justify-between gap-3 rounded-lg outline-none focus-visible:ring-3 focus-visible:ring-ring/50">
+          <span>
+            <span className="ui-section-title block">Coaching tools</span>
+            <span className="ui-supporting mt-1 block">
+              Optional Live Coach and generated analysis.
+            </span>
+          </span>
+          <span className="flex items-center gap-2">
+            <Badge variant="outline">Optional</Badge>
+            <ChevronDown
+              className="size-4 text-muted-foreground transition-transform group-open:rotate-180 motion-reduce:transition-none"
+              aria-hidden="true"
+            />
+          </span>
+        </summary>
+        <div className="mt-5 flex flex-col gap-5 border-t pt-5">
       <section
         className="ui-surface p-4"
         data-ui-surface="inset"
@@ -693,7 +657,7 @@ export default async function CoachPage() {
       >
         <div>
           <h2 id="secondary-tools-heading" className="ui-section-title">
-            Secondary coaching tools
+            AI Review and Ask Coach
           </h2>
           <p className="text-xs text-muted-foreground">
             Generated reviews and open-ended answers can help you interpret
@@ -766,65 +730,9 @@ export default async function CoachPage() {
           </p>
         )}
 
-        <div aria-labelledby="snapshot-heading">
-          <div className="mb-2 flex flex-wrap items-end justify-between gap-3">
-            <div>
-              <h3 id="snapshot-heading" className="font-medium">
-                12-week evidence snapshot
-              </h3>
-              <p className="text-xs text-muted-foreground">
-                Calculated directly from logged workouts
-              </p>
-            </div>
-            <Link
-              href="/history?range=12w"
-              className="text-xs text-primary underline-offset-4 hover:underline focus-visible:rounded-sm focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
-            >
-              Open full history
-            </Link>
-          </div>
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-            <Metric
-              label="Workouts"
-              value={String(report.overview.completedSessions)}
-              hint={
-                report.cadence.averageSessionsPerCompleteWeek == null
-                  ? `${report.overview.workingSets} working sets`
-                  : `${report.cadence.averageSessionsPerCompleteWeek} per complete week · current preference ${report.cadence.currentPreference.sessionsPerWeek}`
-              }
-            />
-            <Metric
-              label="Target-attainment coverage"
-              value={targetCoverageTotal === 0
-                ? "—"
-                : `${report.overview.targetOutcomes.supported}/${targetCoverageTotal}${report.overview.targetDenominatorComplete ? "" : " quantified"}`}
-              hint={targetCoveragePercent == null
-                ? "No planned outcomes available"
-                : `${targetCoveragePercent}% evaluable among quantified outcomes · supported subset ${report.overview.targetOutcomes.atOrAboveRate == null ? "has no statistic" : `${report.overview.targetOutcomes.atOrAboveRate}% at/above`}${report.overview.targetDenominatorComplete ? "" : " · full denominator incomplete; no overall conclusion"}`}
-            />
-            <Metric
-              label="Avg. effort"
-              value={
-                report.overview.averageRpe == null
-                  ? "—"
-                  : String(report.overview.averageRpe)
-              }
-              hint="Recorded RPE"
-            />
-            <Metric
-              label="Avg. fatigue"
-              value={
-                report.recovery.averageFatigue == null
-                  ? "—"
-                  : `${report.recovery.averageFatigue}/5`
-              }
-              hint={`${report.recovery.fatigueCheckIns} check-ins`}
-            />
-          </div>
-        </div>
-
-        <CoachActivityContext report={activityReport} />
       </section>
+        </div>
+      </details>
 
       <footer className="flex items-start gap-2 rounded-xl bg-muted/50 p-3 text-xs text-muted-foreground">
         <ShieldCheck className="mt-0.5 size-4 shrink-0 text-success" />

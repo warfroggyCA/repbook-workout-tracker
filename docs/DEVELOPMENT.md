@@ -593,6 +593,14 @@ npm run test:e2e:v2-d02
 npm run test:e2e:v2-r01
 ```
 
+The general workout smoke suite owns the Review decision hierarchy, the concise
+empty Review state at 390 by 844, and disclosure access at narrow enlarged text.
+`test:e2e:history-workspace` owns the three History destinations and
+conclusion-before-evidence hierarchy. `test:e2e:history-calendar` owns the
+single supported action signal above the calendar and proves that History never
+renders more than one such signal. Focused unit coverage for that deterministic
+selection lives in `tests/unit/history-calendar-workspace.test.ts`.
+
 Run the smallest affected browser suite first, then the complete protected
 workflow for a merge candidate. Protected CI runs the authoritative inventory
 in `scripts/production-browser-groups.json` as six balanced parallel groups;

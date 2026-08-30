@@ -12,7 +12,14 @@ import {
 } from "@/app/actions/recommendations";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { CalendarClock, ExternalLink, Gauge, ListChecks, Minus, Plus } from "lucide-react";
+import {
+  CalendarClock,
+  ChevronDown,
+  ExternalLink,
+  ListChecks,
+  Minus,
+  Plus,
+} from "lucide-react";
 import type { ReviewEvidenceItem } from "@/services/review-decisions";
 import type { ReviewEvidenceLink, ReviewEvidenceState } from "@/services/review-evidence";
 
@@ -42,7 +49,6 @@ export type RecommendationCardData = {
   actionable: boolean;
   producer: "progression_rules" | "pain_consistency" | "external_analysis" | null;
   sourceVersion: string | null;
-  generatedAt: string | null;
   limitations: string[];
   proposedEffect: string;
   externalRequestedOutcome: string | null;
@@ -71,6 +77,15 @@ export function RecommendationCard({
   const externalEdited =
     isExternal && externalOutcome.trim() !== rec.externalRequestedOutcome;
   const deferred = rec.deferredAt != null;
+  const evidenceStateLabel = rec.evidenceState === "supported"
+    ? "Supported"
+    : rec.evidenceState === "external"
+      ? "Validated external"
+      : rec.evidenceState === "contradictory"
+        ? "Contradictory"
+        : rec.evidenceState === "stale"
+          ? "Stale"
+          : "Unsupported";
 
   function decide(action: "approve" | "reject" | "dismiss" | "defer" | "resume") {
     setError(null);
@@ -181,44 +196,25 @@ export function RecommendationCard({
         </p>
       )}
 
-      <p className="mt-1 text-sm text-muted-foreground">{rec.reason}</p>
-
       <div className="ui-surface mt-3 p-3" data-ui-surface="inset">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <h4 className="text-sm font-medium">Review evidence</h4>
-          <Badge variant={rec.evidenceState === "supported" || rec.evidenceState === "external" ? "secondary" : "outline"}>
-            {rec.evidenceState === "supported"
-              ? "Supported"
-              : rec.evidenceState === "external"
-                ? "Validated external"
-              : rec.evidenceState === "contradictory"
-                ? "Contradictory"
-                : rec.evidenceState === "stale"
-                  ? "Stale"
-                  : "Unsupported"}
-          </Badge>
-        </div>
-        <p className="mt-1 text-xs text-muted-foreground">{rec.evidenceExplanation}</p>
-        <details className="mt-2">
-          <summary className="cursor-pointer text-xs font-medium text-primary">
-            Evidence details
-          </summary>
-          <dl className="mt-2 grid gap-1 border-t pt-2 text-xs sm:grid-cols-2">
-            <div><dt className="text-muted-foreground">Source</dt><dd className="font-medium">{rec.producer?.replaceAll("_", " ") ?? rec.source}</dd></div>
-            <div><dt className="text-muted-foreground">Source version</dt><dd className="font-medium break-all">{rec.sourceVersion ?? "Legacy / unknown"}</dd></div>
-            <div><dt className="text-muted-foreground">Rule</dt><dd className="font-medium break-all">{rec.ruleId?.replaceAll("_", " ") ?? rec.kind}</dd></div>
-            <div><dt className="text-muted-foreground">Created</dt><dd className="font-medium"><time dateTime={rec.createdAt}>{rec.createdAtLabel}</time></dd></div>
-            <div><dt className="text-muted-foreground">Confidence</dt><dd className="font-medium">Not scored</dd></div>
-          </dl>
-        </details>
+        <p className="ui-metadata">
+          {isHold
+            ? "Current effect"
+            : isExternal
+              ? "Proposed future Review direction"
+              : "Proposed future Program effect"}
+        </p>
+        <p className="mt-1 text-sm font-medium leading-relaxed">
+          {rec.proposedEffect}
+        </p>
       </div>
 
-      {isHold && (
-        <p className="mt-2 text-sm">
-          This notice doesn&apos;t change your Program. The current load stays
-          in place until the evidence window above clears.
+      <div className="mt-3">
+        <p className="ui-metadata">Why this appeared</p>
+        <p className="mt-1 text-sm text-muted-foreground">
+          {rec.reason}
         </p>
-      )}
+      </div>
 
       {rec.alternatives.length > 0 && (
         <p className="mt-1 text-xs text-muted-foreground">
@@ -226,55 +222,87 @@ export function RecommendationCard({
         </p>
       )}
 
-      <div
-        className={`mt-3 grid gap-2 ${isHold ? "" : "sm:grid-cols-2"}`}
-      >
-        <div className="ui-surface p-3" data-ui-surface="inset">
-          <h4 className="flex items-center gap-1.5 text-sm font-medium">
-            <ListChecks className="size-3.5 text-primary" /> Observed basis
-          </h4>
-          {rec.evidence.length > 0 ? (
-            <dl className="mt-2 flex flex-col gap-1.5 text-xs">
-              {rec.evidence.map((item) => (
-                <div
-                  key={`${item.label}-${item.value}`}
-                  className="flex flex-wrap justify-between gap-x-3 gap-y-0.5"
-                >
-                  <dt className="text-muted-foreground">{item.label}</dt>
-                  <dd className="font-medium tabular-nums">{item.value}</dd>
-                </div>
-              ))}
+      <details className="group ui-surface mt-3 p-3" data-ui-surface="inset">
+        <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 rounded-lg outline-none focus-visible:ring-3 focus-visible:ring-ring/50">
+          <span className="flex items-center gap-1.5 text-sm font-medium text-primary">
+            <ListChecks className="size-3.5" aria-hidden="true" />
+            How calculated
+          </span>
+          <span className="flex items-center gap-2">
+            <Badge
+              variant={
+                rec.evidenceState === "supported" || rec.evidenceState === "external"
+                  ? "secondary"
+                  : "outline"
+              }
+            >
+              {evidenceStateLabel}
+            </Badge>
+            <ChevronDown
+              className="size-4 text-muted-foreground transition-transform group-open:rotate-180 motion-reduce:transition-none"
+              aria-hidden="true"
+            />
+          </span>
+        </summary>
+
+        <div className="mt-3 border-t pt-3">
+          <p className="text-xs leading-relaxed text-muted-foreground">
+            {rec.evidenceExplanation}
+          </p>
+
+          <section className="mt-3" aria-label="Observed basis">
+            <h4 className="text-sm font-medium">Observed basis</h4>
+            {rec.evidence.length > 0 ? (
+              <dl className="mt-2 flex flex-col gap-1.5 text-xs">
+                {rec.evidence.map((item) => (
+                  <div
+                    key={`${item.label}-${item.value}`}
+                    className="flex flex-wrap justify-between gap-x-3 gap-y-0.5"
+                  >
+                    <dt className="text-muted-foreground">{item.label}</dt>
+                    <dd className="font-medium tabular-nums">{item.value}</dd>
+                  </div>
+                ))}
+              </dl>
+            ) : (
+              <p className="mt-2 text-xs text-muted-foreground">
+                No supporting signal details were stored with this proposal.
+              </p>
+            )}
+            {rec.evidenceLinks.length > 0 && (
+              <ul className="mt-3 space-y-1.5 border-t pt-2 text-xs">
+                {rec.evidenceLinks.map((link) => (
+                  <li key={`${link.kind}-${link.id}`}>
+                    <Link
+                      data-ui-touch
+                      className="inline-flex items-center gap-1 text-primary underline-offset-2 hover:underline"
+                      href={link.href}
+                    >
+                      {link.label}
+                      <ExternalLink className="size-3" aria-hidden="true" />
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+
+          <section className="mt-4" aria-label="Method and limitations">
+            <h4 className="text-sm font-medium">Method and limitations</h4>
+            <dl className="mt-2 grid gap-2 text-xs sm:grid-cols-2">
+              <div><dt className="text-muted-foreground">Producer</dt><dd className="font-medium">{rec.producer?.replaceAll("_", " ") ?? rec.source}</dd></div>
+              <div><dt className="text-muted-foreground">Source version</dt><dd className="break-all font-medium">{rec.sourceVersion ?? "Legacy / unknown"}</dd></div>
+              <div><dt className="text-muted-foreground">Rule</dt><dd className="break-all font-medium">{rec.ruleId?.replaceAll("_", " ") ?? rec.kind}</dd></div>
+              <div><dt className="text-muted-foreground">Created</dt><dd className="font-medium"><time dateTime={rec.createdAt}>{rec.createdAtLabel}</time></dd></div>
+              <div><dt className="text-muted-foreground">Confidence</dt><dd className="font-medium">Not scored</dd></div>
+              <div><dt className="text-muted-foreground">Portability</dt><dd className="font-medium">{rec.sourceVersion ? "Retained in export and recovery" : "Legacy metadata incomplete"}</dd></div>
             </dl>
-          ) : (
-            <p className="mt-2 text-xs text-muted-foreground">
-              No supporting signal details were stored with this proposal.
-            </p>
-          )}
-          {rec.evidenceLinks.length > 0 && (
-            <ul className="mt-3 space-y-1.5 border-t pt-2 text-xs">
-              {rec.evidenceLinks.map((link) => (
-                <li key={`${link.kind}-${link.id}`}>
-                  <Link data-ui-touch className="inline-flex items-center gap-1 text-primary underline-offset-2 hover:underline" href={link.href}>
-                    {link.label}<ExternalLink className="size-3" aria-hidden="true" />
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-        {!isHold && (
-          <div className="ui-surface p-3" data-ui-surface="inset">
-            <h4 className="flex items-center gap-1.5 text-sm font-medium">
-              <Gauge className="size-3.5 text-primary" /> {isExternal ? "Proposed future Review direction" : "Proposed future Program effect"}
-            </h4>
-            <p className="mt-2 text-sm">{rec.proposedEffect}</p>
-            <h5 className="mt-3 text-xs font-medium">Limitations</h5>
-            <ul className="mt-1 list-disc space-y-1 pl-4 text-xs text-muted-foreground">
+            <ul className="mt-3 list-disc space-y-1 pl-4 text-xs text-muted-foreground">
               {rec.limitations.map((limitation) => <li key={limitation}>{limitation}</li>)}
             </ul>
-          </div>
-        )}
-      </div>
+          </section>
+        </div>
+      </details>
 
       {isLoadChange && (
         <div className="mt-2 flex items-center gap-2">

@@ -1,6 +1,7 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
 import {
   installNextDevelopmentRefreshControl,
+  openNativeDetails,
   waitForEquipmentSelectionsToSettle,
   waitForHydratedReactHandler,
   waitForHydratedServerAction,
@@ -197,6 +198,10 @@ test("keeps ordinary completion minimal and makes exception evidence reversible,
   await expect(page.getByText(/Pain: back 4\/10/).first()).toBeVisible();
 
   await page.goto("/coach");
+  await openNativeDetails(page.getByText(
+    "Decision history and supporting evidence",
+    { exact: true },
+  ).locator("xpath=ancestor::details[1]"));
   const review = page.getByRole("region", {
     name: "Recent effort and issue context",
   });

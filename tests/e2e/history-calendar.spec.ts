@@ -134,17 +134,18 @@ test("calendar-first History opens a recoverable retrospective entry flow", asyn
     name: "Training calendar",
     exact: true,
   });
-  const attention = page.getByRole("heading", {
-    name: "Needs attention",
-    exact: true,
-  });
-  const [calendarBox, attentionBox] = await Promise.all([
-    calendarTitle.boundingBox(),
-    attention.boundingBox(),
-  ]);
-  expect(calendarBox).not.toBeNull();
-  expect(attentionBox).not.toBeNull();
-  expect(calendarBox!.y).toBeLessThan(attentionBox!.y);
+  await expect(calendarTitle).toBeVisible();
+  const actionSignal = page.getByText("One thing to review", { exact: true });
+  expect(await actionSignal.count()).toBeLessThanOrEqual(1);
+  if ((await actionSignal.count()) === 1) {
+    const [signalBox, calendarBox] = await Promise.all([
+      actionSignal.boundingBox(),
+      calendarTitle.boundingBox(),
+    ]);
+    expect(signalBox).not.toBeNull();
+    expect(calendarBox).not.toBeNull();
+    expect(signalBox!.y).toBeLessThan(calendarBox!.y);
+  }
 
   const selectedPastDate = page.getByRole("button", {
     name: `${primaryLabel}: Add a workout or activity`,
