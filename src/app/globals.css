@@ -268,6 +268,10 @@ html[data-font-size="extra-large"] {
   border-color: color-mix(in oklch, var(--primary) 28%, var(--border));
 }
 
+.ui-surface[data-current-set="true"] {
+  border-width: 2px;
+}
+
 .ui-surface[data-ui-surface="attention"] {
   background: var(--surface-attention);
   border-color: color-mix(in oklch, oklch(0.72 0.14 75) 32%, var(--border));
