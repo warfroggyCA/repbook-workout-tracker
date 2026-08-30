@@ -84,6 +84,13 @@ test("links every material Review claim to evidence and preserves deliberate own
     "Two completed squat workouts at 105 lb",
   );
 
+  const normalHistoryHref = new URL(evidenceHref!, page.url()).pathname;
+  await page.goto(normalHistoryHref);
+  const workoutSummary = page.getByTestId("workout-summary");
+  await expect(workoutSummary).toContainText("3 Program decisions need review");
+  await expect(workoutSummary).not.toContainText("Nothing needs a decision");
+  await page.goto("/coach");
+
   const refreshedSupported = page.getByRole("region", {
     name: "Decisions needing review",
   }).locator("section").filter({

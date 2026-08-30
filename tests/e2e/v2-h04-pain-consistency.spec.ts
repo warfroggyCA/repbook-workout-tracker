@@ -73,6 +73,19 @@ test("keeps pain, no-issue, exception identity, and proposals consistent", async
   await expect(page.getByText("Limited by: Strength or fatigue", { exact: true })).toBeVisible();
 
   await page.goto(`/history/${h01.finishedEarlySession}`);
+  const workoutSummary = page.getByTestId("workout-summary");
+  await expect(workoutSummary).toContainText(
+    "Technique or limitation was recorded",
+  );
+  await expect(workoutSummary).not.toContainText(
+    "No notable issue was recorded",
+  );
+  await expect(
+    page.getByText("Technique issue: Control", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByText("Limited by: Equipment or setup", { exact: true }),
+  ).toBeVisible();
   const technicalRecord = page.locator("details#technical-record");
   const noIssue = technicalRecord
     .getByRole("heading", { name: "Pain / no-issue evidence" })

@@ -46,6 +46,7 @@ export type WorkoutSummaryInput = {
   targetOutcomes: TargetOutcomes;
   targetDenominatorComplete: boolean;
   positivePainEvidenceCount: number;
+  setExceptionEvidenceCount: number;
   explicitNoIssueEvidenceCount: number;
   painEvidenceUnknown: boolean;
   correctionLabel: string;
@@ -133,6 +134,19 @@ function notableAnswer(input: WorkoutSummaryInput): WorkoutSummaryAnswer {
     };
   }
 
+  if (input.setExceptionEvidenceCount > 0) {
+    return {
+      value: "Technique or limitation was recorded",
+      detail: `Retained technique or limitation context is attached to ${countLabel(
+        input.setExceptionEvidenceCount,
+        "performed set",
+      )}.`,
+      tone: "attention",
+      href: "#technical-record",
+      actionLabel: "Review set context",
+    };
+  }
+
   if (input.terminalState === "abandoned") {
     return {
       value: "The workout was abandoned",
@@ -205,7 +219,9 @@ function notableAnswer(input: WorkoutSummaryInput): WorkoutSummaryAnswer {
 function nextAnswer(input: WorkoutSummaryInput): WorkoutSummaryAnswer {
   if (input.pendingDecisionCount > 0) {
     return {
-      value: `${countLabel(input.pendingDecisionCount, "Program decision")} needs review`,
+      value: `${countLabel(input.pendingDecisionCount, "Program decision")} ${
+        input.pendingDecisionCount === 1 ? "needs" : "need"
+      } review`,
       detail: "Nothing changes unless you approve it.",
       tone: "attention",
       href: "/coach",

@@ -140,7 +140,18 @@ test("History workspace preserves deep links, Back and Forward, and exact detail
   await expect(
     page.getByRole("link", { name: "Open Archive", exact: true }),
   ).toHaveAttribute("href", "/archive");
-  await page.keyboard.press("Escape");
+  await page
+    .getByRole("button", { name: "Add History note", exact: true })
+    .click();
+  const noteDialog = page.getByRole("dialog", {
+    name: "Add a training note",
+    exact: true,
+  });
+  await expect(noteDialog).toBeVisible();
+  await noteDialog
+    .getByRole("button", { name: "Close · keep draft", exact: true })
+    .click();
+  await expect(noteDialog).toHaveCount(0);
 
   await page.getByRole("link", { name: "Insights", exact: true }).click();
   await expect(page).toHaveURL(

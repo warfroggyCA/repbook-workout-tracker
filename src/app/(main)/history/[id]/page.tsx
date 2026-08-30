@@ -239,7 +239,15 @@ export default async function SessionDetailPage(
         .filter((value): value is string => value != null)
     ),
   ];
-  const [archivePreview, coachMessages, referencedExercises, contextualNotes, setVersions, timingVersions] = await Promise.all([
+  const [
+    archivePreview,
+    coachMessages,
+    referencedExercises,
+    contextualNotes,
+    setVersions,
+    timingVersions,
+    pendingRecs,
+  ] = await Promise.all([
     getWorkoutArchivePreview(db, user.id, session.id),
     listLiveCoachMessages(db, user.id, session.id),
     referencedExerciseIds.length > 0
@@ -269,6 +277,20 @@ export default async function SessionDetailPage(
       ),
       orderBy: desc(recordVersions.createdAt),
     }),
+    (async () => {
+      const candidates = await db.query.recommendations.findMany({
+        where: and(
+          eq(recommendations.userId, user.id),
+          eq(recommendations.status, "pending"),
+          isNull(recommendations.archivedAt),
+        ),
+      });
+      return filterRecommendationsEligibleForAction(
+        db,
+        user.id,
+        candidates,
+      );
+    })(),
   ]);
   const correctionsBySetId = new Map<string, typeof setVersions>();
   for (const version of setVersions) {
@@ -316,20 +338,6 @@ export default async function SessionDetailPage(
     source: session.source,
     importBatchId: session.importBatchId,
   });
-
-  const pendingRecs = justFinished
-    ? await filterRecommendationsEligibleForAction(
-        db,
-        user.id,
-        await db.query.recommendations.findMany({
-          where: and(
-            eq(recommendations.userId, user.id),
-            eq(recommendations.status, "pending"),
-            isNull(recommendations.archivedAt)
-          ),
-        }),
-      )
-    : [];
 
   const activeSetIds = new Set(visibleSetIds);
   const performedWorkingSetIdSet = performedWorkingSetIds(
@@ -537,6 +545,11 @@ export default async function SessionDetailPage(
   const positivePainEvidenceCount = classifiedPainEvidence.filter(
     ({ evidence }) => evidence.meaning === "pain",
   ).length;
+  const setExceptionEvidenceCount = performedSetEvidence.filter(
+    ({ set }) =>
+      techniqueIssueLabel(set.techniqueIssue) != null ||
+      limitationCauseLabel(set.limitationCause) != null,
+  ).length;
   const explicitNoIssueEvidenceCount = classifiedPainEvidence.filter(
     ({ evidence }) => evidence.meaning === "explicit_no_issue",
   ).length;
@@ -575,6 +588,7 @@ export default async function SessionDetailPage(
     targetOutcomes,
     targetDenominatorComplete,
     positivePainEvidenceCount,
+    setExceptionEvidenceCount,
     explicitNoIssueEvidenceCount,
     painEvidenceUnknown,
     correctionLabel: HISTORY_CORRECTION_LABELS[workoutCorrectionFacet],

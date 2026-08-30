@@ -24,6 +24,7 @@ function input(
     },
     targetDenominatorComplete: true,
     positivePainEvidenceCount: 0,
+    setExceptionEvidenceCount: 0,
     explicitNoIssueEvidenceCount: 1,
     painEvidenceUnknown: false,
     correctionLabel: "Original evidence",
@@ -153,5 +154,31 @@ describe("WorkoutSummaryViewModel", () => {
       detail: "Nothing changes unless you approve it.",
       href: "/coach",
     });
+  });
+
+  it("does not claim no notable issue when a performed set retained exception context", () => {
+    const summary = buildWorkoutSummaryViewModel(
+      input({
+        setExceptionEvidenceCount: 2,
+        explicitNoIssueEvidenceCount: 0,
+        painEvidenceUnknown: true,
+      }),
+    );
+
+    expect(summary.notable).toMatchObject({
+      value: "Technique or limitation was recorded",
+      detail:
+        "Retained technique or limitation context is attached to 2 performed sets.",
+      tone: "attention",
+      href: "#technical-record",
+    });
+  });
+
+  it("uses a plural decision summary when multiple recommendations need review", () => {
+    const summary = buildWorkoutSummaryViewModel(
+      input({ pendingDecisionCount: 2 }),
+    );
+
+    expect(summary.next.value).toBe("2 Program decisions need review");
   });
 });

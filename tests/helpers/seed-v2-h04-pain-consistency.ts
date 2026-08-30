@@ -22,6 +22,14 @@ async function main() {
     })
     .where(eq(completedSets.id, h01.importedSet));
 
+  await db
+    .update(completedSets)
+    .set({
+      techniqueIssue: "control",
+      limitationCause: "equipment_setup",
+    })
+    .where(eq(completedSets.id, h01.finishedSet));
+
   await db.insert(painLogs).values([
     {
       id: ids.positivePain,
