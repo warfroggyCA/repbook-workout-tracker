@@ -27,6 +27,7 @@ import {
   cachedDraftProtectsPreviousWeight,
   ExerciseCard,
   hydratePreviousComparableWeight,
+  parseFiniteDraftNumber,
   runGuardedLogRequest,
   unconfirmedSetsBlockLogging,
 } from "@/components/session/exercise-card";
@@ -94,6 +95,15 @@ const exercise: SessionExerciseData = {
 };
 
 describe("ExerciseCard", () => {
+  it("never replaces a valid controlled draft number with a non-finite value", () => {
+    expect(parseFiniteDraftNumber("77", null)).toBe(77);
+    expect(parseFiniteDraftNumber("", 77)).toBeNull();
+    expect(parseFiniteDraftNumber("NaN", 77)).toBe(77);
+    expect(parseFiniteDraftNumber("1e309", 77)).toBe(77);
+    expect(parseFiniteDraftNumber(".", 77)).toBe(77);
+    expect(parseFiniteDraftNumber("NaN", null)).toBeNull();
+  });
+
   it("hydrates a compatible previous load only into an untouched blank draft", () => {
     const blank = {
       weight: null,

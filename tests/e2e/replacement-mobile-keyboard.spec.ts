@@ -215,6 +215,22 @@ test("keeps unrestricted replacement truthful and reachable through mobile keybo
   await expect(weight).toHaveValue("77");
   await expect(reps).toHaveValue("9");
 
+  // WebKit once exposed a delayed controlled-input event whose transient DOM
+  // value was the non-finite string "NaN". Repbook must keep the last valid
+  // athlete-entered load instead of turning that implementation detail into a
+  // visible or loggable value.
+  await weight.evaluate((element) => {
+    const input = element as HTMLInputElement;
+    const valueSetter = Object.getOwnPropertyDescriptor(
+      HTMLInputElement.prototype,
+      "value",
+    )?.set;
+    if (!valueSetter) throw new Error("HTML input value setter is unavailable");
+    valueSetter.call(input, "NaN");
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  await expect(weight).toHaveValue("77");
+
   const setOptions = card.locator("details", { hasText: "Set options" });
   const setOptionsSummary = setOptions.locator(":scope > summary");
   const withSetOptionsOpen = async (action: () => Promise<void>) => {

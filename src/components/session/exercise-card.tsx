@@ -416,6 +416,15 @@ function copySetDraft(draft: SetDraft): SetDraft {
   };
 }
 
+export function parseFiniteDraftNumber(
+  rawValue: string,
+  currentValue: number | null,
+) {
+  if (rawValue === "") return null;
+  const parsed = Number(rawValue);
+  return Number.isFinite(parsed) ? parsed : currentValue;
+}
+
 export function cachedDraftProtectsPreviousWeight(
   cached: Pick<ActiveSetDraftCacheEntry, "weightEdited"> | null,
 ) {
@@ -3243,16 +3252,20 @@ function SetEntry({
             max={10}
             step={0.5}
             value={draft.rpe ?? ""}
-            onChange={(event) =>
-              setDraft((current) => ({
-                ...current,
-                rpe:
-                  event.target.value === ""
-                    ? null
-                    : Math.min(10, Math.max(1, Number(event.target.value))),
-                rir: null,
-              }))
-            }
+            onChange={(event) => {
+              const rawValue = event.currentTarget.value;
+              setDraft((current) => {
+                const parsed = parseFiniteDraftNumber(rawValue, current.rpe);
+                return {
+                  ...current,
+                  rpe:
+                    parsed == null
+                      ? null
+                      : Math.min(10, Math.max(1, parsed)),
+                  rir: null,
+                };
+              });
+            }}
           />
         </div>
       )}
@@ -3268,16 +3281,20 @@ function SetEntry({
           max={10}
           step={0.5}
           value={draft.rir ?? ""}
-          onChange={(event) =>
-            setDraft((current) => ({
-              ...current,
-              rir:
-                event.target.value === ""
-                  ? null
-                  : Math.min(10, Math.max(0, Number(event.target.value))),
-              rpe: null,
-            }))
-          }
+          onChange={(event) => {
+            const rawValue = event.currentTarget.value;
+            setDraft((current) => {
+              const parsed = parseFiniteDraftNumber(rawValue, current.rir);
+              return {
+                ...current,
+                rir:
+                  parsed == null
+                    ? null
+                    : Math.min(10, Math.max(0, parsed)),
+                rpe: null,
+              };
+            });
+          }}
         />
         <p className="mt-1 text-xs text-muted-foreground">
           Reps you believe remained. Entering RIR clears RPE.
@@ -3492,12 +3509,12 @@ function SetEntry({
                   inputMode="decimal"
                   className="pr-8 text-center text-base font-medium"
                   value={draft.weight ?? ""}
-                  onChange={(e) => {
+                  onChange={(event) => {
+                    const rawValue = event.currentTarget.value;
                     onWeightEdit();
                     setDraft((d) => ({
                       ...d,
-                      weight:
-                        e.target.value === "" ? null : Number(e.target.value),
+                      weight: parseFiniteDraftNumber(rawValue, d.weight),
                     }));
                   }}
                 />
@@ -3543,12 +3560,13 @@ function SetEntry({
               inputMode="numeric"
               className="pr-10 text-center text-base font-medium"
               value={draft.reps ?? ""}
-              onChange={(e) =>
+              onChange={(event) => {
+                const rawValue = event.currentTarget.value;
                 setDraft((d) => ({
                   ...d,
-                  reps: e.target.value === "" ? null : Number(e.target.value),
-                }))
-              }
+                  reps: parseFiniteDraftNumber(rawValue, d.reps),
+                }));
+              }}
             />
             <span className="pointer-events-none absolute inset-y-0 right-2 flex items-center text-xs text-muted-foreground">
               reps
@@ -3580,11 +3598,16 @@ function SetEntry({
                 inputMode="decimal"
                 className="pr-10 text-center text-base font-medium"
                 value={draft.distanceKm ?? ""}
-                onChange={(event) => setDraft((current) => ({
-                  ...current,
-                  distanceKm:
-                    event.target.value === "" ? null : Number(event.target.value),
-                }))}
+                onChange={(event) => {
+                  const rawValue = event.currentTarget.value;
+                  setDraft((current) => ({
+                    ...current,
+                    distanceKm: parseFiniteDraftNumber(
+                      rawValue,
+                      current.distanceKm,
+                    ),
+                  }));
+                }}
               />
               <span className="pointer-events-none absolute inset-y-0 right-2 flex items-center text-xs text-muted-foreground">
                 km
@@ -3604,11 +3627,16 @@ function SetEntry({
                 inputMode="numeric"
                 className="pr-10 text-center text-base font-medium"
                 value={draft.durationSeconds ?? ""}
-                onChange={(event) => setDraft((current) => ({
-                  ...current,
-                  durationSeconds:
-                    event.target.value === "" ? null : Number(event.target.value),
-                }))}
+                onChange={(event) => {
+                  const rawValue = event.currentTarget.value;
+                  setDraft((current) => ({
+                    ...current,
+                    durationSeconds: parseFiniteDraftNumber(
+                      rawValue,
+                      current.durationSeconds,
+                    ),
+                  }));
+                }}
               />
               <span className="pointer-events-none absolute inset-y-0 right-2 flex items-center text-xs text-muted-foreground">
                 sec
