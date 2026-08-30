@@ -59,10 +59,10 @@ export function MainShell({
   return (
     <div
       className={cn(
-        "min-h-dvh overflow-x-clip bg-background transition-none duration-200 lg:transition-[padding] motion-reduce:transition-none",
+        "ui-motion-drawer min-h-dvh overflow-x-clip bg-background transition-none lg:transition-[padding]",
         sidebarCollapsed
-          ? "lg:pl-16 lg:[--main-sidebar-width:4rem]"
-          : "lg:pl-64 lg:[--main-sidebar-width:16rem]"
+          ? "lg:pl-[64px] lg:[--main-sidebar-width:64px]"
+          : "lg:pl-[224px] lg:[--main-sidebar-width:224px]"
       )}
     >
       <BottomTabs

@@ -1,6 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 import {
   installNextDevelopmentRefreshControl,
+  openNativeDetails,
   waitForHydratedServerAction,
 } from "../helpers/react-readiness";
 import { observeGauntletPageErrors } from "../helpers/v2-gauntlet-a-errors";
@@ -98,6 +99,10 @@ test("keeps pain, no-issue, exception identity, and proposals consistent", async
   await expect(noIssue).not.toContainText("Pain not recorded (unknown)");
 
   await page.goto("/coach");
+  await openNativeDetails(page.getByText(
+    "Decision history and supporting evidence",
+    { exact: true },
+  ).locator("xpath=ancestor::details[1]"));
   const reviewEvidence = page.locator("section").filter({
     has: page.getByRole("heading", { name: "Recent effort and issue context" }),
   }).first();

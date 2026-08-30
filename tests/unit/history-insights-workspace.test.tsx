@@ -31,6 +31,20 @@ function renderOverview({
   );
 }
 
+function renderLens(lens: "progress" | "work-capacity") {
+  const { report, activityReport } = emptyReports();
+  return renderToStaticMarkup(
+    <HistoryInsightsWorkspace
+      report={report}
+      activityReport={activityReport}
+      lens={lens}
+      context={{ range: "4w", view: "insights", lens }}
+      rangeLabel="4 weeks"
+      unit="lb"
+    />,
+  );
+}
+
 describe("HistoryInsightsWorkspace overview", () => {
   it("presents a concise narrative, exhibits, and direct evidence actions", () => {
     const html = renderOverview();
@@ -106,6 +120,36 @@ describe("HistoryInsightsWorkspace overview", () => {
     expect(html).toContain(">2</dd>");
     expect(html).toContain(
       "The retained denominator is incomplete, so no overall conclusion is supported.",
+    );
+  });
+});
+
+describe("HistoryInsightsWorkspace lens", () => {
+  it("leads with the conclusion and decision before one evidence disclosure", () => {
+    const html = renderLens("progress");
+    const conclusion = html.indexOf("Short answer");
+    const decision = html.indexOf("Decision support");
+    const disclosure = html.indexOf("Evidence and methodology");
+
+    expect(conclusion).toBeGreaterThanOrEqual(0);
+    expect(decision).toBeGreaterThan(conclusion);
+    expect(disclosure).toBeGreaterThan(decision);
+    expect(html.match(/<details/g)).toHaveLength(1);
+  });
+
+  it("keeps workload and independent activity evidence in that disclosure", () => {
+    const html = renderLens("work-capacity");
+    const disclosure = html.indexOf("<details");
+    const disclosureEnd = html.indexOf("</details>", disclosure);
+
+    expect(disclosure).toBeGreaterThanOrEqual(0);
+    expect(html.indexOf("Weekly workload")).toBeGreaterThan(disclosure);
+    expect(html.indexOf("Independent health activities")).toBeGreaterThan(
+      disclosure,
+    );
+    expect(html.indexOf("Weekly workload")).toBeLessThan(disclosureEnd);
+    expect(html.indexOf("Independent health activities")).toBeLessThan(
+      disclosureEnd,
     );
   });
 });

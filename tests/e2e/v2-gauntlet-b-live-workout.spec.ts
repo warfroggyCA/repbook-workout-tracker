@@ -11,6 +11,7 @@ import {
 } from "../fixtures/ba-workout-contract";
 import { PRODUCTION_WORKOUT_START_WARMUP } from "../fixtures/production-workout-start-contract";
 import {
+  openNativeDetails,
   waitForEquipmentSelectionsToSettle,
   waitForHydratedReactHandler,
   waitForHydratedServerAction,
@@ -65,9 +66,7 @@ async function signInAndStart(page: Page) {
 }
 
 function exerciseCard(page: Page, name: string) {
-  return page.locator("section").filter({
-    has: page.getByRole("heading", { level: 2, name, exact: true }),
-  }).first();
+  return page.getByRole("region", { name, exact: true });
 }
 
 async function expectReachableTarget(locator: Locator) {
@@ -202,10 +201,7 @@ async function dismissRest(page: Page) {
 
 async function openMoreForExercise(card: Locator) {
   const details = card.locator("details", { hasText: "More for this exercise" });
-  if ((await details.getAttribute("open")) == null) {
-    await details.locator(":scope > summary").click();
-  }
-  await expect(details).toHaveAttribute("open", "");
+  await openNativeDetails(details);
 }
 
 async function skipForEquipment(card: Locator, page: Page) {
@@ -514,7 +510,7 @@ test("keeps the full live workout usable through warm-up, skip, replace, continu
   const finishEarly = page
     .getByRole("complementary", { name: "Workout status" })
     .getByRole("button", { name: "Review workout finish", exact: true });
-  await expect(finishEarly).toContainText("Finish early");
+  await expect(finishEarly).toContainText("Finish");
   await finishEarly.click();
   const earlyFinishReview = page.getByRole("dialog", {
     name: "Finish workout",
@@ -533,7 +529,9 @@ test("keeps the full live workout usable through warm-up, skip, replace, continu
   await continueWithout.click();
   await expect(resolveSkippedExercise).toHaveCount(0);
   await expect(
-    page.getByRole("button", { name: /^Log Barbell Back Squat/ }),
+    page
+      .getByTestId("current-exercise-card")
+      .getByRole("button", { name: "Log set", exact: true }),
   ).toBeVisible();
   await expect(
     exerciseCard(page, "Barbell Back Squat").getByTestId("exercise-swipe-surface"),

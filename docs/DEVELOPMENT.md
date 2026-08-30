@@ -132,6 +132,25 @@ record, contextual note entry and offline recovery, and desktop plus narrow
 mobile behavior. It adds no schema, migration, historical rewrite, calculation
 formula, Coach decision, import, export, or authentication change.
 
+The deterministic ambient-intelligence gate is:
+
+```bash
+npx vitest run tests/unit/athlete-insights.test.ts tests/unit/previous-comparable-sets-db.test.ts tests/unit/workout-summary.test.ts tests/unit/exercise-card-component.test.tsx --maxWorkers=1 --no-file-parallelism
+npx playwright test tests/e2e/workout-smoke.spec.ts -g "makes Today one decisive|keeps the no-history Today|shows one ambient insight|signs in and completes"
+npm run test:e2e:v2-h01
+```
+
+It proves deterministic candidate identity and ranking, supported pending
+decision containment, exact recent-best matching, the four-set/two-workout rest
+threshold, completed-workout comparison, and conservative suppression for
+mixed units, legacy evidence, imports, pain or limitation context, sparse
+records, and absent history. Browser verification must also prove that Today
+shows at most one signal, the active signal appears once at exercise level,
+**Explain** prefills but does not send Live Coach, and post-workout evidence is
+available under **How calculated**. This tranche adds no schema, migration,
+historical rewrite, recommendation, decision, Program write, automatic AI call,
+external analytics payload, import, export, or authentication change.
+
 The semantic test validates all synthetic F01-F17 scenarios and every required
 verification-matrix cell; by itself it proves contract consistency only. The
 T01 tests activate the mapped database, browser, portability, recovery, and
@@ -311,12 +330,15 @@ round-trips it and upgrades schema 30 rows to null evidence. Recovery manifest
 14 keeps the same durable-table inventory and restores an active-duration
 correction together with its linked version and audit evidence. Legacy or
 explicitly unknown active time remains unavailable to duration analytics. The
-logging point now shows only exact, semantically compatible previous-set
-evidence with a source link or an explicit unavailable state. The 390 by 844
-surface keeps the current action primary and moves ordinary progress and
-secondary exercise tools into keyboard-accessible native disclosures without
-hiding pending writes, retry, skipped recovery, rest, finish, or saved-set
-correction.
+logging point now projects existing lifecycle state through the pure
+`ActiveWorkoutViewModel`; that projection is not another store. One cockpit
+owns exact, semantically compatible previous-set evidence, performed inputs,
+and the ordinary Log set action. The fixed status bar omits that action while
+the cockpit is revealed and offers a neutral return after collapse. At 390 by
+844 and 320 by 700 with enlarged text, normal rest replaces set editing, the
+exercise queue retains ledger order, and secondary tools remain in one
+keyboard-accessible native disclosure without hiding pending writes, retry,
+skipped recovery, finish, or saved-set correction.
 
 The Day One recovery follow-up bounds every recorded-work acknowledgement that
 owns active-workout progress. A never-answering set, equipment, occurrence,
@@ -329,13 +351,63 @@ the deployment-recovery and set/equipment/occurrence outbox tests plus
 
 The same follow-up keeps acknowledged warm-ups and sets in closed disclosures,
 places correction with the saved set, reveals the next current set immediately
-after an exact device-durable enqueue, keeps exercise setup above its work until
-acknowledgement, compacts mobile
+after an exact device-durable enqueue, and shows exercise setup above its work
+only while a choice, change, ambiguity, queued equipment action, or safety issue
+needs attention. It compacts mobile
 superset context, and prevents the fixed timer controls from overlapping at
 intermediate phone widths. New-device rest alerts default to foreground sound;
 the timer exposes the effective mode and the set-log gesture primes Web Audio.
 Sound-enabled timers tick locally from 10 through 1 and then play the same
 stronger finish alarm exposed by the Settings test control.
+
+### Product Polish Package 1 interaction contract
+
+Set logging now separates short local outbox mutation from owner-scoped network
+delivery. The local command must be durable before the active-workout projection
+advances, but a delayed Server Action must not block a second enqueue, retry, or
+deliberate discard. Web Locks provide cross-tab single-flight delivery for the
+combined equipment/set stream. Browsers without that guarantee keep the exact
+device copies, make no delivery attempt, disable retry, and show **Saving
+paused** with recovery guidance.
+
+Rest-timer reconciliation begins only after that durable enqueue and retains its
+own cross-tab ordering contract, but it is not awaited by the athlete-facing UI
+advance. Storage failure still produces an explicit timer warning while the set
+continues saving from its retained device copy.
+
+The latest acknowledged explicit rest outcome is retained temporarily under
+`workout-tracker:workout-rest-intent-receipts:v1`. It is a bounded local-only
+ordering receipt, not workout history: it contains no exercise, load,
+repetition, pain, or note content. Older retries must defer to later retained or
+acknowledged rest outcomes across backoff, tabs, and reload. Removing the final
+relevant set prunes the receipt atomically; a receipt-write failure restores the
+exact pre-removal device bytes and reports failure. Active-workout abandonment
+and owner cleanup follow the same fail-closed rule.
+
+Start uses the existing replay-safe request key while native form pending state
+provides a disabled, busy **Starting workout…** control and polite confirmation
+message. Content-free Performance API marks cover Start submit/pending, cockpit
+usability, set tap/local retention/UI advance/acknowledgement, and rendered
+recovery. They are for tests and local diagnostics only and carry no athlete
+payload. The set UI-advance mark is emitted from the committed local projection
+in a layout effect, rather than from a scheduler-sensitive animation frame.
+
+The focused Package 1 gate is:
+
+```bash
+npx vitest run tests/unit/workout-set-outbox.test.ts tests/unit/workout-set-outbox-lock.test.ts tests/unit/workout-set-outbox-sync.test.ts tests/unit/equipment-selection-outbox-sync.test.ts tests/unit/active-workout-discard.test.ts tests/unit/workout-interaction-performance.test.ts tests/unit/workout-start-form-contract.test.ts
+npm run test:e2e:v2-t02
+npm run test:e2e:v2-t05
+npm run test:e2e:v2-t06
+npm run test:e2e:v2-gauntlet-a
+```
+
+T02 deliberately holds the first acknowledgement while a second set reaches
+local retention and UI advance, with both measured under 100 ms. T05 covers the
+older-command-backoff, later terminal acknowledgement, older replay, second-tab,
+and reload sequence. T06 measures truthful Start pending feedback under 100 ms
+while preserving one request identity.
+
 Day 2 reliability coverage adds absolute-deadline restore and missed-expiry cue
 tests, Wake Lock rejection/release/race tests, slow and failed set-outbox
 projection tests, duplicate Program-import rejection, preparation-set ordering,
@@ -573,6 +645,14 @@ npm run test:e2e:v2-a05
 npm run test:e2e:v2-d02
 npm run test:e2e:v2-r01
 ```
+
+The general workout smoke suite owns the Review decision hierarchy, the concise
+empty Review state at 390 by 844, and disclosure access at narrow enlarged text.
+`test:e2e:history-workspace` owns the three History destinations and
+conclusion-before-evidence hierarchy. `test:e2e:history-calendar` owns the
+single supported action signal above the calendar and proves that History never
+renders more than one such signal. Focused unit coverage for that deterministic
+selection lives in `tests/unit/history-calendar-workspace.test.ts`.
 
 Run the smallest affected browser suite first, then the complete protected
 workflow for a merge candidate. Protected CI runs the authoritative inventory

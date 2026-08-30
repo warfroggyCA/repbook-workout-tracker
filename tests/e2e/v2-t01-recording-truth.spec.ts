@@ -31,11 +31,24 @@ async function addWorkoutOnlyExercise(page: Page, name: string) {
     name: "Add exercise to this workout",
     exact: true,
   });
-  await waitForHydratedReactHandler(add);
-  await add.click();
   const picker = page.getByRole("dialog", {
     name: "Choose an exercise for this workout",
   });
+
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    await waitForHydratedReactHandler(add);
+    await add.click();
+    try {
+      await expect(picker).toBeVisible({ timeout: 15_000 });
+      break;
+    } catch (error) {
+      if (attempt === 1) throw error;
+      // A loaded, still-enabled trigger means WebKit missed the activation.
+      // Retry once; an in-flight or failed option request remains a real failure.
+      await expect(add).toBeEnabled({ timeout: 5_000 });
+    }
+  }
+
   await picker.getByRole("textbox", { name: "Search exercise library" }).fill(name);
   await picker
     .getByRole("button", { name: `View details for ${name}`, exact: true })
@@ -48,7 +61,9 @@ async function addWorkoutOnlyExercise(page: Page, name: string) {
   });
   await review.getByLabel("Initial sets").fill("1");
   await review.getByRole("button", { name: "Add exercise", exact: true }).click();
-  await expect(page.getByRole("region", { name })).toContainText("Workout only");
+  await expect(page.getByRole("region", { name, exact: true })).toContainText(
+    "Workout only",
+  );
 }
 
 async function expectSetQueueDrained(page: Page) {
@@ -58,6 +73,21 @@ async function expectSetQueueDrained(page: Page) {
     const parsed = JSON.parse(raw) as { entries?: unknown[] };
     return parsed.entries?.length ?? 0;
   })).toBe(0);
+}
+
+async function dismissRestCockpit(page: Page) {
+  const status = page.getByRole("complementary", { name: "Workout status" });
+  const rest = status.getByTestId("rest-cockpit");
+  await expect(rest).toBeVisible();
+  const skip = rest.getByRole("button", { name: "Skip rest", exact: true });
+  if (await skip.isVisible()) await skip.click();
+  const dismiss = rest.getByRole("button", {
+    name: "Dismiss rest timer",
+    exact: true,
+  });
+  await expect(dismiss).toBeVisible();
+  await dismiss.click();
+  await expect(rest).toHaveCount(0);
 }
 
 async function discardWorkout(page: Page) {
@@ -82,7 +112,10 @@ test("records duration and distance as explicit performed measurements without i
   await addWorkoutOnlyExercise(page, "RKC Plank");
   await addWorkoutOnlyExercise(page, "Walking");
 
-  const plank = page.getByRole("region", { name: "RKC Plank" });
+  const plank = page.getByRole("region", {
+    name: "RKC Plank",
+    exact: true,
+  });
   await plank.getByRole("button", { name: /RKC Plank/ }).click();
   await expect(plank.getByRole("textbox", { name: "Reps", exact: true }))
     .toHaveCount(0);
@@ -92,8 +125,12 @@ test("records duration and distance as explicit performed measurements without i
   await plank.getByRole("button", { name: "Log set", exact: true }).click();
   await expect(plank).toContainText("1/1 done · Workout only");
   await expectSetQueueDrained(page);
+  await dismissRestCockpit(page);
 
-  const walking = page.getByRole("region", { name: "Walking" });
+  const walking = page.getByRole("region", {
+    name: "Walking",
+    exact: true,
+  });
   await walking.getByRole("button", { name: /Walking/ }).click();
   await expect(walking.getByRole("textbox", { name: "Reps", exact: true }))
     .toHaveCount(0);
@@ -104,17 +141,30 @@ test("records duration and distance as explicit performed measurements without i
   await walking.getByRole("button", { name: "Log set", exact: true }).click();
   await expect(walking).toContainText("1/1 done · Workout only");
   await expectSetQueueDrained(page);
+  await dismissRestCockpit(page);
 
   await page.reload({ waitUntil: "domcontentloaded" });
-  const restoredPlank = page.getByRole("region", { name: "RKC Plank" });
-  const restoredWalking = page.getByRole("region", { name: "Walking" });
+  const restoredPlank = page.getByRole("region", {
+    name: "RKC Plank",
+    exact: true,
+  });
+  const restoredWalking = page.getByRole("region", {
+    name: "Walking",
+    exact: true,
+  });
   await expect(restoredPlank).toContainText("1/1 done · Workout only");
   await restoredPlank.getByRole("button", { name: /RKC Plank/ }).click();
-  await restoredPlank.getByTestId("completed-sets").locator("summary").click();
+  await restoredPlank
+    .getByTestId("active-exercise-details")
+    .locator(":scope > summary")
+    .click();
   await expect(restoredPlank.getByText("45 sec", { exact: true })).toBeVisible();
   await expect(restoredWalking).toContainText("1/1 done · Workout only");
   await restoredWalking.getByRole("button", { name: /Walking/ }).click();
-  await restoredWalking.getByTestId("completed-sets").locator("summary").click();
+  await restoredWalking
+    .getByTestId("active-exercise-details")
+    .locator(":scope > summary")
+    .click();
   await expect(
     restoredWalking.getByText("1.2 km · 10:00", { exact: true }),
   ).toBeVisible();

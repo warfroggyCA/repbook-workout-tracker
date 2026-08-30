@@ -5,6 +5,7 @@ import {
   installNextDevelopmentRefreshControl,
   openNativeDetails,
   waitForEquipmentSelectionsToSettle,
+  waitForHydratedReactChangeHandler,
   waitForHydratedFormSubmit,
   waitForHydratedServerAction,
 } from "../helpers/react-readiness";
@@ -59,6 +60,29 @@ async function expectMinimumWorkoutTouchTargets(scope: Locator) {
         .filter((target) => target.width < 44 || target.height < 44)
     );
   expect(undersized).toEqual([]);
+}
+
+function workoutExerciseCards(page: import("@playwright/test").Page) {
+  return page.locator('section[id^="exercise-"]');
+}
+
+async function expectRestCockpit(page: import("@playwright/test").Page) {
+  const status = page.getByRole("complementary", { name: "Workout status" });
+  await expect(status.getByTestId("rest-cockpit")).toBeVisible();
+  return status;
+}
+
+async function dismissRestCockpit(page: import("@playwright/test").Page) {
+  const status = await expectRestCockpit(page);
+  const skip = status.getByRole("button", { name: "Skip rest", exact: true });
+  if (await skip.isVisible()) await skip.click();
+  const dismiss = status.getByRole("button", {
+    name: "Dismiss rest timer",
+    exact: true,
+  });
+  await expect(dismiss).toBeVisible();
+  await dismiss.click();
+  await expect(status.getByTestId("rest-cockpit")).toHaveCount(0);
 }
 
 async function signIn(
@@ -226,6 +250,7 @@ async function verifyDecisiveToday({
   const decisionStatus = decision.locator(
     '[aria-label^="Program decision status"]'
   );
+  const todayInsight = decision.getByTestId("athlete-insight-today");
   const alternateDays = page.getByTestId("alternate-program-days");
   const alternateSummary = alternateDays.locator("summary");
   const dayC = page.getByRole("button", { name: /Day C — Bench/ });
@@ -244,8 +269,19 @@ async function verifyDecisiveToday({
   await expect(programLabel).not.toHaveText("");
   await expect(decision.getByText(/Why this day:/)).toHaveCount(0);
   await expect(trainAsPlanned).toBeVisible();
-  const hasPendingDecision = (await decisionStatus.count()) > 0;
-  if (hasPendingDecision) {
+  const hasAmbientDecision = (await todayInsight.count()) > 0;
+  const hasPendingDecision =
+    hasAmbientDecision || (await decisionStatus.count()) > 0;
+  if (hasAmbientDecision) {
+    await expect(todayInsight).toHaveCount(1);
+    await expect(todayInsight).toContainText("ready to review");
+    await expect(
+      todayInsight.getByRole("link", { name: /Review (decision|hold)/ }),
+    ).toBeVisible();
+    await expect(
+      todayInsight.getByText("How calculated", { exact: true }),
+    ).toBeVisible();
+  } else if (hasPendingDecision) {
     await expect(decisionStatus).toBeVisible();
     await expect(decisionStatus).toContainText(/Program changes? pending/);
   } else {
@@ -335,7 +371,7 @@ async function verifyDecisiveToday({
     )
     .toMatch(
       hasPendingDecision
-        ? /^(Program decision status|Workout options|Preview planned exercises)/
+        ? /^(Review decision|Review hold|Program decision status|Workout options|Preview planned exercises)/
         : /^(Workout options|Preview planned exercises)/,
     );
   await alternateSummary.focus();
@@ -406,7 +442,7 @@ async function verifyDecisiveToday({
     const responsiveActiveDecision = await activeDecision.evaluate((element) => {
       const primary = element.querySelector('[data-slot="button"]');
       const status = element.querySelector(
-        '[aria-label^="Program decision status"]'
+        '[aria-label^="Program decision status"], [data-testid="athlete-insight-today"]'
       );
       const bottomNavigation = document.querySelector("nav.fixed");
       if (!primary) return null;
@@ -613,15 +649,23 @@ async function verifyReviewAndDecisions({
     .toEqual({ preference: "extra-large", rootSize: "23.2px" });
 
   await page.goto("/today");
-  const decisionLink = page.locator(
-    '[aria-label^="Program decision status: 2 changes need review"]'
+  const todayInsight = page.getByTestId("athlete-insight-today");
+  await expect(todayInsight).toHaveCount(1);
+  await expect(todayInsight).toContainText("ready to review");
+  await expect(todayInsight).toContainText(
+    /Program is unchanged|nothing changes without your approval/,
   );
-  await expect(decisionLink).toContainText("2 Program changes pending");
-  await expect(decisionLink).toHaveAttribute("href", "/coach");
+  const decisionLink = todayInsight.getByRole("link", {
+    name: /Review (decision|hold)/,
+  });
+  await expect(decisionLink).toHaveAttribute(
+    "href",
+    /\/coach#recommendation-/,
+  );
   await decisionLink.focus();
   await expect(decisionLink).toBeFocused();
   await decisionLink.press("Enter");
-  await expect(page).toHaveURL(/\/coach$/);
+  await expect(page).toHaveURL(/\/coach#recommendation-/);
   await expect(
     page.getByRole("heading", { name: "Review and decisions", exact: true })
   ).toBeVisible();
@@ -631,23 +675,38 @@ async function verifyReviewAndDecisions({
   await expect(activeReviewLink).toBeVisible();
   await expect(activeReviewLink).toHaveAttribute("aria-current", "page");
 
-  const expectedSectionOrder = [
-    "Decisions needing review",
-    "Recent decisions",
-    "Outcomes ready to assess",
-    "Live Coach stays with the workout",
-    "Secondary coaching tools",
-  ];
-  const topLevelHeadings = await page
-    .getByRole("heading", { level: 2 })
-    .allTextContents();
-  expect(
-    topLevelHeadings.filter((heading) => expectedSectionOrder.includes(heading))
-  ).toEqual(expectedSectionOrder);
-
   const pendingRegion = page.getByRole("region", {
     name: "Decisions needing review",
   });
+  const decisionHistoryDisclosure = page.getByText(
+    "Decision history and supporting evidence",
+    { exact: true },
+  );
+  const coachingToolsDisclosure = page.getByText("Coaching tools", {
+    exact: true,
+  });
+  const decisionHistoryDetails = decisionHistoryDisclosure.locator(
+    "xpath=ancestor::details[1]",
+  );
+  const coachingToolsDetails = coachingToolsDisclosure.locator(
+    "xpath=ancestor::details[1]",
+  );
+  await expect(decisionHistoryDisclosure).toBeVisible();
+  await expect(coachingToolsDisclosure).toBeVisible();
+  expect(await page.evaluate(() => {
+    const pending = document.querySelector(
+      '[aria-labelledby="pending-decisions-heading"]',
+    );
+    const disclosures = [...document.querySelectorAll("main > details")];
+    return Boolean(
+      pending &&
+        disclosures.length === 2 &&
+        pending.compareDocumentPosition(disclosures[0]) &
+          Node.DOCUMENT_POSITION_FOLLOWING &&
+        disclosures[0].compareDocumentPosition(disclosures[1]) &
+          Node.DOCUMENT_POSITION_FOLLOWING,
+    );
+  })).toBe(true);
   await expect(pendingRegion.getByText("2 pending", { exact: true })).toBeVisible();
   await expect(
     pendingRegion.getByText("Decision required", { exact: true })
@@ -655,8 +714,15 @@ async function verifyReviewAndDecisions({
   await expect(
     pendingRegion.getByText("Automatic status", { exact: true })
   ).toHaveCount(1);
+  const calculationDisclosures = pendingRegion.getByText("How calculated", {
+    exact: true,
+  });
+  await expect(calculationDisclosures).toHaveCount(2);
+  for (let index = 0; index < 2; index += 1) {
+    await calculationDisclosures.nth(index).click();
+  }
   await expect(
-    pendingRegion.getByRole("heading", { name: "Observed basis", exact: true })
+    pendingRegion.getByRole("region", { name: "Observed basis", exact: true })
   ).toHaveCount(2);
   await expect(
     pendingRegion.locator("dt").filter({ hasText: "Confidence" })
@@ -706,6 +772,7 @@ async function verifyReviewAndDecisions({
     squatDecisionEvidence.getByRole("status", { name: "Adjusted load" })
   ).toHaveText("110");
 
+  await openNativeDetails(decisionHistoryDetails);
   const recentRegion = page.getByRole("region", { name: "Recent decisions" });
   await expect(recentRegion.getByText("Accepted", { exact: true })).toHaveCount(2);
   await expect(recentRegion.getByText("Rejected", { exact: true })).toHaveCount(1);
@@ -732,6 +799,7 @@ async function verifyReviewAndDecisions({
   );
   await expect(benchOutcome).toContainText("1 positive report · max 4/10");
 
+  await openNativeDetails(coachingToolsDetails);
   const liveCoachContext = page.getByRole("region", {
     name: "Live Coach stays with the workout",
   });
@@ -747,6 +815,7 @@ async function verifyReviewAndDecisions({
   await expect(
     page.getByRole("heading", { name: "Review and decisions", exact: true })
   ).toBeVisible();
+  await openNativeDetails(decisionHistoryDetails);
 
   const latestOutcomeLink = outcomesRegion.getByRole("link").first();
   await waitForReactHandler(latestOutcomeLink);
@@ -768,8 +837,9 @@ async function verifyReviewAndDecisions({
     page.getByRole("heading", { name: "Review and decisions", exact: true })
   ).toBeVisible();
 
+  await openNativeDetails(coachingToolsDetails);
   const secondaryRegion = page.getByRole("region", {
-    name: "Secondary coaching tools",
+    name: "AI Review and Ask Coach",
   });
   await expect(
     secondaryRegion.getByRole("button", {
@@ -781,12 +851,14 @@ async function verifyReviewAndDecisions({
     secondaryRegion.getByRole("textbox", { name: "Question for Coach" })
   ).toBeVisible();
   const coreBeforeTools = await page.evaluate(() => {
-    const outcomes = document.querySelector('[aria-labelledby="outcomes-heading"]');
+    const decisions = document.querySelector(
+      '[aria-labelledby="pending-decisions-heading"]',
+    );
     const secondary = document.querySelector(
       '[aria-labelledby="secondary-tools-heading"]'
     );
-    if (!outcomes || !secondary) return false;
-    return Boolean(outcomes.compareDocumentPosition(secondary) & Node.DOCUMENT_POSITION_FOLLOWING);
+    if (!decisions || !secondary) return false;
+    return Boolean(decisions.compareDocumentPosition(secondary) & Node.DOCUMENT_POSITION_FOLLOWING);
   });
   expect(coreBeforeTools).toBe(true);
 
@@ -909,6 +981,7 @@ async function verifyReviewAndDecisions({
       exact: true,
     })
   ).toHaveCount(0);
+  await openNativeDetails(decisionHistoryDetails);
   await expect(
     recentRegion.getByText("Dismissed", { exact: true })
   ).toHaveCount(1);
@@ -930,6 +1003,7 @@ async function verifyReviewAndDecisions({
       exact: true,
     })
   ).toBeVisible();
+  await openNativeDetails(decisionHistoryDetails);
   await expect(recentRegion.getByText("Edited", { exact: true })).toBeVisible();
   await expect(recentRegion.getByText("Rejected", { exact: true })).toHaveCount(1);
   await expect(
@@ -1064,6 +1138,9 @@ test("recovers one ready progression job through concurrent protected drainers",
   await waitForReactHandler(approveSuggestion);
   await approveSuggestion.click();
   await expect(suggestions.getByText(exerciseName, { exact: true })).toHaveCount(0);
+  await page.getByText("Decision history and supporting evidence", {
+    exact: true,
+  }).click();
   await expect(page.getByText("Recent decisions", { exact: true })).toBeVisible();
   await expect(
     page.getByText(exerciseName, { exact: true }).last()
@@ -1108,23 +1185,22 @@ test("shows honest empty Review and decisions states", async ({ page }) => {
   await expect(page.getByText("0 pending", { exact: true })).toBeVisible();
   await expect(
     page.getByText(
-      "No decisions have been proposed yet. Rule-based checks run from completed planned workouts and recorded pain evidence.",
+      "New proposals will appear here.",
       { exact: true }
     )
   ).toBeVisible();
   await expect(
     page.getByText(
-      "No decision history yet. This list begins after you accept, edit, or reject a proposal, dismiss an automatic notice, or when a proposal expires.",
+      "No decisions have been proposed yet. Rule-based checks run from completed planned workouts and recorded pain evidence.",
       { exact: true },
     ),
-  ).toBeVisible();
+  ).toHaveCount(0);
   await expect(
-    page.getByText("No accepted decision has follow-up training to assess yet.", {
-      exact: true,
-    })
-  ).toBeVisible();
-  await expect(page.getByText("No generated review yet", { exact: true })).toBeVisible();
-  await expect(page.getByText("No open-ended answers yet.")).toBeVisible();
+    page.getByText("Decision history and supporting evidence", { exact: true }),
+  ).toHaveCount(0);
+  await expect(page.getByText("Coaching tools", { exact: true })).toBeVisible();
+  await expect(page.getByText("No generated review yet", { exact: true })).toBeHidden();
+  await expect(page.getByText("No open-ended answers yet.")).toBeHidden();
   await expect
     .poll(() =>
       page.evaluate(
@@ -1141,6 +1217,11 @@ test("shows honest empty Review and decisions states", async ({ page }) => {
   await expect
     .poll(() => page.evaluate(() => document.documentElement.dataset.fontSize))
     .toBe("default");
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/coach");
+  expect(
+    await page.evaluate(() => document.documentElement.scrollHeight),
+  ).toBeLessThanOrEqual(844);
 });
 
 test(
@@ -1188,9 +1269,9 @@ test("answers all five History questions without mixing independent activity int
   await expect(
     page.getByRole("heading", { name: "Training calendar", exact: true }),
   ).toBeVisible();
-  await expect(
-    page.getByRole("heading", { name: "Needs attention", exact: true }),
-  ).toBeVisible();
+  expect(
+    await page.getByText("One thing to review", { exact: true }).count(),
+  ).toBeLessThanOrEqual(1);
   await expect(
     page.getByRole("heading", { name: "Five questions", exact: true }),
   ).toHaveCount(0);
@@ -1225,6 +1306,7 @@ test("answers all five History questions without mixing independent activity int
     await expect(
       lens.getByRole("region", { name: "Short answer", exact: true })
     ).toBeVisible();
+    await lens.getByText("Evidence and methodology", { exact: true }).click();
     await expect(
       lens.getByRole("region", { name: "Supporting evidence", exact: true })
     ).toBeVisible();
@@ -1279,6 +1361,9 @@ test("answers all five History questions without mixing independent activity int
     name: "Work capacity",
     exact: true,
   });
+  await capacityLens.getByText("Evidence and methodology", {
+    exact: true,
+  }).click();
   await expect(capacityLens).toContainText(
     "Not enough comparable completed strength work is available to establish a workload trend.",
   );
@@ -1468,19 +1553,27 @@ test("answers all five History questions without mixing independent activity int
   await expect(activitySummary).toContainText("90 min");
   await expect(activitySummary).toContainText("7.5 km");
   await page.goto("/history?view=insights&lens=work-capacity");
+  const activityCapacityLens = page.getByRole("article", {
+    name: "Work capacity",
+    exact: true,
+  });
+  await activityCapacityLens.getByText("Evidence and methodology", {
+    exact: true,
+  }).click();
   await expect(
-    page
-      .getByRole("article", { name: "Work capacity", exact: true })
-      .getByRole("region", {
+    activityCapacityLens.getByRole("region", {
         name: "Independent activity context",
         exact: true,
       })
   ).toContainText("1 independent activity · 90 min");
   for (const [index, title] of lensTitles.entries()) {
     await page.goto(`/history?view=insights&lens=${lensKeys[index]}`);
-    const strengthEvidence = page
-      .getByRole("article", { name: title, exact: true })
-      .getByRole("region", { name: "Supporting evidence", exact: true });
+    const lens = page.getByRole("article", { name: title, exact: true });
+    await lens.getByText("Evidence and methodology", { exact: true }).click();
+    const strengthEvidence = lens.getByRole("region", {
+      name: "Supporting evidence",
+      exact: true,
+    });
     await expect(strengthEvidence).not.toContainText(
       "Release 1B.3 separation walk"
     );
@@ -1505,6 +1598,175 @@ test("answers all five History questions without mixing independent activity int
   expect(unexpectedBrowserErrors).toEqual([]);
 });
 
+test("shows one ambient insight without sending it to Coach", async ({
+  page,
+}) => {
+  test.setTimeout(120_000);
+  await page.setViewportSize({ width: 390, height: 844 });
+  const browserErrors: string[] = [];
+  const coachRequests: string[] = [];
+  page.on("console", (message) => {
+    if (message.type() === "error") browserErrors.push(message.text());
+  });
+  page.on("pageerror", (error) => browserErrors.push(error.message));
+  page.on("request", (request) => {
+    if (request.url().includes("/api/live-coach/respond")) {
+      coachRequests.push(request.url());
+    }
+  });
+
+  await signInAndStartWorkout(page);
+  let currentExercise = page.getByTestId("current-exercise-card");
+  await expect(
+    currentExercise.getByRole("heading", {
+      name: "Romanian Deadlift",
+      exact: true,
+    }),
+  ).toBeVisible();
+  await currentExercise.getByLabel("Total load").fill("115");
+  await currentExercise
+    .getByRole("textbox", { name: "Reps", exact: true })
+    .fill("10");
+  await currentExercise
+    .getByRole("button", { name: "Log set", exact: true })
+    .click();
+  const firstRomanianDeadlift = page.getByRole("region", {
+    name: "Romanian Deadlift",
+    exact: true,
+  });
+  await expect(firstRomanianDeadlift.getByTestId("completed-sets")).toContainText(
+    "Acknowledged by Repbook",
+  );
+
+  // The demo rows deliberately retain legacy-unknown load meaning. Complete
+  // one live workout first so the comparison proof comes from a newly saved,
+  // fully typed record rather than making the old fixture look more certain.
+  await page
+    .getByRole("complementary", { name: "Workout status" })
+    .getByRole("button", {
+      name: /^(?:Review workout finish|Finish workout)$/,
+    })
+    .click();
+  let finish = page.getByRole("dialog", { name: "Finish workout" });
+  await finish
+    .getByLabel("Why are you finishing this workout early?")
+    .selectOption("time_limit_reached");
+  await finish
+    .getByRole("button", { name: /^(?:Finish early|Save workout)$/ })
+    .click();
+  await expect(page).toHaveURL(/\/history\/[0-9a-f-]+\?finished=1$/);
+  workoutMayBeActive = false;
+
+  await page.goto("/today");
+  const dayB = page.getByRole("heading", {
+    name: "Day B — Hinge",
+    exact: true,
+  });
+  if ((await dayB.count()) === 0) {
+    const alternateDays = page.getByTestId("alternate-program-days");
+    await alternateDays.locator("summary").click();
+    await page.getByRole("button", { name: /Day B — Hinge/ }).click();
+    await expect(dayB).toBeVisible();
+  }
+  const startAgain = page.getByRole("button", {
+    name: /^(?:Train as planned|Start workout)$/,
+  });
+  await waitForHydratedServerAction(startAgain);
+  workoutMayBeActive = true;
+  await startAgain.click();
+  await expect(page).toHaveURL(/\/session\/[0-9a-f-]+$/);
+  await waitForEquipmentSelectionsToSettle(page);
+
+  currentExercise = page.getByTestId("current-exercise-card");
+  await expect(
+    currentExercise.getByRole("heading", {
+      name: "Romanian Deadlift",
+      exact: true,
+    }),
+  ).toBeVisible();
+  await currentExercise.getByLabel("Total load").fill("115");
+  await currentExercise
+    .getByRole("textbox", { name: "Reps", exact: true })
+    .fill("10");
+  await currentExercise
+    .getByRole("button", { name: "Log set", exact: true })
+    .click();
+  await dismissRestCockpit(page);
+
+  const insight = page.getByTestId("athlete-insight-active_set");
+  await expect(insight).toHaveCount(1);
+  await expect(insight).toContainText(
+    "Matched your recent Romanian Deadlift best: 115 lb × 10",
+  );
+  await expect(
+    insight.getByText("How calculated", { exact: true }),
+  ).toBeVisible();
+  const activeLogSet = currentExercise.getByTestId("active-log-set");
+  await expect(activeLogSet).toBeVisible();
+  expect(
+    await activeLogSet.evaluate((button) => {
+      const renderedInsight = document.querySelector(
+        '[data-testid="athlete-insight-active_set"]',
+      );
+      return renderedInsight != null && Boolean(
+        button.compareDocumentPosition(renderedInsight) &
+          Node.DOCUMENT_POSITION_FOLLOWING,
+      );
+    }),
+  ).toBe(true);
+
+  await insight.getByRole("button", { name: "Explain", exact: true }).click();
+  const coach = page.getByRole("dialog", { name: "Live Coach" });
+  await expect(coach).toBeVisible();
+  await expect(
+    coach.getByText("No Coach messages for this workout yet.", { exact: true }),
+  ).toBeVisible();
+  const coachQuestion = coach.getByRole("textbox", {
+    name: "Question for Live Coach",
+  });
+  await expect(coachQuestion).toHaveValue(
+    /Explain this deterministic Repbook training insight in plain language\./,
+  );
+  await expect(coachQuestion).toHaveValue(/Source records:/);
+  await expect(coachQuestion).toHaveValue(
+    /Treat it as evidence, not as an automatic Program change\./,
+  );
+  expect(coachRequests).toEqual([]);
+  await page.keyboard.press("Escape");
+  await expect(coach).toHaveCount(0);
+  expect(coachRequests).toEqual([]);
+
+  await page
+    .getByRole("complementary", { name: "Workout status" })
+    .getByRole("button", {
+      name: /^(?:Review workout finish|Finish workout)$/,
+    })
+    .click();
+  finish = page.getByRole("dialog", { name: "Finish workout" });
+  await finish
+    .getByLabel("Why are you finishing this workout early?")
+    .selectOption("time_limit_reached");
+  await finish
+    .getByRole("button", { name: /^(?:Finish early|Save workout)$/ })
+    .click();
+
+  await expect(page).toHaveURL(/\/history\/[0-9a-f-]+\?finished=1$/);
+  workoutMayBeActive = false;
+  const summary = page.getByTestId("workout-summary");
+  await expect(summary.getByText("1 held", { exact: true })).toBeVisible();
+  await expect(
+    summary.getByText("How calculated", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    summary.getByRole("link", {
+      name: "View comparison workout",
+      exact: true,
+    }),
+  ).toBeVisible();
+  expect(coachRequests).toEqual([]);
+  expect(browserErrors).toEqual([]);
+});
+
 test("signs in and completes a durable workout flow", async ({ page }) => {
   test.setTimeout(120_000);
   await page.setViewportSize({ width: 390, height: 844 });
@@ -1519,7 +1781,7 @@ test("signs in and completes a durable workout flow", async ({ page }) => {
     "default-src 'self'"
   );
 
-  const firstExercise = page.locator('[id^="exercise-"]').first();
+  const firstExercise = workoutExerciseCards(page).first();
   const nextSet = page.getByTestId("current-exercise-card");
   const workoutStatus = page.getByRole("complementary", { name: "Workout status" });
   await expect(firstExercise).toBeVisible();
@@ -1529,9 +1791,7 @@ test("signs in and completes a durable workout flow", async ({ page }) => {
   const reps = nextSet.getByRole("textbox", { name: "Reps", exact: true });
   await weight.fill("95");
   await reps.fill("8");
-  await openNativeDetails(nextSet.locator("details", {
-    hasText: "Optional effort and set note",
-  }));
+  await openNativeDetails(nextSet.getByTestId("active-exercise-details"));
   await nextSet.getByRole("button", { name: /^Hard — RPE 8;/ }).click();
   await expect(nextSet.getByText("Selected: Hard — RPE 8", {
     exact: true,
@@ -1560,13 +1820,11 @@ test("signs in and completes a durable workout flow", async ({ page }) => {
     .getByRole("button", { name: "Log set", exact: true })
     .click();
   await expect.poll(() => saveStarted).toBe(true);
-  await expect(workoutStatus).toContainText("Resting");
-  await expect(
-    nextSet.getByRole("button", { name: "Log set", exact: true }),
-  ).toBeEnabled();
+  await expectRestCockpit(page);
+  await expect(nextSet).toHaveCount(0);
   await expect(firstExercise).toContainText("saving");
   releaseSave();
-  await expect(workoutStatus).toContainText("Resting");
+  await expectRestCockpit(page);
   await expect(workoutStatus.getByText(/next set ready/i)).toHaveCount(0);
   await page.unrouteAll({ behavior: "wait" });
   const loggedSet = firstExercise
@@ -1589,10 +1847,11 @@ test("signs in and completes a durable workout flow", async ({ page }) => {
       })
     )
     .toMatch(/^[0-9a-f-]+$/);
+  await dismissRestCockpit(page);
   await expect(
     nextSet.getByRole("button", { name: "Log set", exact: true })
   ).toBeEnabled();
-  await openNativeDetails(firstExercise.getByTestId("completed-sets"));
+  await openNativeDetails(firstExercise.getByTestId("active-exercise-details"));
   await firstExercise
     .getByRole("button", { name: "Correct set", exact: true })
     .first()
@@ -1717,9 +1976,9 @@ test("keeps every active-workout route reachable with one scroll surface", async
   });
 
   await expect(currentCard.getByRole("button", { name: "Log set", exact: true })).toBeVisible();
-  await openNativeDetails(currentCard.locator("details", {
-    hasText: "Extra sets",
-  }));
+  await openNativeDetails(
+    currentCard.getByTestId("active-exercise-details"),
+  );
   const addExtraSet = currentCard.getByRole("button", {
     name: "Add extra set",
     exact: true,
@@ -1729,15 +1988,6 @@ test("keeps every active-workout route reachable with one scroll surface", async
   await expect(currentCard).toContainText(
     "Adds ad-hoc work without changing the planned set order.",
   );
-  await openNativeDetails(currentCard.locator("details", {
-    hasText: "Optional effort and set note",
-  }));
-  await openNativeDetails(currentCard.locator("details", {
-    hasText: "Set exceptions",
-  }));
-  await openNativeDetails(currentCard.locator("details", {
-    hasText: "More for this exercise",
-  }));
   await expect(currentCard.getByRole("button", { name: "Skip set", exact: true })).toBeVisible();
   await expect(currentCard.getByRole("button", { name: "Ask Coach", exact: true })).toBeVisible();
   await expect(currentCard.getByRole("button", { name: "Form guide", exact: true })).toBeVisible();
@@ -1863,7 +2113,7 @@ test("keeps every active-workout route reachable with one scroll surface", async
     document.documentElement.dataset.fontSize = "extra-large";
   });
   await page.setViewportSize({ width: 390, height: 844 });
-  const plannedCard = page.locator('[id^="exercise-"]').first();
+  const plannedCard = workoutExerciseCards(page).first();
   const plannedExerciseName =
     await plannedCard.getByRole("heading", { level: 2 }).textContent();
   if (!plannedExerciseName) {
@@ -1871,9 +2121,9 @@ test("keeps every active-workout route reachable with one scroll surface", async
   }
   await expect(plannedCard.getByText("Set 1 of 3", { exact: true })).toBeVisible();
   for (let setNo = 1; setNo <= 3; setNo += 1) {
-    await openNativeDetails(plannedCard.locator("details", {
-      hasText: "Set exceptions",
-    }));
+    await openNativeDetails(
+      plannedCard.getByTestId("active-exercise-details"),
+    );
     await plannedCard
       .getByRole("button", { name: "Skip set", exact: true })
       .click();
@@ -1898,9 +2148,9 @@ test("keeps every active-workout route reachable with one scroll surface", async
   await expect(
     plannedCard.getByText("skipped", { exact: true }),
   ).toHaveCount(3);
-  await openNativeDetails(plannedCard.locator("details", {
-    hasText: "Extra sets",
-  }));
+  await openNativeDetails(
+    plannedCard.getByTestId("active-exercise-details"),
+  );
   const addSet = plannedCard.getByRole("button", {
     name: "Add extra set",
     exact: true,
@@ -1972,13 +2222,11 @@ test("keeps every active-workout route reachable with one scroll surface", async
       .locator('input[inputmode="numeric"]'),
   ).toHaveValue(addedReps);
   await expect(
-    refreshedCard.locator("details", {
-      hasText: "Extra sets",
-    }),
+    refreshedCard.getByTestId("active-exercise-details"),
   ).not.toHaveAttribute("open", "");
-  await openNativeDetails(refreshedCard.locator("details", {
-    hasText: "Extra sets",
-  }));
+  await openNativeDetails(
+    refreshedCard.getByTestId("active-exercise-details"),
+  );
   await expect(
     refreshedCard.getByRole("button", {
       name: "Add extra set",
@@ -2028,9 +2276,7 @@ test("keeps pain and substitution lineage reconstructable through History", asyn
   const painNote = "Sharp at the bottom before changing movements.";
   const setNote = "Comfortable range on the substituted movement.";
 
-  await openNativeDetails(nextSet.locator("details", {
-    hasText: "More for this exercise",
-  }));
+  await openNativeDetails(nextSet.getByTestId("active-exercise-details"));
   await nextSet.getByRole("button", { name: "Pain / no issue", exact: true }).click();
   const pain = page.getByRole("dialog", { name: "Pain / no-issue evidence" });
   const severity = pain.getByRole("slider");
@@ -2076,9 +2322,7 @@ test("keeps pain and substitution lineage reconstructable through History", asyn
   await waitForEquipmentSelectionsToSettle(page);
   await nextSet.getByLabel("Total load").fill("45");
 
-  await openNativeDetails(nextSet.locator("details", {
-    hasText: "More for this exercise",
-  }));
+  await openNativeDetails(nextSet.getByTestId("active-exercise-details"));
   await nextSet.getByRole("button", { name: "Add note", exact: true }).click();
   const noteDialog = page.getByRole("dialog", {
     name: new RegExp(`Add note for ${performedExercise}`),
@@ -2088,12 +2332,10 @@ test("keeps pain and substitution lineage reconstructable through History", asyn
   await expect(page.getByText("Exercise note saved", { exact: true })).toBeVisible();
   await expect(noteDialog).toHaveCount(0);
 
-  await openNativeDetails(nextSet.locator("details", {
-    hasText: "Optional effort and set note",
-  }));
+  await openNativeDetails(nextSet.getByTestId("active-exercise-details"));
   await nextSet.getByLabel("Set note (optional)", { exact: true }).fill(setNote);
   await nextSet.getByRole("button", { name: "Log set", exact: true }).click();
-  await expect(workoutStatus).toContainText(/Resting|Next set/);
+  await expectRestCockpit(page);
   await workoutStatus.getByRole("button", { name: /^(?:Review workout finish|Finish workout)$/ }).click();
   await page
     .getByLabel("Why are you finishing this workout early?")
@@ -2124,14 +2366,13 @@ test("keeps the final set acknowledgement visible through background return", as
 }) => {
   await signInAndStartWorkout(page);
   const nextSet = page.getByTestId("current-exercise-card");
-  const workoutStatus = page.getByRole("complementary", { name: "Workout status" });
   const firstName =
     (await nextSet.getByRole("heading", { level: 2 }).textContent())?.trim() ??
     "";
 
   for (let setNo = 1; setNo <= 2; setNo += 1) {
     await nextSet.getByRole("button", { name: "Log set", exact: true }).click();
-    await expect(workoutStatus).toContainText(/Resting|Next set/);
+    await dismissRestCockpit(page);
     await expect(nextSet.getByText(new RegExp(`Set ${setNo + 1} of 3`))).toBeVisible();
   }
 
@@ -2153,11 +2394,8 @@ test("keeps the final set acknowledgement visible through background return", as
   });
   await nextSet.getByRole("button", { name: "Log set", exact: true }).click();
   await expect.poll(() => finalStarted).toBe(true);
-  await expect(nextSet.getByRole("heading", { level: 2 })).not.toHaveText(firstName);
-  await expect(workoutStatus).toContainText("Resting");
-  await expect(
-    nextSet.getByRole("button", { name: "Log set", exact: true }),
-  ).toBeEnabled();
+  await expectRestCockpit(page);
+  await expect(nextSet).toHaveCount(0);
   const pendingCompletedExercise = page.getByRole("region", { name: firstName });
   await expect(pendingCompletedExercise).toContainText("saving");
   const backgroundPage = await context.newPage();
@@ -2166,13 +2404,18 @@ test("keeps the final set acknowledgement visible through background return", as
   releaseFinal();
   await page.bringToFront();
   await expect(page).toHaveURL(/#workout-rest-status$/);
-  await expect(workoutStatus).toContainText("Resting");
+  await expectRestCockpit(page);
   const completedExercise = page.getByRole("region", { name: firstName });
-  await completedExercise.getByTestId("exercise-swipe-surface").click();
+  const completedToggle = completedExercise.getByTestId("exercise-swipe-surface");
+  if ((await completedToggle.getAttribute("aria-expanded")) !== "true") {
+    await completedToggle.click();
+  }
+  await openNativeDetails(
+    completedExercise.getByTestId("active-exercise-details"),
+  );
   const acknowledgement = completedExercise.getByTestId("completed-sets");
   await expect(page.getByTestId("active-set-save-receipt")).toHaveCount(0);
   await expect(acknowledgement).toContainText("3 completed");
-  await acknowledgement.locator(":scope > summary").click();
   await expect(acknowledgement).toContainText("Set 3");
   await expect(acknowledgement).toContainText("Acknowledged by Repbook");
   const correctionButtons = acknowledgement.getByRole("button", {
@@ -2480,13 +2723,17 @@ test("confirms one complete quick log and shows its stored units in History", as
     .getByRole("navigation", { name: "Main navigation" })
     .getByRole("link", { name: "History", exact: true })
     .click();
-  const quickLogDay = page.locator("[data-calendar-action]").filter({
+  const directQuickLog = page.locator("[data-calendar-action]").filter({
     hasText: "Quick log",
   }).first();
-  await expect(quickLogDay).toBeVisible();
-  const opensChooser = await quickLogDay.getAttribute("aria-haspopup");
-  await quickLogDay.click();
-  if (opensChooser === "dialog") {
+  if ((await directQuickLog.count()) > 0) {
+    await directQuickLog.click();
+  } else {
+    const chooserDay = page.getByRole("button", {
+      name: /Choose from \d+ records/,
+    }).last();
+    await expect(chooserDay).toBeVisible();
+    await chooserDay.click();
     const quickLog = page
       .getByRole("dialog", { name: "Choose a record" })
       .getByRole("link", { name: /Quick log/ })
@@ -2510,6 +2757,11 @@ test("clears AI history through Settings and restores Coach history from Archive
       : `${baseQuestion} Repetition ${testInfo.repeatEachIndex + 1}.`;
   await signIn(page);
   await page.goto("/coach");
+  await openNativeDetails(
+    page
+      .getByText("Coaching tools", { exact: true })
+      .locator("xpath=ancestor::details[1]"),
+  );
   await waitForReactHandler(
     page.getByRole("button", { name: "Create a fresh review", exact: true })
   );
@@ -2542,6 +2794,11 @@ test("clears AI history through Settings and restores Coach history from Archive
   await restore.click();
   await expect(page.getByText("Record restored")).toBeVisible();
   await page.goto("/coach");
+  await openNativeDetails(
+    page
+      .getByText("Coaching tools", { exact: true })
+      .locator("xpath=ancestor::details[1]"),
+  );
   await expect(page.getByText(question, { exact: true })).toBeVisible();
 });
 
@@ -2741,14 +2998,11 @@ test("keeps an offline set visible while the next set stays available", async ({
 }) => {
   const offlineSetNote = "Offline set note survives queue and replay.";
   await signInAndStartWorkout(page);
-  const firstExercise = page.locator('[id^="exercise-"]').first();
+  const firstExercise = workoutExerciseCards(page).first();
   const nextSet = page.getByTestId("current-exercise-card");
-  const workoutStatus = page.getByRole("complementary", { name: "Workout status" });
   const weight = nextSet.getByLabel("Total load");
   const reps = nextSet.getByRole("textbox", { name: "Reps", exact: true });
-  await openNativeDetails(nextSet.locator("details", {
-    hasText: "Optional effort and set note",
-  }));
+  await openNativeDetails(nextSet.getByTestId("active-exercise-details"));
   const note = nextSet.getByLabel("Set note (optional)");
   await weight.fill("95");
   await reps.fill("8");
@@ -2759,7 +3013,7 @@ test("keeps an offline set visible while the next set stays available", async ({
     .getByRole("button", { name: "Log set", exact: true })
     .click();
   await expect(
-    nextSet.getByText("Pending on this device", { exact: true })
+    firstExercise.getByText("Pending on this device", { exact: true })
   ).toBeVisible();
   await expect
     .poll(async () =>
@@ -2772,9 +3026,9 @@ test("keeps an offline set visible while the next set stays available", async ({
     )
     .toBe(offlineSetNote);
 
-  await expect(
-    nextSet.getByRole("button", { name: "Log set", exact: true }),
-  ).toBeEnabled();
+  await dismissRestCockpit(page);
+  await expect(nextSet.getByRole("button", { name: "Log set", exact: true }))
+    .toBeEnabled();
 
   await page
     .getByRole("complementary", { name: "Workout status" })
@@ -2810,11 +3064,12 @@ test("keeps an offline set visible while the next set stays available", async ({
   expect(actionRequests).toBe(1);
   releaseFirst();
 
-  await expect(workoutStatus).toContainText(/Resting|Next set/);
+  await expect(nextSet.getByRole("button", { name: "Log set", exact: true }))
+    .toBeEnabled();
   await expect.poll(() => actionRequests).toBe(1);
 
   await page.reload();
-  await openNativeDetails(firstExercise.getByTestId("completed-sets"));
+  await openNativeDetails(firstExercise.getByTestId("active-exercise-details"));
   const savedSet = firstExercise
     .locator('[id^="logged-set-"]')
     .filter({ hasText: "Set 1" })
@@ -2870,11 +3125,12 @@ test("retries a set automatically after one server 500 and still finishes", asyn
 
   // Set entry and acknowledgement stay together in the exercise card.
   const nextSet = page.getByTestId("current-exercise-card");
+  const recordedExercise = workoutExerciseCards(page).first();
   await nextSet.locator('input[inputmode="decimal"]').first().fill("95");
   await nextSet.locator('input[inputmode="numeric"]').first().fill("8");
   await nextSet.getByRole("button", { name: "Log set", exact: true }).click();
 
-  await expect(nextSet.getByTestId("completed-sets"))
+  await expect(recordedExercise.getByTestId("completed-sets"))
     .toContainText("Acknowledged by Repbook");
   expect(actionRequests).toBeGreaterThanOrEqual(2);
   await page
@@ -2894,7 +3150,7 @@ test("a parked set pauses only its exercise while another exercise saves", async
   page,
 }) => {
   await signInAndStartWorkout(page);
-  const exercises = page.locator('[id^="exercise-"]');
+  const exercises = workoutExerciseCards(page);
   const firstExercise = exercises.first();
   const secondExercise = exercises.nth(1);
   const firstExerciseId = (await firstExercise.getAttribute("id"))!.replace(
@@ -2940,6 +3196,7 @@ test("a parked set pauses only its exercise while another exercise saves", async
   await expect(firstExercise.getByText("Save failed", { exact: true })).toBeVisible();
   expect(failedExerciseRequests).toBeGreaterThanOrEqual(2);
 
+  await dismissRestCockpit(page);
   await secondExercise.getByTestId("exercise-swipe-surface").click();
   await secondExercise.locator('input[inputmode="decimal"]').first().fill("50");
   await secondExercise.locator('input[inputmode="numeric"]').first().fill("10");
@@ -3012,7 +3269,7 @@ test("keeps a stale-tab rejection visible until the user resolves it", async ({
   await activeNextSet
     .getByRole("button", { name: "Log set", exact: true })
     .click();
-  await expect(page.getByRole("complementary", { name: "Workout status" })).toContainText(/Resting|Next set/);
+  await expectRestCockpit(page);
   const finishWorkout = page
     .getByRole("complementary", { name: "Workout status" })
     .getByRole("button", {
@@ -3031,13 +3288,13 @@ test("keeps a stale-tab rejection visible until the user resolves it", async ({
   await expect(page).toHaveURL(/\/history\/[0-9a-f-]+\?finished=1$/);
   staleRefreshControl.resume();
 
-  const staleExercise = stalePage.locator('[id^="exercise-"]').first();
+  const staleExercise = workoutExerciseCards(stalePage).first();
   await staleNextSet.getByLabel("Total load").fill("100");
   await staleNextSet.getByRole("textbox", { name: "Reps", exact: true }).fill("7");
   await staleNextSet
     .getByRole("button", { name: "Log set", exact: true })
     .click();
-  await expect(staleNextSet.getByText(/Save failed/)).toBeVisible();
+  await expect(staleExercise.getByText(/Save failed/)).toBeVisible();
   await stalePage
     .getByRole("complementary", { name: "Workout status" })
     .getByRole("button", { name: /^(?:Review workout finish|Finish workout)$/ })
@@ -3096,8 +3353,9 @@ test("keeps unsynced sets with their owner across sign-out and account changes",
   await nextSet
     .getByRole("button", { name: "Log set", exact: true })
     .click();
+  const pendingExercise = workoutExerciseCards(page).first();
   await expect(
-    nextSet.getByText("Pending on this device", { exact: true })
+    pendingExercise.getByText("Pending on this device", { exact: true })
   ).toBeVisible();
 
   const originalOwnerId = await page.evaluate(() => {
@@ -3303,13 +3561,13 @@ test("opens failed-set recovery from Settings at 145 percent on iPhone WebKit", 
   await waitForReactHandler(logSet);
   const totalLoad = currentSet.getByLabel("Total load");
   const reps = currentSet.getByRole("textbox", { name: "Reps", exact: true });
+  await waitForHydratedReactChangeHandler(totalLoad);
   await totalLoad.fill("80");
   await expect(totalLoad).toHaveValue("80");
+  await waitForHydratedReactChangeHandler(reps);
   await reps.fill("10");
   await expect(reps).toHaveValue("10");
-  await openNativeDetails(currentSet.locator("details", {
-    hasText: "Optional effort and set note",
-  }));
+  await openNativeDetails(currentSet.getByTestId("active-exercise-details"));
   await currentSet.getByRole("button", { name: /^Hard / }).click();
   await context.setOffline(true);
   await logSet.click();
@@ -3561,11 +3819,11 @@ test("supports 145% app sizing throughout the narrow mobile navigation", async (
     .toBeCloseTo(23.2, 4);
 
   const walkthrough = [
-    { label: "Today", path: "/today", heading: "Today", title: "Today · Repbook" },
-    { label: "History", path: "/history", heading: "History", title: "History · Repbook" },
-    { label: "Review", path: "/coach", heading: "Review and decisions", title: "Review and decisions · Repbook" },
-    { label: "Program", path: "/program", heading: null, title: "Program · Repbook" },
-    { label: "Settings", path: "/settings", heading: "Settings", title: "Settings · Repbook" },
+    { label: "Today", path: "/today", heading: "Today", title: "Today · Repbook", surface: "today" },
+    { label: "History", path: "/history", heading: "History", title: "History · Repbook", surface: "history" },
+    { label: "Review", path: "/coach", heading: "Review and decisions", title: "Review and decisions · Repbook", surface: "review" },
+    { label: "Program", path: "/program", heading: null, title: "Program · Repbook", surface: null },
+    { label: "Settings", path: "/settings", heading: "Settings", title: "Settings · Repbook", surface: null },
   ] as const;
 
   for (const step of walkthrough) {
@@ -3583,6 +3841,11 @@ test("supports 145% app sizing throughout the narrow mobile navigation", async (
     await expect(page).toHaveURL(new RegExp(`${step.path}$`));
     await expect(page).toHaveTitle(step.title);
     await expect(link).toHaveAttribute("aria-current", "page");
+    if (step.surface) {
+      await expect(
+        page.locator(`main[data-ui-core-surface="${step.surface}"]`),
+      ).toBeVisible();
+    }
     const linkMetrics = await link.evaluate((element) => {
       const rect = element.getBoundingClientRect();
       return {
@@ -3662,17 +3925,21 @@ test("supports 145% app sizing throughout the narrow mobile navigation", async (
   const desktopNavigation = page.getByRole("navigation", {
     name: "Main navigation",
   });
+  await expect
+    .poll(() =>
+      page.locator("aside").evaluate((element) =>
+        Math.round(element.getBoundingClientRect().width),
+      )
+    )
+    .toBe(224);
   await expect(page.getByRole("link", { name: "Repbook home" })).toBeVisible();
-  await expect(page.getByText("Plan. Train. Review.", { exact: true })).toBeVisible();
-  await expect(
-    desktopNavigation.getByText("Recorded evidence", { exact: true })
-  ).toBeVisible();
-  await expect(
-    desktopNavigation.getByText("Reviewed change", { exact: true })
-  ).toBeVisible();
-  await expect(
-    desktopNavigation.getByText("Program intent", { exact: true })
-  ).toBeVisible();
+  await expect(page.getByText("Plan. Train. Review.", { exact: true })).toHaveCount(0);
+  await expect(desktopNavigation.getByText("Recorded evidence", { exact: true }))
+    .toHaveCount(0);
+  await expect(desktopNavigation.getByText("Reviewed change", { exact: true }))
+    .toHaveCount(0);
+  await expect(desktopNavigation.getByText("Program intent", { exact: true }))
+    .toHaveCount(0);
 
   await page.emulateMedia({ reducedMotion: "reduce" });
   await expect
@@ -3737,8 +4004,8 @@ test("supports 145% app sizing throughout the narrow mobile navigation", async (
     const activeLink = document.querySelector(
       'nav[aria-label="Main navigation"] a[aria-current="page"]'
     );
-    const activeText = activeLink?.querySelectorAll("span span");
-    if (!sidebar || !activeLink || !activeText || activeText.length < 2) {
+    const activeText = activeLink?.querySelector("span");
+    if (!sidebar || !activeLink || !activeText) {
       throw new Error("Active shell contrast targets unavailable");
     }
     const sidebarColor = getComputedStyle(sidebar).backgroundColor;
@@ -3757,14 +4024,12 @@ test("supports 145% app sizing throughout the narrow mobile navigation", async (
     return {
       primaryAction: ratio("--primary", "--primary-foreground"),
       supportingCopy: ratio("--muted-foreground", "--sidebar"),
-      activeLabel: effectiveRatio(activeText[0]),
-      activePurpose: effectiveRatio(activeText[1]),
+      activeLabel: effectiveRatio(activeText),
     };
   });
   expect(contrast.primaryAction).toBeGreaterThanOrEqual(4.5);
   expect(contrast.supportingCopy).toBeGreaterThanOrEqual(4.5);
   expect(contrast.activeLabel).toBeGreaterThanOrEqual(4.5);
-  expect(contrast.activePurpose).toBeGreaterThanOrEqual(4.5);
 
   const collapse = page.getByRole("button", { name: "Collapse sidebar" });
   await waitForReactHandler(collapse);

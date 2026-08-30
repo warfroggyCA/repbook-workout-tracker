@@ -246,6 +246,25 @@ under the Start form's explicit **Workout options** disclosure. The Today page
 does not load dashboard statistics or recent-workout rows; its owner-scoped
 query budget is seven.
 
+Review is an owner-decision queue, not a coaching dashboard. A pending proposal
+shows its proposed future effect first, then the reason it appeared, then one
+closed **How calculated** disclosure for evidence, limitations, producer,
+source version, rule identity, confidence, and portability. Approval, editing,
+deferral, and rejection stay after that explanation. Deterministic pending
+decisions precede the closed decision-history and coaching-tool regions; an
+empty queue gives one concise no-decision state. Live Coach and external AI
+review remain separate owner-invoked tools and never become the primary Review
+surface.
+
+The History workspace keeps Calendar, Insights, and Exercises as distinct
+lenses without repeating a description panel for the selected view. Calendar
+may show at most one supported **One thing to review** signal immediately above
+the calendar; unsupported or unavailable conclusions produce no signal. Lens
+cards lead with the short answer and decision support, while retained evidence,
+activity context, limitations, and methodology share one closed disclosure.
+This hierarchy changes no report calculation, source record, or recommendation
+state.
+
 Completed-workout History derives one four-question summary from retained facts:
 what happened, what changed against compatible frozen targets, what was notable,
 and whether anything needs the owner's decision next time. The derivation is
@@ -256,6 +275,25 @@ Corrections, archive, the full occurrence ledger, retained source rows, source
 lineage, and non-positive pain evidence live in the final closed **Technical
 record** disclosure. Positive pain evidence remains prominent before performed
 work, and recommendations remain separate from recorded facts.
+
+Athlete-facing ambient intelligence is a read-time projection, not a new
+coaching or persistence layer. `src/lib/athlete-insights.ts` owns one pure
+`AthleteInsightCandidate` contract, deterministic fingerprints and ranking,
+and conservative generators. Today may show one versioned, supported pending
+decision that has already passed the live recommendation-evidence gate. The
+active workout may show one exact recent-best or usual-rest signal per exercise;
+the former requires a saved current set plus the exact comparable exercise,
+load meaning, load value, and unit, while the latter requires at least four
+safe recorded rest samples across two workouts. Completed History may replace
+the target-only change answer with one session result only when exact exercise
+identity, complete v1 performed semantics, longitudinal eligibility, and a
+single recorded load unit all hold. Positive pain or limitation context on the
+exact set or exercise (or unscoped session pain), legacy semantics, current
+imported sessions, mixed units, sparse history, and
+unknown completion evidence suppress the affected conclusion. Candidates are
+never stored, never create or apply a recommendation, and never change the
+Program. **Explain** only prefills the existing Live Coach editor after an
+explicit athlete action; sending the question remains a second explicit action.
 
 The contextual-note provider owns composition and durable device-queue recovery
 without rendering an always-present global toolbar. Routes provide contextual
@@ -380,6 +418,17 @@ evidence, and reuse of that identity with different evidence fails closed. A
 failed copy remains visible with retry and deliberate discard; it never silently
 disappears or rolls the display back. Older outbox formats are quarantined for
 explicit recovery instead of being guessed into the current contract.
+
+Local command mutation and remote delivery use separate browser locks. Enqueue,
+retry, discard, selection, and acknowledgement reconciliation hold the shared
+outbox lock only for short local-storage mutations; no Server Action await runs
+under that lock. A separate owner-scoped Web Lock keeps the combined equipment
+and set stream single-flight across tabs while preserving deterministic command
+selection and stable client keys. A second set can therefore be retained and
+advance the local projection while an earlier acknowledgement is delayed. If
+the browser cannot provide a genuine cross-tab Web Lock, automatic delivery
+fails closed: device copies remain unchanged, retry is disabled, and the tray
+reports **Saving paused** instead of claiming a save is in progress.
 
 Correction is a reviewed superseding assertion, never an edit in place. The
 owner reviews the exact original and replacement values, selects a reason, and
@@ -507,6 +556,26 @@ command, never a newer timer. Saved occurrence evidence still classifies
 positive rest as straight-set, between-member, or between-round rest; zero
 means explicitly no rest and null means unknown rest.
 
+Once the set command is durable, the athlete-facing projection advances without
+awaiting rest-timer reconciliation. That timer work keeps its separate cross-tab
+lock, ordering checks, and visible failure notice, but cannot extend the set-log
+interaction's awaited path.
+
+Rest reconciliation orders explicit outcomes by the command's monotonic
+creation time and stable client key. Retained commands are the immediate source
+of truth. The latest acknowledged outcome is also held in one minimal,
+owner-and-session-scoped local receipt containing only command identity,
+ordering time, and the exact positive, zero, or null rest value. The versioned
+receipt store is bounded to 100 workouts and exists only while an older explicit
+rest command could still replay. This prevents a timed-out older acknowledgement
+from recreating or clearing a newer rest decision after a later command has
+already left the outbox. Reload reconciliation also applies a retained terminal
+no-timer outcome after a crash between enqueue and the immediate timer clear.
+Receipt pruning is part of set/device cleanup: if it cannot complete, the exact
+outbox and receipt bytes are restored and the removal reports failure. These
+receipts never create performed history and require no database, migration,
+snapshot, or recovery-manifest change.
+
 Finish is also the deliberate bulk exit from an active workout. When planned
 occurrences remain, the owner chooses one session-level reason and the existing
 completion transaction resolves every still-pending occurrence together; the
@@ -545,6 +614,13 @@ becomes terminal. Reusing a key for different evidence is a conflict; a
 different active workout is a separate truthful outcome and is never presented
 as if the requested day started.
 
+Submitting Start immediately disables the same control, marks it busy, changes
+its label to **Starting workout…**, and exposes a polite status explaining
+that Repbook is still confirming creation. The visible pending state is measured
+from submit and must appear in under 100 ms in the disposable browser harness.
+It neither rotates the hidden request UUID nor presents an active workout before
+the Server Action confirms or safely reconciles the exact request.
+
 The same atomic Start statement captures version 1 of the prescribed exercise
 name, metric type, load type, and load semantics. Session Compiler acceptance
 does the same. Active display, Live Coach evidence, History, Review, and
@@ -570,10 +646,17 @@ controls use native progressive disclosure after the ordinary path. Prior-set,
 warm-up-reference, coaching, and workout-only context remain available below
 the active flow instead of preceding it.
 
-The compact sticky summary keeps current identity and progress, but defers its
-duplicate next line while the expanded current card owns that guidance. If the
-card is collapsed or the focused action is warm-up or rest, the sticky summary
-continues to show next work. U01 changes no occurrence ordering, writer,
+The expanded cockpit is the sole ordinary working-set commit surface. While it
+is revealed, the fixed status bar does not repeat the Log set action; after an
+owner collapse it offers a neutral route back to the exact current set. During
+normal rest, the rest cockpit replaces set editing and names the next ordered
+destination. Exact retained-set recovery may still reopen its linked set.
+
+The compact summary keeps progress but defers current identity to the cockpit,
+rest, or recovery surface. It also defers its duplicate next line while the
+expanded current card owns that guidance. After an owner collapse, next work
+returns to the summary and the fixed status bar names the exact current action
+as a neutral return route. U01 changes no occurrence ordering, writer,
 acknowledgement, correction, rest, group, persistence, export, recovery, or
 historical semantics and adds no schema migration.
 
@@ -1038,7 +1121,7 @@ upgrades schema 30 rows to explicit nulls. Recovery manifest 14 keeps the same
 durable-table inventory while extending the narrow merge contract so restored
 duration corrections retain their linked record-version and audit evidence.
 
-The active logging page gets previous-set evidence from
+The active logging page and completed-workout summary get previous-set evidence from
 `getPreviousComparableSets`, not the legacy Program-slot projection. A result
 is available only for the same stable exercise ID with complete compatible v1
 performed semantics, compatible units and load-entry meaning, one exact linked
@@ -1046,7 +1129,9 @@ working occurrence, and retained machine/cable configuration when required.
 Imported Hevy evidence additionally requires the current owner-reviewed
 mapping. Unsafe evidence renders an explicit unavailable state; display names
 and fabricated fallback values are never used. The exact source workout and
-set provenance remain attached to the projection.
+set provenance remain attached to the projection. The same query retains at
+most 24 non-null recorded-rest samples from the newest eight compatible
+workouts for the pure usual-rest threshold; unsafe rows never enter that sample.
 
 The performed-load draft uses one explicit precedence chain: the latest saved
 set in this workout, then the Program target, then the exact previous
@@ -1062,8 +1147,10 @@ acknowledgement, focus and scroll reveal the next current set; acknowledged
 sets move into a closed `Completed sets` disclosure with correction beside each
 saved set instead of a separate receipt panel. Resolved warm-up items likewise
 remain available in a completed disclosure. Exercise setup precedes its work
-and collapses only after acknowledged work; a queued, retrying, or failed set
-cannot make setup disappear. Group work uses a compact mobile summary with the
+only when a physical change, choice, ambiguity, queued equipment action, or
+safety issue needs attention. A safely resolved unchanged setup stays out of
+ordinary logging, while pending or failed equipment work remains visible until
+resolved. Group work uses a compact mobile summary with the
 immutable member order, preparation details, and the next member's read-only
 starting-load preview in its native disclosure. The preview uses the same
 earlier-workout-set, Program-target, then compatible-history precedence as the

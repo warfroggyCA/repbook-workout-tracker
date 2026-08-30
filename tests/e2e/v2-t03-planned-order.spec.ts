@@ -39,16 +39,25 @@ async function skipCurrentSet(page: Page) {
   await expect(currentEntry).toHaveCount(1);
   const priorOccurrenceId = await currentEntry.getAttribute("id");
   expect(priorOccurrenceId).toMatch(/^set-entry-/);
-  await openNativeDetails(currentEntry.locator("details", {
-    hasText: "Set exceptions",
-  }));
-  const skip = currentEntry.getByRole("button", {
+  await openNativeDetails(current.getByTestId("active-exercise-details"));
+  const skip = current.getByRole("button", {
     name: "Skip set",
     exact: true,
   });
   await expect(skip).toBeEnabled();
-  await skip.click();
   const dialog = page.getByRole("dialog", { name: /^Skip set .+\?$/ });
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    await waitForHydratedReactHandler(skip);
+    try {
+      await skip.click();
+      await expect(dialog).toBeVisible({ timeout: 5_000 });
+      break;
+    } catch (error) {
+      if (await dialog.isVisible()) break;
+      if (attempt === 1) throw error;
+      await expect(skip).toBeEnabled({ timeout: 5_000 });
+    }
+  }
   await dialog.getByLabel("Reason").selectOption("time_limit_reached");
   await dialog.getByRole("button", { name: "Skip item", exact: true }).click();
   await expect(dialog).toHaveCount(0);
@@ -68,7 +77,10 @@ test("keeps planned work authoritative around extra-before-plan and grouped work
 }) => {
   const pageErrors = observeGauntletPageErrors(page, browserName);
   await signInAndStartDayA(page);
-  const first = page.getByTestId("current-exercise-card");
+  const first = page.getByRole("region", {
+    name: "Barbell Back Squat",
+    exact: true,
+  });
   await expect(first).toContainText("Barbell Back Squat");
   await expect(first.getByTestId("current-set-entry")).toContainText("Set 1");
 
@@ -92,13 +104,16 @@ test("keeps planned work authoritative around extra-before-plan and grouped work
   ).toContainText("0/13 planned · 1 extra");
   await page.reload({ waitUntil: "networkidle" });
   await expect(first).toContainText("Extra set 1");
-  await expect(first.getByTestId("current-set-entry")).toContainText("Set 1");
   const status = page.getByRole("complementary", { name: "Workout status" });
   const skipRest = status.getByRole("button", { name: "Skip rest", exact: true });
-  if ((await skipRest.count()) > 0) await skipRest.click();
-  await status
-    .getByRole("button", { name: "Dismiss rest timer", exact: true })
-    .click();
+  if (await skipRest.isVisible()) await skipRest.click();
+  const dismissRest = status.getByRole("button", {
+    name: "Dismiss rest timer",
+    exact: true,
+  });
+  await expect(dismissRest).toBeVisible();
+  await dismissRest.click();
+  await expect(first.getByTestId("current-set-entry")).toContainText("Set 1");
 
   for (let index = 0; index < 9; index += 1) {
     await skipCurrentSet(page);

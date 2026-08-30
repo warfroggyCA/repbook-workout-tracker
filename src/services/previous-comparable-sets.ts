@@ -52,10 +52,17 @@ export type PreviousComparableSetEvidence = {
     | "import_source"
     | "unknown";
   observedCompletionQuality: "trustworthy" | "owner_reported" | "unknown";
+  hasPainOrLimitation?: boolean;
   correctionProvenance: {
     state: HistoryCorrectionFacet;
     count: number;
   };
+};
+
+export type PreviousComparableRestEvidence = {
+  setId: string;
+  workoutId: string;
+  restTakenSec: number;
 };
 
 export type PreviousComparableSetResult =
@@ -79,6 +86,7 @@ export type PreviousComparableSetResult =
         workoutSource: string;
       };
       sets: PreviousComparableSetEvidence[];
+      usualRestSamples?: PreviousComparableRestEvidence[];
     }
   | {
       status: "unavailable";
@@ -124,8 +132,10 @@ type ComparisonRow = {
   source_observed_completed_at: Date | string | null;
   source_observed_completion_provenance: string | null;
   source_observed_completion_quality: string | null;
+  source_has_pain_or_limitation: boolean | null;
   source_correction_count: number | null;
   source_correction_actions: unknown;
+  compatible_rest_samples: unknown;
 };
 
 function performedMetricType(value: string | null): PerformedMetricType | null {
@@ -174,6 +184,32 @@ function correctionActions(value: unknown): string[] {
   return Array.isArray(value)
     ? value.filter((action): action is string => typeof action === "string")
     : [];
+}
+
+function compatibleRestSamples(value: unknown): PreviousComparableRestEvidence[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((sample) => {
+    if (
+      sample == null ||
+      typeof sample !== "object" ||
+      !("setId" in sample) ||
+      typeof sample.setId !== "string" ||
+      !("workoutId" in sample) ||
+      typeof sample.workoutId !== "string" ||
+      !("restTakenSec" in sample) ||
+      typeof sample.restTakenSec !== "number" ||
+      !Number.isInteger(sample.restTakenSec) ||
+      sample.restTakenSec < 0 ||
+      sample.restTakenSec > 86_400
+    ) {
+      return [];
+    }
+    return [{
+      setId: sample.setId,
+      workoutId: sample.workoutId,
+      restTakenSec: sample.restTakenSec,
+    }];
+  });
 }
 
 function unavailable(
@@ -249,7 +285,7 @@ export async function getPreviousComparableSets(
       JOIN workout_sessions current_session
         ON current_session.id = current_exercise.session_id
        AND current_session.user_id = ${userId}::uuid
-       AND current_session.status = 'in_progress'
+       AND current_session.status IN ('in_progress', 'completed')
        AND current_session.archived_at IS NULL
       JOIN exercises catalog_exercise
         ON catalog_exercise.id = current_exercise.exercise_id
@@ -297,6 +333,7 @@ export async function getPreviousComparableSets(
         historical_set.duration_seconds AS source_duration_seconds,
         historical_set.rpe AS source_rpe,
         historical_set.rir AS source_rir,
+        historical_set.rest_taken_sec AS source_rest_taken_sec,
         historical_set.metric_type AS source_metric_type,
         historical_set.performed_semantics_version
           AS source_performed_semantics_version,
@@ -312,6 +349,26 @@ export async function getPreviousComparableSets(
           AS source_observed_completion_provenance,
         historical_set.observed_completion_quality
           AS source_observed_completion_quality,
+        (
+          historical_set.technique_issue IS NOT NULL
+          OR historical_set.limitation_cause IS NOT NULL
+          OR EXISTS (
+            SELECT 1
+            FROM pain_logs historical_pain
+            WHERE historical_pain.user_id = ${userId}::uuid
+              AND historical_pain.session_id = historical_session.id
+              AND historical_pain.severity > 0
+              AND historical_pain.archived_at IS NULL
+              AND (
+                historical_pain.completed_set_id = historical_set.id
+                OR historical_pain.exercise_id = historical_exercise.exercise_id
+                OR (
+                  historical_pain.completed_set_id IS NULL
+                  AND historical_pain.exercise_id IS NULL
+                )
+              )
+          )
+        ) AS source_has_pain_or_limitation,
         (
           SELECT count(*)::integer
           FROM record_versions correction
@@ -487,8 +544,33 @@ export async function getPreviousComparableSets(
       candidate.source_observed_completed_at,
       candidate.source_observed_completion_provenance,
       candidate.source_observed_completion_quality,
+      candidate.source_has_pain_or_limitation,
       candidate.source_correction_count,
-      candidate.source_correction_actions
+      candidate.source_correction_actions,
+      (
+        SELECT coalesce(jsonb_agg(recent_rest.sample), '[]'::jsonb)
+        FROM (
+          SELECT jsonb_build_object(
+            'setId', rest_source.source_set_id,
+            'workoutId', rest_source.source_workout_id,
+            'restTakenSec', rest_source.source_rest_taken_sec
+          ) AS sample
+          FROM ranked_safe_sets rest_source
+          WHERE rest_source.current_session_exercise_id =
+              current.current_session_exercise_id
+            AND rest_source.source_rest_taken_sec IS NOT NULL
+            AND rest_source.source_observed_completion_quality IN (
+              'trustworthy', 'owner_reported'
+            )
+            AND NOT rest_source.source_has_pain_or_limitation
+            AND rest_source.source_rank <= 8
+          ORDER BY
+            rest_source.source_started_at DESC,
+            rest_source.source_set_no DESC,
+            rest_source.source_set_id DESC
+          LIMIT 24
+        ) recent_rest
+      ) AS compatible_rest_samples
     FROM current_context current
     LEFT JOIN ranked_safe_sets candidate
       ON candidate.current_session_exercise_id =
@@ -642,6 +724,8 @@ export async function getPreviousComparableSets(
             row.source_observed_completion_quality === "owner_reported"
               ? row.source_observed_completion_quality
               : "unknown",
+          hasPainOrLimitation:
+            row.source_has_pain_or_limitation === true,
           correctionProvenance: {
             state: classifyHistoryCorrectionFacet(
               correctionActions(row.source_correction_actions),
@@ -650,6 +734,9 @@ export async function getPreviousComparableSets(
           },
         }];
       }),
+      usualRestSamples: compatibleRestSamples(
+        sourceRow.compatible_rest_samples,
+      ),
     };
   }
   return output;

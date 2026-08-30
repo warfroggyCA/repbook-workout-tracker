@@ -48,7 +48,6 @@ const baseRecommendation: RecommendationCardData = {
   actionable: false,
   producer: "pain_consistency",
   sourceVersion: "pain-evidence-v1",
-  generatedAt: "2026-08-07T12:00:00.000Z",
   limitations: ["Missing observations remain unknown."],
   proposedEffect: "No Program change.",
   externalRequestedOutcome: null,
@@ -66,13 +65,18 @@ describe("RecommendationCard", () => {
 
     expect(html).toContain("Automatic status");
     expect(html).toContain("Load held");
-    expect(html).toContain("doesn&#x27;t change your Program");
+    expect(html).toContain("Current effect");
+    expect(html).toContain("No Program change.");
+    expect(html).toContain("Why this appeared");
     expect(html).toContain("Evidence window");
     expect(html).toContain("Dismiss notice");
     expect(html).not.toContain("Approve");
     expect(html).not.toContain(">Reject<");
+    expect(html).toContain("How calculated");
     expect(html).toContain("Confidence");
-    expect(html).toContain("Review evidence");
+    expect(html).toContain("Portability");
+    expect(html).toContain("Retained in export and recovery");
+    expect(html).not.toContain("Review evidence");
   });
 
   it("keeps load-change and substitution proposals actionable", () => {
@@ -105,6 +109,12 @@ describe("RecommendationCard", () => {
     }
     expect(loadHtml).toContain("105");
     expect(loadHtml).toContain("110");
+    expect(loadHtml.indexOf("Proposed future Program effect")).toBeLessThan(
+      loadHtml.indexOf("Why this appeared"),
+    );
+    expect(loadHtml.indexOf("Why this appeared")).toBeLessThan(
+      loadHtml.indexOf("How calculated"),
+    );
     expect(substitutionHtml).toContain(
       "Switch to: Dumbbell Bench Press",
     );

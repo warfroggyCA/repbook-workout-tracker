@@ -37,22 +37,16 @@ const viewOptions = [
   {
     key: "calendar",
     label: "Calendar",
-    description:
-      "Find a date, open a record, or enter a remembered workout without changing the facts it represents.",
     icon: CalendarDays,
   },
   {
     key: "insights",
     label: "Insights",
-    description:
-      "Ask one question at a time and inspect the evidence, limitations, and decision support for this period.",
     icon: Lightbulb,
   },
   {
     key: "exercises",
     label: "Exercises",
-    description:
-      "Review exact-variant progression, best observations, and movement context with links back to source workouts.",
     icon: Dumbbell,
   },
 ] as const;
@@ -93,7 +87,6 @@ export function HistoryWorkspace({
   const rangeLabel =
     HISTORY_RANGES.find((option) => option.key === range)?.label ??
     "Selected period";
-  const activeView = viewOptions.find((option) => option.key === view)!;
   const context: HistoryContext & { range: HistoryRangeKey } = {
     range,
     view,
@@ -104,17 +97,13 @@ export function HistoryWorkspace({
     evidenceTier,
   };
   return (
-    <main className="mx-auto flex max-w-6xl flex-col gap-5 p-4 sm:p-6 lg:p-8">
+    <main
+      data-ui-core-surface="history"
+      className="athlete-workflow mx-auto flex max-w-6xl flex-col gap-5 p-4 sm:p-6 lg:p-8"
+    >
       <header className="flex min-w-0 flex-col gap-5">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-          <div>
-            <p className="text-xs font-medium uppercase tracking-[0.16em] text-primary">
-              Training history
-            </p>
-            <h1 className="mt-1 text-2xl font-semibold tracking-tight sm:text-3xl">
-              History
-            </h1>
-          </div>
+          <h1 className="ui-page-title">History</h1>
           <div className="flex flex-wrap gap-2 sm:justify-end">
             <Button
               render={<Link href="/activity/new" />}
@@ -141,7 +130,8 @@ export function HistoryWorkspace({
 
         <nav
           aria-label="History views"
-          className="grid grid-cols-3 gap-1 rounded-2xl border bg-card p-1"
+          data-ui-surface="inset"
+          className="ui-surface grid grid-cols-3 gap-1 p-1"
         >
           {viewOptions.map((option) => {
             const Icon = option.icon;
@@ -174,26 +164,11 @@ export function HistoryWorkspace({
           })}
         </nav>
 
-        {view !== "calendar" && (
-          <div className="rounded-2xl border bg-card p-4">
-            <div>
-              <h2 className="text-xl font-semibold tracking-tight sm:text-2xl">
-                {activeView.label}
-              </h2>
-              <p className="mt-1 max-w-3xl text-sm leading-relaxed text-muted-foreground">
-                {activeView.description}
-              </p>
-              <p className="mt-2 text-xs text-muted-foreground">
-                Showing {rangeLabel.toLowerCase()}.
-              </p>
-            </div>
-          </div>
-        )}
       </header>
 
       {view !== "calendar" && (
         <div className="pointer-events-none sticky top-2 z-30 flex justify-end">
-          <div className="pointer-events-auto w-full rounded-xl shadow-md sm:w-auto">
+          <div className="pointer-events-auto w-full rounded-xl sm:w-auto">
             <HistoryRangeNav
               options={HISTORY_RANGES}
               currentRange={range}

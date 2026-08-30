@@ -82,6 +82,22 @@
   --shadow-soft:
     0 1px 2px oklch(0.22 0.015 255 / 0.03),
     0 6px 18px oklch(0.22 0.015 255 / 0.035);
+  /* Athlete-workflow semantics: hierarchy and state without extra chrome. */
+  --surface-canvas: var(--background);
+  --surface-primary: var(--card);
+  --surface-inset: color-mix(in oklch, var(--muted) 72%, var(--card));
+  --surface-selected: color-mix(in oklch, var(--primary) 8%, var(--card));
+  --surface-attention: color-mix(in oklch, oklch(0.78 0.15 75) 12%, var(--card));
+  --surface-destructive: color-mix(in oklch, var(--destructive) 8%, var(--card));
+  --space-page: clamp(0.875rem, 2vw, 1.5rem);
+  --space-section: clamp(1rem, 2.5vw, 1.75rem);
+  --space-control: 0.75rem;
+  --space-metadata: 0.35rem;
+  --touch-min: 2.75rem;
+  --motion-immediate: 90ms;
+  --motion-surface: 160ms;
+  --motion-drawer: 220ms;
+  --motion-ease: cubic-bezier(0.2, 0.75, 0.25, 1);
   --sidebar: oklch(0.965 0.012 252);
   --sidebar-foreground: oklch(0.22 0.015 255);
   --sidebar-primary: oklch(0.52 0.18 253);
@@ -162,6 +178,165 @@ html[data-font-size="extra-large"] {
   }
   html {
     @apply font-sans;
+  }
+}
+
+/*
+ * The core athlete loop opts into this layer one surface at a time. Keeping it
+ * scoped lets the visual system mature without silently restyling setup,
+ * recovery, import, or archival workflows.
+ */
+.athlete-workflow {
+  background: var(--surface-canvas);
+  --workflow-page-title: clamp(1.65rem, 1.4rem + 1vw, 2.2rem);
+  --workflow-section-title: clamp(1.05rem, 1rem + 0.25vw, 1.25rem);
+  --workflow-body: 0.9375rem;
+  --workflow-supporting: 0.8125rem;
+  --workflow-metadata: 0.75rem;
+  --workflow-value: clamp(1.125rem, 1rem + 0.55vw, 1.5rem);
+}
+
+.athlete-workflow :where(button, summary, [data-ui-touch]) {
+  min-block-size: var(--touch-min);
+}
+
+.athlete-workflow :where(button, a, summary, input, select, textarea):focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+.athlete-workflow :where(button, input, select, textarea):disabled,
+.athlete-workflow :where([aria-disabled="true"]) {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.ui-page-title {
+  font-size: var(--workflow-page-title);
+  font-weight: 650;
+  letter-spacing: -0.03em;
+  line-height: 1.08;
+}
+
+.ui-section-title {
+  font-size: var(--workflow-section-title);
+  font-weight: 650;
+  letter-spacing: -0.015em;
+  line-height: 1.2;
+}
+
+.ui-body {
+  font-size: var(--workflow-body);
+  line-height: 1.5;
+}
+
+.ui-supporting {
+  color: var(--muted-foreground);
+  font-size: var(--workflow-supporting);
+  line-height: 1.45;
+}
+
+.ui-metadata {
+  color: var(--muted-foreground);
+  font-size: var(--workflow-metadata);
+  font-weight: 550;
+  letter-spacing: 0.01em;
+  line-height: 1.35;
+}
+
+.ui-value {
+  font-size: var(--workflow-value);
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.15;
+}
+
+.ui-surface {
+  background: var(--surface-primary);
+  border: 1px solid var(--border);
+  border-radius: calc(var(--radius) * 1.4);
+}
+
+.ui-surface[data-ui-surface="inset"] {
+  background: var(--surface-inset);
+  border-color: transparent;
+}
+
+.ui-surface[data-ui-surface="selected"] {
+  background: var(--surface-selected);
+  border-color: color-mix(in oklch, var(--primary) 28%, var(--border));
+}
+
+.ui-surface[data-current-set="true"] {
+  border-width: 2px;
+}
+
+.ui-surface[data-ui-surface="attention"] {
+  background: var(--surface-attention);
+  border-color: color-mix(in oklch, oklch(0.72 0.14 75) 32%, var(--border));
+}
+
+.ui-surface[data-ui-surface="destructive"] {
+  background: var(--surface-destructive);
+  border-color: color-mix(in oklch, var(--destructive) 28%, var(--border));
+}
+
+.ui-state {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.ui-state[data-ui-state="idle"] {
+  background: var(--surface-primary);
+}
+
+.ui-state[data-ui-state="pending"],
+.ui-state[data-ui-state="saving"],
+.ui-state[data-ui-state="retrying"] {
+  background: var(--surface-selected);
+  border-color: color-mix(in oklch, var(--primary) 24%, var(--border));
+}
+
+.ui-state[data-ui-state="attention"],
+.ui-state[data-ui-state="retained"] {
+  background: var(--surface-attention);
+  border-color: color-mix(in oklch, oklch(0.72 0.14 75) 35%, var(--border));
+}
+
+.ui-state[data-ui-state="needs_attention"] {
+  background: var(--surface-destructive);
+  border-color: color-mix(in oklch, var(--destructive) 34%, var(--border));
+}
+
+.ui-state[data-ui-state="saved"],
+.ui-state[data-ui-state="recovered"] {
+  background: color-mix(in oklch, var(--success) 9%, var(--card));
+  border-color: color-mix(in oklch, var(--success) 30%, var(--border));
+}
+
+.ui-motion-immediate {
+  transition-duration: var(--motion-immediate);
+  transition-timing-function: var(--motion-ease);
+}
+
+.ui-motion-surface {
+  transition-duration: var(--motion-surface);
+  transition-timing-function: var(--motion-ease);
+}
+
+.ui-motion-drawer {
+  transition-duration: var(--motion-drawer);
+  transition-timing-function: var(--motion-ease);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ui-motion-immediate,
+  .ui-motion-surface,
+  .ui-motion-drawer {
+    animation: none !important;
+    scroll-behavior: auto !important;
+    transition: none !important;
   }
 }
 

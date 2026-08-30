@@ -14,11 +14,7 @@ import {
 } from "lucide-react";
 import { ProductHomeLink } from "@/components/nav/product-mark";
 import { Button } from "@/components/ui/button";
-import {
-  PRODUCT_NAVIGATION,
-  PRODUCT_PROMISE,
-  PRODUCT_TENETS,
-} from "@/lib/product-identity";
+import { PRODUCT_NAVIGATION } from "@/lib/product-identity";
 import { cn } from "@/lib/utils";
 
 const tabIcons = {
@@ -136,8 +132,8 @@ export function BottomTabs({
     <>
       <aside
         className={cn(
-          "fixed inset-y-0 left-0 z-40 hidden flex-col border-r bg-sidebar py-5 transition-[width,padding] duration-200 motion-reduce:transition-none lg:flex",
-          collapsed ? "w-16 px-2" : "w-64 px-4"
+          "ui-motion-drawer fixed inset-y-0 left-0 z-40 hidden flex-col border-r bg-sidebar py-5 transition-[width,padding] lg:flex",
+          collapsed ? "w-[64px] px-2" : "w-[224px] px-3"
         )}
       >
         <Button
@@ -162,29 +158,20 @@ export function BottomTabs({
           forceDocumentNavigation={focusedWorkoutMode}
         />
 
-        {!collapsed && (
-          <div className="mt-8 border-l-2 border-primary/50 px-3 py-1">
-            <p className="text-[0.625rem] font-medium uppercase tracking-[0.12em] text-muted-foreground">
-              {PRODUCT_TENETS}
-            </p>
-            <p className="mt-1 text-sm font-medium">{PRODUCT_PROMISE}</p>
-          </div>
-        )}
-
         <nav
           className={cn(
             "flex flex-1 flex-col gap-1",
-            collapsed ? "mt-8" : "mt-5"
+            collapsed ? "mt-8" : "mt-10"
           )}
           aria-label="Main navigation"
         >
-          {PRODUCT_NAVIGATION.map(({ href, label, purpose }) => {
+          {PRODUCT_NAVIGATION.map(({ href, label }) => {
             const Icon = tabIcons[href];
             const active = navigationItemIsActive(activePathname, href);
             const forceDocumentNavigation =
               navigationItemRequiresDocumentNavigation(activePathname);
             const itemClassName = cn(
-              "flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors motion-reduce:transition-none",
+              "ui-motion-immediate flex min-h-11 items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors",
               collapsed && "justify-center px-2",
               active
                 ? "bg-primary/10 font-medium text-accent-foreground"
@@ -194,20 +181,7 @@ export function BottomTabs({
               <>
                 <Icon className="size-[1.1875rem]" strokeWidth={active ? 2.25 : 1.8} />
                 {!collapsed && (
-                  <span className="min-w-0 leading-tight">
-                    <span className="block">{label}</span>
-                    <span
-                      aria-hidden="true"
-                      className={cn(
-                        "mt-0.5 block truncate text-[0.625rem] font-normal",
-                        active
-                          ? "text-accent-foreground"
-                          : "text-muted-foreground"
-                      )}
-                    >
-                      {purpose}
-                    </span>
-                  </span>
+                  <span className="min-w-0 truncate leading-tight">{label}</span>
                 )}
               </>
             );
@@ -270,7 +244,7 @@ export function BottomTabs({
             const forceDocumentNavigation =
               navigationItemRequiresDocumentNavigation(activePathname);
             const itemClassName = cn(
-              "relative flex min-w-0 flex-1 flex-col items-center gap-0.5 px-0.5 py-2 text-[0.625rem] leading-tight transition-colors motion-reduce:transition-none",
+              "ui-motion-immediate relative flex min-w-0 flex-1 flex-col items-center gap-0.5 px-0.5 py-2 text-[0.625rem] leading-tight transition-colors",
               active
                 ? "font-medium text-primary"
                 : "text-muted-foreground hover:text-foreground"

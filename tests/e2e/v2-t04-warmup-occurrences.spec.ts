@@ -108,9 +108,9 @@ test("keeps warm-up actions singular, reversible, durable, and usable with minim
     .getAttribute("id");
   expect(firstWarmupId).toMatch(/^warmup-occurrence-/);
   const preparationCta = page
-    .getByTestId("session-preparation-panel")
-    .getByRole("link", { name: "Go to warm-up", exact: true });
-  await expect(preparationCta).toHaveAttribute("href", `#${firstWarmupId}`);
+    .getByTestId("current-exercise-card")
+    .getByRole("button", { name: "Go to preparation set", exact: true });
+  await expect(preparationCta).toHaveCount(1);
   await preparationCta.focus();
   await page.keyboard.press("Enter");
   await expect(firstWarmupCheckbox).toBeFocused();

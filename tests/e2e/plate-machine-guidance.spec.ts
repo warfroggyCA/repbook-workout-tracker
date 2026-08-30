@@ -287,6 +287,7 @@ test("shows live plates per side without changing total-load meaning", async ({
     "45 + 5 lb per side · 100 lb total resistance",
   );
   const inputAfterReload = reloadedInput;
+  await waitForHydratedReactChangeHandler(inputAfterReload);
   await inputAfterReload.focus();
   await expect(inputAfterReload).toBeFocused();
   const exactGuidance = reloadedCard.getByText(

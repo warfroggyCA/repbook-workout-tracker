@@ -1,6 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 import {
   installNextDevelopmentRefreshControl,
+  openNativeDetails,
   waitForEquipmentSelectionsToSettle,
   waitForHydratedReactHandler,
   waitForHydratedServerAction,
@@ -46,12 +47,14 @@ async function expectSetQueueLength(page: Page, expected: number) {
 async function dismissRest(page: Page) {
   const status = page.getByRole("complementary", { name: "Workout status" });
   const skip = status.getByRole("button", { name: "Skip rest", exact: true });
-  if ((await skip.count()) > 0) await skip.click();
   const dismiss = status.getByRole("button", {
     name: "Dismiss rest timer",
     exact: true,
   });
-  if ((await dismiss.count()) > 0) await dismiss.click();
+  if (await skip.isVisible()) await skip.click();
+  await expect(dismiss).toBeVisible();
+  await dismiss.click();
+  await expect(dismiss).toHaveCount(0);
 }
 
 test("recovers offline and timeout-after-commit sets exactly, then reviews abandonment accessibly", async ({
@@ -68,29 +71,36 @@ test("recovers offline and timeout-after-commit sets exactly, then reviews aband
   ]);
   await signInAndStartDayA(page);
   const sessionId = page.url().split("/").at(-1)!;
+  const squatCard = page.locator('section[id^="exercise-"]').filter({
+    has: page.getByRole("heading", {
+      name: "Barbell Back Squat",
+      exact: true,
+      level: 2,
+    }),
+  });
 
   let current = page.getByTestId("current-exercise-card");
   let entry = current.getByTestId("current-set-entry");
   await context.setOffline(true);
   await entry.getByRole("button", { name: "Log set", exact: true }).click();
   await expectSetQueueLength(page, 1);
-  await expect(current.getByRole("status")).toContainText(
+  await expect(squatCard.getByRole("status")).toContainText(
     /Saving|Retrying|waiting|Pending on this device/i,
   );
 
   await context.setOffline(false);
   await page.evaluate(() => window.dispatchEvent(new Event("online")));
-  await expect(current.getByTestId("completed-sets"))
+  await expect(squatCard.getByTestId("completed-sets"))
     .toContainText("1 completed");
   await expectSetQueueLength(page, 0);
   await page.reload({ waitUntil: "domcontentloaded" });
-  current = page.getByTestId("current-exercise-card");
-  await current.getByTestId("completed-sets").locator(":scope > summary").click();
+  await openNativeDetails(squatCard.getByTestId("active-exercise-details"));
   await expect(
-    current.locator('[id^="logged-set-"]').filter({ hasText: "Set 1" }),
+    squatCard.locator('[id^="logged-set-"]').filter({ hasText: "Set 1" }),
   ).toBeVisible();
-  await expect(current.getByTestId("current-set-entry")).toContainText("Set 2");
   await dismissRest(page);
+  current = page.getByTestId("current-exercise-card");
+  await expect(current.getByTestId("current-set-entry")).toContainText("Set 2");
 
   let afterCommitInterceptions = 0;
   await page.route("**/*", async (route) => {
@@ -112,7 +122,7 @@ test("recovers offline and timeout-after-commit sets exactly, then reviews aband
   current = page.getByTestId("current-exercise-card");
   entry = current.getByTestId("current-set-entry");
   await entry.getByRole("button", { name: "Log set", exact: true }).click();
-  await expect(current.getByTestId("completed-sets"))
+  await expect(squatCard.getByTestId("completed-sets"))
     .toContainText("2 completed");
   await expectSetQueueLength(page, 0);
   expect(afterCommitInterceptions).toBe(1);

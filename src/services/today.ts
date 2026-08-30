@@ -309,6 +309,7 @@ export async function getTodayPageData(
         eq(recommendations.status, "pending"),
         isNull(recommendations.archivedAt)
       ),
+      with: { exercise: true },
     }),
   ]);
   const pendingRecs = await filterRecommendationsEligibleForAction(

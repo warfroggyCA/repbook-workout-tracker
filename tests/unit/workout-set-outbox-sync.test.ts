@@ -5,11 +5,16 @@ import { UnrecognizedActionError } from "next/dist/client/components/unrecognize
 import {
   WORKOUT_SET_OUTBOX_STATUS_EVENT,
   WORKOUT_SET_OUTBOX_MAX_AUTO_ATTEMPTS,
+  WORKOUT_REST_INTENT_RECEIPTS_STORAGE_KEY,
   discardWorkoutSetDeviceCopy,
+  enqueueWorkoutSet,
   enqueueWorkoutSetOutboxEntry,
+  getWorkoutRestIntentReceipt,
+  laterWorkoutSetRestIntentClientKeys,
   markWorkoutSetNeedsAttention,
   markWorkoutSetTransientFailure,
   readWorkoutSetOutbox,
+  recordWorkoutRestIntentReceipt,
   retryWorkoutSet,
   type NewWorkoutSetOutboxEntry,
   type WorkoutSetOutboxClientEvent,
@@ -20,12 +25,14 @@ const actionMocks = vi.hoisted(() => ({ logSet: vi.fn() }));
 vi.mock("@/app/actions/sessions", () => ({ logSet: actionMocks.logSet }));
 
 import {
+  reconcileRetainedWorkoutRestIntents,
   syncNextEntry,
   WORKOUT_DEVICE_STATUS_CLASS_NAME,
   WorkoutSetOutboxTray,
 } from "@/components/session/workout-set-outbox-sync";
 import {
   REST_TIMER_STORAGE_KEY,
+  clearRestTimerForSupersedingSourceClientKey,
   completeRestTimer,
   continueAfterRest,
   createRestTimer,
@@ -41,12 +48,19 @@ class MemoryStorage implements WorkoutSetOutboxStorage {
   values = new Map<string, string>();
   rejectRestWrites = false;
   rejectRestRemovals = false;
+  rejectRestIntentWrites = false;
 
   getItem(key: string) {
     return this.values.get(key) ?? null;
   }
 
   setItem(key: string, value: string) {
+    if (
+      this.rejectRestIntentWrites &&
+      key === WORKOUT_REST_INTENT_RECEIPTS_STORAGE_KEY
+    ) {
+      throw new Error("rest intent storage unavailable");
+    }
     if (this.rejectRestWrites && key === REST_TIMER_STORAGE_KEY) {
       throw new Error("rest storage unavailable");
     }
@@ -111,7 +125,16 @@ describe("workout set outbox sync classification", () => {
       localStorage: storage,
       dispatchEvent: events.dispatchEvent.bind(events),
     });
-    vi.stubGlobal("navigator", { onLine: true });
+    vi.stubGlobal("navigator", {
+      onLine: true,
+      locks: {
+        request: <T>(
+          _name: string,
+          _options: { mode: "exclusive" },
+          task: () => T | Promise<T>,
+        ) => task(),
+      },
+    });
     vi.stubGlobal(
       "CustomEvent",
       class<T> extends Event {
@@ -143,12 +166,78 @@ describe("workout set outbox sync classification", () => {
     expect(html).not.toMatch(/class="[^"]*\bfixed\b/);
     expect(WORKOUT_DEVICE_STATUS_CLASS_NAME).toContain("fixed");
     expect(WORKOUT_DEVICE_STATUS_CLASS_NAME).toContain(
-      "bottom-[calc(7.5rem+env(safe-area-inset-bottom))]",
+      "bottom-[var(--active-workout-overlay-bottom,calc(7.5rem+env(safe-area-inset-bottom)))]",
     );
     expect(WORKOUT_DEVICE_STATUS_CLASS_NAME).toContain(
-      "lg:bottom-[5.75rem]",
+      "lg:bottom-[var(--active-workout-overlay-bottom,5.75rem)]",
     );
     expect(WORKOUT_DEVICE_STATUS_CLASS_NAME).toContain("z-30");
+  });
+
+  it("keeps commands retained when cross-tab delivery locking is unavailable", async () => {
+    vi.stubGlobal("navigator", { onLine: true });
+    const rawBefore = storage.getItem("workout-tracker:workout-set-outbox:v1");
+
+    await syncNextEntry(entry().ownerId);
+
+    expect(actionMocks.logSet).not.toHaveBeenCalled();
+    const snapshot = readWorkoutSetOutbox(storage);
+    expect(snapshot.entries[0]).toMatchObject({
+      status: "queued",
+      attemptCount: 0,
+      lastError: null,
+    });
+    expect(storage.getItem("workout-tracker:workout-set-outbox:v1")).toBe(rawBefore);
+    const html = renderToStaticMarkup(createElement(WorkoutSetOutboxTray, {
+      entries: snapshot.entries,
+      quarantined: [],
+      storageError: null,
+      deliverySupported: false,
+      onWake: () => undefined,
+    }));
+    expect(html).toContain("Saving paused");
+    expect(html).not.toContain(">Saving</span>");
+  });
+
+  it("reconciles a retained no-rest decision after a crash before the immediate clear", async () => {
+    storage.values.clear();
+    const first = {
+      ...entry(),
+      occurrenceId: savedOccurrenceId,
+      expectedOccurrenceRevision: 0,
+      restAfterSec: 30,
+    };
+    const final = {
+      ...entry(),
+      clientKey: "10000000-0000-4000-8000-000000000002",
+      sessionExerciseId: "40000000-0000-4000-8000-000000000002",
+      performedExerciseId: "50000000-0000-4000-8000-000000000002",
+      setNo: 1,
+      occurrenceId: "60000000-0000-4000-8000-000000000002",
+      expectedOccurrenceRevision: 0,
+      restAfterSec: null,
+      createdAtISO: "2026-07-18T12:00:01.000Z",
+    };
+    enqueueWorkoutSetOutboxEntry(storage, first);
+    enqueueWorkoutSetOutboxEntry(storage, final);
+    await writeRestTimer(storage, createRestTimer({
+      ownerId: first.ownerId,
+      sessionId: first.sessionId,
+      generationId: "70000000-0000-4000-8000-000000000001",
+      now: 1_000,
+      seconds: 30,
+      sourceSessionExerciseId: first.sessionExerciseId,
+      sourceOccurrenceId: first.occurrenceId,
+      sourceClientKey: first.clientKey,
+    })!);
+
+    await reconcileRetainedWorkoutRestIntents(first.ownerId);
+
+    expect(readWorkoutSetOutbox(storage).entries).toHaveLength(2);
+    expect(readRestTimer(storage, {
+      ownerId: first.ownerId,
+      sessionId: first.sessionId,
+    }).timer).toBeNull();
   });
 
   it("treats every thrown action failure as transient with fixed copy", async () => {
@@ -416,6 +505,155 @@ describe("workout set outbox sync classification", () => {
     expect(readWorkoutSetOutbox(storage).entries).toEqual([]);
   });
 
+  it("retains another set while delivery waits and keeps that owner single-flight", async () => {
+    const lockTails = new Map<string, Promise<void>>();
+    vi.stubGlobal("navigator", {
+      onLine: true,
+      locks: {
+        request: <T>(
+          name: string,
+          _options: { mode: "exclusive" },
+          task: () => T | Promise<T>,
+        ) => {
+          const previous = lockTails.get(name) ?? Promise.resolve();
+          const run = previous.then(task);
+          lockTails.set(name, run.then(() => undefined, () => undefined));
+          return run;
+        },
+      },
+    });
+    let acknowledgeFirst!: (value: {
+      outcome: "saved";
+      setId: string;
+      occurrenceId: string;
+      occurrenceRevision: number;
+    }) => void;
+    actionMocks.logSet
+      .mockReturnValueOnce(new Promise((resolve) => {
+        acknowledgeFirst = resolve;
+      }))
+      .mockResolvedValueOnce({
+        outcome: "saved",
+        setId: "50000000-0000-4000-8000-000000000002",
+        occurrenceId: "60000000-0000-4000-8000-000000000002",
+        occurrenceRevision: 1,
+      });
+
+    const firstDelivery = syncNextEntry(entry().ownerId);
+    await vi.waitFor(() => expect(actionMocks.logSet).toHaveBeenCalledOnce());
+    const secondEntry = {
+      ...entry(),
+      clientKey: "10000000-0000-4000-8000-000000000002",
+      sessionExerciseId: "40000000-0000-4000-8000-000000000002",
+      performedExerciseId: "50000000-0000-4000-8000-000000000002",
+      occurrenceId: "60000000-0000-4000-8000-000000000002",
+      expectedOccurrenceRevision: 0,
+      createdAtISO: "2026-07-18T12:00:01.000Z",
+    };
+    const secondRetention = enqueueWorkoutSet(secondEntry);
+    const retainedBeforeAcknowledgement = await Promise.race([
+      secondRetention.then((result) => result.ok),
+      new Promise<false>((resolve) =>
+        setTimeout(() => resolve(false), 250),
+      ),
+    ]);
+    expect(retainedBeforeAcknowledgement).toBe(true);
+    expect(readWorkoutSetOutbox(storage).entries).toHaveLength(2);
+
+    await syncNextEntry(entry().ownerId);
+    expect(actionMocks.logSet).toHaveBeenCalledOnce();
+    acknowledgeFirst({
+      outcome: "saved",
+      setId: savedSetId,
+      occurrenceId: savedOccurrenceId,
+      occurrenceRevision: 1,
+    });
+    await firstDelivery;
+
+    expect(actionMocks.logSet).toHaveBeenCalledTimes(2);
+    expect(actionMocks.logSet.mock.calls[1]?.[0]).toEqual(
+      expect.objectContaining({
+        clientKey: secondEntry.clientKey,
+        occurrenceId: secondEntry.occurrenceId,
+      }),
+    );
+    expect(readWorkoutSetOutbox(storage).entries).toEqual([]);
+  });
+
+  it("allows retry and discard mutations while another delivery waits", async () => {
+    const lockTails = new Map<string, Promise<void>>();
+    vi.stubGlobal("navigator", {
+      onLine: true,
+      locks: {
+        request: <T>(
+          name: string,
+          _options: { mode: "exclusive" },
+          task: () => T | Promise<T>,
+        ) => {
+          const previous = lockTails.get(name) ?? Promise.resolve();
+          const run = previous.then(task);
+          lockTails.set(name, run.then(() => undefined, () => undefined));
+          return run;
+        },
+      },
+    });
+    let acknowledgeFirst!: (value: {
+      outcome: "saved";
+      setId: string;
+      occurrenceId: string;
+      occurrenceRevision: number;
+    }) => void;
+    actionMocks.logSet.mockReturnValueOnce(new Promise((resolve) => {
+      acknowledgeFirst = resolve;
+    }));
+
+    const firstDelivery = syncNextEntry(entry().ownerId);
+    await vi.waitFor(() => expect(actionMocks.logSet).toHaveBeenCalledOnce());
+
+    const mutableEntry = {
+      ...entry(),
+      clientKey: "10000000-0000-4000-8000-000000000003",
+      sessionExerciseId: "40000000-0000-4000-8000-000000000003",
+      performedExerciseId: "50000000-0000-4000-8000-000000000003",
+      occurrenceId: "60000000-0000-4000-8000-000000000003",
+      expectedOccurrenceRevision: 0,
+      createdAtISO: "2026-07-18T12:00:02.000Z",
+    };
+    enqueueWorkoutSetOutboxEntry(storage, mutableEntry);
+    markWorkoutSetNeedsAttention(
+      storage,
+      mutableEntry.clientKey,
+      "Review this retained attempt.",
+    );
+
+    const retriedBeforeAcknowledgement = await Promise.race([
+      retryWorkoutSet(mutableEntry.clientKey),
+      new Promise<null>((resolve) => setTimeout(() => resolve(null), 250)),
+    ]);
+    expect(retriedBeforeAcknowledgement).toMatchObject({ ok: true });
+    const retainedForDiscard = readWorkoutSetOutbox(storage).entries.find(
+      (candidate) => candidate.clientKey === mutableEntry.clientKey,
+    );
+    expect(retainedForDiscard).toMatchObject({ status: "queued" });
+
+    const discardedBeforeAcknowledgement = await Promise.race([
+      discardWorkoutSetDeviceCopy(storage, retainedForDiscard!),
+      new Promise<null>((resolve) => setTimeout(() => resolve(null), 250)),
+    ]);
+    expect(discardedBeforeAcknowledgement).toMatchObject({ ok: true });
+    expect(readWorkoutSetOutbox(storage).entries).toHaveLength(1);
+
+    acknowledgeFirst({
+      outcome: "saved",
+      setId: savedSetId,
+      occurrenceId: savedOccurrenceId,
+      occurrenceRevision: 1,
+    });
+    await firstDelivery;
+    expect(actionMocks.logSet).toHaveBeenCalledOnce();
+    expect(readWorkoutSetOutbox(storage).entries).toEqual([]);
+  });
+
   it("starts rest only after the server acknowledges the exact set", async () => {
     storage.values.clear();
     enqueueWorkoutSetOutboxEntry(storage, { ...entry(), restAfterSec: 90 });
@@ -490,6 +728,397 @@ describe("workout set outbox sync classification", () => {
       endsAt: 31_000,
       sourceClientKey: queued.clientKey,
       sourceCompletedSetId: savedSetId,
+    });
+  });
+
+  it("does not resurrect an earlier rest after a retained final set supersedes it", async () => {
+    storage.values.clear();
+    const identity = { ownerId: entry().ownerId, sessionId: entry().sessionId };
+    const first = {
+      ...entry(),
+      occurrenceId: savedOccurrenceId,
+      expectedOccurrenceRevision: 0,
+      restAfterSec: 30,
+    };
+    const final = {
+      ...entry(),
+      clientKey: "10000000-0000-4000-8000-000000000002",
+      setNo: 2,
+      occurrenceId: "60000000-0000-4000-8000-000000000002",
+      expectedOccurrenceRevision: 0,
+      restAfterSec: null,
+      createdAtISO: "2026-07-18T12:00:01.000Z",
+    };
+    enqueueWorkoutSetOutboxEntry(storage, first);
+    await writeRestTimer(storage, createRestTimer({
+      ...identity,
+      generationId: "70000000-0000-4000-8000-000000000001",
+      now: 1_000,
+      seconds: 30,
+      sourceSessionExerciseId: first.sessionExerciseId,
+      sourceOccurrenceId: first.occurrenceId,
+      sourceClientKey: first.clientKey,
+    })!);
+
+    let acknowledgeFirst!: (
+      value: {
+        outcome: "saved";
+        setId: string;
+        occurrenceId: string;
+        occurrenceRevision: number;
+      },
+    ) => void;
+    actionMocks.logSet
+      .mockReturnValueOnce(new Promise((resolve) => {
+        acknowledgeFirst = resolve;
+      }))
+      .mockResolvedValueOnce({
+        outcome: "saved",
+        setId: "50000000-0000-4000-8000-000000000002",
+        occurrenceId: final.occurrenceId,
+        occurrenceRevision: 1,
+      });
+
+    const syncing = syncNextEntry(first.ownerId);
+    await vi.waitFor(() => expect(actionMocks.logSet).toHaveBeenCalledTimes(1));
+    enqueueWorkoutSetOutboxEntry(storage, final);
+    const retained = readWorkoutSetOutbox(storage).entries;
+    await expect(clearRestTimerForSupersedingSourceClientKey(
+      storage,
+      identity,
+      final.clientKey,
+      laterWorkoutSetRestIntentClientKeys(retained, final),
+    )).resolves.toBe("cleared");
+    expect(readRestTimer(storage, identity).timer).toBeNull();
+
+    // Model a second tab whose older optimistic write was already in flight
+    // when the final command cleared the timer. A's acknowledgement must clear
+    // this delayed generation instead of enriching or recreating it.
+    await writeRestTimer(storage, createRestTimer({
+      ...identity,
+      generationId: "70000000-0000-4000-8000-000000000002",
+      now: 1_100,
+      seconds: 30,
+      sourceSessionExerciseId: first.sessionExerciseId,
+      sourceOccurrenceId: first.occurrenceId,
+      sourceClientKey: first.clientKey,
+    })!);
+    expect(readRestTimer(storage, identity).timer).toMatchObject({
+      sourceClientKey: first.clientKey,
+    });
+
+    // The explicit wake mirrors the second tap while the first owner delivery
+    // still holds the network-delivery lock.
+    const finalWake = syncNextEntry(first.ownerId, true);
+    acknowledgeFirst({
+      outcome: "saved",
+      setId: savedSetId,
+      occurrenceId: savedOccurrenceId,
+      occurrenceRevision: 1,
+    });
+    await Promise.all([syncing, finalWake]);
+
+    expect(actionMocks.logSet).toHaveBeenCalledTimes(2);
+    expect(readWorkoutSetOutbox(storage).entries).toEqual([]);
+    expect(readRestTimer(storage, identity).timer).toBeNull();
+    // A reload reads the same durable device state and must not recover a cue.
+    expect(readRestTimer(storage, identity, 60_000).timer).toBeNull();
+  });
+
+  it("keeps an acknowledged final no-rest decision through an older retry backoff", async () => {
+    storage.values.clear();
+    const identity = { ownerId: entry().ownerId, sessionId: entry().sessionId };
+    const first = {
+      ...entry(),
+      occurrenceId: savedOccurrenceId,
+      expectedOccurrenceRevision: 0,
+      restAfterSec: 30,
+    };
+    const final = {
+      ...entry(),
+      clientKey: "10000000-0000-4000-8000-000000000002",
+      sessionExerciseId: "40000000-0000-4000-8000-000000000002",
+      performedExerciseId: "50000000-0000-4000-8000-000000000002",
+      exerciseName: "RKC Plank",
+      setNo: 1,
+      occurrenceId: "60000000-0000-4000-8000-000000000002",
+      expectedOccurrenceRevision: 0,
+      restAfterSec: null,
+      createdAtISO: "2026-07-18T12:00:01.000Z",
+    };
+    enqueueWorkoutSetOutboxEntry(storage, first);
+    await writeRestTimer(storage, createRestTimer({
+      ...identity,
+      generationId: "70000000-0000-4000-8000-000000000001",
+      now: 1_000,
+      seconds: 30,
+      sourceSessionExerciseId: first.sessionExerciseId,
+      sourceOccurrenceId: first.occurrenceId,
+      sourceClientKey: first.clientKey,
+    })!);
+    actionMocks.logSet.mockRejectedValueOnce(new Error("temporary timeout"));
+
+    await syncNextEntry(first.ownerId);
+    expect(readWorkoutSetOutbox(storage).entries[0]).toMatchObject({
+      clientKey: first.clientKey,
+      status: "queued",
+      attemptCount: 1,
+      nextAttemptAtISO: expect.any(String),
+    });
+
+    enqueueWorkoutSetOutboxEntry(storage, final);
+    actionMocks.logSet.mockResolvedValueOnce({
+      outcome: "saved",
+      setId: "50000000-0000-4000-8000-000000000002",
+      occurrenceId: final.occurrenceId,
+      occurrenceRevision: 1,
+    });
+    await syncNextEntry(first.ownerId);
+
+    expect(actionMocks.logSet.mock.calls[1]?.[0].clientKey).toBe(final.clientKey);
+    expect(readWorkoutSetOutbox(storage).entries.map((item) => item.clientKey)).toEqual([
+      first.clientKey,
+    ]);
+    expect(getWorkoutRestIntentReceipt(storage, identity)).toEqual({
+      ok: true,
+      receipt: expect.objectContaining({
+        clientKey: final.clientKey,
+        restAfterSec: null,
+      }),
+    });
+    expect(readRestTimer(storage, identity).timer).toBeNull();
+
+    await retryWorkoutSet(first.clientKey);
+    actionMocks.logSet.mockResolvedValueOnce({
+      outcome: "saved",
+      setId: savedSetId,
+      occurrenceId: savedOccurrenceId,
+      occurrenceRevision: 1,
+    });
+    await syncNextEntry(first.ownerId);
+
+    expect(actionMocks.logSet.mock.calls[2]?.[0].clientKey).toBe(first.clientKey);
+    expect(readWorkoutSetOutbox(storage).entries).toEqual([]);
+    expect(readRestTimer(storage, identity).timer).toBeNull();
+    expect(readRestTimer(storage, identity, 60_000).timer).toBeNull();
+    expect(getWorkoutRestIntentReceipt(storage, identity)).toEqual({
+      ok: true,
+      receipt: null,
+    });
+  });
+
+  it("does not recreate an older rest after a later positive-rest timer is gone", async () => {
+    storage.values.clear();
+    const identity = { ownerId: entry().ownerId, sessionId: entry().sessionId };
+    const first = {
+      ...entry(),
+      occurrenceId: savedOccurrenceId,
+      expectedOccurrenceRevision: 0,
+      restAfterSec: 30,
+    };
+    const later = {
+      ...entry(),
+      clientKey: "10000000-0000-4000-8000-000000000002",
+      sessionExerciseId: "40000000-0000-4000-8000-000000000002",
+      performedExerciseId: "50000000-0000-4000-8000-000000000002",
+      exerciseName: "RKC Plank",
+      setNo: 1,
+      occurrenceId: "60000000-0000-4000-8000-000000000002",
+      expectedOccurrenceRevision: 0,
+      restAfterSec: 60,
+      createdAtISO: "2026-07-18T12:00:01.000Z",
+    };
+    enqueueWorkoutSetOutboxEntry(storage, first);
+    actionMocks.logSet.mockRejectedValueOnce(new Error("temporary timeout"));
+    await syncNextEntry(first.ownerId);
+
+    enqueueWorkoutSetOutboxEntry(storage, later);
+    await writeRestTimer(storage, createRestTimer({
+      ...identity,
+      generationId: "70000000-0000-4000-8000-000000000002",
+      now: 2_000,
+      seconds: 60,
+      sourceSessionExerciseId: later.sessionExerciseId,
+      sourceOccurrenceId: later.occurrenceId,
+      sourceClientKey: later.clientKey,
+    })!);
+    actionMocks.logSet.mockResolvedValueOnce({
+      outcome: "saved",
+      setId: "50000000-0000-4000-8000-000000000002",
+      occurrenceId: later.occurrenceId,
+      occurrenceRevision: 1,
+    });
+    await syncNextEntry(first.ownerId);
+    expect(readRestTimer(storage, identity).timer).toMatchObject({
+      totalSec: 60,
+      sourceClientKey: later.clientKey,
+    });
+
+    // Model the athlete ending/dismissing that later rest before A retries.
+    storage.removeItem(REST_TIMER_STORAGE_KEY);
+    await retryWorkoutSet(first.clientKey);
+    actionMocks.logSet.mockResolvedValueOnce({
+      outcome: "saved",
+      setId: savedSetId,
+      occurrenceId: savedOccurrenceId,
+      occurrenceRevision: 1,
+    });
+    await syncNextEntry(first.ownerId);
+
+    expect(readRestTimer(storage, identity).timer).toBeNull();
+    expect(getWorkoutRestIntentReceipt(storage, identity)).toEqual({
+      ok: true,
+      receipt: null,
+    });
+  });
+
+  it("replaces an older timer when a later positive acknowledgement wins the race", async () => {
+    storage.values.clear();
+    const identity = { ownerId: entry().ownerId, sessionId: entry().sessionId };
+    const first = {
+      ...entry(),
+      occurrenceId: savedOccurrenceId,
+      expectedOccurrenceRevision: 0,
+      restAfterSec: 30,
+    };
+    const later = {
+      ...entry(),
+      clientKey: "10000000-0000-4000-8000-000000000002",
+      sessionExerciseId: "40000000-0000-4000-8000-000000000002",
+      performedExerciseId: "50000000-0000-4000-8000-000000000002",
+      exerciseName: "RKC Plank",
+      setNo: 1,
+      occurrenceId: "60000000-0000-4000-8000-000000000002",
+      expectedOccurrenceRevision: 0,
+      restAfterSec: 60,
+      createdAtISO: "2026-07-18T12:00:01.000Z",
+    };
+    enqueueWorkoutSetOutboxEntry(storage, first);
+    await writeRestTimer(storage, createRestTimer({
+      ...identity,
+      generationId: "70000000-0000-4000-8000-000000000001",
+      now: 1_000,
+      seconds: 30,
+      sourceSessionExerciseId: first.sessionExerciseId,
+      sourceOccurrenceId: first.occurrenceId,
+      sourceClientKey: first.clientKey,
+    })!);
+    actionMocks.logSet.mockRejectedValueOnce(new Error("temporary timeout"));
+    await syncNextEntry(first.ownerId);
+
+    // Model another tab acknowledging the later command before this tab's
+    // optimistic positive-rest write reaches local storage.
+    enqueueWorkoutSetOutboxEntry(storage, later);
+    actionMocks.logSet.mockResolvedValueOnce({
+      outcome: "saved",
+      setId: "50000000-0000-4000-8000-000000000002",
+      occurrenceId: later.occurrenceId,
+      occurrenceRevision: 1,
+    });
+    await syncNextEntry(first.ownerId);
+
+    expect(actionMocks.logSet.mock.calls[1]?.[0].clientKey).toBe(
+      later.clientKey,
+    );
+    expect(readRestTimer(storage, identity).timer).toMatchObject({
+      totalSec: 60,
+      sourceClientKey: later.clientKey,
+      sourceCompletedSetId: "50000000-0000-4000-8000-000000000002",
+    });
+    expect(readWorkoutSetOutbox(storage).entries.map((item) => item.clientKey))
+      .toEqual([first.clientKey]);
+  });
+
+  it("revokes a discarded retained intent without losing the prior acknowledged receipt", async () => {
+    storage.values.clear();
+    const first = {
+      ...entry(),
+      restAfterSec: 30,
+      createdAtISO: "2026-07-18T12:00:00.000Z",
+    };
+    const acknowledged = {
+      ...entry(),
+      clientKey: "10000000-0000-4000-8000-000000000002",
+      sessionExerciseId: "40000000-0000-4000-8000-000000000002",
+      performedExerciseId: "50000000-0000-4000-8000-000000000002",
+      restAfterSec: null,
+      createdAtISO: "2026-07-18T12:00:01.000Z",
+    };
+    const discarded = {
+      ...entry(),
+      clientKey: "10000000-0000-4000-8000-000000000003",
+      sessionExerciseId: "40000000-0000-4000-8000-000000000003",
+      performedExerciseId: "50000000-0000-4000-8000-000000000003",
+      restAfterSec: 60,
+      createdAtISO: "2026-07-18T12:00:02.000Z",
+    };
+    enqueueWorkoutSetOutboxEntry(storage, first);
+    expect(recordWorkoutRestIntentReceipt(storage, acknowledged)).toMatchObject({
+      ok: true,
+      receipt: { clientKey: acknowledged.clientKey },
+    });
+    enqueueWorkoutSetOutboxEntry(storage, discarded);
+
+    await expect(
+      discardWorkoutSetDeviceCopy(storage, discarded),
+    ).resolves.toMatchObject({ ok: true });
+
+    expect(readWorkoutSetOutbox(storage).entries.map((item) => item.clientKey)).toEqual([
+      first.clientKey,
+    ]);
+    expect(getWorkoutRestIntentReceipt(storage, first)).toEqual({
+      ok: true,
+      receipt: expect.objectContaining({
+        clientKey: acknowledged.clientKey,
+        restAfterSec: null,
+      }),
+    });
+  });
+
+  it("preserves a timer proven to belong to a later retained rest intent", async () => {
+    storage.values.clear();
+    const identity = { ownerId: entry().ownerId, sessionId: entry().sessionId };
+    const first = { ...entry(), restAfterSec: 30 };
+    const final = {
+      ...entry(),
+      clientKey: "10000000-0000-4000-8000-000000000002",
+      setNo: 2,
+      restAfterSec: null,
+      createdAtISO: "2026-07-18T12:00:01.000Z",
+    };
+    const later = {
+      ...entry(),
+      clientKey: "10000000-0000-4000-8000-000000000003",
+      setNo: 3,
+      restAfterSec: 60,
+      createdAtISO: "2026-07-18T12:00:02.000Z",
+    };
+    for (const retained of [first, final, later]) {
+      enqueueWorkoutSetOutboxEntry(storage, retained);
+    }
+    const laterTimer = createRestTimer({
+      ...identity,
+      generationId: "70000000-0000-4000-8000-000000000003",
+      now: 2_000,
+      seconds: 60,
+      sourceSessionExerciseId: later.sessionExerciseId,
+      sourceOccurrenceId: "60000000-0000-4000-8000-000000000003",
+      sourceClientKey: later.clientKey,
+    })!;
+    await writeRestTimer(storage, laterTimer);
+
+    await expect(clearRestTimerForSupersedingSourceClientKey(
+      storage,
+      identity,
+      final.clientKey,
+      laterWorkoutSetRestIntentClientKeys(
+        readWorkoutSetOutbox(storage).entries,
+        final,
+      ),
+    )).resolves.toBe("stale");
+    expect(readRestTimer(storage, identity).timer).toMatchObject({
+      generationId: laterTimer.generationId,
+      sourceClientKey: later.clientKey,
     });
   });
 
@@ -580,6 +1209,27 @@ describe("workout set outbox sync classification", () => {
       status: "queued",
       attemptCount: 1,
       lastError: expect.stringContaining("could not retain its rest timer"),
+    });
+  });
+
+  it("keeps an acknowledged set recoverable when its rest decision receipt cannot be retained", async () => {
+    storage.values.clear();
+    enqueueWorkoutSetOutboxEntry(storage, { ...entry(), restAfterSec: null });
+    storage.rejectRestIntentWrites = true;
+    actionMocks.logSet.mockResolvedValueOnce({
+      outcome: "saved",
+      setId: savedSetId,
+      occurrenceId: savedOccurrenceId,
+      occurrenceRevision: 1,
+    });
+
+    await syncNextEntry(entry().ownerId);
+
+    expect(readWorkoutSetOutbox(storage).entries[0]).toMatchObject({
+      clientKey: entry().clientKey,
+      status: "queued",
+      attemptCount: 1,
+      lastError: expect.stringContaining("could not retain its rest decision"),
     });
   });
 

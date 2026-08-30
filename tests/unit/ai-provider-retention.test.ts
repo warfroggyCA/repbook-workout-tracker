@@ -1,9 +1,15 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { coachingAnswerSchema } from "@/ai/tasks/coaching-qa/schema";
 import {
   DEFAULT_OPENAI_MODEL,
+  getAIProvider,
   OPENAI_NO_STORAGE_OPTIONS,
   structuredOutputTokenLimit,
 } from "@/ai/provider";
+
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
 
 describe("OpenAI provider retention", () => {
   it("uses the stronger current small model by default", () => {
@@ -32,5 +38,31 @@ describe("OpenAI provider retention", () => {
     expect(
       structuredOutputTokenLimit("routine_parse", "x".repeat(20_000)),
     ).toBe(8_000);
+  });
+
+  it("keeps fake Coach data gaps within the answer contract", async () => {
+    vi.stubEnv("NODE_ENV", "development");
+    vi.stubEnv("AI_FAKE", "1");
+    const dataGaps = Array.from(
+      { length: 6 },
+      (_, index) => `Missing signal ${index + 1}`,
+    );
+
+    const result = await getAIProvider().parseStructured({
+      task: "coaching_qa",
+      system: "Return a grounded Coach answer.",
+      input: JSON.stringify({
+        question: "What should I focus on next?",
+        context: {
+          trainingDigest: {
+            cadence: { completedSessions: 11 },
+            dataGaps,
+          },
+        },
+      }),
+      schema: coachingAnswerSchema,
+    });
+
+    expect(result.value.dataGaps).toEqual(dataGaps.slice(0, 5));
   });
 });

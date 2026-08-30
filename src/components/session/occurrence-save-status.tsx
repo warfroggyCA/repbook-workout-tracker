@@ -31,7 +31,11 @@ export function OccurrenceSaveStatus({
 }) {
   if (!entry) {
     return saved ? (
-      <p role="status" className="mt-2 w-full text-xs font-semibold text-emerald-700 dark:text-emerald-300">
+      <p
+        role="status"
+        data-ui-state="saved"
+        className="ui-state mt-2 w-full border-0 px-2 py-1.5 text-xs font-semibold text-emerald-700 dark:text-emerald-300"
+      >
         {displayLabel ? `${displayLabel} · Saved` : "Saved"}
       </p>
     ) : null;
@@ -51,12 +55,8 @@ export function OccurrenceSaveStatus({
 
   return (
     <div
-      className={cn(
-        "mt-2 w-full rounded-lg border p-3 text-xs",
-        failed
-          ? "border-destructive/40 bg-destructive/5"
-          : "border-amber-600/30 bg-amber-500/5",
-      )}
+      data-ui-state={failed ? "retained" : runtimeState ?? "pending"}
+      className="ui-state mt-2 w-full p-3 text-xs"
     >
       <div role={failed ? "alert" : "status"}>
         <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
