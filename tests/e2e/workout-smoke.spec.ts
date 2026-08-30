@@ -2743,6 +2743,11 @@ test("clears AI history through Settings and restores Coach history from Archive
       : `${baseQuestion} Repetition ${testInfo.repeatEachIndex + 1}.`;
   await signIn(page);
   await page.goto("/coach");
+  await openNativeDetails(
+    page
+      .getByText("Coaching tools", { exact: true })
+      .locator("xpath=ancestor::details[1]"),
+  );
   await waitForReactHandler(
     page.getByRole("button", { name: "Create a fresh review", exact: true })
   );
@@ -2775,6 +2780,11 @@ test("clears AI history through Settings and restores Coach history from Archive
   await restore.click();
   await expect(page.getByText("Record restored")).toBeVisible();
   await page.goto("/coach");
+  await openNativeDetails(
+    page
+      .getByText("Coaching tools", { exact: true })
+      .locator("xpath=ancestor::details[1]"),
+  );
   await expect(page.getByText(question, { exact: true })).toBeVisible();
 });
 
