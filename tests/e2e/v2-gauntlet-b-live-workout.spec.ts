@@ -11,6 +11,7 @@ import {
 } from "../fixtures/ba-workout-contract";
 import { PRODUCTION_WORKOUT_START_WARMUP } from "../fixtures/production-workout-start-contract";
 import {
+  openNativeDetails,
   waitForEquipmentSelectionsToSettle,
   waitForHydratedReactHandler,
   waitForHydratedServerAction,
@@ -200,10 +201,7 @@ async function dismissRest(page: Page) {
 
 async function openMoreForExercise(card: Locator) {
   const details = card.locator("details", { hasText: "More for this exercise" });
-  if ((await details.getAttribute("open")) == null) {
-    await details.locator(":scope > summary").click();
-  }
-  await expect(details).toHaveAttribute("open", "");
+  await openNativeDetails(details);
 }
 
 async function skipForEquipment(card: Locator, page: Page) {
