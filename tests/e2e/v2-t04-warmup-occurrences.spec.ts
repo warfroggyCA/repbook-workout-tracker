@@ -32,12 +32,19 @@ async function signInAndStart(page: Page) {
     name: "Train as planned",
     exact: true,
   });
-  await page.locator("summary").filter({ hasText: "Workout options" }).click();
+  const workoutOptions = page
+    .locator("summary")
+    .filter({ hasText: "Workout options" });
+  await expect(workoutOptions).toContainText("Programmed warm-ups are off");
+  await workoutOptions.click();
   const includeWarmups = page.getByRole("checkbox", {
     name: /Include programmed warm-ups/,
   });
   await expect(includeWarmups).not.toBeChecked();
   await includeWarmups.check();
+  await expect(workoutOptions).toContainText(
+    "Programmed warm-ups will be included",
+  );
   await waitForHydratedServerAction(start);
   await start.click();
   await expect(page).toHaveURL(/\/session\/[0-9a-f-]+$/);

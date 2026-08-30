@@ -1,6 +1,13 @@
 "use client";
 
-import { useActionState, useEffect, useId, useRef, type ReactNode } from "react";
+import {
+  useActionState,
+  useEffect,
+  useId,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import { useFormStatus } from "react-dom";
 import { ChevronDown } from "lucide-react";
 import { startSession } from "@/app/actions/sessions";
@@ -79,6 +86,7 @@ export function WorkoutStartForm({
   const timezoneInput = useRef<HTMLInputElement>(null);
   const errorAlert = useRef<HTMLParagraphElement>(null);
   const errorId = useId();
+  const [includeWarmups, setIncludeWarmups] = useState(false);
   const [state, formAction] = useActionState(
     startSession.bind(null, templateId),
     INITIAL_WORKOUT_START_STATE,
@@ -130,7 +138,9 @@ export function WorkoutStartForm({
             <span>
               Workout options
               <span className="mt-0.5 block text-xs font-normal text-muted-foreground">
-                Programmed warm-ups are off
+                {includeWarmups
+                  ? "Programmed warm-ups will be included"
+                  : "Programmed warm-ups are off"}
               </span>
             </span>
             <ChevronDown
@@ -143,6 +153,10 @@ export function WorkoutStartForm({
               type="checkbox"
               name="includeWarmups"
               value="true"
+              checked={includeWarmups}
+              onChange={(event) =>
+                setIncludeWarmups(event.currentTarget.checked)
+              }
               className="mt-0.5 size-5 shrink-0 accent-primary"
             />
             <span className="min-w-0">

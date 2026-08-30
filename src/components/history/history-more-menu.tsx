@@ -8,12 +8,14 @@ import {
   ChevronDown,
   Download,
   Ellipsis,
+  FilePenLine,
 } from "lucide-react";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { HistoryRefreshButton } from "@/components/history/history-refresh-button";
 import { TestDataControls } from "@/components/history/test-data-controls";
 import { BulkActivityArchiveButton } from "@/components/history/bulk-activity-archive-button";
 import { ContextualNoteManager } from "@/components/contextual-notes/contextual-note-manager";
+import { openContextualNoteComposer } from "@/lib/contextual-note-ui";
 import type {
   BulkActivityArchivePreview,
   SampleHistoryArchivePreview,
@@ -49,9 +51,21 @@ export function HistoryMoreMenu({
               History actions
             </Popover.Title>
             <Popover.Description className="mt-0.5 px-1 text-xs text-muted-foreground">
-              Prepare a useful download or manage recoverable History records.
+              Add context, prepare a useful download, or manage recoverable History records.
             </Popover.Description>
             <div className="mt-3 grid gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                className="justify-start"
+                data-testid="contextual-note-trigger"
+                onClick={() => {
+                  setOpen(false);
+                  window.setTimeout(openContextualNoteComposer, 0);
+                }}
+              >
+                <FilePenLine aria-hidden="true" /> Add History note
+              </Button>
               <Link
                 href={`/export?briefRange=${briefRange}#training-brief`}
                 className={buttonVariants({
