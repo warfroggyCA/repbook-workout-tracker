@@ -9,6 +9,7 @@ import { observeGauntletPageErrors } from "../helpers/v2-gauntlet-a-errors";
 const EMAIL = "v2.h01.history.e2e@example.com";
 const EXPECTED_FIXTURE_RSC_PATHS = new Set([
   "/session/00000000-0000-4000-8000-000000000318",
+  "/session/00000000-0000-4000-8000-000000000318?reviewTiming=1",
 ]);
 
 async function signIn(page: Page) {

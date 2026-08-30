@@ -177,6 +177,16 @@ describe("WebKit RSC prefetch cancellation classification", () => {
     ).toBe(true);
   });
 
+  it("accepts an exact reviewed query-bearing WebKit link cancellation", () => {
+    expect(
+      isExpectedWebKitRscLinkCancellation(
+        "/127.0.0.1:3126/session/example?reviewTiming=1&_rsc=token due to access control checks.",
+        "webkit",
+        new Set(["/session/example?reviewTiming=1"]),
+      ),
+    ).toBe(true);
+  });
+
   it("accepts the exact recovered WebKit RSC navigation fallback for a reviewed route", () => {
     expect(
       isExpectedWebKitRscNavigationFallback(
@@ -228,6 +238,12 @@ describe("WebKit RSC prefetch cancellation classification", () => {
       "webkit",
       "/127.0.0.1:3126/history?range=12w&_rsc=token due to access control checks.",
       ["/history"],
+    ],
+    [
+      "an unreviewed query on a reviewed route",
+      "webkit",
+      "/127.0.0.1:3126/session/example?reviewTiming=1&unexpected=1&_rsc=token due to access control checks.",
+      ["/session/example?reviewTiming=1"],
     ],
   ])(
     "does not accept %s as a reviewed app-shell cancellation",

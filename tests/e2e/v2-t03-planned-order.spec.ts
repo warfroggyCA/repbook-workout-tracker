@@ -141,6 +141,14 @@ test("keeps planned work authoritative around extra-before-plan and grouped work
   await finish.getByRole("button", { name: /^(?:Finish early|Save workout)$/ }).click();
   await expect(page).toHaveURL(/\/history\/[0-9a-f-]+\?finished=1$/);
   await expect(page.getByText(/extra set 1/i).first()).toBeVisible();
-  await expect(page.getByText("added during workout", { exact: true }).first()).toBeVisible();
+  const technicalRecord = page.locator("details#technical-record");
+  await expect(technicalRecord).not.toHaveAttribute("open", "");
+  await technicalRecord.locator(":scope > summary").click();
+  const extraLedgerItem = technicalRecord
+    .locator("li")
+    .filter({ hasText: /extra set 1/i })
+    .first();
+  await expect(extraLedgerItem).toContainText("added during workout");
+  await expect(extraLedgerItem.getByText("completed", { exact: true })).toBeVisible();
   await pageErrors.expectNoUnexpected();
 });
