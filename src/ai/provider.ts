@@ -572,7 +572,7 @@ class FakeProvider implements AIProvider {
               ]),
           ...(input.question ? [`Question reviewed: ${input.question}`] : []),
         ],
-        dataGaps: input.context?.trainingDigest?.dataGaps ?? [],
+        dataGaps: (input.context?.trainingDigest?.dataGaps ?? []).slice(0, 5),
         safetyNote: null,
       };
       return {

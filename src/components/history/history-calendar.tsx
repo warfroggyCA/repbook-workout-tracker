@@ -526,7 +526,11 @@ export function HistoryCalendar({
   }
 
   return (
-    <Card id="history-calendar" className="scroll-mt-4">
+    <Card
+      id="history-calendar"
+      data-ui-surface="primary"
+      className="ui-surface scroll-mt-4 shadow-none"
+    >
       <CardHeader className="gap-3 sm:grid-cols-[1fr_auto]">
         <div>
           <CardTitle className="flex items-center gap-2">
@@ -584,13 +588,14 @@ export function HistoryCalendar({
 
         {view === "year" ? (
           <div>
-            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+            <div className="grid grid-cols-1 gap-2 lg:grid-cols-2 2xl:grid-cols-3">
               {Array.from({ length: 12 }, (_, month) => {
                 const monthDate = new Date(anchor.getFullYear(), month, 1, 12);
                 return (
                   <section
                     key={month}
-                    className="rounded-xl border bg-muted/15 p-2"
+                    data-ui-surface="inset"
+                    className="ui-surface p-2"
                   >
                     <p className="mb-1 text-center text-xs font-semibold">
                       {monthDate.toLocaleDateString(undefined, {

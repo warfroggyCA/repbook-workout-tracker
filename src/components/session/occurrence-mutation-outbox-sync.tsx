@@ -36,6 +36,7 @@ import {
   reportDeploymentMismatch,
   withDocumentActionDeadline,
 } from "@/lib/deployment-recovery";
+import { OCCURRENCE_OUTBOX_OFFSET_CLASS_NAME } from "@/lib/active-workout-layout";
 
 const activeOwners = new Set<string>();
 const pendingOwnerWakes = new Set<string>();
@@ -248,7 +249,7 @@ export function OccurrenceMutationOutboxTray({
       <Button
         type="button"
         variant={attentionCount > 0 || storageError ? "destructive" : "secondary"}
-        className="fixed bottom-[calc(4rem+env(safe-area-inset-bottom)+0.75rem)] left-3 z-30 min-h-11 max-w-[calc(100vw-1.5rem)] shadow-lg lg:bottom-[5.75rem]"
+        className={`fixed left-3 z-30 min-h-11 max-w-[calc(100vw-1.5rem)] shadow-lg ${OCCURRENCE_OUTBOX_OFFSET_CLASS_NAME}`}
         onClick={() => setOpen(true)}
         aria-label="Open unsaved workout changes"
       >

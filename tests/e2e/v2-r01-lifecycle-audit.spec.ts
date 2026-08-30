@@ -211,9 +211,12 @@ test("keeps portable facts, AI packages, support diagnostics, Review, and Coach 
     page.getByRole("heading", { name: "Review and decisions" }),
   ).toBeVisible();
   await expect(
-    page.getByText(/Review proposed Program changes, the evidence behind them/i),
+    page.getByText(/Your Program changes only when you approve a proposal/i),
   ).toBeVisible();
-  await expect(page.getByText(/Live Coach stays with the workout/i)).toBeVisible();
+  await expect(page.getByText("Coaching tools", { exact: true })).toBeVisible();
+  await expect(
+    page.getByText(/Optional Live Coach and generated analysis/i),
+  ).toBeVisible();
 
   await page.goto("/settings");
   const defaultSize = page.getByRole("radio", { name: /Default 115%/ });

@@ -52,11 +52,10 @@ async function openCurrentExerciseCard(page: Page) {
 
 async function skipCurrentSet(page: Page) {
   let card = await openCurrentExerciseCard(page);
-  const workoutStatus = page.getByRole("complementary", {
-    name: "Workout status",
-  });
-  const showCurrent = workoutStatus.getByRole("button").first();
-  const currentLabel = await showCurrent.innerText();
+  const currentEntryId = await card
+    .getByTestId("current-set-entry")
+    .getAttribute("id");
+  expect(currentEntryId).not.toBeNull();
   await openNativeDetails(card.locator("details", {
     hasText: "Set exceptions",
   }));
@@ -66,8 +65,14 @@ async function skipCurrentSet(page: Page) {
   await dialog.getByRole("button", { name: "Skip item", exact: true }).click();
   await expect(dialog).toHaveCount(0);
   await expect
-    .poll(() => showCurrent.innerText())
-    .not.toBe(currentLabel);
+    .poll(() => page.evaluate(
+      (previousId) =>
+        document.querySelector<HTMLElement>(
+          '[data-testid="current-set-entry"]',
+        )?.id ?? previousId,
+      currentEntryId,
+    ))
+    .not.toBe(currentEntryId);
   card = await openCurrentExerciseCard(page);
   await openNativeDetails(
     card.locator("details", {
@@ -128,7 +133,7 @@ async function chooseFontSize(
   await page.goto(returnUrl);
 }
 
-test("keeps truthful saved-equipment preparation before work and local setup afterward", async ({
+test("keeps confirmed equipment out of the common path while preserving current-set focus", async ({
   page,
 }, testInfo) => {
   await signIn(page);
@@ -138,87 +143,37 @@ test("keeps truthful saved-equipment preparation before work and local setup aft
   const preparation = page.getByTestId("session-preparation-panel");
   const warmup = page.locator("#workout-warmup");
   const currentCard = page.getByTestId("current-exercise-card");
-  await expect(preparation).toBeVisible();
-  await expect(preparation).toContainText("Equipment ready");
-  await expect(preparation).toContainText("Saved equipment covers this workout.");
-  await expect(
-    preparation.getByRole("link", {
-      name: "Go to first exercise",
-      exact: true,
-    }),
-  ).toBeVisible();
-  const equipmentList = preparation.locator("details").filter({
-    hasText: "Review equipment list",
+  const visibleEquipmentSetup = page.getByRole("region", {
+    name: /Equipment setup for/,
   });
+  await expect(preparation).toHaveCount(0);
   await expect(warmup).toHaveCount(0);
-  await expect(equipmentList).not.toHaveAttribute("open", "");
-  await expect(
-    preparation.getByText("Review equipment list", { exact: true }),
-  ).toBeVisible();
-  await expect
-    .poll(() => page.locator(
-      '[data-testid="current-exercise-card"], [data-testid="session-preparation-panel"]',
-    ).evaluateAll((elements) => elements.map((element) =>
-      element.getAttribute("data-testid")
-    )))
-    .toEqual(["current-exercise-card", "session-preparation-panel"]);
+  await expect(currentCard).toBeVisible();
+  await expect(currentCard.getByTestId("current-set-entry")).toBeVisible();
+  await expect(visibleEquipmentSetup).toHaveCount(0);
 
   await page.setViewportSize({ width: 390, height: 844 });
-  await preparation.scrollIntoViewIfNeeded();
-  const defaultGeometry = await preparation.evaluate((element) => {
-    const box = element.getBoundingClientRect();
-    const continueLink = element.querySelector("a");
-    const continueBox = continueLink?.getBoundingClientRect() ?? null;
-    return {
-      height: box.height,
-      left: box.left,
-      right: box.right,
-      viewportWidth: window.innerWidth,
-      rootFontSize: Number.parseFloat(
-        getComputedStyle(document.documentElement).fontSize,
-      ),
-      continueWidth: continueBox?.width ?? 0,
-      continueHeight: continueBox?.height ?? 0,
-    };
+  const defaultLog = currentCard.getByRole("button", {
+    name: "Log set",
+    exact: true,
   });
-  expect(defaultGeometry.height).toBeLessThanOrEqual(460);
-  expect(defaultGeometry.left).toBeGreaterThanOrEqual(0);
-  expect(defaultGeometry.right).toBeLessThanOrEqual(
-    defaultGeometry.viewportWidth + 1,
-  );
-  expect(defaultGeometry.rootFontSize).toBeCloseTo(18.4, 1);
-  expect(defaultGeometry.continueWidth).toBeGreaterThanOrEqual(44);
-  expect(defaultGeometry.continueHeight).toBeGreaterThanOrEqual(44);
+  const defaultLogBox = await defaultLog.boundingBox();
+  expect(defaultLogBox?.width ?? 0).toBeGreaterThanOrEqual(44);
+  expect(defaultLogBox?.height ?? 0).toBeGreaterThanOrEqual(44);
   await expectNoHorizontalOverflow(page);
-  await equipmentList.locator(":scope > summary").click();
-  await expect(equipmentList).toHaveAttribute("open", "");
-  await expect(equipmentList).toContainText("Prepare");
-  await expect(equipmentList).toContainText("In saved equipment");
-  await expect(equipmentList.locator("li")).not.toHaveCount(0);
-  await expect(equipmentList).not.toContainText(
-    /\b\d+(?:\.\d+)?\s*(?:lb|kg)\b/i,
-  );
-  await expect(equipmentList.getByRole("checkbox")).toHaveCount(0);
-  await equipmentList.locator(":scope > summary").click();
-  await expect(equipmentList).not.toHaveAttribute("open", "");
   await page.screenshot({
     path: resolve(
       "output/playwright/superset-prep",
-      `${testInfo.project.name}-preparation-390-default.png`,
+      `${testInfo.project.name}-current-set-390-default.png`,
     ),
     fullPage: true,
   });
 
   await page.reload({ waitUntil: "domcontentloaded" });
-  await expect(page.getByTestId("session-preparation-panel")).toBeVisible();
-  await expect(page.getByTestId("session-preparation-panel")).toContainText(
-    "Equipment ready",
-  );
-  await expect(
-    page
-      .getByTestId("session-preparation-panel")
-      .getByText("Review equipment list", { exact: true }),
-  ).toBeVisible();
+  await waitForEquipmentSelectionsToSettle(page);
+  await expect(preparation).toHaveCount(0);
+  await expect(currentCard).toBeVisible();
+  await expect(visibleEquipmentSetup).toHaveCount(0);
 
   const activeWorkoutUrl = page.url();
   await chooseFontSize(
@@ -227,7 +182,6 @@ test("keeps truthful saved-equipment preparation before work and local setup aft
     "extra-large",
     activeWorkoutUrl,
   );
-  await expect(page.getByTestId("session-preparation-panel")).toBeVisible();
   await page.setViewportSize({ width: 320, height: 700 });
   await expect
     .poll(() => page.evaluate(() =>
@@ -235,60 +189,62 @@ test("keeps truthful saved-equipment preparation before work and local setup aft
     ))
     .toBeCloseTo(23.2, 1);
   await expectNoHorizontalOverflow(page);
-  await expect(warmup).toHaveCount(0);
-  const continueLink = page
-    .getByTestId("session-preparation-panel")
-    .getByRole("link", { name: "Go to first exercise", exact: true });
-  const continueTarget = (await continueLink.getAttribute("href"))?.slice(1);
-  expect(continueTarget).toMatch(/^set-entry-/);
-  const continueBox = await continueLink.boundingBox();
-  expect(continueBox?.width ?? 0).toBeGreaterThanOrEqual(44);
-  expect(continueBox?.height ?? 0).toBeGreaterThanOrEqual(44);
+  await expect(preparation).toHaveCount(0);
+  await expect(visibleEquipmentSetup).toHaveCount(0);
+
+  const currentToggle = currentCard.getByTestId("exercise-swipe-surface");
+  await currentToggle.click();
+  await expect(currentToggle).toHaveAttribute("aria-expanded", "false");
+  const showCurrent = page
+    .getByRole("complementary", { name: "Workout status" })
+    .getByRole("button", { name: /^Show / });
+  const showCurrentBox = await showCurrent.boundingBox();
+  expect(showCurrentBox?.width ?? 0).toBeGreaterThanOrEqual(44);
+  expect(showCurrentBox?.height ?? 0).toBeGreaterThanOrEqual(44);
+  await showCurrent.focus();
+  await page.keyboard.press("Enter");
+  await expect(page).toHaveURL(/#set-entry-/);
+  const extraLargeLog = page.getByTestId("active-log-set");
+  const extraLargeLogBox = await extraLargeLog.boundingBox();
+  expect(extraLargeLogBox?.width ?? 0).toBeGreaterThanOrEqual(44);
+  expect(extraLargeLogBox?.height ?? 0).toBeGreaterThanOrEqual(44);
   await page.screenshot({
     path: resolve(
       "output/playwright/superset-prep",
-      `${testInfo.project.name}-preparation-320-xl.png`,
+      `${testInfo.project.name}-current-set-320-xl.png`,
     ),
     fullPage: true,
   });
 
-  await continueLink.focus();
-  await page.keyboard.press("Enter");
-  await expect
-    .poll(() => page.evaluate((targetId) => {
-      return document.activeElement?.closest(
-        `#${CSS.escape(targetId)}`,
-      ) != null;
-    }, continueTarget!))
-    .toBe(true);
-  await expect(page).toHaveURL(/#set-entry-/);
-
-  await currentCard
-    .getByRole("button", { name: "Log set", exact: true })
-    .click();
-  await expect(page.getByTestId("active-set-save-receipt")).toHaveCount(0);
-  const completedSets = currentCard.getByTestId("completed-sets");
+  await extraLargeLog.click();
+  await expect(currentCard).toHaveCount(0);
+  const workoutStatus = page.getByRole("complementary", {
+    name: "Workout status",
+  });
+  await workoutStatus.getByRole("button", {
+    name: "Skip rest",
+    exact: true,
+  }).click();
+  await workoutStatus.getByRole("button", {
+    name: "Dismiss rest timer",
+    exact: true,
+  }).click();
+  const resumedCard = page.getByTestId("current-exercise-card");
+  await openNativeDetails(resumedCard.getByTestId("active-exercise-details"));
+  const completedSets = resumedCard.getByTestId("completed-sets");
   await expect(completedSets).toContainText("1 completed");
   await expect(completedSets).toContainText("Acknowledged by Repbook");
   await expect(page.getByTestId("active-workout-sticky-summary")).toContainText(
     "1/13 planned",
   );
-  await expect(page.getByTestId("session-preparation-panel")).toHaveCount(0);
-  await page.reload({ waitUntil: "networkidle" });
-  await expect(page.getByTestId("session-preparation-panel")).toHaveCount(0);
-  const localSetup = page
-    .getByTestId("current-exercise-card")
-    .locator("xpath=preceding-sibling::details[@data-testid='exercise-equipment-setup'][1]");
-  await expect(localSetup).toBeVisible();
-  await expect(localSetup).toContainText(
-    /Equipment setup for|Current equipment setup/,
-  );
+  await expect(preparation).toHaveCount(0);
+  await expect(visibleEquipmentSetup).toHaveCount(0);
 
-  const showCurrent = page.getByRole("complementary", {
-    name: "Workout status",
-  }).getByRole("button").first();
-  await expect(showCurrent).toBeVisible();
-  await expect(showCurrent).toContainText(/Set 2 of 3|Resting/);
+  await page.reload({ waitUntil: "networkidle" });
+  await waitForEquipmentSelectionsToSettle(page);
+  await expect(preparation).toHaveCount(0);
+  await expect(visibleEquipmentSetup).toHaveCount(0);
+  await expect(page.getByTestId("active-log-set")).toBeVisible();
 
   await discardWorkout(page);
 });
@@ -616,8 +572,10 @@ test("presents immutable superset order, truthful progress, and next-member equi
     name: "Workout progress and upcoming work",
   });
   await expect(pendingGuidance).toContainText("9 skipped");
-  await expect(pendingGuidance).toContainText(
-    /Now: Superset, round 1, member 1 of 2: Dumbbell Lateral Raise, set 1/,
+  await expect(pendingGuidance).not.toContainText("Now:");
+  await expect(page.getByTestId("active-workout-primary")).toHaveAttribute(
+    "aria-label",
+    /Dumbbell Lateral Raise, Set 1/i,
   );
   await page.context().setOffline(false);
   await expect.poll(() => page.evaluate(() => navigator.onLine)).toBe(true);
@@ -645,8 +603,10 @@ test("presents immutable superset order, truthful progress, and next-member equi
   const advancedGuidance = page.getByRole("region", {
     name: "Workout progress and upcoming work",
   });
-  await expect(advancedGuidance).toContainText(
-    /Now: Superset, round 1, member 2 of 2: Pallof Press, set 1/,
+  await expect(advancedGuidance).not.toContainText("Now:");
+  await expect(page.getByTestId("active-workout-primary")).toHaveAttribute(
+    "aria-label",
+    /Pallof Press, Set 1/i,
   );
   await expect(advancedGuidance).not.toContainText("Next:");
   await expect(currentCard).toContainText("Next action");

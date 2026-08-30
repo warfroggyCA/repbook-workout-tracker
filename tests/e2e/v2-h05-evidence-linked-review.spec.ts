@@ -67,6 +67,7 @@ test("links every material Review claim to evidence and preserves deliberate own
   await expect(unsupported.getByRole("button", { name: "Reject", exact: true }))
     .toBeEnabled();
 
+  await supported.getByText("How calculated", { exact: true }).click();
   const exactSetLink = supported.getByRole("link", { name: /performed set 1/ }).first();
   const evidenceHref = await exactSetLink.getAttribute("href");
   expect(evidenceHref).toMatch(/\/history\/[0-9a-f-]+\?range=12w&returnTo=review&recommendationId=[0-9a-f-]+#performed-set-[0-9a-f-]+$/);
@@ -140,6 +141,9 @@ test("links every material Review claim to evidence and preserves deliberate own
   await approve.click();
   await expect(page.getByRole("region", { name: "Decisions needing review" })
     .getByText("1 pending", { exact: true })).toBeVisible();
+  await page.getByText("Decision history and supporting evidence", {
+    exact: true,
+  }).click();
   await expect(page.getByRole("region", { name: "Recent decisions" })
     .getByText("Accepted", { exact: true })).toHaveCount(3);
 

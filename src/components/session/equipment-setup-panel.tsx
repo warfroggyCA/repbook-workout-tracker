@@ -154,10 +154,40 @@ export function EquipmentSetupPanel({
       : null) ??
     setup.currentGuidance;
 
+  const compactSettledSetup =
+    setup.currentSnapshotId != null &&
+    currentLabel != null &&
+    setup.currentSelectionAvailable &&
+    setup.options.length <= 1 &&
+    setup.loadEntryMeaningChoices.length === 0 &&
+    !pending &&
+    failed == null &&
+    message == null;
+
+  if (compactSettledSetup) {
+    return (
+      <section
+        aria-label={`Equipment setup for ${exerciseName}`}
+        className="p-3 text-sm"
+      >
+        <p className="break-words">
+          <span className="ui-metadata text-foreground">Equipment</span>
+          {" · "}
+          <span className="font-medium">Using {currentLabel}</span>
+        </p>
+        {guidance && (
+          <p className="mt-1 break-words text-muted-foreground">
+            {guidance}
+          </p>
+        )}
+      </section>
+    );
+  }
+
   return (
     <section
       aria-label={`Equipment setup for ${exerciseName}`}
-      className="rounded-xl border bg-muted/30 p-3 text-sm"
+      className="p-3 text-sm"
     >
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div>

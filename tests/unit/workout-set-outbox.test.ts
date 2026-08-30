@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   WORKOUT_SET_OUTBOX_MAX_AUTO_ATTEMPTS,
   WORKOUT_SET_OUTBOX_MAX_ENTRIES,
+  WORKOUT_REST_INTENT_RECEIPTS_STORAGE_KEY,
   WORKOUT_SET_OUTBOX_STORAGE_KEY,
   discardQuarantinedWorkoutSetOutboxEntry,
   enqueueWorkoutSetOutboxEntry,
@@ -10,9 +11,11 @@ import {
   nextWorkoutSetOutboxEntry,
   parseWorkoutSetOutbox,
   readWorkoutSetOutbox,
+  recordWorkoutRestIntentReceipt,
   releaseQueuedWorkoutSetBackoffForOwner,
   releaseWorkoutSetOrderBlockerOutboxEntry,
   removeWorkoutSetOutboxEntry,
+  removeWorkoutSetOutboxEntryForOwner,
   removeWorkoutSetOutboxEntriesForOwner,
   retryWorkoutSetOutboxEntry,
   type NewWorkoutSetOutboxEntry,
@@ -21,12 +24,16 @@ import {
 
 class MemoryStorage implements WorkoutSetOutboxStorage {
   values = new Map<string, string>();
+  failWritesForKey: string | null = null;
 
   getItem(key: string) {
     return this.values.get(key) ?? null;
   }
 
   setItem(key: string, value: string) {
+    if (key === this.failWritesForKey) {
+      throw new Error("Injected storage failure");
+    }
     this.values.set(key, value);
   }
 }
@@ -550,6 +557,75 @@ describe("workout set device queue", () => {
     expect(nextWorkoutSetOutboxEntry(remaining, first.ownerId)).toBeNull();
     expect(nextWorkoutSetOutboxEntry(remaining, second.ownerId)?.clientKey).toBe(
       second.clientKey
+    );
+  });
+
+  it("restores an exact sign-out set when its rest receipt cannot be cleaned", () => {
+    const storage = new MemoryStorage();
+    const input = { ...setInput(1), restAfterSec: 30 };
+    enqueueWorkoutSetOutboxEntry(storage, input);
+    const retained = readWorkoutSetOutbox(storage).entries[0]!;
+    expect(recordWorkoutRestIntentReceipt(storage, retained)).toMatchObject({
+      ok: true,
+    });
+    const originalOutbox = storage.getItem(WORKOUT_SET_OUTBOX_STORAGE_KEY);
+    const originalReceipts = storage.getItem(
+      WORKOUT_REST_INTENT_RECEIPTS_STORAGE_KEY,
+    );
+    storage.failWritesForKey = WORKOUT_REST_INTENT_RECEIPTS_STORAGE_KEY;
+
+    expect(
+      removeWorkoutSetOutboxEntryForOwner(
+        storage,
+        input.ownerId,
+        input.clientKey,
+      ),
+    ).toEqual({
+      ok: false,
+      reason: expect.stringContaining("restored on this device"),
+    });
+    expect(storage.getItem(WORKOUT_SET_OUTBOX_STORAGE_KEY)).toBe(
+      originalOutbox,
+    );
+    expect(storage.getItem(WORKOUT_REST_INTENT_RECEIPTS_STORAGE_KEY)).toBe(
+      originalReceipts,
+    );
+  });
+
+  it("restores exact owner copies when bulk receipt cleanup fails", () => {
+    const storage = new MemoryStorage();
+    const first = { ...setInput(1), restAfterSec: null };
+    const second = {
+      ...setInput(2),
+      ownerId: "20000000-0000-4000-8000-000000000002",
+    };
+    enqueueWorkoutSetOutboxEntry(storage, first);
+    enqueueWorkoutSetOutboxEntry(storage, second);
+    expect(
+      recordWorkoutRestIntentReceipt(
+        storage,
+        readWorkoutSetOutbox(storage).entries.find(
+          (entry) => entry.clientKey === first.clientKey,
+        )!,
+      ),
+    ).toMatchObject({ ok: true });
+    const originalOutbox = storage.getItem(WORKOUT_SET_OUTBOX_STORAGE_KEY);
+    const originalReceipts = storage.getItem(
+      WORKOUT_REST_INTENT_RECEIPTS_STORAGE_KEY,
+    );
+    storage.failWritesForKey = WORKOUT_REST_INTENT_RECEIPTS_STORAGE_KEY;
+
+    expect(
+      removeWorkoutSetOutboxEntriesForOwner(storage, first.ownerId),
+    ).toEqual({
+      ok: false,
+      reason: expect.stringContaining("restored on this device"),
+    });
+    expect(storage.getItem(WORKOUT_SET_OUTBOX_STORAGE_KEY)).toBe(
+      originalOutbox,
+    );
+    expect(storage.getItem(WORKOUT_REST_INTENT_RECEIPTS_STORAGE_KEY)).toBe(
+      originalReceipts,
     );
   });
 

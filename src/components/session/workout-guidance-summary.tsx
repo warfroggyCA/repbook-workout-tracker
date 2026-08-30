@@ -4,7 +4,6 @@ import type {
   SessionGuidanceProjection,
 } from "@/lib/session-guidance";
 import { formatSessionGuidanceAction } from "@/lib/session-guidance";
-import { cn } from "@/lib/utils";
 
 function equipmentDetails(cue: EquipmentPreparationCue) {
   return [cue.equipmentLabel, cue.attachmentLabel, cue.guidance]
@@ -16,10 +15,12 @@ export const WorkoutGuidanceSummary = memo(function WorkoutGuidanceSummary({
   guidance,
   compact = false,
   deferNextActionToCurrentCard = false,
+  deferCurrentActionToCockpit = false,
 }: {
   guidance: SessionGuidanceProjection;
   compact?: boolean;
   deferNextActionToCurrentCard?: boolean;
+  deferCurrentActionToCockpit?: boolean;
 }) {
   const currentEquipment = equipmentDetails(guidance.currentEquipment);
   const equipment = equipmentDetails(guidance.upcomingEquipment);
@@ -61,7 +62,8 @@ export const WorkoutGuidanceSummary = memo(function WorkoutGuidanceSummary({
     return (
       <section
         aria-label="Workout progress and upcoming work"
-        className="min-w-0 rounded-lg border bg-background/95 px-3 py-2 shadow-sm"
+        data-ui-surface="inset"
+        className="ui-surface min-w-0 px-3 py-2"
       >
         <div className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1 text-sm">
           <span className="min-w-0 max-w-full font-semibold tabular-nums">
@@ -71,26 +73,24 @@ export const WorkoutGuidanceSummary = memo(function WorkoutGuidanceSummary({
               : ""}
             {guidance.totals.skipped > 0 ? ` · ${guidance.totals.skipped} skipped` : ""}
           </span>
-          <p className="min-w-0 flex-1 basis-48 break-words leading-snug max-[639px]:line-clamp-2">
-            <span className="font-medium">Now:</span>{" "}
-            {guidance.currentAction
-              ? formatSessionGuidanceAction(guidance.currentAction)
-              : guidance.completion.evidenceLimited
-                ? "Actions resolved · evidence needs review"
-                : "All actions resolved"}
-          </p>
+          {!deferCurrentActionToCockpit && (
+            <p className="min-w-0 flex-1 basis-48 break-words leading-snug max-[639px]:line-clamp-2">
+              <span className="font-medium">Now:</span>{" "}
+              {guidance.currentAction
+                ? formatSessionGuidanceAction(guidance.currentAction)
+                : guidance.completion.evidenceLimited
+                  ? "Actions resolved · evidence needs review"
+                  : "All actions resolved"}
+            </p>
+          )}
         </div>
-        {guidance.nextAction &&
-          !(
-            deferNextActionToCurrentCard &&
-            guidance.currentAction?.kind === "working_set"
-          ) && (
+        {guidance.nextAction && !deferNextActionToCurrentCard && (
           <p className="break-words text-xs text-muted-foreground max-[639px]:sr-only">
             <span className="font-medium text-foreground">Next:</span>{" "}
             {formatSessionGuidanceAction(guidance.nextAction)}
           </p>
         )}
-        {prepCue && (
+        {prepCue && !deferCurrentActionToCockpit && (
           <p className="break-words text-xs text-muted-foreground max-[639px]:sr-only">
             <span className="font-medium text-foreground">{prepLabel}:</span>{" "}
             {prepCue}
@@ -129,13 +129,11 @@ export const WorkoutGuidanceSummary = memo(function WorkoutGuidanceSummary({
   return (
     <section
       aria-label="Workout progress and upcoming work"
-      className={cn(
-        "min-w-0 rounded-lg border bg-muted/35 px-3 py-2",
-        compact ? "space-y-1" : "space-y-2",
-      )}
+      data-ui-surface="inset"
+      className="ui-surface min-w-0 space-y-2 px-3 py-2"
     >
       <div className="flex min-w-0 flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
-        <p className="text-xs font-semibold uppercase tracking-wide text-primary">
+        <p className="ui-metadata text-primary">
           Workout progress
         </p>
         <p className="text-sm font-semibold tabular-nums">

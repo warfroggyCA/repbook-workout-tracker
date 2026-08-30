@@ -6,6 +6,7 @@ import {
 import {
   readWorkoutSetOutbox,
   removeWorkoutSetOutboxEntryForSession,
+  WORKOUT_REST_INTENT_RECEIPTS_STORAGE_KEY,
   WORKOUT_SET_OUTBOX_STORAGE_KEY,
 } from "@/lib/workout-set-outbox";
 
@@ -43,9 +44,13 @@ export async function discardSessionCopiesAndAbandon(input: {
   abandon: () => Promise<{ ok: boolean }>;
 }): Promise<DiscardResult> {
   let originalSets: string | null;
+  let originalRestIntents: string | null;
   let originalOccurrences: string | null;
   try {
     originalSets = input.storage.getItem(WORKOUT_SET_OUTBOX_STORAGE_KEY);
+    originalRestIntents = input.storage.getItem(
+      WORKOUT_REST_INTENT_RECEIPTS_STORAGE_KEY,
+    );
     originalOccurrences = input.storage.getItem(
       OCCURRENCE_MUTATION_OUTBOX_STORAGE_KEY,
     );
@@ -80,6 +85,11 @@ export async function discardSessionCopiesAndAbandon(input: {
         input.storage,
         WORKOUT_SET_OUTBOX_STORAGE_KEY,
         originalSets,
+      );
+      restoreRaw(
+        input.storage,
+        WORKOUT_REST_INTENT_RECEIPTS_STORAGE_KEY,
+        originalRestIntents,
       );
       restoreRaw(
         input.storage,

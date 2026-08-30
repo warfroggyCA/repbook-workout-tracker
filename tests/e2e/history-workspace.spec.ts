@@ -93,9 +93,17 @@ test("History workspace preserves deep links, Back and Forward, and exact detail
     page.getByRole("navigation", { name: "History time period" }),
   ).toHaveCount(0);
   await expect(page.getByText("Training calendar", { exact: true })).toBeVisible();
-  await expect(
-    page.getByRole("heading", { name: "Needs attention", exact: true }),
-  ).toBeVisible();
+  const actionSignal = page.getByText("One thing to review", { exact: true });
+  expect(await actionSignal.count()).toBeLessThanOrEqual(1);
+  if ((await actionSignal.count()) === 1) {
+    const [signalBox, calendarBox] = await Promise.all([
+      actionSignal.boundingBox(),
+      page.getByText("Training calendar", { exact: true }).boundingBox(),
+    ]);
+    expect(signalBox).not.toBeNull();
+    expect(calendarBox).not.toBeNull();
+    expect(signalBox!.y).toBeLessThan(calendarBox!.y);
+  }
   await expect(
     page.getByRole("heading", { name: "Five questions", exact: true }),
   ).toHaveCount(0);
@@ -209,6 +217,9 @@ test("History workspace preserves deep links, Back and Forward, and exact detail
     exact: true,
   });
   await expect(progressLens).toBeVisible();
+  await progressLens.getByText("Evidence and methodology", {
+    exact: true,
+  }).click();
   await expect(
     progressLens.getByRole("region", { name: "Supporting evidence" }),
   ).toBeVisible();
@@ -273,9 +284,14 @@ test("History workspace preserves deep links, Back and Forward, and exact detail
   await page.goto(
     "/history?range=all&view=insights&lens=work-capacity&calendarView=year&calendarDate=2026-07-10",
   );
-  await expect(
-    page.getByRole("article", { name: "Work capacity", exact: true }),
-  ).toBeVisible();
+  const workCapacityLens = page.getByRole("article", {
+    name: "Work capacity",
+    exact: true,
+  });
+  await expect(workCapacityLens).toBeVisible();
+  await workCapacityLens.getByText("Evidence and methodology", {
+    exact: true,
+  }).click();
   await expect(
     page.getByText("Weekly workload", { exact: true }),
   ).toBeVisible();

@@ -1,6 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 import {
   installNextDevelopmentRefreshControl,
+  openNativeDetails,
   waitForHydratedClickHandler,
   waitForHydratedServerAction,
 } from "../helpers/react-readiness";
@@ -121,6 +122,14 @@ test("selectively imports external evidence into owner-controlled Review", async
 
   await page.getByRole("link", { name: "Open Review and decisions" }).click();
   await expect(page).toHaveURL(/\/coach$/);
+  const decisionHistoryDisclosure = page.getByText(
+    "Decision history and supporting evidence",
+    { exact: true },
+  );
+  const decisionHistoryDetails = decisionHistoryDisclosure.locator(
+    "xpath=ancestor::details[1]",
+  );
+  await openNativeDetails(decisionHistoryDetails);
   await expect(page.getByRole("heading", { name: "Imported external observations" })).toBeVisible();
   await expect(page.getByText("External AI observation")).toBeVisible();
   await expect(page.getByText("External AI proposal · you decide")).toBeVisible();
@@ -144,6 +153,8 @@ test("selectively imports external evidence into owner-controlled Review", async
     const accept = proposal.getByRole("button", { name: "Accept edited direction" });
     await waitForHydratedClickHandler(accept);
     await accept.click();
+    await expect(proposal).toHaveCount(0);
+    await openNativeDetails(decisionHistoryDetails);
     await expect(page.getByRole("heading", { name: "Recent decisions" })).toBeVisible();
     await expect(page.getByText("Review a smaller future change after two more workouts.")).toBeVisible();
     await expect(page.getByText("Edited", { exact: true })).toBeVisible();

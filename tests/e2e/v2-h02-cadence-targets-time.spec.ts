@@ -83,7 +83,9 @@ test("keeps calendar cadence and planned-set outcomes separate and trustworthy",
 
   await page.goto("/history?view=insights&range=4w");
   await applyEnlargedText(page, narrowMobile);
-  await expect(page.getByRole("heading", { level: 2, name: "Insights" })).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: "Insights", exact: true }),
+  ).toHaveAttribute("aria-current", "page");
   await expect(page.getByRole("heading", { level: 3, name: "Current progress" })).toBeVisible();
   const reportMeasurements = page.locator("details").filter({
     hasText: "More report measurements",
@@ -139,11 +141,8 @@ test("keeps calendar cadence and planned-set outcomes separate and trustworthy",
   await applyEnlargedText(page, narrowMobile);
   await expect(
     page.getByText("Target-attainment coverage", { exact: true }),
-  ).toBeVisible();
-  await expect(page.getByText("4/5", { exact: true })).toBeVisible();
-  await expect(
-    page.getByText(/80% evaluable among quantified outcomes · supported subset 75% at\/above/),
-  ).toBeVisible();
+  ).toHaveCount(0);
+  await expect(page.getByText("Coaching tools", { exact: true })).toBeVisible();
 
   if (narrowMobile) await expectNoHorizontalOverflow(page);
 

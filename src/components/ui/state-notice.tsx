@@ -5,18 +5,18 @@ import { cn } from "@/lib/utils";
 
 const PRESENTATION: Record<
   WorkoutExperienceState,
-  { live: "off" | "polite"; tone: string }
+  { live: "off" | "polite"; tone?: string }
 > = {
-  idle: { live: "off", tone: "border-border bg-card text-card-foreground" },
-  pending: { live: "polite", tone: "border-primary/30 bg-accent text-accent-foreground" },
-  saving: { live: "polite", tone: "border-primary/30 bg-accent text-accent-foreground" },
-  saved: { live: "polite", tone: "border-success/35 bg-success/10 text-foreground" },
-  retrying: { live: "polite", tone: "border-primary/30 bg-accent text-accent-foreground" },
+  idle: { live: "off" },
+  pending: { live: "polite" },
+  saving: { live: "polite" },
+  saved: { live: "polite" },
+  retrying: { live: "polite" },
   needs_attention: {
     live: "polite",
-    tone: "border-destructive/40 bg-destructive/10 text-destructive",
+    tone: "text-destructive",
   },
-  recovered: { live: "polite", tone: "border-success/35 bg-success/10 text-foreground" },
+  recovered: { live: "polite" },
 };
 
 type StateNoticeProps = Omit<
@@ -45,11 +45,12 @@ export function StateNotice({
       {...props}
       data-slot="state-notice"
       data-state={state}
+      data-ui-state={state}
       role={needsAttention ? "alert" : "status"}
       aria-live={needsAttention ? undefined : presentation.live}
       aria-atomic="true"
       className={cn(
-        "flex min-w-0 flex-col gap-2 rounded-xl border p-3 text-sm sm:flex-row sm:items-center sm:justify-between",
+        "ui-state flex min-w-0 flex-col gap-2 p-3 text-sm sm:flex-row sm:items-center sm:justify-between",
         presentation.tone,
         className,
       )}

@@ -23,10 +23,14 @@ export const WORKOUT_SET_OUTBOX_STORAGE_KEY =
   "workout-tracker:workout-set-outbox:v1";
 export const WORKOUT_SET_OUTBOX_LOCK_NAME =
   "workout-tracker:workout-set-outbox";
+export const WORKOUT_COMMAND_DELIVERY_LOCK_PREFIX =
+  "workout-tracker:workout-command-delivery";
 const WORKOUT_COMMAND_SEQUENCE_KEY =
   "workout-tracker:workout-command-sequence:v1";
 export const EQUIPMENT_SELECTION_ACKNOWLEDGEMENT_STORAGE_KEY =
   "workout-tracker:equipment-selection-acknowledgements:v1";
+export const WORKOUT_REST_INTENT_RECEIPTS_STORAGE_KEY =
+  "workout-tracker:workout-rest-intent-receipts:v1";
 export const WORKOUT_SET_OUTBOX_CHANGE_EVENT = "workout-set-outbox-change";
 export const WORKOUT_SET_OUTBOX_STATUS_EVENT = "workout-set-outbox-status";
 const WORKOUT_SET_OUTBOX_STATUS_CHANNEL = "workout-set-outbox-status-v1";
@@ -34,6 +38,7 @@ export const WORKOUT_SET_OUTBOX_MAX_ENTRIES = 100;
 export const WORKOUT_SET_OUTBOX_MAX_AUTO_ATTEMPTS = 6;
 const MAX_EQUIPMENT_SELECTION_ACKNOWLEDGEMENTS = 200;
 const EQUIPMENT_SELECTION_ACKNOWLEDGEMENT_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+const MAX_WORKOUT_REST_INTENT_RECEIPTS = 100;
 
 export type EquipmentSelectionAcknowledgement = {
   clientKey: string;
@@ -44,6 +49,19 @@ export type EquipmentSelectionAcknowledgement = {
   /** Authoritative pending-occurrence revisions after this selection applied. */
   occurrenceStates?: Array<{ id: string; revision: number }>;
   acknowledgedAtISO: string;
+};
+
+/**
+ * The latest acknowledged explicit rest decision for one workout. Retained
+ * commands remain authoritative in the outbox; this receipt survives their
+ * acknowledgement while an older command could still replay.
+ */
+export type WorkoutRestIntentReceipt = {
+  clientKey: string;
+  ownerId: string;
+  sessionId: string;
+  createdAtISO: string;
+  restAfterSec: number | null;
 };
 
 export type WorkoutSetOutboxStatus = "queued" | "needs_attention";
@@ -93,7 +111,7 @@ type WorkoutSetOutboxCommand = {
   equipmentSnapshotId: string | null;
   /** Pending local selection that must be acknowledged before this set. */
   equipmentSelectionClientKey?: string | null;
-  /** Rest guidance starts only after this exact set is acknowledged. */
+  /** Explicit rest intent retained with this exact local set command. */
   restAfterSec?: number | null;
   loadEntryMeaning: WorkoutSetLoadEntryMeaning;
   /**
@@ -620,6 +638,313 @@ function ordered(entries: WorkoutSetOutboxEntry[]) {
   );
 }
 
+function compareWorkoutRestIntentOrder(
+  left: Pick<WorkoutRestIntentReceipt, "clientKey" | "createdAtISO">,
+  right: Pick<WorkoutRestIntentReceipt, "clientKey" | "createdAtISO">,
+) {
+  return Date.parse(left.createdAtISO) - Date.parse(right.createdAtISO) ||
+    left.clientKey.localeCompare(right.clientKey);
+}
+
+function isWorkoutRestIntentReceipt(
+  value: unknown,
+): value is WorkoutRestIntentReceipt {
+  return isRecord(value) &&
+    typeof value.clientKey === "string" && UUID_PATTERN.test(value.clientKey) &&
+    typeof value.ownerId === "string" && UUID_PATTERN.test(value.ownerId) &&
+    typeof value.sessionId === "string" && UUID_PATTERN.test(value.sessionId) &&
+    isDate(value.createdAtISO) &&
+    (value.restAfterSec === null ||
+      (Number.isInteger(value.restAfterSec) &&
+        Number(value.restAfterSec) >= 0 &&
+        Number(value.restAfterSec) <= 1800));
+}
+
+function readWorkoutRestIntentReceiptEntries(
+  storage: WorkoutSetOutboxStorage,
+) {
+  try {
+    const raw = storage.getItem(WORKOUT_REST_INTENT_RECEIPTS_STORAGE_KEY);
+    if (raw == null) {
+      return { ok: true as const, entries: [] as WorkoutRestIntentReceipt[] };
+    }
+    const parsed: unknown = JSON.parse(raw);
+    if (
+      !isRecord(parsed) || parsed.version !== 1 ||
+      !Array.isArray(parsed.entries) ||
+      parsed.entries.length > MAX_WORKOUT_REST_INTENT_RECEIPTS ||
+      !parsed.entries.every(isWorkoutRestIntentReceipt)
+    ) {
+      return {
+        ok: false as const,
+        reason: "The saved workout rest decision record could not be read.",
+      };
+    }
+    const identities = new Set<string>();
+    for (const entry of parsed.entries) {
+      const identity = `${entry.ownerId}:${entry.sessionId}`;
+      if (identities.has(identity)) {
+        return {
+          ok: false as const,
+          reason: "The saved workout rest decision record was ambiguous.",
+        };
+      }
+      identities.add(identity);
+    }
+    return {
+      ok: true as const,
+      entries: parsed.entries as WorkoutRestIntentReceipt[],
+    };
+  } catch {
+    return {
+      ok: false as const,
+      reason: "This browser could not open the saved workout rest decision record.",
+    };
+  }
+}
+
+function writeWorkoutRestIntentReceiptEntries(
+  storage: WorkoutSetOutboxStorage,
+  entries: WorkoutRestIntentReceipt[],
+) {
+  storage.setItem(
+    WORKOUT_REST_INTENT_RECEIPTS_STORAGE_KEY,
+    JSON.stringify({ version: 1, entries }),
+  );
+}
+
+type WorkoutStorageCleanupSnapshot = {
+  outboxRaw: string | null;
+  restIntentReceiptsRaw: string | null;
+};
+
+function readWorkoutStorageCleanupSnapshot(
+  storage: WorkoutSetOutboxStorage,
+): WorkoutStorageCleanupSnapshot | null {
+  try {
+    return {
+      outboxRaw: storage.getItem(WORKOUT_SET_OUTBOX_STORAGE_KEY),
+      restIntentReceiptsRaw: storage.getItem(
+        WORKOUT_REST_INTENT_RECEIPTS_STORAGE_KEY,
+      ),
+    };
+  } catch {
+    return null;
+  }
+}
+
+function restoreStorageRaw(
+  storage: WorkoutSetOutboxStorage,
+  key: string,
+  raw: string | null,
+) {
+  try {
+    if (storage.getItem(key) === raw) return true;
+    if (raw == null) {
+      const removable = storage as WorkoutSetOutboxStorage & {
+        removeItem?: (storageKey: string) => void;
+      };
+      if (typeof removable.removeItem !== "function") return false;
+      removable.removeItem(key);
+    } else {
+      storage.setItem(key, raw);
+    }
+    return storage.getItem(key) === raw;
+  } catch {
+    return false;
+  }
+}
+
+function restoreWorkoutStorageCleanupSnapshot(
+  storage: WorkoutSetOutboxStorage,
+  snapshot: WorkoutStorageCleanupSnapshot,
+) {
+  const outboxRestored = restoreStorageRaw(
+    storage,
+    WORKOUT_SET_OUTBOX_STORAGE_KEY,
+    snapshot.outboxRaw,
+  );
+  const receiptsRestored = restoreStorageRaw(
+    storage,
+    WORKOUT_REST_INTENT_RECEIPTS_STORAGE_KEY,
+    snapshot.restIntentReceiptsRaw,
+  );
+  return outboxRestored && receiptsRestored;
+}
+
+export function getWorkoutRestIntentReceipt(
+  storage: WorkoutSetOutboxStorage,
+  identity: Pick<WorkoutRestIntentReceipt, "ownerId" | "sessionId">,
+) {
+  const current = readWorkoutRestIntentReceiptEntries(storage);
+  if (!current.ok) return current;
+  return {
+    ok: true as const,
+    receipt: current.entries.find(
+      (entry) =>
+        entry.ownerId === identity.ownerId &&
+        entry.sessionId === identity.sessionId,
+    ) ?? null,
+  };
+}
+
+export function workoutRestIntentReceiptSupersedesEntry(
+  receipt: WorkoutRestIntentReceipt | null,
+  entry: Pick<
+    WorkoutSetOutboxEntry,
+    "clientKey" | "ownerId" | "sessionId" | "createdAtISO"
+  >,
+) {
+  return receipt != null &&
+    receipt.ownerId === entry.ownerId &&
+    receipt.sessionId === entry.sessionId &&
+    compareWorkoutRestIntentOrder(receipt, entry) > 0;
+}
+
+/**
+ * Advances the latest acknowledged rest decision monotonically. Callers must
+ * not record an unsent command: retained intent already lives in the outbox,
+ * while this receipt must survive only confirmed acknowledgement.
+ */
+export function recordWorkoutRestIntentReceipt(
+  storage: WorkoutSetOutboxStorage,
+  entry: Pick<
+    WorkoutSetOutboxEntry,
+    | "clientKey"
+    | "ownerId"
+    | "sessionId"
+    | "createdAtISO"
+    | "restAfterSec"
+  >,
+) {
+  const candidate: WorkoutRestIntentReceipt = {
+    clientKey: entry.clientKey,
+    ownerId: entry.ownerId,
+    sessionId: entry.sessionId,
+    createdAtISO: entry.createdAtISO,
+    restAfterSec: entry.restAfterSec ?? null,
+  };
+  if (entry.restAfterSec === undefined || !isWorkoutRestIntentReceipt(candidate)) {
+    return {
+      ok: false as const,
+      reason: "The workout rest decision could not be retained safely.",
+    };
+  }
+  const current = readWorkoutRestIntentReceiptEntries(storage);
+  if (!current.ok) return current;
+  const existing = current.entries.find(
+    (receipt) =>
+      receipt.ownerId === candidate.ownerId &&
+      receipt.sessionId === candidate.sessionId,
+  );
+  if (existing && compareWorkoutRestIntentOrder(existing, candidate) >= 0) {
+    return { ok: true as const, receipt: existing };
+  }
+  const entries = current.entries.filter(
+    (receipt) =>
+      receipt.ownerId !== candidate.ownerId ||
+      receipt.sessionId !== candidate.sessionId,
+  );
+  try {
+    writeWorkoutRestIntentReceiptEntries(
+      storage,
+      [...entries, candidate].slice(-MAX_WORKOUT_REST_INTENT_RECEIPTS),
+    );
+    return { ok: true as const, receipt: candidate };
+  } catch {
+    return {
+      ok: false as const,
+      reason: "This browser could not retain the workout rest decision.",
+    };
+  }
+}
+
+/**
+ * Drops receipts only after no older explicit rest command from that workout
+ * can replay. A stale receipt is conservative, so cleanup failure never makes
+ * an acknowledged command unsafe to remove.
+ */
+export function pruneWorkoutRestIntentReceipts(
+  storage: WorkoutSetOutboxStorage,
+) {
+  const receipts = readWorkoutRestIntentReceiptEntries(storage);
+  if (!receipts.ok) return receipts;
+  const outbox = readWorkoutSetOutbox(storage);
+  if (outbox.error) return { ok: false as const, reason: outbox.error };
+  const retained = receipts.entries.filter((receipt) =>
+    outbox.entries.some(
+      (entry) =>
+        entry.ownerId === receipt.ownerId &&
+        entry.sessionId === receipt.sessionId &&
+        entry.restAfterSec !== undefined &&
+        compareWorkoutRestIntentOrder(entry, receipt) <= 0,
+    )
+  );
+  if (retained.length === receipts.entries.length) {
+    return { ok: true as const };
+  }
+  try {
+    writeWorkoutRestIntentReceiptEntries(storage, retained);
+    return { ok: true as const };
+  } catch {
+    return {
+      ok: false as const,
+      reason: "This browser could not clean up saved workout rest decisions.",
+    };
+  }
+}
+
+export function removeWorkoutRestIntentReceiptsForOwner(
+  storage: WorkoutSetOutboxStorage,
+  ownerId: string,
+) {
+  const receipts = readWorkoutRestIntentReceiptEntries(storage);
+  if (!receipts.ok) return receipts;
+  if (!receipts.entries.some((entry) => entry.ownerId === ownerId)) {
+    return { ok: true as const };
+  }
+  try {
+    writeWorkoutRestIntentReceiptEntries(
+      storage,
+      receipts.entries.filter((entry) => entry.ownerId !== ownerId),
+    );
+    return { ok: true as const };
+  } catch {
+    return {
+      ok: false as const,
+      reason: "This browser could not clean up saved workout rest decisions.",
+    };
+  }
+}
+
+/**
+ * Returns the durable rest intents retained after an exact queued set in this
+ * workout. The queued command itself is the client-key-bound tombstone: an
+ * explicit later zero/null rest must keep an older acknowledgement from
+ * recreating a timer that the athlete has already superseded.
+ */
+export function laterWorkoutSetRestIntentClientKeys(
+  entries: readonly WorkoutSetOutboxEntry[],
+  anchor: Pick<
+    WorkoutSetOutboxEntry,
+    "clientKey" | "ownerId" | "sessionId"
+  >,
+) {
+  const sessionEntries = ordered(
+    entries.filter((entry) =>
+      entry.ownerId === anchor.ownerId && entry.sessionId === anchor.sessionId
+    ),
+  );
+  const anchorIndex = sessionEntries.findIndex(
+    (entry) => entry.clientKey === anchor.clientKey,
+  );
+  if (anchorIndex < 0) return [];
+  return sessionEntries
+    .slice(anchorIndex + 1)
+    .filter((entry) => entry.restAfterSec !== undefined)
+    .map((entry) => entry.clientKey);
+}
+
 export function parseWorkoutSetOutbox(raw: string | null): WorkoutSetOutboxSnapshot {
   if (raw == null || raw === "") return EMPTY_SNAPSHOT;
   let value: unknown;
@@ -1003,14 +1328,35 @@ export function removeWorkoutSetOutboxEntry(
   if (current.error) return { ok: false, reason: current.error };
   const entry = current.entries.find((item) => item.clientKey === clientKey);
   if (!entry) return { ok: true, entry: null };
+  const cleanupSnapshot = readWorkoutStorageCleanupSnapshot(storage);
+  if (!cleanupSnapshot) {
+    return {
+      ok: false,
+      reason: "This browser could not safely open the saved set for removal.",
+    };
+  }
   try {
     writeWorkoutSetOutbox(
       storage,
       current.entries.filter((item) => item.clientKey !== clientKey),
       current.quarantined
     );
+    const pruned = pruneWorkoutRestIntentReceipts(storage);
+    if (!pruned.ok) {
+      const restored = restoreWorkoutStorageCleanupSnapshot(
+        storage,
+        cleanupSnapshot,
+      );
+      return {
+        ok: false,
+        reason: restored
+          ? `${pruned.reason} The saved set was restored on this device.`
+          : "Repbook could not restore the saved set after its rest decision cleanup failed. Keep this workout open and review the device-copy tray.",
+      };
+    }
     return { ok: true, entry };
   } catch {
+    restoreWorkoutStorageCleanupSnapshot(storage, cleanupSnapshot);
     return { ok: false, reason: "This browser could not remove the saved set." };
   }
 }
@@ -1064,15 +1410,39 @@ export function removeWorkoutSetOutboxEntriesForOwner(
   const current = readWorkoutSetOutbox(storage);
   if (current.error) return { ok: false, reason: current.error };
   const owned = current.entries.filter((entry) => entry.ownerId === ownerId);
-  if (owned.length === 0) return { ok: true, entry: null };
+  if (owned.length === 0) {
+    const cleaned = removeWorkoutRestIntentReceiptsForOwner(storage, ownerId);
+    return cleaned.ok ? { ok: true, entry: null } : cleaned;
+  }
+  const cleanupSnapshot = readWorkoutStorageCleanupSnapshot(storage);
+  if (!cleanupSnapshot) {
+    return {
+      ok: false,
+      reason: "This browser could not safely open the saved workout sets for removal.",
+    };
+  }
   try {
     writeWorkoutSetOutbox(
       storage,
       current.entries.filter((entry) => entry.ownerId !== ownerId),
       current.quarantined
     );
+    const cleaned = removeWorkoutRestIntentReceiptsForOwner(storage, ownerId);
+    if (!cleaned.ok) {
+      const restored = restoreWorkoutStorageCleanupSnapshot(
+        storage,
+        cleanupSnapshot,
+      );
+      return {
+        ok: false,
+        reason: restored
+          ? `${cleaned.reason} The saved workout sets were restored on this device.`
+          : "Repbook could not restore the saved workout sets after their rest decision cleanup failed. Review the device-copy tray before signing out.",
+      };
+    }
     return { ok: true, entry: owned[0] };
   } catch {
+    restoreWorkoutStorageCleanupSnapshot(storage, cleanupSnapshot);
     return {
       ok: false,
       reason: "This browser could not remove the saved workout sets.",
@@ -1271,6 +1641,36 @@ export async function withOutboxLock<T>(
     );
   }
   return task();
+}
+
+export function workoutCommandDeliveryLockName(ownerId: string) {
+  return `${WORKOUT_COMMAND_DELIVERY_LOCK_PREFIX}:${encodeURIComponent(ownerId.toLowerCase())}`;
+}
+
+export function workoutCommandDeliveryLockSupported() {
+  return typeof navigator !== "undefined" && navigator.locks != null;
+}
+
+/**
+ * Keeps one owner's ordered equipment/set delivery single-flight without
+ * holding the shared local-storage mutation lock across the network request.
+ */
+export async function withWorkoutCommandDeliveryLock<T>(
+  ownerId: string,
+  task: () => T | Promise<T>,
+): Promise<T | null> {
+  const lockName = workoutCommandDeliveryLockName(ownerId);
+  if (workoutCommandDeliveryLockSupported()) {
+    return navigator.locks.request(
+      lockName,
+      { mode: "exclusive" },
+      task,
+    );
+  }
+
+  // An in-memory promise chain cannot coordinate separate tabs. Keep durable
+  // commands retained instead of risking duplicate or reordered delivery.
+  return null;
 }
 
 async function browserMutation(

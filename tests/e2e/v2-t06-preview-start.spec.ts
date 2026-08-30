@@ -1,4 +1,10 @@
-import { expect, test, type Locator, type Page } from "@playwright/test";
+import {
+  expect,
+  test,
+  type Locator,
+  type Page,
+  type Route,
+} from "@playwright/test";
 import {
   installNextDevelopmentRefreshControl,
   openNativeDetails,
@@ -11,8 +17,17 @@ import {
   isExpectedWebKitRscNavigationFallback,
   observeNextRscPrefetches,
 } from "../helpers/webkit-rsc-prefetch-errors";
+import { WORKOUT_INTERACTION_MARKS } from "../../src/lib/workout-interaction-performance";
 
 const EXPECTED_APP_SHELL_RSC_PATHS = new Set(["/history", "/today"]);
+
+function deferred() {
+  let resolvePromise!: () => void;
+  const promise = new Promise<void>((resolve) => {
+    resolvePromise = resolve;
+  });
+  return { promise, resolve: resolvePromise };
+}
 
 async function signIn(page: Page) {
   await installNextDevelopmentRefreshControl(page);
@@ -165,7 +180,72 @@ test("keeps preview read-only and Start replay-safe with truthful active collisi
   start = await openAlternatePreview(page, /Day A — Squat/, { refreshToday: true });
   await injectFailure(start, "incomplete");
   const retryKey = await startRequestKey(start);
-  await start.click();
+  const startActionHeld = deferred();
+  const releaseStartAction = deferred();
+  let holdNextStartAction = true;
+  const pendingStartRoute = async (route: Route) => {
+    const request = route.request();
+    if (
+      holdNextStartAction &&
+      request.method() === "POST" &&
+      request.headers()["next-action"]
+    ) {
+      holdNextStartAction = false;
+      startActionHeld.resolve();
+      await releaseStartAction.promise;
+    }
+    await route.continue();
+  };
+  await page.route("**/*", pendingStartRoute);
+  await page.evaluate((marks) => {
+    for (const mark of marks) performance.clearMarks(mark);
+  }, [
+    WORKOUT_INTERACTION_MARKS.workoutStartSubmit,
+    WORKOUT_INTERACTION_MARKS.workoutStartPending,
+  ]);
+  const startClick = start.click();
+  await startActionHeld.promise;
+  const pendingStart = page.getByRole("button", {
+    name: "Starting workout…",
+    exact: true,
+  });
+  await expect(pendingStart).toBeDisabled();
+  await expect(pendingStart).toHaveAttribute("aria-busy", "true");
+  await expect(page.getByRole("status")).toContainText(
+    "Confirming Day A — Squat. Repbook will open the workout after its start is confirmed.",
+  );
+  expect(await startRequestKey(pendingStart)).toBe(retryKey);
+  await expect.poll(() => page.evaluate((names) =>
+    names.map((name) => performance.getEntriesByName(name, "mark").length > 0),
+  [
+    WORKOUT_INTERACTION_MARKS.workoutStartSubmit,
+    WORKOUT_INTERACTION_MARKS.workoutStartPending,
+  ])).toEqual([true, true]);
+  const startPendingDuration = await page.evaluate(([submitName, pendingName]) => {
+    if (!submitName || !pendingName) {
+      throw new Error("The workout start interaction mark names are incomplete.");
+    }
+    const submit = performance.getEntriesByName(submitName, "mark")[0];
+    const pending = performance.getEntriesByName(pendingName, "mark")[0];
+    if (!submit || !pending) {
+      throw new Error("The workout start interaction marks were not recorded.");
+    }
+    return pending.startTime - submit.startTime;
+  }, [
+    WORKOUT_INTERACTION_MARKS.workoutStartSubmit,
+    WORKOUT_INTERACTION_MARKS.workoutStartPending,
+  ]);
+  expect(
+    startPendingDuration,
+    `start-submit-to-pending duration: ${startPendingDuration}`,
+  ).toBeGreaterThanOrEqual(0);
+  expect(
+    startPendingDuration,
+    `start-submit-to-pending duration: ${startPendingDuration}`,
+  ).toBeLessThan(100);
+  releaseStartAction.resolve();
+  await startClick;
+  await page.unroute("**/*", pendingStartRoute);
   await expect(page.getByText("The workout was not created completely", { exact: false }))
     .toBeVisible();
   start = page.getByRole("button", { name: /Try again —/ });

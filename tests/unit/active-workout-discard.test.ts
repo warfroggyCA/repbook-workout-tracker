@@ -10,7 +10,10 @@ import {
 } from "@/lib/occurrence-mutation-outbox";
 import {
   enqueueWorkoutSetOutboxEntry,
+  getWorkoutRestIntentReceipt,
   readWorkoutSetOutbox,
+  recordWorkoutRestIntentReceipt,
+  WORKOUT_REST_INTENT_RECEIPTS_STORAGE_KEY,
   WORKOUT_SET_OUTBOX_STORAGE_KEY,
 } from "@/lib/workout-set-outbox";
 
@@ -108,6 +111,12 @@ describe("active workout destructive exit", () => {
   it("removes exact owner-session copies only after server abandonment succeeds", async () => {
     const storage = new MemoryStorage();
     seed(storage);
+    expect(recordWorkoutRestIntentReceipt(storage, {
+      ...readWorkoutSetOutbox(storage).entries[0]!,
+      clientKey: "10000000-0000-4000-8000-000000000003",
+      createdAtISO: "2026-08-13T12:00:02.000Z",
+      restAfterSec: null,
+    })).toMatchObject({ ok: true });
     const abandon = vi.fn().mockResolvedValue({ ok: true });
 
     await expect(discardSessionCopiesAndAbandon({
@@ -119,6 +128,10 @@ describe("active workout destructive exit", () => {
     expect(abandon).toHaveBeenCalledOnce();
     expect(readWorkoutSetOutbox(storage).entries).toEqual([]);
     expect(readOccurrenceMutationOutbox(storage).entries).toEqual([]);
+    expect(getWorkoutRestIntentReceipt(storage, { ownerId, sessionId })).toEqual({
+      ok: true,
+      receipt: null,
+    });
   });
 
   it("rolls back a partial local deletion and never abandons", async () => {
@@ -144,10 +157,57 @@ describe("active workout destructive exit", () => {
     );
   });
 
+  it("does not abandon when a rest receipt cannot be cleaned", async () => {
+    const storage = new MemoryStorage();
+    seed(storage);
+    expect(recordWorkoutRestIntentReceipt(storage, {
+      ...readWorkoutSetOutbox(storage).entries[0]!,
+      clientKey: "10000000-0000-4000-8000-000000000003",
+      createdAtISO: "2026-08-13T12:00:02.000Z",
+      restAfterSec: null,
+    })).toMatchObject({ ok: true });
+    const originalSets = storage.getItem(WORKOUT_SET_OUTBOX_STORAGE_KEY);
+    const originalRestIntents = storage.getItem(
+      WORKOUT_REST_INTENT_RECEIPTS_STORAGE_KEY,
+    );
+    const originalOccurrences = storage.getItem(
+      OCCURRENCE_MUTATION_OUTBOX_STORAGE_KEY,
+    );
+    storage.failOnceForKey = WORKOUT_REST_INTENT_RECEIPTS_STORAGE_KEY;
+    const abandon = vi.fn().mockResolvedValue({ ok: true });
+
+    await expect(discardSessionCopiesAndAbandon({
+      storage,
+      ownerId,
+      sessionId,
+      abandon,
+    })).resolves.toMatchObject({
+      ok: false,
+      reason: expect.stringContaining("Nothing was discarded"),
+    });
+    expect(abandon).not.toHaveBeenCalled();
+    expect(storage.getItem(WORKOUT_SET_OUTBOX_STORAGE_KEY)).toBe(originalSets);
+    expect(storage.getItem(WORKOUT_REST_INTENT_RECEIPTS_STORAGE_KEY)).toBe(
+      originalRestIntents,
+    );
+    expect(storage.getItem(OCCURRENCE_MUTATION_OUTBOX_STORAGE_KEY)).toBe(
+      originalOccurrences,
+    );
+  });
+
   it("restores both queues when server abandonment fails", async () => {
     const storage = new MemoryStorage();
     seed(storage);
+    expect(recordWorkoutRestIntentReceipt(storage, {
+      ...readWorkoutSetOutbox(storage).entries[0]!,
+      clientKey: "10000000-0000-4000-8000-000000000003",
+      createdAtISO: "2026-08-13T12:00:02.000Z",
+      restAfterSec: null,
+    })).toMatchObject({ ok: true });
     const originalSets = storage.getItem(WORKOUT_SET_OUTBOX_STORAGE_KEY);
+    const originalRestIntents = storage.getItem(
+      WORKOUT_REST_INTENT_RECEIPTS_STORAGE_KEY,
+    );
     const originalOccurrences = storage.getItem(
       OCCURRENCE_MUTATION_OUTBOX_STORAGE_KEY,
     );
@@ -165,6 +225,9 @@ describe("active workout destructive exit", () => {
         "Repbook did not confirm the workout was abandoned. The device copies were restored.",
     });
     expect(storage.getItem(WORKOUT_SET_OUTBOX_STORAGE_KEY)).toBe(originalSets);
+    expect(storage.getItem(WORKOUT_REST_INTENT_RECEIPTS_STORAGE_KEY)).toBe(
+      originalRestIntents,
+    );
     expect(storage.getItem(OCCURRENCE_MUTATION_OUTBOX_STORAGE_KEY)).toBe(
       originalOccurrences,
     );

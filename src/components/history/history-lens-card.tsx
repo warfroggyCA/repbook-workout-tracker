@@ -1,4 +1,5 @@
 import Link from "next/link";
+import type { ReactNode } from "react";
 import {
   Activity,
   ChevronRight,
@@ -31,10 +32,12 @@ export function HistoryLensCard({
   lens,
   activityReport,
   exercisesHref,
+  detailContent,
 }: {
   lens: HistoryLens;
   activityReport: ActivityReport;
   exercisesHref?: string;
+  detailContent?: ReactNode;
 }) {
   const Icon = lensIcons[lens.key];
   const linksToExercises =
@@ -83,74 +86,6 @@ export function HistoryLensCard({
           </p>
         </section>
 
-        <section aria-label="Supporting evidence">
-          <p className="text-[0.6875rem] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-            Supporting evidence
-          </p>
-          <dl className="mt-2 divide-y rounded-xl border bg-muted/15 px-3">
-            {lens.evidence.map((item) => (
-              <div
-                key={`${item.label}-${item.value}`}
-                className="grid min-w-0 gap-1 py-2.5 sm:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] sm:gap-3"
-              >
-                <dt className="min-w-0 break-words text-xs font-medium">
-                  {item.label}
-                </dt>
-                <dd className="min-w-0 break-words text-xs leading-relaxed text-muted-foreground sm:text-right">
-                  <span className="font-medium text-foreground">
-                    {item.value}
-                  </span>
-                  {item.detail && (
-                    <span className="mt-0.5 block">{item.detail}</span>
-                  )}
-                </dd>
-              </div>
-            ))}
-          </dl>
-        </section>
-
-        {lens.key === "work-capacity" && (
-          <section
-            aria-label="Independent activity context"
-            className="rounded-xl border border-emerald-500/25 bg-emerald-500/5 p-3"
-          >
-            <div className="flex items-center gap-2">
-              <Footprints
-                className="size-4 shrink-0 text-emerald-700"
-                aria-hidden="true"
-              />
-              <p className="text-xs font-semibold text-emerald-900 dark:text-emerald-200">
-                Independent activity context — kept separate
-              </p>
-            </div>
-            <p className="mt-1.5 text-xs leading-relaxed text-muted-foreground">
-              {formatIndependentActivityContext(activityReport)}
-            </p>
-            <p className="mt-1 text-[0.6875rem] leading-relaxed text-muted-foreground">
-              This context never changes strength progress, Program fit, loaded
-              workload, or records.
-            </p>
-          </section>
-        )}
-
-        <section
-          aria-label="Confidence and data limitation"
-          className="flex items-start gap-2"
-        >
-          <Info
-            className="mt-0.5 size-3.5 shrink-0 text-muted-foreground"
-            aria-hidden="true"
-          />
-          <div className="min-w-0">
-            <p className="text-[0.6875rem] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-              Confidence and data limitation
-            </p>
-            <p className="mt-1 break-words text-xs leading-relaxed text-muted-foreground">
-              {lens.limitation}
-            </p>
-          </div>
-        </section>
-
         <section
           aria-label="Decision support"
           className={cn(
@@ -189,6 +124,43 @@ export function HistoryLensCard({
                   />
                 </Link>
               )}
+            </div>
+          </div>
+        </section>
+
+        <details className="group rounded-xl border bg-muted/15 p-3">
+          <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 rounded-lg text-sm font-semibold outline-none focus-visible:ring-3 focus-visible:ring-ring/50">
+            Evidence and methodology
+            <ChevronRight
+              className="size-4 shrink-0 text-muted-foreground transition-transform group-open:rotate-90 motion-reduce:transition-none"
+              aria-hidden="true"
+            />
+          </summary>
+          <div className="mt-3 space-y-4 border-t pt-3">
+            <section aria-label="Supporting evidence">
+              <p className="text-[0.6875rem] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                Supporting evidence
+              </p>
+              <dl className="mt-2 divide-y rounded-xl border bg-background/70 px-3">
+                {lens.evidence.map((item) => (
+                  <div
+                    key={`${item.label}-${item.value}`}
+                    className="grid min-w-0 gap-1 py-2.5 sm:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] sm:gap-3"
+                  >
+                    <dt className="min-w-0 break-words text-xs font-medium">
+                      {item.label}
+                    </dt>
+                    <dd className="min-w-0 break-words text-xs leading-relaxed text-muted-foreground sm:text-right">
+                      <span className="font-medium text-foreground">
+                        {item.value}
+                      </span>
+                      {item.detail && (
+                        <span className="mt-0.5 block">{item.detail}</span>
+                      )}
+                    </dd>
+                  </div>
+                ))}
+              </dl>
               {linksToExercises && (
                 <Link
                   href={exercisesHref}
@@ -202,9 +174,53 @@ export function HistoryLensCard({
                   />
                 </Link>
               )}
-            </div>
+            </section>
+
+            {lens.key === "work-capacity" && (
+              <section
+                aria-label="Independent activity context"
+                className="rounded-xl border border-emerald-500/25 bg-emerald-500/5 p-3"
+              >
+                <div className="flex items-center gap-2">
+                  <Footprints
+                    className="size-4 shrink-0 text-emerald-700"
+                    aria-hidden="true"
+                  />
+                  <p className="text-xs font-semibold text-emerald-900 dark:text-emerald-200">
+                    Independent activity context — kept separate
+                  </p>
+                </div>
+                <p className="mt-1.5 text-xs leading-relaxed text-muted-foreground">
+                  {formatIndependentActivityContext(activityReport)}
+                </p>
+                <p className="mt-1 text-[0.6875rem] leading-relaxed text-muted-foreground">
+                  This context never changes strength progress, Program fit,
+                  loaded workload, or records.
+                </p>
+              </section>
+            )}
+
+            <section
+              aria-label="Confidence and data limitation"
+              className="flex items-start gap-2"
+            >
+              <Info
+                className="mt-0.5 size-3.5 shrink-0 text-muted-foreground"
+                aria-hidden="true"
+              />
+              <div className="min-w-0">
+                <p className="text-[0.6875rem] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                  Confidence and data limitation
+                </p>
+                <p className="mt-1 break-words text-xs leading-relaxed text-muted-foreground">
+                  {lens.limitation}
+                </p>
+              </div>
+            </section>
+
+            {detailContent}
           </div>
-        </section>
+        </details>
       </div>
     </article>
   );

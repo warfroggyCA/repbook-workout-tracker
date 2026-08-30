@@ -51,7 +51,16 @@ describe("equipment and set command sync", () => {
         return events.dispatchEvent(event);
       },
     });
-    vi.stubGlobal("navigator", { onLine: true });
+    vi.stubGlobal("navigator", {
+      onLine: true,
+      locks: {
+        request: <T>(
+          _name: string,
+          _options: { mode: "exclusive" },
+          task: () => T | Promise<T>,
+        ) => task(),
+      },
+    });
     vi.stubGlobal("CustomEvent", class<T> extends Event {
       detail: T;
       constructor(type: string, init?: { detail?: T }) { super(type); this.detail = init?.detail as T; }

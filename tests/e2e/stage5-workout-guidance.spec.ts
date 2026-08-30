@@ -94,9 +94,7 @@ async function skipCurrentSet(dock: Locator) {
     exact: true,
   });
   if (!(await skipSet.isVisible())) {
-    await openNativeDetails(
-      currentCard.locator("details").filter({ hasText: /^Set options/ }),
-    );
+    await openNativeDetails(currentCard.getByTestId("active-exercise-details"));
   }
   await expect(skipSet).toBeVisible();
   await waitForScrollToSettle(page);
@@ -272,9 +270,9 @@ test("keeps Stage 5 guidance truthful, persistent, and usable on narrow mobile s
     name: "Workout progress and upcoming work",
   });
   await expect(guidance).toContainText("0/14");
-  await expect(statusBar).toContainText("Romanian Deadlift");
-  await expect(statusBar).toContainText("Set 1 of 3");
-  await expect(guidance).toContainText("Now: Romanian Deadlift, set 1");
+  await expect(dock.getByTestId("active-workout-primary"))
+    .toHaveAttribute("aria-label", "Romanian Deadlift, Set 1");
+  await expect(guidance).not.toContainText("Now:");
   await expect(guidance).not.toContainText("Next:");
   await expect(dock).toContainText("Next action");
   await expect(dock).toContainText("Romanian Deadlift, set 2");
@@ -304,13 +302,16 @@ test("keeps Stage 5 guidance truthful, persistent, and usable on narrow mobile s
   await waitForHydratedReactHandler(firstLogSet);
   await firstLogSet.click();
   await expect.poll(() => saveStarted).toBe(true);
-  await expect(dock).toContainText("saving");
+  const deadliftCard = page.getByRole("region", {
+    name: "Romanian Deadlift",
+    exact: true,
+  });
+  await expect(deadliftCard).toContainText("saving");
   await expect(guidance).toContainText("0/14");
-  await expect(guidance).toContainText(
-    "Now: Resting before Romanian Deadlift, set 2",
-  );
-  await expect(guidance).toContainText("Next: Romanian Deadlift, set 2");
-  await expect(statusBar).toContainText("Resting");
+  await expect(guidance).not.toContainText("Now:");
+  await expect(guidance).not.toContainText("Next:");
+  await expect(statusBar.getByRole("region", { name: "Rest timer" }))
+    .toContainText("Next: Romanian Deadlift, set 2");
   await expect.poll(() => page.evaluate(() =>
     (window as unknown as { __wakeLockTestMetrics: { requests: number } })
       .__wakeLockTestMetrics.requests,
@@ -321,9 +322,8 @@ test("keeps Stage 5 guidance truthful, persistent, and usable on narrow mobile s
     .first()
     .textContent();
   await page.waitForTimeout(2_000);
-  await expect(guidance).toContainText(
-    "Now: Resting before Romanian Deadlift, set 2",
-  );
+  await expect(statusBar.getByRole("region", { name: "Rest timer" }))
+    .toContainText("Next: Romanian Deadlift, set 2");
   const remainingAfterDelay = await statusBar
     .getByLabel("Rest timer")
     .locator("span.tabular-nums")
@@ -338,11 +338,10 @@ test("keeps Stage 5 guidance truthful, persistent, and usable on narrow mobile s
   );
   releaseSave();
   await expect(guidance).toContainText("1/14");
-  await expect(guidance).toContainText(
-    "Now: Resting before Romanian Deadlift, set 2",
-  );
-  await expect(guidance).toContainText("Next: Romanian Deadlift, set 2");
-  await expect(statusBar).toContainText("Resting");
+  await expect(guidance).not.toContainText("Now:");
+  await expect(guidance).not.toContainText("Next:");
+  await expect(statusBar.getByRole("region", { name: "Rest timer" }))
+    .toContainText("Next: Romanian Deadlift, set 2");
   await page.unrouteAll({ behavior: "wait" });
   await expect
     .poll(() =>
@@ -380,7 +379,7 @@ test("keeps Stage 5 guidance truthful, persistent, and usable on narrow mobile s
   await page.reload({ waitUntil: "domcontentloaded" });
   const reloadedDock = page.getByRole("complementary", { name: "Workout status" });
   await expect(reloadedDock.getByLabel("Rest timer")).toBeVisible();
-  await expect(reloadedDock).toContainText("Ready", {
+  await expect(reloadedDock).toContainText("Rest complete", {
     timeout: 40_000,
   });
   await expect(
@@ -391,7 +390,7 @@ test("keeps Stage 5 guidance truthful, persistent, and usable on narrow mobile s
   ).toBeVisible();
   await page.reload({ waitUntil: "domcontentloaded" });
   const persistentDock = page.getByRole("complementary", { name: "Workout status" });
-  await expect(persistentDock).toContainText("Ready");
+  await expect(persistentDock).toContainText("Rest complete");
 
   const compactNavigation = page.getByRole("navigation", {
     name: "Primary navigation",
@@ -408,35 +407,11 @@ test("keeps Stage 5 guidance truthful, persistent, and usable on narrow mobile s
       exact: true,
     }),
   ).toBeVisible();
-  await expect(
-    page.getByRole("region", { name: "Workout progress and upcoming work" })
-      .getByText(/Now: Rest complete before Romanian Deadlift, set 2/),
-  ).toBeVisible();
-  const compactNextGuidance = page
-    .getByRole("region", { name: "Workout progress and upcoming work" })
-    .getByText(/Next: Romanian Deadlift, set 2/);
-  await expect(compactNextGuidance).toHaveText(
-    /Next: Romanian Deadlift, set 2/,
-  );
-  await expect
-    .poll(() =>
-      compactNextGuidance.evaluate((element) => {
-        const style = getComputedStyle(element);
-        const box = element.getBoundingClientRect();
-        return {
-          clipPath: style.clipPath,
-          height: box.height,
-          position: style.position,
-          width: box.width,
-        };
-      }),
-    )
-    .toEqual({
-      clipPath: "inset(50%)",
-      height: 1,
-      position: "absolute",
-      width: 1,
-    });
+  const compactRest = persistentDock.getByRole("region", {
+    name: "Rest timer",
+  });
+  await expect(compactRest).toContainText("Rest complete");
+  await expect(compactRest).toContainText("Next: Romanian Deadlift, set 2");
   const collapsedMetrics = await persistentDock.evaluate((element) => {
     const navigation = document.querySelector("nav.fixed");
     const navigationRect = navigation?.getBoundingClientRect() ?? null;
@@ -515,25 +490,22 @@ test("keeps Stage 5 guidance truthful, persistent, and usable on narrow mobile s
   for (let index = 0; index < 9; index += 1) {
     await skipCurrentSet(persistentDock);
   }
-  const prepareNext = page.getByRole("region", {
-    name: "Workout progress and upcoming work",
-  });
-  await expect(prepareNext).toContainText("EZ curl bar (18 lb)");
-  await expect(prepareNext).toContainText("18 lb");
-  await expect(prepareNext).toContainText("Not loadable — nearest lower 38 lb");
-  await expect(prepareNext).toContainText("upper 43 lb");
   await waitForSetSkippedNoticesToSettle(page);
-  await prepareNext.scrollIntoViewIfNeeded();
-  await screenshot(page, "03-upcoming-ez-curl-preparation-is-18lb.png");
-
   await skipCurrentSet(persistentDock);
   await expect(page.getByTestId("current-exercise-card").getByRole("heading", { level: 2 })).toHaveText(
     "EZ-Bar Curl",
   );
   const currentExercise = page.getByTestId("current-exercise-card");
-  await openNativeDetails(currentExercise.locator("details", {
-    hasText: "More for this exercise",
-  }));
+  await expect(currentExercise.getByLabel("Total load", { exact: true }))
+    .toHaveValue("40");
+  await expect(currentExercise).toContainText(
+    "Not loadable · nearest lower 38 lb · upper 43 lb",
+  );
+  await locatorScreenshot(
+    currentExercise,
+    "03-current-ez-curl-load-guidance-is-exact.png",
+  );
+  await openNativeDetails(currentExercise.getByTestId("active-exercise-details"));
   await currentExercise
     .getByRole("button", { name: "View alternatives", exact: true }).click();
   const alternatives = page.getByRole("dialog", {
@@ -575,11 +547,17 @@ test("keeps Stage 5 guidance truthful, persistent, and usable on narrow mobile s
   await expect(postSwapGuidance).not.toContainText("EZ curl bar (18 lb)");
   await expect(alternatives).toHaveCount(0);
   await waitForSetSkippedNoticesToSettle(page);
-  const substitutedPreparation = postSwapGuidance;
-  await expect(substitutedPreparation).toContainText("Dumbbells");
-  await expect(substitutedPreparation).not.toContainText(/EZ curl bar|Per side|Empty bar/);
+  await expect(currentExercise.getByRole("heading", { level: 2 })).toHaveText(
+    "Dumbbell Curl",
+  );
+  await expect(currentExercise.getByLabel("Weight", { exact: true })).toBeVisible();
+  await expect(currentExercise.getByLabel("Total load", { exact: true }))
+    .toHaveCount(0);
+  await expect(currentExercise).not.toContainText(
+    /EZ curl bar|Per side|Empty bar|Not loadable/,
+  );
   await locatorScreenshot(
-    substitutedPreparation,
+    currentExercise,
     "04-substitution-suppresses-stale-precision.png",
   );
 
@@ -605,9 +583,7 @@ test("keeps Stage 5 guidance truthful, persistent, and usable on narrow mobile s
   });
   await startProgramDay(page, "Day A — Squat", false);
   const groupDock = page.getByTestId("current-exercise-card");
-  await openNativeDetails(
-    groupDock.locator("details").filter({ hasText: /^Set options/ }),
-  );
+  await openNativeDetails(groupDock.getByTestId("active-exercise-details"));
   await expect.poll(() => equipmentSelectionStarted).toBe(true);
   await expect(
     groupDock.getByRole("button", { name: "Skip set", exact: true }),
@@ -622,14 +598,13 @@ test("keeps Stage 5 guidance truthful, persistent, and usable on narrow mobile s
     name: "Workout progress and upcoming work",
   });
   await expect(groupGuidance).not.toContainText("Next:");
+  await expect(groupGuidance).not.toContainText("Now:");
   await expect(groupDock).toContainText("Next action");
   await expect(groupDock).toContainText(
     "Superset, round 1, member 2 of 2: Pallof Press, set 1",
   );
-  await expect(groupGuidance).toContainText(
-    /Now: Superset, round 1, member 1 of 2: Dumbbell Lateral Raise, set 1/,
-  );
-  await expect(page.getByRole("complementary", { name: "Workout status" })).toContainText("Dumbbell Lateral Raise");
+  await expect(groupDock.getByTestId("active-workout-primary"))
+    .toHaveAttribute("aria-label", "Dumbbell Lateral Raise, Set 1");
   await expect(groupGuidance).toContainText("0/13");
   await expect(groupGuidance).toContainText("9 skipped");
   await expect(
@@ -641,13 +616,12 @@ test("keeps Stage 5 guidance truthful, persistent, and usable on narrow mobile s
   });
   await expect(durableGroupGuidance).toContainText("9 skipped");
   await expect(durableGroupGuidance).not.toContainText("Next:");
+  await expect(durableGroupGuidance).not.toContainText("Now:");
   await expect(page.getByTestId("current-exercise-card")).toContainText(
     "Superset, round 1, member 2 of 2: Pallof Press, set 1",
   );
-  await expect(durableGroupGuidance).toContainText(
-    /Now: Superset, round 1, member 1 of 2: Dumbbell Lateral Raise, set 1/,
-  );
-  await expect(page.getByRole("complementary", { name: "Workout status" })).toContainText("Dumbbell Lateral Raise");
+  await expect(page.getByTestId("active-workout-primary"))
+    .toHaveAttribute("aria-label", "Dumbbell Lateral Raise, Set 1");
   await expect(
     page.getByRole("button", { name: "Open unsaved workout changes" }),
   ).toHaveCount(0);
