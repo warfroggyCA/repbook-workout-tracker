@@ -5,6 +5,7 @@ import {
   installNextDevelopmentRefreshControl,
   openNativeDetails,
   waitForEquipmentSelectionsToSettle,
+  waitForHydratedReactChangeHandler,
   waitForHydratedFormSubmit,
   waitForHydratedServerAction,
 } from "../helpers/react-readiness";
@@ -3560,8 +3561,10 @@ test("opens failed-set recovery from Settings at 145 percent on iPhone WebKit", 
   await waitForReactHandler(logSet);
   const totalLoad = currentSet.getByLabel("Total load");
   const reps = currentSet.getByRole("textbox", { name: "Reps", exact: true });
+  await waitForHydratedReactChangeHandler(totalLoad);
   await totalLoad.fill("80");
   await expect(totalLoad).toHaveValue("80");
+  await waitForHydratedReactChangeHandler(reps);
   await reps.fill("10");
   await expect(reps).toHaveValue("10");
   await openNativeDetails(currentSet.getByTestId("active-exercise-details"));
