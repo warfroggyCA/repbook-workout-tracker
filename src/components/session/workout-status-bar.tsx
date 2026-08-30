@@ -209,7 +209,7 @@ export function WorkoutStatusBar({
         >
           <span
             data-ui-essential="true"
-            className="block break-words text-sm font-semibold leading-tight max-[360px]:sr-only"
+            className="block break-words text-xs font-semibold leading-tight max-[360px]:sr-only min-[520px]:text-sm"
           >
             {dockPrimaryLabel}
           </span>
@@ -217,7 +217,7 @@ export function WorkoutStatusBar({
             role="status"
             aria-live="polite"
             className={cn(
-              "block break-words text-[0.8125rem] leading-tight text-muted-foreground",
+              "block break-words text-[0.6875rem] leading-tight text-muted-foreground min-[520px]:text-[0.8125rem]",
               saving === "Failed" && "font-semibold text-destructive",
               runsPrimaryAction && "text-primary-foreground/85",
               timerRunning &&
