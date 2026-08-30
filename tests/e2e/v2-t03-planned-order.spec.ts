@@ -45,6 +45,7 @@ async function skipCurrentSet(page: Page) {
     exact: true,
   });
   await expect(skip).toBeEnabled();
+  await waitForHydratedReactHandler(skip);
   await skip.click();
   const dialog = page.getByRole("dialog", { name: /^Skip set .+\?$/ });
   await dialog.getByLabel("Reason").selectOption("time_limit_reached");
