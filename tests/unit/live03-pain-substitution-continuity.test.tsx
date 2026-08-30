@@ -74,6 +74,9 @@ vi.mock("@/services/live-coaching", async (importOriginal) => {
 vi.mock("@/services/history-page", () => ({
   getCompletedHistoryContextualNotes: vi.fn(async () => []),
 }));
+vi.mock("@/services/previous-comparable-sets", () => ({
+  getPreviousComparableSets: vi.fn(async () => ({})),
+}));
 vi.mock("@/components/history/workout-archive-button", () => ({
   WorkoutArchiveButton: () => null,
 }));

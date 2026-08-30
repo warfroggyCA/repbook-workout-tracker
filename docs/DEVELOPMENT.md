@@ -132,6 +132,25 @@ record, contextual note entry and offline recovery, and desktop plus narrow
 mobile behavior. It adds no schema, migration, historical rewrite, calculation
 formula, Coach decision, import, export, or authentication change.
 
+The deterministic ambient-intelligence gate is:
+
+```bash
+npx vitest run tests/unit/athlete-insights.test.ts tests/unit/previous-comparable-sets-db.test.ts tests/unit/workout-summary.test.ts tests/unit/exercise-card-component.test.tsx --maxWorkers=1 --no-file-parallelism
+npx playwright test tests/e2e/workout-smoke.spec.ts -g "makes Today one decisive|keeps the no-history Today|shows one ambient insight|signs in and completes"
+npm run test:e2e:v2-h01
+```
+
+It proves deterministic candidate identity and ranking, supported pending
+decision containment, exact recent-best matching, the four-set/two-workout rest
+threshold, completed-workout comparison, and conservative suppression for
+mixed units, legacy evidence, imports, pain or limitation context, sparse
+records, and absent history. Browser verification must also prove that Today
+shows at most one signal, the active signal appears once at exercise level,
+**Explain** prefills but does not send Live Coach, and post-workout evidence is
+available under **How calculated**. This tranche adds no schema, migration,
+historical rewrite, recommendation, decision, Program write, automatic AI call,
+external analytics payload, import, export, or authentication change.
+
 The semantic test validates all synthetic F01-F17 scenarios and every required
 verification-matrix cell; by itself it proves contract consistency only. The
 T01 tests activate the mapped database, browser, portability, recovery, and

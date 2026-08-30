@@ -33,6 +33,12 @@ import { acceptanceWorkoutNow } from "@/lib/acceptance-workout-clock";
 import { WorkoutEquipmentPreflight } from "@/components/dashboard/workout-equipment-preflight";
 import { resolveTemplatePreparationEquipmentProjection } from "@/services/session-equipment-requirements";
 import { TodayAddMenu } from "@/components/dashboard/today-add-menu";
+import { AthleteInsight } from "@/components/insights/athlete-insight";
+import {
+  buildPendingDecisionInsight,
+  selectAthleteInsight,
+  type AthleteInsightCandidate,
+} from "@/lib/athlete-insights";
 
 function scheduledEventDescription(event: NonNullable<TodayData["schedule"]>["nextEvent"]) {
   if (!event) return "";
@@ -66,6 +72,20 @@ function ProgramDecisionStatus({ count }: { count: number }) {
         {count} Program change{count === 1 ? "" : "s"} pending
       </span>
     </Link>
+  );
+}
+
+function TodayDecisionSignal({
+  insight,
+  pendingCount,
+}: {
+  insight: AthleteInsightCandidate | null;
+  pendingCount: number;
+}) {
+  return insight ? (
+    <AthleteInsight insight={insight} compact />
+  ) : (
+    <ProgramDecisionStatus count={pendingCount} />
   );
 }
 
@@ -165,6 +185,15 @@ export default async function TodayPage({
         selectedTemplate.template.id,
       )
     : null;
+  const todayInsight = selectAthleteInsight(
+    pendingRecs.map((recommendation) =>
+      buildPendingDecisionInsight({
+        ...recommendation,
+        exerciseName: recommendation.exercise?.name ?? null,
+      }),
+    ),
+    { placement: "today" },
+  );
 
   return (
     <main
@@ -321,7 +350,10 @@ export default async function TodayPage({
                   Review timing &amp; finish
                 </Button>
               )}
-              <ProgramDecisionStatus count={pendingRecs.length} />
+              <TodayDecisionSignal
+                insight={todayInsight}
+                pendingCount={pendingRecs.length}
+              />
               <ActiveWorkoutDiscard
                 ownerId={user.id}
                 sessionId={today.inProgressSessionId}
@@ -458,7 +490,10 @@ export default async function TodayPage({
                     <ArrowLeft className="size-4" /> Back to today&apos;s plan
                   </Button>
                 )}
-                <ProgramDecisionStatus count={pendingRecs.length} />
+                <TodayDecisionSignal
+                  insight={todayInsight}
+                  pendingCount={pendingRecs.length}
+                />
                 {!isAlternatePreview && today.schedule?.nextEvent && (
                   <details className="rounded-xl border bg-muted/20 p-3">
                     <summary className="min-h-11 cursor-pointer text-sm font-medium">Change this scheduled event</summary>
@@ -635,7 +670,10 @@ export default async function TodayPage({
               ) : (
                 <p className="text-sm leading-6 text-muted-foreground">Completed workouts and schedule outcomes remain in History. Create another schedule when you are ready.</p>
               )}
-              <ProgramDecisionStatus count={pendingRecs.length} />
+              <TodayDecisionSignal
+                insight={todayInsight}
+                pendingCount={pendingRecs.length}
+              />
             </CardContent>
           </Card>
         )}

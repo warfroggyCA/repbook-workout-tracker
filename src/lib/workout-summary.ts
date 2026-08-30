@@ -1,3 +1,5 @@
+import type { AthleteInsightCandidate } from "@/lib/athlete-insights";
+
 export type WorkoutSummaryTerminalState =
   | "in_progress"
   | "completed"
@@ -58,6 +60,7 @@ export type WorkoutSummaryInput = {
   pendingDecisionCount: number;
   incompleteReasonLabel: string | null;
   timingCanBeReviewed: boolean;
+  sessionResultInsight?: AthleteInsightCandidate | null;
 };
 
 function countLabel(count: number, singular: string, plural = `${singular}s`) {
@@ -76,6 +79,18 @@ function changedAnswer(input: WorkoutSummaryInput): WorkoutSummaryAnswer {
           ? "Abandoned-workout evidence stays visible, but it is excluded from completed metrics and progression."
           : "A comparison is available only after the workout reaches a completed state.",
       tone: "neutral",
+    };
+  }
+
+  if (input.sessionResultInsight != null) {
+    return {
+      value: input.sessionResultInsight.headline,
+      detail:
+        input.sessionResultInsight.detail ??
+        "Compared only compatible performed evidence.",
+      tone: "neutral",
+      href: input.sessionResultInsight.action?.href,
+      actionLabel: input.sessionResultInsight.action?.label,
     };
   }
 

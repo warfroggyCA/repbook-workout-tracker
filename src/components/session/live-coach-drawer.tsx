@@ -3,6 +3,7 @@
 import {
   useEffect,
   useEffectEvent,
+  useRef,
   useState,
   useSyncExternalStore,
 } from "react";
@@ -71,6 +72,11 @@ type LiveCoachContext = {
   exerciseName: string;
 } | null;
 
+export type LiveCoachDraft = {
+  id: string;
+  content: string;
+};
+
 type Props = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -80,6 +86,7 @@ type Props = {
   initialMessages: LiveCoachMessage[];
   exerciseNames: Record<string, string>;
   activeRestTimerSeconds: number | null;
+  draft?: LiveCoachDraft | null;
 };
 
 function mergeMessages(
@@ -102,12 +109,14 @@ export function LiveCoachDrawer({
   initialMessages,
   exerciseNames,
   activeRestTimerSeconds,
+  draft = null,
 }: Props) {
   const [messages, setMessages] = useState(initialMessages);
   const [kind, setKind] = useState<LiveCoachMessageKind>("question");
   const [content, setContent] = useState("");
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const appliedDraftIdRef = useRef<string | null>(null);
   const [streamedAnswers, setStreamedAnswers] = useState<Record<string, string>>(
     {}
   );
@@ -116,6 +125,20 @@ export function LiveCoachDrawer({
     getLiveCoachOutboxSnapshot,
     getLiveCoachOutboxServerSnapshot
   );
+
+  useEffect(() => {
+    if (!open || draft == null || appliedDraftIdRef.current === draft.id) {
+      return;
+    }
+    appliedDraftIdRef.current = draft.id;
+    setKind("question");
+    setContent((current) =>
+      (current.trim().length > 0
+        ? `${current.trim()}\n\n${draft.content}`
+        : draft.content
+      ).slice(0, 800),
+    );
+  }, [draft, open]);
 
   function clearStreamedAnswer(responseId: string) {
     setStreamedAnswers((current) => {

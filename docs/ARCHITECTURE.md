@@ -257,6 +257,25 @@ lineage, and non-positive pain evidence live in the final closed **Technical
 record** disclosure. Positive pain evidence remains prominent before performed
 work, and recommendations remain separate from recorded facts.
 
+Athlete-facing ambient intelligence is a read-time projection, not a new
+coaching or persistence layer. `src/lib/athlete-insights.ts` owns one pure
+`AthleteInsightCandidate` contract, deterministic fingerprints and ranking,
+and conservative generators. Today may show one versioned, supported pending
+decision that has already passed the live recommendation-evidence gate. The
+active workout may show one exact recent-best or usual-rest signal per exercise;
+the former requires a saved current set plus the exact comparable exercise,
+load meaning, load value, and unit, while the latter requires at least four
+safe recorded rest samples across two workouts. Completed History may replace
+the target-only change answer with one session result only when exact exercise
+identity, complete v1 performed semantics, longitudinal eligibility, and a
+single recorded load unit all hold. Positive pain or limitation context on the
+exact set or exercise (or unscoped session pain), legacy semantics, current
+imported sessions, mixed units, sparse history, and
+unknown completion evidence suppress the affected conclusion. Candidates are
+never stored, never create or apply a recommendation, and never change the
+Program. **Explain** only prefills the existing Live Coach editor after an
+explicit athlete action; sending the question remains a second explicit action.
+
 The contextual-note provider owns composition and durable device-queue recovery
 without rendering an always-present global toolbar. Routes provide contextual
 entry points instead: Today's Add sheet, the active-workout status bar, Program,
@@ -1038,7 +1057,7 @@ upgrades schema 30 rows to explicit nulls. Recovery manifest 14 keeps the same
 durable-table inventory while extending the narrow merge contract so restored
 duration corrections retain their linked record-version and audit evidence.
 
-The active logging page gets previous-set evidence from
+The active logging page and completed-workout summary get previous-set evidence from
 `getPreviousComparableSets`, not the legacy Program-slot projection. A result
 is available only for the same stable exercise ID with complete compatible v1
 performed semantics, compatible units and load-entry meaning, one exact linked
@@ -1046,7 +1065,9 @@ working occurrence, and retained machine/cable configuration when required.
 Imported Hevy evidence additionally requires the current owner-reviewed
 mapping. Unsafe evidence renders an explicit unavailable state; display names
 and fabricated fallback values are never used. The exact source workout and
-set provenance remain attached to the projection.
+set provenance remain attached to the projection. The same query retains at
+most 24 non-null recorded-rest samples from the newest eight compatible
+workouts for the pure usual-rest threshold; unsafe rows never enter that sample.
 
 The performed-load draft uses one explicit precedence chain: the latest saved
 set in this workout, then the Program target, then the exact previous

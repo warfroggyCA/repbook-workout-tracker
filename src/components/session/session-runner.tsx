@@ -35,7 +35,10 @@ import {
   type SetOrderBlocker,
 } from "./exercise-card";
 import { ActiveWorkoutDiscard } from "./active-workout-actions";
-import { LiveCoachDrawer } from "./live-coach-drawer";
+import {
+  LiveCoachDrawer,
+  type LiveCoachDraft,
+} from "./live-coach-drawer";
 import { WorkoutStatusBar } from "./workout-status-bar";
 import {
   ActiveWorkoutTimingReview,
@@ -70,6 +73,10 @@ import type {
 } from "./types";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import {
+  buildAthleteInsightCoachDraft,
+  type AthleteInsightCandidate,
+} from "@/lib/athlete-insights";
 import {
   enqueueWorkoutSet,
   discardWorkoutSetDeviceCopy,
@@ -862,6 +869,8 @@ export function SessionRunner(props: SessionRunnerProps) {
   const [ownerReportedMinutes, setOwnerReportedMinutes] = useState("");
   const [coachOpen, setCoachOpen] = useState(false);
   const [coachExerciseId, setCoachExerciseId] = useState<string | null>(null);
+  const [coachDraft, setCoachDraft] = useState<LiveCoachDraft | null>(null);
+  const coachDraftSequenceRef = useRef(0);
   const [adjustment, setAdjustment] = useState<{
     exerciseId: string;
     intent: ExerciseAdjustmentIntent;
@@ -2421,8 +2430,20 @@ export function SessionRunner(props: SessionRunnerProps) {
     }
   }
 
-  function openCoach(sessionExerciseId: string | null) {
+  function openCoach(
+    sessionExerciseId: string | null,
+    insight?: AthleteInsightCandidate,
+  ) {
     setCoachExerciseId(sessionExerciseId);
+    if (insight) {
+      coachDraftSequenceRef.current += 1;
+      setCoachDraft({
+        id: `${insight.fingerprint}:${coachDraftSequenceRef.current}`,
+        content: buildAthleteInsightCoachDraft(insight),
+      });
+    } else {
+      setCoachDraft(null);
+    }
     setCoachOpen(true);
   }
 
@@ -4490,6 +4511,7 @@ export function SessionRunner(props: SessionRunnerProps) {
             onRefreshWorkout={() => router.refresh()}
             onHistoryRevisionChange={setHistoryRevision}
             onOpenCoach={() => openCoach(exercise.id)}
+            onExplainInsight={(insight) => openCoach(exercise.id, insight)}
             onSkipRequestStart={(reason) => {
               skipUnconfirmedRef.current.delete(exercise.id);
               const pageTimeOrigin = window.performance.timeOrigin;
@@ -5087,6 +5109,7 @@ export function SessionRunner(props: SessionRunnerProps) {
           shownExercises.map((exercise) => [exercise.id, exercise.name])
         )}
         activeRestTimerSeconds={restRemainingSec}
+        draft={coachDraft}
       />
       {restTimerHydrated && (
         <WorkoutStatusBar

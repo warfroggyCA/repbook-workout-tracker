@@ -480,6 +480,127 @@ describe("ExerciseCard", () => {
     expect(html).toContain("Last:");
   });
 
+  it("renders one exact-best insight at exercise level and suppresses it while comparison evidence is refreshing", () => {
+    const exactBestExercise: SessionExerciseData = {
+      ...exercise,
+      sets: [
+        {
+          id: "00000000-0000-4000-8000-000000000061",
+          clientKey: "00000000-0000-4000-8000-000000000061",
+          setNo: 1,
+          weight: 95,
+          weightUnit: "lb",
+          reps: 8,
+          metricType: "weight_reps",
+          rpe: null,
+          note: null,
+          saveState: "saved",
+        },
+      ],
+      previousComparable: {
+        status: "available",
+        currentSessionExerciseId: exercise.id,
+        exerciseId: exercise.exerciseId,
+        semantics: {
+          version: 1,
+          metricType: "weight_reps",
+          loadType: "barbell",
+          loadSemantics: "total",
+          loadEntryMeaning: "total_system",
+        },
+        source: {
+          workoutId: "00000000-0000-4000-8000-000000000062",
+          localDate: "2026-08-10",
+          startedAtISO: "2026-08-10T11:00:00.000Z",
+          finishedAtISO: "2026-08-10T12:00:00.000Z",
+          historyHref: "/history/00000000-0000-4000-8000-000000000062",
+          workoutSource: "tracker",
+        },
+        sets: [
+          {
+            setId: "00000000-0000-4000-8000-000000000063",
+            setNo: 1,
+            weight: 95,
+            weightUnit: "lb",
+            reps: 8,
+            distanceKm: null,
+            durationSeconds: null,
+            rpe: null,
+            rir: null,
+            observedCompletedAtISO: "2026-08-10T11:20:00.000Z",
+            observedCompletionProvenance: "live_client",
+            observedCompletionQuality: "trustworthy",
+            correctionProvenance: { state: "original", count: 0 },
+          },
+        ],
+      },
+    };
+    const render = (
+      comparisonTemporarilyUnavailable: boolean,
+      loadEntryMeaning: "total_system" | "per_loading_point" = "total_system",
+    ) =>
+      renderToStaticMarkup(
+        <ExerciseCard
+          exercise={exactBestExercise}
+          comparisonTemporarilyUnavailable={comparisonTemporarilyUnavailable}
+          historyRevision={0}
+          progress={{
+            sessionExerciseId: exactBestExercise.id,
+            exerciseName: exactBestExercise.name,
+            total: 3,
+            planned: 3,
+            extra: 0,
+            workoutOnly: 0,
+            performed: 1,
+            plannedPerformed: 1,
+            extraPerformed: 0,
+            workoutOnlyPerformed: 0,
+            skipped: 0,
+            abandoned: 0,
+            pending: 2,
+            legacyUnknown: 0,
+            completedWithoutResult: 0,
+            status: "current",
+          }}
+          expanded
+          isCurrentExercise
+          onToggle={() => undefined}
+          plateConfigs={{}}
+          incrementals={{}}
+          unit="lb"
+          loadEntryMeaning={loadEntryMeaning}
+          onPatch={() => undefined}
+          onQueueSet={async () => true}
+          onRetrySet={async () => undefined}
+          onDiscardSet={async () => undefined}
+          onSkipComplete={() => undefined}
+          onOpenCoach={() => undefined}
+          onExplainInsight={() => undefined}
+          adjustIntent={null}
+          onAdjustIntentChange={() => undefined}
+        />,
+      );
+
+    const available = render(false);
+    expect(available.match(/data-testid="athlete-insight-active_set"/g)).toHaveLength(1);
+    expect(available).toContain(
+      "Matched your recent Barbell Squat best: 95 lb × 8",
+    );
+    expect(available).toContain("How calculated");
+    expect(available).toContain("Explain");
+    expect(available.indexOf('data-testid="active-log-set"')).toBeLessThan(
+      available.indexOf('data-testid="athlete-insight-active_set"'),
+    );
+
+    const refreshing = render(true);
+    expect(refreshing).not.toContain("athlete-insight-active_set");
+    expect(refreshing).not.toContain("Matched your recent");
+
+    const changedLoadMeaning = render(false, "per_loading_point");
+    expect(changedLoadMeaning).not.toContain("athlete-insight-active_set");
+    expect(changedLoadMeaning).not.toContain("Matched your recent");
+  });
+
   it("labels an assisted set as assistance during the active workout", () => {
     const assistedExercise: SessionExerciseData = {
       ...exercise,

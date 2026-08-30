@@ -4,6 +4,7 @@ import {
   completedSets,
   externalExerciseMappings,
   exercises,
+  painLogs,
   recordVersions,
   sessionEquipmentSnapshots,
   sessionExercises,
@@ -25,6 +26,7 @@ describe("previous comparable performed sets", () => {
   let userId: string;
   let otherUserId: string;
   let exerciseId: string;
+  let currentSessionId: string;
   let currentSessionExerciseId: string;
 
   beforeEach(async () => {
@@ -47,7 +49,7 @@ describe("previous comparable performed sets", () => {
         loadSemantics: "total",
       })
       .returning({ id: exercises.id });
-    const currentSessionId = crypto.randomUUID();
+    currentSessionId = crypto.randomUUID();
     await database.db.execute(sql`
       INSERT INTO workout_sessions (
         id, user_id, template_name, status, started_at, timezone, local_date
@@ -88,10 +90,13 @@ describe("previous comparable performed sets", () => {
     weight?: number;
     weightUnit?: "lb" | "kg";
     reps?: number;
+    restTakenSec?: number | null;
+    observedCompletionQuality?: "trustworthy" | "owner_reported" | "unknown";
     setNos?: number[];
     excludeFromAnalytics?: boolean;
     source?: string;
     sourceExerciseName?: string | null;
+    painSeverity?: number;
   }) {
     const startedAt = new Date(input.startedAtISO);
     const finishedAt = new Date(startedAt.getTime() + 45 * 60_000);
@@ -149,6 +154,7 @@ describe("previous comparable performed sets", () => {
         weight: input.weight ?? 45,
         weightUnit: input.weightUnit ?? "kg",
         reps: input.reps ?? 8,
+        restTakenSec: input.restTakenSec ?? null,
         metricType: "weight_reps" as const,
         performedSemanticsVersion: semanticsVersion,
         performedLoadType: semanticsVersion == null
@@ -160,9 +166,18 @@ describe("previous comparable performed sets", () => {
         equipmentSnapshotId: equipment.id,
         loadEntryMeaning: input.loadEntryMeaning ?? "total_system",
         excludeFromAnalytics: input.excludeFromAnalytics ?? false,
-        observedCompletedAt: new Date(finishedAt.getTime() - setNo * 60_000),
-        observedCompletionProvenance: "live_client",
-        observedCompletionQuality: "trustworthy",
+        observedCompletedAt:
+          input.observedCompletionQuality === "unknown"
+            ? null
+            : new Date(finishedAt.getTime() - setNo * 60_000),
+        observedCompletionProvenance:
+          input.observedCompletionQuality === "unknown"
+            ? "unknown"
+            : input.observedCompletionQuality === "owner_reported"
+              ? "manual_explicit"
+              : "live_client",
+        observedCompletionQuality:
+          input.observedCompletionQuality ?? "trustworthy",
       })))
       .returning({ id: completedSets.id, setNo: completedSets.setNo });
     await database.db.insert(sessionOccurrences).values(createdSets.map((set) => ({
@@ -178,6 +193,17 @@ describe("previous comparable performed sets", () => {
       completedSetId: set.id,
       equipmentSnapshotId: equipment.id,
     })));
+    if (input.painSeverity != null) {
+      await database.db.insert(painLogs).values({
+        userId,
+        sessionId,
+        exerciseId: input.exerciseId ?? exerciseId,
+        completedSetId: createdSets[0].id,
+        bodyPart: "shoulder",
+        severity: input.painSeverity,
+        source: "set_exception",
+      });
+    }
     return {
       sessionId,
       sessionExerciseId: sessionExercise.id,
@@ -424,5 +450,85 @@ describe("previous comparable performed sets", () => {
       status: "unavailable",
       reason: "no_comparable_history",
     });
+  });
+
+  it("uses the same read-only proof for a completed current workout", async () => {
+    const historical = await addHistoricalSet({
+      startedAtISO: "2026-08-01T14:00:00.000Z",
+      weight: 135,
+      weightUnit: "lb",
+    });
+    await database.db.execute(sql`
+      UPDATE workout_sessions
+      SET
+        status = 'completed'::session_status,
+        finished_at = '2026-08-10T14:45:00.000Z'::timestamptz
+      WHERE id = ${currentSessionId}::uuid
+    `);
+
+    const result = await getPreviousComparableSets(database.db, userId, [{
+      sessionExerciseId: currentSessionExerciseId,
+      loadEntryMeaning: "total_system",
+    }]);
+
+    expect(result[currentSessionExerciseId]).toMatchObject({
+      status: "available",
+      source: { workoutId: historical.sessionId },
+    });
+  });
+
+  it("retains bounded usual-rest samples only from the same safe comparison proof", async () => {
+    await addHistoricalSet({
+      startedAtISO: "2026-07-30T14:00:00.000Z",
+      setNos: [1, 2],
+      restTakenSec: 50,
+      painSeverity: 3,
+    });
+    await addHistoricalSet({
+      startedAtISO: "2026-07-31T14:00:00.000Z",
+      setNos: [1, 2],
+      restTakenSec: 45,
+      observedCompletionQuality: "unknown",
+    });
+    const earlier = await addHistoricalSet({
+      startedAtISO: "2026-08-01T14:00:00.000Z",
+      setNos: [1, 2],
+      restTakenSec: 90,
+    });
+    const latest = await addHistoricalSet({
+      startedAtISO: "2026-08-02T14:00:00.000Z",
+      setNos: [1, 2],
+      restTakenSec: 95,
+    });
+    await addHistoricalSet({
+      startedAtISO: "2026-08-03T14:00:00.000Z",
+      setNos: [1, 2],
+      loadEntryMeaning: "per_loading_point",
+      restTakenSec: 30,
+    });
+
+    const result = await getPreviousComparableSets(database.db, userId, [{
+      sessionExerciseId: currentSessionExerciseId,
+      loadEntryMeaning: "total_system",
+    }]);
+
+    expect(result[currentSessionExerciseId]).toMatchObject({
+      status: "available",
+      source: { workoutId: latest.sessionId },
+      usualRestSamples: expect.arrayContaining([
+        ...earlier.setIds.map((setId) => ({
+          setId,
+          workoutId: earlier.sessionId,
+          restTakenSec: 90,
+        })),
+        ...latest.setIds.map((setId) => ({
+          setId,
+          workoutId: latest.sessionId,
+          restTakenSec: 95,
+        })),
+      ]),
+    });
+    const available = result[currentSessionExerciseId];
+    expect(available.status === "available" && available.usualRestSamples).toHaveLength(4);
   });
 });

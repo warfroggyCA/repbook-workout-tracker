@@ -115,6 +115,13 @@ import {
 import type { PreviousComparableSetEvidence } from "@/services/previous-comparable-sets";
 import { createClientUuid } from "@/lib/client-uuid";
 import { formatPainEvidence } from "@/lib/pain-evidence";
+import { AthleteInsight } from "@/components/insights/athlete-insight";
+import {
+  buildMatchRecentBestInsight,
+  buildUsualRestInsight,
+  selectAthleteInsight,
+  type AthleteInsightCandidate,
+} from "@/lib/athlete-insights";
 import {
   resolveSetStartingLoad,
   setStartingLoadPreviewText,
@@ -517,6 +524,7 @@ type Props = {
   onRefreshWorkout?: () => void;
   onHistoryRevisionChange?: (historyRevision: number) => void;
   onOpenCoach: () => void;
+  onExplainInsight?: (insight: AthleteInsightCandidate) => void;
   onSkipRequestStart?: (
     reason: IncompleteSessionReason,
   ) => void;
@@ -747,6 +755,7 @@ export function ExerciseCard({
   onRefreshWorkout,
   onHistoryRevisionChange = () => undefined,
   onOpenCoach,
+  onExplainInsight = () => undefined,
   onSkipRequestStart = () => undefined,
   onSkipRequestFailure = () => true,
   skipConfirmationPending = false,
@@ -857,6 +866,53 @@ export function ExerciseCard({
         previousComparableSet
       ? "available"
       : "unavailable";
+  const activeInsightCurrentSets = exercise.sets.map((set) => ({
+    setId: set.id,
+    metricType: set.metricType ?? performedMetricType,
+    weight: set.weight,
+    weightUnit: set.weightUnit,
+    reps: set.reps,
+    saveState: set.saveState,
+    hasPainOrLimitation:
+      set.pain != null ||
+      set.techniqueIssue != null ||
+      set.limitationCause != null,
+  }));
+  const generatedActiveInsight =
+    !comparisonTemporarilyUnavailable &&
+    comparableProjection?.status === "available" &&
+    comparableSemanticsMatch
+      ? selectAthleteInsight(
+          [
+            buildMatchRecentBestInsight({
+              exerciseId: exercise.exerciseId,
+              exerciseName: exercise.name,
+              currentSets: activeInsightCurrentSets,
+              previous: comparableProjection,
+            }),
+            buildUsualRestInsight({
+              exerciseId: exercise.exerciseId,
+              exerciseName: exercise.name,
+              currentSets: activeInsightCurrentSets,
+              samples: (comparableProjection.usualRestSamples ?? []).map(
+                (sample) => ({
+                  setId: sample.setId,
+                  workoutId: sample.workoutId,
+                  seconds: sample.restTakenSec,
+                  compatible: true,
+                }),
+              ),
+            }),
+          ],
+          {
+            placement: "active_set",
+            exactExerciseId: exercise.exerciseId,
+          },
+        )
+      : null;
+  // This projection lives only in the open workout's client state and renders
+  // once at exercise level. It is never copied into each set row or persisted.
+  const activeInsight = isCurrentExercise ? generatedActiveInsight : null;
   const prefillFrom =
     [...exercise.sets]
       .filter((set) => set.setNo < nextSetNo)
@@ -2325,6 +2381,14 @@ export function ExerciseCard({
                 </div>
               );
             })}
+
+            {activeInsight && (
+              <AthleteInsight
+                insight={activeInsight}
+                className="mt-1 border-primary/20 bg-primary/[0.035]"
+                onAction={() => onExplainInsight(activeInsight)}
+              />
+            )}
 
             <details
               data-testid="completed-sets"

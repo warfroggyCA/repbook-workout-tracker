@@ -226,6 +226,7 @@ async function verifyDecisiveToday({
   const decisionStatus = decision.locator(
     '[aria-label^="Program decision status"]'
   );
+  const todayInsight = decision.getByTestId("athlete-insight-today");
   const alternateDays = page.getByTestId("alternate-program-days");
   const alternateSummary = alternateDays.locator("summary");
   const dayC = page.getByRole("button", { name: /Day C — Bench/ });
@@ -244,8 +245,19 @@ async function verifyDecisiveToday({
   await expect(programLabel).not.toHaveText("");
   await expect(decision.getByText(/Why this day:/)).toHaveCount(0);
   await expect(trainAsPlanned).toBeVisible();
-  const hasPendingDecision = (await decisionStatus.count()) > 0;
-  if (hasPendingDecision) {
+  const hasAmbientDecision = (await todayInsight.count()) > 0;
+  const hasPendingDecision =
+    hasAmbientDecision || (await decisionStatus.count()) > 0;
+  if (hasAmbientDecision) {
+    await expect(todayInsight).toHaveCount(1);
+    await expect(todayInsight).toContainText("ready to review");
+    await expect(
+      todayInsight.getByRole("link", { name: /Review (decision|hold)/ }),
+    ).toBeVisible();
+    await expect(
+      todayInsight.getByText("How calculated", { exact: true }),
+    ).toBeVisible();
+  } else if (hasPendingDecision) {
     await expect(decisionStatus).toBeVisible();
     await expect(decisionStatus).toContainText(/Program changes? pending/);
   } else {
@@ -335,7 +347,7 @@ async function verifyDecisiveToday({
     )
     .toMatch(
       hasPendingDecision
-        ? /^(Program decision status|Workout options|Preview planned exercises)/
+        ? /^(Review decision|Review hold|Program decision status|Workout options|Preview planned exercises)/
         : /^(Workout options|Preview planned exercises)/,
     );
   await alternateSummary.focus();
@@ -406,7 +418,7 @@ async function verifyDecisiveToday({
     const responsiveActiveDecision = await activeDecision.evaluate((element) => {
       const primary = element.querySelector('[data-slot="button"]');
       const status = element.querySelector(
-        '[aria-label^="Program decision status"]'
+        '[aria-label^="Program decision status"], [data-testid="athlete-insight-today"]'
       );
       const bottomNavigation = document.querySelector("nav.fixed");
       if (!primary) return null;
@@ -613,15 +625,23 @@ async function verifyReviewAndDecisions({
     .toEqual({ preference: "extra-large", rootSize: "23.2px" });
 
   await page.goto("/today");
-  const decisionLink = page.locator(
-    '[aria-label^="Program decision status: 2 changes need review"]'
+  const todayInsight = page.getByTestId("athlete-insight-today");
+  await expect(todayInsight).toHaveCount(1);
+  await expect(todayInsight).toContainText("ready to review");
+  await expect(todayInsight).toContainText(
+    /Program is unchanged|nothing changes without your approval/,
   );
-  await expect(decisionLink).toContainText("2 Program changes pending");
-  await expect(decisionLink).toHaveAttribute("href", "/coach");
+  const decisionLink = todayInsight.getByRole("link", {
+    name: /Review (decision|hold)/,
+  });
+  await expect(decisionLink).toHaveAttribute(
+    "href",
+    /\/coach#recommendation-/,
+  );
   await decisionLink.focus();
   await expect(decisionLink).toBeFocused();
   await decisionLink.press("Enter");
-  await expect(page).toHaveURL(/\/coach$/);
+  await expect(page).toHaveURL(/\/coach#recommendation-/);
   await expect(
     page.getByRole("heading", { name: "Review and decisions", exact: true })
   ).toBeVisible();
@@ -1503,6 +1523,170 @@ test("answers all five History questions without mixing independent activity int
       ? []
       : browserErrors;
   expect(unexpectedBrowserErrors).toEqual([]);
+});
+
+test("shows one ambient insight without sending it to Coach", async ({
+  page,
+}) => {
+  test.setTimeout(120_000);
+  await page.setViewportSize({ width: 390, height: 844 });
+  const browserErrors: string[] = [];
+  const coachRequests: string[] = [];
+  page.on("console", (message) => {
+    if (message.type() === "error") browserErrors.push(message.text());
+  });
+  page.on("pageerror", (error) => browserErrors.push(error.message));
+  page.on("request", (request) => {
+    if (request.url().includes("/api/live-coach/respond")) {
+      coachRequests.push(request.url());
+    }
+  });
+
+  await signInAndStartWorkout(page);
+  let currentExercise = page.getByTestId("current-exercise-card");
+  await expect(
+    currentExercise.getByRole("heading", {
+      name: "Romanian Deadlift",
+      exact: true,
+    }),
+  ).toBeVisible();
+  await currentExercise.getByLabel("Total load").fill("115");
+  await currentExercise
+    .getByRole("textbox", { name: "Reps", exact: true })
+    .fill("10");
+  await currentExercise
+    .getByRole("button", { name: "Log set", exact: true })
+    .click();
+  await expect(currentExercise.getByTestId("completed-sets")).toContainText(
+    "Acknowledged by Repbook",
+  );
+
+  // The demo rows deliberately retain legacy-unknown load meaning. Complete
+  // one live workout first so the comparison proof comes from a newly saved,
+  // fully typed record rather than making the old fixture look more certain.
+  await page
+    .getByRole("complementary", { name: "Workout status" })
+    .getByRole("button", {
+      name: /^(?:Review workout finish|Finish workout)$/,
+    })
+    .click();
+  let finish = page.getByRole("dialog", { name: "Finish workout" });
+  await finish
+    .getByLabel("Why are you finishing this workout early?")
+    .selectOption("time_limit_reached");
+  await finish
+    .getByRole("button", { name: /^(?:Finish early|Save workout)$/ })
+    .click();
+  await expect(page).toHaveURL(/\/history\/[0-9a-f-]+\?finished=1$/);
+  workoutMayBeActive = false;
+
+  await page.goto("/today");
+  const dayB = page.getByRole("heading", {
+    name: "Day B — Hinge",
+    exact: true,
+  });
+  if ((await dayB.count()) === 0) {
+    const alternateDays = page.getByTestId("alternate-program-days");
+    await alternateDays.locator("summary").click();
+    await page.getByRole("button", { name: /Day B — Hinge/ }).click();
+    await expect(dayB).toBeVisible();
+  }
+  const startAgain = page.getByRole("button", {
+    name: /^(?:Train as planned|Start workout)$/,
+  });
+  await waitForHydratedServerAction(startAgain);
+  workoutMayBeActive = true;
+  await startAgain.click();
+  await expect(page).toHaveURL(/\/session\/[0-9a-f-]+$/);
+  await waitForEquipmentSelectionsToSettle(page);
+
+  currentExercise = page.getByTestId("current-exercise-card");
+  await expect(
+    currentExercise.getByRole("heading", {
+      name: "Romanian Deadlift",
+      exact: true,
+    }),
+  ).toBeVisible();
+  await currentExercise.getByLabel("Total load").fill("115");
+  await currentExercise
+    .getByRole("textbox", { name: "Reps", exact: true })
+    .fill("10");
+  await currentExercise
+    .getByRole("button", { name: "Log set", exact: true })
+    .click();
+
+  const insight = page.getByTestId("athlete-insight-active_set");
+  await expect(insight).toHaveCount(1);
+  await expect(insight).toContainText(
+    "Matched your recent Romanian Deadlift best: 115 lb × 10",
+  );
+  await expect(
+    insight.getByText("How calculated", { exact: true }),
+  ).toBeVisible();
+  const activeLogSet = currentExercise.getByTestId("active-log-set");
+  await expect(activeLogSet).toBeVisible();
+  expect(
+    await activeLogSet.evaluate((button) => {
+      const renderedInsight = document.querySelector(
+        '[data-testid="athlete-insight-active_set"]',
+      );
+      return renderedInsight != null && Boolean(
+        button.compareDocumentPosition(renderedInsight) &
+          Node.DOCUMENT_POSITION_FOLLOWING,
+      );
+    }),
+  ).toBe(true);
+
+  await insight.getByRole("button", { name: "Explain", exact: true }).click();
+  const coach = page.getByRole("dialog", { name: "Live Coach" });
+  await expect(coach).toBeVisible();
+  await expect(
+    coach.getByText("No Coach messages for this workout yet.", { exact: true }),
+  ).toBeVisible();
+  const coachQuestion = coach.getByRole("textbox", {
+    name: "Question for Live Coach",
+  });
+  await expect(coachQuestion).toHaveValue(
+    /Explain this deterministic Repbook training insight in plain language\./,
+  );
+  await expect(coachQuestion).toHaveValue(/Source records:/);
+  await expect(coachQuestion).toHaveValue(
+    /Treat it as evidence, not as an automatic Program change\./,
+  );
+  expect(coachRequests).toEqual([]);
+  await page.keyboard.press("Escape");
+  await expect(coach).toHaveCount(0);
+  expect(coachRequests).toEqual([]);
+
+  await page
+    .getByRole("complementary", { name: "Workout status" })
+    .getByRole("button", {
+      name: /^(?:Review workout finish|Finish workout)$/,
+    })
+    .click();
+  finish = page.getByRole("dialog", { name: "Finish workout" });
+  await finish
+    .getByLabel("Why are you finishing this workout early?")
+    .selectOption("time_limit_reached");
+  await finish
+    .getByRole("button", { name: /^(?:Finish early|Save workout)$/ })
+    .click();
+
+  await expect(page).toHaveURL(/\/history\/[0-9a-f-]+\?finished=1$/);
+  workoutMayBeActive = false;
+  const summary = page.getByTestId("workout-summary");
+  await expect(summary.getByText("1 held", { exact: true })).toBeVisible();
+  await expect(
+    summary.getByText("How calculated", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    summary.getByRole("link", {
+      name: "View comparison workout",
+      exact: true,
+    }),
+  ).toBeVisible();
+  expect(coachRequests).toEqual([]);
+  expect(browserErrors).toEqual([]);
 });
 
 test("signs in and completes a durable workout flow", async ({ page }) => {

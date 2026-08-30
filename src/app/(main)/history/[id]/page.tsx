@@ -49,6 +49,7 @@ import {
   classifySetMetricContainment,
   setMetricExclusionLabel,
   summarizePrescriptionOutcomes,
+  type SetLoadEntryMeaning,
 } from "@/lib/set-metric-semantics";
 import {
   classifyReportingTargetOutcome,
@@ -88,6 +89,11 @@ import {
   performedWorkingSetIds,
 } from "@/lib/history-workout-evidence";
 import { buildWorkoutSummaryViewModel } from "@/lib/workout-summary";
+import {
+  buildPostWorkoutSessionResultInsight,
+  type ExactComparableWorkoutEvidence,
+} from "@/lib/athlete-insights";
+import { getPreviousComparableSets } from "@/services/previous-comparable-sets";
 
 function techniqueIssueLabel(value: string | null) {
   return value != null && value in TECHNIQUE_ISSUE_LABELS
@@ -98,6 +104,16 @@ function techniqueIssueLabel(value: string | null) {
 function limitationCauseLabel(value: string | null) {
   return value != null && value in LIMITATION_CAUSE_LABELS
     ? LIMITATION_CAUSE_LABELS[value as LimitationCause]
+    : null;
+}
+
+function recognizedLoadEntryMeaning(value: string): SetLoadEntryMeaning | null {
+  return value === "total_system" ||
+    value === "per_loading_point" ||
+    value === "displayed_stack" ||
+    value === "per_stack" ||
+    value === "combined_stacks"
+    ? value
     : null;
 }
 
@@ -317,6 +333,26 @@ export default async function SessionDetailPage(
   const hasPositivePainEvidence = classifiedPainEvidence.some(
     ({ evidence }) => evidence.meaning === "pain",
   );
+  const positivePainCompletedSetIds = new Set(
+    classifiedPainEvidence.flatMap(({ pain, evidence }) =>
+      evidence.meaning === "pain" && pain.completedSetId != null
+        ? [pain.completedSetId]
+        : [],
+    ),
+  );
+  const positivePainExerciseIds = new Set(
+    classifiedPainEvidence.flatMap(({ pain, evidence }) =>
+      evidence.meaning === "pain" && pain.exerciseId != null
+        ? [pain.exerciseId]
+        : [],
+    ),
+  );
+  const hasUnscopedPositivePainEvidence = classifiedPainEvidence.some(
+    ({ pain, evidence }) =>
+      evidence.meaning === "pain" &&
+      pain.completedSetId == null &&
+      pain.exerciseId == null,
+  );
   const completedSetLabels = new Map(
     session.exercises.flatMap((exercise) => exercise.sets.map((set) => [
       set.id,
@@ -374,6 +410,45 @@ export default async function SessionDetailPage(
       exercise.sets.filter((set) => performedWorkingSetIdSet.has(set.id)),
     ]),
   );
+  const postWorkoutComparisonRequests = session.exercises.flatMap((exercise) => {
+    const performed = performedSetsBySessionExerciseId.get(exercise.id) ?? [];
+    if (performed.length === 0) return [];
+    const numericMeanings = new Set(
+      performed.flatMap((set) =>
+        set.metricType === "weight_reps" || set.metricType === "assisted_reps"
+          ? [recognizedLoadEntryMeaning(set.loadEntryMeaning)]
+          : [],
+      ),
+    );
+    const recordedLoadUnits = new Set(
+      performed.flatMap((set) =>
+        (set.metricType === "weight_reps" ||
+          set.metricType === "assisted_reps") &&
+        (set.weightUnit === "lb" || set.weightUnit === "kg")
+          ? [set.weightUnit]
+          : [],
+      ),
+    );
+    return [{
+      sessionExerciseId: exercise.id,
+      loadEntryMeaning:
+        numericMeanings.size === 1
+          ? ([...numericMeanings][0] ?? null)
+          : null,
+      targetLoadUnit:
+        recordedLoadUnits.size === 1
+          ? ([...recordedLoadUnits][0] ?? null)
+          : null,
+    }];
+  });
+  const previousComparableByExercise =
+    session.status === "completed" && postWorkoutComparisonRequests.length > 0
+      ? await getPreviousComparableSets(
+          db,
+          user.id,
+          postWorkoutComparisonRequests,
+        )
+      : {};
   const performedSetEvidence = session.exercises.flatMap((sessionExercise) =>
     (performedSetsBySessionExerciseId.get(sessionExercise.id) ?? []).map(
       (set) => {
@@ -516,6 +591,40 @@ export default async function SessionDetailPage(
     }
   }
   const targetOutcomes = summarizePrescriptionOutcomes(plannedTargetResults);
+  const sessionResultInsight = buildPostWorkoutSessionResultInsight({
+    sessionId: session.id,
+    exercises: session.exercises.map((exercise) => {
+      const previous = previousComparableByExercise[exercise.id];
+      return {
+        exerciseId: exercise.exerciseId,
+        exerciseName: exercise.exercise.name,
+        currentSets: performedSetEvidence
+          .filter(({ sessionExercise }) => sessionExercise.id === exercise.id)
+          .map(({ set, semantics }) => ({
+            setId: set.id,
+            metricType: set.metricType,
+            weight: set.weight,
+            weightUnit: set.weightUnit,
+            reps: set.reps,
+            comparisonEligible:
+              session.source !== "hevy" &&
+              set.performedSemanticsVersion === 1 &&
+              semantics.longitudinalComparable,
+            hasPainOrLimitation:
+              hasUnscopedPositivePainEvidence ||
+              positivePainCompletedSetIds.has(set.id) ||
+              positivePainExerciseIds.has(exercise.exerciseId) ||
+              techniqueIssueLabel(set.techniqueIssue) != null ||
+              limitationCauseLabel(set.limitationCause) != null,
+          })),
+        previous:
+          previous?.status === "available"
+            ? (previous satisfies ExactComparableWorkoutEvidence)
+            : null,
+      };
+    }),
+    targetOutcomes,
+  });
   const timingCorrectionCount = timingVersions.filter(
     (version) =>
       version.action === "workout_session.timing_correction" ||
@@ -605,6 +714,7 @@ export default async function SessionDetailPage(
     pendingDecisionCount: pendingRecs.length,
     incompleteReasonLabel,
     timingCanBeReviewed: session.status === "completed",
+    sessionResultInsight,
   });
   const painEvidenceSection = (
     <section
@@ -727,7 +837,10 @@ export default async function SessionDetailPage(
         </div>
       </header>
 
-      <WorkoutSummary summary={workoutSummary} />
+      <WorkoutSummary
+        summary={workoutSummary}
+        changedInsight={sessionResultInsight}
+      />
 
       {terminalState === "abandoned" && (
         <section className="ui-surface p-4 text-sm" data-ui-surface="attention">
