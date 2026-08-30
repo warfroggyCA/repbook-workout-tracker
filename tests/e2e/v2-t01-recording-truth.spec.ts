@@ -31,11 +31,24 @@ async function addWorkoutOnlyExercise(page: Page, name: string) {
     name: "Add exercise to this workout",
     exact: true,
   });
-  await waitForHydratedReactHandler(add);
-  await add.click();
   const picker = page.getByRole("dialog", {
     name: "Choose an exercise for this workout",
   });
+
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    await waitForHydratedReactHandler(add);
+    await add.click();
+    try {
+      await expect(picker).toBeVisible({ timeout: 15_000 });
+      break;
+    } catch (error) {
+      if (attempt === 1) throw error;
+      // A loaded, still-enabled trigger means WebKit missed the activation.
+      // Retry once; an in-flight or failed option request remains a real failure.
+      await expect(add).toBeEnabled({ timeout: 5_000 });
+    }
+  }
+
   await picker.getByRole("textbox", { name: "Search exercise library" }).fill(name);
   await picker
     .getByRole("button", { name: `View details for ${name}`, exact: true })

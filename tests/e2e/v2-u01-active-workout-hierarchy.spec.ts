@@ -588,7 +588,7 @@ async function revealCurrentFromStatusBar(page: Page) {
     .getByTestId("current-exercise-card")
     .getByTestId("exercise-swipe-surface");
   if ((await toggle.getAttribute("aria-expanded")) === "true") {
-    await toggle.click();
+    await toggle.press("Enter");
   }
   await expect(toggle).toHaveAttribute("aria-expanded", "false");
   const reveal = currentSetDockAction(page);
