@@ -181,8 +181,19 @@ async function skipCurrentSet(page: Page) {
     exact: true,
   });
   await expect(skip).toBeEnabled();
-  await clickCentered(page, skip);
   const dialog = page.getByRole("dialog", { name: /^Skip .+\?$/ });
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    await waitForHydratedReactHandler(skip);
+    try {
+      await clickCentered(page, skip);
+      await expect(dialog).toBeVisible({ timeout: 5_000 });
+      break;
+    } catch (error) {
+      if (await dialog.isVisible()) break;
+      if (attempt === 1) throw error;
+      await expect(skip).toBeEnabled({ timeout: 5_000 });
+    }
+  }
   await dialog.getByLabel("Reason").selectOption("time_limit_reached");
   await dialog.getByRole("button", { name: "Skip item", exact: true }).click();
   await expect(dialog).toHaveCount(0);
