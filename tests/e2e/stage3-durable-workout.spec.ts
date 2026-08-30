@@ -359,18 +359,31 @@ test("publishes and preserves durable warm-up and grouped workout outcomes", asy
   await finish.getByRole("button", { name: /^(?:Finish early|Save workout)$/ }).click();
   await expect(page).toHaveURL(/\/history\/[0-9a-f-]+\?finished=1$/);
 
+  const performed = page.getByRole("region", { name: "What you did" });
+  await expect(
+    performed.getByText("Completed warm-ups", { exact: true }),
+  ).toBeVisible();
+  await expect(performed).toContainText("Activation ramp");
   const outcomes = page.getByRole("heading", {
     name: "Plan and results",
   }).locator("..");
-  await expect(outcomes).toContainText("Activation ramp");
-  await expect(outcomes).toContainText(
+  await expect(outcomes).toContainText("Original exercise guidance");
+
+  const technicalRecord = page.locator("details#technical-record");
+  await expect(technicalRecord).not.toHaveAttribute("open", "");
+  await technicalRecord.locator(":scope > summary").click();
+  const ledger = technicalRecord
+    .getByRole("heading", { name: "Complete planned-item ledger" })
+    .locator("..");
+  await expect(ledger).toContainText("Activation ramp");
+  await expect(ledger).toContainText(
     "Planned: 8 reps · 45 lb · Move smoothly and brace before every rep.",
   );
-  await expect(outcomes).toContainText("Barbell Overhead Press · set 1");
-  await expect(outcomes).toContainText("Reason: Pain or discomfort");
-  await expect(outcomes).toContainText("Note: Shoulder discomfort during setup.");
-  await expect(outcomes).toContainText("Group round 1 · member 2 · 15s rest after");
-  await expect(outcomes).toContainText("Group round 1 · member 3 · 30s rest after");
+  await expect(ledger).toContainText("Barbell Overhead Press · set 1");
+  await expect(ledger).toContainText("Reason: Pain or discomfort");
+  await expect(ledger).toContainText("Note: Shoulder discomfort during setup.");
+  await expect(ledger).toContainText("Group round 1 · member 2 · 15s rest after");
+  await expect(ledger).toContainText("Group round 1 · member 3 · 30s rest after");
   await expect(
     page.getByText(`Performed ${performedExercise} instead of Band Lat Pulldown.`, {
       exact: false,

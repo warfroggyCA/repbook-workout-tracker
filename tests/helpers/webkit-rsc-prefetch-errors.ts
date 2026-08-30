@@ -139,17 +139,16 @@ export function isCorrelatedWebKitRscPrefetchCancellation(
 export function isExpectedWebKitRscLinkCancellation(
   message: string,
   browserName: string,
-  expectedPaths: ReadonlySet<string>,
+  expectedTargets: ReadonlySet<string>,
 ) {
   if (browserName !== "webkit") return false;
 
   const url = parseWebKitRscCancellation(message);
   if (!url) return false;
 
-  return (
-    expectedPaths.has(url.pathname) &&
-    [...url.searchParams.keys()].every((key) => key === "_rsc")
-  );
+  const target = new URL(url);
+  target.searchParams.delete("_rsc");
+  return expectedTargets.has(`${target.pathname}${target.search}`);
 }
 
 export function isExpectedWebKitRscHistoryLinkCancellation(
