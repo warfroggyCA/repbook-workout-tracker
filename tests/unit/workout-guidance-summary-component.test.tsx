@@ -93,6 +93,19 @@ describe("WorkoutGuidanceSummary", () => {
     expect(html).not.toContain("Next:</span>");
   });
 
+  it("keeps deferred next-work guidance out of the summary while a save or rest surface owns it", () => {
+    const html = renderToStaticMarkup(
+      <WorkoutGuidanceSummary
+        guidance={{ ...guidance, currentAction: null }}
+        compact
+        deferCurrentActionToCockpit
+        deferNextActionToCurrentCard
+      />,
+    );
+
+    expect(html).not.toContain("Next:</span>");
+  });
+
   it("names appended performed work as an extra instead of extending planned numbering", () => {
     const html = renderToStaticMarkup(
       <WorkoutGuidanceSummary

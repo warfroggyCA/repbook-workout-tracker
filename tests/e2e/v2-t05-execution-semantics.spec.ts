@@ -44,6 +44,26 @@ async function currentExerciseName(page: Page) {
     .innerText();
 }
 
+async function addWorkoutOnlyExercise(page: Page, name: string) {
+  const add = page.getByRole("button", {
+    name: "Add exercise to this workout",
+    exact: true,
+  });
+  await waitForHydratedReactHandler(add);
+  await add.click();
+  const picker = page.getByRole("dialog", {
+    name: "Choose an exercise for this workout",
+  });
+  await picker.getByRole("textbox", { name: "Search exercise library" }).fill(name);
+  await picker
+    .getByRole("button", { name: `View details for ${name}`, exact: true })
+    .click();
+  await picker.getByRole("button", { name: "Review exercise", exact: true }).click();
+  const review = page.getByRole("dialog", { name: "Add exercise to this workout" });
+  await review.getByRole("button", { name: "Add exercise", exact: true }).click();
+  await expect(page.getByRole("region", { name })).toContainText("Workout only");
+}
+
 async function clickCentered(page: Page, locator: Locator) {
   const settleCenteredHitTest = async () => {
     await locator.evaluate((element) => {
@@ -147,12 +167,16 @@ async function skipCurrentSet(page: Page) {
   await expect(currentEntry).toHaveCount(1);
   const priorOccurrenceId = await currentEntry.getAttribute("id");
   expect(priorOccurrenceId).toMatch(/^(?:set-entry|added-set-entry)-/);
-  if ((await currentEntry.getAttribute("data-testid")) === "current-set-entry") {
-    await openNativeDetails(currentEntry.locator("details", {
-      hasText: "Set exceptions",
-    }));
+  const isPlannedEntry =
+    (await currentEntry.getAttribute("data-testid")) === "current-set-entry";
+  if (isPlannedEntry) {
+    await openNativeDetails(
+      current.getByTestId("active-exercise-details"),
+    );
   }
-  const skip = currentEntry.getByRole("button", {
+  const skip = (isPlannedEntry
+    ? current.getByTestId("active-exercise-details")
+    : currentEntry).getByRole("button", {
     name: "Skip set",
     exact: true,
   });
@@ -214,21 +238,24 @@ test("keeps one ledger-driven current/next/group/rest state through retry, inter
   const status = page.getByRole("complementary", { name: "Workout status" });
 
   const first = page.getByTestId("current-exercise-card");
-  await expect(guidance).toContainText("Now: Barbell Back Squat, set 1");
-  await first.locator("details", {
-    hasText: "Extra sets",
-  }).locator(":scope > summary").click();
+  await expect(first.getByTestId("active-workout-primary"))
+    .toHaveAttribute("aria-label", "Barbell Back Squat, Set 1");
+  await expect(guidance).not.toContainText("Now:");
+  await expect(guidance).not.toContainText("Next:");
+  await openNativeDetails(first.getByTestId("active-exercise-details"));
   const addExtra = first.getByRole("button", { name: "Add extra set", exact: true });
   await waitForHydratedReactHandler(addExtra);
   await addExtra.click();
   await expect(first.getByTestId("added-set-entry")).toContainText(
     "Extra set 1 · Added to this workout",
   );
-  await expect(guidance).toContainText("Now: Barbell Back Squat, set 1");
+  await addWorkoutOnlyExercise(page, "RKC Plank");
+  await expect(first.getByTestId("active-workout-primary"))
+    .toHaveAttribute("aria-label", "Barbell Back Squat, Set 1");
 
   const otherExercise = page.getByRole("region", { name: "Dumbbell Bench Press" });
   await otherExercise.getByTestId("exercise-swipe-surface").click();
-  await expect(guidance).toContainText("Now: Barbell Back Squat, set 1");
+  await expect(guidance).not.toContainText("Now:");
   await expect(guidance).toContainText("Next: Barbell Back Squat, set 2");
   const showCurrent = status.getByRole("button", {
     name: "Show Barbell Back Squat, Set 1",
@@ -240,7 +267,9 @@ test("keeps one ledger-driven current/next/group/rest state through retry, inter
     page.getByTestId("current-exercise-card").getByTestId("exercise-swipe-surface"),
   ).toHaveAttribute("aria-expanded", "true");
   await expect(status.getByTestId("active-workout-dock-primary"))
-    .toHaveAccessibleName("Log Barbell Back Squat, Set 1");
+    .toHaveCount(0);
+  await expect(page.getByTestId("active-workout-primary"))
+    .toHaveAttribute("aria-label", "Barbell Back Squat, Set 1");
 
   for (let count = 0; count < 20; count += 1) {
     if ((await currentExerciseName(page)) === "Dumbbell Lateral Raise") break;
@@ -286,12 +315,15 @@ test("keeps one ledger-driven current/next/group/rest state through retry, inter
   await expect(
     page.getByRole("region", { name: "Dumbbell Lateral Raise" }),
   ).toContainText("Retrying");
-  await expect(guidance).toContainText(
-    /Now: Superset, round 1, member 2 of 2: Pallof Press, set 1/,
+  const retryCurrent = page.getByTestId("current-exercise-card");
+  await expect(retryCurrent.getByTestId("active-workout-primary"))
+    .toHaveAttribute("aria-label", "Pallof Press, Set 1");
+  await expect(retryCurrent).toContainText("Next action");
+  await expect(retryCurrent).toContainText(
+    "Superset, round 2, member 1 of 2: Dumbbell Lateral Raise, set 2",
   );
-  await expect(guidance).toContainText(
-    /Next: Superset, round 2, member 1 of 2: Dumbbell Lateral Raise, set 2/,
-  );
+  await expect(guidance).not.toContainText("Now:");
+  await expect(guidance).not.toContainText("Next:");
   await expect(status.getByLabel("Rest timer")).toHaveCount(0);
 
   const background = await context.newPage();
@@ -312,23 +344,24 @@ test("keeps one ledger-driven current/next/group/rest state through retry, inter
       .getByTestId("current-exercise-card")
       .getByRole("button", { name: "Log set", exact: true }),
   );
-  await expect(status.getByLabel("Rest timer")).toBeVisible();
-  await expect(guidance).toContainText(
-    "Now: Resting before Superset, round 2, member 1 of 2: Dumbbell Lateral Raise, set 2",
+  const rest = status.getByRole("region", { name: "Rest timer" });
+  await expect(rest).toBeVisible();
+  await expect(rest).toContainText(
+    "Next: Superset, round 2, member 1 of 2: Dumbbell Lateral Raise, set 2",
   );
-  await expect(guidance).toContainText(
-    /Next: Superset, round 2, member 1 of 2: Dumbbell Lateral Raise, set 2/,
-  );
+  await expect(guidance).not.toContainText("Now:");
+  await expect(guidance).not.toContainText("Next:");
   await expect(group).toContainText("Round rest in progress.");
   await expect(group).toContainText("Next member: 1 of 2 · Dumbbell Lateral Raise");
 
   await page.reload({ waitUntil: "domcontentloaded" });
   const restoredStatus = page.getByRole("complementary", { name: "Workout status" });
-  await expect(restoredStatus.getByLabel("Rest timer")).toBeVisible();
-  await expect(
-    page.getByRole("region", { name: "Workout progress and upcoming work" }),
-  ).toContainText(
-    "Now: Resting before Superset, round 2, member 1 of 2: Dumbbell Lateral Raise, set 2",
+  const restoredRest = restoredStatus.getByRole("region", {
+    name: "Rest timer",
+  });
+  await expect(restoredRest).toBeVisible();
+  await expect(restoredRest).toContainText(
+    "Next: Superset, round 2, member 1 of 2: Dumbbell Lateral Raise, set 2",
   );
   await clickCentered(
     page,
@@ -339,7 +372,7 @@ test("keeps one ledger-driven current/next/group/rest state through retry, inter
   ).toBeVisible();
   await page.reload({ waitUntil: "domcontentloaded" });
   const interruptedStatus = page.getByRole("complementary", { name: "Workout status" });
-  await expect(interruptedStatus).toContainText("Ready");
+  await expect(interruptedStatus).toContainText("Rest complete");
   await clickCentered(
     page,
     interruptedStatus.getByRole("button", {
@@ -351,16 +384,119 @@ test("keeps one ledger-driven current/next/group/rest state through retry, inter
   await skipCurrentSet(page);
   await expect.poll(() => currentExerciseName(page)).toBe("Pallof Press");
   await skipCurrentSet(page);
+  await expect(guidance).not.toContainText("Now:");
   await expect(
-    page.getByRole("region", { name: "Workout progress and upcoming work" }),
-  ).toContainText("Now: Barbell Back Squat, extra set 1");
-  await expect(status).toContainText("Extra set 1");
+    page
+      .getByTestId("current-exercise-card")
+      .getByTestId("added-set-entry"),
+  ).toContainText("Extra set 1 · Added to this workout");
+
+  let finalSetRequests = 0;
+  await page.route("**/session/**", async (route) => {
+    const request = route.request();
+    if (
+      request.method() === "POST" &&
+      request.headers()["next-action"] &&
+      (request.postData() ?? "").includes('"setNo"')
+    ) {
+      finalSetRequests += 1;
+      if (finalSetRequests === 1) {
+        await route.fulfill({ status: 500, body: "Injected T05 final backoff" });
+        return;
+      }
+    }
+    await route.continue();
+  });
+
   await clickCentered(
     page,
     page
       .getByTestId("current-exercise-card")
       .getByRole("button", { name: "Log set", exact: true }),
   );
+  await expect.poll(() => finalSetRequests).toBe(1);
+  await expect.poll(async () => page.evaluate(() => {
+    const raw = localStorage.getItem("workout-tracker:workout-set-outbox:v1");
+    if (raw == null) return null;
+    const parsed = JSON.parse(raw) as {
+      entries?: Array<{
+        clientKey?: string;
+        attemptCount?: number;
+        nextAttemptAtISO?: string | null;
+      }>;
+    };
+    const retained = parsed.entries?.[0];
+    if (
+      retained?.clientKey == null || retained.attemptCount !== 1 ||
+      retained.nextAttemptAtISO == null
+    ) return null;
+    return retained.clientKey;
+  })).not.toBeNull();
+  const penultimateClientKey = await page.evaluate(() => {
+    const raw = localStorage.getItem("workout-tracker:workout-set-outbox:v1")!;
+    const parsed = JSON.parse(raw) as {
+      entries: Array<{ clientKey: string; nextAttemptAtISO: string | null }>;
+    };
+    parsed.entries[0].nextAttemptAtISO = new Date(Date.now() + 60_000).toISOString();
+    localStorage.setItem(
+      "workout-tracker:workout-set-outbox:v1",
+      JSON.stringify(parsed),
+    );
+    window.dispatchEvent(new Event("workout-set-outbox-change"));
+    return parsed.entries[0].clientKey;
+  });
+  const finalRest = status.getByRole("region", { name: "Rest timer" });
+  await expect(finalRest).toBeVisible();
+  await expect(finalRest).toContainText("Next: RKC Plank, set 1");
+  await finalRest.getByRole("button", { name: "Skip rest", exact: true }).click();
+  await status
+    .getByRole("button", { name: "Dismiss rest timer", exact: true })
+    .click();
+  await expect.poll(() => currentExerciseName(page)).toBe("RKC Plank");
+  await page
+    .getByTestId("current-exercise-card")
+    .getByLabel("Duration in seconds")
+    .fill("45");
+
+  await clickCentered(
+    page,
+    page
+      .getByTestId("current-exercise-card")
+      .getByRole("button", { name: "Log set", exact: true }),
+  );
+  await expect.poll(() => finalSetRequests).toBe(2);
+  await expect.poll(async () => page.evaluate(() => {
+    const raw = localStorage.getItem("workout-tracker:workout-set-outbox:v1");
+    if (raw == null) return [];
+    const parsed = JSON.parse(raw) as { entries?: Array<{ clientKey?: string }> };
+    return parsed.entries?.map((entry) => entry.clientKey) ?? [];
+  })).toEqual([penultimateClientKey]);
+  await expect.poll(async () => page.evaluate(() => {
+    const outboxRaw = localStorage.getItem("workout-tracker:workout-set-outbox:v1");
+    const receiptRaw = localStorage.getItem(
+      "workout-tracker:workout-rest-intent-receipts:v1",
+    );
+    if (outboxRaw == null || receiptRaw == null) return null;
+    const outbox = JSON.parse(outboxRaw) as {
+      entries?: Array<{ clientKey?: string }>;
+    };
+    const receipts = JSON.parse(receiptRaw) as {
+      entries?: Array<{ clientKey?: string; restAfterSec?: number | null }>;
+    };
+    const retainedKey = outbox.entries?.[0]?.clientKey;
+    const receipt = receipts.entries?.[0];
+    return {
+      retainedKey,
+      receiptKey: receipt?.clientKey ?? null,
+      restAfterSec: receipt?.restAfterSec,
+      receiptIsLater: receipt?.clientKey != null && receipt.clientKey !== retainedKey,
+    };
+  })).toEqual({
+    retainedKey: penultimateClientKey,
+    receiptKey: expect.any(String),
+    restAfterSec: null,
+    receiptIsLater: true,
+  });
   await expect(status).toContainText("Ready to finish");
   await expect(status.getByLabel("Rest timer")).toHaveCount(0);
   await expect(
@@ -371,6 +507,68 @@ test("keeps one ledger-driven current/next/group/rest state through retry, inter
       name: /^(?:Review workout finish|Finish workout)$/,
     }),
   ).toBeVisible();
+  await status
+    .getByRole("button", { name: "Review workout finish", exact: true })
+    .click();
+  const retainedFinish = page.getByRole("dialog", { name: "Finish workout" });
+  await expect(retainedFinish.getByText("1 set is still saving.")).toBeVisible();
+  await expect(
+    retainedFinish.getByRole("button", { name: "Save workout", exact: true }),
+  ).toBeDisabled();
+  await retainedFinish
+    .getByRole("button", { name: "Back to workout", exact: true })
+    .click();
+
+  await page.unrouteAll({ behavior: "wait" });
+  const recoveryPage = await context.newPage();
+  const recoveryPageErrors = observeGauntletPageErrors(recoveryPage, browserName);
+  await installNextDevelopmentRefreshControl(recoveryPage);
+  await recoveryPage.goto(page.url(), { waitUntil: "domcontentloaded" });
+  const recoveryStatus = recoveryPage.getByRole("complementary", {
+    name: "Workout status",
+  });
+  await expect(recoveryStatus).toContainText("Ready to finish");
+  await expect(recoveryStatus.getByLabel("Rest timer")).toHaveCount(0);
+  const recoveryTray = recoveryPage.getByRole("button", {
+    name: "Open sets waiting to save",
+  });
+  await waitForHydratedReactHandler(recoveryTray);
+  await recoveryTray.click();
+  const recoveryDrawer = recoveryPage.getByRole("dialog", {
+    name: "Sets waiting to save",
+  });
+  await recoveryDrawer.getByRole("button", { name: "Retry save" }).click();
+  await expect.poll(() => recoveryPage.evaluate(() => {
+    const raw = localStorage.getItem("workout-tracker:workout-set-outbox:v1");
+    if (raw == null) return 0;
+    const parsed = JSON.parse(raw) as { entries?: unknown[] };
+    return parsed.entries?.length ?? 0;
+  })).toBe(0);
+  await expect.poll(() => recoveryPage.evaluate(() =>
+    localStorage.getItem("workout-tracker:rest-timer:v1"),
+  )).toBeNull();
+  await expect.poll(() => recoveryPage.evaluate(() => {
+    const raw = localStorage.getItem(
+      "workout-tracker:workout-rest-intent-receipts:v1",
+    );
+    if (raw == null) return 0;
+    const parsed = JSON.parse(raw) as { entries?: unknown[] };
+    return parsed.entries?.length ?? 0;
+  })).toBe(0);
+  await recoveryPageErrors.expectNoUnexpected();
+  await recoveryPage.close();
+  await expect(status).toContainText("Ready to finish");
+  await expect(status.getByLabel("Rest timer")).toHaveCount(0);
+
+  await page.reload({ waitUntil: "domcontentloaded" });
+  const finalRestoredStatus = page.getByRole("complementary", {
+    name: "Workout status",
+  });
+  await expect(finalRestoredStatus).toContainText("Ready to finish");
+  await expect(finalRestoredStatus.getByLabel("Rest timer")).toHaveCount(0);
+  await expect.poll(() => page.evaluate(() =>
+    localStorage.getItem("workout-tracker:rest-timer:v1"),
+  )).toBeNull();
   expect(
     await page.evaluate(
       () => document.documentElement.scrollWidth - document.documentElement.clientWidth,

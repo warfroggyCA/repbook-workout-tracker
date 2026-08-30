@@ -509,7 +509,9 @@ test("keeps unrestricted replacement truthful and reachable through mobile keybo
   ).toBeVisible();
   await expect(confirm).toBeVisible();
   await page.unrouteAll({ behavior: "wait" });
-  await expect(preparation).toContainText(originalExerciseName);
+  await expect(
+    page.locator("main h2").filter({ hasText: originalExerciseName }),
+  ).toBeVisible();
 
   await confirm.click();
   await expect(picker).toHaveCount(0);
@@ -517,10 +519,17 @@ test("keeps unrestricted replacement truthful and reachable through mobile keybo
   await expect(card.getByRole("heading", { level: 2 })).toHaveText(
     "Bodyweight Bulgarian Split Squat",
   );
-  await expect(preparation).not.toContainText(originalExerciseName);
-  await expect(preparation).not.toContainText(
-    "Updating equipment after workout change.",
-  );
+  const replacementCard = page.locator('section[id^="exercise-"]').filter({
+    has: page.getByRole("heading", {
+      name: "Bodyweight Bulgarian Split Squat",
+      exact: true,
+      level: 2,
+    }),
+  });
+  await expect(replacementCard).toBeVisible();
+  await expect(
+    page.getByText("Updating equipment after workout change.", { exact: true }),
+  ).toHaveCount(0);
   await expect(card).toContainText("Reason: Variety");
   await expect(card).not.toContainText("Last time:");
   await expect(weight).toHaveCount(0);
@@ -531,8 +540,8 @@ test("keeps unrestricted replacement truthful and reachable through mobile keybo
   await reps.fill("9");
   await expect(reps).toHaveValue("9");
   await logSet.click();
-  await expect(card).toContainText("9 reps");
-  await expect(card).not.toContainText("0 lb");
+  await expect(replacementCard).toContainText("9 reps");
+  await expect(replacementCard).not.toContainText("0 lb");
 
   await expect
     .poll(
@@ -550,15 +559,9 @@ test("keeps unrestricted replacement truthful and reachable through mobile keybo
     .toBe(0);
 
   await page.reload();
-  await expect(page.getByTestId("current-exercise-card")).toContainText(
-    "Bodyweight Bulgarian Split Squat",
-  );
-  await expect(page.getByTestId("current-exercise-card")).toContainText(
-    "9 reps",
-  );
-  await expect(page.getByTestId("current-exercise-card")).not.toContainText(
-    "Last time:",
-  );
+  await expect(replacementCard).toContainText("Bodyweight Bulgarian Split Squat");
+  await expect(replacementCard).toContainText("9 reps");
+  await expect(replacementCard).not.toContainText("Last time:");
   await expect(page.getByText("Old implement and plate details are withheld.")).toHaveCount(0);
   await expect(page.getByTestId("session-preparation-panel")).toHaveCount(0);
   expectedRejectedRequest = false;

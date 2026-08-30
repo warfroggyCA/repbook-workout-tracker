@@ -402,7 +402,7 @@ describe("ExerciseCard", () => {
     expect(html).not.toContain("Reach this set in the workout flow");
   });
 
-  it("wraps a long active title and keeps comparable performance on its own row", () => {
+  it("wraps a long active title without repeating comparable performance in the header", () => {
     const html = renderToStaticMarkup(
       <ExerciseCard
         exercise={{
@@ -486,8 +486,10 @@ describe("ExerciseCard", () => {
     );
     expect(html).toContain("overflow-wrap:anywhere");
     expect(html).not.toContain("truncate");
-    expect(html).toContain('data-testid="active-exercise-performance-context"');
-    expect(html).toContain("Last:");
+    expect(html).not.toContain(
+      'data-testid="active-exercise-performance-context"',
+    );
+    expect(html).not.toContain("Last:");
   });
 
   it("renders one exact-best insight at exercise level and suppresses it while comparison evidence is refreshing", () => {
@@ -834,6 +836,10 @@ describe("ExerciseCard", () => {
     expect(html).toContain(
       `id="set-entry-${current.id}-00000000-0000-4000-8000-000000000003"`,
     );
+    expect(html.match(/data-testid="active-workout-primary"/g)).toHaveLength(1);
+    expect(html.match(/data-testid="active-exercise-details"/g)).toHaveLength(1);
+    expect(html.match(/<h2[^>]*>Barbell Squat<\/h2>/g)).toHaveLength(1);
+    expect(html).not.toContain(">Barbell Squat · Set 1<");
     expect(html).toContain("Total load");
     expect(html).toContain("Per side: 25 lb");
     expect(html).toContain("Enter exact RPE instead");
@@ -898,6 +904,15 @@ describe("ExerciseCard", () => {
     expect(html).toContain(
       "Adds ad-hoc work without changing the planned set order.",
     );
+
+    const restingHtml = renderToStaticMarkup(cloneElement(card, {
+      resting: true,
+    }));
+    expect(restingHtml).not.toContain('data-testid="current-set-entry"');
+    expect(restingHtml).not.toContain('data-testid="active-workout-primary"');
+    expect(restingHtml).not.toContain('data-testid="active-log-set"');
+    expect(restingHtml.match(/data-testid="active-exercise-details"/g))
+      .toHaveLength(1);
 
     const unavailableHtml = renderToStaticMarkup(cloneElement(card, {
       comparisonTemporarilyUnavailable: true,

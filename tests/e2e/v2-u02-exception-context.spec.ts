@@ -67,24 +67,24 @@ test("keeps ordinary completion minimal and makes exception evidence reversible,
     /Failed to fetch|Load failed|ERR_(?:FAILED|INTERNET_DISCONNECTED)|NetworkError when attempting to fetch resource/i,
   ]);
   await signInAndStartDayA(page);
+  const squatCard = page.getByRole("region", {
+    name: "Barbell Back Squat",
+    exact: true,
+  });
   const currentCard = page.getByTestId("current-exercise-card");
 
   let currentEntry = currentCard.getByTestId("current-set-entry");
-  const ordinaryDetails = currentEntry.locator("details", {
-    hasText: "Optional effort and set note",
-  });
+  const ordinaryDetails = currentCard.getByTestId("active-exercise-details");
   await expect(ordinaryDetails).not.toHaveAttribute("open", "");
   await expect(currentEntry.getByText("Technique issue", { exact: true }))
     .not.toBeVisible();
   await currentEntry.getByRole("button", { name: "Log set", exact: true }).click();
-  await expect(currentCard.getByTestId("completed-sets"))
+  await expect(squatCard.getByTestId("completed-sets"))
     .toContainText("Acknowledged by Repbook");
   await dismissRest(page);
 
   currentEntry = currentCard.getByTestId("current-set-entry");
-  const optional = currentEntry.locator("details", {
-    hasText: "Optional effort and set note",
-  });
+  const optional = currentCard.getByTestId("active-exercise-details");
   await optional.locator("summary").click();
   await expect(optional).toHaveAttribute("open", "");
   await expect(optional).toContainText(
@@ -175,7 +175,7 @@ test("keeps ordinary completion minimal and makes exception evidence reversible,
 
   await context.setOffline(false);
   await page.evaluate(() => window.dispatchEvent(new Event("online")));
-  const receipt = currentCard.getByTestId("completed-sets");
+  const receipt = squatCard.getByTestId("completed-sets");
   await expect(receipt).toContainText("Acknowledged by Repbook");
   await expect(receipt).toContainText("RIR 2");
   await expect(receipt).toContainText("Technique: Bracing");

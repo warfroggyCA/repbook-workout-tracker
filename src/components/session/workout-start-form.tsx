@@ -17,6 +17,10 @@ import {
   INITIAL_WORKOUT_START_STATE,
   retainedWorkoutStartRequestKey,
 } from "@/lib/workout-start";
+import {
+  markWorkoutInteraction,
+  WORKOUT_INTERACTION_MARKS,
+} from "@/lib/workout-interaction-performance";
 
 type Props = {
   templateId: string;
@@ -60,6 +64,7 @@ function StartButton({
       variant={variant}
       className={cn(className, retrying && "h-auto min-h-8 whitespace-normal py-2 text-balance")}
       disabled={pending}
+      aria-busy={pending}
       aria-describedby={retrying ? errorId : undefined}
     >
       {pending
@@ -68,6 +73,28 @@ function StartButton({
           ? `${statusUnknown ? "Check status" : "Try again"} — ${retryLabel}`
           : children}
     </Button>
+  );
+}
+
+function StartPendingStatus({ retryLabel }: { retryLabel: string }) {
+  const { pending } = useFormStatus();
+
+  useEffect(() => {
+    if (pending) {
+      markWorkoutInteraction(WORKOUT_INTERACTION_MARKS.workoutStartPending);
+    }
+  }, [pending]);
+
+  if (!pending) return null;
+  return (
+    <p
+      role="status"
+      aria-live="polite"
+      className="text-sm leading-relaxed text-muted-foreground"
+    >
+      Confirming {retryLabel}. Repbook will open the workout after its start is
+      confirmed.
+    </p>
   );
 }
 
@@ -107,6 +134,7 @@ export function WorkoutStartForm({
       action={formAction}
       className={cn("space-y-3", formClassName)}
       onSubmit={() => {
+        markWorkoutInteraction(WORKOUT_INTERACTION_MARKS.workoutStartSubmit);
         const detected = Intl.DateTimeFormat().resolvedOptions().timeZone;
         if (detected && timezoneInput.current) {
           timezoneInput.current.value = detected;
@@ -180,6 +208,7 @@ export function WorkoutStartForm({
       >
         {children}
       </StartButton>
+      <StartPendingStatus retryLabel={retryLabel} />
       {state.status === "error" && (
         <p
           ref={errorAlert}

@@ -2,6 +2,7 @@ import { expect, test, type Page } from "@playwright/test";
 import { resolve } from "node:path";
 import {
   installNextDevelopmentRefreshControl,
+  openNativeDetails,
   waitForEquipmentSelectionsToSettle,
   waitForHydratedReactHandler,
   waitForHydratedServerAction,
@@ -104,7 +105,7 @@ test("adds a reviewed workout-only exercise without editing the Program", async 
   await signIn(page);
   const initialCurrentActionLabel = await startWorkout(page);
   const preparation = page.getByTestId("session-preparation-panel");
-  const preparationRowsBefore = await preparation.locator("li").count();
+  await expect(preparation).toHaveCount(0);
   const plannedHeadingsBefore = await page
     .locator('section[aria-labelledby^="session-exercise-heading-"]')
     .count();
@@ -159,14 +160,10 @@ test("adds a reviewed workout-only exercise without editing the Program", async 
   }
   await review.getByRole("button", { name: "Add exercise", exact: true }).click();
 
-  const addedCard = page.getByRole("region", { name: "Push-Up" });
+  const addedCard = page.getByRole("region", { name: "Push-Up", exact: true });
   await expect(addedCard).toBeVisible();
   await expect(addedCard).toContainText("Workout only");
-  await expect(preparation).not.toContainText("Push-Up");
-  await expect(preparation.locator("li")).toHaveCount(preparationRowsBefore);
-  await expect(preparation).not.toContainText(
-    "Updating equipment after workout change.",
-  );
+  await expect(preparation).toHaveCount(0);
   const currentCard = page.getByTestId("current-exercise-card");
   if ((await currentCard.count()) > 0) {
     await expect(
@@ -192,7 +189,6 @@ test("adds a reviewed workout-only exercise without editing the Program", async 
   })).toBe(1);
   await context.setOffline(false);
   await expect(addedCard).toContainText("1/2 done · Workout only");
-  await expect(addedCard).toContainText("Set 2");
   await expect(
     page.locator('section[aria-labelledby^="session-exercise-heading-"]'),
   ).toHaveCount(plannedHeadingsBefore + 1);
@@ -221,7 +217,10 @@ test("adds a reviewed workout-only exercise without editing the Program", async 
   });
 
   await page.reload({ waitUntil: "domcontentloaded" });
-  const restoredAddedCard = page.getByRole("region", { name: "Push-Up" });
+  const restoredAddedCard = page.getByRole("region", {
+    name: "Push-Up",
+    exact: true,
+  });
   await expect(page.getByTestId("session-preparation-panel")).toHaveCount(0);
   await expect(restoredAddedCard).toContainText("Workout only");
   await expect(restoredAddedCard).toContainText("1/2 done · Workout only");
@@ -373,7 +372,7 @@ test("refuses incomplete assistance, then preserves assisted work without false 
     exact: true,
   });
   for (let index = 0; index < 6; index += 1) await decreaseRest.click();
-  await expect(workoutStatus).toContainText("Ready");
+  await expect(restTimer).toContainText("Rest complete");
   await page.setViewportSize({ width: 320, height: 700 });
   await expect
     .poll(() =>
@@ -436,14 +435,14 @@ test("refuses incomplete assistance, then preserves assisted work without false 
   await page.reload({ waitUntil: "domcontentloaded" });
   const restoredAssisted = page.getByRole("region", {
     name: "Assisted Push-Up",
+    exact: true,
   });
   await restoredAssisted
     .getByRole("button", { name: /Assisted Push-Up/ })
     .click();
-  await restoredAssisted
-    .getByTestId("completed-sets")
-    .locator("summary")
-    .click();
+  await openNativeDetails(
+    restoredAssisted.getByTestId("active-exercise-details"),
+  );
   await expect(
     restoredAssisted
       .getByText("Assistance: 40 lb · 8 reps", { exact: true }),

@@ -97,7 +97,12 @@ import {
   readActiveWorkoutMeasurements,
   writeActiveWorkoutMeasurement,
 } from "@/lib/active-workout-measurements";
+import {
+  markWorkoutInteraction,
+  WORKOUT_INTERACTION_MARKS,
+} from "@/lib/workout-interaction-performance";
 import { OccurrenceMutationDialog } from "./occurrence-mutation-dialog";
+import { ActiveSetCockpit } from "./active-set-cockpit";
 import type { IncompleteSessionReason } from "@/lib/session-completion-semantics";
 import { OccurrenceSaveStatus } from "./occurrence-save-status";
 import {
@@ -487,11 +492,15 @@ type Props = {
     set: LoggedSet,
     occurrence?: SessionOccurrenceData | null,
   ) => Promise<boolean>;
+  onPrepareSetLog?: (
+    occurrence?: SessionOccurrenceData | null,
+  ) => void;
   onAppendSet?: (
     occurrenceId: string,
     expectedSetNo: number,
   ) => Promise<SessionOccurrenceData | null>;
   activeOccurrence?: SessionOccurrenceData | null;
+  resting?: boolean;
   preparationBlocker?: SetOrderBlocker | null;
   futureProgramRemoval?: {
     href: string;
@@ -740,8 +749,10 @@ export function ExerciseCard({
   comparisonTemporarilyUnavailable = false,
   onPatch,
   onQueueSet,
+  onPrepareSetLog = () => undefined,
   onAppendSet = async () => null,
   activeOccurrence = null,
+  resting = false,
   preparationBlocker = null,
   futureProgramRemoval = null,
   workingOccurrences = [],
@@ -1160,6 +1171,7 @@ export function ExerciseCard({
     occurrence: SessionOccurrenceData | null = activeOccurrence,
     submittedDraft: SetDraft = draft,
   ) {
+    markWorkoutInteraction(WORKOUT_INTERACTION_MARKS.setLogTap);
     if (skipConfirmationPending || skipConfirmationError != null) {
       toast.info("Resolve the exercise skip before logging a set.");
       return;
@@ -1413,6 +1425,11 @@ export function ExerciseCard({
     activeOccurrence?.sessionExerciseId === exercise.id &&
     activeOccurrence.kind === "working_set" &&
     activeOccurrence.kindOrdinal === nextSetIdx;
+  const activeOccurrenceMutation = activeOccurrence == null
+    ? null
+    : occurrenceMutationEntries.find(
+        (entry) => entry.occurrenceId === activeOccurrence.id,
+      ) ?? null;
   const hasWarmupGuidance =
     exercise.modificationType !== "substituted" &&
     !!exercise.warmupNotes?.trim();
@@ -1675,18 +1692,6 @@ export function ExerciseCard({
               <AlertTriangle className="size-3.5 shrink-0 text-amber-500" />
             )}
           </div>
-          {isCurrentExercise && previousComparableSet &&
-          comparableProjection?.status === "available" && (
-            <p
-              data-testid="active-exercise-performance-context"
-              className="mt-1 break-words text-xs font-medium leading-5 text-foreground"
-            >
-              Last: {formatPreviousComparableSet(
-                previousComparableSet,
-                comparableProjection.semantics.metricType,
-              )}
-            </p>
-          )}
           <p className="break-words text-xs leading-5 text-muted-foreground">
             {isSkipped
               ? `Skipped (${exercise.skipReason})`
@@ -2009,6 +2014,17 @@ export function ExerciseCard({
                     <div className="mt-2 grid grid-cols-[1fr_auto] gap-2">
                       {skipConfirmationError == null ? (
                         <Button
+                          onPointerDown={() =>
+                            onPrepareSetLog(appendedOccurrence)
+                          }
+                          onKeyDown={(event) => {
+                            if (
+                              !event.repeat &&
+                              (event.key === "Enter" || event.key === " ")
+                            ) {
+                              onPrepareSetLog(appendedOccurrence);
+                            }
+                          }}
                           onClick={() =>
                             handleLog(i + 1, appendedOccurrence, appendedDraft)
                           }
@@ -2061,6 +2077,7 @@ export function ExerciseCard({
                 );
               }
               if (i === nextSetIdx) {
+                if (resting) return null;
                 if (isCurrentPlannedSet && !activeLoggingBlocked) {
                   return (
                     <div
@@ -2074,22 +2091,13 @@ export function ExerciseCard({
                           : "rounded-md border border-primary/40",
                       )}
                     >
-                      <div data-testid="active-workout-primary">
-                      {prioritizeCurrentAction ? (
-                        <div className="mb-3 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 px-1 py-1">
-                          <p className="ui-metadata text-foreground">
-                            Current action
-                          </p>
-                          <p className="ui-value" data-ui-essential="true">
-                            {rowPosition?.label ?? `Set ${i + 1}`} of {exercise.targetSets ?? "open"}
-                          </p>
-                        </div>
-                      ) : (
-                        <p className="mb-2 px-1 text-sm font-medium">
-                          Set {i + 1} of {exercise.targetSets ?? "open"}
-                        </p>
-                      )}
-                      <div className="mb-3 grid grid-cols-1 gap-2 min-[520px]:grid-cols-2">
+                      <ActiveSetCockpit
+                        exerciseName={exercise.name}
+                        setLabel={rowPosition?.label ?? `Set ${i + 1}`}
+                        totalSets={exercise.targetSets}
+                        prominent={prioritizeCurrentAction}
+                      >
+                        <div className="mb-3 grid grid-cols-1 gap-2 min-[370px]:grid-cols-2">
                         <div
                           data-testid="current-set-target"
                           data-ui-surface="inset"
@@ -2155,7 +2163,7 @@ export function ExerciseCard({
                           </p>
                         )}
                         </div>
-                      </div>
+                        </div>
                       {prioritizeCurrentAction && (
                         <p className="ui-metadata mb-2 grid grid-cols-[auto_minmax(0,1fr)] items-baseline gap-x-2">
                           <span className="whitespace-nowrap">Performed measure</span>
@@ -2208,6 +2216,17 @@ export function ExerciseCard({
                               prioritizeCurrentAction &&
                                 "min-h-12 w-full text-base font-semibold",
                             )}
+                            onPointerDown={() =>
+                              onPrepareSetLog(activeOccurrence)
+                            }
+                            onKeyDown={(event) => {
+                              if (
+                                !event.repeat &&
+                                (event.key === "Enter" || event.key === " ")
+                              ) {
+                                onPrepareSetLog(activeOccurrence);
+                              }
+                            }}
                             onClick={() => handleLog()}
                             disabled={
                               pending ||
@@ -2241,7 +2260,7 @@ export function ExerciseCard({
                           </Button>
                         )}
                       </div>
-                      </div>
+                      </ActiveSetCockpit>
                       <OccurrenceSaveStatus
                         entry={occurrenceMutation}
                         displayLabel={workingSetDisplayPosition(
@@ -2269,71 +2288,6 @@ export function ExerciseCard({
                           </p>
                         </div>
                       )}
-                      <details className="mt-1 rounded-md border border-dashed text-sm">
-                        <summary className="flex min-h-[44px] cursor-pointer list-none items-center justify-between gap-2 rounded-md px-2 py-1 font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
-                          <span>Set options</span>
-                          <span className="break-words text-right text-xs text-muted-foreground">
-                            {prioritizeCurrentAction
-                              ? "Effort, note or skip"
-                              : "Effort or note"}
-                          </span>
-                        </summary>
-                        <div className="space-y-3 border-t p-3">
-                          <section
-                            aria-labelledby={`optional-set-fields-${exercise.id}`}
-                          >
-                            <h3
-                              id={`optional-set-fields-${exercise.id}`}
-                              className="mb-2 font-medium"
-                            >
-                              Optional effort and set note
-                            </h3>
-                            <SetEntry
-                              metricType={performedMetricType}
-                              supported={metricSupported}
-                              draft={draft}
-                              setDraft={setDraft}
-                              onWeightEdit={() => {
-                                draftWeightEditedRef.current = true;
-                              }}
-                              stepWeight={stepWeight}
-                              unit={unit}
-                              hasWeight={recordsNumericLoad}
-                              weightLabel={liveWeightLabel}
-                              plateConfig={plateConfig}
-                              machineLoadConfig={machineLoadConfig}
-                              optionalOnly
-                            />
-                          </section>
-                          {prioritizeCurrentAction && (
-                              <section
-                                aria-labelledby={`set-exceptions-${exercise.id}`}
-                                className="border-t pt-3"
-                              >
-                                <h3
-                                  id={`set-exceptions-${exercise.id}`}
-                                  className="mb-2 font-medium"
-                                >
-                                  Set exceptions
-                                </h3>
-                                <Button
-                                  type="button"
-                                  variant="outline"
-                                  className="w-full"
-                                  disabled={
-                                    occurrenceChangesBlocked ||
-                                    Boolean(occurrenceMutation)
-                                  }
-                                  onClick={() =>
-                                    setSkipSetOccurrence(activeOccurrence)
-                                  }
-                                >
-                                  Skip set
-                                </Button>
-                              </section>
-                          )}
-                        </div>
-                      </details>
                     </div>
                   );
                 }
@@ -2388,8 +2342,9 @@ export function ExerciseCard({
                   </div>
                   {noteForSet && <p className="mt-1 text-xs">{noteForSet}</p>}
                 </div>
-              );
-            })}
+                );
+              })}
+          </div>
 
             {activeInsight && (
               <AthleteInsight
@@ -2400,18 +2355,79 @@ export function ExerciseCard({
             )}
 
             <details
-              data-testid="completed-sets"
-              className="mt-1 rounded-lg border bg-muted/15 text-sm"
+              data-testid="active-exercise-details"
+              className="rounded-lg border bg-muted/15 text-sm"
             >
               <summary className="flex min-h-[44px] cursor-pointer list-none items-center justify-between gap-2 rounded-lg px-2 py-1 font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
-                <span>Completed sets</span>
-                <span className="shrink-0 text-xs font-normal text-muted-foreground">
-                  {exercise.sets.filter(
-                    (set) => set.saveState == null || set.saveState === "saved",
-                  ).length} completed
+                <span>More for this exercise</span>
+                <span className="break-words text-right text-xs font-normal text-muted-foreground">
+                  Set options · Completed sets · Extra sets
                 </span>
               </summary>
-              <div className="space-y-2 border-t p-2">
+              <div className="space-y-3 border-t p-2">
+                {isCurrentPlannedSet && !resting ? (
+                  <section
+                    aria-labelledby={`optional-set-fields-${exercise.id}`}
+                    className="rounded-lg border bg-background p-3"
+                  >
+                    <h3
+                      id={`optional-set-fields-${exercise.id}`}
+                      className="mb-2 font-medium"
+                    >
+                      Optional effort and set note
+                    </h3>
+                    <SetEntry
+                      metricType={performedMetricType}
+                      supported={metricSupported}
+                      draft={draft}
+                      setDraft={setDraft}
+                      onWeightEdit={() => {
+                        draftWeightEditedRef.current = true;
+                      }}
+                      stepWeight={stepWeight}
+                      unit={unit}
+                      hasWeight={recordsNumericLoad}
+                      weightLabel={liveWeightLabel}
+                      plateConfig={plateConfig}
+                      machineLoadConfig={machineLoadConfig}
+                      optionalOnly
+                    />
+                    <div className="mt-3 border-t pt-3">
+                      <h4 className="mb-2 font-medium">Set exceptions</h4>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="w-full"
+                        disabled={
+                          occurrenceChangesBlocked ||
+                          activeOccurrenceMutation != null
+                        }
+                        onClick={() =>
+                          setSkipSetOccurrence(activeOccurrence)
+                        }
+                      >
+                        Skip set
+                      </Button>
+                    </div>
+                  </section>
+                ) : null}
+
+                <section
+                  data-testid="completed-sets"
+                  aria-labelledby={`completed-sets-heading-${exercise.id}`}
+                  className="rounded-lg border bg-background text-sm"
+                >
+                  <div className="flex min-h-[44px] items-center justify-between gap-2 rounded-lg px-2 py-1 font-medium">
+                    <h3 id={`completed-sets-heading-${exercise.id}`}>
+                      Completed sets
+                    </h3>
+                    <span className="shrink-0 text-xs font-normal text-muted-foreground">
+                      {exercise.sets.filter(
+                        (set) => set.saveState == null || set.saveState === "saved",
+                      ).length} completed
+                    </span>
+                  </div>
+                  <div className="space-y-2 border-t p-2">
                 {disclosedRowOrder.map((i) => {
                   const set = exercise.sets.find(
                     (candidate) => candidate.setNo === i + 1,
@@ -2549,16 +2565,19 @@ export function ExerciseCard({
                     No completed sets yet.
                   </p>
                 )}
-              </div>
-            </details>
+                  </div>
+                </section>
 
-            <details className="mt-1 rounded-lg border bg-muted/15 text-sm">
-              <summary className="flex min-h-[44px] cursor-pointer list-none items-center justify-between gap-2 rounded-lg px-2 py-1 font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
-                <span>Extra sets</span>
+                <section
+                  aria-labelledby={`extra-sets-heading-${exercise.id}`}
+                  className="rounded-lg border bg-background text-sm"
+                >
+              <div className="flex min-h-[44px] items-center justify-between gap-2 rounded-lg px-2 py-1 font-medium">
+                <h3 id={`extra-sets-heading-${exercise.id}`}>Extra sets</h3>
                 <span className="shrink-0 text-xs font-normal text-muted-foreground">
                   Add only if needed
                 </span>
-              </summary>
+              </div>
               <div className="space-y-2 border-t p-2">
                 <Button
                   type="button"
@@ -2583,16 +2602,18 @@ export function ExerciseCard({
                   Finish or skip this extra before adding one more.
                 </p>
               </div>
-            </details>
-          </div>
+                </section>
 
-          <details className="rounded-lg border bg-muted/15 text-sm">
-            <summary className="flex min-h-[44px] cursor-pointer list-none items-center justify-between gap-2 rounded-lg px-2 py-1 font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
-              <span>More for this exercise</span>
+          <section
+            aria-labelledby={`exercise-actions-heading-${exercise.id}`}
+            className="rounded-lg border bg-background text-sm"
+          >
+            <div className="flex min-h-[44px] items-center justify-between gap-2 rounded-lg px-2 py-1 font-medium">
+              <h3 id={`exercise-actions-heading-${exercise.id}`}>Exercise actions</h3>
               <span className="shrink-0 text-xs font-normal text-muted-foreground">
                 Notes, form &amp; swaps
               </span>
-            </summary>
+            </div>
             <div className="space-y-3 border-t p-2">
           <div className="flex flex-col gap-2" data-testid="exercise-reference-context">
             {exercise.modificationType === "added" && (
@@ -2971,7 +2992,9 @@ export function ExerciseCard({
           )}
 
             </div>
-          </details>
+          </section>
+              </div>
+            </details>
 
           <Drawer
             open={adjustIntent === "note"}
