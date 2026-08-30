@@ -90,8 +90,9 @@ export function HistoryCalendarWorkspace({
                   lens: lens.key,
                 })}
                 prefetch={false}
+                data-ui-surface={lens.tone === "watch" ? "attention" : "inset"}
                 className={cn(
-                  "group rounded-2xl border bg-card p-4 shadow-xs transition-colors hover:border-primary/35 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+                  "ui-motion-surface ui-surface group p-4 transition-colors hover:border-primary/35 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
                   lens.tone === "watch" && "border-amber-500/35",
                   lens.tone === "positive" && "border-success/25",
                 )}

@@ -149,4 +149,47 @@ describe("EquipmentSetupPanel", () => {
     expect(html).toContain('aria-label="Equipment setup for Cable Row"');
     expect(html).toMatch(/class="[^"]*min-h-11[^"]*"[^>]*>Retry setup/);
   });
+
+  it("reduces a settled single-option setup to one evidence line", () => {
+    const html = renderToStaticMarkup(
+      <EquipmentSetupPanel
+        sessionExerciseId="00000000-0000-4000-8000-000000000001"
+        exerciseName="Barbell Squat"
+        ownerId="00000000-0000-4000-8000-000000000010"
+        sessionId="00000000-0000-4000-8000-000000000011"
+        setup={{
+          sourceExerciseId: "00000000-0000-4000-8000-000000000012",
+          sourceTargetLoad: 135,
+          sourceTargetLoadUnit: "lb",
+          exact: true,
+          status: "available",
+          selectionRequired: false,
+          currentSnapshotId: "00000000-0000-4000-8000-000000000002",
+          currentEquipmentLabel: "Olympic barbell",
+          currentAttachmentLabel: null,
+          currentGuidance: "45 lb bar · load 45 lb per side.",
+          currentGuidanceByLoadEntryMeaning: {},
+          currentSelectionAvailable: true,
+          loadEntryMeaning: "total_system",
+          loadEntryMeaningChoices: [],
+          options: [{
+            key: "barbell",
+            equipmentItemId: "00000000-0000-4000-8000-000000000003",
+            equipmentLabel: "Olympic barbell",
+            attachmentItemId: null,
+            attachmentLabel: null,
+            guidance: "45 lb bar · load 45 lb per side.",
+          }],
+        }}
+        loadEntryMeaning="total_system"
+        onLoadEntryMeaningChange={() => undefined}
+      />,
+    );
+
+    expect(html).toContain("Equipment</span> · <span");
+    expect(html).toContain("Using Olympic barbell");
+    expect(html).toContain("45 lb bar · load 45 lb per side.");
+    expect(html).not.toContain("Physical setup");
+    expect(html).not.toContain("Load entry meaning");
+  });
 });

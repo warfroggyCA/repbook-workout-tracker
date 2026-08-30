@@ -609,9 +609,8 @@ export default async function SessionDetailPage(
   const painEvidenceSection = (
     <section
       id="pain-evidence"
-      className={`scroll-mt-4 rounded-xl border p-3 ${
-        hasPositivePainEvidence ? "border-destructive/40" : ""
-      }`}
+      data-ui-surface={hasPositivePainEvidence ? "destructive" : "primary"}
+      className="ui-surface scroll-mt-4 p-3"
     >
       <h2 className="mb-1 text-sm font-medium">Pain / no-issue evidence</h2>
       {classifiedPainEvidence.length === 0 ? (
@@ -641,7 +640,10 @@ export default async function SessionDetailPage(
   );
 
   return (
-    <main className="flex flex-col gap-4 p-4">
+    <main
+      data-ui-core-surface="post-workout"
+      className="athlete-workflow mx-auto flex max-w-5xl flex-col gap-4 p-4 sm:p-6 lg:p-8"
+    >
       <ContextualNoteScope
         value={{
           scopeId: `history-workout:${session.id}`,
@@ -692,11 +694,14 @@ export default async function SessionDetailPage(
       <header className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0">
           {justFinished && (
-            <p className="mb-2 rounded-md bg-green-500/10 px-3 py-2 text-sm text-green-700 dark:text-green-400">
+            <p
+              data-ui-state="saved"
+              className="ui-state mb-2 px-3 py-2 text-sm text-green-700 dark:text-green-400"
+            >
               Workout saved.
             </p>
           )}
-          <h1 className="text-2xl font-semibold [overflow-wrap:anywhere]">
+          <h1 className="ui-page-title [overflow-wrap:anywhere]">
             {session.templateName ?? "Workout"}
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
@@ -725,7 +730,7 @@ export default async function SessionDetailPage(
       <WorkoutSummary summary={workoutSummary} />
 
       {terminalState === "abandoned" && (
-        <section className="rounded-xl border border-amber-400/50 bg-amber-50/60 p-4 text-sm dark:bg-amber-950/20">
+        <section className="ui-surface p-4 text-sm" data-ui-surface="attention">
           <h2 className="font-medium">Retained abandoned-workout evidence</h2>
           <p className="mt-1 text-muted-foreground">
             Acknowledged performed facts remain visible and correctable. They are
@@ -736,7 +741,7 @@ export default async function SessionDetailPage(
       )}
 
       {terminalState === "completed_with_remaining_work" && (
-        <section className="rounded-xl border border-amber-400/50 bg-amber-50/60 p-4 text-sm dark:bg-amber-950/20">
+        <section className="ui-surface p-4 text-sm" data-ui-surface="attention">
           <h2 className="font-medium">Planned work remained</h2>
           <p className="mt-1 text-muted-foreground">
             Completed working sets remain performed evidence. Items left when
@@ -747,7 +752,7 @@ export default async function SessionDetailPage(
       )}
 
       {terminalState === "legacy_incomplete_outcome_unknown" && (
-        <section className="rounded-xl border border-amber-400/50 bg-amber-50/60 p-4 text-sm dark:bg-amber-950/20">
+        <section className="ui-surface p-4 text-sm" data-ui-surface="attention">
           <h2 className="font-medium">Legacy incomplete outcome</h2>
           <p className="mt-1 text-muted-foreground">
             Older occurrence text indicates work remained, but it does not
@@ -765,7 +770,7 @@ export default async function SessionDetailPage(
         aria-labelledby="what-you-did-heading"
       >
         <div>
-          <h2 id="what-you-did-heading" className="text-lg font-semibold">
+          <h2 id="what-you-did-heading" className="ui-section-title">
             What you did
           </h2>
           <p className="mt-1 text-sm text-muted-foreground">
@@ -775,7 +780,7 @@ export default async function SessionDetailPage(
         </div>
 
         {performedWarmups.length > 0 && (
-          <div className="rounded-xl border p-3">
+          <div className="ui-surface p-3" data-ui-surface="inset">
             <h3 className="font-medium">Completed warm-ups</h3>
             <p className="mt-1 text-xs text-muted-foreground">
               Completed warm-up actions are performed evidence, not working sets.
@@ -814,7 +819,7 @@ export default async function SessionDetailPage(
           const workingSets = performedSetsBySessionExerciseId.get(se.id) ?? [];
           const workingSetEquipment = buildHistoryEquipmentSetProjection(workingSets);
           return (
-          <section key={se.id} className="rounded-xl border p-3">
+          <section key={se.id} className="ui-surface p-3" data-ui-surface="primary">
             <div className="flex items-center justify-between">
               <div>
                 <h3 className="font-medium">{se.exercise.name}</h3>
@@ -936,13 +941,14 @@ export default async function SessionDetailPage(
                       <li
                         key={s.id}
                         id={`performed-set-${s.id}`}
-                        className="rounded-lg border bg-background px-3 py-2.5"
+                        data-ui-surface="inset"
+                        className="ui-surface px-3 py-2.5"
                       >
                         <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
                           <span className="font-medium text-muted-foreground">
                             {setPosition?.label ?? `Set ${s.setNo}`}
                           </span>
-                          <span className="ml-auto flex items-center gap-1.5 font-semibold text-foreground">
+                          <span className="ml-auto flex items-center gap-1.5 font-semibold text-foreground" data-ui-essential="true">
                             {formatSetMetric(s, {
                               countingBasis: displayCountingBasis,
                               loadSemantics:
@@ -1153,7 +1159,7 @@ export default async function SessionDetailPage(
         })}
 
         {totalSets === 0 && performedWarmups.length === 0 && (
-          <p className="rounded-xl border p-4 text-sm text-muted-foreground">
+          <p className="ui-surface p-4 text-sm text-muted-foreground" data-ui-surface="inset">
             No acknowledged performed working sets or completed warm-up actions
             are linked to this workout.
           </p>
@@ -1161,12 +1167,12 @@ export default async function SessionDetailPage(
       </section>
 
       {(session.occurrences.length > 0 || exercisePlanEvidence.length > 0) && (
-        <section className="rounded-xl border p-4">
+        <section className="ui-surface p-4" data-ui-surface="primary">
           <h2 className="font-medium">Plan and results</h2>
           <p className="mt-1 text-xs text-muted-foreground">
             Your original plan stays separate from what you actually did.
           </p>
-          <div className="mt-3 rounded-md border bg-muted/20 p-3">
+          <div className="ui-surface mt-3 p-3" data-ui-surface="inset">
             <h3 className="text-sm font-medium">Plan comparison</h3>
             <p className="mt-1 text-sm font-medium">
               {workoutSummary.changed.value}
@@ -1184,7 +1190,7 @@ export default async function SessionDetailPage(
             </div>
           )}
           {exercisePlanEvidence.length > 0 && (
-            <div className="mt-3 rounded-md border bg-muted/20 p-3">
+            <div className="ui-surface mt-3 p-3" data-ui-surface="inset">
               <h3 className="text-sm font-medium">Original exercise guidance</h3>
               <ul className="mt-2 space-y-2 text-sm">
                 {exercisePlanEvidence.map((exercise) => {

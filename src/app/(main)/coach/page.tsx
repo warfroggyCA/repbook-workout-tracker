@@ -67,9 +67,9 @@ function Metric({
   hint: string;
 }) {
   return (
-    <div className="rounded-xl border border-border/60 bg-card p-3 shadow-[var(--shadow-soft)]">
-      <p className="text-xs text-muted-foreground">{label}</p>
-      <p className="mt-1 text-xl font-semibold tabular-nums">{value}</p>
+    <div className="ui-surface p-3" data-ui-surface="inset">
+      <p className="ui-metadata">{label}</p>
+      <p className="ui-value mt-1" data-ui-essential="true">{value}</p>
       <p className="mt-0.5 text-xs text-muted-foreground">{hint}</p>
     </div>
   );
@@ -251,10 +251,13 @@ export default async function CoachPage() {
   };
 
   return (
-    <main className="mx-auto flex max-w-5xl flex-col gap-6 p-4 sm:p-6 lg:p-8">
+    <main
+      data-ui-core-surface="review"
+      className="athlete-workflow mx-auto flex max-w-5xl flex-col gap-6 p-4 sm:p-6 lg:p-8"
+    >
       <header className="flex flex-col gap-2">
         <div className="flex flex-wrap items-center gap-2">
-          <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">
+          <h1 className="ui-page-title">
             Review and decisions
           </h1>
           <Badge variant="secondary">
@@ -268,81 +271,16 @@ export default async function CoachPage() {
         </p>
       </header>
 
-      {externalObservations.length > 0 ? (
-        <section className="flex flex-col gap-3" aria-labelledby="external-observations-heading">
-          <div>
-            <h2 id="external-observations-heading" className="font-medium">Imported external observations</h2>
-            <p className="text-xs text-muted-foreground">
-              These are selected external-AI observations, not performed facts, Repbook calculations, or accepted decisions.
-            </p>
-          </div>
-          <ul className="grid gap-3 sm:grid-cols-2">
-            {externalObservations.map(({ importId, importedAt, observation, current }) => (
-              <li key={`${importId}-${observation.id}`} className="rounded-xl border bg-card p-4 shadow-[var(--shadow-soft)]">
-                <Badge variant={current ? "outline" : "destructive"}>
-                  {current ? "External AI observation" : "Stale external observation"}
-                </Badge>
-                <p className="mt-2 text-sm font-medium leading-6">{observation.statement}</p>
-                <p className="mt-2 text-xs text-muted-foreground">Evidence: {observation.evidenceIds.join(", ")}</p>
-                <p className="mt-1 text-xs text-muted-foreground">Limits: {observation.limitations.join(" · ")}</p>
-                {!current ? (
-                  <p className="mt-2 text-xs font-medium text-destructive">
-                    The bound Repbook evidence changed after this was imported. Treat this as historical external context and prepare a new package before relying on it.
-                  </p>
-                ) : null}
-                <p className="mt-2 text-xs text-muted-foreground">
-                  Imported {externalObservationDateFormatter.format(importedAt)}
-                </p>
-              </li>
-            ))}
-          </ul>
-        </section>
-      ) : null}
-
-      <section
-        className="rounded-xl border bg-card p-4 shadow-[var(--shadow-soft)]"
-        aria-labelledby="progression-criteria-heading"
-      >
-        <div className="flex flex-wrap items-start justify-between gap-2">
-          <div>
-            <h2 id="progression-criteria-heading" className="font-medium">
-              Load progression
-            </h2>
-            <p className="mt-1 text-sm text-muted-foreground">
-              {readyLoadChangeCount > 0
-                ? `${readyLoadChangeCount} future load ${readyLoadChangeCount === 1 ? "change is" : "changes are"} ready for review below.`
-                : "No load increase is ready for review right now."}
-            </p>
-          </div>
-          <Badge variant={readyLoadChangeCount > 0 ? "default" : "outline"}>
-            {readyLoadChangeCount > 0 ? "Proposal ready" : "No proposal ready"}
-          </Badge>
-        </div>
-        <p className="mt-3 text-sm">
-          Repbook suggests more weight after the comparable completed workout(s)
-          required by your coaching setting, where every prescribed set reaches
-          the top of its rep range and every cited set has an explicit RPE of 8
-          or lower (or RIR of 2 or higher). Missing effort stays unknown and
-          does not count as a clean workout.
-        </p>
-        <p className="mt-2 text-xs text-muted-foreground">
-          A saved Program target is the normal baseline. If there is no target,
-          the same exact performed load across the comparable sets can establish
-          the baseline. Equipment increments and the 10% safety limit still
-          apply. Any resulting proposal is future-only until you approve it.
-        </p>
-      </section>
-
       <section
         className="flex flex-col gap-3"
         aria-labelledby="pending-decisions-heading"
       >
         <div className="flex flex-wrap items-start justify-between gap-2">
           <div>
-            <h2 id="pending-decisions-heading" className="font-medium">
+            <h2 id="pending-decisions-heading" className="ui-section-title">
               Decisions needing review
             </h2>
-            <p className="text-xs text-muted-foreground">
+            <p className="ui-supporting">
               These are proposals awaiting your decision. External items are
               future Review directions, not direct Program changes.
             </p>
@@ -352,7 +290,7 @@ export default async function CoachPage() {
           </Badge>
         </div>
         {review.pending.length === 0 ? (
-          <div className="rounded-xl border border-dashed p-4">
+          <div className="ui-surface border-dashed p-4" data-ui-surface="inset">
             <p className="flex items-center gap-2 text-sm font-medium">
               <CheckCircle2 className="size-4 text-success" />
               Nothing needs your decision right now
@@ -379,12 +317,80 @@ export default async function CoachPage() {
         )}
       </section>
 
+      {externalObservations.length > 0 ? (
+        <section className="flex flex-col gap-3" aria-labelledby="external-observations-heading">
+          <div>
+            <h2 id="external-observations-heading" className="ui-section-title">Imported external observations</h2>
+            <p className="text-xs text-muted-foreground">
+              These are selected external-AI observations, not performed facts, Repbook calculations, or accepted decisions.
+            </p>
+          </div>
+          <ul className="grid gap-3 sm:grid-cols-2">
+            {externalObservations.map(({ importId, importedAt, observation, current }) => (
+              <li key={`${importId}-${observation.id}`} className="ui-surface p-4" data-ui-surface="inset">
+                <Badge variant={current ? "outline" : "destructive"}>
+                  {current ? "External AI observation" : "Stale external observation"}
+                </Badge>
+                <p className="mt-2 text-sm font-medium leading-6">{observation.statement}</p>
+                <p className="mt-2 text-xs text-muted-foreground">Evidence: {observation.evidenceIds.join(", ")}</p>
+                <p className="mt-1 text-xs text-muted-foreground">Limits: {observation.limitations.join(" · ")}</p>
+                {!current ? (
+                  <p className="mt-2 text-xs font-medium text-destructive">
+                    The bound Repbook evidence changed after this was imported. Treat this as historical external context and prepare a new package before relying on it.
+                  </p>
+                ) : null}
+                <p className="mt-2 text-xs text-muted-foreground">
+                  Imported {externalObservationDateFormatter.format(importedAt)}
+                </p>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
+
+      <details
+        className="ui-surface p-4"
+        data-ui-surface="inset"
+        aria-labelledby="progression-criteria-heading"
+      >
+        <summary className="flex cursor-pointer list-none flex-wrap items-start justify-between gap-3">
+          <span>
+            <span id="progression-criteria-heading" className="ui-section-title block">
+              How load progression works
+            </span>
+            <span className="ui-supporting mt-1 block">
+              {readyLoadChangeCount > 0
+                ? `${readyLoadChangeCount} future load ${readyLoadChangeCount === 1 ? "change is" : "changes are"} ready for review below.`
+                : "No load increase is ready for review right now."}
+            </span>
+          </span>
+          <Badge variant={readyLoadChangeCount > 0 ? "default" : "outline"}>
+            {readyLoadChangeCount > 0 ? "Proposal ready" : "No proposal ready"}
+          </Badge>
+        </summary>
+        <div className="mt-3 border-t pt-3">
+          <p className="text-sm">
+            Repbook suggests more weight after the comparable completed workout(s)
+            required by your coaching setting, where every prescribed set reaches
+            the top of its rep range and every cited set has an explicit RPE of 8
+            or lower (or RIR of 2 or higher). Missing effort stays unknown and
+            does not count as a clean workout.
+          </p>
+          <p className="mt-2 text-xs text-muted-foreground">
+            A saved Program target is the normal baseline. If there is no target,
+            the same exact performed load across the comparable sets can establish
+            the baseline. Equipment increments and the 10% safety limit still
+            apply. Any resulting proposal is future-only until you approve it.
+          </p>
+        </div>
+      </details>
+
       <section
         className="flex flex-col gap-3"
         aria-labelledby="recent-exception-context-heading"
       >
         <div>
-          <h2 id="recent-exception-context-heading" className="font-medium">
+          <h2 id="recent-exception-context-heading" className="ui-section-title">
             Recent effort and issue context
           </h2>
           <p className="text-xs text-muted-foreground">
@@ -423,7 +429,7 @@ export default async function CoachPage() {
                   : null,
               ].filter((value): value is string => value != null);
               return (
-                <li key={item.setId} className="rounded-xl border bg-card p-4">
+                <li key={item.setId} className="ui-surface p-4" data-ui-surface="inset">
                   <p className="font-medium">
                     {item.performedExerciseName} · set {item.setNo}
                   </p>
@@ -435,7 +441,8 @@ export default async function CoachPage() {
                   </ul>
                   <Link
                     href={`/history/${item.sessionId}`}
-                    className="mt-3 inline-flex min-h-8 items-center text-xs font-medium text-primary underline-offset-4 hover:underline focus-visible:rounded-sm focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+                    data-ui-touch
+                    className="mt-3 inline-flex items-center text-xs font-medium text-primary underline-offset-4 hover:underline focus-visible:rounded-sm focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
                   >
                     Open supporting workout
                   </Link>
@@ -451,7 +458,7 @@ export default async function CoachPage() {
         aria-labelledby="recent-decisions-heading"
       >
         <div>
-          <h2 id="recent-decisions-heading" className="font-medium">
+          <h2 id="recent-decisions-heading" className="ui-section-title">
             Recent decisions
           </h2>
           <p className="text-xs text-muted-foreground">
@@ -500,7 +507,8 @@ export default async function CoachPage() {
               return (
                 <li
                   key={recommendation.id}
-                  className="rounded-xl border bg-card p-3 text-sm"
+                  className="ui-surface p-3 text-sm"
+                  data-ui-surface="inset"
                 >
                   <div className="flex flex-wrap items-start justify-between gap-2">
                     <div className="min-w-0 flex-1">
@@ -551,7 +559,7 @@ export default async function CoachPage() {
         aria-labelledby="outcomes-heading"
       >
         <div>
-          <h2 id="outcomes-heading" className="font-medium">
+          <h2 id="outcomes-heading" className="ui-section-title">
             Outcomes ready to assess
           </h2>
           <p className="text-xs text-muted-foreground">
@@ -573,7 +581,8 @@ export default async function CoachPage() {
             {review.outcomes.map((outcome) => (
               <li
                 key={outcome.recommendationId}
-                className="rounded-xl border bg-card p-4"
+                className="ui-surface p-4"
+                data-ui-surface="inset"
               >
                 <div className="flex flex-wrap items-start justify-between gap-2">
                   <div>
@@ -628,7 +637,8 @@ export default async function CoachPage() {
                 )}
                 <Link
                   href={`/history/${outcome.latestSessionId}`}
-                  className="mt-3 inline-flex min-h-8 items-center text-xs font-medium text-primary underline-offset-4 hover:underline focus-visible:rounded-sm focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+                  data-ui-touch
+                  className="mt-3 inline-flex items-center text-xs font-medium text-primary underline-offset-4 hover:underline focus-visible:rounded-sm focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
                 >
                   Open {outcome.latestSessionName} · {formatRecordedLocalDate(outcome.latestLocalDate)}
                 </Link>
@@ -639,13 +649,14 @@ export default async function CoachPage() {
       </section>
 
       <section
-        className="rounded-2xl border bg-muted/25 p-4"
+        className="ui-surface p-4"
+        data-ui-surface="inset"
         aria-labelledby="live-coach-context-heading"
       >
         <div className="flex items-start gap-3">
           <MessageSquareText className="mt-0.5 size-5 shrink-0 text-primary" />
           <div className="min-w-0">
-            <h2 id="live-coach-context-heading" className="font-medium">
+            <h2 id="live-coach-context-heading" className="ui-section-title">
               Live Coach stays with the workout
             </h2>
             <p className="mt-1 text-sm text-muted-foreground">
@@ -657,7 +668,8 @@ export default async function CoachPage() {
             <div className="mt-3 flex flex-wrap gap-x-4 gap-y-2 text-sm">
               <Link
                 href={activeSession ? `/session/${activeSession.id}` : "/today"}
-                className="font-medium text-primary underline-offset-4 hover:underline focus-visible:rounded-sm focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+                data-ui-touch
+                className="inline-flex items-center font-medium text-primary underline-offset-4 hover:underline focus-visible:rounded-sm focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
               >
                 {activeSession
                   ? `Open ${activeSession.templateName ?? "active workout"}`
@@ -665,7 +677,8 @@ export default async function CoachPage() {
               </Link>
               <Link
                 href="/history"
-                className="font-medium text-primary underline-offset-4 hover:underline focus-visible:rounded-sm focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+                data-ui-touch
+                className="inline-flex items-center font-medium text-primary underline-offset-4 hover:underline focus-visible:rounded-sm focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
               >
                 Review completed workouts
               </Link>
@@ -679,7 +692,7 @@ export default async function CoachPage() {
         aria-labelledby="secondary-tools-heading"
       >
         <div>
-          <h2 id="secondary-tools-heading" className="font-medium">
+          <h2 id="secondary-tools-heading" className="ui-section-title">
             Secondary coaching tools
           </h2>
           <p className="text-xs text-muted-foreground">

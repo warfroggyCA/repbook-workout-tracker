@@ -167,11 +167,12 @@ export default async function TodayPage({
     : null;
 
   return (
-    <main className="mx-auto flex max-w-5xl flex-col gap-3 px-4 py-0 sm:gap-4 sm:p-6 lg:p-8">
+    <main
+      data-ui-core-surface="today"
+      className="athlete-workflow mx-auto flex max-w-5xl flex-col gap-3 px-4 py-0 sm:gap-4 sm:p-6 lg:p-8"
+    >
       <header>
-        <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">
-          Today
-        </h1>
+        <h1 className="ui-page-title">Today</h1>
       </header>
 
       {query.program === "updated" && (
@@ -232,18 +233,15 @@ export default async function TodayPage({
           <Card
             data-testid="today-decision"
             size="sm"
-            className={
-              activeTimingNeedsReview
-                ? "border-amber-500/60 bg-amber-500/5"
-                : "border-primary/50"
-            }
+            className="ui-surface shadow-none"
+            data-ui-surface={activeTimingNeedsReview ? "attention" : "selected"}
           >
             <CardHeader className="gap-1.5">
               <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
                 <p className={
                   activeTimingNeedsReview
-                    ? "text-xs font-medium uppercase tracking-[0.12em] text-amber-800 dark:text-amber-300"
-                    : "hidden text-xs font-medium uppercase tracking-[0.12em] text-primary sm:block"
+                    ? "ui-metadata text-amber-800 dark:text-amber-300"
+                    : "ui-metadata hidden text-primary sm:block"
                 }>
                   {activeTimingNeedsReview
                     ? "Workout needs attention"
@@ -258,7 +256,7 @@ export default async function TodayPage({
                   {today.programName}
                 </span>
               </div>
-              <h2 className="text-xl font-semibold leading-tight sm:text-2xl">
+              <h2 className="ui-section-title">
                 {today.inProgressSessionName ?? "Workout in progress"}
               </h2>
               <CardDescription className="leading-relaxed">
@@ -287,7 +285,8 @@ export default async function TodayPage({
                 <div
                   role="status"
                   data-testid="stale-workout-timing"
-                  className="rounded-xl border border-amber-500/50 bg-background/80 px-3 py-2.5 text-sm"
+                  className="ui-state px-3 py-2.5 text-sm"
+                  data-ui-state="attention"
                 >
                   <p className="font-medium">
                     Timing needs review · wall clock {today.inProgressTiming.wallClockLabel}
@@ -303,6 +302,7 @@ export default async function TodayPage({
                 nativeButton={false}
                 size="lg"
                 className="h-auto min-h-12 w-full whitespace-normal py-3 text-center text-base leading-tight"
+                data-ui-primary-action="true"
               >
                 <Play className="size-4" /> Resume workout
               </Button>
@@ -372,11 +372,12 @@ export default async function TodayPage({
             <Card
               data-testid="today-decision"
               size="sm"
-              className="border-primary/40"
+              className="ui-surface shadow-none"
+              data-ui-surface="selected"
             >
               <CardHeader className="gap-1.5">
                 <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
-                  <p className="text-xs font-medium uppercase tracking-[0.12em] text-primary">
+                  <p className="ui-metadata text-primary">
                     {isAlternatePreview
                       ? "Workout preview"
                       : today.schedule?.nextEvent
@@ -390,7 +391,7 @@ export default async function TodayPage({
                     {today.programName}
                   </span>
                 </div>
-                <h2 className="text-xl font-semibold leading-tight sm:text-2xl">
+                <h2 className="ui-section-title">
                   {selectedTemplate.template.name}
                 </h2>
                 <CardDescription>
@@ -527,7 +528,8 @@ export default async function TodayPage({
             {!isAlternatePreview && alternateTemplates.length > 0 && (
               <details
                 data-testid="alternate-program-days"
-                className="rounded-2xl border bg-card shadow-[var(--shadow-soft)]"
+                data-ui-surface="inset"
+                className="ui-surface"
               >
                 <summary className="flex min-h-12 cursor-pointer list-none items-center justify-between gap-3 rounded-2xl px-4 py-3 font-medium outline-none focus-visible:ring-3 focus-visible:ring-ring/50">
                   <span>
@@ -579,10 +581,15 @@ export default async function TodayPage({
             )}
           </div>
         ) : (
-          <Card data-testid="today-decision" size="sm" className="border-primary/40">
+          <Card
+            data-testid="today-decision"
+            size="sm"
+            className="ui-surface shadow-none"
+            data-ui-surface="selected"
+          >
             <CardHeader className="gap-1">
               <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
-                <p className="text-xs font-medium uppercase tracking-[0.12em] text-primary">
+                <p className="ui-metadata text-primary">
                   {today.schedule?.complete ? "Program schedule complete" : `Scheduled · ${today.schedule?.nextEvent?.phaseName ?? "Program"}`}
                 </p>
                 <span
@@ -592,7 +599,7 @@ export default async function TodayPage({
                   {today.programName}
                 </span>
               </div>
-              <h2 className="text-xl font-semibold leading-tight sm:text-2xl">
+              <h2 className="ui-section-title">
                 {today.schedule?.complete
                   ? "No scheduled event remains"
                   : today.schedule?.nextEvent?.routineUnavailable

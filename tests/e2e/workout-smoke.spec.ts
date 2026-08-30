@@ -3561,11 +3561,11 @@ test("supports 145% app sizing throughout the narrow mobile navigation", async (
     .toBeCloseTo(23.2, 4);
 
   const walkthrough = [
-    { label: "Today", path: "/today", heading: "Today", title: "Today · Repbook" },
-    { label: "History", path: "/history", heading: "History", title: "History · Repbook" },
-    { label: "Review", path: "/coach", heading: "Review and decisions", title: "Review and decisions · Repbook" },
-    { label: "Program", path: "/program", heading: null, title: "Program · Repbook" },
-    { label: "Settings", path: "/settings", heading: "Settings", title: "Settings · Repbook" },
+    { label: "Today", path: "/today", heading: "Today", title: "Today · Repbook", surface: "today" },
+    { label: "History", path: "/history", heading: "History", title: "History · Repbook", surface: "history" },
+    { label: "Review", path: "/coach", heading: "Review and decisions", title: "Review and decisions · Repbook", surface: "review" },
+    { label: "Program", path: "/program", heading: null, title: "Program · Repbook", surface: null },
+    { label: "Settings", path: "/settings", heading: "Settings", title: "Settings · Repbook", surface: null },
   ] as const;
 
   for (const step of walkthrough) {
@@ -3583,6 +3583,11 @@ test("supports 145% app sizing throughout the narrow mobile navigation", async (
     await expect(page).toHaveURL(new RegExp(`${step.path}$`));
     await expect(page).toHaveTitle(step.title);
     await expect(link).toHaveAttribute("aria-current", "page");
+    if (step.surface) {
+      await expect(
+        page.locator(`main[data-ui-core-surface="${step.surface}"]`),
+      ).toBeVisible();
+    }
     const linkMetrics = await link.evaluate((element) => {
       const rect = element.getBoundingClientRect();
       return {
@@ -3662,17 +3667,21 @@ test("supports 145% app sizing throughout the narrow mobile navigation", async (
   const desktopNavigation = page.getByRole("navigation", {
     name: "Main navigation",
   });
+  await expect
+    .poll(() =>
+      page.locator("aside").evaluate((element) =>
+        Math.round(element.getBoundingClientRect().width),
+      )
+    )
+    .toBe(224);
   await expect(page.getByRole("link", { name: "Repbook home" })).toBeVisible();
-  await expect(page.getByText("Plan. Train. Review.", { exact: true })).toBeVisible();
-  await expect(
-    desktopNavigation.getByText("Recorded evidence", { exact: true })
-  ).toBeVisible();
-  await expect(
-    desktopNavigation.getByText("Reviewed change", { exact: true })
-  ).toBeVisible();
-  await expect(
-    desktopNavigation.getByText("Program intent", { exact: true })
-  ).toBeVisible();
+  await expect(page.getByText("Plan. Train. Review.", { exact: true })).toHaveCount(0);
+  await expect(desktopNavigation.getByText("Recorded evidence", { exact: true }))
+    .toHaveCount(0);
+  await expect(desktopNavigation.getByText("Reviewed change", { exact: true }))
+    .toHaveCount(0);
+  await expect(desktopNavigation.getByText("Program intent", { exact: true }))
+    .toHaveCount(0);
 
   await page.emulateMedia({ reducedMotion: "reduce" });
   await expect
@@ -3737,8 +3746,8 @@ test("supports 145% app sizing throughout the narrow mobile navigation", async (
     const activeLink = document.querySelector(
       'nav[aria-label="Main navigation"] a[aria-current="page"]'
     );
-    const activeText = activeLink?.querySelectorAll("span span");
-    if (!sidebar || !activeLink || !activeText || activeText.length < 2) {
+    const activeText = activeLink?.querySelector("span");
+    if (!sidebar || !activeLink || !activeText) {
       throw new Error("Active shell contrast targets unavailable");
     }
     const sidebarColor = getComputedStyle(sidebar).backgroundColor;
@@ -3757,14 +3766,12 @@ test("supports 145% app sizing throughout the narrow mobile navigation", async (
     return {
       primaryAction: ratio("--primary", "--primary-foreground"),
       supportingCopy: ratio("--muted-foreground", "--sidebar"),
-      activeLabel: effectiveRatio(activeText[0]),
-      activePurpose: effectiveRatio(activeText[1]),
+      activeLabel: effectiveRatio(activeText),
     };
   });
   expect(contrast.primaryAction).toBeGreaterThanOrEqual(4.5);
   expect(contrast.supportingCopy).toBeGreaterThanOrEqual(4.5);
   expect(contrast.activeLabel).toBeGreaterThanOrEqual(4.5);
-  expect(contrast.activePurpose).toBeGreaterThanOrEqual(4.5);
 
   const collapse = page.getByRole("button", { name: "Collapse sidebar" });
   await waitForReactHandler(collapse);

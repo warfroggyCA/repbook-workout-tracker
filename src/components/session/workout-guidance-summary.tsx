@@ -4,7 +4,6 @@ import type {
   SessionGuidanceProjection,
 } from "@/lib/session-guidance";
 import { formatSessionGuidanceAction } from "@/lib/session-guidance";
-import { cn } from "@/lib/utils";
 
 function equipmentDetails(cue: EquipmentPreparationCue) {
   return [cue.equipmentLabel, cue.attachmentLabel, cue.guidance]
@@ -61,7 +60,8 @@ export const WorkoutGuidanceSummary = memo(function WorkoutGuidanceSummary({
     return (
       <section
         aria-label="Workout progress and upcoming work"
-        className="min-w-0 rounded-lg border bg-background/95 px-3 py-2 shadow-sm"
+        data-ui-surface="inset"
+        className="ui-surface min-w-0 px-3 py-2"
       >
         <div className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1 text-sm">
           <span className="min-w-0 max-w-full font-semibold tabular-nums">
@@ -129,13 +129,11 @@ export const WorkoutGuidanceSummary = memo(function WorkoutGuidanceSummary({
   return (
     <section
       aria-label="Workout progress and upcoming work"
-      className={cn(
-        "min-w-0 rounded-lg border bg-muted/35 px-3 py-2",
-        compact ? "space-y-1" : "space-y-2",
-      )}
+      data-ui-surface="inset"
+      className="ui-surface min-w-0 space-y-2 px-3 py-2"
     >
       <div className="flex min-w-0 flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
-        <p className="text-xs font-semibold uppercase tracking-wide text-primary">
+        <p className="ui-metadata text-primary">
           Workout progress
         </p>
         <p className="text-sm font-semibold tabular-nums">

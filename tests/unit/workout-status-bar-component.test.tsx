@@ -190,7 +190,8 @@ describe("WorkoutStatusBar", () => {
 
     expect(html).toContain('data-testid="active-workout-dock-primary"');
     expect(html).toContain('aria-label="Log Barbell Squat, Set 2"');
-    expect(html).toContain("Set 2 of 3 · Log set");
+    expect(html).toContain(">Log set<");
+    expect(html).toContain("Barbell Squat · Set 2 of 3");
     expect(html).toContain("bg-primary text-primary-foreground");
   });
 
@@ -300,7 +301,8 @@ describe("WorkoutStatusBar", () => {
     );
 
     expect(html).toContain('data-testid="active-workout-dock-primary"');
-    expect(html).toContain("Set 2 of 3 · Log set");
+    expect(html).toContain(">Log set<");
+    expect(html).toContain("Barbell Squat · Set 2 of 3");
     expect(html).not.toContain("Set 2 of 3 · Failed");
   });
 

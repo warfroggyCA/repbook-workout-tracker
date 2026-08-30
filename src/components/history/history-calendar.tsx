@@ -526,7 +526,11 @@ export function HistoryCalendar({
   }
 
   return (
-    <Card id="history-calendar" className="scroll-mt-4">
+    <Card
+      id="history-calendar"
+      data-ui-surface="primary"
+      className="ui-surface scroll-mt-4 shadow-none"
+    >
       <CardHeader className="gap-3 sm:grid-cols-[1fr_auto]">
         <div>
           <CardTitle className="flex items-center gap-2">
@@ -590,7 +594,8 @@ export function HistoryCalendar({
                 return (
                   <section
                     key={month}
-                    className="rounded-xl border bg-muted/15 p-2"
+                    data-ui-surface="inset"
+                    className="ui-surface p-2"
                   >
                     <p className="mb-1 text-center text-xs font-semibold">
                       {monthDate.toLocaleDateString(undefined, {

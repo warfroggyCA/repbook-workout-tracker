@@ -3621,7 +3621,10 @@ export function SessionRunner(props: SessionRunnerProps) {
   );
 
   return (
-    <main className="mx-auto flex max-w-3xl flex-col gap-3 p-3 pb-[calc(12rem+env(safe-area-inset-bottom))] min-[360px]:pb-[calc(8rem+env(safe-area-inset-bottom))] sm:p-5 sm:pb-[calc(8rem+env(safe-area-inset-bottom))] lg:p-8 lg:pb-24">
+    <main
+      data-ui-core-surface="active-workout"
+      className="athlete-workflow mx-auto flex max-w-3xl flex-col gap-2 p-3 pb-[calc(12rem+env(safe-area-inset-bottom))] min-[361px]:gap-3 min-[360px]:pb-[calc(8rem+env(safe-area-inset-bottom))] sm:p-5 sm:pb-[calc(8rem+env(safe-area-inset-bottom))] lg:p-8 lg:pb-24"
+    >
       <ContextualNoteScope value={contextualNoteScope} />
       <p
         data-testid="set-save-announcement"
@@ -3647,7 +3650,7 @@ export function SessionRunner(props: SessionRunnerProps) {
           <ArrowLeft aria-hidden="true" className="size-5" />
         </a>
         <div className="min-w-0 max-[360px]:w-full">
-          <h1 className="text-lg font-semibold max-[360px]:sr-only">
+          <h1 className="ui-section-title max-[360px]:sr-only">
             {props.templateName}
           </h1>
           <p className="text-xs text-muted-foreground max-[360px]:hidden">
@@ -3692,7 +3695,8 @@ export function SessionRunner(props: SessionRunnerProps) {
         <section
           role="status"
           data-testid="active-workout-timing-warning"
-          className="rounded-xl border border-amber-500/50 bg-amber-500/10 px-3 py-2.5 text-sm"
+          data-ui-state="retained"
+          className="ui-state px-3 py-2.5 text-sm"
         >
           <p className="font-semibold">
             Timing needs review · wall clock {elapsed}
@@ -4165,9 +4169,8 @@ export function SessionRunner(props: SessionRunnerProps) {
           {equipmentPanel ? (
             <details
               data-testid="exercise-equipment-setup"
-              className={equipmentSetupForcedOpen
-                ? undefined
-                : "rounded-xl border bg-muted/20"}
+              data-ui-surface="inset"
+              className="ui-surface"
               open={equipmentSetupForcedOpen ? true : undefined}
             >
               <summary
@@ -4181,7 +4184,7 @@ export function SessionRunner(props: SessionRunnerProps) {
                   Show
                 </span>
               </summary>
-              <div className={equipmentSetupForcedOpen ? undefined : "border-t p-2"}>
+              <div className={equipmentSetupForcedOpen ? undefined : "p-2 pt-0"}>
                 {equipmentPanel}
               </div>
             </details>
@@ -4578,7 +4581,8 @@ export function SessionRunner(props: SessionRunnerProps) {
 
       <section
         id="finish-workout"
-        className="scroll-mt-4 rounded-xl border bg-card p-4 shadow-[var(--shadow-soft)]"
+        data-ui-surface="primary"
+        className="ui-surface scroll-mt-4 p-4"
       >
         <p className="mb-3 text-center text-sm text-muted-foreground">
           {totalPerformed} set{totalPerformed === 1 ? "" : "s"} performed · {timing.reviewRequired

@@ -128,6 +128,13 @@ export function WorkoutStatusBar({
     : showsCurrentSet
       ? "Show current set"
       : status;
+  const dockPrimaryLabel = logsCurrentSet
+    ? "Log set"
+    : completesCurrentWarmup
+      ? "Complete warm-up"
+      : resolvesSkippedExercise
+        ? "Review skipped exercise"
+        : title;
   const restAlertLabel = restAlertPreference === "visual_only"
     ? "Visual"
     : restAlertPreference === "vibration"
@@ -200,14 +207,17 @@ export function WorkoutStatusBar({
               "col-span-2 col-start-1 row-start-1 min-[520px]:col-span-1 min-[520px]:col-start-auto min-[520px]:row-start-auto",
           )}
         >
-          <span className="block break-words text-xs font-semibold leading-tight max-[360px]:sr-only sm:text-sm">
-            {title}
+          <span
+            data-ui-essential="true"
+            className="block break-words text-sm font-semibold leading-tight max-[360px]:sr-only"
+          >
+            {dockPrimaryLabel}
           </span>
           <span
             role="status"
             aria-live="polite"
             className={cn(
-              "block break-words text-[11px] leading-tight text-muted-foreground",
+              "block break-words text-[0.8125rem] leading-tight text-muted-foreground",
               saving === "Failed" && "font-semibold text-destructive",
               runsPrimaryAction && "text-primary-foreground/85",
               timerRunning &&
@@ -216,7 +226,13 @@ export function WorkoutStatusBar({
                 "font-semibold text-emerald-900 dark:text-emerald-100",
             )}
           >
-            {checkingExerciseSkip != null || skipRecoveryPending
+            {logsCurrentSet && setPosition
+              ? `${title} · ${setPosition.label}${
+                  setPosition.kind === "extra"
+                    ? ""
+                    : ` of ${exercise?.targetSets ?? "open"}`
+                }`
+              : checkingExerciseSkip != null || skipRecoveryPending
               ? status
               : setPosition
               ? setPosition.kind === "extra"

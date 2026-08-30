@@ -284,12 +284,8 @@ function PendingSetSaveStatus({
 
   return (
     <div
-      className={cn(
-        "mt-2 rounded-lg border p-3",
-        failed
-          ? "border-destructive/40 bg-destructive/5"
-          : "border-amber-600/30 bg-amber-500/5",
-      )}
+      data-ui-state={failed ? "retained" : "saving"}
+      className="ui-state mt-2 p-3"
     >
       <div role={failed ? "alert" : "status"}>
         <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
@@ -1502,12 +1498,11 @@ export function ExerciseCard({
       data-testid={isCurrentExercise ? "current-exercise-card" : undefined}
       data-current-set={isCurrentExercise ? "true" : "false"}
       data-draft-identity={draftIdentity}
+      data-ui-surface={isCurrentExercise ? "selected" : "primary"}
       className={cn(
-        "scroll-mt-32 rounded-xl border bg-card [&_button]:min-h-11 [&_button]:min-w-11 [&_input]:min-h-11",
-        isCurrentExercise &&
-          "border-2 border-foreground/70 bg-muted/25 shadow-[var(--shadow-soft)]",
+        "ui-surface scroll-mt-32 [&_button]:min-h-11 [&_button]:min-w-11 [&_input]:min-h-11",
         exercise.supersetKey &&
-          "border-2 border-violet-500/70 bg-violet-50/50 dark:bg-violet-950/20",
+          "ring-2 ring-violet-500/55",
         isSkipped && "border-dashed bg-muted/20"
       )}
       onClickCapture={() => {
@@ -1582,8 +1577,10 @@ export function ExerciseCard({
           aria-controls={`session-exercise-details-${exercise.id}`}
           data-testid="exercise-swipe-surface"
           className={cn(
-            "relative z-10 flex w-full items-start justify-between gap-2 p-2 text-left transition-transform motion-reduce:transition-none",
-            isCurrentExercise ? "bg-muted" : "bg-card",
+            "ui-motion-immediate relative z-10 flex w-full items-start justify-between gap-2 p-2 text-left transition-transform",
+            isCurrentExercise
+              ? "bg-[var(--surface-selected)]"
+              : "bg-[var(--surface-primary)]",
           )}
           style={{
             transform: `translateX(${removeSwipeOffset}px)`,
@@ -2008,24 +2005,19 @@ export function ExerciseCard({
                       className={cn(
                         "scroll-mt-24 p-2",
                         prioritizeCurrentAction
-                          ? "rounded-lg border-2 border-primary/60 bg-background p-2 shadow-sm"
+                          ? "p-2"
                           : "rounded-md border border-primary/40",
                       )}
                     >
                       <div data-testid="active-workout-primary">
                       {prioritizeCurrentAction ? (
-                        <div className="mb-3 rounded-lg bg-primary px-3 py-2.5 text-primary-foreground">
-                          <p className="text-xs font-semibold uppercase tracking-[0.12em] opacity-80">
+                        <div className="mb-3 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 px-1 py-1">
+                          <p className="ui-metadata text-foreground">
                             Current action
                           </p>
-                          <div className="mt-1 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
-                            <p className="break-words text-base font-semibold leading-tight">
-                              {exercise.name}
-                            </p>
-                            <p className="text-xl font-bold tabular-nums">
-                              {rowPosition?.label ?? `Set ${i + 1}`} of {exercise.targetSets ?? "open"}
-                            </p>
-                          </div>
+                          <p className="ui-value" data-ui-essential="true">
+                            {rowPosition?.label ?? `Set ${i + 1}`} of {exercise.targetSets ?? "open"}
+                          </p>
                         </div>
                       ) : (
                         <p className="mb-2 px-1 text-sm font-medium">
@@ -2035,19 +2027,21 @@ export function ExerciseCard({
                       <div className="mb-3 grid grid-cols-1 gap-2 min-[520px]:grid-cols-2">
                         <div
                           data-testid="current-set-target"
-                          className="rounded-lg border bg-muted/25 px-3 py-2 text-sm"
+                          data-ui-surface="inset"
+                          className="ui-surface px-3 py-2 text-sm"
                         >
-                          <p className="text-xs font-semibold uppercase tracking-[0.1em] text-muted-foreground">
+                          <p className="ui-metadata">
                             Target
                           </p>
-                          <p className="mt-1 break-words font-semibold tabular-nums">
+                          <p className="mt-1 break-words font-semibold tabular-nums" data-ui-essential="true">
                             {formatSetTarget(activeOccurrence, exercise)}
                           </p>
                         </div>
                         <div
                           data-testid="previous-comparable-set"
                           data-comparison-state={comparableRenderState}
-                          className="rounded-lg border bg-muted/25 px-3 py-2 text-sm"
+                          data-ui-surface="inset"
+                          className="ui-surface px-3 py-2 text-sm"
                         >
                         {comparableRenderState === "available" &&
                         comparableProjection?.status === "available" &&
@@ -2060,7 +2054,7 @@ export function ExerciseCard({
                                   comparableProjection.source.workoutSource,
                                 )}
                               </p>
-                              <p className="mt-1 break-words font-semibold tabular-nums">
+                              <p className="mt-1 break-words font-semibold tabular-nums" data-ui-essential="true">
                                 {formatPreviousComparableSet(
                                   previousComparableSet,
                                   comparableProjection.semantics.metricType,
@@ -2098,7 +2092,7 @@ export function ExerciseCard({
                         </div>
                       </div>
                       {prioritizeCurrentAction && (
-                        <p className="mb-2 grid grid-cols-[auto_minmax(0,1fr)] items-baseline gap-x-2 text-xs font-semibold uppercase tracking-[0.1em] text-muted-foreground">
+                        <p className="ui-metadata mb-2 grid grid-cols-[auto_minmax(0,1fr)] items-baseline gap-x-2">
                           <span className="whitespace-nowrap">Performed measure</span>
                           {recordsNumericLoad && defaultWeightSource && (
                             <span
@@ -2202,7 +2196,7 @@ export function ExerciseCard({
                       />
                       {prioritizeCurrentAction && (
                         <div className="mt-1 flex min-h-11 items-center gap-2 border-t">
-                          <p className="shrink-0 text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+                          <p className="ui-metadata shrink-0">
                             Next action
                           </p>
                           <p className="min-w-0 break-words py-2 text-sm">

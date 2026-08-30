@@ -15,13 +15,14 @@ function SummaryAnswer({
 }) {
   return (
     <div className="border-t py-3 first:border-t-0 sm:[&:nth-child(-n+2)]:border-t-0 sm:[&:nth-child(even)]:border-l sm:[&:nth-child(even)]:pl-4 sm:[&:nth-child(odd)]:pr-4">
-      <dt className="text-xs font-medium uppercase tracking-[0.1em] text-muted-foreground">
+      <dt className="ui-metadata">
         {question}
       </dt>
       <dd className="mt-1">
         <span
+          data-ui-essential="true"
           className={cn(
-            "block font-semibold leading-snug",
+            "block text-base font-semibold leading-snug",
             answer.tone === "attention" &&
               "text-amber-800 dark:text-amber-300",
             answer.tone === "positive" && "text-foreground",
@@ -55,10 +56,11 @@ export function WorkoutSummary({
     <section
       aria-labelledby="workout-summary-heading"
       data-testid="workout-summary"
-      className="rounded-2xl border bg-card px-4 py-3 shadow-[var(--shadow-soft)]"
+      data-ui-surface="primary"
+      className="ui-surface px-4 py-3"
     >
       <div className="pb-2">
-        <h2 id="workout-summary-heading" className="text-lg font-semibold">
+        <h2 id="workout-summary-heading" className="ui-section-title">
           Workout summary
         </h2>
         <p className="mt-0.5 text-sm text-muted-foreground">
