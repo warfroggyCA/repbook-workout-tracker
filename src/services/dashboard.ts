@@ -55,8 +55,12 @@ type DashboardRow = {
  */
 export async function getDashboardStats(
   db: Db,
-  userId: string
+  userId: string,
+  now?: Date,
 ): Promise<DashboardStats> {
+  const currentTimestamp = now
+    ? sql`${now.toISOString()}::timestamptz`
+    : sql`current_timestamp`;
   const setSemantics = {
     recordedMetricType: sql`cs.metric_type`,
     prescribedSemanticsVersion: sql`se.prescribed_semantics_version`,
@@ -75,7 +79,7 @@ export async function getDashboardStats(
     await db.execute(sql`
       WITH profile AS (
         SELECT unit, timezone,
-               date_trunc('week', timezone(timezone, current_timestamp))::date AS this_week
+               date_trunc('week', timezone(timezone, ${currentTimestamp}))::date AS this_week
         FROM user_profiles
         WHERE user_id = ${userId}::uuid
       ), valid_sessions AS MATERIALIZED (
