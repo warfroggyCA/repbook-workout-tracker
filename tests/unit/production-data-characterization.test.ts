@@ -380,7 +380,11 @@ describe("unit, calendar, and backup production findings", () => {
 
     const [last, dashboard, history, digest, csv, backup] = await Promise.all([
       getLastPerformances(database.db, userId, [slotId]),
-      getDashboardStats(database.db, userId),
+      getDashboardStats(
+        database.db,
+        userId,
+        new Date("2026-07-13T14:00:00.000Z")
+      ),
       getHistoryReport(
         database.db,
         userId,
