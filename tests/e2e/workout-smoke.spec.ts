@@ -3572,6 +3572,7 @@ test("opens failed-set recovery from Settings at 145 percent on iPhone WebKit", 
   await extraLarge.click();
   await expect(page.getByText("Saved to your profile.", { exact: true })).toBeVisible();
   await page.goto(sessionPath);
+  await waitForEquipmentSelectionsToSettle(page);
 
   const currentSet = page.getByTestId("current-exercise-card");
   const logSet = currentSet.getByRole("button", {
