@@ -2397,6 +2397,8 @@ export function renderCoachingBrief(digest: TrainingDigest): string {
       "",
     ]),
     "## Compact workout summaries",
+    "Duration comparisons are neutral context. Longer or shorter sessions do not by themselves prove adherence, quality, fatigue, motivation, recovery, or why a workout ended.",
+    "",
   ];
 
   for (const session of digest.sessions) {
@@ -2412,7 +2414,7 @@ export function renderCoachingBrief(digest: TrainingDigest): string {
     lines.push(
       `### ${fmtDate(session.date)} — ${session.template ?? "Workout"}`,
       `- Session state: ${session.status.replaceAll("_", " ")}${session.completion ? `; ${session.completion.state.replaceAll("_", " ")}${session.completion.reason ? ` because ${session.completion.reason.replaceAll("_", " ")}` : ""}` : "; historical completion semantics unavailable"}.`,
-      `- Duration — Target: ${durationTarget}. Actual: ${duration.actualMinutes == null ? "unknown" : `${duration.actualMinutes} min`}. Variance: ${variance}. Status: ${duration.status.replaceAll("_", " ")}. Within tolerance: ${duration.withinTolerance == null ? "unknown" : duration.withinTolerance ? "yes" : "no"}.`,
+      `- Duration context — Planned range: ${durationTarget}. Recorded active time: ${duration.actualMinutes == null ? "unknown" : `${duration.actualMinutes} min`}. Difference: ${variance}. Comparison to planned range: ${duration.status.replaceAll("_", " ")}. Within tolerance: ${duration.withinTolerance == null ? "unknown" : duration.withinTolerance ? "yes" : "no"}.`,
       ...(session.durationExcludedFromPeriodAnalysis
         ? [duration.actualMinutes == null
             ? "- Duration analysis: no supported active duration is available; this session is excluded from period averages and duration conclusions."

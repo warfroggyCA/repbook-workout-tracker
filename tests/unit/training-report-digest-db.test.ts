@@ -507,7 +507,10 @@ describe("training reporting digest integration", () => {
       "Coverage is insufficient for an overall attainment conclusion",
     );
     expect(brief).toContain(
-      "Actual: 63 min. Variance: +18 min / +40%. Status: over target. Within tolerance: no.",
+      "Duration comparisons are neutral context. Longer or shorter sessions do not by themselves prove adherence, quality, fatigue, motivation, recovery, or why a workout ended.",
+    );
+    expect(brief).toContain(
+      "Recorded active time: 63 min. Difference: +18 min / +40%. Comparison to planned range: over target. Within tolerance: no.",
     );
     expect(brief).toContain(
       "Warm-up: 5 of 7 planned elements completed.",
@@ -987,7 +990,7 @@ describe("training reporting digest integration", () => {
       }),
     ]);
     expect(brief).toContain("Retained date-only workout");
-    expect(brief).toContain("Actual: unknown");
+    expect(brief).toContain("Recorded active time: unknown");
     expect(digest.families).toEqual([
       expect.objectContaining({
         family: "Unclassified",

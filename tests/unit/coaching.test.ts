@@ -1,6 +1,13 @@
 import { describe, expect, it } from "vitest";
+import {
+  coachingProductInterpretationPrompt,
+  coachingProductInterpretationRules,
+} from "@/ai/tasks/coaching-product-interpretation";
+import { coachingQaSystemPrompt } from "@/ai/tasks/coaching-qa/prompt";
 import { coachingReviewSchema } from "@/ai/tasks/coaching-review/schema";
+import { coachingReviewSystemPrompt } from "@/ai/tasks/coaching-review/prompt";
 import { coachingAnswerSchema } from "@/ai/tasks/coaching-qa/schema";
+import { liveCoachingSystemPrompt } from "@/ai/tasks/live-coaching/prompt";
 import {
   parseStoredCoachingAnswer,
   parseStoredCoachingReview,
@@ -21,6 +28,23 @@ const review = {
   nextFocus: ["Keep the next bench increase small."],
   dataGaps: ["Effort is missing from several sets."],
 };
+
+const coachingSystemPrompts = [
+  coachingReviewSystemPrompt,
+  coachingQaSystemPrompt,
+  liveCoachingSystemPrompt,
+];
+
+describe("coaching product interpretation", () => {
+  it("applies the complete athlete-facing interpretation contract to every Coach path", () => {
+    for (const prompt of coachingSystemPrompts) {
+      expect(prompt).toContain(coachingProductInterpretationPrompt);
+      for (const rule of coachingProductInterpretationRules) {
+        expect(prompt).toContain(`- ${rule}`);
+      }
+    }
+  });
+});
 
 describe("stored coaching insight validation", () => {
   it("round-trips a structured review", () => {
