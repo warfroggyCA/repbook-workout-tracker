@@ -66,6 +66,7 @@ export type AmberField =
   | "unit"
   | "adjustable"
   | "pair"
+  | "increments"
   | "denominations"
   | "barWeight";
 
@@ -88,6 +89,7 @@ export function amberFields(item: ConfirmedEquipmentItem): AmberField[] {
     item.minWeight != null ||
     item.maxWeight != null ||
     item.barWeight != null ||
+    (item.increments?.length ?? 0) > 0 ||
     (item.denominations?.length ?? 0) > 0;
   if (item.unit == null && (WEIGHTED_TYPES.has(item.type) || hasWeights)) {
     fields.push("unit");
@@ -103,6 +105,13 @@ export function amberFields(item: ConfirmedEquipmentItem): AmberField[] {
     (item.type === "dumbbell" || item.type === "kettlebell")
   ) {
     fields.push("pair");
+  }
+  if (
+    item.adjustable === false &&
+    (item.type === "dumbbell" || item.type === "kettlebell") &&
+    (item.increments == null || item.increments.length === 0)
+  ) {
+    fields.push("increments");
   }
   if (
     item.type === "plates" &&
@@ -124,6 +133,7 @@ export const AMBER_QUESTIONS: Record<AmberField, string> = {
   unit: "Pounds or kilograms?",
   adjustable: "Adjustable or fixed?",
   pair: "A pair or a single?",
+  increments: "Which exact weights do you own?",
   denominations: "Which plate sizes, and how many of each do you own?",
   barWeight: "What is the empty bar weight?",
 };

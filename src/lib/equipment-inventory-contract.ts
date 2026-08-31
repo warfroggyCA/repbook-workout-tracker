@@ -483,6 +483,54 @@ const WEIGHT_RANGE_TYPES = new Set<CanonicalEquipmentType>([
 const PAIRED_TYPES = new Set<CanonicalEquipmentType>(["dumbbell", "kettlebell"]);
 const BAR_ITEM_TYPES = new Set<CanonicalEquipmentType>(["barbell", "ez_bar"]);
 
+export type EquipmentQuantityCopy = {
+  label: string;
+  helper: string | null;
+};
+
+/**
+ * Quantity belongs to the physical configuration represented by one row. For
+ * fixed handheld collections it applies at every selected exact weight; a
+ * second row is needed when the count or configuration differs.
+ */
+export function equipmentQuantityCopy(
+  type: CanonicalEquipmentType,
+  pair: boolean | null | undefined,
+  adjustable: boolean | null | undefined
+): EquipmentQuantityCopy {
+  if (!PAIRED_TYPES.has(type)) {
+    return { label: "How many", helper: null };
+  }
+  if (pair == null) {
+    return {
+      label: "Choose Pair or Single first",
+      helper: "Choose Pair or Single before deciding the quantity.",
+    };
+  }
+
+  const noun = pair ? "pairs" : "singles";
+  if (adjustable === false) {
+    return {
+      label: `How many ${noun} at each weight`,
+      helper: pair
+        ? "Quantity 1 means one matched pair at every selected weight. Add another entry if a weight has a different quantity or configuration."
+        : "Quantity 1 means one individual weight at every selected weight. Add another entry if a weight has a different quantity or configuration.",
+    };
+  }
+  if (adjustable === true) {
+    return {
+      label: `How many adjustable ${noun}`,
+      helper: pair
+        ? "Quantity 1 means one matched adjustable pair: two physical weights."
+        : "Quantity counts individual adjustable weights when Single is selected.",
+    };
+  }
+  return {
+    label: `How many ${noun}`,
+    helper: "Choose Adjustable or Fixed weights to define what this quantity counts.",
+  };
+}
+
 export function equipmentFieldApplicability(
   type: CanonicalEquipmentType
 ): EquipmentFieldApplicability {

@@ -150,6 +150,97 @@ test("completed accounts are redirected away from first-time setup", async ({
   );
 });
 
+test("fixed dumbbells use exact owned weights and explain multi-pair quantity", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  const browserErrors: string[] = [];
+  page.on("pageerror", (error) => browserErrors.push(error.message));
+  page.on("console", (message) => {
+    if (message.type() === "error") browserErrors.push(message.text());
+  });
+  await signIn(page);
+  await openManager(page);
+  await page.getByRole("button", { name: "Add equipment", exact: true }).click();
+  await page.getByRole("button", { name: "Dumbbell", exact: true }).click();
+
+  const drawer = page.getByRole("dialog");
+  const saveChanges = drawer.getByRole("button", {
+    name: "Save changes",
+    exact: true,
+  });
+  await expect(saveChanges).toBeEnabled();
+  await expect(
+    drawer.getByText("Choose Pair or Single first", { exact: true })
+  ).toBeVisible();
+  await drawer
+    .getByRole("group", { name: "Adjustable or fixed for Dumbbell" })
+    .getByRole("button", { name: "Fixed weights", exact: true })
+    .click();
+  await expect(saveChanges).toBeDisabled();
+  await expect(
+    drawer.getByText(
+      "Choose Adjustable or Fixed weights and Pair or Single before saving.",
+      { exact: true }
+    )
+  ).toBeVisible();
+  await drawer
+    .getByRole("group", { name: "Pair or single for Dumbbell" })
+    .getByRole("button", { name: "Pair", exact: true })
+    .click();
+
+  await expect(saveChanges).toBeDisabled();
+  await expect(
+    drawer.getByText(
+      "Select at least one owned weight before saving fixed equipment.",
+      { exact: true }
+    )
+  ).toBeVisible();
+  await expect(
+    drawer.getByText("How many pairs at each weight", { exact: true })
+  ).toBeVisible();
+  await expect(
+    drawer.getByText(
+      "Quantity 1 means one matched pair at every selected weight. Add another entry if a weight has a different quantity or configuration.",
+      { exact: true }
+    )
+  ).toBeVisible();
+  await expect(drawer.getByLabel("Minimum")).toHaveCount(0);
+  await expect(drawer.getByLabel("Maximum")).toHaveCount(0);
+  const owned = drawer.getByRole("group", {
+    name: "Owned dumbbell weights for Dumbbell",
+  });
+  await owned.getByRole("button", { name: "5", exact: true }).click();
+  await expect(saveChanges).toBeEnabled();
+  await owned.getByRole("button", { name: "10", exact: true }).click();
+  await expect(owned.getByRole("button", { name: "5", exact: true })).toHaveAttribute(
+    "aria-pressed",
+    "true"
+  );
+  await drawer
+    .getByRole("button", { name: "Increase quantity for Dumbbell" })
+    .click();
+  await expect(
+    drawer.getByText("How many pairs at each weight", { exact: true })
+  ).toBeVisible();
+
+  await drawer
+    .getByRole("group", { name: "Adjustable or fixed for Dumbbell" })
+    .getByRole("button", { name: "Adjustable", exact: true })
+    .click();
+  await expect(
+    drawer.getByText("How many adjustable pairs", { exact: true })
+  ).toBeVisible();
+  await expect(drawer.getByLabel("Minimum")).toHaveValue("5");
+  await expect(drawer.getByLabel("Maximum")).toHaveValue("10");
+  const overflow = await page.evaluate(
+    () => document.documentElement.scrollWidth - document.documentElement.clientWidth
+  );
+  expect(overflow).toBeLessThanOrEqual(1);
+  expect(browserErrors).toEqual([]);
+  await drawer.getByRole("button", { name: "Cancel", exact: true }).click();
+});
+
 test("adds equipment, repeated types, and selection-driven plates, then reloads them exactly", async ({
   page,
 }) => {

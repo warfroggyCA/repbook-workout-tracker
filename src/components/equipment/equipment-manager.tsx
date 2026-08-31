@@ -1077,6 +1077,30 @@ function ItemDrawerBody({
     compatibleCableStationIds,
   );
   const itemBarType = barTypeForEquipmentItem(draftItem.type);
+  const isHandheld =
+    draftItem.type === "dumbbell" || draftItem.type === "kettlebell";
+  const handheldSetupIssue = (() => {
+    if (!isHandheld) return null;
+    const hasStartedHandheldSetup =
+      typeof draftItem.attrs.adjustable === "boolean" ||
+      typeof draftItem.attrs.pair === "boolean";
+    if (
+      hasStartedHandheldSetup &&
+      (typeof draftItem.attrs.adjustable !== "boolean" ||
+        typeof draftItem.attrs.pair !== "boolean")
+    ) {
+      return "Choose Adjustable or Fixed weights and Pair or Single before saving.";
+    }
+    if (
+      draftItem.attrs.adjustable === false &&
+      (!Array.isArray(draftItem.attrs.increments) ||
+        draftItem.attrs.increments.length === 0)
+    ) {
+      return "Select at least one owned weight before saving fixed equipment.";
+    }
+    return null;
+  })();
+  const handheldSetupIssueId = `equipment-${draftItem.clientKey}-setup-issue`;
 
   return (
     <>
@@ -1100,6 +1124,14 @@ function ItemDrawerBody({
           profileUnit={profileUnit}
           onChange={setDraftItem}
         />
+        {handheldSetupIssue && (
+          <p
+            id={handheldSetupIssueId}
+            className="mt-3 rounded-lg border border-amber-300/70 bg-amber-50/70 p-3 text-xs leading-5 text-amber-950 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-100"
+          >
+            {handheldSetupIssue}
+          </p>
+        )}
         {["machine", "smith_machine", "cable"].includes(draftItem.type) && (
           <MachineLoadingMethodEditor
             item={draftItem}
@@ -1177,6 +1209,8 @@ function ItemDrawerBody({
         <Button
           type="button"
           className="flex-1"
+          disabled={handheldSetupIssue != null}
+          aria-describedby={handheldSetupIssue ? handheldSetupIssueId : undefined}
           onClick={() =>
             onSave(
               { ...draftItem, label: draftItem.label },

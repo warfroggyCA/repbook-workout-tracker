@@ -8,18 +8,12 @@ import { Minus, Plus, X } from "lucide-react";
 import {
   COMMON_FIXED_WEIGHTS,
   equipmentFieldApplicability,
+  equipmentQuantityCopy,
   type EquipmentInventoryItem,
 } from "@/lib/equipment-inventory-contract";
 import type { LoadUnit } from "@/lib/units";
 
 export type DraftEquipmentItem = EquipmentInventoryItem & { clientKey: string };
-
-function quantityNoun(item: DraftEquipmentItem) {
-  if (item.type === "barbell" || item.type === "ez_bar") return "bars";
-  if (item.type === "dumbbell" && item.attrs.pair === true) return "pairs";
-  if (item.type === "dumbbell" || item.type === "kettlebell") return "singles";
-  return "items";
-}
 
 function ChoicePills<T extends string | boolean>({
   value,
@@ -123,7 +117,9 @@ function ownedWeightsEditor(
   return (
     <div className="flex flex-col gap-1.5">
       <p className="text-xs text-muted-foreground">
-        {description} ({unit}) — select every load you can use
+        {description} ({unit}) — {description === "Owned weights"
+          ? "select every weight you own"
+          : "select every load you can use"}
       </p>
       <div
         className="flex flex-wrap gap-1.5"
@@ -254,6 +250,7 @@ export function EquipmentItemEditor({
   // the account unit. There is deliberately no unit toggle in this release.
   const displayUnit = (item.attrs.unit as LoadUnit | undefined) ?? profileUnit;
   const adjustable = item.attrs.adjustable as boolean | undefined;
+  const pair = item.attrs.pair as boolean | undefined;
   const levels = item.attrs.levels as string[] | undefined;
   const notes = item.attrs.notes as string | undefined;
 
@@ -264,23 +261,40 @@ export function EquipmentItemEditor({
     onChange(next);
   }
 
-  return (
-    <div className="flex flex-col gap-3">
-      <div className="flex flex-wrap items-center gap-2">
-        <label htmlFor={`${idPrefix}-label`} className="text-xs text-muted-foreground">
-          Name
-        </label>
-        <Input
-          id={`${idPrefix}-label`}
-          value={item.label}
-          className="h-11 min-w-40 flex-1 text-sm"
-          onChange={(event) => change({ ...item, label: event.target.value })}
-        />
-      </div>
+  function changeAdjustable(value: boolean) {
+    let next = setAttr(item, "adjustable", value);
+    if (!value && (item.type === "dumbbell" || item.type === "kettlebell")) {
+      const selected = [
+        ...new Set((item.attrs.increments as number[] | undefined) ?? []),
+      ].sort((left, right) => left - right);
+      const minWeight = item.attrs.minWeight as number | undefined;
+      const maxWeight = item.attrs.maxWeight as number | undefined;
+      const exactWeights =
+        selected.length > 0
+          ? selected
+          : minWeight != null && minWeight === maxWeight
+            ? [minWeight]
+            : [];
+      next = setAttr(next, "increments", exactWeights.length ? exactWeights : null);
+      next = setAttr(next, "minWeight", exactWeights[0] ?? null);
+      next = setAttr(
+        next,
+        "maxWeight",
+        exactWeights[exactWeights.length - 1] ?? null
+      );
+    }
+    change(next);
+  }
 
+  const quantityCopy = equipmentQuantityCopy(item.type, pair, adjustable);
+  const quantityEditor = (
+    <div className="flex flex-col gap-1">
       <div className="flex items-center gap-2">
-        <span id={`${idPrefix}-quantity-label`} className="text-xs text-muted-foreground">
-          How many {quantityNoun(item)}
+        <span
+          id={`${idPrefix}-quantity-label`}
+          className="text-xs text-muted-foreground"
+        >
+          {quantityCopy.label}
         </span>
         <div className="flex items-center gap-1">
           <Button
@@ -290,7 +304,9 @@ export function EquipmentItemEditor({
             className="size-11"
             aria-label={`Decrease quantity for ${item.label}`}
             disabled={item.quantity <= 1}
-            onClick={() => change({ ...item, quantity: Math.max(1, item.quantity - 1) })}
+            onClick={() =>
+              change({ ...item, quantity: Math.max(1, item.quantity - 1) })
+            }
           >
             <Minus className="size-3.5" />
           </Button>
@@ -306,12 +322,37 @@ export function EquipmentItemEditor({
             size="icon-sm"
             className="size-11"
             aria-label={`Increase quantity for ${item.label}`}
-            onClick={() => change({ ...item, quantity: Math.min(99, item.quantity + 1) })}
+            onClick={() =>
+              change({ ...item, quantity: Math.min(99, item.quantity + 1) })
+            }
           >
             <Plus className="size-3.5" />
           </Button>
         </div>
       </div>
+      {quantityCopy.helper && (
+        <p className="text-xs leading-5 text-muted-foreground">
+          {quantityCopy.helper}
+        </p>
+      )}
+    </div>
+  );
+
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="flex flex-wrap items-center gap-2">
+        <label htmlFor={`${idPrefix}-label`} className="text-xs text-muted-foreground">
+          Name
+        </label>
+        <Input
+          id={`${idPrefix}-label`}
+          value={item.label}
+          className="h-11 min-w-40 flex-1 text-sm"
+          onChange={(event) => change({ ...item, label: event.target.value })}
+        />
+      </div>
+
+      {!applicability.pair && quantityEditor}
 
       {applicability.unit && (
         <p className="text-xs text-muted-foreground">
@@ -340,14 +381,14 @@ export function EquipmentItemEditor({
             { value: true, label: "Adjustable" },
             { value: false, label: "Fixed weights" },
           ]}
-          onChange={(value) => change(setAttr(item, "adjustable", value))}
+          onChange={changeAdjustable}
         />
       )}
 
       {applicability.pair && (
         <ChoicePills
           groupLabel={`Pair or single for ${item.label}`}
-          value={item.attrs.pair as boolean | undefined}
+          value={pair}
           options={[
             { value: true, label: "Pair" },
             { value: false, label: "Single" },
@@ -355,6 +396,8 @@ export function EquipmentItemEditor({
           onChange={(value) => change(setAttr(item, "pair", value))}
         />
       )}
+
+      {applicability.pair && quantityEditor}
 
       {applicability.weightRange && adjustable === true && (
         <div className="flex flex-col gap-3">
