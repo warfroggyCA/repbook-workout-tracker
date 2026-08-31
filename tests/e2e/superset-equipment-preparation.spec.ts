@@ -56,11 +56,27 @@ async function skipCurrentSet(page: Page) {
     .getByTestId("current-set-entry")
     .getAttribute("id");
   expect(currentEntryId).not.toBeNull();
-  await openNativeDetails(card.locator("details", {
-    hasText: "Set exceptions",
-  }));
-  await card.getByRole("button", { name: "Skip set", exact: true }).click();
   const dialog = page.getByRole("dialog", { name: /^Skip set / });
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    card = await openCurrentExerciseCard(page);
+    await openNativeDetails(card.locator("details", {
+      hasText: "Set exceptions",
+    }));
+    const skip = card.getByRole("button", {
+      name: "Skip set",
+      exact: true,
+    });
+    await expect(skip).toBeEnabled();
+    await waitForHydratedReactHandler(skip);
+    try {
+      await skip.click();
+      await expect(dialog).toBeVisible({ timeout: 5_000 });
+      break;
+    } catch (error) {
+      if (await dialog.isVisible()) break;
+      if (attempt === 1) throw error;
+    }
+  }
   await dialog.getByLabel("Reason").selectOption("time_limit_reached");
   await dialog.getByRole("button", { name: "Skip item", exact: true }).click();
   await expect(dialog).toHaveCount(0);
