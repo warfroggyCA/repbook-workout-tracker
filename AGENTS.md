@@ -16,6 +16,9 @@ Before application changes, read:
 - `docs/SECURITY_AND_PRIVACY.md` for public-repository and data-handling rules.
 - `docs/PROVENANCE.md` before comparing this sanitized history with the private
   operational archive.
+- `docs/COACHING_PRODUCT_REQUIREMENTS.md` before changing coaching, Program
+  evaluation, workout completion semantics, progression, exercise selection,
+  History/Review interpretation, or athlete-facing intelligence.
 - Relevant installed Next.js guidance under `node_modules/next/dist/docs/`.
 
 ## Non-negotiable data contracts
@@ -84,6 +87,9 @@ Before application changes, read:
   restores, and version paths before changing consequential persisted meaning.
 - Use the established services and schema modules; avoid duplicated
   interpretations of the same fact.
+- Athlete-facing coaching or Program changes must satisfy
+  `docs/COACHING_PRODUCT_REQUIREMENTS.md` or document a deliberate bounded
+  deferral in the implementation/PR with the remaining acceptance criteria.
 - Make the smallest complete change and add focused regression coverage.
 - Keep public documentation accurate without copying private release history.
 
