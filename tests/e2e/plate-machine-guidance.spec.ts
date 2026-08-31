@@ -88,6 +88,33 @@ async function expectPointerReachable(locator: Locator, label: string) {
   );
 }
 
+async function focusAcrossReactReconciliation(locator: Locator) {
+  await expect
+    .poll(
+      async () => {
+        if ((await locator.count()) !== 1) return false;
+        try {
+          await locator.focus();
+          return locator.evaluate(
+            (element) =>
+              new Promise<boolean>((resolve) => {
+                requestAnimationFrame(() => {
+                  requestAnimationFrame(() => {
+                    resolve(document.activeElement === element);
+                  });
+                });
+              }),
+          );
+        } catch {
+          return false;
+        }
+      },
+      { timeout: 30_000 },
+    )
+    .toBe(true);
+  await expect(locator).toBeFocused();
+}
+
 function unexpectedBrowserErrors(errors: string[]) {
   return errors.filter(
     (error) =>
@@ -288,8 +315,7 @@ test("shows live plates per side without changing total-load meaning", async ({
   );
   const inputAfterReload = reloadedInput;
   await waitForHydratedReactChangeHandler(inputAfterReload);
-  await inputAfterReload.focus();
-  await expect(inputAfterReload).toBeFocused();
+  await focusAcrossReactReconciliation(inputAfterReload);
   const exactGuidance = reloadedCard.getByText(
     /45 \+ 5 lb per side · 100 lb total resistance/,
   );
