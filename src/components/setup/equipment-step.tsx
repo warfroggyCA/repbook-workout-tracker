@@ -21,11 +21,11 @@ import {
 import {
   COMMON_BAR_WEIGHTS,
   COMMON_FIXED_WEIGHTS,
+  equipmentQuantityCopy,
 } from "@/lib/equipment-inventory-contract";
 import { labelForEquipmentType } from "@/lib/equipment-families";
 import {
   checklistFromExisting,
-  equipmentQuantityLabel,
   nextChecklistItemLabel,
   type DraftChecklistItem,
   type SetupExistingInventory,
@@ -225,6 +225,11 @@ function AvailableWeightsEditor({
   if (!item.unit || (item.type !== "dumbbell" && item.type !== "kettlebell")) {
     return null;
   }
+  const exactOwnedWeights = item.adjustable === false;
+  const weightLabel = exactOwnedWeights ? "Owned weights" : "Available weights";
+  const weightInstruction = exactOwnedWeights
+    ? "select every weight you own"
+    : "select every load you can use";
   const selected = item.increments ?? [];
   const choices = [...new Set([...COMMON_FIXED_WEIGHTS[item.type][item.unit], ...selected])]
     .sort((left, right) => left - right);
@@ -233,16 +238,22 @@ function AvailableWeightsEditor({
     onChange({
       ...item,
       increments: sorted.length ? sorted : null,
-      minWeight: sorted[0] ?? item.minWeight,
-      maxWeight: sorted[sorted.length - 1] ?? item.maxWeight,
+      minWeight: sorted[0] ?? (exactOwnedWeights ? null : item.minWeight),
+      maxWeight:
+        sorted[sorted.length - 1] ??
+        (exactOwnedWeights ? null : item.maxWeight),
     });
   };
   return (
     <div className="flex flex-col gap-2 px-2">
       <p className="text-xs text-muted-foreground">
-        Available weights ({item.unit}) — select every load you can use
+        {weightLabel} ({item.unit}) — {weightInstruction}
       </p>
-      <div className="flex flex-wrap gap-1.5" role="group" aria-label={`Available ${item.type} weights`}>
+      <div
+        className="flex flex-wrap gap-1.5"
+        role="group"
+        aria-label={`${weightLabel} for ${item.label}`}
+      >
         {choices.map((weight) => (
           <button
             key={weight}
@@ -341,10 +352,38 @@ function ItemEditor({
     onChange({ ...item, unit });
   }
 
+  function setAdjustable(adjustable: boolean) {
+    if (adjustable) {
+      onChange({ ...item, adjustable });
+      return;
+    }
+    const selected = [...new Set(item.increments ?? [])].sort(
+      (left, right) => left - right
+    );
+    const exactWeights =
+      selected.length > 0
+        ? selected
+        : item.minWeight != null && item.minWeight === item.maxWeight
+          ? [item.minWeight]
+          : [];
+    onChange({
+      ...item,
+      adjustable,
+      increments: exactWeights.length ? exactWeights : null,
+      minWeight: exactWeights[0] ?? null,
+      maxWeight: exactWeights[exactWeights.length - 1] ?? null,
+    });
+  }
+
   const showsUnit = WEIGHTED_ENTRY_TYPES.has(item.type);
   const showsWeights = item.type === "dumbbell" || item.type === "kettlebell";
   const showsPairChoice =
     item.type === "dumbbell" || item.type === "kettlebell";
+  const quantityCopy = equipmentQuantityCopy(
+    item.type,
+    item.pair,
+    item.adjustable
+  );
 
   return (
     <div className="flex flex-col gap-2">
@@ -369,37 +408,15 @@ function ItemEditor({
         </AmberField>
       )}
 
-      {showsWeights && (
-        <div className="flex items-center gap-2 px-2 text-sm">
-          <span className="text-xs text-muted-foreground">Range</span>
-          <NumberInput
-            value={item.minWeight}
-            onChange={(v) => onChange({ ...item, minWeight: v })}
-            placeholder="min"
-            className="w-20"
-          />
-          <span className="text-xs text-muted-foreground">to</span>
-          <NumberInput
-            value={item.maxWeight}
-            onChange={(v) => onChange({ ...item, maxWeight: v })}
-            placeholder="max"
-            className="w-20"
-          />
-          <span className="text-xs text-muted-foreground">{item.unit ?? ""}</span>
-        </div>
-      )}
-
-      {showsWeights && <AvailableWeightsEditor item={item} onChange={onChange} />}
-
       {showsPairChoice && (
         <AmberField active={ambers.has("adjustable")} question={q("adjustable")}>
           <ChoicePills
             value={item.adjustable}
             options={[
               { value: true, label: "Adjustable" },
-              { value: false, label: "Fixed" },
+              { value: false, label: "Fixed weights" },
             ]}
-            onChange={(v) => onChange({ ...item, adjustable: v })}
+            onChange={setAdjustable}
           />
         </AmberField>
       )}
@@ -420,18 +437,48 @@ function ItemEditor({
       {showsPairChoice && (
         <div className="flex flex-col gap-1">
           <QuantityStepper
-            label={equipmentQuantityLabel(item.type, item.pair)}
+            label={quantityCopy.label}
             value={item.quantity}
             onChange={(v) => onChange({ ...item, quantity: v })}
           />
-          <p className="px-2 text-xs leading-5 text-muted-foreground">
-            {item.pair === true
-              ? "Quantity 1 means one matched pair: two physical weights."
-              : item.pair === false
-                ? "Quantity counts individual weights when Single is selected."
-                : "Choose Pair or Single before deciding the quantity."}
-          </p>
+          {quantityCopy.helper && (
+            <p className="px-2 text-xs leading-5 text-muted-foreground">
+              {quantityCopy.helper}
+            </p>
+          )}
         </div>
+      )}
+
+      {showsWeights && item.adjustable === true && (
+        <div className="flex items-center gap-2 px-2 text-sm">
+          <span className="text-xs text-muted-foreground">Range</span>
+          <NumberInput
+            value={item.minWeight}
+            onChange={(v) => onChange({ ...item, minWeight: v })}
+            placeholder="min"
+            className="w-20"
+            ariaLabel={`Minimum adjustable weight for ${item.label}`}
+          />
+          <span className="text-xs text-muted-foreground">to</span>
+          <NumberInput
+            value={item.maxWeight}
+            onChange={(v) => onChange({ ...item, maxWeight: v })}
+            placeholder="max"
+            className="w-20"
+            ariaLabel={`Maximum adjustable weight for ${item.label}`}
+          />
+          <span className="text-xs text-muted-foreground">{item.unit ?? ""}</span>
+        </div>
+      )}
+
+      {showsWeights && item.adjustable === true && (
+        <AvailableWeightsEditor item={item} onChange={onChange} />
+      )}
+
+      {showsWeights && item.adjustable === false && (
+        <AmberField active={ambers.has("increments")} question={q("increments")}>
+          <AvailableWeightsEditor item={item} onChange={onChange} />
+        </AmberField>
       )}
 
       {item.type === "plates" && (
@@ -874,9 +921,9 @@ function ChecklistTab({
   return (
     <div className="flex flex-col gap-2">
       <p className="rounded-lg border bg-muted/30 px-3 py-2 text-xs leading-5 text-muted-foreground">
-        For one matched dumbbell pair, choose Pair and leave quantity at 1.
-        Quantity counts complete pairs or individual singles, not the two
-        weights inside a pair. Add another only for a separate configuration.
+        For fixed dumbbells, select every weight you own. Quantity 1 with Pair
+        means one matched pair at each selected weight. Use Add another only
+        when a different quantity or configuration needs its own entry.
       </p>
       <p role="status" aria-live="polite" className="sr-only">
         {recentlyAdded

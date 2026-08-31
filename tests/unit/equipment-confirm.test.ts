@@ -89,7 +89,7 @@ describe("amberFields (equipment confirmation gate)", () => {
     ]);
   });
 
-  it("fully resolved dumbbells pass", () => {
+  it("fixed dumbbells require exact owned weights", () => {
     expect(
       amberFields(
         item({
@@ -98,6 +98,19 @@ describe("amberFields (equipment confirmation gate)", () => {
           unit: "lb",
           adjustable: false,
           pair: true,
+        })
+      )
+    ).toEqual(["increments"]);
+    expect(
+      amberFields(
+        item({
+          type: "dumbbell",
+          minWeight: 5,
+          maxWeight: 35,
+          unit: "lb",
+          adjustable: false,
+          pair: true,
+          increments: [5, 10, 15, 20, 25, 35],
         })
       )
     ).toEqual([]);
@@ -196,6 +209,7 @@ describe("normalizeParsedEquipmentItem", () => {
       unit: "lb",
       adjustable: false,
       pair: true,
+      increments: [25],
     });
     expect(amberFields(item)).toEqual([]);
   });

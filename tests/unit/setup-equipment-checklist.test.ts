@@ -2,18 +2,28 @@ import { describe, expect, it } from "vitest";
 import { amberFields } from "@/ai/tasks/equipment-parse/confirm";
 import {
   checklistFromExisting,
-  equipmentQuantityLabel,
   nextChecklistItemLabel,
 } from "@/lib/setup-equipment-checklist";
+import { equipmentQuantityCopy } from "@/lib/equipment-inventory-contract";
 
 describe("first-time equipment checklist lossless revisit", () => {
-  it("labels quantity in complete pairs or individual singles", () => {
-    expect(equipmentQuantityLabel("dumbbell", true)).toBe("How many pairs");
-    expect(equipmentQuantityLabel("dumbbell", false)).toBe("How many singles");
-    expect(equipmentQuantityLabel("dumbbell", null)).toBe(
-      "Choose pair or single first"
+  it("explains quantity for fixed and adjustable handheld configurations", () => {
+    expect(equipmentQuantityCopy("dumbbell", true, false)).toEqual({
+      label: "How many pairs at each weight",
+      helper:
+        "Quantity 1 means one matched pair at every selected weight. Add another entry if a weight has a different quantity or configuration.",
+    });
+    expect(equipmentQuantityCopy("dumbbell", false, true)).toEqual({
+      label: "How many adjustable singles",
+      helper: "Quantity counts individual adjustable weights when Single is selected.",
+    });
+    expect(equipmentQuantityCopy("dumbbell", null, false).label).toBe(
+      "Choose Pair or Single first"
     );
-    expect(equipmentQuantityLabel("barbell", null)).toBe("How many");
+    expect(equipmentQuantityCopy("barbell", null, null)).toEqual({
+      label: "How many",
+      helper: null,
+    });
   });
 
   it("gives repeated equipment a visible unique default label", () => {
@@ -69,6 +79,11 @@ describe("first-time equipment checklist lossless revisit", () => {
       "33333333-3333-4333-8333-333333333333",
     ]);
     expect(result.filter((item) => item.type === "dumbbell")).toHaveLength(2);
+    expect(result[1]).toMatchObject({
+      increments: [10, 20],
+      minWeight: 10,
+      maxWeight: 20,
+    });
     expect(result[2]).toMatchObject({ type: "trap_bar", unit: "kg" });
   });
 

@@ -174,6 +174,15 @@ export function normalizeParsedEquipmentItem(
   if (item.type !== "plates") {
     item = { ...item, denominations: null };
   }
+  if (
+    (item.type === "dumbbell" || item.type === "kettlebell") &&
+    item.adjustable === false &&
+    (item.increments == null || item.increments.length === 0) &&
+    item.minWeight != null &&
+    item.minWeight === item.maxWeight
+  ) {
+    item = { ...item, increments: [item.minWeight] };
+  }
 
   return item;
 }

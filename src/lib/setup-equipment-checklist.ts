@@ -10,25 +10,6 @@ export type SetupExistingInventory = {
 
 export type DraftChecklistItem = ConfirmedEquipmentItem & { clientKey: string };
 
-const PAIRABLE_ENTRY_TYPES = new Set<ConfirmedEquipmentItem["type"]>([
-  "dumbbell",
-  "kettlebell",
-]);
-
-/**
- * Quantity counts the selected logical unit. A paired row represents complete
- * matched pairs, never the individual weights inside those pairs.
- */
-export function equipmentQuantityLabel(
-  type: ConfirmedEquipmentItem["type"],
-  pair: boolean | null
-): string {
-  if (!PAIRABLE_ENTRY_TYPES.has(type)) return "How many";
-  if (pair === true) return "How many pairs";
-  if (pair === false) return "How many singles";
-  return "Choose pair or single first";
-}
-
 /**
  * Repeated checklist entries need distinct default names because the atomic
  * inventory save deliberately rejects duplicate type-and-label identities.
@@ -107,6 +88,25 @@ export function checklistFromExisting(
     item.increments = row.attrs.increments ?? null;
     item.brand = row.attrs.brand ?? null;
     item.adjustableBench = row.attrs.adjustableBench ?? null;
+    if (
+      (item.type === "dumbbell" || item.type === "kettlebell") &&
+      item.adjustable === false
+    ) {
+      const selected = [...new Set(item.increments ?? [])].sort(
+        (left, right) => left - right
+      );
+      const exactWeights =
+        selected.length > 0
+          ? selected
+          : item.minWeight != null && item.minWeight === item.maxWeight
+            ? [item.minWeight]
+            : [];
+      if (exactWeights.length > 0) {
+        item.increments = exactWeights;
+        item.minWeight = exactWeights[0];
+        item.maxWeight = exactWeights[exactWeights.length - 1];
+      }
+    }
     if (row.type === "barbell" || row.type === "ez_bar") {
       const barIndex = barIndexByItemIndex.get(itemIndex);
       if (barIndex != null) {
