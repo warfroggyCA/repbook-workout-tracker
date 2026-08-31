@@ -326,7 +326,10 @@ test("refuses incomplete assistance, then preserves assisted work without false 
     .getByRole("button", { name: "Add exercise", exact: true })
     .click();
 
-  const assisted = page.getByRole("region", { name: "Assisted Push-Up" });
+  const assisted = page.getByRole("region", {
+    name: "Assisted Push-Up",
+    exact: true,
+  });
   await expect(assisted).toContainText("Workout only");
   await assisted
     .getByRole("button", { name: /Assisted Push-Up/ })
