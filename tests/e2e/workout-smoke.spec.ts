@@ -2744,17 +2744,16 @@ test("confirms one complete quick log and shows its stored units in History", as
     .getByRole("navigation", { name: "Main navigation" })
     .getByRole("link", { name: "History", exact: true })
     .click();
-  const directQuickLog = page.locator("[data-calendar-action]").filter({
+  await expect(
+    page.getByRole("heading", { name: "Training calendar", exact: true }),
+  ).toBeVisible();
+  const quickLogDay = page.locator("[data-calendar-action]").filter({
     hasText: "Quick log",
   }).first();
-  if ((await directQuickLog.count()) > 0) {
-    await directQuickLog.click();
-  } else {
-    const chooserDay = page.getByRole("button", {
-      name: /Choose from \d+ records/,
-    }).last();
-    await expect(chooserDay).toBeVisible();
-    await chooserDay.click();
+  await expect(quickLogDay).toBeVisible();
+  const opensChooser = await quickLogDay.getAttribute("aria-haspopup");
+  await quickLogDay.click();
+  if (opensChooser === "dialog") {
     const quickLog = page
       .getByRole("dialog", { name: "Choose a record" })
       .getByRole("link", { name: /Quick log/ })
