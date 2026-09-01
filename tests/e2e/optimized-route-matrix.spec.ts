@@ -97,10 +97,15 @@ test("renders every optimized page family under its request nonce", async ({
   }
 
   await visitRenderedDocument(page, "/history");
-  const historyHref = await page
-    .locator('a[href^="/history/"]')
-    .first()
-    .getAttribute("href");
+  const historyLinks = page.locator('a[href^="/history/"]');
+  if ((await historyLinks.count()) === 0) {
+    // At the start of a month, the recent demo workouts can all be in the
+    // previous month while today's workout and activity share one chooser.
+    // Move back once so this route matrix still exercises a completed workout.
+    await page.getByRole("button", { name: "Previous month" }).click();
+    await expect(historyLinks.first()).toBeVisible();
+  }
+  const historyHref = await historyLinks.first().getAttribute("href");
   expect(historyHref, "The seeded workout detail route was missing.").toBeTruthy();
   await visitRenderedDocument(page, historyHref!);
   await expect(page).toHaveTitle("History · Repbook");
