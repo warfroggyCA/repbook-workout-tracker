@@ -9,6 +9,11 @@ production-maintenance automation, real workout observations, and owner data
 remain in a separate private operations repository and are intentionally not
 part of this public Git history.
 
+Start with the [public documentation guide](docs/README.md). This repository
+owns application behavior and durable public contracts; the private operations
+repository owns volatile production status, release chronology, and product
+priority.
+
 ## Technology
 
 Next.js App Router, TypeScript, React, Drizzle ORM, Postgres, Auth.js, Vitest,
@@ -45,10 +50,8 @@ npm run docs:check
 The pull-request workflow also replays migrations, checks dependency policy,
 and runs the signed-in browser matrix in Chromium and WebKit.
 
-Read [the architecture and data contracts](docs/ARCHITECTURE.md),
-[development guidance](docs/DEVELOPMENT.md), and
-[the public privacy boundary](docs/SECURITY_AND_PRIVACY.md) before changing
-consequential behavior.
+The [documentation guide](docs/README.md) routes each kind of change to its
+authoritative contract.
 
 ## Contributions and security
 
