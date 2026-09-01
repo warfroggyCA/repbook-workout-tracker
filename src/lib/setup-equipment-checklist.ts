@@ -90,22 +90,12 @@ export function checklistFromExisting(
     item.adjustableBench = row.attrs.adjustableBench ?? null;
     if (
       (item.type === "dumbbell" || item.type === "kettlebell") &&
-      item.adjustable === false
+      item.adjustable === false &&
+      (item.increments == null || item.increments.length === 0) &&
+      item.minWeight != null &&
+      item.minWeight === item.maxWeight
     ) {
-      const selected = [...new Set(item.increments ?? [])].sort(
-        (left, right) => left - right
-      );
-      const exactWeights =
-        selected.length > 0
-          ? selected
-          : item.minWeight != null && item.minWeight === item.maxWeight
-            ? [item.minWeight]
-            : [];
-      if (exactWeights.length > 0) {
-        item.increments = exactWeights;
-        item.minWeight = exactWeights[0];
-        item.maxWeight = exactWeights[exactWeights.length - 1];
-      }
+      item.increments = [item.minWeight];
     }
     if (row.type === "barbell" || row.type === "ez_bar") {
       const barIndex = barIndexByItemIndex.get(itemIndex);

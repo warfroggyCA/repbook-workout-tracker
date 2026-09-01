@@ -1,6 +1,9 @@
 import { z } from "zod";
 import { MAX_STORED_LOAD, normalizeStoredLoad } from "@/lib/units";
-import { EQUIPMENT_TYPE_VALUES } from "@/lib/equipment-inventory-contract";
+import {
+  EQUIPMENT_TYPE_VALUES,
+  fixedHandheldWeightStatus,
+} from "@/lib/equipment-inventory-contract";
 
 const storedNonnegativeLoad = z
   .number()
@@ -106,11 +109,14 @@ export function amberFields(item: ConfirmedEquipmentItem): AmberField[] {
   ) {
     fields.push("pair");
   }
-  if (
-    item.adjustable === false &&
-    (item.type === "dumbbell" || item.type === "kettlebell") &&
-    (item.increments == null || item.increments.length === 0)
-  ) {
+  const fixedWeightStatus = fixedHandheldWeightStatus({
+    type: item.type,
+    adjustable: item.adjustable,
+    increments: item.increments,
+    minWeight: item.minWeight,
+    maxWeight: item.maxWeight,
+  });
+  if (fixedWeightStatus === "missing" || fixedWeightStatus === "inconsistent") {
     fields.push("increments");
   }
   if (

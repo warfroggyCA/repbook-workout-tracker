@@ -12,6 +12,7 @@ import {
 import type { EquipmentAttrs } from "@/db/schema/equipment";
 import {
   associateBarConfigurations,
+  fixedHandheldWeightStatus,
   synchronizeMatchedBarCopies,
   documentItemFromRow,
   type BarConfigurationItem,
@@ -484,6 +485,48 @@ function changedItemFields(
   return changed;
 }
 
+function fixedWeightStatusForItem(item: EquipmentInventoryItem) {
+  return fixedHandheldWeightStatus({
+    type: item.type,
+    adjustable: item.attrs.adjustable,
+    increments: item.attrs.increments,
+    minWeight: item.attrs.minWeight,
+    maxWeight: item.attrs.maxWeight,
+  });
+}
+
+/**
+ * Current-aware fixed-handheld gate. Untouched incomplete legacy rows remain
+ * representable while unrelated inventory is edited, but a new or changed
+ * fixed row must name exact weights whose bounds agree with those weights.
+ */
+export function validateFixedHandheldDraftAgainstCurrent(
+  current: EquipmentInventoryDocument,
+  proposed: EquipmentInventoryDocument
+): string | null {
+  const currentById = new Map(
+    current.items.flatMap((item) => (item.id ? [[item.id, item] as const] : []))
+  );
+  for (const item of proposed.items) {
+    const status = fixedWeightStatusForItem(item);
+    if (status === "not_applicable" || status === "complete") continue;
+
+    const before = item.id ? currentById.get(item.id) : undefined;
+    const beforeStatus = before ? fixedWeightStatusForItem(before) : null;
+    const isUntouchedLegacy =
+      before != null &&
+      (beforeStatus === "missing" || beforeStatus === "inconsistent") &&
+      changedItemFields(before, item).length === 0;
+    if (isUntouchedLegacy) continue;
+
+    if (status === "missing") {
+      return `${item.label} needs at least one exact owned weight before fixed equipment can be saved.`;
+    }
+    return `${item.label} has fixed-weight bounds that do not match its exact owned weights. Confirm the exact weights before saving.`;
+  }
+  return null;
+}
+
 function toFilterInventory(
   items: Array<{ type: string; attrs: EquipmentAttrs }>,
   plates: Array<{ denomination: number }>
@@ -545,6 +588,13 @@ export async function previewInventoryDocumentChanges(
       reason:
         "This draft refers to saved records that no longer exist in your inventory. Reload the current inventory and try again.",
     };
+  }
+  const fixedHandheldIssue = validateFixedHandheldDraftAgainstCurrent(
+    current.document,
+    document
+  );
+  if (fixedHandheldIssue) {
+    return { ok: false, code: "invalid", reason: fixedHandheldIssue };
   }
   const barDraftIssue = validateBarDraftAgainstCurrent(current.document, document);
   if (barDraftIssue) {

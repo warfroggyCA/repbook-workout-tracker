@@ -35,6 +35,7 @@ import {
   EQUIPMENT_TYPE_VALUES,
   associateBarConfigurations,
   barTypeForEquipmentItem,
+  fixedHandheldWeightStatus,
   hasSparePlate,
   validateEquipmentInventoryDocument,
   type BarConfigurationItem,
@@ -1091,12 +1092,18 @@ function ItemDrawerBody({
     ) {
       return "Choose Adjustable or Fixed weights and Pair or Single before saving.";
     }
-    if (
-      draftItem.attrs.adjustable === false &&
-      (!Array.isArray(draftItem.attrs.increments) ||
-        draftItem.attrs.increments.length === 0)
-    ) {
+    const fixedWeightStatus = fixedHandheldWeightStatus({
+      type: draftItem.type,
+      adjustable: draftItem.attrs.adjustable,
+      increments: draftItem.attrs.increments,
+      minWeight: draftItem.attrs.minWeight,
+      maxWeight: draftItem.attrs.maxWeight,
+    });
+    if (fixedWeightStatus === "missing") {
       return "Select at least one owned weight before saving fixed equipment.";
+    }
+    if (fixedWeightStatus === "inconsistent") {
+      return "Confirm the exact owned weights before saving fixed equipment.";
     }
     return null;
   })();

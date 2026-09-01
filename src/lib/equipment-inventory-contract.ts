@@ -483,6 +483,41 @@ const WEIGHT_RANGE_TYPES = new Set<CanonicalEquipmentType>([
 const PAIRED_TYPES = new Set<CanonicalEquipmentType>(["dumbbell", "kettlebell"]);
 const BAR_ITEM_TYPES = new Set<CanonicalEquipmentType>(["barbell", "ez_bar"]);
 
+export type FixedHandheldWeightStatus =
+  | "not_applicable"
+  | "missing"
+  | "inconsistent"
+  | "complete";
+
+/**
+ * A fixed handheld row is exact, not a range. Its stored bounds are retained
+ * for existing availability consumers, but they must equal the lowest and
+ * highest selected exact weights before a new or changed row is accepted.
+ */
+export function fixedHandheldWeightStatus(details: {
+  type: CanonicalEquipmentType;
+  adjustable: boolean | null | undefined;
+  increments: number[] | null | undefined;
+  minWeight: number | null | undefined;
+  maxWeight: number | null | undefined;
+}): FixedHandheldWeightStatus {
+  if (!PAIRED_TYPES.has(details.type) || details.adjustable !== false) {
+    return "not_applicable";
+  }
+  const weights = [...new Set(details.increments ?? [])].sort(
+    (left, right) => left - right
+  );
+  if (weights.length === 0) return "missing";
+  if (
+    weights.length !== details.increments?.length ||
+    details.minWeight !== weights[0] ||
+    details.maxWeight !== weights[weights.length - 1]
+  ) {
+    return "inconsistent";
+  }
+  return "complete";
+}
+
 export type EquipmentQuantityCopy = {
   label: string;
   helper: string | null;
