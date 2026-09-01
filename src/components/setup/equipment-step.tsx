@@ -22,6 +22,7 @@ import {
   COMMON_BAR_WEIGHTS,
   COMMON_FIXED_WEIGHTS,
   equipmentQuantityCopy,
+  fixedHandheldWeightStatus,
 } from "@/lib/equipment-inventory-contract";
 import { labelForEquipmentType } from "@/lib/equipment-families";
 import {
@@ -226,6 +227,13 @@ function AvailableWeightsEditor({
     return null;
   }
   const exactOwnedWeights = item.adjustable === false;
+  const fixedWeightStatus = fixedHandheldWeightStatus({
+    type: item.type,
+    adjustable: item.adjustable,
+    increments: item.increments,
+    minWeight: item.minWeight,
+    maxWeight: item.maxWeight,
+  });
   const weightLabel = exactOwnedWeights ? "Owned weights" : "Available weights";
   const weightInstruction = exactOwnedWeights
     ? "select every weight you own"
@@ -295,6 +303,17 @@ function AvailableWeightsEditor({
           Add custom {item.unit}
         </Button>
       </div>
+      {fixedWeightStatus === "inconsistent" && selected.length > 0 && (
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="min-h-11 self-start"
+          onClick={() => apply(selected)}
+        >
+          Use selected weights
+        </Button>
+      )}
     </div>
   );
 }

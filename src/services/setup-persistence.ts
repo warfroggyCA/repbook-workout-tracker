@@ -14,6 +14,7 @@ import {
   inventoryRevisionExpression,
   loadEquipmentInventoryDocument,
   validateBarDraftAgainstCurrent,
+  validateFixedHandheldDraftAgainstCurrent,
 } from "@/services/equipment-inventory";
 
 type PersistenceResult =
@@ -1267,6 +1268,13 @@ export async function saveInventoryDocumentForManagement(
   const current = await loadEquipmentInventoryDocument(db, userId);
   if (!current) {
     return { ok: false, code: "stale", reason: "Your account could not be loaded." };
+  }
+  const fixedHandheldIssue = validateFixedHandheldDraftAgainstCurrent(
+    current.document,
+    document
+  );
+  if (fixedHandheldIssue) {
+    return { ok: false, code: "invalid", reason: fixedHandheldIssue };
   }
   const barDraftIssue = validateBarDraftAgainstCurrent(current.document, document);
   if (barDraftIssue) {

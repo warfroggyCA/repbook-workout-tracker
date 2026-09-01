@@ -227,6 +227,135 @@ describe("returning-user equipment management boundary", () => {
     60_000
   );
 
+  it("grandfathers an untouched contradictory fixed row during unrelated edits", async () => {
+    const [legacyRow] = await db
+      .insert(equipmentItems)
+      .values({
+        userId,
+        type: "dumbbell",
+        label: "Legacy fixed dumbbells",
+        quantity: 1,
+        attrs: {
+          unit: "lb",
+          adjustable: false,
+          pair: true,
+          minWeight: 5,
+          maxWeight: 50,
+          increments: [5, 10, 15],
+        },
+        available: true,
+      })
+      .returning();
+    const [benchRow] = await db
+      .insert(equipmentItems)
+      .values({
+        userId,
+        type: "bench",
+        label: "Flat bench",
+        quantity: 1,
+        attrs: { adjustableBench: false },
+        available: true,
+      })
+      .returning();
+    const loaded = await loadEquipmentInventoryDocument(db, userId);
+    const edited: EquipmentInventoryDocument = {
+      ...loaded!.document,
+      items: loaded!.document.items.map((item) =>
+        item.id === benchRow.id ? { ...item, quantity: 2 } : item
+      ),
+    };
+
+    await expect(
+      previewInventoryDocumentChanges(db, userId, edited)
+    ).resolves.toMatchObject({ ok: true });
+    await expect(
+      saveInventoryDocumentForManagement(db, userId, edited)
+    ).resolves.toMatchObject({ ok: true, changed: true });
+
+    const legacyAfter = await db.query.equipmentItems.findFirst({
+      where: eq(equipmentItems.id, legacyRow.id),
+    });
+    expect(legacyAfter?.attrs).toEqual(legacyRow.attrs);
+  });
+
+  it("rejects new or changed incomplete fixed rows at the server boundary", async () => {
+    const [legacyRow] = await db
+      .insert(equipmentItems)
+      .values({
+        userId,
+        type: "dumbbell",
+        label: "Legacy fixed dumbbells",
+        quantity: 1,
+        attrs: {
+          unit: "lb",
+          adjustable: false,
+          pair: true,
+          minWeight: 5,
+          maxWeight: 50,
+        },
+        available: true,
+      })
+      .returning();
+    const loaded = await loadEquipmentInventoryDocument(db, userId);
+    const changedLegacy: EquipmentInventoryDocument = {
+      ...loaded!.document,
+      items: loaded!.document.items.map((item) =>
+        item.id === legacyRow.id ? { ...item, quantity: 2 } : item
+      ),
+    };
+
+    await expect(
+      previewInventoryDocumentChanges(db, userId, changedLegacy)
+    ).resolves.toMatchObject({ ok: false, code: "invalid" });
+    await expect(
+      saveInventoryDocumentForManagement(db, userId, changedLegacy)
+    ).resolves.toMatchObject({ ok: false, code: "invalid" });
+
+    const newIncomplete: EquipmentInventoryDocument = {
+      ...loaded!.document,
+      items: [
+        ...loaded!.document.items,
+        {
+          id: null,
+          type: "kettlebell",
+          label: "New fixed kettlebells",
+          quantity: 1,
+          attrs: {
+            unit: "lb",
+            adjustable: false,
+            pair: true,
+            minWeight: 20,
+            maxWeight: 40,
+          },
+        },
+      ],
+    };
+    await expect(
+      previewInventoryDocumentChanges(db, userId, newIncomplete)
+    ).resolves.toMatchObject({ ok: false, code: "invalid" });
+    await expect(
+      saveInventoryDocumentForManagement(db, userId, newIncomplete)
+    ).resolves.toMatchObject({ ok: false, code: "invalid" });
+
+    const complete = {
+      ...newIncomplete,
+      items: newIncomplete.items.map((item) =>
+        item.id == null
+          ? {
+              ...item,
+              attrs: {
+                ...item.attrs,
+                increments: [20, 30, 40],
+              },
+            }
+          : item
+      ),
+    };
+    await expect(
+      previewInventoryDocumentChanges(db, userId, complete)
+    ).resolves.toMatchObject({ ok: true });
+  });
+
   it(
     "applies management edits atomically: stable IDs, preserved server-owned attributes, preserved definitions, exact plate and bar diffs",
     async () => {
@@ -253,7 +382,14 @@ describe("returning-user equipment management boundary", () => {
           type: "dumbbell",
           label: "Fixed dumbbells",
           quantity: 1,
-          attrs: { unit: "lb", maxWeight: 50, adjustable: false, pair: true },
+          attrs: {
+            unit: "lb",
+            minWeight: 5,
+            maxWeight: 50,
+            adjustable: false,
+            pair: true,
+            increments: [5, 10, 15, 20, 25, 30, 35, 40, 45, 50],
+          },
           available: true,
         })
         .returning();
@@ -325,7 +461,14 @@ describe("returning-user equipment management boundary", () => {
             type: "dumbbell",
             label: "Fixed dumbbells",
             quantity: 1,
-            attrs: { unit: "lb", maxWeight: 35, adjustable: false, pair: true },
+            attrs: {
+              unit: "lb",
+              minWeight: 5,
+              maxWeight: 35,
+              adjustable: false,
+              pair: true,
+              increments: [5, 10, 15, 20, 25, 30, 35],
+            },
           },
           {
             id: barItem.id,
@@ -341,7 +484,14 @@ describe("returning-user equipment management boundary", () => {
             type: "kettlebell",
             label: "Competition kettlebell",
             quantity: 1,
-            attrs: { unit: "lb", maxWeight: 53, adjustable: false },
+            attrs: {
+              unit: "lb",
+              minWeight: 53,
+              maxWeight: 53,
+              adjustable: false,
+              pair: false,
+              increments: [53],
+            },
           },
         ],
         plates: [

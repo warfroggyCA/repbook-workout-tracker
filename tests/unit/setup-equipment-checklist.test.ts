@@ -56,7 +56,14 @@ describe("first-time equipment checklist lossless revisit", () => {
           type: "dumbbell",
           label: "Fixed pair",
           quantity: 2,
-          attrs: { unit: "lb", adjustable: false, pair: true, increments: [10, 20] },
+          attrs: {
+            unit: "lb",
+            adjustable: false,
+            pair: true,
+            minWeight: 10,
+            maxWeight: 20,
+            increments: [10, 20],
+          },
         },
         {
           id: "33333333-3333-4333-8333-333333333333",
@@ -85,6 +92,34 @@ describe("first-time equipment checklist lossless revisit", () => {
       maxWeight: 20,
     });
     expect(result[2]).toMatchObject({ type: "trap_bar", unit: "kg" });
+  });
+
+  it("preserves contradictory fixed-weight facts and keeps them unresolved", () => {
+    const [item] = checklistFromExisting({
+      items: [{
+        id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        type: "dumbbell",
+        label: "Legacy fixed pair",
+        quantity: 1,
+        attrs: {
+          unit: "lb",
+          adjustable: false,
+          pair: true,
+          minWeight: 5,
+          maxWeight: 50,
+          increments: [5, 10, 15],
+        },
+      }],
+      plates: [],
+      bars: [],
+    } as unknown as Parameters<typeof checklistFromExisting>[0], "lb");
+
+    expect(item).toMatchObject({
+      minWeight: 5,
+      maxWeight: 50,
+      increments: [5, 10, 15],
+    });
+    expect(amberFields(item)).toContain("increments");
   });
 
   it("does not invent a bar weight for a saved row without a configuration", () => {

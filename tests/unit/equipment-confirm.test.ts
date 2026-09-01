@@ -114,6 +114,19 @@ describe("amberFields (equipment confirmation gate)", () => {
         })
       )
     ).toEqual([]);
+    expect(
+      amberFields(
+        item({
+          type: "dumbbell",
+          minWeight: 5,
+          maxWeight: 35,
+          unit: "lb",
+          adjustable: false,
+          pair: true,
+          increments: [5, 10, 15],
+        })
+      )
+    ).toEqual(["increments"]);
   });
 
   it("plates need denominations and unit", () => {

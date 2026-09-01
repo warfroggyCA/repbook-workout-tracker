@@ -9,6 +9,7 @@ import {
   COMMON_FIXED_WEIGHTS,
   equipmentFieldApplicability,
   equipmentQuantityCopy,
+  fixedHandheldWeightStatus,
   type EquipmentInventoryItem,
 } from "@/lib/equipment-inventory-contract";
 import type { LoadUnit } from "@/lib/units";
@@ -106,6 +107,13 @@ function ownedWeightsEditor(
 ) {
   const type = item.type === "kettlebell" ? "kettlebell" : "dumbbell";
   const owned = [...((item.attrs.increments as number[] | undefined) ?? [])];
+  const fixedWeightStatus = fixedHandheldWeightStatus({
+    type: item.type,
+    adjustable: item.attrs.adjustable,
+    increments: item.attrs.increments,
+    minWeight: item.attrs.minWeight,
+    maxWeight: item.attrs.maxWeight,
+  });
   const commonChoices = COMMON_FIXED_WEIGHTS[type][unit];
   const applyOwned = (weights: number[]) => {
     const sorted = [...new Set(weights)].sort((a, b) => a - b);
@@ -160,6 +168,19 @@ function ownedWeightsEditor(
         existing={owned}
         onAdd={(weight) => applyOwned([...owned, weight])}
       />
+      {description === "Owned weights" &&
+        fixedWeightStatus === "inconsistent" &&
+        owned.length > 0 && (
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="min-h-11 self-start"
+            onClick={() => applyOwned(owned)}
+          >
+            Use selected weights
+          </Button>
+        )}
     </div>
   );
 }
