@@ -11,6 +11,7 @@ user decision may change the Program.
 
 Before application changes, read:
 
+- `docs/README.md` for documentation ownership and the public/private boundary.
 - `docs/ARCHITECTURE.md` for system ownership and persisted-data contracts.
 - `docs/DEVELOPMENT.md` for repository commands and verification.
 - `docs/SECURITY_AND_PRIVACY.md` for public-repository and data-handling rules.
@@ -92,6 +93,9 @@ Before application changes, read:
   deferral in the implementation/PR with the remaining acceptance criteria.
 - Make the smallest complete change and add focused regression coverage.
 - Keep public documentation accurate without copying private release history.
+- Do not add volatile production commits, deployment identifiers, migration
+  checkpoints, or roadmap priority here; those belong in the private operations
+  repository.
 
 ## Verification
 

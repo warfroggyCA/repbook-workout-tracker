@@ -1,8 +1,11 @@
 # Training Reporting V2 implementation plan
 
-Status: approved for implementation on an isolated feature branch. Merge,
-deployment, production migration, and historical repair remain separate owner
-gates.
+> **Status: historical implementation record.** The Training Reporting V2
+> package described here was implemented in public source. This file remains for
+> its design rationale and acceptance criteria; it is not current release or
+> roadmap authority. Explicit follow-up deferrals remain unimplemented unless
+> current source and tests prove otherwise. Current coaching requirements live
+> in [`COACHING_PRODUCT_REQUIREMENTS.md`](COACHING_PRODUCT_REQUIREMENTS.md).
 
 ## 1. Current reporting and data flow
 
