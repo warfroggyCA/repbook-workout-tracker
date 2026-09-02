@@ -460,12 +460,12 @@ export function ActiveSetLedger({
       aria-labelledby={`active-set-ledger-${exerciseId}`}
       className="overflow-hidden rounded-lg border bg-[var(--surface-primary)]"
     >
-      <h3
+      <span
         id={`active-set-ledger-${exerciseId}`}
         className="sr-only"
       >
         {exerciseName} set ledger
-      </h3>
+      </span>
       <ol className="divide-y">
         {rows.map((row) =>
           renderExhaustiveRow(row, {

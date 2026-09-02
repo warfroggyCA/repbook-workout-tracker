@@ -2345,7 +2345,12 @@ test("keeps pain and substitution lineage reconstructable through History", asyn
   if (!performedExercise) throw new Error("The performed alternative name was not available.");
   await candidate.click();
   await picker.getByRole("button", { name: "Use for this workout", exact: true }).click();
-  await expect(nextSet.getByRole("heading", { name: performedExercise })).toBeVisible();
+  await expect(
+    nextSet.getByRole("heading", {
+      name: performedExercise,
+      exact: true,
+    }),
+  ).toBeVisible();
   await waitForEquipmentSelectionsToSettle(page);
   await nextSet.getByLabel("Total load").fill("45");
 
