@@ -169,13 +169,8 @@ async function skipCurrentSet(page: Page) {
   expect(priorOccurrenceId).toMatch(/^(?:set-entry|added-set-entry)-/);
   const isPlannedEntry =
     (await currentEntry.getAttribute("data-testid")) === "current-set-entry";
-  if (isPlannedEntry) {
-    await openNativeDetails(
-      current.getByTestId("active-exercise-details"),
-    );
-  }
   const skip = (isPlannedEntry
-    ? current.getByTestId("active-exercise-details")
+    ? current.getByTestId("current-set-secondary-actions")
     : currentEntry).getByRole("button", {
     name: "Skip set",
     exact: true,

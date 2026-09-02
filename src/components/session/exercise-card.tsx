@@ -102,7 +102,14 @@ import {
   WORKOUT_INTERACTION_MARKS,
 } from "@/lib/workout-interaction-performance";
 import { OccurrenceMutationDialog } from "./occurrence-mutation-dialog";
-import { ActiveSetCockpit } from "./active-set-cockpit";
+import {
+  ActiveSetLedger,
+  type ActiveSetLedgerDiagnosticRow,
+} from "./active-set-ledger";
+import {
+  projectActiveSetRows,
+  type ActiveSetRow,
+} from "@/lib/active-set-row-projection";
 import type { IncompleteSessionReason } from "@/lib/session-completion-semantics";
 import { OccurrenceSaveStatus } from "./occurrence-save-status";
 import {
@@ -232,33 +239,6 @@ function formatLoggedExceptionContext(set: LoggedSet) {
     context.push(`Pain: ${set.pain.bodyPart} ${set.pain.severity}/10`);
   }
   return context;
-}
-
-function formatSetTarget(
-  occurrence: SessionOccurrenceData,
-  exercise: SessionExerciseData,
-) {
-  const parts: string[] = [];
-  const repsMin = occurrence.plannedRepsMin ?? exercise.targetRepsMin;
-  const repsMax = occurrence.plannedRepsMax ?? exercise.targetRepsMax;
-  if (repsMin != null && repsMax != null) {
-    parts.push(
-      repsMin === repsMax
-        ? `${repsMin} rep${repsMin === 1 ? "" : "s"}`
-        : `${repsMin}–${repsMax} reps`,
-    );
-  }
-  const plannedLoad = occurrence.plannedLoad ?? exercise.targetLoad;
-  const plannedLoadUnit =
-    occurrence.plannedLoadUnit ?? exercise.targetLoadUnit;
-  if (plannedLoad != null && plannedLoadUnit != null) {
-    parts.push(`${plannedLoad} ${plannedLoadUnit}`);
-  } else if (occurrence.plannedLoadPercent != null) {
-    parts.push(`${occurrence.plannedLoadPercent}%`);
-  } else if (occurrence.plannedLoadText?.trim()) {
-    parts.push(occurrence.plannedLoadText.trim());
-  }
-  return parts.length > 0 ? parts.join(" · ") : "No numeric target";
 }
 
 function PendingSetSaveStatus({
@@ -1425,6 +1405,60 @@ export function ExerciseCard({
     activeOccurrence?.sessionExerciseId === exercise.id &&
     activeOccurrence.kind === "working_set" &&
     activeOccurrence.kindOrdinal === nextSetIdx;
+  const ledgerOccurrences =
+    activeOccurrence?.kind === "working_set" &&
+    activeOccurrence.sessionExerciseId === exercise.id &&
+    !workingOccurrences.some(
+      (occurrence) => occurrence.id === activeOccurrence.id,
+    )
+      ? [...workingOccurrences, activeOccurrence]
+      : workingOccurrences;
+  const activeSetProjection = projectActiveSetRows({
+    exercise,
+    occurrences: ledgerOccurrences,
+    currentOccurrenceId:
+      activeOccurrence?.kind === "working_set" &&
+      activeOccurrence.sessionExerciseId === exercise.id
+        ? activeOccurrence.id
+        : null,
+    currentBlockingReason: activeLoggingBlocked
+      ? "Resolve the retained device copy for this set before logging again."
+      : null,
+  });
+  const diagnosticSetIds = new Set([
+    ...activeSetProjection.diagnostics.unlinkedSetIds,
+    ...activeSetProjection.diagnostics.duplicateSetIds,
+  ]);
+  const activeSetDiagnosticRows: ActiveSetLedgerDiagnosticRow[] = exercise.sets
+    .filter((set) => diagnosticSetIds.has(set.id))
+    .map((set) => ({
+      key: `diagnostic-${set.id}`,
+      label: `Recorded set ${set.setNo}`,
+      summary: formatLoggedSet(set, exercise.metricType),
+      message: activeSetProjection.diagnostics.duplicateSetIds.includes(set.id)
+        ? "This result has more than one possible occurrence link and cannot be presented as saved."
+        : "This result is not linked to a supported set occurrence and cannot be presented as saved.",
+    }));
+  const currentLedgerRow = activeSetProjection.rows.find(
+    (row) => row.state === "current_editable",
+  );
+  const currentLedgerOccurrence = currentLedgerRow == null
+    ? null
+    : ledgerOccurrences.find(
+        (occurrence) => occurrence.id === currentLedgerRow.occurrenceId,
+      ) ?? null;
+  const nextPlannedLedgerRow = currentLedgerOccurrence == null
+    ? activeSetProjection.rows.find(
+        (row) => row.state === "planned" && row.membership !== "extra",
+      ) ?? null
+    : null;
+  const currentLedgerIsAppended =
+    currentLedgerOccurrence != null &&
+    currentLedgerOccurrence.id === appendedOccurrence?.id;
+  const currentLedgerDraft = currentLedgerIsAppended ? appendedDraft : draft;
+  const setCurrentLedgerDraft = currentLedgerIsAppended
+    ? setAppendedDraft
+    : setDraft;
   const activeOccurrenceMutation = activeOccurrence == null
     ? null
     : occurrenceMutationEntries.find(
@@ -1438,11 +1472,6 @@ export function ExerciseCard({
       {exercise.warmupNotes}
     </p>
   ) : null;
-
-  function plannedNote(index: number): string | null {
-    if (exercise.modificationType === "substituted") return null;
-    return exercise.setNotes[index]?.trim() || null;
-  }
 
   function rowNeedsImmediateAttention(index: number) {
     const set = exercise.sets.find(
@@ -1470,7 +1499,6 @@ export function ExerciseCard({
     );
   }
 
-  const immediateRowOrder = plannedRowOrder.filter(rowNeedsImmediateAttention);
   const disclosedRowOrder = plannedRowOrder.filter(
     (index) => !rowNeedsImmediateAttention(index),
   );
@@ -1571,6 +1599,202 @@ export function ExerciseCard({
       note: "",
     }));
     setNote("");
+  }
+
+  function renderEditableLedgerRow(
+    row: Extract<
+      ActiveSetRow,
+      { state: "planned" | "current_editable" }
+    >,
+  ) {
+    const occurrenceForRow =
+      ledgerOccurrences.find(
+        (occurrence) => occurrence.id === row.occurrenceId,
+      ) ?? null;
+    if (occurrenceForRow == null) {
+      return (
+        <p role="alert" className="text-sm">
+          This set occurrence is unavailable. Reload before recording.
+        </p>
+      );
+    }
+    const rowIsAppended = appendedOccurrence?.id === occurrenceForRow.id;
+    const rowDraft = rowIsAppended ? appendedDraft : draft;
+    const updateRowDraft = rowIsAppended ? setAppendedDraft : setDraft;
+    const occurrenceMutation =
+      occurrenceMutationEntries.find(
+        (entry) => entry.occurrenceId === occurrenceForRow.id,
+      ) ?? null;
+    const occurrenceAcknowledged = acknowledgedOccurrenceIds.includes(
+      occurrenceForRow.id,
+    );
+    const rowLoggingBlocked = rowIsAppended
+      ? appendedLoggingBlocked
+      : activeLoggingBlocked;
+
+    return (
+      <div>
+        <p className="ui-metadata mb-1 grid grid-cols-[auto_minmax(0,1fr)] items-baseline gap-x-2">
+          <span className="whitespace-nowrap">Performed measure</span>
+          {recordsNumericLoad && defaultWeightSource && (
+            <span
+              data-testid="performed-load-prefill-source"
+              aria-label={`Starting load: ${defaultWeightSource}`}
+              className="min-w-0 truncate text-right font-normal normal-case tracking-normal"
+            >
+              Load: {compactDefaultWeightSource}
+            </span>
+          )}
+        </p>
+        <SetEntry
+          metricType={performedMetricType}
+          supported={metricSupported}
+          draft={rowDraft}
+          setDraft={updateRowDraft}
+          onWeightEdit={() => {
+            if (!rowIsAppended) {
+              draftWeightEditedRef.current = true;
+            }
+          }}
+          stepWeight={stepWeight}
+          unit={unit}
+          hasWeight={recordsNumericLoad}
+          weightLabel={liveWeightLabel}
+          plateConfig={plateConfig}
+          machineLoadConfig={machineLoadConfig}
+          prioritizePerformedMeasure
+          compactLedger
+        />
+        <div
+          data-testid="previous-comparable-set"
+          data-comparison-state={comparableRenderState}
+          className="mt-1 border-t pt-1 text-xs text-muted-foreground"
+        >
+          {comparableRenderState === "available" &&
+          comparableProjection?.status === "available" &&
+          previousComparableSet ? (
+            <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-2">
+              <div className="min-w-0">
+                <p className="break-words">
+                  Previous · {comparableProjection.source.localDate} ·{" "}
+                  {compactComparableProvenance(
+                    previousComparableSet,
+                    comparableProjection.source.workoutSource,
+                  )}
+                </p>
+                <p
+                  className="mt-1 break-words font-medium tabular-nums text-foreground"
+                  data-ui-essential="true"
+                >
+                  {formatPreviousComparableSet(
+                    previousComparableSet,
+                    comparableProjection.semantics.metricType,
+                  )}{" "}
+                  · source set {previousComparableSet.setNo}
+                </p>
+              </div>
+              <Link
+                href={comparableProjection.source.historyHref}
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label="View source workout"
+                className={cn(
+                  buttonVariants({
+                    variant: "ghost",
+                    size: "sm",
+                  }),
+                  "min-h-11 min-w-11 shrink-0 px-2 text-xs",
+                )}
+              >
+                Source
+              </Link>
+            </div>
+          ) : comparableRenderState === "loading" ? (
+            <p role="status">Checking previous comparable set…</p>
+          ) : comparableProjection?.status === "unavailable" &&
+            comparableProjection.reason === "no_comparable_history" ? (
+            <p>No comparable set recorded</p>
+          ) : (
+            <p>Previous comparison unavailable</p>
+          )}
+        </div>
+        <div
+          className={cn(
+            "mt-1 grid gap-2",
+            rowIsAppended && "grid-cols-[minmax(0,1fr)_auto]",
+          )}
+        >
+          {skipConfirmationError == null ? (
+            <Button
+              data-testid="active-log-set"
+              className="min-h-12 w-full text-base font-semibold"
+              onPointerDown={() => onPrepareSetLog(occurrenceForRow)}
+              onKeyDown={(event) => {
+                if (
+                  !event.repeat &&
+                  (event.key === "Enter" || event.key === " ")
+                ) {
+                  onPrepareSetLog(occurrenceForRow);
+                }
+              }}
+              onClick={() =>
+                handleLog(
+                  occurrenceForRow.kindOrdinal + 1,
+                  occurrenceForRow,
+                  rowDraft,
+                )
+              }
+              disabled={
+                pending ||
+                skipConfirmationPending ||
+                !metricSupported ||
+                Boolean(occurrenceMutation) ||
+                rowLoggingBlocked ||
+                logRequestKey === occurrenceForRow.id
+              }
+            >
+              <Check className="size-4" /> Log set
+            </Button>
+          ) : (
+            <p className="flex min-h-11 items-center text-sm font-medium">
+              Resolve the exercise skip before logging sets.
+            </p>
+          )}
+          {rowIsAppended && row.state === "planned" && (
+            <Button
+              type="button"
+              variant="outline"
+              disabled={
+                occurrenceChangesBlocked || Boolean(occurrenceMutation)
+              }
+              onClick={() => setSkipSetOccurrence(occurrenceForRow)}
+            >
+              Skip set
+            </Button>
+          )}
+        </div>
+        <OccurrenceSaveStatus
+          entry={occurrenceMutation}
+          displayLabel={row.label}
+          runtimeState={
+            occurrenceMutation
+              ? occurrenceRuntimeSaveStates[occurrenceMutation.clientKey] ?? null
+              : null
+          }
+          saved={occurrenceAcknowledged}
+          onRetry={onRetryOccurrenceMutation}
+          onDiscard={onDiscardOccurrenceMutation}
+        />
+        {!rowIsAppended && prioritizeCurrentAction && (
+          <div className="mt-1 flex min-h-11 items-center gap-2 border-t">
+            <p className="ui-metadata shrink-0">Next action</p>
+            <p className="min-w-0 break-words py-2 text-sm">
+              {nextActionLabel}
+            </p>
+          </div>
+        )}
+      </div>
+    );
   }
 
   return (
@@ -1698,7 +1922,7 @@ export function ExerciseCard({
               : exercise.modificationType === "added"
                 ? `${progress.workoutOnlyPerformed}/${progress.workoutOnly || "–"} done${progress.extraPerformed > 0 ? ` · ${progress.extraPerformed} extra` : ""}${deviceSaveSummary ? ` · ${deviceSaveSummary}` : ""} · Workout only`
                 : isCurrentExercise
-                  ? `${progress.plannedPerformed}/${progress.planned || "–"} done${progress.extraPerformed > 0 ? ` · ${progress.extraPerformed} extra` : ""}${deviceSaveSummary ? ` · ${deviceSaveSummary}` : ""}`
+                  ? `${progress.plannedPerformed} of ${progress.planned || "–"} sets${progress.extraPerformed > 0 ? ` · ${progress.extraPerformed} extra` : ""}${deviceSaveSummary ? ` · ${deviceSaveSummary}` : ""} · ${formatRestTime(exercise.restSec)} rest`
                   : `${progress.plannedPerformed}/${progress.planned || "–"} planned performed${progress.extraPerformed > 0 ? ` · ${progress.extraPerformed} extra` : ""}${deviceSaveSummary ? ` · ${deviceSaveSummary}` : ""} · ${targetText} · ${formatRestTime(exercise.restSec)} rest`}
             {exercise.modificationType === "substituted" &&
               ` · instead of ${exercise.plannedExerciseName ?? "planned exercise"}`}
@@ -1791,559 +2015,163 @@ export function ExerciseCard({
                 </div>
               </div>
             )}
-            {immediateRowOrder.map((i) => {
-              const set = exercise.sets.find((candidate) => candidate.setNo === i + 1);
-              const occurrenceForRow = workingOccurrences.find(
-                (occurrence) => occurrence.kindOrdinal === i,
-              ) ?? null;
-              const occurrenceMutation =
-                occurrenceForRow == null
-                  ? null
-                  : occurrenceMutationEntries.find(
-                      (entry) => entry.occurrenceId === occurrenceForRow.id,
-                    ) ?? null;
-              const occurrenceAcknowledged =
-                occurrenceForRow != null &&
-                acknowledgedOccurrenceIds.includes(occurrenceForRow.id);
-              const rowPosition =
-                occurrenceForRow == null
-                  ? null
-                  : workingSetDisplayPosition(
-                      occurrenceForRow,
-                      workingOccurrences,
-                    );
-              const noteForSet = plannedNote(i);
-              if (set) {
-                const awaitingSave =
-                  set.saveState != null && set.saveState !== "saved";
-                const setRowLabel = rowPosition?.label ?? `Set ${i + 1}`;
-                return (
-                  <div
-                    key={set.id}
-                    id={`logged-set-${exercise.id}-${set.setNo}`}
-                    className={cn(
-                      "rounded-lg px-3 py-2 text-sm",
-                      awaitingSave ? "border bg-background" : "bg-primary/5",
-                    )}
+            {preparationBlocker && currentLedgerRow == null && (
+              <div
+                role="status"
+                className="rounded-lg bg-[var(--surface-attention)] px-3 py-2 text-sm"
+              >
+                <p>
+                  Complete {preparationBlocker.blockerExerciseName ?? exercise.name} preparation set first.
+                </p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Starting load: {setStartingLoadPreviewText(startingLoad)}
+                </p>
+                {preparationBlocker.blockerTargetId && onRevealBlocker && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="mt-2 h-auto min-h-11 w-full whitespace-normal"
+                    onClick={() =>
+                      onRevealBlocker(preparationBlocker.blockerTargetId!)
+                    }
                   >
-                    <div>
-                      <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
-                        <span className="text-muted-foreground">
-                          {setRowLabel}
-                        </span>
-                        <span className="break-words text-right font-medium tabular-nums">
-                          {formatLoggedSet(set, exercise.metricType)}
-                          {set.rpe != null &&
-                            ` · ${effortChoiceForLegacyRpe(set.rpe)?.label ?? `RPE ${set.rpe}`}`}
-                          {!awaitingSave && (
-                            <Check className="ml-2 inline size-3.5 text-green-600" />
-                          )}
-                        </span>
-                      </div>
-                      {set.note && (
-                        <p className="mt-1 text-xs text-muted-foreground">{set.note}</p>
-                      )}
-                      {formatLoggedExceptionContext(set).map((context) => (
-                        <p
-                          key={context}
-                          className="mt-1 text-xs text-muted-foreground"
-                        >
-                          {context}
-                        </p>
-                      ))}
-                    </div>
-                    <PendingSetSaveStatus
-                      set={set}
-                      rowLabel={setRowLabel}
-                      orderBlocker={
-                        set.clientKey == null
-                          ? null
-                          : (setOrderBlockers[set.clientKey] ?? null)
-                      }
-                      reviewRequired={
-                        set.clientKey == null
-                          ? false
-                          : (setReviewRequired[set.clientKey] ?? false)
-                      }
-                      onRevealBlocker={onRevealBlocker}
-                      onRefreshWorkout={onRefreshWorkout}
-                      onRetry={onRetrySet}
-                      onDiscard={onDiscardSet}
-                    />
-                    {!awaitingSave && (
-                      <div className="mt-2 flex flex-wrap items-center justify-between gap-2 border-t pt-2">
-                        <span className="text-xs text-muted-foreground">
-                          {(set.correctionCount ?? 0) > 0
-                            ? `${set.correctionCount} saved correction${
-                                set.correctionCount === 1 ? "" : "s"
-                              } · original retained in Edit history`
-                            : "Acknowledged by Repbook"}
-                        </span>
-                        <div className="flex flex-wrap gap-2">
-                          {(set.metricType ?? performedMetricType) === "activity" ? (
-                            <span className="self-center text-xs text-muted-foreground">
-                              Correction unavailable for this legacy shape
-                            </span>
-                          ) : (
-                            <CompletedSetCorrection
-                              setId={set.id}
-                              setNo={set.setNo}
-                              weight={set.weight}
-                              weightUnit={set.weightUnit}
-                              reps={set.reps}
-                              distanceKm={set.distanceKm ?? null}
-                              durationSeconds={set.durationSeconds ?? null}
-                              metricType={set.metricType ?? performedMetricType}
-                              rpe={set.rpe}
-                              note={set.note}
-                              historyRevision={historyRevision}
-                              source="active_workout"
-                              onAcknowledged={(result) => {
-                                onPatch({
-                                  sets: exercise.sets.map((candidate) =>
-                                    candidate.id === set.id
-                                      ? {
-                                          ...candidate,
-                                          ...result.values,
-                                          correctionCount:
-                                            (candidate.correctionCount ?? 0) + 1,
-                                        }
-                                      : candidate,
-                                  ),
-                                });
-                                onHistoryRevisionChange(
-                                  result.historyRevision,
-                                );
-                                const measurement =
-                                  readActiveWorkoutMeasurements().find(
-                                    (record) =>
-                                      (set.clientKey != null &&
-                                        record.clientKey === set.clientKey) ||
-                                      record.setId === set.id,
-                                  );
-                                if (measurement) {
-                                  patchActiveWorkoutMeasurement(
-                                    measurement.clientKey,
-                                    {
-                                      corrections:
-                                        measurement.corrections + 1,
-                                    },
-                                  );
-                                }
-                              }}
-                            />
-                          )}
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            className="text-destructive"
-                            onClick={() => handleDelete(set)}
-                            aria-label="Archive set"
-                          >
-                            <Archive className="size-4" />
-                          </Button>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                );
+                    Go to preparation set
+                  </Button>
+                )}
+              </div>
+            )}
+            <ActiveSetLedger
+              exerciseId={exercise.id}
+              exerciseName={exercise.name}
+              metricType={performedMetricType}
+              rows={activeSetProjection.rows}
+              diagnostics={activeSetProjection.diagnostics}
+              diagnosticRows={activeSetDiagnosticRows}
+              renderCurrentRow={renderEditableLedgerRow}
+              renderPlannedRow={(row) =>
+                appendedOccurrence?.id === row.occurrenceId
+                  ? renderEditableLedgerRow(row)
+                  : null
               }
-              if (
-                occurrenceForRow &&
-                occurrenceForRow.outcome !== "pending"
-              ) {
-                return (
-                  <div
-                    key={occurrenceForRow.id}
-                    className="rounded-md border px-3 py-2 text-sm"
-                  >
-                    <div className="flex items-center justify-between gap-3">
-                      <span>{rowPosition?.label ?? `Set ${i + 1}`}</span>
-                      <span className="capitalize text-muted-foreground">
-                        {occurrenceForRow.outcome.replace("_", " ")}
-                      </span>
-                    </div>
-                    {occurrenceForRow.outcomeNote && (
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        Note: {occurrenceForRow.outcomeNote}
-                      </p>
-                    )}
-                    <OccurrenceSaveStatus
-                      entry={occurrenceMutation}
-                      displayLabel={rowPosition?.label ?? `Set ${i + 1}`}
-                      runtimeState={
-                        occurrenceMutation
-                          ? occurrenceRuntimeSaveStates[
-                              occurrenceMutation.clientKey
-                            ] ?? null
-                          : null
-                      }
-                      saved
-                      onRetry={onRetryOccurrenceMutation}
-                      onDiscard={onDiscardOccurrenceMutation}
-                    />
-                  </div>
-                );
-              }
-              if (appendedOccurrence?.kindOrdinal === i) {
-                return (
-                  <div
-                    key={appendedOccurrence.id}
-                    id={`added-set-entry-${exercise.id}-${appendedOccurrence.id}`}
-                    data-testid="added-set-entry"
-                    className="scroll-mt-24 rounded-md border-2 border-foreground/60 bg-background p-2"
-                  >
-                    <p className="mb-2 px-1 text-sm font-semibold">
-                      {workingSetDisplayPosition(
-                        appendedOccurrence,
-                        workingOccurrences,
-                      ).label} · Added to this workout
-                    </p>
-                    <SetEntry
-                      metricType={performedMetricType}
-                      supported={metricSupported}
-                      draft={appendedDraft}
-                      setDraft={setAppendedDraft}
-                      stepWeight={stepWeight}
-                      unit={unit}
-                      hasWeight={recordsNumericLoad}
-                      weightLabel={liveWeightLabel}
-                      plateConfig={plateConfig}
-                      machineLoadConfig={machineLoadConfig}
-                    />
-                    <div className="mt-2 grid grid-cols-[1fr_auto] gap-2">
-                      {skipConfirmationError == null ? (
-                        <Button
-                          onPointerDown={() =>
-                            onPrepareSetLog(appendedOccurrence)
-                          }
-                          onKeyDown={(event) => {
-                            if (
-                              !event.repeat &&
-                              (event.key === "Enter" || event.key === " ")
-                            ) {
-                              onPrepareSetLog(appendedOccurrence);
-                            }
-                          }}
-                          onClick={() =>
-                            handleLog(i + 1, appendedOccurrence, appendedDraft)
-                          }
-                          disabled={
-                            pending ||
-                            skipConfirmationPending ||
-                            !metricSupported ||
-                            appendedLoggingBlocked ||
-                            Boolean(occurrenceMutation) ||
-                            logRequestKey === appendedOccurrence.id
-                          }
-                        >
-                          <Check className="size-4" /> Log set
-                        </Button>
-                      ) : (
-                        <p className="flex min-h-11 items-center text-sm font-medium">
-                          Resolve the exercise skip before logging sets.
-                        </p>
-                      )}
-                      <Button
-                        type="button"
-                        variant="outline"
-                        disabled={
-                          occurrenceChangesBlocked ||
-                          Boolean(occurrenceMutation)
-                        }
-                        onClick={() => setSkipSetOccurrence(appendedOccurrence)}
-                      >
-                        Skip set
-                      </Button>
-                    </div>
-                    <OccurrenceSaveStatus
-                      entry={occurrenceMutation}
-                      displayLabel={workingSetDisplayPosition(
-                        appendedOccurrence,
-                        workingOccurrences,
-                      ).label}
-                      runtimeState={
-                        occurrenceMutation
-                          ? occurrenceRuntimeSaveStates[
-                              occurrenceMutation.clientKey
-                            ] ?? null
-                          : null
-                      }
-                      saved={occurrenceAcknowledged}
-                      onRetry={onRetryOccurrenceMutation}
-                      onDiscard={onDiscardOccurrenceMutation}
-                    />
-                  </div>
-                );
-              }
-              if (i === nextSetIdx) {
-                if (resting) return null;
-                if (isCurrentPlannedSet && !activeLoggingBlocked) {
-                  return (
-                    <div
-                      key={`active-${i}`}
-                      id={`set-entry-${exercise.id}-${activeOccurrence.id}`}
-                      data-testid="current-set-entry"
-                      className={cn(
-                        "scroll-mt-24 p-2",
-                        prioritizeCurrentAction
-                          ? "p-2"
-                          : "rounded-md border border-primary/40",
-                      )}
-                    >
-                      <ActiveSetCockpit
-                        exerciseName={exercise.name}
-                        setLabel={rowPosition?.label ?? `Set ${i + 1}`}
-                        totalSets={exercise.targetSets}
-                        prominent={prioritizeCurrentAction}
-                      >
-                        <div className="mb-3 grid grid-cols-1 gap-2 min-[370px]:grid-cols-2">
-                        <div
-                          data-testid="current-set-target"
-                          data-ui-surface="inset"
-                          className="ui-surface px-3 py-2 text-sm"
-                        >
-                          <p className="ui-metadata">
-                            Target
-                          </p>
-                          <p className="mt-1 break-words font-semibold tabular-nums" data-ui-essential="true">
-                            {formatSetTarget(activeOccurrence, exercise)}
-                          </p>
-                        </div>
-                        <div
-                          data-testid="previous-comparable-set"
-                          data-comparison-state={comparableRenderState}
-                          data-ui-surface="inset"
-                          className="ui-surface px-3 py-2 text-sm"
-                        >
-                        {comparableRenderState === "available" &&
-                        comparableProjection?.status === "available" &&
-                        previousComparableSet ? (
-                          <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-2">
-                            <div className="min-w-0">
-                              <p className="break-words text-xs text-muted-foreground">
-                                Previous · {comparableProjection.source.localDate} · {compactComparableProvenance(
-                                  previousComparableSet,
-                                  comparableProjection.source.workoutSource,
-                                )}
-                              </p>
-                              <p className="mt-1 break-words font-semibold tabular-nums" data-ui-essential="true">
-                                {formatPreviousComparableSet(
-                                  previousComparableSet,
-                                  comparableProjection.semantics.metricType,
-                                )} · source set {previousComparableSet.setNo}
-                              </p>
-                            </div>
-                            <Link
-                              href={comparableProjection.source.historyHref}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              aria-label="View source workout"
-                              className={cn(
-                                buttonVariants({
-                                  variant: "ghost",
-                                  size: "sm",
-                                }),
-                                "min-h-11 min-w-11 shrink-0 px-2 text-xs",
-                              )}
-                            >
-                              Source
-                            </Link>
-                          </div>
-                        ) : comparableRenderState === "loading" ? (
-                          <p
-                            role="status"
-                            className="flex min-h-11 items-center font-medium"
-                          >
-                            Checking previous comparable set…
-                          </p>
-                        ) : (
-                          <p className="flex min-h-11 items-center font-medium">
-                            Previous comparable set unavailable
-                          </p>
-                        )}
-                        </div>
-                        </div>
-                      {prioritizeCurrentAction && (
-                        <p className="ui-metadata mb-2 grid grid-cols-[auto_minmax(0,1fr)] items-baseline gap-x-2">
-                          <span className="whitespace-nowrap">Performed measure</span>
-                          {recordsNumericLoad && defaultWeightSource && (
-                            <span
-                              data-testid="performed-load-prefill-source"
-                              aria-label={`Starting load: ${defaultWeightSource}`}
-                              className="min-w-0 truncate text-right font-normal normal-case tracking-normal"
-                            >
-                              Load: {compactDefaultWeightSource}
-                            </span>
-                          )}
-                        </p>
-                      )}
-                      {!prioritizeCurrentAction && recordsNumericLoad && defaultWeightSource && (
-                        <p
-                          data-testid="performed-load-prefill-source"
-                          className="mb-2 text-xs text-muted-foreground"
-                        >
-                          Starting load: {defaultWeightSource}
-                        </p>
-                      )}
-                      <SetEntry
-                        metricType={performedMetricType}
-                        supported={metricSupported}
-                        draft={draft}
-                        setDraft={setDraft}
-                        onWeightEdit={() => {
-                          draftWeightEditedRef.current = true;
-                        }}
-                        stepWeight={stepWeight}
-                        unit={unit}
-                        hasWeight={recordsNumericLoad}
-                        weightLabel={liveWeightLabel}
-                        plateConfig={plateConfig}
-                        machineLoadConfig={machineLoadConfig}
-                        prioritizePerformedMeasure
-                      />
-                      <div
-                        className={cn(
-                          prioritizeCurrentAction
-                            ? "mt-3"
-                            : "mt-2 grid grid-cols-[1fr_auto] gap-2",
-                        )}
-                      >
-                        {skipConfirmationError == null ? (
-                          <Button
-                            data-testid="active-log-set"
-                            className={cn(
-                              prioritizeCurrentAction &&
-                                "min-h-12 w-full text-base font-semibold",
-                            )}
-                            onPointerDown={() =>
-                              onPrepareSetLog(activeOccurrence)
-                            }
-                            onKeyDown={(event) => {
-                              if (
-                                !event.repeat &&
-                                (event.key === "Enter" || event.key === " ")
-                              ) {
-                                onPrepareSetLog(activeOccurrence);
-                              }
-                            }}
-                            onClick={() => handleLog()}
-                            disabled={
-                              pending ||
-                              skipConfirmationPending ||
-                              !metricSupported ||
-                              Boolean(occurrenceMutation) ||
-                              activeLoggingBlocked ||
-                              logRequestKey === activeOccurrence.id
-                            }
-                          >
-                            <Check className="size-4" /> Log set
-                          </Button>
-                        ) : (
-                          <p className="flex min-h-11 items-center text-sm font-medium">
-                            Resolve the exercise skip before logging sets.
-                          </p>
-                        )}
-                        {!prioritizeCurrentAction && (
-                          <Button
-                            type="button"
-                            variant="outline"
-                            disabled={
-                              occurrenceChangesBlocked ||
-                              Boolean(occurrenceMutation)
-                            }
-                            onClick={() =>
-                              setSkipSetOccurrence(activeOccurrence)
-                            }
-                          >
-                            Skip set
-                          </Button>
-                        )}
-                      </div>
-                      </ActiveSetCockpit>
-                      <OccurrenceSaveStatus
-                        entry={occurrenceMutation}
-                        displayLabel={workingSetDisplayPosition(
-                          activeOccurrence,
-                          workingOccurrences,
-                        ).label}
-                        runtimeState={
-                          occurrenceMutation
-                            ? occurrenceRuntimeSaveStates[
-                                occurrenceMutation.clientKey
-                              ] ?? null
-                            : null
-                        }
-                        saved={occurrenceAcknowledged}
-                        onRetry={onRetryOccurrenceMutation}
-                        onDiscard={onDiscardOccurrenceMutation}
-                      />
-                      {prioritizeCurrentAction && (
-                        <div className="mt-1 flex min-h-11 items-center gap-2 border-t">
-                          <p className="ui-metadata shrink-0">
-                            Next action
-                          </p>
-                          <p className="min-w-0 break-words py-2 text-sm">
-                            {nextActionLabel}
-                          </p>
-                        </div>
-                      )}
-                    </div>
-                  );
-                }
-                return (
-                  <div
-                    key={`active-${i}`}
-                    className="rounded-md border border-primary/40 px-3 py-2 text-sm"
-                  >
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <span>Set {i + 1}</span>
-                      <span className="min-w-0 break-words text-right text-muted-foreground">
-                        {activeLoggingBlocked
-                          ? "Resolve the retained copy for this set"
-                          : preparationBlocker
-                            ? `Complete ${preparationBlocker.blockerExerciseName ?? exercise.name} preparation set first`
+              renderPlannedRowDetail={(row) =>
+                row.occurrenceId === nextPlannedLedgerRow?.occurrenceId ? (
+                  <div className="mt-1 border-t pt-1 text-xs text-muted-foreground">
+                    <p>
+                      {activeLoggingBlocked
+                        ? "Resolve the retained copy for this set"
+                        : preparationBlocker
+                          ? `Complete ${preparationBlocker.blockerExerciseName ?? exercise.name} preparation set first`
                           : "Reach this set in the workout flow"}
-                      </span>
-                    </div>
-                    {preparationBlocker?.blockerTargetId && onRevealBlocker ? (
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        className="mt-2 h-auto min-h-11 w-full whitespace-normal"
-                        onClick={() =>
-                          onRevealBlocker(preparationBlocker.blockerTargetId!)
-                        }
-                      >
-                        Go to preparation set
-                      </Button>
-                    ) : null}
-                    {plannedNote(i) && (
-                      <p className="mt-1 text-muted-foreground">{plannedNote(i)}</p>
+                    </p>
+                    {row.prescription.note && (
+                      <p className="mt-1">{row.prescription.note}</p>
                     )}
                     <p
                       data-testid="upcoming-set-load-preview"
-                      className="mt-1 text-xs font-medium text-foreground"
+                      className="mt-1 font-medium text-foreground"
                     >
                       Starting load: {setStartingLoadPreviewText(startingLoad)}
                     </p>
                   </div>
-                );
+                ) : null
               }
-              return (
-                <div
-                  key={`future-${i}`}
-                  className="rounded-md border border-dashed px-3 py-2 text-sm text-muted-foreground"
-                >
-                  <div className="flex items-center justify-between">
-                    <span>Set {i + 1}</span>
-                    <span>—</span>
-                  </div>
-                  {noteForSet && <p className="mt-1 text-xs">{noteForSet}</p>}
-                </div>
+              renderSaveRecovery={(row) => {
+                const set =
+                  exercise.sets.find(
+                    (candidate) =>
+                      candidate.id === row.result.id ||
+                      (row.clientKey != null &&
+                        candidate.clientKey === row.clientKey),
+                  ) ?? null;
+                if (set == null || row.state !== "failed") return null;
+                return (
+                  <PendingSetSaveStatus
+                    set={set}
+                    rowLabel={row.label}
+                    orderBlocker={
+                      set.clientKey == null
+                        ? null
+                        : (setOrderBlockers[set.clientKey] ?? null)
+                    }
+                    reviewRequired={
+                      set.clientKey == null
+                        ? false
+                        : (setReviewRequired[set.clientKey] ?? false)
+                    }
+                    onRevealBlocker={onRevealBlocker}
+                    onRefreshWorkout={onRefreshWorkout}
+                    onRetry={onRetrySet}
+                    onDiscard={onDiscardSet}
+                  />
                 );
-              })}
+              }}
+              renderOutcomeStatus={(row) => {
+                const occurrenceMutation =
+                  occurrenceMutationEntries.find(
+                    (entry) => entry.occurrenceId === row.occurrenceId,
+                  ) ?? null;
+                return (
+                  <OccurrenceSaveStatus
+                    entry={occurrenceMutation}
+                    displayLabel={row.label}
+                    saved={
+                      occurrenceMutation == null ||
+                      acknowledgedOccurrenceIds.includes(row.occurrenceId)
+                    }
+                    runtimeState={
+                      occurrenceMutation == null
+                        ? null
+                        : occurrenceRuntimeSaveStates[
+                            occurrenceMutation.clientKey
+                          ] ?? null
+                    }
+                    onRetry={onRetryOccurrenceMutation}
+                    onDiscard={onDiscardOccurrenceMutation}
+                  />
+                );
+              }}
+            />
+            {currentLedgerOccurrence && (
+              <div
+                data-testid="current-set-secondary-actions"
+                className="grid grid-cols-3 gap-1.5"
+              >
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => onAdjustIntentChange("replace")}
+                >
+                  Replace
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={
+                    occurrenceChangesBlocked ||
+                    activeOccurrenceMutation != null
+                  }
+                  onClick={() =>
+                    setSkipSetOccurrence(currentLedgerOccurrence)
+                  }
+                >
+                  Skip set
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  aria-label="Add extra set"
+                  disabled={
+                    Boolean(unconfirmedSet) ||
+                    appendingSet ||
+                    Boolean(appendedOccurrence)
+                  }
+                  onClick={() => void handleAppendSet()}
+                >
+                  {appendingSet ? "Adding…" : "Add set"}
+                </Button>
+              </div>
+            )}
           </div>
 
             {activeInsight && (
@@ -2365,7 +2193,7 @@ export function ExerciseCard({
                 </span>
               </summary>
               <div className="space-y-3 border-t p-2">
-                {isCurrentPlannedSet && !resting ? (
+                {currentLedgerOccurrence && !resting ? (
                   <section
                     aria-labelledby={`optional-set-fields-${exercise.id}`}
                     className="rounded-lg border bg-background p-3"
@@ -2379,10 +2207,12 @@ export function ExerciseCard({
                     <SetEntry
                       metricType={performedMetricType}
                       supported={metricSupported}
-                      draft={draft}
-                      setDraft={setDraft}
+                      draft={currentLedgerDraft}
+                      setDraft={setCurrentLedgerDraft}
                       onWeightEdit={() => {
-                        draftWeightEditedRef.current = true;
+                        if (!currentLedgerIsAppended) {
+                          draftWeightEditedRef.current = true;
+                        }
                       }}
                       stepWeight={stepWeight}
                       unit={unit}
@@ -2392,23 +2222,38 @@ export function ExerciseCard({
                       machineLoadConfig={machineLoadConfig}
                       optionalOnly
                     />
-                    <div className="mt-3 border-t pt-3">
-                      <h4 className="mb-2 font-medium">Set exceptions</h4>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        className="w-full"
-                        disabled={
-                          occurrenceChangesBlocked ||
-                          activeOccurrenceMutation != null
-                        }
-                        onClick={() =>
-                          setSkipSetOccurrence(activeOccurrence)
-                        }
-                      >
-                        Skip set
-                      </Button>
-                    </div>
+                  </section>
+                ) : null}
+
+                {appendedOccurrence &&
+                appendedOccurrence.id !== currentLedgerOccurrence?.id ? (
+                  <section
+                    aria-labelledby={`optional-extra-set-fields-${exercise.id}`}
+                    className="rounded-lg border bg-background p-3"
+                  >
+                    <h3
+                      id={`optional-extra-set-fields-${exercise.id}`}
+                      className="mb-2 font-medium"
+                    >
+                      Optional effort and set note ·{" "}
+                      {workingSetDisplayPosition(
+                        appendedOccurrence,
+                        workingOccurrences,
+                      ).label}
+                    </h3>
+                    <SetEntry
+                      metricType={performedMetricType}
+                      supported={metricSupported}
+                      draft={appendedDraft}
+                      setDraft={setAppendedDraft}
+                      stepWeight={stepWeight}
+                      unit={unit}
+                      hasWeight={recordsNumericLoad}
+                      weightLabel={liveWeightLabel}
+                      plateConfig={plateConfig}
+                      machineLoadConfig={machineLoadConfig}
+                      optionalOnly
+                    />
                   </section>
                 ) : null}
 
@@ -2579,27 +2424,29 @@ export function ExerciseCard({
                 </span>
               </div>
               <div className="space-y-2 border-t p-2">
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="w-full justify-start border-dashed"
-                  disabled={
-                    Boolean(unconfirmedSet) ||
-                    appendingSet ||
-                    Boolean(appendedOccurrence)
-                  }
-                  aria-describedby={`add-set-description-${exercise.id}`}
-                  onClick={() => void handleAppendSet()}
-                >
-                  <Plus className="size-4" />
-                  {appendingSet ? "Adding extra set…" : "Add extra set"}
-                </Button>
+                {currentLedgerOccurrence == null && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="w-full justify-start border-dashed"
+                    disabled={
+                      Boolean(unconfirmedSet) ||
+                      appendingSet ||
+                      Boolean(appendedOccurrence)
+                    }
+                    aria-describedby={`add-set-description-${exercise.id}`}
+                    onClick={() => void handleAppendSet()}
+                  >
+                    <Plus className="size-4" />
+                    {appendingSet ? "Adding extra set…" : "Add extra set"}
+                  </Button>
+                )}
                 <p
                   id={`add-set-description-${exercise.id}`}
                   className="px-1 text-xs text-muted-foreground"
                 >
                   Adds ad-hoc work without changing the planned set order.
-                  Finish or skip this extra before adding one more.
+                  Finish or skip that extra before adding one more.
                 </p>
               </div>
                 </section>
@@ -3167,6 +3014,7 @@ function SetEntry({
   plateConfig,
   machineLoadConfig,
   prioritizePerformedMeasure = false,
+  compactLedger = false,
   optionalOnly = false,
 }: {
   metricType: PerformedMetricType;
@@ -3181,6 +3029,7 @@ function SetEntry({
   plateConfig?: PlateMathConfig;
   machineLoadConfig?: MachineLoadConfig | null;
   prioritizePerformedMeasure?: boolean;
+  compactLedger?: boolean;
   optionalOnly?: boolean;
 }) {
   const weightInputId = useId();
@@ -3492,20 +3341,28 @@ function SetEntry({
     return <div className="space-y-2">{optionalSetFields}</div>;
   }
   return (
-    <div className="flex flex-col gap-2">
+    <div className={cn("flex flex-col", compactLedger ? "gap-1" : "gap-2")}>
       <div
         className={cn(
           "grid items-end gap-2",
           (hasWeight && recordsRepetitions) ||
             metricType === "distance_duration"
-            ? "grid-cols-1 min-[520px]:grid-cols-2"
+            ? compactLedger
+              ? "grid-cols-2"
+              : "grid-cols-1 min-[520px]:grid-cols-2"
             : "grid-cols-1 sm:grid-cols-2",
         )}
       >
         {hasWeight && (
           <div className="flex min-w-0 flex-col gap-1">
             {weightLabel && (
-              <label htmlFor={weightInputId} className="text-xs font-medium">
+              <label
+                htmlFor={weightInputId}
+                className={cn(
+                  "text-xs font-medium",
+                  compactLedger && "sr-only",
+                )}
+              >
                 {weightLabel}
               </label>
             )}
@@ -3513,7 +3370,11 @@ function SetEntry({
               <Button
                 variant="outline"
                 size="icon"
-                className="active-set-stepper shrink-0"
+                className={cn(
+                  "active-set-stepper shrink-0",
+                  compactLedger &&
+                    "!size-[44px] !min-h-[44px] !min-w-[44px]",
+                )}
                 onClick={() => {
                   onWeightEdit();
                   setDraft((d) => ({
@@ -3530,7 +3391,11 @@ function SetEntry({
                   id={weightInputId}
                   aria-label={weightLabel ?? "Weight"}
                   inputMode="decimal"
-                  className="pr-8 text-center text-base font-medium"
+                  className={cn(
+                    "pr-8 text-center text-base font-medium",
+                    compactLedger &&
+                      "!h-[44px] !min-h-[44px] px-1 pb-3 text-lg font-semibold",
+                  )}
                   value={draft.weight ?? ""}
                   onChange={(event) => {
                     const rawValue = event.currentTarget.value;
@@ -3541,14 +3406,25 @@ function SetEntry({
                     }));
                   }}
                 />
-                <span className="pointer-events-none absolute inset-y-0 right-2 flex items-center text-xs text-muted-foreground">
+                <span
+                  className={cn(
+                    "pointer-events-none absolute flex items-center text-xs text-muted-foreground",
+                    compactLedger
+                      ? "inset-x-0 bottom-1 justify-center text-[10px] leading-none"
+                      : "inset-y-0 right-2",
+                  )}
+                >
                   {unit}
                 </span>
               </div>
               <Button
                 variant="outline"
                 size="icon"
-                className="active-set-stepper shrink-0"
+                className={cn(
+                  "active-set-stepper shrink-0",
+                  compactLedger &&
+                    "!size-[44px] !min-h-[44px] !min-w-[44px]",
+                )}
                 onClick={() => {
                   onWeightEdit();
                   setDraft((d) => ({
@@ -3568,7 +3444,11 @@ function SetEntry({
           <Button
             variant="outline"
             size="icon"
-            className="active-set-stepper shrink-0"
+            className={cn(
+              "active-set-stepper shrink-0",
+              compactLedger &&
+                "!size-[44px] !min-h-[44px] !min-w-[44px]",
+            )}
             onClick={() => setDraft((d) => ({
               ...d,
               reps: Math.max(0, (d.reps ?? 0) - 1),
@@ -3581,7 +3461,11 @@ function SetEntry({
             <Input
               aria-label="Reps"
               inputMode="numeric"
-              className="pr-10 text-center text-base font-medium"
+              className={cn(
+                "pr-10 text-center text-base font-medium",
+                compactLedger &&
+                  "!h-[44px] !min-h-[44px] px-1 pb-3 text-lg font-semibold",
+              )}
               value={draft.reps ?? ""}
               onChange={(event) => {
                 const rawValue = event.currentTarget.value;
@@ -3591,14 +3475,25 @@ function SetEntry({
                 }));
               }}
             />
-            <span className="pointer-events-none absolute inset-y-0 right-2 flex items-center text-xs text-muted-foreground">
+            <span
+              className={cn(
+                "pointer-events-none absolute flex items-center text-xs text-muted-foreground",
+                compactLedger
+                  ? "inset-x-0 bottom-1 justify-center text-[10px] leading-none"
+                  : "inset-y-0 right-2",
+              )}
+            >
               reps
             </span>
           </div>
           <Button
             variant="outline"
             size="icon"
-            className="active-set-stepper shrink-0"
+            className={cn(
+              "active-set-stepper shrink-0",
+              compactLedger &&
+                "!size-[44px] !min-h-[44px] !min-w-[44px]",
+            )}
             onClick={() => setDraft((d) => ({
               ...d,
               reps: (d.reps ?? 0) + 1,
@@ -3669,7 +3564,13 @@ function SetEntry({
         )}
       </div>
       {(machineLine ?? plateLine) && (
-        <p className="rounded-md bg-muted/50 px-2 py-1.5 text-sm text-muted-foreground" aria-live="polite">
+        <p
+          className={cn(
+            "rounded-md bg-muted/50 px-2 text-muted-foreground",
+            compactLedger ? "py-1 text-xs leading-4" : "py-1.5 text-sm",
+          )}
+          aria-live="polite"
+        >
           {machineLine ?? plateLine}
         </p>
       )}

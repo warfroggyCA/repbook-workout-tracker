@@ -258,7 +258,12 @@ test("keeps retained sets responsive before acknowledgement, then reviews a corr
   await waitForHydratedReactHandler(plankDisclosure);
   await plankDisclosure.click();
   await openNativeDetails(exerciseDetails);
-  await expect(plank.getByText("1:00", { exact: true })).toBeVisible();
+  const correctedLedgerRow = plank
+    .getByTestId("active-set-ledger")
+    .locator('[data-set-row-state="saved"]')
+    .first();
+  await expect(correctedLedgerRow).toContainText("1:00");
+  await expect(correctedLedgerRow).toContainText("Corrected ×1");
   await expect(plank).toContainText(
     "1 saved correction · original retained in Edit history",
   );

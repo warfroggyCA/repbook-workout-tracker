@@ -638,27 +638,31 @@ owner-scoped request uniqueness, UUID/SHA shape, and exact round trip.
 
 ## U01 active-workout hierarchy and ergonomics contract
 
-The expanded card for the exact current working-set action leads with current
-identity and the applicable performed measure. Ordinary logging exposes one
-visible commit action. Exact save state follows that commit, the ledger-derived
-next action follows the save state, and optional effort, set notes, and skip
-controls use native progressive disclosure after the ordinary path. Prior-set,
-warm-up-reference, coaching, and workout-only context remain available below
-the active flow instead of preceding it.
+The expanded exercise card renders one compact set ledger projected from the
+immutable occurrence sequence, acknowledged sets, retained device commands,
+and version evidence. Completed results, the current editable row, future
+targets, extra and workout-only membership, skips, recovery states,
+corrections, restores, and unknown evidence remain explicit rather than being
+collapsed into one generic completion state. Prescribed targets, previous
+comparable evidence, and performed values keep separate labels.
 
-The expanded cockpit is the sole ordinary working-set commit surface. While it
-is revealed, the fixed status bar does not repeat the Log set action; after an
-owner collapse it offers a neutral route back to the exact current set. During
-normal rest, the rest cockpit replaces set editing and names the next ordered
-destination. Exact retained-set recovery may still reopen its linked set.
+The current ledger row is the sole ordinary working-set commit surface and
+reuses the established performed-measure controls and command handlers. Exact
+save or recovery state and the ledger-derived next action follow that surface;
+optional effort, set notes, pain, skip, add-set, prior-set, warm-up-reference,
+coaching, and workout-only context remain available after the ordinary path.
+A newly added extra set remains independently editable without displacing the
+planned current occurrence.
 
-The compact summary keeps progress but defers current identity to the cockpit,
-rest, or recovery surface. It also defers its duplicate next line while the
-expanded current card owns that guidance. After an owner collapse, next work
-returns to the summary and the fixed status bar names the exact current action
-as a neutral return route. U01 changes no occurrence ordering, writer,
-acknowledgement, correction, rest, group, persistence, export, recovery, or
-historical semantics and adds no schema migration.
+The compact summary keeps workout progress but defers current identity to the
+expanded exercise, rest, or recovery surface. The fixed status bar still omits
+a duplicate Log set action while the current row is revealed and offers a
+neutral route back after collapse. During normal rest, the rest cockpit still
+replaces set editing and names the next ordered destination; making rest
+nonblocking remains a later presentation change. Exact retained-set recovery
+may reopen its linked row. This contract changes no occurrence ordering,
+writer, acknowledgement, correction, rest, group, persistence, export,
+recovery, or historical semantics and adds no schema migration.
 
 ## U02 exception-context contract
 

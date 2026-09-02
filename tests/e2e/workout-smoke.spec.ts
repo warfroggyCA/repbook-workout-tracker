@@ -2140,7 +2140,9 @@ test("keeps every active-workout route reachable with one scroll surface", async
   if (!plannedExerciseName) {
     throw new Error("The planned exercise name was not available.");
   }
-  await expect(plannedCard.getByText("Set 1 of 3", { exact: true })).toBeVisible();
+  await expect(plannedCard.getByTestId("current-set-entry")).toContainText(
+    "Set 1",
+  );
   for (let setNo = 1; setNo <= 3; setNo += 1) {
     await openNativeDetails(
       plannedCard.getByTestId("active-exercise-details"),
@@ -2158,7 +2160,9 @@ test("keeps every active-workout route reachable with one scroll surface", async
     await expect(skipDialog).toHaveCount(0);
     if (setNo < 3) {
       await expect(
-        plannedCard.getByText("skipped", { exact: true }),
+        plannedCard
+          .getByTestId("active-set-ledger")
+          .locator('[data-set-row-state="skipped"]'),
       ).toHaveCount(setNo);
     }
   }
@@ -2167,7 +2171,9 @@ test("keeps every active-workout route reachable with one scroll surface", async
   ).not.toHaveText(plannedExerciseName);
   await plannedCard.getByTestId("exercise-swipe-surface").click();
   await expect(
-    plannedCard.getByText("skipped", { exact: true }),
+    plannedCard
+      .getByTestId("active-set-ledger")
+      .locator('[data-set-row-state="skipped"]'),
   ).toHaveCount(3);
   await openNativeDetails(
     plannedCard.getByTestId("active-exercise-details"),

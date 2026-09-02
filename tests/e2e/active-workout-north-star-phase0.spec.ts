@@ -204,7 +204,7 @@ async function currentActionSnapshot(page: Page) {
       (await primary.count()) === 1
         ? await primary.getAttribute("aria-label")
         : null,
-    progressText: cardText.match(/\b\d+\/\d+ done\b/)?.[0] ?? null,
+    progressText: cardText.match(/\b\d+ of \d+ sets\b/)?.[0] ?? null,
   };
 }
 
@@ -244,6 +244,13 @@ test("records the six common-path current baselines without treating them as tar
 
   await page.getByTestId("active-log-set").click();
   await waitForRest(page);
+  await expect(page.getByTestId("active-set-ledger")).toBeVisible();
+  await expect(page.getByTestId("current-set-entry")).toHaveCount(0);
+  await expect(
+    page
+      .getByTestId("active-set-ledger")
+      .locator('[data-set-row-state="saved"]'),
+  ).toHaveCount(1);
   await captureCurrentBaseline(
     page,
     testInfo,
@@ -380,7 +387,7 @@ test("a stray Enter after Log set cannot change rest or the next set", async ({
     cardCount: 1,
     draftIdentity: expect.stringMatching(/\S/),
     primaryLabel: "Barbell Back Squat, Set 2",
-    progressText: "1/3 done",
+    progressText: "1 of 3 sets",
   });
 
   test.fail(true, "Known Phase 0 focus handoff lands on decrement controls");

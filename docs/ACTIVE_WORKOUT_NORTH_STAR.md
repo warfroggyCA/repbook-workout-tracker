@@ -542,6 +542,31 @@ Exit gate: all row states are truthful, existing recording and correction
 tests pass, and the default set-entry screen matches the reference hierarchy at
 390×844 without deleting existing capabilities.
 
+Phase 1 implementation evidence remains reviewable with the code instead of
+creating another overlapping plan:
+
+- `src/components/session/active-set-ledger.tsx` renders the Phase 0 projection
+  exhaustively. Membership such as extra or workout-only, acknowledgement
+  lifecycle, and correction or restore provenance remain independent labels.
+- `src/components/session/exercise-card.tsx` places the existing performed-
+  value controls, Log set handler, recovery controls, optional details, skip,
+  and add-set behavior inside the appropriate ledger row. It does not introduce
+  a second ordering model or change any writer.
+- Component fixtures cover every row state, including unknown evidence and an
+  editable extra set that does not displace the planned current set. Existing
+  recording-truth, correction, hierarchy, recovery, equipment, import, and
+  group-order browser suites exercise the integrated flow in Chromium and
+  WebKit.
+- `design-qa.md` and `docs/assets/active-workout-phase1-qa/` retain the exact
+  390×844 default-text implementation and source comparisons. The comparison
+  accepts only the compact-ledger scope; it leaves fixed action and large-text
+  steppers to Phase 2 and nonblocking rest to Phase 3.
+
+Phase 1 changes presentation and tests only. It adds no schema or migration,
+rewrites no history, and does not change the outbox, acknowledgement,
+equipment-snapshot, import/export, recovery, Coach, Program, or production-data
+contracts.
+
 ### Phase 2 — fixed action, focus, and large-text layout
 
 Objective: make the primary action and post-action handoff safe at every named

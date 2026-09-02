@@ -158,7 +158,11 @@ test("records duration and distance as explicit performed measurements without i
     .getByTestId("active-exercise-details")
     .locator(":scope > summary")
     .click();
-  await expect(restoredPlank.getByText("45 sec", { exact: true })).toBeVisible();
+  await expect(
+    restoredPlank
+      .getByTestId("active-set-ledger")
+      .locator('[data-set-row-state="saved"]'),
+  ).toContainText("45 sec");
   await expect(restoredWalking).toContainText("1/1 done · Workout only");
   await restoredWalking.getByRole("button", { name: /Walking/ }).click();
   await restoredWalking
@@ -166,8 +170,10 @@ test("records duration and distance as explicit performed measurements without i
     .locator(":scope > summary")
     .click();
   await expect(
-    restoredWalking.getByText("1.2 km · 10:00", { exact: true }),
-  ).toBeVisible();
+    restoredWalking
+      .getByTestId("active-set-ledger")
+      .locator('[data-set-row-state="saved"]'),
+  ).toContainText("1.2 km · 10:00");
 
   await discardWorkout(page);
 });

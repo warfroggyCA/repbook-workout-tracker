@@ -507,7 +507,7 @@ test("keeps attention continuous through warm-up, first set, and exact recovery 
           return {
             inside: active != null && element.contains(active),
             expanded:
-              element.closest("section")?.querySelector(
+              element.closest('[data-testid="current-exercise-card"]')?.querySelector(
                 '[data-testid="exercise-swipe-surface"]',
               )
                 ?.getAttribute("aria-expanded") === "true",
@@ -635,25 +635,20 @@ async function compactGeometry(page: Page) {
     const previousRect = previousElement.getBoundingClientRect();
     const targetRect = targetElement.getBoundingClientRect();
     const firstInput = primaryElement.querySelector<HTMLElement>("input");
+    const firstInputRect = firstInput?.getBoundingClientRect() ?? null;
     const inputWidths = [...primaryElement.querySelectorAll<HTMLElement>("input")]
       .map((input) => input.getBoundingClientRect().width);
     const logRect = logElement.getBoundingClientRect();
     return {
       primaryHeight: primaryRect.height,
       cardHeight: cardElement.getBoundingClientRect().height,
-      targetBeforePrevious: targetRect.bottom <= previousRect.top,
-      targetBeforeOrBesidePrevious:
-        targetRect.bottom <= previousRect.top ||
-        (Math.abs(targetRect.top - previousRect.top) <= 2 &&
-          targetRect.right <= previousRect.left),
-      previousBeforeInput:
-        firstInput != null && previousRect.bottom <= firstInput.getBoundingClientRect().top,
-      evidenceBeforeInput:
-        firstInput != null &&
-        Math.max(targetRect.bottom, previousRect.bottom) <=
-          firstInput.getBoundingClientRect().top,
+      targetBeforeInput:
+        firstInputRect != null && targetRect.bottom <= firstInputRect.top,
+      inputBeforePrevious:
+        firstInputRect != null && firstInputRect.bottom <= previousRect.top,
+      previousBeforeLog: previousRect.bottom <= logRect.top,
       inputBeforeLog:
-        firstInput != null && firstInput.getBoundingClientRect().bottom <= logRect.top,
+        firstInputRect != null && firstInputRect.bottom <= logRect.top,
       logClearsDock: logRect.bottom <= dockElement.getBoundingClientRect().top - 8,
       logBottom: logRect.bottom,
       dockTop: dockElement.getBoundingClientRect().top,
@@ -745,12 +740,23 @@ test("keeps the ordinary active set current-first, unobstructed, and acknowledge
     });
     await expect(currentCard).toHaveAttribute("data-current-set", "true");
     const currentEntry = currentCard.getByTestId("current-set-entry");
+    const setLedger = currentCard.getByTestId("active-set-ledger");
+    const secondaryActions = currentCard.getByTestId(
+      "current-set-secondary-actions",
+    );
+    await expect(setLedger).toBeVisible();
     await expect(currentEntry).toBeVisible();
-    await expect(currentEntry).toContainText("Current set");
-    await expect(currentEntry).toContainText("Set 1 of 3");
+    await expect(currentEntry).toContainText("Set 1");
+    await expect(currentEntry.getByTestId("current-set-target")).toContainText(
+      "6–8 reps · 95 lb",
+    );
     await expect(currentEntry).toContainText("Performed measure");
-    await expect(currentEntry).toContainText("Next action");
-    await expect(currentEntry).toContainText("Barbell Back Squat, set 2");
+    await expect(
+      setLedger.locator('[data-set-row-state="planned"]'),
+    ).toHaveCount(2);
+    await expect(secondaryActions).toContainText("Replace");
+    await expect(secondaryActions).toContainText("Skip set");
+    await expect(secondaryActions).toContainText("Add set");
 
     const exerciseDetails = currentCard.getByTestId("active-exercise-details");
     await expect(exerciseDetails).not.toHaveAttribute("open", "");
@@ -762,11 +768,12 @@ test("keeps the ordinary active set current-first, unobstructed, and acknowledge
     ).not.toContainText("Next:");
 
     const orderedVisibleActions = [
-      currentEntry.getByText("Current set", { exact: false }),
-      currentEntry.getByTestId("previous-comparable-set"),
+      currentEntry.getByTestId("current-set-target"),
       currentEntry.getByText("Performed measure", { exact: true }),
+      currentEntry.getByLabel("Total load", { exact: true }),
+      currentEntry.getByTestId("previous-comparable-set"),
       currentEntry.getByRole("button", { name: "Log set", exact: true }),
-      currentEntry.getByText("Next action", { exact: true }),
+      secondaryActions,
       exerciseDetails.locator(":scope > summary"),
     ];
     for (const action of orderedVisibleActions) await expect(action).toBeVisible();
@@ -815,6 +822,10 @@ test("keeps the ordinary active set current-first, unobstructed, and acknowledge
     );
     await expect(currentEquipmentSetup).toHaveCount(0);
     await expect(currentEntry).toHaveCount(0);
+    await expect(setLedger).toBeVisible();
+    await expect(
+      setLedger.locator('[data-set-row-state="saved"]'),
+    ).toHaveCount(1);
     await expect(exerciseDetails.getByLabel("RIR (0–10)")).not.toBeVisible();
     await expect(exerciseDetails.getByLabel("Set note (optional)")).not.toBeVisible();
     const workoutStatus = page.getByRole("complementary", {
@@ -859,7 +870,7 @@ test("keeps the ordinary active set current-first, unobstructed, and acknowledge
       "aria-expanded",
       "true",
     );
-    await expect(currentEntry).toContainText("Set 2 of 3");
+    await expect(currentEntry).toContainText("Set 2");
     const setTwoEntryId = await currentEntry.getAttribute("id");
     expect(setTwoEntryId).not.toBeNull();
     await expect.poll(() => page.evaluate(() => window.location.hash)).toBe(
@@ -887,8 +898,9 @@ test("keeps the ordinary active set current-first, unobstructed, and acknowledge
       settledSetTwoGeometry,
       JSON.stringify(settledSetTwoGeometry),
     ).toMatchObject({
-      targetBeforeOrBesidePrevious: true,
-      evidenceBeforeInput: true,
+      targetBeforeInput: true,
+      inputBeforePrevious: true,
+      previousBeforeLog: true,
       inputBeforeLog: true,
       logClearsDock: true,
     });
@@ -941,7 +953,7 @@ test("fits the complete primary logging action at 390x844 with keyboard disclosu
       }
       if (snapshot.state === "unavailable") {
         expect(snapshot.sourceCount).toBe(0);
-        expect(snapshot.text).toBe("Previous comparable set unavailable");
+        expect(snapshot.text).toBe("No comparable set recorded");
         terminalComparison = { state: "unavailable" };
         return;
       }
@@ -949,20 +961,21 @@ test("fits the complete primary logging action at 390x844 with keyboard disclosu
     }).toPass({ timeout: 25_000 });
     expect(terminalComparison).not.toBeNull();
     await expect(log).toBeVisible();
-    await expect(currentEntry).toContainText("Current set");
+    await expect(currentEntry).toContainText("Set 1");
     await expect(page.getByTestId("active-set-save-receipt")).toHaveCount(0);
     await expect(page.getByTestId("active-workout-dock-primary")).toHaveCount(0);
     await expect(currentSetDockAction(page)).toHaveCount(0);
     await revealCurrentFromStatusBar(page);
-    await expect(currentEntry).toContainText("Current set");
+    await expect(currentEntry).toContainText("Set 1");
     await expect(page.getByTestId("active-set-save-receipt")).toHaveCount(0);
     await expect(page.getByTestId("active-workout-dock-primary")).toHaveCount(0);
     await expect(currentSetDockAction(page)).toHaveCount(0);
 
     const geometry = await compactGeometry(page);
     expect(geometry, JSON.stringify(geometry)).toMatchObject({
-      targetBeforeOrBesidePrevious: true,
-      previousBeforeInput: true,
+      targetBeforeInput: true,
+      inputBeforePrevious: true,
+      previousBeforeLog: true,
       inputBeforeLog: true,
       logClearsDock: true,
     });
@@ -985,7 +998,9 @@ test("fits the complete primary logging action at 390x844 with keyboard disclosu
     await expect(exerciseDetails).toHaveAttribute("open", "");
     await expect(exerciseDetails.getByLabel("RIR (0–10)")).toBeVisible();
     await expect(
-      exerciseDetails.getByRole("button", { name: "Skip set", exact: true }),
+      currentCard
+        .getByTestId("current-set-secondary-actions")
+        .getByRole("button", { name: "Skip set", exact: true }),
     ).toBeVisible();
     await expect(exerciseDetails.getByTestId("completed-sets")).toBeVisible();
     await expect(
@@ -1001,21 +1016,25 @@ test("fits the complete primary logging action at 390x844 with keyboard disclosu
     await signInAndStartDayA(page, { extraLarge: true });
     await completeWarmupsToFirstWorkingSet(page);
     const extraLargeEntry = page.getByTestId("current-set-entry");
-    await expect(extraLargeEntry).toContainText("Current set");
+    await expect(extraLargeEntry).toContainText("Set 1");
     await expect(page.getByTestId("active-set-save-receipt")).toHaveCount(0);
     await expect(page.getByTestId("active-workout-dock-primary")).toHaveCount(0);
     await expect(currentSetDockAction(page)).toHaveCount(0);
     await revealCurrentFromStatusBar(page);
-    for (const target of [
+    for (const context of [
       extraLargeEntry.getByTestId("current-set-target"),
       extraLargeEntry.getByTestId("previous-comparable-set"),
+    ]) {
+      await expect(context).toBeVisible();
+    }
+    for (const target of [
       extraLargeEntry.getByLabel("Total load", { exact: true }),
       extraLargeEntry.getByRole("textbox", { name: "Reps", exact: true }),
       extraLargeEntry.getByRole("button", { name: "Log set", exact: true }),
     ]) {
       await expectReachableTarget(target);
     }
-    await expect(extraLargeEntry).toContainText("Current set");
+    await expect(extraLargeEntry).toContainText("Set 1");
     await expect(page.getByTestId("active-set-save-receipt")).toHaveCount(0);
     await expect(page.getByTestId("active-workout-dock-primary")).toHaveCount(0);
     await expect(currentSetDockAction(page)).toHaveCount(0);
@@ -1024,8 +1043,9 @@ test("fits the complete primary logging action at 390x844 with keyboard disclosu
       extraLargeGeometry,
       JSON.stringify(extraLargeGeometry),
     ).toMatchObject({
-      targetBeforeOrBesidePrevious: true,
-      previousBeforeInput: true,
+      targetBeforeInput: true,
+      inputBeforePrevious: true,
+      previousBeforeLog: true,
       inputBeforeLog: true,
       logClearsDock: true,
     });

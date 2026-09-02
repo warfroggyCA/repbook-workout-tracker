@@ -542,7 +542,7 @@ test("keeps the full live workout usable through warm-up, skip, replace, continu
   for (let setNo = 1; setNo <= 3; setNo += 1) {
     const current = page.getByTestId("current-exercise-card");
     const currentSet = current.getByTestId("current-set-entry");
-    await expect(currentSet).toContainText(`Set ${setNo} of 3`);
+    await expect(currentSet).toContainText(`Set ${setNo}`);
     const log = currentSet.getByRole("button", { name: "Log set", exact: true });
     await expectReachableTarget(log);
     await log.click();
@@ -676,7 +676,7 @@ test("keeps the full live workout usable through warm-up, skip, replace, continu
   await expectActiveViewportBudget(page);
 
   const replacementSet = replacement.getByTestId("current-set-entry");
-  await expect(replacementSet).toContainText("Set 1 of 3");
+  await expect(replacementSet).toContainText("Set 1");
   const logReplacement = replacementSet.getByRole("button", {
     name: "Log set",
     exact: true,
