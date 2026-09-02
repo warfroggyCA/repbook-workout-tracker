@@ -448,6 +448,7 @@ test("refuses incomplete assistance, then preserves assisted work without false 
   );
   await expect(
     restoredAssisted
+      .getByTestId("active-set-ledger")
       .getByText("Assistance: 40 lb · 8 reps", { exact: true }),
   ).toBeVisible();
   await page

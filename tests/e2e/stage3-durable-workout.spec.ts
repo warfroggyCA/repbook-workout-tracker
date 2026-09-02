@@ -365,7 +365,9 @@ test("publishes and preserves durable warm-up and grouped workout outcomes", asy
   await expect(
     reloadedNextSet.getByRole("heading", { level: 2 }),
   ).toHaveText("Romanian Deadlift");
-  await expect(reloadedNextSet).toContainText("Set 2 of 3");
+  await expect(reloadedNextSet.getByTestId("current-set-entry")).toContainText(
+    "Set 2",
+  );
   await screenshot(page, "06-group-round-reload-continuity.png");
 
   await page.getByRole("complementary", { name: "Workout status" })

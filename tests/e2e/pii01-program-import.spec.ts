@@ -190,13 +190,41 @@ test("reviews and publishes a multi-day Program into an ordered active workout",
   await expect(emptyBar.getByRole("button", { name: "Undo completion", exact: true })).toBeVisible();
   await expect(emptyBar.getByText("Saved", { exact: true })).toBeVisible();
 
+  const hipCircles = warmup.locator("li").filter({ hasText: "Hip circles" });
+  const hipCirclesCheck = hipCircles.getByRole("checkbox", {
+    name: "Mark Hip circles complete",
+    exact: true,
+  });
+  await hipCirclesCheck.focus();
+  await page.keyboard.press("Enter");
+  await expect(
+    hipCircles.getByRole("button", { name: "Undo completion", exact: true }),
+  ).toBeVisible();
+  await expect(hipCircles.getByText("Saved", { exact: true })).toBeVisible();
+
+  const halfLoad = warmup.locator("li").filter({
+    hasText: "Half of working load",
+  });
+  const halfLoadCheck = halfLoad.getByRole("checkbox", {
+    name: "Mark Half of working load complete",
+    exact: true,
+  });
+  await halfLoadCheck.focus();
+  await page.keyboard.press("Enter");
+
   const current = page.getByTestId("current-exercise-card");
-  await expect(current).toContainText("Set 1 of 3");
+  await expect(current.getByTestId("current-set-entry")).toContainText("Set 1");
   await expect(current).toContainText("5 reps · 60 kg");
   await current.getByLabel("Total load").fill("60");
   await current.getByRole("textbox", { name: "Reps", exact: true }).fill("5");
   await current.getByRole("button", { name: "Log set", exact: true }).click();
-  await expect(page.locator('[id^="logged-set-"]').first()).toContainText("60 lb");
+  await expect(
+    page
+      .getByRole("region", { name: "Barbell Back Squat", exact: true })
+      .getByTestId("active-set-ledger")
+      .locator('[data-set-row-state="saved"]')
+      .first(),
+  ).toContainText("60 lb × 5");
 
   await page
     .getByRole("complementary", { name: "Workout status" })

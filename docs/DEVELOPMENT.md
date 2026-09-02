@@ -459,6 +459,29 @@ uses an environment-only two-bar fixture and never changes ordinary seed data.
 Phase 0 changes no application writer, schema, migration, history, or
 production data.
 
+### Active Workout North Star Phase 1 compact-ledger gate
+
+Phase 1 replaces the isolated current-set cockpit with one projection-backed
+set ledger. Its focused gate is:
+
+```bash
+npx vitest run tests/unit/active-set-ledger-component.test.tsx tests/unit/exercise-card-component.test.tsx
+npm run build
+npm run test:e2e:active-workout-north-star
+npm run test:e2e:v2-u01
+npm run test:e2e:v2-t01
+npm run test:e2e:v2-t02
+```
+
+Completed, current, future, extra, skipped, retained, failed, corrected,
+restored, and unknown rows all come from the immutable occurrence projection.
+The current row reuses the existing performed-value controls and command
+handlers; there is no new writer or persistence path. The Phase 0 post-log
+Enter test remains an expected failure until Phase 2 owns the focus handoff,
+and normal rest continues to replace set editing until Phase 3. Phase 1 adds no
+schema, migration, snapshot, recovery-manifest, import/export, or production-
+data change.
+
 ### Day 2 active-workout reliability root causes
 
 The August 16, 2026 candidate confirmed these causes before remediation:

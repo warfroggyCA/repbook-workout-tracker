@@ -94,6 +94,41 @@ const exercise: SessionExerciseData = {
   last: null,
 };
 
+function workingOccurrenceFor(
+  exerciseData: SessionExerciseData,
+  kindOrdinal: number,
+  overrides: Partial<SessionOccurrenceData> = {},
+): SessionOccurrenceData {
+  return {
+    id: `90000000-0000-4000-8000-${String(kindOrdinal + 1).padStart(12, "0")}`,
+    sessionExerciseId: exerciseData.id,
+    kind: "working_set",
+    origin: "planned",
+    sequenceIdx: kindOrdinal,
+    kindOrdinal,
+    label: null,
+    plannedExerciseId: exerciseData.exerciseId,
+    plannedNote: null,
+    plannedRepsMin: exerciseData.targetRepsMin,
+    plannedRepsMax: exerciseData.targetRepsMax,
+    plannedLoad: exerciseData.targetLoad,
+    plannedLoadUnit: exerciseData.targetLoadUnit,
+    plannedLoadPercent: null,
+    plannedLoadText: null,
+    plannedRestSec: exerciseData.restSec,
+    groupSnapshotId: null,
+    groupRound: null,
+    groupMemberOrderIdx: null,
+    outcome: "pending",
+    outcomeReason: null,
+    outcomeNote: null,
+    revision: 0,
+    resolvedAt: null,
+    completedSetId: null,
+    ...overrides,
+  };
+}
+
 describe("ExerciseCard", () => {
   it("never replaces a valid controlled draft number with a non-finite value", () => {
     expect(parseFiniteDraftNumber("77", null)).toBe(77);
@@ -263,9 +298,19 @@ describe("ExerciseCard", () => {
   });
 
   it("renders total-load, reference guidance, save-state, and note-cap presentation", () => {
+    const occurrences = [0, 1, 2].map((index) =>
+      workingOccurrenceFor(exercise, index),
+    );
+    const exerciseWithLinkedDeviceSets = {
+      ...exercise,
+      sets: exercise.sets.map((set, index) => ({
+        ...set,
+        occurrenceId: occurrences[index].id,
+      })),
+    };
     const html = renderToStaticMarkup(
       <ExerciseCard
-        exercise={exercise}
+        exercise={exerciseWithLinkedDeviceSets}
         historyRevision={0}
         progress={{
           sessionExerciseId: exercise.id,
@@ -297,6 +342,9 @@ describe("ExerciseCard", () => {
         }}
         incrementals={{}}
         unit="lb"
+        activeOccurrence={occurrences[2]}
+        workingOccurrences={occurrences}
+        isCurrentExercise
         onPatch={() => undefined}
         onQueueSet={async () => true}
         onRetrySet={async () => undefined}
@@ -308,27 +356,20 @@ describe("ExerciseCard", () => {
       />
     );
 
-    expect(html).toContain("Pending on this device");
+    expect(html).toContain("Unsaved on this device");
     expect(html).toContain("Save failed");
     expect(html).toContain("Retry");
     expect(html).toContain("Discard");
     expect(html).toContain("Enter the numeric assistance or keep it in a note.");
-    expect(html).toContain(
-      `id="logged-set-${exercise.id}-1"`,
-    );
-    expect(html).toContain(
-      `id="logged-set-${exercise.id}-2"`,
-    );
-    expect(html).toContain(
-      "0/3 planned performed · 1 saving · 1 needs attention",
-    );
+    expect(html).toContain('data-set-row-state="retained_locally"');
+    expect(html).toContain('data-set-row-state="failed"');
+    expect(html).toContain("0 of 3 sets · 1 saving · 1 needs attention");
     expect(html).not.toContain("Ramp 1 · 45 lb · 5 reps");
     expect(html).toContain("Warm-up guidance · reference");
     expect(html).toContain("Move smoothly");
     expect(html).toContain("Show details");
     expect(html).toContain("<details");
-    expect(html).toContain("You can continue the workout now");
-    expect(html).toContain("Resolve the retained copy for this set");
+    expect(html).toContain('data-set-row-state="current_editable"');
     expect(html).not.toContain("Use the Next set dock");
     expect(html).toContain("Workout actions");
     expect(html).toContain("Add note");
@@ -338,11 +379,11 @@ describe("ExerciseCard", () => {
     expect(html).toContain("do not rewrite the saved Program");
     expect(html).toContain("Completed sets");
     expect(html).toContain("More for this exercise");
-    expect(html.indexOf(`id=\"logged-set-${exercise.id}-1\"`)).toBeLessThan(
-      html.indexOf("Completed sets"),
+    expect(html.indexOf('data-testid="active-set-ledger"')).toBeLessThan(
+      html.indexOf("More for this exercise"),
     );
-    expect(html.indexOf("Completed sets")).toBeLessThan(
-      html.indexOf("Add extra set"),
+    expect(html.indexOf("Add extra set")).toBeLessThan(
+      html.indexOf("More for this exercise"),
     );
     expect(html.indexOf("More for this exercise")).toBeLessThan(
       html.indexOf("Workout actions"),
@@ -705,7 +746,7 @@ describe("ExerciseCard", () => {
       />,
     );
     expect(html).toContain("Assistance: 80 lb · 8 reps");
-    expect(html).toContain("Previous comparable set unavailable");
+    expect(html).toContain("Previous comparison unavailable");
     expect(html).toContain('aria-label="Assistance"');
     expect(html).not.toContain("80 lb ×");
     expect(html.indexOf("Completed sets")).toBeLessThan(
@@ -865,7 +906,6 @@ describe("ExerciseCard", () => {
     );
     expect(html).toContain('target="_blank"');
     expect(html).toContain("Performed measure");
-    expect(html).toContain("Barbell Squat, set 2");
     expect(html).toContain("Optional effort and set note");
     expect(html).toContain("RIR (0–10)");
     expect(html).toContain("Technique issue");
@@ -873,21 +913,17 @@ describe("ExerciseCard", () => {
     expect(html).toContain("No flag means unknown, not “no pain.”");
     expect(html).toContain("Record pain");
     expect(html).not.toContain('aria-label="Pain severity 1"');
-    expect(html).toContain("Set exceptions");
     expect(html).toContain("Set options");
     expect(html).toContain("Completed sets");
     expect(html).toContain("More for this exercise");
     expect(html.indexOf("Current action")).toBeLessThan(
-      html.indexOf("Previous ·"),
+      html.indexOf("Target 6–8 reps · 95 lb"),
     );
-    expect(html.indexOf("Previous ·")).toBeLessThan(
+    expect(html.indexOf("Target 6–8 reps · 95 lb")).toBeLessThan(
       html.indexOf("Performed measure"),
     );
     expect(html.indexOf("Performed measure")).toBeLessThan(
-      html.indexOf("Next action"),
-    );
-    expect(html.indexOf("Next action")).toBeLessThan(
-      html.indexOf("Set exceptions"),
+      html.indexOf("Previous ·"),
     );
     expect(html.indexOf("Current action")).toBeLessThan(
       html.indexOf("Warm-up guidance"),
@@ -907,7 +943,12 @@ describe("ExerciseCard", () => {
 
     const restingHtml = renderToStaticMarkup(cloneElement(card, {
       resting: true,
+      activeOccurrence: null,
+      workingOccurrences: card.props.activeOccurrence
+        ? [card.props.activeOccurrence]
+        : [],
     }));
+    expect(restingHtml).toContain('data-testid="active-set-ledger"');
     expect(restingHtml).not.toContain('data-testid="current-set-entry"');
     expect(restingHtml).not.toContain('data-testid="active-workout-primary"');
     expect(restingHtml).not.toContain('data-testid="active-log-set"');
@@ -959,6 +1000,19 @@ describe("ExerciseCard", () => {
         { id: "saved-first", clientKey: "first-key", setNo: 1, weight: 95, weightUnit: "lb" as const, reps: 8, rpe: null, note: null, saveState: "saved" as const },
       ],
     };
+    const occurrences = [
+      workingOccurrenceFor(afterSkippedSecond, 0, {
+        outcome: "completed",
+        completedSetId: "saved-first",
+      }),
+      workingOccurrenceFor(afterSkippedSecond, 1, {
+        outcome: "skipped",
+        outcomeReason: "time_limit_reached",
+      }),
+      workingOccurrenceFor(afterSkippedSecond, 2, {
+        id: "00000000-0000-4000-8000-000000000004",
+      }),
+    ];
     const renderCard = (
       nextActionLabel: string | null = "Workout complete",
     ) => renderToStaticMarkup(
@@ -1016,6 +1070,7 @@ describe("ExerciseCard", () => {
           completedSetId: null,
         }}
         isCurrentExercise
+        workingOccurrences={occurrences}
         nextActionLabel={nextActionLabel}
         onPatch={() => undefined}
         onQueueSet={async () => true}
@@ -1030,7 +1085,10 @@ describe("ExerciseCard", () => {
     );
     const html = renderCard();
 
-    expect(html).toContain("Set 3 of 3");
+    expect(html).toContain('data-set-row-state="saved"');
+    expect(html).toContain('data-set-row-state="skipped"');
+    expect(html).toContain('data-set-row-state="current_editable"');
+    expect(html).toContain("Set 3");
     expect(html).not.toContain("active-set-save-receipt");
     expect(html).toContain("Completed sets");
     expect(html).toContain("1 completed");
@@ -1076,6 +1134,7 @@ describe("ExerciseCard", () => {
       sets: [{
         id: "failed-order-attempt",
         clientKey: "failed-order-key",
+        occurrenceId: "60000000-0000-4000-8000-000000000002",
         setNo: 2,
         weight: 95,
         weightUnit: "lb",
@@ -1085,6 +1144,12 @@ describe("ExerciseCard", () => {
         saveState: "failed",
         lastError: "Finish or skip the earlier set first.",
       }],
+    };
+    const failedOccurrence: SessionOccurrenceData = {
+      ...blockerOccurrence,
+      id: "60000000-0000-4000-8000-000000000002",
+      sequenceIdx: 1,
+      kindOrdinal: 1,
     };
     const baseProps = {
       exercise: failedAttempt,
@@ -1113,7 +1178,7 @@ describe("ExerciseCard", () => {
       incrementals: {},
       unit: "lb" as const,
       activeOccurrence: blockerOccurrence,
-      workingOccurrences: [blockerOccurrence],
+      workingOccurrences: [blockerOccurrence, failedOccurrence],
       isCurrentExercise: true,
       nextActionLabel: "Barbell Squat, Set 2",
       onPatch: () => undefined,
@@ -1228,6 +1293,10 @@ describe("ExerciseCard", () => {
     const mismatched = renderToStaticMarkup(
       <ExerciseCard
         {...baseProps}
+        exercise={{
+          ...failedAttempt,
+          sets: [{ ...failedAttempt.sets[0], occurrenceId: null }],
+        }}
         setOrderBlockers={{
           "failed-order-key": {
             blockerOccurrenceId: "60000000-0000-4000-8000-000000000099",
@@ -1240,8 +1309,15 @@ describe("ExerciseCard", () => {
         onRefreshWorkout={() => undefined}
       />,
     );
-    expect(mismatched).not.toContain('data-testid="current-set-entry"');
-    expect(mismatched).toContain("Resolve the retained copy for this set");
+    expect(mismatched).toContain('data-testid="current-set-entry"');
+    expect(mismatched).toContain(
+      "Resolve the retained device copy for this set before logging again.",
+    );
+    expect(
+      mismatched.match(
+        /<button[^>]*data-testid="active-log-set"[^>]*>/,
+      )?.[0],
+    ).toMatch(/\sdisabled(?:=|>|\s)/);
 
     const fallback = renderToStaticMarkup(
       <ExerciseCard

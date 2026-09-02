@@ -59,13 +59,12 @@ async function skipCurrentSet(page: Page) {
   const dialog = page.getByRole("dialog", { name: /^Skip set / });
   for (let attempt = 0; attempt < 2; attempt += 1) {
     card = await openCurrentExerciseCard(page);
-    await openNativeDetails(card.locator("details", {
-      hasText: "Set exceptions",
-    }));
-    const skip = card.getByRole("button", {
-      name: "Skip set",
-      exact: true,
-    });
+    const skip = card
+      .getByTestId("current-set-secondary-actions")
+      .getByRole("button", {
+        name: "Skip set",
+        exact: true,
+      });
     await expect(skip).toBeEnabled();
     await waitForHydratedReactHandler(skip);
     try {
@@ -90,13 +89,10 @@ async function skipCurrentSet(page: Page) {
     ))
     .not.toBe(currentEntryId);
   card = await openCurrentExerciseCard(page);
-  await openNativeDetails(
-    card.locator("details", {
-      hasText: "Set exceptions",
-    }),
-  );
   await expect(
-    card.getByRole("button", { name: "Skip set", exact: true }),
+    card
+      .getByTestId("current-set-secondary-actions")
+      .getByRole("button", { name: "Skip set", exact: true }),
   ).toBeEnabled();
 }
 
@@ -522,11 +518,10 @@ test("presents immutable superset order, truthful progress, and next-member equi
   await expect(currentCard.getByRole("heading", { level: 2 })).toHaveText(
     "Dumbbell Lateral Raise",
   );
-  await openNativeDetails(currentCard.locator("details", {
-    hasText: "Set exceptions",
-  }));
   await expect(
-    currentCard.getByRole("button", { name: "Skip set", exact: true }),
+    currentCard
+      .getByTestId("current-set-secondary-actions")
+      .getByRole("button", { name: "Skip set", exact: true }),
   ).toBeVisible();
   const currentEntryId = await currentCard
     .getByTestId("current-set-entry")
