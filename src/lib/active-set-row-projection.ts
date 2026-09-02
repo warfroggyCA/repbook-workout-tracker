@@ -4,6 +4,7 @@ import type {
   SessionOccurrenceData,
 } from "@/components/session/types";
 import {
+  ADDED_WORKOUT_SET_NOTE,
   workingSetDisplayPosition,
   workingSetSemanticRole,
   type WorkingSetSemanticRole,
@@ -12,7 +13,14 @@ import {
   queuedSetSaveState,
   type RuntimeSetSaveState,
 } from "@/lib/session-runner";
+import type { ActiveSetVersionEvidence } from "@/lib/active-set-version-evidence";
 import type { WorkoutSetOutboxEntry } from "@/lib/workout-set-outbox";
+
+export {
+  ACTIVE_SET_VERSION_STATES,
+  type ActiveSetVersionEvidence,
+  type ActiveSetVersionState,
+} from "@/lib/active-set-version-evidence";
 
 export const ACTIVE_SET_ROW_STATES = [
   "planned",
@@ -29,23 +37,6 @@ export const ACTIVE_SET_ROW_STATES = [
 ] as const;
 
 export type ActiveSetRowState = (typeof ACTIVE_SET_ROW_STATES)[number];
-
-export const ACTIVE_SET_VERSION_STATES = [
-  "original",
-  "corrected",
-  "version_restored",
-  "snapshot_restored",
-] as const;
-
-export type ActiveSetVersionState =
-  (typeof ACTIVE_SET_VERSION_STATES)[number];
-
-export type ActiveSetVersionEvidence =
-  | { state: "original"; count: 0 }
-  | {
-      state: Exclude<ActiveSetVersionState, "original">;
-      count: number;
-    };
 
 export type ActiveSetMembership = WorkingSetSemanticRole | "unknown";
 
@@ -274,7 +265,9 @@ function frozenPrescription(
     loadUnit: occurrence.plannedLoadUnit,
     loadPercent: occurrence.plannedLoadPercent,
     loadText: occurrence.plannedLoadText,
-    note: occurrence.plannedNote,
+    note: occurrence.plannedNote === ADDED_WORKOUT_SET_NOTE
+      ? null
+      : occurrence.plannedNote,
   };
 }
 

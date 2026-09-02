@@ -1,5 +1,6 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
 import {
+  waitForEquipmentSelectionsToSettle,
   waitForHydratedReactChangeHandler,
   waitForHydratedReactHandler,
   waitForHydratedServerAction,
@@ -197,13 +198,14 @@ test("keeps unrestricted replacement truthful and reachable through mobile keybo
   await expect(extraLargeText).toBeChecked();
   await page.goto("/today");
   await startWorkout(page);
+  await waitForEquipmentSelectionsToSettle(page);
 
   const card = page.getByTestId("current-exercise-card");
   const originalExerciseName = await card
     .getByRole("heading", { level: 2 })
     .innerText();
   const preparation = page.getByTestId("session-preparation-panel");
-  await expect(preparation).toContainText(originalExerciseName);
+  await expect(preparation).toHaveCount(0);
   const draftIdentity = await card.getAttribute("data-draft-identity");
   expect(draftIdentity).not.toBeNull();
   const weight = card.getByLabel(/^(Weight|Total load|Displayed load)/);

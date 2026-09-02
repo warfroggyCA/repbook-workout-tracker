@@ -122,8 +122,11 @@ test("recovers offline and timeout-after-commit sets exactly, then reviews aband
   current = page.getByTestId("current-exercise-card");
   entry = current.getByTestId("current-set-entry");
   await entry.getByRole("button", { name: "Log set", exact: true }).click();
+  await expect.poll(() => afterCommitInterceptions).toBe(1);
+  // WebKit may surface the aborted response only at the document-action
+  // deadline, so this budget must include that deadline and the automatic retry.
   await expect(squatCard.getByTestId("completed-sets"))
-    .toContainText("2 completed");
+    .toContainText("2 completed", { timeout: 60_000 });
   await expectSetQueueLength(page, 0);
   expect(afterCommitInterceptions).toBe(1);
   await page.unrouteAll({ behavior: "wait" });

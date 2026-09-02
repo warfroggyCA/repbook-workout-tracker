@@ -13,6 +13,7 @@ import type {
 } from "@/lib/set-exception-context";
 import type { PreviousComparableSetResult } from "@/services/previous-comparable-sets";
 import type { SessionPreparationEquipmentProjection } from "@/lib/session-equipment-requirements";
+import type { ActiveSetVersionEvidence } from "@/lib/active-set-version-evidence";
 
 export type LoggedSet = {
   id: string;
@@ -76,6 +77,8 @@ export type SessionExerciseData = {
   cautionBodyParts: string[];
   media: ExerciseMediaPreview | null;
   sets: LoggedSet[];
+  /** Immutable correction and restore evidence keyed by saved set id. */
+  versionEvidenceBySetId?: Readonly<Record<string, ActiveSetVersionEvidence>>;
   previousComparable?: PreviousComparableSetResult;
   last: {
     dateISO: string;

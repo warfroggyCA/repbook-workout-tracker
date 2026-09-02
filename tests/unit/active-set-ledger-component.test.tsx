@@ -2,6 +2,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { ActiveSetLedger } from "@/components/session/active-set-ledger";
 import { projectActiveSetRows } from "@/lib/active-set-row-projection";
+import { ADDED_WORKOUT_SET_NOTE } from "@/lib/session-occurrences";
 import {
   SET_ROW_CROSS_AXIS_FIXTURES,
   SET_ROW_STATE_FIXTURES,
@@ -53,9 +54,35 @@ describe("ActiveSetLedger", () => {
     const html = renderFixture(SET_ROW_STATE_FIXTURES.current_editable.input);
     expect(html).toContain("Target 8 reps · 95 lb");
     expect(html).toContain("Editable fields");
+    expect(html).toContain(
+      '<section id="set-entry-40000000-0000-4000-8000-000000000001-60000000-0000-4000-8000-000000000001" data-testid="current-set-entry" aria-label="Barbell Back Squat, Set 1"',
+    );
     expect(html.indexOf("Target 8 reps · 95 lb")).toBeLessThan(
       html.indexOf("Editable fields"),
     );
+  });
+
+  it("keeps a frozen per-set note visible on a future planned row", () => {
+    const input = SET_ROW_STATE_FIXTURES.planned.input;
+    const projection = projectActiveSetRows({
+      ...input,
+      occurrences: [{
+        ...input.occurrences[0],
+        plannedNote: "Three-second eccentric",
+      }],
+    });
+    const html = renderToStaticMarkup(
+      <ActiveSetLedger
+        exerciseId={input.exercise.id}
+        exerciseName={input.exercise.name}
+        metricType="weight_reps"
+        rows={projection.rows}
+        diagnostics={projection.diagnostics}
+        renderCurrentRow={() => <p>Editable fields</p>}
+      />,
+    );
+    expect(html).toContain("Three-second eccentric");
+    expect(html).toContain("Planned");
   });
 
   it("keeps a newly added extra set editable without replacing the planned current row", () => {
@@ -99,6 +126,7 @@ describe("ActiveSetLedger", () => {
     expect(html).toContain('data-testid="added-set-entry"');
     expect(html).toContain("Extra set 1");
     expect(html).toContain("Added to this workout");
+    expect(html).not.toContain(ADDED_WORKOUT_SET_NOTE);
     expect(html).toContain("Extra set editor");
   });
 
