@@ -3226,8 +3226,8 @@ test("a parked set pauses only its exercise while another exercise saves", async
     localStorage.setItem(key, JSON.stringify(envelope));
     window.dispatchEvent(new Event("workout-set-outbox-change"));
   }, firstExerciseId);
+  await expect.poll(() => failedExerciseRequests).toBeGreaterThanOrEqual(2);
   await expect(firstExercise.getByText("Save failed", { exact: true })).toBeVisible();
-  expect(failedExerciseRequests).toBeGreaterThanOrEqual(2);
 
   await dismissRestCockpit(page);
   await secondExercise.getByTestId("exercise-swipe-surface").click();
