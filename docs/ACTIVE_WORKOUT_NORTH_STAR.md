@@ -496,7 +496,8 @@ planning document:
   corrected or restored remain independent from save lifecycle.
 - `src/lib/active-workout-presentation-state.ts` names the rest, equipment, and
   session presentation states without writing data or parsing human-readable
-  messages into facts.
+  messages into facts. Missing rest-cue capability remains unknown and fails
+  closed to recovery instead of being assumed available.
 - `tests/fixtures/active-workout-north-star.ts` supplies one typed fixture for
   every state plus cross-axis combinations that prevent extra, failed,
   corrected, restored, and unknown evidence from collapsing into each other.

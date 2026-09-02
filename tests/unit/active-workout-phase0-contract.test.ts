@@ -416,6 +416,18 @@ describe("Phase 0 rest presentation contract", () => {
       message: expect.stringContaining("unsupported availability"),
     });
   });
+
+  it("does not manufacture successful cue availability when evidence is omitted", () => {
+    expect(
+      projectActiveWorkoutRestPresentation({
+        ...REST_STATE_FIXTURES.running.input,
+        cueAvailability: undefined,
+      }),
+    ).toMatchObject({
+      state: "recovery_required",
+      message: expect.stringContaining("availability is unknown"),
+    });
+  });
 });
 
 describe("Phase 0 equipment and session state contracts", () => {
