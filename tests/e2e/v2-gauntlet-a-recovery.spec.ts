@@ -85,7 +85,7 @@ test("recovers offline and timeout-after-commit sets exactly, then reviews aband
   await entry.getByRole("button", { name: "Log set", exact: true }).click();
   await expectSetQueueLength(page, 1);
   await expect(squatCard.getByRole("status")).toContainText(
-    /Saving|Retrying|waiting|Pending on this device/i,
+    /Saving|Retrying|waiting|Unsaved on this device/i,
   );
 
   await context.setOffline(false);
@@ -138,7 +138,9 @@ test("recovers offline and timeout-after-commit sets exactly, then reviews aband
     .getByRole("button", { name: /^(?:Review workout finish|Finish workout)$/ })
     .click();
   const finish = page.getByRole("dialog", { name: "Finish workout" });
-  await finish.getByText("Optional note and fatigue", { exact: true }).click();
+  await openNativeDetails(finish.locator("details", {
+    hasText: "Optional note and fatigue",
+  }));
   const fatigue = finish.getByRole("group", { name: "Overall fatigue" });
   const fatigueThree = fatigue.getByRole("button", {
     name: "3",

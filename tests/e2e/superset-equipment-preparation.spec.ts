@@ -273,7 +273,6 @@ async function expectReachableGroupSurface(
   ))) {
     await mobileDetails.locator(":scope > summary").click();
   }
-  await group.focus();
   await group.scrollIntoViewIfNeeded();
   await group.evaluate((element) => {
     const stickySummary = document.querySelector(
@@ -283,6 +282,7 @@ async function expectReachableGroupSurface(
     const top = element.getBoundingClientRect().top;
     if (top < visibleTop) window.scrollBy(0, top - visibleTop);
   });
+  await group.focus();
   await expect(group).toBeInViewport();
   await expect(group).toBeFocused();
   await expectNoHorizontalOverflow(page);
