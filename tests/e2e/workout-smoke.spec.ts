@@ -2405,7 +2405,9 @@ test("keeps the final set acknowledgement visible through background return", as
   for (let setNo = 1; setNo <= 2; setNo += 1) {
     await nextSet.getByRole("button", { name: "Log set", exact: true }).click();
     await dismissRestCockpit(page);
-    await expect(nextSet.getByText(new RegExp(`Set ${setNo + 1} of 3`))).toBeVisible();
+    await expect(nextSet.getByTestId("current-set-entry")).toContainText(
+      `Set ${setNo + 1}`,
+    );
   }
 
   let releaseFinal!: () => void;
@@ -3044,7 +3046,7 @@ test("keeps an offline set visible while the next set stays available", async ({
     .getByRole("button", { name: "Log set", exact: true })
     .click();
   await expect(
-    firstExercise.getByText("Pending on this device", { exact: true })
+    firstExercise.getByText("Unsaved on this device", { exact: true })
   ).toBeVisible();
   await expect
     .poll(async () =>
@@ -3359,7 +3361,7 @@ test("keeps a stale-tab rejection visible until the user resolves it", async ({
   await retryStaleSet.click();
   await expect.poll(() => retryStarted).toBe(true);
   await expect(
-    staleExercise.getByText("Retrying…", { exact: true })
+    staleExercise.getByText("Retrying", { exact: true })
   ).toBeVisible();
   releaseRetry();
   await expect(
@@ -3386,7 +3388,7 @@ test("keeps unsynced sets with their owner across sign-out and account changes",
     .click();
   const pendingExercise = workoutExerciseCards(page).first();
   await expect(
-    pendingExercise.getByText("Pending on this device", { exact: true })
+    pendingExercise.getByText("Unsaved on this device", { exact: true })
   ).toBeVisible();
 
   const originalOwnerId = await page.evaluate(() => {
