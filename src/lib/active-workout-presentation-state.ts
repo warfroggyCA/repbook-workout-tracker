@@ -96,7 +96,14 @@ export function projectActiveWorkoutRestPresentation(input: {
           : { state: "time_elapsed", destinationLabel, visibleUntil };
       }
       const remainingSeconds = remainingRestSeconds(timer, input.nowMs);
-      const cueAvailability = input.cueAvailability ?? "available";
+      const cueAvailability = input.cueAvailability;
+      if (cueAvailability == null) {
+        return {
+          state: "recovery_required",
+          destinationLabel,
+          message: "Rest cue availability is unknown and needs review.",
+        };
+      }
       switch (cueAvailability) {
         case "blocked":
         case "unavailable":
