@@ -119,6 +119,11 @@ describe("production readiness workflow contract", () => {
     expect(packageJson.scripts?.["test:e2e:v2-h05"]).toBe(
       "playwright test --config=playwright.v2-h05.config.ts --project=desktop-chromium && V2_H05_PORT=3148 playwright test --config=playwright.v2-h05.config.ts --project=narrow-mobile-webkit",
     );
+    expect(
+      packageJson.scripts?.["test:e2e:active-workout-north-star"],
+    ).toBe(
+      "env ACTIVE_WORKOUT_PHASE0_CONTRACT_FIXTURE=0 ACTIVE_WORKOUT_NORTH_STAR_PORT=3175 playwright test --config=playwright.active-workout-north-star.config.ts --grep-invert='equipment-decision baseline' && env ACTIVE_WORKOUT_PHASE0_CONTRACT_FIXTURE=1 ACTIVE_WORKOUT_NORTH_STAR_PORT=3176 playwright test --config=playwright.active-workout-north-star.config.ts --grep='equipment-decision baseline'",
+    );
   });
 
   it("keeps dedicated v2 browser gates out of the stateful smoke journey", () => {
@@ -138,6 +143,7 @@ describe("production readiness workflow contract", () => {
         "v2-h05-evidence-linked-review.spec.ts",
         "v2-d02-support-bundle.spec.ts",
         "v2-r01-lifecycle-audit.spec.ts",
+        "active-workout-north-star-phase0.spec.ts",
       ]),
     );
   });

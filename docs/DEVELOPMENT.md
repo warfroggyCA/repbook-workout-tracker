@@ -440,6 +440,25 @@ An installed-iPhone PWA field check remains required before release because
 automated WebKit cannot establish device sound, silent-mode, Bluetooth, or
 background behavior.
 
+### Active Workout North Star Phase 0 contract gate
+
+Phase 0 characterizes the current implementation before the compact-ledger UI
+work begins. Its focused gate is:
+
+```bash
+npx vitest run tests/unit/active-workout-phase0-contract.test.ts tests/unit/workout-set-outbox-sync.test.ts
+npm run build
+npm run test:e2e:active-workout-north-star
+```
+
+The browser suite records the current seven-state comparison baseline using
+disposable synthetic data and keeps the known post-log Enter mutation as an
+expected failure. An unexpected pass is intentional CI pressure to remove the
+annotation when the focus fix lands. The isolated equipment-decision scenario
+uses an environment-only two-bar fixture and never changes ordinary seed data.
+Phase 0 changes no application writer, schema, migration, history, or
+production data.
+
 ### Day 2 active-workout reliability root causes
 
 The August 16, 2026 candidate confirmed these causes before remediation:
@@ -625,6 +644,7 @@ npm run test:e2e:program-editor
 npm run test:e2e:program-editor-cross-browser
 npm run test:e2e:current-action
 npm run test:e2e:superset-prep
+npm run test:e2e:active-workout-north-star
 npm run test:e2e:v2-t06
 npm run test:e2e:v2-u01
 npm run test:e2e:post-v2-p1-timing

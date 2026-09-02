@@ -31,6 +31,7 @@
     "test:e2e:compact-timer": "playwright test --config=playwright.stage5.config.ts",
     "test:e2e:superset-prep": "playwright test --config=playwright.superset-prep.config.ts",
     "test:e2e:active-workout-add-exercise": "playwright test --config=playwright.active-workout-add-exercise.config.ts",
+    "test:e2e:active-workout-north-star": "env ACTIVE_WORKOUT_PHASE0_CONTRACT_FIXTURE=0 ACTIVE_WORKOUT_NORTH_STAR_PORT=3175 playwright test --config=playwright.active-workout-north-star.config.ts --grep-invert='equipment-decision baseline' && env ACTIVE_WORKOUT_PHASE0_CONTRACT_FIXTURE=1 ACTIVE_WORKOUT_NORTH_STAR_PORT=3176 playwright test --config=playwright.active-workout-north-star.config.ts --grep='equipment-decision baseline'",
     "test:e2e:v2-t01": "playwright test --config=playwright.v2-t01.config.ts",
     "test:e2e:v2-t02": "playwright test --config=playwright.v2-t02.config.ts",
     "test:e2e:v2-t03": "playwright test --config=playwright.v2-t03.config.ts",
