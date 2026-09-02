@@ -33,6 +33,18 @@ const BA_WORKOUT_FIXTURE = process.env.PHASE0_START_FIXTURE === "1"
     }
   : BASE_BA_WORKOUT_FIXTURE;
 
+const BA_EQUIPMENT_ITEMS =
+  process.env.ACTIVE_WORKOUT_PHASE0_CONTRACT_FIXTURE === "1"
+    ? [
+        ...BA_WORKOUT_FIXTURE.equipment.items,
+        {
+          type: "barbell" as const,
+          label: "Backup Olympic barbell — 45 lb",
+          attrs: { notes: "Phase 0 equipment-choice fixture." },
+        },
+      ]
+    : BA_WORKOUT_FIXTURE.equipment.items;
+
 type TransactionalDb = Db & {
   transaction<T>(work: (tx: Db) => Promise<T>): Promise<T>;
 };
@@ -97,20 +109,45 @@ export async function seedBaWorkoutFixture(db: Db) {
         affectedPatterns: [...constraint.affectedPatterns],
       })),
     );
-    await tx.insert(equipmentItems).values(
-      BA_WORKOUT_FIXTURE.equipment.items.map((item) => ({
+    const savedFixtureEquipment = await tx.insert(equipmentItems).values(
+      BA_EQUIPMENT_ITEMS.map((item) => ({
         userId: user.id,
         type: item.type,
         label: item.label,
         attrs: { ...item.attrs },
       })),
-    );
+    ).returning({
+      id: equipmentItems.id,
+      type: equipmentItems.type,
+      label: equipmentItems.label,
+    });
     await tx.insert(plateInventory).values(
       BA_WORKOUT_FIXTURE.equipment.plates.map((plate) => ({ userId: user.id, ...plate })),
     );
     await tx.insert(barbellConfigs).values(
       BA_WORKOUT_FIXTURE.equipment.bars.map((bar) => ({ userId: user.id, ...bar })),
     );
+    if (process.env.ACTIVE_WORKOUT_PHASE0_CONTRACT_FIXTURE === "1") {
+      const olympicBars = savedFixtureEquipment.filter(
+        (item) => item.type === "barbell",
+      );
+      if (olympicBars.length !== 2) {
+        throw new Error("The Phase 0 fixture requires exactly two Olympic bars.");
+      }
+      await tx.insert(barbellConfigs).values(
+        olympicBars.map((item) => ({
+          userId: user.id,
+          barType: "olympic",
+          equipmentItemId: item.id,
+          unit: "lb" as const,
+          loadingKind: "olympic",
+          sharedPlatePoolCompatible: true,
+          barWeight: 45,
+          collarWeight: 0,
+          label: item.label,
+        })),
+      );
+    }
 
     const activation = await activateProgramAtomically(tx, {
       userId: user.id,

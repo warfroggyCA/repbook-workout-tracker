@@ -4,6 +4,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { UnrecognizedActionError } from "next/dist/client/components/unrecognized-action-error";
 import {
   WORKOUT_SET_OUTBOX_STATUS_EVENT,
+  WORKOUT_SET_OUTBOX_STORAGE_KEY,
   WORKOUT_SET_OUTBOX_MAX_AUTO_ATTEMPTS,
   WORKOUT_REST_INTENT_RECEIPTS_STORAGE_KEY,
   discardWorkoutSetDeviceCopy,
@@ -46,6 +47,7 @@ import {
 
 class MemoryStorage implements WorkoutSetOutboxStorage {
   values = new Map<string, string>();
+  rejectNextOutboxWrites = 0;
   rejectRestWrites = false;
   rejectRestRemovals = false;
   rejectRestIntentWrites = false;
@@ -55,6 +57,13 @@ class MemoryStorage implements WorkoutSetOutboxStorage {
   }
 
   setItem(key: string, value: string) {
+    if (
+      key === WORKOUT_SET_OUTBOX_STORAGE_KEY &&
+      this.rejectNextOutboxWrites > 0
+    ) {
+      this.rejectNextOutboxWrites -= 1;
+      throw new Error("outbox write unavailable");
+    }
     if (
       this.rejectRestIntentWrites &&
       key === WORKOUT_REST_INTENT_RECEIPTS_STORAGE_KEY
@@ -578,6 +587,230 @@ describe("workout set outbox sync classification", () => {
       }),
     );
     expect(readWorkoutSetOutbox(storage).entries).toEqual([]);
+  });
+
+  it("preserves two rapid same-exercise writes through offline reload, retry, and duplicate acknowledgement", async () => {
+    storage.values.clear();
+    const first = {
+      ...entry(),
+      occurrenceId: savedOccurrenceId,
+      expectedOccurrenceRevision: 0,
+      restAfterSec: null,
+    };
+    const second = {
+      ...entry(),
+      clientKey: "10000000-0000-4000-8000-000000000002",
+      setNo: 2,
+      occurrenceId: "60000000-0000-4000-8000-000000000002",
+      expectedOccurrenceRevision: 0,
+      restAfterSec: null,
+      weight: 105,
+      reps: 7,
+      createdAtISO: "2026-07-18T12:00:01.000Z",
+    };
+    const secondSetId = "50000000-0000-4000-8000-000000000002";
+    enqueueWorkoutSetOutboxEntry(storage, first);
+    enqueueWorkoutSetOutboxEntry(storage, second);
+
+    vi.stubGlobal("navigator", {
+      onLine: false,
+      locks: {
+        request: <T>(
+          _name: string,
+          _options: { mode: "exclusive" },
+          task: () => T | Promise<T>,
+        ) => task(),
+      },
+    });
+    await syncNextEntry(first.ownerId, true);
+    expect(actionMocks.logSet).not.toHaveBeenCalled();
+
+    const serialized = storage.getItem(WORKOUT_SET_OUTBOX_STORAGE_KEY);
+    expect(serialized).not.toBeNull();
+    const reloadedStorage = new MemoryStorage();
+    reloadedStorage.values.set(WORKOUT_SET_OUTBOX_STORAGE_KEY, serialized!);
+    storage = reloadedStorage;
+    const reloadedEvents = new EventTarget();
+    statusEvents = [];
+    reloadedEvents.addEventListener(WORKOUT_SET_OUTBOX_STATUS_EVENT, (event) => {
+      statusEvents.push(
+        (event as CustomEvent<WorkoutSetOutboxClientEvent>).detail,
+      );
+    });
+    vi.stubGlobal("window", {
+      localStorage: storage,
+      dispatchEvent: reloadedEvents.dispatchEvent.bind(reloadedEvents),
+    });
+    vi.stubGlobal("navigator", {
+      onLine: true,
+      locks: {
+        request: <T>(
+          _name: string,
+          _options: { mode: "exclusive" },
+          task: () => T | Promise<T>,
+        ) => task(),
+      },
+    });
+
+    expect(readWorkoutSetOutbox(storage).entries).toEqual([
+      expect.objectContaining({
+        clientKey: first.clientKey,
+        sessionExerciseId: first.sessionExerciseId,
+        occurrenceId: first.occurrenceId,
+        setNo: 1,
+        weight: 100,
+        reps: 8,
+      }),
+      expect.objectContaining({
+        clientKey: second.clientKey,
+        sessionExerciseId: first.sessionExerciseId,
+        occurrenceId: second.occurrenceId,
+        setNo: 2,
+        weight: 105,
+        reps: 7,
+      }),
+    ]);
+
+    actionMocks.logSet.mockRejectedValueOnce(new Error("offline retry"));
+    await syncNextEntry(first.ownerId, true);
+    expect(actionMocks.logSet).toHaveBeenCalledOnce();
+    expect(actionMocks.logSet.mock.calls[0]?.[0]).toMatchObject({
+      clientKey: first.clientKey,
+      occurrenceId: first.occurrenceId,
+      setNo: 1,
+    });
+    expect(readWorkoutSetOutbox(storage).entries).toEqual([
+      expect.objectContaining({
+        clientKey: first.clientKey,
+        attemptCount: 1,
+      }),
+      expect.objectContaining({
+        clientKey: second.clientKey,
+        attemptCount: 0,
+      }),
+    ]);
+
+    await retryWorkoutSet(first.clientKey);
+    let acknowledgeFirst!: (value: {
+      outcome: "saved";
+      setId: string;
+      occurrenceId: string;
+      occurrenceRevision: number;
+    }) => void;
+    actionMocks.logSet.mockReturnValueOnce(
+      new Promise((resolve) => {
+        acknowledgeFirst = resolve;
+      }),
+    );
+    const acknowledgedButNotRemoved = syncNextEntry(first.ownerId, true);
+    await vi.waitFor(() =>
+      expect(actionMocks.logSet).toHaveBeenCalledTimes(2),
+    );
+    storage.rejectNextOutboxWrites = 1;
+    acknowledgeFirst({
+      outcome: "saved",
+      setId: savedSetId,
+      occurrenceId: first.occurrenceId,
+      occurrenceRevision: 1,
+    });
+    await acknowledgedButNotRemoved;
+
+    expect(readWorkoutSetOutbox(storage).entries).toEqual([
+      expect.objectContaining({
+        clientKey: first.clientKey,
+        status: "needs_attention",
+      }),
+      expect.objectContaining({
+        clientKey: second.clientKey,
+        status: "queued",
+      }),
+    ]);
+    expect(
+      statusEvents.filter(
+        (event) => event.type === "saved" && event.clientKey === first.clientKey,
+      ),
+    ).toEqual([]);
+
+    await retryWorkoutSet(first.clientKey);
+    actionMocks.logSet
+      .mockResolvedValueOnce({
+        outcome: "saved",
+        setId: savedSetId,
+        occurrenceId: first.occurrenceId,
+        occurrenceRevision: 1,
+      })
+      .mockResolvedValueOnce({
+        outcome: "saved",
+        setId: secondSetId,
+        occurrenceId: second.occurrenceId,
+        occurrenceRevision: 1,
+      });
+    await syncNextEntry(first.ownerId, true);
+
+    expect(actionMocks.logSet.mock.calls.map((call) => call[0].clientKey)).toEqual([
+      first.clientKey,
+      first.clientKey,
+      first.clientKey,
+      second.clientKey,
+    ]);
+    expect(actionMocks.logSet.mock.calls[1]?.[0]).toEqual(
+      actionMocks.logSet.mock.calls[0]?.[0],
+    );
+    expect(actionMocks.logSet.mock.calls[2]?.[0]).toEqual(
+      actionMocks.logSet.mock.calls[0]?.[0],
+    );
+    expect(actionMocks.logSet.mock.calls[3]?.[0]).toEqual({
+      sessionExerciseId: second.sessionExerciseId,
+      occurrenceId: second.occurrenceId,
+      expectedOccurrenceRevision: second.expectedOccurrenceRevision,
+      performedExerciseId: second.performedExerciseId,
+      performedSemanticsVersion: second.performedSemanticsVersion,
+      performedLoadType: second.performedLoadType,
+      performedLoadSemantics: second.performedLoadSemantics,
+      setNo: 2,
+      rpe: second.rpe,
+      rir: null,
+      techniqueIssue: null,
+      limitationCause: null,
+      pain: null,
+      note: second.note,
+      clientKey: second.clientKey,
+      equipmentSnapshotId: second.equipmentSnapshotId,
+      loadEntryMeaning: second.loadEntryMeaning,
+      observedCompletedAtISO: null,
+      metricType: "weight_reps",
+      weight: 105,
+      weightUnit: second.weightUnit,
+      reps: 7,
+      distanceKm: second.distanceKm,
+      durationSeconds: second.durationSeconds,
+    });
+    expect(readWorkoutSetOutbox(storage).entries).toEqual([]);
+    expect(
+      statusEvents.filter(
+        (event) => event.type === "saved" && event.clientKey === first.clientKey,
+      ),
+    ).toEqual([
+      expect.objectContaining({
+        type: "saved",
+        clientKey: first.clientKey,
+        setId: savedSetId,
+        occurrenceId: first.occurrenceId,
+      }),
+    ]);
+    expect(
+      statusEvents.filter(
+        (event) =>
+          event.type === "saved" && event.clientKey === second.clientKey,
+      ),
+    ).toEqual([
+      expect.objectContaining({
+        type: "saved",
+        clientKey: second.clientKey,
+        setId: secondSetId,
+        occurrenceId: second.occurrenceId,
+      }),
+    ]);
   });
 
   it("allows retry and discard mutations while another delivery waits", async () => {

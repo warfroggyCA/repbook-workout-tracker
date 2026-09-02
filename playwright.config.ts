@@ -21,6 +21,7 @@ export default defineConfig({
     "replacement-mobile-keyboard.spec.ts",
     "superset-equipment-preparation.spec.ts",
     "active-workout-add-exercise.spec.ts",
+    "active-workout-north-star-phase0.spec.ts",
     "post-v2-p1-timing-recovery.spec.ts",
     "v2-t01-recording-truth.spec.ts",
     "v2-t02-acknowledgement-correction.spec.ts",

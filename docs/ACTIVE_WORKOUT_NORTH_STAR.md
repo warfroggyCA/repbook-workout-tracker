@@ -245,8 +245,7 @@ allowed actions.
 | Locally retained | Entered result remains visible with **Unsaved on this device** or **Pending** | Projection may advance only after the command is durable locally |
 | Saving/retrying | Row remains visible with a nonblocking live status | Do not clear inputs, invent acknowledgement, or allow unsafe conflicting mutation |
 | Failed/needs attention | Attention surface with exact retained result and failure text | **Retry save** and explicit **Discard device copy**; discard restores the occurrence and never looks like a completed set |
-| Saved | Collapsed performed result with **Saved** | Correction and version details remain available; no duplicate ordinary commit action |
-| Corrected/restored | Current result plus a concise correction or restore marker | Earlier versions remain inspectable and recoverable under existing authorization rules |
+| Saved | Collapsed performed result with **Saved**, plus a concise correction or restore marker when revision provenance exists | Revision provenance remains independent from save lifecycle; earlier versions remain inspectable and recoverable under existing authorization rules; no duplicate ordinary commit action |
 | Skipped | **Skipped** plus the known structured reason | Restore, replace-for-today, or continue only where the existing occurrence contract permits |
 | Extra/added | Label as extra or workout-only; never imply Program membership | Same save, failure, correction, and recovery states as planned sets |
 | Unknown/legacy | Explicit unavailable or unsupported message | Do not infer target, unit, equipment, or reason from current metadata |
@@ -487,6 +486,38 @@ Work:
 Exit gate: the state inventory is exhaustive, the keyboard regression fails for
 the known unsafe focus behaviour, and existing ordering tests prove or clearly
 bound the rapid-log contract.
+
+Phase 0 evidence lives with the executable contract rather than in a second
+planning document:
+
+- `src/lib/active-set-row-projection.ts` projects immutable occurrence, saved
+  result, local outbox, and revision evidence into exhaustive typed rows. Set
+  membership such as extra or workout-only and revision provenance such as
+  corrected or restored remain independent from save lifecycle.
+- `src/lib/active-workout-presentation-state.ts` names the rest, equipment, and
+  session presentation states without writing data or parsing human-readable
+  messages into facts.
+- `tests/fixtures/active-workout-north-star.ts` supplies one typed fixture for
+  every state plus cross-axis combinations that prevent extra, failed,
+  corrected, restored, and unknown evidence from collapsing into each other.
+- `tests/unit/workout-set-outbox-sync.test.ts` proves two rapid writes to the
+  same exercise survive offline retention, reload, ordered retry, a locally
+  failed acknowledgement cleanup, duplicate acknowledgement, and final
+  delivery without changing the production writer.
+- `docs/assets/active-workout-phase0-baseline/` records the seven current-state
+  comparison screens and the current keyboard failure using disposable
+  synthetic data. These images are not the target artboards.
+- `npm run test:e2e:active-workout-north-star` exercises the current baseline
+  scenarios and the isolated equipment-decision fixture, producing fresh
+  screenshots for inspection rather than pixel-diffing the checked-in evidence.
+  Its keyboard scenario is an explicit expected failure while Phase 0
+  characterizes the unsafe focus handoff. When Phase 2 fixes the defect, that
+  unexpected pass is the signal to remove the expected-failure annotation and
+  keep the scenario as a release gate.
+
+Phase 0 changes presentation contracts, fixtures, and verification only. It
+does not change the active-workout UI, runtime writers, persistence, schema,
+historical records, equipment inventory, or production data.
 
 ### Phase 1 — compact set ledger
 
