@@ -134,7 +134,7 @@ These decisions supersede any conflicting wording shown in an artboard:
 |---|---|
 | `Skip` on a running rest | Use **End rest**. This records an explicit rest outcome; it does not imply skipping planned work. |
 | `Needs kit` | Use **Needs equipment**, or the more exact **Equipment unavailable** when that cause is known. |
-| `Log it anyway` | Do not offer this bypass for missing, unavailable, incompatible, or unresolved equipment. It could create false performed-equipment evidence. |
+| `Log it anyway` | Do not use this ambiguous bypass label. When no reviewed setup or compatible choice can be resolved, preserve the existing truthful **Log set** path: record the displayed load with `legacy_unknown` meaning and no equipment snapshot. Never turn that explicit unknown into a claimed equipment fact. |
 | Generic equipment conflict | Offer only actions justified by the known state: **Choose equipment** when a compatible item exists but is unselected; otherwise **Replace for today** and **Skip exercise**. |
 | Permanent rest-complete card | Announce completion politely, show the compact confirmation for four seconds, then collapse it automatically. No dismiss action is required. |
 | Unlabelled note or finish icons | Every icon-only control needs a visible tooltip where supported and an exact accessible name. Prefer visible text for **Finish** because it is consequential. |
@@ -271,8 +271,8 @@ allowed actions.
 | Configuration incomplete | Name the missing configuration | Complete setup or choose a different compatible item |
 | Unavailable | **Equipment unavailable** | **Replace for today** or **Skip exercise**; retain the reason |
 | Incompatible | Name the exact incompatibility | Choose a compatible item, replace for today, or skip; no bypass |
-| Unknown/legacy | **Equipment status unknown** | Require an explicit choice; do not infer compatibility |
-| Selection pending/failed | Keep the device copy and exact status visible | Retry or deliberately discard through the existing equipment queue |
+| Unknown/legacy with no reviewed setup or compatible choice | **Equipment status unknown** without inventing a conflict | Keep **Log set** available; persist the displayed load with `legacy_unknown` meaning and no equipment snapshot |
+| Selection pending/failed | Keep the device copy and exact status visible | Retry or deliberately discard through the existing equipment queue; equipment guidance alone never blocks Finish |
 
 ### Session-level states
 
@@ -339,6 +339,14 @@ equipment facts. The implementation must distinguish:
 - a known incompatible item or setup;
 - unknown legacy evidence.
 
+Unknown is a supported truthful state, not an error that traps set entry. When
+the existing resolver finds no reviewed setup or compatible choice, **Log set**
+remains available and records the displayed load with `legacy_unknown` meaning
+and a null equipment snapshot. That is not the artboard's ambiguous `Log it
+anyway` bypass: it makes no claim about what equipment was used. A known
+unavailable or incompatible state must not be relabelled unknown merely to
+avoid its decision flow.
+
 Substitution and skip reasons must survive the write, History/Review, export,
 snapshot, restore, record-version restore, and reporting paths that claim to
 represent them. Do not use `equipment_busy` for equipment that is absent. Do
@@ -365,9 +373,11 @@ reason.
 
 Finish remains a deliberate action. If planned occurrences remain, the athlete
 reviews them and chooses one truthful session-level reason under the existing
-bulk completion contract. Pending or failed recorded-work commands and
-unconfirmed skip/equipment commands continue to block completion until their
-outcome is known.
+bulk completion contract. Pending or failed recorded-work commands and an
+unconfirmed skip continue to block completion until their outcome is known.
+Pending, failed, or unreadable equipment-selection commands are guidance for a
+future set, not recorded performed work; surface them informationally, but
+never let equipment guidance alone block Finish or trap the workout.
 
 ## Responsive and accessibility acceptance
 
@@ -564,8 +574,11 @@ Work:
    record-version restore, privacy filtering, and recovery-manifest contracts,
    with omission and round-trip tests.
 7. Build the decision surface using **Choose equipment**, **Replace for today**,
-   and **Skip exercise** according to the exact state. Remove every unavailable-
-   equipment bypass.
+   and **Skip exercise** according to the exact known state. Preserve the
+   existing `log_displayed_unknown` path when no reviewed setup or compatible
+   choice can be resolved, and prove it stores `legacy_unknown` with no
+   equipment snapshot. Never relabel a known conflict as unknown or fabricate
+   performed-equipment evidence.
 
 Exit gate: no historical rewrite or speculative backfill; migration is
 additive and idempotent; preview upgrade and restore tests pass; each cause
@@ -680,15 +693,17 @@ measure, and an exercise that can be replaced. Verify:
 5. Navigate the complete set-entry path using keyboard and Enter; confirm focus
    never lands on a value-changing control after logging.
 6. Exercise compatible-unselected, unavailable, incompatible, and unknown
-   equipment states; confirm no false bypass exists.
+   equipment states; confirm the first three expose only truthful actions and
+   the unknown path can log with `legacy_unknown` and no equipment snapshot.
 7. Replace one exercise for today and skip another with a reason; confirm the
    Program remains unchanged and History/Review retains the truth.
 8. Correct a saved set and inspect the earlier version.
 9. Complete the superset and confirm exact member and round sequencing.
 10. Open the software keyboard in portrait and landscape at 145%; confirm the
     field, error, and action remain reachable.
-11. Finish with and without pending planned work; confirm retained writes block
-    completion until resolved.
+11. Finish with and without pending planned work; confirm retained recorded
+    work and an unconfirmed skip block completion until resolved, while pending
+    or failed equipment guidance alone never traps Finish.
 12. Inspect completed History, export, snapshot preview, and restore evidence
     when the phase changes persisted meaning.
 
