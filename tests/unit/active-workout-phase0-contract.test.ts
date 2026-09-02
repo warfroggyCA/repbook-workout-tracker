@@ -5,6 +5,7 @@ import {
   ACTIVE_SET_ROW_STATES,
   projectActiveSetRows,
 } from "@/lib/active-set-row-projection";
+import { activeSetVersionEvidenceFromActions } from "@/lib/active-set-version-evidence";
 import {
   ACTIVE_WORKOUT_EQUIPMENT_STATES,
   ACTIVE_WORKOUT_REST_STATES,
@@ -102,6 +103,23 @@ describe("Phase 0 active-set row contract", () => {
       expect(row.state).toBe(fixture.expectedState);
       expect(row.version?.state ?? null).toBe(versionState);
     }
+  });
+
+  it("derives restore provenance deterministically from live version actions", () => {
+    expect(activeSetVersionEvidenceFromActions([])).toEqual({
+      state: "original",
+      count: 0,
+    });
+    expect(activeSetVersionEvidenceFromActions([
+      "set.completed_correction",
+      "set.version_restore",
+      "set.active_correction",
+    ])).toEqual({ state: "version_restored", count: 3 });
+    expect(activeSetVersionEvidenceFromActions([
+      "set.version_restore",
+      "set.snapshot_restore",
+      "unrelated.action",
+    ])).toEqual({ state: "snapshot_restored", count: 2 });
   });
 
   it("preserves the exact device result while it is retained", () => {

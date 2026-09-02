@@ -853,19 +853,12 @@ export function ExerciseCard({
     comparableProjection.semantics.metricType !== "assisted_reps"
       ? true
       : comparableProjection.semantics.loadEntryMeaning === loadEntryMeaning);
-  const previousComparableSet =
+  const previousComparableSetFor = (setNumber: number) =>
     comparableProjection?.status === "available" && comparableSemanticsMatch
-      ? comparableProjection.sets.find((set) => set.setNo === nextSetNo) ??
+      ? comparableProjection.sets.find((set) => set.setNo === setNumber) ??
         comparableProjection.sets.at(-1) ??
         null
       : null;
-  const comparableRenderState = comparisonTemporarilyUnavailable
-    ? "loading"
-    : comparableProjection?.status === "available" &&
-        comparableSemanticsMatch &&
-        previousComparableSet
-      ? "available"
-      : "unavailable";
   const activeInsightCurrentSets = exercise.sets.map((set) => ({
     setId: set.id,
     metricType: set.metricType ?? performedMetricType,
@@ -932,18 +925,22 @@ export function ExerciseCard({
   const defaultWeightSource = startingLoad.status === "available"
     ? startingLoad.source
     : null;
-  const compactDefaultWeightSource = defaultWeightSource ===
-      "Previous set in this workout"
-    ? "earlier workout set"
-    : defaultWeightSource === "Previous comparable set"
-      ? "prior comparable"
-      : defaultWeightSource;
   const defaultReps =
     performedMetricType === "weight_reps" ||
       performedMetricType === "reps" ||
       performedMetricType === "assisted_reps"
       ? prefillFrom?.reps ?? exercise.targetRepsMax ?? exercise.targetRepsMin ?? 8
       : null;
+  const appendedStartingLoad = appendedOccurrence == null
+    ? null
+    : resolveSetStartingLoad({
+        exercise,
+        setNumber: appendedOccurrence.kindOrdinal + 1,
+        unit,
+        loadEntryMeaning,
+        occurrence: appendedOccurrence,
+        comparisonTemporarilyUnavailable,
+      });
   const appendedWeight =
     appendedOccurrence?.plannedLoad != null &&
     appendedOccurrence.plannedLoadUnit != null
@@ -952,7 +949,9 @@ export function ExerciseCard({
           appendedOccurrence.plannedLoadUnit,
           unit,
         )
-      : null;
+      : appendedStartingLoad?.status === "available"
+        ? appendedStartingLoad.weight
+        : null;
   const appendedReps =
     appendedOccurrence?.plannedRepsMax ??
     appendedOccurrence?.plannedRepsMin ??
@@ -1051,9 +1050,11 @@ export function ExerciseCard({
     unit,
   ]);
   const [appendedDraft, setAppendedDraft] = useState<SetDraft>({
-    weight: recordsNumericLoad ? appendedWeight ?? defaultWeight : null,
+    weight: recordsNumericLoad
+      ? appendedOccurrence == null ? defaultWeight : appendedWeight
+      : null,
     weightUnit: recordsNumericLoad &&
-        (appendedWeight != null || defaultWeight != null)
+        (appendedOccurrence == null ? defaultWeight : appendedWeight) != null
       ? unit
       : null,
     reps: appendedReps ?? defaultReps,
@@ -1306,7 +1307,17 @@ export function ExerciseCard({
               appended.plannedLoadUnit,
               unit,
             )
-          : defaultWeight;
+          : (() => {
+              const preview = resolveSetStartingLoad({
+                exercise,
+                setNumber: appended.kindOrdinal + 1,
+                unit,
+                loadEntryMeaning,
+                occurrence: appended,
+                comparisonTemporarilyUnavailable,
+              });
+              return preview.status === "available" ? preview.weight : null;
+            })();
       setAppendedDraft({
         weight: plannedWeight,
         weightUnit: plannedWeight == null ? null : unit,
@@ -1424,6 +1435,7 @@ export function ExerciseCard({
     currentBlockingReason: activeLoggingBlocked
       ? "Resolve the retained device copy for this set before logging again."
       : null,
+    versionEvidenceBySetId: exercise.versionEvidenceBySetId,
   });
   const diagnosticSetIds = new Set([
     ...activeSetProjection.diagnostics.unlinkedSetIds,
@@ -1631,18 +1643,44 @@ export function ExerciseCard({
     const rowLoggingBlocked = rowIsAppended
       ? appendedLoggingBlocked
       : activeLoggingBlocked;
+    const rowSetNumber = occurrenceForRow.kindOrdinal + 1;
+    const rowPreviousComparableSet = previousComparableSetFor(rowSetNumber);
+    const rowComparableRenderState = comparisonTemporarilyUnavailable
+      ? "loading"
+      : comparableProjection?.status === "available" &&
+          comparableSemanticsMatch &&
+          rowPreviousComparableSet
+        ? "available"
+        : "unavailable";
+    const rowStartingLoad = resolveSetStartingLoad({
+      exercise,
+      setNumber: rowSetNumber,
+      unit,
+      loadEntryMeaning,
+      occurrence: occurrenceForRow,
+      comparisonTemporarilyUnavailable,
+    });
+    const rowDefaultWeightSource = rowStartingLoad.status === "available"
+      ? rowStartingLoad.source
+      : null;
+    const rowCompactDefaultWeightSource = rowDefaultWeightSource ===
+        "Previous set in this workout"
+      ? "earlier workout set"
+      : rowDefaultWeightSource === "Previous comparable set"
+        ? "prior comparable"
+        : rowDefaultWeightSource;
 
     return (
       <div>
         <p className="ui-metadata mb-1 grid grid-cols-[auto_minmax(0,1fr)] items-baseline gap-x-2">
           <span className="whitespace-nowrap">Performed measure</span>
-          {recordsNumericLoad && defaultWeightSource && (
+          {recordsNumericLoad && rowDefaultWeightSource && (
             <span
               data-testid="performed-load-prefill-source"
-              aria-label={`Starting load: ${defaultWeightSource}`}
+              aria-label={`Starting load: ${rowDefaultWeightSource}`}
               className="min-w-0 truncate text-right font-normal normal-case tracking-normal"
             >
-              Load: {compactDefaultWeightSource}
+              Load: {rowCompactDefaultWeightSource}
             </span>
           )}
         </p>
@@ -1667,18 +1705,18 @@ export function ExerciseCard({
         />
         <div
           data-testid="previous-comparable-set"
-          data-comparison-state={comparableRenderState}
+          data-comparison-state={rowComparableRenderState}
           className="mt-1 border-t pt-1 text-xs text-muted-foreground"
         >
-          {comparableRenderState === "available" &&
+          {rowComparableRenderState === "available" &&
           comparableProjection?.status === "available" &&
-          previousComparableSet ? (
+          rowPreviousComparableSet ? (
             <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-2">
               <div className="min-w-0">
                 <p className="break-words">
                   Previous · {comparableProjection.source.localDate} ·{" "}
                   {compactComparableProvenance(
-                    previousComparableSet,
+                    rowPreviousComparableSet,
                     comparableProjection.source.workoutSource,
                   )}
                 </p>
@@ -1687,10 +1725,10 @@ export function ExerciseCard({
                   data-ui-essential="true"
                 >
                   {formatPreviousComparableSet(
-                    previousComparableSet,
+                    rowPreviousComparableSet,
                     comparableProjection.semantics.metricType,
                   )}{" "}
-                  · source set {previousComparableSet.setNo}
+                  · source set {rowPreviousComparableSet.setNo}
                 </p>
               </div>
               <Link
@@ -1709,7 +1747,7 @@ export function ExerciseCard({
                 Source
               </Link>
             </div>
-          ) : comparableRenderState === "loading" ? (
+          ) : rowComparableRenderState === "loading" ? (
             <p role="status">Checking previous comparable set…</p>
           ) : comparableProjection?.status === "unavailable" &&
             comparableProjection.reason === "no_comparable_history" ? (
@@ -2064,9 +2102,6 @@ export function ExerciseCard({
                           ? `Complete ${preparationBlocker.blockerExerciseName ?? exercise.name} preparation set first`
                           : "Reach this set in the workout flow"}
                     </p>
-                    {row.prescription.note && (
-                      <p className="mt-1">{row.prescription.note}</p>
-                    )}
                     <p
                       data-testid="upcoming-set-load-preview"
                       className="mt-1 font-medium text-foreground"
@@ -2350,6 +2385,8 @@ export function ExerciseCard({
                                 historyRevision={historyRevision}
                                 source="active_workout"
                                 onAcknowledged={(result) => {
+                                  const currentVersionEvidence =
+                                    exercise.versionEvidenceBySetId?.[set.id];
                                   onPatch({
                                     sets: exercise.sets.map((candidate) =>
                                       candidate.id === set.id
@@ -2362,6 +2399,22 @@ export function ExerciseCard({
                                           }
                                         : candidate,
                                     ),
+                                    versionEvidenceBySetId: {
+                                      ...exercise.versionEvidenceBySetId,
+                                      [set.id]: {
+                                        state:
+                                          currentVersionEvidence?.state ===
+                                              "version_restored" ||
+                                            currentVersionEvidence?.state ===
+                                              "snapshot_restored"
+                                            ? currentVersionEvidence.state
+                                            : "corrected",
+                                        count:
+                                          (currentVersionEvidence?.count ??
+                                            set.correctionCount ??
+                                            0) + 1,
+                                      },
+                                    },
                                   });
                                   onHistoryRevisionChange(
                                     result.historyRevision,

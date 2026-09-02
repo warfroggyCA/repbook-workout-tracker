@@ -253,6 +253,11 @@ function renderExhaustiveRow(
                 Target {formatActiveSetPrescription(row.prescription)}
               </p>
             </div>
+            {row.prescription.note?.trim() && (
+              <p className="mb-1 break-words text-xs text-muted-foreground">
+                {row.prescription.note.trim()}
+              </p>
+            )}
             {plannedContent}
           </li>
         );
@@ -264,6 +269,11 @@ function renderExhaustiveRow(
           metricType={props.metricType}
           status="Planned"
         >
+          {row.prescription.note?.trim() && (
+            <p className="mt-1 break-words text-xs text-muted-foreground">
+              {row.prescription.note.trim()}
+            </p>
+          )}
           {props.renderPlannedRowDetail?.(row)}
         </CompactRow>
       );
@@ -280,6 +290,7 @@ function renderExhaustiveRow(
           <section
             id={`${currentIsExtra ? "added-set-entry" : "set-entry"}-${row.sessionExerciseId}-${row.occurrenceId}`}
             data-testid={currentIsExtra ? "added-set-entry" : "current-set-entry"}
+            aria-label={`${props.exerciseName}, ${row.label}`}
             className="scroll-mt-24"
           >
             <div className="mb-1 grid grid-cols-[auto_minmax(0,1fr)] items-baseline gap-x-3 gap-y-1 text-sm">
@@ -300,6 +311,11 @@ function renderExhaustiveRow(
                 Target {formatActiveSetPrescription(row.prescription)}
               </p>
             </div>
+            {row.prescription.note?.trim() && (
+              <p className="mb-1 break-words text-xs text-muted-foreground">
+                {row.prescription.note.trim()}
+              </p>
+            )}
             {row.blockingReason && (
               <p
                 role="status"

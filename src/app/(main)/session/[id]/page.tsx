@@ -58,6 +58,7 @@ import {
   resolveSessionPreparationEquipmentProjection,
 } from "@/services/session-equipment-requirements";
 import { mergeIncrementalEquipmentConfigs } from "@/services/progression";
+import { activeSetVersionEvidenceFromActions } from "@/lib/active-set-version-evidence";
 
 function techniqueIssue(value: string | null): TechniqueIssue | null {
   return TECHNIQUE_ISSUES.includes(value as TechniqueIssue)
@@ -244,7 +245,17 @@ async function renderSessionPage(
       })])
     : [[], []];
   const correctionCountBySetId = new Map<string, number>();
+  const versionActionsBySetId = new Map<string, string[]>();
   for (const version of setCorrectionVersions) {
+    const versionEvidence = activeSetVersionEvidenceFromActions([
+      version.action,
+    ]);
+    if (versionEvidence.state !== "original") {
+      versionActionsBySetId.set(version.entityId, [
+        ...(versionActionsBySetId.get(version.entityId) ?? []),
+        version.action,
+      ]);
+    }
     if (
       version.action !== "set.active_correction" &&
       version.action !== "set.completed_correction"
@@ -254,6 +265,12 @@ async function renderSessionPage(
       (correctionCountBySetId.get(version.entityId) ?? 0) + 1,
     );
   }
+  const versionEvidenceBySetId = new Map(
+    [...versionActionsBySetId].map(([setId, actions]) => [
+      setId,
+      activeSetVersionEvidenceFromActions(actions),
+    ] as const),
+  );
   const painBySetId = new Map(
     setPainLogs.flatMap((pain) => {
       const bodyPart = painBodyPart(pain.bodyPart);
@@ -474,6 +491,12 @@ async function renderSessionPage(
           note: s.note,
           correctionCount: correctionCountBySetId.get(s.id) ?? 0,
         })),
+      versionEvidenceBySetId: Object.fromEntries(
+        se.sets.flatMap((set) => {
+          const evidence = versionEvidenceBySetId.get(set.id);
+          return evidence == null ? [] : [[set.id, evidence] as const];
+        }),
+      ),
       previousComparable: previousComparableByExercise[se.id] ?? {
         status: "unavailable",
         currentSessionExerciseId: se.id,

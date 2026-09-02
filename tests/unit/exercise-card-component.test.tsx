@@ -36,6 +36,7 @@ import type {
   SessionOccurrenceData,
 } from "@/components/session/types";
 import type { OccurrenceMutationOutboxEntry } from "@/lib/occurrence-mutation-outbox";
+import { ADDED_WORKOUT_SET_NOTE } from "@/lib/session-occurrences";
 
 const warmupSet = {
   label: "Ramp 1",
@@ -991,6 +992,86 @@ describe("ExerciseCard", () => {
       'aria-label="Starting load: Previous comparable set"',
     );
     expect(previousOnlyHtml).toContain("Load: prior comparable");
+
+    const currentOccurrence = card.props.activeOccurrence!;
+    const extraOccurrence: SessionOccurrenceData = {
+      ...currentOccurrence,
+      id: "00000000-0000-4000-8000-000000000062",
+      origin: "ad_hoc",
+      sequenceIdx: 3,
+      kindOrdinal: 3,
+      plannedNote: ADDED_WORKOUT_SET_NOTE,
+      plannedLoad: null,
+      plannedLoadUnit: null,
+    };
+    const previousComparable = current.previousComparable;
+    if (previousComparable?.status !== "available") {
+      throw new Error("Expected available previous-comparable fixture");
+    }
+    const extraRowHtml = renderToStaticMarkup(cloneElement(card, {
+      exercise: {
+        ...current,
+        targetLoad: null,
+        targetLoadUnit: null,
+        previousComparable: {
+          ...previousComparable,
+          sets: [
+            previousComparable.sets[0],
+            {
+              ...previousComparable.sets[0],
+              setId: "00000000-0000-4000-8000-000000000063",
+              setNo: 3,
+              weight: 130,
+            },
+          ],
+        },
+      },
+      activeOccurrence: {
+        ...currentOccurrence,
+        plannedLoad: null,
+        plannedLoadUnit: null,
+      },
+      workingOccurrences: [currentOccurrence, extraOccurrence],
+    }));
+    const extraRowStart = extraRowHtml.indexOf(
+      `id="added-set-entry-${current.id}-${extraOccurrence.id}"`,
+    );
+    expect(extraRowStart).toBeGreaterThan(-1);
+    const extraRowEnd = extraRowHtml.indexOf("</li>", extraRowStart);
+    const extraRow = extraRowHtml.slice(extraRowStart, extraRowEnd);
+    expect(extraRow).toContain("130 lb × 7 reps · source set 3");
+    expect(extraRow).not.toContain("100 lb × 7 reps · source set 1");
+
+    const restoredSetId = "00000000-0000-4000-8000-000000000064";
+    const restoredOccurrence = {
+      ...currentOccurrence,
+      id: "00000000-0000-4000-8000-000000000065",
+      outcome: "completed" as const,
+      completedSetId: restoredSetId,
+    };
+    const restoredHtml = renderToStaticMarkup(cloneElement(card, {
+      exercise: {
+        ...current,
+        sets: [{
+          id: restoredSetId,
+          clientKey: "00000000-0000-4000-8000-000000000066",
+          occurrenceId: restoredOccurrence.id,
+          setNo: 1,
+          weight: 95,
+          weightUnit: "lb",
+          reps: 8,
+          rpe: null,
+          note: null,
+          saveState: "saved",
+        }],
+        versionEvidenceBySetId: {
+          [restoredSetId]: { state: "snapshot_restored", count: 2 },
+        },
+      },
+      activeOccurrence: null,
+      workingOccurrences: [restoredOccurrence],
+    }));
+    expect(restoredHtml).toContain("Snapshot restored ×2");
   });
 
   it("keeps the planned occurrence number after an earlier set is skipped", () => {
