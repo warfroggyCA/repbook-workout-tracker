@@ -10,6 +10,7 @@ evidence, deployment identifiers, or roadmap priority.
 |---|---|
 | [`../AGENTS.md`](../AGENTS.md) | Mandatory application and data safeguards |
 | [`ARCHITECTURE.md`](ARCHITECTURE.md) | Current system ownership, persisted meaning, concurrency, recovery, and product contracts |
+| [`ACTIVE_WORKOUT_NORTH_STAR.md`](ACTIVE_WORKOUT_NORTH_STAR.md) | Approved active-workout visual direction, interaction contract, phased implementation plan, and acceptance bar |
 | [`COACHING_PRODUCT_REQUIREMENTS.md`](COACHING_PRODUCT_REQUIREMENTS.md) | Current athlete-facing coaching and Program-change requirements |
 | [`DEVELOPMENT.md`](DEVELOPMENT.md) | Setup, exact verification commands, and public delivery workflow |
 | [`SECURITY_AND_PRIVACY.md`](SECURITY_AND_PRIVACY.md) | Public/private data boundary and security requirements |
@@ -49,6 +50,8 @@ feature should be built next.
 ## Keeping documentation current
 
 - Update `ARCHITECTURE.md` when durable product or data ownership changes.
+- Keep `ACTIVE_WORKOUT_NORTH_STAR.md` aligned with approved active-workout
+  direction and clearly distinguish target behaviour from implemented runtime.
 - Update `COACHING_PRODUCT_REQUIREMENTS.md` when athlete-facing requirements
   change.
 - Update `DEVELOPMENT.md` when setup, verification, or delivery commands change.
