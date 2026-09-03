@@ -381,7 +381,8 @@ test("keeps attention continuous through warm-up, first set, and exact recovery 
           element.dispatchEvent(new MouseEvent("click", { bubbles: true }));
           element.dispatchEvent(new MouseEvent("click", { bubbles: true }));
         });
-        await expect(firstWorkingSetAction).toHaveCount(0);
+        await expect(firstWorkingSetAction).toHaveAccessibleName("Log set 2");
+        await expectPrimaryActionUnobstructed(firstWorkingSetAction);
         await expect.poll(() => page.evaluate(() => {
           const raw = localStorage.getItem(
             "workout-tracker:workout-set-outbox:v1",
@@ -539,10 +540,8 @@ test("keeps attention continuous through warm-up, first set, and exact recovery 
           contentType: "image/png",
         });
 
-        const blockerLog = blockerEntry.getByRole("button", {
-          name: "Log set",
-          exact: true,
-        });
+        const blockerLog = page.getByTestId("active-log-set");
+        await expect(blockerLog).toHaveAccessibleName("Log set 1");
         await expect(blockerLog).toBeEnabled();
         await expectPrimaryActionUnobstructed(blockerLog);
         await blockerLog.click();
