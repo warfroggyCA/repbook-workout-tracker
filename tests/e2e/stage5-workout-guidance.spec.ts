@@ -376,18 +376,30 @@ test("keeps Stage 5 guidance truthful, persistent, and usable on narrow mobile s
   }));
   expect(runningRestColors.strip).not.toBe(runningRestColors.page);
   const decreaseRest = rest.getByRole("button", { name: "Decrease rest by 15 seconds", exact: true });
+  const readStoredRest = (restPage: Page) =>
+    restPage.evaluate(() => {
+      const raw = window.localStorage.getItem("workout-tracker:rest-timer:v1");
+      if (raw == null) return null;
+      return JSON.parse(raw) as {
+        phase: string;
+        endsAt: number;
+        revision: number;
+      };
+    });
   const decreaseRestAndWait = async (
     restRegion: Locator,
     decreaseButton: Locator,
   ) => {
-    const remaining = restRegion.locator("span.tabular-nums").first();
-    const before = timerSeconds(await remaining.textContent());
+    const restPage = restRegion.page();
+    const before = await readStoredRest(restPage);
+    expect(before?.phase).toBe("running");
     await decreaseButton.click();
     await expect.poll(async () => {
-      if ((await restRegion.getAttribute("data-rest-phase")) !== "running") {
-        return true;
-      }
-      return timerSeconds(await remaining.textContent()) <= before - 10;
+      const current = await readStoredRest(restPage);
+      if (before == null || current == null) return false;
+      return current.revision > before.revision &&
+        (current.phase !== "running" ||
+          current.endsAt <= before.endsAt - 15_000);
     }).toBe(true);
   };
   for (let index = 0; index < 6; index += 1) {
@@ -416,7 +428,7 @@ test("keeps Stage 5 guidance truthful, persistent, and usable on narrow mobile s
     exact: true,
   });
   for (let index = 0; index < 4; index += 1) {
-    if ((await compactRest.getAttribute("data-rest-phase")) !== "running") {
+    if ((await readStoredRest(page))?.phase !== "running") {
       break;
     }
     await decreaseRestAndWait(compactRest, reloadedDecrease);
