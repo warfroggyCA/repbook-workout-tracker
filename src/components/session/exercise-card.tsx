@@ -949,7 +949,8 @@ export function ExerciseCard({
         comparisonTemporarilyUnavailable,
       });
   const appendedWeight =
-    appendedOccurrence?.plannedLoad != null &&
+    appendedOccurrence?.plannedExerciseId === exercise.exerciseId &&
+    appendedOccurrence.plannedLoad != null &&
     appendedOccurrence.plannedLoadUnit != null
       ? convertWeight(
           appendedOccurrence.plannedLoad,
@@ -1308,7 +1309,9 @@ export function ExerciseCard({
       // identity instead of the newly proposed client ID.
       appendFocusRequestRef.current = appended.id;
       const plannedWeight =
-        appended.plannedLoad != null && appended.plannedLoadUnit != null
+        appended.plannedExerciseId === exercise.exerciseId &&
+        appended.plannedLoad != null &&
+        appended.plannedLoadUnit != null
           ? convertWeight(
               appended.plannedLoad,
               appended.plannedLoadUnit,
@@ -1631,6 +1634,12 @@ export function ExerciseCard({
       media: candidate.media ?? null,
     });
     setDraft((current) => ({
+      ...current,
+      weight: null,
+      weightUnit: null,
+      note: "",
+    }));
+    setAppendedDraft((current) => ({
       ...current,
       weight: null,
       weightUnit: null,
