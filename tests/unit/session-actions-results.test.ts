@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { eq } from "drizzle-orm";
 import {
   completedSets,
+  equipmentItems,
   exercises,
   sessionExercises,
   sessionOccurrences,
@@ -13,6 +14,7 @@ import { createMigratedTestDatabase, type TestDatabase } from "../helpers/databa
 import { buildJsonBackup, buildSetsCsv } from "@/services/export";
 import { buildCoachingContext } from "@/services/coaching";
 import { getHistoryReport } from "@/services/history-report";
+import { createTotalSystemTestSnapshot } from "../helpers/set-semantics";
 
 const actionContext = vi.hoisted(() => ({
   database: null as TestDatabase["db"] | null,
@@ -59,6 +61,7 @@ import {
   confirmExerciseUnskipped,
   correctAcknowledgedSet,
   correctWorkoutActiveDuration,
+  replaceExercise,
   skipExercise,
 } from "@/app/actions/sessions";
 
@@ -270,6 +273,100 @@ describe("session action named results", () => {
         expectedHistoryRevision: 0,
       })
     ).resolves.toMatchObject({ ok: false, code: "not_active" });
+  });
+
+  it("replays a committed equipment replacement before revalidating its new exercise", async () => {
+    const active = await database.db.query.sessionExercises.findFirst({
+      where: eq(sessionExercises.id, activeExerciseId),
+      columns: { sessionId: true },
+    });
+    if (!active) throw new Error("Missing active exercise fixture");
+    const [source, target] = await database.db
+      .insert(exercises)
+      .values([
+        {
+          name: `Action Result Barbell Press ${crypto.randomUUID()}`,
+          movementPattern: "horizontal_push",
+          primaryMuscles: ["chest"],
+          loadType: "barbell",
+          metricType: "weight_reps",
+          loadSemantics: "total",
+          variantAttributes: { assistance: "none" },
+        },
+        {
+          name: `Action Result Push-Up ${crypto.randomUUID()}`,
+          movementPattern: "horizontal_push",
+          primaryMuscles: ["chest"],
+          loadType: "bodyweight",
+          metricType: "reps",
+          loadSemantics: "bodyweight",
+          variantAttributes: { assistance: "none" },
+        },
+      ])
+      .returning({ id: exercises.id });
+    const [replacementSource] = await database.db
+      .insert(sessionExercises)
+      .values({
+        sessionId: active.sessionId,
+        exerciseId: source.id,
+        prescribedSemanticsVersion: 1,
+        prescribedExerciseName: "Action Result Barbell Press",
+        prescribedMetricType: "weight_reps",
+        prescribedLoadType: "barbell",
+        prescribedLoadSemantics: "total",
+        orderIdx: 1,
+      })
+      .returning({ id: sessionExercises.id });
+    await createTotalSystemTestSnapshot(database.db, {
+      userId: ownerId,
+      sessionId: active.sessionId,
+      sessionExerciseId: replacementSource.id,
+      unit: "lb",
+    });
+    await database.db
+      .update(equipmentItems)
+      .set({ available: false })
+      .where(eq(equipmentItems.userId, ownerId));
+    const clientMutationId = crypto.randomUUID();
+    const request = {
+      sessionExerciseId: replacementSource.id,
+      expectedExerciseId: source.id,
+      newExerciseId: target.id,
+      reason: "equipment_unavailable_incompatible" as const,
+      clientMutationId,
+    };
+
+    const first = await replaceExercise(request);
+    if (!first.ok) {
+      throw new Error(`${first.code}: ${first.message}`);
+    }
+    expect(first).toMatchObject({
+      ok: true,
+      changed: true,
+      replayed: false,
+      versionId: clientMutationId,
+    });
+    await expect(replaceExercise(request)).resolves.toMatchObject({
+      ok: true,
+      changed: false,
+      replayed: true,
+      versionId: clientMutationId,
+    });
+    await expect(replaceExercise({
+      ...request,
+      reason: "other",
+    })).resolves.toMatchObject({
+      ok: false,
+      code: "replacement_key_conflict",
+    });
+    expect(await database.db.query.recordVersions.findMany()).toHaveLength(1);
+    await expect(database.db.query.sessionExercises.findFirst({
+      where: eq(sessionExercises.id, replacementSource.id),
+      columns: { exerciseId: true, substitutionReason: true },
+    })).resolves.toEqual({
+      exerciseId: target.id,
+      substitutionReason: "equipment_unavailable_incompatible",
+    });
   });
 
   it("rejects a delayed skip after a newer return-to-workout fence", async () => {

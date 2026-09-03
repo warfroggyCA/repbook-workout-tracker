@@ -827,63 +827,94 @@ export async function substituteExercise(input: {
   if (!owned.ok) return owned;
   const { user, db, sessionExercise } = owned;
 
-  const options = await getExerciseAlternativeOptions(
-    db,
-    user.id,
-    sessionExercise.id
-  );
-  const target = options.items.find((item) => item.id === parsed.newExerciseId);
-  if (!target?.available) {
-    return actionFailure(
-      "alternative_unavailable",
-      target?.unavailableReason ??
-        "That exercise is not a safe alternative for this workout."
-    );
-  }
-  if (parsed.reason === "equipment_unavailable_incompatible") {
-    const availability = await resolveSessionEquipmentAvailability(
-      db,
-      user.id,
-      sessionExercise.id,
-    );
+  const attempts = parsed.reason === "equipment_unavailable_incompatible" ? 3 : 1;
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    const availability = parsed.reason === "equipment_unavailable_incompatible"
+      ? await resolveSessionEquipmentAvailability(
+          db,
+          user.id,
+          sessionExercise.id,
+        )
+      : null;
     if (
-      availability == null ||
-      !["unavailable", "incompatible"].includes(availability.decisionState)
+      parsed.reason === "equipment_unavailable_incompatible" &&
+      (
+        availability == null ||
+        !["unavailable", "incompatible"].includes(availability.decisionState)
+      )
     ) {
       return actionFailure(
         "equipment_reason_unverified",
         "Repbook could not verify an unavailable or incompatible equipment state. Review the current setup before replacing this exercise.",
       );
     }
+
+    const options = await getExerciseAlternativeOptions(
+      db,
+      user.id,
+      sessionExercise.id,
+    );
+    const target = options.items.find((item) => item.id === parsed.newExerciseId);
+    if (!target?.available) {
+      return actionFailure(
+        "alternative_unavailable",
+        target?.unavailableReason ??
+          "That exercise is not a safe alternative for this workout.",
+      );
+    }
+
+    const updated = await updateSessionExerciseWithVersion(
+      db,
+      user.id,
+      sessionExercise.id,
+      {
+        exerciseId: target.id,
+        modificationType: "substituted",
+        substitutedForExerciseId:
+          sessionExercise.substitutedForExerciseId ?? sessionExercise.exerciseId,
+        substitutionReason: parsed.reason,
+        substitutedAt: new Date(),
+        // Load targets no longer apply to a different movement.
+        targetLoad: null,
+        targetLoadUnit: null,
+        // Exercise-specific plan cues do not carry to a different movement.
+        notes: null,
+        warmupNotes: null,
+        warmupSets: [],
+        setNotes: [],
+      },
+      "session_exercise.substitute",
+      {
+        activeOnly: true,
+        expectedExerciseId: sessionExercise.exerciseId,
+        ...(availability == null
+          ? {}
+          : {
+              equipmentSourceFence: {
+                exerciseId: availability.exerciseId,
+                sourceRevision: availability.sourceRevision,
+                ownerEvidenceRevision: availability.ownerEvidenceRevision,
+                includeCurrentRequirements:
+                  availability.requirementsEvidence === "legacy_unknown" &&
+                  !availability.usesPrescribedMeaning,
+              },
+            }),
+      },
+    );
+    if (!updated.ok && updated.code === "equipment_source_conflict" && attempt + 1 < attempts) {
+      continue;
+    }
+    if (!updated.ok) {
+      return actionFailure("substitution_rejected", updated.reason);
+    }
+    revalidatePath(`/session/${sessionExercise.sessionId}`);
+    return updated;
   }
 
-  const updated = await updateSessionExerciseWithVersion(
-    db,
-    user.id,
-    sessionExercise.id,
-    {
-      exerciseId: target.id,
-      modificationType: "substituted",
-      skipReason: sessionExercise.skipReason,
-      substitutedForExerciseId:
-        sessionExercise.substitutedForExerciseId ?? sessionExercise.exerciseId,
-      substitutionReason: parsed.reason,
-      substitutedAt: new Date(),
-      // Load targets no longer apply to a different movement.
-      targetLoad: null,
-      targetLoadUnit: null,
-      // Exercise-specific plan cues do not carry to a different movement.
-      notes: null,
-      warmupNotes: null,
-      warmupSets: [],
-      setNotes: [],
-    },
-    "session_exercise.substitute",
-    { activeOnly: true }
+  return actionFailure(
+    "substitution_rejected",
+    "The available equipment kept changing. Review the current setup before trying again.",
   );
-  if (!updated.ok) return actionFailure("substitution_rejected", updated.reason);
-  revalidatePath(`/session/${sessionExercise.sessionId}`);
-  return updated;
 }
 
 export async function replaceExercise(input: {
@@ -906,86 +937,160 @@ export async function replaceExercise(input: {
   if (!owned.ok) return owned;
   const { user, db, sessionExercise } = owned;
 
-  const options = await getExerciseReplacementOptions(
-    db,
-    user.id,
-    sessionExercise.id,
-  );
-  const target = options.items.find((item) => item.id === parsed.newExerciseId);
-  const targetIsCurrent = target?.id === options.currentExerciseId;
-  if (!target || (!target.available && !targetIsCurrent)) {
+  const existingVersion = await db.query.recordVersions.findFirst({
+    where: and(
+      eq(recordVersions.id, parsed.clientMutationId),
+      eq(recordVersions.userId, user.id),
+      eq(recordVersions.entityType, "session_exercise"),
+      eq(recordVersions.entityId, sessionExercise.id),
+      eq(recordVersions.action, "session_exercise.substitute"),
+    ),
+    columns: { id: true, afterData: true },
+  });
+  if (
+    existingVersion &&
+    (
+      existingVersion.afterData.exercise_id !== parsed.newExerciseId ||
+      existingVersion.afterData.substitution_reason !== parsed.reason
+    )
+  ) {
     return actionFailure(
-      "replacement_unavailable",
-      target?.unavailableReason ??
-        "That exercise cannot be represented safely in this workout.",
+      "replacement_key_conflict",
+      "That replacement request identity was already used for a different choice.",
     );
   }
-  if (parsed.reason === "equipment_unavailable_incompatible") {
-    const availability = await resolveSessionEquipmentAvailability(
-      db,
-      user.id,
-      sessionExercise.id,
+  if (existingVersion && sessionExercise.exerciseId !== parsed.newExerciseId) {
+    return actionFailure(
+      "replacement_stale",
+      "This exercise changed after replacement opened. Review the current exercise before trying again.",
     );
+  }
+
+  const attempts =
+    !existingVersion && parsed.reason === "equipment_unavailable_incompatible"
+      ? 3
+      : 1;
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    const availability =
+      !existingVersion && parsed.reason === "equipment_unavailable_incompatible"
+        ? await resolveSessionEquipmentAvailability(
+            db,
+            user.id,
+            sessionExercise.id,
+          )
+        : null;
     if (
-      availability == null ||
-      !["unavailable", "incompatible"].includes(availability.decisionState)
+      !existingVersion &&
+      parsed.reason === "equipment_unavailable_incompatible" &&
+      (
+        availability == null ||
+        !["unavailable", "incompatible"].includes(availability.decisionState)
+      )
     ) {
       return actionFailure(
         "equipment_reason_unverified",
         "Repbook could not verify an unavailable or incompatible equipment state. Review the current setup before replacing this exercise.",
       );
     }
+
+    const options = await getExerciseReplacementOptions(
+      db,
+      user.id,
+      sessionExercise.id,
+    );
+    const target = options.items.find((item) => item.id === parsed.newExerciseId);
+    const targetIsCurrent = target?.id === options.currentExerciseId;
+    if (!target || (!target.available && !targetIsCurrent)) {
+      return actionFailure(
+        "replacement_unavailable",
+        target?.unavailableReason ??
+          "That exercise cannot be represented safely in this workout.",
+      );
+    }
+
+    if (existingVersion) {
+      revalidatePath(`/session/${sessionExercise.sessionId}`);
+      return {
+        ok: true as const,
+        id: sessionExercise.id,
+        changed: false,
+        versionId: existingVersion.id,
+        exercise: target,
+        equipmentWarning: options.warnings[target.id] ?? null,
+        replayed: true,
+      };
+    }
+
+    const updated = await updateSessionExerciseWithVersion(
+      db,
+      user.id,
+      sessionExercise.id,
+      {
+        exerciseId: target.id,
+        modificationType: "substituted",
+        substitutedForExerciseId:
+          sessionExercise.substitutedForExerciseId ?? sessionExercise.exerciseId,
+        substitutionReason: parsed.reason,
+        substitutedAt: new Date(),
+        targetLoad: null,
+        targetLoadUnit: null,
+        notes: null,
+        warmupNotes: null,
+        warmupSets: [],
+        setNotes: [],
+      },
+      "session_exercise.substitute",
+      {
+        activeOnly: true,
+        expectedExerciseId: parsed.expectedExerciseId,
+        versionId: parsed.clientMutationId,
+        ...(availability == null
+          ? {}
+          : {
+              equipmentSourceFence: {
+                exerciseId: availability.exerciseId,
+                sourceRevision: availability.sourceRevision,
+                ownerEvidenceRevision: availability.ownerEvidenceRevision,
+                includeCurrentRequirements:
+                  availability.requirementsEvidence === "legacy_unknown" &&
+                  !availability.usesPrescribedMeaning,
+              },
+            }),
+      },
+    );
+    if (!updated.ok && updated.code === "equipment_source_conflict" && attempt + 1 < attempts) {
+      continue;
+    }
+    if (!updated.ok) {
+      return actionFailure(
+        updated.reason.includes("request identity")
+          ? "replacement_key_conflict"
+          : updated.code === "equipment_source_conflict" ||
+              updated.reason.includes("changed after replacement opened")
+            ? "replacement_stale"
+            : "replacement_rejected",
+        updated.reason,
+      );
+    }
+    if (!updated.changed && updated.versionId == null) {
+      return actionFailure(
+        "replacement_unavailable",
+        "That exercise is already selected for this workout.",
+      );
+    }
+    revalidatePath(`/session/${sessionExercise.sessionId}`);
+    return {
+      ...updated,
+      exercise: target,
+      equipmentWarning: options.warnings[target.id] ?? null,
+      replayed: !updated.changed,
+    };
   }
 
-  const updated = await updateSessionExerciseWithVersion(
-    db,
-    user.id,
-    sessionExercise.id,
-    {
-      exerciseId: target.id,
-      modificationType: "substituted",
-      skipReason: sessionExercise.skipReason,
-      substitutedForExerciseId:
-        sessionExercise.substitutedForExerciseId ?? sessionExercise.exerciseId,
-      substitutionReason: parsed.reason,
-      substitutedAt: new Date(),
-      targetLoad: null,
-      targetLoadUnit: null,
-      notes: null,
-      warmupNotes: null,
-      warmupSets: [],
-      setNotes: [],
-    },
-    "session_exercise.substitute",
-    {
-      activeOnly: true,
-      expectedExerciseId: parsed.expectedExerciseId,
-      versionId: parsed.clientMutationId,
-    },
+  return actionFailure(
+    "replacement_stale",
+    "The available equipment kept changing. Review the current setup before trying again.",
   );
-  if (!updated.ok) {
-    return actionFailure(
-      updated.reason.includes("request identity")
-        ? "replacement_key_conflict"
-        : updated.reason.includes("changed after replacement opened")
-          ? "replacement_stale"
-          : "replacement_rejected",
-      updated.reason,
-    );
-  }
-  if (!updated.changed && updated.versionId == null) {
-    return actionFailure(
-      "replacement_unavailable",
-      "That exercise is already selected for this workout.",
-    );
-  }
-  revalidatePath(`/session/${sessionExercise.sessionId}`);
-  return {
-    ...updated,
-    exercise: target,
-    equipmentWarning: options.warnings[target.id] ?? null,
-    replayed: !updated.changed,
-  };
 }
 
 export async function undoExerciseSubstitution(sessionExerciseId: string) {

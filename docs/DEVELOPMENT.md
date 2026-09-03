@@ -486,7 +486,7 @@ data change.
 Phase 4 adds migration 0085 and snapshot schema 36. Its focused local gate is:
 
 ```bash
-npx vitest run tests/unit/active-workout-equipment-reasons-migration.test.ts tests/unit/session-equipment-selection-service-db.test.ts tests/unit/record-versions-db.test.ts tests/unit/snapshots-db.test.ts tests/unit/recovery-manifest-db.test.ts tests/unit/v2-r01-lifecycle-audit-db.test.ts tests/unit/session-runner-exit.test.ts tests/unit/equipment-setup-panel-component.test.tsx tests/unit/workout-status-bar-component.test.tsx
+npx vitest run tests/unit/active-workout-equipment-reasons-migration.test.ts tests/unit/session-equipment-selection-service-db.test.ts tests/unit/record-versions-db.test.ts tests/unit/session-actions-results.test.ts tests/unit/snapshots-db.test.ts tests/unit/recovery-manifest-db.test.ts tests/unit/v2-r01-lifecycle-audit-db.test.ts tests/unit/session-runner-exit.test.ts tests/unit/equipment-setup-panel-component.test.tsx tests/unit/workout-status-bar-component.test.tsx
 npm run db:verify
 npm run typecheck
 npm run lint
