@@ -566,7 +566,9 @@ test("keeps the full live workout usable through warm-up, skip, replace, continu
 
   incompatible = exerciseCard(page, "Suspension Push-Up");
   await incompatible.getByTestId("exercise-swipe-surface").click();
-  await incompatible.getByRole("button", { name: "Un-skip", exact: true }).click();
+  const unskip = incompatible.getByRole("button", { name: "Un-skip", exact: true });
+  await unskip.click();
+  await expect(unskip).toHaveCount(0);
   await openMoreForExercise(incompatible);
   await expect(
     incompatible.getByRole("button", { name: "Skip exercise", exact: true }),
