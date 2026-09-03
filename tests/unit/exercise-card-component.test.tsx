@@ -245,8 +245,8 @@ describe("ExerciseCard", () => {
     expect(source).toContain("onHistoryRevisionChange(result.historyRevision)");
     expect(source).toContain("if (reportDeploymentMismatch(error)) return");
     expect(source).toContain("reportDocumentActionTimeout()");
-    expect(source).toContain(
-      "withDocumentActionDeadline(\n                      skipExercise({",
+    expect(source).toMatch(
+      /withDocumentActionDeadline\(\s+skipExercise\(\{/,
     );
     expect(source).not.toContain("await unskipExercise(");
     expect(source).toContain("Checking saved skip…");
