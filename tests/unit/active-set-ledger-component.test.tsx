@@ -154,6 +154,9 @@ describe("ActiveSetLedger", () => {
     const saved = renderFixture(SET_ROW_STATE_FIXTURES.saved.input);
     expect(retained).toContain("95 lb × 8");
     expect(retained).toContain("Unsaved on this device");
+    expect(retained).toContain("Exact device result");
+    expect(retained).toContain("Effort: Hard");
+    expect(retained).toContain("RIR 2");
     expect(saved).toContain("95 lb × 8");
     expect(saved).toContain("Saved");
   });
@@ -166,9 +169,46 @@ describe("ActiveSetLedger", () => {
     const snapshotRestored = renderFixture(
       SET_ROW_VERSION_FIXTURES.snapshot_restored.input,
     );
-    expect(corrected).toContain("Corrected ×1");
-    expect(versionRestored).toContain("Version restored ×1");
-    expect(snapshotRestored).toContain("Snapshot restored ×1");
+    expect(corrected).toContain("Latest: Corrected · 1 change");
+    expect(versionRestored).toContain("Latest: Version restored · 1 change");
+    expect(snapshotRestored).toContain("Latest: Snapshot restored · 1 change");
+  });
+
+  it("keeps retained technique, limitation, and pain evidence visible", () => {
+    const input = SET_ROW_STATE_FIXTURES.retained_locally.input;
+    const retainedSet = input.exercise.sets[0];
+    const html = renderFixture({
+      ...input,
+      outboxEntries: input.outboxEntries?.map((entry) => ({
+        ...entry,
+        rpe: 8,
+        rir: 2,
+        techniqueIssue: "control",
+        limitationCause: "grip",
+        pain: {
+          bodyPart: "wrist",
+          severity: 3,
+          note: "Felt sharp on the last rep",
+        },
+      })),
+      exercise: {
+        ...input.exercise,
+        sets: [{
+          ...retainedSet,
+          techniqueIssue: "control",
+          limitationCause: "grip",
+          pain: {
+            bodyPart: "wrist",
+            severity: 3,
+            note: "Felt sharp on the last rep",
+          },
+        }],
+      },
+    });
+    expect(html).toContain("Technique: Control");
+    expect(html).toContain("Limited by: Grip");
+    expect(html).toContain("Pain: wrist 3/10");
+    expect(html).toContain("Pain note: Felt sharp on the last rep");
   });
 
   it("labels unlinked evidence unknown while keeping its exact result visible", () => {
@@ -191,6 +231,7 @@ describe("ActiveSetLedger", () => {
             label: "Recorded set 4",
             summary: "125 lb × 5",
             message: "This result cannot be linked safely.",
+            version: { state: "version_restored", count: 2 },
           },
         ]}
         renderCurrentRow={() => null}
@@ -200,6 +241,30 @@ describe("ActiveSetLedger", () => {
     expect(html).toContain("Recorded set 4");
     expect(html).toContain("125 lb × 5");
     expect(html).toContain("Unknown");
+    expect(html).toContain("Latest: Version restored · 2 changes");
+    expect(html).not.toMatch(/<li[^>]*role="alert"/);
+    expect(html).toMatch(/<li[^>]*><div role="alert">/);
     expect(html).not.toContain("Recorded set 4</span><span>Saved");
+  });
+
+  it("keeps restore evidence visible when a linked legacy row stays unknown", () => {
+    const input = SET_ROW_VERSION_FIXTURES.snapshot_restored.input;
+    const projection = projectActiveSetRows({
+      ...input,
+      occurrences: [{ ...input.occurrences[0], origin: "legacy" }],
+    });
+    const html = renderToStaticMarkup(
+      <ActiveSetLedger
+        exerciseId={input.exercise.id}
+        exerciseName={input.exercise.name}
+        metricType="weight_reps"
+        rows={projection.rows}
+        diagnostics={projection.diagnostics}
+        renderCurrentRow={() => null}
+      />,
+    );
+    expect(html).toContain('data-set-row-state="unknown_legacy"');
+    expect(html).toContain("Latest: Snapshot restored · 1 change");
+    expect(html).toContain("Unknown");
   });
 });

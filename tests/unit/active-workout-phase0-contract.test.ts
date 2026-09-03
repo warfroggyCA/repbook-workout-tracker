@@ -5,7 +5,10 @@ import {
   ACTIVE_SET_ROW_STATES,
   projectActiveSetRows,
 } from "@/lib/active-set-row-projection";
-import { activeSetVersionEvidenceFromActions } from "@/lib/active-set-version-evidence";
+import {
+  activeSetVersionEvidenceAfterCorrection,
+  activeSetVersionEvidenceFromActions,
+} from "@/lib/active-set-version-evidence";
 import {
   ACTIVE_WORKOUT_EQUIPMENT_STATES,
   ACTIVE_WORKOUT_REST_STATES,
@@ -105,7 +108,7 @@ describe("Phase 0 active-set row contract", () => {
     }
   });
 
-  it("derives restore provenance deterministically from live version actions", () => {
+  it("uses the newest live version action for the headline and counts all changes", () => {
     expect(activeSetVersionEvidenceFromActions([])).toEqual({
       state: "original",
       count: 0,
@@ -114,13 +117,55 @@ describe("Phase 0 active-set row contract", () => {
       "set.completed_correction",
       "set.version_restore",
       "set.active_correction",
-    ])).toEqual({ state: "version_restored", count: 3 });
+    ])).toEqual({ state: "corrected", count: 3 });
     expect(activeSetVersionEvidenceFromActions([
       "set.version_restore",
       "set.snapshot_restore",
       "unrelated.action",
-    ])).toEqual({ state: "snapshot_restored", count: 2 });
+    ])).toEqual({ state: "version_restored", count: 2 });
+    expect(activeSetVersionEvidenceAfterCorrection(
+      { state: "snapshot_restored", count: 2 },
+      0,
+    )).toEqual({ state: "corrected", count: 3 });
   });
+
+  it.each(["bodyweight", "dumbbell"])(
+    "withholds an original movement's load and note after a %s substitution",
+    (loadType) => {
+      const input = SET_ROW_STATE_FIXTURES.current_editable.input;
+      const row = projectActiveSetRows({
+        ...input,
+        exercise: {
+          ...input.exercise,
+          exerciseId: "40000000-0000-4000-8000-000000000099",
+          loadType,
+          modificationType: "substituted",
+          substitutedForExerciseId: input.exercise.exerciseId,
+        },
+        occurrences: [{
+          ...input.occurrences[0],
+          plannedNote: "Original movement tempo cue",
+          plannedLoad: 95,
+          plannedLoadUnit: "lb",
+          plannedLoadPercent: 75,
+          plannedLoadText: "Original movement load",
+        }],
+      }).rows[0];
+
+      expect(row).toMatchObject({
+        state: "current_editable",
+        prescription: {
+          repsMin: 8,
+          repsMax: 8,
+          load: null,
+          loadUnit: null,
+          loadPercent: null,
+          loadText: null,
+          note: null,
+        },
+      });
+    },
+  );
 
   it("preserves the exact device result while it is retained", () => {
     const row = projectActiveSetRows(

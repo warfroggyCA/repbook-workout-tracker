@@ -23,10 +23,9 @@ const ACTIVE_SET_VERSION_ACTIONS = new Set([
 ]);
 
 /**
- * Converts immutable completed-set version actions into one presentation
- * facet. Restore evidence takes precedence over corrections regardless of
- * database row order, while count retains the full correction/restore history
- * size.
+ * Converts newest-first immutable completed-set version actions into one
+ * presentation facet. The latest applicable action owns the headline, while
+ * count retains the full correction/restore history size.
  */
 export function activeSetVersionEvidenceFromActions(
   actions: readonly string[],
@@ -37,11 +36,22 @@ export function activeSetVersionEvidenceFromActions(
   if (relevantActions.length === 0) {
     return { state: "original", count: 0 };
   }
-  if (relevantActions.includes("set.snapshot_restore")) {
-    return { state: "snapshot_restored", count: relevantActions.length };
+  switch (relevantActions[0]) {
+    case "set.snapshot_restore":
+      return { state: "snapshot_restored", count: relevantActions.length };
+    case "set.version_restore":
+      return { state: "version_restored", count: relevantActions.length };
+    default:
+      return { state: "corrected", count: relevantActions.length };
   }
-  if (relevantActions.includes("set.version_restore")) {
-    return { state: "version_restored", count: relevantActions.length };
-  }
-  return { state: "corrected", count: relevantActions.length };
+}
+
+export function activeSetVersionEvidenceAfterCorrection(
+  current: ActiveSetVersionEvidence | undefined,
+  fallbackCount: number,
+): ActiveSetVersionEvidence {
+  return {
+    state: "corrected",
+    count: (current?.count ?? fallbackCount) + 1,
+  };
 }

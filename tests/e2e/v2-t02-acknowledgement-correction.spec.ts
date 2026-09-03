@@ -263,7 +263,9 @@ test("keeps retained sets responsive before acknowledgement, then reviews a corr
     .locator('[data-set-row-state="saved"]')
     .first();
   await expect(correctedLedgerRow).toContainText("1:00");
-  await expect(correctedLedgerRow).toContainText("Corrected ×1");
+  await expect(correctedLedgerRow).toContainText(
+    "Latest: Corrected · 1 change",
+  );
   await expect(plank).toContainText(
     "1 saved correction · original retained in Edit history",
   );

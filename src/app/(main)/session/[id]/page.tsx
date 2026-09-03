@@ -1,6 +1,6 @@
 import { notFound, redirect, unstable_rethrow } from "next/navigation";
 import Link from "next/link";
-import { and, eq, inArray, isNull } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull } from "drizzle-orm";
 import { getDb } from "@/db";
 import {
   workoutSessions,
@@ -235,6 +235,7 @@ async function renderSessionPage(
           inArray(recordVersions.entityId, visibleSetIds),
         ),
         columns: { entityId: true, action: true },
+        orderBy: [desc(recordVersions.createdAt), desc(recordVersions.id)],
       }), db.query.painLogs.findMany({
         where: and(
           eq(painLogs.userId, user.id),

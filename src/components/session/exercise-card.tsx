@@ -110,6 +110,7 @@ import {
   projectActiveSetRows,
   type ActiveSetRow,
 } from "@/lib/active-set-row-projection";
+import { activeSetVersionEvidenceAfterCorrection } from "@/lib/active-set-version-evidence";
 import type { IncompleteSessionReason } from "@/lib/session-completion-semantics";
 import { OccurrenceSaveStatus } from "./occurrence-save-status";
 import {
@@ -1447,10 +1448,28 @@ export function ExerciseCard({
       key: `diagnostic-${set.id}`,
       label: `Recorded set ${set.setNo}`,
       summary: formatLoggedSet(set, exercise.metricType),
+      version:
+        exercise.versionEvidenceBySetId?.[set.id] ??
+        ((set.correctionCount ?? 0) > 0
+          ? { state: "corrected", count: set.correctionCount ?? 0 }
+          : null),
       message: activeSetProjection.diagnostics.duplicateSetIds.includes(set.id)
         ? "This result has more than one possible occurrence link and cannot be presented as saved."
         : "This result is not linked to a supported set occurrence and cannot be presented as saved.",
     }));
+  const unsupportedCompletedSetIds = new Set([
+    ...diagnosticSetIds,
+    ...activeSetProjection.rows.flatMap((row) =>
+      row.state === "unknown_legacy" && row.result != null
+        ? [row.result.id]
+        : [],
+    ),
+  ]);
+  const acknowledgedCompletedSets = exercise.sets.filter(
+    (set) =>
+      (set.saveState == null || set.saveState === "saved") &&
+      !unsupportedCompletedSetIds.has(set.id),
+  );
   const currentLedgerRow = activeSetProjection.rows.find(
     (row) => row.state === "current_editable",
   );
@@ -2170,15 +2189,21 @@ export function ExerciseCard({
             {currentLedgerOccurrence && (
               <div
                 data-testid="current-set-secondary-actions"
-                className="grid grid-cols-3 gap-1.5"
+                className={cn(
+                  "grid gap-1.5",
+                  exercise.sets.length === 0 ? "grid-cols-3" : "grid-cols-2",
+                )}
               >
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => onAdjustIntentChange("replace")}
-                >
-                  Replace
-                </Button>
+                {exercise.sets.length === 0 && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    data-testid="replace-current-exercise"
+                    onClick={() => onAdjustIntentChange("replace")}
+                  >
+                    Replace
+                  </Button>
+                )}
                 <Button
                   type="button"
                   variant="outline"
@@ -2302,14 +2327,12 @@ export function ExerciseCard({
                       Completed sets
                     </h3>
                     <span className="shrink-0 text-xs font-normal text-muted-foreground">
-                      {exercise.sets.filter(
-                        (set) => set.saveState == null || set.saveState === "saved",
-                      ).length} completed
+                      {acknowledgedCompletedSets.length} completed
                     </span>
                   </div>
                   <div className="space-y-2 border-t p-2">
                 {disclosedRowOrder.map((i) => {
-                  const set = exercise.sets.find(
+                  const set = acknowledgedCompletedSets.find(
                     (candidate) => candidate.setNo === i + 1,
                   );
                   const occurrenceForRow =
@@ -2401,19 +2424,10 @@ export function ExerciseCard({
                                     ),
                                     versionEvidenceBySetId: {
                                       ...exercise.versionEvidenceBySetId,
-                                      [set.id]: {
-                                        state:
-                                          currentVersionEvidence?.state ===
-                                              "version_restored" ||
-                                            currentVersionEvidence?.state ===
-                                              "snapshot_restored"
-                                            ? currentVersionEvidence.state
-                                            : "corrected",
-                                        count:
-                                          (currentVersionEvidence?.count ??
-                                            set.correctionCount ??
-                                            0) + 1,
-                                      },
+                                      [set.id]: activeSetVersionEvidenceAfterCorrection(
+                                        currentVersionEvidence,
+                                        set.correctionCount ?? 0,
+                                      ),
                                     },
                                   });
                                   onHistoryRevisionChange(
@@ -2456,9 +2470,7 @@ export function ExerciseCard({
 
                   return null;
                 })}
-                {exercise.sets.filter(
-                  (set) => set.saveState == null || set.saveState === "saved",
-                ).length === 0 && (
+                {acknowledgedCompletedSets.length === 0 && (
                   <p className="rounded-md border border-dashed px-3 py-2 text-muted-foreground">
                     No completed sets yet.
                   </p>

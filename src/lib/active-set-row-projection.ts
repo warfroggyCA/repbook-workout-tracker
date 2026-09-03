@@ -257,17 +257,25 @@ function exactResult(set: LoggedSet): ActiveSetExactResult {
 
 function frozenPrescription(
   occurrence: SessionOccurrenceData,
+  exercise: SessionExerciseData,
 ): ActiveSetFrozenPrescription {
+  const belongsToOriginalExercise =
+    exercise.modificationType === "substituted" &&
+    occurrence.plannedExerciseId !== exercise.exerciseId;
   return {
     repsMin: occurrence.plannedRepsMin,
     repsMax: occurrence.plannedRepsMax,
-    load: occurrence.plannedLoad,
-    loadUnit: occurrence.plannedLoadUnit,
-    loadPercent: occurrence.plannedLoadPercent,
-    loadText: occurrence.plannedLoadText,
-    note: occurrence.plannedNote === ADDED_WORKOUT_SET_NOTE
+    load: belongsToOriginalExercise ? null : occurrence.plannedLoad,
+    loadUnit: belongsToOriginalExercise ? null : occurrence.plannedLoadUnit,
+    loadPercent: belongsToOriginalExercise
       ? null
-      : occurrence.plannedNote,
+      : occurrence.plannedLoadPercent,
+    loadText: belongsToOriginalExercise ? null : occurrence.plannedLoadText,
+    note:
+      belongsToOriginalExercise ||
+      occurrence.plannedNote === ADDED_WORKOUT_SET_NOTE
+        ? null
+        : occurrence.plannedNote,
   };
 }
 
@@ -547,7 +555,7 @@ export function projectActiveSetRows(
 
     const prescribedBase: ActiveSetRowWithPrescription = {
       ...base,
-      prescription: frozenPrescription(occurrence),
+      prescription: frozenPrescription(occurrence, input.exercise),
     };
     if (occurrence.outcome === "skipped") {
       if (set != null) {
