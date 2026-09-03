@@ -235,7 +235,7 @@ function resultCandidates(input: ActiveSetRowProjectionInput): {
   return { results, acknowledgedOutboxClientKeys };
 }
 
-function exactResult(set: LoggedSet): ActiveSetExactResult {
+export function activeSetExactResult(set: LoggedSet): ActiveSetExactResult {
   return {
     id: set.id,
     clientKey: set.clientKey,
@@ -367,7 +367,7 @@ function unknownOccurrenceOutcome(
     ...base,
     state: "unknown_legacy",
     prescription: null,
-    result: set == null ? null : exactResult(set),
+    result: set == null ? null : activeSetExactResult(set),
     version,
     message: `This occurrence has an unsupported outcome (${String(outcome)}) and cannot be presented as planned or completed.`,
   };
@@ -393,7 +393,7 @@ function resultState(
   set: LoggedSet,
   version: ActiveSetVersionEvidence,
 ): ActiveSetRow {
-  const result = exactResult(set);
+  const result = activeSetExactResult(set);
   const clientKey = set.clientKey;
   const versionState = version.state;
   let normalizedVersion: ActiveSetVersionEvidence;
@@ -545,7 +545,7 @@ export function projectActiveSetRows(
         ...base,
         state: "unknown_legacy",
         prescription: null,
-        result: set == null ? null : exactResult(set),
+        result: set == null ? null : activeSetExactResult(set),
         version: supportedVersion,
         message: membership === "unknown"
           ? "This set has an unsupported origin and cannot be presented as planned or completed."
@@ -564,7 +564,7 @@ export function projectActiveSetRows(
           ...base,
           state: "unknown_legacy",
           prescription: null,
-          result: exactResult(set),
+          result: activeSetExactResult(set),
           version: supportedVersion,
           message:
             "This occurrence is skipped but also has a linked result; review the retained evidence.",
@@ -586,7 +586,7 @@ export function projectActiveSetRows(
           ...base,
           state: "unknown_legacy",
           prescription: null,
-          result: exactResult(set),
+          result: activeSetExactResult(set),
           version: supportedVersion,
           message:
             "This occurrence is abandoned but also has a linked result; review the retained evidence.",
@@ -621,7 +621,7 @@ export function projectActiveSetRows(
           ...base,
           state: "unknown_legacy",
           prescription: null,
-          result: exactResult(set),
+          result: activeSetExactResult(set),
           version: supportedVersion,
           message:
             "This acknowledged result is linked to an unresolved occurrence and needs review.",

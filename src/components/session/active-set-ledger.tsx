@@ -13,6 +13,7 @@ import {
   LIMITATION_CAUSE_LABELS,
   TECHNIQUE_ISSUE_LABELS,
 } from "@/lib/set-exception-context";
+import { activeSetVersionEvidenceLabel } from "@/lib/active-set-version-evidence";
 import { cn } from "@/lib/utils";
 
 type CurrentRow = Extract<ActiveSetRow, { state: "current_editable" }>;
@@ -30,6 +31,7 @@ export type ActiveSetLedgerDiagnosticRow = {
   key: string;
   label: string;
   summary: string;
+  result: ActiveSetExactResult;
   message: string;
   version: ActiveSetVersionEvidence | null;
 };
@@ -109,20 +111,6 @@ export function formatActiveSetResult(
     : repetitions;
 }
 
-function versionLabel(version: ActiveSetVersionEvidence) {
-  const changeCount = `${version.count} ${version.count === 1 ? "change" : "changes"}`;
-  switch (version.state) {
-    case "original":
-      return null;
-    case "corrected":
-      return `Latest: Corrected · ${changeCount}`;
-    case "version_restored":
-      return `Latest: Version restored · ${changeCount}`;
-    case "snapshot_restored":
-      return `Latest: Snapshot restored · ${changeCount}`;
-  }
-}
-
 function retainedResultDetails(result: ActiveSetExactResult) {
   const details: string[] = [];
   if (result.rpe != null) {
@@ -146,7 +134,7 @@ function retainedResultDetails(result: ActiveSetExactResult) {
   return details;
 }
 
-function RetainedResultContext({ result }: { result: ActiveSetExactResult }) {
+function ExactResultContext({ result }: { result: ActiveSetExactResult }) {
   const details = retainedResultDetails(result);
   if (!result.note?.trim() && details.length === 0) return null;
   return (
@@ -386,9 +374,9 @@ function renderExhaustiveRow(
           status="Unsaved on this device"
           tone="attention"
           announcement="status"
-          detail={versionLabel(row.version)}
+          detail={activeSetVersionEvidenceLabel(row.version)}
         >
-          <RetainedResultContext result={row.result} />
+          <ExactResultContext result={row.result} />
           {props.renderSaveRecovery?.(row)}
         </CompactRow>
       );
@@ -401,9 +389,9 @@ function renderExhaustiveRow(
           status="Saving"
           tone="attention"
           announcement="status"
-          detail={versionLabel(row.version)}
+          detail={activeSetVersionEvidenceLabel(row.version)}
         >
-          <RetainedResultContext result={row.result} />
+          <ExactResultContext result={row.result} />
           {props.renderSaveRecovery?.(row)}
         </CompactRow>
       );
@@ -416,9 +404,9 @@ function renderExhaustiveRow(
           status="Retrying"
           tone="attention"
           announcement="status"
-          detail={versionLabel(row.version)}
+          detail={activeSetVersionEvidenceLabel(row.version)}
         >
-          <RetainedResultContext result={row.result} />
+          <ExactResultContext result={row.result} />
           {props.renderSaveRecovery?.(row)}
         </CompactRow>
       );
@@ -431,9 +419,9 @@ function renderExhaustiveRow(
           status="Needs attention"
           tone="attention"
           announcement="alert"
-          detail={versionLabel(row.version)}
+          detail={activeSetVersionEvidenceLabel(row.version)}
         >
-          <RetainedResultContext result={row.result} />
+          <ExactResultContext result={row.result} />
           {props.renderSaveRecovery?.(row)}
         </CompactRow>
       );
@@ -445,7 +433,7 @@ function renderExhaustiveRow(
           metricType={props.metricType}
           status="Saved"
           tone="saved"
-          detail={versionLabel(row.version)}
+          detail={activeSetVersionEvidenceLabel(row.version)}
         />
       );
     case "skipped":
@@ -493,10 +481,12 @@ function renderExhaustiveRow(
           status="Unknown"
           tone="attention"
           announcement="alert"
-          detail={[row.version == null ? null : versionLabel(row.version), row.message]
+          detail={[row.version == null ? null : activeSetVersionEvidenceLabel(row.version), row.message]
             .filter(Boolean)
             .join(" · ")}
-        />
+        >
+          {row.result != null && <ExactResultContext result={row.result} />}
+        </CompactRow>
       );
   }
 }
@@ -559,10 +549,11 @@ export function ActiveSetLedger({
                 </span>
               </div>
               <p className="mt-1 text-xs text-muted-foreground">
-                {[row.version == null ? null : versionLabel(row.version), row.message]
+                {[row.version == null ? null : activeSetVersionEvidenceLabel(row.version), row.message]
                   .filter(Boolean)
                   .join(" · ")}
               </p>
+              <ExactResultContext result={row.result} />
             </div>
           </li>
         ))}
