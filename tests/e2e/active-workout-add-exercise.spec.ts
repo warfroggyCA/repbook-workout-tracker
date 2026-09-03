@@ -376,6 +376,12 @@ test("refuses incomplete assistance, then preserves assisted work without false 
   });
   for (let index = 0; index < 6; index += 1) await decreaseRest.click();
   await expect(restTimer).toContainText("Rest complete");
+  await expect(restTimer).toContainText(
+    "Resume plan: Barbell Back Squat, set 1",
+  );
+  await expect(workoutStatus.getByTestId("active-log-set")).toHaveAccessibleName(
+    "Log set 1",
+  );
   await page.setViewportSize({ width: 320, height: 700 });
   await expect
     .poll(() =>

@@ -193,6 +193,10 @@ about one compact row of vertical space. While it runs:
 - the primary Log set action remains available when the write contracts permit
   it;
 - the destination is exact, including group member and round where applicable;
+- when an out-of-order set has no later destination but earlier planned work
+  remains, distinguish **Resume plan: [exact action]** from a forward `Next:`
+  destination and keep that planned action available; **No further work** is
+  reserved for a workout with no remaining action;
 - `-15`, `+15`, and **End rest** remain at least 44 CSS pixels in both
   dimensions;
 - a cue-channel failure is stated as a cue problem, not as a failed rest or

@@ -1517,8 +1517,13 @@ export function SessionRunner(props: SessionRunnerProps) {
   );
   const activeRestAction =
     guidance.currentAction?.kind === "rest" ? guidance.currentAction : null;
-  const currentStatusAction =
-    activeRestAction?.destination ?? guidance.currentAction;
+  const restResumeAction =
+    activeRestAction != null && activeRestAction.destination == null
+      ? guidance.current
+      : null;
+  const currentStatusAction = activeRestAction
+    ? activeRestAction.destination ?? restResumeAction ?? activeRestAction
+    : guidance.currentAction;
   const activeRestSource = activeRestAction?.source ?? null;
   const straightSetRestContinuation =
     activeRestAction?.restKind === "straight_set" && activeRestSource
@@ -5634,6 +5639,11 @@ export function SessionRunner(props: SessionRunnerProps) {
           restSoundState={restSoundState}
           restDestinationLabel={
             activeWorkoutViewModel.rest?.destinationLabel ?? null
+          }
+          restResumeLabel={
+            restResumeAction == null
+              ? null
+              : formatSessionGuidanceAction(restResumeAction)
           }
           onShowCurrent={() => {
             revealCurrentWorkoutAction();
