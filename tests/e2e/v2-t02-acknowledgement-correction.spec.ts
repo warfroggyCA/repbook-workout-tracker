@@ -87,7 +87,10 @@ test("keeps retained sets responsive before acknowledgement, then reviews a corr
   await signInAndStartWorkout(page);
   await addWorkoutOnlyExercise(page, "RKC Plank", 2);
   const sessionUrl = page.url();
-  const plank = page.getByRole("region", { name: "RKC Plank" });
+  const plank = page.getByRole("region", {
+    name: "RKC Plank",
+    exact: true,
+  });
   await plank.getByRole("button", { name: /RKC Plank/ }).click();
 
   let delayNextAction = false;

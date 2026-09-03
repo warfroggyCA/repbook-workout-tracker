@@ -390,7 +390,7 @@ test("keeps new Stage 3 controls usable at the saved iPhone calibration", async 
       tabs: tabsRect?.toJSON() ?? null,
       tabsVisible,
       viewportBottom: window.innerHeight,
-      currentHeadingAbsent: currentHeading == null,
+      currentHeadingPresent: currentHeading != null,
       restDestinationFits:
         restDestination != null &&
         restDestination.scrollWidth <= restDestination.clientWidth + 1,
@@ -399,13 +399,15 @@ test("keeps new Stage 3 controls usable at the saved iPhone calibration", async 
   expect(enlargedLayout.dock).not.toBeNull();
   expect(enlargedLayout.tabs).not.toBeNull();
   expect(enlargedLayout.tabsVisible).toBe(false);
+  // At 145%, the neutral rest row and fixed action each retain 44px controls
+  // while the complete dock remains below one third of this 700px viewport.
   expect(enlargedLayout.dock?.height ?? Number.POSITIVE_INFINITY).toBeLessThanOrEqual(
-    210,
+    230,
   );
   expect(
     (enlargedLayout.dock?.y ?? 0) + (enlargedLayout.dock?.height ?? 0),
   ).toBeLessThanOrEqual(enlargedLayout.viewportBottom + 1);
-  expect(enlargedLayout.currentHeadingAbsent).toBe(true);
+  expect(enlargedLayout.currentHeadingPresent).toBe(true);
   expect(enlargedLayout.restDestinationFits).toBe(true);
   await screenshot(page, "05-extra-large-rest-dock.png");
 
