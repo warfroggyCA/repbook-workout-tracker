@@ -1138,6 +1138,51 @@ describe("ExerciseCard", () => {
     );
     expect(substitutedWithStaleEvidence).not.toContain('value="95"');
 
+    const staleReplacementExtra: SessionOccurrenceData = {
+      ...currentOccurrence,
+      id: "00000000-0000-4000-8000-000000000073",
+      origin: "ad_hoc",
+      sequenceIdx: 3,
+      kindOrdinal: 3,
+      plannedExerciseId: current.exerciseId,
+      plannedNote: ADDED_WORKOUT_SET_NOTE,
+      plannedLoad: 135,
+      plannedLoadUnit: "lb",
+    };
+    const substitutedWithStaleExtra = renderToStaticMarkup(cloneElement(card, {
+      exercise: {
+        ...current,
+        exerciseId: replacementExerciseId,
+        name: "Dumbbell Floor Press",
+        loadType: "dumbbell",
+        loadSemantics: "per_implement",
+        modificationType: "substituted",
+        substitutedForExerciseId: current.exerciseId,
+        targetLoad: null,
+        targetLoadUnit: null,
+      },
+      activeOccurrence: {
+        ...currentOccurrence,
+        plannedExerciseId: current.exerciseId,
+        plannedLoad: 95,
+        plannedLoadUnit: "lb",
+      },
+      workingOccurrences: [currentOccurrence, staleReplacementExtra],
+    }));
+    const staleExtraRowStart = substitutedWithStaleExtra.indexOf(
+      `id="added-set-entry-${current.id}-${staleReplacementExtra.id}"`,
+    );
+    expect(staleExtraRowStart).toBeGreaterThan(-1);
+    const staleExtraRowEnd = substitutedWithStaleExtra.indexOf(
+      "</li>",
+      staleExtraRowStart,
+    );
+    const staleExtraRow = substitutedWithStaleExtra.slice(
+      staleExtraRowStart,
+      staleExtraRowEnd,
+    );
+    expect(staleExtraRow).not.toContain('value="135"');
+
     const restoredSetId = "00000000-0000-4000-8000-000000000064";
     const restoredOccurrence = {
       ...currentOccurrence,
