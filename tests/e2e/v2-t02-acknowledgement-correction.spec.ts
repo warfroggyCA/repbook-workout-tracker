@@ -216,7 +216,12 @@ test("keeps retained sets responsive before acknowledgement, then reviews a corr
     .getByRole("complementary", { name: "Workout status" })
     .getByRole("region", { name: "Rest timer" });
   await expect(rest).toBeVisible();
-  await expect(rest).toContainText("No further work");
+  await expect(rest).toContainText(
+    "Resume plan: Barbell Back Squat, set 1",
+  );
+  await expect(page.getByTestId("active-log-set")).toHaveAccessibleName(
+    "Log set 1",
+  );
   await expect(guidance).not.toContainText("Now:");
   await expect(guidance).not.toContainText("Next:");
   await plankDisclosure.click();
