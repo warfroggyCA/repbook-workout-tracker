@@ -289,6 +289,9 @@ describe("ExerciseCard", () => {
     expect(source).toContain("if (reconcileOnNextLoadRef.current) return");
     expect(source).toContain("Try updating workout again");
     expect(source).toContain("Back to Today");
+    expect(source).toMatch(
+      /<AlternativesDrawer[\s\S]{0,500}onDone=\{applyReplacement\}/,
+    );
     expect(source.match(
       /buttonVariants\(\{ variant: "outline", size: "touch" \}\)/g,
     )).toHaveLength(2);

@@ -2769,52 +2769,7 @@ export function ExerciseCard({
                       onOpenChange={(open) =>
                         onAdjustIntentChange(open ? "swap" : null)
                       }
-                      onDone={(candidate, reason) => {
-                        const metricType = performedMetricTypeForLivePatch(
-                          candidate.metricType,
-                        );
-                        if (!metricType) {
-                          toast.error(
-                            "This exercise measurement is not supported in the live workout.",
-                          );
-                          router.refresh();
-                          return;
-                        }
-                        onAdjustIntentChange(null);
-                        onPatch({
-                          exerciseId: candidate.id,
-                          name: candidate.name,
-                          family: candidate.family,
-                          loadType: candidate.loadType,
-                          metricType,
-                          loadSemantics: candidate.loadSemantics,
-                          movementPattern: candidate.movementPattern,
-                          cautionBodyParts: candidate.cautionBodyParts,
-                          modificationType: "substituted",
-                          skipReason: null,
-                          substitutedForExerciseId:
-                            exercise.substitutedForExerciseId ?? exercise.exerciseId,
-                          substitutionReason: reason,
-                          substitutedAt: new Date().toISOString(),
-                          plannedExerciseName:
-                            exercise.plannedExerciseName ?? exercise.name,
-                          targetLoad: null,
-                          targetLoadUnit: null,
-                          notes: null,
-                          warmupNotes: null,
-                          warmupSets: [],
-                          setNotes: [],
-                          last: null,
-                          media: candidate.media ?? null,
-                        });
-                        setDraft((current) => ({
-                          ...current,
-                          weight: null,
-                          weightUnit: null,
-                          note: "",
-                        }));
-                        setNote("");
-                      }}
+                      onDone={applyReplacement}
                     />
                   </div>
                 </div>
