@@ -6,7 +6,7 @@ import { assertCanonicalSnapshotTableCoverage } from "@/services/recovery-manife
 import { canonicalizeProgramDraftIdentity } from "@/services/program-document-integrity";
 import { externalAnalysisImportDigestSchema } from "@/lib/external-analysis-import";
 
-export const SNAPSHOT_SCHEMA_VERSION = "35";
+export const SNAPSHOT_SCHEMA_VERSION = "36";
 
 export type CanonicalSnapshotPayload = {
   schemaVersion: string;

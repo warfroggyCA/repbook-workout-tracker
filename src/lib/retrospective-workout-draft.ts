@@ -1,6 +1,10 @@
 import type { ProgramPresentation } from "@/lib/program-presentation";
 import type { ExerciseDiscoveryItem } from "@/lib/exercise-discovery";
-import type { ExerciseAlternativeReason } from "@/lib/exercise-alternatives";
+import {
+  ALTERNATIVE_REASONS,
+  SUBSTITUTION_REASONS,
+  type ExerciseAlternativeReason,
+} from "@/lib/exercise-alternatives";
 import { LEGACY_RETROSPECTIVE_SKIP_REASONS } from "@/lib/retrospective-workout";
 import {
   incompleteSessionReasonSchema,
@@ -146,7 +150,7 @@ const retrospectiveDraftSchema = z.object({
       plannedExerciseName: z.string().min(1).nullable().default(null),
       plannedSetCount: z.number().int().min(0).max(100).default(0),
       substitutionReason: z
-        .enum(["variety", "equipment_busy", "discomfort", "other"])
+        .enum(SUBSTITUTION_REASONS)
         .nullable()
         .default(null),
       name: z.string().min(1),
@@ -170,7 +174,7 @@ const legacyRetrospectiveDraftSchema = retrospectiveDraftSchema.extend({
       plannedExerciseName: z.string().min(1).nullable().default(null),
       plannedSetCount: z.number().int().min(0).max(100).default(0),
       substitutionReason: z
-        .enum(["variety", "equipment_busy", "discomfort", "other"])
+        .enum(ALTERNATIVE_REASONS)
         .nullable()
         .default(null),
       name: z.string().min(1),

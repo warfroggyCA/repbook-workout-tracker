@@ -8,6 +8,7 @@ import {
   incompleteSessionReasonSchema,
   OCCURRENCE_RESOLUTION_SEMANTICS_VERSION,
 } from "@/lib/session-completion-semantics";
+import { SUBSTITUTION_REASONS } from "@/lib/exercise-alternatives";
 
 const uuid = z.string().uuid();
 const localDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
@@ -85,7 +86,7 @@ const exerciseSchema = z.object({
   exerciseId: uuid,
   sourceTemplateExerciseId: uuid.nullable(),
   substitutionReason: z
-    .enum(["variety", "equipment_busy", "discomfort", "other"])
+    .enum(SUBSTITUTION_REASONS)
     .nullable()
     .default(null),
   outcomes: z.array(outcomeSchema).min(1).max(100),

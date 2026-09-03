@@ -29,10 +29,16 @@ const PHASE2_QA_DIRECTORY = resolve(
 const PHASE3_QA_DIRECTORY = resolve(
   "docs/assets/active-workout-phase3-qa",
 );
+const PHASE4_QA_DIRECTORY = resolve(
+  "docs/assets/active-workout-phase4-qa",
+);
 
 test.describe.configure({ mode: "serial" });
 
-async function signInAndStartDayA(page: Page) {
+async function signInAndStartDayA(
+  page: Page,
+  settings: { includeWarmups?: boolean; expectLogSet?: boolean } = {},
+) {
   await installNextDevelopmentRefreshControl(page);
   await page.goto("/sign-in");
   await page.waitForLoadState("networkidle");
@@ -44,9 +50,12 @@ async function signInAndStartDayA(page: Page) {
 
   const options = page.locator("summary").filter({ hasText: "Workout options" });
   await options.click();
-  await page
-    .getByRole("checkbox", { name: /Include programmed warm-ups/ })
-    .check();
+  const includeWarmups = settings.includeWarmups ?? true;
+  if (includeWarmups) {
+    await page
+      .getByRole("checkbox", { name: /Include programmed warm-ups/ })
+      .check();
+  }
   const start = page.getByRole("button", {
     name: "Train as planned",
     exact: true,
@@ -55,23 +64,27 @@ async function signInAndStartDayA(page: Page) {
   await start.click();
   await expect(page).toHaveURL(/\/session\/[0-9a-f-]+$/);
 
-  for (
-    let index = 0;
-    index < PRODUCTION_WORKOUT_START_WARMUP.length;
-    index += 1
-  ) {
-    const warmup = index === 0
-      ? page.locator(
-          '#workout-warmup [role="checkbox"][aria-checked="false"]:visible',
-        ).first()
-      : page.getByTestId("active-workout-dock-primary");
-    await expect.poll(() => warmup.getAttribute("aria-label")).toContain(
-      PRODUCTION_WORKOUT_START_WARMUP[index].label,
-    );
-    await waitForHydratedReactHandler(warmup);
-    await warmup.click();
+  if (includeWarmups) {
+    for (
+      let index = 0;
+      index < PRODUCTION_WORKOUT_START_WARMUP.length;
+      index += 1
+    ) {
+      const warmup = index === 0
+        ? page.locator(
+            '#workout-warmup [role="checkbox"][aria-checked="false"]:visible',
+          ).first()
+        : page.getByTestId("active-workout-dock-primary");
+      await expect.poll(() => warmup.getAttribute("aria-label")).toContain(
+        PRODUCTION_WORKOUT_START_WARMUP[index].label,
+      );
+      await waitForHydratedReactHandler(warmup);
+      await warmup.click();
+    }
   }
-  await expect(page.getByTestId("active-log-set")).toBeVisible();
+  if (settings.expectLogSet ?? true) {
+    await expect(page.getByTestId("active-log-set")).toBeVisible();
+  }
 }
 
 async function setFontSize(page: Page, size: "default" | "extra-large") {
@@ -119,6 +132,10 @@ async function captureCurrentBaseline(
   if (process.env.UPDATE_ACTIVE_WORKOUT_PHASE3_QA === "1") {
     await mkdir(PHASE3_QA_DIRECTORY, { recursive: true });
     await writeFile(resolve(PHASE3_QA_DIRECTORY, `${name}.jpg`), image);
+  }
+  if (process.env.UPDATE_ACTIVE_WORKOUT_PHASE4_QA === "1") {
+    await mkdir(PHASE4_QA_DIRECTORY, { recursive: true });
+    await writeFile(resolve(PHASE4_QA_DIRECTORY, `${name}.jpg`), image);
   }
 }
 
@@ -426,6 +443,81 @@ test("records the isolated equipment-decision baseline", async ({
     ACTIVE_WORKOUT_SCREENSHOT_SCENARIOS.equipmentDecision390x844At115,
   );
   await pageErrors.expectNoUnexpected();
+  await discardWorkout(page);
+});
+
+test("records the Phase 4 equipment-unavailable decision", async ({
+  page,
+  browserName,
+}, testInfo) => {
+  expect(process.env.ACTIVE_WORKOUT_PHASE4_EQUIPMENT_CONFLICT_FIXTURE).toBe(
+    "1",
+  );
+  const pageErrors = observeGauntletPageErrors(page, browserName);
+  await signInAndStartDayA(page, {
+    includeWarmups: false,
+    expectLogSet: false,
+  });
+  const equipmentDecision = page.getByRole("region", {
+    name: "Equipment setup for Barbell Back Squat",
+  });
+  await expect(equipmentDecision).toBeVisible();
+  await expect(equipmentDecision).toContainText("Equipment unavailable");
+  await expect(
+    equipmentDecision.getByRole("button", {
+      name: "Replace for today",
+      exact: true,
+    }),
+  ).toBeVisible();
+  await expect(
+    equipmentDecision.getByRole("button", {
+      name: "Skip exercise",
+      exact: true,
+    }),
+  ).toBeVisible();
+  await expect(equipmentDecision).not.toContainText("Log it anyway");
+  await expect(page.getByTestId("active-log-set")).toHaveCount(0);
+  await expect(page.getByTestId("inline-log-set")).toHaveCount(0);
+  await expect(page.getByText(
+    "Resolve the equipment setup before logging this set.",
+    { exact: true },
+  )).toBeVisible();
+  await expect(page.getByTestId("active-workout-dock-primary")).toContainText(
+    "Replace for today",
+  );
+  await captureCurrentBaseline(
+    page,
+    testInfo,
+    ACTIVE_WORKOUT_SCREENSHOT_SCENARIOS.equipmentDecision390x844At115,
+  );
+
+  const replace = page.getByTestId("active-workout-dock-primary");
+  await waitForHydratedReactHandler(replace);
+  await replace.click();
+  await expect(
+    page.getByRole("heading", { name: "Replace for today", exact: true }),
+  ).toBeVisible();
+  await expect(page.getByText(
+    "Reason: Equipment unavailable or incompatible",
+    { exact: true },
+  )).toBeVisible();
+  await page.keyboard.press("Escape");
+
+  const skip = equipmentDecision.getByRole("button", {
+    name: "Skip exercise",
+    exact: true,
+  });
+  await waitForHydratedReactHandler(skip);
+  await skip.click();
+  await expect(
+    page.getByRole("heading", { name: "Skip exercise — why?", exact: true }),
+  ).toBeVisible();
+  await expect(page.getByText(
+    "This records the reason as equipment unavailable or incompatible. Your saved Program remains unchanged.",
+    { exact: true },
+  )).toBeVisible();
+  await pageErrors.expectNoUnexpected();
+  await page.keyboard.press("Escape");
   await discardWorkout(page);
 });
 

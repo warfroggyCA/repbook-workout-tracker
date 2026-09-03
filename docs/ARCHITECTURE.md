@@ -1325,6 +1325,40 @@ retains the current frozen tuple only when the exercise identity is unchanged;
 if it restores a different exercise identity, the equipment meaning becomes
 explicitly unknown.
 
+## Active-workout equipment decision integrity
+
+Migration `0085_active_workout_equipment_reasons` adds
+`equipment_unavailable_incompatible` to `substitution_reason`. It changes no
+existing row and deliberately keeps `equipment_busy` separate: busy is an
+owner-selected replacement cause, while unavailable or incompatible is a
+current owner-scoped equipment-resolution result. Ordinary replacement reasons
+remain `variety`, `equipment_busy`, `discomfort`, and `other`.
+
+The active workout allows set logging only after a compatible exact setup is
+durably selected when reviewed equipment meaning exists. This applies to
+loaded and repetition-only work; repetition-only work proves the current setup
+without inventing a performed load or equipment snapshot on the completed set.
+A compatible but unselected or stale setup routes to **Choose equipment**. A
+known unavailable or incompatible setup routes only to **Replace for today**
+or **Skip exercise**, retains
+`equipment_unavailable_incompatible`, and never falls through to the legacy
+unknown logger. The older `legacy_unknown` plus null-snapshot path remains only
+for exercise evidence with no reviewed setup meaning.
+
+Substitution retains an earlier skip cause rather than clearing it. A direct
+equipment-conflict replacement also records the structured cause on unresolved
+occurrences. Record-version restore returns the exact earlier exercise and
+occurrence evidence. History reads the current session-exercise row first and,
+only when needed, the matching substitution version's `before_data.skip_reason`;
+today's inventory is never historical cause evidence.
+
+Canonical snapshot schema 36 validates the expanded substitution vocabulary in
+both current session-exercise rows and version before/after payloads. Earlier
+snapshot schemas reject a forged future reason before upgrading. Recovery
+manifest 15 keeps the same table inventory and adds decision-evidence integrity
+obligations; the v2 lifecycle audit owns the cross-cutting writer, reader,
+correction, and review inventory.
+
 ## D01 structured redacted diagnostics
 
 D01 replaces arbitrary server log events with one server-only diagnostic

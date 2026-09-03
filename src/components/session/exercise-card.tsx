@@ -53,7 +53,9 @@ import type { ExerciseDiscoveryItem } from "@/lib/exercise-discovery";
 import type {
   ExerciseAlternativeAnnotation,
   ExerciseAlternativeReason,
+  UserSelectedAlternativeReason,
 } from "@/lib/exercise-alternatives";
+import { ALTERNATIVE_REASONS } from "@/lib/exercise-alternatives";
 import { convertWeight, type LoadUnit } from "@/lib/units";
 import {
   Check,
@@ -365,9 +367,10 @@ function performedMetricTypeForLivePatch(
     : null;
 }
 
-const ALTERNATIVE_REASON_LABELS: Record<ExerciseAlternativeReason, string> = {
+const SUBSTITUTION_REASON_LABELS: Record<ExerciseAlternativeReason, string> = {
   variety: "Variety",
   equipment_busy: "Equipment busy",
+  equipment_unavailable_incompatible: "Equipment unavailable or incompatible",
   discomfort: "Discomfort",
   other: "Another reason",
 };
@@ -626,7 +629,9 @@ export type ExerciseAdjustmentIntent =
   | "note"
   | "swap"
   | "replace"
+  | "replace_equipment"
   | "skip"
+  | "skip_equipment"
   | "remove";
 
 export const REPLACEMENT_CATALOG_LOAD_TIMEOUT_MS = 12_000;
@@ -1621,7 +1626,7 @@ export function ExerciseCard({
       movementPattern: candidate.movementPattern,
       cautionBodyParts: candidate.cautionBodyParts,
       modificationType: "substituted",
-      skipReason: null,
+      skipReason: exercise.skipReason,
       substitutedForExerciseId:
         exercise.substitutedForExerciseId ?? exercise.exerciseId,
       substitutionReason: reason,
@@ -1686,6 +1691,7 @@ export function ExerciseCard({
       skipConfirmationPending ||
       !metricSupported ||
       Boolean(occurrenceMutation) ||
+      occurrenceChangesBlocked ||
       rowLoggingBlocked ||
       logRequestKey === occurrenceForRow.id;
     const usesFixedPrimaryAction =
@@ -1834,15 +1840,21 @@ export function ExerciseCard({
                 }}
               />
               {!usesFixedPrimaryAction && (
-                <Button
-                  data-testid="inline-log-set"
-                  type="submit"
-                  form={rowCommitFormId}
-                  className="min-h-12 w-full text-base font-semibold"
-                  disabled={rowLogDisabled}
-                >
-                  <Check className="size-4" /> Log set
-                </Button>
+                occurrenceChangesBlocked ? (
+                  <p className="flex min-h-11 items-center text-sm font-medium text-muted-foreground">
+                    Resolve the equipment setup before logging this set.
+                  </p>
+                ) : (
+                  <Button
+                    data-testid="inline-log-set"
+                    type="submit"
+                    form={rowCommitFormId}
+                    className="min-h-12 w-full text-base font-semibold"
+                    disabled={rowLogDisabled}
+                  >
+                    <Check className="size-4" /> Log set
+                  </Button>
+                )
               )}
             </>
           ) : (
@@ -2580,7 +2592,7 @@ export function ExerciseCard({
                 </p>
                 <p className="mt-1 text-xs text-muted-foreground">
                   Reason: {exercise.substitutionReason
-                    ? ALTERNATIVE_REASON_LABELS[exercise.substitutionReason]
+                    ? SUBSTITUTION_REASON_LABELS[exercise.substitutionReason]
                     : "Not recorded"}. Exercise-specific loads, warm-ups, and cues from the plan do not carry over.
                 </p>
               </div>
@@ -2633,11 +2645,22 @@ export function ExerciseCard({
               <SkipDrawer
                 exerciseId={exercise.id}
                 expectedHistoryRevision={historyRevision}
-                open={adjustIntent === "skip"}
+                open={adjustIntent === "skip" || adjustIntent === "skip_equipment"}
+                forcedReason={
+                  adjustIntent === "skip_equipment"
+                    ? "equipment_unavailable_incompatible"
+                    : undefined
+                }
                 onRequestStart={onSkipRequestStart}
                 onRequestFailure={onSkipRequestFailure}
                 onOpenChange={(open) =>
-                  onAdjustIntentChange(open ? "skip" : null)
+                  onAdjustIntentChange(
+                    open
+                      ? adjustIntent === "skip_equipment"
+                        ? "skip_equipment"
+                        : "skip"
+                      : null,
+                  )
                 }
                 onDone={(reason, resultHistoryRevision) => {
                   onAdjustIntentChange(null);
@@ -2804,9 +2827,23 @@ export function ExerciseCard({
                     <ReplacementDrawer
                       exerciseId={exercise.id}
                       describedBy={`replace-exercise-description-${exercise.id}`}
-                      open={adjustIntent === "replace"}
+                      open={
+                        adjustIntent === "replace" ||
+                        adjustIntent === "replace_equipment"
+                      }
+                      forcedReason={
+                        adjustIntent === "replace_equipment"
+                          ? "equipment_unavailable_incompatible"
+                          : undefined
+                      }
                       onOpenChange={(open) =>
-                        onAdjustIntentChange(open ? "replace" : null)
+                        onAdjustIntentChange(
+                          open
+                            ? adjustIntent === "replace_equipment"
+                              ? "replace_equipment"
+                              : "replace"
+                            : null,
+                        )
                       }
                       onReconcile={reconcileReplacement}
                       onDone={applyReplacement}
@@ -2975,9 +3012,23 @@ export function ExerciseCard({
             <ReplacementDrawer
               exerciseId={exercise.id}
               describedBy={`skip-recovery-description-${exercise.id}`}
-              open={adjustIntent === "replace"}
+              open={
+                adjustIntent === "replace" ||
+                adjustIntent === "replace_equipment"
+              }
+              forcedReason={
+                adjustIntent === "replace_equipment"
+                  ? "equipment_unavailable_incompatible"
+                  : undefined
+              }
               onOpenChange={(open) =>
-                onAdjustIntentChange(open ? "replace" : null)
+                onAdjustIntentChange(
+                  open
+                    ? adjustIntent === "replace_equipment"
+                      ? "replace_equipment"
+                      : "replace"
+                    : null,
+                )
               }
               onReconcile={reconcileReplacement}
               onDone={applyReplacement}
@@ -3738,6 +3789,7 @@ function SkipDrawer({
   onRequestStart,
   onRequestFailure,
   onDone,
+  forcedReason,
 }: {
   exerciseId: string;
   expectedHistoryRevision: number;
@@ -3754,6 +3806,7 @@ function SkipDrawer({
     reason: IncompleteSessionReason,
     historyRevision: number,
   ) => void;
+  forcedReason?: IncompleteSessionReason;
 }) {
   const [pending, startTransition] = useTransition();
   const reasons = [
@@ -3773,6 +3826,39 @@ function SkipDrawer({
     label: string;
   }>;
 
+  function submitReason(reason: IncompleteSessionReason) {
+    onRequestStart(reason);
+    startTransition(async () => {
+      try {
+        const result = await withDocumentActionDeadline(
+          skipExercise({
+            sessionExerciseId: exerciseId,
+            reason,
+            expectedHistoryRevision,
+          }),
+        );
+        if (!result.ok) {
+          if (onRequestFailure(reason, result.code)) {
+            toast.error(result.message);
+          }
+          return;
+        }
+        onDone(reason, result.historyRevision);
+      } catch (error) {
+        if (onRequestFailure(reason)) {
+          if (isDocumentActionTimeout(error)) {
+            reportDocumentActionTimeout();
+            toast.error(
+              "Repbook did not confirm the skip in time. Reload to reconcile the retained request safely.",
+            );
+          } else {
+            toast.error("The exercise could not be skipped.");
+          }
+        }
+      }
+    });
+  }
+
   return (
     <Drawer open={open} onOpenChange={onOpenChange}>
       <DrawerTrigger render={<Button variant="outline" size="sm" />}>
@@ -3783,44 +3869,27 @@ function SkipDrawer({
           <DrawerTitle>Skip exercise — why?</DrawerTitle>
         </DrawerHeader>
         <div className="flex flex-wrap gap-2 px-4 pb-6">
-          {reasons.map((reason) => (
+          {forcedReason ? (
+            <div className="w-full space-y-3">
+              <p className="text-sm text-muted-foreground">
+                This records the reason as equipment unavailable or incompatible.
+                Your saved Program remains unchanged.
+              </p>
+              <Button
+                className="w-full"
+                variant="outline"
+                disabled={pending}
+                onClick={() => submitReason(forcedReason)}
+              >
+                {pending ? "Skipping…" : "Skip exercise"}
+              </Button>
+            </div>
+          ) : reasons.map((reason) => (
             <Button
               key={reason.value}
               variant="outline"
               disabled={pending}
-              onClick={() => {
-                onRequestStart(reason.value);
-                startTransition(async () => {
-                  try {
-                    const result = await withDocumentActionDeadline(
-                      skipExercise({
-                        sessionExerciseId: exerciseId,
-                        reason: reason.value,
-                        expectedHistoryRevision,
-                      }),
-                    );
-                    if (!result.ok) {
-                      if (onRequestFailure(reason.value, result.code)) {
-                        toast.error(result.message);
-                      }
-                      return;
-                    }
-                    onDone(reason.value, result.historyRevision);
-                  } catch (error) {
-                    if (onRequestFailure(reason.value)) {
-                      if (isDocumentActionTimeout(error)) {
-                        reportDocumentActionTimeout();
-                        toast.error(
-                          "Repbook did not confirm the skip in time. Reload to reconcile the retained request safely.",
-                        );
-                      } else {
-                        toast.error("The exercise could not be skipped.");
-                      }
-                    }
-                    return;
-                  }
-                });
-              }}
+              onClick={() => submitReason(reason.value)}
             >
               {reason.label}
             </Button>
@@ -4041,7 +4110,7 @@ function AlternativesDrawer({
     reason: ExerciseAlternativeReason
   ) => void;
 }) {
-  const [reason, setReason] = useState<ExerciseAlternativeReason>("variety");
+  const [reason, setReason] = useState<UserSelectedAlternativeReason>("variety");
   const catalog = useWorkoutExerciseOptions<AlternativeOptions>({
     mode: "alternative",
     exerciseId,
@@ -4076,7 +4145,7 @@ function AlternativesDrawer({
           <div>
             <p className="mb-2 text-sm text-muted-foreground">Why are you changing it?</p>
             <div className="flex flex-wrap gap-2">
-              {(Object.keys(ALTERNATIVE_REASON_LABELS) as ExerciseAlternativeReason[]).map(
+              {ALTERNATIVE_REASONS.map(
                 (value) => (
                   <Button
                     key={value}
@@ -4086,7 +4155,7 @@ function AlternativesDrawer({
                     aria-pressed={reason === value}
                     onClick={() => setReason(value)}
                   >
-                    {ALTERNATIVE_REASON_LABELS[value]}
+                    {SUBSTITUTION_REASON_LABELS[value]}
                   </Button>
                 )
               )}
@@ -4148,6 +4217,7 @@ function ReplacementDrawer({
   onOpenChange,
   onReconcile,
   onDone,
+  forcedReason,
 }: {
   exerciseId: string;
   describedBy: string;
@@ -4162,8 +4232,10 @@ function ReplacementDrawer({
     candidate: ExerciseDiscoveryItem,
     reason: ExerciseAlternativeReason,
   ) => void;
+  forcedReason?: ExerciseAlternativeReason;
 }) {
-  const [reason, setReason] = useState<ExerciseAlternativeReason>("variety");
+  const [reason, setReason] = useState<UserSelectedAlternativeReason>("variety");
+  const effectiveReason = forcedReason ?? reason;
   const [reconciliationRequired, setReconciliationRequired] = useState(false);
   const mutationRef = useRef<{ signature: string; id: string } | null>(null);
   const reconcileOnNextLoadRef = useRef(false);
@@ -4212,19 +4284,28 @@ function ReplacementDrawer({
           />
         }
       >
-        Replace exercise
+        Replace for today
       </DrawerTrigger>
       <DrawerContent className="[&_button]:min-h-11 [&_button]:min-w-11">
         <DrawerHeader>
-          <DrawerTitle>Replace exercise for this workout</DrawerTitle>
+          <DrawerTitle>Replace for today</DrawerTitle>
         </DrawerHeader>
         <div className="max-h-[60dvh] space-y-4 overflow-y-auto px-4 pb-6">
-          <div>
+          {forcedReason ? (
+            <div className="rounded-lg bg-[var(--surface-attention)] px-3 py-2 text-sm">
+              <p className="font-medium">
+                Reason: {SUBSTITUTION_REASON_LABELS[forcedReason]}
+              </p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Repbook verifies this against the current saved equipment before it records the replacement.
+              </p>
+            </div>
+          ) : <div>
             <p className="mb-2 text-sm text-muted-foreground">
               Why are you replacing it?
             </p>
             <div className="flex flex-wrap gap-2">
-              {(Object.keys(ALTERNATIVE_REASON_LABELS) as ExerciseAlternativeReason[]).map(
+              {ALTERNATIVE_REASONS.map(
                 (value) => (
                   <Button
                     key={value}
@@ -4234,12 +4315,12 @@ function ReplacementDrawer({
                     aria-pressed={reason === value}
                     onClick={() => setReason(value)}
                   >
-                    {ALTERNATIVE_REASON_LABELS[value]}
+                    {SUBSTITUTION_REASON_LABELS[value]}
                   </Button>
                 ),
               )}
             </div>
-          </div>
+          </div>}
           {options == null || reconciliationRequired ? (
             <ExerciseOptionsLoadState
               error={
@@ -4265,7 +4346,7 @@ function ReplacementDrawer({
                   (item) => item.id === candidate.id,
                 );
                 if (!selected) return false;
-                const signature = `${options.currentExerciseId}:${selected.id}:${reason}`;
+                const signature = `${options.currentExerciseId}:${selected.id}:${effectiveReason}`;
                 if (mutationRef.current?.signature !== signature) {
                   mutationRef.current = {
                     signature,
@@ -4277,7 +4358,7 @@ function ReplacementDrawer({
                     sessionExerciseId: exerciseId,
                     expectedExerciseId: options.currentExerciseId,
                     newExerciseId: selected.id,
-                    reason,
+                    reason: effectiveReason,
                     clientMutationId: mutationRef.current.id,
                   });
                   if (!result.ok) {
@@ -4295,7 +4376,7 @@ function ReplacementDrawer({
                   mutationRef.current = null;
                   handleOpen(false);
                   setOptions(null);
-                  onDone(selected, reason);
+                  onDone(selected, effectiveReason);
                   return true;
                 } catch {
                   toast.error(

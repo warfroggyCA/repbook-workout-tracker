@@ -497,6 +497,11 @@ export function buildSessionEquipmentPresentation(input: {
       sourceTargetLoad: exercise.targetLoad,
       sourceTargetLoadUnit: exercise.targetLoadUnit,
       exact: exercise.exactRequirement != null,
+      decisionState: options.length > 0
+        ? "ready"
+        : exactResolution.status === "broad_unavailable"
+          ? "unavailable"
+          : "incompatible",
       status: options.length > 0 && exactResolution.status !== "broad_unavailable"
         ? "available"
         : "unavailable",

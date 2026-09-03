@@ -152,8 +152,11 @@ export function WorkoutStatusBar({
     ? "Resolve skipped exercise"
     : currentSetBlockingReason?.startsWith("Complete ")
       ? "Complete preparation"
-      : currentSetBlockingReason?.startsWith("Confirm the equipment")
-        ? "Confirm equipment"
+      : currentSetBlockingReason?.startsWith("Choose equipment")
+        ? "Choose equipment"
+        : currentSetBlockingReason?.startsWith("Equipment unavailable") ||
+            currentSetBlockingReason?.startsWith("Equipment setup incompatible")
+          ? "Replace for today"
         : currentSetBlockingReason?.startsWith("This exercise measurement")
           ? "Review measurement"
           : currentSetBlockingReason
@@ -307,7 +310,7 @@ export function WorkoutStatusBar({
           <button
             type="button"
             data-testid="active-workout-dock-primary"
-            onClick={onShowCurrent}
+            onClick={onPrimaryAction ?? onShowCurrent}
             className="min-h-11 min-w-0 rounded-lg border border-primary/20 bg-primary/5 px-2 py-1 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
             <span className="block break-words text-sm font-semibold leading-tight">

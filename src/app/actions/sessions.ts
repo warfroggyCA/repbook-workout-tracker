@@ -31,7 +31,10 @@ import {
 } from "@/services/exercise-alternatives";
 import { getExerciseReplacementOptions } from "@/services/exercise-replacements";
 import { getExerciseDiscoveryLibrary } from "@/services/exercise-discovery";
-import { ALTERNATIVE_REASONS } from "@/lib/exercise-alternatives";
+import {
+  SUBSTITUTION_REASONS,
+  type ExerciseAlternativeReason,
+} from "@/lib/exercise-alternatives";
 import { isValidIanaTimezone } from "@/lib/workout-calendar";
 import {
   abandonWorkoutSession,
@@ -60,7 +63,10 @@ import {
 import { acceptanceWorkoutNow } from "@/lib/acceptance-workout-clock";
 import type { WorkoutStartState } from "@/lib/workout-start";
 import { isPhase0StartDisposableAcceptanceRuntime } from "@/lib/acceptance-runtime";
-import { mutateSessionEquipmentSelection } from "@/services/session-equipment-selection";
+import {
+  mutateSessionEquipmentSelection,
+  resolveSessionEquipmentAvailability,
+} from "@/services/session-equipment-selection";
 import {
   logSetSchema,
   painSchema,
@@ -806,13 +812,13 @@ export async function getReplacementOptions(sessionExerciseId: string) {
 export async function substituteExercise(input: {
   sessionExerciseId: string;
   newExerciseId: string;
-  reason: (typeof ALTERNATIVE_REASONS)[number];
+  reason: ExerciseAlternativeReason;
 }) {
   const parsed = z
     .object({
       sessionExerciseId: z.string().uuid(),
       newExerciseId: z.string().uuid(),
-      reason: z.enum(ALTERNATIVE_REASONS),
+      reason: z.enum(SUBSTITUTION_REASONS),
     })
     .parse(input);
   const owned = await requireOwnedSessionExercise(
@@ -834,6 +840,22 @@ export async function substituteExercise(input: {
         "That exercise is not a safe alternative for this workout."
     );
   }
+  if (parsed.reason === "equipment_unavailable_incompatible") {
+    const availability = await resolveSessionEquipmentAvailability(
+      db,
+      user.id,
+      sessionExercise.id,
+    );
+    if (
+      availability == null ||
+      !["unavailable", "incompatible"].includes(availability.decisionState)
+    ) {
+      return actionFailure(
+        "equipment_reason_unverified",
+        "Repbook could not verify an unavailable or incompatible equipment state. Review the current setup before replacing this exercise.",
+      );
+    }
+  }
 
   const updated = await updateSessionExerciseWithVersion(
     db,
@@ -842,7 +864,7 @@ export async function substituteExercise(input: {
     {
       exerciseId: target.id,
       modificationType: "substituted",
-      skipReason: null,
+      skipReason: sessionExercise.skipReason,
       substitutedForExerciseId:
         sessionExercise.substitutedForExerciseId ?? sessionExercise.exerciseId,
       substitutionReason: parsed.reason,
@@ -868,7 +890,7 @@ export async function replaceExercise(input: {
   sessionExerciseId: string;
   expectedExerciseId: string;
   newExerciseId: string;
-  reason: (typeof ALTERNATIVE_REASONS)[number];
+  reason: ExerciseAlternativeReason;
   clientMutationId: string;
 }) {
   const parsed = z
@@ -876,7 +898,7 @@ export async function replaceExercise(input: {
       sessionExerciseId: z.string().uuid(),
       expectedExerciseId: z.string().uuid(),
       newExerciseId: z.string().uuid(),
-      reason: z.enum(ALTERNATIVE_REASONS),
+      reason: z.enum(SUBSTITUTION_REASONS),
       clientMutationId: z.string().uuid(),
     })
     .parse(input);
@@ -898,6 +920,22 @@ export async function replaceExercise(input: {
         "That exercise cannot be represented safely in this workout.",
     );
   }
+  if (parsed.reason === "equipment_unavailable_incompatible") {
+    const availability = await resolveSessionEquipmentAvailability(
+      db,
+      user.id,
+      sessionExercise.id,
+    );
+    if (
+      availability == null ||
+      !["unavailable", "incompatible"].includes(availability.decisionState)
+    ) {
+      return actionFailure(
+        "equipment_reason_unverified",
+        "Repbook could not verify an unavailable or incompatible equipment state. Review the current setup before replacing this exercise.",
+      );
+    }
+  }
 
   const updated = await updateSessionExerciseWithVersion(
     db,
@@ -906,7 +944,7 @@ export async function replaceExercise(input: {
     {
       exerciseId: target.id,
       modificationType: "substituted",
-      skipReason: null,
+      skipReason: sessionExercise.skipReason,
       substitutedForExerciseId:
         sessionExercise.substitutedForExerciseId ?? sessionExercise.exerciseId,
       substitutionReason: parsed.reason,

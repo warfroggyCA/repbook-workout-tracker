@@ -716,15 +716,49 @@ Work:
    with omission and round-trip tests.
 7. Build the decision surface using **Choose equipment**, **Replace for today**,
    and **Skip exercise** according to the exact known state. Preserve the
-   existing `log_displayed_unknown` path when no reviewed setup or compatible
-   choice can be resolved, and prove it stores `legacy_unknown` with no
-   equipment snapshot. Never relabel a known conflict as unknown or fabricate
-   performed-equipment evidence.
+   existing `log_displayed_unknown` path only when no reviewed setup meaning
+   exists, and prove it stores `legacy_unknown` with no equipment snapshot.
+   Never relabel a known unavailable or incompatible state as unknown or
+   fabricate performed-equipment evidence.
 
 Exit gate: no historical rewrite or speculative backfill; migration is
 additive and idempotent; preview upgrade and restore tests pass; each cause
 round-trips or remains explicitly unknown; the equipment artboard matches the
 approved hierarchy with the corrected action language.
+
+Implemented Phase 4 contract:
+
+| Current evidence | Active-workout action | Durable meaning |
+|---|---|---|
+| A reviewed compatible setup is already selected | Log the set normally | Loaded work retains the exact equipment snapshot. Repetition-only work requires the same selected setup to remain current but does not fabricate load evidence. |
+| One or more compatible setups exist but none is durably selected, or the earlier selection is stale | **Choose equipment** | No skip or substitution cause is created. Logging waits for the selection to finish saving. |
+| The retained broad requirement is unavailable in saved inventory | **Replace for today** or **Skip exercise** | `equipment_unavailable_incompatible`; the current state is rechecked before a replacement writer accepts that cause. |
+| Saved equipment exists but fails the retained exact setup contract | **Replace for today** or **Skip exercise** | `equipment_unavailable_incompatible`; incompatibility is not relabelled as unknown. |
+| No reviewed setup meaning exists for legacy evidence | Continue through the existing unknown path | `legacy_unknown` with no performed-equipment snapshot; current inventory is not used to invent historical meaning. |
+| The owner makes an ordinary replacement choice | Use the existing reason chooser | `variety`, `equipment_busy`, `discomfort`, or `other`; busy remains an explicit owner choice and is never inferred from unavailability. |
+
+Migration `0085_active_workout_equipment_reasons` adds only the new
+`substitution_reason` enum value. Existing rows are not changed. Skip,
+replacement, occurrence, and record-version writers retain the cause instead
+of clearing it during replacement. History prefers the current retained row
+and may read only the matching substitution version's prior skip reason; it
+never consults today's equipment inventory to explain an earlier workout.
+
+Canonical snapshot schema 36 validates the new reason in current
+`session_exercises` rows and session-exercise version before/after evidence.
+Schema 35 and earlier payloads accept only the reason vocabulary that existed
+at their version, then upgrade without synthesizing the new cause. Recovery
+and lifecycle contracts include the retained decision evidence, with focused
+capture, restore, record-version restore, and omission coverage.
+
+The Phase 4 Chromium evidence at
+`docs/assets/active-workout-phase4-qa/04-equipment-conflict-390x844-115.jpg`
+uses disposable synthetic data at 390 by 844 and 115%. The known conflict owns
+the amber decision surface and the fixed **Replace for today** action; neither
+the card nor fixed area exposes a set-log bypass while the conflict remains.
+All implementation evidence uses disposable synthetic databases. Applying
+migration 0085 to any shared preview or production database remains a separate
+owner-approved operation and is not part of this phase's Pull Request.
 
 ### Phase 5 — complete active-workout state coverage
 

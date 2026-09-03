@@ -87,6 +87,8 @@ type ContextRow = {
   status: string;
   archived_at: Date | string | null;
   current_equipment_snapshot_id: string | null;
+  current_equipment_item_id: string | null;
+  current_attachment_item_id: string | null;
   equipment_requirements_semantics_version: number | null;
   equipment_requirements_snapshot: unknown;
   retained_requirements: SessionEquipmentRequirementsSnapshot | null;
@@ -270,11 +272,18 @@ async function loadContext(db: Db, userId: string, sessionExerciseId: string) {
            session_exercise.target_load,
            session_exercise.target_load_unit::text, session.status,
            session.archived_at, session_exercise.current_equipment_snapshot_id,
+           current_snapshot.equipment_item_id AS current_equipment_item_id,
+           current_snapshot.attachment_item_id AS current_attachment_item_id,
            session_exercise.equipment_requirements_semantics_version,
            session_exercise.equipment_requirements_snapshot
     FROM session_exercises session_exercise
     JOIN workout_sessions session ON session.id = session_exercise.session_id
     JOIN exercises catalog ON catalog.id = session_exercise.exercise_id
+    LEFT JOIN session_equipment_snapshots current_snapshot
+      ON current_snapshot.id = session_exercise.current_equipment_snapshot_id
+     AND current_snapshot.session_exercise_id = session_exercise.id
+     AND current_snapshot.session_id = session.id
+     AND current_snapshot.user_id = session.user_id
     WHERE session_exercise.id = ${sessionExerciseId}::uuid
       AND session.user_id = ${userId}::uuid
     LIMIT 1
@@ -313,6 +322,9 @@ export type SessionEquipmentAvailabilityResolution = {
   exerciseId: string;
   sourceRevision: string;
   availableOptionCount: number;
+  decisionState: "ready" | "unavailable" | "incompatible" | "legacy_unknown";
+  currentSnapshotId: string | null;
+  currentSelectionAvailable: boolean;
   usesPrescribedMeaning: boolean;
   requirementsEvidence: "retained" | "legacy_unknown";
 };
@@ -374,6 +386,14 @@ export async function resolveSessionEquipmentAvailability(
         },
       );
     }) ?? [];
+    const currentSelectionAvailable =
+      context.current_equipment_snapshot_id != null &&
+      context.current_equipment_item_id != null &&
+      availableOptions.some(
+        (option) =>
+          option.equipmentItemId === context.current_equipment_item_id &&
+          option.attachmentItemId === context.current_attachment_item_id,
+      );
     const currentRevision = resultRows(await db.execute(sql`
       SELECT ${sessionEquipmentSelectionSourceRevisionExpression(
         userId,
@@ -395,6 +415,15 @@ export async function resolveSessionEquipmentAvailability(
         exerciseId: context.exercise_id,
         sourceRevision: context.source_revision,
         availableOptionCount: availableOptions.length,
+        decisionState: presentation.setup == null
+          ? "legacy_unknown"
+          : availableOptions.length > 0
+            ? "ready"
+            : presentation.setup.decisionState === "unavailable"
+              ? "unavailable"
+              : "incompatible",
+        currentSnapshotId: context.current_equipment_snapshot_id,
+        currentSelectionAvailable,
         usesPrescribedMeaning: context.uses_prescribed_meaning,
         requirementsEvidence: context.uses_retained_requirements
           ? "retained"
