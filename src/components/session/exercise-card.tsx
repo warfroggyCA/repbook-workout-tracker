@@ -4284,11 +4284,15 @@ function ReplacementDrawer({
           />
         }
       >
-        Replace for today
+        {forcedReason ? "Replace for today" : "Replace exercise"}
       </DrawerTrigger>
       <DrawerContent className="[&_button]:min-h-11 [&_button]:min-w-11">
         <DrawerHeader>
-          <DrawerTitle>Replace for today</DrawerTitle>
+          <DrawerTitle>
+            {forcedReason
+              ? "Replace for today"
+              : "Replace exercise for this workout"}
+          </DrawerTitle>
         </DrawerHeader>
         <div className="max-h-[60dvh] space-y-4 overflow-y-auto px-4 pb-6">
           {forcedReason ? (
