@@ -127,7 +127,7 @@ if (!process.env.PLAYWRIGHT_PRODUCTION_BASE_URL) {
 
     await page
       .getByRole("complementary", { name: "Workout status" })
-      .getByRole("button", { name: /^(?:Review workout finish|Finish workout)$/ })
+      .getByRole("button", { name: /^(?:Review and finish workout|Finish workout)$/ })
       .click();
     await page
       .getByRole("button", { name: "Discard workout", exact: true })

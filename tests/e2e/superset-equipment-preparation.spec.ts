@@ -100,7 +100,7 @@ async function discardWorkout(page: Page) {
   if (!/\/session\/[0-9a-f-]+(?:#.*)?$/.test(page.url())) return;
   await page
     .getByRole("complementary", { name: "Workout status" })
-    .getByRole("button", { name: /^(?:Review workout finish|Finish workout)$/ })
+    .getByRole("button", { name: /^(?:Review and finish workout|Finish workout)$/ })
     .click();
   const finish = page.getByRole("dialog", { name: "Finish workout" });
   await finish
@@ -165,10 +165,7 @@ test("keeps confirmed equipment out of the common path while preserving current-
   await expect(visibleEquipmentSetup).toHaveCount(0);
 
   await page.setViewportSize({ width: 390, height: 844 });
-  const defaultLog = currentCard.getByRole("button", {
-    name: "Log set",
-    exact: true,
-  });
+  const defaultLog = page.getByTestId("active-log-set");
   const defaultLogBox = await defaultLog.boundingBox();
   expect(defaultLogBox?.width ?? 0).toBeGreaterThanOrEqual(44);
   expect(defaultLogBox?.height ?? 0).toBeGreaterThanOrEqual(44);
@@ -453,10 +450,7 @@ test("presents immutable superset order, truthful progress, and next-member equi
     laterMemberCard.getByRole("button", { name: "Log set", exact: true }),
   ).toHaveCount(0);
   await expect(
-    currentCard.getByRole("button", {
-      name: "Log set",
-      exact: true,
-    }),
+    page.getByTestId("active-log-set"),
   ).toBeVisible();
 
   const firstMember = mobileGroupDetails.getByRole("link", {

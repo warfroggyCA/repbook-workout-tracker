@@ -929,6 +929,7 @@ describe("ExerciseCard", () => {
           completedSetId: null,
         }}
         isCurrentExercise
+        fixedPrimaryActionAvailable
         nextActionLabel="Barbell Squat, set 2"
         onPatch={() => undefined}
         onQueueSet={async () => true}
@@ -999,14 +1000,15 @@ describe("ExerciseCard", () => {
     expect(html.indexOf("Current action")).toBeLessThan(
       html.indexOf("Warm-up guidance"),
     );
-    expect(html.match(/Log set/g)).toHaveLength(1);
+    expect(html.match(/data-testid="active-set-commit-form"/g)).toHaveLength(1);
+    expect(html).not.toContain('data-testid="inline-log-set"');
     expect(html).toContain("Ask Coach gives guidance");
     expect(html).toContain("Change exercise for this workout");
     expect(html).toContain("Compatible alternatives");
     expect(html).toContain("Replace exercise");
     expect(html).toContain('data-testid="replace-current-exercise"');
     expect(html).toContain("without similarity ranking");
-    expect(html).toContain("Log set");
+    expect(html).toContain('data-log-disabled="false"');
     expect(html).toContain("Skip set");
     expect(html).toContain("Add extra set");
     expect(html).toContain(
@@ -1112,6 +1114,35 @@ describe("ExerciseCard", () => {
     const extraRow = extraRowHtml.slice(extraRowStart, extraRowEnd);
     expect(extraRow).toContain("130 lb × 7 reps · source set 3");
     expect(extraRow).not.toContain("100 lb × 7 reps · source set 1");
+    expect(extraRow).toContain('data-testid="inline-log-set"');
+
+    const currentExtraRowHtml = renderToStaticMarkup(cloneElement(card, {
+      activeOccurrence: extraOccurrence,
+      workingOccurrences: [
+        {
+          ...currentOccurrence,
+          outcome: "skipped",
+          outcomeReason: "time_limit_reached",
+          revision: 1,
+          resolvedAt: "2026-08-10T14:20:00.000Z",
+        },
+        extraOccurrence,
+      ],
+    }));
+    const currentExtraRowStart = currentExtraRowHtml.indexOf(
+      `id="added-set-entry-${current.id}-${extraOccurrence.id}"`,
+    );
+    expect(currentExtraRowStart).toBeGreaterThan(-1);
+    const currentExtraRowEnd = currentExtraRowHtml.indexOf(
+      "</li>",
+      currentExtraRowStart,
+    );
+    const currentExtraRow = currentExtraRowHtml.slice(
+      currentExtraRowStart,
+      currentExtraRowEnd,
+    );
+    expect(currentExtraRow).toContain('data-testid="active-set-commit-form"');
+    expect(currentExtraRow).not.toContain('data-testid="inline-log-set"');
 
     const replacementExerciseId = "00000000-0000-4000-8000-000000000069";
     const substitutedWithStaleEvidence = renderToStaticMarkup(cloneElement(card, {
@@ -1324,6 +1355,7 @@ describe("ExerciseCard", () => {
           completedSetId: null,
         }}
         isCurrentExercise
+        fixedPrimaryActionAvailable
         workingOccurrences={occurrences}
         nextActionLabel={nextActionLabel}
         onPatch={() => undefined}
@@ -1467,11 +1499,11 @@ describe("ExerciseCard", () => {
     expect(exact).toContain("Discard device copy");
     expect(exact).not.toContain("Refresh workout");
     expect(exact).toContain('data-testid="current-set-entry"');
-    const exactLogButton = exact.match(
-      /<button[^>]*data-testid="active-log-set"[^>]*>/,
+    const exactCommitForm = exact.match(
+      /<form[^>]*data-testid="active-set-commit-form"[^>]*>/,
     )?.[0];
-    expect(exactLogButton).toBeDefined();
-    expect(exactLogButton).not.toMatch(/\sdisabled(?:=|>|\s)/);
+    expect(exactCommitForm).toBeDefined();
+    expect(exactCommitForm).toContain('data-log-disabled="false"');
     expect(exact.indexOf("Current action")).toBeLessThan(
       exact.indexOf("Save failed"),
     );
@@ -1541,7 +1573,7 @@ describe("ExerciseCard", () => {
       "Resolve the exercise skip before logging sets.",
     );
     expect(failedSkipRecovery).not.toContain(
-      'data-testid="active-log-set"',
+      'data-testid="active-set-commit-form"',
     );
 
     const mismatched = renderToStaticMarkup(
@@ -1569,9 +1601,9 @@ describe("ExerciseCard", () => {
     );
     expect(
       mismatched.match(
-        /<button[^>]*data-testid="active-log-set"[^>]*>/,
+        /<form[^>]*data-testid="active-set-commit-form"[^>]*>/,
       )?.[0],
-    ).toMatch(/\sdisabled(?:=|>|\s)/);
+    ).toContain('data-log-disabled="true"');
 
     const fallback = renderToStaticMarkup(
       <ExerciseCard

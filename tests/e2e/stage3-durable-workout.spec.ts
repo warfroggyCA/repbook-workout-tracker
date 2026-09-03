@@ -268,14 +268,16 @@ test("publishes and preserves durable warm-up and grouped workout outcomes", asy
   await expect(workoutStatus.getByRole("button", {
     name: /Show Romanian Deadlift/i,
   })).toHaveCount(0);
-  await expect(page.getByTestId("active-log-set")).toHaveAccessibleName("Log set");
+  await expect(page.getByTestId("active-log-set")).toHaveAccessibleName(
+    /^Log set \d+$/,
+  );
   await expect(workoutStatus.getByTestId("active-workout-dock-primary")).toHaveCount(0);
   await screenshot(page, "03-warmup-restored-and-completed.png");
   await waitForEquipmentSelectionsToSettle(page);
 
   const nextSet = page.getByTestId("current-exercise-card");
   await expect(nextSet.getByRole("heading", { level: 2 })).toHaveText("Romanian Deadlift");
-  await nextSet.getByRole("button", { name: "Log set", exact: true }).click();
+  await page.getByTestId("active-log-set").click();
   await expect(nextSet).toHaveCount(0);
   await expect(workoutStatus.getByLabel("Rest timer")).toContainText(
     /Next: .*Barbell Overhead Press/,
@@ -338,7 +340,7 @@ test("publishes and preserves durable warm-up and grouped workout outcomes", asy
   await expect(workoutGuidance).not.toContainText("Next:");
   await expect(nextSet).toContainText("Next action");
   await expect(nextSet).toContainText("Romanian Deadlift");
-  await nextSet.getByRole("button", { name: "Log set", exact: true }).click();
+  await page.getByTestId("active-log-set").click();
   await expect(alternatives).toHaveCount(0);
   await expect(nextSet).toHaveCount(0);
   await expect(workoutStatus.getByLabel("Rest timer")).toContainText(/0:(?:2[5-9]|30)/);
@@ -371,7 +373,7 @@ test("publishes and preserves durable warm-up and grouped workout outcomes", asy
   await screenshot(page, "06-group-round-reload-continuity.png");
 
   await page.getByRole("complementary", { name: "Workout status" })
-    .getByRole("button", { name: /^(?:Review workout finish|Finish workout)$/ }).click();
+    .getByRole("button", { name: /^(?:Review and finish workout|Finish workout)$/ }).click();
   const finish = page.getByRole("dialog", { name: "Finish workout" });
   await expect(finish).toContainText(/2 of \d+ planned sets done/);
   await expect(finish).toContainText(/1 skipped · \d+ still pending/);

@@ -69,7 +69,9 @@ async function completeWarmupsToFirstWorkingSet(page: Page) {
   }
   await expect(page.getByTestId("active-workout-dock-primary")).toHaveCount(0);
   await expect(currentSetDockAction(page)).toHaveCount(0);
-  await expect(page.getByTestId("active-log-set")).toHaveAccessibleName("Log set");
+  await expect(page.getByTestId("active-log-set")).toHaveAccessibleName(
+    /^Log set \d+$/,
+  );
 }
 
 function currentSetDockAction(page: Page) {
@@ -172,7 +174,7 @@ async function expectPrimaryActionUnobstructed(locator: Locator) {
       parentClass: element.parentElement?.className ?? null,
       finishRect: (() => {
         const finish = document.querySelector<HTMLElement>(
-          '[aria-label="Review workout finish"], [aria-label="Finish workout"]',
+          '[aria-label="Review and finish workout"], [aria-label="Finish workout"]',
         );
         const bounds = finish?.getBoundingClientRect();
         return bounds == null
@@ -280,11 +282,13 @@ test.describe("reduced-motion active workout", () => {
       await completeWarmupsToFirstWorkingSet(page);
 
       const firstWorkingSetAction = page.getByTestId("active-log-set");
-      await expect(firstWorkingSetAction).toHaveAccessibleName("Log set");
+      await expect(firstWorkingSetAction).toHaveAccessibleName(
+        /^Log set \d+$/,
+      );
       await expectPrimaryActionUnobstructed(firstWorkingSetAction);
 
       await page.getByRole("button", {
-        name: "Review workout finish",
+        name: "Review and finish workout",
         exact: true,
       }).click();
       await page.getByRole("button", {
@@ -362,7 +366,9 @@ test("keeps attention continuous through warm-up, first set, and exact recovery 
           }
         }
         const firstWorkingSetAction = page.getByTestId("active-log-set");
-        await expect(firstWorkingSetAction).toHaveAccessibleName("Log set");
+        await expect(firstWorkingSetAction).toHaveAccessibleName(
+          /^Log set \d+$/,
+        );
         await waitForHydratedReactHandler(firstWorkingSetAction);
         await expectPrimaryActionUnobstructed(firstWorkingSetAction);
         await testInfo.attach("first-working-set-extra-large-390x844", {
@@ -482,6 +488,8 @@ test("keeps attention continuous through warm-up, first set, and exact recovery 
           window.dispatchEvent(new Event("workout-set-outbox-change"));
         });
 
+        const failedSetAlert = page.getByTestId("workout-recovery-status");
+        await expect(failedSetAlert).toBeFocused({ timeout: 25_000 });
         const recoveryStatus = page.getByRole("button", {
           name: "Open sets waiting to save",
           exact: true,
@@ -603,8 +611,10 @@ async function revealCurrentFromStatusBar(page: Page) {
       '[aria-label="Workout status"]',
     );
     if (!log || !dock) return false;
-    return log.getBoundingClientRect().bottom <=
-      dock.getBoundingClientRect().top - 8;
+    const logBounds = log.getBoundingClientRect();
+    const dockBounds = dock.getBoundingClientRect();
+    return logBounds.top >= dockBounds.top &&
+      logBounds.bottom <= dockBounds.bottom;
   })).toBe(true);
 }
 
@@ -649,7 +659,9 @@ async function compactGeometry(page: Page) {
       previousBeforeLog: previousRect.bottom <= logRect.top,
       inputBeforeLog:
         firstInputRect != null && firstInputRect.bottom <= logRect.top,
-      logClearsDock: logRect.bottom <= dockElement.getBoundingClientRect().top - 8,
+      logInsideDock:
+        logRect.top >= dockElement.getBoundingClientRect().top &&
+        logRect.bottom <= dockElement.getBoundingClientRect().bottom,
       logBottom: logRect.bottom,
       dockTop: dockElement.getBoundingClientRect().top,
       primaryTop: primaryRect.top,
@@ -695,7 +707,7 @@ async function discardWorkout(page: Page) {
     const finish = page
       .getByRole("complementary", { name: "Workout status" })
       .getByRole("button", {
-        name: /^(?:Review workout finish|Finish workout)$/,
+        name: /^(?:Review and finish workout|Finish workout)$/,
       });
     await waitForHydratedReactHandler(finish);
     await finish.click();
@@ -762,25 +774,25 @@ test("keeps the ordinary active set current-first, unobstructed, and acknowledge
     await expect(exerciseDetails).not.toHaveAttribute("open", "");
     await expect(
       currentEntry.getByRole("button", { name: "Log set", exact: true }),
-    ).toHaveCount(1);
+    ).toHaveCount(0);
+    await expect(page.getByTestId("active-log-set")).toHaveCount(1);
     await expect(
       page.getByRole("region", { name: "Workout progress and upcoming work" }),
     ).not.toContainText("Next:");
 
-    const orderedVisibleActions = [
+    const orderedVisibleContent = [
       currentEntry.getByTestId("current-set-target"),
       currentEntry.getByText("Performed measure", { exact: true }),
       currentEntry.getByLabel("Total load", { exact: true }),
       currentEntry.getByTestId("previous-comparable-set"),
-      currentEntry.getByRole("button", { name: "Log set", exact: true }),
       secondaryActions,
       exerciseDetails.locator(":scope > summary"),
     ];
-    for (const action of orderedVisibleActions) await expect(action).toBeVisible();
+    for (const action of orderedVisibleContent) await expect(action).toBeVisible();
     await page.evaluate(() => document.fonts.ready);
     await expect.poll(async () => {
       const actionBounds = await Promise.all(
-        orderedVisibleActions.map((action) => action.boundingBox()),
+        orderedVisibleContent.map((action) => action.boundingBox()),
       );
       return actionBounds.every((bounds) => bounds !== null) &&
         actionBounds.slice(1).every(
@@ -791,7 +803,7 @@ test("keeps the ordinary active set current-first, unobstructed, and acknowledge
     const primaryTargets = [
       currentEntry.getByLabel("Total load", { exact: true }),
       currentEntry.getByRole("textbox", { name: "Reps", exact: true }),
-      currentEntry.getByRole("button", { name: "Log set", exact: true }),
+      page.getByTestId("active-log-set"),
       exerciseDetails.locator(":scope > summary"),
     ];
     for (const target of primaryTargets) await expectReachableTarget(target);
@@ -803,10 +815,7 @@ test("keeps the ordinary active set current-first, unobstructed, and acknowledge
           document.documentElement.clientWidth,
       ),
     ).toBeLessThanOrEqual(1);
-    const logSet = currentEntry.getByRole("button", {
-      name: "Log set",
-      exact: true,
-    });
+    const logSet = page.getByTestId("active-log-set");
     const currentEquipmentSetup = page
       .getByTestId("exercise-equipment-setup")
       .filter({ hasText: "Barbell Back Squat" });
@@ -861,7 +870,9 @@ test("keeps the ordinary active set current-first, unobstructed, and acknowledge
     );
     await expectPrimaryActionUnobstructed(setTwoDockAction);
     await setTwoDockAction.click();
-    await expect(page.getByTestId("active-log-set")).toHaveAccessibleName("Log set");
+    await expect(page.getByTestId("active-log-set")).toHaveAccessibleName(
+      "Log set 2",
+    );
     await expect(workoutStatus.getByRole("button", {
       name: "Skip rest",
       exact: true,
@@ -902,7 +913,7 @@ test("keeps the ordinary active set current-first, unobstructed, and acknowledge
       inputBeforePrevious: true,
       previousBeforeLog: true,
       inputBeforeLog: true,
-      logClearsDock: true,
+      logInsideDock: true,
     });
   } finally {
     await discardWorkout(page);
@@ -923,7 +934,7 @@ test("fits the complete primary logging action at 390x844 with keyboard disclosu
     const currentEntry = currentCard.getByTestId("current-set-entry");
     const primary = currentEntry.getByTestId("active-workout-primary");
     const previous = primary.getByTestId("previous-comparable-set");
-    const log = primary.getByRole("button", { name: "Log set", exact: true });
+    const log = page.getByTestId("active-log-set");
 
     await expect(previous).toBeVisible();
     let terminalComparison:
@@ -967,6 +978,7 @@ test("fits the complete primary logging action at 390x844 with keyboard disclosu
     await expect(currentSetDockAction(page)).toHaveCount(0);
     await revealCurrentFromStatusBar(page);
     await expect(currentEntry).toContainText("Set 1");
+    await expect(currentEntry).toBeFocused({ timeout: 25_000 });
     await expect(page.getByTestId("active-set-save-receipt")).toHaveCount(0);
     await expect(page.getByTestId("active-workout-dock-primary")).toHaveCount(0);
     await expect(currentSetDockAction(page)).toHaveCount(0);
@@ -977,7 +989,7 @@ test("fits the complete primary logging action at 390x844 with keyboard disclosu
       inputBeforePrevious: true,
       previousBeforeLog: true,
       inputBeforeLog: true,
-      logClearsDock: true,
+      logInsideDock: true,
     });
     expect(geometry.primaryHeight).toBeLessThanOrEqual(560);
     expect(geometry.disclosures.every((item) => !item.open)).toBe(true);
@@ -989,7 +1001,7 @@ test("fits the complete primary logging action at 390x844 with keyboard disclosu
     ).toBe(true);
     expect(geometry.minimumInputWidth).toBeGreaterThanOrEqual(44);
     expect(geometry.horizontalOverflow).toBeLessThanOrEqual(1);
-    await expect(page.getByRole("button", { name: "Log set", exact: true })).toHaveCount(1);
+    await expect(page.getByTestId("active-log-set")).toHaveCount(1);
 
     const exerciseDetails = currentCard.getByTestId("active-exercise-details");
     const exerciseDetailsSummary = exerciseDetails.locator(":scope > summary");
@@ -1009,6 +1021,7 @@ test("fits the complete primary logging action at 390x844 with keyboard disclosu
     await expect(
       exerciseDetails.getByRole("heading", { name: "Exercise actions", exact: true }),
     ).toBeVisible();
+    await expect(exerciseDetailsSummary).toBeFocused();
     await page.keyboard.press("Space");
     await expect(exerciseDetails).not.toHaveAttribute("open", "");
 
@@ -1030,7 +1043,7 @@ test("fits the complete primary logging action at 390x844 with keyboard disclosu
     for (const target of [
       extraLargeEntry.getByLabel("Total load", { exact: true }),
       extraLargeEntry.getByRole("textbox", { name: "Reps", exact: true }),
-      extraLargeEntry.getByRole("button", { name: "Log set", exact: true }),
+      page.getByTestId("active-log-set"),
     ]) {
       await expectReachableTarget(target);
     }
@@ -1047,7 +1060,7 @@ test("fits the complete primary logging action at 390x844 with keyboard disclosu
       inputBeforePrevious: true,
       previousBeforeLog: true,
       inputBeforeLog: true,
-      logClearsDock: true,
+      logInsideDock: true,
     });
     expect(
       extraLargeGeometry.primaryHeight,

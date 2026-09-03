@@ -596,6 +596,40 @@ Exit gate: the stray-Enter regression passes; all essential controls remain
 visible at 145%; no named viewport overflows; focused fields and recovery
 messages remain above the fixed area and software keyboard.
 
+Phase 2 implementation evidence remains reviewable with the code:
+
+- The fixed **Log set N** control submits the exact current ledger row through
+  an HTML form association. The existing exercise-card handler, occurrence
+  identity, synchronous duplicate guard, queue, and writer remain authoritative;
+  no second save path was introduced.
+- Post-log and post-rest focus lands on an explicit, inert rest or current-row
+  target. Each exact current-set form remounts its fixed submit control; on a
+  direct no-rest transition, focus leaves that replaced control for the new row
+  before acknowledgement, so a repeated Enter cannot submit the next set's
+  prefilled values. A failed retained write gives focus to its recovery alert.
+  A focused current row or field is re-revealed after text-size, window, or
+  visual-viewport changes without focusing a decrement or increment control.
+- The extra-large narrow-screen rule stacks measure and load-provenance rows;
+  it no longer hides `.active-set-stepper` controls or truncates the starting-
+  load source.
+- The measured fixed-area height continues to own bottom content and device-
+  queue offsets. The workout content padding consumes that measured value with
+  safe-area fallback instead of duplicating a guessed fixed height.
+- The North Star browser contract now proves the stray-Enter invariant, exact
+  action names, 44-pixel stepper targets, fixed-area clearance, and no
+  horizontal overflow at 390×844 and 320×700 with 145% text. The execution and
+  hierarchy suites additionally prove a held no-rest acknowledgement cannot
+  turn a second Enter into another write and a failed retained save owns focus.
+- `design-qa.md` and `docs/assets/active-workout-phase2-qa/` retain equal-size
+  source/implementation comparisons for the named Phase 2 viewports. Neutral
+  nonblocking rest remains Phase 3; equipment decisions and persisted reasons
+  remain Phase 4.
+
+Phase 2 changes presentation, focus orchestration, and tests only. It adds no
+schema or migration, rewrites no history, and does not change set, outbox,
+acknowledgement, equipment-snapshot, import/export, recovery, Coach, Program,
+or production-data contracts.
+
 ### Phase 3 — neutral, nonblocking rest
 
 Objective: make rest informative without taking the next set away.

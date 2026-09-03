@@ -154,7 +154,7 @@ async function signInAndStartWorkout(page: import("@playwright/test").Page) {
     await expect(page).toHaveURL(/\/session\/[0-9a-f-]+(?:#.*)?$/);
     await page
       .getByRole("complementary", { name: "Workout status" })
-      .getByRole("button", { name: /^(?:Review workout finish|Finish workout)$/ })
+      .getByRole("button", { name: /^(?:Review and finish workout|Finish workout)$/ })
       .click();
     await confirmActiveWorkoutDiscard(page);
     await expect(page).toHaveURL(/\/today$/);
@@ -206,7 +206,7 @@ async function abandonActiveWorkout(
   await expect(page).toHaveURL(/\/session\/[0-9a-f-]+(?:#.*)?$/);
   await page
     .getByRole("complementary", { name: "Workout status" })
-    .getByRole("button", { name: /^(?:Review workout finish|Finish workout)$/ })
+    .getByRole("button", { name: /^(?:Review and finish workout|Finish workout)$/ })
     .click();
   await confirmActiveWorkoutDiscard(page);
   await expect(page).toHaveURL(/\/today$/);
@@ -549,7 +549,7 @@ async function verifyDecisiveToday({
   const finishReopenedWorkout = page
     .getByRole("complementary", { name: "Workout status" })
     .getByRole("button", {
-      name: /^(?:Review workout finish|Finish workout)$/,
+      name: /^(?:Review and finish workout|Finish workout)$/,
     });
   await waitForReactHandler(finishReopenedWorkout);
   await finishReopenedWorkout.click();
@@ -1627,9 +1627,7 @@ test("shows one ambient insight without sending it to Coach", async ({
   await currentExercise
     .getByRole("textbox", { name: "Reps", exact: true })
     .fill("10");
-  await currentExercise
-    .getByRole("button", { name: "Log set", exact: true })
-    .click();
+  await page.getByTestId("active-log-set").click();
   const firstRomanianDeadlift = page.getByRole("region", {
     name: "Romanian Deadlift",
     exact: true,
@@ -1644,7 +1642,7 @@ test("shows one ambient insight without sending it to Coach", async ({
   await page
     .getByRole("complementary", { name: "Workout status" })
     .getByRole("button", {
-      name: /^(?:Review workout finish|Finish workout)$/,
+      name: /^(?:Review and finish workout|Finish workout)$/,
     })
     .click();
   let finish = page.getByRole("dialog", { name: "Finish workout" });
@@ -1688,9 +1686,7 @@ test("shows one ambient insight without sending it to Coach", async ({
   await currentExercise
     .getByRole("textbox", { name: "Reps", exact: true })
     .fill("10");
-  await currentExercise
-    .getByRole("button", { name: "Log set", exact: true })
-    .click();
+  await page.getByTestId("active-log-set").click();
   await dismissRestCockpit(page);
 
   const insight = page.getByTestId("athlete-insight-active_set");
@@ -1701,19 +1697,16 @@ test("shows one ambient insight without sending it to Coach", async ({
   await expect(
     insight.getByText("How calculated", { exact: true }),
   ).toBeVisible();
-  const activeLogSet = currentExercise.getByTestId("active-log-set");
+  const activeLogSet = page.getByTestId("active-log-set");
   await expect(activeLogSet).toBeVisible();
-  expect(
-    await activeLogSet.evaluate((button) => {
-      const renderedInsight = document.querySelector(
-        '[data-testid="athlete-insight-active_set"]',
-      );
-      return renderedInsight != null && Boolean(
-        button.compareDocumentPosition(renderedInsight) &
-          Node.DOCUMENT_POSITION_FOLLOWING,
-      );
-    }),
-  ).toBe(true);
+  await expect(
+    page
+      .getByRole("complementary", { name: "Workout status" })
+      .getByTestId("active-log-set"),
+  ).toBeVisible();
+  await expect(
+    currentExercise.getByTestId("athlete-insight-active_set"),
+  ).toHaveCount(1);
 
   await insight.getByRole("button", { name: "Explain", exact: true }).click();
   const coach = page.getByRole("dialog", { name: "Live Coach" });
@@ -1760,7 +1753,7 @@ test("shows one ambient insight without sending it to Coach", async ({
   await page
     .getByRole("complementary", { name: "Workout status" })
     .getByRole("button", {
-      name: /^(?:Review workout finish|Finish workout)$/,
+      name: /^(?:Review and finish workout|Finish workout)$/,
     })
     .click();
   finish = page.getByRole("dialog", { name: "Finish workout" });
@@ -1837,9 +1830,7 @@ test("signs in and completes a durable workout flow", async ({ page }) => {
     }
     await route.continue();
   });
-  await nextSet
-    .getByRole("button", { name: "Log set", exact: true })
-    .click();
+  await page.getByTestId("active-log-set").click();
   await expect.poll(() => saveStarted).toBe(true);
   await expectRestCockpit(page);
   await expect(nextSet).toHaveCount(0);
@@ -1870,7 +1861,7 @@ test("signs in and completes a durable workout flow", async ({ page }) => {
     .toMatch(/^[0-9a-f-]+$/);
   await dismissRestCockpit(page);
   await expect(
-    nextSet.getByRole("button", { name: "Log set", exact: true })
+    page.getByTestId("active-log-set")
   ).toBeEnabled();
   await openNativeDetails(firstExercise.getByTestId("active-exercise-details"));
   await firstExercise
@@ -1908,7 +1899,7 @@ test("signs in and completes a durable workout flow", async ({ page }) => {
 
   await page
     .getByRole("complementary", { name: "Workout status" })
-    .getByRole("button", { name: /^(?:Review workout finish|Finish workout)$/ })
+    .getByRole("button", { name: /^(?:Review and finish workout|Finish workout)$/ })
     .click();
   const finish = page.getByRole("dialog", { name: "Finish workout" });
   await expect(finish).toBeVisible();
@@ -1996,7 +1987,7 @@ test("keeps every active-workout route reachable with one scroll surface", async
     name: "Workout progress and upcoming work",
   });
 
-  await expect(currentCard.getByRole("button", { name: "Log set", exact: true })).toBeVisible();
+  await expect(page.getByTestId("active-log-set")).toBeVisible();
   await openNativeDetails(
     currentCard.getByTestId("active-exercise-details"),
   );
@@ -2037,7 +2028,7 @@ test("keeps every active-workout route reachable with one scroll surface", async
     await expect(currentCard.getByRole("button", { name: new RegExp(`^${shortcut}`) })).toBeVisible();
   }
   await expect(statusBar.getByRole("button", { name: "Add training note", exact: true })).toBeVisible();
-  await expect(statusBar.getByRole("button", { name: /^(?:Review workout finish|Finish workout)$/ })).toBeVisible();
+  await expect(statusBar.getByRole("button", { name: /^(?:Review and finish workout|Finish workout)$/ })).toBeVisible();
   await expect(orientation).not.toContainText("Next:");
   await expect(currentCard).toContainText("Next action");
 
@@ -2070,7 +2061,7 @@ test("keeps every active-workout route reachable with one scroll surface", async
     for (const width of [320, 375, 390, 440]) {
       await page.setViewportSize({ width, height: 844 });
       await expect(statusBar).toBeVisible();
-      await expect(currentCard.getByRole("button", { name: "Log set", exact: true })).toBeVisible();
+      await expect(page.getByTestId("active-log-set")).toBeVisible();
       expect(
         await page.evaluate(
           () =>
@@ -2098,10 +2089,7 @@ test("keeps every active-workout route reachable with one scroll surface", async
       expect(statusBox.y + statusBox.height).toBeLessThanOrEqual(
         lowerBoundary + 1,
       );
-      const logSetButton = currentCard.getByRole("button", {
-        name: "Log set",
-        exact: true,
-      });
+      const logSetButton = page.getByTestId("active-log-set");
       await logSetButton.evaluate((element) =>
         element.scrollIntoView({ block: "center" }),
       );
@@ -2112,8 +2100,12 @@ test("keeps every active-workout route reachable with one scroll surface", async
       if (!reachableLogBox || !settledStatusBox) {
         throw new Error("The primary set action or status bar was not measurable.");
       }
+      expect(reachableLogBox.y)
+        .toBeGreaterThanOrEqual(settledStatusBox.y - 1);
       expect(reachableLogBox.y + reachableLogBox.height)
-        .toBeLessThanOrEqual(settledStatusBox.y + 1);
+        .toBeLessThanOrEqual(
+          settledStatusBox.y + settledStatusBox.height + 1,
+        );
       await testInfo.attach(`active-workout-${fontSize}-${width}px`, {
         body: await page.screenshot({ fullPage: true }),
         contentType: "image/png",
@@ -2261,7 +2253,7 @@ test("keeps every active-workout route reachable with one scroll surface", async
     }),
   ).toBeDisabled();
 
-  await statusBar.getByRole("button", { name: /^(?:Review workout finish|Finish workout)$/ }).click();
+  await statusBar.getByRole("button", { name: /^(?:Review and finish workout|Finish workout)$/ }).click();
   const finish = page.getByRole("dialog", { name: "Finish workout" });
   await expect(finish.getByRole("button", { name: /^(?:Finish early|Save workout)$/ })).toBeVisible();
   await expect(finish.getByRole("button", { name: "Discard workout", exact: true })).toBeVisible();
@@ -2366,9 +2358,9 @@ test("keeps pain and substitution lineage reconstructable through History", asyn
 
   await openNativeDetails(nextSet.getByTestId("active-exercise-details"));
   await nextSet.getByLabel("Set note (optional)", { exact: true }).fill(setNote);
-  await nextSet.getByRole("button", { name: "Log set", exact: true }).click();
+  await page.getByTestId("active-log-set").click();
   await expectRestCockpit(page);
-  await workoutStatus.getByRole("button", { name: /^(?:Review workout finish|Finish workout)$/ }).click();
+  await workoutStatus.getByRole("button", { name: /^(?:Review and finish workout|Finish workout)$/ }).click();
   await page
     .getByLabel("Why are you finishing this workout early?")
     .selectOption("user_choice");
@@ -2403,7 +2395,7 @@ test("keeps the final set acknowledgement visible through background return", as
     "";
 
   for (let setNo = 1; setNo <= 2; setNo += 1) {
-    await nextSet.getByRole("button", { name: "Log set", exact: true }).click();
+    await page.getByTestId("active-log-set").click();
     await dismissRestCockpit(page);
     await expect(nextSet.getByTestId("current-set-entry")).toContainText(
       `Set ${setNo + 1}`,
@@ -2426,7 +2418,7 @@ test("keeps the final set acknowledgement visible through background return", as
     }
     await route.continue();
   });
-  await nextSet.getByRole("button", { name: "Log set", exact: true }).click();
+  await page.getByTestId("active-log-set").click();
   await expect.poll(() => finalStarted).toBe(true);
   await expectRestCockpit(page);
   await expect(nextSet).toHaveCount(0);
@@ -2463,7 +2455,7 @@ test("keeps the final set acknowledgement visible through background return", as
 
   await page
     .getByRole("complementary", { name: "Workout status" })
-    .getByRole("button", { name: /^(?:Review workout finish|Finish workout)$/ })
+    .getByRole("button", { name: /^(?:Review and finish workout|Finish workout)$/ })
     .click();
   await confirmActiveWorkoutDiscard(page);
   await expect(page).toHaveURL(/\/today$/);
@@ -3042,9 +3034,7 @@ test("keeps an offline set visible while the next set stays available", async ({
   await note.fill(offlineSetNote);
 
   await context.setOffline(true);
-  await nextSet
-    .getByRole("button", { name: "Log set", exact: true })
-    .click();
+  await page.getByTestId("active-log-set").click();
   await expect(
     firstExercise.getByText("Unsaved on this device", { exact: true })
   ).toBeVisible();
@@ -3060,12 +3050,12 @@ test("keeps an offline set visible while the next set stays available", async ({
     .toBe(offlineSetNote);
 
   await dismissRestCockpit(page);
-  await expect(nextSet.getByRole("button", { name: "Log set", exact: true }))
+  await expect(page.getByTestId("active-log-set"))
     .toBeEnabled();
 
   await page
     .getByRole("complementary", { name: "Workout status" })
-    .getByRole("button", { name: /^(?:Review workout finish|Finish workout)$/ })
+    .getByRole("button", { name: /^(?:Review and finish workout|Finish workout)$/ })
     .click();
   await expect(
     page.getByRole("button", { name: /^(?:Finish early|Save workout)$/ })
@@ -3097,7 +3087,7 @@ test("keeps an offline set visible while the next set stays available", async ({
   expect(actionRequests).toBe(1);
   releaseFirst();
 
-  await expect(nextSet.getByRole("button", { name: "Log set", exact: true }))
+  await expect(page.getByTestId("active-log-set"))
     .toBeEnabled();
   await expect.poll(() => actionRequests).toBe(1);
 
@@ -3125,7 +3115,7 @@ test("keeps an offline set visible while the next set stays available", async ({
   const finishWorkout = page
     .getByRole("complementary", { name: "Workout status" })
     .getByRole("button", {
-      name: /^(?:Review workout finish|Finish workout)$/,
+      name: /^(?:Review and finish workout|Finish workout)$/,
     });
   await waitForReactHandler(finishWorkout);
   await finishWorkout.click();
@@ -3161,14 +3151,14 @@ test("retries a set automatically after one server 500 and still finishes", asyn
   const recordedExercise = workoutExerciseCards(page).first();
   await nextSet.locator('input[inputmode="decimal"]').first().fill("95");
   await nextSet.locator('input[inputmode="numeric"]').first().fill("8");
-  await nextSet.getByRole("button", { name: "Log set", exact: true }).click();
+  await page.getByTestId("active-log-set").click();
 
   await expect(recordedExercise.getByTestId("completed-sets"))
     .toContainText("Acknowledged by Repbook");
   expect(actionRequests).toBeGreaterThanOrEqual(2);
   await page
     .getByRole("complementary", { name: "Workout status" })
-    .getByRole("button", { name: /^(?:Review workout finish|Finish workout)$/ })
+    .getByRole("button", { name: /^(?:Review and finish workout|Finish workout)$/ })
     .click();
   await page
     .getByLabel("Why are you finishing this workout early?")
@@ -3209,7 +3199,7 @@ test("a parked set pauses only its exercise while another exercise saves", async
   const nextSet = page.getByTestId("current-exercise-card");
   await nextSet.locator('input[inputmode="decimal"]').first().fill("95");
   await nextSet.locator('input[inputmode="numeric"]').first().fill("8");
-  await nextSet.getByRole("button", { name: "Log set", exact: true }).click();
+  await page.getByTestId("active-log-set").click();
   await expect.poll(() => failedExerciseRequests).toBe(1);
   await page.evaluate((sessionExerciseId) => {
     const key = "workout-tracker:workout-set-outbox:v1";
@@ -3233,7 +3223,9 @@ test("a parked set pauses only its exercise while another exercise saves", async
   await secondExercise.getByTestId("exercise-swipe-surface").click();
   await secondExercise.locator('input[inputmode="decimal"]').first().fill("50");
   await secondExercise.locator('input[inputmode="numeric"]').first().fill("10");
-  await secondExercise.getByRole("button", { name: "Log set", exact: true }).click();
+  await secondExercise
+    .getByRole("button", { name: "Log set", exact: true })
+    .click();
   await expect(secondExercise.getByTestId("exercise-swipe-surface")).toContainText(
     "1/3 planned performed",
   );
@@ -3260,7 +3252,7 @@ test("a parked set pauses only its exercise while another exercise saves", async
   await removeParkedSet.click();
   await page
     .getByRole("complementary", { name: "Workout status" })
-    .getByRole("button", { name: /^(?:Review workout finish|Finish workout)$/ })
+    .getByRole("button", { name: /^(?:Review and finish workout|Finish workout)$/ })
     .click();
   await page
     .getByLabel("Why are you finishing this workout early?")
@@ -3288,25 +3280,23 @@ test("keeps a stale-tab rejection visible until the user resolves it", async ({
   const staleNextSet = stalePage.getByTestId("current-exercise-card");
   await expect(staleNextSet).toBeVisible();
   await waitForReactHandler(
-    staleNextSet.getByRole("button", { name: "Log set", exact: true })
+    stalePage.getByTestId("active-log-set")
   );
   staleRefreshControl.freeze();
   activeRefreshControl.resume();
 
   const activeNextSet = page.getByTestId("current-exercise-card");
   await waitForReactHandler(
-    activeNextSet.getByRole("button", { name: "Log set", exact: true })
+    page.getByTestId("active-log-set")
   );
   await activeNextSet.getByLabel("Total load").fill("95");
   await activeNextSet.getByRole("textbox", { name: "Reps", exact: true }).fill("8");
-  await activeNextSet
-    .getByRole("button", { name: "Log set", exact: true })
-    .click();
+  await page.getByTestId("active-log-set").click();
   await expectRestCockpit(page);
   const finishWorkout = page
     .getByRole("complementary", { name: "Workout status" })
     .getByRole("button", {
-      name: /^(?:Review workout finish|Finish workout)$/,
+      name: /^(?:Review and finish workout|Finish workout)$/,
     });
   await waitForReactHandler(finishWorkout);
   await finishWorkout.click();
@@ -3324,13 +3314,11 @@ test("keeps a stale-tab rejection visible until the user resolves it", async ({
   const staleExercise = workoutExerciseCards(stalePage).first();
   await staleNextSet.getByLabel("Total load").fill("100");
   await staleNextSet.getByRole("textbox", { name: "Reps", exact: true }).fill("7");
-  await staleNextSet
-    .getByRole("button", { name: "Log set", exact: true })
-    .click();
+  await stalePage.getByTestId("active-log-set").click();
   await expect(staleExercise.getByText(/Save failed/)).toBeVisible();
   await stalePage
     .getByRole("complementary", { name: "Workout status" })
-    .getByRole("button", { name: /^(?:Review workout finish|Finish workout)$/ })
+    .getByRole("button", { name: /^(?:Review and finish workout|Finish workout)$/ })
     .click();
   await expect(
     stalePage.getByRole("button", { name: /^(?:Finish early|Save workout)$/ })
@@ -3383,9 +3371,7 @@ test("keeps unsynced sets with their owner across sign-out and account changes",
   await nextSet.getByRole("textbox", { name: "Reps", exact: true }).fill("8");
 
   await context.setOffline(true);
-  await nextSet
-    .getByRole("button", { name: "Log set", exact: true })
-    .click();
+  await page.getByTestId("active-log-set").click();
   const pendingExercise = workoutExerciseCards(page).first();
   await expect(
     pendingExercise.getByText("Unsaved on this device", { exact: true })
@@ -3588,10 +3574,7 @@ test("opens failed-set recovery from Settings at 145 percent on iPhone WebKit", 
   await waitForEquipmentSelectionsToSettle(page);
 
   const currentSet = page.getByTestId("current-exercise-card");
-  const logSet = currentSet.getByRole("button", {
-    name: "Log set",
-    exact: true,
-  });
+  const logSet = page.getByTestId("active-log-set");
   await waitForReactHandler(logSet);
   const totalLoad = currentSet.getByLabel("Total load");
   const reps = currentSet.getByRole("textbox", { name: "Reps", exact: true });
@@ -3656,7 +3639,7 @@ test("opens failed-set recovery from Settings at 145 percent on iPhone WebKit", 
   const finishTrigger = page
     .getByRole("complementary", { name: "Workout status" })
     .getByRole("button", {
-      name: /^(?:Review workout finish|Finish workout)$/,
+      name: /^(?:Review and finish workout|Finish workout)$/,
     });
   await finishTrigger.click();
   const finishRecovery = page.getByRole("dialog", {
@@ -3810,7 +3793,7 @@ test("opens failed-set recovery from Settings at 145 percent on iPhone WebKit", 
   await page.goto(`/session/${retained.sessionId}`);
   await page
     .getByRole("complementary", { name: "Workout status" })
-    .getByRole("button", { name: /^(?:Review workout finish|Finish workout)$/ })
+    .getByRole("button", { name: /^(?:Review and finish workout|Finish workout)$/ })
     .click();
   await confirmActiveWorkoutDiscard(page);
   await expect(page).toHaveURL(/\/today$/);

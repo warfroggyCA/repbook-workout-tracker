@@ -197,7 +197,7 @@ test("keeps contextual observations explicit, durable, private when chosen, and 
 
   await page
     .getByRole("button", {
-      name: /^(?:Review workout finish|Finish workout)$/,
+      name: /^(?:Review and finish workout|Finish workout)$/,
     })
     .click();
   const saveWorkout = page.getByRole("button", { name: /^(?:Finish early|Save workout)$/ });

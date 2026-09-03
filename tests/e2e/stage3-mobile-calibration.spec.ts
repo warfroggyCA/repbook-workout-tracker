@@ -349,10 +349,7 @@ test("keeps new Stage 3 controls usable at the saved iPhone calibration", async 
   const currentExerciseName = await currentExercise
     .getByRole("heading", { level: 2 })
     .textContent();
-  const logSet = currentExercise.getByRole("button", {
-    name: "Log set",
-    exact: true,
-  });
+  const logSet = page.getByTestId("active-log-set");
   await logSet.scrollIntoViewIfNeeded();
   await logSet.click();
   await expect(currentExercise).toHaveCount(0);

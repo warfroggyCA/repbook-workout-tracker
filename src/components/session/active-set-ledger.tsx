@@ -321,6 +321,8 @@ function renderExhaustiveRow(
           <section
             id={`${currentIsExtra ? "added-set-entry" : "set-entry"}-${row.sessionExerciseId}-${row.occurrenceId}`}
             data-testid={currentIsExtra ? "added-set-entry" : "current-set-entry"}
+            data-active-workout-focus-target="true"
+            tabIndex={-1}
             aria-label={`${props.exerciseName}, ${row.label}`}
             className="scroll-mt-24"
           >

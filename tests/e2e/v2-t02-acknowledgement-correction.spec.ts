@@ -119,9 +119,10 @@ test("keeps retained sets responsive before acknowledgement, then reviews a corr
   // Arm the delay only for the submission under test. Background server
   // actions can otherwise consume it before Log set is clicked in slower CI.
   delayNextAction = true;
-  const logSetClick = plank
-    .getByRole("button", { name: "Log set", exact: true })
-    .click();
+  const logSetClick = plank.getByRole("button", {
+    name: "Log set",
+    exact: true,
+  }).click();
   await nextActionHeld.promise;
   const markNames = [
     WORKOUT_INTERACTION_MARKS.setLogTap,
@@ -166,9 +167,10 @@ test("keeps retained sets responsive before acknowledgement, then reviews a corr
   await expect(plankDisclosure).toHaveAttribute("aria-expanded", "true");
 
   await plank.getByLabel("Duration in seconds").fill("45");
-  const secondLogSetClick = plank
-    .getByRole("button", { name: "Log set", exact: true })
-    .click();
+  const secondLogSetClick = plank.getByRole("button", {
+    name: "Log set",
+    exact: true,
+  }).click();
   // This is the lock-separation proof: the first Server Action is still held,
   // but the next set must reach durable device retention and advance the UI.
   await expect.poll(() => page.evaluate((names) =>

@@ -218,7 +218,7 @@ async function skipCurrentSet(page: Page) {
 async function discardWorkout(page: Page) {
   await page
     .getByRole("complementary", { name: "Workout status" })
-    .getByRole("button", { name: /^(?:Review workout finish|Finish workout)$/ })
+    .getByRole("button", { name: /^(?:Review and finish workout|Finish workout)$/ })
     .click();
   const finish = page.getByRole("dialog", { name: "Finish workout" });
   await finish.getByRole("button", { name: "Discard workout", exact: true }).click();
@@ -228,6 +228,74 @@ async function discardWorkout(page: Page) {
     .click();
   await expect(page).toHaveURL(/\/today$/);
 }
+
+test("moves keyboard focus off a rebound Log action during a held no-rest save", async ({
+  browserName,
+  page,
+}) => {
+  test.skip(
+    browserName !== "chromium",
+    "The stray-Enter regression is a desktop keyboard contract.",
+  );
+  const pageErrors = observeGauntletPageErrors(page, browserName);
+  await signInAndStartDayA(page);
+  for (let count = 0; count < 20; count += 1) {
+    if ((await currentExerciseName(page)) === "Dumbbell Lateral Raise") break;
+    await skipCurrentSet(page);
+  }
+  await expect(
+    page
+      .getByTestId("current-exercise-card")
+      .getByRole("heading", { level: 2 }),
+  ).toHaveText("Dumbbell Lateral Raise");
+
+  let setRequests = 0;
+  let releaseSave!: () => void;
+  const saveMayFinish = new Promise<void>((resolve) => {
+    releaseSave = resolve;
+  });
+  await page.route("**/session/**", async (route) => {
+    const request = route.request();
+    if (
+      request.method() === "POST" &&
+      request.headers()["next-action"] &&
+      (request.postData() ?? "").includes('"setNo"')
+    ) {
+      setRequests += 1;
+      if (setRequests === 1) await saveMayFinish;
+    }
+    await route.continue();
+  });
+
+  const firstLog = page.getByTestId("active-log-set");
+  await expect(firstLog).toBeEnabled();
+  const firstFormId = await firstLog.getAttribute("form");
+  await firstLog.focus();
+  await page.keyboard.press("Enter");
+  await expect.poll(() => setRequests).toBe(1);
+  await expect.poll(() => currentExerciseName(page)).toBe("Pallof Press");
+  const nextEntry = page
+    .getByTestId("current-exercise-card")
+    .getByTestId("current-set-entry");
+  const nextLog = page.getByTestId("active-log-set");
+  const nextFormId = await nextLog.getAttribute("form");
+  expect(nextFormId).not.toBe(firstFormId);
+  await expect(nextEntry).toBeFocused();
+  await expect(nextLog).not.toBeFocused();
+  await page.keyboard.press("Enter");
+  await page.waitForTimeout(300);
+  expect(setRequests).toBe(1);
+
+  releaseSave();
+  await expect.poll(async () => page.evaluate(() => {
+    const raw = localStorage.getItem("workout-tracker:workout-set-outbox:v1");
+    if (raw == null) return 0;
+    return (JSON.parse(raw) as { entries?: unknown[] }).entries?.length ?? 0;
+  })).toBe(0);
+  await page.unrouteAll({ behavior: "wait" });
+  await discardWorkout(page);
+  await pageErrors.expectNoUnexpected();
+});
 
 test("keeps one ledger-driven current/next/group/rest state through retry, interruption, extra work, and finish readiness", async ({
   browserName,
@@ -311,13 +379,17 @@ test("keeps one ledger-driven current/next/group/rest state through retry, inter
     }
     await route.continue();
   });
-  await clickCentered(
-    page,
-    page
-      .getByTestId("current-exercise-card")
-      .getByRole("button", { name: "Log set", exact: true }),
-  );
+  const currentLogSet = page.getByTestId("active-log-set");
+  await expect(currentLogSet).toBeEnabled();
+  await currentLogSet.focus();
+  await page.keyboard.press("Enter");
   await expect.poll(() => setRequests).toBe(2);
+  await expect(page.getByTestId("active-log-set")).toHaveAccessibleName(
+    "Log set 1",
+  );
+  await page.keyboard.press("Enter");
+  await page.waitForTimeout(300);
+  expect(setRequests).toBe(2);
   await expect(
     page.getByRole("region", { name: "Dumbbell Lateral Raise" }),
   ).toContainText("Retrying");
@@ -331,6 +403,7 @@ test("keeps one ledger-driven current/next/group/rest state through retry, inter
   await expect(guidance).not.toContainText("Now:");
   await expect(guidance).not.toContainText("Next:");
   await expect(status.getByLabel("Rest timer")).toHaveCount(0);
+  await expect(page.getByTestId("active-log-set")).not.toBeFocused();
 
   const background = await context.newPage();
   await background.goto("about:blank");
@@ -346,9 +419,7 @@ test("keeps one ledger-driven current/next/group/rest state through retry, inter
 
   await clickCentered(
     page,
-    page
-      .getByTestId("current-exercise-card")
-      .getByRole("button", { name: "Log set", exact: true }),
+    page.getByTestId("active-log-set"),
   );
   const rest = status.getByRole("region", { name: "Rest timer" });
   await expect(rest).toBeVisible();
@@ -391,11 +462,14 @@ test("keeps one ledger-driven current/next/group/rest state through retry, inter
   await expect.poll(() => currentExerciseName(page)).toBe("Pallof Press");
   await skipCurrentSet(page);
   await expect(guidance).not.toContainText("Now:");
-  await expect(
-    page
-      .getByTestId("current-exercise-card")
-      .getByTestId("added-set-entry"),
-  ).toContainText("Extra set 1 · Added to this workout");
+  const currentExtraSet = page
+    .getByTestId("current-exercise-card")
+    .getByTestId("added-set-entry");
+  await expect(currentExtraSet).toContainText(
+    "Extra set 1 · Added to this workout",
+  );
+  await expect(currentExtraSet.getByTestId("inline-log-set")).toHaveCount(0);
+  await expect(page.getByTestId("active-log-set")).toHaveCount(1);
 
   let finalSetRequests = 0;
   await page.route("**/session/**", async (route) => {
@@ -416,9 +490,7 @@ test("keeps one ledger-driven current/next/group/rest state through retry, inter
 
   await clickCentered(
     page,
-    page
-      .getByTestId("current-exercise-card")
-      .getByRole("button", { name: "Log set", exact: true }),
+    page.getByTestId("active-log-set"),
   );
   await expect.poll(() => finalSetRequests).toBe(1);
   await expect.poll(async () => page.evaluate(() => {
@@ -466,9 +538,7 @@ test("keeps one ledger-driven current/next/group/rest state through retry, inter
 
   await clickCentered(
     page,
-    page
-      .getByTestId("current-exercise-card")
-      .getByRole("button", { name: "Log set", exact: true }),
+    page.getByTestId("active-log-set"),
   );
   await expect.poll(() => finalSetRequests).toBe(2);
   await expect.poll(async () => page.evaluate(() => {
@@ -510,11 +580,11 @@ test("keeps one ledger-driven current/next/group/rest state through retry, inter
   ).toContainText("All actions resolved");
   await expect(
     status.getByRole("button", {
-      name: /^(?:Review workout finish|Finish workout)$/,
+      name: /^(?:Review and finish workout|Finish workout)$/,
     }),
   ).toBeVisible();
   await status
-    .getByRole("button", { name: "Review workout finish", exact: true })
+    .getByRole("button", { name: "Review and finish workout", exact: true })
     .click();
   const retainedFinish = page.getByRole("dialog", { name: "Finish workout" });
   await expect(retainedFinish.getByText("1 set is still saving.")).toBeVisible();

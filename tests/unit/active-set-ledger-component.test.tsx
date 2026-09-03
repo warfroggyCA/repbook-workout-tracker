@@ -55,7 +55,7 @@ describe("ActiveSetLedger", () => {
     expect(html).toContain("Target 8 reps · 95 lb");
     expect(html).toContain("Editable fields");
     expect(html).toContain(
-      '<section id="set-entry-40000000-0000-4000-8000-000000000001-60000000-0000-4000-8000-000000000001" data-testid="current-set-entry" aria-label="Barbell Back Squat, Set 1"',
+      '<section id="set-entry-40000000-0000-4000-8000-000000000001-60000000-0000-4000-8000-000000000001" data-testid="current-set-entry" data-active-workout-focus-target="true" tabindex="-1" aria-label="Barbell Back Squat, Set 1"',
     );
     expect(html.indexOf("Target 8 reps · 95 lb")).toBeLessThan(
       html.indexOf("Editable fields"),

@@ -78,7 +78,7 @@ test("keeps ordinary completion minimal and makes exception evidence reversible,
   await expect(ordinaryDetails).not.toHaveAttribute("open", "");
   await expect(currentEntry.getByText("Technique issue", { exact: true }))
     .not.toBeVisible();
-  await currentEntry.getByRole("button", { name: "Log set", exact: true }).click();
+  await page.getByTestId("active-log-set").click();
   await expect(squatCard.getByTestId("completed-sets"))
     .toContainText("Acknowledged by Repbook");
   await dismissRest(page);
@@ -151,7 +151,7 @@ test("keeps ordinary completion minimal and makes exception evidence reversible,
   )).toBeLessThanOrEqual(1);
 
   await context.setOffline(true);
-  await currentEntry.getByRole("button", { name: "Log set", exact: true }).click();
+  await page.getByTestId("active-log-set").click();
   await expect.poll(() => page.evaluate(() => {
     const raw = localStorage.getItem("workout-tracker:workout-set-outbox:v1");
     const parsed = raw == null ? null : JSON.parse(raw);
@@ -183,7 +183,7 @@ test("keeps ordinary completion minimal and makes exception evidence reversible,
   await expect(receipt).toContainText("Pain: back 4/10");
 
   const status = page.getByRole("complementary", { name: "Workout status" });
-  await status.getByRole("button", { name: /^(?:Review workout finish|Finish workout)$/ }).click();
+  await status.getByRole("button", { name: /^(?:Review and finish workout|Finish workout)$/ }).click();
   const finish = page.getByRole("dialog", { name: "Finish workout" });
   await finish
     .getByLabel("Why are you finishing this workout early?")

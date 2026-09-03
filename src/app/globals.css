@@ -125,8 +125,19 @@ html[data-font-size="extra-large"] {
 }
 
 @media (max-width: 420px) {
-  html[data-font-size="extra-large"] .active-set-stepper {
-    display: none;
+  html[data-font-size="extra-large"] .active-set-measures-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  html[data-font-size="extra-large"] .active-set-measure-heading {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  html[data-font-size="extra-large"] .active-set-prefill-source {
+    overflow: visible;
+    text-align: left;
+    text-overflow: clip;
+    white-space: normal;
   }
 }
 

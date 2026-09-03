@@ -217,7 +217,7 @@ test("reviews and publishes a multi-day Program into an ordered active workout",
   await expect(current).toContainText("5 reps · 60 kg");
   await current.getByLabel("Total load").fill("60");
   await current.getByRole("textbox", { name: "Reps", exact: true }).fill("5");
-  await current.getByRole("button", { name: "Log set", exact: true }).click();
+  await page.getByTestId("active-log-set").click();
   await expect(
     page
       .getByRole("region", { name: "Barbell Back Squat", exact: true })
@@ -228,7 +228,7 @@ test("reviews and publishes a multi-day Program into an ordered active workout",
 
   await page
     .getByRole("complementary", { name: "Workout status" })
-    .getByRole("button", { name: /^(?:Review workout finish|Finish workout)$/ })
+    .getByRole("button", { name: /^(?:Review and finish workout|Finish workout)$/ })
     .click();
   await page
     .getByLabel("Why are you finishing this workout early?")
