@@ -229,6 +229,7 @@ describe("previous comparable performed sets", () => {
         beforeData: { weight: 44, weight_unit: "kg" },
         afterData: { weight: 45, weight_unit: "kg" },
         changedFields: ["weight"],
+        createdAt: new Date("2026-08-01T15:00:00.000Z"),
       },
       {
         userId,
@@ -238,6 +239,17 @@ describe("previous comparable performed sets", () => {
         beforeData: { weight: 47, weight_unit: "kg" },
         afterData: { weight: 45, weight_unit: "kg" },
         changedFields: ["weight"],
+        createdAt: new Date("2026-08-01T15:01:00.000Z"),
+      },
+      {
+        userId,
+        entityType: "completed_set",
+        entityId: safe.setIds[0],
+        action: "set.completed_correction",
+        beforeData: { reps: 7 },
+        afterData: { reps: 8 },
+        changedFields: ["reps"],
+        createdAt: new Date("2026-08-01T15:02:00.000Z"),
       },
       {
         userId,
@@ -247,6 +259,7 @@ describe("previous comparable performed sets", () => {
         beforeData: { weight: 46, weight_unit: "kg" },
         afterData: { weight: 45, weight_unit: "kg" },
         changedFields: ["weight"],
+        createdAt: new Date("2026-08-01T15:03:00.000Z"),
       },
     ]);
     await addHistoricalSet({
@@ -314,8 +327,8 @@ describe("previous comparable performed sets", () => {
           weightUnit: "kg",
           reps: 8,
           correctionProvenance: {
-            state: "version_restored",
-            count: 2,
+            state: "corrected",
+            count: 3,
           },
         },
         {

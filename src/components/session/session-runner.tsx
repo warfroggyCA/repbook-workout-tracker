@@ -1346,11 +1346,18 @@ export function SessionRunner(props: SessionRunnerProps) {
       ]),
     );
     return mergeSessionOutboxSets(
-      exercises.map((exercise) => ({
-        ...exercise,
-        previousComparable:
-          serverComparisons.get(exercise.id) ?? exercise.previousComparable,
-      })),
+      exercises.map((exercise) => {
+        const previousComparable =
+          serverComparisons.get(exercise.id) ?? exercise.previousComparable;
+        return {
+          ...exercise,
+          previousComparable:
+            previousComparable?.status === "available" &&
+            previousComparable.exerciseId !== exercise.exerciseId
+              ? undefined
+              : previousComparable,
+        };
+      }),
       sessionEntries,
       runtimeSaveStates,
     );

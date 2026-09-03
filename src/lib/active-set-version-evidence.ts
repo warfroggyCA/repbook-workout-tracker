@@ -55,3 +55,17 @@ export function activeSetVersionEvidenceAfterCorrection(
     count: (current?.count ?? fallbackCount) + 1,
   };
 }
+
+export function activeSetVersionEvidenceLabel(
+  version: ActiveSetVersionEvidence,
+): string | null {
+  if (version.state === "original") return null;
+  const changeCount = `${version.count} ${version.count === 1 ? "change" : "changes"}`;
+  if (version.state === "corrected") {
+    return `Latest: Corrected · ${changeCount}`;
+  }
+  if (version.state === "version_restored") {
+    return `Latest: Version restored · ${changeCount}`;
+  }
+  return `Latest: Snapshot restored · ${changeCount}`;
+}

@@ -107,10 +107,14 @@ import {
   type ActiveSetLedgerDiagnosticRow,
 } from "./active-set-ledger";
 import {
+  activeSetExactResult,
   projectActiveSetRows,
   type ActiveSetRow,
 } from "@/lib/active-set-row-projection";
-import { activeSetVersionEvidenceAfterCorrection } from "@/lib/active-set-version-evidence";
+import {
+  activeSetVersionEvidenceAfterCorrection,
+  activeSetVersionEvidenceLabel,
+} from "@/lib/active-set-version-evidence";
 import type { IncompleteSessionReason } from "@/lib/session-completion-semantics";
 import { OccurrenceSaveStatus } from "./occurrence-save-status";
 import {
@@ -211,9 +215,10 @@ function compactComparableProvenance(
   workoutSource: string,
 ) {
   const { state, count } = set.correctionProvenance;
-  if (state === "corrected") return `Corrected ×${count}`;
-  if (state === "version_restored") return `Version restored ×${count}`;
-  if (state === "snapshot_restored") return `Snapshot restored ×${count}`;
+  const versionLabel = state === "original"
+    ? null
+    : activeSetVersionEvidenceLabel({ state, count });
+  if (versionLabel != null) return versionLabel;
   if (workoutSource === "history_manual") return "Owner-entered source";
   if (workoutSource === "hevy") return "Imported source";
   return "Repbook source";
@@ -850,6 +855,7 @@ export function ExerciseCard({
     : exercise.previousComparable;
   const comparableSemanticsMatch =
     comparableProjection?.status === "available" &&
+    comparableProjection.exerciseId === exercise.exerciseId &&
     (comparableProjection.semantics.metricType !== "weight_reps" &&
     comparableProjection.semantics.metricType !== "assisted_reps"
       ? true
@@ -1448,6 +1454,7 @@ export function ExerciseCard({
       key: `diagnostic-${set.id}`,
       label: `Recorded set ${set.setNo}`,
       summary: formatLoggedSet(set, exercise.metricType),
+      result: activeSetExactResult(set),
       version:
         exercise.versionEvidenceBySetId?.[set.id] ??
         ((set.correctionCount ?? 0) > 0

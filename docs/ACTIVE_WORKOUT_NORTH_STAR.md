@@ -552,15 +552,16 @@ creating another overlapping plan:
   value controls, Log set handler, recovery controls, optional details, skip,
   and add-set behavior inside the appropriate ledger row. It does not introduce
   a second ordering model or change any writer.
-- The newest immutable correction or restore action owns each revision label,
-  while a separate change count retains the full lineage. Retained device rows
-  keep their exact effort, note, technique, limitation, and pain evidence
-  visible while save recovery is pending.
+- The newest immutable correction or restore action owns each ledger and prior
+  comparable revision label, while a separate change count retains the full
+  lineage. Retained device rows and Unknown rows keep their exact effort, note,
+  technique, limitation, and pain evidence visible.
 - A substituted exercise keeps the planned repetition range without inheriting
-  the original movement's load or set-note cue. Unsupported or ambiguously
-  linked results remain Unknown and stay out of acknowledged Completed-set
-  controls. The direct Replace action is available only before set evidence
-  exists.
+  the original movement's load, prior comparison, or set-note cue. Starting-load
+  and comparison evidence must match the current exercise's stable identity.
+  Unsupported or ambiguously linked results remain Unknown and stay out of
+  acknowledged Completed-set controls. The direct Replace action is available
+  only before set evidence exists.
 - Component fixtures cover every row state, including unknown evidence and an
   editable extra set that does not displace the planned current set. Existing
   recording-truth, correction, hierarchy, recovery, equipment, import, and

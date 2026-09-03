@@ -94,6 +94,11 @@ ledger scope.
    Replace shortcut after performed evidence. The final pass corrected these
    on the read/presentation side and added focused regressions without changing
    a writer, persistence contract, schema, or historical record.
+5. Frozen-commit review found three remaining read-side gaps. The closeout pass
+   now fails closed on mismatched exercise identity for starting-load and prior
+   comparison evidence, makes prior-set revision labels newest-first, and keeps
+   complete optional performed evidence on Unknown rows. No writer, schema,
+   outbox, or historical record changed.
 
 ## Implementation checklist
 

@@ -186,6 +186,63 @@ describe("set starting load preview", () => {
     })).toEqual({ status: "unavailable" });
   });
 
+  it("does not inherit load evidence from a different planned exercise", () => {
+    const originalExerciseId = "00000000-0000-4000-8000-000000000099";
+    const substituted = exercise({
+      modificationType: "substituted",
+      substitutedForExerciseId: originalExerciseId,
+      targetLoad: null,
+      targetLoadUnit: null,
+      previousComparable: {
+        status: "available",
+        currentSessionExerciseId: "00000000-0000-4000-8000-000000000001",
+        exerciseId: originalExerciseId,
+        semantics: {
+          version: 1,
+          metricType: "weight_reps",
+          loadType: "dumbbell",
+          loadSemantics: "per_implement",
+          loadEntryMeaning: "total_system",
+        },
+        source: {
+          workoutId: "workout-1",
+          localDate: "2026-08-20",
+          startedAtISO: "2026-08-20T12:00:00.000Z",
+          finishedAtISO: "2026-08-20T13:00:00.000Z",
+          historyHref: "/history/workout-1",
+          workoutSource: "tracker",
+        },
+        sets: [{
+          setId: "prior-1",
+          setNo: 1,
+          weight: 135,
+          weightUnit: "lb",
+          reps: 8,
+          distanceKm: null,
+          durationSeconds: null,
+          rpe: null,
+          rir: null,
+          observedCompletedAtISO: "2026-08-20T12:10:00.000Z",
+          observedCompletionProvenance: "live_client",
+          observedCompletionQuality: "trustworthy",
+          correctionProvenance: { state: "original", count: 0 },
+        }],
+      },
+    });
+
+    expect(resolveSetStartingLoad({
+      exercise: substituted,
+      setNumber: 1,
+      unit: "lb",
+      loadEntryMeaning: "total_system",
+      occurrence: occurrence({
+        plannedExerciseId: originalExerciseId,
+        plannedLoad: 95,
+        plannedLoadUnit: "lb",
+      }),
+    })).toEqual({ status: "unavailable" });
+  });
+
   it("distinguishes no weight entry from missing starting-load evidence", () => {
     expect(resolveSetStartingLoad({
       exercise: exercise({ metricType: "reps", targetLoad: null, targetLoadUnit: null }),

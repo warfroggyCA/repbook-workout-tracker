@@ -75,9 +75,13 @@ export function resolveSetStartingLoad(input: {
     };
   }
 
-  const plannedLoad = input.exercise.targetLoad ?? input.occurrence?.plannedLoad;
+  const occurrenceMatchesExercise =
+    input.occurrence?.plannedExerciseId === input.exercise.exerciseId;
+  const plannedLoad = input.exercise.targetLoad ??
+    (occurrenceMatchesExercise ? input.occurrence?.plannedLoad : null);
   const plannedLoadUnit =
-    input.exercise.targetLoadUnit ?? input.occurrence?.plannedLoadUnit;
+    input.exercise.targetLoadUnit ??
+    (occurrenceMatchesExercise ? input.occurrence?.plannedLoadUnit : null);
   if (plannedLoad != null && plannedLoadUnit != null) {
     return {
       status: "available",
@@ -92,6 +96,7 @@ export function resolveSetStartingLoad(input: {
   const comparable = input.exercise.previousComparable;
   const semanticsMatch =
     comparable?.status === "available" &&
+    comparable.exerciseId === input.exercise.exerciseId &&
     (comparable.semantics.metricType !== "weight_reps" &&
     comparable.semantics.metricType !== "assisted_reps"
       ? true

@@ -381,13 +381,7 @@ export async function getPreviousComparableSets(
           SELECT coalesce(
             jsonb_agg(
               correction.action
-              ORDER BY CASE correction.action
-                WHEN 'set.snapshot_restore' THEN 0
-                WHEN 'set.version_restore' THEN 1
-                ELSE 2
-              END,
-              correction.created_at,
-              correction.id
+              ORDER BY correction.created_at DESC, correction.id DESC
             ),
             '[]'::jsonb
           )

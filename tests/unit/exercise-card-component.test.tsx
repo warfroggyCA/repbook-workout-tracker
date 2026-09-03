@@ -331,8 +331,16 @@ describe("ExerciseCard", () => {
           weight: 95,
           weightUnit: "lb" as const,
           reps: 8,
-          rpe: null,
-          note: null,
+          rpe: 9.5,
+          rir: 0,
+          techniqueIssue: "tempo" as const,
+          limitationCause: "breathing_conditioning" as const,
+          pain: {
+            bodyPart: "shoulder" as const,
+            severity: 4,
+            note: "Pinched at the bottom",
+          },
+          note: "Unknown-row exact note",
           saveState: "saved" as const,
           correctionCount: 1,
         },
@@ -404,6 +412,13 @@ describe("ExerciseCard", () => {
     expect(html).toContain("0 completed");
     expect(html).toContain("Recorded set 3");
     expect(html).toContain("cannot be presented as saved");
+    expect(html).toContain("Unknown-row exact note");
+    expect(html).toContain("Effort: Grind");
+    expect(html).toContain("RIR 0");
+    expect(html).toContain("Technique: Tempo");
+    expect(html).toContain("Limited by: Breathing or conditioning");
+    expect(html).toContain("Pain: shoulder 4/10");
+    expect(html).toContain("Pain note: Pinched at the bottom");
     expect(html).not.toContain("Acknowledged by Repbook");
     expect(html).not.toContain('aria-label="Archive set"');
     expect(html).not.toContain("Ramp 1 · 45 lb · 5 reps");
@@ -946,7 +961,9 @@ describe("ExerciseCard", () => {
       );
     }
     expect(html).toContain("Current action");
-    expect(html).toContain("Previous · 2026-08-03 · Version restored ×2");
+    expect(html).toContain(
+      "Previous · 2026-08-03 · Latest: Version restored · 2 changes",
+    );
     expect(html).toContain('data-comparison-state="available"');
     expect(html).toContain("100 lb × 7 reps · source set 1");
     expect(html).toContain('aria-label="Total load"');
@@ -1092,6 +1109,34 @@ describe("ExerciseCard", () => {
     const extraRow = extraRowHtml.slice(extraRowStart, extraRowEnd);
     expect(extraRow).toContain("130 lb × 7 reps · source set 3");
     expect(extraRow).not.toContain("100 lb × 7 reps · source set 1");
+
+    const replacementExerciseId = "00000000-0000-4000-8000-000000000069";
+    const substitutedWithStaleEvidence = renderToStaticMarkup(cloneElement(card, {
+      exercise: {
+        ...current,
+        exerciseId: replacementExerciseId,
+        name: "Dumbbell Floor Press",
+        loadType: "dumbbell",
+        loadSemantics: "per_implement",
+        modificationType: "substituted",
+        substitutedForExerciseId: current.exerciseId,
+        targetLoad: null,
+        targetLoadUnit: null,
+      },
+      activeOccurrence: {
+        ...currentOccurrence,
+        plannedExerciseId: current.exerciseId,
+        plannedLoad: 95,
+        plannedLoadUnit: "lb",
+      },
+    }));
+    expect(substitutedWithStaleEvidence).toContain(
+      'data-comparison-state="unavailable"',
+    );
+    expect(substitutedWithStaleEvidence).not.toContain(
+      "100 lb × 7 reps · source set 1",
+    );
+    expect(substitutedWithStaleEvidence).not.toContain('value="95"');
 
     const restoredSetId = "00000000-0000-4000-8000-000000000064";
     const restoredOccurrence = {

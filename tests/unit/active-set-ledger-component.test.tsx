@@ -230,6 +230,27 @@ describe("ActiveSetLedger", () => {
             key: "unlinked-set",
             label: "Recorded set 4",
             summary: "125 lb × 5",
+            result: {
+              id: "unlinked-set",
+              clientKey: null,
+              setNo: 4,
+              weight: 125,
+              weightUnit: "lb",
+              reps: 5,
+              metricType: "weight_reps",
+              distanceKm: null,
+              durationSeconds: null,
+              rpe: 9.5,
+              rir: 0,
+              techniqueIssue: "range_of_motion",
+              limitationCause: "breathing_conditioning",
+              pain: {
+                bodyPart: "shoulder",
+                severity: 4,
+                note: "Pinched at the bottom",
+              },
+              note: "Stopped before another rep",
+            },
             message: "This result cannot be linked safely.",
             version: { state: "version_restored", count: 2 },
           },
@@ -242,6 +263,13 @@ describe("ActiveSetLedger", () => {
     expect(html).toContain("125 lb × 5");
     expect(html).toContain("Unknown");
     expect(html).toContain("Latest: Version restored · 2 changes");
+    expect(html).toContain("Stopped before another rep");
+    expect(html).toContain("Effort: Grind");
+    expect(html).toContain("RIR 0");
+    expect(html).toContain("Technique: Range of motion");
+    expect(html).toContain("Limited by: Breathing or conditioning");
+    expect(html).toContain("Pain: shoulder 4/10");
+    expect(html).toContain("Pain note: Pinched at the bottom");
     expect(html).not.toMatch(/<li[^>]*role="alert"/);
     expect(html).toMatch(/<li[^>]*><div role="alert">/);
     expect(html).not.toContain("Recorded set 4</span><span>Saved");
@@ -251,6 +279,19 @@ describe("ActiveSetLedger", () => {
     const input = SET_ROW_VERSION_FIXTURES.snapshot_restored.input;
     const projection = projectActiveSetRows({
       ...input,
+      exercise: {
+        ...input.exercise,
+        sets: input.exercise.sets.map((set) => ({
+          ...set,
+          techniqueIssue: "control",
+          limitationCause: "grip",
+          pain: {
+            bodyPart: "wrist",
+            severity: 3,
+            note: "Sharp at lockout",
+          },
+        })),
+      },
       occurrences: [{ ...input.occurrences[0], origin: "legacy" }],
     });
     const html = renderToStaticMarkup(
@@ -265,6 +306,13 @@ describe("ActiveSetLedger", () => {
     );
     expect(html).toContain('data-set-row-state="unknown_legacy"');
     expect(html).toContain("Latest: Snapshot restored · 1 change");
+    expect(html).toContain("Exact performed result");
+    expect(html).toContain("Effort: Hard");
+    expect(html).toContain("RIR 2");
+    expect(html).toContain("Technique: Control");
+    expect(html).toContain("Limited by: Grip");
+    expect(html).toContain("Pain: wrist 3/10");
+    expect(html).toContain("Pain note: Sharp at lockout");
     expect(html).toContain("Unknown");
   });
 });
