@@ -3683,15 +3683,21 @@ test("opens failed-set recovery from Settings at 145 percent on iPhone WebKit", 
     return {
       overflowY: getComputedStyle(scrollRegion).overflowY,
       footerTop: footerRect.top,
-      footerBottom: footerRect.bottom,
-      viewportHeight: window.innerHeight,
     };
   });
   expect(finishRecoveryGeometry.overflowY).toBe("auto");
   expect(finishRecoveryGeometry.footerTop).toBeGreaterThanOrEqual(0);
-  expect(finishRecoveryGeometry.footerBottom).toBeLessThanOrEqual(
-    finishRecoveryGeometry.viewportHeight + 1,
-  );
+  await expect
+    .poll(() =>
+      finishRecovery.evaluate((dialog) => {
+        const footer = dialog.querySelector<HTMLElement>(
+          '[data-slot="drawer-footer"]',
+        );
+        return footer != null &&
+          footer.getBoundingClientRect().bottom <= window.innerHeight + 1;
+      }),
+    )
+    .toBe(true);
   await finishRecovery
     .getByRole("button", { name: "Review device copy" })
     .click();
