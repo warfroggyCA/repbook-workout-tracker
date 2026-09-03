@@ -26,6 +26,9 @@ const BASELINE_DIRECTORY = resolve(
 const PHASE2_QA_DIRECTORY = resolve(
   "docs/assets/active-workout-phase2-qa",
 );
+const PHASE3_QA_DIRECTORY = resolve(
+  "docs/assets/active-workout-phase3-qa",
+);
 
 test.describe.configure({ mode: "serial" });
 
@@ -113,6 +116,10 @@ async function captureCurrentBaseline(
     await mkdir(PHASE2_QA_DIRECTORY, { recursive: true });
     await writeFile(resolve(PHASE2_QA_DIRECTORY, `${name}.jpg`), image);
   }
+  if (process.env.UPDATE_ACTIVE_WORKOUT_PHASE3_QA === "1") {
+    await mkdir(PHASE3_QA_DIRECTORY, { recursive: true });
+    await writeFile(resolve(PHASE3_QA_DIRECTORY, `${name}.jpg`), image);
+  }
 }
 
 async function waitForRest(page: Page) {
@@ -121,6 +128,33 @@ async function waitForRest(page: Page) {
     .getByTestId("rest-cockpit");
   await expect(rest).toBeVisible();
   return rest;
+}
+
+async function expectRestControlsClear(page: Page) {
+  const rest = await waitForRest(page);
+  const geometry = await rest.evaluate((element) => {
+    const controls = Array.from(element.querySelectorAll("button"));
+    return {
+      horizontalOverflow:
+        document.documentElement.scrollWidth >
+        document.documentElement.clientWidth + 1,
+      controls: controls.map((control) => {
+        const bounds = control.getBoundingClientRect();
+        return {
+          name: control.textContent?.trim() ?? "",
+          width: bounds.width,
+          height: bounds.height,
+        };
+      }),
+    };
+  });
+  expect(geometry.horizontalOverflow).toBe(false);
+  expect(geometry.controls).toHaveLength(3);
+  expect(
+    geometry.controls.every(
+      (control) => control.width >= 44 && control.height >= 44,
+    ),
+  ).toBe(true);
 }
 
 async function completeRestByClock(page: Page) {
@@ -145,22 +179,19 @@ async function completeRestByClock(page: Page) {
     { storageKey: REST_TIMER_STORAGE_KEY, eventName: REST_TIMER_CHANGE_EVENT },
   );
   expect(adjusted).toBe(true);
-  await expect(
-    page.getByRole("button", { name: "Dismiss rest timer", exact: true }),
-  ).toBeVisible();
+  const rest = await waitForRest(page);
+  await expect(rest.getByRole("status")).toContainText("Rest complete");
 }
 
-async function dismissRest(page: Page) {
+async function endRest(page: Page) {
   const rest = await waitForRest(page);
-  const skip = rest.getByRole("button", { name: "Skip rest", exact: true });
-  if (await skip.isVisible()) await skip.click();
-  const dismiss = rest.getByRole("button", {
-    name: "Dismiss rest timer",
+  const end = rest.getByRole("button", {
+    name: "End rest",
     exact: true,
   });
-  await expect(dismiss).toBeVisible();
-  await dismiss.click();
-  await expect(rest).toHaveCount(0);
+  if (await end.isVisible()) await end.click();
+  await expect(rest).toContainText("Rest ended");
+  await expect(rest).toHaveCount(0, { timeout: 5_000 });
   await expect(page.getByTestId("active-log-set")).toBeVisible();
 }
 
@@ -308,8 +339,15 @@ test("records the six common-path current baselines without treating them as tar
 
   await page.getByTestId("active-log-set").click();
   await waitForRest(page);
+  await expectRestControlsClear(page);
   await expect(page.getByTestId("active-set-ledger")).toBeVisible();
-  await expect(page.getByTestId("current-set-entry")).toHaveCount(0);
+  await expect(page.getByTestId("current-set-entry")).toBeVisible();
+  await expect(
+    page.getByTestId("current-set-entry").locator("input").first(),
+  ).toBeEnabled();
+  await expect(page.getByTestId("active-log-set")).toHaveAccessibleName(
+    "Log set 2",
+  );
   await expect(
     page
       .getByTestId("active-set-ledger")
@@ -322,6 +360,7 @@ test("records the six common-path current baselines without treating them as tar
   );
 
   await setFontSize(page, "extra-large");
+  await expectRestControlsClear(page);
   await captureCurrentBaseline(
     page,
     testInfo,
@@ -335,9 +374,11 @@ test("records the six common-path current baselines without treating them as tar
     testInfo,
     ACTIVE_WORKOUT_SCREENSHOT_SCENARIOS.restComplete390x844At115,
   );
-  await page
-    .getByRole("button", { name: "Dismiss rest timer", exact: true })
-    .click();
+  await page.waitForTimeout(3_000);
+  await expect(page.getByTestId("rest-cockpit")).toBeVisible();
+  await expect(page.getByTestId("rest-cockpit")).toHaveCount(0, {
+    timeout: 1_500,
+  });
   await expect(page.getByTestId("active-log-set")).toBeVisible();
 
   await captureCurrentBaseline(
@@ -404,7 +445,7 @@ test("a stray Enter after Log set cannot change rest or the next set", async ({
   await page.waitForTimeout(300);
   const restAfter = await restDeadline(page);
 
-  await dismissRest(page);
+  await endRest(page);
   await settleFocusHandoff(page);
   const postDismissFocus = await activeElementName(page);
   const measuresBefore = await currentMeasureValues(page);

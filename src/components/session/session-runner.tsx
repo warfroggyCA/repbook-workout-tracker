@@ -1517,6 +1517,8 @@ export function SessionRunner(props: SessionRunnerProps) {
   );
   const activeRestAction =
     guidance.currentAction?.kind === "rest" ? guidance.currentAction : null;
+  const currentStatusAction =
+    activeRestAction?.destination ?? guidance.currentAction;
   const activeRestSource = activeRestAction?.source ?? null;
   const straightSetRestContinuation =
     activeRestAction?.restKind === "straight_set" && activeRestSource
@@ -1534,16 +1536,23 @@ export function SessionRunner(props: SessionRunnerProps) {
   const currentActionKind = guidance.currentAction?.kind ?? null;
   const currentActionSequenceIdx = guidance.currentAction?.sequenceIdx ?? null;
   const currentActionSessionExerciseId =
-    guidance.currentAction?.kind === "working_set"
-      ? guidance.currentAction.sessionExerciseId
+    currentStatusAction?.kind === "working_set"
+      ? currentStatusAction.sessionExerciseId
       : guidance.currentAction?.kind === "rest"
-        ? straightSetRestContinuation?.sessionExerciseId ??
+        ? (currentStatusAction?.kind !== "rest"
+            ? currentStatusAction?.sessionExerciseId
+            : null) ??
+          straightSetRestContinuation?.sessionExerciseId ??
           guidance.current?.sessionExerciseId ?? null
         : null;
   const currentActionTargetId = actionTargetId(guidance.currentAction);
   const restingWorkingSetTargetId =
     currentActionKind === "rest"
-      ? actionTargetId(straightSetRestContinuation ?? guidance.current)
+      ? actionTargetId(
+          activeRestAction?.destination ??
+            straightSetRestContinuation ??
+            guidance.current,
+        )
       : null;
   useEffect(() => {
     if (
@@ -1567,7 +1576,10 @@ export function SessionRunner(props: SessionRunnerProps) {
     skipRecoveryExerciseId,
   ]);
   useEffect(() => {
-    if (currentActionKind !== "working_set") return;
+    if (
+      currentActionKind !== "working_set" &&
+      currentActionKind !== "rest"
+    ) return;
     let firstFrame = 0;
     let secondFrame = 0;
     const preserveFocusedActionVisibility = () => {
@@ -1575,16 +1587,26 @@ export function SessionRunner(props: SessionRunnerProps) {
       window.cancelAnimationFrame(secondFrame);
       firstFrame = window.requestAnimationFrame(() => {
         secondFrame = window.requestAnimationFrame(() => {
-          const target = document.getElementById(currentActionTargetId);
+          const target = document.getElementById(
+            currentActionKind === "rest"
+              ? restingWorkingSetTargetId ?? currentActionTargetId
+              : currentActionTargetId,
+          );
           const active = document.activeElement;
+          const restStatusOwnsFocus =
+            currentActionKind === "rest" &&
+            active instanceof HTMLElement &&
+            active.closest('[aria-label="Workout status"]') != null;
           if (
             target == null ||
             !(active instanceof HTMLElement) ||
-            (active !== target && !target.contains(active))
+            (!restStatusOwnsFocus &&
+              active !== target &&
+              !target.contains(active))
           ) {
             return;
           }
-          revealWorkoutTarget(active, "auto");
+          revealWorkoutTarget(restStatusOwnsFocus ? target : active, "auto");
         });
       });
     };
@@ -1610,7 +1632,11 @@ export function SessionRunner(props: SessionRunnerProps) {
         preserveFocusedActionVisibility,
       );
     };
-  }, [currentActionKind, currentActionTargetId]);
+  }, [
+    currentActionKind,
+    currentActionTargetId,
+    restingWorkingSetTargetId,
+  ]);
   useEffect(() => {
     const disclosureGeneration = exerciseDisclosureGenerationRef.current;
     const previousActionId = previousCurrentActionIdRef.current;
@@ -3426,7 +3452,7 @@ export function SessionRunner(props: SessionRunnerProps) {
         (occurrence) => occurrence.id === guidance.current?.occurrenceId,
       ) ?? null
     : null;
-  const currentActionOccurrenceId = actionOccurrenceId(guidance.currentAction);
+  const currentActionOccurrenceId = actionOccurrenceId(currentStatusAction);
   const currentActionOccurrence = currentActionOccurrenceId
     ? occurrences.find(
         (occurrence) => occurrence.id === currentActionOccurrenceId,
@@ -3510,7 +3536,7 @@ export function SessionRunner(props: SessionRunnerProps) {
   }
 
   function revealCurrentWorkoutAction() {
-    const currentAction = guidance.currentAction;
+    const currentAction = currentStatusAction;
     if (!currentAction) return;
     const targetId = actionTargetId(currentAction);
     const occurrenceAction = currentAction.kind === "rest"
@@ -3768,8 +3794,8 @@ export function SessionRunner(props: SessionRunnerProps) {
     };
   })();
   const currentWorkingAction =
-    guidance.currentAction?.kind === "working_set"
-      ? guidance.currentAction
+    currentStatusAction?.kind === "working_set"
+      ? currentStatusAction
       : null;
   const currentWorkingExercise =
     currentWorkingAction
@@ -3924,12 +3950,7 @@ export function SessionRunner(props: SessionRunnerProps) {
     currentWorkingAction == null || currentWorkingExercise == null
       ? null
       : nextLoggableOccurrenceForExercise(currentWorkingExercise.id);
-  const restOwnsFixedStatusBar =
-    (timer?.phase === "running" && restRemainingSec != null) ||
-    timer?.phase === "ready" ||
-    timer?.phase === "skipped";
   const currentSetFormId =
-    !restOwnsFixedStatusBar &&
     currentWorkingSetRevealed &&
     currentActionBlockingReason == null &&
     currentWorkingExercise != null &&
@@ -4755,12 +4776,8 @@ export function SessionRunner(props: SessionRunnerProps) {
               activeWorkoutViewModel.displayMode === "rest"
                 ? explicitSetRecoveryOccurrence?.sessionExerciseId === exercise.id
                   ? explicitSetRecoveryOccurrence
-                  : null
+                  : nextLoggableOccurrenceForExercise(exercise.id)
                 : nextLoggableOccurrenceForExercise(exercise.id)
-            }
-            resting={
-              activeWorkoutViewModel.displayMode === "rest" &&
-              explicitSetRecoveryOccurrence?.sessionExerciseId !== exercise.id
             }
             preparationBlocker={(() => {
               const preparation = pendingPreparationForExercise(exercise.id);
@@ -4797,7 +4814,8 @@ export function SessionRunner(props: SessionRunnerProps) {
             acknowledgedOccurrenceIds={acknowledgedOccurrenceIds}
             isCurrentExercise={
               activeWorkoutViewModel.displayMode === "rest"
-                ? explicitSetRecoveryOccurrence?.sessionExerciseId === exercise.id
+                ? (explicitSetRecoveryOccurrence ?? currentOccurrence)
+                    ?.sessionExerciseId === exercise.id
                 : currentOccurrence?.sessionExerciseId === exercise.id
             }
             fixedPrimaryActionAvailable={
@@ -5608,7 +5626,7 @@ export function SessionRunner(props: SessionRunnerProps) {
       />
       {restTimerHydrated && (
         <WorkoutStatusBar
-          action={guidance.currentAction}
+          action={currentStatusAction}
           exercise={currentActionExercise}
           timer={timer}
           restRemainingSec={restRemainingSec}
@@ -5621,18 +5639,20 @@ export function SessionRunner(props: SessionRunnerProps) {
             revealCurrentWorkoutAction();
           }}
           currentWorkingSetRevealed={
-            guidance.currentAction?.kind !== "working_set" ||
+            currentStatusAction?.kind !== "working_set" ||
             currentWorkingSetRevealed
           }
           currentSetFormId={currentSetFormId}
           currentSetBlockingReason={currentActionBlockingReason}
           onPrimaryAction={() => {
             if (
-              guidance.currentAction != null &&
-              guidance.currentAction.kind !== "working_set" &&
-              guidance.currentAction.kind !== "rest"
+              currentStatusAction != null &&
+              currentStatusAction.kind !== "working_set" &&
+              currentStatusAction.kind !== "rest"
             ) {
-              const target = document.getElementById(currentActionTargetId);
+              const target = document.getElementById(
+                actionTargetId(currentStatusAction),
+              );
               const warmup = target?.querySelector<HTMLButtonElement>(
                 '[role="checkbox"][aria-checked="false"]',
               );

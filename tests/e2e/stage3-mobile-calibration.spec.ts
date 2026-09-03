@@ -352,7 +352,7 @@ test("keeps new Stage 3 controls usable at the saved iPhone calibration", async 
   const logSet = page.getByTestId("active-log-set");
   await logSet.scrollIntoViewIfNeeded();
   await logSet.click();
-  await expect(currentExercise).toHaveCount(0);
+  await expect(currentExercise).toBeVisible();
   const restCockpit = statusBar.getByRole("region", { name: "Rest timer" });
   await expect(restCockpit).toBeVisible();
   await expect(restCockpit).toContainText("Rest");
@@ -364,7 +364,7 @@ test("keeps new Stage 3 controls usable at the saved iPhone calibration", async 
     statusBar.getByRole("button", { name: "Increase rest by 15 seconds" }),
   ).toBeVisible();
   await expect(
-    statusBar.getByRole("button", { name: "Skip rest" }),
+    statusBar.getByRole("button", { name: "End rest" }),
   ).toBeVisible();
 
   const enlargedLayout = await page.evaluate(() => {

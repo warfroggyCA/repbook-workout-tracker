@@ -185,18 +185,14 @@ async function expectActiveViewportBudget(
 
 async function dismissRest(page: Page) {
   const status = page.getByRole("complementary", { name: "Workout status" });
-  const skip = status.getByRole("button", { name: "Skip rest", exact: true });
-  await expect(skip).toBeVisible();
+  const rest = status.getByTestId("rest-cockpit");
+  const end = rest.getByRole("button", { name: "End rest", exact: true });
+  await expect(end).toBeVisible();
   await expectActiveViewportBudget(page);
-  await skip.click();
-  const dismiss = status.getByRole("button", {
-    name: "Dismiss rest timer",
-    exact: true,
-  });
-  await expect(dismiss).toBeVisible();
+  await end.click();
+  await expect(rest).toContainText("Rest ended");
   await expectActiveViewportBudget(page);
-  await dismiss.click();
-  await expect(dismiss).toHaveCount(0);
+  await expect(rest).toHaveCount(0, { timeout: 5_000 });
 }
 
 async function openMoreForExercise(card: Locator) {
@@ -684,7 +680,7 @@ test("keeps the full live workout usable through warm-up, skip, replace, continu
     .toContainText("1 completed");
   await expect(
     page.getByRole("complementary", { name: "Workout status" })
-      .getByRole("button", { name: "Skip rest", exact: true }),
+      .getByRole("button", { name: "End rest", exact: true }),
   ).toBeVisible();
   await expectActiveViewportBudget(page);
 

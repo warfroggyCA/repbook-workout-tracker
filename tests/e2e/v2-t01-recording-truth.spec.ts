@@ -79,15 +79,12 @@ async function dismissRestCockpit(page: Page) {
   const status = page.getByRole("complementary", { name: "Workout status" });
   const rest = status.getByTestId("rest-cockpit");
   await expect(rest).toBeVisible();
-  const skip = rest.getByRole("button", { name: "Skip rest", exact: true });
-  if (await skip.isVisible()) await skip.click();
-  const dismiss = rest.getByRole("button", {
-    name: "Dismiss rest timer",
+  const end = rest.getByRole("button", {
+    name: "End rest",
     exact: true,
   });
-  await expect(dismiss).toBeVisible();
-  await dismiss.click();
-  await expect(rest).toHaveCount(0);
+  if (await end.isVisible()) await end.click();
+  await expect(rest).toHaveCount(0, { timeout: 5_000 });
 }
 
 async function discardWorkout(page: Page) {

@@ -1,139 +1,150 @@
-# Active Workout Phase 2 design QA
+# Active Workout Phase 3 design QA
 
 ## Comparison target
 
 - Source visual truth:
   - `docs/assets/active-workout-north-star/01-set-entry-390x844-115.jpg`
+  - `docs/assets/active-workout-north-star/02-rest-running-390x844-115.jpg`
+  - `docs/assets/active-workout-north-star/03-rest-complete-390x844-115.jpg`
   - `docs/assets/active-workout-north-star/05-set-entry-390x844-145.jpg`
+  - `docs/assets/active-workout-north-star/06-rest-running-390x844-145.jpg`
   - `docs/assets/active-workout-north-star/07-set-entry-320x700-145.jpg`
 - Rendered implementation:
-  - `docs/assets/active-workout-phase2-qa/01-set-entry-390x844-115.jpg`
-  - `docs/assets/active-workout-phase2-qa/05-set-entry-390x844-145.jpg`
-  - `docs/assets/active-workout-phase2-qa/07-set-entry-320x700-145.jpg`
-- Full-view comparisons:
-  - `docs/assets/active-workout-phase2-qa/01-set-entry-390x844-115-comparison.jpg`
-  - `docs/assets/active-workout-phase2-qa/05-set-entry-390x844-145-comparison.jpg`
-  - `docs/assets/active-workout-phase2-qa/07-set-entry-320x700-145-comparison.jpg`
-- Focused comparisons:
-  - `docs/assets/active-workout-phase2-qa/stacked-controls-320x700-145-comparison.jpg`
-  - `docs/assets/active-workout-phase2-qa/fixed-action-320x700-145-comparison.jpg`
-- State: light-theme Barbell Back Squat set entry, with set 1 saved, set 2
-  current, and set 3 planned.
-- CSS viewports and source/implementation pixels: 390 by 844 at 115%,
-  390 by 844 at 145%, and 320 by 700 at 145%. Every source and rendered
-  pair has equal pixel dimensions.
-- Device scale factor: 1. No density normalization was needed.
+  - `docs/assets/active-workout-phase3-qa/01-set-entry-390x844-115.jpg`
+  - `docs/assets/active-workout-phase3-qa/02-rest-running-390x844-115.jpg`
+  - `docs/assets/active-workout-phase3-qa/03-rest-complete-390x844-115.jpg`
+  - `docs/assets/active-workout-phase3-qa/05-set-entry-390x844-145.jpg`
+  - `docs/assets/active-workout-phase3-qa/06-rest-running-390x844-145.jpg`
+  - `docs/assets/active-workout-phase3-qa/07-set-entry-320x700-145.jpg`
+- Side-by-side comparisons, source on the left and implementation on the
+  right:
+  - `docs/assets/active-workout-phase3-qa/01-set-entry-390x844-115-comparison.jpg`
+  - `docs/assets/active-workout-phase3-qa/02-rest-running-390x844-115-comparison.jpg`
+  - `docs/assets/active-workout-phase3-qa/03-rest-complete-390x844-115-comparison.jpg`
+  - `docs/assets/active-workout-phase3-qa/05-set-entry-390x844-145-comparison.jpg`
+  - `docs/assets/active-workout-phase3-qa/06-rest-running-390x844-145-comparison.jpg`
+  - `docs/assets/active-workout-phase3-qa/07-set-entry-320x700-145-comparison.jpg`
+- Additional rendered evidence:
+  - `docs/assets/active-workout-phase3-qa/10-keyboard-390x844-115.jpg`
+  - `docs/assets/active-workout-phase3-qa/04-equipment-conflict-390x844-115.jpg`
 
-The artboards define the Phase 2 layout direction; the written North Star
-contract supersedes static shorthand. The implementation therefore keeps
-**Saved** instead of **Logged**, uses visible **Review** text instead of an
-unlabelled finish flag, and retains truthful supporting content that the static
-mock omits. Phase 2 is limited to fixed action, focus safety, measured overlay
-clearance, and large-text set-entry layout. Neutral nonblocking rest remains
-Phase 3, while equipment decisions and reason persistence remain Phase 4.
+The named CSS viewports are 390 by 844 at 115%, 390 by 844 at 145%, and
+320 by 700 at 145%. Source and implementation images have equal dimensions;
+each 390 comparison is 780 by 844 and the 320 comparison is 640 by 700. The
+device scale factor is 1, so no density normalization was needed.
+
+The checked-in artboards define direction while the written North Star
+contract owns exact behaviour and copy. The real application therefore keeps
+**Saved**, visible **Review**, exact cue state, exact next-set destination,
+warm-up context, and existing exercise actions that the static mock abbreviates.
+Phase 3 changes rest presentation and safe set access only. The equipment
+capture proves that state was not visually regressed; equipment decisions and
+reason persistence remain Phase 4 and were not judged as Phase 3 fidelity.
 
 ## Findings
 
-No actionable P0, P1, or P2 difference remains within the Phase 2 scope.
+No actionable P0, P1, or P2 difference remains within the Phase 3 scope.
 
-- The fixed area contains one blue **Log set 2** action, exact note access, and
-  visible **Review** access at both named mobile widths. It does not duplicate
-  the set writer or expose a second row-level Log action.
-- At 145%, weight and repetitions stack, all four steppers remain visible, and
-  the load-source label wraps instead of being hidden or ellipsized.
-- When text size or the visual viewport changes while the current row or one of
-  its fields owns focus, the focused control is re-revealed above the measured
-  fixed area. The 320 by 700 capture intentionally scrolls supporting header
-  content above the viewport so the current performed controls remain usable;
-  this follows the written stress-case priority.
-- The surrounding header, warm-up summary, supporting cues, and full exercise
-  actions make the real application denser than the static artboard. That is an
-  intentional phased-product difference, not a Phase 2 fidelity defect. No
-  capability was deleted merely to make the screenshot shorter.
+- A running rest is a compact neutral strip above the existing fixed action.
+  It states the countdown, cue channel, and exact destination without using
+  amber or implying an athlete adherence problem.
+- The destination set remains the current ledger row during rest. Its weight
+  and repetition controls stay editable, and **Log set 2** stays available when
+  the existing queue and form safety rules permit it. No second writer or rest-
+  specific save path was introduced.
+- **−15s**, **+15s**, and **End rest** remain visible, labelled, and at least
+  44 by 44 CSS pixels at 115% and 145%. **End rest** records the existing
+  athlete-ended rest outcome; it does not claim that planned exercise work was
+  skipped.
+- Elapsed rest uses one compact green **Rest complete** status for four seconds
+  from the durable `readyAt` deadline and then collapses without a dismiss
+  control. Athlete-ended rest uses a neutral **Rest ended** confirmation and is
+  not announced as completion.
+- At 145%, the truthful cue and destination text require more height than the
+  abbreviated artboard. The existing measured-overlay and focus-preservation
+  path re-reveals the editable destination row above that height. The result
+  retains information and controls rather than matching the reference by
+  hiding them.
+- The surrounding header, warm-up summary, cues, and exercise actions keep the
+  real product denser than the static artboards. That is an intentional phased
+  difference, not a rest defect; no existing capability was removed for a
+  shorter screenshot.
 
 ## Required fidelity surfaces
 
-- Fonts and typography: source and implementation use Repbook's Geist stack
-  and established type scale. At 145%, **Log set 2**, performed values, units,
-  target, and load provenance remain readable without clipped essential text.
-- Spacing and layout rhythm: the fixed three-control grid fits at 390 and 320
-  CSS pixels. The implementation uses the measured overlay variable plus safe
-  area and content buffer rather than a guessed fixed bottom padding. Current-
-  row focus moves the taller real content into the available viewport.
-- Colors and tokens: primary action, selected row, acknowledgement success,
-  borders, and backgrounds use existing repository tokens. Amber is not added
-  to ordinary set entry, rest, selection, or replacement states in this phase.
-- Image quality and asset fidelity: the compared state has no photographic or
-  illustrative assets. Existing component and Lucide icons remain vector-
-  rendered; Phase 2 adds no placeholder, emoji, CSS-drawn, or custom SVG art.
-- Copy and content: **Log set 2**, **Review and finish workout**, **Add training
-  note**, **Performed measure**, **Load: earlier workout set**, **Saved**, and
-  **Planned** retain exact state meaning. The compact visible **Review** label
-  keeps the full consequential accessible name.
-- Icons and affordances: the note icon keeps its exact accessible name and a
-  minimum 44-pixel target. Decrement and increment controls remain labelled,
-  visible, and at least 44 by 44 CSS pixels at 145%.
-- Responsiveness and accessibility: browser assertions prove no horizontal
-  page overflow, four visible and unobscured steppers, and fixed controls at
-  390 by 844 and 320 by 700 with 145% text. Focus lands on a stable rest or
-  current-row region rather than a stepper. During a held no-rest save, the
-  fixed action is rebound to the next exact form, focus moves to that row, and
-  a repeated Enter does not submit its prefilled values. A failed retained save
-  instead moves focus to the recovery alert.
-- Interaction and console evidence: the production-build browser harness
-  exercised logging through the form-associated fixed action, rest transition,
-  rest dismissal, focus handoff, text-size change, viewport resize, equipment
-  baseline, destructive-review entry, and workout discard. Its page-error
-  observer reported no unexpected browser error.
+- Fonts and typography: the source and implementation use Repbook's Geist
+  stack and existing type scale. Countdown digits are tabular; destination and
+  cue text wrap instead of clipping at extra-large text.
+- Spacing and layout rhythm: rest is composed above the fixed action inside the
+  existing measured overlay. The 115% strip stays compact; the 145% strip grows
+  only enough to preserve exact context and 44-pixel controls.
+- Colors and tokens: running and athlete-ended rest use neutral repository
+  tokens. Green is limited to the brief elapsed confirmation. Amber remains an
+  attention colour and does not mean ordinary rest.
+- Image and icon quality: this state needs no photographic or illustrative
+  asset. The completion check uses the existing Lucide library; no placeholder,
+  emoji, CSS-drawn, or custom SVG art was added.
+- Copy and content: **Rest**, **Rest complete**, **Rest ended**, **End rest**,
+  **Sound blocked** or the selected cue mode, the exact `Next:` destination,
+  and **Log set 2** retain distinct meanings. A blocked or unavailable cue is
+  described as a technical channel state, not a failed rest or athlete action.
+- Responsiveness: browser geometry assertions cover 390 by 844 at 115% and
+  145%, with the 320 by 700 set-entry stress case retained. The page has no
+  horizontal overflow, the strip controls fit, and the destination row remains
+  visible above the fixed area after a text-size or viewport change.
+- Accessibility: the three rest controls have exact accessible names and
+  minimum 44-pixel targets. Elapsed completion owns one `role="status"`, polite,
+  atomic live region; running and athlete-ended states do not create a false
+  completion announcement. The fixed set and Review controls remain keyboard
+  reachable and at least 44 pixels in the compact durability scenario.
+- Interaction and durability: the production-build browser paths exercised set
+  logging, a running rest with enabled destination inputs and the exact fixed
+  Log action, time adjustment, reload while running, elapsed completion, four-
+  second collapse, and replay-safe reload after continuation. The existing
+  absolute deadline, cross-tab store, occurrence destination, cue outcome,
+  ordering, and writer remain authoritative.
 
 ## Comparison history
 
-1. Pass 1 found two P2 responsive defects. **Log set 2** wrapped at 390 by 844
-   with 145% text, and resizing an already-focused workout could leave the
-   stacked controls below the fixed overlay. The compact finish label now reads
-   **Review** at mobile widths, and focused current content is re-revealed after
-   text-size, window, or visual-viewport changes.
-2. Pass 2 confirmed that the controls and fixed action were clear, then found
-   one P2 truth/legibility defect: **Load: earlier workout set** was ellipsized
-   at 145%. The heading and provenance now stack and wrap at the narrow extra-
-   large breakpoint.
-3. Pass 3 recaptured every named viewport and rebuilt the combined full-view
-   and focused comparisons listed above. It found no remaining actionable
-   P0/P1/P2 difference within Phase 2. Automated geometry, accessible-name,
-   overflow, focus, and stray-Enter assertions passed against the same build.
-4. Fresh-context review found one P1 keyboard seam outside the static captures:
-   a no-rest transition could rebind the still-focused fixed Log control while
-   the preceding write awaited acknowledgement. The fixed submit now remounts
-   for each exact form, the new row receives focus without consuming the
-   acknowledgement-owned handoff, and failed saves focus their recovery alert.
-   Focused production-build checks cover both the held acknowledgement and
-   retained failure paths.
-5. Final fresh-context review confirmed the keyboard and recovery fixes, then
-   found one P2 duplicate action when an appended extra set became current.
-   Fixed-action ownership now follows the exact current editable row instead of
-   excluding every appended row: a current extra set uses the fixed Log action,
-   while a non-current extra set retains its inline fallback. Focused component
-   and T05 journey assertions cover both states.
+1. Pass 1 found one P1 semantic-colour mismatch: the elapsed state tinted the
+   entire fixed action row green. Success colour is now confined to the brief
+   confirmation strip, so **Log set 2** remains the ordinary primary action.
+2. Pass 1 also found one P2 hierarchy mismatch: running rest had no distinct
+   neutral surface. The strip now uses the existing muted surface and border,
+   while preserving the app's real cue and destination text.
+3. Pass 2 at 145% found one P1 usability mismatch: the taller truthful strip
+   could leave the next set's inputs below the measured overlay after a text-
+   size change. The existing focus-preservation effect now covers active rest
+   and re-reveals that row without moving focus to a stepper.
+4. Pass 3 rebuilt and inspected every combined comparison above. Set entry,
+   running rest, and elapsed rest matched the written hierarchy at both named
+   text sizes with no remaining actionable P0/P1/P2 difference.
+5. The focused durability run exposed a test-only race between rapid repeated
+   timer adjustments and asynchronous durable deadline updates. The scenario
+   now waits for each deadline change and passed without changing product
+   timing or adding broader test scope.
 
 ## Open questions
 
-None for Phase 2. Rest presentation and equipment decision semantics retain
-their explicit later-phase gates.
+None for Phase 3. The Phase 4 equipment meaning, persistence, and migration
+gate remains separate.
 
 ## Implementation checklist
 
-- [x] Keep one truthful fixed primary action without duplicating persistence.
-- [x] Move post-log and post-rest focus to stable, inert targets.
-- [x] Keep weight and repetition steppers visible at 145% by stacking measures.
-- [x] Preserve load provenance without truncation at narrow extra-large text.
-- [x] Preserve measured overlay, safe-area, visual-viewport, and keyboard
-  clearance.
-- [x] Verify fixed-action names, visible Finish review copy, and touch targets.
-- [x] Verify the named viewports with combined source/implementation evidence.
+- [x] Render running rest as neutral context above the fixed action.
+- [x] Keep the exact destination set editable and safely loggable.
+- [x] Use explicit **End rest** without implying skipped exercise work.
+- [x] Show elapsed completion for four seconds with one polite announcement.
+- [x] Keep cue-channel failure distinct from timer and athlete outcomes.
+- [x] Preserve durable deadline, destination, ordering, cross-tab, and replay
+  contracts.
+- [x] Verify 115% and 145% source/implementation comparisons and touch targets.
+- [x] Verify running reload, completion collapse, and continuation durability.
 
 ## Follow-up polish
 
-No Phase 2-only P3 refinement is required before review. Do not partially
-implement the Phase 3 rest strip or Phase 4 equipment decision in this branch.
+No Phase 3-only P3 refinement is required before review. Do not partially
+implement the high-risk Phase 4 equipment decision or reason persistence in
+this branch.
 
 final result: passed

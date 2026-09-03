@@ -226,18 +226,17 @@ test("keeps confirmed equipment out of the common path while preserving current-
   });
 
   await extraLargeLog.click();
-  await expect(currentCard).toHaveCount(0);
   const workoutStatus = page.getByRole("complementary", {
     name: "Workout status",
   });
+  await expect(currentCard).toBeVisible();
   await workoutStatus.getByRole("button", {
-    name: "Skip rest",
+    name: "End rest",
     exact: true,
   }).click();
-  await workoutStatus.getByRole("button", {
-    name: "Dismiss rest timer",
-    exact: true,
-  }).click();
+  await expect(workoutStatus.getByTestId("rest-cockpit")).toHaveCount(0, {
+    timeout: 5_000,
+  });
   const resumedCard = page.getByTestId("current-exercise-card");
   await openNativeDetails(resumedCard.getByTestId("active-exercise-details"));
   const completedSets = resumedCard.getByTestId("completed-sets");

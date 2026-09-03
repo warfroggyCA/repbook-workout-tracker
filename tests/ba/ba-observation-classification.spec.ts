@@ -610,7 +610,7 @@ test("classifies all sixteen prior workout observations", async ({
       severity: "high",
       action: "Inspect the active set controls for a per-set skip action and optional reason.",
       expected: "One set can be recorded as skipped with an optional durable reason.",
-      observed: `${perSetSkipCount} per-set skip controls exist. Exercise-level Skip and Skip rest are different actions.`,
+      observed: `${perSetSkipCount} per-set skip controls exist. Exercise-level Skip and End rest are different actions.`,
     });
 
     const substitutionPlannedExercise = "Barbell Back Squat";
@@ -704,7 +704,9 @@ test("classifies all sixteen prior workout observations", async ({
     const logSetVisible = await logSet.isVisible();
     if (logSetVisible) await logSet.click();
     const statusBar = page.getByRole("complementary", { name: "Workout status" });
-    const setSavedStatus = statusBar.getByText(/Resting/);
+    const setSavedStatus = page
+      .getByTestId("current-exercise-card")
+      .locator('[data-set-row-state="saved"]');
     const setSavedStatusVisible = logSetVisible
       ? await setSavedStatus
           .waitFor({ state: "visible", timeout: 3_000 })
@@ -726,8 +728,8 @@ test("classifies all sixteen prior workout observations", async ({
     const addTimerCount = await visibleCount(
       statusBar.getByRole("button", { name: "Increase rest by 15 seconds", exact: true }),
     );
-    const skipRestCount = await visibleCount(
-      statusBar.getByRole("button", { name: "Skip rest", exact: true }),
+    const endRestCount = await visibleCount(
+      statusBar.getByRole("button", { name: "End rest", exact: true }),
     );
     const timerPresentationPasses =
       logSetVisible &&
@@ -736,14 +738,14 @@ test("classifies all sixteen prior workout observations", async ({
       timerCount === 1 &&
       subtractTimerCount === 1 &&
       addTimerCount === 1 &&
-      skipRestCount === 1;
+      endRestCount === 1;
     await record({
       number: 3,
       classification: timerPresentationPasses ? "pass" : "reproduced",
       severity: timerPresentationPasses ? "none" : "medium",
       action: "Save the first Day A set and inspect the active rest state.",
       expected: "A prominent, high-contrast timer appears once with direct adjustment controls.",
-      observed: `Log set visible: ${logSetVisible}; saved/rest status visible: ${setSavedStatusVisible}; visible rest timers: ${timerCount}; height: ${Math.round(timerBox?.height ?? 0)}px; visible −15s controls: ${subtractTimerCount}; +15s controls: ${addTimerCount}; Skip rest controls: ${skipRestCount}. The dark timer treatment is visually captured; this checkpoint does not claim a computed contrast ratio.`,
+      observed: `Log set visible: ${logSetVisible}; saved/rest status visible: ${setSavedStatusVisible}; visible rest timers: ${timerCount}; height: ${Math.round(timerBox?.height ?? 0)}px; visible −15s controls: ${subtractTimerCount}; +15s controls: ${addTimerCount}; End rest controls: ${endRestCount}. The neutral timer treatment is visually captured; this checkpoint does not claim a computed contrast ratio.`,
     });
     if (!restTimerVisible) {
       throw new Error(

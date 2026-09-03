@@ -386,11 +386,6 @@ test("refuses incomplete assistance, then preserves assisted work without false 
       ),
     )
     .toBeLessThanOrEqual(1);
-  const dismissRest = workoutStatus.getByRole("button", {
-    name: "Dismiss rest timer",
-    exact: true,
-  });
-  await expect(dismissRest).toBeVisible();
   const readyLayout = await workoutStatus.evaluate((element) => {
     const navigation = document.querySelector("nav.fixed");
     const navigationRect = navigation?.getBoundingClientRect() ?? null;
@@ -407,7 +402,7 @@ test("refuses incomplete assistance, then preserves assisted work without false 
       navigationVisible,
       buttons: Array.from(element.querySelectorAll("button"))
         .filter((button) =>
-          button.textContent?.trim() === "Dismiss rest timer" ||
+          button.dataset.testid === "active-log-set" ||
           button.getAttribute("aria-label") === "Review and finish workout",
         )
         .map((button) => {
@@ -431,9 +426,9 @@ test("refuses incomplete assistance, then preserves assisted work without false 
         button.width >= 44 &&
         button.height >= 44 &&
         button.bottom <= readyLayout.navigationTop + 1,
-    ),
+      ),
   ).toBe(true);
-  await dismissRest.click();
+  await expect(restTimer).toHaveCount(0, { timeout: 5_000 });
 
   await page.reload({ waitUntil: "domcontentloaded" });
   const restoredAssisted = page.getByRole("region", {

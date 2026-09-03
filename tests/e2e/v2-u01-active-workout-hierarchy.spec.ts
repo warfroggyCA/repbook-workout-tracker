@@ -830,7 +830,7 @@ test("keeps the ordinary active set current-first, unobstructed, and acknowledge
       "Completed sets",
     );
     await expect(currentEquipmentSetup).toHaveCount(0);
-    await expect(currentEntry).toHaveCount(0);
+    await expect(currentEntry).toContainText("Set 2");
     await expect(setLedger).toBeVisible();
     await expect(
       setLedger.locator('[data-set-row-state="saved"]'),
@@ -848,18 +848,15 @@ test("keeps the ordinary active set current-first, unobstructed, and acknowledge
           document.documentElement.clientWidth,
       ),
     ).toBeLessThanOrEqual(1);
-    const skipRest = workoutStatus.getByRole("button", {
-      name: "Skip rest",
+    const endRest = workoutStatus.getByRole("button", {
+      name: "End rest",
       exact: true,
     });
-    await expectPrimaryActionUnobstructed(skipRest);
-    await skipRest.click();
-    const dismissRest = workoutStatus.getByRole("button", {
-      name: "Dismiss rest timer",
-      exact: true,
+    await expectPrimaryActionUnobstructed(endRest);
+    await endRest.click();
+    await expect(workoutStatus.getByTestId("rest-cockpit")).toHaveCount(0, {
+      timeout: 5_000,
     });
-    await expectPrimaryActionUnobstructed(dismissRest);
-    await dismissRest.click();
     const setTwoToggle = currentCard.getByTestId("exercise-swipe-surface");
     await setTwoToggle.click();
     await expect(setTwoToggle).toHaveAttribute("aria-expanded", "false");
@@ -874,7 +871,7 @@ test("keeps the ordinary active set current-first, unobstructed, and acknowledge
       "Log set 2",
     );
     await expect(workoutStatus.getByRole("button", {
-      name: "Skip rest",
+      name: "End rest",
       exact: true,
     })).toHaveCount(0);
     await expect(currentCard.getByTestId("exercise-swipe-surface")).toHaveAttribute(

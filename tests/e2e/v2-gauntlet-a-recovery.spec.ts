@@ -46,15 +46,13 @@ async function expectSetQueueLength(page: Page, expected: number) {
 
 async function dismissRest(page: Page) {
   const status = page.getByRole("complementary", { name: "Workout status" });
-  const skip = status.getByRole("button", { name: "Skip rest", exact: true });
-  const dismiss = status.getByRole("button", {
-    name: "Dismiss rest timer",
+  const rest = status.getByTestId("rest-cockpit");
+  const end = rest.getByRole("button", {
+    name: "End rest",
     exact: true,
   });
-  if (await skip.isVisible()) await skip.click();
-  await expect(dismiss).toBeVisible();
-  await dismiss.click();
-  await expect(dismiss).toHaveCount(0);
+  if (await end.isVisible()) await end.click();
+  await expect(rest).toHaveCount(0, { timeout: 5_000 });
 }
 
 test("recovers offline and timeout-after-commit sets exactly, then reviews abandonment accessibly", async ({

@@ -47,15 +47,14 @@ async function expectTouchTarget(locator: Locator) {
 
 async function dismissRest(page: Page) {
   const status = page.getByRole("complementary", { name: "Workout status" });
-  const skip = status.getByRole("button", { name: "Skip rest", exact: true });
-  await expect(skip).toBeVisible();
-  await skip.click();
-  const dismiss = status.getByRole("button", {
-    name: "Dismiss rest timer",
+  const rest = status.getByTestId("rest-cockpit");
+  const end = rest.getByRole("button", {
+    name: "End rest",
     exact: true,
   });
-  await expect(dismiss).toBeVisible();
-  await dismiss.click();
+  await expect(end).toBeVisible();
+  await end.click();
+  await expect(rest).toHaveCount(0, { timeout: 5_000 });
 }
 
 test("keeps ordinary completion minimal and makes exception evidence reversible, retry-safe, and reviewable", async ({

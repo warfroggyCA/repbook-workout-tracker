@@ -15,6 +15,8 @@ import { ACTIVE_WORKOUT_OVERLAY_BOTTOM_VARIABLE } from "@/lib/active-workout-lay
 import type { SessionExerciseData } from "./types";
 import { RestCockpit } from "./rest-cockpit";
 
+const REST_CONFIRMATION_DURATION_MS = 4_000;
+
 type Props = {
   action: SessionGuidanceFocusAction | null;
   exercise: SessionExerciseData | null;
@@ -87,7 +89,9 @@ export function WorkoutStatusBar({
     currentSetFormState.disabled;
   const saving = action?.kind === "working_set" ? saveStatus(exercise) : null;
   const timerRunning = timer?.phase === "running" && restRemainingSec != null;
-  const timerReady = timer?.phase === "ready" || timer?.phase === "skipped";
+  const timerElapsed = timer?.phase === "ready";
+  const timerEnded = timer?.phase === "skipped";
+  const timerReady = timerElapsed || timerEnded;
   const skipRecoveryPending =
     checkingExerciseSkip == null && recoveringSkippedExercise != null;
   const showsCurrentSet =
@@ -181,6 +185,26 @@ export function WorkoutStatusBar({
         ? formatSessionGuidanceAction(action)
         : null
   );
+  const restConfirmationGenerationId = timerReady
+    ? timer?.generationId ?? null
+    : null;
+  const restConfirmationReadyAt = timerReady ? timer?.readyAt ?? null : null;
+  useEffect(() => {
+    if (
+      restConfirmationGenerationId == null ||
+      restConfirmationReadyAt == null
+    ) return;
+    const remainingDuration = Math.max(
+      0,
+      restConfirmationReadyAt + REST_CONFIRMATION_DURATION_MS - Date.now(),
+    );
+    const timeout = window.setTimeout(onRestContinue, remainingDuration);
+    return () => window.clearTimeout(timeout);
+  }, [
+    onRestContinue,
+    restConfirmationGenerationId,
+    restConfirmationReadyAt,
+  ]);
   useEffect(() => {
     if (currentSetFormId == null) return;
     const form = document.getElementById(currentSetFormId);
@@ -238,23 +262,24 @@ export function WorkoutStatusBar({
       data-rest-state={
         timerRunning ? "running" : timerReady ? "ready" : "inactive"
       }
-      className={cn(
-        "fixed inset-x-0 bottom-[env(safe-area-inset-bottom)] z-30 border-t bg-background shadow-[0_-5px_18px_rgb(0_0_0/0.12)] lg:bottom-0 lg:left-[var(--main-sidebar-width)]",
-        timerRunning &&
-          "border-amber-500 bg-amber-100 dark:border-amber-500 dark:bg-amber-950",
-        timerReady &&
-          "border-emerald-600 bg-emerald-50 dark:bg-emerald-950",
-      )}
+      className="fixed inset-x-0 bottom-[env(safe-area-inset-bottom)] z-30 border-t bg-background shadow-[0_-5px_18px_rgb(0_0_0/0.12)] lg:bottom-0 lg:left-[var(--main-sidebar-width)]"
     >
       <div
-        className={cn(
-          "mx-auto min-h-14 max-w-3xl items-center gap-1 px-1 py-1 min-[400px]:px-2 sm:gap-2 sm:px-3",
-          timerRunning || timerReady
-            ? "flex flex-wrap"
-            : "grid grid-cols-[minmax(0,1fr)_auto_auto]",
-        )}
+        className="mx-auto grid min-h-14 max-w-3xl grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-1 px-1 py-1 min-[400px]:px-2 sm:gap-2 sm:px-3"
       >
-        {!timerRunning && !timerReady && logsRevealedCurrentSet ? (
+        {(timerRunning || timerReady) && timer ? (
+          <RestCockpit
+            phase={timer.phase === "continued" ? "ready" : timer.phase}
+            remainingSeconds={restRemainingSec}
+            alertLabel={restAlertLabel}
+            alertAriaLabel={restAlertAriaLabel}
+            destinationLabel={resolvedRestDestinationLabel}
+            onAdjust={onRestAdjust}
+            onEnd={onRestSkip}
+          />
+        ) : null}
+
+        {logsRevealedCurrentSet ? (
           <>
             <Button
               key={currentSetFormId}
@@ -274,7 +299,7 @@ export function WorkoutStatusBar({
           </>
         ) : null}
 
-        {!timerRunning && !timerReady && reviewsRevealedCurrentSet ? (
+        {reviewsRevealedCurrentSet ? (
           <button
             type="button"
             data-testid="active-workout-dock-primary"
@@ -290,7 +315,7 @@ export function WorkoutStatusBar({
           </button>
         ) : null}
 
-        {!timerRunning && !timerReady && !hidesRevealedCurrentSet ? (
+        {!hidesRevealedCurrentSet ? (
           <button
           type="button"
           data-testid={runsPrimaryAction ? "active-workout-dock-primary" : undefined}
@@ -333,10 +358,6 @@ export function WorkoutStatusBar({
               "block break-words text-[0.6875rem] leading-tight text-muted-foreground min-[520px]:text-[0.8125rem]",
               saving === "Failed" && "font-semibold text-destructive",
               runsPrimaryAction && "text-primary-foreground/85",
-              timerRunning &&
-                "font-semibold text-amber-950 dark:text-amber-100",
-              timerReady &&
-                "font-semibold text-emerald-900 dark:text-emerald-100",
             )}
           >
             {checkingExerciseSkip != null || skipRecoveryPending
@@ -352,28 +373,12 @@ export function WorkoutStatusBar({
           </button>
         ) : null}
 
-        {(timerRunning || timerReady) && timer ? (
-          <RestCockpit
-            phase={timer.phase === "continued" ? "ready" : timer.phase}
-            remainingSeconds={restRemainingSec}
-            alertLabel={restAlertLabel}
-            alertAriaLabel={restAlertAriaLabel}
-            destinationLabel={resolvedRestDestinationLabel}
-            onAdjust={onRestAdjust}
-            onSkip={onRestSkip}
-            onContinue={onRestContinue}
-          />
-        ) : null}
-
         <Button
           data-testid="contextual-note-trigger-workout"
           type="button"
           variant="ghost"
           size="icon-sm"
-          className={cn(
-            "min-h-11 min-w-11 shrink-0",
-            (timerRunning || timerReady) && "ml-auto",
-          )}
+          className="min-h-11 min-w-11 shrink-0"
           onClick={onAddNote}
           aria-label="Add training note"
         >
