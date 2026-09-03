@@ -304,10 +304,39 @@ describe("ExerciseCard", () => {
     );
     const exerciseWithLinkedDeviceSets = {
       ...exercise,
-      sets: exercise.sets.map((set, index) => ({
-        ...set,
-        occurrenceId: occurrences[index].id,
-      })),
+      sets: [
+        ...exercise.sets.map((set, index) => ({
+          ...set,
+          occurrenceId: occurrences[index].id,
+          ...(index === 0
+            ? {
+                rpe: 8,
+                rir: 2,
+                techniqueIssue: "control" as const,
+                limitationCause: "grip" as const,
+                pain: {
+                  bodyPart: "wrist" as const,
+                  severity: 3,
+                  note: "Sharp on the last rep",
+                },
+                note: "Keep the brace",
+              }
+            : {}),
+        })),
+        {
+          id: "unlinked-saved-set",
+          clientKey: null,
+          occurrenceId: null,
+          setNo: 3,
+          weight: 95,
+          weightUnit: "lb" as const,
+          reps: 8,
+          rpe: null,
+          note: null,
+          saveState: "saved" as const,
+          correctionCount: 1,
+        },
+      ],
     };
     const html = renderToStaticMarkup(
       <ExerciseCard
@@ -365,6 +394,18 @@ describe("ExerciseCard", () => {
     expect(html).toContain('data-set-row-state="retained_locally"');
     expect(html).toContain('data-set-row-state="failed"');
     expect(html).toContain("0 of 3 sets · 1 saving · 1 needs attention");
+    expect(html).toContain("Keep the brace");
+    expect(html).toContain("Effort: Hard");
+    expect(html).toContain("RIR 2");
+    expect(html).toContain("Technique: Control");
+    expect(html).toContain("Limited by: Grip");
+    expect(html).toContain("Pain: wrist 3/10");
+    expect(html).toContain("Pain note: Sharp on the last rep");
+    expect(html).toContain("0 completed");
+    expect(html).toContain("Recorded set 3");
+    expect(html).toContain("cannot be presented as saved");
+    expect(html).not.toContain("Acknowledged by Repbook");
+    expect(html).not.toContain('aria-label="Archive set"');
     expect(html).not.toContain("Ramp 1 · 45 lb · 5 reps");
     expect(html).toContain("Warm-up guidance · reference");
     expect(html).toContain("Move smoothly");
@@ -669,6 +710,7 @@ describe("ExerciseCard", () => {
         {
           id: "assisted-set",
           clientKey: null,
+          occurrenceId: "00000000-0000-4000-8000-000000000014",
           setNo: 1,
           weight: 80,
           weightUnit: "lb",
@@ -734,6 +776,14 @@ describe("ExerciseCard", () => {
           resolvedAt: null,
           completedSetId: null,
         }}
+        workingOccurrences={[
+          workingOccurrenceFor(assistedExercise, 0, {
+            id: "00000000-0000-4000-8000-000000000014",
+            outcome: "completed",
+            completedSetId: "assisted-set",
+            revision: 1,
+          }),
+        ]}
         isCurrentExercise
         onPatch={() => undefined}
         onQueueSet={async () => true}
@@ -934,6 +984,7 @@ describe("ExerciseCard", () => {
     expect(html).toContain("Change exercise for this workout");
     expect(html).toContain("Compatible alternatives");
     expect(html).toContain("Replace exercise");
+    expect(html).toContain('data-testid="replace-current-exercise"');
     expect(html).toContain("without similarity ranking");
     expect(html).toContain("Log set");
     expect(html).toContain("Skip set");
@@ -1071,7 +1122,36 @@ describe("ExerciseCard", () => {
       activeOccurrence: null,
       workingOccurrences: [restoredOccurrence],
     }));
-    expect(restoredHtml).toContain("Snapshot restored ×2");
+    expect(restoredHtml).toContain("Latest: Snapshot restored · 2 changes");
+
+    const savedOccurrence = workingOccurrenceFor(current, 0, {
+      outcome: "completed",
+      completedSetId: "00000000-0000-4000-8000-000000000071",
+      revision: 1,
+    });
+    const nextOccurrence = workingOccurrenceFor(current, 1);
+    const afterSavedSet = renderToStaticMarkup(cloneElement(card, {
+      exercise: {
+        ...current,
+        sets: [{
+          id: savedOccurrence.completedSetId!,
+          clientKey: "00000000-0000-4000-8000-000000000072",
+          occurrenceId: savedOccurrence.id,
+          setNo: 1,
+          weight: 95,
+          weightUnit: "lb" as const,
+          reps: 8,
+          rpe: null,
+          note: null,
+          saveState: "saved" as const,
+        }],
+      },
+      activeOccurrence: nextOccurrence,
+      workingOccurrences: [savedOccurrence, nextOccurrence],
+    }));
+    expect(afterSavedSet).not.toContain(
+      'data-testid="replace-current-exercise"',
+    );
   });
 
   it("keeps the planned occurrence number after an earlier set is skipped", () => {

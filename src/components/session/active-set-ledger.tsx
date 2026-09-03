@@ -8,6 +8,11 @@ import type {
   ActiveSetVersionEvidence,
 } from "@/lib/active-set-row-projection";
 import type { PerformedMetricType } from "@/lib/set-metric-semantics";
+import { effortChoiceForLegacyRpe } from "@/lib/active-workout-language";
+import {
+  LIMITATION_CAUSE_LABELS,
+  TECHNIQUE_ISSUE_LABELS,
+} from "@/lib/set-exception-context";
 import { cn } from "@/lib/utils";
 
 type CurrentRow = Extract<ActiveSetRow, { state: "current_editable" }>;
@@ -26,6 +31,7 @@ export type ActiveSetLedgerDiagnosticRow = {
   label: string;
   summary: string;
   message: string;
+  version: ActiveSetVersionEvidence | null;
 };
 
 type Props = {
@@ -104,16 +110,53 @@ export function formatActiveSetResult(
 }
 
 function versionLabel(version: ActiveSetVersionEvidence) {
+  const changeCount = `${version.count} ${version.count === 1 ? "change" : "changes"}`;
   switch (version.state) {
     case "original":
       return null;
     case "corrected":
-      return `Corrected ×${version.count}`;
+      return `Latest: Corrected · ${changeCount}`;
     case "version_restored":
-      return `Version restored ×${version.count}`;
+      return `Latest: Version restored · ${changeCount}`;
     case "snapshot_restored":
-      return `Snapshot restored ×${version.count}`;
+      return `Latest: Snapshot restored · ${changeCount}`;
   }
+}
+
+function retainedResultDetails(result: ActiveSetExactResult) {
+  const details: string[] = [];
+  if (result.rpe != null) {
+    details.push(
+      `Effort: ${effortChoiceForLegacyRpe(result.rpe)?.label ?? `RPE ${result.rpe}`}`,
+    );
+  }
+  if (result.rir != null) details.push(`RIR ${result.rir}`);
+  if (result.techniqueIssue != null) {
+    details.push(`Technique: ${TECHNIQUE_ISSUE_LABELS[result.techniqueIssue]}`);
+  }
+  if (result.limitationCause != null) {
+    details.push(`Limited by: ${LIMITATION_CAUSE_LABELS[result.limitationCause]}`);
+  }
+  if (result.pain != null) {
+    details.push(`Pain: ${result.pain.bodyPart} ${result.pain.severity}/10`);
+    if (result.pain.note?.trim()) {
+      details.push(`Pain note: ${result.pain.note.trim()}`);
+    }
+  }
+  return details;
+}
+
+function RetainedResultContext({ result }: { result: ActiveSetExactResult }) {
+  const details = retainedResultDetails(result);
+  if (!result.note?.trim() && details.length === 0) return null;
+  return (
+    <div className="mt-1 space-y-1 text-xs text-muted-foreground">
+      {result.note?.trim() && <p className="break-words">{result.note.trim()}</p>}
+      {details.length > 0 && (
+        <p className="break-words">{details.join(" · ")}</p>
+      )}
+    </div>
+  );
 }
 
 function membershipLabel(row: ActiveSetRow) {
@@ -345,6 +388,7 @@ function renderExhaustiveRow(
           announcement="status"
           detail={versionLabel(row.version)}
         >
+          <RetainedResultContext result={row.result} />
           {props.renderSaveRecovery?.(row)}
         </CompactRow>
       );
@@ -359,6 +403,7 @@ function renderExhaustiveRow(
           announcement="status"
           detail={versionLabel(row.version)}
         >
+          <RetainedResultContext result={row.result} />
           {props.renderSaveRecovery?.(row)}
         </CompactRow>
       );
@@ -373,6 +418,7 @@ function renderExhaustiveRow(
           announcement="status"
           detail={versionLabel(row.version)}
         >
+          <RetainedResultContext result={row.result} />
           {props.renderSaveRecovery?.(row)}
         </CompactRow>
       );
@@ -387,6 +433,7 @@ function renderExhaustiveRow(
           announcement="alert"
           detail={versionLabel(row.version)}
         >
+          <RetainedResultContext result={row.result} />
           {props.renderSaveRecovery?.(row)}
         </CompactRow>
       );
@@ -446,7 +493,9 @@ function renderExhaustiveRow(
           status="Unknown"
           tone="attention"
           announcement="alert"
-          detail={row.message}
+          detail={[row.version == null ? null : versionLabel(row.version), row.message]
+            .filter(Boolean)
+            .join(" · ")}
         />
       );
   }
@@ -497,19 +546,24 @@ export function ActiveSetLedger({
         {diagnosticRows.map((row) => (
           <li
             key={row.key}
-            role="alert"
             data-set-row-state="unknown_legacy"
             data-set-membership="unknown"
             className="bg-[var(--surface-attention)] px-2.5 py-2 text-sm"
           >
-            <div className="flex flex-wrap items-baseline justify-between gap-2">
-              <span className="font-medium">{row.label}</span>
-              <span className="font-medium tabular-nums">{row.summary}</span>
-              <span className="text-xs font-medium text-amber-900 dark:text-amber-100">
-                Unknown
-              </span>
+            <div role="alert">
+              <div className="flex flex-wrap items-baseline justify-between gap-2">
+                <span className="font-medium">{row.label}</span>
+                <span className="font-medium tabular-nums">{row.summary}</span>
+                <span className="text-xs font-medium text-amber-900 dark:text-amber-100">
+                  Unknown
+                </span>
+              </div>
+              <p className="mt-1 text-xs text-muted-foreground">
+                {[row.version == null ? null : versionLabel(row.version), row.message]
+                  .filter(Boolean)
+                  .join(" · ")}
+              </p>
             </div>
-            <p className="mt-1 text-xs text-muted-foreground">{row.message}</p>
           </li>
         ))}
       </ol>

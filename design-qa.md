@@ -88,6 +88,12 @@ ledger scope.
    no remaining actionable P0/P1/P2 issue inside Phase 1. The 145% and 320 × 700
    captures were also inspected, while their deliberate stepper and fixed-bar
    differences remain assigned to Phase 2.
+4. Fresh-context review found five truth and parity gaps outside the default
+   screenshot: latest revision naming, retained optional evidence, substituted
+   target ownership, ambiguous diagnostic results in Completed controls, and a
+   Replace shortcut after performed evidence. The final pass corrected these
+   on the read/presentation side and added focused regressions without changing
+   a writer, persistence contract, schema, or historical record.
 
 ## Implementation checklist
 
