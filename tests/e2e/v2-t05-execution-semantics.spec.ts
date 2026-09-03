@@ -233,10 +233,6 @@ test("moves keyboard focus off a rebound Log action during a held no-rest save",
   browserName,
   page,
 }) => {
-  test.skip(
-    browserName !== "chromium",
-    "The stray-Enter regression is a desktop keyboard contract.",
-  );
   const pageErrors = observeGauntletPageErrors(page, browserName);
   await signInAndStartDayA(page);
   for (let count = 0; count < 20; count += 1) {
