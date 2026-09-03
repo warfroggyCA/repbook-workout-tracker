@@ -384,9 +384,11 @@ test("keeps Stage 5 guidance truthful, persistent, and usable on narrow mobile s
     const before = timerSeconds(await remaining.textContent());
     await decreaseButton.click();
     await expect.poll(async () => {
-      if (!(await decreaseButton.isVisible())) return -1;
-      return timerSeconds(await remaining.textContent());
-    }).toBeLessThanOrEqual(before - 10);
+      if ((await restRegion.getAttribute("data-rest-phase")) !== "running") {
+        return true;
+      }
+      return timerSeconds(await remaining.textContent()) <= before - 10;
+    }).toBe(true);
   };
   for (let index = 0; index < 6; index += 1) {
     await decreaseRestAndWait(rest, decreaseRest);
