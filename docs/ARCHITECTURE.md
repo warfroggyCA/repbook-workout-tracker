@@ -1352,6 +1352,14 @@ occurrence evidence. History reads the current session-exercise row first and,
 only when needed, the matching substitution version's `before_data.skip_reason`;
 today's inventory is never historical cause evidence.
 
+The equipment-conflict writer binds the reviewed availability hash and the
+owner evidence revision to the locked session-exercise update. A concurrent
+inventory or evidence change rejects the stale attempt for a bounded fresh
+recheck, and the update retains the skip reason read under that lock rather
+than copying an earlier action read. If the replacement committed but its
+response was lost, the immutable mutation receipt is replayed before the new
+exercise's equipment state is evaluated.
+
 Canonical snapshot schema 36 validates the expanded substitution vocabulary in
 both current session-exercise rows and version before/after payloads. Earlier
 snapshot schemas reject a forged future reason before upgrading. Recovery

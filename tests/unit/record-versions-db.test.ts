@@ -7,6 +7,7 @@ import { and, eq, sql } from "drizzle-orm";
 import * as schema from "@/db/schema";
 import {
   completedSets,
+  equipmentItems,
   exercises,
   healthActivities,
   recordVersions,
@@ -24,6 +25,7 @@ import {
   updateSessionExerciseWithVersion,
   updateSetWithVersion,
 } from "@/services/record-versions";
+import { resolveSessionEquipmentAvailability } from "@/services/session-equipment-selection";
 import { captureUserSnapshot } from "@/services/snapshot-capture";
 import { createTotalSystemTestSnapshot } from "../helpers/set-semantics";
 
@@ -1363,6 +1365,127 @@ describe("immutable record version history", () => {
         notes: null,
       }],
       setNotes: ["Old set cue"],
+    });
+  });
+
+  it("rejects stale equipment evidence and preserves the locked skip reason", async () => {
+    await removeLoggedSetForFixture();
+    await db
+      .update(workoutSessions)
+      .set({ status: "in_progress", finishedAt: null })
+      .where(eq(workoutSessions.id, sessionId));
+    await db
+      .update(sessionExercises)
+      .set({ modificationType: "skipped", skipReason: "time" })
+      .where(eq(sessionExercises.id, sessionExerciseId));
+    const [equipment] = await db
+      .select({ id: equipmentItems.id })
+      .from(equipmentItems)
+      .where(eq(equipmentItems.userId, userId));
+    await db
+      .update(equipmentItems)
+      .set({ available: false })
+      .where(eq(equipmentItems.id, equipment.id));
+
+    const staleAvailability = await resolveSessionEquipmentAvailability(
+      db,
+      userId,
+      sessionExerciseId,
+    );
+    expect(["unavailable", "incompatible"]).toContain(
+      staleAvailability?.decisionState,
+    );
+    if (!staleAvailability) throw new Error("Missing equipment availability");
+
+    await db
+      .update(equipmentItems)
+      .set({ label: "Changed while replacement was open" })
+      .where(eq(equipmentItems.id, equipment.id));
+
+    await expect(updateSessionExerciseWithVersion(
+      db,
+      userId,
+      sessionExerciseId,
+      {
+        exerciseId: alternateExerciseId,
+        modificationType: "substituted",
+        substitutedForExerciseId: exerciseId,
+        substitutionReason: "equipment_unavailable_incompatible",
+        targetLoad: null,
+        targetLoadUnit: null,
+      },
+      "session_exercise.substitute",
+      {
+        activeOnly: true,
+        expectedExerciseId: exerciseId,
+        versionId: crypto.randomUUID(),
+        equipmentSourceFence: {
+          exerciseId: staleAvailability.exerciseId,
+          sourceRevision: staleAvailability.sourceRevision,
+          ownerEvidenceRevision: staleAvailability.ownerEvidenceRevision,
+          includeCurrentRequirements:
+            staleAvailability.requirementsEvidence === "legacy_unknown" &&
+            !staleAvailability.usesPrescribedMeaning,
+        },
+      },
+    )).resolves.toMatchObject({
+      ok: false,
+      code: "equipment_source_conflict",
+    });
+    expect(await db.query.recordVersions.findMany()).toHaveLength(0);
+    expect(await db.query.sessionExercises.findFirst({
+      where: eq(sessionExercises.id, sessionExerciseId),
+      columns: { exerciseId: true, modificationType: true, skipReason: true },
+    })).toEqual({
+      exerciseId,
+      modificationType: "skipped",
+      skipReason: "time",
+    });
+
+    const freshAvailability = await resolveSessionEquipmentAvailability(
+      db,
+      userId,
+      sessionExerciseId,
+    );
+    expect(["unavailable", "incompatible"]).toContain(
+      freshAvailability?.decisionState,
+    );
+    if (!freshAvailability) throw new Error("Missing refreshed availability");
+
+    await expect(updateSessionExerciseWithVersion(
+      db,
+      userId,
+      sessionExerciseId,
+      {
+        exerciseId: alternateExerciseId,
+        modificationType: "substituted",
+        substitutedForExerciseId: exerciseId,
+        substitutionReason: "equipment_unavailable_incompatible",
+        targetLoad: null,
+        targetLoadUnit: null,
+      },
+      "session_exercise.substitute",
+      {
+        activeOnly: true,
+        expectedExerciseId: exerciseId,
+        versionId: crypto.randomUUID(),
+        equipmentSourceFence: {
+          exerciseId: freshAvailability.exerciseId,
+          sourceRevision: freshAvailability.sourceRevision,
+          ownerEvidenceRevision: freshAvailability.ownerEvidenceRevision,
+          includeCurrentRequirements:
+            freshAvailability.requirementsEvidence === "legacy_unknown" &&
+            !freshAvailability.usesPrescribedMeaning,
+        },
+      },
+    )).resolves.toMatchObject({ ok: true, changed: true });
+    expect(await db.query.sessionExercises.findFirst({
+      where: eq(sessionExercises.id, sessionExerciseId),
+      columns: { exerciseId: true, modificationType: true, skipReason: true },
+    })).toEqual({
+      exerciseId: alternateExerciseId,
+      modificationType: "substituted",
+      skipReason: "time",
     });
   });
 

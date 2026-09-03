@@ -732,7 +732,7 @@ Implemented Phase 4 contract:
 |---|---|---|
 | A reviewed compatible setup is already selected | Log the set normally | Loaded work retains the exact equipment snapshot. Repetition-only work requires the same selected setup to remain current but does not fabricate load evidence. |
 | One or more compatible setups exist but none is durably selected, or the earlier selection is stale | **Choose equipment** | No skip or substitution cause is created. Logging waits for the selection to finish saving. |
-| The retained broad requirement is unavailable in saved inventory | **Replace for today** or **Skip exercise** | `equipment_unavailable_incompatible`; the current state is rechecked before a replacement writer accepts that cause. |
+| The retained broad requirement is unavailable in saved inventory | **Replace for today** or **Skip exercise** | `equipment_unavailable_incompatible`; the current state is rechecked and revision-fenced inside the replacement write before that cause is accepted. |
 | Saved equipment exists but fails the retained exact setup contract | **Replace for today** or **Skip exercise** | `equipment_unavailable_incompatible`; incompatibility is not relabelled as unknown. |
 | No reviewed setup meaning exists for legacy evidence | Continue through the existing unknown path | `legacy_unknown` with no performed-equipment snapshot; current inventory is not used to invent historical meaning. |
 | The owner makes an ordinary replacement choice | Use the existing reason chooser | `variety`, `equipment_busy`, `discomfort`, or `other`; busy remains an explicit owner choice and is never inferred from unavailability. |
@@ -743,6 +743,9 @@ replacement, occurrence, and record-version writers retain the cause instead
 of clearing it during replacement. History prefers the current retained row
 and may read only the matching substitution version's prior skip reason; it
 never consults today's equipment inventory to explain an earlier workout.
+An exact replay returns the already-committed replacement before evaluating
+the newly selected exercise, while the first write preserves the skip cause
+held by its row lock and rejects equipment evidence that changed after review.
 
 Canonical snapshot schema 36 validates the new reason in current
 `session_exercises` rows and session-exercise version before/after evidence.

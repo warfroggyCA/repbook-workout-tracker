@@ -1,6 +1,6 @@
 import { and, desc, eq } from "drizzle-orm";
 import { createHash, randomUUID } from "node:crypto";
-import { sql } from "drizzle-orm";
+import { sql, type SQL } from "drizzle-orm";
 import type { Db } from "@/db";
 import { sessionEquipmentRequirementsSnapshotExpression } from "@/services/session-equipment-requirements";
 import { resultRows } from "@/db/result";
@@ -26,6 +26,7 @@ import {
   type IncompleteSessionReason,
 } from "@/lib/session-completion-semantics";
 import type { ExerciseAlternativeReason } from "@/lib/exercise-alternatives";
+import { sessionEquipmentSelectionSourceRevisionExpression } from "@/services/session-equipment-selection";
 
 export const VERSIONED_ENTITY_TYPES = [
   "health_activity",
@@ -54,7 +55,7 @@ export type VersionedEditResult =
   | {
       ok: false;
       reason: string;
-      code?: "active_duration_conflict";
+      code?: "active_duration_conflict" | "equipment_source_conflict";
     };
 
 export type SetVersionUpdate = {
@@ -857,6 +858,12 @@ export async function updateSessionExerciseWithVersion(
     expectedHistoryRevision?: number;
     fenceSessionExerciseIntent?: boolean;
     versionId?: string;
+    equipmentSourceFence?: {
+      exerciseId: string;
+      sourceRevision: string;
+      ownerEvidenceRevision: string;
+      includeCurrentRequirements: boolean;
+    };
   } = {}
 ): Promise<VersionedEditResult> {
   const versionId = options.versionId ?? randomUUID();
@@ -924,6 +931,25 @@ export async function updateSessionExerciseWithVersion(
   const hasWarmupSets = Object.hasOwn(values, "warmupSets");
   const hasSetNotes = Object.hasOwn(values, "setNotes");
   const requiresEmptyExercise = action === "session_exercise.substitute";
+  const equipmentSourceFence = options.equipmentSourceFence;
+  const hasEquipmentSourceFence = equipmentSourceFence != null;
+  const fencedEquipmentExerciseId =
+    equipmentSourceFence?.exerciseId ?? "00000000-0000-0000-0000-000000000000";
+  const equipmentSourceCurrent = (record: SQL) => sql`(
+    NOT ${hasEquipmentSourceFence}::boolean
+    OR EXISTS (SELECT 1 FROM existing_version)
+    OR (
+      ${record}.exercise_id = ${fencedEquipmentExerciseId}::uuid
+      AND (SELECT analysis_evidence_revision FROM equipment_owner) =
+        ${equipmentSourceFence?.ownerEvidenceRevision ?? "0"}::bigint
+      AND ${sessionEquipmentSelectionSourceRevisionExpression(
+        userId,
+        fencedEquipmentExerciseId,
+        equipmentSourceFence?.includeCurrentRequirements ?? false,
+        sql`${record}.equipment_requirements_snapshot`,
+      )} = ${equipmentSourceFence?.sourceRevision ?? ""}
+    )
+  )`;
   const summary =
     action === "session_exercise.note_update"
       ? "Updated a workout exercise note and retained the previous value"
@@ -950,6 +976,13 @@ export async function updateSessionExerciseWithVersion(
         AND ws.archived_at IS NULL
         AND (NOT ${options.activeOnly ?? false}::boolean OR ws.status = 'in_progress')
       FOR UPDATE OF se, ws
+    ), equipment_owner AS MATERIALIZED (
+      SELECT owner.analysis_evidence_revision
+      FROM users owner
+      WHERE owner.id = ${userId}::uuid
+        AND ${hasEquipmentSourceFence}::boolean
+        AND EXISTS (SELECT 1 FROM current_record)
+      FOR UPDATE
     ), candidate AS (
       SELECT
         current.*,
@@ -1017,6 +1050,7 @@ export async function updateSessionExerciseWithVersion(
           OR candidate.history_revision =
             ${options.expectedHistoryRevision ?? null}::integer
         )
+        AND ${equipmentSourceCurrent(sql`candidate`)}
         AND (candidate.next_target_load IS NULL) = (candidate.next_target_load_unit IS NULL)
         AND (
           NOT ${action === "session_exercise.skip"}::boolean
@@ -1301,6 +1335,7 @@ export async function updateSessionExerciseWithVersion(
         OR current.history_revision =
           ${options.expectedHistoryRevision ?? null}::integer
       ) AS expected_history_revision_matches,
+      ${equipmentSourceCurrent(sql`current`)} AS equipment_source_current,
       (updated.id IS NOT NULL) AS changed,
       COALESCE(versioned.id, (SELECT id FROM existing_version)) AS version_id,
       (SELECT count(*)::integer FROM occurrence_receipts) AS occurrence_changes,
@@ -1314,7 +1349,12 @@ export async function updateSessionExerciseWithVersion(
   if (!row.candidate_valid) {
     return {
       ok: false,
-      reason: row.has_existing_version && !row.replay_matches_request
+      ...(hasEquipmentSourceFence && !row.equipment_source_current
+        ? { code: "equipment_source_conflict" as const }
+        : {}),
+      reason: hasEquipmentSourceFence && !row.equipment_source_current
+        ? "The available equipment changed before this replacement was saved. Review the current setup before trying again."
+        : row.has_existing_version && !row.replay_matches_request
         ? "That replacement request identity was already used for a different choice."
         : row.has_existing_version
           ? "This exercise changed after replacement opened. Review the current exercise before trying again."

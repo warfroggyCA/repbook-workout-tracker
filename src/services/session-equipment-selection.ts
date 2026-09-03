@@ -321,6 +321,7 @@ async function loadContext(db: Db, userId: string, sessionExerciseId: string) {
 export type SessionEquipmentAvailabilityResolution = {
   exerciseId: string;
   sourceRevision: string;
+  ownerEvidenceRevision: string;
   availableOptionCount: number;
   decisionState: "ready" | "unavailable" | "incompatible" | "legacy_unknown";
   currentSnapshotId: string | null;
@@ -400,9 +401,11 @@ export async function resolveSessionEquipmentAvailability(
         context.exercise_id,
         !context.uses_retained_requirements && !context.uses_prescribed_meaning,
         sql`session_exercise.equipment_requirements_snapshot`,
-      )} AS source_revision
+      )} AS source_revision,
+      owner.analysis_evidence_revision AS owner_evidence_revision
       FROM session_exercises session_exercise
       JOIN workout_sessions session ON session.id = session_exercise.session_id
+      JOIN users owner ON owner.id = session.user_id
       WHERE session_exercise.id = ${sessionExerciseId}::uuid
         AND session_exercise.exercise_id = ${context.exercise_id}::uuid
         AND session.user_id = ${userId}::uuid
@@ -414,6 +417,7 @@ export async function resolveSessionEquipmentAvailability(
       return {
         exerciseId: context.exercise_id,
         sourceRevision: context.source_revision,
+        ownerEvidenceRevision: String(currentRevision.owner_evidence_revision),
         availableOptionCount: availableOptions.length,
         decisionState: presentation.setup == null
           ? "legacy_unknown"
