@@ -989,6 +989,16 @@ describe("durable progression job handoff", () => {
       where: eq(sessionExercises.sessionId, sessionId),
     });
     if (!sessionExercise) throw new Error("Held session exercise missing.");
+    const equipmentSnapshotId = await createTotalSystemTestSnapshot(
+      database.db,
+      {
+        userId,
+        sessionId,
+        sessionExerciseId: sessionExercise.id,
+        unit: "lb",
+        selectAsCurrent: true,
+      },
+    );
     const logged = await logWorkoutSet(database.db, userId, {
       sessionExerciseId: sessionExercise.id,
       setNo: 1,
@@ -996,6 +1006,8 @@ describe("durable progression job handoff", () => {
       weightUnit: "lb",
       reps: 8,
       clientKey: crypto.randomUUID(),
+      equipmentSnapshotId,
+      loadEntryMeaning: "total_system",
     });
     if (logged.outcome !== "saved") {
       throw new Error(`Held progression set did not save: ${logged.outcome}`);

@@ -30,6 +30,7 @@ import {
   createMigratedTestDatabase,
   type TestDatabase,
 } from "../helpers/database";
+import { createTotalSystemTestSnapshot } from "../helpers/set-semantics";
 
 describe("V2 T04 warm-up occurrence truth", () => {
   let database: TestDatabase;
@@ -521,6 +522,16 @@ describe("V2 T04 warm-up occurrence truth", () => {
     if (!firstWorkingSet?.sessionExerciseId) {
       throw new Error("The fixture did not create a working set.");
     }
+    const equipmentSnapshotId = await createTotalSystemTestSnapshot(
+      database.db,
+      {
+        userId,
+        sessionId: started.sessionId,
+        sessionExerciseId: firstWorkingSet.sessionExerciseId,
+        unit: "lb",
+        selectAsCurrent: true,
+      },
+    );
 
     for (const warmup of warmups) {
       await expect(mutateWorkoutOccurrence(database.db, userId, {
@@ -553,8 +564,8 @@ describe("V2 T04 warm-up occurrence truth", () => {
       isWarmup: false,
       note: null,
       clientKey: crypto.randomUUID(),
-      equipmentSnapshotId: null,
-      loadEntryMeaning: "legacy_unknown",
+      equipmentSnapshotId,
+      loadEntryMeaning: "total_system",
       observedCompletedAtISO: null,
     })).resolves.toMatchObject({ outcome: "saved" });
 
