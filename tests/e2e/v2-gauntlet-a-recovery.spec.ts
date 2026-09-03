@@ -79,10 +79,8 @@ test("recovers offline and timeout-after-commit sets exactly, then reviews aband
     }),
   });
 
-  let current = page.getByTestId("current-exercise-card");
-  let entry = current.getByTestId("current-set-entry");
   await context.setOffline(true);
-  await entry.getByRole("button", { name: "Log set", exact: true }).click();
+  await page.getByTestId("active-log-set").click();
   await expectSetQueueLength(page, 1);
   await expect(squatCard.getByRole("status")).toContainText(
     /Saving|Retrying|waiting|Unsaved on this device/i,
@@ -99,7 +97,7 @@ test("recovers offline and timeout-after-commit sets exactly, then reviews aband
     squatCard.locator('[id^="logged-set-"]').filter({ hasText: "Set 1" }),
   ).toBeVisible();
   await dismissRest(page);
-  current = page.getByTestId("current-exercise-card");
+  const current = page.getByTestId("current-exercise-card");
   await expect(current.getByTestId("current-set-entry")).toContainText("Set 2");
 
   let afterCommitInterceptions = 0;
@@ -119,9 +117,7 @@ test("recovers offline and timeout-after-commit sets exactly, then reviews aband
     await route.continue();
   });
 
-  current = page.getByTestId("current-exercise-card");
-  entry = current.getByTestId("current-set-entry");
-  const logSet = entry.getByRole("button", { name: "Log set", exact: true });
+  const logSet = page.getByTestId("active-log-set");
   await waitForHydratedReactHandler(logSet);
   await logSet.click();
   await expect.poll(() => afterCommitInterceptions).toBe(1);
@@ -140,7 +136,7 @@ test("recovers offline and timeout-after-commit sets exactly, then reviews aband
   ).toBeLessThanOrEqual(1);
   await page
     .getByRole("complementary", { name: "Workout status" })
-    .getByRole("button", { name: /^(?:Review workout finish|Finish workout)$/ })
+    .getByRole("button", { name: /^(?:Review and finish workout|Finish workout)$/ })
     .click();
   const finish = page.getByRole("dialog", { name: "Finish workout" });
   await openNativeDetails(finish.locator("details", {

@@ -40,7 +40,7 @@ async function discardActiveWorkout(page: Page) {
   );
   await page
     .getByRole("complementary", { name: "Workout status" })
-    .getByRole("button", { name: /^(?:Review workout finish|Finish workout)$/ })
+    .getByRole("button", { name: /^(?:Review and finish workout|Finish workout)$/ })
     .click();
   await page
     .getByRole("dialog", { name: "Finish workout" })
@@ -536,7 +536,7 @@ test("keeps unrestricted replacement truthful and reachable through mobile keybo
   await expect(card).not.toContainText("Last time:");
   await expect(weight).toHaveCount(0);
   await expect(reps).toHaveValue("10");
-  const logSet = card.getByRole("button", { name: "Log set", exact: true });
+  const logSet = page.getByTestId("active-log-set");
   await waitForHydratedReactHandler(logSet);
   await waitForHydratedReactChangeHandler(reps);
   await reps.fill("9");

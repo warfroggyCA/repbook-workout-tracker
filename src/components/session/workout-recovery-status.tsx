@@ -16,6 +16,8 @@ export function WorkoutRecoveryStatus({
   return (
     <section
       role="alert"
+      tabIndex={-1}
+      data-active-workout-focus-target="true"
       data-testid="workout-recovery-status"
       className="rounded-xl border border-destructive/35 bg-destructive/5 px-3 py-2"
     >

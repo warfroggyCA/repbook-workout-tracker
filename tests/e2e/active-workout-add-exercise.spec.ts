@@ -408,7 +408,7 @@ test("refuses incomplete assistance, then preserves assisted work without false 
       buttons: Array.from(element.querySelectorAll("button"))
         .filter((button) =>
           button.textContent?.trim() === "Dismiss rest timer" ||
-          button.getAttribute("aria-label") === "Review workout finish",
+          button.getAttribute("aria-label") === "Review and finish workout",
         )
         .map((button) => {
           const box = button.getBoundingClientRect();

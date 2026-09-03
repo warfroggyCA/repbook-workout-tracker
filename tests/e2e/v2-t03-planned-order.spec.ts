@@ -135,7 +135,7 @@ test("keeps planned work authoritative around extra-before-plan and grouped work
 
   await page
     .getByRole("complementary", { name: "Workout status" })
-    .getByRole("button", { name: /^(?:Review workout finish|Finish workout)$/ })
+    .getByRole("button", { name: /^(?:Review and finish workout|Finish workout)$/ })
     .click();
   const finish = page.getByRole("dialog", { name: "Finish workout" });
   await expect(finish).toContainText("0 of 13 planned sets done");

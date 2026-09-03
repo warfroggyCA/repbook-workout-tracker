@@ -509,8 +509,8 @@ test("keeps the full live workout usable through warm-up, skip, replace, continu
 
   const finishEarly = page
     .getByRole("complementary", { name: "Workout status" })
-    .getByRole("button", { name: "Review workout finish", exact: true });
-  await expect(finishEarly).toContainText("Finish");
+    .getByRole("button", { name: "Review and finish workout", exact: true });
+  await expect(finishEarly).toContainText("Review");
   await finishEarly.click();
   const earlyFinishReview = page.getByRole("dialog", {
     name: "Finish workout",
@@ -529,9 +529,7 @@ test("keeps the full live workout usable through warm-up, skip, replace, continu
   await continueWithout.click();
   await expect(resolveSkippedExercise).toHaveCount(0);
   await expect(
-    page
-      .getByTestId("current-exercise-card")
-      .getByRole("button", { name: "Log set", exact: true }),
+    page.getByTestId("active-log-set"),
   ).toBeVisible();
   await expect(
     exerciseCard(page, "Barbell Back Squat").getByTestId("exercise-swipe-surface"),
@@ -543,7 +541,7 @@ test("keeps the full live workout usable through warm-up, skip, replace, continu
     const current = page.getByTestId("current-exercise-card");
     const currentSet = current.getByTestId("current-set-entry");
     await expect(currentSet).toContainText(`Set ${setNo}`);
-    const log = currentSet.getByRole("button", { name: "Log set", exact: true });
+    const log = page.getByTestId("active-log-set");
     await expectReachableTarget(log);
     await log.click();
     if (setNo === 3) {
@@ -677,10 +675,7 @@ test("keeps the full live workout usable through warm-up, skip, replace, continu
 
   const replacementSet = replacement.getByTestId("current-set-entry");
   await expect(replacementSet).toContainText("Set 1");
-  const logReplacement = replacementSet.getByRole("button", {
-    name: "Log set",
-    exact: true,
-  });
+  const logReplacement = page.getByTestId("active-log-set");
   await expectReachableTarget(logReplacement);
   await logReplacement.click();
   await expect(replacement.getByTestId("completed-sets"))
@@ -693,7 +688,7 @@ test("keeps the full live workout usable through warm-up, skip, replace, continu
 
   const finish = page
     .getByRole("complementary", { name: "Workout status" })
-    .getByRole("button", { name: /^(?:Review workout finish|Finish workout)$/ });
+    .getByRole("button", { name: /^(?:Review and finish workout|Finish workout)$/ });
   await expectReachableTarget(finish);
   await finish.click();
   const finishDialog = page.getByRole("dialog", { name: "Finish workout" });

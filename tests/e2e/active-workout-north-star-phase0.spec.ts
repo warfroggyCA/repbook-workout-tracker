@@ -23,6 +23,9 @@ const FONT_SIZE_EVENT = "workout-font-size-change";
 const BASELINE_DIRECTORY = resolve(
   "docs/assets/active-workout-phase0-baseline",
 );
+const PHASE2_QA_DIRECTORY = resolve(
+  "docs/assets/active-workout-phase2-qa",
+);
 
 test.describe.configure({ mode: "serial" });
 
@@ -106,6 +109,10 @@ async function captureCurrentBaseline(
     await mkdir(BASELINE_DIRECTORY, { recursive: true });
     await writeFile(resolve(BASELINE_DIRECTORY, `${name}.jpg`), image);
   }
+  if (process.env.UPDATE_ACTIVE_WORKOUT_PHASE2_QA === "1") {
+    await mkdir(PHASE2_QA_DIRECTORY, { recursive: true });
+    await writeFile(resolve(PHASE2_QA_DIRECTORY, `${name}.jpg`), image);
+  }
 }
 
 async function waitForRest(page: Page) {
@@ -159,7 +166,10 @@ async function dismissRest(page: Page) {
 
 async function discardWorkout(page: Page) {
   await page
-    .getByRole("button", { name: /^(?:Finish early|Finish workout)$/i })
+    .getByLabel("Workout status", { exact: true })
+    .getByRole("button", {
+      name: /^(?:Review and finish workout|Finish workout)$/i,
+    })
     .click();
   const finish = page.getByRole("dialog", { name: "Finish workout" });
   await finish
@@ -225,6 +235,60 @@ async function settleFocusHandoff(page: Page) {
   );
 }
 
+async function expectEssentialCurrentSetControlsClear(page: Page) {
+  await settleFocusHandoff(page);
+  const geometry = await page.evaluate(() => {
+    const status = document.querySelector<HTMLElement>(
+      '[aria-label="Workout status"]',
+    );
+    const controls = [
+      ...document.querySelectorAll<HTMLElement>(
+        '[data-testid="current-set-entry"] .active-set-stepper',
+      ),
+    ];
+    const visualTop = window.visualViewport?.offsetTop ?? 0;
+    const visualBottom =
+      visualTop + (window.visualViewport?.height ?? window.innerHeight);
+    const statusTop = status?.getBoundingClientRect().top ?? visualBottom;
+    return {
+      count: controls.length,
+      horizontalOverflow:
+        document.documentElement.scrollWidth >
+        document.documentElement.clientWidth + 1,
+      clear: controls.every((control) => {
+        const bounds = control.getBoundingClientRect();
+        return (
+          bounds.width >= 44 &&
+          bounds.height >= 44 &&
+          bounds.top >= visualTop - 1 &&
+          bounds.bottom <= statusTop + 1
+        );
+      }),
+    };
+  });
+  expect(geometry).toEqual({
+    count: 4,
+    horizontalOverflow: false,
+    clear: true,
+  });
+
+  const status = page.getByRole("complementary", {
+    name: "Workout status",
+  });
+  await expect(
+    status.getByRole("button", { name: "Log set 2", exact: true }),
+  ).toBeVisible();
+  await expect(
+    status.getByRole("button", { name: "Add training note", exact: true }),
+  ).toBeVisible();
+  await expect(
+    status.getByRole("button", {
+      name: "Review and finish workout",
+      exact: true,
+    }),
+  ).toBeVisible();
+}
+
 async function restDeadline(page: Page) {
   return page.evaluate((storageKey) => {
     const raw = localStorage.getItem(storageKey);
@@ -283,6 +347,7 @@ test("records the six common-path current baselines without treating them as tar
   );
 
   await setFontSize(page, "extra-large");
+  await expectEssentialCurrentSetControlsClear(page);
   await captureCurrentBaseline(
     page,
     testInfo,
@@ -290,6 +355,7 @@ test("records the six common-path current baselines without treating them as tar
   );
 
   await page.setViewportSize({ width: 320, height: 700 });
+  await expectEssentialCurrentSetControlsClear(page);
   await captureCurrentBaseline(
     page,
     testInfo,
@@ -390,7 +456,6 @@ test("a stray Enter after Log set cannot change rest or the next set", async ({
     progressText: "1 of 3 sets",
   });
 
-  test.fail(true, "Known Phase 0 focus handoff lands on decrement controls");
   expect(observations).toEqual({
     postLogFocus: expect.any(String),
     postLogFocusSafe: true,

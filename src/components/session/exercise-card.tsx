@@ -39,6 +39,7 @@ import {
   DrawerTrigger,
 } from "@/components/ui/drawer";
 import { cn } from "@/lib/utils";
+import { activeSetCommitFormId } from "@/lib/active-workout-layout";
 import { formatRestTime } from "@/lib/rest-time";
 import {
   EXERCISE_NOTE_MAX_LENGTH,
@@ -498,6 +499,7 @@ type Props = {
   occurrenceRuntimeSaveStates?: Record<string, "saving" | "retrying">;
   acknowledgedOccurrenceIds?: string[];
   isCurrentExercise?: boolean;
+  fixedPrimaryActionAvailable?: boolean;
   nextActionLabel?: string | null;
   warmupResolved?: boolean;
   groupContext?: {
@@ -746,6 +748,7 @@ export function ExerciseCard({
   occurrenceRuntimeSaveStates = {},
   acknowledgedOccurrenceIds = [],
   isCurrentExercise = false,
+  fixedPrimaryActionAvailable = false,
   nextActionLabel = null,
   warmupResolved = false,
   groupContext = null,
@@ -1678,6 +1681,21 @@ export function ExerciseCard({
     const rowLoggingBlocked = rowIsAppended
       ? appendedLoggingBlocked
       : activeLoggingBlocked;
+    const rowLogDisabled =
+      pending ||
+      skipConfirmationPending ||
+      !metricSupported ||
+      Boolean(occurrenceMutation) ||
+      rowLoggingBlocked ||
+      logRequestKey === occurrenceForRow.id;
+    const usesFixedPrimaryAction =
+      row.state === "current_editable" &&
+      isCurrentExercise &&
+      fixedPrimaryActionAvailable;
+    const rowCommitFormId = activeSetCommitFormId(
+      exercise.id,
+      occurrenceForRow.id,
+    );
     const rowSetNumber = occurrenceForRow.kindOrdinal + 1;
     const rowPreviousComparableSet = previousComparableSetFor(rowSetNumber);
     const rowComparableRenderState = comparisonTemporarilyUnavailable
@@ -1707,13 +1725,13 @@ export function ExerciseCard({
 
     return (
       <div>
-        <p className="ui-metadata mb-1 grid grid-cols-[auto_minmax(0,1fr)] items-baseline gap-x-2">
+        <p className="active-set-measure-heading ui-metadata mb-1 grid grid-cols-[auto_minmax(0,1fr)] items-baseline gap-x-2">
           <span className="whitespace-nowrap">Performed measure</span>
           {recordsNumericLoad && rowDefaultWeightSource && (
             <span
               data-testid="performed-load-prefill-source"
               aria-label={`Starting load: ${rowDefaultWeightSource}`}
-              className="min-w-0 truncate text-right font-normal normal-case tracking-normal"
+              className="active-set-prefill-source min-w-0 truncate text-right font-normal normal-case tracking-normal"
             >
               Load: {rowCompactDefaultWeightSource}
             </span>
@@ -1798,36 +1816,35 @@ export function ExerciseCard({
           )}
         >
           {skipConfirmationError == null ? (
-            <Button
-              data-testid="active-log-set"
-              className="min-h-12 w-full text-base font-semibold"
-              onPointerDown={() => onPrepareSetLog(occurrenceForRow)}
-              onKeyDown={(event) => {
-                if (
-                  !event.repeat &&
-                  (event.key === "Enter" || event.key === " ")
-                ) {
+            <>
+              <form
+                id={rowCommitFormId}
+                data-testid="active-set-commit-form"
+                data-log-disabled={rowLogDisabled ? "true" : "false"}
+                hidden
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  if (rowLogDisabled) return;
                   onPrepareSetLog(occurrenceForRow);
-                }
-              }}
-              onClick={() =>
-                handleLog(
-                  occurrenceForRow.kindOrdinal + 1,
-                  occurrenceForRow,
-                  rowDraft,
-                )
-              }
-              disabled={
-                pending ||
-                skipConfirmationPending ||
-                !metricSupported ||
-                Boolean(occurrenceMutation) ||
-                rowLoggingBlocked ||
-                logRequestKey === occurrenceForRow.id
-              }
-            >
-              <Check className="size-4" /> Log set
-            </Button>
+                  void handleLog(
+                    occurrenceForRow.kindOrdinal + 1,
+                    occurrenceForRow,
+                    rowDraft,
+                  );
+                }}
+              />
+              {!usesFixedPrimaryAction && (
+                <Button
+                  data-testid="inline-log-set"
+                  type="submit"
+                  form={rowCommitFormId}
+                  className="min-h-12 w-full text-base font-semibold"
+                  disabled={rowLogDisabled}
+                >
+                  <Check className="size-4" /> Log set
+                </Button>
+              )}
+            </>
           ) : (
             <p className="flex min-h-11 items-center text-sm font-medium">
               Resolve the exercise skip before logging sets.
@@ -3380,7 +3397,7 @@ function SetEntry({
     <div className={cn("flex flex-col", compactLedger ? "gap-1" : "gap-2")}>
       <div
         className={cn(
-          "grid items-end gap-2",
+          "active-set-measures-grid grid items-end gap-2",
           (hasWeight && recordsRepetitions) ||
             metricType === "distance_duration"
             ? compactLedger

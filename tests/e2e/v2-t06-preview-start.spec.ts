@@ -110,7 +110,7 @@ async function discardActive(page: Page) {
   }
   const finish = page
     .getByRole("complementary", { name: "Workout status" })
-    .getByRole("button", { name: /^(?:Review workout finish|Finish workout)$/ });
+    .getByRole("button", { name: /^(?:Review and finish workout|Finish workout)$/ });
   await waitForHydratedReactHandler(finish);
   await finish.click();
   const finishDialog = page.getByRole("dialog", { name: "Finish workout" });

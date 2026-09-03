@@ -62,6 +62,8 @@ import { AddWorkoutExercise } from "./add-workout-exercise";
 import { openContextualNoteComposer, type ContextualNoteScopeValue } from "@/lib/contextual-note-ui";
 import { createClientUuid } from "@/lib/client-uuid";
 import { activeWorkoutScrollBehavior } from "@/lib/active-workout-motion";
+import { activeSetCommitFormId } from "@/lib/active-workout-layout";
+import { FONT_SIZE_EVENT } from "@/lib/font-size";
 import {
   buildPerformedSetMeasurement,
   isSupportedSetWriterSemanticDefinition,
@@ -1235,13 +1237,30 @@ export function SessionRunner(props: SessionRunnerProps) {
     [failedSetEntries],
   );
   useEffect(() => {
-    if (
+    const recoveryChanged =
       failedSetRecoverySignature !== "" &&
-      failedSetRecoverySignature !== lastRenderedRecoverySignatureRef.current
-    ) {
+      failedSetRecoverySignature !== lastRenderedRecoverySignatureRef.current;
+    if (recoveryChanged) {
       markWorkoutInteraction(WORKOUT_INTERACTION_MARKS.setRecoveryRendered);
     }
     lastRenderedRecoverySignatureRef.current = failedSetRecoverySignature;
+    if (!recoveryChanged) return;
+    let firstFrame = 0;
+    let secondFrame = 0;
+    firstFrame = window.requestAnimationFrame(() => {
+      secondFrame = window.requestAnimationFrame(() => {
+        const target = document.querySelector<HTMLElement>(
+          '[data-testid="workout-recovery-status"]',
+        );
+        if (!target) return;
+        revealWorkoutTarget(target, "auto");
+        target.focus({ preventScroll: true });
+      });
+    });
+    return () => {
+      window.cancelAnimationFrame(firstFrame);
+      window.cancelAnimationFrame(secondFrame);
+    };
   }, [failedSetRecoverySignature]);
   useEffect(() => {
     const resolvedBlockerIds = new Set(
@@ -1548,6 +1567,51 @@ export function SessionRunner(props: SessionRunnerProps) {
     skipRecoveryExerciseId,
   ]);
   useEffect(() => {
+    if (currentActionKind !== "working_set") return;
+    let firstFrame = 0;
+    let secondFrame = 0;
+    const preserveFocusedActionVisibility = () => {
+      window.cancelAnimationFrame(firstFrame);
+      window.cancelAnimationFrame(secondFrame);
+      firstFrame = window.requestAnimationFrame(() => {
+        secondFrame = window.requestAnimationFrame(() => {
+          const target = document.getElementById(currentActionTargetId);
+          const active = document.activeElement;
+          if (
+            target == null ||
+            !(active instanceof HTMLElement) ||
+            (active !== target && !target.contains(active))
+          ) {
+            return;
+          }
+          revealWorkoutTarget(active, "auto");
+        });
+      });
+    };
+    window.addEventListener("resize", preserveFocusedActionVisibility);
+    window.addEventListener(
+      FONT_SIZE_EVENT,
+      preserveFocusedActionVisibility,
+    );
+    window.visualViewport?.addEventListener(
+      "resize",
+      preserveFocusedActionVisibility,
+    );
+    return () => {
+      window.cancelAnimationFrame(firstFrame);
+      window.cancelAnimationFrame(secondFrame);
+      window.removeEventListener("resize", preserveFocusedActionVisibility);
+      window.removeEventListener(
+        FONT_SIZE_EVENT,
+        preserveFocusedActionVisibility,
+      );
+      window.visualViewport?.removeEventListener(
+        "resize",
+        preserveFocusedActionVisibility,
+      );
+    };
+  }, [currentActionKind, currentActionTargetId]);
+  useEffect(() => {
     const disclosureGeneration = exerciseDisclosureGenerationRef.current;
     const previousActionId = previousCurrentActionIdRef.current;
     const previousActionSessionExerciseId =
@@ -1570,6 +1634,15 @@ export function SessionRunner(props: SessionRunnerProps) {
     // focus while an already-running timer hydrates. The timer remains visible
     // and accurate, but must not replace the recovery target with its own hash.
     if (explicitExerciseOwnsRestFocus) {
+      previousCurrentActionIdRef.current = currentActionId;
+      previousCurrentActionKindRef.current = currentActionKind;
+      previousCurrentActionSessionExerciseIdRef.current =
+        currentActionSessionExerciseId;
+      return;
+    }
+    // A failed write is the user's next recovery decision. Do not let a
+    // simultaneous action transition move focus away from its alert.
+    if (failedSetRecoverySignature !== "") {
       previousCurrentActionIdRef.current = currentActionId;
       previousCurrentActionKindRef.current = currentActionKind;
       previousCurrentActionSessionExerciseIdRef.current =
@@ -1654,9 +1727,17 @@ export function SessionRunner(props: SessionRunnerProps) {
                 "button[role='checkbox'][aria-checked='false']:not([disabled])",
               )
             : null;
+        const stableFocusTarget = target == null
+          ? null
+          : target.matches("[data-active-workout-focus-target]")
+            ? target
+            : target.querySelector<HTMLElement>(
+                "[data-active-workout-focus-target]",
+              );
         const focusTarget = target == null
           ? null
           : warmupCompletionTarget ??
+            stableFocusTarget ??
             firstVisibleFocusable(target) ??
             (target.matches("[tabindex]") ? target : null);
         if (focusTarget instanceof HTMLElement) {
@@ -1679,6 +1760,7 @@ export function SessionRunner(props: SessionRunnerProps) {
     currentActionSequenceIdx,
     currentActionSessionExerciseId,
     currentActionTargetId,
+    failedSetRecoverySignature,
     occurrences,
     restingWorkingSetTargetId,
     skipRecoveryExerciseId,
@@ -3446,10 +3528,34 @@ export function SessionRunner(props: SessionRunnerProps) {
       `${window.location.pathname}${window.location.search}#${targetId}`,
     );
     requestAnimationFrame(() => {
-      const target = document.getElementById(targetId);
-      if (target) {
+      requestAnimationFrame(() => {
+        const target = document.getElementById(targetId);
+        if (!target) return;
         revealWorkoutTarget(target, activeWorkoutScrollBehavior());
-      }
+        const activeElement = document.activeElement;
+        const currentCard = target.closest(
+          '[data-testid="current-exercise-card"]',
+        );
+        if (
+          activeElement instanceof HTMLElement &&
+          currentCard instanceof HTMLElement &&
+          currentCard.contains(activeElement)
+        ) {
+          return;
+        }
+        const stableFocusTarget = target.matches(
+          "[data-active-workout-focus-target]",
+        )
+          ? target
+          : target.querySelector<HTMLElement>(
+              "[data-active-workout-focus-target]",
+            );
+        (stableFocusTarget ??
+          firstVisibleFocusable(target) ??
+          (target.matches("[tabindex]") ? target : null))?.focus({
+            preventScroll: true,
+          });
+      });
     });
   }
 
@@ -3814,6 +3920,62 @@ export function SessionRunner(props: SessionRunnerProps) {
                 })
               ? "This exercise measurement cannot be logged safely."
               : null;
+  const currentSetCommitOccurrence =
+    currentWorkingAction == null || currentWorkingExercise == null
+      ? null
+      : nextLoggableOccurrenceForExercise(currentWorkingExercise.id);
+  const restOwnsFixedStatusBar =
+    (timer?.phase === "running" && restRemainingSec != null) ||
+    timer?.phase === "ready" ||
+    timer?.phase === "skipped";
+  const currentSetFormId =
+    !restOwnsFixedStatusBar &&
+    currentWorkingSetRevealed &&
+    currentActionBlockingReason == null &&
+    currentWorkingExercise != null &&
+    currentSetCommitOccurrence != null &&
+    currentSetCommitOccurrence?.id === currentWorkingAction?.occurrenceId
+      ? activeSetCommitFormId(
+          currentWorkingExercise.id,
+          currentSetCommitOccurrence.id,
+        )
+      : null;
+  useEffect(() => {
+    if (
+      currentSetFormId == null ||
+      failedSetRecoverySignature !== ""
+    ) return;
+    let focusFrame = 0;
+    focusFrame = window.requestAnimationFrame(() => {
+      const active = document.activeElement;
+      const transitionOwnsFocus =
+        active == null ||
+        active === document.body ||
+        (active instanceof HTMLElement &&
+          active.dataset.testid === "active-log-set");
+      if (!transitionOwnsFocus) return;
+      const target = document.getElementById(currentActionTargetId);
+      if (!target) return;
+      revealWorkoutTarget(target, activeWorkoutScrollBehavior());
+      const stableFocusTarget = target.matches(
+        "[data-active-workout-focus-target]",
+      )
+        ? target
+        : target.querySelector<HTMLElement>(
+            "[data-active-workout-focus-target]",
+          );
+      (stableFocusTarget ??
+        firstVisibleFocusable(target) ??
+        (target.matches("[tabindex]") ? target : null))?.focus({
+          preventScroll: true,
+        });
+    });
+    return () => window.cancelAnimationFrame(focusFrame);
+  }, [
+    currentActionTargetId,
+    currentSetFormId,
+    failedSetRecoverySignature,
+  ]);
   const completionBlocker = !finishBlocked
     ? null
     : unresolvedExerciseSkip
@@ -3916,7 +4078,7 @@ export function SessionRunner(props: SessionRunnerProps) {
   return (
     <main
       data-ui-core-surface="active-workout"
-      className="athlete-workflow mx-auto flex max-w-3xl flex-col gap-2 p-3 pb-[calc(12rem+env(safe-area-inset-bottom))] min-[361px]:gap-3 min-[360px]:pb-[calc(8rem+env(safe-area-inset-bottom))] sm:p-5 sm:pb-[calc(8rem+env(safe-area-inset-bottom))] lg:p-8 lg:pb-24"
+      className="athlete-workflow mx-auto flex max-w-3xl flex-col gap-2 p-3 pb-[calc(var(--active-workout-overlay-bottom,calc(8rem+env(safe-area-inset-bottom)))+1rem)] min-[361px]:gap-3 sm:p-5 sm:pb-[calc(var(--active-workout-overlay-bottom,calc(8rem+env(safe-area-inset-bottom)))+1.25rem)] lg:p-8 lg:pb-24"
     >
       <ContextualNoteScope value={contextualNoteScope} />
       <p
@@ -4637,6 +4799,10 @@ export function SessionRunner(props: SessionRunnerProps) {
               activeWorkoutViewModel.displayMode === "rest"
                 ? explicitSetRecoveryOccurrence?.sessionExerciseId === exercise.id
                 : currentOccurrence?.sessionExerciseId === exercise.id
+            }
+            fixedPrimaryActionAvailable={
+              currentSetFormId != null &&
+              currentSetCommitOccurrence?.sessionExerciseId === exercise.id
             }
             nextActionLabel={
               guidance.currentAction?.kind === "working_set" &&
@@ -5458,6 +5624,8 @@ export function SessionRunner(props: SessionRunnerProps) {
             guidance.currentAction?.kind !== "working_set" ||
             currentWorkingSetRevealed
           }
+          currentSetFormId={currentSetFormId}
+          currentSetBlockingReason={currentActionBlockingReason}
           onPrimaryAction={() => {
             if (
               guidance.currentAction != null &&
@@ -5472,11 +5640,7 @@ export function SessionRunner(props: SessionRunnerProps) {
               else revealCurrentWorkoutAction();
               return;
             }
-            const logSet = document.querySelector<HTMLButtonElement>(
-              '[data-testid="active-log-set"]',
-            );
-            if (logSet && !logSet.disabled) logSet.click();
-            else revealCurrentWorkoutAction();
+            revealCurrentWorkoutAction();
           }}
           checkingExerciseSkip={
             (skipConfirmationExerciseId ??

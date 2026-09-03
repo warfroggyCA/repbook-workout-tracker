@@ -473,6 +473,12 @@ describe("active-workout disclosure ownership", () => {
     expect(source.match(
       /exerciseDisclosureGenerationRef\.current !== disclosureGeneration/g,
     )).toHaveLength(3);
+    expect(source).toContain(
+      'active.dataset.testid === "active-log-set"',
+    );
+    expect(source).toContain(
+      '\'[data-testid="workout-recovery-status"]\'',
+    );
     expect(source.indexOf("exerciseDisclosureGenerationRef.current += 1"))
       .toBeLessThan(source.indexOf(
         "setExpandedId(expandedId === exercise.id ? null : exercise.id)",

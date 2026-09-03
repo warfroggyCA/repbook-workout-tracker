@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { WorkoutStatusBar } from "@/components/session/workout-status-bar";
@@ -32,20 +33,28 @@ const action = {
 } as unknown as SessionGuidanceAction;
 
 describe("WorkoutStatusBar", () => {
-  it("keeps note and finish in a thin bar without duplicating the revealed current set", () => {
+  it("keeps one fixed Log action with note and Finish for the revealed current set", () => {
     const html = renderToStaticMarkup(
       <WorkoutStatusBar
         action={action}
         exercise={exercise}
         timer={null}
         restRemainingSec={null}
+        currentSetFormId="active-set-form-2"
         {...callbacks}
       />,
     );
 
     expect(html).toContain('aria-label="Workout status"');
-    expect(html).not.toContain("Barbell Squat");
+    expect(html).toContain("Barbell Squat");
     expect(html).not.toContain("Set 2 of 3");
+    expect(html).toContain('data-testid="active-log-set"');
+    expect(html).toContain('form="active-set-form-2"');
+    const fixedLogButton = html.match(
+      /<button[^>]*data-testid="active-log-set"[^>]*>/,
+    )?.[0];
+    expect(fixedLogButton).toContain('disabled=""');
+    expect(html).toContain("Log set 2");
     expect(html).toContain('aria-label="Add training note"');
     expect(html).toContain("Finish");
     expect(html).toContain("bottom-[env(safe-area-inset-bottom)]");
@@ -54,6 +63,12 @@ describe("WorkoutStatusBar", () => {
     );
     expect(html).not.toContain("overflow-y-auto");
     expect(html).not.toContain("truncate");
+    expect(
+      readFileSync(
+        "src/components/session/workout-status-bar.tsx",
+        "utf8",
+      ),
+    ).toContain("key={currentSetFormId}");
   });
 
   it("makes planned-work completion explicit without adding another action", () => {
@@ -68,9 +83,9 @@ describe("WorkoutStatusBar", () => {
       />,
     );
 
-    expect(html).toContain(">End</span>");
-    expect(html).toContain(">Finish early</span>");
-    expect(html).toContain('aria-label="Review workout finish"');
+    expect(html).toContain(">Review</span>");
+    expect(html).toContain(">Review and finish</span>");
+    expect(html).toContain('aria-label="Review and finish workout"');
   });
 
   it("shows a positive rest countdown without claiming the next set is ready", () => {

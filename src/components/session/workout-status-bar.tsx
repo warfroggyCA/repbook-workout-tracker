@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { FilePenLine } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -26,6 +26,8 @@ type Props = {
   onShowCurrent: () => void;
   onPrimaryAction?: () => void;
   currentWorkingSetRevealed?: boolean;
+  currentSetFormId?: string | null;
+  currentSetBlockingReason?: string | null;
   checkingExerciseSkip?: string | null;
   recoveringSkippedExercise?: string | null;
   skippedExerciseRecoveryFailed?: boolean;
@@ -61,6 +63,8 @@ export function WorkoutStatusBar({
   onShowCurrent,
   onPrimaryAction,
   currentWorkingSetRevealed = true,
+  currentSetFormId = null,
+  currentSetBlockingReason = null,
   checkingExerciseSkip = null,
   recoveringSkippedExercise = null,
   skippedExerciseRecoveryFailed = false,
@@ -74,6 +78,13 @@ export function WorkoutStatusBar({
   pendingPlannedCount = 0,
 }: Props) {
   const statusBarRef = useRef<HTMLElement>(null);
+  const [currentSetFormState, setCurrentSetFormState] = useState<{
+    formId: string | null;
+    disabled: boolean;
+  }>({ formId: null, disabled: true });
+  const currentSetLogDisabled =
+    currentSetFormState.formId !== currentSetFormId ||
+    currentSetFormState.disabled;
   const saving = action?.kind === "working_set" ? saveStatus(exercise) : null;
   const timerRunning = timer?.phase === "running" && restRemainingSec != null;
   const timerReady = timer?.phase === "ready" || timer?.phase === "skipped";
@@ -89,6 +100,10 @@ export function WorkoutStatusBar({
     checkingExerciseSkip == null &&
     !skipRecoveryPending &&
     currentWorkingSetRevealed;
+  const logsRevealedCurrentSet =
+    hidesRevealedCurrentSet && currentSetFormId != null;
+  const reviewsRevealedCurrentSet =
+    hidesRevealedCurrentSet && currentSetFormId == null;
   const status = checkingExerciseSkip != null
     ? "Checking skip…"
     : skipRecoveryPending
@@ -125,6 +140,19 @@ export function WorkoutStatusBar({
     skipRecoveryPending && onResolveSkippedExercise != null;
   const runsPrimaryAction =
     resolvesSkippedExercise || completesCurrentWarmup;
+  const blockedCurrentSetAction = currentSetBlockingReason?.startsWith(
+    "Resolve the exercise skip",
+  )
+    ? "Resolve skipped exercise"
+    : currentSetBlockingReason?.startsWith("Complete ")
+      ? "Complete preparation"
+      : currentSetBlockingReason?.startsWith("Confirm the equipment")
+        ? "Confirm equipment"
+        : currentSetBlockingReason?.startsWith("This exercise measurement")
+          ? "Review measurement"
+          : currentSetBlockingReason
+            ? "Review save problem"
+            : "Review current set";
   const workingSetStatus = showsCurrentSet
     ? saving == null
       ? "Show current set"
@@ -153,6 +181,24 @@ export function WorkoutStatusBar({
         ? formatSessionGuidanceAction(action)
         : null
   );
+  useEffect(() => {
+    if (currentSetFormId == null) return;
+    const form = document.getElementById(currentSetFormId);
+    if (!(form instanceof HTMLFormElement)) return;
+    const updateDisabledState = () => {
+      setCurrentSetFormState({
+        formId: currentSetFormId,
+        disabled: form.dataset.logDisabled !== "false",
+      });
+    };
+    updateDisabledState();
+    const observer = new MutationObserver(updateDisabledState);
+    observer.observe(form, {
+      attributes: true,
+      attributeFilter: ["data-log-disabled"],
+    });
+    return () => observer.disconnect();
+  }, [currentSetFormId]);
   useEffect(() => {
     const element = statusBarRef.current;
     if (!element) return;
@@ -186,6 +232,8 @@ export function WorkoutStatusBar({
     <aside
       ref={statusBarRef}
       id="workout-rest-status"
+      tabIndex={-1}
+      data-active-workout-focus-target="true"
       aria-label="Workout status"
       data-rest-state={
         timerRunning ? "running" : timerReady ? "ready" : "inactive"
@@ -199,8 +247,49 @@ export function WorkoutStatusBar({
       )}
     >
       <div
-        className="mx-auto flex min-h-14 max-w-3xl flex-wrap items-center gap-1 px-1 py-1 min-[400px]:px-2 sm:gap-2 sm:px-3"
+        className={cn(
+          "mx-auto min-h-14 max-w-3xl items-center gap-1 px-1 py-1 min-[400px]:px-2 sm:gap-2 sm:px-3",
+          timerRunning || timerReady
+            ? "flex flex-wrap"
+            : "grid grid-cols-[minmax(0,1fr)_auto_auto]",
+        )}
       >
+        {!timerRunning && !timerReady && logsRevealedCurrentSet ? (
+          <>
+            <Button
+              key={currentSetFormId}
+              data-testid="active-log-set"
+              data-ui-essential="true"
+              type="submit"
+              form={currentSetFormId}
+              disabled={currentSetLogDisabled}
+              className="min-h-12 min-w-0 whitespace-normal px-3 text-base font-semibold leading-tight"
+              aria-describedby={`${currentSetFormId}-context`}
+            >
+              Log {setPosition?.lowercaseLabel ?? "current set"}
+            </Button>
+            <span id={`${currentSetFormId}-context`} className="sr-only">
+              {title}
+            </span>
+          </>
+        ) : null}
+
+        {!timerRunning && !timerReady && reviewsRevealedCurrentSet ? (
+          <button
+            type="button"
+            data-testid="active-workout-dock-primary"
+            onClick={onShowCurrent}
+            className="min-h-11 min-w-0 rounded-lg border border-primary/20 bg-primary/5 px-2 py-1 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            <span className="block break-words text-sm font-semibold leading-tight">
+              {blockedCurrentSetAction}
+            </span>
+            <span className="block break-words text-[0.6875rem] leading-tight text-muted-foreground min-[520px]:text-[0.8125rem]">
+              {currentSetBlockingReason ?? `${title} · ${setPosition?.label ?? "Current set"}`}
+            </span>
+          </button>
+        ) : null}
+
         {!timerRunning && !timerReady && !hidesRevealedCurrentSet ? (
           <button
           type="button"
@@ -296,12 +385,14 @@ export function WorkoutStatusBar({
           variant={canFinishNow ? "default" : "outline"}
           className="min-h-11 shrink-0 px-2"
           onClick={onFinish}
-          aria-label={canFinishNow ? "Finish workout" : "Review workout finish"}
+          aria-label={
+            canFinishNow ? "Finish workout" : "Review and finish workout"
+          }
         >
           {isFinishingEarly ? (
             <>
-              <span className="min-[400px]:hidden">End</span>
-              <span className="max-[399px]:hidden">Finish early</span>
+              <span className="min-[421px]:hidden">Review</span>
+              <span className="max-[420px]:hidden">Review and finish</span>
             </>
           ) : "Finish"}
         </Button>

@@ -1,6 +1,13 @@
 export const ACTIVE_WORKOUT_OVERLAY_BOTTOM_VARIABLE =
   "--active-workout-overlay-bottom";
 
+export function activeSetCommitFormId(
+  sessionExerciseId: string,
+  occurrenceId: string,
+) {
+  return `active-set-commit-${sessionExerciseId}-${occurrenceId}`;
+}
+
 export const WORKOUT_SET_OUTBOX_OFFSET_CLASS_NAME =
   "bottom-[var(--active-workout-overlay-bottom,calc(7.5rem+env(safe-area-inset-bottom)))] lg:bottom-[var(--active-workout-overlay-bottom,5.75rem)]";
 

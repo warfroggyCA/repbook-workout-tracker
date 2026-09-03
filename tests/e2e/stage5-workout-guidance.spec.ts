@@ -176,7 +176,7 @@ async function waitForSetSkippedNoticesToSettle(page: Page) {
 async function discardWorkout(page: Page) {
   await page
     .getByRole("complementary", { name: "Workout status" })
-    .getByRole("button", { name: /^(?:Review workout finish|Finish workout)$/ })
+    .getByRole("button", { name: /^(?:Review and finish workout|Finish workout)$/ })
     .click();
   const finish = page.getByRole("dialog", { name: "Finish workout" });
   await finish
@@ -295,10 +295,7 @@ test("keeps Stage 5 guidance truthful, persistent, and usable on narrow mobile s
     }
     await route.continue();
   });
-  const firstLogSet = dock.getByRole("button", {
-    name: "Log set",
-    exact: true,
-  });
+  const firstLogSet = page.getByTestId("active-log-set");
   await waitForHydratedReactHandler(firstLogSet);
   await firstLogSet.click();
   await expect.poll(() => saveStarted).toBe(true);
@@ -422,7 +419,7 @@ test("keeps Stage 5 guidance truthful, persistent, and usable on narrow mobile s
     const primary = Array.from(element.querySelectorAll("button")).filter(
       (button) =>
         button.textContent?.trim() === "Dismiss rest timer" ||
-        button.getAttribute("aria-label") === "Review workout finish",
+        button.getAttribute("aria-label") === "Review and finish workout",
     );
     return {
       dockBottom: element.getBoundingClientRect().bottom,
