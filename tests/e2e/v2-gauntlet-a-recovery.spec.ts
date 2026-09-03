@@ -121,7 +121,9 @@ test("recovers offline and timeout-after-commit sets exactly, then reviews aband
 
   current = page.getByTestId("current-exercise-card");
   entry = current.getByTestId("current-set-entry");
-  await entry.getByRole("button", { name: "Log set", exact: true }).click();
+  const logSet = entry.getByRole("button", { name: "Log set", exact: true });
+  await waitForHydratedReactHandler(logSet);
+  await logSet.click();
   await expect.poll(() => afterCommitInterceptions).toBe(1);
   // WebKit may surface the aborted response only at the document-action
   // deadline, so this budget must include that deadline and the automatic retry.
