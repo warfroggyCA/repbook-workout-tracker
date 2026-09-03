@@ -123,6 +123,13 @@ No actionable P0, P1, or P2 difference remains within the Phase 3 scope.
    timer adjustments and asynchronous durable deadline updates. The scenario
    now waits for each deadline change and passed without changing product
    timing or adding broader test scope.
+6. The protected browser matrix exposed one P1 edge outside the seven reference
+   captures: completing an out-of-order workout-only exercise could leave
+   earlier planned work while the rest strip said **No further work** and the
+   fixed area repeated **Rest complete**. The strip now distinguishes
+   **Resume plan: [exact action]** from a forward rest destination, and the
+   existing fixed Log action resumes that pending set. No timer, occurrence, or
+   persistence contract changed.
 
 ## Open questions
 

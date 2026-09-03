@@ -142,6 +142,26 @@ describe("WorkoutStatusBar", () => {
     expect(html).not.toContain("Rest after");
   });
 
+  it("distinguishes returning to earlier planned work from a forward rest destination", () => {
+    const html = renderToStaticMarkup(
+      <WorkoutStatusBar
+        action={action}
+        exercise={exercise}
+        timer={{ phase: "running" } as never}
+        restRemainingSec={75}
+        restDestinationLabel={null}
+        restResumeLabel="Barbell Squat, set 2"
+        currentSetFormId="active-set-form-2"
+        {...callbacks}
+      />,
+    );
+
+    expect(html).toContain("Resume plan: Barbell Squat, set 2");
+    expect(html).not.toContain("No further work");
+    expect(html).not.toContain("Next: Barbell Squat, set 2");
+    expect(html).toContain('data-testid="active-log-set"');
+  });
+
   it("shows an explicitly visual-only timer mode instead of implying sound", () => {
     const html = renderToStaticMarkup(
       <WorkoutStatusBar

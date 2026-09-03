@@ -25,6 +25,7 @@ type Props = {
   restAlertPreference?: RestAlertPreference;
   restSoundState?: RestCueChannelOutcome;
   restDestinationLabel?: string | null;
+  restResumeLabel?: string | null;
   onShowCurrent: () => void;
   onPrimaryAction?: () => void;
   currentWorkingSetRevealed?: boolean;
@@ -62,6 +63,7 @@ export function WorkoutStatusBar({
   restAlertPreference = "sound",
   restSoundState = "not_requested",
   restDestinationLabel = null,
+  restResumeLabel = null,
   onShowCurrent,
   onPrimaryAction,
   currentWorkingSetRevealed = true,
@@ -176,15 +178,16 @@ export function WorkoutStatusBar({
   const restAlertAriaLabel = restAlertPreference === "visual_only"
     ? "visual only"
     : restAlertLabel.toLowerCase();
-  const resolvedRestDestinationLabel = restDestinationLabel ?? (
-    action?.kind === "rest"
-      ? action.destination
-        ? formatSessionGuidanceAction(action.destination)
-        : null
-      : action
-        ? formatSessionGuidanceAction(action)
-        : null
-  );
+  const resolvedRestDestinationLabel = restDestinationLabel ??
+    (restResumeLabel == null
+      ? action?.kind === "rest"
+        ? action.destination
+          ? formatSessionGuidanceAction(action.destination)
+          : null
+        : action
+          ? formatSessionGuidanceAction(action)
+          : null
+      : null);
   const restConfirmationGenerationId = timerReady
     ? timer?.generationId ?? null
     : null;
@@ -274,6 +277,7 @@ export function WorkoutStatusBar({
             alertLabel={restAlertLabel}
             alertAriaLabel={restAlertAriaLabel}
             destinationLabel={resolvedRestDestinationLabel}
+            resumeLabel={restResumeLabel}
             onAdjust={onRestAdjust}
             onEnd={onRestSkip}
           />

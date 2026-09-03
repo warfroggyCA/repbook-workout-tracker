@@ -10,6 +10,7 @@ export function RestCockpit({
   alertLabel,
   alertAriaLabel = alertLabel.toLowerCase(),
   destinationLabel,
+  resumeLabel = null,
   onAdjust,
   onEnd,
 }: {
@@ -18,12 +19,15 @@ export function RestCockpit({
   alertLabel: string;
   alertAriaLabel?: string;
   destinationLabel: string | null;
+  resumeLabel?: string | null;
   onAdjust: (deltaSeconds: number) => void;
   onEnd: () => void;
 }) {
   const running = phase === "running" && remainingSeconds != null;
   const destination = destinationLabel
     ? `Next: ${destinationLabel}`
+    : resumeLabel
+      ? `Resume plan: ${resumeLabel}`
     : "No further work";
   return (
     <div
