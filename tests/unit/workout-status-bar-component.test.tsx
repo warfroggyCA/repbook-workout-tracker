@@ -71,6 +71,35 @@ describe("WorkoutStatusBar", () => {
     ).toContain("key={currentSetFormId}");
   });
 
+  it("names the exact available action for equipment decisions", () => {
+    const choose = renderToStaticMarkup(
+      <WorkoutStatusBar
+        action={action}
+        exercise={exercise}
+        timer={null}
+        restRemainingSec={null}
+        currentSetBlockingReason="Choose equipment before logging this set."
+        onPrimaryAction={() => undefined}
+        {...callbacks}
+      />,
+    );
+    const replace = renderToStaticMarkup(
+      <WorkoutStatusBar
+        action={action}
+        exercise={exercise}
+        timer={null}
+        restRemainingSec={null}
+        currentSetBlockingReason="Equipment unavailable. Replace for today or skip exercise."
+        onPrimaryAction={() => undefined}
+        {...callbacks}
+      />,
+    );
+
+    expect(choose).toContain("Choose equipment");
+    expect(replace).toContain("Replace for today");
+    expect(replace).not.toContain("Log set 2");
+  });
+
   it("makes planned-work completion explicit without adding another action", () => {
     const html = renderToStaticMarkup(
       <WorkoutStatusBar

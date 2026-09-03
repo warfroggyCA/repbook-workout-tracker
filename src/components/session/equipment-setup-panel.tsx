@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
+import { AlertTriangle } from "lucide-react";
 import type { SessionEquipmentSetup } from "./types";
 import type { WorkoutSetLoadEntryMeaning } from "@/lib/workout-set-outbox";
 import { createClientUuid } from "@/lib/client-uuid";
@@ -30,6 +31,8 @@ type Props = {
   setup: SessionEquipmentSetup;
   loadEntryMeaning: WorkoutSetLoadEntryMeaning;
   onLoadEntryMeaningChange: (meaning: WorkoutSetLoadEntryMeaning) => void;
+  onReplaceForToday?: () => void;
+  onSkipExercise?: () => void;
 };
 
 export function EquipmentSetupPanel({
@@ -40,9 +43,11 @@ export function EquipmentSetupPanel({
   setup,
   loadEntryMeaning,
   onLoadEntryMeaningChange,
+  onReplaceForToday,
+  onSkipExercise,
 }: Props) {
   const router = useRouter();
-  const automaticOption = setup.status === "available" && setup.options.length === 1
+  const automaticOption = setup.decisionState === "ready" && setup.options.length === 1
     ? setup.options[0]
     : null;
   const automatic = automaticOption != null && setup.currentSnapshotId == null;
@@ -164,6 +169,38 @@ export function EquipmentSetupPanel({
     failed == null &&
     message == null;
 
+  const equipmentConflict =
+    setup.decisionState === "unavailable" ||
+    setup.decisionState === "incompatible";
+  const outboxStatus = (
+    <>
+      {message && <p className="mt-2 text-destructive" role="alert">{message}</p>}
+      {pending && (
+        <p className="mt-2 text-muted-foreground" role="status">
+          {pendingEntries.some((entry) => entry.attemptCount > 0)
+            ? "Retrying equipment setup…"
+            : "Equipment setup saved on this device and waiting to sync."}
+        </p>
+      )}
+      {failed && (
+        <div className="mt-2 flex flex-wrap items-center gap-2" role="alert">
+          <span className="text-destructive">
+            {failed.lastError ?? "Equipment setup needs attention."}
+          </span>
+          <Button
+            type="button"
+            size="sm"
+            className="min-h-11"
+            variant="outline"
+            onClick={() => void retryEquipmentSelection(failed.clientKey)}
+          >
+            Retry setup
+          </Button>
+        </div>
+      )}
+    </>
+  );
+
   if (compactSettledSetup) {
     return (
       <section
@@ -189,6 +226,48 @@ export function EquipmentSetupPanel({
       aria-label={`Equipment setup for ${exerciseName}`}
       className="p-3 text-sm"
     >
+      {equipmentConflict ? (
+        <div>
+          <div className="flex items-start gap-2">
+            <AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+            <div>
+              <p className="font-semibold">
+                {setup.decisionState === "unavailable"
+                  ? "Equipment unavailable"
+                  : "Equipment setup incompatible"}
+              </p>
+              <p className="mt-1 text-muted-foreground">
+                {setup.decisionState === "unavailable"
+                  ? "The equipment this exercise requires is not available in your saved inventory."
+                  : "Your saved equipment does not match this exercise's reviewed setup."}
+                {" "}Choose how to handle this workout; your Program stays unchanged.
+              </p>
+            </div>
+          </div>
+          <div className="mt-3 grid gap-2 sm:grid-cols-2">
+            <Button
+              type="button"
+              onClick={onReplaceForToday}
+              disabled={onReplaceForToday == null}
+            >
+              Replace for today
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={onSkipExercise}
+              disabled={onSkipExercise == null}
+            >
+              Skip exercise
+            </Button>
+          </div>
+          <p className="mt-2 text-xs text-muted-foreground">
+            Either choice retains the reason as equipment unavailable or incompatible.
+          </p>
+          {outboxStatus}
+        </div>
+      ) : (
+      <>
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div>
           <p className="font-medium">Equipment setup</p>
@@ -198,13 +277,6 @@ export function EquipmentSetupPanel({
               {!pendingLabel && !setup.currentSelectionAvailable && (
                 <span className="text-destructive"> · no longer in the available setup list</span>
               )}
-            </p>
-          ) : setup.status === "unavailable" ? (
-            <p className="mt-1 text-muted-foreground">
-              No reviewed equipment setup matches your saved equipment, so exact
-              plate or stack guidance is not available. You can still log the
-              displayed load — it is recorded honestly with the setup marked
-              unknown.
             </p>
           ) : automatic ? (
             <p className="mt-1 text-muted-foreground" aria-live="polite">
@@ -218,7 +290,9 @@ export function EquipmentSetupPanel({
         </div>
       </div>
 
-      {(setup.selectionRequired || (setup.currentSnapshotId != null && setup.options.length > 1)) && (
+      {(setup.selectionRequired ||
+        (setup.currentSnapshotId != null &&
+          (!setup.currentSelectionAvailable || setup.options.length > 1))) && (
         <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-end">
           <label className="min-w-0 flex-1 font-medium">
             Physical setup
@@ -241,7 +315,7 @@ export function EquipmentSetupPanel({
             disabled={selectedOption == null}
             onClick={() => selectedOption && void apply(selectedOption, "user_selected")}
           >
-            {currentLabel ? "Change setup" : "Use setup"}
+            {currentLabel ? "Change setup" : "Choose equipment"}
           </Button>
         </div>
       )}
@@ -279,27 +353,8 @@ export function EquipmentSetupPanel({
           </span>
         </label>
       )}
-      {message && <p className="mt-2 text-destructive" role="alert">{message}</p>}
-      {pending && (
-        <p className="mt-2 text-muted-foreground" role="status">
-          {pendingEntries.some((entry) => entry.attemptCount > 0)
-            ? "Retrying equipment setup…"
-            : "Equipment setup saved on this device and waiting to sync."}
-        </p>
-      )}
-      {failed && (
-        <div className="mt-2 flex flex-wrap items-center gap-2" role="alert">
-          <span className="text-destructive">{failed.lastError ?? "Equipment setup needs attention."}</span>
-          <Button
-            type="button"
-            size="sm"
-            className="min-h-11"
-            variant="outline"
-            onClick={() => void retryEquipmentSelection(failed.clientKey)}
-          >
-            Retry setup
-          </Button>
-        </div>
+      {outboxStatus}
+      </>
       )}
     </section>
   );

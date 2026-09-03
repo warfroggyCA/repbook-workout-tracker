@@ -14,6 +14,7 @@ import type {
 import type { PreviousComparableSetResult } from "@/services/previous-comparable-sets";
 import type { SessionPreparationEquipmentProjection } from "@/lib/session-equipment-requirements";
 import type { ActiveSetVersionEvidence } from "@/lib/active-set-version-evidence";
+import type { ExerciseAlternativeReason } from "@/lib/exercise-alternatives";
 
 export type LoggedSet = {
   id: string;
@@ -62,7 +63,7 @@ export type SessionExerciseData = {
   modificationType: "as_planned" | "substituted" | "added" | "skipped";
   skipReason: string | null;
   substitutedForExerciseId: string | null;
-  substitutionReason: "variety" | "equipment_busy" | "discomfort" | "other" | null;
+  substitutionReason: ExerciseAlternativeReason | null;
   substitutedAt: string | null;
   plannedExerciseName: string | null;
   targetSets: number | null;
@@ -108,6 +109,8 @@ export type SessionEquipmentSetup = {
   sourceTargetLoad: number | null;
   sourceTargetLoadUnit: LoadUnit | null;
   exact: boolean;
+  /** Current, owner-scoped action state; never reused as historical cause evidence. */
+  decisionState: "ready" | "unavailable" | "incompatible";
   status: "available" | "unavailable";
   selectionRequired: boolean;
   currentSnapshotId: string | null;

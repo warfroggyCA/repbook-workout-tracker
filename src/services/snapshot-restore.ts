@@ -75,6 +75,7 @@ import {
   SESSION_COMPLETION_SEMANTICS_VERSION,
   TERMINAL_OCCURRENCE_RESOLUTION_REASONS,
 } from "@/lib/session-completion-semantics";
+import { SUBSTITUTION_REASONS } from "@/lib/exercise-alternatives";
 
 export type SnapshotRestoreScope = "history" | "full";
 
@@ -94,6 +95,46 @@ const PRE_SESSION_EQUIPMENT_REQUIREMENTS_SNAPSHOT_SCHEMA_VERSION = "31";
 const PRE_PROGRAM_SCHEDULE_SNAPSHOT_SCHEMA_VERSION = "32";
 const PRE_NAMED_PROGRAM_LIBRARY_SNAPSHOT_SCHEMA_VERSION = "33";
 const PRE_REPORTING_SESSION_OUTCOMES_SNAPSHOT_SCHEMA_VERSION = "34";
+const PRE_ACTIVE_WORKOUT_EQUIPMENT_REASONS_SNAPSHOT_SCHEMA_VERSION = "35";
+
+const PRE_ACTIVE_WORKOUT_SUBSTITUTION_REASONS = new Set([
+  "variety",
+  "equipment_busy",
+  "discomfort",
+  "other",
+]);
+const ACTIVE_WORKOUT_SUBSTITUTION_REASONS = new Set(SUBSTITUTION_REASONS);
+
+function validateSubstitutionReasonEvidence(
+  payload: CanonicalSnapshotPayload,
+  allowed: ReadonlySet<string>,
+) {
+  const validate = (value: unknown, context: string) => {
+    if (value != null && (typeof value !== "string" || !allowed.has(value))) {
+      throw new Error(`Snapshot ${context} has an invalid substitution reason.`);
+    }
+  };
+  for (const exercise of rows(payload, "session_exercises")) {
+    validate(exercise.substitution_reason, "session exercise");
+  }
+  for (const version of rows(payload, "record_versions")) {
+    if (version.entity_type !== "session_exercise") continue;
+    const before = version.before_data;
+    const after = version.after_data;
+    if (before && typeof before === "object" && !Array.isArray(before)) {
+      validate(
+        (before as SnapshotRow).substitution_reason,
+        "session exercise version before-data",
+      );
+    }
+    if (after && typeof after === "object" && !Array.isArray(after)) {
+      validate(
+        (after as SnapshotRow).substitution_reason,
+        "session exercise version after-data",
+      );
+    }
+  }
+}
 
 type SnapshotRow = Record<string, unknown>;
 type RestoreRows = Record<string, SnapshotRow[]>;
@@ -1567,6 +1608,7 @@ export function upgradeSnapshotPayload(
     PRE_PROGRAM_SCHEDULE_SNAPSHOT_SCHEMA_VERSION,
     PRE_NAMED_PROGRAM_LIBRARY_SNAPSHOT_SCHEMA_VERSION,
     PRE_REPORTING_SESSION_OUTCOMES_SNAPSHOT_SCHEMA_VERSION,
+    PRE_ACTIVE_WORKOUT_EQUIPMENT_REASONS_SNAPSHOT_SCHEMA_VERSION,
     SNAPSHOT_SCHEMA_VERSION,
   ]);
   if (!supported.has(payload.schemaVersion)) {
@@ -1575,6 +1617,12 @@ export function upgradeSnapshotPayload(
     );
   }
   const upgraded = structuredClone(payload);
+  validateSubstitutionReasonEvidence(
+    upgraded,
+    upgraded.schemaVersion === SNAPSHOT_SCHEMA_VERSION
+      ? ACTIVE_WORKOUT_SUBSTITUTION_REASONS
+      : PRE_ACTIVE_WORKOUT_SUBSTITUTION_REASONS,
+  );
   normalizeSnapshotProgramDrafts(upgraded);
   if (upgraded.schemaVersion === SNAPSHOT_SCHEMA_VERSION) {
     reconcileSnapshotCompletedSetOutcomes(upgraded);
@@ -1655,6 +1703,7 @@ export function upgradeSnapshotPayload(
       PRE_PROGRAM_SCHEDULE_SNAPSHOT_SCHEMA_VERSION,
       PRE_NAMED_PROGRAM_LIBRARY_SNAPSHOT_SCHEMA_VERSION,
       PRE_REPORTING_SESSION_OUTCOMES_SNAPSHOT_SCHEMA_VERSION,
+      PRE_ACTIVE_WORKOUT_EQUIPMENT_REASONS_SNAPSHOT_SCHEMA_VERSION,
       SNAPSHOT_SCHEMA_VERSION,
     ].includes(upgraded.schemaVersion)
   ) {
@@ -1957,6 +2006,10 @@ export function upgradeSnapshotPayload(
   sanitizeSnapshotPrivacy(upgraded);
   reconcileSnapshotCompletedSetOutcomes(upgraded);
   upgraded.schemaVersion = SNAPSHOT_SCHEMA_VERSION;
+  validateSubstitutionReasonEvidence(
+    upgraded,
+    ACTIVE_WORKOUT_SUBSTITUTION_REASONS,
+  );
   validateUnitAndCalendarIdentity(upgraded);
   validateReportingSessionOutcomeSemantics(upgraded);
   validateFinishCommandReceipts(upgraded);
@@ -3138,6 +3191,7 @@ export function validateSnapshotPayload(
       PRE_PROGRAM_SCHEDULE_SNAPSHOT_SCHEMA_VERSION,
       PRE_NAMED_PROGRAM_LIBRARY_SNAPSHOT_SCHEMA_VERSION,
       PRE_REPORTING_SESSION_OUTCOMES_SNAPSHOT_SCHEMA_VERSION,
+      PRE_ACTIVE_WORKOUT_EQUIPMENT_REASONS_SNAPSHOT_SCHEMA_VERSION,
       SNAPSHOT_SCHEMA_VERSION,
     ].includes(payload.schemaVersion)
   ) {
@@ -3183,6 +3237,7 @@ export function validateSnapshotPayload(
       PRE_PROGRAM_SCHEDULE_SNAPSHOT_SCHEMA_VERSION,
       PRE_NAMED_PROGRAM_LIBRARY_SNAPSHOT_SCHEMA_VERSION,
       PRE_REPORTING_SESSION_OUTCOMES_SNAPSHOT_SCHEMA_VERSION,
+      PRE_ACTIVE_WORKOUT_EQUIPMENT_REASONS_SNAPSHOT_SCHEMA_VERSION,
       SNAPSHOT_SCHEMA_VERSION,
     ].includes(payload.schemaVersion)
   ) {
@@ -3394,6 +3449,7 @@ export function validateSnapshotPayload(
       PRE_PROGRAM_SCHEDULE_SNAPSHOT_SCHEMA_VERSION,
       PRE_NAMED_PROGRAM_LIBRARY_SNAPSHOT_SCHEMA_VERSION,
       PRE_REPORTING_SESSION_OUTCOMES_SNAPSHOT_SCHEMA_VERSION,
+      PRE_ACTIVE_WORKOUT_EQUIPMENT_REASONS_SNAPSHOT_SCHEMA_VERSION,
       SNAPSHOT_SCHEMA_VERSION,
     ].includes(payload.schemaVersion)
   ) {
@@ -3548,6 +3604,10 @@ export function validateSnapshotPayload(
     requireOptionalReferences(payload, table, "archive_operation_id", "archive_operations");
   }
   if (payload.schemaVersion === SNAPSHOT_SCHEMA_VERSION) {
+    validateSubstitutionReasonEvidence(
+      payload,
+      ACTIVE_WORKOUT_SUBSTITUTION_REASONS,
+    );
     validateUnitAndCalendarIdentity(payload);
     validateReportingSessionOutcomeSemantics(payload);
     validateFinishCommandReceipts(payload);

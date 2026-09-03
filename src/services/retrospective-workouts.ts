@@ -307,7 +307,13 @@ export async function createRetrospectiveWorkout(
               AND (
                 reviewed.value->>'substitutionReason' IS NULL
                 OR reviewed.value->>'substitutionReason'
-                   NOT IN ('variety', 'equipment_busy', 'discomfort', 'other')
+                   NOT IN (
+                     'variety',
+                     'equipment_busy',
+                     'equipment_unavailable_incompatible',
+                     'discomfort',
+                     'other'
+                   )
                 OR performed.activity_class <> 'strength'
                 OR performed.metric_type
                    NOT IN ('weight_reps', 'reps', 'assisted_reps')

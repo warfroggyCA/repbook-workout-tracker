@@ -34,7 +34,7 @@ import { Label } from "@/components/ui/label";
 import { StateNotice } from "@/components/ui/state-notice";
 import { Textarea } from "@/components/ui/textarea";
 import type { ExerciseDiscoveryItem } from "@/lib/exercise-discovery";
-import { ALTERNATIVE_REASONS } from "@/lib/exercise-alternatives";
+import { SUBSTITUTION_REASONS } from "@/lib/exercise-alternatives";
 import { workoutReplacementUnavailableReason } from "@/lib/exercise-replacements";
 import type { ProgramPresentation } from "@/lib/program-presentation";
 import {
@@ -123,7 +123,10 @@ function outcomeLabel(outcome: RetrospectiveOutcomeDraft) {
 }
 
 function substitutionReasonLabel(reason: string) {
-  if (reason === "equipment_busy") return "Equipment unavailable";
+  if (reason === "equipment_busy") return "Equipment busy";
+  if (reason === "equipment_unavailable_incompatible") {
+    return "Equipment unavailable or incompatible";
+  }
   if (reason === "discomfort") return "Discomfort";
   if (reason === "variety") return "Variety";
   return "Other";
@@ -1458,7 +1461,7 @@ function RetrospectiveWorkoutFields({
                           }
                         >
                           <option value="">Choose a reason</option>
-                          {ALTERNATIVE_REASONS.map((reason) => (
+                          {SUBSTITUTION_REASONS.map((reason) => (
                             <option key={reason} value={reason}>
                               {substitutionReasonLabel(reason)}
                             </option>

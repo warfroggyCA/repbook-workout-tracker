@@ -7,7 +7,13 @@ export const ALTERNATIVE_REASONS = [
   "other",
 ] as const;
 
-export type ExerciseAlternativeReason = (typeof ALTERNATIVE_REASONS)[number];
+export const SUBSTITUTION_REASONS = [
+  ...ALTERNATIVE_REASONS,
+  "equipment_unavailable_incompatible",
+] as const;
+
+export type ExerciseAlternativeReason = (typeof SUBSTITUTION_REASONS)[number];
+export type UserSelectedAlternativeReason = (typeof ALTERNATIVE_REASONS)[number];
 export type ExerciseAlternativeTier = "same_family" | "same_movement" | "same_muscle";
 
 export type ExerciseAlternativeAnnotation = {

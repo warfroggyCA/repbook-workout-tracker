@@ -285,6 +285,38 @@ async function seedUnresolvableReviewedCable(database: TestDatabase) {
   `);
 }
 
+async function seedLegacyUnknownDumbbell(database: TestDatabase) {
+  await database.client.exec(`
+    INSERT INTO users (id, email)
+    VALUES ('${ids.user}', 'legacy-unknown-owner@example.test');
+    INSERT INTO user_profiles (user_id, unit)
+    VALUES ('${ids.user}', 'lb');
+    INSERT INTO exercises (
+      id, name, movement_pattern, primary_muscles, load_type, catalog_reviewed
+    ) VALUES (
+      '${ids.exercise}', 'Legacy Dumbbell Row', 'horizontal_pull',
+      '["back"]'::jsonb, 'dumbbell', true
+    );
+    INSERT INTO exercise_equipment_requirements (exercise_id, equipment_type)
+    VALUES ('${ids.exercise}', 'dumbbell');
+    INSERT INTO workout_sessions (
+      id, user_id, timezone, local_date, started_at, status
+    ) VALUES (
+      '${ids.session}', '${ids.user}', 'America/Toronto', '2026-07-22',
+      '2026-07-22T17:00:00Z', 'in_progress'
+    );
+    INSERT INTO session_exercises (id, session_id, exercise_id, order_idx)
+    VALUES ('${ids.sessionExercise}', '${ids.session}', '${ids.exercise}', 0);
+    INSERT INTO session_occurrences (
+      id, session_id, session_exercise_id, kind, origin, sequence_idx,
+      kind_ordinal, planned_exercise_id, outcome
+    ) VALUES (
+      '${ids.occurrence}', '${ids.session}', '${ids.sessionExercise}',
+      'working_set', 'legacy', 0, 0, '${ids.exercise}', 'pending'
+    );
+  `);
+}
+
 describe("session equipment selection service", () => {
   let database: TestDatabase | undefined;
   afterEach(async () => database?.close());
@@ -607,7 +639,7 @@ describe("session equipment selection service", () => {
     })).resolves.toEqual({ outcome: "invalid_setup" });
   });
 
-  it("records displayed load with unknown setup when no reviewed matching setup exists", async () => {
+  it("does not relabel a reviewed incompatible setup as unknown", async () => {
     database = await createMigratedTestDatabase();
     await seedUnresolvableReviewedCable(database);
 
@@ -619,6 +651,96 @@ describe("session equipment selection service", () => {
       reps: 10,
       rpe: 8,
       clientKey: "unresolvable-reviewed-cable-set",
+      equipmentSnapshotId: null,
+      loadEntryMeaning: "legacy_unknown" as const,
+    };
+    await expect(logWorkoutSet(database.db, ids.user, command)).resolves.toEqual({
+      outcome: "equipment_selection_required",
+    });
+    const count = await database.client.query<{ count: number }>(`
+      SELECT count(*)::int AS count
+      FROM completed_sets
+      WHERE client_key = 'unresolvable-reviewed-cable-set'
+    `);
+    expect(count.rows).toEqual([{ count: 0 }]);
+  });
+
+  it("blocks a non-load set when its reviewed equipment is incompatible", async () => {
+    database = await createMigratedTestDatabase();
+    await seedUnresolvableReviewedCable(database);
+    await database.client.exec(`
+      UPDATE exercises SET metric_type = 'reps'
+      WHERE id = '${ids.cableExercise}';
+    `);
+
+    await expect(logWorkoutSet(database.db, ids.user, {
+      sessionExerciseId: ids.sessionExercise,
+      setNo: 1,
+      weight: null,
+      weightUnit: null,
+      reps: 10,
+      clientKey: "unresolvable-reviewed-cable-reps-set",
+      equipmentSnapshotId: null,
+      loadEntryMeaning: "legacy_unknown",
+    })).resolves.toEqual({ outcome: "equipment_selection_required" });
+  });
+
+  it("requires a durable exact selection before a non-load set can save", async () => {
+    database = await createMigratedTestDatabase();
+    const selectedSnapshotId = await seedCableSubstitution(database);
+    await database.client.exec(`
+      UPDATE exercises SET metric_type = 'reps'
+      WHERE id = '${ids.cableExercise}';
+    `);
+    await expect(mutateSessionEquipmentSelection(database.db, ids.user, {
+      operation: "clear",
+      sessionExerciseId: ids.sessionExercise,
+      expectedCurrentSnapshotId: selectedSnapshotId,
+      clientKey: ids.clearKey,
+    })).resolves.toMatchObject({ outcome: "applied", snapshotId: null });
+
+    const command = {
+      sessionExerciseId: ids.sessionExercise,
+      setNo: 1,
+      weight: null,
+      weightUnit: null,
+      reps: 10,
+      clientKey: "reviewed-cable-reps-set",
+      equipmentSnapshotId: null,
+      loadEntryMeaning: "legacy_unknown" as const,
+    };
+    await expect(logWorkoutSet(database.db, ids.user, command)).resolves
+      .toEqual({ outcome: "equipment_selection_required" });
+
+    const reselected = await mutateSessionEquipmentSelection(
+      database.db,
+      ids.user,
+      {
+        operation: "select",
+        sessionExerciseId: ids.sessionExercise,
+        equipmentItemId: ids.cable,
+        attachmentItemId: ids.rope,
+        expectedCurrentSnapshotId: null,
+        clientKey: "80000000-0000-4000-8000-000000000076",
+        provenance: "user_selected",
+      },
+    );
+    expect(reselected).toMatchObject({ outcome: "applied" });
+    await expect(logWorkoutSet(database.db, ids.user, command)).resolves
+      .toMatchObject({ outcome: "saved" });
+  });
+
+  it("records genuine legacy-unknown equipment without fabricating a snapshot", async () => {
+    database = await createMigratedTestDatabase();
+    await seedLegacyUnknownDumbbell(database);
+    const command = {
+      sessionExerciseId: ids.sessionExercise,
+      setNo: 1,
+      weight: 80,
+      weightUnit: "lb" as const,
+      reps: 10,
+      rpe: 8,
+      clientKey: "legacy-unknown-dumbbell-set",
       equipmentSnapshotId: null,
       loadEntryMeaning: "legacy_unknown" as const,
     };
@@ -643,7 +765,7 @@ describe("session equipment selection service", () => {
       FROM completed_sets completed
       JOIN session_occurrences occurrence
         ON occurrence.completed_set_id = completed.id
-      WHERE completed.client_key = 'unresolvable-reviewed-cable-set'
+      WHERE completed.client_key = 'legacy-unknown-dumbbell-set'
     `);
     expect(evidence.rows).toEqual([{
       completed_snapshot: null,

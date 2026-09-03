@@ -29,6 +29,45 @@ vi.mock("@/lib/equipment-selection-outbox", () => ({
 import { EquipmentSetupPanel } from "@/components/session/equipment-setup-panel";
 
 describe("EquipmentSetupPanel", () => {
+  it("offers only replacement or skip for a known unavailable setup", () => {
+    const html = renderToStaticMarkup(
+      <EquipmentSetupPanel
+        sessionExerciseId="00000000-0000-4000-8000-000000000001"
+        exerciseName="Suspension Push-Up"
+        ownerId="00000000-0000-4000-8000-000000000010"
+        sessionId="00000000-0000-4000-8000-000000000011"
+        setup={{
+          sourceExerciseId: "00000000-0000-4000-8000-000000000012",
+          sourceTargetLoad: null,
+          sourceTargetLoadUnit: null,
+          exact: true,
+          decisionState: "unavailable",
+          status: "unavailable",
+          selectionRequired: false,
+          currentSnapshotId: null,
+          currentEquipmentLabel: null,
+          currentAttachmentLabel: null,
+          currentGuidance: null,
+          currentGuidanceByLoadEntryMeaning: {},
+          currentSelectionAvailable: false,
+          loadEntryMeaning: null,
+          loadEntryMeaningChoices: [],
+          options: [],
+        }}
+        loadEntryMeaning="legacy_unknown"
+        onLoadEntryMeaningChange={() => undefined}
+        onReplaceForToday={() => undefined}
+        onSkipExercise={() => undefined}
+      />,
+    );
+
+    expect(html).toContain("Equipment unavailable");
+    expect(html).toContain("Replace for today");
+    expect(html).toContain("Skip exercise");
+    expect(html).not.toContain("log the displayed load");
+    expect(html).not.toContain("Choose equipment");
+  });
+
   beforeEach(() => {
     outboxState.snapshot = { entries: [], quarantined: [], error: null };
   });
@@ -45,6 +84,7 @@ describe("EquipmentSetupPanel", () => {
           sourceTargetLoad: 50,
           sourceTargetLoadUnit: "lb",
           exact: true,
+          decisionState: "ready",
           status: "available",
           selectionRequired: false,
           currentSnapshotId: "00000000-0000-4000-8000-000000000002",
@@ -92,6 +132,49 @@ describe("EquipmentSetupPanel", () => {
     expect(html).toContain("effective load remains unknown");
   });
 
+  it("offers the remaining compatible choice when the saved selection is stale", () => {
+    const html = renderToStaticMarkup(
+      <EquipmentSetupPanel
+        sessionExerciseId="00000000-0000-4000-8000-000000000001"
+        exerciseName="Suspension Push-Up"
+        ownerId="00000000-0000-4000-8000-000000000010"
+        sessionId="00000000-0000-4000-8000-000000000011"
+        setup={{
+          sourceExerciseId: "00000000-0000-4000-8000-000000000012",
+          sourceTargetLoad: null,
+          sourceTargetLoadUnit: null,
+          exact: true,
+          decisionState: "ready",
+          status: "available",
+          selectionRequired: false,
+          currentSnapshotId: "00000000-0000-4000-8000-000000000002",
+          currentEquipmentLabel: "Travel straps",
+          currentAttachmentLabel: null,
+          currentGuidance: null,
+          currentGuidanceByLoadEntryMeaning: {},
+          currentSelectionAvailable: false,
+          loadEntryMeaning: null,
+          loadEntryMeaningChoices: [],
+          options: [{
+            key: "home-straps:none",
+            equipmentItemId: "00000000-0000-4000-8000-000000000003",
+            equipmentLabel: "Home suspension trainer",
+            attachmentItemId: null,
+            attachmentLabel: null,
+            guidance: null,
+          }],
+        }}
+        loadEntryMeaning="legacy_unknown"
+        onLoadEntryMeaningChange={() => undefined}
+      />,
+    );
+
+    expect(html).toContain("no longer in the available setup list");
+    expect(html).toContain("Physical setup");
+    expect(html).toContain("Home suspension trainer");
+    expect(html).toContain("Change setup");
+  });
+
   it("keeps a failed setup retry touch-sized and names the exercise context", () => {
     outboxState.snapshot = {
       entries: [{
@@ -129,6 +212,7 @@ describe("EquipmentSetupPanel", () => {
           sourceTargetLoad: null,
           sourceTargetLoadUnit: null,
           exact: true,
+          decisionState: "ready",
           status: "available",
           selectionRequired: true,
           currentSnapshotId: null,
@@ -162,6 +246,7 @@ describe("EquipmentSetupPanel", () => {
           sourceTargetLoad: 135,
           sourceTargetLoadUnit: "lb",
           exact: true,
+          decisionState: "ready",
           status: "available",
           selectionRequired: false,
           currentSnapshotId: "00000000-0000-4000-8000-000000000002",

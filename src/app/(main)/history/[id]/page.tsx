@@ -94,6 +94,11 @@ import {
   type ExactComparableWorkoutEvidence,
 } from "@/lib/athlete-insights";
 import { getPreviousComparableSets } from "@/services/previous-comparable-sets";
+import {
+  retainedSkipReasonForSubstitution,
+  skipReasonLabel,
+  substitutionReasonLabel,
+} from "@/lib/session-exercise-decision-evidence";
 
 function techniqueIssueLabel(value: string | null) {
   return value != null && value in TECHNIQUE_ISSUE_LABELS
@@ -245,6 +250,9 @@ export default async function SessionDetailPage(
   const visibleSetIds = session.exercises.flatMap((exercise) =>
     exercise.sets.map((set) => set.id),
   );
+  const visibleSessionExerciseIds = session.exercises.map(
+    (exercise) => exercise.id,
+  );
   const referencedExerciseIds = [
     ...new Set(
       [
@@ -261,6 +269,7 @@ export default async function SessionDetailPage(
     referencedExercises,
     contextualNotes,
     setVersions,
+    sessionExerciseVersions,
     timingVersions,
     pendingRecs,
   ] = await Promise.all([
@@ -281,6 +290,17 @@ export default async function SessionDetailPage(
             eq(recordVersions.userId, user.id),
             eq(recordVersions.entityType, "completed_set"),
             inArray(recordVersions.entityId, visibleSetIds),
+          ),
+          orderBy: desc(recordVersions.createdAt),
+        })
+      : Promise.resolve([]),
+    visibleSessionExerciseIds.length > 0
+      ? db.query.recordVersions.findMany({
+          where: and(
+            eq(recordVersions.userId, user.id),
+            eq(recordVersions.entityType, "session_exercise"),
+            eq(recordVersions.action, "session_exercise.substitute"),
+            inArray(recordVersions.entityId, visibleSessionExerciseIds),
           ),
           orderBy: desc(recordVersions.createdAt),
         })
@@ -314,6 +334,24 @@ export default async function SessionDetailPage(
     const current = correctionsBySetId.get(version.entityId) ?? [];
     current.push(version);
     correctionsBySetId.set(version.entityId, current);
+  }
+  const retainedSkipReasonBySessionExerciseId = new Map<string, string>();
+  for (const exercise of session.exercises) {
+    if (exercise.modificationType !== "substituted") continue;
+    if (exercise.skipReason) {
+      retainedSkipReasonBySessionExerciseId.set(
+        exercise.id,
+        exercise.skipReason,
+      );
+      continue;
+    }
+    const retainedReason = retainedSkipReasonForSubstitution(
+      exercise,
+      sessionExerciseVersions,
+    );
+    if (retainedReason != null) {
+      retainedSkipReasonBySessionExerciseId.set(exercise.id, retainedReason);
+    }
   }
   const exerciseNames = new Map(
     [
@@ -931,6 +969,8 @@ export default async function SessionDetailPage(
           .map((se) => {
           const workingSets = performedSetsBySessionExerciseId.get(se.id) ?? [];
           const workingSetEquipment = buildHistoryEquipmentSetProjection(workingSets);
+          const retainedSkipReason =
+            retainedSkipReasonBySessionExerciseId.get(se.id) ?? null;
           return (
           <section key={se.id} className="ui-surface p-3" data-ui-surface="primary">
             <div className="flex items-center justify-between">
@@ -944,7 +984,9 @@ export default async function SessionDetailPage(
               </div>
               <div className="flex gap-1">
                 {se.modificationType === "skipped" && (
-                  <Badge variant="outline">skipped · {se.skipReason}</Badge>
+                  <Badge variant="outline">
+                    skipped · {se.skipReason ? skipReasonLabel(se.skipReason) : "reason unknown"}
+                  </Badge>
                 )}
                 {se.modificationType === "substituted" && (
                   <Badge variant="outline">
@@ -965,6 +1007,11 @@ export default async function SessionDetailPage(
                   . The saved routine was not changed.
                 </p>
               )}
+            {se.modificationType === "substituted" && retainedSkipReason && (
+              <p className="mt-1 text-sm text-muted-foreground">
+                Earlier skip reason retained: {skipReasonLabel(retainedSkipReason)}.
+              </p>
+            )}
             {se.modificationType === "added" && (
               <p className="mt-1 text-sm text-muted-foreground">
                 Added during this workout. It has no Program slot or progression
@@ -1797,15 +1844,6 @@ function formatSetMetric(set: {
 function requiredWeightUnit(unit: "lb" | "kg" | null): "lb" | "kg" {
   if (!unit) throw new Error("A weighted set is missing its recorded unit.");
   return unit;
-}
-
-function substitutionReasonLabel(
-  reason: "variety" | "equipment_busy" | "discomfort" | "other" | null
-) {
-  if (reason === "equipment_busy") return "equipment busy";
-  if (reason === "discomfort") return "discomfort";
-  if (reason === "variety") return "variety";
-  return "another reason";
 }
 
 function occurrenceOutcomeLabel(outcome: string) {

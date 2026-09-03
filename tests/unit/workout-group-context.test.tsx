@@ -92,6 +92,7 @@ function setup(
     sourceTargetLoad: source.targetLoad,
     sourceTargetLoadUnit: source.targetLoadUnit,
     exact: true,
+    decisionState: "ready",
     status: "available",
     selectionRequired: false,
     currentSnapshotId: "snapshot-row",

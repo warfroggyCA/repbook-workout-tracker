@@ -349,6 +349,69 @@ export const REPBOOK_V2_FIELD_FAMILIES = [
     }),
   },
   {
+    id: "active_workout_decision_evidence",
+    packages: ["T05", "U01"],
+    durability: "database",
+    meaning:
+      "Workout-only skip and substitution decisions retain their explicit cause without turning current equipment inventory into historical evidence; busy, unavailable or incompatible, user choice, and unknown remain distinct.",
+    storage: [
+      {
+        table: "session_exercises",
+        fields: [
+          "modification_type",
+          "skip_reason",
+          "substituted_for_exercise_id",
+          "substitution_reason",
+          "substituted_at",
+        ],
+      },
+      {
+        table: "session_occurrences",
+        fields: [
+          "outcome",
+          "outcome_reason",
+          "resolution_semantics_version",
+          "resolution_reason_code",
+        ],
+      },
+      {
+        table: "record_versions",
+        fields: [
+          "entity_type",
+          "entity_id",
+          "action",
+          "before_data",
+          "after_data",
+          "changed_fields",
+        ],
+        jsonPaths: [
+          "before_data.skip_reason",
+          "before_data.substitution_reason",
+          "after_data.skip_reason",
+          "after_data.substitution_reason",
+        ],
+      },
+    ],
+    lifecycle: serverDurableLifecycle({
+      creation: owned(
+        "src/app/actions/sessions.ts",
+        "Owner-scoped skip and replacement actions write explicit causes; unavailable or incompatible replacement is accepted only after a fresh equipment-resolution check.",
+      ),
+      reads: owned(
+        "src/app/(main)/history/[id]/page.tsx",
+        "History reads the retained row and its matching substitution version instead of consulting today's inventory.",
+      ),
+      correction: owned(
+        "src/services/record-versions.ts",
+        "Versioned transitions preserve prior decision evidence and restore exact before-data without rewriting history.",
+      ),
+      review: owned(
+        "src/app/(main)/history/[id]/page.tsx",
+        "The workout record presents both the replacement reason and any retained earlier skip cause when they differ.",
+      ),
+    }),
+  },
+  {
     id: "workout_occurrence_outcomes",
     packages: ["T03", "T04", "T05"],
     durability: "database",

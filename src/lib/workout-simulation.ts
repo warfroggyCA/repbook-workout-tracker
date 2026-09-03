@@ -1,4 +1,8 @@
 import { z } from "zod";
+import {
+  SUBSTITUTION_REASONS,
+  type ExerciseAlternativeReason,
+} from "@/lib/exercise-alternatives";
 
 export const SIMULATION_WORKSPACE_VERSION = 1 as const;
 export const SIMULATION_MAX_DAYS = 20;
@@ -150,7 +154,7 @@ const simulationExerciseSchema = z.object({
   })).max(50),
   plannedLoadType: z.string().min(1).max(100),
   loadType: z.string().min(1).max(100),
-  substitutionReason: z.enum(["variety", "equipment_busy", "discomfort", "other"]).nullable(),
+  substitutionReason: z.enum(SUBSTITUTION_REASONS).nullable(),
 });
 
 const occurrenceSchema = z.object({
@@ -545,7 +549,7 @@ function updateExercise(workspace: SimulationWorkspace, exerciseId: string, upda
   return { workout, next: { ...workout, exercises } };
 }
 
-export function substituteSimulationExercise(workspace: SimulationWorkspace, exerciseId: string, alternativeExerciseId: string, reason: "variety" | "equipment_busy" | "discomfort" | "other", updatedAtISO: string) {
+export function substituteSimulationExercise(workspace: SimulationWorkspace, exerciseId: string, alternativeExerciseId: string, reason: ExerciseAlternativeReason, updatedAtISO: string) {
   const { next } = updateExercise(workspace, exerciseId, updatedAtISO, (exercise, workout) => {
     const alternative = exercise.alternatives.find((item) => item.exerciseId === alternativeExerciseId);
     if (!alternative) throw new Error("That simulation alternative is unavailable.");

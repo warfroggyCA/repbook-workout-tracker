@@ -2330,12 +2330,30 @@ export async function logWorkoutSet(
       reason: measurement.reason,
     };
   }
+  const nonLoadEquipmentAvailability =
+    input.weight == null && input.equipmentSnapshotId == null
+      ? await resolveSessionEquipmentAvailability(
+          db,
+          userId,
+          input.sessionExerciseId,
+        )
+      : null;
+  if (
+    nonLoadEquipmentAvailability != null &&
+    nonLoadEquipmentAvailability.decisionState !== "legacy_unknown" &&
+    (
+      nonLoadEquipmentAvailability.decisionState !== "ready" ||
+      !nonLoadEquipmentAvailability.currentSelectionAvailable
+    )
+  ) {
+    return { outcome: "equipment_selection_required" };
+  }
   const initial = await logWorkoutSetAttempt(
     db,
     userId,
     input,
     dependencies,
-    null,
+    nonLoadEquipmentAvailability,
   );
   if (
     initial.outcome !== "equipment_selection_required" ||
@@ -2350,7 +2368,9 @@ export async function logWorkoutSet(
     userId,
     input.sessionExerciseId,
   );
-  if (!availability || availability.availableOptionCount > 0) return initial;
+  if (!availability || availability.decisionState !== "legacy_unknown") {
+    return initial;
+  }
   return logWorkoutSetAttempt(db, userId, input, dependencies, availability);
 }
 
@@ -2387,6 +2407,10 @@ async function logWorkoutSetAttempt(
   const equipmentSourceRevision = equipmentAvailability?.sourceRevision ?? "";
   const availableEquipmentOptionCount =
     equipmentAvailability?.availableOptionCount ?? 0;
+  const expectedCurrentEquipmentSnapshotId =
+    equipmentAvailability?.currentSnapshotId ?? null;
+  const equipmentDecisionState =
+    equipmentAvailability?.decisionState ?? "legacy_unknown";
   const mutationHash = createHash("sha256")
     .update(JSON.stringify({
       operation: "complete",
@@ -2675,8 +2699,7 @@ async function logWorkoutSetAttempt(
                )
              ) AS evidence_required,
              (
-               ${input.weight}::double precision IS NULL
-               OR ${equipmentAvailability == null}::boolean
+               ${equipmentAvailability == null}::boolean
                OR (
                  se.exercise_id = ${equipmentExerciseId}::uuid
                  AND ${sessionEquipmentSelectionSourceRevisionExpression(
@@ -2841,6 +2864,18 @@ async function logWorkoutSetAttempt(
           END
         ELSE ${equipmentSnapshotId}::uuid IS NULL
           AND ${loadEntryMeaning} = 'legacy_unknown'
+          AND CASE
+            WHEN ${input.weight}::double precision IS NULL
+              AND ${equipmentAvailability != null}::boolean
+              AND ${equipmentDecisionState} <> 'legacy_unknown'
+            THEN owned.current_equipment_snapshot_id =
+              ${expectedCurrentEquipmentSnapshotId}::uuid
+              AND owned.broad_requirements_valid
+              AND owned.selected_primary_matches_broad
+              AND owned.selected_profile_matches_load_type
+              AND owned.selected_profile_matches_exact
+            ELSE true
+          END
       END
     ), owned_occurrence AS MATERIALIZED (
       SELECT occurrence.*

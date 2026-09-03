@@ -508,9 +508,11 @@ describe("set logging equipment resolution", () => {
     expect(
       resolveSetLoggingEquipment({
         hasSetup: true,
-        hasSnapshot: true,
+        hasAvailableSnapshot: true,
         hasPendingSelection: false,
         optionCount: 1,
+        decisionState: "ready",
+        recordsLoad: true,
         effectiveLoadMeaning: "displayed_stack",
       }),
     ).toEqual({ status: "log_with_snapshot", loadEntryMeaning: "displayed_stack" });
@@ -520,9 +522,11 @@ describe("set logging equipment resolution", () => {
     expect(
       resolveSetLoggingEquipment({
         hasSetup: true,
-        hasSnapshot: false,
+        hasAvailableSnapshot: false,
         hasPendingSelection: true,
         optionCount: 2,
+        decisionState: "ready",
+        recordsLoad: true,
         effectiveLoadMeaning: "per_stack",
       }),
     ).toEqual({ status: "log_with_snapshot", loadEntryMeaning: "per_stack" });
@@ -532,9 +536,11 @@ describe("set logging equipment resolution", () => {
     expect(
       resolveSetLoggingEquipment({
         hasSetup: true,
-        hasSnapshot: false,
+        hasAvailableSnapshot: false,
         hasPendingSelection: false,
         optionCount: 2,
+        decisionState: "ready",
+        recordsLoad: true,
         effectiveLoadMeaning: null,
       }),
     ).toEqual({ status: "choose_setup" });
@@ -544,40 +550,84 @@ describe("set logging equipment resolution", () => {
     expect(
       resolveSetLoggingEquipment({
         hasSetup: true,
-        hasSnapshot: true,
+        hasAvailableSnapshot: true,
         hasPendingSelection: false,
         optionCount: 1,
+        decisionState: "ready",
+        recordsLoad: true,
         effectiveLoadMeaning: null,
       }),
     ).toEqual({ status: "await_meaning" });
   });
 
-  // Day 3 field incident: the Lat Pulldown carried a reviewed exact requirement,
-  // but no saved equipment configuration matched, so there were zero options to
-  // choose and no snapshot could form. Logging must NOT be trapped — it records
-  // the displayed load honestly with no equipment snapshot.
-  it("records displayed load when no setup can be resolved at all", () => {
+  it("requires a decision for known unavailable equipment", () => {
     expect(
       resolveSetLoggingEquipment({
         hasSetup: true,
-        hasSnapshot: false,
+        hasAvailableSnapshot: false,
         hasPendingSelection: false,
         optionCount: 0,
+        decisionState: "unavailable",
+        recordsLoad: false,
         effectiveLoadMeaning: null,
       }),
-    ).toEqual({ status: "log_displayed_unknown" });
+    ).toEqual({ status: "resolve_equipment_conflict" });
+  });
+
+  it("requires a decision for a known incompatible setup", () => {
+    expect(
+      resolveSetLoggingEquipment({
+        hasSetup: true,
+        hasAvailableSnapshot: false,
+        hasPendingSelection: false,
+        optionCount: 0,
+        decisionState: "incompatible",
+        recordsLoad: false,
+        effectiveLoadMeaning: null,
+      }),
+    ).toEqual({ status: "resolve_equipment_conflict" });
   });
 
   it("records displayed load when the exercise has no equipment setup", () => {
     expect(
       resolveSetLoggingEquipment({
         hasSetup: false,
-        hasSnapshot: false,
+        hasAvailableSnapshot: false,
         hasPendingSelection: false,
         optionCount: 0,
+        decisionState: "legacy_unknown",
+        recordsLoad: true,
         effectiveLoadMeaning: "legacy_unknown",
       }),
     ).toEqual({ status: "log_displayed_unknown" });
+  });
+
+  it("allows a non-load set only after its exact setup is durably available", () => {
+    expect(
+      resolveSetLoggingEquipment({
+        hasSetup: true,
+        hasAvailableSnapshot: true,
+        hasPendingSelection: false,
+        optionCount: 1,
+        decisionState: "ready",
+        recordsLoad: false,
+        effectiveLoadMeaning: null,
+      }),
+    ).toEqual({ status: "log_without_load_evidence" });
+  });
+
+  it("waits for a pending exact selection before logging a non-load set", () => {
+    expect(
+      resolveSetLoggingEquipment({
+        hasSetup: true,
+        hasAvailableSnapshot: false,
+        hasPendingSelection: true,
+        optionCount: 1,
+        decisionState: "ready",
+        recordsLoad: false,
+        effectiveLoadMeaning: null,
+      }),
+    ).toEqual({ status: "await_setup_sync" });
   });
 });
 

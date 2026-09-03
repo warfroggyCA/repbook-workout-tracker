@@ -25,6 +25,7 @@ import {
   OCCURRENCE_RESOLUTION_SEMANTICS_VERSION,
   type IncompleteSessionReason,
 } from "@/lib/session-completion-semantics";
+import type { ExerciseAlternativeReason } from "@/lib/exercise-alternatives";
 
 export const VERSIONED_ENTITY_TYPES = [
   "health_activity",
@@ -98,7 +99,7 @@ export type SessionExerciseVersionUpdate = {
     | IncompleteSessionReason
     | null;
   substitutedForExerciseId?: string | null;
-  substitutionReason?: "variety" | "equipment_busy" | "discomfort" | "other" | null;
+  substitutionReason?: ExerciseAlternativeReason | null;
   substitutedAt?: Date | null;
   targetLoad?: number | null;
   targetLoadUnit?: LoadUnit | null;
@@ -882,17 +883,23 @@ export async function updateSessionExerciseWithVersion(
     )
       ? values.skipReason as IncompleteSessionReason
       : null;
+  const structuredOccurrenceReason = structuredSkipReason ?? (
+    action === "session_exercise.substitute" &&
+      values.substitutionReason === "equipment_unavailable_incompatible"
+      ? "equipment_unavailable_incompatible" as IncompleteSessionReason
+      : null
+  );
   const legacyOccurrencePayload = {
     operation: occurrenceOperation,
     reason: occurrenceReason,
     source: "exercise_state",
   };
   const occurrencePayloadHash = createHash("sha256")
-    .update(JSON.stringify(structuredSkipReason == null
+    .update(JSON.stringify(structuredOccurrenceReason == null
       ? legacyOccurrencePayload
       : {
           ...legacyOccurrencePayload,
-          reasonCode: structuredSkipReason,
+          reasonCode: structuredOccurrenceReason,
           resolutionSemanticsVersion:
             OCCURRENCE_RESOLUTION_SEMANTICS_VERSION,
         }))
@@ -1130,14 +1137,13 @@ export async function updateSessionExerciseWithVersion(
           END,
           outcome_reason = ${occurrenceReason},
           resolution_semantics_version = CASE
-            WHEN ${action === "session_exercise.skip"}::boolean
-              AND ${structuredSkipReason}::text IS NOT NULL
+            WHEN ${structuredOccurrenceReason}::text IS NOT NULL
               THEN ${OCCURRENCE_RESOLUTION_SEMANTICS_VERSION}::integer
             ELSE NULL
           END,
           resolution_reason_code = CASE
-            WHEN ${action === "session_exercise.skip"}::boolean
-              THEN ${structuredSkipReason}::text
+            WHEN ${structuredOccurrenceReason}::text IS NOT NULL
+              THEN ${structuredOccurrenceReason}::text
             ELSE NULL
           END,
           equipment_snapshot_id = CASE

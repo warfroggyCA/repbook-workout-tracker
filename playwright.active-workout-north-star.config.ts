@@ -5,9 +5,11 @@ const port = Number.parseInt(
   10,
 );
 const fixtureMode =
-  process.env.ACTIVE_WORKOUT_PHASE0_CONTRACT_FIXTURE === "1"
-    ? "equipment"
-    : "common";
+  process.env.ACTIVE_WORKOUT_PHASE4_EQUIPMENT_CONFLICT_FIXTURE === "1"
+    ? "equipment-conflict"
+    : process.env.ACTIVE_WORKOUT_PHASE0_CONTRACT_FIXTURE === "1"
+      ? "equipment"
+      : "common";
 
 export default defineConfig({
   testDir: "./tests/e2e",

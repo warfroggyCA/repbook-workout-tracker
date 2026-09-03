@@ -3,7 +3,7 @@ import { PGlite } from "@electric-sql/pglite";
 import { drizzle } from "drizzle-orm/pglite";
 import type { PgliteDatabase } from "drizzle-orm/pglite";
 import { migrate } from "drizzle-orm/pglite/migrator";
-import { eq, sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import * as schema from "@/db/schema";
 import {
   completedSets,
@@ -989,7 +989,10 @@ describe("immutable record version history", () => {
       db,
       userId,
       sessionExerciseId,
-      { modificationType: "skipped", skipReason: "equipment" },
+      {
+        modificationType: "skipped",
+        skipReason: "equipment_unavailable_incompatible",
+      },
       "session_exercise.skip",
       { activeOnly: true },
     )).resolves.toMatchObject({ ok: true, changed: true });
@@ -997,7 +1000,9 @@ describe("immutable record version history", () => {
       where: eq(sessionOccurrences.id, working.id),
     })).toMatchObject({
       outcome: "skipped",
-      outcomeReason: "exercise:equipment",
+      outcomeReason: "exercise:equipment_unavailable_incompatible",
+      resolutionSemanticsVersion: 1,
+      resolutionReasonCode: "equipment_unavailable_incompatible",
     });
 
     const versionId = crypto.randomUUID();
@@ -1008,9 +1013,9 @@ describe("immutable record version history", () => {
       {
         exerciseId: alternateExerciseId,
         modificationType: "substituted",
-        skipReason: null,
+        skipReason: "equipment_unavailable_incompatible",
         substitutedForExerciseId: exerciseId,
-        substitutionReason: "equipment_busy",
+        substitutionReason: "equipment_unavailable_incompatible",
         substitutedAt: new Date("2026-07-02T14:20:00.000Z"),
         targetLoad: null,
         targetLoadUnit: null,
@@ -1030,18 +1035,112 @@ describe("immutable record version history", () => {
       outcomeReason: null,
       equipmentSnapshotId: null,
       revision: 2,
+      resolutionSemanticsVersion: null,
+      resolutionReasonCode: null,
     });
     expect(await db.query.sessionOccurrences.findFirst({
       where: eq(sessionOccurrences.id, warmup.id),
     })).toMatchObject({
       outcome: "skipped",
-      outcomeReason: "exercise:equipment",
+      outcomeReason: "exercise:equipment_unavailable_incompatible",
+      resolutionSemanticsVersion: 1,
+      resolutionReasonCode: "equipment_unavailable_incompatible",
       revision: 1,
+    });
+    expect(await db.query.sessionExercises.findFirst({
+      where: eq(sessionExercises.id, sessionExerciseId),
+      columns: {
+        modificationType: true,
+        skipReason: true,
+        substitutionReason: true,
+      },
+    })).toEqual({
+      modificationType: "substituted",
+      skipReason: "equipment_unavailable_incompatible",
+      substitutionReason: "equipment_unavailable_incompatible",
+    });
+    expect(await db.query.recordVersions.findFirst({
+      where: and(
+        eq(recordVersions.id, versionId),
+        eq(recordVersions.action, "session_exercise.substitute"),
+      ),
+    })).toMatchObject({
+      beforeData: expect.objectContaining({
+        skip_reason: "equipment_unavailable_incompatible",
+      }),
+      afterData: expect.objectContaining({
+        skip_reason: "equipment_unavailable_incompatible",
+        substitution_reason: "equipment_unavailable_incompatible",
+      }),
     });
     expect((await db.select({ operation: sessionOccurrenceMutations.operation })
       .from(sessionOccurrenceMutations))
       .map((receipt) => receipt.operation)
       .sort()).toEqual(["restore", "skip", "skip"]);
+  });
+
+  it("retains an equipment-conflict cause on a replaced warm-up and restores it exactly", async () => {
+    await removeLoggedSetForFixture();
+    await db
+      .update(workoutSessions)
+      .set({ status: "in_progress", finishedAt: null })
+      .where(eq(workoutSessions.id, sessionId));
+    const [warmup] = await db
+      .insert(sessionOccurrences)
+      .values({
+        sessionId,
+        sessionExerciseId,
+        kind: "exercise_warmup",
+        origin: "planned",
+        sequenceIdx: 0,
+        kindOrdinal: 0,
+        plannedExerciseId: exerciseId,
+        outcome: "pending",
+        revision: 0,
+      })
+      .returning({ id: sessionOccurrences.id });
+    const versionId = crypto.randomUUID();
+
+    await expect(updateSessionExerciseWithVersion(
+      db,
+      userId,
+      sessionExerciseId,
+      {
+        exerciseId: alternateExerciseId,
+        modificationType: "substituted",
+        skipReason: null,
+        substitutedForExerciseId: exerciseId,
+        substitutionReason: "equipment_unavailable_incompatible",
+        substitutedAt: new Date("2026-07-02T14:20:00.000Z"),
+        targetLoad: null,
+        targetLoadUnit: null,
+      },
+      "session_exercise.substitute",
+      { activeOnly: true, versionId },
+    )).resolves.toMatchObject({ ok: true, changed: true, versionId });
+
+    expect(await db.query.sessionOccurrences.findFirst({
+      where: eq(sessionOccurrences.id, warmup.id),
+    })).toMatchObject({
+      outcome: "skipped",
+      outcomeReason: `exercise:substituted:${versionId}`,
+      resolutionSemanticsVersion: 1,
+      resolutionReasonCode: "equipment_unavailable_incompatible",
+      revision: 1,
+    });
+
+    await expect(
+      restoreRecordVersion(db, userId, versionId, { activeOnly: true }),
+    ).resolves.toMatchObject({ ok: true, changed: true });
+    expect(await db.query.sessionOccurrences.findFirst({
+      where: eq(sessionOccurrences.id, warmup.id),
+    })).toMatchObject({
+      outcome: "pending",
+      outcomeReason: null,
+      resolutionSemanticsVersion: null,
+      resolutionReasonCode: null,
+      revision: 2,
+    });
   });
 
   it("replaces only the prospective identity, clears stale guidance, and replays one mutation identity", async () => {

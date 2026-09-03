@@ -33,6 +33,9 @@ const BA_WORKOUT_FIXTURE = process.env.PHASE0_START_FIXTURE === "1"
     }
   : BASE_BA_WORKOUT_FIXTURE;
 
+const ACTIVE_WORKOUT_EQUIPMENT_CONFLICT_FIXTURE =
+  process.env.ACTIVE_WORKOUT_PHASE4_EQUIPMENT_CONFLICT_FIXTURE === "1";
+
 const BA_EQUIPMENT_ITEMS =
   process.env.ACTIVE_WORKOUT_PHASE0_CONTRACT_FIXTURE === "1"
     ? [
@@ -115,6 +118,9 @@ export async function seedBaWorkoutFixture(db: Db) {
         type: item.type,
         label: item.label,
         attrs: { ...item.attrs },
+        available:
+          !ACTIVE_WORKOUT_EQUIPMENT_CONFLICT_FIXTURE ||
+          item.type !== "barbell",
       })),
     ).returning({
       id: equipmentItems.id,
@@ -125,7 +131,13 @@ export async function seedBaWorkoutFixture(db: Db) {
       BA_WORKOUT_FIXTURE.equipment.plates.map((plate) => ({ userId: user.id, ...plate })),
     );
     await tx.insert(barbellConfigs).values(
-      BA_WORKOUT_FIXTURE.equipment.bars.map((bar) => ({ userId: user.id, ...bar })),
+      BA_WORKOUT_FIXTURE.equipment.bars
+        .filter(
+          (bar) =>
+            !ACTIVE_WORKOUT_EQUIPMENT_CONFLICT_FIXTURE ||
+            bar.barType !== "olympic",
+        )
+        .map((bar) => ({ userId: user.id, ...bar })),
     );
     if (process.env.ACTIVE_WORKOUT_PHASE0_CONTRACT_FIXTURE === "1") {
       const olympicBars = savedFixtureEquipment.filter(

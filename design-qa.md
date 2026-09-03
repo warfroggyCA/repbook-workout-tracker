@@ -1,4 +1,4 @@
-# Active Workout Phase 3 design QA
+# Active Workout Phase 3 and Phase 4 design QA
 
 ## Comparison target
 
@@ -133,8 +133,9 @@ No actionable P0, P1, or P2 difference remains within the Phase 3 scope.
 
 ## Open questions
 
-None for Phase 3. The Phase 4 equipment meaning, persistence, and migration
-gate remains separate.
+No open visual question remains for Phases 3 or 4. Migration 0085 has been
+verified only with disposable data; applying it to shared preview or production
+remains a separate owner gate outside this design review.
 
 ## Implementation checklist
 
@@ -150,8 +151,37 @@ gate remains separate.
 
 ## Follow-up polish
 
-No Phase 3-only P3 refinement is required before review. Do not partially
-implement the high-risk Phase 4 equipment decision or reason persistence in
-this branch.
+No Phase 3-only P3 refinement is required before review.
+
+## Phase 4 equipment-decision comparison
+
+- Source visual direction:
+  `docs/assets/active-workout-north-star/04-equipment-conflict-390x844-115.jpg`
+- Rendered implementation:
+  `docs/assets/active-workout-phase4-qa/04-equipment-conflict-390x844-115.jpg`
+- Viewport: 390 by 844 at 115%, using the existing Geist stack, tokens,
+  radii, touch target, and reduced-motion browser contract.
+
+The source and implementation were inspected together at equal dimensions.
+The written North Star supersedes the mockup's earlier **Log it anyway** copy:
+a known unavailable or incompatible setup cannot be recorded as unknown. The
+real product therefore presents one amber decision surface with **Replace for
+today** and **Skip exercise**, keeps the Program-unchanged explanation, and
+makes **Replace for today** the fixed action.
+
+The first comparison exposed one P1 trust defect: although the fixed action was
+correct, the expanded current-set row still showed an apparently available
+blue **Log set** button. The final implementation removes that competing action
+and explains that the setup must be resolved before logging. The rerun has no
+set-log bypass, horizontal overflow, clipped action copy, or sub-44-pixel
+decision target. The production-build interaction opens both forced-reason
+drawers and verifies that the cause is described as equipment unavailable or
+incompatible; focused database tests separately prove that it is retained.
+
+The implementation includes more real workout context than the static artboard
+and uses Barbell Back Squat rather than the artboard's sample exercise. Those
+are evidence differences, not visual divergence: the decision hierarchy,
+attention colour, action language, and fixed-action ownership match the
+approved direction without deleting current workout information.
 
 final result: passed

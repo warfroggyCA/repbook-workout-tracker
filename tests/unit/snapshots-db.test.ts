@@ -262,7 +262,175 @@ describe("verified off-database snapshots", () => {
     );
   }, 30_000);
 
-  it("upgrades schema 34 reporting evidence to explicit unknowns and rejects incoherent schema 35 tuples", async () => {
+  it("round-trips the unavailable-equipment substitution and retained skip evidence", async () => {
+    const [replacement] = await db
+      .insert(exercises)
+      .values({
+        userId,
+        name: `Snapshot replacement ${crypto.randomUUID()}`,
+        movementPattern: "squat",
+        primaryMuscles: ["quadriceps"],
+        loadType: "dumbbell",
+      })
+      .returning({ id: exercises.id });
+    const substitutedAt = new Date("2026-07-01T14:15:00.000Z");
+    await db
+      .update(sessionExercises)
+      .set({
+        exerciseId: replacement.id,
+        modificationType: "substituted",
+        skipReason: "equipment_unavailable_incompatible",
+        substitutedForExerciseId: exerciseId,
+        substitutionReason: "equipment_unavailable_incompatible",
+        substitutedAt,
+      })
+      .where(eq(sessionExercises.id, sessionExerciseId));
+    await db.insert(recordVersions).values({
+      userId,
+      entityType: "session_exercise",
+      entityId: sessionExerciseId,
+      action: "session_exercise.substitute",
+      beforeData: {
+        exercise_id: exerciseId,
+        skip_reason: "equipment_unavailable_incompatible",
+        substituted_for_exercise_id: null,
+        substitution_reason: null,
+      },
+      afterData: {
+        exercise_id: replacement.id,
+        skip_reason: "equipment_unavailable_incompatible",
+        substituted_for_exercise_id: exerciseId,
+        substitution_reason: "equipment_unavailable_incompatible",
+      },
+      changedFields: [
+        "exercise_id",
+        "substituted_for_exercise_id",
+        "substitution_reason",
+        "substituted_at",
+      ],
+    });
+
+    const captured = await captureUserSnapshot(
+      db,
+      userId,
+      new Date("2026-07-11T12:00:00.000Z"),
+      "active-workout-equipment-reasons",
+    );
+    expect(() => validateSnapshotPayload(captured, userId)).not.toThrow();
+    expect(captured.tables.session_exercises).toContainEqual(
+      expect.objectContaining({
+        id: sessionExerciseId,
+        skip_reason: "equipment_unavailable_incompatible",
+        substitution_reason: "equipment_unavailable_incompatible",
+      }),
+    );
+    expect(captured.tables.record_versions).toContainEqual(
+      expect.objectContaining({
+        entity_id: sessionExerciseId,
+        before_data: expect.objectContaining({
+          skip_reason: "equipment_unavailable_incompatible",
+        }),
+        after_data: expect.objectContaining({
+          substitution_reason: "equipment_unavailable_incompatible",
+        }),
+      }),
+    );
+    const backup = await buildJsonBackup(
+      db,
+      userId,
+      undefined,
+      {
+        now: new Date("2026-07-11T12:00:30.000Z"),
+        appVersion: "active-workout-equipment-reasons",
+      },
+    );
+    expect(backup.schemaVersion).toBe(SNAPSHOT_SCHEMA_VERSION);
+    expect(backup.canonical.tables.session_exercises).toContainEqual(
+      expect.objectContaining({
+        id: sessionExerciseId,
+        skip_reason: "equipment_unavailable_incompatible",
+        substitution_reason: "equipment_unavailable_incompatible",
+      }),
+    );
+    expect(backup.canonical.tables.record_versions).toContainEqual(
+      expect.objectContaining({
+        entity_id: sessionExerciseId,
+        after_data: expect.objectContaining({
+          substitution_reason: "equipment_unavailable_incompatible",
+        }),
+      }),
+    );
+
+    const snapshot = await createDataSnapshot(
+      db,
+      userId,
+      { name: "Unavailable equipment decision", reason: "manual" },
+      {
+        store,
+        keyring,
+        now: new Date("2026-07-11T12:01:00.000Z"),
+        appVersion: "active-workout-equipment-reasons",
+      },
+    );
+    if (!snapshot.ok) throw new Error(snapshot.reason);
+    await db.transaction(async (tx) => {
+      await tx.execute(sql`
+        SELECT set_config(
+          'workout_tracker.authorized_delete',
+          'snapshot_restore',
+          true
+        )
+      `);
+      await tx
+        .delete(workoutSessions)
+        .where(eq(workoutSessions.id, sessionId));
+    });
+
+    const preview = await getSnapshotRestorePreview(
+      db,
+      userId,
+      snapshot.snapshotId,
+      "history",
+      { store, keyring },
+    );
+    await expect(restoreDataSnapshot(
+      db,
+      userId,
+      {
+        snapshotId: snapshot.snapshotId,
+        scope: "history",
+        previewFingerprint: preview.fingerprint,
+        confirmation: "RESTORE",
+      },
+      { store, keyring, appVersion: "active-workout-equipment-reasons" },
+    )).resolves.toMatchObject({ ok: true, scope: "history" });
+    expect(
+      await db.query.sessionExercises.findFirst({
+        where: eq(sessionExercises.id, sessionExerciseId),
+      }),
+    ).toMatchObject({
+      exerciseId: replacement.id,
+      skipReason: "equipment_unavailable_incompatible",
+      substitutionReason: "equipment_unavailable_incompatible",
+    });
+    expect(
+      await db.query.recordVersions.findFirst({
+        where: and(
+          eq(recordVersions.entityType, "session_exercise"),
+          eq(recordVersions.entityId, sessionExerciseId),
+        ),
+      }),
+    ).toMatchObject({
+      beforeData: expect.objectContaining({
+        skip_reason: "equipment_unavailable_incompatible",
+      }),
+      afterData: expect.objectContaining({
+        substitution_reason: "equipment_unavailable_incompatible",
+      }),
+    });
+  }, 45_000);
+
+  it("upgrades schema 34 reporting evidence and schema 35 reason domains to schema 36", async () => {
     const [occurrence] = await db
       .insert(sessionOccurrences)
       .values({
@@ -284,6 +452,28 @@ describe("verified off-database snapshots", () => {
       new Date("2026-08-18T16:00:00.000Z"),
       "reporting-schema-35",
     );
+    const schema35 = structuredClone(current);
+    schema35.schemaVersion = "35";
+    expect(upgradeSnapshotPayload(schema35).schemaVersion).toBe("36");
+
+    const forgedSchema35 = structuredClone(schema35);
+    (forgedSchema35.tables.session_exercises as Array<Record<string, unknown>>)[0]
+      .substitution_reason = "equipment_unavailable_incompatible";
+    expect(() => upgradeSnapshotPayload(forgedSchema35)).toThrow(
+      "Snapshot session exercise has an invalid substitution reason.",
+    );
+    const forgedVersionSchema35 = structuredClone(schema35);
+    forgedVersionSchema35.tables.record_versions.push({
+      entity_type: "session_exercise",
+      before_data: { substitution_reason: null },
+      after_data: {
+        substitution_reason: "equipment_unavailable_incompatible",
+      },
+    });
+    expect(() => upgradeSnapshotPayload(forgedVersionSchema35)).toThrow(
+      "Snapshot session exercise version after-data has an invalid substitution reason.",
+    );
+
     const legacy = structuredClone(current);
     legacy.schemaVersion = "34";
     for (const workout of legacy.tables.workout_sessions as Array<
@@ -311,7 +501,7 @@ describe("verified off-database snapshots", () => {
     }
 
     const upgraded = upgradeSnapshotPayload(legacy);
-    expect(upgraded.schemaVersion).toBe("35");
+    expect(upgraded.schemaVersion).toBe("36");
     expect(upgraded.tables.workout_sessions).toContainEqual(
       expect.objectContaining({
         id: sessionId,
@@ -858,7 +1048,7 @@ describe("verified off-database snapshots", () => {
         now: new Date("2026-08-18T16:10:00.000Z"),
         appVersion: "reporting-schema-35",
       });
-      expect(backup.schemaVersion).toBe("35");
+      expect(backup.schemaVersion).toBe("36");
       expect(backup.canonical.tables.workout_sessions).toContainEqual(
         expect.objectContaining({
           id: terminalSession.id,

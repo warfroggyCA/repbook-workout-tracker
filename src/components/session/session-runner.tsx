@@ -2275,11 +2275,12 @@ export function SessionRunner(props: SessionRunnerProps) {
   ): boolean {
     if (!occurrence.sessionExerciseId) return false;
     const setup = safeEquipmentSetups[occurrence.sessionExerciseId];
-    const automaticChoiceNotQueuedYet =
-      setup?.status === "available" &&
-      setup.currentSnapshotId == null &&
-      setup.options.length === 1;
-    return automaticChoiceNotQueuedYet || sessionEquipmentEntries.some(
+    const compatibleChoiceNotDurable =
+      setup?.decisionState === "ready" &&
+      setup.options.length > 0 &&
+      (setup.currentSnapshotId == null || !setup.currentSelectionAvailable);
+    const knownConflict = setup != null && setup.decisionState !== "ready";
+    return knownConflict || compatibleChoiceNotDurable || sessionEquipmentEntries.some(
       (entry) => entry.sessionExerciseId === occurrence.sessionExerciseId,
     );
   }
@@ -2390,30 +2391,38 @@ export function SessionRunner(props: SessionRunnerProps) {
       setup?.options.find((option) =>
         option.equipmentItemId === pendingEquipmentSelection.equipmentItemId &&
         option.attachmentItemId === pendingEquipmentSelection.attachmentItemId) ?? null;
-    const decision = performed.measurement.weight == null
-      ? ({ status: "log_displayed_unknown" } as const)
-      : resolveSetLoggingEquipment({
-          hasSetup: setup != null,
-          hasSnapshot: setup?.currentSnapshotId != null,
-          hasPendingSelection: pendingEquipmentSelection != null,
-          optionCount: setup?.options.length ?? 0,
-          effectiveLoadMeaning: setup
-            ? (pendingEquipmentOption?.loadEntryMeaning ??
-                equipmentLoadMeanings[exercise.id] ??
-                setup.loadEntryMeaning) ?? null
-            : "legacy_unknown",
-        });
+    const decision = resolveSetLoggingEquipment({
+      hasSetup: setup != null,
+      hasAvailableSnapshot:
+        setup?.currentSnapshotId != null && setup.currentSelectionAvailable,
+      hasPendingSelection: pendingEquipmentSelection != null,
+      optionCount: setup?.options.length ?? 0,
+      decisionState: setup?.decisionState ?? "legacy_unknown",
+      recordsLoad: performed.measurement.weight != null,
+      effectiveLoadMeaning: setup
+        ? (pendingEquipmentOption?.loadEntryMeaning ??
+            equipmentLoadMeanings[exercise.id] ??
+            setup.loadEntryMeaning) ?? null
+        : "legacy_unknown",
+    });
     if (decision.status === "choose_setup") {
       toast.error("Choose the physical equipment setup before logging this set.");
+      return false;
+    }
+    if (decision.status === "resolve_equipment_conflict") {
+      toast.error("Replace or skip this exercise before logging a set with unavailable equipment.");
+      return false;
+    }
+    if (decision.status === "await_setup_sync") {
+      toast.error("Wait for the equipment selection to finish saving before logging this set.");
       return false;
     }
     if (decision.status === "await_meaning") {
       toast.error("This equipment setup does not yet define what the entered load means.");
       return false;
     }
-    // A resolvable setup carries its snapshot/selection; an unresolvable one
-    // records the displayed load honestly with no snapshot so the workout is
-    // never trapped by missing equipment information.
+    // Loaded work carries its resolved setup. Only genuinely legacy-unknown
+    // meaning may record load without a snapshot; a known conflict never does.
     const useSnapshot =
       decision.status === "log_with_snapshot" &&
       performed.measurement.weight != null;
@@ -3932,6 +3941,9 @@ export function SessionRunner(props: SessionRunnerProps) {
         metricType: currentWorkingExercise.metricType ?? "weight_reps",
         loadSemantics: currentWorkingExercise.loadSemantics,
       });
+  const currentEquipmentDecision = currentWorkingExercise == null
+    ? null
+    : safeEquipmentSetups[currentWorkingExercise.id]?.decisionState ?? null;
   const currentActionBlockingReason = unresolvedExerciseSkip
     ? "Resolve the exercise skip before continuing."
     : currentWorkingAction == null || currentWorkingExercise == null
@@ -3941,9 +3953,13 @@ export function SessionRunner(props: SessionRunnerProps) {
         : retainedFailuresForCurrentExercise.length > 0 &&
             !allowLogWithRetainedFailure
           ? "Resolve the retained set copy before logging this set."
-          : currentActionOccurrence != null &&
-              equipmentConfirmationBlocks(currentActionOccurrence)
-            ? "Confirm the equipment setup before logging this set."
+        : currentEquipmentDecision === "unavailable"
+          ? "Equipment unavailable. Replace for today or skip exercise."
+          : currentEquipmentDecision === "incompatible"
+            ? "Equipment setup incompatible. Replace for today or skip exercise."
+            : currentActionOccurrence != null &&
+                equipmentConfirmationBlocks(currentActionOccurrence)
+              ? "Choose equipment before logging this set."
             : currentMetricType != null &&
                 !isSupportedSetWriterSemanticDefinition({
                   metricType: currentMetricType,
@@ -4637,6 +4653,11 @@ export function SessionRunner(props: SessionRunnerProps) {
           const equipmentSetupForcedOpen =
             equipmentProjectionNeedsAttention ||
             equipmentSetupNeedsAttention ||
+            (equipmentSetup != null &&
+              equipmentSetup.decisionState !== "ready") ||
+            ((equipmentSetup?.options.length ?? 0) > 0 &&
+              (equipmentSetup?.currentSnapshotId == null ||
+                !equipmentSetup.currentSelectionAvailable)) ||
             !equipmentSetupMatches;
           const equipmentPanel = equipmentSetupMatches ? (
             <EquipmentSetupPanel
@@ -4656,6 +4677,20 @@ export function SessionRunner(props: SessionRunnerProps) {
                   [exercise.id]: meaning,
                 }))
               }
+              onReplaceForToday={() => {
+                setExpandedId(exercise.id);
+                setAdjustment({
+                  exerciseId: exercise.id,
+                  intent: "replace_equipment",
+                });
+              }}
+              onSkipExercise={() => {
+                setExpandedId(exercise.id);
+                setAdjustment({
+                  exerciseId: exercise.id,
+                  intent: "skip_equipment",
+                });
+              }}
             />
           ) : equipmentSetup ? (
             <p className="rounded-xl border border-dashed bg-muted/30 p-3 text-sm text-muted-foreground">
@@ -4685,8 +4720,13 @@ export function SessionRunner(props: SessionRunnerProps) {
           ) : null}
           {equipmentPanel && equipmentSetupForcedOpen ? (
             <details
+              id={`equipment-setup-${exercise.id}`}
               data-testid="exercise-equipment-setup"
-              data-ui-surface="inset"
+              data-ui-surface={
+                equipmentSetup.decisionState === "ready"
+                  ? "inset"
+                  : "attention"
+              }
               className="ui-surface"
               open={equipmentSetupForcedOpen ? true : undefined}
             >
@@ -5655,6 +5695,39 @@ export function SessionRunner(props: SessionRunnerProps) {
           currentSetFormId={currentSetFormId}
           currentSetBlockingReason={currentActionBlockingReason}
           onPrimaryAction={() => {
+            if (
+              currentStatusAction?.kind === "working_set" &&
+              currentWorkingExercise != null &&
+              (currentEquipmentDecision === "unavailable" ||
+                currentEquipmentDecision === "incompatible")
+            ) {
+              setExpandedId(currentWorkingExercise.id);
+              setAdjustment({
+                exerciseId: currentWorkingExercise.id,
+                intent: "replace_equipment",
+              });
+              return;
+            }
+            if (
+              currentStatusAction?.kind === "working_set" &&
+              currentWorkingExercise != null &&
+              currentEquipmentDecision === "ready" &&
+              currentSetFormId == null
+            ) {
+              const equipment = document.getElementById(
+                `equipment-setup-${currentWorkingExercise.id}`,
+              );
+              equipment?.scrollIntoView({
+                behavior: activeWorkoutScrollBehavior(),
+                block: "center",
+              });
+              window.requestAnimationFrame(() => {
+                equipment?.querySelector<HTMLElement>("select, button")?.focus({
+                  preventScroll: true,
+                });
+              });
+              return;
+            }
             if (
               currentStatusAction != null &&
               currentStatusAction.kind !== "working_set" &&

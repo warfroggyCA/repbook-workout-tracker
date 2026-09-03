@@ -393,8 +393,11 @@ export function previousComparableIsTemporarilyUnavailable(input: {
 
 export type SetLoggingEquipmentDecision =
   | { status: "log_with_snapshot"; loadEntryMeaning: WorkoutSetLoadEntryMeaning }
+  | { status: "log_without_load_evidence" }
   | { status: "log_displayed_unknown" }
+  | { status: "resolve_equipment_conflict" }
   | { status: "choose_setup" }
+  | { status: "await_setup_sync" }
   | { status: "await_meaning" };
 
 /**
@@ -404,21 +407,33 @@ export type SetLoggingEquipmentDecision =
  * - A resolved snapshot or a pending selection logs with that equipment context.
  * - A setup that still offers reviewed physical choices asks the user to pick.
  * - A setup with a known load meaning but none yet chosen asks for the meaning.
- * - A setup that cannot be resolved at all (no reviewed configuration matches
- *   the owner's saved equipment, so there is nothing to choose) records the
- *   displayed load honestly with no equipment snapshot. This reuses the durable
- *   `legacy_unknown` + null-snapshot shape the schema already allows, so no
- *   migration is required and equipment uncertainty never blocks logging.
+ * - A known unavailable or incompatible setup requires an explicit replacement
+ *   or skip decision; it is never relabelled as unknown equipment.
+ * - Only an exercise with no reviewed setup contract uses the durable
+ *   `legacy_unknown` + null-snapshot shape.
  */
 export function resolveSetLoggingEquipment(input: {
   hasSetup: boolean;
-  hasSnapshot: boolean;
+  hasAvailableSnapshot: boolean;
   hasPendingSelection: boolean;
   optionCount: number;
+  decisionState: "ready" | "unavailable" | "incompatible" | "legacy_unknown";
+  recordsLoad: boolean;
   effectiveLoadMeaning: WorkoutSetLoadEntryMeaning | null;
 }): SetLoggingEquipmentDecision {
   if (!input.hasSetup) return { status: "log_displayed_unknown" };
-  if (input.hasSnapshot || input.hasPendingSelection) {
+  if (
+    input.decisionState === "unavailable" ||
+    input.decisionState === "incompatible"
+  ) {
+    return { status: "resolve_equipment_conflict" };
+  }
+  if (input.hasAvailableSnapshot || input.hasPendingSelection) {
+    if (!input.recordsLoad) {
+      return input.hasAvailableSnapshot
+        ? { status: "log_without_load_evidence" }
+        : { status: "await_setup_sync" };
+    }
     if (input.effectiveLoadMeaning == null) return { status: "await_meaning" };
     return {
       status: "log_with_snapshot",
@@ -426,7 +441,9 @@ export function resolveSetLoggingEquipment(input: {
     };
   }
   if (input.optionCount > 0) return { status: "choose_setup" };
-  return { status: "log_displayed_unknown" };
+  return input.decisionState === "legacy_unknown"
+    ? { status: "log_displayed_unknown" }
+    : { status: "resolve_equipment_conflict" };
 }
 
 export function nextIncompleteExerciseId(
