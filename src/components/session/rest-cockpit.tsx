@@ -1,7 +1,8 @@
 "use client";
 
-import { Minus, Plus, X } from "lucide-react";
+import { Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 
 export function RestCockpit({
   phase,
@@ -10,8 +11,7 @@ export function RestCockpit({
   alertAriaLabel = alertLabel.toLowerCase(),
   destinationLabel,
   onAdjust,
-  onSkip,
-  onContinue,
+  onEnd,
 }: {
   phase: "running" | "ready" | "skipped";
   remainingSeconds: number | null;
@@ -19,87 +19,102 @@ export function RestCockpit({
   alertAriaLabel?: string;
   destinationLabel: string | null;
   onAdjust: (deltaSeconds: number) => void;
-  onSkip: () => void;
-  onContinue: () => void;
+  onEnd: () => void;
 }) {
   const running = phase === "running" && remainingSeconds != null;
+  const destination = destinationLabel
+    ? `Next: ${destinationLabel}`
+    : "No further work";
   return (
     <div
       role="region"
       aria-label="Rest timer"
       data-testid="rest-cockpit"
-      className="min-w-0 basis-full rounded-lg border border-current/15 bg-background/55 px-2 py-1.5 max-[360px]:py-[3px]"
+      data-rest-phase={phase}
+      className={cn(
+        "col-span-full min-w-0 border-b border-border pb-1",
+        running && "bg-muted/35",
+        !running &&
+          phase === "ready" &&
+          "border-emerald-600/35 bg-emerald-50/80 text-emerald-950 dark:bg-emerald-950/65 dark:text-emerald-100",
+        !running && phase === "skipped" && "bg-muted/35",
+      )}
     >
-      <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_repeat(4,auto)] items-center gap-1.5 max-[360px]:grid-cols-4 max-[360px]:gap-1">
-        <div className="min-w-0 max-[360px]:col-span-4">
-          <p className="text-xs font-semibold uppercase tracking-[0.1em]">
-            {running ? "Rest" : "Rest complete"}
-          </p>
-          <p className="line-clamp-2 break-words text-xs leading-tight text-muted-foreground">
-            {destinationLabel ? `Next: ${destinationLabel}` : "No further work"}
-          </p>
-        </div>
-        {running ? (
-          <>
-            <span
-              className="flex min-w-14 flex-col items-center text-center font-semibold max-[360px]:justify-self-center"
-              aria-label={`Rest alert: ${alertAriaLabel}`}
-            >
-              <span className="text-lg leading-none tabular-nums">
+      {running ? (
+        <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_repeat(3,auto)] items-center gap-1.5 max-[360px]:grid-cols-3 max-[360px]:gap-1">
+          <div className="min-w-0 max-[360px]:col-span-3">
+            <p className="flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5 leading-none">
+              <span className="text-xs font-semibold uppercase tracking-[0.1em]">
+                Rest
+              </span>
+              <span
+                className="text-lg font-semibold tabular-nums"
+                aria-label={`${Math.floor(remainingSeconds / 60)} minutes ${remainingSeconds % 60} seconds remaining`}
+              >
                 {Math.floor(remainingSeconds / 60)}:{String(
                   remainingSeconds % 60,
                 ).padStart(2, "0")}
               </span>
-              <span className="mt-1 text-[9px] leading-none">{alertLabel}</span>
-            </span>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon-sm"
-              className="min-h-11 min-w-11 max-[360px]:justify-self-center"
-              onClick={() => onAdjust(-15)}
-              aria-label="Decrease rest by 15 seconds"
-            >
-              <Minus className="size-4" />
-            </Button>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon-sm"
-              className="min-h-11 min-w-11 max-[360px]:justify-self-center"
-              onClick={() => onAdjust(15)}
-              aria-label="Increase rest by 15 seconds"
-            >
-              <Plus className="size-4" />
-            </Button>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon-sm"
-              className="min-h-11 min-w-11 max-[360px]:justify-self-center"
-              onClick={onSkip}
-              aria-label="Skip rest"
-            >
-              <X className="size-4" />
-            </Button>
-          </>
-        ) : (
-          <>
-            <span role="status" aria-live="polite" className="sr-only">
-              Rest complete
-              {destinationLabel ? `. Next: ${destinationLabel}` : "."}
-            </span>
-            <Button
-              type="button"
-              size="sm"
-              className="col-span-4 min-h-11 shrink-0 justify-self-end"
-              onClick={onContinue}
-            >
-              Dismiss rest timer
-            </Button>
-          </>
-        )}
-      </div>
+              <span
+                className="text-xs text-muted-foreground"
+                aria-label={`Rest alert: ${alertAriaLabel}`}
+              >
+                · {alertLabel}
+              </span>
+            </p>
+            <p className="break-words text-xs leading-tight text-muted-foreground">
+              {destination}
+            </p>
+          </div>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="h-[44px] min-h-[44px] min-w-[44px] px-[6px] text-xs max-[360px]:w-full"
+            onClick={() => onAdjust(-15)}
+            aria-label="Decrease rest by 15 seconds"
+          >
+            −15s
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="h-[44px] min-h-[44px] min-w-[44px] px-[6px] text-xs max-[360px]:w-full"
+            onClick={() => onAdjust(15)}
+            aria-label="Increase rest by 15 seconds"
+          >
+            +15s
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="h-[44px] min-h-[44px] min-w-[44px] px-[6px] text-xs max-[360px]:w-full"
+            onClick={onEnd}
+          >
+            End rest
+          </Button>
+        </div>
+      ) : (
+        <div
+          role={phase === "ready" ? "status" : undefined}
+          aria-live={phase === "ready" ? "polite" : undefined}
+          aria-atomic={phase === "ready" ? "true" : undefined}
+          className="flex min-h-8 min-w-0 items-center gap-1.5 px-1 text-xs font-medium"
+        >
+          {phase === "ready" ? (
+            <Check aria-hidden="true" className="size-4 shrink-0" />
+          ) : null}
+          <span className="shrink-0 font-semibold">
+            {phase === "ready" ? "Rest complete" : "Rest ended"}
+          </span>
+          <span aria-hidden="true">·</span>
+          <span className="min-w-0 break-words text-muted-foreground">
+            {destination}
+          </span>
+        </div>
+      )}
     </div>
   );
 }

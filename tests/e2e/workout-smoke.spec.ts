@@ -74,15 +74,13 @@ async function expectRestCockpit(page: import("@playwright/test").Page) {
 
 async function dismissRestCockpit(page: import("@playwright/test").Page) {
   const status = await expectRestCockpit(page);
-  const skip = status.getByRole("button", { name: "Skip rest", exact: true });
-  if (await skip.isVisible()) await skip.click();
-  const dismiss = status.getByRole("button", {
-    name: "Dismiss rest timer",
+  const rest = status.getByTestId("rest-cockpit");
+  const end = rest.getByRole("button", {
+    name: "End rest",
     exact: true,
   });
-  await expect(dismiss).toBeVisible();
-  await dismiss.click();
-  await expect(status.getByTestId("rest-cockpit")).toHaveCount(0);
+  if (await end.isVisible()) await end.click();
+  await expect(rest).toHaveCount(0, { timeout: 5_000 });
 }
 
 async function signIn(
@@ -1833,7 +1831,7 @@ test("signs in and completes a durable workout flow", async ({ page }) => {
   await page.getByTestId("active-log-set").click();
   await expect.poll(() => saveStarted).toBe(true);
   await expectRestCockpit(page);
-  await expect(nextSet).toHaveCount(0);
+  await expect(nextSet).toBeVisible();
   await expect(firstExercise).toContainText("saving");
   releaseSave();
   await expectRestCockpit(page);
@@ -2421,7 +2419,7 @@ test("keeps the final set acknowledgement visible through background return", as
   await page.getByTestId("active-log-set").click();
   await expect.poll(() => finalStarted).toBe(true);
   await expectRestCockpit(page);
-  await expect(nextSet).toHaveCount(0);
+  await expect(nextSet).toBeVisible();
   const pendingCompletedExercise = page.getByRole("region", { name: firstName });
   await expect(pendingCompletedExercise).toContainText("saving");
   const backgroundPage = await context.newPage();

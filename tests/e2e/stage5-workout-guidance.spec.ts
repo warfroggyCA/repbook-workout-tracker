@@ -309,6 +309,10 @@ test("keeps Stage 5 guidance truthful, persistent, and usable on narrow mobile s
   await expect(guidance).not.toContainText("Next:");
   await expect(statusBar.getByRole("region", { name: "Rest timer" }))
     .toContainText("Next: Romanian Deadlift, set 2");
+  await expect(dock.getByTestId("current-set-entry")).toContainText("Set 2");
+  await expect(page.getByTestId("active-log-set")).toHaveAccessibleName(
+    "Log set 2",
+  );
   await expect.poll(() => page.evaluate(() =>
     (window as unknown as { __wakeLockTestMetrics: { requests: number } })
       .__wakeLockTestMetrics.requests,
@@ -366,28 +370,32 @@ test("keeps Stage 5 guidance truthful, persistent, and usable on narrow mobile s
   const rest = statusBar.getByLabel("Rest timer");
   await expect(rest).toBeVisible();
   await expect(statusBar).toHaveAttribute("data-rest-state", "running");
-  const runningRestColors = await statusBar.evaluate((element) => ({
-    bar: getComputedStyle(element).backgroundColor,
+  const runningRestColors = await rest.evaluate((element) => ({
+    strip: getComputedStyle(element).backgroundColor,
     page: getComputedStyle(document.body).backgroundColor,
   }));
-  expect(runningRestColors.bar).not.toBe(runningRestColors.page);
+  expect(runningRestColors.strip).not.toBe(runningRestColors.page);
   const decreaseRest = rest.getByRole("button", { name: "Decrease rest by 15 seconds", exact: true });
-  for (let index = 0; index < 8; index += 1) await decreaseRest.click();
+  const decreaseRestAndWait = async (
+    restRegion: Locator,
+    decreaseButton: Locator,
+  ) => {
+    const remaining = restRegion.locator("span.tabular-nums").first();
+    const before = timerSeconds(await remaining.textContent());
+    await decreaseButton.click();
+    await expect.poll(async () => {
+      if (!(await decreaseButton.isVisible())) return -1;
+      return timerSeconds(await remaining.textContent());
+    }).toBeLessThanOrEqual(before - 10);
+  };
+  for (let index = 0; index < 6; index += 1) {
+    await decreaseRestAndWait(rest, decreaseRest);
+  }
   await page.reload({ waitUntil: "domcontentloaded" });
   const reloadedDock = page.getByRole("complementary", { name: "Workout status" });
-  await expect(reloadedDock.getByLabel("Rest timer")).toBeVisible();
-  await expect(reloadedDock).toContainText("Rest complete", {
-    timeout: 40_000,
-  });
-  await expect(
-    reloadedDock.getByRole("button", {
-      name: "Dismiss rest timer",
-      exact: true,
-    }),
-  ).toBeVisible();
-  await page.reload({ waitUntil: "domcontentloaded" });
-  const persistentDock = page.getByRole("complementary", { name: "Workout status" });
-  await expect(persistentDock).toContainText("Rest complete");
+  const reloadedRest = reloadedDock.getByLabel("Rest timer");
+  await expect(reloadedRest).toBeVisible();
+  await expect(reloadedRest).toContainText("Next: Romanian Deadlift, set 2");
 
   const compactNavigation = page.getByRole("navigation", {
     name: "Primary navigation",
@@ -398,18 +406,22 @@ test("keeps Stage 5 guidance truthful, persistent, and usable on narrow mobile s
   await expect(compactNavigation).toBeHidden();
   await page.setViewportSize({ width: 320, height: 700 });
   await expectNoHorizontalOverflow(page);
-  await expect(
-    persistentDock.getByRole("button", {
-      name: "Dismiss rest timer",
-      exact: true,
-    }),
-  ).toBeVisible();
-  const compactRest = persistentDock.getByRole("region", {
+  const compactRest = reloadedDock.getByRole("region", {
     name: "Rest timer",
   });
+  const reloadedDecrease = compactRest.getByRole("button", {
+    name: "Decrease rest by 15 seconds",
+    exact: true,
+  });
+  for (let index = 0; index < 4; index += 1) {
+    if ((await compactRest.getAttribute("data-rest-phase")) !== "running") {
+      break;
+    }
+    await decreaseRestAndWait(compactRest, reloadedDecrease);
+  }
   await expect(compactRest).toContainText("Rest complete");
   await expect(compactRest).toContainText("Next: Romanian Deadlift, set 2");
-  const collapsedMetrics = await persistentDock.evaluate((element) => {
+  const collapsedMetrics = await reloadedDock.evaluate((element) => {
     const navigation = document.querySelector("nav.fixed");
     const navigationRect = navigation?.getBoundingClientRect() ?? null;
     const navigationVisible =
@@ -418,7 +430,7 @@ test("keeps Stage 5 guidance truthful, persistent, and usable on narrow mobile s
       (navigationRect?.height ?? 0) > 0;
     const primary = Array.from(element.querySelectorAll("button")).filter(
       (button) =>
-        button.textContent?.trim() === "Dismiss rest timer" ||
+        button.dataset.testid === "active-log-set" ||
         button.getAttribute("aria-label") === "Review and finish workout",
     );
     return {
@@ -451,21 +463,18 @@ test("keeps Stage 5 guidance truthful, persistent, and usable on narrow mobile s
       (item) => item.bottom <= collapsedMetrics.navigationTop + 1,
     ),
   ).toBe(true);
-  await screenshot(page, "02-ready-state-collapsed-320-extra-large.png");
+  await screenshot(page, "02-brief-rest-complete-320-extra-large.png");
 
-  const dismissRest = persistentDock.getByRole("button", {
-    name: "Dismiss rest timer",
-    exact: true,
+  await expect(compactRest).toHaveCount(0, {
+    timeout: 5_000,
   });
-  await dismissRest.click();
-  await expect(dismissRest).toHaveCount(0);
   await expect.poll(() => page.evaluate(() => {
     const raw = window.localStorage.getItem("workout-tracker:rest-timer:v1");
     return raw == null ? null : JSON.parse(raw).phase;
   })).toBe("continued");
   await page.reload({ waitUntil: "domcontentloaded" });
   await expect(
-    page.getByRole("button", { name: "Dismiss rest timer", exact: true }),
+    page.getByRole("region", { name: "Rest timer", exact: true }),
   ).toHaveCount(0);
   const resumedDock = page.getByRole("complementary", {
     name: "Workout status",
@@ -485,10 +494,10 @@ test("keeps Stage 5 guidance truthful, persistent, and usable on narrow mobile s
   // Move through the remaining early Day B ledger without inventing performed
   // work. The actual upcoming occurrence then owns the EZ-curl preparation cue.
   for (let index = 0; index < 9; index += 1) {
-    await skipCurrentSet(persistentDock);
+    await skipCurrentSet(resumedDock);
   }
   await waitForSetSkippedNoticesToSettle(page);
-  await skipCurrentSet(persistentDock);
+  await skipCurrentSet(resumedDock);
   await expect(page.getByTestId("current-exercise-card").getByRole("heading", { level: 2 })).toHaveText(
     "EZ-Bar Curl",
   );
@@ -633,7 +642,7 @@ test("keeps Stage 5 guidance truthful, persistent, and usable on narrow mobile s
       "320x700 extra-large text and collapsed fixed controls",
       "performed progress waits for save acknowledgement",
       "skips do not increment performed progress",
-      "durable timer reload, elapsed return, and persistent Dismiss rest timer",
+      "durable running-timer reload, elapsed return, and four-second completion collapse",
       "current, up-next, group round, and member wording",
       "18 lb EZ-curl preparation using the owned plate pool",
       "stale exact setup suppression after substitution",

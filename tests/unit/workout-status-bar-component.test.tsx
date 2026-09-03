@@ -95,6 +95,7 @@ describe("WorkoutStatusBar", () => {
         exercise={exercise}
         timer={{ phase: "running" } as never}
         restRemainingSec={75}
+        currentSetFormId="active-set-form-2"
         {...callbacks}
       />,
     );
@@ -104,15 +105,16 @@ describe("WorkoutStatusBar", () => {
     expect(html).toContain('aria-label="Rest alert: sound"');
     expect(html).toContain('aria-label="Decrease rest by 15 seconds"');
     expect(html).toContain('aria-label="Increase rest by 15 seconds"');
-    expect(html).toContain('aria-label="Skip rest"');
+    expect(html).toContain("End rest");
+    expect(html).not.toContain("Skip rest");
     expect(html).not.toContain("next set ready");
     expect(html).toContain('data-rest-state="running"');
-    expect(html).toContain("border-amber-500");
-    expect(html).toContain("bg-amber-100");
+    expect(html).not.toContain("border-amber-500");
+    expect(html).not.toContain("bg-amber-100");
     expect(html).toContain('data-testid="rest-cockpit"');
     expect(html).not.toContain('aria-live="polite"');
-    expect(html).not.toContain('data-testid="active-workout-dock-primary"');
-    expect(html).not.toContain(">Log set</span>");
+    expect(html).toContain('data-testid="active-log-set"');
+    expect(html).toContain("Log set 2");
     expect(html).not.toContain("Set 2 of 3 · Resting");
   });
 
@@ -153,7 +155,7 @@ describe("WorkoutStatusBar", () => {
     );
 
     expect(html).toContain('aria-label="Rest alert: visual only"');
-    expect(html).toContain(">Visual</span>");
+    expect(html).toContain(">· Visual</span>");
     expect(html).not.toContain('aria-label="Rest alert: sound"');
   });
 
@@ -182,11 +184,11 @@ describe("WorkoutStatusBar", () => {
     );
 
     expect(blocked).toContain('aria-label="Rest alert: sound blocked"');
-    expect(blocked).toContain(">Sound blocked</span>");
+    expect(blocked).toContain(">· Sound blocked</span>");
     expect(unavailable).toContain(
       'aria-label="Rest alert: sound unavailable"',
     );
-    expect(unavailable).toContain(">Sound unavailable</span>");
+    expect(unavailable).toContain(">· Sound unavailable</span>");
   });
 
   it("keeps the working-set dock as neutral navigation while the cockpit owns logging", () => {
@@ -320,24 +322,61 @@ describe("WorkoutStatusBar", () => {
     expect(html).not.toContain(">Log set</span>");
   });
 
-  it("names the ready-state transition instead of using a generic continue action", () => {
+  it("announces the brief ready state without adding a dismiss action", () => {
     const html = renderToStaticMarkup(
       <WorkoutStatusBar
         action={action}
         exercise={exercise}
-        timer={{ phase: "ready" } as never}
+        timer={{
+          phase: "ready",
+          generationId: "rest-ready",
+          readyAt: 1_000,
+        } as never}
         restRemainingSec={0}
+        currentSetFormId="active-set-form-2"
         {...callbacks}
       />,
     );
 
     expect(html).toContain("Rest complete");
     expect(html).toContain("Next: Barbell Squat, set 2");
-    expect(html).toContain("Dismiss rest timer");
+    expect(html).not.toContain("Dismiss rest timer");
     expect(html).not.toContain(">Continue<");
     expect(html).toContain('data-testid="rest-cockpit"');
     expect(html).toContain("border-emerald-600");
     expect(html).toContain('aria-live="polite"');
+    expect(html.match(/aria-live="polite"/g)).toHaveLength(1);
+    expect(html).toContain('data-testid="active-log-set"');
+    expect(
+      readFileSync(
+        "src/components/session/workout-status-bar.tsx",
+        "utf8",
+      ),
+    ).toContain("REST_CONFIRMATION_DURATION_MS = 4_000");
+  });
+
+  it("shows an athlete-ended rest as neutral context", () => {
+    const html = renderToStaticMarkup(
+      <WorkoutStatusBar
+        action={action}
+        exercise={exercise}
+        timer={{
+          phase: "skipped",
+          generationId: "rest-ended",
+          readyAt: 1_000,
+        } as never}
+        restRemainingSec={0}
+        currentSetFormId="active-set-form-2"
+        {...callbacks}
+      />,
+    );
+
+    expect(html).toContain("Rest ended");
+    expect(html).toContain("Next: Barbell Squat, set 2");
+    expect(html).not.toContain('aria-live="polite"');
+    expect(html).not.toContain("border-emerald-600");
+    expect(html).not.toContain("Dismiss rest timer");
+    expect(html).toContain('data-testid="active-log-set"');
   });
 
   it("keeps an appended performance outside the planned-set denominator", () => {

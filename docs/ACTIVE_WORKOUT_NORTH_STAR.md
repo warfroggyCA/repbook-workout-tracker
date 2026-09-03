@@ -649,6 +649,42 @@ Exit gate: the set-entry and rest artboards match at 115% and 145%; rest does
 not block safe set entry; all existing rest durability, timing, reload, and
 ordering suites pass.
 
+Phase 3 implementation evidence remains reviewable with the code:
+
+- `src/components/session/rest-cockpit.tsx` renders running rest as a compact
+  neutral strip with countdown, cue state, exact destination, **−15s**,
+  **+15s**, and **End rest**. Elapsed rest uses a brief green confirmation;
+  athlete-ended rest stays neutral and does not imply skipped exercise work.
+- `src/components/session/workout-status-bar.tsx` composes rest above the
+  existing fixed action instead of replacing it. The exact current form remains
+  safely loggable through the established form association, queue, occurrence,
+  and writer. The four-second confirmation derives from the durable timer's
+  absolute `readyAt` value and collapses without a dismiss action.
+- `src/components/session/session-runner.tsx` keeps the timer destination as
+  the current action and ledger row while rest is active. Existing measured-
+  overlay and focus-preservation logic re-reveals that row after text-size or
+  viewport changes without adding another state store.
+- Elapsed completion owns one polite atomic status announcement. Running and
+  athlete-ended states do not announce completion. Existing blocked and
+  unavailable cue outcomes remain technical channel states, separate from
+  timer success and athlete behaviour.
+- The dedicated North Star production-build browser gate covers set entry,
+  running rest, four-second completion, exact destination, enabled inputs,
+  fixed **Log set 2**, touch targets, overflow, and 115%/145% captures. The
+  focused Stage 5 durability scenario additionally covers deadline adjustment,
+  reload while running, elapsed collapse, durable continuation, and replay-safe
+  reload.
+- `design-qa.md` and `docs/assets/active-workout-phase3-qa/` retain equal-size
+  source/implementation comparisons for set entry and rest at the named Phase
+  3 viewports. The real product keeps exact cue, destination, and supporting
+  workout context that the static artboards abbreviate.
+
+Phase 3 changes presentation, focus orchestration, and tests only. It adds no
+schema or migration, rewrites no history, and does not change timer storage,
+set or outbox writers, acknowledgement, equipment-snapshot, import/export,
+recovery, Coach, Program, or production-data contracts. Equipment decision and
+reason integrity remain the separately gated high-risk Phase 4.
+
 ### Phase 4 — equipment decision and reason integrity
 
 Objective: make the attention state actionable without fabricating equipment or

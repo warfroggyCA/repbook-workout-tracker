@@ -105,14 +105,10 @@ test("keeps planned work authoritative around extra-before-plan and grouped work
   await page.reload({ waitUntil: "networkidle" });
   await expect(first).toContainText("Extra set 1");
   const status = page.getByRole("complementary", { name: "Workout status" });
-  const skipRest = status.getByRole("button", { name: "Skip rest", exact: true });
-  if (await skipRest.isVisible()) await skipRest.click();
-  const dismissRest = status.getByRole("button", {
-    name: "Dismiss rest timer",
-    exact: true,
-  });
-  await expect(dismissRest).toBeVisible();
-  await dismissRest.click();
+  const rest = status.getByTestId("rest-cockpit");
+  const endRest = rest.getByRole("button", { name: "End rest", exact: true });
+  if (await endRest.isVisible()) await endRest.click();
+  await expect(rest).toHaveCount(0, { timeout: 5_000 });
   await expect(first.getByTestId("current-set-entry")).toContainText("Set 1");
 
   for (let index = 0; index < 9; index += 1) {

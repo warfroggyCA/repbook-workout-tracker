@@ -438,21 +438,19 @@ test("keeps one ledger-driven current/next/group/rest state through retry, inter
   );
   await clickCentered(
     page,
-    restoredStatus.getByRole("button", { name: "Skip rest", exact: true }),
+    restoredStatus.getByRole("button", { name: "End rest", exact: true }),
   );
-  await expect(
-    restoredStatus.getByRole("button", { name: "Dismiss rest timer", exact: true }),
-  ).toBeVisible();
+  await expect.poll(() => page.evaluate(() => {
+    const raw = localStorage.getItem("workout-tracker:rest-timer:v1");
+    return raw == null ? null : JSON.parse(raw).phase;
+  })).toBe("skipped");
   await page.reload({ waitUntil: "domcontentloaded" });
   const interruptedStatus = page.getByRole("complementary", { name: "Workout status" });
-  await expect(interruptedStatus).toContainText("Rest complete");
-  await clickCentered(
-    page,
-    interruptedStatus.getByRole("button", {
-      name: "Dismiss rest timer",
-      exact: true,
-    }),
-  );
+  await expect.poll(() => page.evaluate(() => {
+    const raw = localStorage.getItem("workout-tracker:rest-timer:v1");
+    return raw == null ? null : JSON.parse(raw).phase;
+  })).toBe("continued");
+  await expect(interruptedStatus.getByTestId("rest-cockpit")).toHaveCount(0);
 
   await skipCurrentSet(page);
   await expect.poll(() => currentExerciseName(page)).toBe("Pallof Press");
@@ -522,10 +520,8 @@ test("keeps one ledger-driven current/next/group/rest state through retry, inter
   const finalRest = status.getByRole("region", { name: "Rest timer" });
   await expect(finalRest).toBeVisible();
   await expect(finalRest).toContainText("Next: RKC Plank, set 1");
-  await finalRest.getByRole("button", { name: "Skip rest", exact: true }).click();
-  await status
-    .getByRole("button", { name: "Dismiss rest timer", exact: true })
-    .click();
+  await finalRest.getByRole("button", { name: "End rest", exact: true }).click();
+  await expect(finalRest).toHaveCount(0, { timeout: 5_000 });
   await expect.poll(() => currentExerciseName(page)).toBe("RKC Plank");
   await page
     .getByTestId("current-exercise-card")

@@ -144,17 +144,12 @@ test("keeps retained sets responsive before acknowledgement, then reviews a corr
   });
   const interSetRest = restStatus.getByRole("region", { name: "Rest timer" });
   await expect(interSetRest).toBeVisible();
-  const skipRest = interSetRest.getByRole("button", {
-    name: "Skip rest",
+  const endRest = interSetRest.getByRole("button", {
+    name: "End rest",
     exact: true,
   });
-  if (await skipRest.isVisible()) await skipRest.click();
-  const dismissRest = restStatus.getByRole("button", {
-    name: "Dismiss rest timer",
-    exact: true,
-  });
-  await expect(dismissRest).toBeVisible();
-  await dismissRest.click();
+  if (await endRest.isVisible()) await endRest.click();
+  await expect(interSetRest).toHaveCount(0, { timeout: 5_000 });
   await expect(
     page
       .getByTestId("current-exercise-card")

@@ -278,16 +278,18 @@ test("publishes and preserves durable warm-up and grouped workout outcomes", asy
   const nextSet = page.getByTestId("current-exercise-card");
   await expect(nextSet.getByRole("heading", { level: 2 })).toHaveText("Romanian Deadlift");
   await page.getByTestId("active-log-set").click();
-  await expect(nextSet).toHaveCount(0);
+  await expect(nextSet.getByRole("heading", { level: 2 })).toHaveText(
+    "Barbell Overhead Press",
+  );
   await expect(workoutStatus.getByLabel("Rest timer")).toContainText(
     /Next: .*Barbell Overhead Press/,
   );
   await expect(workoutStatus.getByLabel("Rest timer")).toContainText(/0:1[0-5]/);
   await screenshot(page, "04-triset-next-action-and-member-rest.png");
-  await workoutStatus.getByRole("button", { name: "Skip rest", exact: true }).click();
-  await workoutStatus
-    .getByRole("button", { name: "Dismiss rest timer", exact: true })
-    .click();
+  await workoutStatus.getByRole("button", { name: "End rest", exact: true }).click();
+  await expect(workoutStatus.getByTestId("rest-cockpit")).toHaveCount(0, {
+    timeout: 5_000,
+  });
   await expect(nextSet.getByRole("heading", { level: 2 })).toHaveText(
     "Barbell Overhead Press",
   );
@@ -342,7 +344,9 @@ test("publishes and preserves durable warm-up and grouped workout outcomes", asy
   await expect(nextSet).toContainText("Romanian Deadlift");
   await page.getByTestId("active-log-set").click();
   await expect(alternatives).toHaveCount(0);
-  await expect(nextSet).toHaveCount(0);
+  await expect(nextSet.getByRole("heading", { level: 2 })).toHaveText(
+    "Romanian Deadlift",
+  );
   await expect(workoutStatus.getByLabel("Rest timer")).toContainText(/0:(?:2[5-9]|30)/);
   await expect(workoutStatus.getByLabel("Rest timer")).toContainText(
     /Next: .*Romanian Deadlift/,
@@ -354,16 +358,17 @@ test("publishes and preserves durable warm-up and grouped workout outcomes", asy
   const reloadedWorkoutStatus = page.getByRole("complementary", {
     name: "Workout status",
   });
-  await expect(reloadedNextSet).toHaveCount(0);
+  await expect(reloadedNextSet).toBeVisible();
   await expect(reloadedWorkoutStatus.getByLabel("Rest timer")).toContainText(
     /Next: .*Romanian Deadlift/,
   );
   await reloadedWorkoutStatus
-    .getByRole("button", { name: "Skip rest", exact: true })
+    .getByRole("button", { name: "End rest", exact: true })
     .click();
-  await reloadedWorkoutStatus
-    .getByRole("button", { name: "Dismiss rest timer", exact: true })
-    .click();
+  await expect(reloadedWorkoutStatus.getByTestId("rest-cockpit")).toHaveCount(
+    0,
+    { timeout: 5_000 },
+  );
   await expect(
     reloadedNextSet.getByRole("heading", { level: 2 }),
   ).toHaveText("Romanian Deadlift");
