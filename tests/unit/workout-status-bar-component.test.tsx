@@ -375,6 +375,62 @@ describe("WorkoutStatusBar", () => {
     ).toContain("REST_CONFIRMATION_DURATION_MS = 4_000");
   });
 
+  it("keeps one completion announcement when the destination is collapsed or absent", () => {
+    const collapsedDestination = renderToStaticMarkup(
+      <WorkoutStatusBar
+        action={action}
+        exercise={exercise}
+        timer={{
+          phase: "ready",
+          generationId: "rest-ready-collapsed",
+          readyAt: 1_000,
+        } as never}
+        restRemainingSec={0}
+        currentWorkingSetRevealed={false}
+        {...callbacks}
+      />,
+    );
+    const noFurtherWork = renderToStaticMarkup(
+      <WorkoutStatusBar
+        action={null}
+        exercise={null}
+        timer={{
+          phase: "ready",
+          generationId: "rest-ready-finished",
+          readyAt: 1_000,
+        } as never}
+        restRemainingSec={0}
+        {...callbacks}
+      />,
+    );
+    const athleteEndedCollapsed = renderToStaticMarkup(
+      <WorkoutStatusBar
+        action={action}
+        exercise={exercise}
+        timer={{
+          phase: "skipped",
+          generationId: "rest-ended-collapsed",
+          readyAt: 1_000,
+        } as never}
+        restRemainingSec={0}
+        currentWorkingSetRevealed={false}
+        {...callbacks}
+      />,
+    );
+
+    expect(collapsedDestination).toContain("Rest complete");
+    expect(collapsedDestination).toContain("Set 2 of 3 · Show current set");
+    expect(collapsedDestination.match(/aria-live="polite"/g)).toHaveLength(1);
+    expect(collapsedDestination.match(/role="status"/g)).toHaveLength(1);
+    expect(noFurtherWork).toContain("Rest complete");
+    expect(noFurtherWork).toContain("No further work");
+    expect(noFurtherWork.match(/aria-live="polite"/g)).toHaveLength(1);
+    expect(noFurtherWork.match(/role="status"/g)).toHaveLength(1);
+    expect(athleteEndedCollapsed).toContain("Rest ended");
+    expect(athleteEndedCollapsed).not.toContain('aria-live="polite"');
+    expect(athleteEndedCollapsed).not.toContain('role="status"');
+  });
+
   it("shows an athlete-ended rest as neutral context", () => {
     const html = renderToStaticMarkup(
       <WorkoutStatusBar

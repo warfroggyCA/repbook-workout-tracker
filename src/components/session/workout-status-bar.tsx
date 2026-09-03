@@ -356,8 +356,8 @@ export function WorkoutStatusBar({
             {title}
           </span>
           <span
-            role="status"
-            aria-live="polite"
+            role={timerReady ? undefined : "status"}
+            aria-live={timerReady ? undefined : "polite"}
             className={cn(
               "block break-words text-[0.6875rem] leading-tight text-muted-foreground min-[520px]:text-[0.8125rem]",
               saving === "Failed" && "font-semibold text-destructive",
