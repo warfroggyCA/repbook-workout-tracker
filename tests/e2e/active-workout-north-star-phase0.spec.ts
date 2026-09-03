@@ -429,7 +429,10 @@ test("records the isolated equipment-decision baseline", async ({
   browserName,
 }, testInfo) => {
   const pageErrors = observeGauntletPageErrors(page, browserName);
-  await signInAndStartDayA(page);
+  await signInAndStartDayA(page, {
+    includeWarmups: false,
+    expectLogSet: false,
+  });
   const equipmentDecision = page.getByRole("region", {
     name: "Equipment setup for Barbell Back Squat",
   });
