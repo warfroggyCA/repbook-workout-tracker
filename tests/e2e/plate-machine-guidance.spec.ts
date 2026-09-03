@@ -331,10 +331,7 @@ test("shows live plates per side without changing total-load meaning", async ({
     fullPage: false,
   });
   if (testInfo.project.name.includes("iphone")) {
-    const logSet = reloadedCard.getByRole("button", {
-      name: "Log set",
-      exact: true,
-    });
+    const logSet = page.getByTestId("active-log-set");
     await expectTouchTarget(
       logSet,
       "Log set",
