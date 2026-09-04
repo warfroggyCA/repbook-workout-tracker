@@ -3622,6 +3622,57 @@ export async function completeWorkoutSession(
   const completionReason = input.completionReason == null
     ? null
     : incompleteSessionReasonSchema.parse(input.completionReason);
+  const equipmentReasonRequested =
+    completionReason === "equipment_unavailable_incompatible";
+  // Finish applies its reason to every pending occurrence, including added
+  // work. Resolve each distinct exercise once, then fence that evidence in
+  // the completion statement. Terminal replay still uses the original receipt.
+  const pendingEquipmentExercises = equipmentReasonRequested
+    ? resultRows(await db.execute(sql`
+        SELECT DISTINCT occurrence.session_exercise_id
+        FROM session_occurrences occurrence
+        JOIN workout_sessions session ON session.id = occurrence.session_id
+        WHERE session.id = ${input.sessionId}::uuid
+          AND session.user_id = ${user.id}::uuid
+          AND session.status = 'in_progress'
+          AND session.archived_at IS NULL
+          AND occurrence.outcome = 'pending'
+          AND occurrence.session_exercise_id IS NOT NULL
+      `))
+    : [];
+  const finishEquipmentEvidence = await Promise.all(
+    pendingEquipmentExercises.map(async (exercise) => {
+      const sessionExerciseId = String(exercise.session_exercise_id);
+      return {
+        sessionExerciseId,
+        availability: await resolveSessionEquipmentAvailability(
+          db, user.id, sessionExerciseId,
+        ),
+      };
+    }),
+  );
+  const verifiedEquipmentSources = finishEquipmentEvidence.flatMap(
+    ({ sessionExerciseId, availability }) => {
+      if (
+        availability == null ||
+        (availability.decisionState !== "unavailable" &&
+          availability.decisionState !== "incompatible")
+      ) return [];
+      return [sql`(
+        equipment_exercise.id = ${sessionExerciseId}::uuid
+        AND equipment_exercise.exercise_id = ${availability.exerciseId}::uuid
+        AND owner.analysis_evidence_revision =
+          ${availability.ownerEvidenceRevision}::bigint
+        AND ${sessionEquipmentSelectionSourceRevisionExpression(
+          user.id,
+          availability.exerciseId,
+          availability.requirementsEvidence === "legacy_unknown" &&
+            !availability.usesPrescribedMeaning,
+          sql`equipment_exercise.equipment_requirements_snapshot`,
+        )} = ${availability.sourceRevision}
+      )`];
+    },
+  );
   const durationDecisionBasis = input.durationDecision?.basis ?? null;
   const ownerReportedDurationInputValid =
     input.durationDecision?.basis !== "owner_reported" ||
@@ -3698,6 +3749,21 @@ export async function completeWorkoutSession(
           ELSE NULL
         END AS duration_review_reason
       FROM owned
+    ), equipment_owner AS MATERIALIZED (
+      SELECT owner.analysis_evidence_revision
+      FROM users owner
+      WHERE owner.id = ${user.id}::uuid
+        AND ${equipmentReasonRequested}::boolean
+        AND EXISTS (SELECT 1 FROM owned WHERE status = 'in_progress')
+      FOR UPDATE
+    ), equipment_source_current AS MATERIALIZED (
+      SELECT equipment_exercise.id
+      FROM session_exercises equipment_exercise
+      JOIN owned session ON session.id = equipment_exercise.session_id
+      JOIN equipment_owner owner ON true
+      WHERE ${verifiedEquipmentSources.length > 0
+        ? sql.join(verifiedEquipmentSources, sql` OR `)
+        : sql`false`}
     ), completion_context AS MATERIALIZED (
       SELECT
         context.*,
@@ -3708,6 +3774,17 @@ export async function completeWorkoutSession(
             AND occurrence.origin = 'planned'
             AND occurrence.outcome = 'pending'
         ) AS has_pending_planned_work,
+        EXISTS (
+          SELECT 1
+          FROM session_occurrences occurrence
+          WHERE occurrence.session_id = context.id
+            AND ${equipmentReasonRequested}::boolean
+            AND occurrence.outcome = 'pending'
+            AND NOT EXISTS (
+              SELECT 1 FROM equipment_source_current equipment
+              WHERE equipment.id = occurrence.session_exercise_id
+            )
+        ) AS has_unverified_equipment_work,
         EXISTS (
           SELECT 1
           FROM session_occurrences occurrence
@@ -3770,6 +3847,9 @@ export async function completeWorkoutSession(
             AND NOT context.has_pending_planned_work
             AND ${completionReason}::text IS NOT NULL
             THEN 'completion_reason_not_applicable'
+          WHEN ${equipmentReasonRequested}::boolean
+            AND context.has_unverified_equipment_work
+            THEN 'equipment_reason_unverified'
           ELSE NULL
         END AS duration_rejection_code,
         CASE
@@ -3817,6 +3897,10 @@ export async function completeWorkoutSession(
             AND ${completionReason}::text IS NOT NULL
             THEN
               'No planned work remains, so an incomplete-work reason does not apply.'
+          WHEN ${equipmentReasonRequested}::boolean
+            AND context.has_unverified_equipment_work
+            THEN
+              'Equipment conflicts are not verified for every remaining item. Review the affected exercises or choose another reason.'
           ELSE NULL
         END AS duration_rejection_reason
       FROM completion_context context
@@ -4095,6 +4179,7 @@ export async function completeWorkoutSession(
         | "invalid_duration_review"
         | "completion_reason_required"
         | "completion_reason_not_applicable"
+        | "equipment_reason_unverified"
         | "finish_payload_conflict",
       sessionId: input.sessionId,
       alreadyFinished: row.duration_rejection_code === "finish_payload_conflict",

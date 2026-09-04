@@ -543,6 +543,7 @@ npx vitest run \
   tests/unit/active-workout-phase0-contract.test.ts \
   tests/unit/session-guidance.test.ts \
   tests/unit/session-actions-results.test.ts \
+  tests/unit/session-finish-equipment-db.test.ts \
   tests/unit/session-equipment-selection-service-db.test.ts \
   tests/unit/workout-status-bar-component.test.tsx \
   tests/unit/production-readiness-workflow-contract.test.ts \
@@ -559,7 +560,10 @@ npm run test:e2e:active-workout-north-star
 npm run active-workout:phase6-comparisons
 ```
 
-The 16-file focused contract run passes 260 tests on the Phase 6 candidate.
+The initial 16-file focused contract run passed 260 tests. The additional Finish
+equipment suite verifies incomplete setup rejection, complete multi-exercise
+coverage, unanchored planned and added work, source and membership changes,
+owner scope, unchanged saved sets, and exact terminal retry.
 
 The browser gate measures the exact current-exercise and active decision
 headings, retained saved-set evidence, and essential measure controls inside
@@ -574,9 +578,14 @@ comparisons live in
 historical reason. It names missing facts and routes to **Complete equipment
 setup** without exposing Replace, Skip, or Log until exact compatibility can be
 established. Exercise-level and set-level Skip controls expose the equipment
-cause only when the canonical current state supports it. Both server writers
+cause only when the canonical current state supports it. Early Finish requires
+that evidence for every pending item before applying one equipment cause to all
+of them, while other explicit Finish reasons remain available. All three writers
 independently revalidate and source-fence the cause; a stale offline occurrence
 remains visible for review instead of being rewritten or silently discarded.
+The native PostgreSQL suite also changes equipment on a second connection while
+Finish waits on its session lock, proving that an older statement snapshot
+cannot commit a stale cause. Terminal retry still follows the saved receipt.
 This phase adds no migration, historical rewrite, Program change, snapshot or
 recovery-manifest change, import/export change, or production-data operation.
 Protected checks, a separately approved preview, the representative full

@@ -1367,6 +1367,15 @@ while the skipped card exposes restore, replacement, and **Keep skipped and
 continue** recovery. Returning the exercise restores the live equipment
 decision from current evidence.
 
+Early Finish applies its chosen cause to every pending occurrence. Its equipment
+cause is therefore available only when every pending item, including added work,
+belongs to an exercise with a verified unavailable or incompatible setup.
+Incomplete configuration, unknown meaning, and unanchored preparation cannot
+borrow another exercise's cause. The completion statement rechecks each source
+revision and the pending membership before writing. Other explicit Finish
+reasons remain available. A confirmed Finish retry uses its original receipt
+even if equipment has changed since completion; history is never reinterpreted.
+
 Substitution retains an earlier skip cause rather than clearing it. A direct
 equipment-conflict replacement also records the structured cause on unresolved
 occurrences. Record-version restore returns the exact earlier exercise and

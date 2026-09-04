@@ -2196,6 +2196,20 @@ export function SessionRunner(props: SessionRunnerProps) {
     (occurrence) =>
       occurrence.origin === "planned" && occurrence.outcome === "pending",
   ).length;
+  const finishEquipmentReasonAvailable = pendingPlannedOccurrences > 0 &&
+    occurrences.filter((occurrence) => occurrence.outcome === "pending")
+      .every((occurrence) => {
+        const exerciseId = occurrence.sessionExerciseId;
+        if (exerciseId == null || comparisonRefreshTargets[exerciseId]) return false;
+        const decision = safeEquipmentSetups[exerciseId]?.decisionState;
+        return (decision === "unavailable" || decision === "incompatible") &&
+          !sessionEquipmentEntries.some(
+            (entry) => entry.sessionExerciseId === exerciseId,
+          );
+      });
+  const finishReasonReady = completionReason != null &&
+    (completionReason !== "equipment_unavailable_incompatible" ||
+      finishEquipmentReasonAvailable);
   const nonPerformedSummary = sessionNonPerformedOutcomeParts(
     guidance.totals,
   ).join(" · ");
@@ -3123,7 +3137,7 @@ export function SessionRunner(props: SessionRunnerProps) {
     if (
       finishRecoveryCommand == null &&
       pendingPlannedOccurrences > 0 &&
-      completionReason == null
+      !finishReasonReady
     ) {
       setFinishError(
         "Choose why the remaining planned work was not completed. Repbook will preserve that reason without inferring it from elapsed time.",
@@ -3208,6 +3222,10 @@ export function SessionRunner(props: SessionRunnerProps) {
           setFinishRecoveryCommand(null);
         }
         setFinishError(result.message);
+        if (result.code === "equipment_reason_unverified") {
+          setCompletionReason(null);
+          router.refresh();
+        }
         setFinishing(false);
       }
     } catch (error) {
@@ -5576,7 +5594,11 @@ export function SessionRunner(props: SessionRunnerProps) {
                   disabled={finishRecoveryCommand != null}
                 >
                   <option value="">Choose a reason</option>
-                  {INCOMPLETE_SESSION_REASONS.map((reason) => (
+                  {INCOMPLETE_SESSION_REASONS.filter((reason) =>
+                    reason !== "equipment_unavailable_incompatible" ||
+                    finishEquipmentReasonAvailable ||
+                    finishRecoveryCommand?.completionReason === reason
+                  ).map((reason) => (
                     <option key={reason} value={reason}>
                       {INCOMPLETE_SESSION_REASON_LABELS[reason]}
                     </option>
@@ -5684,7 +5706,7 @@ export function SessionRunner(props: SessionRunnerProps) {
                 !durationReviewReady ||
                 (finishRecoveryCommand == null &&
                   pendingPlannedOccurrences > 0 &&
-                  completionReason == null)
+                  !finishReasonReady)
               }
               size="lg"
             >
