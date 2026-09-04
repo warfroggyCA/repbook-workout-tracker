@@ -4,6 +4,7 @@ import { drizzle } from "drizzle-orm/pglite";
 import { sql } from "drizzle-orm";
 import { resultRows } from "@/db/result";
 import {
+  classifyPrescriptionDimensions,
   classifyPrescriptionOutcome,
   classifySetMetricContainment,
 } from "@/lib/set-metric-semantics";
@@ -22,7 +23,7 @@ describe("SQL and pure set-semantic containment", () => {
     await Promise.all(clients.splice(0).map((client) => client.close()));
   });
 
-  it("keeps a missing weighted target unknown while supporting a true reps-only target", async () => {
+  it("evaluates prescribed repetitions when load is not prescribed", async () => {
     const weightedMeaning = classifySetMetricContainment({
       recordedMetricType: "weight_reps",
       prescribedSemanticsVersion: 1,
@@ -49,7 +50,7 @@ describe("SQL and pure set-semantic containment", () => {
       weight: null,
       reps: 11,
     });
-    expect(classifyPrescriptionOutcome({
+    const weightedDimensions = classifyPrescriptionDimensions({
       semantics: weightedMeaning,
       reps: 7,
       weight: 100,
@@ -58,7 +59,38 @@ describe("SQL and pure set-semantic containment", () => {
       targetRepsMax: 10,
       targetLoad: null,
       targetLoadUnit: null,
-    })).toBe("unknown");
+    });
+    expect(weightedDimensions).toMatchObject({
+      evaluability: "fully_evaluable",
+      repetitions: { prescribed: true, evaluable: true, outcome: "below" },
+      load: {
+        prescribed: false,
+        evaluable: false,
+        outcome: "not_prescribed",
+      },
+      overall: "below",
+    });
+    expect(weightedMeaning.automaticProgressionEligible).toBe(true);
+    expect(classifyPrescriptionOutcome({
+      semantics: weightedMeaning,
+      reps: 8,
+      weight: 100,
+      weightUnit: "lb",
+      targetRepsMin: 6,
+      targetRepsMax: 8,
+      targetLoad: null,
+      targetLoadUnit: null,
+    })).toBe("at");
+    expect(classifyPrescriptionOutcome({
+      semantics: weightedMeaning,
+      reps: 10,
+      weight: 100,
+      weightUnit: "lb",
+      targetRepsMin: 6,
+      targetRepsMax: 8,
+      targetLoad: null,
+      targetLoadUnit: null,
+    })).toBe("above");
     expect(classifyPrescriptionOutcome({
       semantics: repetitionsMeaning,
       reps: 11,
@@ -105,14 +137,36 @@ describe("SQL and pure set-semantic containment", () => {
       weightUnit: sql`NULL::text`,
       reps: sql`11::integer`,
     };
-    const [row] = resultRows<{ weighted: string; repetitions: string }>(
+    const atTargetColumns = {
+      ...weightedColumns,
+      reps: sql`8::integer`,
+      targetRepsMin: sql`6::integer`,
+      targetRepsMax: sql`8::integer`,
+    };
+    const aboveTargetColumns = {
+      ...atTargetColumns,
+      reps: sql`10::integer`,
+    };
+    const [row] = resultRows<{
+      weighted: string;
+      repetitions: string;
+      at_target: string;
+      above_target: string;
+    }>(
       await db.execute(sql`
         SELECT
           ${prescriptionOutcomeSql(weightedColumns)} AS weighted,
-          ${prescriptionOutcomeSql(repetitionsColumns)} AS repetitions
+          ${prescriptionOutcomeSql(repetitionsColumns)} AS repetitions,
+          ${prescriptionOutcomeSql(atTargetColumns)} AS at_target,
+          ${prescriptionOutcomeSql(aboveTargetColumns)} AS above_target
       `),
     );
-    expect(row).toEqual({ weighted: "unknown", repetitions: "above" });
+    expect(row).toEqual({
+      weighted: "below",
+      repetitions: "above",
+      at_target: "at",
+      above_target: "above",
+    });
   });
 
   it("keeps reps plus assistance ineligible in both pure and SQL claims", async () => {

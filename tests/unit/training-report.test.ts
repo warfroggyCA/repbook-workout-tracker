@@ -26,7 +26,7 @@ function occurrence(
   id: string,
   overrides: Partial<ReportingOccurrence> = {},
 ): ReportingOccurrence {
-  return {
+  const value: ReportingOccurrence = {
     id,
     sessionId: "session-1",
     plannedOutcome: true,
@@ -36,12 +36,47 @@ function occurrence(
     resolution: "completed",
     reason: null,
     targetOutcome: "at",
+    targetDimensions: {
+      algorithmVersion: "prescription-dimension-outcome-v1",
+      evaluability: "fully_evaluable",
+      repetitions: {
+        prescribed: true,
+        evaluable: true,
+        outcome: "at",
+        limitation: null,
+      },
+      load: {
+        prescribed: false,
+        evaluable: false,
+        outcome: "not_prescribed",
+        limitation: null,
+      },
+      overall: "at",
+    },
     measurementKind: "loaded_repetitions",
     countingBasis: "total",
     analyticalEligibility: "eligible",
     analyticalExclusionReason: null,
     ...overrides,
   };
+  if (overrides.targetOutcome && !overrides.targetDimensions) {
+    value.targetDimensions = {
+      ...value.targetDimensions,
+      repetitions: {
+        ...value.targetDimensions.repetitions,
+        evaluable: overrides.targetOutcome !== "unknown",
+        outcome: overrides.targetOutcome,
+        limitation: overrides.targetOutcome === "unknown"
+          ? "test_evidence_unavailable"
+          : null,
+      },
+      evaluability: overrides.targetOutcome === "unknown"
+        ? "not_evaluable"
+        : "fully_evaluable",
+      overall: overrides.targetOutcome,
+    };
+  }
+  return value;
 }
 
 function warmup(
@@ -478,8 +513,16 @@ describe("training-report deterministic semantics", () => {
         actualMinutes: 63,
       }),
     ).toEqual({
-      algorithmVersion: "duration-adherence-v1",
+      algorithmVersion: "duration-adherence-v2",
       target: { minMinutes: 45, maxMinutes: 45 },
+      targetSource: null,
+      targetConsistency: {
+        algorithmVersion: "duration-target-consistency-v1",
+        status: "not_assessed",
+        athletePreferenceMinutes: null,
+        compatibleBand: null,
+        limitation: "Athlete session-length preference is unavailable.",
+      },
       actualMinutes: 63,
       status: "over_target",
       varianceMinutes: 18,
@@ -488,6 +531,42 @@ describe("training-report deterministic semantics", () => {
       toleranceMinutes: 5,
       withinTolerance: false,
       limitation: null,
+    });
+    expect(
+      calculateDurationAdherence({
+        targetMinMinutes: 10,
+        targetMaxMinutes: 20,
+        targetSource: "program_day_target",
+        athletePreferenceMinutes: 45,
+        actualMinutes: 73,
+      }),
+    ).toMatchObject({
+      target: { minMinutes: 10, maxMinutes: 20 },
+      targetSource: "program_day_target",
+      targetConsistency: {
+        status: "material_conflict",
+        athletePreferenceMinutes: 45,
+        compatibleBand: { minMinutes: 22.5, maxMinutes: 67.5 },
+      },
+      actualMinutes: 73,
+      status: "unknown",
+      varianceMinutes: null,
+      variancePercentage: null,
+      withinTolerance: null,
+    });
+    expect(
+      calculateDurationAdherence({
+        targetMinMinutes: 35,
+        targetMaxMinutes: 45,
+        targetSource: "program_day_target",
+        athletePreferenceMinutes: 45,
+        actualMinutes: 73,
+      }),
+    ).toMatchObject({
+      targetConsistency: { status: "consistent" },
+      status: "over_target",
+      varianceMinutes: 28,
+      variancePercentage: 62.2,
     });
     expect(
       calculateDurationAdherence({
@@ -701,7 +780,7 @@ describe("training-report deterministic semantics", () => {
     ];
     const summary = buildCoachSummary(statements);
 
-    expect(summary.semanticVersion).toBe("training-report/2");
+    expect(summary.semanticVersion).toBe("training-report/3");
     expect(summary.ruleVersion).toBe("coach-summary-rules-v1");
     expect(summary.statements.map((item) => item.section)).toEqual([
       "training_exposure",

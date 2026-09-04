@@ -754,7 +754,30 @@ export function buildPerformedSetMeasurement(input: {
 export type PrescriptionOutcome = "below" | "at" | "above" | "unknown";
 
 export const PRESCRIPTION_OUTCOME_ALGORITHM_VERSION =
-  "prescription-outcome-v1";
+  "prescription-outcome-v2";
+
+export const PRESCRIPTION_DIMENSION_OUTCOME_ALGORITHM_VERSION =
+  "prescription-dimension-outcome-v1" as const;
+
+export type PrescriptionDimensionStatus =
+  | Exclude<PrescriptionOutcome, "unknown">
+  | "unknown"
+  | "not_prescribed";
+
+export type PrescriptionDimensionAssessment = {
+  prescribed: boolean;
+  evaluable: boolean;
+  outcome: PrescriptionDimensionStatus;
+  limitation: string | null;
+};
+
+export type PrescriptionDimensionOutcome = {
+  algorithmVersion: typeof PRESCRIPTION_DIMENSION_OUTCOME_ALGORITHM_VERSION;
+  evaluability: "fully_evaluable" | "partially_evaluable" | "not_evaluable";
+  repetitions: PrescriptionDimensionAssessment;
+  load: PrescriptionDimensionAssessment;
+  overall: PrescriptionOutcome;
+};
 
 export type PrescriptionOutcomeSummary = {
   algorithmVersion: typeof PRESCRIPTION_OUTCOME_ALGORITHM_VERSION;
@@ -805,39 +828,186 @@ export function classifyPrescriptionOutcome(input: {
   targetLoadPercent?: number | null;
   targetLoadText?: string | null;
 }): PrescriptionOutcome {
-  if (
-    !input.semantics.prescriptionOutcomeEligible ||
-    input.reps == null ||
-    input.targetRepsMin == null ||
-    input.targetLoadPercent != null ||
-    input.targetLoadText != null
-  ) {
-    return "unknown";
-  }
-  const repetitionsOnly = input.semantics.measurementMeaning === "reps";
-  const { targetLoad, targetLoadUnit, weight, weightUnit } = input;
-  if (
-    (targetLoad == null && (targetLoadUnit != null || !repetitionsOnly)) ||
-    (targetLoad != null &&
-      (targetLoadUnit == null || weight == null || weightUnit == null))
-  ) {
-    return "unknown";
-  }
-  if (input.reps < input.targetRepsMin) return "below";
-  const aboveRepetitions =
-    input.targetRepsMax != null && input.reps > input.targetRepsMax;
-  if (targetLoad == null) return aboveRepetitions ? "above" : "at";
-  if (weight == null || weightUnit == null || targetLoadUnit == null) {
-    return "unknown";
-  }
-  const performed = convertWeight(
-    weight,
-    weightUnit,
-    targetLoadUnit,
+  return classifyPrescriptionDimensions(input).overall;
+}
+
+function prescribedDimension(
+  outcome: PrescriptionOutcome,
+  evaluable: boolean,
+  limitation: string | null,
+): PrescriptionDimensionAssessment {
+  return {
+    prescribed: true,
+    evaluable,
+    outcome: evaluable ? outcome : "unknown",
+    limitation,
+  };
+}
+
+function unprescribedDimension(): PrescriptionDimensionAssessment {
+  return {
+    prescribed: false,
+    evaluable: false,
+    outcome: "not_prescribed",
+    limitation: null,
+  };
+}
+
+function combinePrescriptionDimensions(input: {
+  repetitions: PrescriptionDimensionAssessment;
+  load: PrescriptionDimensionAssessment;
+}): PrescriptionDimensionOutcome {
+  const prescribed = [input.repetitions, input.load].filter(
+    (dimension) => dimension.prescribed,
   );
-  if (performed < targetLoad) return "below";
-  if (performed > targetLoad || aboveRepetitions) return "above";
-  return "at";
+  const evaluable = prescribed.filter((dimension) => dimension.evaluable);
+  const evaluability = prescribed.length === 0 || evaluable.length === 0
+    ? "not_evaluable" as const
+    : evaluable.length === prescribed.length
+      ? "fully_evaluable" as const
+      : "partially_evaluable" as const;
+  const overall = evaluability !== "fully_evaluable"
+    ? "unknown" as const
+    : evaluable.some((dimension) => dimension.outcome === "below")
+      ? "below" as const
+      : evaluable.some((dimension) => dimension.outcome === "above")
+        ? "above" as const
+        : "at" as const;
+  return {
+    algorithmVersion: PRESCRIPTION_DIMENSION_OUTCOME_ALGORITHM_VERSION,
+    evaluability,
+    repetitions: input.repetitions,
+    load: input.load,
+    overall,
+  };
+}
+
+export function unavailablePrescriptionDimensions(input: {
+  targetRepsMin: number | null;
+  targetRepsMax?: number | null;
+  targetLoad: number | null;
+  targetLoadUnit: LoadUnit | null;
+  targetLoadPercent?: number | null;
+  targetLoadText?: string | null;
+  limitation: string;
+}): PrescriptionDimensionOutcome {
+  const repetitionsPrescribed =
+    input.targetRepsMin != null || input.targetRepsMax != null;
+  const loadPrescribed =
+    input.targetLoad != null ||
+    input.targetLoadUnit != null ||
+    input.targetLoadPercent != null ||
+    input.targetLoadText != null;
+  return combinePrescriptionDimensions({
+    repetitions: repetitionsPrescribed
+      ? prescribedDimension("unknown", false, input.limitation)
+      : unprescribedDimension(),
+    load: loadPrescribed
+      ? prescribedDimension("unknown", false, input.limitation)
+      : unprescribedDimension(),
+  });
+}
+
+/**
+ * Evaluates each prescribed dimension independently. A valid repetition
+ * result remains usable when no load was prescribed, while a prescribed but
+ * unsupported load keeps the aggregate set outcome unknown.
+ */
+export function classifyPrescriptionDimensions(input: {
+  semantics: SetMetricContainment;
+  reps: number | null;
+  weight: number | null;
+  weightUnit: LoadUnit | null;
+  targetRepsMin: number | null;
+  targetRepsMax?: number | null;
+  targetLoad: number | null;
+  targetLoadUnit: LoadUnit | null;
+  targetLoadPercent?: number | null;
+  targetLoadText?: string | null;
+}): PrescriptionDimensionOutcome {
+  const repetitionsPrescribed =
+    input.targetRepsMin != null || input.targetRepsMax != null;
+  const repetitionsEligible =
+    input.semantics.prescriptionOutcomeEligible &&
+    ["weight_reps", "reps", "assisted_reps"].includes(
+      input.semantics.measurementMeaning,
+    ) &&
+    input.reps != null &&
+    input.targetRepsMin != null &&
+    (input.targetRepsMax == null ||
+      input.targetRepsMax >= input.targetRepsMin);
+  const repetitions = !repetitionsPrescribed
+    ? unprescribedDimension()
+    : !repetitionsEligible
+      ? prescribedDimension(
+          "unknown",
+          false,
+          input.targetRepsMin == null
+            ? "incomplete_repetition_target"
+            : "repetition_comparison_unavailable",
+        )
+      : prescribedDimension(
+          input.reps! < input.targetRepsMin!
+            ? "below"
+            : input.targetRepsMax != null && input.reps! > input.targetRepsMax
+              ? "above"
+              : "at",
+          true,
+          null,
+        );
+
+  const loadPrescribed =
+    input.targetLoad != null ||
+    input.targetLoadUnit != null ||
+    input.targetLoadPercent != null ||
+    input.targetLoadText != null;
+  let load = unprescribedDimension();
+  if (loadPrescribed) {
+    const numericLoadTargetComplete =
+      input.targetLoad != null &&
+      input.targetLoadUnit != null &&
+      input.targetLoadPercent == null &&
+      input.targetLoadText == null;
+    const loadEligible =
+      numericLoadTargetComplete &&
+      input.semantics.prescriptionOutcomeEligible &&
+      input.weight != null &&
+      input.weightUnit != null;
+    if (!loadEligible) {
+      load = prescribedDimension(
+        "unknown",
+        false,
+        input.targetLoadPercent != null || input.targetLoadText != null
+          ? "non_numeric_load_target"
+          : "load_comparison_unavailable",
+      );
+    } else {
+      const performed = convertWeight(
+        input.weight!,
+        input.weightUnit!,
+        input.targetLoadUnit!,
+      );
+      load = prescribedDimension(
+        performed < input.targetLoad!
+          ? "below"
+          : performed > input.targetLoad!
+            ? "above"
+            : "at",
+        true,
+        null,
+      );
+    }
+  }
+  const combined = combinePrescriptionDimensions({ repetitions, load });
+  return repetitionsPrescribed
+    ? combined
+    : {
+        ...combined,
+        evaluability: load.evaluable
+          ? "partially_evaluable"
+          : "not_evaluable",
+        overall: "unknown",
+      };
 }
 
 export function legacyTargetMetProjection(

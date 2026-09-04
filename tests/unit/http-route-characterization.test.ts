@@ -27,6 +27,7 @@ const mocks = vi.hoisted(() => ({
   buildJsonBackup: vi.fn(async () => ({ schemaVersion: "test" })),
   buildTrainingDigest: vi.fn(async () => ({
     weeks: 4,
+    range: { untilLocalDate: "2026-03-31" },
     reporting: { evidenceRevision: "7" },
   })),
   buildLlmTrainingSource: vi.fn(async () => ({
@@ -303,8 +304,8 @@ describe("HTTP production perimeter", () => {
     expect(responses[4].headers.get("content-disposition")).toBe(
       `attachment; filename="workout-tracker-snapshot-${snapshotId}.json"`
     );
-    expect(responses[2].headers.get("content-disposition")).toMatch(
-      /^attachment; filename="repbook-training-brief-\d{4}-\d{2}-\d{2}\.md"$/
+    expect(responses[2].headers.get("content-disposition")).toBe(
+      'attachment; filename="repbook-training-brief-2026-03-31.md"'
     );
     expect(responses[3].headers.get("content-disposition")).toBeNull();
   });

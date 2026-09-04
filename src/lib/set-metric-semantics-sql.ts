@@ -163,20 +163,25 @@ export function prescriptionOutcomeSql(
       WHEN NOT ${eligiblePrescriptionOutcomeSql(columns)}
         OR ${columns.targetRepsMin} IS NULL
         OR ${columns.reps} IS NULL
+        OR (
+          ${columns.targetRepsMax} IS NOT NULL
+          AND ${columns.targetRepsMax} < ${columns.targetRepsMin}
+        )
         OR ${columns.targetLoadPercent ?? sql`NULL`} IS NOT NULL
         OR ${columns.targetLoadText ?? sql`NULL`} IS NOT NULL
       THEN 'unknown'
       WHEN ${columns.targetLoad} IS NULL
-        AND (
-          ${columns.targetLoadUnit} IS NOT NULL
-          OR ${columns.recordedMetricType}::text <> 'reps'
-        )
+        AND ${columns.targetLoadUnit} IS NOT NULL
       THEN 'unknown'
       WHEN ${columns.targetLoad} IS NOT NULL
         AND (
           ${columns.targetLoadUnit} IS NULL
           OR ${columns.weight} IS NULL
           OR ${columns.weightUnit} IS NULL
+          OR NOT (
+            ${prescribedMeaningKnownSql(columns)}
+            AND ${eligibleTotalSystemPrescriptionSql(columns)}
+          )
         )
       THEN 'unknown'
       WHEN ${columns.reps} < ${columns.targetRepsMin}

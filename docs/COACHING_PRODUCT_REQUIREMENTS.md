@@ -29,6 +29,9 @@ A longer workout is not automatically a bad workout.
 
 - Compare actual duration with the Program day's frozen planned duration when
   that evidence exists; never use one global duration target for every routine.
+- Show the frozen target's source. If it is materially inconsistent with the
+  athlete's session-length preference, retain both facts but suppress duration
+  variance and percentage conclusions until the configuration is resolved.
 - Deliberately longer rest periods may be appropriate for high-quality compound
   work, heavier sets, joint comfort, equipment transitions, or maintaining
   performance across working sets.

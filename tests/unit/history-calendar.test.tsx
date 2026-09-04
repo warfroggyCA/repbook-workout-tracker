@@ -32,7 +32,7 @@ function calendarSession(
     sets: 12,
     volume: 5000,
     targetOutcomes: {
-      algorithmVersion: "prescription-outcome-v1",
+      algorithmVersion: "prescription-outcome-v2",
       below: 1,
       at: 7,
       above: 2,

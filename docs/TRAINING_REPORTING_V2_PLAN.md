@@ -7,6 +7,15 @@
 > current source and tests prove otherwise. Current coaching requirements live
 > in [`COACHING_PRODUCT_REQUIREMENTS.md`](COACHING_PRODUCT_REQUIREMENTS.md).
 
+Post-release correctness amendment (2026-09-04): current source now uses
+`prescription-outcome-v2` and `prescription-dimension-outcome-v1` so an
+unprescribed load no longer invalidates a supported repetition-range result.
+The report exposes repetition and load outcomes separately, renders its window
+from athlete-local dates, shows frozen duration-target provenance, and suppresses
+duration percentages when a frozen target materially conflicts with the athlete
+session-length preference. This amendment changes projections only: it adds no
+schema, migration, backfill, Program mutation, or historical rewrite.
+
 ## 1. Current reporting and data flow
 
 Completed workout facts live in `workout_sessions`, `session_exercises`,

@@ -801,10 +801,16 @@ and retains every observed historical label. Unlinked workouts stay explicit.
 The current profile frequency is a labelled comparison only: it is not the
 historical prescription and does not produce an adherence percentage.
 
-Planned-set outcomes use `prescription-outcome-v1`. A performed working set is
-below, at, or above only when one exact planned occurrence supplies supported
-repetition and load targets in compatible units. Missing, ambiguous,
-percentage, text, or otherwise unsupported targets produce `unknown`. The
+Planned-set outcomes use `prescription-outcome-v2` with
+`prescription-dimension-outcome-v1`. Repetition and load are evaluated as
+separate prescribed dimensions. A supported performed working set with a
+frozen repetition range remains evaluable when no load was prescribed; load is
+then explicitly `not_prescribed`, rather than an unknown dependency that erases
+the repetition result. When a load target was prescribed, it must still be a
+supported numeric target in compatible units for the aggregate set outcome to
+be evaluable. Percentage, text, incomplete, or otherwise unsupported prescribed
+load targets keep that aggregate outcome `unknown` while the dimension ledger
+retains any valid repetition result. The
 legacy stored `target_met` value remains a portability projection and is never
 read as current calculated truth. History, Coach, Review, corrections, exports,
 and record-version restores share this interpretation. Corrections and restores
@@ -1452,6 +1458,23 @@ this order: Coach Summary, compact session summaries, period analysis, and a
 detailed derivation appendix. History and Coach use the same all-planned target
 denominator rules; a supported subset percentage cannot become an overall
 attainment claim unless its coverage, sample-size, and session-span gates pass.
+
+The reporting correction contract uses `training-report/3`,
+`target-attainment-coverage-v2`, and `duration-adherence-v2`. The target ledger
+retains separate repetition and load statuses, including `not_prescribed`, and
+the shared pure and SQL projectors implement the same aggregate rule used by
+History, Coach, Review, corrections, exports, and restore. Athlete-facing report
+window labels use the athlete's IANA timezone and local calendar dates; UTC
+instants remain in the audit evidence boundary.
+
+Frozen Program duration remains the normal session-specific comparison target.
+Its stored `program_day_target` or `program_day_duration_override` provenance is
+shown in the brief. A frozen range wholly outside 50%–150% of the athlete's
+session-length preference is treated as a material configuration conflict:
+the frozen target and recorded duration remain visible, but duration variance,
+percentage, and period-average use are suppressed until the provenance is
+resolved. This guard does not rewrite the Program, session, or profile and does
+not replace a legitimate day target with the current preference.
 
 Migration `0083_reporting_session_outcomes` adds nullable, versioned tuples for
 the Program duration frozen at Start, terminal session completion meaning,

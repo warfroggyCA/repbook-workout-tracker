@@ -39,6 +39,7 @@ import {
   classifySetMetricContainment,
   setMetricExclusionLabel,
   summarizePrescriptionOutcomes,
+  unavailablePrescriptionDimensions,
 } from "@/lib/set-metric-semantics";
 import {
   workingSetDisplayPosition,
@@ -57,7 +58,7 @@ import {
   buildCoverageMetric,
   buildExerciseReportSummary,
   calculateDurationAdherence,
-  classifyReportingTargetOutcome,
+  classifyReportingTargetDimensions,
   deriveMeasurementKind,
   formatExerciseReportSummary,
   formatTargetAttainmentConclusion,
@@ -424,8 +425,22 @@ async function buildTrainingDigestOnce(
     (earliest, value) => value < earliest ? value : earliest,
     now,
   );
+  const allEvidenceLocalDates = [
+    ...sessions.map((session) => session.localDate),
+    ...activities.map((activity) =>
+      workoutLocalDate(activity.startedAt, profile.timezone)
+    ),
+    ...pain.map((entry) => workoutLocalDate(entry.date, profile.timezone)),
+    ...fatigue.map((entry) =>
+      workoutLocalDate(entry.createdAt, profile.timezone)
+    ),
+    ...recs.map((entry) => workoutLocalDate(entry.createdAt, profile.timezone)),
+    ...liveCoachMessages.map((entry) =>
+      workoutLocalDate(entry.createdAt, profile.timezone)
+    ),
+  ];
   const sinceLocalDate = requestedSinceLocalDate ?? (
-    sessions.map((session) => session.localDate).sort()[0] ??
+    allEvidenceLocalDates.sort()[0] ??
       workoutLocalDate(effectiveSince, profile.timezone)
   );
 
@@ -715,9 +730,8 @@ async function buildTrainingDigestOnce(
           setSemantics?.automaticProgressionEligible &&
           measurementAssessment.progressionEligible,
         );
-        const targetOutcome: ReportingOccurrence["targetOutcome"] =
-          set && setSemantics
-          ? classifyReportingTargetOutcome({
+        const targetDimensions = set && setSemantics
+          ? classifyReportingTargetDimensions({
             setSemantics,
             measurementKind: kind,
             countingBasis,
@@ -736,7 +750,17 @@ async function buildTrainingDigestOnce(
             targetLoadPercent: occurrence.plannedLoadPercent,
             targetLoadText: occurrence.plannedLoadText,
           })
-          : "unknown";
+          : unavailablePrescriptionDimensions({
+            targetRepsMin: occurrence.plannedRepsMin,
+            targetRepsMax: occurrence.plannedRepsMax,
+            targetLoad: occurrence.plannedLoad,
+            targetLoadUnit: occurrence.plannedLoadUnit,
+            targetLoadPercent: occurrence.plannedLoadPercent,
+            targetLoadText: occurrence.plannedLoadText,
+            limitation: "performed_result_unavailable",
+          });
+        const targetOutcome: ReportingOccurrence["targetOutcome"] =
+          targetDimensions.overall;
         const base = {
           sessionId: session.id,
           performanceState,
@@ -750,6 +774,7 @@ async function buildTrainingDigestOnce(
           resolution,
           reason,
           targetOutcome,
+          targetDimensions,
           measurementKind: kind,
           countingBasis,
           analyticalEligibility: !performed || setSemantics == null
@@ -784,6 +809,15 @@ async function buildTrainingDigestOnce(
               resolution: "not_performed",
               reason: "exercise_substitution",
               targetOutcome: "unknown",
+              targetDimensions: unavailablePrescriptionDimensions({
+                targetRepsMin: occurrence.plannedRepsMin,
+                targetRepsMax: occurrence.plannedRepsMax,
+                targetLoad: occurrence.plannedLoad,
+                targetLoadUnit: occurrence.plannedLoadUnit,
+                targetLoadPercent: occurrence.plannedLoadPercent,
+                targetLoadText: occurrence.plannedLoadText,
+                limitation: "exercise_substitution",
+              }),
               measurementKind: "unknown",
               countingBasis: "unknown",
               analyticalEligibility: "unknown",
@@ -844,6 +878,12 @@ async function buildTrainingDigestOnce(
           resolution: "completed",
           reason: null,
           targetOutcome: "unknown",
+          targetDimensions: unavailablePrescriptionDimensions({
+            targetRepsMin: null,
+            targetLoad: null,
+            targetLoadUnit: null,
+            limitation: "missing_occurrence_linkage",
+          }),
           measurementKind: kind,
           countingBasis: "unknown",
           analyticalEligibility: "ineligible",
@@ -912,6 +952,12 @@ async function buildTrainingDigestOnce(
           resolution: "historical_unknown" as const,
           reason: "unknown_historical_outcome" as const,
           targetOutcome: "unknown" as const,
+          targetDimensions: unavailablePrescriptionDimensions({
+            targetRepsMin: null,
+            targetLoad: null,
+            targetLoadUnit: null,
+            limitation: "missing_occurrence_and_performed_result",
+          }),
           measurementKind: "unknown" as const,
           countingBasis: "unknown" as const,
           analyticalEligibility: "unknown" as const,
@@ -1496,25 +1542,48 @@ async function buildTrainingDigestOnce(
     id: `${effectiveSince.toISOString()}/${now.toISOString()}`,
     revision: null,
   };
-  const durationSessions = completed.flatMap((session) => {
+  const durationEvaluations = completed.flatMap((session) => {
     const actual = analyticsWorkoutDurationMinutes(
       session.startedAt,
       session.finishedAt,
       session.excludeDurationFromAnalytics,
       session,
     );
-    return session.plannedDurationSemanticsVersion === 1 && actual != null
+    return session.plannedDurationSemanticsVersion === 1
       ? [{
           sessionId: session.id,
           historyRevision: session.historyRevision,
-          actualMinutes: actual,
-          targetMinutes:
-            (session.plannedDurationMinMinutes! +
-              session.plannedDurationMaxMinutes!) /
-            2,
+          adherence: calculateDurationAdherence({
+            targetMinMinutes: session.plannedDurationMinMinutes,
+            targetMaxMinutes: session.plannedDurationMaxMinutes,
+            targetSource: session.plannedDurationSource as
+              | "program_day_target"
+              | "program_day_duration_override",
+            athletePreferenceMinutes: profile.sessionLengthMin,
+            actualMinutes: actual,
+          }),
         }]
       : [];
   });
+  const durationTargetConflicts = durationEvaluations.filter(
+    (item) =>
+      item.adherence.targetConsistency.status === "material_conflict",
+  );
+  const durationSessions = durationEvaluations.flatMap((item) =>
+    item.adherence.actualMinutes != null &&
+      item.adherence.target != null &&
+      item.adherence.targetConsistency.status !== "material_conflict"
+      ? [{
+          sessionId: item.sessionId,
+          historyRevision: item.historyRevision,
+          actualMinutes: item.adherence.actualMinutes,
+          targetMinutes:
+            (item.adherence.target.minMinutes +
+              item.adherence.target.maxMinutes) /
+            2,
+        }]
+      : []
+  );
   const averageActualDuration = durationSessions.length
     ? Math.round(
         durationSessions.reduce((total, item) => total + item.actualMinutes, 0) /
@@ -1556,7 +1625,7 @@ async function buildTrainingDigestOnce(
       reference != null
     );
   const programExecutionEvidenceRefs = [
-    ...durationSessions.map((session) => ({
+    ...durationEvaluations.map((session) => ({
       kind: "workout_session" as const,
       id: session.sessionId,
       revision: session.historyRevision,
@@ -1593,22 +1662,29 @@ async function buildTrainingDigestOnce(
       ruleId: "program_execution.duration_and_causes",
       ruleVersion: COACH_SUMMARY_RULES_VERSION,
       text: averageActualDuration == null || averageTargetDuration == null
-        ? "Program-duration fit is unknown because no session has both a frozen target and supported active duration."
+        ? durationTargetConflicts.length
+          ? `Duration target conflict: ${durationTargetConflicts.length} completed session${durationTargetConflicts.length === 1 ? " has a" : "s have"} frozen Program duration target${durationTargetConflicts.length === 1 ? "" : "s"} materially inconsistent with the athlete's approximately ${profile.sessionLengthMin}-minute session preference. ${durationTargetConflicts.length === 1 ? "That session's duration comparison is" : "Those sessions' duration comparisons are"} suppressed until the target provenance is resolved.`
+          : "Program-duration fit is unknown because no session has both a frozen target and supported active duration."
         : `Completed sessions with comparable duration evidence averaged ${averageActualDuration} minutes against a ${averageTargetDuration}-minute planned midpoint.${
             nonCompletionPattern.status === "dominant" &&
             nonCompletionPattern.dominantReason != null
               ? ` ${nonCompletionPattern.dominantReason.replaceAll("_", " ")} was the dominant recorded cause of planned outcomes not completed as originally prescribed.`
               : " No dominant cause for planned outcomes not completed as originally prescribed passes the coverage rule."
-          }`,
+          }${durationTargetConflicts.length ? ` ${durationTargetConflicts.length} additional completed session${durationTargetConflicts.length === 1 ? " has a" : "s have"} conflicting frozen duration target${durationTargetConflicts.length === 1 ? "" : "s"}; those comparisons are suppressed.` : ""}`,
       conclusionStrength:
         averageActualDuration == null ? "insufficient_evidence" : "qualified_conclusion",
       evidenceRefs: programExecutionEvidenceRefs.length
         ? programExecutionEvidenceRefs
         : [reportWindowRef],
       coverageMetricId: null,
-      limitations: averageActualDuration == null
-        ? ["Comparable planned and actual duration evidence is unavailable."]
-        : ["Only completed sessions with frozen targets and supported active time are compared; abandoned sessions remain visible as individual facts but do not affect the period duration pattern."],
+      limitations: [
+        ...(averageActualDuration == null
+          ? ["Comparable planned and actual duration evidence is unavailable."]
+          : ["Only completed sessions with frozen targets and supported active time are compared; abandoned sessions remain visible as individual facts but do not affect the period duration pattern."]),
+        ...(durationTargetConflicts.length
+          ? ["A frozen workout target outside 50%–150% of the athlete session-length preference is treated as a material configuration conflict; retained target and actual duration facts remain visible, but percentages are not calculated."]
+          : []),
+      ],
     },
     {
       id: "progression",
@@ -1699,7 +1775,13 @@ async function buildTrainingDigestOnce(
   }
 
   return {
-    range: { since: effectiveSince, until: now },
+    range: {
+      since: effectiveSince,
+      until: now,
+      sinceLocalDate,
+      untilLocalDate,
+      timezone: profile.timezone,
+    },
     reporting: {
       evidenceRevision: startingEvidenceRevision,
       supplementalContextBoundary:
@@ -1749,6 +1831,13 @@ async function buildTrainingDigestOnce(
           s.plannedDurationSemanticsVersion === 1
             ? s.plannedDurationMaxMinutes
             : null,
+        targetSource:
+          s.plannedDurationSemanticsVersion === 1
+            ? s.plannedDurationSource as
+              | "program_day_target"
+              | "program_day_duration_override"
+            : null,
+        athletePreferenceMinutes: profile.sessionLengthMin,
         actualMinutes: roundedDuration,
       });
       const warmupOccurrences: WarmupOccurrence[] = s.occurrences
@@ -2384,7 +2473,7 @@ export function renderCoachingBrief(digest: TrainingDigest): string {
       .join(", ")} (exact IDs in the audit appendix)`;
   };
   const lines: string[] = [
-    `# Training brief — ${fmtDate(digest.range.since)} to ${fmtDate(digest.range.until)}`,
+    `# Training brief — ${digest.range.sinceLocalDate} to ${digest.range.untilLocalDate} (${digest.range.timezone})`,
     "",
     "## Coach Summary",
     ...digest.reporting.coachSummary.statements.flatMap((statement) => [
@@ -2411,10 +2500,19 @@ export function renderCoachingBrief(digest: TrainingDigest): string {
     const variance = duration.varianceMinutes == null
       ? "unknown"
       : `${duration.varianceMinutes > 0 ? "+" : ""}${duration.varianceMinutes} min / ${duration.variancePercentage! > 0 ? "+" : ""}${duration.variancePercentage}%`;
+    const durationSource = duration.targetSource == null
+      ? "source unknown"
+      : duration.targetSource === "program_day_target"
+        ? "frozen Program day target"
+        : "frozen Program day duration override";
+    const durationContext =
+      duration.targetConsistency.status === "material_conflict"
+        ? `- Duration context — Planned range: ${durationTarget} (${durationSource}). Recorded active time: ${duration.actualMinutes == null ? "unknown" : `${duration.actualMinutes} min`}. Comparison suppressed: this frozen target materially conflicts with the athlete's approximately ${duration.targetConsistency.athletePreferenceMinutes}-minute session preference; no duration difference or percentage is calculated until the target provenance is resolved.`
+        : `- Duration context — Planned range: ${durationTarget} (${durationSource}). Recorded active time: ${duration.actualMinutes == null ? "unknown" : `${duration.actualMinutes} min`}. Difference: ${variance}. Comparison to planned range: ${duration.status.replaceAll("_", " ")}. Within tolerance: ${duration.withinTolerance == null ? "unknown" : duration.withinTolerance ? "yes" : "no"}.`;
     lines.push(
       `### ${fmtDate(session.date)} — ${session.template ?? "Workout"}`,
       `- Session state: ${session.status.replaceAll("_", " ")}${session.completion ? `; ${session.completion.state.replaceAll("_", " ")}${session.completion.reason ? ` because ${session.completion.reason.replaceAll("_", " ")}` : ""}` : "; historical completion semantics unavailable"}.`,
-      `- Duration context — Planned range: ${durationTarget}. Recorded active time: ${duration.actualMinutes == null ? "unknown" : `${duration.actualMinutes} min`}. Difference: ${variance}. Comparison to planned range: ${duration.status.replaceAll("_", " ")}. Within tolerance: ${duration.withinTolerance == null ? "unknown" : duration.withinTolerance ? "yes" : "no"}.`,
+      durationContext,
       ...(session.durationExcludedFromPeriodAnalysis
         ? [duration.actualMinutes == null
             ? "- Duration analysis: no supported active duration is available; this session is excluded from period averages and duration conclusions."
@@ -2599,7 +2697,8 @@ export function renderCoachingBrief(digest: TrainingDigest): string {
     `Target classification rule: ${target.algorithmVersion}. Each row keeps plan, performance, measurement, outcome, and analytical eligibility as separate facets.`,
     ...digest.reporting.occurrences.map((occurrence) => {
       const source = occurrenceEvidenceByProjection.get(occurrence.id);
-      return `- Projection ${occurrence.id}: source ${source ? `${source.kind}:${source.id}` : "unresolved"}; planned outcome ${occurrence.plannedOutcome ? "yes" : "no"}; plan relationship ${occurrence.planRelationship}; performance ${occurrence.performanceState}; resolution ${occurrence.resolution}; reason ${occurrence.reason ?? "none"}; measurement ${occurrence.measurementKind}, coverage ${occurrence.measurementCoverage}, counting basis ${occurrence.countingBasis}; target outcome ${occurrence.targetOutcome}; analytical eligibility ${occurrence.analyticalEligibility}${occurrence.analyticalExclusionReason ? ` (${occurrence.analyticalExclusionReason})` : ""}; frozen target/result evidence: ${projectionTargetEvidence(occurrence.id)}.`;
+      const dimensions = occurrence.targetDimensions;
+      return `- Projection ${occurrence.id}: source ${source ? `${source.kind}:${source.id}` : "unresolved"}; planned outcome ${occurrence.plannedOutcome ? "yes" : "no"}; plan relationship ${occurrence.planRelationship}; performance ${occurrence.performanceState}; resolution ${occurrence.resolution}; reason ${occurrence.reason ?? "none"}; measurement ${occurrence.measurementKind}, coverage ${occurrence.measurementCoverage}, counting basis ${occurrence.countingBasis}; target outcome ${occurrence.targetOutcome}; target dimensions ${dimensions.evaluability} — repetitions ${dimensions.repetitions.outcome}${dimensions.repetitions.limitation ? ` (${dimensions.repetitions.limitation})` : ""}, load ${dimensions.load.outcome}${dimensions.load.limitation ? ` (${dimensions.load.limitation})` : ""}; analytical eligibility ${occurrence.analyticalEligibility}${occurrence.analyticalExclusionReason ? ` (${occurrence.analyticalExclusionReason})` : ""}; frozen target/result evidence: ${projectionTargetEvidence(occurrence.id)}.`;
     }),
     "",
     "### Coverage metric derivations",
