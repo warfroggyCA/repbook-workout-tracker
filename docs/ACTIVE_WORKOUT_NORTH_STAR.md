@@ -186,8 +186,11 @@ view over the existing occurrences and completed sets, not a new data store.
 
 ### 4. Rest strip
 
-Rest appears as a neutral strip directly above the fixed action area. It uses
-about one compact row of vertical space. While it runs:
+Rest appears as a neutral, clearly separated cool-toned strip directly above
+the fixed action area. Its boundary, surface, and countdown hierarchy make it
+distinct from the surrounding application without borrowing the amber used for
+decisions or the green used for completion. It uses about one compact row of
+vertical space. While it runs:
 
 - the next current set remains visible and editable;
 - the primary Log set action remains available when the write contracts permit
@@ -651,7 +654,8 @@ Objective: make rest informative without taking the next set away.
 
 Work:
 
-- render the neutral compact rest strip above the fixed action area;
+- render the neutral, visually distinct compact rest strip above the fixed
+  action area;
 - keep the next current set editable and, when queue safety permits, loggable;
 - rename the explicit action **End rest**;
 - implement the four-second rest-complete confirmation and single polite

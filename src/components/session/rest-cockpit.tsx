@@ -1,6 +1,6 @@
 "use client";
 
-import { Check } from "lucide-react";
+import { Check, Timer } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
@@ -36,23 +36,27 @@ export function RestCockpit({
       data-testid="rest-cockpit"
       data-rest-phase={phase}
       className={cn(
-        "col-span-full min-w-0 border-b border-border pb-1",
-        running && "bg-muted/35",
+        "col-span-full min-w-0",
+        running &&
+          "mb-0.5 rounded-xl border-2 border-primary/40 bg-[var(--surface-selected)] px-2 py-1.5 shadow-sm",
         !running &&
           phase === "ready" &&
-          "border-emerald-600/35 bg-emerald-50/80 text-emerald-950 dark:bg-emerald-950/65 dark:text-emerald-100",
-        !running && phase === "skipped" && "bg-muted/35",
+          "border-b border-emerald-600/35 bg-emerald-50/80 pb-1 text-emerald-950 dark:bg-emerald-950/65 dark:text-emerald-100",
+        !running &&
+          phase === "skipped" &&
+          "border-b border-border bg-muted/35 pb-1",
       )}
     >
       {running ? (
         <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_repeat(3,auto)] items-center gap-1.5 max-[360px]:grid-cols-3 max-[360px]:gap-1">
           <div className="min-w-0 max-[360px]:col-span-3">
             <p className="flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5 leading-none">
-              <span className="text-xs font-semibold uppercase tracking-[0.1em]">
+              <span className="inline-flex items-center gap-1 text-xs font-bold uppercase tracking-[0.1em] text-primary">
+                <Timer aria-hidden="true" className="size-3.5" />
                 Rest
               </span>
               <span
-                className="text-lg font-semibold tabular-nums"
+                className="text-xl font-bold tracking-tight tabular-nums"
                 aria-label={`${Math.floor(remainingSeconds / 60)} minutes ${remainingSeconds % 60} seconds remaining`}
               >
                 {Math.floor(remainingSeconds / 60)}:{String(
@@ -74,7 +78,7 @@ export function RestCockpit({
             type="button"
             variant="outline"
             size="sm"
-            className="h-[44px] min-h-[44px] min-w-[44px] px-[6px] text-xs max-[360px]:w-full"
+            className="h-[44px] min-h-[44px] min-w-[44px] border-primary/25 bg-background/90 px-[6px] text-xs shadow-xs max-[360px]:w-full"
             onClick={() => onAdjust(-15)}
             aria-label="Decrease rest by 15 seconds"
           >
@@ -84,7 +88,7 @@ export function RestCockpit({
             type="button"
             variant="outline"
             size="sm"
-            className="h-[44px] min-h-[44px] min-w-[44px] px-[6px] text-xs max-[360px]:w-full"
+            className="h-[44px] min-h-[44px] min-w-[44px] border-primary/25 bg-background/90 px-[6px] text-xs shadow-xs max-[360px]:w-full"
             onClick={() => onAdjust(15)}
             aria-label="Increase rest by 15 seconds"
           >
@@ -94,7 +98,7 @@ export function RestCockpit({
             type="button"
             variant="outline"
             size="sm"
-            className="h-[44px] min-h-[44px] min-w-[44px] px-[6px] text-xs max-[360px]:w-full"
+            className="h-[44px] min-h-[44px] min-w-[44px] border-primary/25 bg-background/90 px-[6px] text-xs shadow-xs max-[360px]:w-full"
             onClick={onEnd}
           >
             End rest
