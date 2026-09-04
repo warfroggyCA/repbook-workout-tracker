@@ -414,6 +414,31 @@ describe("0069 bodyweight Bulgarian split-squat performed variant", () => {
       }),
     ).resolves.toBeUndefined();
 
+    await expect(
+      logWorkoutSet(db, userId, {
+        sessionExerciseId: activeSessionExerciseId,
+        setNo: 1,
+        weight: null,
+        weightUnit: null,
+        reps: 10,
+        rpe: 8,
+        isWarmup: false,
+        note: "Performed without external load",
+        clientKey: crypto.randomUUID(),
+      }),
+    ).resolves.toEqual({ outcome: "equipment_selection_required" });
+    await expect(
+      db.query.completedSets.findFirst({
+        where: eq(completedSets.sessionExerciseId, activeSessionExerciseId),
+      }),
+    ).resolves.toBeUndefined();
+
+    await database.client.query(
+      `INSERT INTO equipment_items (id, user_id, type, label, available)
+       VALUES ($1, $2, 'bench', 'Training bench', true)`,
+      [crypto.randomUUID(), userId],
+    );
+
     const saved = await logWorkoutSet(db, userId, {
       sessionExerciseId: activeSessionExerciseId,
       setNo: 1,
