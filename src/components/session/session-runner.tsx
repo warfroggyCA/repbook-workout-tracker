@@ -2196,6 +2196,9 @@ export function SessionRunner(props: SessionRunnerProps) {
     (occurrence) =>
       occurrence.origin === "planned" && occurrence.outcome === "pending",
   ).length;
+  const sessionEquipmentEntries = equipmentSelectionOutbox.entries.filter(
+    (entry) => entry.ownerId === props.ownerId && entry.sessionId === props.sessionId,
+  );
   const finishEquipmentReasonAvailable = pendingPlannedOccurrences > 0 &&
     occurrences.filter((occurrence) => occurrence.outcome === "pending")
       .every((occurrence) => {
@@ -2243,9 +2246,6 @@ export function SessionRunner(props: SessionRunnerProps) {
       legacyUnknown: round.legacyUnknown,
       completedWithoutResult: round.completedWithoutResult,
     })),
-  );
-  const sessionEquipmentEntries = equipmentSelectionOutbox.entries.filter(
-    (entry) => entry.ownerId === props.ownerId && entry.sessionId === props.sessionId,
   );
   const exitQueues: WorkoutExitQueues = {
     unsyncedSetCount: sessionEntries.length,
