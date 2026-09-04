@@ -108,7 +108,7 @@ test("previews, minimizes, and deliberately downloads a separate local support b
       schemaVersion: "support-bundle/1",
       redactionVersion: "support-redaction/1",
       purpose: "repbook_support_diagnosis",
-      application: expect.objectContaining({ version: "2.2.0" }),
+      application: expect.objectContaining({ version: "2.3.0" }),
       problem: { type: "page_display", errorCode: "layout_overflow" },
       privacy: {
         localExportOnly: true,
