@@ -496,7 +496,7 @@ test("keeps the full live workout usable through warm-up, skip, replace, continu
     exact: true,
   });
   const continueWithout = incompatible.getByRole("button", {
-    name: "Continue without replacement",
+    name: "Keep skipped and continue",
     exact: true,
   });
   await expectReachableTarget(replace);
