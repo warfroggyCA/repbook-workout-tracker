@@ -38,7 +38,7 @@ export function RestCockpit({
       className={cn(
         "col-span-full min-w-0",
         running &&
-          "mb-0.5 rounded-xl border-2 border-primary/40 bg-[var(--surface-selected)] px-2 py-1.5 shadow-sm",
+          "rounded-xl border-2 border-primary/40 bg-[var(--surface-selected)] px-2 py-1 shadow-sm max-[360px]:rounded-lg max-[360px]:border max-[360px]:px-1 max-[360px]:py-0",
         !running &&
           phase === "ready" &&
           "border-b border-emerald-600/35 bg-emerald-50/80 pb-1 text-emerald-950 dark:bg-emerald-950/65 dark:text-emerald-100",
@@ -56,7 +56,7 @@ export function RestCockpit({
                 Rest
               </span>
               <span
-                className="text-xl font-bold tracking-tight tabular-nums"
+                className="text-xl font-bold tracking-tight tabular-nums max-[360px]:text-lg"
                 aria-label={`${Math.floor(remainingSeconds / 60)} minutes ${remainingSeconds % 60} seconds remaining`}
               >
                 {Math.floor(remainingSeconds / 60)}:{String(
