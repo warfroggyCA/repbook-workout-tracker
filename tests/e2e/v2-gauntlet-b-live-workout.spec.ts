@@ -202,7 +202,10 @@ async function openMoreForExercise(card: Locator) {
 
 async function skipForEquipment(card: Locator, page: Page) {
   await openMoreForExercise(card);
-  await card.getByRole("button", { name: "Skip exercise", exact: true }).click();
+  await card
+    .getByTestId("active-exercise-details")
+    .getByRole("button", { name: "Skip exercise", exact: true })
+    .click();
   const dialog = page.getByRole("dialog", { name: "Skip exercise — why?" });
   await dialog
     .getByRole("button", {
@@ -362,6 +365,7 @@ test("keeps the full live workout usable through warm-up, skip, replace, continu
   });
   await openMoreForExercise(incompatible);
   await incompatible
+    .getByTestId("active-exercise-details")
     .getByRole("button", { name: "Skip exercise", exact: true })
     .click();
   await page
@@ -567,7 +571,9 @@ test("keeps the full live workout usable through warm-up, skip, replace, continu
   await expect(unskip).toHaveCount(0);
   await openMoreForExercise(incompatible);
   await expect(
-    incompatible.getByRole("button", { name: "Skip exercise", exact: true }),
+    incompatible
+      .getByTestId("active-exercise-details")
+      .getByRole("button", { name: "Skip exercise", exact: true }),
   ).toBeVisible();
   await skipForEquipment(incompatible, page);
   await expect(

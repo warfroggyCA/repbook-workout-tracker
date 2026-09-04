@@ -453,7 +453,15 @@ export function buildSessionEquipmentPresentation(input: {
       primaries.find((entry) => entry.equipmentItemId === candidate.equipmentItemId)!,
     );
   } else {
-    return { setup: null, plateConfig: null };
+    // Reps-only and bodyweight movements can still depend on physical
+    // equipment (for example, suspension straps). Preserve a canonical
+    // unavailable/incompatible decision even when the exercise has no load
+    // setup to select; otherwise the UI and server-side skip validation would
+    // incorrectly treat the equipment fact as unknown.
+    if (exactResolution.available) {
+      return { setup: null, plateConfig: null };
+    }
+    eligible = [];
   }
 
   const options = eligible.flatMap((primary) => {
