@@ -7,6 +7,7 @@ import {
   resolveExactEquipmentAvailability,
   type ExactExecutionCandidate,
   type ExactExecutionRequirement,
+  type ExactAvailabilityResolution,
 } from "@/engine/exact-equipment-availability";
 import { resolveImplementLoadSelection } from "@/engine/implement-load-selection";
 import {
@@ -344,6 +345,34 @@ function asExactCandidate(
   };
 }
 
+/**
+ * Canonical current-inventory verdict for a catalog exercise. Exercise pickers
+ * and the active-workout setup resolver share this projection so a broad
+ * category such as `machine` cannot hide a stricter reviewed profile or
+ * geometry requirement.
+ */
+export function resolveExerciseEquipmentAvailability(input: {
+  requirements: EquipmentRequirement[];
+  exactRequirement: ExactExecutionRequirement | null;
+  profiles: LoadedEquipmentLoadProfile[];
+  inventory: InventoryItem[];
+  plates: EquipmentPresentationPlate[];
+}): ExactAvailabilityResolution {
+  const exactCandidates = input.profiles.flatMap((profile) => {
+    const candidate = asExactCandidate(profile, input.profiles);
+    return candidate ? [candidate] : [];
+  });
+  return resolveExactEquipmentAvailability({
+    broadRequirements: input.requirements,
+    broadInventory: buildEquipmentAvailability(
+      input.inventory,
+      input.plates.map((plate) => ({ denomination: plate.denomination })),
+    ),
+    exactRequirement: input.exactRequirement,
+    exactCandidates,
+  });
+}
+
 function attachmentMatches(
   exact: ExactExecutionRequirement | null,
   attachment: LoadedEquipmentLoadProfile,
@@ -365,18 +394,12 @@ export function buildSessionEquipmentPresentation(input: {
 }): { setup: SessionEquipmentSetup | null; plateConfig: PlateMathConfig | null } {
   const { exercise, profiles, plates } = input;
   const primaries = profiles.filter((entry) => entry.profile.kind !== "attachment");
-  const exactCandidates = primaries.flatMap((profile) => {
-    const candidate = asExactCandidate(profile, profiles);
-    return candidate ? [candidate] : [];
-  });
-  const exactResolution = resolveExactEquipmentAvailability({
-    broadRequirements: exercise.requirements,
-    broadInventory: buildEquipmentAvailability(
-      input.inventory,
-      plates.map((plate) => ({ denomination: plate.denomination })),
-    ),
+  const exactResolution = resolveExerciseEquipmentAvailability({
+    requirements: exercise.requirements,
     exactRequirement: exercise.exactRequirement,
-    exactCandidates,
+    profiles,
+    inventory: input.inventory,
+    plates,
   });
 
   let eligible: LoadedEquipmentLoadProfile[];

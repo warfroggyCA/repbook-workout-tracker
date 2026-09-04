@@ -27,7 +27,7 @@ function optionalText(value: string) { return value.trim() ? value : null; }
 function displayLabel(value: string) { return value.replaceAll("_", " ").replace(/\b\w/g, (character) => character.toUpperCase()); }
 
 export const DayEditor = memo(function DayEditor({ editor, canReview = false }: { editor: ProgramEditorController; canReview?: boolean }) {
-  const { document, revision, router, library, updateDocument, activeDayId, setActiveDayId, dayHeadingRefs, updateDay, addDay, addExercise, pairingDayId, setPairingDayId, pairingSlotIds, setPairingSlotIds, expandedSlotId, setExpandedSlotId, slotHeadingRefs, exerciseById, moveSlotToDay, requestReview, reviewing } = editor;
+  const { document, revision, router, library, updateDocument, activeDayId, setActiveDayId, dayHeadingRefs, updateDay, addDay, addExercise, pairingDayId, setPairingDayId, pairingSlotIds, setPairingSlotIds, expandedSlotId, setExpandedSlotId, slotHeadingRefs, exerciseById, moveSlotToDay, requestReview, reviewing, pendingFutureReplacementRequest, futureReplacementTarget, clearFutureReplacementRequest } = editor;
   const [reorderAnnouncement, setReorderAnnouncement] = useState("");
   const [reorderGesture, setReorderGesture] = useState<{
     dayLineageId: string;
@@ -913,6 +913,12 @@ export const DayEditor = memo(function DayEditor({ editor, canReview = false }: 
                         days={document.days}
                         library={library}
                         exercise={exerciseById.get(slot.exerciseId)}
+                        futureReplacementRequested={
+                          futureReplacementTarget?.status === "ready" &&
+                          pendingFutureReplacementRequest?.dayLineageId === day.lineageId &&
+                          pendingFutureReplacementRequest.slotLineageId === slot.lineageId
+                        }
+                        onFutureReplacementRequestConsumed={clearFutureReplacementRequest}
                         onChange={(next) =>
                           updateDay(dayIndex, (current) =>
                             updateProgramSlotInDay(current, slotIndex, next),
@@ -939,7 +945,7 @@ export const DayEditor = memo(function DayEditor({ editor, canReview = false }: 
                         onMoveToDay={(target) =>
                           moveSlotToDay(dayIndex, slotIndex, target)
                         }
-                        onReplace={(exerciseId) =>
+                        onReplace={(exerciseId) => {
                           updateDay(dayIndex, (current) => {
                             const replacement = replaceProgramExercise(
                               current.exercises[slotIndex],
@@ -965,8 +971,14 @@ export const DayEditor = memo(function DayEditor({ editor, canReview = false }: 
                                 },
                               },
                             };
-                          })
-                        }
+                          });
+                          if (
+                            pendingFutureReplacementRequest?.dayLineageId === day.lineageId &&
+                            pendingFutureReplacementRequest.slotLineageId === slot.lineageId
+                          ) {
+                            clearFutureReplacementRequest();
+                          }
+                        }}
                         labelledBy={`editor-${slot.lineageId}-label`}
                         />
                         </div>}

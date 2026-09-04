@@ -34,16 +34,20 @@ export type ProgramSlotRemovalRequest = {
   exerciseId: string;
 };
 
+export type ProgramSlotReplacementRequest = ProgramSlotRemovalRequest;
+
 export function useProgramEditorController({
   ownerId,
   library,
   initialDayId,
   initialRemovalRequest,
+  initialReplacementRequest,
 }: {
   ownerId: string;
   library: ExerciseDiscoveryItem[];
   initialDayId: string | null;
   initialRemovalRequest: ProgramSlotRemovalRequest | null;
+  initialReplacementRequest: ProgramSlotReplacementRequest | null;
 }) {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState("edit");
@@ -59,10 +63,14 @@ export function useProgramEditorController({
   const [pairingDayId, setPairingDayId] = useState<string | null>(null);
   const [pairingSlotIds, setPairingSlotIds] = useState<string[]>([]);
   const [expandedSlotId, setExpandedSlotId] = useState<string | null>(
-    initialRemovalRequest?.slotLineageId ?? null,
+    initialRemovalRequest?.slotLineageId ??
+      initialReplacementRequest?.slotLineageId ??
+      null,
   );
   const [pendingFutureRemovalRequest, setPendingFutureRemovalRequest] =
     useState<ProgramSlotRemovalRequest | null>(initialRemovalRequest);
+  const [pendingFutureReplacementRequest, setPendingFutureReplacementRequest] =
+    useState<ProgramSlotReplacementRequest | null>(initialReplacementRequest);
   const [coachProposal, setCoachProposal] = useState<{
     proposal: ProgramUpdateProposal;
     warnings: string[];
@@ -176,12 +184,81 @@ export function useProgramEditorController({
     pendingFutureRemovalRequest,
   ]);
 
+  const futureReplacementTarget = useMemo(() => {
+    const request = pendingFutureReplacementRequest;
+    if (!request || !document) return null;
+    if (conflictDraft) {
+      return {
+        status: "blocked" as const,
+        message:
+          "Resolve the newer Program draft before choosing this replacement. Repbook has not changed either copy.",
+      };
+    }
+    if (document.programId !== request.programId) {
+      return {
+        status: "blocked" as const,
+        message:
+          "This workout came from a different Program. Repbook will not guess which current exercise to replace.",
+      };
+    }
+    const day = document.days.find(
+      (candidate) => candidate.lineageId === request.dayLineageId,
+    );
+    if (!day) {
+      return {
+        status: "blocked" as const,
+        message:
+          "That workout day is no longer present in the current Program draft. Nothing was changed.",
+      };
+    }
+    const slot = day.exercises.find(
+      (candidate) => candidate.lineageId === request.slotLineageId,
+    );
+    if (!slot) {
+      return {
+        status: "blocked" as const,
+        message:
+          "That planned exercise is no longer present in this Program day. Nothing was changed.",
+      };
+    }
+    if (slot.exerciseId !== request.exerciseId) {
+      return {
+        status: "blocked" as const,
+        message:
+          "That Program slot now contains a different exercise. Repbook will not replace it automatically.",
+      };
+    }
+    return {
+      status: "ready" as const,
+      dayName: day.name,
+      exerciseName:
+        exerciseById.get(slot.exerciseId)?.name ?? "this exercise",
+    };
+  }, [
+    conflictDraft,
+    document,
+    exerciseById,
+    pendingFutureReplacementRequest,
+  ]);
+
   function clearFutureRemovalRequest() {
     const day = documentRef.current?.days.find(
       (candidate) =>
         candidate.lineageId === pendingFutureRemovalRequest?.dayLineageId,
     );
     setPendingFutureRemovalRequest(null);
+    router.replace(
+      day ? `/program/edit?day=${encodeURIComponent(day.lineageId)}` : "/program/edit",
+      { scroll: false },
+    );
+  }
+
+  function clearFutureReplacementRequest() {
+    const day = documentRef.current?.days.find(
+      (candidate) =>
+        candidate.lineageId === pendingFutureReplacementRequest?.dayLineageId,
+    );
+    setPendingFutureReplacementRequest(null);
     router.replace(
       day ? `/program/edit?day=${encodeURIComponent(day.lineageId)}` : "/program/edit",
       { scroll: false },
@@ -579,6 +656,7 @@ export function useProgramEditorController({
     coachPrompt, coachMode, coachBuilding, coachMessage, pairingDayId, pairingSlotIds,
     expandedSlotId, coachProposal, acceptedCoachChanges, confirmDiscard, confirmRestore,
     pendingFutureRemovalRequest, futureRemovalTarget,
+    pendingFutureReplacementRequest, futureReplacementTarget,
     publishedVersion, comparison, inspection, inspectingId, conflictCopyMessage,
     dayHeadingRefs, slotHeadingRefs, inspectionHeadingRef, documentRef, draftRef,
     revisionRef, pendingMutationRef, dirtyRef, exerciseById,
@@ -590,6 +668,7 @@ export function useProgramEditorController({
     loadDraft, savePending, updateDocument, buildCoachProposal, updateDay, addExercise,
     addDay, moveSlotToDay, requestReview, publish, discard, restoreVersion,
     clearFutureRemovalRequest, stageFutureRemoval,
+    clearFutureReplacementRequest,
     compareVersion, inspectVersion, exportDraft,
   };
 }

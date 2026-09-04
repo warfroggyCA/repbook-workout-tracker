@@ -7,8 +7,11 @@ import * as schema from "@/db/schema";
 import {
   constraints,
   exerciseEquipmentRequirements,
+  exerciseExecutionRequirements,
   exerciseFamilies,
   exercises,
+  equipmentItems,
+  plateLoadedMachineProfiles,
   sessionExercises,
   users,
   workoutSessions,
@@ -167,10 +170,11 @@ describe("workout replacement contract", () => {
       unavailableReason: null,
     });
     expect(byId.get(missingEquipment.id)).toMatchObject({
-      available: true,
-      unavailableReason: null,
+      available: false,
+      unavailableReason: "Needs cable station.",
       missingEquipment: ["cable"],
     });
+    expect(options.permittedIds).toContain(missingEquipment.id);
     expect(options.warnings[missingEquipment.id]).toMatch(
       /Needs cable station.*will not invent or reuse an incompatible setup/i,
     );
@@ -182,6 +186,122 @@ describe("workout replacement contract", () => {
       available: false,
       unavailableReason: "Blocked by your current safety constraints.",
     });
+    expect(options.permittedIds).not.toContain(constrained.id);
+    expect(options.disabledReasons[constrained.id]).toBe(
+      "Blocked by your current safety constraints.",
+    );
+  });
+
+  it("uses the exact saved machine profile when advertising a replacement as available", async () => {
+    const [{ id: userId }] = await db
+      .insert(users)
+      .values({ email: `exact-replacement-${crypto.randomUUID()}@example.com` })
+      .returning({ id: users.id });
+    const [planned, plateLoadedPulldown] = await db
+      .insert(exercises)
+      .values([
+        {
+          name: `Planned row ${crypto.randomUUID()}`,
+          movementPattern: "horizontal_pull",
+          primaryMuscles: ["back"],
+          loadType: "bodyweight",
+          metricType: "reps",
+          loadSemantics: "bodyweight",
+        },
+        {
+          name: `Plate-Loaded Lat Pulldown ${crypto.randomUUID()}`,
+          movementPattern: "vertical_pull",
+          primaryMuscles: ["back"],
+          loadType: "external",
+          metricType: "weight_reps",
+          loadSemantics: "machine_stack",
+        },
+      ])
+      .returning();
+    await db.insert(exerciseEquipmentRequirements).values({
+      exerciseId: plateLoadedPulldown.id,
+      equipmentType: "machine",
+    });
+    await db.insert(exerciseExecutionRequirements).values({
+      exerciseId: plateLoadedPulldown.id,
+      requiredProfileKind: "plate_loaded_machine",
+      requiresKnownGeometry: true,
+      reviewedAt: new Date("2026-09-03T12:00:00.000Z"),
+    });
+    const [{ id: machineId }] = await db
+      .insert(equipmentItems)
+      .values({
+        userId,
+        type: "machine",
+        label: "Saved pulldown machine",
+        available: true,
+      })
+      .returning({ id: equipmentItems.id });
+    const [{ id: sessionId }] = await db
+      .insert(workoutSessions)
+      .values({
+        userId,
+        status: "in_progress",
+        startedAt: new Date("2026-09-03T12:00:00.000Z"),
+        timezone: "America/Toronto",
+        localDate: "2026-09-03",
+      })
+      .returning({ id: workoutSessions.id });
+    const [{ id: sessionExerciseId }] = await db
+      .insert(sessionExercises)
+      .values({
+        sessionId,
+        exerciseId: planned.id,
+        targetSets: 3,
+        targetRepsMin: 8,
+        targetRepsMax: 12,
+      })
+      .returning({ id: sessionExercises.id });
+
+    const withoutExactProfile = await getExerciseReplacementOptions(
+      db,
+      userId,
+      sessionExerciseId,
+    );
+    expect(
+      withoutExactProfile.items.find(
+        (item) => item.id === plateLoadedPulldown.id,
+      ),
+    ).toMatchObject({
+      available: false,
+      unavailableReason:
+        "Needs a compatible plate-loaded machine with confirmed geometry.",
+    });
+    expect(withoutExactProfile.permittedIds).toContain(plateLoadedPulldown.id);
+    expect(withoutExactProfile.warnings[plateLoadedPulldown.id]).toMatch(
+      /compatible plate-loaded machine with confirmed geometry/i,
+    );
+
+    await db.insert(plateLoadedMachineProfiles).values({
+      userId,
+      equipmentItemId: machineId,
+      geometryCertainty: "known",
+      startingResistance: 0,
+      startingResistanceUnit: "lb",
+      loadingPointCount: 2,
+      balancingRule: "identical_each_point",
+      targetEntryMeaning: "total_system",
+    });
+
+    const withExactProfile = await getExerciseReplacementOptions(
+      db,
+      userId,
+      sessionExerciseId,
+    );
+    expect(
+      withExactProfile.items.find(
+        (item) => item.id === plateLoadedPulldown.id,
+      ),
+    ).toMatchObject({
+      available: true,
+      unavailableReason: null,
+    });
+    expect(withExactProfile.warnings[plateLoadedPulldown.id]).toBeUndefined();
   });
 });
 

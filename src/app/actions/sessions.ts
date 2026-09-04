@@ -65,6 +65,7 @@ import type { WorkoutStartState } from "@/lib/workout-start";
 import { isPhase0StartDisposableAcceptanceRuntime } from "@/lib/acceptance-runtime";
 import {
   mutateSessionEquipmentSelection,
+  resolveCatalogExerciseEquipmentAvailability,
   resolveSessionEquipmentAvailability,
 } from "@/services/session-equipment-selection";
 import {
@@ -1000,15 +1001,7 @@ export async function replaceExercise(input: {
     );
     const target = options.items.find((item) => item.id === parsed.newExerciseId);
     const targetIsCurrent = target?.id === options.currentExerciseId;
-    if (!target || (!target.available && !targetIsCurrent)) {
-      return actionFailure(
-        "replacement_unavailable",
-        target?.unavailableReason ??
-          "That exercise cannot be represented safely in this workout.",
-      );
-    }
-
-    if (existingVersion) {
+    if (existingVersion && targetIsCurrent && target) {
       revalidatePath(`/session/${sessionExercise.sessionId}`);
       return {
         ok: true as const,
@@ -1019,6 +1012,32 @@ export async function replaceExercise(input: {
         equipmentWarning: options.warnings[target.id] ?? null,
         replayed: true,
       };
+    }
+    if (!target || !options.permittedIds.includes(parsed.newExerciseId)) {
+      return actionFailure(
+        "replacement_unavailable",
+        options.disabledReasons[parsed.newExerciseId] ??
+          target?.unavailableReason ??
+          "That exercise cannot be represented safely in this workout.",
+      );
+    }
+    const targetAvailability =
+      parsed.reason === "equipment_unavailable_incompatible"
+        ? await resolveCatalogExerciseEquipmentAvailability(
+            db,
+            user.id,
+            target.id,
+          )
+        : null;
+    if (
+      parsed.reason === "equipment_unavailable_incompatible" &&
+      (targetAvailability == null || targetAvailability.decisionState !== "ready")
+    ) {
+      return actionFailure(
+        "replacement_unavailable",
+        target.unavailableReason ??
+          "That exercise does not have a compatible saved setup.",
+      );
     }
 
     const updated = await updateSessionExerciseWithVersion(
@@ -1054,6 +1073,12 @@ export async function replaceExercise(input: {
                 includeCurrentRequirements:
                   availability.requirementsEvidence === "legacy_unknown" &&
                   !availability.usesPrescribedMeaning,
+                ...(targetAvailability == null
+                  ? {}
+                  : {
+                      targetExerciseId: targetAvailability.exerciseId,
+                      targetSourceRevision: targetAvailability.sourceRevision,
+                    }),
               },
             }),
       },

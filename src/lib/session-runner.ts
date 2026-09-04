@@ -75,6 +75,37 @@ export function futureProgramRemovalOption(input: {
   };
 }
 
+export function futureProgramReplacementOption(input: {
+  sourceProgramId: string | null | undefined;
+  sourceDayLineageId: string | null | undefined;
+  dayName: string;
+  exercise: SessionExerciseData;
+}) {
+  const { exercise } = input;
+  if (
+    exercise.modificationType === "added" ||
+    !input.sourceProgramId ||
+    !input.sourceDayLineageId ||
+    !exercise.sourceSlotLineageId
+  ) {
+    return null;
+  }
+  const plannedExerciseId =
+    exercise.substitutedForExerciseId ?? exercise.exerciseId;
+  const query = new URLSearchParams({
+    intent: "replace",
+    program: input.sourceProgramId,
+    day: input.sourceDayLineageId,
+    slot: exercise.sourceSlotLineageId,
+    exercise: plannedExerciseId,
+  });
+  return {
+    href: `/program/edit?${query.toString()}`,
+    dayName: input.dayName,
+    plannedExerciseName: exercise.plannedExerciseName ?? exercise.name,
+  };
+}
+
 export function restTimerSecondsAfterQueuedSet(input: {
   plannedRestSeconds: number | null | undefined;
   pendingActionCount: number;

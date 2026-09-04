@@ -299,6 +299,39 @@ describe("ExerciseCard", () => {
     expect(source).not.toContain(
       'if (result.code === "replacement_stale") {\n                      mutationRef.current = null;\n                      const controller = new AbortController()',
     );
+    expect(source).toContain("allowedIds={options.permittedIds}");
+    expect(source).toContain("disabledReasons={options.disabledReasons}");
+    expect(source).toContain(
+      "allowUnavailableSelection={forcedReason == null}",
+    );
+  });
+
+  it("keeps equipment decisions with their exercise and makes equipment skips direct", () => {
+    const cardSource = readFileSync(
+      "src/components/session/exercise-card.tsx",
+      "utf8",
+    );
+    const runnerSource = readFileSync(
+      "src/components/session/session-runner.tsx",
+      "utf8",
+    );
+
+    expect(cardSource.indexOf("{equipmentDecision}")).toBeGreaterThan(
+      cardSource.indexOf("session-exercise-heading-"),
+    );
+    expect(cardSource.indexOf("{equipmentDecision}")).toBeLessThan(
+      cardSource.indexOf("{expanded && !isSkipped && skipConfirmationPending"),
+    );
+    expect(cardSource).toContain(
+      '{forcedReason ? `Skip ${exerciseName}?` : "Skip exercise — why?"}',
+    );
+    expect(cardSource).toContain("Repbook already knows the reason: equipment");
+    expect(cardSource).toContain('"Confirm skip"');
+    expect(cardSource).toContain("Keep skipped and continue");
+    expect(cardSource).not.toContain("Continue without replacement");
+    expect(runnerSource).toContain(
+      'exercise.modificationType !== "skipped" && equipmentSetupMatches',
+    );
   });
 
   it("renders total-load, reference guidance, save-state, and note-cap presentation", () => {

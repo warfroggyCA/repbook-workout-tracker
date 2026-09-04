@@ -38,6 +38,6 @@ export function workoutReplacementUnavailableReason(
 export function workoutReplacementEquipmentWarning(
   item: ExerciseDiscoveryItem,
 ): string | null {
-  if ((item.missingEquipment?.length ?? 0) === 0) return null;
+  if (item.available || item.constraintBlocked) return null;
   return `${item.unavailableReason ?? "Required equipment is not marked available."} You can still replace the exercise, but the workout will not invent or reuse an incompatible setup.`;
 }

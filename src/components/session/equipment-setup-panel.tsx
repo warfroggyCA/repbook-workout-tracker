@@ -1,12 +1,14 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { AlertTriangle } from "lucide-react";
 import type { SessionEquipmentSetup } from "./types";
 import type { WorkoutSetLoadEntryMeaning } from "@/lib/workout-set-outbox";
 import { createClientUuid } from "@/lib/client-uuid";
+import { cn } from "@/lib/utils";
 import {
   enqueueEquipmentSelection,
   getEquipmentSelectionOutboxServerSnapshot,
@@ -33,6 +35,11 @@ type Props = {
   onLoadEntryMeaningChange: (meaning: WorkoutSetLoadEntryMeaning) => void;
   onReplaceForToday?: () => void;
   onSkipExercise?: () => void;
+  futureProgramReplacement?: {
+    href: string;
+    dayName: string;
+    plannedExerciseName: string;
+  } | null;
 };
 
 export function EquipmentSetupPanel({
@@ -45,6 +52,7 @@ export function EquipmentSetupPanel({
   onLoadEntryMeaningChange,
   onReplaceForToday,
   onSkipExercise,
+  futureProgramReplacement = null,
 }: Props) {
   const router = useRouter();
   const automaticOption = setup.decisionState === "ready" && setup.options.length === 1
@@ -172,6 +180,7 @@ export function EquipmentSetupPanel({
   const equipmentConflict =
     setup.decisionState === "unavailable" ||
     setup.decisionState === "incompatible";
+  const conflictHeadingId = `equipment-decision-heading-${sessionExerciseId}`;
   const outboxStatus = (
     <>
       {message && <p className="mt-2 text-destructive" role="alert">{message}</p>}
@@ -223,7 +232,8 @@ export function EquipmentSetupPanel({
 
   return (
     <section
-      aria-label={`Equipment setup for ${exerciseName}`}
+      aria-label={equipmentConflict ? undefined : `Equipment setup for ${exerciseName}`}
+      aria-labelledby={equipmentConflict ? conflictHeadingId : undefined}
       className="p-3 text-sm"
     >
       {equipmentConflict ? (
@@ -231,15 +241,15 @@ export function EquipmentSetupPanel({
           <div className="flex items-start gap-2">
             <AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
             <div>
-              <p className="font-semibold">
+              <h3 id={conflictHeadingId} className="font-semibold">
                 {setup.decisionState === "unavailable"
-                  ? "Equipment unavailable"
-                  : "Equipment setup incompatible"}
-              </p>
+                  ? `Equipment unavailable for ${exerciseName}`
+                  : `Equipment setup incompatible for ${exerciseName}`}
+              </h3>
               <p className="mt-1 text-muted-foreground">
                 {setup.decisionState === "unavailable"
-                  ? "The equipment this exercise requires is not available in your saved inventory."
-                  : "Your saved equipment does not match this exercise's reviewed setup."}
+                  ? `The equipment ${exerciseName} requires is not available in your saved inventory.`
+                  : `Your saved equipment does not match ${exerciseName}'s reviewed setup.`}
                 {" "}Choose how to handle this workout; your Program stays unchanged.
               </p>
             </div>
@@ -262,8 +272,26 @@ export function EquipmentSetupPanel({
             </Button>
           </div>
           <p className="mt-2 text-xs text-muted-foreground">
-            Either choice retains the reason as equipment unavailable or incompatible.
+            Either choice for today retains the reason as equipment unavailable or incompatible.
           </p>
+          {futureProgramReplacement ? (
+            <div className="mt-3 border-t pt-3">
+              <Link
+                href={futureProgramReplacement.href}
+                className={cn(
+                  buttonVariants({ variant: "ghost" }),
+                  "h-auto min-h-11 w-full whitespace-normal text-left",
+                )}
+              >
+                Change future Program…
+              </Link>
+              <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                Opens the planned {futureProgramReplacement.plannedExerciseName} in your{" "}
+                {futureProgramReplacement.dayName} Program draft. Today’s workout stays
+                unchanged. Future workouts change only after you Review and Publish.
+              </p>
+            </div>
+          ) : null}
           {outboxStatus}
         </div>
       ) : (

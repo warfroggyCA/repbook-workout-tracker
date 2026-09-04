@@ -14,24 +14,30 @@ import { DayEditor } from "@/components/program/editor/day-editor";
 import { ReviewDialog } from "@/components/program/editor/review-dialog";
 import { HistoryPanel } from "@/components/program/editor/history-panel";
 import { useProgramEditorController } from "@/components/program/editor/use-program-editor-controller";
-import type { ProgramSlotRemovalRequest } from "@/components/program/editor/use-program-editor-controller";
+import type {
+  ProgramSlotRemovalRequest,
+  ProgramSlotReplacementRequest,
+} from "@/components/program/editor/use-program-editor-controller";
 import { ProgramEditorDocumentContext, ProgramEditorStatusContext } from "@/components/program/editor/editor-store";
 export function ProgramEditor({
   ownerId,
   library,
   initialDayId,
   initialRemovalRequest = null,
+  initialReplacementRequest = null,
 }: {
   ownerId: string;
   library: ExerciseDiscoveryItem[];
   initialDayId: string | null;
   initialRemovalRequest?: ProgramSlotRemovalRequest | null;
+  initialReplacementRequest?: ProgramSlotReplacementRequest | null;
 }) {
   const editor = useProgramEditorController({
     ownerId,
     library,
     initialDayId,
     initialRemovalRequest,
+    initialReplacementRequest,
   });
   const {
     draft, document, revision, pendingMutationId, status, message, conflictDraft,
@@ -43,6 +49,8 @@ export function ProgramEditor({
     loadDraft, savePending, discard, restoreVersion, exportDraft,
     pendingFutureRemovalRequest, futureRemovalTarget,
     clearFutureRemovalRequest, stageFutureRemoval,
+    pendingFutureReplacementRequest, futureReplacementTarget,
+    clearFutureReplacementRequest,
   } = editor;
   if (!document || !draft) {
     return (
@@ -323,6 +331,38 @@ export function ProgramEditor({
               >
                 Continue in Program editor
               </Button>
+            </AlertDescription>
+          </Alert>
+        ) : null}
+
+        {pendingFutureReplacementRequest &&
+        futureReplacementTarget?.status === "blocked" ? (
+          <Alert className="mb-5 border-amber-500/50">
+            <CircleAlert />
+            <AlertTitle>Future replacement needs review</AlertTitle>
+            <AlertDescription>
+              <p>{futureReplacementTarget.message}</p>
+              <Button
+                type="button"
+                variant="outline"
+                className="mt-3 min-h-11"
+                onClick={clearFutureReplacementRequest}
+              >
+                Continue in Program editor
+              </Button>
+            </AlertDescription>
+          </Alert>
+        ) : null}
+
+        {pendingFutureReplacementRequest &&
+        futureReplacementTarget?.status === "ready" ? (
+          <Alert className="mb-5 border-primary/40">
+            <CircleAlert />
+            <AlertTitle>Choose the future replacement</AlertTitle>
+            <AlertDescription>
+              Replace {futureReplacementTarget.exerciseName} in future{" "}
+              {futureReplacementTarget.dayName} workouts below. This only stages
+              a draft; nothing changes until you review and publish it.
             </AlertDescription>
           </Alert>
         ) : null}

@@ -8,6 +8,7 @@ import * as schema from "@/db/schema";
 import {
   completedSets,
   equipmentItems,
+  exerciseExecutionRequirements,
   exercises,
   healthActivities,
   recordVersions,
@@ -25,7 +26,10 @@ import {
   updateSessionExerciseWithVersion,
   updateSetWithVersion,
 } from "@/services/record-versions";
-import { resolveSessionEquipmentAvailability } from "@/services/session-equipment-selection";
+import {
+  resolveCatalogExerciseEquipmentAvailability,
+  resolveSessionEquipmentAvailability,
+} from "@/services/session-equipment-selection";
 import { captureUserSnapshot } from "@/services/snapshot-capture";
 import { createTotalSystemTestSnapshot } from "../helpers/set-semantics";
 
@@ -1486,6 +1490,85 @@ describe("immutable record version history", () => {
       exerciseId: alternateExerciseId,
       modificationType: "substituted",
       skipReason: "time",
+    });
+  });
+
+  it("atomically rejects a replacement when the target setup changes after validation", async () => {
+    await removeLoggedSetForFixture();
+    await db
+      .update(workoutSessions)
+      .set({ status: "in_progress", finishedAt: null })
+      .where(eq(workoutSessions.id, sessionId));
+    await db
+      .update(equipmentItems)
+      .set({ available: false })
+      .where(eq(equipmentItems.userId, userId));
+
+    const sourceAvailability = await resolveSessionEquipmentAvailability(
+      db,
+      userId,
+      sessionExerciseId,
+    );
+    const targetAvailability =
+      await resolveCatalogExerciseEquipmentAvailability(
+        db,
+        userId,
+        alternateExerciseId,
+      );
+    expect(["unavailable", "incompatible"]).toContain(
+      sourceAvailability?.decisionState,
+    );
+    expect(targetAvailability?.decisionState).toBe("ready");
+    if (!sourceAvailability || !targetAvailability) {
+      throw new Error("Missing source or target equipment evidence");
+    }
+
+    await db.insert(exerciseExecutionRequirements).values({
+      exerciseId: alternateExerciseId,
+      requiredProfileKind: "plate_loaded_machine",
+      requiresKnownGeometry: true,
+      reviewedAt: new Date("2026-09-03T12:00:00.000Z"),
+    });
+
+    await expect(updateSessionExerciseWithVersion(
+      db,
+      userId,
+      sessionExerciseId,
+      {
+        exerciseId: alternateExerciseId,
+        modificationType: "substituted",
+        substitutedForExerciseId: exerciseId,
+        substitutionReason: "equipment_unavailable_incompatible",
+        targetLoad: null,
+        targetLoadUnit: null,
+      },
+      "session_exercise.substitute",
+      {
+        activeOnly: true,
+        expectedExerciseId: exerciseId,
+        versionId: crypto.randomUUID(),
+        equipmentSourceFence: {
+          exerciseId: sourceAvailability.exerciseId,
+          sourceRevision: sourceAvailability.sourceRevision,
+          ownerEvidenceRevision: sourceAvailability.ownerEvidenceRevision,
+          includeCurrentRequirements:
+            sourceAvailability.requirementsEvidence === "legacy_unknown" &&
+            !sourceAvailability.usesPrescribedMeaning,
+          targetExerciseId: targetAvailability.exerciseId,
+          targetSourceRevision: targetAvailability.sourceRevision,
+        },
+      },
+    )).resolves.toMatchObject({
+      ok: false,
+      code: "equipment_source_conflict",
+    });
+    expect(await db.query.recordVersions.findMany()).toHaveLength(0);
+    expect(await db.query.sessionExercises.findFirst({
+      where: eq(sessionExercises.id, sessionExerciseId),
+      columns: { exerciseId: true, modificationType: true },
+    })).toEqual({
+      exerciseId,
+      modificationType: "as_planned",
     });
   });
 

@@ -863,6 +863,8 @@ export async function updateSessionExerciseWithVersion(
       sourceRevision: string;
       ownerEvidenceRevision: string;
       includeCurrentRequirements: boolean;
+      targetExerciseId?: string;
+      targetSourceRevision?: string;
     };
   } = {}
 ): Promise<VersionedEditResult> {
@@ -935,6 +937,12 @@ export async function updateSessionExerciseWithVersion(
   const hasEquipmentSourceFence = equipmentSourceFence != null;
   const fencedEquipmentExerciseId =
     equipmentSourceFence?.exerciseId ?? "00000000-0000-0000-0000-000000000000";
+  const hasTargetEquipmentSourceFence =
+    equipmentSourceFence?.targetExerciseId != null &&
+    equipmentSourceFence.targetSourceRevision != null;
+  const fencedTargetEquipmentExerciseId =
+    equipmentSourceFence?.targetExerciseId ??
+    "00000000-0000-0000-0000-000000000000";
   const equipmentSourceCurrent = (record: SQL) => sql`(
     NOT ${hasEquipmentSourceFence}::boolean
     OR EXISTS (SELECT 1 FROM existing_version)
@@ -948,6 +956,14 @@ export async function updateSessionExerciseWithVersion(
         equipmentSourceFence?.includeCurrentRequirements ?? false,
         sql`${record}.equipment_requirements_snapshot`,
       )} = ${equipmentSourceFence?.sourceRevision ?? ""}
+      AND (
+        NOT ${hasTargetEquipmentSourceFence}::boolean
+        OR ${sessionEquipmentSelectionSourceRevisionExpression(
+          userId,
+          fencedTargetEquipmentExerciseId,
+          true,
+        )} = ${equipmentSourceFence?.targetSourceRevision ?? ""}
+      )
     )
   )`;
   const summary =
