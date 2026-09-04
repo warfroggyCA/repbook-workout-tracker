@@ -65,6 +65,7 @@ vi.mock("next/navigation", () => ({ redirect: vi.fn() }));
 vi.mock("next/server", () => ({ after: vi.fn() }));
 
 import {
+  completeSession,
   confirmExerciseUnskipped,
   correctAcknowledgedSet,
   correctWorkoutActiveDuration,
@@ -470,6 +471,15 @@ describe("session action named results", () => {
         sessionExercise.id,
       ),
     ).resolves.toMatchObject({ decisionState: "configuration_incomplete" });
+    await expect(completeSession({
+      sessionId: active.sessionId,
+      completionReason: "equipment_unavailable_incompatible",
+      durationDecision: { basis: "interruption_unknown" },
+    })).resolves.toEqual({
+      ok: false,
+      code: "equipment_reason_unverified",
+      message: "Equipment conflicts are not verified for every remaining item. Review the affected exercises or choose another reason.",
+    });
     await expect(skipExercise({
       sessionExerciseId: sessionExercise.id,
       reason: "equipment_unavailable_incompatible",

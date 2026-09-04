@@ -779,6 +779,18 @@ test("records the Phase 6 configuration-incomplete decision", async ({
     PHASE6_CONFIGURATION_INCOMPLETE_SCREENSHOT,
   );
 
+  await page.getByRole("button", {
+    name: "Review and finish workout", exact: true,
+  }).click();
+  const finish = page.getByRole("dialog", { name: "Finish workout" });
+  const reason = finish.getByLabel("Why are you finishing this workout early?");
+  await expect(reason.locator('option[value="equipment_unavailable_incompatible"]'))
+    .toHaveCount(0);
+  await reason.selectOption("time_limit_reached");
+  await expect(finish.getByRole("button", { name: "Save workout", exact: true }))
+    .toBeEnabled();
+  await finish.getByRole("button", { name: "Back to workout", exact: true }).click();
+
   await waitForHydratedReactHandler(dockPrimary);
   await dockPrimary.click();
   await expect(completeSetup).toBeFocused();

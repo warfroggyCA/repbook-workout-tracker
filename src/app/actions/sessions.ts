@@ -1309,6 +1309,7 @@ export async function completeSession(input: z.infer<typeof completeSchema>) {
     result.outcome === "invalid_duration_review" ||
     result.outcome === "completion_reason_required" ||
     result.outcome === "completion_reason_not_applicable" ||
+    result.outcome === "equipment_reason_unverified" ||
     result.outcome === "finish_payload_conflict"
   ) {
     return actionFailure(result.outcome, result.reason);

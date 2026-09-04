@@ -895,6 +895,13 @@ equipment cause. Deterministic database coverage also changes equipment at the
 post-preflight boundary and proves that the occurrence writer records neither
 the skip nor a receipt from stale evidence.
 
+Early Finish uses the same rule across every pending item because its one
+chosen cause is applied to all of them. Incomplete or unknown setup evidence,
+unanchored preparation, and mixed unsupported items withhold the equipment
+reason; the other explicit reasons remain available. The server rechecks the
+source and pending membership atomically, preserves saved sets on rejection,
+and reconciles a previously completed Finish using its original receipt.
+
 The complete 16-state synthetic running-product capture and equal-size artboard
 comparisons are retained in `docs/assets/active-workout-phase6-qa/`. The
 incomplete-configuration capture is a real browser path through the production

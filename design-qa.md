@@ -271,6 +271,12 @@ frozen local tree.
    newly added optional cable attachment makes a queued automatic choice
    ambiguous with no snapshot or receipt. A deterministic post-preflight race
    likewise proves stale equipment evidence cannot write an occurrence skip.
+9. Pull-request review found the corresponding bulk Finish path still allowed
+   an equipment cause for incomplete setup. Finish now requires verified
+   conflicts for every pending item, with a server source and membership check.
+   Other explicit causes remain available; retained terminal commands preserve
+   their exact replay identity. Focused database, action, browser, and native
+   PostgreSQL race regressions cover this path.
 
 ### Remaining release evidence
 

@@ -1592,6 +1592,59 @@ describe.sequential("real PostgreSQL parallel invariants", () => {
     });
   });
 
+  it("rejects an equipment Finish whose source changes while the completion statement waits", async () => {
+    const fixture = await createEquipmentRaceFixture("equipment cause finish race");
+    await db.update(equipmentItems).set({ available: false })
+      .where(eq(equipmentItems.userId, fixture.userId));
+    const pendingBefore = await db.select().from(sessionOccurrences)
+      .where(eq(sessionOccurrences.sessionId, fixture.sessionId));
+    const sessionBefore = await db.query.workoutSessions.findFirst({
+      where: eq(workoutSessions.id, fixture.sessionId),
+    });
+    const input = {
+      sessionId: fixture.sessionId,
+      completionReason: "equipment_unavailable_incompatible" as const,
+    };
+    const lock = await lockWorkoutSession(fixture.sessionId);
+    const finishing = completeWorkoutSession(
+      db, { id: fixture.userId, coachingPrefs }, input,
+      {
+        checkpoint: async (boundary) => {
+          if (boundary !== "before-completion-statement") return;
+          // A second connection changes the inventory but holds its commit
+          // until Finish is waiting with an older statement snapshot.
+          await lock.client.query(
+            "UPDATE equipment_items SET available = true WHERE user_id = $1",
+            [fixture.userId],
+          );
+        },
+      },
+    );
+    await releaseWhenContended(lock, [finishing], 1);
+    await expect(finishing).resolves.toMatchObject({
+      outcome: "equipment_reason_unverified",
+    });
+    expect(await db.select().from(sessionOccurrences)
+      .where(eq(sessionOccurrences.sessionId, fixture.sessionId)))
+      .toEqual(pendingBefore);
+    expect(await db.query.workoutSessions.findFirst({
+      where: eq(workoutSessions.id, fixture.sessionId),
+    })).toEqual(sessionBefore);
+    expect(await db.select().from(progressionJobs)
+      .where(eq(progressionJobs.sessionId, fixture.sessionId))).toHaveLength(0);
+
+    await db.update(equipmentItems).set({ available: false })
+      .where(eq(equipmentItems.userId, fixture.userId));
+    await expect(completeWorkoutSession(
+      db, { id: fixture.userId, coachingPrefs }, input,
+    )).resolves.toMatchObject({ outcome: "completed" });
+    await db.update(equipmentItems).set({ available: true })
+      .where(eq(equipmentItems.userId, fixture.userId));
+    await expect(completeWorkoutSession(
+      db, { id: fixture.userId, coachingPrefs }, input,
+    )).resolves.toMatchObject({ outcome: "already_finished" });
+  });
+
   it("does not rewrite pending occurrence evidence after Finish wins an equipment race", async () => {
     const fixture = await createEquipmentRaceFixture("equipment finish race");
     const selectionInput = {
