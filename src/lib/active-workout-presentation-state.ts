@@ -340,6 +340,11 @@ export function projectActiveWorkoutEquipmentPresentation(input: {
         blocksLogging: true,
         limitation: null,
       };
+    case "configuration_incomplete":
+      return equipmentLimitationPresentation({
+        cue: normalized.cue,
+        limitation: "configuration_incomplete",
+      });
     case "unavailable":
       return equipmentLimitationPresentation(normalized);
     default:

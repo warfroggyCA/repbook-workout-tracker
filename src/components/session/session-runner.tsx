@@ -648,6 +648,43 @@ function revealWorkoutTarget(
       '[data-testid="active-workout-primary"]',
     ) ?? target;
   const availableHeight = Math.max(0, visibleBottom - visibleTop);
+  const currentCard = target.closest<HTMLElement>(
+    '[data-testid="current-exercise-card"]',
+  );
+  const exerciseHeading = currentCard?.querySelector<HTMLElement>(
+    'h2[id^="session-exercise-heading-"]',
+  );
+  const decisionHeading = currentCard?.querySelector<HTMLElement>(
+    '[data-active-workout-decision-heading="true"]',
+  );
+  const visibleControls = [...target.querySelectorAll<HTMLElement>(
+    "input, .active-set-stepper",
+  )]
+    .map((control) => control.getBoundingClientRect())
+    .filter((bounds) => bounds.width > 0 && bounds.height > 0);
+  const exerciseHeadingBounds = exerciseHeading?.getBoundingClientRect();
+  const contextBottom = decisionHeading?.getBoundingClientRect().bottom ??
+    (visibleControls.length > 0
+      ? Math.max(...visibleControls.map((bounds) => bounds.bottom))
+      : null);
+  if (
+    exerciseHeadingBounds != null &&
+    contextBottom != null &&
+    contextBottom > exerciseHeadingBounds.top &&
+    contextBottom - exerciseHeadingBounds.top <= availableHeight
+  ) {
+    const contextHeight = contextBottom - exerciseHeadingBounds.top;
+    let desiredTop = exerciseHeadingBounds.top;
+    if (desiredTop < visibleTop) desiredTop = visibleTop;
+    if (desiredTop + contextHeight > visibleBottom) {
+      desiredTop = visibleBottom - contextHeight;
+    }
+    const contextOffset = exerciseHeadingBounds.top - desiredTop;
+    if (Math.abs(contextOffset) > 1) {
+      window.scrollBy({ left: 0, top: contextOffset, behavior });
+    }
+    return;
+  }
   const primaryBounds = revealTarget.getBoundingClientRect();
   const focalTarget = primaryBounds.height > availableHeight
     ? revealTarget.querySelector<HTMLElement>(
@@ -1612,7 +1649,10 @@ export function SessionRunner(props: SessionRunnerProps) {
           ) {
             return;
           }
-          revealWorkoutTarget(restStatusOwnsFocus ? target : active, "auto");
+          revealWorkoutTarget(
+            restStatusOwnsFocus ? target : active,
+            "auto",
+          );
         });
       });
     };
@@ -2408,6 +2448,10 @@ export function SessionRunner(props: SessionRunnerProps) {
     });
     if (decision.status === "choose_setup") {
       toast.error("Choose the physical equipment setup before logging this set.");
+      return false;
+    }
+    if (decision.status === "complete_equipment_setup") {
+      toast.error("Complete the saved equipment setup before logging this set.");
       return false;
     }
     if (decision.status === "resolve_equipment_conflict") {
@@ -3956,6 +4000,8 @@ export function SessionRunner(props: SessionRunnerProps) {
           ? "Resolve the retained set copy before logging this set."
         : currentEquipmentDecision === "unavailable"
           ? "Equipment unavailable. Replace for today or skip exercise."
+          : currentEquipmentDecision === "configuration_incomplete"
+            ? "Complete equipment setup before logging this set."
           : currentEquipmentDecision === "incompatible"
             ? "Equipment setup incompatible. Replace for today or skip exercise."
             : currentActionOccurrence != null &&
@@ -4773,6 +4819,12 @@ export function SessionRunner(props: SessionRunnerProps) {
                 </div>
               )
             ) : null}
+            equipmentReasonAvailable={
+              equipmentSetup != null &&
+              equipmentSetupMatches &&
+              (equipmentSetup.decisionState === "unavailable" ||
+                equipmentSetup.decisionState === "incompatible")
+            }
             onToggle={() => {
               if (skipRecoveryExerciseId != null) {
                 setExpandedId(skipRecoveryExerciseId);
@@ -5699,6 +5751,29 @@ export function SessionRunner(props: SessionRunnerProps) {
           currentSetFormId={currentSetFormId}
           currentSetBlockingReason={currentActionBlockingReason}
           onPrimaryAction={() => {
+            if (
+              currentStatusAction?.kind === "working_set" &&
+              currentWorkingExercise != null &&
+              currentEquipmentDecision === "configuration_incomplete"
+            ) {
+              const equipment = document.getElementById(
+                `equipment-setup-${currentWorkingExercise.id}`,
+              );
+              if (equipment) {
+                revealWorkoutTarget(
+                  equipment,
+                  activeWorkoutScrollBehavior(),
+                );
+              }
+              window.requestAnimationFrame(() => {
+                equipment
+                  ?.querySelector<HTMLElement>(
+                    '[data-testid="complete-equipment-setup"]',
+                  )
+                  ?.focus({ preventScroll: true });
+              });
+              return;
+            }
             if (
               currentStatusAction?.kind === "working_set" &&
               currentWorkingExercise != null &&

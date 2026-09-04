@@ -40,11 +40,13 @@ export type ExactAvailabilityResolution = {
   status:
     | "broad_unavailable"
     | "broad_only"
+    | "configuration_incomplete"
     | "exact_unavailable"
     | "exact_available";
   selection: "not_applicable" | "automatic" | "required";
   missingBroadRequirements: EquipmentRequirement[];
   candidateEquipmentItemIds: string[];
+  configurationIncompleteEquipmentItemIds: string[];
 };
 
 function attachmentMatches(
@@ -96,6 +98,22 @@ export function exactExecutionCandidateMatches(
   return true;
 }
 
+function candidateNeedsKnownGeometry(
+  requirement: ExactExecutionRequirement,
+  candidate: ExactExecutionCandidate,
+): boolean {
+  if (
+    !requirement.requiresKnownGeometry ||
+    candidate.geometryCertainty === "known"
+  ) {
+    return false;
+  }
+  return exactExecutionCandidateMatches(
+    { ...requirement, requiresKnownGeometry: false },
+    candidate,
+  );
+}
+
 /**
  * Resolve availability in the required order: broad ownership first, then the
  * reviewed exact execution predicates. The resolver also reports whether one
@@ -119,6 +137,7 @@ export function resolveExactEquipmentAvailability(input: {
       selection: "not_applicable",
       missingBroadRequirements: missingBroad,
       candidateEquipmentItemIds: [],
+      configurationIncompleteEquipmentItemIds: [],
     };
   }
 
@@ -129,6 +148,7 @@ export function resolveExactEquipmentAvailability(input: {
       selection: "not_applicable",
       missingBroadRequirements: [],
       candidateEquipmentItemIds: [],
+      configurationIncompleteEquipmentItemIds: [],
     };
   }
 
@@ -141,12 +161,22 @@ export function resolveExactEquipmentAvailability(input: {
   )].sort();
 
   if (candidateEquipmentItemIds.length === 0) {
+    const configurationIncompleteEquipmentItemIds = [...new Set(
+      input.exactCandidates
+        .filter((candidate) =>
+          candidateNeedsKnownGeometry(input.exactRequirement!, candidate),
+        )
+        .map((candidate) => candidate.equipmentItemId),
+    )].sort();
     return {
       available: false,
-      status: "exact_unavailable",
+      status: configurationIncompleteEquipmentItemIds.length > 0
+        ? "configuration_incomplete"
+        : "exact_unavailable",
       selection: "not_applicable",
       missingBroadRequirements: [],
       candidateEquipmentItemIds: [],
+      configurationIncompleteEquipmentItemIds,
     };
   }
 
@@ -157,5 +187,6 @@ export function resolveExactEquipmentAvailability(input: {
       candidateEquipmentItemIds.length === 1 ? "automatic" : "required",
     missingBroadRequirements: [],
     candidateEquipmentItemIds,
+    configurationIncompleteEquipmentItemIds: [],
   };
 }

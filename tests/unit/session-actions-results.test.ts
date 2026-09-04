@@ -1,22 +1,27 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import {
   completedSets,
   equipmentItems,
   exerciseEquipmentRequirements,
   exerciseExecutionRequirements,
   exercises,
+  plateLoadedMachineProfiles,
+  recordVersions,
   sessionExercises,
+  sessionOccurrenceMutations,
   sessionOccurrences,
   userProfiles,
   users,
   workoutSessions,
 } from "@/db/schema";
 import { createMigratedTestDatabase, type TestDatabase } from "../helpers/database";
+import type { Db } from "@/db";
 import { buildJsonBackup, buildSetsCsv } from "@/services/export";
 import { buildCoachingContext } from "@/services/coaching";
 import { getHistoryReport } from "@/services/history-report";
 import { createTotalSystemTestSnapshot } from "../helpers/set-semantics";
+import { resolveSessionEquipmentAvailability } from "@/services/session-equipment-selection";
 
 const actionContext = vi.hoisted(() => ({
   database: null as TestDatabase["db"] | null,
@@ -63,6 +68,7 @@ import {
   confirmExerciseUnskipped,
   correctAcknowledgedSet,
   correctWorkoutActiveDuration,
+  mutateOccurrence,
   replaceExercise,
   skipExercise,
 } from "@/app/actions/sessions";
@@ -275,6 +281,250 @@ describe("session action named results", () => {
         expectedHistoryRevision: 0,
       })
     ).resolves.toMatchObject({ ok: false, code: "not_active" });
+  });
+
+  it("rejects an equipment skip when exact saved machine geometry is incomplete", async () => {
+    const active = await database.db.query.sessionExercises.findFirst({
+      where: eq(sessionExercises.id, activeExerciseId),
+      columns: { sessionId: true },
+    });
+    if (!active) throw new Error("Missing active exercise fixture");
+    const [machineExercise] = await database.db
+      .insert(exercises)
+      .values({
+        name: `Incomplete geometry pulldown ${crypto.randomUUID()}`,
+        movementPattern: "vertical_pull",
+        primaryMuscles: ["back"],
+        loadType: "external",
+        metricType: "weight_reps",
+        loadSemantics: "machine_stack",
+      })
+      .returning({ id: exercises.id });
+    const [broadRequirement] = await database.db
+      .insert(exerciseEquipmentRequirements)
+      .values({
+        exerciseId: machineExercise.id,
+        equipmentType: "machine",
+      })
+      .returning({ id: exerciseEquipmentRequirements.id });
+    const [exactRequirement] = await database.db
+      .insert(exerciseExecutionRequirements)
+      .values({
+        exerciseId: machineExercise.id,
+        requiredProfileKind: "plate_loaded_machine",
+        requiresKnownGeometry: true,
+        reviewedAt: new Date("2026-09-04T12:00:00.000Z"),
+      })
+      .returning({ id: exerciseExecutionRequirements.id });
+    const [machine] = await database.db
+      .insert(equipmentItems)
+      .values({
+        userId: ownerId,
+        type: "machine",
+        label: "Garage lat pulldown",
+        available: false,
+      })
+      .returning({ id: equipmentItems.id });
+    const [sessionExercise] = await database.db
+      .insert(sessionExercises)
+      .values({
+        sessionId: active.sessionId,
+        exerciseId: machineExercise.id,
+        prescribedSemanticsVersion: 1,
+        prescribedExerciseName: "Incomplete geometry pulldown",
+        prescribedMetricType: "weight_reps",
+        prescribedLoadType: "external",
+        prescribedLoadSemantics: "machine_stack",
+        equipmentRequirementsSemanticsVersion: 1,
+        equipmentRequirementsSnapshot: {
+          sourceExerciseId: machineExercise.id,
+          broad: [{
+            sourceRequirementId: broadRequirement.id,
+            equipmentType: "machine",
+            equipmentDefinition: null,
+            minWeight: null,
+          }],
+          exact: {
+            sourceRequirementId: exactRequirement.id,
+            requiredProfileKind: "plate_loaded_machine",
+            requiredEquipmentDefinition: null,
+            requiredAttachmentKind: null,
+            requiredAttachmentDefinition: null,
+            requiresKnownGeometry: true,
+          },
+        },
+        orderIdx: 3,
+      })
+      .returning({ id: sessionExercises.id });
+    const [occurrence] = await database.db
+      .insert(sessionOccurrences)
+      .values({
+        sessionId: active.sessionId,
+        sessionExerciseId: sessionExercise.id,
+        kind: "working_set",
+        origin: "planned",
+        sequenceIdx: 99,
+        kindOrdinal: 0,
+        plannedExerciseId: machineExercise.id,
+        outcome: "pending",
+        revision: 0,
+      })
+      .returning({ id: sessionOccurrences.id });
+    const racedClientKey = crypto.randomUUID();
+    let equipmentExecuteCount = 0;
+    const racingDb = {
+      execute: async (...args: Parameters<Db["execute"]>) => {
+        equipmentExecuteCount += 1;
+        const result = await database.db.execute(...args);
+        if (equipmentExecuteCount === 7) {
+          await database.db
+            .update(equipmentItems)
+            .set({ label: "Changed after occurrence equipment preflight" })
+            .where(eq(equipmentItems.id, machine.id));
+        }
+        return result;
+      },
+    } as unknown as TestDatabase["db"];
+    actionContext.database = racingDb;
+    await expect(mutateOccurrence({
+      occurrenceId: occurrence.id,
+      clientKey: racedClientKey,
+      expectedRevision: 0,
+      operation: "skip",
+      reason: "equipment_unavailable_incompatible",
+      reasonCode: "equipment_unavailable_incompatible",
+      note: null,
+    })).resolves.toEqual({ outcome: "equipment_source_conflict" });
+    actionContext.database = database.db;
+    await expect(database.db.query.sessionOccurrences.findFirst({
+      where: eq(sessionOccurrences.id, occurrence.id),
+      columns: { outcome: true, revision: true },
+    })).resolves.toEqual({ outcome: "pending", revision: 0 });
+    await expect(database.db.query.sessionOccurrenceMutations.findMany({
+      where: eq(sessionOccurrenceMutations.clientKey, racedClientKey),
+    })).resolves.toHaveLength(0);
+
+    const appliedClientKey = crypto.randomUUID();
+    await expect(mutateOccurrence({
+      occurrenceId: occurrence.id,
+      clientKey: appliedClientKey,
+      expectedRevision: 0,
+      operation: "skip",
+      reason: "equipment_unavailable_incompatible",
+      reasonCode: "equipment_unavailable_incompatible",
+      note: null,
+    })).resolves.toMatchObject({
+      outcome: "saved",
+      occurrence: {
+        state: "skipped",
+        resolutionReasonCode: "equipment_unavailable_incompatible",
+        revision: 1,
+      },
+    });
+    await expect(mutateOccurrence({
+      occurrenceId: occurrence.id,
+      clientKey: crypto.randomUUID(),
+      expectedRevision: 1,
+      operation: "restore",
+    })).resolves.toMatchObject({
+      outcome: "saved",
+      occurrence: {
+        state: "pending",
+        resolutionReasonCode: null,
+        revision: 2,
+      },
+    });
+    const queuedClientKey = crypto.randomUUID();
+    const queuedOccurrenceSkip = {
+      occurrenceId: occurrence.id,
+      clientKey: queuedClientKey,
+      expectedRevision: 2,
+      operation: "skip" as const,
+      reason: "equipment_unavailable_incompatible",
+      reasonCode: "equipment_unavailable_incompatible" as const,
+      note: null,
+    };
+
+    await expect(
+      resolveSessionEquipmentAvailability(
+        database.db,
+        ownerId,
+        sessionExercise.id,
+      ),
+    ).resolves.toMatchObject({ decisionState: "unavailable" });
+    await database.db
+      .update(equipmentItems)
+      .set({ available: true })
+      .where(eq(equipmentItems.id, machine.id));
+    await database.db.insert(plateLoadedMachineProfiles).values({
+      userId: ownerId,
+      equipmentItemId: machine.id,
+      geometryCertainty: "partial",
+      startingResistance: 10,
+      startingResistanceUnit: "lb",
+    });
+    await expect(
+      resolveSessionEquipmentAvailability(
+        database.db,
+        ownerId,
+        sessionExercise.id,
+      ),
+    ).resolves.toMatchObject({ decisionState: "configuration_incomplete" });
+    await expect(skipExercise({
+      sessionExerciseId: sessionExercise.id,
+      reason: "equipment_unavailable_incompatible",
+      expectedHistoryRevision: 0,
+    })).resolves.toEqual({
+      ok: false,
+      code: "equipment_reason_unverified",
+      message:
+        "Repbook could not verify an unavailable or incompatible equipment state. Review the current setup before skipping this exercise.",
+    });
+    await expect(mutateOccurrence({
+      ...queuedOccurrenceSkip,
+      clientKey: appliedClientKey,
+      expectedRevision: 0,
+    })).resolves.toMatchObject({
+      outcome: "replayed",
+      occurrence: {
+        state: "pending",
+        resolutionReasonCode: null,
+        revision: 2,
+      },
+    });
+    await expect(mutateOccurrence(queuedOccurrenceSkip)).resolves.toEqual({
+      outcome: "equipment_reason_unverified",
+    });
+    await expect(database.db.query.sessionExercises.findFirst({
+      where: eq(sessionExercises.id, sessionExercise.id),
+      columns: { modificationType: true, skipReason: true },
+    })).resolves.toEqual({
+      modificationType: "as_planned",
+      skipReason: null,
+    });
+    await expect(database.db.query.recordVersions.findMany({
+      where: eq(recordVersions.entityId, sessionExercise.id),
+    })).resolves.toHaveLength(0);
+    await expect(database.db.query.sessionOccurrences.findFirst({
+      where: eq(sessionOccurrences.id, occurrence.id),
+      columns: {
+        outcome: true,
+        outcomeReason: true,
+        resolutionReasonCode: true,
+        revision: true,
+      },
+    })).resolves.toEqual({
+      outcome: "pending",
+      outcomeReason: null,
+      resolutionReasonCode: null,
+      revision: 2,
+    });
+    await expect(database.db.query.sessionOccurrenceMutations.findMany({
+      where: and(
+        eq(sessionOccurrenceMutations.occurrenceId, occurrence.id),
+        eq(sessionOccurrenceMutations.clientKey, queuedClientKey),
+      ),
+    })).resolves.toHaveLength(0);
   });
 
   it("replays a committed equipment replacement before revalidating its new exercise", async () => {

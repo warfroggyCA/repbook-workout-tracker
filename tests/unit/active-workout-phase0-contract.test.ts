@@ -739,4 +739,34 @@ describe("Phase 0 screenshot contract", () => {
     }
     expect(existsSync(join(directory, "README.md"))).toBe(true);
   });
+
+  it("keeps the complete Phase 6 integration evidence set available", () => {
+    const directory = join(
+      process.cwd(),
+      "docs/assets/active-workout-phase6-qa",
+    );
+    for (const name of Object.values(ACTIVE_WORKOUT_SCREENSHOT_SCENARIOS)) {
+      const path = join(directory, `${name}.jpg`);
+      expect(existsSync(path), `Missing Phase 6 evidence ${name}.jpg`).toBe(true);
+      expect(statSync(path).size).toBeGreaterThan(5_000);
+    }
+    const configurationIncomplete = join(
+      directory,
+      "16-configuration-incomplete-390x844-115.jpg",
+    );
+    expect(
+      existsSync(configurationIncomplete),
+      "Missing Phase 6 configuration-incomplete evidence",
+    ).toBe(true);
+    expect(statSync(configurationIncomplete).size).toBeGreaterThan(5_000);
+    for (const name of Object.values(ACTIVE_WORKOUT_SCREENSHOT_SCENARIOS).slice(0, 7)) {
+      const comparison = join(directory, `${name}-comparison.jpg`);
+      expect(
+        existsSync(comparison),
+        `Missing Phase 6 comparison ${name}-comparison.jpg`,
+      ).toBe(true);
+      expect(statSync(comparison).size).toBeGreaterThan(5_000);
+    }
+    expect(existsSync(join(directory, "README.md"))).toBe(true);
+  });
 });

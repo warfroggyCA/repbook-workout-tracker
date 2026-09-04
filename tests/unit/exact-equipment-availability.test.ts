@@ -64,6 +64,7 @@ describe("resolveExactEquipmentAvailability", () => {
       selection: "not_applicable",
       missingBroadRequirements: [],
       candidateEquipmentItemIds: [],
+      configurationIncompleteEquipmentItemIds: [],
     });
   });
 
@@ -104,7 +105,13 @@ describe("resolveExactEquipmentAvailability", () => {
     });
 
     expect(wrongDefinition.available).toBe(false);
-    expect(partialGeometry.available).toBe(false);
+    expect(wrongDefinition.status).toBe("exact_unavailable");
+    expect(partialGeometry).toMatchObject({
+      available: false,
+      status: "configuration_incomplete",
+      candidateEquipmentItemIds: [],
+      configurationIncompleteEquipmentItemIds: ["machine-a"],
+    });
   });
 
   it("requires an explicitly compatible exact attachment", () => {

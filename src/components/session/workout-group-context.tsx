@@ -31,6 +31,7 @@ function equipmentStatusLabel(status: EquipmentPreparationCue["status"]) {
     selected: "Reviewed setup selected",
     pending_confirmation: "Available setup awaiting confirmation",
     choice_required: "Available setups require a choice",
+    configuration_incomplete: "Saved setup needs configuration",
     unavailable: "Required setup unavailable",
     broad_only: "Exact setup unknown",
     updating: "Setup guidance updating",

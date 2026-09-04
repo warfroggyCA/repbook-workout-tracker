@@ -151,7 +151,9 @@ export function WorkoutStatusBar({
   )
     ? "Resolve skipped exercise"
     : currentSetBlockingReason?.startsWith("Complete ")
-      ? "Complete preparation"
+      ? currentSetBlockingReason.startsWith("Complete equipment setup")
+        ? "Complete equipment setup"
+        : "Complete preparation"
       : currentSetBlockingReason?.startsWith("Choose equipment")
         ? "Choose equipment"
         : currentSetBlockingReason?.startsWith("Equipment unavailable") ||
@@ -395,17 +397,18 @@ export function WorkoutStatusBar({
           type="button"
           size="sm"
           variant={canFinishNow ? "default" : "outline"}
-          className="min-h-11 shrink-0 px-2"
+          className="min-h-11 shrink-0 px-2 max-[420px]:px-1.5"
           onClick={onFinish}
           aria-label={
             canFinishNow ? "Finish workout" : "Review and finish workout"
           }
         >
           {isFinishingEarly ? (
-            <>
-              <span className="min-[421px]:hidden">Review</span>
-              <span className="max-[420px]:hidden">Review and finish</span>
-            </>
+            <span className="leading-tight max-[420px]:flex max-[420px]:flex-col max-[420px]:text-[0.6875rem]">
+              <span>Review</span>
+              <span className="max-[420px]:hidden"> </span>
+              <span>and finish</span>
+            </span>
           ) : "Finish"}
         </Button>
       </div>

@@ -654,34 +654,84 @@ export async function skipExercise(input: z.infer<typeof skipSchema>) {
   );
   if (!owned.ok) return owned;
   const { user, db, sessionExercise } = owned;
-  const updated = await updateSessionExerciseWithVersion(
-    db,
-    user.id,
-    sessionExercise.id,
-    { modificationType: "skipped", skipReason: parsed.reason },
-    "session_exercise.skip",
-    {
-      activeOnly: true,
-      expectedHistoryRevision: parsed.expectedHistoryRevision,
-      fenceSessionExerciseIntent: true,
-    },
+  const equipmentReason =
+    parsed.reason === "equipment_unavailable_incompatible";
+  const attempts = equipmentReason ? 3 : 1;
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    const availability = equipmentReason
+      ? await resolveSessionEquipmentAvailability(
+          db,
+          user.id,
+          sessionExercise.id,
+        )
+      : null;
+    if (
+      equipmentReason &&
+      (
+        availability == null ||
+        !["unavailable", "incompatible"].includes(
+          availability.decisionState,
+        )
+      )
+    ) {
+      return actionFailure(
+        "equipment_reason_unverified",
+        "Repbook could not verify an unavailable or incompatible equipment state. Review the current setup before skipping this exercise.",
+      );
+    }
+    const updated = await updateSessionExerciseWithVersion(
+      db,
+      user.id,
+      sessionExercise.id,
+      { modificationType: "skipped", skipReason: parsed.reason },
+      "session_exercise.skip",
+      {
+        activeOnly: true,
+        expectedHistoryRevision: parsed.expectedHistoryRevision,
+        fenceSessionExerciseIntent: true,
+        ...(availability == null
+          ? {}
+          : {
+              equipmentSourceFence: {
+                exerciseId: availability.exerciseId,
+                sourceRevision: availability.sourceRevision,
+                ownerEvidenceRevision: availability.ownerEvidenceRevision,
+                includeCurrentRequirements:
+                  availability.requirementsEvidence === "legacy_unknown" &&
+                  !availability.usesPrescribedMeaning,
+              },
+            }),
+      },
+    );
+    if (
+      !updated.ok &&
+      updated.code === "equipment_source_conflict" &&
+      attempt + 1 < attempts
+    ) {
+      continue;
+    }
+    if (!updated.ok) {
+      return actionFailure(
+        updated.reason.includes("saved workout changed") ||
+            updated.code === "equipment_source_conflict"
+          ? "skip_stale"
+          : "skip_rejected",
+        updated.reason,
+      );
+    }
+    if (updated.historyRevision == null) {
+      return actionFailure(
+        "skip_rejected",
+        "Repbook could not fence this exercise choice. Review the workout before trying again.",
+      );
+    }
+    revalidatePath(`/session/${sessionExercise.sessionId}`);
+    return { ...updated, historyRevision: updated.historyRevision };
+  }
+  return actionFailure(
+    "skip_stale",
+    "The available equipment kept changing. Review the current setup before trying again.",
   );
-  if (!updated.ok) {
-    return actionFailure(
-      updated.reason.includes("saved workout changed")
-        ? "skip_stale"
-        : "skip_rejected",
-      updated.reason,
-    );
-  }
-  if (updated.historyRevision == null) {
-    return actionFailure(
-      "skip_rejected",
-      "Repbook could not fence this exercise choice. Review the workout before trying again.",
-    );
-  }
-  revalidatePath(`/session/${sessionExercise.sessionId}`);
-  return { ...updated, historyRevision: updated.historyRevision };
 }
 
 export async function confirmExerciseUnskipped(input: {

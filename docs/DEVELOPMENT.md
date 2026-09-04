@@ -527,6 +527,61 @@ card. Finish uses the explicit pending label **Saving workout…**. Phase 5 adds
 no migration and changes no stored-data meaning, snapshot schema, recovery
 manifest, Program ownership, import/export contract, or production data.
 
+### Active Workout North Star Phase 6 integration gate
+
+Phase 6 reuses the dedicated North Star project for one bounded integration
+Gauntlet. It adds focused coverage for the exact current-exercise landmark and
+for saved machine geometry that is incomplete rather than unavailable or
+incompatible:
+
+```bash
+npx vitest run \
+  tests/unit/exact-equipment-availability.test.ts \
+  tests/unit/session-equipment-presentation.test.ts \
+  tests/unit/equipment-setup-panel-component.test.tsx \
+  tests/unit/session-runner-exit.test.ts \
+  tests/unit/active-workout-phase0-contract.test.ts \
+  tests/unit/session-guidance.test.ts \
+  tests/unit/session-actions-results.test.ts \
+  tests/unit/session-equipment-selection-service-db.test.ts \
+  tests/unit/workout-status-bar-component.test.tsx \
+  tests/unit/production-readiness-workflow-contract.test.ts \
+  tests/unit/session-lifecycle-characterization.test.ts \
+  tests/unit/v2-t04-warmup-occurrences-db.test.ts \
+  tests/unit/v2-t05-execution-semantics-db.test.ts \
+  tests/unit/reporting-session-outcomes-db.test.ts \
+  tests/unit/occurrence-mutation-outbox-sync.test.ts \
+  tests/unit/occurrence-mutation-dialog.test.tsx
+npm run typecheck
+npm run lint
+npm run build
+npm run test:e2e:active-workout-north-star
+npm run active-workout:phase6-comparisons
+```
+
+The 16-file focused contract run passes 260 tests on the Phase 6 candidate.
+
+The browser gate measures the exact current-exercise and active decision
+headings, retained saved-set evidence, and essential measure controls inside
+the usable visual viewport above the fixed action area at the named default and
+145% mobile sizes. A dedicated disposable fixture also verifies the complete
+`configuration_incomplete` decision and Settings navigation. The complete
+16-state synthetic capture set and reproducibly generated equal-size North Star
+comparisons live in
+`docs/assets/active-workout-phase6-qa/`.
+
+`configuration_incomplete` is a current-inventory decision state, not a new
+historical reason. It names missing facts and routes to **Complete equipment
+setup** without exposing Replace, Skip, or Log until exact compatibility can be
+established. Exercise-level and set-level Skip controls expose the equipment
+cause only when the canonical current state supports it. Both server writers
+independently revalidate and source-fence the cause; a stale offline occurrence
+remains visible for review instead of being rewritten or silently discarded.
+This phase adds no migration, historical rewrite, Program change, snapshot or
+recovery-manifest change, import/export change, or production-data operation.
+Protected checks, a separately approved preview, the representative full
+workout, and installed-iPhone PWA acceptance remain release gates.
+
 ### Day 2 active-workout reliability root causes
 
 The August 16, 2026 candidate confirmed these causes before remediation:
@@ -682,8 +737,10 @@ screenshots. `test:e2e:replacement-mobile` proves a substitution cannot leave
 old requirements visible, while `test:e2e:active-workout-add-exercise` proves
 a bodyweight addition does not fabricate equipment. Exact exercise setup and
 retry remain covered by their established local-equipment suites. Automated
-WebKit is required but does not replace an installed-iPhone PWA and VoiceOver
-field check before release.
+WebKit is required but does not replace the installed-iPhone PWA field check
+before release. VoiceOver is excluded by owner direction; semantic structure,
+keyboard and focus behaviour, accessible names, contrast, reduced motion, and
+field legibility remain required.
 
 `audit:check` requires a clean production dependency audit and also reviews the
 complete development-tool tree. Any temporary development-only exception is

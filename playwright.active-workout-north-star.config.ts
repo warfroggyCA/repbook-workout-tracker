@@ -5,7 +5,9 @@ const port = Number.parseInt(
   10,
 );
 const fixtureMode =
-  process.env.ACTIVE_WORKOUT_PHASE4_EQUIPMENT_CONFLICT_FIXTURE === "1"
+  process.env.ACTIVE_WORKOUT_PHASE6_CONFIGURATION_INCOMPLETE_FIXTURE === "1"
+    ? "configuration-incomplete"
+    : process.env.ACTIVE_WORKOUT_PHASE4_EQUIPMENT_CONFLICT_FIXTURE === "1"
     ? "equipment-conflict"
     : process.env.ACTIVE_WORKOUT_PHASE0_CONTRACT_FIXTURE === "1"
       ? "equipment"

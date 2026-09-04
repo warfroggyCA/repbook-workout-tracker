@@ -541,14 +541,14 @@ describe("reporting session completion and planned-duration writers", () => {
       clientKey: structuredClientKey,
       expectedRevision: 0,
       operation: "skip",
-      reasonCode: "equipment_unavailable_incompatible",
+      reasonCode: "technical_app_issue",
     })).resolves.toMatchObject({
       outcome: "saved",
       occurrence: {
         state: "skipped",
-        reason: "equipment_unavailable_incompatible",
+        reason: "technical_app_issue",
         resolutionSemanticsVersion: 1,
-        resolutionReasonCode: "equipment_unavailable_incompatible",
+        resolutionReasonCode: "technical_app_issue",
       },
     });
     await expect(mutateWorkoutOccurrence(database.db, fixture.userId, {
@@ -556,12 +556,12 @@ describe("reporting session completion and planned-duration writers", () => {
       clientKey: structuredClientKey,
       expectedRevision: 0,
       operation: "skip",
-      reasonCode: "equipment_unavailable_incompatible",
+      reasonCode: "technical_app_issue",
     })).resolves.toMatchObject({
       outcome: "replayed",
       occurrence: {
         resolutionSemanticsVersion: 1,
-        resolutionReasonCode: "equipment_unavailable_incompatible",
+        resolutionReasonCode: "technical_app_issue",
       },
     });
     await expect(mutateWorkoutOccurrence(database.db, fixture.userId, {

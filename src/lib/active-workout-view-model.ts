@@ -369,6 +369,7 @@ function projectSaveState(
 function cueNeedsAttention(cue: EquipmentPreparationCue) {
   return cue.status === "pending_confirmation" ||
     cue.status === "choice_required" ||
+    cue.status === "configuration_incomplete" ||
     cue.status === "unavailable" ||
     cue.status === "updating" ||
     (cue.status === "broad_only" && !cue.preciseClaimAllowed);

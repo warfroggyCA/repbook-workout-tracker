@@ -424,10 +424,12 @@ Every phase must preserve:
   on-screen keyboard;
 - usable content at 145% text rather than hidden essential controls.
 
-Automated accessibility and WebKit checks are required. The established
-installed-iPhone PWA and VoiceOver field check remains a release gate unless
-the owner explicitly changes that public requirement; passing desktop browser
-semantics alone is not equivalent evidence.
+Automated accessibility and WebKit checks are required. VoiceOver is excluded
+from this project's owner-directed release testing. The established
+installed-iPhone PWA field check remains a release gate for touch layout,
+focus/reveal, app lifecycle, and device sound, silent-mode, Bluetooth, and
+background behaviour; passing desktop browser semantics alone is not
+equivalent evidence.
 
 ## Implementation architecture
 
@@ -863,6 +865,49 @@ Exit gate: integration review finds no material contract gap; protected checks
 are green; preview and physical-device acceptance are complete; release notes
 state any real limitation rather than hiding it.
 
+Implementation result: the local integration Gauntlet found and corrected
+material gaps without adding a writer or changing persisted history. Automatic
+reveal could leave the exact current-exercise heading above the usable viewport
+at 390 by 844 and especially 320 by 700 with 145% text. An initial sticky-header
+correction kept the name visible but masked the saved-set ledger. The final
+context-aware reveal keeps the exercise heading, any active decision heading,
+visible measure controls, and retained saved-set evidence together when the
+viewport can contain them. Browser geometry contracts measure those landmarks
+against the real usable area above the fixed action bar.
+
+The same review found that a saved exact machine with missing required geometry
+was being collapsed into generic incompatibility. The canonical availability,
+presentation, guidance, and logging contract now exposes
+`configuration_incomplete`, names the missing saved-equipment facts, blocks a
+misleading set log, and routes the athlete to **Complete equipment setup**.
+Retained broad identity and minimum-capacity evidence is applied before that
+classification, so an ineligible partial machine is never named as something
+the athlete should finish configuring. Automatic setup selection reuses the
+same canonical option list, including optional cable attachments, instead of
+silently choosing from a parallel approximation.
+Unavailable and incompatible equipment retain their existing workout-only
+Replace and Skip paths. Exercise-level and set-level Skip controls omit the
+equipment cause unless the canonical state is actually unavailable or
+incompatible. Both server write paths revalidate that state with an
+equipment-source fence before writing it. A stale offline set-level command is
+kept for explicit review; it cannot turn incomplete configuration into a false
+equipment cause. Deterministic database coverage also changes equipment at the
+post-preflight boundary and proves that the occurrence writer records neither
+the skip nor a receipt from stale evidence.
+
+The complete 16-state synthetic running-product capture and equal-size artboard
+comparisons are retained in `docs/assets/active-workout-phase6-qa/`. The
+incomplete-configuration capture is a real browser path through the production
+build, including dock focus and Settings navigation. The local production build,
+focused contract tests, and dedicated North Star browser gate pass. This is
+review evidence, not release acceptance: protected checks on the candidate
+commit, a separately approved preview, a representative full workout, and the
+installed-iPhone PWA check remain required by the exit gate.
+
+Phase 6 adds no schema or migration, rewrites no history, and changes no
+snapshot, recovery-manifest, import/export, authentication, Program, or
+production-data contract.
+
 ## Verification matrix
 
 ### Focused automated checks
@@ -926,9 +971,11 @@ measure, and an exercise that can be replaced. Verify:
    adherence failure.
 5. Navigate the complete set-entry path using keyboard and Enter; confirm focus
    never lands on a value-changing control after logging.
-6. Exercise compatible-unselected, unavailable, incompatible, and unknown
-   equipment states; confirm the first three expose only truthful actions and
-   the unknown path can log with `legacy_unknown` and no equipment snapshot.
+6. Exercise compatible-unselected, configuration-incomplete, unavailable,
+   incompatible, and unknown equipment states. Confirm the incomplete path names
+   the exact missing saved-equipment details and offers only **Complete equipment
+   setup**; unavailable and incompatible offer workout-only Replace/Skip; and the
+   unknown path can log with `legacy_unknown` and no equipment snapshot.
 7. Replace one exercise for today and skip another with a reason; confirm the
    Program remains unchanged and History/Review retains the truth.
 8. Correct a saved set and inspect the earlier version.
@@ -943,7 +990,9 @@ measure, and an exercise that can be replaced. Verify:
 
 Repeat the visual path in light and dark mode on the named viewports. Before a
 release, repeat the critical flow in the installed iPhone PWA and complete the
-current field accessibility check.
+owner-directed field interaction and legibility check. VoiceOver is excluded;
+the semantic, keyboard, focus, label, contrast, and reduced-motion gates above
+remain required.
 
 ## Pull-request and owner gates
 

@@ -588,6 +588,20 @@ describe("set logging equipment resolution", () => {
     ).toEqual({ status: "resolve_equipment_conflict" });
   });
 
+  it("blocks logging while required equipment configuration is incomplete", () => {
+    expect(
+      resolveSetLoggingEquipment({
+        hasSetup: true,
+        hasAvailableSnapshot: false,
+        hasPendingSelection: false,
+        optionCount: 0,
+        decisionState: "configuration_incomplete",
+        recordsLoad: false,
+        effectiveLoadMeaning: null,
+      }),
+    ).toEqual({ status: "complete_equipment_setup" });
+  });
+
   it("records displayed load when the exercise has no equipment setup", () => {
     expect(
       resolveSetLoggingEquipment({

@@ -3,6 +3,7 @@ import { resolve } from "node:path";
 import {
   expect,
   test,
+  type Locator,
   type Page,
   type TestInfo,
 } from "@playwright/test";
@@ -35,6 +36,11 @@ const PHASE4_QA_DIRECTORY = resolve(
 const PHASE5_QA_DIRECTORY = resolve(
   "docs/assets/active-workout-phase5-qa",
 );
+const PHASE6_QA_DIRECTORY = resolve(
+  "docs/assets/active-workout-phase6-qa",
+);
+const PHASE6_CONFIGURATION_INCOMPLETE_SCREENSHOT =
+  "16-configuration-incomplete-390x844-115";
 
 test.describe.configure({ mode: "serial" });
 
@@ -51,10 +57,10 @@ async function signInAndStartDayA(
   await login.click();
   await expect(page).toHaveURL(/\/today$/);
 
-  const options = page.locator("summary").filter({ hasText: "Workout options" });
-  await options.click();
   const includeWarmups = settings.includeWarmups ?? true;
   if (includeWarmups) {
+    const options = page.locator("summary").filter({ hasText: "Workout options" });
+    await options.click();
     await page
       .getByRole("checkbox", { name: /Include programmed warm-ups/ })
       .check();
@@ -143,6 +149,10 @@ async function captureCurrentBaseline(
   if (process.env.UPDATE_ACTIVE_WORKOUT_PHASE5_QA === "1") {
     await mkdir(PHASE5_QA_DIRECTORY, { recursive: true });
     await writeFile(resolve(PHASE5_QA_DIRECTORY, `${name}.jpg`), image);
+  }
+  if (process.env.UPDATE_ACTIVE_WORKOUT_PHASE6_QA === "1") {
+    await mkdir(PHASE6_QA_DIRECTORY, { recursive: true });
+    await writeFile(resolve(PHASE6_QA_DIRECTORY, `${name}.jpg`), image);
   }
 }
 
@@ -344,6 +354,59 @@ async function expectEssentialCurrentSetControlsClear(page: Page) {
   ).toBeVisible();
 }
 
+async function expectWorkoutLandmarkClear(landmark: Locator) {
+  await expect(landmark).toBeVisible();
+  const geometry = await landmark.evaluate((element) => {
+    const viewportTop = window.visualViewport?.offsetTop ?? 0;
+    const viewportBottom = viewportTop +
+      (window.visualViewport?.height ?? window.innerHeight);
+    const stickySummary = document.querySelector<HTMLElement>(
+      '[data-testid="active-workout-sticky-summary"]',
+    );
+    const statusBar = document.querySelector<HTMLElement>(
+      '[aria-label="Workout status"]',
+    );
+    const bounds = element.getBoundingClientRect();
+    const card = element.closest<HTMLElement>(
+      '[data-testid="current-exercise-card"]',
+    );
+    if (card == null) throw new Error("Current exercise landmark lost its card.");
+    return {
+      top: bounds.top,
+      bottom: bounds.bottom,
+      visibleTop: Math.max(
+        viewportTop,
+        stickySummary?.getBoundingClientRect().bottom ?? viewportTop,
+      ),
+      visibleBottom: Math.min(
+        viewportBottom,
+        statusBar?.getBoundingClientRect().top ?? viewportBottom,
+      ),
+    };
+  });
+  expect(geometry.top, JSON.stringify(geometry)).toBeGreaterThanOrEqual(
+    geometry.visibleTop - 1,
+  );
+  expect(geometry.bottom).toBeLessThanOrEqual(geometry.visibleBottom + 1);
+}
+
+async function expectCurrentExerciseLandmarkClear(page: Page) {
+  await expectWorkoutLandmarkClear(
+    page
+      .getByTestId("current-exercise-card")
+      .getByRole("heading", { level: 2 }),
+  );
+}
+
+async function expectSavedLedgerEvidenceClear(page: Page) {
+  await expectWorkoutLandmarkClear(
+    page
+      .getByTestId("current-exercise-card")
+      .locator('[data-set-row-state="saved"]')
+      .first(),
+  );
+}
+
 async function restDeadline(page: Page) {
   return page.evaluate((storageKey) => {
     const raw = localStorage.getItem(storageKey);
@@ -360,6 +423,7 @@ test("records the six common-path current baselines without treating them as tar
   const pageErrors = observeGauntletPageErrors(page, browserName);
   await signInAndStartDayA(page);
   await setFontSize(page, "default");
+  await expectCurrentExerciseLandmarkClear(page);
 
   await page.getByTestId("active-log-set").click();
   await waitForRest(page);
@@ -377,6 +441,8 @@ test("records the six common-path current baselines without treating them as tar
       .getByTestId("active-set-ledger")
       .locator('[data-set-row-state="saved"]'),
   ).toHaveCount(1);
+  await expectCurrentExerciseLandmarkClear(page);
+  await expectSavedLedgerEvidenceClear(page);
   await captureCurrentBaseline(
     page,
     testInfo,
@@ -385,6 +451,8 @@ test("records the six common-path current baselines without treating them as tar
 
   await setFontSize(page, "extra-large");
   await expectRestControlsClear(page);
+  await expectCurrentExerciseLandmarkClear(page);
+  await expectSavedLedgerEvidenceClear(page);
   await captureCurrentBaseline(
     page,
     testInfo,
@@ -393,6 +461,8 @@ test("records the six common-path current baselines without treating them as tar
 
   await setFontSize(page, "default");
   await completeRestByClock(page);
+  await expectCurrentExerciseLandmarkClear(page);
+  await expectSavedLedgerEvidenceClear(page);
   await captureCurrentBaseline(
     page,
     testInfo,
@@ -404,6 +474,8 @@ test("records the six common-path current baselines without treating them as tar
     timeout: 1_500,
   });
   await expect(page.getByTestId("active-log-set")).toBeVisible();
+  await expectCurrentExerciseLandmarkClear(page);
+  await expectSavedLedgerEvidenceClear(page);
 
   await captureCurrentBaseline(
     page,
@@ -413,6 +485,8 @@ test("records the six common-path current baselines without treating them as tar
 
   await setFontSize(page, "extra-large");
   await expectEssentialCurrentSetControlsClear(page);
+  await expectCurrentExerciseLandmarkClear(page);
+  await expectSavedLedgerEvidenceClear(page);
   await captureCurrentBaseline(
     page,
     testInfo,
@@ -421,6 +495,8 @@ test("records the six common-path current baselines without treating them as tar
 
   await page.setViewportSize({ width: 320, height: 700 });
   await expectEssentialCurrentSetControlsClear(page);
+  await expectCurrentExerciseLandmarkClear(page);
+  await expectSavedLedgerEvidenceClear(page);
   await captureCurrentBaseline(
     page,
     testInfo,
@@ -502,6 +578,10 @@ test("records the Phase 4 equipment-unavailable decision", async ({
   )).toBeVisible();
   await expect(page.getByTestId("active-workout-dock-primary")).toContainText(
     "Replace for today",
+  );
+  await expectCurrentExerciseLandmarkClear(page);
+  await expectWorkoutLandmarkClear(
+    equipmentDecision.getByRole("heading", { level: 3 }),
   );
   await captureCurrentBaseline(
     page,
@@ -638,6 +718,73 @@ test("records the Phase 4 equipment-unavailable decision", async ({
   );
   await pageErrors.expectNoUnexpected();
   await discardWorkout(page);
+});
+
+test("records the Phase 6 configuration-incomplete decision", async ({
+  page,
+  browserName,
+}, testInfo) => {
+  expect(process.env.ACTIVE_WORKOUT_PHASE6_CONFIGURATION_INCOMPLETE_FIXTURE).toBe(
+    "1",
+  );
+  const pageErrors = observeGauntletPageErrors(page, browserName);
+  await signInAndStartDayA(page, {
+    includeWarmups: false,
+    expectLogSet: false,
+  });
+
+  const currentExerciseCard = page.getByTestId("current-exercise-card");
+  await expect(
+    currentExerciseCard.getByRole("heading", {
+      level: 2,
+      name: "Plate-Loaded Lat Pulldown",
+      exact: true,
+    }),
+  ).toBeVisible();
+  const equipmentDecision = currentExerciseCard.getByRole("region", {
+    name: "Equipment setup incomplete for Plate-Loaded Lat Pulldown",
+  });
+  await expect(equipmentDecision).toBeVisible();
+  await expect(equipmentDecision).toContainText(
+    "Plate-loaded lat pulldown: loading points, balancing rule, load-entry meaning",
+  );
+  const completeSetup = equipmentDecision.getByRole("link", {
+    name: "Complete equipment setup",
+    exact: true,
+  });
+  await expect(completeSetup).toHaveAttribute("href", "/settings/equipment");
+  await expect(
+    equipmentDecision.getByRole("button", {
+      name: "Replace for today",
+      exact: true,
+    }),
+  ).toHaveCount(0);
+  await expect(
+    equipmentDecision.getByRole("button", {
+      name: "Skip exercise",
+      exact: true,
+    }),
+  ).toHaveCount(0);
+  await expect(page.getByTestId("active-log-set")).toHaveCount(0);
+  await expect(page.getByTestId("inline-log-set")).toHaveCount(0);
+  const dockPrimary = page.getByTestId("active-workout-dock-primary");
+  await expect(dockPrimary).toContainText("Complete equipment setup");
+  await expectCurrentExerciseLandmarkClear(page);
+  await expectWorkoutLandmarkClear(
+    equipmentDecision.getByRole("heading", { level: 3 }),
+  );
+  await captureCurrentBaseline(
+    page,
+    testInfo,
+    PHASE6_CONFIGURATION_INCOMPLETE_SCREENSHOT,
+  );
+
+  await waitForHydratedReactHandler(dockPrimary);
+  await dockPrimary.click();
+  await expect(completeSetup).toBeFocused();
+  await completeSetup.click();
+  await expect(page).toHaveURL(/\/settings\/equipment$/);
+  await pageErrors.expectNoUnexpected();
 });
 
 test("a stray Enter after Log set cannot change rest or the next set", async ({

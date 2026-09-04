@@ -25,10 +25,7 @@ import type { SessionEquipmentGeometrySnapshot } from "@/lib/session-equipment-s
 import { resolveProspectiveMachinePlates } from "@/lib/machine-plate-compatibility";
 import { convertWeight, type LoadUnit } from "@/lib/units";
 import type { LoadedEquipmentLoadProfile } from "@/services/equipment-load-profiles";
-import type {
-  SessionEquipmentOption,
-  SessionEquipmentSetup,
-} from "@/components/session/types";
+import type { SessionEquipmentSetup } from "@/components/session/types";
 
 export type EquipmentPresentationPlate = {
   id: string;
@@ -345,6 +342,29 @@ function asExactCandidate(
   };
 }
 
+function missingGeometryFields(profile: LoadedEquipmentLoadProfile): string[] {
+  if (profile.profile.kind === "plate_loaded_machine") {
+    const missing = [
+      profile.profile.startingResistance == null ? "starting resistance" : null,
+      profile.profile.startingResistanceUnit == null ? "resistance unit" : null,
+      profile.profile.loadingPointCount == null ? "loading points" : null,
+      profile.profile.balancingRule == null ? "balancing rule" : null,
+      profile.profile.targetEntryMeaning == null ? "load-entry meaning" : null,
+    ].filter((value): value is string => value != null);
+    return missing.length > 0 ? missing : ["known machine geometry confirmation"];
+  }
+  if (profile.profile.kind === "cable_machine") {
+    const missing = [
+      profile.profile.stackCount == null ? "stack count" : null,
+      profile.profile.topology == null ? "stack topology" : null,
+      profile.profile.displayedUnit == null ? "displayed unit" : null,
+      profile.profile.stackSteps.length === 0 ? "stack positions" : null,
+    ].filter((value): value is string => value != null);
+    return missing.length > 0 ? missing : ["known cable geometry confirmation"];
+  }
+  return ["required equipment configuration"];
+}
+
 /**
  * Canonical current-inventory verdict for a catalog exercise. Exercise pickers
  * and the active-workout setup resolver share this projection so a broad
@@ -389,15 +409,21 @@ export function buildSessionEquipmentPresentation(input: {
   profiles: LoadedEquipmentLoadProfile[];
   inventory: InventoryItem[];
   plates: EquipmentPresentationPlate[];
-  /** Optional retained-evidence fence for primary equipment candidates. */
-  optionAllowed?: (option: SessionEquipmentOption) => boolean;
+  /** Optional retained-evidence fence for every primary equipment candidate. */
+  primaryEquipmentAllowed?: (equipmentItemId: string) => boolean;
 }): { setup: SessionEquipmentSetup | null; plateConfig: PlateMathConfig | null } {
   const { exercise, profiles, plates } = input;
-  const primaries = profiles.filter((entry) => entry.profile.kind !== "attachment");
+  const candidateProfiles = profiles.filter((entry) =>
+    entry.profile.kind === "attachment" ||
+    (input.primaryEquipmentAllowed?.(entry.equipmentItemId) ?? true)
+  );
+  const primaries = candidateProfiles.filter(
+    (entry) => entry.profile.kind !== "attachment",
+  );
   const exactResolution = resolveExerciseEquipmentAvailability({
     requirements: exercise.requirements,
     exactRequirement: exercise.exactRequirement,
-    profiles,
+    profiles: candidateProfiles,
     inventory: input.inventory,
     plates,
   });
@@ -467,7 +493,7 @@ export function buildSessionEquipmentPresentation(input: {
       loadEntryMeaning: load.meaning,
       loadEntryMeaningChoices: load.choices,
     }));
-  }).filter((option) => input.optionAllowed?.(option) ?? true);
+  });
 
   const current = exercise.currentSelection;
   const currentGuidance = current
@@ -492,6 +518,16 @@ export function buildSessionEquipmentPresentation(input: {
     option.equipmentItemId === current.equipmentItemId &&
     option.attachmentItemId === current.attachmentItemId
   );
+  const incompleteIds = new Set(
+    exactResolution.configurationIncompleteEquipmentItemIds,
+  );
+  const configurationIssues = primaries
+    .filter((profile) => incompleteIds.has(profile.equipmentItemId))
+    .map((profile) => ({
+      equipmentItemId: profile.equipmentItemId,
+      equipmentLabel: profile.itemLabel,
+      missingFields: missingGeometryFields(profile),
+    }));
   let plateConfig: PlateMathConfig | null = null;
   let loadEntryMeaning: SessionEquipmentSetup["loadEntryMeaning"] = null;
   if (current?.geometrySnapshot.kind === "plate_loaded_implement") {
@@ -524,10 +560,13 @@ export function buildSessionEquipmentPresentation(input: {
         ? "ready"
         : exactResolution.status === "broad_unavailable"
           ? "unavailable"
+          : exactResolution.status === "configuration_incomplete"
+            ? "configuration_incomplete"
           : "incompatible",
       status: options.length > 0 && exactResolution.status !== "broad_unavailable"
         ? "available"
         : "unavailable",
+      configurationIssues,
       selectionRequired: current == null && options.length > 1,
       currentSnapshotId: current?.id ?? null,
       currentEquipmentLabel: current?.equipmentLabel ?? null,

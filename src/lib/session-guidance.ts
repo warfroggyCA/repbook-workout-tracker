@@ -217,6 +217,7 @@ export type EquipmentPreparationCue = {
     | "selected"
     | "pending_confirmation"
     | "choice_required"
+    | "configuration_incomplete"
     | "unavailable"
     | "broad_only"
     | "updating";
@@ -582,6 +583,23 @@ export function projectEquipmentPreparationCue(
       guidance: null,
       message:
         "Updating equipment guidance… Old implement and plate details are withheld.",
+      preciseClaimAllowed: false,
+    };
+  }
+
+  if (setup.decisionState === "configuration_incomplete") {
+    const labels = setup.configurationIssues
+      ?.map((issue) => issue.equipmentLabel)
+      .join(", ");
+    return {
+      status: "configuration_incomplete",
+      exerciseName: exercise.name,
+      equipmentLabel: labels || null,
+      attachmentLabel: null,
+      guidance: null,
+      message: labels
+        ? `Complete the saved equipment configuration for ${labels}.`
+        : "Complete the saved equipment configuration before logging this exercise.",
       preciseClaimAllowed: false,
     };
   }
