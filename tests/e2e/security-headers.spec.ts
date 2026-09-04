@@ -99,3 +99,36 @@ test("enforces reviewed browser protections across the optimized app", async ({
   expect(nonces.size).toBe(routes.length);
   expect(browserErrors).toEqual([]);
 });
+
+test("keeps sign-in controls reachable on supported narrow layouts", async ({
+  page,
+}) => {
+  for (const layout of [
+    { width: 390, height: 844, fontSize: "default" },
+    { width: 320, height: 700, fontSize: "extra-large" },
+  ] as const) {
+    await page.setViewportSize({ width: layout.width, height: layout.height });
+    await page.goto("/sign-in");
+    await page.evaluate((fontSize) => {
+      document.documentElement.dataset.fontSize = fontSize;
+    }, layout.fontSize);
+
+    const signIn = page.getByRole("button", {
+      name: "Sign in with GitHub",
+    });
+    await expect(signIn).toBeVisible();
+    const controls = page.locator("form button:visible, form input:visible");
+    for (let index = 0; index < (await controls.count()); index += 1) {
+      const box = await controls.nth(index).boundingBox();
+      expect(box?.height ?? 0).toBeGreaterThanOrEqual(44);
+      expect(box?.width ?? 0).toBeGreaterThanOrEqual(44);
+    }
+    await signIn.focus();
+    await expect(signIn).toBeFocused();
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth - window.innerWidth
+      )
+    ).toBeLessThanOrEqual(1);
+  }
+});

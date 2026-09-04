@@ -47,7 +47,7 @@ export default function SignInPage() {
                 await signIn("github", { redirectTo: "/today" });
               }}
             >
-              <Button type="submit" className="w-full">
+              <Button type="submit" size="touch" className="w-full">
                 Sign in with GitHub
               </Button>
             </form>
@@ -69,11 +69,17 @@ export default function SignInPage() {
                 <Input
                   name="email"
                   type="email"
+                  className="min-h-11"
                   placeholder="allowlisted email"
                   required
                 />
               )}
-              <Button type="submit" variant="outline" className="w-full">
+              <Button
+                type="submit"
+                variant="outline"
+                size="touch"
+                className="w-full"
+              >
                 {isPreview ? "Enter disposable preview" : "Dev login"}
               </Button>
               {isPreview && (
