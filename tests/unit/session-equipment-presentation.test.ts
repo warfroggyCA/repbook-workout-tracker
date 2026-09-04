@@ -40,6 +40,41 @@ const exercise = {
 };
 
 describe("active-workout equipment presentation", () => {
+  it("preserves a verified unavailable state for reps-only physical equipment", () => {
+    const unavailable = buildSessionEquipmentPresentation({
+      exercise: {
+        ...exercise,
+        loadType: "bodyweight",
+        targetLoad: null,
+        requirements: [{ equipmentType: "suspension", minWeight: null }],
+      },
+      profiles: [],
+      inventory: [],
+      plates: [],
+    });
+
+    expect(unavailable.setup).toMatchObject({
+      decisionState: "unavailable",
+      status: "unavailable",
+      options: [],
+      configurationIssues: [],
+    });
+
+    const available = buildSessionEquipmentPresentation({
+      exercise: {
+        ...exercise,
+        loadType: "bodyweight",
+        targetLoad: null,
+        requirements: [{ equipmentType: "suspension", minWeight: null }],
+      },
+      profiles: [],
+      inventory: [{ type: "suspension", available: true, attrs: {} }],
+      plates: [],
+    });
+
+    expect(available.setup).toBeNull();
+  });
+
   it("requires a physical choice when more than one EZ bar is valid", () => {
     const profiles = [
       ezProfile("00000000-0000-4000-8000-000000000001", "Garage EZ bar"),
