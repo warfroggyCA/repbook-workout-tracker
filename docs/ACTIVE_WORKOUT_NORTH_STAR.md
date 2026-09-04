@@ -693,10 +693,12 @@ Phase 3 implementation evidence remains reviewable with the code:
   focused Stage 5 durability scenario additionally covers deadline adjustment,
   reload while running, elapsed collapse, durable continuation, and replay-safe
   reload.
-- `design-qa.md` and `docs/assets/active-workout-phase3-qa/` retain equal-size
-  source/implementation comparisons for set entry and rest at the named Phase
-  3 viewports. The real product keeps exact cue, destination, and supporting
-  workout context that the static artboards abbreviate.
+- `design-qa.md` and `docs/assets/active-workout-phase3-qa/` retain the
+  equal-size Phase 3 comparisons as historical rollout evidence. For running
+  rest, their earlier muted-surface and no-icon treatment is superseded by the
+  current contract in this section and the current implementation. The real
+  product keeps exact cue, destination, and supporting workout context that
+  the static artboards abbreviate.
 
 Phase 3 changes presentation, focus orchestration, and tests only. It adds no
 schema or migration, rewrites no history, and does not change timer storage,

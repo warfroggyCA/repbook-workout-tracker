@@ -1,5 +1,15 @@
 # Active Workout Phase 3 and Phase 4 design QA
 
+> **Historical evidence notice:** This file preserves the Phase 3 and Phase 4
+> acceptance record as it was captured. For the running-rest visual treatment
+> only, the muted-strip screenshots and findings below are superseded by the
+> current Rest strip contract in `docs/ACTIVE_WORKOUT_NORTH_STAR.md` and the
+> implementation in `src/components/session/rest-cockpit.tsx`: a cool-toned
+> selected surface, stronger boundary, subtle shadow, timer icon, and larger
+> countdown. The old captures remain here as rollout history, not as the
+> current visual acceptance reference. Their behaviour, durability, and
+> accessibility findings remain applicable.
+
 ## Comparison target
 
 - Source visual truth:
