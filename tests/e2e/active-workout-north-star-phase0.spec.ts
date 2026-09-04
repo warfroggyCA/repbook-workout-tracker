@@ -461,11 +461,19 @@ test("records the Phase 4 equipment-unavailable decision", async ({
     includeWarmups: false,
     expectLogSet: false,
   });
-  const equipmentDecision = page.getByRole("region", {
-    name: "Equipment setup for Barbell Back Squat",
+  const currentExerciseCard = page.getByTestId("current-exercise-card");
+  const affectedExerciseCardId = await currentExerciseCard.getAttribute("id");
+  expect(affectedExerciseCardId).not.toBeNull();
+  const affectedExerciseCard = page.locator(
+    `[id="${affectedExerciseCardId!}"]`,
+  );
+  const equipmentDecision = affectedExerciseCard.getByRole("region", {
+    name: "Equipment unavailable for Barbell Back Squat",
   });
   await expect(equipmentDecision).toBeVisible();
-  await expect(equipmentDecision).toContainText("Equipment unavailable");
+  await expect(equipmentDecision).toContainText(
+    "Equipment unavailable for Barbell Back Squat",
+  );
   await expect(
     equipmentDecision.getByRole("button", {
       name: "Replace for today",
@@ -504,7 +512,91 @@ test("records the Phase 4 equipment-unavailable decision", async ({
     "Reason: Equipment unavailable or incompatible",
     { exact: true },
   )).toBeVisible();
+  await page
+    .getByRole("button", { name: "Search exercise catalog", exact: true })
+    .click();
+  const replacementPicker = page.getByRole("dialog", {
+    name: "Replace exercise",
+  });
+  await expect(
+    replacementPicker.getByRole("button", {
+      name: "View details for Plate-Loaded Lat Pulldown",
+    }),
+  ).toHaveCount(0);
+  await replacementPicker
+    .getByRole("button", { name: "All exercises", exact: true })
+    .click();
+  await replacementPicker
+    .getByRole("textbox", { name: "Search exercise library" })
+    .fill("Lat Pulldown");
+  const resultList = replacementPicker.getByRole("list", {
+    name: "Exercise results",
+  });
+  const familyToggle = resultList.locator(
+    ':scope > [role="listitem"] > button[aria-controls]',
+  ).filter({ hasText: "Lat Pulldown" });
+  await expect(familyToggle).toBeVisible();
+  const nestedVariants = replacementPicker.getByRole("list", {
+    name: "Lat Pulldown variants",
+  });
+  await expect(nestedVariants).toBeVisible();
+  const familyBox = await familyToggle.boundingBox();
+  const nestedBox = await nestedVariants.boundingBox();
+  expect(familyBox).not.toBeNull();
+  expect(nestedBox).not.toBeNull();
+  expect(nestedBox!.x).toBeGreaterThan(familyBox!.x);
+  const plateLoadedTarget = replacementPicker.getByRole("button", {
+    name: "View details for Plate-Loaded Lat Pulldown",
+  });
+  await expect(plateLoadedTarget).toContainText(
+    "Needs a compatible plate-loaded machine with confirmed geometry.",
+  );
+  await plateLoadedTarget.click();
+  await expect(
+    replacementPicker.getByRole("button", {
+      name: "Replace in this workout",
+      exact: true,
+    }),
+  ).toBeDisabled();
+  await replacementPicker
+    .getByRole("button", { name: "Back to results", exact: true })
+    .click();
+  await replacementPicker
+    .getByRole("button", { name: "Cancel", exact: true })
+    .click();
   await page.keyboard.press("Escape");
+
+  const futureProgramLink = equipmentDecision.getByRole("link", {
+    name: "Change future Program…",
+    exact: true,
+  });
+  await expect(futureProgramLink).toBeVisible();
+  const futureProgramHref = await futureProgramLink.getAttribute("href");
+  expect(futureProgramHref).toMatch(/^\/program\/edit\?intent=replace&/);
+  const futureProgramPage = await page.context().newPage();
+  await futureProgramPage.goto(futureProgramHref!);
+  await expect(futureProgramPage.getByText(
+    "Choose the future replacement",
+    { exact: true },
+  )).toBeVisible();
+  const futureReplacementPicker = futureProgramPage.getByRole("dialog", {
+    name: "Replace Barbell Back Squat in future workouts",
+  });
+  await expect(futureReplacementPicker).toBeVisible();
+  await futureReplacementPicker
+    .getByRole("textbox", { name: "Search exercise library" })
+    .fill("Bodyweight Squat");
+  await futureReplacementPicker
+    .getByRole("button", { name: "View details for Bodyweight Squat" })
+    .click();
+  await futureReplacementPicker
+    .getByRole("button", { name: "Stage future replacement", exact: true })
+    .click();
+  await expect(futureProgramPage).not.toHaveURL(/intent=replace/);
+  await expect(futureProgramPage.getByRole("status")).toContainText(
+    "All changes saved",
+  );
+  await futureProgramPage.close();
 
   const skip = equipmentDecision.getByRole("button", {
     name: "Skip exercise",
@@ -513,14 +605,31 @@ test("records the Phase 4 equipment-unavailable decision", async ({
   await waitForHydratedReactHandler(skip);
   await skip.click();
   await expect(
-    page.getByRole("heading", { name: "Skip exercise — why?", exact: true }),
+    page.getByRole("heading", { name: "Skip Barbell Back Squat?", exact: true }),
   ).toBeVisible();
   await expect(page.getByText(
-    "This records the reason as equipment unavailable or incompatible. Your saved Program remains unchanged.",
+    "Repbook already knows the reason: equipment unavailable or incompatible. This skips the exercise for today; your saved Program remains unchanged.",
     { exact: true },
   )).toBeVisible();
+  await page.getByRole("button", { name: "Confirm skip", exact: true }).click();
+  await expect(affectedExerciseCard).toContainText(
+    "Skipped (equipment unavailable or incompatible)",
+  );
+  await expect(
+    affectedExerciseCard.getByRole("region", {
+      name: "Equipment unavailable for Barbell Back Squat",
+    }),
+  ).toHaveCount(0);
+  await affectedExerciseCard
+    .getByRole("button", { name: "Keep skipped and continue", exact: true })
+    .click();
+  await expect(affectedExerciseCard).toContainText(
+    "Skipped (equipment unavailable or incompatible)",
+  );
+  await expect(affectedExerciseCard).not.toContainText(
+    "Equipment unavailable for Barbell Back Squat",
+  );
   await pageErrors.expectNoUnexpected();
-  await page.keyboard.press("Escape");
   await discardWorkout(page);
 });
 

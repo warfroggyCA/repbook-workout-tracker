@@ -837,7 +837,11 @@ export function ExercisePicker({
                   </Button>
                 </div>
               ) : (
-                <div className="space-y-2">
+                <div
+                  className="space-y-2"
+                  role="list"
+                  aria-label="Exercise results"
+                >
                   {shownFamilies.map((family) => {
                     const isExpanded = searching || expanded.has(family.key);
                     const availableCount = family.variants.filter(
@@ -852,6 +856,7 @@ export function ExercisePicker({
                       return (
                         <div
                           key={family.key}
+                          role="listitem"
                           className="overflow-hidden rounded-xl border bg-card"
                         >
                           <ExerciseVariantButton
@@ -870,12 +875,14 @@ export function ExercisePicker({
                     return (
                       <section
                         key={family.key}
+                        role="listitem"
                         className="overflow-hidden rounded-xl border bg-card"
                       >
                         <button
                           type="button"
                           className="flex min-h-14 w-full items-center gap-3 px-3 py-2 text-left hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
                           aria-expanded={isExpanded}
+                          aria-controls={`exercise-family-variants-${family.key.replaceAll(" ", "-")}`}
                           onClick={() =>
                             setExpanded((current) => {
                               const next = new Set(current);
@@ -885,11 +892,6 @@ export function ExercisePicker({
                             })
                           }
                         >
-                          {isExpanded ? (
-                            <ChevronDown className="size-4 shrink-0" />
-                          ) : (
-                            <ChevronRight className="size-4 shrink-0" />
-                          )}
                           <ExerciseFamilyIcon
                             family={family.name}
                             exerciseName={family.name}
@@ -907,21 +909,32 @@ export function ExercisePicker({
                                 : ""}
                             </span>
                           </span>
+                          {isExpanded ? (
+                            <ChevronDown className="size-4 shrink-0" />
+                          ) : (
+                            <ChevronRight className="size-4 shrink-0" />
+                          )}
                         </button>
                         {isExpanded && (
-                          <div className="divide-y border-t">
+                          <div
+                            id={`exercise-family-variants-${family.key.replaceAll(" ", "-")}`}
+                            className="ml-4 divide-y border-l border-t"
+                            role="list"
+                            aria-label={`${family.name} variants`}
+                          >
                             {family.variants.map((item) => (
-                              <ExerciseVariantButton
-                                key={item.id}
-                                item={item}
-                                selectedId={selectedId}
-                                allowed={allowed}
-                                allowUnavailableSelection={allowUnavailableSelection}
-                                disabledReason={disabledReasons[item.id]}
-                                annotation={itemAnnotations[item.id]}
-                                registerButton={registerVariantButton}
-                                onInspect={inspect}
-                              />
+                              <div key={item.id} role="listitem">
+                                <ExerciseVariantButton
+                                  item={item}
+                                  selectedId={selectedId}
+                                  allowed={allowed}
+                                  allowUnavailableSelection={allowUnavailableSelection}
+                                  disabledReason={disabledReasons[item.id]}
+                                  annotation={itemAnnotations[item.id]}
+                                  registerButton={registerVariantButton}
+                                  onInspect={inspect}
+                                />
+                              </div>
                             ))}
                           </div>
                         )}

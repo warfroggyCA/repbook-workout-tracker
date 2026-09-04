@@ -1345,12 +1345,36 @@ or **Skip exercise**, retains
 unknown logger. The older `legacy_unknown` plus null-snapshot path remains only
 for exercise evidence with no reviewed setup meaning.
 
+The conflict surface lives inside its owning exercise card and names the exact
+exercise. A forced equipment replacement uses the same broad and exact profile,
+attachment, and geometry projection as the active workout, so **Available to
+me** cannot advertise a merely broad category match. The server rechecks the
+selected target and binds its equipment revision alongside the source conflict
+revision to the atomic substitution. An ordinary owner-selected replacement
+may still choose an unavailable catalog item deliberately from **All
+exercises**; that advisory path does not weaken safety, performed-shape, or
+identity exclusions.
+
+A known equipment skip confirms the already-established reason without asking
+for another cause. Once the skip is retained, the action panel is suppressed
+while the skipped card exposes restore, replacement, and **Keep skipped and
+continue** recovery. Returning the exercise restores the live equipment
+decision from current evidence.
+
 Substitution retains an earlier skip cause rather than clearing it. A direct
 equipment-conflict replacement also records the structured cause on unresolved
 occurrences. Record-version restore returns the exact earlier exercise and
 occurrence evidence. History reads the current session-exercise row first and,
 only when needed, the matching substitution version's `before_data.skip_reason`;
 today's inventory is never historical cause evidence.
+
+When a session retains exact Program, day, and slot lineage, the equipment
+surface may link to **Change future Program…**. The link carries those stable
+identities and the originally planned exercise identity into the existing
+Program editor. The editor refuses stale or mismatched lineage, opens the exact
+slot picker when valid, and stages the chosen variant only in the draft. The
+existing Review and Publish workflow remains the sole future-Program writer;
+the active workout and completed History are never modified by this link.
 
 The equipment-conflict writer binds the reviewed availability hash and the
 owner evidence revision to the locked session-exercise update. A concurrent

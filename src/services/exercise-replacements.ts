@@ -31,6 +31,8 @@ export type ExerciseReplacementOptions = {
   };
   items: Awaited<ReturnType<typeof getExerciseDiscoveryLibrary>>;
   warnings: Record<string, string>;
+  permittedIds: string[];
+  disabledReasons: Record<string, string>;
 };
 
 export async function getExerciseReplacementOptions(
@@ -66,22 +68,32 @@ export async function getExerciseReplacementOptions(
   }
 
   const warnings: Record<string, string> = {};
+  const permittedIds: string[] = [];
+  const disabledReasons: Record<string, string> = {};
   const items = library.map((item) => {
     const hardReason = workoutReplacementUnavailableReason(item);
-    const equipmentWarning = workoutReplacementEquipmentWarning(item);
-    const unavailableReason =
+    const identityReason =
       item.id === sessionExercise.exerciseId
         ? "Already selected for this workout"
         : item.id === plannedExerciseId && sessionExercise.substitutedForExerciseId
           ? "Use Undo to return to the originally planned exercise"
-          : hardReason;
-    if (equipmentWarning && unavailableReason == null) {
+          : null;
+    const disabledReason = identityReason ?? hardReason;
+    const equipmentWarning = disabledReason == null
+      ? workoutReplacementEquipmentWarning(item)
+      : null;
+    if (disabledReason == null) {
+      permittedIds.push(item.id);
+    } else {
+      disabledReasons[item.id] = disabledReason;
+    }
+    if (equipmentWarning) {
       warnings[item.id] = equipmentWarning;
     }
     return {
       ...item,
-      available: unavailableReason == null,
-      unavailableReason,
+      available: disabledReason == null && item.available,
+      unavailableReason: disabledReason ?? item.unavailableReason,
     };
   });
 
@@ -108,5 +120,7 @@ export async function getExerciseReplacementOptions(
     },
     items,
     warnings,
+    permittedIds,
+    disabledReasons,
   };
 }

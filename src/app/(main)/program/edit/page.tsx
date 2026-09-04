@@ -33,12 +33,26 @@ export default async function ProgramEditPage(props: PageProps<"/program/edit">)
           exerciseId: query.exercise,
         }
       : null;
+  const initialReplacementRequest =
+    query.intent === "replace" &&
+    typeof query.program === "string" &&
+    typeof query.day === "string" &&
+    typeof query.slot === "string" &&
+    typeof query.exercise === "string"
+      ? {
+          programId: query.program,
+          dayLineageId: query.day,
+          slotLineageId: query.slot,
+          exerciseId: query.exercise,
+        }
+      : null;
   return (
     <ProgramEditor
       ownerId={user.id}
       library={library}
       initialDayId={initialDayId}
       initialRemovalRequest={initialRemovalRequest}
+      initialReplacementRequest={initialReplacementRequest}
     />
   );
 }

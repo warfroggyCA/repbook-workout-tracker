@@ -270,9 +270,11 @@ describe("0069 bodyweight Bulgarian split-squat performed variant", () => {
       loadType: "bodyweight",
       metricType: "reps",
       loadSemantics: "bodyweight",
-      available: true,
+      available: false,
       missingEquipment: ["bench"],
     });
+    expect(options.permittedIds).toContain(bodyweight!.id);
+    expect(options.warnings[bodyweight!.id]).toMatch(/Needs bench/i);
 
     const firstVersionId = crypto.randomUUID();
     const firstSubstitution = await updateSessionExerciseWithVersion(

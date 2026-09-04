@@ -17,6 +17,7 @@ import { fitRoutineSetNotes, moveRoutineItem } from "@/lib/routine-builder";
 import {
   nextIncompleteExerciseId,
   futureProgramRemovalOption,
+  futureProgramReplacementOption,
   mergeEquipmentSelectionOccurrenceStates,
   previousComparableIsTemporarilyUnavailable,
   warmupOccurrenceWasOvertaken,
@@ -286,6 +287,39 @@ describe("session-runner workflow rules", () => {
       exercise: { ...planned, modificationType: "added" },
     })).toBeNull();
     expect(futureProgramRemovalOption({
+      sourceProgramId: null,
+      sourceDayLineageId: null,
+      dayName: "Legacy workout",
+      exercise: planned,
+    })).toBeNull();
+  });
+
+  it("opens future replacement at the exact retained Program slot without mutating today", () => {
+    const planned = exercise("Current replacement", {
+      exerciseId: "00000000-0000-4000-8000-000000000031",
+      sourceSlotLineageId: "00000000-0000-4000-8000-000000000032",
+      modificationType: "substituted",
+      substitutedForExerciseId: "00000000-0000-4000-8000-000000000033",
+      plannedExerciseName: "Original planned exercise",
+    });
+    expect(futureProgramReplacementOption({
+      sourceProgramId: "00000000-0000-4000-8000-000000000034",
+      sourceDayLineageId: "00000000-0000-4000-8000-000000000035",
+      dayName: "Day 2",
+      exercise: planned,
+    })).toEqual({
+      href: "/program/edit?intent=replace&program=00000000-0000-4000-8000-000000000034&day=00000000-0000-4000-8000-000000000035&slot=00000000-0000-4000-8000-000000000032&exercise=00000000-0000-4000-8000-000000000033",
+      dayName: "Day 2",
+      plannedExerciseName: "Original planned exercise",
+    });
+
+    expect(futureProgramReplacementOption({
+      sourceProgramId: "00000000-0000-4000-8000-000000000034",
+      sourceDayLineageId: "00000000-0000-4000-8000-000000000035",
+      dayName: "Day 2",
+      exercise: { ...planned, modificationType: "added" },
+    })).toBeNull();
+    expect(futureProgramReplacementOption({
       sourceProgramId: null,
       sourceDayLineageId: null,
       dayName: "Legacy workout",

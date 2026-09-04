@@ -19,7 +19,10 @@ import {
   sessionEquipmentGeometrySnapshotSchema,
   type SessionEquipmentGeometrySnapshot,
 } from "@/lib/session-equipment-snapshot-contract";
-import { buildSessionEquipmentPresentation } from "@/lib/session-equipment-presentation";
+import {
+  buildSessionEquipmentPresentation,
+  resolveExerciseEquipmentAvailability as resolveExerciseEquipmentAvailabilityProjection,
+} from "@/lib/session-equipment-presentation";
 import { resolveProspectiveMachinePlates } from "@/lib/machine-plate-compatibility";
 import { canonicalJson, sha256Hex } from "@/services/snapshot-crypto";
 import {
@@ -329,6 +332,96 @@ export type SessionEquipmentAvailabilityResolution = {
   usesPrescribedMeaning: boolean;
   requirementsEvidence: "retained" | "legacy_unknown";
 };
+
+export type CatalogExerciseEquipmentAvailabilityResolution = {
+  exerciseId: string;
+  sourceRevision: string;
+  decisionState: "ready" | "unavailable" | "incompatible";
+};
+
+type CatalogExerciseEquipmentContext = {
+  exercise_id: string;
+  source_revision: string;
+};
+
+async function loadCatalogExerciseEquipmentContext(
+  db: Db,
+  userId: string,
+  exerciseId: string,
+): Promise<CatalogExerciseEquipmentContext | null> {
+  const row = resultRows<CatalogExerciseEquipmentContext>(await db.execute(sql`
+    SELECT exercise.id AS exercise_id,
+           ${sessionEquipmentSelectionSourceRevisionExpression(
+             userId,
+             exerciseId,
+             true,
+           )} AS source_revision
+    FROM exercises exercise
+    JOIN users owner ON owner.id = ${userId}::uuid
+    WHERE exercise.id = ${exerciseId}::uuid
+      AND (exercise.user_id IS NULL OR exercise.user_id = ${userId}::uuid)
+    LIMIT 1
+  `))[0];
+  return row ?? null;
+}
+
+/**
+ * Resolve a prospective replacement against the same broad inventory, exact
+ * profile, attachment, and geometry contract used after it enters a workout.
+ */
+export async function resolveCatalogExerciseEquipmentAvailability(
+  db: Db,
+  userId: string,
+  exerciseId: string,
+): Promise<CatalogExerciseEquipmentAvailabilityResolution | null> {
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const context = await loadCatalogExerciseEquipmentContext(
+      db,
+      userId,
+      exerciseId,
+    );
+    if (!context) return null;
+    const [{ items, plates }, profiles, requirements] = await Promise.all([
+      loadLiveInventory(db, userId),
+      loadEquipmentLoadProfiles(db, userId),
+      loadRequirements(db, exerciseId),
+    ]);
+    const availability = resolveExerciseEquipmentAvailabilityProjection({
+      requirements: requirements.broad,
+      exactRequirement: requirements.exact,
+      profiles,
+      inventory: items.map((item) => ({
+        type: item.type,
+        available: item.available,
+        attrs: item.attrs ?? {},
+      })),
+      plates: plates.map((plate) => ({
+        id: plate.id,
+        denomination: Number(plate.denomination),
+        quantity: Number(plate.quantity),
+        unit: plate.unit,
+      })),
+    });
+    const current = await loadCatalogExerciseEquipmentContext(
+      db,
+      userId,
+      exerciseId,
+    );
+    if (current?.source_revision !== context.source_revision) continue;
+    return {
+      exerciseId: context.exercise_id,
+      sourceRevision: context.source_revision,
+      decisionState: availability.available
+        ? "ready"
+        : availability.status === "broad_unavailable"
+          ? "unavailable"
+          : "incompatible",
+    };
+  }
+  throw new Error(
+    "The available equipment changed while the replacement was being prepared.",
+  );
+}
 
 /**
  * Resolve the authoritative owner-scoped setup choices used by set logging.

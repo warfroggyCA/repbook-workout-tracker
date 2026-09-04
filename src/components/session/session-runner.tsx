@@ -127,6 +127,7 @@ import {
   equipmentSyncPending,
   finishBlockedByRecordedWork,
   futureProgramRemovalOption,
+  futureProgramReplacementOption,
   mergeSessionOutboxSets,
   mergeEquipmentSelectionOccurrenceStates,
   nextIncompleteExerciseId,
@@ -4647,19 +4648,28 @@ export function SessionRunner(props: SessionRunnerProps) {
               (entry.status === "queued" || entry.status === "needs_attention"),
           );
           const equipmentProjectionNeedsAttention =
+            exercise.modificationType !== "skipped" &&
             activeWorkoutViewModel.equipmentAttention.some(
               (item) => item.sessionExerciseId === exercise.id,
             );
           const equipmentSetupForcedOpen =
-            equipmentProjectionNeedsAttention ||
-            equipmentSetupNeedsAttention ||
-            (equipmentSetup != null &&
-              equipmentSetup.decisionState !== "ready") ||
-            ((equipmentSetup?.options.length ?? 0) > 0 &&
-              (equipmentSetup?.currentSnapshotId == null ||
-                !equipmentSetup.currentSelectionAvailable)) ||
-            !equipmentSetupMatches;
-          const equipmentPanel = equipmentSetupMatches ? (
+            exercise.modificationType !== "skipped" &&
+            (equipmentProjectionNeedsAttention ||
+              equipmentSetupNeedsAttention ||
+              (equipmentSetup != null &&
+                equipmentSetup.decisionState !== "ready") ||
+              ((equipmentSetup?.options.length ?? 0) > 0 &&
+                (equipmentSetup?.currentSnapshotId == null ||
+                  !equipmentSetup.currentSelectionAvailable)) ||
+              !equipmentSetupMatches);
+          const futureProgramReplacement = futureProgramReplacementOption({
+            sourceProgramId: props.sourceProgramId,
+            sourceDayLineageId: props.sourceDayLineageId,
+            dayName: props.templateName,
+            exercise,
+          });
+          const equipmentPanel =
+            exercise.modificationType !== "skipped" && equipmentSetupMatches ? (
             <EquipmentSetupPanel
               sessionExerciseId={exercise.id}
               exerciseName={exercise.name}
@@ -4691,8 +4701,9 @@ export function SessionRunner(props: SessionRunnerProps) {
                   intent: "skip_equipment",
                 });
               }}
+              futureProgramReplacement={futureProgramReplacement}
             />
-          ) : equipmentSetup ? (
+          ) : exercise.modificationType !== "skipped" && equipmentSetup ? (
             <p className="rounded-xl border border-dashed bg-muted/30 p-3 text-sm text-muted-foreground">
               Updating equipment guidance… Old implement and plate details are
               withheld.
@@ -4718,38 +4729,6 @@ export function SessionRunner(props: SessionRunnerProps) {
               upNextLoadPreview={activeGroupUpNextLoadPreview}
             />
           ) : null}
-          {equipmentPanel && equipmentSetupForcedOpen ? (
-            <details
-              id={`equipment-setup-${exercise.id}`}
-              data-testid="exercise-equipment-setup"
-              data-ui-surface={
-                equipmentSetup.decisionState === "ready"
-                  ? "inset"
-                  : "attention"
-              }
-              className="ui-surface"
-              open={equipmentSetupForcedOpen ? true : undefined}
-            >
-              <summary
-                hidden
-                className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 rounded-xl px-3 py-2 text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-              >
-                <span className="min-w-0 break-words">
-                  Equipment setup for {exercise.name}
-                </span>
-                <span className="shrink-0 text-xs text-muted-foreground">
-                  Show
-                </span>
-              </summary>
-              <div className={equipmentSetupForcedOpen ? undefined : "p-2 pt-0"}>
-                {equipmentPanel}
-              </div>
-            </details>
-          ) : equipmentPanel ? (
-            <div hidden aria-hidden="true">
-              {equipmentPanel}
-            </div>
-          ) : null}
           <ExerciseCard
             key={`${exercise.id}:${exercise.exerciseId}:${exercise.metricType}:${exercise.loadType}:${exercise.loadSemantics}`}
             exercise={exercise}
@@ -4769,6 +4748,31 @@ export function SessionRunner(props: SessionRunnerProps) {
                   ? !collapsedActiveGroupMemberIds.has(exercise.id)
                   : expandedId === exercise.id
             }
+            equipmentDecision={equipmentPanel ? (
+              equipmentSetupForcedOpen ? (
+                <div
+                  id={`equipment-setup-${exercise.id}`}
+                  data-testid="exercise-equipment-setup"
+                  data-ui-surface={
+                    equipmentSetup?.decisionState === "ready"
+                      ? "inset"
+                      : "attention"
+                  }
+                  className={cn(
+                    "border-t",
+                    equipmentSetup?.decisionState === "ready"
+                      ? "bg-[var(--surface-inset)]"
+                      : "bg-[var(--surface-attention)]",
+                  )}
+                >
+                  {equipmentPanel}
+                </div>
+              ) : (
+                <div hidden aria-hidden="true">
+                  {equipmentPanel}
+                </div>
+              )
+            ) : null}
             onToggle={() => {
               if (skipRecoveryExerciseId != null) {
                 setExpandedId(skipRecoveryExerciseId);

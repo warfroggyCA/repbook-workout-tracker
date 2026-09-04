@@ -31,6 +31,8 @@ export const SlotEditor = memo(function SlotEditor({
   onMoveToDay,
   onReplace,
   labelledBy,
+  futureReplacementRequested = false,
+  onFutureReplacementRequestConsumed,
 }: {
   day: ProgramDocumentDayV3;
   dayIndex: number;
@@ -45,6 +47,8 @@ export const SlotEditor = memo(function SlotEditor({
   onMoveToDay: (targetDay: number) => void;
   onReplace: (exerciseId: string) => void;
   labelledBy: string;
+  futureReplacementRequested?: boolean;
+  onFutureReplacementRequestConsumed?: () => void;
 }) {
   const prefix = `day-${day.lineageId}-slot-${slot.lineageId}`;
   const canMoveDay = false;
@@ -514,10 +518,20 @@ export const SlotEditor = memo(function SlotEditor({
           items={library}
           largeTouchTargets
           selectedId={slot.exerciseId}
-          triggerLabel="Replace exercise"
-          title="Replace this exercise"
-          description="The replacement starts fresh progress tracking. Earlier workouts remain unchanged."
-          confirmLabel="Replace exercise"
+          triggerLabel={futureReplacementRequested ? "Choose future replacement" : "Replace exercise"}
+          title={futureReplacementRequested
+            ? `Replace ${exercise?.name ?? "this exercise"} in future workouts`
+            : "Replace this exercise"}
+          description={futureReplacementRequested
+            ? "Choose the exact variant to stage in this Program draft. Today’s workout and earlier History remain unchanged; future workouts change only after Review and Publish."
+            : "The replacement starts fresh progress tracking. Earlier workouts remain unchanged."}
+          confirmLabel={futureReplacementRequested ? "Stage future replacement" : "Replace exercise"}
+          defaultOpen={futureReplacementRequested}
+          onOpenChange={(open) => {
+            if (!open && futureReplacementRequested) {
+              onFutureReplacementRequestConsumed?.();
+            }
+          }}
           onSelect={(item) => onReplace(item.id)}
         />
       </div>

@@ -1,6 +1,13 @@
 "use client";
 
-import { useEffect, useId, useRef, useState, useTransition } from "react";
+import {
+  useEffect,
+  useId,
+  useRef,
+  useState,
+  useTransition,
+  type ReactNode,
+} from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { toast } from "sonner";
@@ -41,6 +48,7 @@ import {
 import { cn } from "@/lib/utils";
 import { activeSetCommitFormId } from "@/lib/active-workout-layout";
 import { formatRestTime } from "@/lib/rest-time";
+import { skipReasonLabel } from "@/lib/session-exercise-decision-evidence";
 import {
   EXERCISE_NOTE_MAX_LENGTH,
   SET_NOTE_MAX_LENGTH,
@@ -471,6 +479,7 @@ type Props = {
   progress: ExerciseProgressProjection;
   expanded: boolean;
   onToggle: () => void;
+  equipmentDecision?: ReactNode;
   plateConfigs: Record<string, PlateMathConfig>;
   machineLoadConfig?: MachineLoadConfig | null;
   incrementals: Record<string, IncrementalLoadConfig>;
@@ -623,6 +632,8 @@ type ReplacementOptions = {
   >;
   items: ExerciseDiscoveryItem[];
   warnings: Record<string, string>;
+  permittedIds: string[];
+  disabledReasons: Record<string, string>;
 };
 
 export type ExerciseAdjustmentIntent =
@@ -734,6 +745,7 @@ export function ExerciseCard({
   progress,
   expanded,
   onToggle,
+  equipmentDecision = null,
   plateConfigs,
   machineLoadConfig = null,
   incrementals,
@@ -2020,7 +2032,7 @@ export function ExerciseCard({
           </div>
           <p className="break-words text-xs leading-5 text-muted-foreground">
             {isSkipped
-              ? `Skipped (${exercise.skipReason})`
+              ? `Skipped (${skipReasonLabel(exercise.skipReason ?? "unknown")})`
               : exercise.modificationType === "added"
                 ? `${progress.workoutOnlyPerformed}/${progress.workoutOnly || "–"} done${progress.extraPerformed > 0 ? ` · ${progress.extraPerformed} extra` : ""}${deviceSaveSummary ? ` · ${deviceSaveSummary}` : ""} · Workout only`
                 : isCurrentExercise
@@ -2062,6 +2074,8 @@ export function ExerciseCard({
         </div>
         </button>
       </div>
+
+      {equipmentDecision}
 
       {expanded && !isSkipped && skipConfirmationPending && (
         <div
@@ -2644,6 +2658,7 @@ export function ExerciseCard({
               />
               <SkipDrawer
                 exerciseId={exercise.id}
+                exerciseName={exercise.name}
                 expectedHistoryRevision={historyRevision}
                 open={adjustIntent === "skip" || adjustIntent === "skip_equipment"}
                 forcedReason={
@@ -3004,8 +3019,8 @@ export function ExerciseCard({
           >
             <h3 className="text-sm font-semibold">Exercise skipped</h3>
             <p className="mt-1 text-xs leading-5 text-muted-foreground">
-              Replace it for this workout, or deliberately continue. Your saved
-              Program is unchanged.
+              This exercise is skipped for today. Keep it skipped and continue,
+              replace it for today, or restore it. Your Program is unchanged.
             </p>
           </div>
           <div className="grid gap-2 sm:grid-cols-3">
@@ -3034,7 +3049,7 @@ export function ExerciseCard({
               onDone={applyReplacement}
             />
             <Button type="button" onClick={onSkipComplete}>
-              Continue without replacement
+              Keep skipped and continue
             </Button>
             <Button
               type="button"
@@ -3783,6 +3798,7 @@ function PainDrawer({
 
 function SkipDrawer({
   exerciseId,
+  exerciseName,
   expectedHistoryRevision,
   open,
   onOpenChange,
@@ -3792,6 +3808,7 @@ function SkipDrawer({
   forcedReason,
 }: {
   exerciseId: string;
+  exerciseName: string;
   expectedHistoryRevision: number;
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -3866,14 +3883,17 @@ function SkipDrawer({
       </DrawerTrigger>
       <DrawerContent className="[&_button]:min-h-11 [&_button]:min-w-11">
         <DrawerHeader>
-          <DrawerTitle>Skip exercise — why?</DrawerTitle>
+          <DrawerTitle>
+            {forcedReason ? `Skip ${exerciseName}?` : "Skip exercise — why?"}
+          </DrawerTitle>
         </DrawerHeader>
         <div className="flex flex-wrap gap-2 px-4 pb-6">
           {forcedReason ? (
             <div className="w-full space-y-3">
               <p className="text-sm text-muted-foreground">
-                This records the reason as equipment unavailable or incompatible.
-                Your saved Program remains unchanged.
+                Repbook already knows the reason: equipment unavailable or
+                incompatible. This skips the exercise for today; your saved
+                Program remains unchanged.
               </p>
               <Button
                 className="w-full"
@@ -3881,7 +3901,7 @@ function SkipDrawer({
                 disabled={pending}
                 onClick={() => submitReason(forcedReason)}
               >
-                {pending ? "Skipping…" : "Skip exercise"}
+                {pending ? "Skipping…" : "Confirm skip"}
               </Button>
             </div>
           ) : reasons.map((reason) => (
@@ -4340,6 +4360,9 @@ function ReplacementDrawer({
             <ExercisePicker
               items={options.items}
               itemWarnings={options.warnings}
+              allowedIds={options.permittedIds}
+              disabledReasons={options.disabledReasons}
+              allowUnavailableSelection={forcedReason == null}
               triggerLabel="Search exercise catalog"
               title="Replace exercise"
               description="Search the authorized catalog without similarity ranking. Repbook supports repetitions, assistance, duration, and distance when the full performed measurement can be retained; activity-only observations stay in Activity."

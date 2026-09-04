@@ -272,7 +272,7 @@ allowed actions.
 | Ready and confirmed | Compact exact equipment label or no interruption in the common path | Log with the confirmed snapshot |
 | Compatible but unselected | **Choose equipment** | Open the existing equipment-selection flow; do not log until selection is durable |
 | Configuration incomplete | Name the missing configuration | Complete setup or choose a different compatible item |
-| Unavailable | **Equipment unavailable** | **Replace for today** or **Skip exercise**; retain the reason |
+| Unavailable | **Equipment unavailable for _exercise name_**, contained within that exercise card | **Replace for today**, **Skip exercise**, or **Change future Program…** when exact Program-slot lineage exists; retain the reason and keep the Program flow separately reviewed |
 | Incompatible | Name the exact incompatibility | Choose a compatible item, replace for today, or skip; no bypass |
 | Unknown/legacy with no reviewed setup or compatible choice | **Equipment status unknown** without inventing a conflict | Keep **Log set** available; persist the displayed load with `legacy_unknown` meaning and no equipment snapshot |
 | Selection pending/failed | Keep the device copy and exact status visible | Retry or deliberately discard through the existing equipment queue; equipment guidance alone never blocks Finish |
@@ -364,8 +364,19 @@ cause, it remains unknown.
 ### Skip, replacement, and Program boundary
 
 **Replace for today** changes only the active workout. **Skip exercise** records
-the workout outcome and its reason. Neither action edits the Program. Any
-future Program adaptation remains a separate, explicit, owner-approved flow.
+the workout outcome and its reason. When equipment already establishes the
+reason, skip asks for confirmation rather than asking the athlete to choose the
+reason again. After confirmation, the equipment decision is resolved for this
+workout and its warning is no longer shown; **Keep skipped and continue** leaves
+the recorded skip intact. Neither action edits the Program.
+
+**Change future Program…** is available only when the workout retains the exact
+Program, day, and slot lineage. It opens that slot in the existing Program
+editor and stages only the exact variant the owner chooses. The active workout
+and earlier History remain unchanged, and future workouts do not change until
+the owner completes the existing Review and Publish steps. A missing, stale, or
+mismatched lineage fails closed instead of guessing which Program exercise to
+change.
 
 When a confirmed skip is being reconciled, keep the exercise visibly open until
 the owner restores it, replaces it, or deliberately continues without it.
@@ -746,6 +757,27 @@ never consults today's equipment inventory to explain an earlier workout.
 An exact replay returns the already-committed replacement before evaluating
 the newly selected exercise, while the first write preserves the skip cause
 held by its row lock and rejects equipment evidence that changed after review.
+
+Replacement discovery uses the same broad-plus-exact availability projection as
+the active workout. A generic `machine` item therefore cannot make a reviewed
+plate-loaded variant appear under **Available to me** without a compatible
+plate-loaded profile and the required known geometry. Equipment-forced
+replacement rechecks that exact target and binds both the source conflict and
+target setup revisions to the atomic substitution write. Ordinary owner-chosen
+replacement can still inspect an unavailable variant under **All exercises**
+with the incompatibility written plainly.
+
+The decision surface is rendered directly inside its owning exercise card and
+names that exercise in its heading. Once a known equipment skip is confirmed,
+the card keeps the human-readable reason and recovery actions but removes the
+now-resolved equipment decision. Exercise discovery presents singleton
+exercises and multi-variant families at the same root level; expanded variants
+are the only nested rows.
+
+When retained Program lineage exists, **Change future Program…** routes to the
+exact planned slot. The existing Program draft, Review, and Publish workflow is
+the only writer; the link itself performs no Program, workout, or History
+mutation.
 
 Canonical snapshot schema 36 validates the new reason in current
 `session_exercises` rows and session-exercise version before/after evidence.

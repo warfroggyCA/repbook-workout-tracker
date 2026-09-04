@@ -1,7 +1,8 @@
-import { and, desc, eq, or, isNull, asc } from "drizzle-orm";
+import { and, desc, eq, or, isNull, asc, inArray } from "drizzle-orm";
 import type { Db } from "@/db";
 import {
   constraints,
+  exerciseExecutionRequirements,
   exercises,
   equipmentItems,
   plateInventory,
@@ -9,10 +10,10 @@ import {
 } from "@/db/schema";
 import type { ExerciseVariantAttributes } from "@/db/schema/exercise";
 import {
-  missingRequirements,
   missingRequirementsSummary,
-  buildEquipmentAvailability,
+  type EquipmentRequirement,
 } from "@/engine/equipment-filter";
+import type { ExactExecutionRequirement } from "@/engine/exact-equipment-availability";
 import { patternFlags } from "@/engine/constraint-filter";
 import {
   PROGRAM_INPUT_MAX_DAYS,
@@ -20,6 +21,8 @@ import {
   routineParseSchema,
 } from "@/ai/tasks/routine-parse/schema";
 import type { ExerciseMediaPreview } from "@/lib/exercise-discovery";
+import { resolveExerciseEquipmentAvailability } from "@/lib/session-equipment-presentation";
+import { loadEquipmentLoadProfiles } from "@/services/equipment-load-profiles";
 import { canonicalJson, sha256Hex } from "@/services/snapshot-crypto";
 import { z } from "zod";
 
@@ -60,32 +63,73 @@ export async function getLibraryWithAvailability(
   db: Db,
   userId: string
 ): Promise<LibraryExerciseOption[]> {
-  const [rows, equipmentRows, plateRows, constraintRows] = await Promise.all([
-    db.query.exercises.findMany({
-      where: or(isNull(exercises.userId), eq(exercises.userId, userId)),
-      with: { equipmentRequirements: true, family: true },
-      orderBy: asc(exercises.name),
-    }),
+  const rows = await db.query.exercises.findMany({
+    where: or(isNull(exercises.userId), eq(exercises.userId, userId)),
+    with: { equipmentRequirements: true, family: true },
+    orderBy: asc(exercises.name),
+  });
+  const exerciseIds = rows.map((exercise) => exercise.id);
+  const [equipmentRows, plateRows, constraintRows, exactRows, profiles] =
+    await Promise.all([
     db.query.equipmentItems.findMany({
       where: eq(equipmentItems.userId, userId),
     }),
     db.query.plateInventory.findMany({
       where: eq(plateInventory.userId, userId),
-      columns: { denomination: true },
     }),
     db.query.constraints.findMany({
       where: eq(constraints.userId, userId),
     }),
+    exerciseIds.length === 0
+      ? Promise.resolve([])
+      : db.query.exerciseExecutionRequirements.findMany({
+          where: inArray(exerciseExecutionRequirements.exerciseId, exerciseIds),
+        }),
+    loadEquipmentLoadProfiles(db, userId),
   ]);
-  const inventory = buildEquipmentAvailability(equipmentRows, plateRows);
+  const exactByExerciseId = new Map(
+    exactRows.map((row) => [
+      row.exerciseId,
+      {
+        requiredProfileKind: row.requiredProfileKind,
+        requiredEquipmentDefinitionId: row.requiredEquipmentDefinitionId,
+        requiredAttachmentKind: row.requiredAttachmentKind,
+        requiredAttachmentDefinitionId: row.requiredAttachmentDefinitionId,
+        requiresKnownGeometry: row.requiresKnownGeometry,
+      } satisfies ExactExecutionRequirement,
+    ]),
+  );
 
   const flags = patternFlags(constraintRows);
 
   return rows.map((ex) => {
-    const missing = missingRequirements(ex.equipmentRequirements, inventory);
+    const equipment = resolveExerciseEquipmentAvailability({
+      requirements: ex.equipmentRequirements.map((requirement) => ({
+        equipmentType: requirement.equipmentType,
+        minWeight: requirement.minWeight == null
+          ? null
+          : Number(requirement.minWeight),
+      })) satisfies EquipmentRequirement[],
+      exactRequirement: exactByExerciseId.get(ex.id) ?? null,
+      profiles,
+      inventory: equipmentRows.map((item) => ({
+        type: item.type,
+        available: item.available,
+        attrs: item.attrs,
+      })),
+      plates: plateRows.map((plate) => ({
+        id: plate.id,
+        denomination: Number(plate.denomination),
+        quantity: plate.quantity,
+        unit: plate.unit,
+      })),
+    });
+    const missing = equipment.missingBroadRequirements;
     const constraint = flags.get(ex.movementPattern);
     const unavailableReason = missing.length > 0
       ? missingRequirementsSummary(missing)
+      : equipment.status === "exact_unavailable"
+        ? exactEquipmentUnavailableReason(exactByExerciseId.get(ex.id) ?? null)
       : constraint?.avoid
         ? "blocked by current constraints"
         : null;
@@ -103,13 +147,31 @@ export async function getLibraryWithAvailability(
       primaryMuscles: ex.primaryMuscles,
       secondaryMuscles: ex.secondaryMuscles,
       equipment: ex.equipmentRequirements.map((requirement) => requirement.equipmentType),
-      available: unavailableReason == null,
+      available: equipment.available && !constraint?.avoid,
       missing: missing.map((r) => r.equipmentType),
       constraintBlocked: constraint?.avoid ?? false,
       unavailableReason,
       cautionBodyParts: constraint?.cautious ? constraint.bodyParts : [],
     };
   });
+}
+
+function exactEquipmentUnavailableReason(
+  requirement: ExactExecutionRequirement | null,
+) {
+  if (requirement?.requiredProfileKind === "plate_loaded_machine") {
+    return "Needs a compatible plate-loaded machine with confirmed geometry.";
+  }
+  if (requirement?.requiredProfileKind === "cable_machine") {
+    return requirement.requiredAttachmentKind == null &&
+      requirement.requiredAttachmentDefinitionId == null
+      ? "Needs a compatible cable station with confirmed geometry."
+      : "Needs a compatible cable station, attachment, and confirmed geometry.";
+  }
+  if (requirement?.requiredProfileKind === "plate_loaded_implement") {
+    return "Needs a compatible plate-loaded implement.";
+  }
+  return "Needs a compatible reviewed equipment setup.";
 }
 
 /** Review-table mapping for one rawName (deterministic tier + AI tier merged). */

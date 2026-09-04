@@ -3,6 +3,8 @@ import { eq } from "drizzle-orm";
 import {
   completedSets,
   equipmentItems,
+  exerciseEquipmentRequirements,
+  exerciseExecutionRequirements,
   exercises,
   sessionExercises,
   sessionOccurrences,
@@ -367,6 +369,95 @@ describe("session action named results", () => {
       exerciseId: target.id,
       substitutionReason: "equipment_unavailable_incompatible",
     });
+  });
+
+  it("rejects a forced equipment replacement that has only a broad machine match", async () => {
+    const active = await database.db.query.sessionExercises.findFirst({
+      where: eq(sessionExercises.id, activeExerciseId),
+      columns: { sessionId: true },
+    });
+    if (!active) throw new Error("Missing active exercise fixture");
+    const [source, target] = await database.db
+      .insert(exercises)
+      .values([
+        {
+          name: `Unavailable source press ${crypto.randomUUID()}`,
+          movementPattern: "horizontal_push",
+          primaryMuscles: ["chest"],
+          loadType: "barbell",
+          metricType: "weight_reps",
+          loadSemantics: "total",
+        },
+        {
+          name: `Plate-Loaded Lat Pulldown ${crypto.randomUUID()}`,
+          movementPattern: "vertical_pull",
+          primaryMuscles: ["back"],
+          loadType: "external",
+          metricType: "weight_reps",
+          loadSemantics: "machine_stack",
+        },
+      ])
+      .returning({ id: exercises.id });
+    await database.db.insert(exerciseEquipmentRequirements).values({
+      exerciseId: target.id,
+      equipmentType: "machine",
+    });
+    await database.db.insert(exerciseExecutionRequirements).values({
+      exerciseId: target.id,
+      requiredProfileKind: "plate_loaded_machine",
+      requiresKnownGeometry: true,
+      reviewedAt: new Date("2026-09-03T12:00:00.000Z"),
+    });
+    const [{ id: replacementSourceId }] = await database.db
+      .insert(sessionExercises)
+      .values({
+        sessionId: active.sessionId,
+        exerciseId: source.id,
+        prescribedSemanticsVersion: 1,
+        prescribedExerciseName: "Unavailable source press",
+        prescribedMetricType: "weight_reps",
+        prescribedLoadType: "barbell",
+        prescribedLoadSemantics: "total",
+        orderIdx: 2,
+      })
+      .returning({ id: sessionExercises.id });
+    await createTotalSystemTestSnapshot(database.db, {
+      userId: ownerId,
+      sessionId: active.sessionId,
+      sessionExerciseId: replacementSourceId,
+      unit: "lb",
+    });
+    await database.db
+      .update(equipmentItems)
+      .set({ available: false })
+      .where(eq(equipmentItems.userId, ownerId));
+    await database.db.insert(equipmentItems).values({
+      userId: ownerId,
+      type: "machine",
+      label: "Generic machine without reviewed geometry",
+      available: true,
+    });
+
+    await expect(replaceExercise({
+      sessionExerciseId: replacementSourceId,
+      expectedExerciseId: source.id,
+      newExerciseId: target.id,
+      reason: "equipment_unavailable_incompatible",
+      clientMutationId: crypto.randomUUID(),
+    })).resolves.toEqual({
+      ok: false,
+      code: "replacement_unavailable",
+      message:
+        "Needs a compatible plate-loaded machine with confirmed geometry.",
+    });
+    await expect(database.db.query.sessionExercises.findFirst({
+      where: eq(sessionExercises.id, replacementSourceId),
+      columns: { exerciseId: true, modificationType: true },
+    })).resolves.toEqual({
+      exerciseId: source.id,
+      modificationType: "as_planned",
+    });
+    expect(await database.db.query.recordVersions.findMany()).toHaveLength(0);
   });
 
   it("rejects a delayed skip after a newer return-to-workout fence", async () => {

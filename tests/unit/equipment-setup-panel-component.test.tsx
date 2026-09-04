@@ -58,12 +58,24 @@ describe("EquipmentSetupPanel", () => {
         onLoadEntryMeaningChange={() => undefined}
         onReplaceForToday={() => undefined}
         onSkipExercise={() => undefined}
+        futureProgramReplacement={{
+          href: "/program/edit?intent=replace&program=program&day=day&slot=slot&exercise=exercise",
+          dayName: "Upper A",
+          plannedExerciseName: "Suspension Push-Up",
+        }}
       />,
     );
 
-    expect(html).toContain("Equipment unavailable");
+    expect(html).toContain("Equipment unavailable for Suspension Push-Up");
+    expect(html).toContain(
+      "The equipment Suspension Push-Up requires is not available",
+    );
+    expect(html).toContain('aria-labelledby="equipment-decision-heading-');
     expect(html).toContain("Replace for today");
     expect(html).toContain("Skip exercise");
+    expect(html).toContain("Change future Program…");
+    expect(html).toContain("Review and Publish");
+    expect(html).toContain("Today’s workout stays unchanged");
     expect(html).not.toContain("log the displayed load");
     expect(html).not.toContain("Choose equipment");
   });
