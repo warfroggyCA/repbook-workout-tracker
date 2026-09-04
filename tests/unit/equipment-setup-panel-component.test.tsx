@@ -80,6 +80,55 @@ describe("EquipmentSetupPanel", () => {
     expect(html).not.toContain("Choose equipment");
   });
 
+  it("names missing machine fields and routes incomplete setup to equipment", () => {
+    const html = renderToStaticMarkup(
+      <EquipmentSetupPanel
+        sessionExerciseId="00000000-0000-4000-8000-000000000001"
+        exerciseName="Plate-Loaded Lat Pulldown"
+        ownerId="00000000-0000-4000-8000-000000000010"
+        sessionId="00000000-0000-4000-8000-000000000011"
+        setup={{
+          sourceExerciseId: "00000000-0000-4000-8000-000000000012",
+          sourceTargetLoad: 95,
+          sourceTargetLoadUnit: "lb",
+          exact: true,
+          decisionState: "configuration_incomplete",
+          status: "unavailable",
+          configurationIssues: [{
+            equipmentItemId: "00000000-0000-4000-8000-000000000013",
+            equipmentLabel: "Garage lat pulldown",
+            missingFields: ["loading points", "balancing rule"],
+          }],
+          selectionRequired: false,
+          currentSnapshotId: null,
+          currentEquipmentLabel: null,
+          currentAttachmentLabel: null,
+          currentGuidance: null,
+          currentGuidanceByLoadEntryMeaning: {},
+          currentSelectionAvailable: false,
+          loadEntryMeaning: null,
+          loadEntryMeaningChoices: [],
+          options: [],
+        }}
+        loadEntryMeaning="legacy_unknown"
+        onLoadEntryMeaningChange={() => undefined}
+        onReplaceForToday={() => undefined}
+        onSkipExercise={() => undefined}
+      />,
+    );
+
+    expect(html).toContain(
+      "Equipment setup incomplete for Plate-Loaded Lat Pulldown",
+    );
+    expect(html).toContain(
+      "Garage lat pulldown: loading points, balancing rule",
+    );
+    expect(html).toContain('href="/settings/equipment"');
+    expect(html).toContain("Complete equipment setup");
+    expect(html).not.toContain("Replace for today");
+    expect(html).not.toContain("Skip exercise");
+  });
+
   beforeEach(() => {
     outboxState.snapshot = { entries: [], quarantined: [], error: null };
   });

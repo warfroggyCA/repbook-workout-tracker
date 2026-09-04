@@ -464,6 +464,7 @@ type Props = {
   expanded: boolean;
   onToggle: () => void;
   equipmentDecision?: ReactNode;
+  equipmentReasonAvailable?: boolean;
   plateConfigs: Record<string, PlateMathConfig>;
   machineLoadConfig?: MachineLoadConfig | null;
   incrementals: Record<string, IncrementalLoadConfig>;
@@ -730,6 +731,7 @@ export function ExerciseCard({
   expanded,
   onToggle,
   equipmentDecision = null,
+  equipmentReasonAvailable = false,
   plateConfigs,
   machineLoadConfig = null,
   incrementals,
@@ -2645,8 +2647,9 @@ export function ExerciseCard({
                 exerciseName={exercise.name}
                 expectedHistoryRevision={historyRevision}
                 open={adjustIntent === "skip" || adjustIntent === "skip_equipment"}
+                allowEquipmentReason={equipmentReasonAvailable}
                 forcedReason={
-                  adjustIntent === "skip_equipment"
+                  adjustIntent === "skip_equipment" && equipmentReasonAvailable
                     ? "equipment_unavailable_incompatible"
                     : undefined
                 }
@@ -3087,6 +3090,7 @@ export function ExerciseCard({
           if (!open) setSkipSetOccurrence(null);
         }}
         mode="skip"
+        allowEquipmentReason={equipmentReasonAvailable}
         itemLabel={`${
           skipSetOccurrence
             ? workingSetDisplayPosition(
@@ -3790,6 +3794,7 @@ function SkipDrawer({
   onRequestFailure,
   onDone,
   forcedReason,
+  allowEquipmentReason,
 }: {
   exerciseId: string;
   exerciseName: string;
@@ -3808,6 +3813,7 @@ function SkipDrawer({
     historyRevision: number,
   ) => void;
   forcedReason?: IncompleteSessionReason;
+  allowEquipmentReason: boolean;
 }) {
   const [pending, startTransition] = useTransition();
   const reasons = [
@@ -3826,6 +3832,12 @@ function SkipDrawer({
     value: IncompleteSessionReason;
     label: string;
   }>;
+  const availableReasons = allowEquipmentReason
+    ? reasons
+    : reasons.filter(
+        (reason) =>
+          reason.value !== "equipment_unavailable_incompatible",
+      );
 
   function submitReason(reason: IncompleteSessionReason) {
     onRequestStart(reason);
@@ -3888,7 +3900,7 @@ function SkipDrawer({
                 {pending ? "Skipping…" : "Confirm skip"}
               </Button>
             </div>
-          ) : reasons.map((reason) => (
+          ) : availableReasons.map((reason) => (
             <Button
               key={reason.value}
               variant="outline"

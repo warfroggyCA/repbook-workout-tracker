@@ -4,7 +4,10 @@ import {
   runSimultaneously,
   type TestDatabase,
 } from "../helpers/database";
-import { mutateSessionEquipmentSelection } from "@/services/session-equipment-selection";
+import {
+  mutateSessionEquipmentSelection,
+  resolveSessionEquipmentAvailability,
+} from "@/services/session-equipment-selection";
 import { logWorkoutSet } from "../helpers/log-workout-set";
 import {
   restoreRecordVersion,
@@ -235,6 +238,54 @@ async function seedCableSubstitution(database: TestDatabase) {
   return selected.snapshotId;
 }
 
+async function seedOptionalCableSelection(database: TestDatabase) {
+  await database.client.exec(`
+    INSERT INTO users (id, email) VALUES
+      ('${ids.user}', 'optional-cable-owner@example.test');
+    INSERT INTO user_profiles (user_id, unit) VALUES ('${ids.user}', 'lb');
+    INSERT INTO exercises (
+      id, name, movement_pattern, primary_muscles, load_type, catalog_reviewed
+    ) VALUES (
+      '${ids.cableExercise}', 'Optional handle cable row', 'horizontal_pull',
+      '["back"]'::jsonb, 'external', true
+    );
+    INSERT INTO exercise_equipment_requirements (exercise_id, equipment_type)
+    VALUES ('${ids.cableExercise}', 'cable');
+    INSERT INTO exercise_execution_requirements (
+      exercise_id, required_profile_kind, requires_known_geometry, reviewed_at
+    ) VALUES (
+      '${ids.cableExercise}', 'cable_machine', true, now()
+    );
+    INSERT INTO workout_sessions (
+      id, user_id, timezone, local_date, started_at, status
+    ) VALUES (
+      '${ids.session}', '${ids.user}', 'America/Toronto', '2026-07-21',
+      '2026-07-21T17:00:00Z', 'in_progress'
+    );
+    INSERT INTO session_exercises (id, session_id, exercise_id, order_idx)
+    VALUES ('${ids.sessionExercise}', '${ids.session}', '${ids.cableExercise}', 0);
+    INSERT INTO session_occurrences (
+      id, session_id, session_exercise_id, kind, origin, sequence_idx,
+      kind_ordinal, planned_exercise_id, outcome
+    ) VALUES (
+      '${ids.occurrence}', '${ids.session}', '${ids.sessionExercise}',
+      'working_set', 'planned', 0, 0, '${ids.cableExercise}', 'pending'
+    );
+    INSERT INTO equipment_items (id, user_id, type, label)
+    VALUES ('${ids.cable}', '${ids.user}', 'cable', 'Cable station');
+    INSERT INTO cable_machine_profiles (
+      id, user_id, equipment_item_id, geometry_certainty, stack_count,
+      topology, displayed_unit, ratio_status, ratio_numerator, ratio_denominator
+    ) VALUES (
+      '${ids.cableProfile}', '${ids.user}', '${ids.cable}', 'known', 1,
+      'shared_selection', 'lb', 'known', 1, 1
+    );
+    INSERT INTO cable_stack_steps (
+      user_id, cable_profile_id, stack_index, step_index, displayed_load
+    ) VALUES ('${ids.user}', '${ids.cableProfile}', 0, 0, 50);
+  `);
+}
+
 async function seedUnresolvableReviewedCable(database: TestDatabase) {
   await database.client.exec(`
     INSERT INTO users (id, email) VALUES
@@ -411,7 +462,7 @@ describe("session equipment selection service", () => {
     expect(counts.rows).toEqual([{ completed: 1 }]);
   });
 
-  it("selects and logs from retained requirements after the mutable catalog changes", async () => {
+  it("auto-selects the only retained-compatible setup after the mutable catalog changes", async () => {
     database = await createMigratedTestDatabase();
     await seed(database, {
       retainedRequirements: true,
@@ -464,7 +515,7 @@ describe("session equipment selection service", () => {
         attachmentItemId: null,
         expectedCurrentSnapshotId: null,
         clientKey: ids.selectKey,
-        provenance: "user_selected",
+        provenance: "auto_unique",
       },
     );
     expect(selected).toMatchObject({ outcome: "applied" });
@@ -1224,6 +1275,70 @@ describe("session equipment selection service", () => {
       clientKey: ids.ambiguousKey,
       provenance: "auto_unique",
     })).toEqual({ outcome: "ambiguous" });
+  });
+
+  it("rejects a queued automatic cable choice after an optional attachment appears", async () => {
+    database = await createMigratedTestDatabase();
+    await seedOptionalCableSelection(database);
+
+    await expect(resolveSessionEquipmentAvailability(
+      database.db,
+      ids.user,
+      ids.sessionExercise,
+    )).resolves.toMatchObject({
+      decisionState: "ready",
+      availableOptionCount: 1,
+    });
+
+    await database.client.exec(`
+      INSERT INTO equipment_items (id, user_id, type, label)
+      VALUES ('${ids.rope}', '${ids.user}', 'other', 'Optional rope');
+      INSERT INTO cable_attachment_profiles (
+        id, user_id, equipment_item_id, attachment_kind, status
+      ) VALUES (
+        '${ids.ropeProfile}', '${ids.user}', '${ids.rope}', 'rope', 'known'
+      );
+      INSERT INTO cable_attachment_compatibilities (
+        cable_profile_id, attachment_profile_id, user_id
+      ) VALUES ('${ids.cableProfile}', '${ids.ropeProfile}', '${ids.user}');
+    `);
+
+    await expect(resolveSessionEquipmentAvailability(
+      database.db,
+      ids.user,
+      ids.sessionExercise,
+    )).resolves.toMatchObject({
+      decisionState: "ready",
+      availableOptionCount: 2,
+    });
+    await expect(mutateSessionEquipmentSelection(database.db, ids.user, {
+      operation: "select",
+      sessionExerciseId: ids.sessionExercise,
+      equipmentItemId: ids.cable,
+      attachmentItemId: null,
+      expectedCurrentSnapshotId: null,
+      clientKey: ids.ambiguousKey,
+      provenance: "auto_unique",
+    })).resolves.toEqual({ outcome: "ambiguous" });
+    const rejectedCounts = await database.client.query<{
+      snapshots: number;
+      receipts: number;
+    }>(`
+      SELECT
+        (SELECT count(*)::int FROM session_equipment_snapshots) AS snapshots,
+        (SELECT count(*)::int FROM session_equipment_selection_receipts) AS receipts
+    `);
+    expect(rejectedCounts.rows).toEqual([{ snapshots: 0, receipts: 0 }]);
+
+    await expect(mutateSessionEquipmentSelection(database.db, ids.user, {
+      operation: "select",
+      sessionExerciseId: ids.sessionExercise,
+      equipmentItemId: ids.cable,
+      attachmentItemId: null,
+      expectedCurrentSnapshotId: null,
+      clientKey: ids.selectKey,
+      provenance: "user_selected",
+    })).resolves.toMatchObject({ outcome: "applied" });
   });
 
   it("does not use another owned item to satisfy the selected item's minimum", async () => {

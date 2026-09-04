@@ -592,10 +592,7 @@ export const EQUIPMENT_STATE_FIXTURES = {
     expectedBlocksLogging: true,
   },
   configuration_incomplete: {
-    input: {
-      cue: cue("unavailable"),
-      limitation: "configuration_incomplete",
-    },
+    input: { cue: cue("configuration_incomplete") },
     expectedState: "configuration_incomplete",
     expectedBlocksLogging: true,
   },
@@ -635,6 +632,7 @@ export const EQUIPMENT_CUE_STATUS_FIXTURES = {
   selected: EQUIPMENT_STATE_FIXTURES.ready_confirmed,
   pending_confirmation: EQUIPMENT_STATE_FIXTURES.selection_pending,
   choice_required: EQUIPMENT_STATE_FIXTURES.compatible_unselected,
+  configuration_incomplete: EQUIPMENT_STATE_FIXTURES.configuration_incomplete,
   unavailable: {
     input: { cue: cue("unavailable") },
     expectedState: "unknown_legacy",

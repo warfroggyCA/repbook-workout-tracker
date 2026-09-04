@@ -177,10 +177,18 @@ export function EquipmentSetupPanel({
     failed == null &&
     message == null;
 
+  const configurationIncomplete =
+    setup.decisionState === "configuration_incomplete";
   const equipmentConflict =
+    configurationIncomplete ||
     setup.decisionState === "unavailable" ||
     setup.decisionState === "incompatible";
   const conflictHeadingId = `equipment-decision-heading-${sessionExerciseId}`;
+  const configurationIssueText = (setup.configurationIssues ?? [])
+    .map((issue) =>
+      `${issue.equipmentLabel}: ${issue.missingFields.join(", ")}`,
+    )
+    .join("; ");
   const outboxStatus = (
     <>
       {message && <p className="mt-2 text-destructive" role="alert">{message}</p>}
@@ -241,40 +249,67 @@ export function EquipmentSetupPanel({
           <div className="flex items-start gap-2">
             <AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
             <div>
-              <h3 id={conflictHeadingId} className="font-semibold">
-                {setup.decisionState === "unavailable"
+              <h3
+                id={conflictHeadingId}
+                data-active-workout-decision-heading="true"
+                className="font-semibold"
+              >
+                {configurationIncomplete
+                  ? `Equipment setup incomplete for ${exerciseName}`
+                  : setup.decisionState === "unavailable"
                   ? `Equipment unavailable for ${exerciseName}`
                   : `Equipment setup incompatible for ${exerciseName}`}
               </h3>
               <p className="mt-1 text-muted-foreground">
-                {setup.decisionState === "unavailable"
+                {configurationIncomplete
+                  ? configurationIssueText
+                    ? `Missing configuration — ${configurationIssueText}.`
+                    : "The saved equipment is missing required machine geometry details."
+                  : setup.decisionState === "unavailable"
                   ? `The equipment ${exerciseName} requires is not available in your saved inventory.`
                   : `Your saved equipment does not match ${exerciseName}'s reviewed setup.`}
-                {" "}Choose how to handle this workout; your Program stays unchanged.
+                {configurationIncomplete
+                  ? " Complete those details, or add another compatible item, before returning to this workout."
+                  : " Choose how to handle this workout; your Program stays unchanged."}
               </p>
             </div>
           </div>
-          <div className="mt-3 grid gap-2 sm:grid-cols-2">
-            <Button
-              type="button"
-              onClick={onReplaceForToday}
-              disabled={onReplaceForToday == null}
+          {configurationIncomplete ? (
+            <Link
+              href="/settings/equipment"
+              data-testid="complete-equipment-setup"
+              className={cn(
+                buttonVariants(),
+                "mt-3 h-auto min-h-11 w-full whitespace-normal",
+              )}
             >
-              Replace for today
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={onSkipExercise}
-              disabled={onSkipExercise == null}
-            >
-              Skip exercise
-            </Button>
-          </div>
-          <p className="mt-2 text-xs text-muted-foreground">
-            Either choice for today retains the reason as equipment unavailable or incompatible.
-          </p>
-          {futureProgramReplacement ? (
+              Complete equipment setup
+            </Link>
+          ) : (
+            <>
+              <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                <Button
+                  type="button"
+                  onClick={onReplaceForToday}
+                  disabled={onReplaceForToday == null}
+                >
+                  Replace for today
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={onSkipExercise}
+                  disabled={onSkipExercise == null}
+                >
+                  Skip exercise
+                </Button>
+              </div>
+              <p className="mt-2 text-xs text-muted-foreground">
+                Either choice for today retains the reason as equipment unavailable or incompatible.
+              </p>
+            </>
+          )}
+          {!configurationIncomplete && futureProgramReplacement ? (
             <div className="mt-3 border-t pt-3">
               <Link
                 href={futureProgramReplacement.href}

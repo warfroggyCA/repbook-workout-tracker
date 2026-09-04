@@ -110,8 +110,18 @@ export type SessionEquipmentSetup = {
   sourceTargetLoadUnit: LoadUnit | null;
   exact: boolean;
   /** Current, owner-scoped action state; never reused as historical cause evidence. */
-  decisionState: "ready" | "unavailable" | "incompatible";
+  decisionState:
+    | "ready"
+    | "configuration_incomplete"
+    | "unavailable"
+    | "incompatible";
   status: "available" | "unavailable";
+  /** Exact saved items that match the exercise but still lack required setup facts. */
+  configurationIssues?: Array<{
+    equipmentItemId: string;
+    equipmentLabel: string;
+    missingFields: string[];
+  }>;
   selectionRequired: boolean;
   currentSnapshotId: string | null;
   currentEquipmentLabel: string | null;

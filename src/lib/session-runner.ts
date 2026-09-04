@@ -426,6 +426,7 @@ export type SetLoggingEquipmentDecision =
   | { status: "log_with_snapshot"; loadEntryMeaning: WorkoutSetLoadEntryMeaning }
   | { status: "log_without_load_evidence" }
   | { status: "log_displayed_unknown" }
+  | { status: "complete_equipment_setup" }
   | { status: "resolve_equipment_conflict" }
   | { status: "choose_setup" }
   | { status: "await_setup_sync" }
@@ -448,11 +449,19 @@ export function resolveSetLoggingEquipment(input: {
   hasAvailableSnapshot: boolean;
   hasPendingSelection: boolean;
   optionCount: number;
-  decisionState: "ready" | "unavailable" | "incompatible" | "legacy_unknown";
+  decisionState:
+    | "ready"
+    | "configuration_incomplete"
+    | "unavailable"
+    | "incompatible"
+    | "legacy_unknown";
   recordsLoad: boolean;
   effectiveLoadMeaning: WorkoutSetLoadEntryMeaning | null;
 }): SetLoggingEquipmentDecision {
   if (!input.hasSetup) return { status: "log_displayed_unknown" };
+  if (input.decisionState === "configuration_incomplete") {
+    return { status: "complete_equipment_setup" };
+  }
   if (
     input.decisionState === "unavailable" ||
     input.decisionState === "incompatible"

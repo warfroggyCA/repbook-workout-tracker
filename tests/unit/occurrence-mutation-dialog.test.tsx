@@ -61,6 +61,7 @@ describe("occurrence mutation controls", () => {
         reason="time_limit_reached"
         note=""
         saving={false}
+        allowEquipmentReason
         onReasonChange={() => undefined}
         onNoteChange={() => undefined}
         onCancel={() => undefined}
@@ -76,6 +77,27 @@ describe("occurrence mutation controls", () => {
       expect(html).toContain(reason.label);
     }
     expect(html).toContain("Choose a reason");
+  });
+
+  it("omits the equipment cause unless current equipment evidence allows it", () => {
+    const html = renderToStaticMarkup(
+      <OccurrenceMutationDialogForm
+        mode="skip"
+        itemLabel="set 2 of Back squat"
+        reason="equipment_unavailable_incompatible"
+        note=""
+        saving={false}
+        onReasonChange={() => undefined}
+        onNoteChange={() => undefined}
+        onCancel={() => undefined}
+        onSubmit={() => undefined}
+      />,
+    );
+
+    expect(html).not.toContain("Equipment unavailable or incompatible");
+    const skipButton = html.match(/<button[^>]*>Skip item<\/button>/)?.[0];
+    expect(skipButton).toBeDefined();
+    expect(skipButton).toContain('disabled=""');
   });
 
   it("requires an explicit skip reason before enabling confirmation", () => {

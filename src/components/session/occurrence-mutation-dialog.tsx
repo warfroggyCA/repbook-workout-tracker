@@ -58,6 +58,7 @@ type OccurrenceMutationDialogProps = {
   mode: "skip" | "note";
   itemLabel: string;
   initialNote: string | null;
+  allowEquipmentReason?: boolean;
   onConfirm: (input: {
     reason: string | null;
     reasonCode: IncompleteSessionReason | null;
@@ -71,6 +72,7 @@ export function OccurrenceMutationDialog({
   mode,
   itemLabel,
   initialNote,
+  allowEquipmentReason = false,
   onConfirm,
 }: OccurrenceMutationDialogProps) {
   const titleId = useId();
@@ -86,7 +88,11 @@ export function OccurrenceMutationDialog({
   }
 
   async function submit() {
-    if (saving || (mode === "skip" && !incompleteSessionReasonIsValid(reason))) {
+    if (
+      saving ||
+      (mode === "skip" &&
+        !occurrenceSkipReasonIsAllowed(reason, allowEquipmentReason))
+    ) {
       return;
     }
     setSaving(true);
@@ -118,6 +124,7 @@ export function OccurrenceMutationDialog({
           reason={reason}
           note={note}
           saving={saving}
+          allowEquipmentReason={allowEquipmentReason}
           onReasonChange={setReason}
           onNoteChange={setNote}
           onCancel={resetAndClose}
@@ -136,6 +143,7 @@ export function OccurrenceMutationDialogForm({
   reason,
   note,
   saving,
+  allowEquipmentReason = false,
   onReasonChange,
   onNoteChange,
   onCancel,
@@ -148,6 +156,7 @@ export function OccurrenceMutationDialogForm({
   reason: string;
   note: string;
   saving: boolean;
+  allowEquipmentReason?: boolean;
   onReasonChange: (reason: string) => void;
   onNoteChange: (note: string) => void;
   onCancel: () => void;
@@ -189,7 +198,10 @@ export function OccurrenceMutationDialogForm({
             <option value="" disabled>
               Choose a reason
             </option>
-            {OCCURRENCE_SKIP_REASONS.map((choice) => (
+            {OCCURRENCE_SKIP_REASONS.filter((choice) =>
+              allowEquipmentReason ||
+              choice.value !== "equipment_unavailable_incompatible"
+            ).map((choice) => (
               <option key={choice.value} value={choice.value}>
                 {choice.label}
               </option>
@@ -224,7 +236,11 @@ export function OccurrenceMutationDialogForm({
         <Button
           type="button"
           className="min-h-11"
-          disabled={saving || (mode === "skip" && !reason)}
+          disabled={
+            saving ||
+            (mode === "skip" &&
+              !occurrenceSkipReasonIsAllowed(reason, allowEquipmentReason))
+          }
           onClick={onSubmit}
         >
           {saving
@@ -242,4 +258,13 @@ function incompleteSessionReasonIsValid(
   value: string,
 ): value is IncompleteSessionReason {
   return OCCURRENCE_SKIP_REASONS.some((reason) => reason.value === value);
+}
+
+function occurrenceSkipReasonIsAllowed(
+  value: string,
+  allowEquipmentReason: boolean,
+): value is IncompleteSessionReason {
+  return incompleteSessionReasonIsValid(value) &&
+    (allowEquipmentReason ||
+      value !== "equipment_unavailable_incompatible");
 }

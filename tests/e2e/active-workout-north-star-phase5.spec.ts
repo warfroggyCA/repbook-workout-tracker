@@ -20,6 +20,9 @@ const SET_OUTBOX_KEY = "workout-tracker:workout-set-outbox:v1";
 const PHASE5_QA_DIRECTORY = resolve(
   "docs/assets/active-workout-phase5-qa",
 );
+const PHASE6_QA_DIRECTORY = resolve(
+  "docs/assets/active-workout-phase6-qa",
+);
 
 test.describe.configure({ mode: "serial" });
 
@@ -56,6 +59,10 @@ async function capturePhase5Evidence(
   if (process.env.UPDATE_ACTIVE_WORKOUT_PHASE5_QA === "1") {
     await mkdir(PHASE5_QA_DIRECTORY, { recursive: true });
     await writeFile(resolve(PHASE5_QA_DIRECTORY, `${name}.jpg`), image);
+  }
+  if (process.env.UPDATE_ACTIVE_WORKOUT_PHASE6_QA === "1") {
+    await mkdir(PHASE6_QA_DIRECTORY, { recursive: true });
+    await writeFile(resolve(PHASE6_QA_DIRECTORY, `${name}.jpg`), image);
   }
 }
 
@@ -137,8 +144,16 @@ async function skipCurrentExercise(page: Page) {
   });
   await waitForHydratedReactHandler(skip);
   await skip.click();
-  await page
-    .getByRole("dialog", { name: "Skip exercise — why?" })
+  const skipDialog = page.getByRole("dialog", {
+    name: "Skip exercise — why?",
+  });
+  await expect(
+    skipDialog.getByRole("button", {
+      name: "Equipment unavailable or incompatible",
+      exact: true,
+    }),
+  ).toHaveCount(0);
+  await skipDialog
     .getByRole("button", { name: "User choice", exact: true })
     .click();
   await expect(card.getByRole("status")).toContainText("Exercise skipped");

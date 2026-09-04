@@ -419,6 +419,8 @@ export type MutateWorkoutOccurrenceResult =
   | {
       outcome:
         | "conflict"
+        | "equipment_reason_unverified"
+        | "equipment_source_conflict"
         | "retry_identity_conflict"
         | "workout_not_active"
         | "not_found";
@@ -1108,6 +1110,38 @@ export async function mutateWorkoutOccurrence(
             OCCURRENCE_RESOLUTION_SEMANTICS_VERSION,
         }))
     .digest("hex");
+  const equipmentReasonRequested =
+    input.operation === "skip" &&
+    reasonCode === "equipment_unavailable_incompatible";
+  const occurrenceEquipmentContext = equipmentReasonRequested
+    ? resultRows(await db.execute(sql`
+        SELECT occurrence.session_exercise_id
+        FROM session_occurrences occurrence
+        JOIN workout_sessions session ON session.id = occurrence.session_id
+        WHERE occurrence.id = ${input.occurrenceId}::uuid
+          AND session.user_id = ${userId}::uuid
+        LIMIT 1
+      `))[0]
+    : null;
+  const equipmentAvailability =
+    occurrenceEquipmentContext?.session_exercise_id == null
+      ? null
+      : await resolveSessionEquipmentAvailability(
+          db,
+          userId,
+          String(occurrenceEquipmentContext.session_exercise_id),
+        );
+  const equipmentReasonVerified =
+    !equipmentReasonRequested ||
+    equipmentAvailability?.decisionState === "unavailable" ||
+    equipmentAvailability?.decisionState === "incompatible";
+  const hasEquipmentSourceFence =
+    equipmentReasonRequested &&
+    equipmentReasonVerified &&
+    equipmentAvailability != null;
+  const fencedEquipmentExerciseId =
+    equipmentAvailability?.exerciseId ??
+    "00000000-0000-0000-0000-000000000000";
   const mutationId = randomUUID();
   const row = resultRows(await db.execute(sql`
     WITH visible AS MATERIALIZED (
@@ -1166,6 +1200,30 @@ export async function mutateWorkoutOccurrence(
           ) > jsonb_array_length(exercise.warmup_sets)
         )
       FOR UPDATE OF occurrence, session
+    ), equipment_owner AS MATERIALIZED (
+      SELECT owner.analysis_evidence_revision
+      FROM users owner
+      WHERE owner.id = ${userId}::uuid
+        AND ${hasEquipmentSourceFence}::boolean
+        AND EXISTS (SELECT 1 FROM owned)
+        AND NOT EXISTS (SELECT 1 FROM existing_receipt)
+      FOR UPDATE
+    ), equipment_source_current AS MATERIALIZED (
+      SELECT equipment_exercise.id
+      FROM session_exercises equipment_exercise
+      JOIN visible equipment_occurrence
+        ON equipment_occurrence.session_exercise_id = equipment_exercise.id
+      JOIN equipment_owner owner ON true
+      WHERE equipment_exercise.exercise_id = ${fencedEquipmentExerciseId}::uuid
+        AND owner.analysis_evidence_revision =
+          ${equipmentAvailability?.ownerEvidenceRevision ?? "0"}::bigint
+        AND ${sessionEquipmentSelectionSourceRevisionExpression(
+          userId,
+          fencedEquipmentExerciseId,
+          equipmentAvailability?.requirementsEvidence === "legacy_unknown" &&
+            !(equipmentAvailability?.usesPrescribedMeaning ?? false),
+          sql`equipment_exercise.equipment_requirements_snapshot`,
+        )} = ${equipmentAvailability?.sourceRevision ?? ""}
     ), updated AS (
       UPDATE session_occurrences occurrence
       SET outcome = CASE ${input.operation}
@@ -1214,6 +1272,11 @@ export async function mutateWorkoutOccurrence(
       FROM owned
       WHERE occurrence.id = owned.id
         AND NOT EXISTS (SELECT 1 FROM existing_receipt)
+        AND ${equipmentReasonVerified}::boolean
+        AND (
+          NOT ${hasEquipmentSourceFence}::boolean
+          OR EXISTS (SELECT 1 FROM equipment_source_current)
+        )
         AND occurrence.revision = ${input.expectedRevision}
         AND occurrence.outcome <> 'legacy_unrecorded'
         AND (
@@ -1339,6 +1402,14 @@ export async function mutateWorkoutOccurrence(
           SELECT 1 FROM visible
           WHERE session_status <> 'in_progress' OR session_archived_at IS NOT NULL
         ) THEN 'workout_not_active'
+        WHEN EXISTS (SELECT 1 FROM visible)
+          AND ${equipmentReasonRequested}::boolean
+          AND NOT ${equipmentReasonVerified}::boolean
+          THEN 'equipment_reason_unverified'
+        WHEN EXISTS (SELECT 1 FROM owned)
+          AND ${hasEquipmentSourceFence}::boolean
+          AND NOT EXISTS (SELECT 1 FROM equipment_source_current)
+          THEN 'equipment_source_conflict'
         WHEN EXISTS (SELECT 1 FROM visible) THEN 'conflict'
         ELSE 'not_found'
       END AS outcome,
@@ -1384,7 +1455,11 @@ export async function mutateWorkoutOccurrence(
   if (row.outcome === "saved" || row.outcome === "replayed") {
     return successResult(row.outcome, row);
   }
-  if (row.outcome === "conflict") {
+  if (
+    row.outcome === "conflict" ||
+    row.outcome === "equipment_reason_unverified" ||
+    row.outcome === "equipment_source_conflict"
+  ) {
     // A concurrent delivery can wait on the occurrence row after this
     // statement's READ COMMITTED snapshot was taken. Reconcile the durable
     // receipt in a fresh statement before calling that exact replay stale.
@@ -1417,6 +1492,8 @@ export async function mutateWorkoutOccurrence(
   }
   if (
     row.outcome === "conflict" ||
+    row.outcome === "equipment_reason_unverified" ||
+    row.outcome === "equipment_source_conflict" ||
     row.outcome === "workout_not_active" ||
     row.outcome === "not_found"
   ) {

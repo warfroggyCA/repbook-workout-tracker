@@ -308,6 +308,42 @@ describe("occurrence mutation outbox sync", () => {
     });
   });
 
+  it.each([
+    [
+      "equipment_reason_unverified",
+      "Repbook could not verify that equipment was unavailable or incompatible. Review this skip before retrying.",
+    ],
+    [
+      "equipment_source_conflict",
+      "Your available equipment changed before this skip was saved. Review the current setup before retrying.",
+    ],
+  ] as const)(
+    "keeps an equipment skip visible when the server returns %s",
+    async (outcome, expectedError) => {
+      storage.values.clear();
+      const equipmentEntry = {
+        ...entry(),
+        reason: "equipment_unavailable_incompatible",
+        reasonCode: "equipment_unavailable_incompatible" as const,
+      };
+      enqueueOccurrenceMutationOutboxEntry(storage, equipmentEntry);
+      actionMocks.mutateOccurrence.mockResolvedValueOnce({ outcome });
+
+      await syncNextOccurrenceMutation(equipmentEntry.ownerId);
+
+      expect(readOccurrenceMutationOutbox(storage).entries[0]).toMatchObject({
+        clientKey: equipmentEntry.clientKey,
+        status: "needs_attention",
+        lastError: expectedError,
+      });
+      expect(statusEvents.at(-1)).toEqual({
+        type: "failed",
+        clientKey: equipmentEntry.clientKey,
+        sessionId: equipmentEntry.sessionId,
+      });
+    },
+  );
+
   it("retries a failed mutation with the same persisted identity", async () => {
     actionMocks.mutateOccurrence.mockResolvedValueOnce({ outcome: "conflict" });
     await syncNextOccurrenceMutation(entry().ownerId);

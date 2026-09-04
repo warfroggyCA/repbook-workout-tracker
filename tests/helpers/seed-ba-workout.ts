@@ -8,6 +8,7 @@ import {
   equipmentItems,
   exercises,
   plateInventory,
+  plateLoadedMachineProfiles,
   programs,
   recommendations,
   userProfiles,
@@ -22,6 +23,9 @@ import {
 import { PRODUCTION_WORKOUT_START_PROGRAM } from "../fixtures/production-workout-start-contract";
 import { assertBaFixtureEnvironment } from "./ba-fixture-guard";
 
+const ACTIVE_WORKOUT_CONFIGURATION_INCOMPLETE_FIXTURE =
+  process.env.ACTIVE_WORKOUT_PHASE6_CONFIGURATION_INCOMPLETE_FIXTURE === "1";
+
 const BA_WORKOUT_FIXTURE = process.env.PHASE0_START_FIXTURE === "1"
   ? {
       ...BASE_BA_WORKOUT_FIXTURE,
@@ -31,6 +35,34 @@ const BA_WORKOUT_FIXTURE = process.env.PHASE0_START_FIXTURE === "1"
         expectedTodayDay: PRODUCTION_WORKOUT_START_PROGRAM.days[0].name,
       },
     }
+  : ACTIVE_WORKOUT_CONFIGURATION_INCOMPLETE_FIXTURE
+    ? {
+        ...BASE_BA_WORKOUT_FIXTURE,
+        program: {
+          ...BASE_BA_WORKOUT_FIXTURE.program,
+          days: BASE_BA_WORKOUT_FIXTURE.program.days.map((day, dayIndex) =>
+            dayIndex === 0
+              ? {
+                  ...day,
+                  exercises: day.exercises.map((exercise, exerciseIndex) =>
+                    exerciseIndex === 0
+                      ? {
+                          ...exercise,
+                          name: "Plate-Loaded Lat Pulldown",
+                          targetLoad: 95,
+                          warmupNotes: null,
+                          warmupSets: [],
+                          notes:
+                            "Complete the exact saved machine setup before logging.",
+                          setNotes: [null, null, null],
+                        }
+                      : exercise,
+                  ),
+                }
+              : day,
+          ),
+        },
+      }
   : BASE_BA_WORKOUT_FIXTURE;
 
 const ACTIVE_WORKOUT_EQUIPMENT_CONFLICT_FIXTURE =
@@ -159,6 +191,23 @@ export async function seedBaWorkoutFixture(db: Db) {
           label: item.label,
         })),
       );
+    }
+    if (ACTIVE_WORKOUT_CONFIGURATION_INCOMPLETE_FIXTURE) {
+      const machine = savedFixtureEquipment.find(
+        (item) => item.type === "machine",
+      );
+      if (!machine) {
+        throw new Error(
+          "The Phase 6 fixture requires its saved plate-loaded machine.",
+        );
+      }
+      await tx.insert(plateLoadedMachineProfiles).values({
+        userId: user.id,
+        equipmentItemId: machine.id,
+        geometryCertainty: "partial",
+        startingResistance: 10,
+        startingResistanceUnit: "lb",
+      });
     }
 
     const activation = await activateProgramAtomically(tx, {

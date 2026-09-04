@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { buildSessionEquipmentPresentation } from "@/lib/session-equipment-presentation";
+import { retainedPrimaryEquipmentCandidateMatchesBroad } from "@/lib/session-equipment-requirements";
 import type { LoadedEquipmentLoadProfile } from "@/services/equipment-load-profiles";
 
 const ezProfile = (id: string, label: string): LoadedEquipmentLoadProfile => ({
@@ -74,8 +75,8 @@ describe("active-workout equipment presentation", () => {
         attrs: {},
       })),
       plates,
-      optionAllowed: (option) =>
-        option.equipmentItemId === allowed.equipmentItemId,
+      primaryEquipmentAllowed: (equipmentItemId) =>
+        equipmentItemId === allowed.equipmentItemId,
     });
 
     expect(result.setup).toMatchObject({
@@ -190,6 +191,134 @@ describe("active-workout equipment presentation", () => {
     expect(result.setup?.currentGuidance).toBe(
       "Cable geometry is unknown. Record the displayed stack setting only; effective load is unknown.",
     );
+  });
+
+  it("names incomplete saved geometry instead of calling it incompatible", () => {
+    const machine: LoadedEquipmentLoadProfile = {
+      equipmentItemId: "53000000-0000-4000-8000-000000000001",
+      itemType: "machine",
+      itemLabel: "Garage lat pulldown",
+      equipmentDefinitionId: "53000000-0000-4000-8000-000000000002",
+      equipmentDefinitionKey: "plate-loaded-lat-pulldown",
+      available: true,
+      profile: {
+        kind: "plate_loaded_machine",
+        id: "53000000-0000-4000-8000-000000000003",
+        geometryCertainty: "partial",
+        startingResistance: 10,
+        startingResistanceUnit: "lb",
+        loadingPointCount: null,
+        balancingRule: null,
+        targetEntryMeaning: null,
+        compatiblePlateIds: [],
+      },
+    };
+    const result = buildSessionEquipmentPresentation({
+      exercise: {
+        ...exercise,
+        loadType: "external",
+        requirements: [{ equipmentType: "machine", minWeight: null }],
+        exactRequirement: {
+          requiredProfileKind: "plate_loaded_machine",
+          requiredEquipmentDefinitionId: machine.equipmentDefinitionId,
+          requiredAttachmentKind: null,
+          requiredAttachmentDefinitionId: null,
+          requiresKnownGeometry: true,
+        },
+      },
+      profiles: [machine],
+      inventory: [{ type: "machine", available: true, attrs: {} }],
+      plates: [],
+    });
+
+    expect(result.setup).toMatchObject({
+      decisionState: "configuration_incomplete",
+      status: "unavailable",
+      options: [],
+      configurationIssues: [{
+        equipmentItemId: machine.equipmentItemId,
+        equipmentLabel: "Garage lat pulldown",
+        missingFields: [
+          "loading points",
+          "balancing rule",
+          "load-entry meaning",
+        ],
+      }],
+    });
+  });
+
+  it("does not name an incomplete machine that fails retained broad identity", () => {
+    const retainedDefinitionId = "54000000-0000-4000-8000-000000000004";
+    const machine: LoadedEquipmentLoadProfile = {
+      equipmentItemId: "54000000-0000-4000-8000-000000000001",
+      itemType: "machine",
+      itemLabel: "Wrong partial machine",
+      equipmentDefinitionId: "54000000-0000-4000-8000-000000000002",
+      equipmentDefinitionKey: "wrong-machine",
+      available: true,
+      profile: {
+        kind: "plate_loaded_machine",
+        id: "54000000-0000-4000-8000-000000000003",
+        geometryCertainty: "partial",
+        startingResistance: 10,
+        startingResistanceUnit: "lb",
+        loadingPointCount: null,
+        balancingRule: null,
+        targetEntryMeaning: null,
+        compatiblePlateIds: [],
+      },
+    };
+    const result = buildSessionEquipmentPresentation({
+      exercise: {
+        ...exercise,
+        loadType: "external",
+        requirements: [{ equipmentType: "machine", minWeight: 100 }],
+        exactRequirement: {
+          requiredProfileKind: "plate_loaded_machine",
+          requiredEquipmentDefinitionId: null,
+          requiredAttachmentKind: null,
+          requiredAttachmentDefinitionId: null,
+          requiresKnownGeometry: true,
+        },
+      },
+      profiles: [machine],
+      inventory: [
+        {
+          type: "machine",
+          available: true,
+          attrs: { maxWeight: 150 },
+        },
+        {
+          type: "machine",
+          available: true,
+          attrs: { maxWeight: 50 },
+        },
+      ],
+      plates: [],
+      primaryEquipmentAllowed: () =>
+        retainedPrimaryEquipmentCandidateMatchesBroad([{
+          sourceRequirementId:
+            "54000000-0000-4000-8000-000000000005",
+          equipmentType: "machine",
+          equipmentDefinition: {
+            id: retainedDefinitionId,
+            key: "required-machine",
+            label: "Required machine",
+          },
+          minWeight: 100,
+        }], {
+          equipmentType: machine.itemType,
+          equipmentDefinitionId: machine.equipmentDefinitionId,
+          attrs: { maxWeight: 50 },
+        }),
+    });
+
+    expect(result.setup).toMatchObject({
+      decisionState: "incompatible",
+      status: "unavailable",
+      options: [],
+      configurationIssues: [],
+    });
   });
 
   it("shows displayed stack load and nominal handle resistance only for a known ratio", () => {

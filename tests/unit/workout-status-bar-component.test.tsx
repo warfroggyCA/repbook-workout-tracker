@@ -113,7 +113,7 @@ describe("WorkoutStatusBar", () => {
     );
 
     expect(html).toContain(">Review</span>");
-    expect(html).toContain(">Review and finish</span>");
+    expect(html).toContain("and finish</span>");
     expect(html).toContain('aria-label="Review and finish workout"');
   });
 

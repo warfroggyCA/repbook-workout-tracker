@@ -118,6 +118,10 @@ export async function syncNextOccurrenceMutation(
             ? "This workout has ended. Check this change before removing it."
             : result.outcome === "not_found"
               ? "We couldn't find this workout item."
+              : result.outcome === "equipment_reason_unverified"
+                ? "Repbook could not verify that equipment was unavailable or incompatible. Review this skip before retrying."
+                : result.outcome === "equipment_source_conflict"
+                  ? "Your available equipment changed before this skip was saved. Review the current setup before retrying."
               : "This item changed somewhere else before your update was saved.";
         markOccurrenceMutationNeedsAttentionUnlocked(entry.clientKey, reason);
         publishOccurrenceMutationOutboxEvent({

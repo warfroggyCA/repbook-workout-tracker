@@ -326,7 +326,12 @@ export type SessionEquipmentAvailabilityResolution = {
   sourceRevision: string;
   ownerEvidenceRevision: string;
   availableOptionCount: number;
-  decisionState: "ready" | "unavailable" | "incompatible" | "legacy_unknown";
+  decisionState:
+    | "ready"
+    | "configuration_incomplete"
+    | "unavailable"
+    | "incompatible"
+    | "legacy_unknown";
   currentSnapshotId: string | null;
   currentSelectionAvailable: boolean;
   usesPrescribedMeaning: boolean;
@@ -336,7 +341,11 @@ export type SessionEquipmentAvailabilityResolution = {
 export type CatalogExerciseEquipmentAvailabilityResolution = {
   exerciseId: string;
   sourceRevision: string;
-  decisionState: "ready" | "unavailable" | "incompatible";
+  decisionState:
+    | "ready"
+    | "configuration_incomplete"
+    | "unavailable"
+    | "incompatible";
 };
 
 type CatalogExerciseEquipmentContext = {
@@ -415,6 +424,8 @@ export async function resolveCatalogExerciseEquipmentAvailability(
         ? "ready"
         : availability.status === "broad_unavailable"
           ? "unavailable"
+          : availability.status === "configuration_incomplete"
+            ? "configuration_incomplete"
           : "incompatible",
     };
   }
@@ -465,21 +476,23 @@ export async function resolveSessionEquipmentAvailability(
         quantity: Number(plate.quantity),
         unit: plate.unit,
       })),
+      primaryEquipmentAllowed: context.retained_requirements
+        ? (equipmentItemId) => {
+            const item = items.find(
+              (candidate) => candidate.id === equipmentItemId,
+            );
+            return item != null && retainedPrimaryEquipmentCandidateMatchesBroad(
+              context.retained_requirements!.broad,
+              {
+                equipmentType: item.type,
+                equipmentDefinitionId: item.definition_id,
+                attrs: item.attrs,
+              },
+            );
+          }
+        : undefined,
     });
-    const availableOptions = presentation.setup?.options.filter((option) => {
-      if (!context.retained_requirements) return true;
-      const item = items.find(
-        (candidate) => candidate.id === option.equipmentItemId,
-      );
-      return item != null && retainedPrimaryEquipmentCandidateMatchesBroad(
-        context.retained_requirements.broad,
-        {
-          equipmentType: item.type,
-          equipmentDefinitionId: item.definition_id,
-          attrs: item.attrs,
-        },
-      );
-    }) ?? [];
+    const availableOptions = presentation.setup?.options ?? [];
     const currentSelectionAvailable =
       context.current_equipment_snapshot_id != null &&
       context.current_equipment_item_id != null &&
@@ -518,7 +531,7 @@ export async function resolveSessionEquipmentAvailability(
             ? "ready"
             : presentation.setup.decisionState === "unavailable"
               ? "unavailable"
-              : "incompatible",
+              : presentation.setup.decisionState,
         currentSnapshotId: context.current_equipment_snapshot_id,
         currentSelectionAvailable,
         usesPrescribedMeaning: context.uses_prescribed_meaning,
@@ -1096,6 +1109,18 @@ export async function mutateSessionEquipmentSelection(
     loadRequirementsForContext(db, context),
   ]);
   const itemMap = new Map(items.map((item) => [item.id, item]));
+  const primaryEquipmentAllowed = (equipmentItemId: string) => {
+    if (!context.retained_requirements) return true;
+    const item = itemMap.get(equipmentItemId);
+    return item != null && retainedPrimaryEquipmentCandidateMatchesBroad(
+      context.retained_requirements.broad,
+      {
+        equipmentType: item.type,
+        equipmentDefinitionId: item.definition_id,
+        attrs: item.attrs,
+      },
+    );
+  };
   const inventory: InventoryItem[] = items.map((item) => ({
     type: item.type,
     available: item.available,
@@ -1143,14 +1168,7 @@ export async function mutateSessionEquipmentSelection(
   };
   if (
     (context.retained_requirements != null &&
-      !retainedPrimaryEquipmentCandidateMatchesBroad(
-        context.retained_requirements.broad,
-        {
-          equipmentType: primaryItem.type,
-          equipmentDefinitionId: primaryItem.definition_id,
-          attrs: primaryItem.attrs,
-        },
-      )) ||
+      !primaryEquipmentAllowed(primaryItem.id)) ||
     (context.retained_requirements == null &&
       requirements.broad.length > 0 && primaryBroadRequirements.length === 0) ||
     !primaryBroadRequirements.every((requirement) =>
@@ -1160,33 +1178,37 @@ export async function mutateSessionEquipmentSelection(
     return { outcome: "invalid_setup" };
   }
 
+  const presentation = buildSessionEquipmentPresentation({
+    exercise: {
+      id: input.sessionExerciseId,
+      exerciseId: context.exercise_id,
+      loadType: context.load_type,
+      targetLoad:
+        context.target_load == null ? null : Number(context.target_load),
+      targetLoadUnit: context.target_load_unit,
+      requirements: requirements.broad,
+      exactRequirement: requirements.exact,
+      currentSelection: null,
+    },
+    profiles,
+    inventory,
+    plates: plates.map((plate) => ({
+      id: plate.id,
+      denomination: Number(plate.denomination),
+      quantity: Number(plate.quantity),
+      unit: plate.unit,
+    })),
+    primaryEquipmentAllowed: context.retained_requirements
+      ? primaryEquipmentAllowed
+      : undefined,
+  });
+  const canonicalOptions = presentation.setup?.options ?? [];
   if (context.uses_prescribed_meaning) {
-    const presentation = buildSessionEquipmentPresentation({
-      exercise: {
-        id: input.sessionExerciseId,
-        exerciseId: context.exercise_id,
-        loadType: context.load_type,
-        targetLoad:
-          context.target_load == null ? null : Number(context.target_load),
-        targetLoadUnit: context.target_load_unit,
-        requirements: requirements.broad,
-        exactRequirement: requirements.exact,
-        currentSelection: null,
-      },
-      profiles,
-      inventory,
-      plates: plates.map((plate) => ({
-        id: plate.id,
-        denomination: Number(plate.denomination),
-        quantity: Number(plate.quantity),
-        unit: plate.unit,
-      })),
-    });
-    const selectedWasOffered = presentation.setup?.options.some(
+    const selectedWasOffered = canonicalOptions.some(
       (option) =>
         option.equipmentItemId === input.equipmentItemId &&
         option.attachmentItemId === input.attachmentItemId,
-    ) ?? false;
+    );
     if (!selectedWasOffered) return { outcome: "invalid_setup" };
   }
 
@@ -1235,29 +1257,14 @@ export async function mutateSessionEquipmentSelection(
   }
 
   if (input.provenance === "auto_unique") {
-    const plausible = profiles.filter((entry) => {
-      const candidate = exactCandidate(entry, itemMap, profiles);
-      if (!candidate || entry.itemType !== primary.itemType) return false;
-      return requirements.exact == null ||
-        exactExecutionCandidateMatches(requirements.exact, candidate);
-    });
-    const setupCount = plausible.reduce((count, entry) => {
-      if (
-        requirements.exact?.requiredAttachmentKind != null ||
-        requirements.exact?.requiredAttachmentDefinitionId != null
-      ) {
-        const candidate = exactCandidate(entry, itemMap, profiles);
-        return count + (candidate?.compatibleAttachments.filter((candidateAttachment) =>
-          candidateAttachment.available &&
-          (requirements.exact!.requiredAttachmentKind == null ||
-            candidateAttachment.attachmentKind === requirements.exact!.requiredAttachmentKind) &&
-          (requirements.exact!.requiredAttachmentDefinitionId == null ||
-            candidateAttachment.equipmentDefinitionId === requirements.exact!.requiredAttachmentDefinitionId)
-        ).length ?? 0);
-      }
-      return count + 1;
-    }, 0);
-    if (setupCount !== 1) return { outcome: "ambiguous" };
+    const soleOption = canonicalOptions.length === 1
+      ? canonicalOptions[0]
+      : null;
+    if (
+      soleOption == null ||
+      soleOption.equipmentItemId !== input.equipmentItemId ||
+      soleOption.attachmentItemId !== input.attachmentItemId
+    ) return { outcome: "ambiguous" };
   }
 
   const geometry = geometrySnapshot(primaryProfile, plates);

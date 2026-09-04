@@ -376,9 +376,9 @@ async function renderSessionPage(
         quantity: plate.quantity,
         unit: plate.unit,
       })),
-      optionAllowed: retainedSnapshot
-        ? (option) => {
-            const item = equipmentById.get(option.equipmentItemId);
+      primaryEquipmentAllowed: retainedSnapshot
+        ? (equipmentItemId) => {
+            const item = equipmentById.get(equipmentItemId);
             return item != null && retainedPrimaryEquipmentCandidateMatchesBroad(
               retainedSnapshot.broad,
               {
