@@ -36,7 +36,7 @@ describe("V2 H02 cadence and target portability", () => {
     expect(bySetId.get(fixture.setIds.below)).toMatchObject({
       legacy_target_met_projection: "true",
       calculated_target_outcome: "below",
-      target_outcome_algorithm_version: "prescription-outcome-v1",
+      target_outcome_algorithm_version: "prescription-outcome-v2",
       target_load: "100",
       target_load_unit: "lb",
       target_reps_min: "8",

@@ -67,7 +67,7 @@ describe("V2 H02 cadence and planned-set outcomes", () => {
       },
     ]);
     expect(report.overview.targetOutcomes).toEqual({
-      algorithmVersion: "prescription-outcome-v1",
+      algorithmVersion: "prescription-outcome-v2",
       below: 1,
       at: 2,
       above: 1,
@@ -93,7 +93,7 @@ describe("V2 H02 cadence and planned-set outcomes", () => {
       currentGapDays: 1,
     });
     expect(digest.targetOutcomes).toEqual({
-      algorithmVersion: "prescription-outcome-v1",
+      algorithmVersion: "prescription-outcome-v2",
       below: 1,
       at: 2,
       above: 1,

@@ -1,18 +1,24 @@
 import { z } from "zod";
+import type { PlannedDurationSource } from "@/lib/session-completion-semantics";
 import {
-  classifyPrescriptionOutcome,
+  classifyPrescriptionDimensions,
+  PRESCRIPTION_DIMENSION_OUTCOME_ALGORITHM_VERSION,
+  unavailablePrescriptionDimensions,
+  type PrescriptionDimensionOutcome,
   type SetMetricContainment,
 } from "@/lib/set-metric-semantics";
 
-export const TRAINING_REPORT_SEMANTIC_VERSION = "training-report/2" as const;
+export const TRAINING_REPORT_SEMANTIC_VERSION = "training-report/3" as const;
 export const EXERCISE_REPORTING_ALGORITHM_VERSION =
   "exercise-reporting-v1" as const;
 export const DURATION_ADHERENCE_ALGORITHM_VERSION =
-  "duration-adherence-v1" as const;
+  "duration-adherence-v2" as const;
+export const DURATION_TARGET_CONSISTENCY_ALGORITHM_VERSION =
+  "duration-target-consistency-v1" as const;
 export const COVERAGE_CONFIDENCE_ALGORITHM_VERSION =
   "coverage-confidence-v1" as const;
 export const TARGET_ATTAINMENT_COVERAGE_ALGORITHM_VERSION =
-  "target-attainment-coverage-v1" as const;
+  "target-attainment-coverage-v2" as const;
 export const NON_COMPLETION_PATTERN_ALGORITHM_VERSION =
   "non-completion-pattern-v1" as const;
 export const WARMUP_SUMMARY_ALGORITHM_VERSION = "warmup-summary-v1" as const;
@@ -95,6 +101,31 @@ export type StructuredNonCompletionReason = z.infer<
 export const TARGET_OUTCOMES = ["below", "at", "above", "unknown"] as const;
 export const targetOutcomeSchema = z.enum(TARGET_OUTCOMES);
 export type TargetOutcome = z.infer<typeof targetOutcomeSchema>;
+
+const prescriptionDimensionAssessmentSchema = z
+  .object({
+    prescribed: z.boolean(),
+    evaluable: z.boolean(),
+    outcome: z.enum([...TARGET_OUTCOMES, "not_prescribed"]),
+    limitation: z.string().trim().min(1).nullable(),
+  })
+  .strict();
+
+export const prescriptionDimensionOutcomeSchema = z
+  .object({
+    algorithmVersion: z.literal(
+      PRESCRIPTION_DIMENSION_OUTCOME_ALGORITHM_VERSION,
+    ),
+    evaluability: z.enum([
+      "fully_evaluable",
+      "partially_evaluable",
+      "not_evaluable",
+    ]),
+    repetitions: prescriptionDimensionAssessmentSchema,
+    load: prescriptionDimensionAssessmentSchema,
+    overall: targetOutcomeSchema,
+  })
+  .strict();
 
 export const MEASUREMENT_KINDS = [
   "loaded_repetitions",
@@ -180,6 +211,7 @@ export const reportingOccurrenceSchema = z
     resolution: reportingResolutionSchema,
     reason: structuredNonCompletionReasonSchema.nullable(),
     targetOutcome: targetOutcomeSchema,
+    targetDimensions: prescriptionDimensionOutcomeSchema,
     measurementKind: measurementKindSchema,
     countingBasis: countingBasisSchema,
     analyticalEligibility: analyticalEligibilitySchema,
@@ -217,6 +249,14 @@ export const reportingOccurrenceSchema = z
         path: ["targetOutcome"],
         message:
           "A below, at, or above target outcome requires completed performed evidence.",
+      });
+    }
+    if (value.targetDimensions.overall !== value.targetOutcome) {
+      context.addIssue({
+        code: "custom",
+        path: ["targetDimensions", "overall"],
+        message:
+          "Dimension-level and aggregate target outcomes must agree.",
       });
     }
     if (
@@ -932,6 +972,8 @@ export function summarizeTargetAttainmentCoverage(
 export type DurationAdherence = {
   algorithmVersion: typeof DURATION_ADHERENCE_ALGORITHM_VERSION;
   target: { minMinutes: number; maxMinutes: number } | null;
+  targetSource: PlannedDurationSource | null;
+  targetConsistency: DurationTargetConsistency;
   actualMinutes: number | null;
   status: "under_target" | "within_target" | "over_target" | "unknown";
   varianceMinutes: number | null;
@@ -942,10 +984,67 @@ export type DurationAdherence = {
   limitation: string | null;
 };
 
+export type DurationTargetConsistency = {
+  algorithmVersion: typeof DURATION_TARGET_CONSISTENCY_ALGORITHM_VERSION;
+  status: "consistent" | "material_conflict" | "not_assessed";
+  athletePreferenceMinutes: number | null;
+  compatibleBand: { minMinutes: number; maxMinutes: number } | null;
+  limitation: string | null;
+};
+
+export function assessDurationTargetConsistency(input: {
+  targetMinMinutes: number | null;
+  targetMaxMinutes: number | null;
+  athletePreferenceMinutes: number | null;
+}): DurationTargetConsistency {
+  const targetMissing =
+    input.targetMinMinutes == null && input.targetMaxMinutes == null;
+  if ((input.targetMinMinutes == null) !== (input.targetMaxMinutes == null)) {
+    throw new Error("Planned duration requires both minimum and maximum minutes.");
+  }
+  if (
+    input.athletePreferenceMinutes != null &&
+    (!Number.isFinite(input.athletePreferenceMinutes) ||
+      input.athletePreferenceMinutes <= 0)
+  ) {
+    throw new Error("Athlete duration preference must be positive or null.");
+  }
+  if (targetMissing || input.athletePreferenceMinutes == null) {
+    return {
+      algorithmVersion: DURATION_TARGET_CONSISTENCY_ALGORITHM_VERSION,
+      status: "not_assessed",
+      athletePreferenceMinutes: input.athletePreferenceMinutes,
+      compatibleBand: null,
+      limitation: targetMissing
+        ? "Planned duration is unavailable."
+        : "Athlete session-length preference is unavailable.",
+    };
+  }
+  const preference = input.athletePreferenceMinutes;
+  const compatibleBand = {
+    minMinutes: Math.round(preference * 0.5 * 10) / 10,
+    maxMinutes: Math.round(preference * 1.5 * 10) / 10,
+  };
+  const materialConflict =
+    input.targetMaxMinutes! < compatibleBand.minMinutes ||
+    input.targetMinMinutes! > compatibleBand.maxMinutes;
+  return {
+    algorithmVersion: DURATION_TARGET_CONSISTENCY_ALGORITHM_VERSION,
+    status: materialConflict ? "material_conflict" : "consistent",
+    athletePreferenceMinutes: preference,
+    compatibleBand,
+    limitation: materialConflict
+      ? "The frozen workout target is materially inconsistent with the athlete session-length preference."
+      : null,
+  };
+}
+
 export function calculateDurationAdherence(input: {
   targetMinMinutes: number | null;
   targetMaxMinutes: number | null;
   actualMinutes: number | null;
+  targetSource?: PlannedDurationSource | null;
+  athletePreferenceMinutes?: number | null;
 }): DurationAdherence {
   const { targetMinMinutes, targetMaxMinutes, actualMinutes } = input;
   const targetMissing = targetMinMinutes == null && targetMaxMinutes == null;
@@ -964,12 +1063,38 @@ export function calculateDurationAdherence(input: {
   if (actualMinutes != null && (!Number.isFinite(actualMinutes) || actualMinutes < 0)) {
     throw new Error("Actual duration must be a non-negative number or null.");
   }
+  if (targetMissing && input.targetSource != null) {
+    throw new Error("Planned duration source requires a planned duration range.");
+  }
+  const targetConsistency = assessDurationTargetConsistency({
+    targetMinMinutes,
+    targetMaxMinutes,
+    athletePreferenceMinutes: input.athletePreferenceMinutes ?? null,
+  });
+  if (targetConsistency.status === "material_conflict") {
+    return {
+      algorithmVersion: DURATION_ADHERENCE_ALGORITHM_VERSION,
+      target: { minMinutes: targetMinMinutes!, maxMinutes: targetMaxMinutes! },
+      targetSource: input.targetSource ?? null,
+      targetConsistency,
+      actualMinutes,
+      status: "unknown",
+      varianceMinutes: null,
+      variancePercentage: null,
+      comparisonBoundaryMinutes: null,
+      toleranceMinutes: null,
+      withinTolerance: null,
+      limitation: targetConsistency.limitation,
+    };
+  }
   if (targetMissing || actualMinutes == null) {
     return {
       algorithmVersion: DURATION_ADHERENCE_ALGORITHM_VERSION,
       target: targetMissing
         ? null
         : { minMinutes: targetMinMinutes!, maxMinutes: targetMaxMinutes! },
+      targetSource: input.targetSource ?? null,
+      targetConsistency,
       actualMinutes,
       status: "unknown",
       varianceMinutes: null,
@@ -1009,6 +1134,8 @@ export function calculateDurationAdherence(input: {
   return {
     algorithmVersion: DURATION_ADHERENCE_ALGORITHM_VERSION,
     target: { minMinutes: minimum, maxMinutes: maximum },
+    targetSource: input.targetSource ?? null,
+    targetConsistency,
     actualMinutes,
     status,
     varianceMinutes,
@@ -1154,6 +1281,28 @@ export function classifyReportingTargetOutcome(input: {
   targetLoadPercent: number | null;
   targetLoadText: string | null;
 }): TargetOutcome {
+  return classifyReportingTargetDimensions(input).overall;
+}
+
+export function classifyReportingTargetDimensions(input: {
+  setSemantics: SetMetricContainment;
+  measurementKind: MeasurementKind;
+  countingBasis: CountingBasis;
+  originalPlanned: boolean;
+  performed: boolean;
+  completed: boolean;
+  asPlanned: boolean;
+  exactOccurrenceLinkage: boolean;
+  reps: number | null;
+  weight: number | null;
+  weightUnit: "lb" | "kg" | null;
+  targetRepsMin: number | null;
+  targetRepsMax: number | null;
+  targetLoad: number | null;
+  targetLoadUnit: "lb" | "kg" | null;
+  targetLoadPercent: number | null;
+  targetLoadText: string | null;
+}): PrescriptionDimensionOutcome {
   if (
     !input.originalPlanned ||
     !input.performed ||
@@ -1165,9 +1314,17 @@ export function classifyReportingTargetOutcome(input: {
       countingBasis: input.countingBasis,
     }).progressionEligible
   ) {
-    return "unknown";
+    return unavailablePrescriptionDimensions({
+      targetRepsMin: input.targetRepsMin,
+      targetRepsMax: input.targetRepsMax,
+      targetLoad: input.targetLoad,
+      targetLoadUnit: input.targetLoadUnit,
+      targetLoadPercent: input.targetLoadPercent,
+      targetLoadText: input.targetLoadText,
+      limitation: "reporting_evidence_unavailable",
+    });
   }
-  return classifyPrescriptionOutcome({
+  return classifyPrescriptionDimensions({
     semantics: input.setSemantics,
     reps: input.reps,
     weight: input.weight,

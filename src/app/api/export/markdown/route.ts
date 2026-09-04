@@ -27,7 +27,7 @@ export async function GET(request: Request) {
       const digest = await buildTrainingDigest(db, user.id, since);
       const brief = renderCoachingBrief(digest);
       await recordExport(db, user.id, "markdown", { weeks });
-      return brief;
+      return { brief, reportDate: digest.range.untilLocalDate };
     }
   );
   if (!controlled.ok) {
@@ -37,12 +37,12 @@ export async function GET(request: Request) {
     });
   }
 
-  return sensitiveResponse(controlled.value, {
+  return sensitiveResponse(controlled.value.brief, {
     headers: {
       "Content-Type": "text/markdown; charset=utf-8",
       ...(download
         ? {
-            "Content-Disposition": `attachment; filename="repbook-training-brief-${new Date().toISOString().slice(0, 10)}.md"`,
+            "Content-Disposition": `attachment; filename="repbook-training-brief-${controlled.value.reportDate}.md"`,
           }
         : {}),
     },

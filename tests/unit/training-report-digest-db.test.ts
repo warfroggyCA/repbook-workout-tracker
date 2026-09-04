@@ -33,7 +33,16 @@ import { activateProgramAtomically } from "@/services/program-activation";
 
 const NOW = new Date("2026-08-18T20:00:00.000Z");
 
-async function seedReportingPeriod(db: Db) {
+async function seedReportingPeriod(
+  db: Db,
+  options: {
+    plannedDuration?: { minMinutes: number; maxMinutes: number };
+  } = {},
+) {
+  const plannedDuration = options.plannedDuration ?? {
+    minMinutes: 45,
+    maxMinutes: 45,
+  };
   const [{ id: userId }] = await db
     .insert(users)
     .values({ email: `report-digest-${crypto.randomUUID()}@example.com` })
@@ -215,8 +224,8 @@ async function seedReportingPeriod(db: Db) {
         activeDurationSeconds: input.activeDurationSeconds,
         activeDurationBasis: "owner_reported",
         plannedDurationSemanticsVersion: 1,
-        plannedDurationMinMinutes: 45,
-        plannedDurationMaxMinutes: 45,
+        plannedDurationMinMinutes: plannedDuration.minMinutes,
+        plannedDurationMaxMinutes: plannedDuration.maxMinutes,
         plannedDurationSource: "program_day_target",
         timeBudgetMin: 45,
         completionSemanticsVersion: 1,
@@ -294,8 +303,6 @@ async function seedReportingPeriod(db: Db) {
           plannedExerciseId: exerciseId,
           plannedRepsMin: 8,
           plannedRepsMax: 10,
-          plannedLoad: 90,
-          plannedLoadUnit: "kg",
           plannedRestSec: 60,
           outcome: "completed",
           resolvedAt: input.finishedAt,
@@ -469,6 +476,28 @@ describe("training reporting digest integration", () => {
       evaluable: 2,
       atOrAbovePercentage: 100,
     });
+    expect(
+      digest.reporting.occurrences.filter(
+        (occurrence) => occurrence.targetOutcome === "above",
+      ),
+    ).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          targetDimensions: expect.objectContaining({
+            evaluability: "fully_evaluable",
+            repetitions: expect.objectContaining({
+              prescribed: true,
+              evaluable: true,
+              outcome: "above",
+            }),
+            load: expect.objectContaining({
+              prescribed: false,
+              outcome: "not_prescribed",
+            }),
+          }),
+        }),
+      ]),
+    );
     expect(digest.reporting.targetAttainment.conclusion).toMatchObject({
       eligible: false,
       status: "insufficient_coverage",
@@ -510,7 +539,10 @@ describe("training reporting digest integration", () => {
       "Duration comparisons are neutral context. Longer or shorter sessions do not by themselves prove adherence, quality, fatigue, motivation, recovery, or why a workout ended.",
     );
     expect(brief).toContain(
-      "Recorded active time: 63 min. Difference: +18 min / +40%. Comparison to planned range: over target. Within tolerance: no.",
+      "Planned range: 45 min (frozen Program day target). Recorded active time: 63 min. Difference: +18 min / +40%. Comparison to planned range: over target. Within tolerance: no.",
+    );
+    expect(brief).toContain(
+      "target dimensions fully_evaluable — repetitions above, load not_prescribed",
     );
     expect(brief).toContain(
       "Warm-up: 5 of 7 planned elements completed.",
@@ -552,6 +584,62 @@ describe("training reporting digest integration", () => {
     expect(brief.indexOf("Performed set 1:")).toBeGreaterThan(
       brief.indexOf("## Detailed audit appendix"),
     );
+  });
+
+  it("suppresses duration percentages for a material frozen-target conflict", async () => {
+    const fixture = await seedReportingPeriod(database.db, {
+      plannedDuration: { minMinutes: 10, maxMinutes: 20 },
+    });
+
+    const digest = await buildTrainingDigest(
+      database.db,
+      fixture.userId,
+      new Date("2026-08-04T00:00:00.000Z"),
+      NOW,
+    );
+    const brief = renderCoachingBrief(digest);
+
+    expect(
+      digest.sessions.filter((session) =>
+        session.durationAdherence.targetConsistency.status ===
+          "material_conflict"
+      ),
+    ).toHaveLength(2);
+    expect(brief).toContain(
+      "Duration target conflict: 2 completed sessions have frozen Program duration targets materially inconsistent with the athlete's approximately 45-minute session preference.",
+    );
+    expect(brief).toContain(
+      "Planned range: 10–20 min (frozen Program day target). Recorded active time: 63 min. Comparison suppressed",
+    );
+    expect(brief).not.toContain("+215%");
+  });
+
+  it("labels the report window with athlete-local calendar dates", async () => {
+    const fixture = await seedReportingPeriod(database.db);
+    await database.db
+      .update(userProfiles)
+      .set({ timezone: "America/Toronto" })
+      .where(eq(userProfiles.userId, fixture.userId));
+    const now = new Date("2026-09-03T02:15:27.615Z");
+    const since = new Date("2026-08-06T02:15:27.590Z");
+
+    const digest = await buildTrainingDigest(
+      database.db,
+      fixture.userId,
+      since,
+      now,
+    );
+    const brief = renderCoachingBrief(digest);
+
+    expect(digest.range).toMatchObject({
+      sinceLocalDate: "2026-08-05",
+      untilLocalDate: "2026-09-02",
+      timezone: "America/Toronto",
+    });
+    expect(brief).toContain(
+      "# Training brief — 2026-08-05 to 2026-09-02 (America/Toronto)",
+    );
+    expect(brief).not.toContain("to 2026-09-03");
   });
 
   it("reads all retained evidence when the report range is unbounded", async () => {
@@ -605,6 +693,7 @@ describe("training reporting digest integration", () => {
     expect(allTime.range.since.toISOString()).toBe(
       "2026-01-02T12:00:00.000Z",
     );
+    expect(allTime.range.sinceLocalDate).toBe("2026-01-02");
     expect(allTime.independentActivities.overview.totalActivities).toBe(
       bounded.independentActivities.overview.totalActivities + 7,
     );

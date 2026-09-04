@@ -52,7 +52,12 @@ function session(
               : set.targetMet
                 ? set.reps
                 : set.reps + 1,
-          plannedRepsMax: set.reps,
+          plannedRepsMax:
+            set.targetMet == null || set.reps == null
+              ? null
+              : set.targetMet
+                ? set.reps
+                : set.reps + 1,
           plannedLoad: set.weight,
           plannedLoadUnit: set.weightUnit,
         })),
