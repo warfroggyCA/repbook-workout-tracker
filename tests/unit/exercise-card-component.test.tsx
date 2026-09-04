@@ -1530,6 +1530,8 @@ describe("ExerciseCard", () => {
     expect(exact).toContain("Go to Set 1");
     expect(exact).not.toContain("Retry save");
     expect(exact).toContain("Discard device copy");
+    expect(exact.match(/data-testid="failed-set-recovery"/g)).toHaveLength(1);
+    expect(exact).not.toContain('class="ui-state mt-2 p-3"');
     expect(exact).not.toContain("Refresh workout");
     expect(exact).toContain('data-testid="current-set-entry"');
     const exactCommitForm = exact.match(

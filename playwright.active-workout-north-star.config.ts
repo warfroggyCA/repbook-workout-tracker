@@ -13,7 +13,7 @@ const fixtureMode =
 
 export default defineConfig({
   testDir: "./tests/e2e",
-  testMatch: ["active-workout-north-star-phase0.spec.ts"],
+  testMatch: ["active-workout-north-star-phase*.spec.ts"],
   outputDir: `./output/playwright/active-workout-north-star/${fixtureMode}-test-results`,
   fullyParallel: false,
   workers: 1,
@@ -37,7 +37,7 @@ export default defineConfig({
     screenshot: "on",
     video: "retain-on-failure",
   },
-  projects: [{ name: "phase0-mobile-chromium" }],
+  projects: [{ name: "north-star-mobile-chromium" }],
   webServer: {
     command: `env E2E_PORT=${port} node scripts/run-e2e-server.mjs --production --ba-fixture`,
     gracefulShutdown: { signal: "SIGTERM", timeout: 5_000 },

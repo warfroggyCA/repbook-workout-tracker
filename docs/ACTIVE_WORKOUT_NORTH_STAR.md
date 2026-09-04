@@ -822,6 +822,24 @@ Exit gate: every session-level state in this document has unit and browser
 evidence, no state strands the athlete, and no secondary flow reintroduces the
 old isolated-card hierarchy.
 
+Implementation result: the dedicated North Star Playwright project now carries
+the seven approved references plus saving, failed, keyboard, landscape,
+superset, correction, skip/replace, and Finish-review evidence. Its Phase 5
+journeys use the disposable BA fixture and cover retained work across reload,
+explicit discard, a real correction followed by record-version restore, dark
+landscape and reduced motion, exact superset member text, replacement
+reachability, completion pending, and the completed History handoff. The
+durable capture set and per-state browser map are in
+`docs/assets/active-workout-phase5-qa/`.
+
+The only hierarchy correction required by the completed-state pass was the
+failed-set recovery treatment. The failed ledger row now owns its explanation
+and actions directly instead of containing another bordered status card, while
+the exact retained result remains visible. Finish now says **Saving workout…**
+during the held completion request. Neither change adds a writer, changes
+stored meaning, or alters Program, History, snapshot, recovery-manifest,
+import/export, migration, or production-data contracts.
+
 ### Phase 6 — integration Gauntlet and release readiness
 
 Objective: compare the real complete workout against the North Star and find
