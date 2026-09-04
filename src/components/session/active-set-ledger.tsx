@@ -418,7 +418,7 @@ function renderExhaustiveRow(
           key={row.key}
           row={row}
           metricType={props.metricType}
-          status="Needs attention"
+          status="Save failed"
           tone="attention"
           announcement="alert"
           detail={activeSetVersionEvidenceLabel(row.version)}

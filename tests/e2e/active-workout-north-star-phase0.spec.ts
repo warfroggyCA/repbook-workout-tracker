@@ -32,6 +32,9 @@ const PHASE3_QA_DIRECTORY = resolve(
 const PHASE4_QA_DIRECTORY = resolve(
   "docs/assets/active-workout-phase4-qa",
 );
+const PHASE5_QA_DIRECTORY = resolve(
+  "docs/assets/active-workout-phase5-qa",
+);
 
 test.describe.configure({ mode: "serial" });
 
@@ -136,6 +139,10 @@ async function captureCurrentBaseline(
   if (process.env.UPDATE_ACTIVE_WORKOUT_PHASE4_QA === "1") {
     await mkdir(PHASE4_QA_DIRECTORY, { recursive: true });
     await writeFile(resolve(PHASE4_QA_DIRECTORY, `${name}.jpg`), image);
+  }
+  if (process.env.UPDATE_ACTIVE_WORKOUT_PHASE5_QA === "1") {
+    await mkdir(PHASE5_QA_DIRECTORY, { recursive: true });
+    await writeFile(resolve(PHASE5_QA_DIRECTORY, `${name}.jpg`), image);
   }
 }
 
@@ -714,4 +721,6 @@ test("a stray Enter after Log set cannot change rest or the next set", async ({
     currentActionAfter: currentActionBefore,
     currentActionUnchanged: true,
   });
+
+  await discardWorkout(page);
 });

@@ -55,7 +55,6 @@ import {
   exerciseSwipeRevealsRemove,
   exerciseUsesTotalBarLoad,
   formatCompactPlateLoadGuidance,
-  setSaveStateLabel,
 } from "@/lib/exercise-card";
 import type { ExerciseDiscoveryItem } from "@/lib/exercise-discovery";
 import type {
@@ -277,10 +276,8 @@ function PendingSetSaveStatus({
   onRetry: (clientKey: string) => Promise<void>;
   onDiscard: (clientKey: string) => Promise<void>;
 }) {
-  if (set.saveState == null || set.saveState === "saved") return null;
-  const failed = set.saveState === "failed";
+  if (set.saveState !== "failed") return null;
   const orderConflict =
-    failed &&
     (orderBlocker != null ||
       set.lastError?.toLowerCase().includes("earlier set") === true ||
       set.lastError?.toLowerCase().includes("set order") === true ||
@@ -293,21 +290,10 @@ function PendingSetSaveStatus({
 
   return (
     <div
-      data-ui-state={failed ? "retained" : "saving"}
-      className="ui-state mt-2 p-3"
+      data-testid="failed-set-recovery"
+      className="mt-2 border-t border-amber-900/15 pt-2 dark:border-amber-100/20"
     >
-      <div role={failed ? "alert" : "status"}>
-        <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
-          <p className="font-semibold">{rowLabel}</p>
-          <p
-            className={cn(
-              "text-xs font-semibold",
-              failed ? "text-destructive" : "text-amber-800 dark:text-amber-200",
-            )}
-          >
-            {setSaveStateLabel(set.saveState)}
-          </p>
-        </div>
+      <div>
         <p className="mt-1 text-xs leading-5 text-muted-foreground">
           {reviewRequired
             ? `This retained ${rowLabel.toLowerCase()} was based on an older workout state. Refresh, then review or discard it.`
@@ -315,15 +301,13 @@ function PendingSetSaveStatus({
             ? `${blockerDescription} comes first. This ${rowLabel.toLowerCase()} is still safe on this device.`
             : orderConflict
               ? "Workout order changed. Refresh to find the exact set that comes first."
-              : failed
-                ? `This device copy still owns ${rowLabel}. Retry the save, or discard the device copy to enter or skip ${rowLabel} again.`
-                : `${rowLabel} is recorded on this device and saving in the background. You can continue the workout now.`}
+              : `This device copy still owns ${rowLabel}. Retry the save, or discard the device copy to enter or skip ${rowLabel} again.`}
         </p>
-        {failed && set.lastError && !orderConflict && (
+        {set.lastError && !orderConflict && (
           <p className="mt-2 text-sm text-foreground">{set.lastError}</p>
         )}
       </div>
-      {failed && set.clientKey && (
+      {set.clientKey && (
         <div className="mt-3 grid grid-cols-1 gap-2 min-[520px]:grid-cols-2">
           {reviewRequired && onRefreshWorkout ? (
             <Button type="button" onClick={onRefreshWorkout}>

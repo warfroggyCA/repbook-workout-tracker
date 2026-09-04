@@ -5636,7 +5636,7 @@ export function SessionRunner(props: SessionRunnerProps) {
               }
               size="lg"
             >
-              {finishing ? "Saving…" : "Save workout"}
+              {finishing ? "Saving workout…" : "Save workout"}
             </Button>
             <ActiveWorkoutDiscard
               ownerId={props.ownerId}

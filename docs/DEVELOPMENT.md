@@ -502,6 +502,31 @@ the absence of a set-log bypass, fixed-action ownership, touch targets, and
 horizontal fit. Never point these checks or the PostgreSQL integration suite at
 preview or production data.
 
+### Active Workout North Star Phase 5 complete-state gate
+
+Phase 5 closes the active-workout state matrix without adding a new writer or
+state store. Its focused gate is:
+
+```bash
+npx vitest run tests/unit/active-workout-phase0-contract.test.ts tests/unit/active-set-ledger-component.test.tsx tests/unit/exercise-card-component.test.tsx tests/unit/production-readiness-workflow-contract.test.ts
+npm run build
+npm run test:e2e:active-workout-north-star
+```
+
+The dedicated North Star browser project now combines the original reference
+states with three bounded Phase 5 journeys. Together they verify locally
+retained, saving, failed, reload, discard, correction, record-version restore,
+dark landscape, reduced motion, exact superset context, skip/replacement
+choices, early Finish review, completion pending, and the completed History
+handoff. The complete evidence map and 15 synthetic captures live in
+`docs/assets/active-workout-phase5-qa/`.
+
+A failed set remains one ledger row: the row owns its exact result, failure
+status, explanation, and recovery actions without nesting a second status
+card. Finish uses the explicit pending label **Saving workout…**. Phase 5 adds
+no migration and changes no stored-data meaning, snapshot schema, recovery
+manifest, Program ownership, import/export contract, or production data.
+
 ### Day 2 active-workout reliability root causes
 
 The August 16, 2026 candidate confirmed these causes before remediation:

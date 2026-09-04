@@ -726,4 +726,17 @@ describe("Phase 0 screenshot contract", () => {
       expect(statSync(path).size).toBeGreaterThan(5_000);
     }
   });
+
+  it("keeps the complete Phase 5 running-product evidence set available", () => {
+    const directory = join(
+      process.cwd(),
+      "docs/assets/active-workout-phase5-qa",
+    );
+    for (const name of Object.values(ACTIVE_WORKOUT_SCREENSHOT_SCENARIOS)) {
+      const path = join(directory, `${name}.jpg`);
+      expect(existsSync(path), `Missing Phase 5 evidence ${name}.jpg`).toBe(true);
+      expect(statSync(path).size).toBeGreaterThan(5_000);
+    }
+    expect(existsSync(join(directory, "README.md"))).toBe(true);
+  });
 });

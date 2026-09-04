@@ -15,7 +15,7 @@ const STATUS_BY_STATE = {
   retained_locally: "Unsaved on this device",
   saving: "Saving",
   retrying: "Retrying",
-  failed: "Needs attention",
+  failed: "Save failed",
   saved: "Saved",
   skipped: "Skipped",
   abandoned: "Abandoned",

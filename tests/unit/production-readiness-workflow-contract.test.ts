@@ -144,6 +144,7 @@ describe("production readiness workflow contract", () => {
         "v2-d02-support-bundle.spec.ts",
         "v2-r01-lifecycle-audit.spec.ts",
         "active-workout-north-star-phase0.spec.ts",
+        "active-workout-north-star-phase5.spec.ts",
       ]),
     );
   });
