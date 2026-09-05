@@ -1737,7 +1737,7 @@ format.
 Day minute fields retain incomplete local edits without clamping each keystroke
 or rewriting neighbouring fields. Only valid bounds autosave to the server or
 enter review. **Use for all days** copies day intent once while retaining each
-destination's exercise anchors, groups, and warm-ups. Pointer reordering previews
+destination's day identity, exercise anchors, groups, and warm-ups. Pointer reordering previews
 an exact destination and commits one change on release; cancellation leaves the
 draft unchanged. Group and slot identities remain stable.
 

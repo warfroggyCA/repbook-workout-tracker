@@ -866,6 +866,30 @@ describe("session-option editing and exact drop destinations", () => {
     expect(applyProgramDayOptions(draft, "missing")).toBe(draft);
   });
 
+  it.each(["movement_balance", "muscle_emphasis", "skill_practice", "conditioning_focus", "recovery_session"] as const)(
+    "keeps %s and anchor-based day definitions valid when copying in either direction",
+    (kind) => {
+      const draft = appendProgramDocumentDay(document(), IDs.exerciseC, IDs.slotC, IDs.exerciseC);
+      draft.days[0].intent.identity = { kind: "anchor_slots", anchorSlotLineageIds: [IDs.slotA] };
+      draft.days[1].intent.identity = { kind, anchorSlotLineageIds: [] };
+      draft.days[0].intent.targetDuration = { minMinutes: 40, maxMinutes: 80 };
+      const original = structuredClone(draft);
+      expect(programDocumentV3Schema.safeParse(draft).success).toBe(true);
+      for (const source of draft.days) {
+        const result = applyProgramDayOptions(draft, source.lineageId);
+        expect(programDocumentV3Schema.safeParse(result).success).toBe(true);
+        for (const [index, day] of result.days.entries()) {
+          expect(day.intent.identity).toEqual(original.days[index].intent.identity);
+          expect(day.intent.targetDuration).toEqual(source.intent.targetDuration);
+          expect(day.exercises).toEqual(original.days[index].exercises);
+        }
+        const destination = result.days.find((day) => day.lineageId !== source.lineageId)!;
+        destination.intent.identity.anchorSlotLineageIds.push(IDs.group);
+        expect(draft).toEqual(original);
+      }
+    },
+  );
+
   it("places a standalone slot before a non-contiguous group without changing its warm-up or members", () => {
     const draft = document();
     const day = draft.days[0];
