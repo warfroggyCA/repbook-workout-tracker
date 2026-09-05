@@ -650,6 +650,9 @@ The current ledger row is the sole ordinary working-set commit surface and
 reuses the established performed-measure controls and command handlers. Exact
 save or recovery state and the ledger-derived next action follow that surface;
 RPE is directly available below the performed values as a native radio group.
+Each entire labeled choice is a minimum 44-pixel touch target. Revealing the
+current set includes its previous-set context above the fixed controls whenever
+the complete primary block fits in the available viewport.
 Not recorded preserves unknown effort; exact RPE or RIR uses its own small
 disclosure. Set notes, pain, skip, add-set, prior-set, warm-up-reference,
 coaching, and workout-only context remain available after the ordinary path.

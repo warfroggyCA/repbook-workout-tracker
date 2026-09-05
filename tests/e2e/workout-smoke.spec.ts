@@ -3582,8 +3582,7 @@ test("opens failed-set recovery from Settings at 145 percent on iPhone WebKit", 
   await waitForHydratedReactChangeHandler(reps);
   await reps.fill("10");
   await expect(reps).toHaveValue("10");
-  await openNativeDetails(currentSet.getByTestId("active-exercise-details"));
-  await currentSet.getByRole("button", { name: /^Hard / }).click();
+  await currentSet.getByRole("radio", { name: /^Hard — RPE 8;/ }).check();
   await context.setOffline(true);
   await logSet.click();
   await expect

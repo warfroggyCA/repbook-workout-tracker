@@ -665,6 +665,20 @@ async function compactGeometry(page: Page) {
       dockTop: dockElement.getBoundingClientRect().top,
       primaryTop: primaryRect.top,
       primaryBottom: primaryRect.bottom,
+      previousBottom: previousRect.bottom,
+      viewport: {
+        innerHeight: window.innerHeight,
+        visualHeight: window.visualViewport?.height,
+        visualTop: window.visualViewport?.offsetTop,
+        scrollY: window.scrollY,
+      },
+      obstructions: [
+        '[data-testid="active-workout-sticky-summary"]',
+        '[aria-label="Device save status"]',
+      ].map((selector) => {
+        const bounds = document.querySelector(selector)?.getBoundingClientRect();
+        return { selector, top: bounds?.top, bottom: bounds?.bottom };
+      }),
       minimumInputWidth:
         inputWidths.length > 0 ? Math.min(...inputWidths) : 0,
       horizontalOverflow:
@@ -999,12 +1013,20 @@ test("fits the complete primary logging action at 390x844 with keyboard disclosu
     expect(geometry.horizontalOverflow).toBeLessThanOrEqual(1);
     await expect(page.getByTestId("active-log-set")).toHaveCount(1);
 
+    const exactEffort = currentEntry.getByRole("button", { name: /^(?:Hide )?exact RPE \/ RIR$/i });
+    await exactEffort.focus();
+    await page.keyboard.press("Enter");
+    await expect(currentEntry.getByLabel("RIR (0–10)")).toBeVisible();
+    await expect(exactEffort).toBeFocused();
+    await page.keyboard.press("Space");
+    await expect(currentEntry.getByLabel("RIR (0–10)")).toHaveCount(0);
+
     const exerciseDetails = currentCard.getByTestId("active-exercise-details");
     const exerciseDetailsSummary = exerciseDetails.locator(":scope > summary");
     await exerciseDetailsSummary.focus();
     await page.keyboard.press("Enter");
     await expect(exerciseDetails).toHaveAttribute("open", "");
-    await expect(exerciseDetails.getByLabel("RIR (0–10)")).toBeVisible();
+    await expect(exerciseDetails.getByLabel("RIR (0–10)")).toHaveCount(0);
     await expect(
       currentCard
         .getByTestId("current-set-secondary-actions")
@@ -1041,23 +1063,26 @@ test("fits the complete primary logging action at 390x844 with keyboard disclosu
       extraLargeEntry.getByRole("textbox", { name: "Reps", exact: true }),
       page.getByTestId("active-log-set"),
     ]) {
-      await expectReachableTarget(target);
+      await expectPrimaryActionUnobstructed(target);
     }
     await expect(extraLargeEntry).toContainText("Set 1");
     await expect(page.getByTestId("active-set-save-receipt")).toHaveCount(0);
     await expect(page.getByTestId("active-workout-dock-primary")).toHaveCount(0);
     await expect(currentSetDockAction(page)).toHaveCount(0);
-    const extraLargeGeometry = await compactGeometry(page);
-    expect(
-      extraLargeGeometry,
-      JSON.stringify(extraLargeGeometry),
-    ).toMatchObject({
-      targetBeforeInput: true,
-      inputBeforePrevious: true,
-      previousBeforeLog: true,
-      inputBeforeLog: true,
-      logInsideDock: true,
-    });
+    let extraLargeGeometry = await compactGeometry(page);
+    await expect(async () => {
+      extraLargeGeometry = await compactGeometry(page);
+      expect(
+        extraLargeGeometry,
+        JSON.stringify(extraLargeGeometry),
+      ).toMatchObject({
+        targetBeforeInput: true,
+        inputBeforePrevious: true,
+        previousBeforeLog: true,
+        inputBeforeLog: true,
+        logInsideDock: true,
+      });
+    }).toPass({ timeout: 5_000 });
     expect(
       extraLargeGeometry.primaryHeight,
       JSON.stringify(extraLargeGeometry),
