@@ -585,6 +585,8 @@ function buildCore(input: {
       fields: workoutFields,
     }),
   );
+  // Omit empty timed fields in both prescription projections below to preserve
+  // the existing rep-only package shape and its deterministic digest.
   const performedExerciseFacts = sessionExerciseRows.map((row) => {
     const session = sessionById.get(text(row, "session_id") ?? "");
     return fact({
@@ -595,7 +597,7 @@ function buildCore(input: {
           ? "prescribed_semantics_unknown"
           : "prescribed_semantics_retained",
       source: "session_exercises",
-      fields: ["session_id", "exercise_id", "source_exercise_key", "source_exercise_name", "prescribed_semantics_version", "prescribed_exercise_name", "prescribed_metric_type", "prescribed_load_type", "prescribed_load_semantics", "planned_from_template_exercise_id", "source_slot_lineage_id", "modification_type", "skip_reason", "substituted_for_exercise_id", "substitution_reason", "order_idx", "superset_key", "group_snapshot_id", "group_member_order_idx", "rest_sec", "target_sets", "target_reps_min", "target_reps_max", "timed_prescription", "target_load", "target_load_unit"],
+      fields: ["session_id", "exercise_id", "source_exercise_key", "source_exercise_name", "prescribed_semantics_version", "prescribed_exercise_name", "prescribed_metric_type", "prescribed_load_type", "prescribed_load_semantics", "planned_from_template_exercise_id", "source_slot_lineage_id", "modification_type", "skip_reason", "substituted_for_exercise_id", "substitution_reason", "order_idx", "superset_key", "group_snapshot_id", "group_member_order_idx", "rest_sec", "target_sets", "target_reps_min", "target_reps_max", ...(row.timed_prescription == null ? [] : ["timed_prescription"]), "target_load", "target_load_unit"],
     });
   });
   const setFacts = completedSetRows.map((row) => {
@@ -778,7 +780,7 @@ function buildCore(input: {
         : null,
       days: byId(programDayRows.map((row) => fact({ row, quality: "published_program_intent", source: "workout_templates", fields: programDayFields }))),
       slots: byId(slotRows.map((row) => fact({ row, quality: "published_program_intent", source: "workout_template_exercises", fields: ["workout_template_id", "exercise_id", "lineage_id", "order_idx", "superset_group_id", "group_member_order_idx", "rest_sec", "notes", "warmup_notes", "warmup_sets", "set_notes", "intent"] }))),
-      prescriptions: byId(prescriptionRows.map((row) => fact({ row, quality: "current_program_prescription", source: "exercise_prescriptions", fields: ["template_exercise_id", "sets", "rep_range_min", "rep_range_max", "timed_prescription", "target_load", "target_load_unit", "progression_rule_id", "effective_from"] }))),
+      prescriptions: byId(prescriptionRows.map((row) => fact({ row, quality: "current_program_prescription", source: "exercise_prescriptions", fields: ["template_exercise_id", "sets", "rep_range_min", "rep_range_max", ...(row.timed_prescription == null ? [] : ["timed_prescription"]), "target_load", "target_load_unit", "progression_rule_id", "effective_from"] }))),
     },
     exerciseIdentities: byId(
       exerciseRows.map((row) => {

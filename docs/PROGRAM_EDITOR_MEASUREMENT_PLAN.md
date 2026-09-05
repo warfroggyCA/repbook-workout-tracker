@@ -38,6 +38,7 @@ History, CSV, canonical JSON and encrypted snapshots preserve the metric.
 CSV includes `timed_prescription_json`. External-analysis exports retain current
 Program and frozen workout timed targets separately from recorded seconds.
 Source bindings retain legacy null-target hashes and bind populated time ranges.
+Rep-only package facts omit the new field, preserving existing package digests.
 Coach context receives the typed target
 and raw measurement; repetition progression and calculated target outcomes are
 unavailable for this metric.

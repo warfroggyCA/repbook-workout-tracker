@@ -316,9 +316,12 @@ describe("versioned external-analysis package", () => {
     expect(exported.completedOrImportedEvidence.sets.find((fact) => fact.id === performed.id)?.values).toMatchObject({
       metric_type: "weight_duration_per_side", duration_seconds: 25, reps: null, weight: 16, weight_unit: "kg",
     });
-    expect(exported.completedOrImportedEvidence.exercises.find((fact) => fact.id !== frozen.id)?.values).toMatchObject({
-      timed_prescription: null, prescribed_metric_type: "weight_reps", target_reps_min: 5, target_reps_max: 8,
-    });
+    const repEvidence = exported.completedOrImportedEvidence.exercises.find((fact) => fact.id !== frozen.id)?.values;
+    expect(repEvidence).toMatchObject({ prescribed_metric_type: "weight_reps", target_reps_min: 5, target_reps_max: 8 });
+    expect(repEvidence).not.toHaveProperty("timed_prescription");
+    const repPrescription = exported.currentProgramIntent.prescriptions.find((fact) => fact.id !== prescription.id)?.values;
+    expect(repPrescription).toMatchObject({ rep_range_min: 5, rep_range_max: 8, target_load: 80 });
+    expect(repPrescription).not.toHaveProperty("timed_prescription");
     const [manifest] = await db.select().from(analysisPackageManifests);
     const retainedScope = manifest.scope as { sourceEvidenceRevision: string };
     await expect(getExternalAnalysisSourceBindingFreshness(db, userId, manifest.sourceBindings, retainedScope.sourceEvidenceRevision)).resolves.toEqual({ ok: true });
