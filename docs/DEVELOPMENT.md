@@ -840,7 +840,7 @@ previous-record visibility, recommendation protection failures, and rest
 lifecycle recovery are:
 
 ```bash
-npx vitest run tests/unit/equipment-management-navigation.test.ts tests/unit/equipment-management-db.test.ts tests/unit/equipment-load-profile-contract.test.ts tests/unit/workout-equipment-preflight-component.test.tsx tests/unit/session-preparation-panel-component.test.tsx tests/unit/recommendation-card.test.tsx tests/unit/recommendation-decisions-characterization.test.ts tests/unit/progression-performed-baseline-db.test.ts tests/unit/previous-comparable-sets-db.test.ts tests/unit/set-starting-load.test.ts tests/unit/exercise-card-component.test.tsx tests/unit/rest-audio-recovery.test.ts tests/unit/rest-alert-preference.test.ts tests/unit/rest-timer.test.ts tests/unit/workout-set-outbox-sync.test.ts --maxWorkers=1 --no-file-parallelism
+npx vitest run tests/unit/shared-pulley-db.test.ts tests/unit/complete-report-copy.test.ts tests/unit/http-route-characterization.test.ts tests/unit/machine-load-math.test.ts tests/unit/equipment-management-navigation.test.ts tests/unit/equipment-management-db.test.ts tests/unit/equipment-load-profile-contract.test.ts tests/unit/workout-equipment-preflight-component.test.tsx tests/unit/session-preparation-panel-component.test.tsx tests/unit/recommendation-card.test.tsx tests/unit/recommendation-decisions-characterization.test.ts tests/unit/progression-performed-baseline-db.test.ts tests/unit/previous-comparable-sets-db.test.ts tests/unit/set-starting-load.test.ts tests/unit/exercise-card-component.test.tsx tests/unit/rest-audio-recovery.test.ts tests/unit/rest-alert-preference.test.ts tests/unit/rest-timer.test.ts tests/unit/workout-set-outbox-sync.test.ts --maxWorkers=1 --no-file-parallelism
 npm run build
 npx playwright test --config=playwright.active-workout-north-star.config.ts --grep='workout feedback:'
 npm run test:e2e:plate-machine-guidance
@@ -859,3 +859,23 @@ Confirm the countdown deadline, audible result, return-to-app behavior, and no
 duplicate alarm separately. Record browser versus Home Screen use and the iOS
 version. Preserve the actual workout and avoid production data changes during
 verification.
+
+The shared-pulley follow-up adds migration 0086, snapshot schema 37, and recovery
+manifest 16. Include `npm run db:verify`, `npm run db:verify-production-upgrade`,
+`npm run test:integration:postgres`, and `npm run test:e2e:v2-r01` in its gate.
+The shared-pulley database regression saves unknown unloaded resistance with
+explicit total-added-plate meaning, logs three distinct synthetic cable
+movements, checks matching prior loads and refusal of a different entry meaning,
+replays the migration twice, and round-trips a full encrypted snapshot. It also
+compares pure and atomic SQL capability checks for missing/malformed attributes.
+The plate-machine browser suite saves and reloads the same equipment settings.
+No migration or profile correction is applied to production by these commands.
+
+Report browser regressions cover actual report preparation, a separate copy tap,
+clipboard denial and retry through `writeText`, server failure, oversized report
+download, and stalled-request timeout. Unit tests enforce the byte ceiling even
+without an honest Content-Length and preserve split UTF-8. The complete report
+file preserves its existing contents; the 1 MiB clipboard budget never truncates
+it. Physical iPad download/copy/paste and browser memory behavior still require
+device acceptance, including the owner’s full report size. A browser harness
+cannot prove that a physical-device crash is resolved.

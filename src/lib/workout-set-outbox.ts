@@ -81,6 +81,7 @@ export type WorkoutSetOrderBlocker = {
 export type WorkoutSetLoadEntryMeaning =
   | "total_system"
   | "per_loading_point"
+  | "added_plates"
   | "displayed_stack"
   | "per_stack"
   | "combined_stacks"
@@ -440,6 +441,7 @@ function isWorkoutSetLoadEntryMeaning(
 ): value is WorkoutSetLoadEntryMeaning {
   return value === "total_system" ||
     value === "per_loading_point" ||
+    value === "added_plates" ||
     value === "displayed_stack" ||
     value === "per_stack" ||
     value === "combined_stacks" ||

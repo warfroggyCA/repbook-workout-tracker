@@ -1,3 +1,4 @@
+import { equipmentItemProvidesTypeSql } from "@/lib/equipment-capability-sql";
 import { createHash, randomUUID } from "node:crypto";
 import { and, asc, eq, isNull, sql, type SQL } from "drizzle-orm";
 import type { Db } from "@/db";
@@ -328,6 +329,7 @@ export type LogWorkoutSetInput = {
 export type EquipmentLoadEntryMeaning =
   | "total_system"
   | "per_loading_point"
+  | "added_plates"
   | "displayed_stack"
   | "per_stack"
   | "combined_stacks"
@@ -2564,7 +2566,7 @@ async function logWorkoutSetAttempt(
           SELECT 1 FROM equipment_items available_item
           WHERE available_item.user_id = ws.user_id
             AND available_item.available
-            AND available_item.type::text = requirement.value->>'equipmentType'
+            AND ${equipmentItemProvidesTypeSql(sql`available_item.type`, sql`available_item.attrs`, sql`requirement.value->>'equipmentType'`)}
             AND (
               requirement.value #>> '{equipmentDefinition,id}' IS NULL
               OR requirement.value #>> '{equipmentDefinition,id}' =
@@ -2595,7 +2597,7 @@ async function logWorkoutSetAttempt(
       FROM jsonb_array_elements(
         se.equipment_requirements_snapshot->'broad'
       ) requirement(value)
-      WHERE requirement.value->>'equipmentType' = selected_item.type::text
+      WHERE ${equipmentItemProvidesTypeSql(sql`selected_item.type`, sql`selected_item.attrs`, sql`requirement.value->>'equipmentType'`)}
         AND (
           requirement.value #>> '{equipmentDefinition,id}' IS NULL
           OR requirement.value #>> '{equipmentDefinition,id}' =
@@ -2615,7 +2617,7 @@ async function logWorkoutSetAttempt(
         FROM jsonb_array_elements(
           se.equipment_requirements_snapshot->'broad'
         ) requirement(value)
-        WHERE requirement.value->>'equipmentType' = selected_item.type::text
+        WHERE ${equipmentItemProvidesTypeSql(sql`selected_item.type`, sql`selected_item.attrs`, sql`requirement.value->>'equipmentType'`)}
           AND NOT (
             (
               requirement.value #>> '{equipmentDefinition,id}' IS NULL
@@ -2760,6 +2762,7 @@ async function logWorkoutSetAttempt(
              (
                (
                  ${authoritativeLoadType}::text IN ('barbell', 'ez_bar', 'trap_bar')
+                 OR se.current_equipment_snapshot_id IS NOT NULL
                  OR (
                    (${usesRetainedEquipmentRequirements}
                      AND se.equipment_requirements_snapshot->'exact' <> 'null'::jsonb)
@@ -2810,7 +2813,7 @@ async function logWorkoutSetAttempt(
                      SELECT 1 FROM equipment_items available_item
                      WHERE available_item.user_id = ws.user_id
                        AND available_item.available
-                       AND available_item.type = requirement.equipment_type
+                       AND ${equipmentItemProvidesTypeSql(sql`available_item.type`, sql`available_item.attrs`, sql`requirement.equipment_type`)}
                        AND (
                          requirement.min_weight IS NULL
                          OR (
@@ -2828,7 +2831,7 @@ async function logWorkoutSetAttempt(
                SELECT 1
                FROM exercise_equipment_requirements primary_requirement
                WHERE primary_requirement.exercise_id = se.exercise_id
-                 AND primary_requirement.equipment_type = selected_item.type
+                 AND ${equipmentItemProvidesTypeSql(sql`selected_item.type`, sql`selected_item.attrs`, sql`primary_requirement.equipment_type`)}
                  AND (
                    primary_requirement.min_weight IS NULL
                    OR (

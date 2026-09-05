@@ -215,7 +215,7 @@ describe("HTTP production perimeter", () => {
   });
 
   it("builds an all-time private LLM report without a download wrapper", async () => {
-    const response = await getLlmReport();
+    const response = await getLlmReport(new Request("http://localhost/api/export/llm-report"));
 
     expect(response.status).toBe(200);
     assertSensitive(response);
@@ -255,6 +255,25 @@ describe("HTTP production perimeter", () => {
     );
   });
 
+  it("downloads the entire complete report with a byte length and a safe filename", async () => {
+    const response = await getLlmReport(new Request("http://localhost/api/export/llm-report?download=1"));
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-disposition")).toMatch(/^attachment; filename="repbook-complete-report-\d{4}-\d{2}-\d{2}\.md"$/);
+    const text = await response.text();
+    expect(Number(response.headers.get("content-length"))).toBe(Buffer.byteLength(text, "utf8"));
+    expect(text).toContain("Complete retained source records");
+    assertSensitive(response);
+  });
+
+  it("returns a recoverable private failure without internal report errors", async () => {
+    mocks.buildTrainingDigest.mockRejectedValueOnce(new Error("private internal detail"));
+    const response = await getLlmReport(new Request("http://localhost/api/export/llm-report"));
+    expect(response.status).toBe(503);
+    expect(await response.text()).toBe("The complete report could not be prepared. Try again.");
+    assertSensitive(response);
+    expect(mocks.recordExport).not.toHaveBeenCalled();
+  });
+
   it("rebuilds the complete report when its two evidence views do not match", async () => {
     mocks.buildLlmTrainingSource.mockResolvedValueOnce({
       schemaVersion: "llm-training-source/1",
@@ -262,7 +281,7 @@ describe("HTTP production perimeter", () => {
       workoutSessions: [],
     });
 
-    const response = await getLlmReport();
+    const response = await getLlmReport(new Request("http://localhost/api/export/llm-report"));
 
     expect(response.status).toBe(200);
     expect(mocks.buildTrainingDigest).toHaveBeenCalledTimes(2);
@@ -292,7 +311,7 @@ describe("HTTP production perimeter", () => {
       getMarkdownExport(
         new Request("http://localhost/api/export/markdown?weeks=4&download=1")
       ),
-      getLlmReport(),
+      getLlmReport(new Request("http://localhost/api/export/llm-report")),
       downloadSnapshot(new Request("http://localhost"), {
         params: Promise.resolve({ id: snapshotId }),
       }),

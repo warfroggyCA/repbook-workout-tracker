@@ -38,6 +38,7 @@ const logSetCommandFields = {
   loadEntryMeaning: z.enum([
     "total_system",
     "per_loading_point",
+    "added_plates",
     "displayed_stack",
     "per_stack",
     "combined_stacks",

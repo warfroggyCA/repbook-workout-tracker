@@ -21,6 +21,9 @@ function describeSolution(
   unit: "lb" | "kg",
 ) {
   const point = pointLabel(config);
+  if (config.targetEntryMeaning === "added_plates") {
+    return `${platesText(solution.platesPerPoint, unit)} per ${point} · ${solution.enteredLoad} ${unit} of added plates in total`;
+  }
   const points = config.loadingPointCount ?? 1;
   const start = config.startingResistance ?? 0;
   const pluralPoints =
@@ -29,6 +32,7 @@ function describeSolution(
 }
 
 export function machineLoadEntryLabel(config: MachineLoadConfig): string {
+  if (config.targetEntryMeaning === "added_plates") return "Total added plate weight";
   if (config.targetEntryMeaning === "total_system") {
     return "Total machine resistance";
   }
@@ -54,7 +58,9 @@ export function formatMachineLoadGuidance(
       : "Machine geometry is incomplete. Log the displayed load only; effective total resistance is unknown.";
   }
   const meaning =
-    result.targetEntryMeaning === "total_system"
+    result.targetEntryMeaning === "added_plates"
+      ? `The entered ${enteredLoad} ${result.unit} counts all added plates. Unloaded resistance and pulley leverage are not included.`
+      : result.targetEntryMeaning === "total_system"
       ? `The entered ${enteredLoad} ${result.unit} means total machine resistance.`
       : `The entered ${enteredLoad} ${result.unit} means added plate load per ${pointLabel(config)}.`;
   if (result.exact) {

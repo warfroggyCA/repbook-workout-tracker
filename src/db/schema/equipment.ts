@@ -182,7 +182,7 @@ export const plateLoadedMachineProfiles = pgTable(
     ),
     check(
       "plate_loaded_machine_profiles_resistance_unit_pair",
-      sql`(${t.startingResistance} IS NULL) = (${t.startingResistanceUnit} IS NULL)`,
+      sql`((${t.startingResistance} IS NULL) = (${t.startingResistanceUnit} IS NULL)) OR (${t.targetEntryMeaning} IS NOT NULL AND ${t.targetEntryMeaning} = 'added_plates' AND ${t.startingResistanceUnit} IS NOT NULL)`,
     ),
     check(
       "plate_loaded_machine_profiles_resistance_valid",
@@ -198,7 +198,7 @@ export const plateLoadedMachineProfiles = pgTable(
     ),
     check(
       "plate_loaded_machine_profiles_entry_valid",
-      sql`${t.targetEntryMeaning} IS NULL OR ${t.targetEntryMeaning} IN ('total_system', 'per_loading_point')`,
+      sql`${t.targetEntryMeaning} IS NULL OR ${t.targetEntryMeaning} IN ('total_system', 'per_loading_point', 'added_plates')`,
     ),
     check(
       "plate_loaded_machine_profiles_single_point_count",
@@ -210,7 +210,7 @@ export const plateLoadedMachineProfiles = pgTable(
     ),
     check(
       "plate_loaded_machine_profiles_known_complete",
-      sql`${t.geometryCertainty} <> 'known' OR (${t.startingResistance} IS NOT NULL AND ${t.loadingPointCount} IS NOT NULL AND ${t.balancingRule} IS NOT NULL AND ${t.targetEntryMeaning} IS NOT NULL)`,
+      sql`${t.geometryCertainty} <> 'known' OR ((${t.startingResistance} IS NOT NULL OR ${t.targetEntryMeaning} = 'added_plates') AND ${t.startingResistanceUnit} IS NOT NULL AND ${t.loadingPointCount} IS NOT NULL AND ${t.balancingRule} IS NOT NULL AND ${t.targetEntryMeaning} IS NOT NULL)`,
     ),
   ],
 );

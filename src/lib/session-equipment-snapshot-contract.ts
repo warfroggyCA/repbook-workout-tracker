@@ -66,6 +66,7 @@ export const implementEquipmentGeometrySnapshotSchema = snapshotBase.extend({
 });
 
 export const machineEquipmentGeometrySnapshotSchema = snapshotBase.extend({
+  version: z.union([z.literal(1), z.literal(2)]),
   kind: z.literal("plate_loaded_machine"),
   geometryCertainty: z.enum(["known", "partial", "unknown"]),
   startingResistance: storedLoad.nullable(),
@@ -73,7 +74,7 @@ export const machineEquipmentGeometrySnapshotSchema = snapshotBase.extend({
   loadingPointCount: z.number().int().positive().max(16).nullable(),
   balancingRule: z.enum(["single_point", "identical_each_point"]).nullable(),
   targetEntryMeaning: z
-    .enum(["total_system", "per_loading_point"])
+    .enum(["total_system", "per_loading_point", "added_plates"])
     .nullable(),
   compatiblePlates: z.array(snapshottedPlateSchema).max(100),
 }).superRefine((value, context) => {
@@ -84,13 +85,18 @@ export const machineEquipmentGeometrySnapshotSchema = snapshotBase.extend({
     value.balancingRule,
     value.targetEntryMeaning,
   ];
-  const complete = geometryValues.every((entry) => entry != null);
+  const addedPlates = value.targetEntryMeaning === "added_plates";
+  const complete = geometryValues.slice(addedPlates ? 1 : 0).every((entry) => entry != null);
   const empty = geometryValues.every((entry) => entry == null);
   const issue = (path: string, message: string) => context.addIssue({
     code: "custom",
     path: [path],
     message,
   });
+
+  if ((value.version === 2) !== addedPlates) {
+    issue("version", "Added plate weight requires geometry version 2; existing meanings retain version 1.");
+  }
 
   if (value.geometryCertainty === "known" && !complete) {
     issue("geometryCertainty", "Known machine geometry must be complete.");
@@ -101,7 +107,8 @@ export const machineEquipmentGeometrySnapshotSchema = snapshotBase.extend({
   if (value.geometryCertainty === "partial" && (complete || empty)) {
     issue("geometryCertainty", "Partial machine geometry must contain some, but not all, geometry.");
   }
-  if ((value.startingResistance == null) !== (value.startingResistanceUnit == null)) {
+  if ((value.startingResistance != null && value.startingResistanceUnit == null) ||
+      (!addedPlates && (value.startingResistance == null) !== (value.startingResistanceUnit == null))) {
     issue("startingResistanceUnit", "Starting resistance and its unit must be recorded together.");
   }
   if ((value.loadingPointCount == null) !== (value.balancingRule == null)) {

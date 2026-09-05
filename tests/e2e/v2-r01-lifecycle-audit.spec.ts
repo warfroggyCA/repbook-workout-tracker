@@ -87,7 +87,7 @@ async function signIn(page: Page) {
 test("keeps portable facts, AI packages, support diagnostics, Review, and Coach visibly separate", async ({
   browserName,
   page,
-}) => {
+}, testInfo) => {
   await installClipboardHarness(page);
   await signIn(page);
   const pageErrors = observeGauntletPageErrors(page, browserName);
@@ -125,12 +125,16 @@ test("keeps portable facts, AI packages, support diagnostics, Review, and Coach 
   ).not.toBeVisible();
   await expect(page.getByText(/never sent anywhere by Repbook/i)).toBeVisible();
   const completeReportButton = page.getByRole("button", {
-    name: "Create complete report & copy",
+    name: "Prepare report for copying",
     exact: true,
   });
   expect((await completeReportButton.boundingBox())?.height ?? 0)
     .toBeGreaterThanOrEqual(44);
   await completeReportButton.click();
+  await expect(page.getByText(/Complete report ready/)).toBeVisible();
+  expect(await page.getByRole("link", { name: "Download complete report", exact: true }).evaluate((link) => link.scrollWidth <= link.clientWidth + 1)).toBe(true);
+  await page.screenshot({ path: testInfo.outputPath("complete-report-ready.png"), animations: "disabled" });
+  await page.getByRole("button", { name: "Copy report", exact: true }).click();
   await expect(
     page.getByText("Complete report copied to your clipboard.", { exact: true }),
   ).toBeVisible();
@@ -228,39 +232,82 @@ test("keeps portable facts, AI packages, support diagnostics, Review, and Coach 
   await pageErrors.expectNoUnexpected();
 });
 
-test("reports clipboard denial and report preparation failures", async ({
-  page,
-}) => {
+test("reports clipboard denial, keeps the prepared copy, and recovers from preparation failures", async ({ page }) => {
   await installClipboardHarness(page, "deny");
   await signIn(page);
+  await page.route("**/api/export/llm-report", (route) => route.fulfill({
+    contentType: "text/markdown", body: "# Synthetic complete report",
+  }));
   await page.goto("/export");
-
-  const copyButton = page.getByRole("button", {
-    name: "Create complete report & copy",
-    exact: true,
-  });
-  await copyButton.click();
-  await expect(
-    page.getByText("Clipboard permission denied.", { exact: true }),
-  ).toBeVisible();
-
-  await page.route("**/api/export/llm-report", (route) =>
-    route.fulfill({ status: 500, contentType: "text/plain", body: "failed" }),
-  );
+  await page.getByRole("button", { name: "Prepare report for copying", exact: true }).click();
+  const copy = page.getByRole("button", { name: "Copy report", exact: true });
+  await copy.click();
+  await expect(page.locator("p[role=alert]")).toContainText("Copying was not confirmed");
+  await expect(copy).toBeEnabled();
   await page.evaluate(() => {
-    Object.defineProperty(navigator, "clipboard", {
-      configurable: true,
-      value: {
-        write: async (items: Array<{ getType(type: string): Promise<Blob> }>) => {
-          await items[0]!.getType("text/plain");
-        },
+    Object.defineProperty(navigator, "clipboard", { configurable: true, value: {
+      writeText: async (text: string) => {
+        if (!navigator.userActivation.isActive) throw new Error("Not in a tap");
+        (window as unknown as { __repbookClipboard: string }).__repbookClipboard = text;
       },
-    });
+    } });
   });
-  await copyButton.click();
-  await expect(
-    page.getByText("The report could not be prepared. Try again.", {
-      exact: true,
-    }),
-  ).toBeVisible();
+  await copy.click();
+  await expect(page.getByText("Complete report copied to your clipboard.", { exact: true })).toBeVisible();
+  expect(await page.evaluate(() => (window as unknown as { __repbookClipboard: string }).__repbookClipboard))
+    .toBe("# Synthetic complete report");
+
+  await page.route("**/api/export/llm-report", (route) => route.fulfill({ status: 500, body: "private error" }));
+  await page.getByRole("button", { name: "Prepare report for copying", exact: true }).click();
+  await expect(page.locator("p[role=alert]")).toHaveText("The report could not be prepared. Try again.");
+});
+
+test("keeps oversized reports out of the clipboard and offers the complete download", async ({ page }) => {
+  await installClipboardHarness(page);
+  await signIn(page);
+  await page.route("**/api/export/llm-report", (route) => route.fulfill({
+    contentType: "text/markdown", body: "x".repeat(1024 * 1024 + 1),
+  }));
+  await page.goto("/export");
+  await page.getByRole("button", { name: "Prepare report for copying", exact: true }).click();
+  await expect(page.locator("p[role=alert]")).toContainText("too large to copy safely");
+  expect(await page.evaluate(() => (window as unknown as { __repbookClipboard?: string }).__repbookClipboard)).toBeUndefined();
+  const download = page.getByRole("link", { name: "Download complete report", exact: true });
+  await expect(download).toHaveAttribute("href", "/api/export/llm-report?download=1");
+  await page.unroute("**/api/export/llm-report");
+  // The real export lease has a five-second account cooldown. This test shares
+  // the suite's synthetic owner with the earlier actual-report preparation.
+  await page.waitForTimeout(5_100);
+  const downloaded = page.waitForEvent("download", { timeout: 30_000 });
+  await download.click();
+  const file = await downloaded;
+  expect(file.suggestedFilename()).toMatch(/^repbook-complete-report-.*\.md$/);
+  expect(await file.failure()).toBeNull();
+  const path = await file.path();
+  const { readFile } = await import("node:fs/promises");
+  const contents = await readFile(path!, "utf8");
+  expect(contents).toContain("# Repbook training record");
+  expect(contents).toContain("</repbook-retained-source-records>");
+
+});
+
+test("times out a stalled report and permits retry without a duplicate request", async ({ page }) => {
+  await installClipboardHarness(page);
+  await signIn(page);
+  await page.goto("/export");
+  await page.clock.install();
+  let requests = 0;
+  await page.route("**/api/export/llm-report", () => { requests += 1; });
+  const prepare = page.getByRole("button", { name: "Prepare report for copying", exact: true });
+  await prepare.click();
+  await expect.poll(() => requests).toBe(1);
+  await expect(page.getByRole("button", { name: "Preparing report…", exact: true })).toBeDisabled();
+  await page.clock.fastForward(30_001);
+  await expect(page.locator("p[role=alert]")).toContainText("took too long");
+  await expect(prepare).toBeEnabled();
+  expect(requests).toBe(1);
+  await page.unroute("**/api/export/llm-report");
+  await page.route("**/api/export/llm-report", (route) => route.fulfill({ contentType: "text/markdown", body: "# Retry complete" }));
+  await prepare.click();
+  await expect(page.getByRole("button", { name: "Copy report", exact: true })).toBeEnabled();
 });

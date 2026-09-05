@@ -2,7 +2,7 @@ import { z } from "zod";
 import {
   EQUIPMENT_TYPE_VALUES,
 } from "@/lib/equipment-inventory-contract";
-import { equipmentRequirementLabel } from "@/engine/equipment-filter";
+import { equipmentItemProvidesType, equipmentRequirementLabel } from "@/engine/equipment-filter";
 import {
   exactExecutionCandidateMatches,
   type ExactExecutionCandidate,
@@ -185,7 +185,7 @@ export function retainedPrimaryEquipmentCandidateMatchesBroad(
   );
   if (physical.length === 0) return true;
   const sameType = physical.filter(
-    (requirement) => requirement.equipmentType === candidate.equipmentType,
+    (requirement) => equipmentItemProvidesType({ type: candidate.equipmentType, attrs: candidate.attrs }, requirement.equipmentType),
   );
   return sameType.length > 0 && sameType.every((requirement) =>
     (requirement.equipmentDefinition == null ||
@@ -209,7 +209,7 @@ function retainedBroadRequirementSatisfiedBySavedEquipment(
   }
   return inventory.some((item) =>
     item.available &&
-    item.equipmentType === requirement.equipmentType &&
+    equipmentItemProvidesType({ type: item.equipmentType, attrs: item.attrs }, requirement.equipmentType) &&
     (requirement.equipmentDefinition == null ||
       item.equipmentDefinitionId === requirement.equipmentDefinition.id) &&
     (requirement.minWeight == null || (
@@ -260,7 +260,7 @@ export function retainedExerciseHasExecutableSetup(input: {
   for (const [equipmentType, requirements] of requirementsByType) {
     if (!input.inventory.some((candidate) =>
       candidate.available &&
-      candidate.equipmentType === equipmentType &&
+      equipmentItemProvidesType({ type: candidate.equipmentType, attrs: candidate.attrs }, equipmentType) &&
       retainedPrimaryEquipmentCandidateMatchesBroad(
         requirements,
         candidate,
@@ -401,7 +401,7 @@ function broadSupportsProfileKind(
     return requirement.equipmentType === "cable";
   }
   if (profileKind === "plate_loaded_machine") {
-    return requirement.equipmentType === "machine";
+    return ["machine", "smith_machine", "cable"].includes(requirement.equipmentType);
   }
   if (profileKind === "plate_loaded_implement") {
     return ["barbell", "ez_bar", "trap_bar"].includes(

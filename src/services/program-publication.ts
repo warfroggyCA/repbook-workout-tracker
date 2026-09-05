@@ -1,4 +1,5 @@
 import "server-only";
+import { equipmentItemProvidesTypeSql } from "@/lib/equipment-capability-sql";
 
 import { randomUUID } from "node:crypto";
 import { and, eq, isNull, or, sql } from "drizzle-orm";
@@ -589,7 +590,7 @@ async function publishDocumentAtomically(
                   SELECT 1 FROM equipment_items item
                   WHERE item.user_id = ${userId}::uuid
                     AND item.available
-                    AND item.type = requirement.equipment_type
+                    AND ${equipmentItemProvidesTypeSql(sql`item.type`, sql`item.attrs`, sql`requirement.equipment_type`)}
                     AND item.type <> 'bodyweight'::equipment_type
                     AND (
                       requirement.min_weight IS NULL

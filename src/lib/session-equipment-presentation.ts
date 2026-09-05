@@ -1,5 +1,7 @@
 import {
   buildEquipmentAvailability,
+  equipmentItemProvidesType,
+  requirementSatisfied,
   type EquipmentRequirement,
   type InventoryItem,
 } from "@/engine/equipment-filter";
@@ -108,7 +110,7 @@ function guidanceForGeometry(
       return "Machine geometry is not fully known, so exact plate guidance is unavailable.";
     }
     const describe = (label: string, solution: NonNullable<typeof result.exact>) =>
-      `${label} ${solution.enteredLoad} ${result.unit}: each loading point ${platesText(solution.platesPerPoint)}, total resistance ${solution.canonicalTotalLoad} ${result.unit}`;
+      `${label} ${solution.enteredLoad} ${result.unit}: each loading point ${platesText(solution.platesPerPoint)}, ${geometry.targetEntryMeaning === "added_plates" ? `${solution.enteredLoad} ${result.unit} of added plates in total; unloaded resistance is not included` : `total resistance ${solution.canonicalTotalLoad} ${result.unit}`}`;
     if (result.exact) return `${describe("Exact setup", result.exact)}.`;
     const neighbours = [
       result.nearestBelow ? describe("nearest lower", result.nearestBelow) : null,
@@ -243,7 +245,7 @@ function geometryForProfile(
   }
   if (profile.kind === "plate_loaded_machine") {
     return {
-      version: 1,
+      version: profile.targetEntryMeaning === "added_plates" ? 2 : 1,
       kind: profile.kind,
       geometryCertainty: profile.geometryCertainty,
       startingResistance: profile.startingResistance,
@@ -345,7 +347,7 @@ function asExactCandidate(
 function missingGeometryFields(profile: LoadedEquipmentLoadProfile): string[] {
   if (profile.profile.kind === "plate_loaded_machine") {
     const missing = [
-      profile.profile.startingResistance == null ? "starting resistance" : null,
+      profile.profile.startingResistance == null && profile.profile.targetEntryMeaning !== "added_plates" ? "starting resistance" : null,
       profile.profile.startingResistanceUnit == null ? "resistance unit" : null,
       profile.profile.loadingPointCount == null ? "loading points" : null,
       profile.profile.balancingRule == null ? "balancing rule" : null,
@@ -432,6 +434,19 @@ export function buildSessionEquipmentPresentation(input: {
   if (exercise.exactRequirement) {
     const ids = new Set(exactResolution.candidateEquipmentItemIds);
     eligible = primaries.filter((profile) => ids.has(profile.equipmentItemId));
+  } else if (exercise.loadType === "external" && exercise.requirements.some(
+    (requirement) => ["cable", "machine", "smith_machine"].includes(requirement.equipmentType),
+  ) && exactResolution.available) {
+    eligible = primaries.filter((profile) => {
+      if (!profile.available || !["plate_loaded_machine", "cable_machine"].includes(profile.profile.kind)) return false;
+      const item = { type: profile.itemType, attrs: profile.itemAttrs ?? {}, available: profile.available };
+      const primaryRequirements = exercise.requirements.filter((requirement) =>
+        equipmentItemProvidesType(item, requirement.equipmentType));
+      return primaryRequirements.length > 0 && primaryRequirements.every((requirement) =>
+        requirementSatisfied(requirement, [item]));
+    });
+    // Broad ownership still permits manual logging when no exact profile exists.
+    if (eligible.length === 0) return { setup: null, plateConfig: null };
   } else if (["barbell", "ez_bar", "trap_bar", "specialty_bar"].includes(exercise.loadType)) {
     const resolved = resolveImplementLoadSelection({
       loadType: exercise.loadType,

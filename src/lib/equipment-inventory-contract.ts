@@ -43,6 +43,7 @@ export const EDITABLE_ATTR_KEYS = [
   "increments",
   "adjustableBench",
   "brand",
+  "cablePulley",
 ] as const;
 
 /**
@@ -59,6 +60,7 @@ export const equipmentAttrsSchema = z.looseObject({
   increments: z.array(storedPositiveLoad).max(200).optional(),
   adjustableBench: z.boolean().optional(),
   brand: z.string().max(120).optional(),
+  cablePulley: z.boolean().optional(),
   levels: z.array(z.string().max(120)).max(50).optional(),
   notes: z.string().max(1000).optional(),
 });

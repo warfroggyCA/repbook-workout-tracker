@@ -1175,10 +1175,22 @@ function ItemDrawerBody({
             item={draftItem}
             profile={draftProfile}
             onChange={(next) => {
-              setDraftItem((current) => ({ ...current, type: next.type }));
+              setDraftItem((current) => ({ ...current, type: next.type, attrs: {
+                ...current.attrs,
+                ...(next.cablePulley === undefined ? {} : { cablePulley: next.cablePulley }),
+              } }));
               setDraftProfile(next.profile);
             }}
           />
+        )}
+        {draftProfile?.kind === "plate_loaded_machine" && (
+          <label className="my-2 flex min-h-11 items-center gap-3 text-sm">
+            <input type="checkbox" checked={draftItem.attrs.cablePulley === true}
+              onChange={(event) => setDraftItem((current) => ({ ...current,
+                attrs: { ...current.attrs, cablePulley: event.target.checked },
+              }))} />
+            This machine also provides a cable pulley for cable exercises
+          </label>
         )}
         {canEditExactEquipmentProfile(draftItem) ? (
           <EquipmentLoadProfileEditor
@@ -1239,14 +1251,14 @@ function ItemDrawerBody({
         <Button
           type="button"
           variant="outline"
-          className="flex-1"
+          className="h-auto min-h-11 min-w-0 flex-1 whitespace-normal py-2"
           onClick={onCancel}
         >
           Cancel
         </Button>
         <Button
           type="button"
-          className="flex-1"
+          className="h-auto min-h-11 min-w-0 flex-1 whitespace-normal py-2"
           disabled={handheldSetupIssue != null || profileIssues.length > 0}
           aria-describedby={profileIssues.length ? profileIssueId : handheldSetupIssue ? handheldSetupIssueId : undefined}
           onClick={() =>

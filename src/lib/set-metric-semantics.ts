@@ -112,6 +112,7 @@ export type PerformedSetMeasurement =
 export type SetLoadEntryMeaning =
   | "total_system"
   | "per_loading_point"
+  | "added_plates"
   | "displayed_stack"
   | "per_stack"
   | "combined_stacks"

@@ -1321,13 +1321,35 @@ closes the item editor; the visible next action reviews and saves the whole
 inventory atomically. Failure retains the draft and never implies a confirmed
 save. Plate-loaded/stack transitions preserve the physical item's identity.
 
-Current limitation: a plate-loaded profile uses the machine category, while
-broad cable requirements require the cable category. The inventory does not
-yet represent a shared plate-loaded pulley as both capabilities. A category
-change alone therefore cannot establish compatibility for those exercises.
-Generic external-load exercises without an exact requirement also do not offer
-an equipment selection. Resolving these gaps must preserve exercise identity,
-retained session requirements, original load meaning, and historical snapshots.
+A plate-loaded machine can explicitly declare `attrs.cablePulley: true` in its
+reviewed inventory draft. `equipmentItemProvidesType` and its atomic SQL
+counterpart in `src/lib/equipment-capability-sql.ts` let that same physical item
+satisfy a broad cable requirement. Other machines do not inherit this capability.
+Exact equipment definitions, profile kinds, geometry, attachments, retained
+requirements, and per-item weight constraints remain independent checks.
+Generic external-load cable/machine exercises offer matching saved profiles;
+no matching profile leaves their existing manual-entry path unchanged. Choosing
+a profile makes its immutable snapshot part of subsequent set-write validation.
+An exact selectorized variant still needs a compatible selectorized profile or
+an explicit owner-selected exercise replacement; names never remap variants.
+
+Migration `0086_added_plate_weight` adds `added_plates` load-entry meaning to
+machine profiles and performed sets. It means the total added plate mass across
+all loading points, excluding unloaded resistance and pulley leverage. The unit,
+point count, balancing rule, and available plates are required for exact plate
+math; unloaded resistance may remain null. Machine geometry version 2 is reserved
+for this meaning, while existing total-system and per-point snapshots retain
+version 1. Added-plate calculations return no canonical system/handle resistance.
+Previous-set prefill still requires exact exercise, compatible immutable setup,
+unit, and entry meaning; unknown legacy records are never reinterpreted.
+
+Canonical snapshot schema 37 and recovery manifest 16 retain this new meaning.
+Schema 36 upgrades only its envelope and keeps its already-versioned session
+semantics; older backup upgrades remain supported. An older envelope cannot
+claim added-plate meaning. The additive migration changes constraints and the
+snapshot validation function without backfilling profiles or completed history.
+Rolling back to code that does not understand version 37 is unsafe after new
+meaning has been stored; preserve a verified recovery checkpoint for release.
 
 Once acknowledged work or a retained device set exists, the active workout no
 longer repeats that global inventory panel; exercise-local exact setup remains
@@ -1623,8 +1645,20 @@ messages are labeled retrieval-time supplemental context. Account identity,
 archive metadata, private notes, raw assistant/provider material, request/retry
 keys, and worker identifiers remain excluded. The route prepends deterministic
 provider-neutral review instructions and returns a private no-store Markdown
-response. Only an explicit browser tap may copy those exact bytes to the device
-clipboard; Repbook does not transmit the report to an external provider. The
+response with its byte length. `?download=1` returns the complete file as an
+attachment, without assembling a browser Blob or populating the clipboard.
+The copy convenience first prepares at most 1 MiB of decoded response bytes;
+`src/lib/complete-report-copy.ts` checks both the advertised size and the streamed
+body, cancels oversized/error bodies, and never returns a truncated report.
+Preparation has a 30-second abort and is cancelled on unmount. Ready state names
+the size and requires a fresh **Copy report** gesture, preserving WebKit clipboard
+activation without waiting for a network response inside the copy operation.
+Denial retains the bounded prepared report for retry, a 10-second unconfirmed
+copy deadline avoids an indefinite spinner, and success releases the retained
+text. Server preparation failures return a private recoverable response.
+The clipboard limit is an application budget, not a device memory guarantee;
+physical iPad acceptance remains necessary. Report contents and retention gates
+are unchanged; Repbook does not transmit the report to an external provider. The
 bounded Training Brief remains available for a chosen period, the canonical
 full JSON backup remains the recovery copy, and raw CSV, versioned
 analysis-package, and redacted support-bundle workflows

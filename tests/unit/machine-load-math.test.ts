@@ -19,6 +19,26 @@ const knownMachine: MachineLoadConfig = {
 };
 
 describe("solveMachineLoad", () => {
+  it("splits total added plates without assuming unloaded resistance or effective load", () => {
+    const config: MachineLoadConfig = {
+      ...knownMachine, startingResistance: null, targetEntryMeaning: "added_plates",
+      compatiblePlates: [{ denomination: 10, quantity: 8 }],
+    };
+    expect(solveMachineLoad(40, config)).toMatchObject({
+      status: "available", canonicalTargetTotal: null,
+      exact: { enteredLoad: 40, canonicalTotalLoad: null, addedLoadPerPoint: 20,
+        platesPerPoint: [10, 10], inventoryConsumed: [{ denomination: 10, quantity: 4 }] },
+    });
+    expect(solveMachineLoad(0, config)).toMatchObject({
+      status: "available", exact: { enteredLoad: 0, canonicalTotalLoad: null, platesPerPoint: [] },
+    });
+    expect(solveMachineLoad(50, config)).toMatchObject({
+      status: "available", exact: null,
+      nearestBelow: { enteredLoad: 40 }, nearestAbove: { enteredLoad: 60 },
+    });
+    expect(solveMachineLoad(40, { ...config, targetEntryMeaning: "total_system" }))
+      .toEqual({ status: "unavailable", reason: "starting_resistance_unknown" });
+  });
   it("treats explicit zero resistance as zero and gives 50 per side for 100 total", () => {
     const result = solveMachineLoad(100, {
       ...knownMachine,

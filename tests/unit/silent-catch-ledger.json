@@ -24,5 +24,8 @@
   ],
   "src/services/live-coaching.ts": [
     "Malformed completed-answer JSON yields no structured answer while the durable message remains available for status display."
+  ],
+  "src/app/api/export/llm-report/route.ts": [
+    "Complete-report assembly, evidence-fence, or export-write failure returns a private recoverable 503 and never exposes raw source records or internal exception text."
   ]
 }

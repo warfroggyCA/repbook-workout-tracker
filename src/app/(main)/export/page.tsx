@@ -48,8 +48,9 @@ export default async function ExportPage({
               <Badge>Recommended</Badge>
             </div>
             <CardDescription>
-              Creates one all-time training report with instructions already
-              written for an AI assistant, then copies it to your clipboard.
+              Creates an all-time training report with instructions already
+              written for an AI assistant, a readable training summary, and retained
+              source records. Download the complete file, or prepare it for copying.
             </CardDescription>
           </CardHeader>
           <CardContent>
