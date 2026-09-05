@@ -664,8 +664,9 @@ function revealWorkoutTarget(
     .map((control) => control.getBoundingClientRect())
     .filter((bounds) => bounds.width > 0 && bounds.height > 0);
   const exerciseHeadingBounds = exerciseHeading?.getBoundingClientRect();
+  const primaryBounds = revealTarget.getBoundingClientRect();
   const contextBottom = decisionHeading?.getBoundingClientRect().bottom ??
-    (visibleControls.length > 0
+    (primaryBounds.height <= availableHeight ? primaryBounds.bottom : visibleControls.length > 0
       ? Math.max(...visibleControls.map((bounds) => bounds.bottom))
       : null);
   if (
@@ -686,7 +687,6 @@ function revealWorkoutTarget(
     }
     return;
   }
-  const primaryBounds = revealTarget.getBoundingClientRect();
   const focalTarget = primaryBounds.height > availableHeight
     ? revealTarget.querySelector<HTMLElement>(
         '[data-testid="active-log-set"]',

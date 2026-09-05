@@ -3128,31 +3128,27 @@ function SetEffortInput({ draft, setDraft }: {
   const [exactOpen, setExactOpen] = useState(
     draft.rir != null || (draft.rpe != null && !RPE_CHIPS.some((chip) => chip.value === draft.rpe)),
   );
-  const selectedEffort = EFFORT_CHOICES.find(
-    (choice) => draft.rir == null && choice.legacyRpe === draft.rpe,
-  );
   return <div className="space-y-2" data-testid="set-effort-input">
-      <div aria-live="polite" aria-atomic="true">
-        {selectedEffort && !exactOpen && (
-          <p className="text-sm font-medium">
-            Selected: {selectedEffort.label} — RPE {selectedEffort.legacyRpe}
-          </p>
-        )}
-      </div>
       <fieldset className="space-y-1">
         <legend className="text-sm font-medium">RPE · optional</legend>
         <div className="grid grid-cols-3 gap-1 sm:grid-cols-5">
-          {[{ value: null, shortcutLabel: "Not recorded", meaning: "Effort unknown" }, ...RPE_CHIPS].map((chip) => (
+          {[{ value: null, label: "Not recorded", shortcutLabel: "Not recorded", meaning: "Effort unknown" }, ...RPE_CHIPS].map((chip) => (
             <label key={chip.value ?? "unknown"} className={cn(
-              "flex min-h-11 cursor-pointer items-center gap-1 rounded-md border px-2 py-1 text-xs has-focus-visible:outline-2 has-focus-visible:outline-offset-2 has-focus-visible:outline-ring",
+              "relative flex min-h-11 cursor-pointer items-center gap-1 rounded-md border px-2 py-1 text-xs has-focus-visible:outline-2 has-focus-visible:outline-offset-2 has-focus-visible:outline-ring",
               draft.rpe === chip.value && draft.rir == null && "border-primary bg-primary/10",
             )}>
               <input type="radio" name={effortId} value={chip.value ?? "unknown"}
                 aria-label={`${chip.shortcutLabel}; ${chip.meaning}`}
                 checked={draft.rpe === chip.value && draft.rir == null}
                 onChange={() => setDraft((current) => ({ ...current, rpe: chip.value, rir: null }))}
-                className="!h-4 !min-h-4 w-4 shrink-0 accent-primary" />
-              <span>{chip.shortcutLabel}</span>
+                className="absolute inset-0 m-0 !h-full !min-h-11 !w-full cursor-pointer opacity-0" />
+              <span aria-hidden="true" className={cn(
+                "flex size-4 shrink-0 items-center justify-center rounded-full border border-muted-foreground",
+                draft.rpe === chip.value && draft.rir == null && "border-primary",
+              )}>
+                {draft.rpe === chip.value && draft.rir == null && <span className="size-2 rounded-full bg-primary" />}
+              </span>
+              <span>{chip.label}{chip.value != null ? ` ${chip.value}` : ""}</span>
             </label>
           ))}
         </div>
