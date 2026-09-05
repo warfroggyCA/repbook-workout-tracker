@@ -539,6 +539,9 @@ test("keeps unrestricted replacement truthful and reachable through mobile keybo
   const logSet = page.getByTestId("active-log-set");
   await waitForHydratedReactHandler(logSet);
   await waitForHydratedReactChangeHandler(reps);
+  // Replacement schedules a current-action focus handoff after rendering.
+  // Let it finish before WebKit starts typing into the replacement's input.
+  await expect(card.getByTestId("current-set-entry")).toBeFocused();
   await reps.fill("9");
   await expect(reps).toHaveValue("9");
   await logSet.click();
