@@ -229,7 +229,7 @@ export function analysisSourceRowContentHash(
   const excluded = excludedV1HashFields[entity];
   const hasTimedPrescription = entity === "session_exercises" || entity === "exercise_prescriptions";
   const normalized =
-    row && typeof row === "object" && !Array.isArray(row)
+    (excluded || hasTimedPrescription) && row && typeof row === "object" && !Array.isArray(row)
       ? Object.fromEntries(
           Object.entries(row as Record<string, unknown>).filter(
             ([key, value]) => !excluded?.has(key) &&

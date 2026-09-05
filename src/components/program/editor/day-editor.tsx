@@ -22,7 +22,6 @@ import { programDocumentV3Schema, type ProgramDocumentDayV3 } from "@/lib/progra
 import { formatRestTime } from "@/lib/rest-time";
 import { cn } from "@/lib/utils";
 
-function numberFromInput(value: string, fallback: number) { const parsed = Number(value); return Number.isFinite(parsed) ? parsed : fallback; }
 function optionalText(value: string) { return value.trim() ? value : null; }
 function displayLabel(value: string) { return value.replaceAll("_", " ").replace(/\b\w/g, (character) => character.toUpperCase()); }
 
