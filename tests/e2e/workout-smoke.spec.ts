@@ -1805,9 +1805,7 @@ test("signs in and completes a durable workout flow", async ({ page }) => {
   await reps.fill("8");
   await openNativeDetails(nextSet.getByTestId("active-exercise-details"));
   await nextSet.getByRole("radio", { name: /^Hard — RPE 8;/ }).click();
-  await expect(nextSet.getByText("Selected: Hard — RPE 8", {
-    exact: true,
-  })).toBeVisible();
+  await expect(nextSet.getByRole("radio", { name: /^Hard — RPE 8;/ })).toBeChecked();
   await nextSet
     .getByRole("button", { name: "Exact RPE / RIR", exact: true })
     .click();
@@ -2042,9 +2040,7 @@ test("keeps every active-workout route reachable with one scroll surface", async
   });
   await grindShortcut.focus();
   await page.keyboard.press("Space");
-  await expect(currentCard.getByText("Selected: Grind — RPE 9.5", {
-    exact: true,
-  })).toBeVisible();
+  await expect(grindShortcut).toBeChecked();
   await currentCard
     .getByRole("button", { name: "Exact RPE / RIR", exact: true })
     .click();
