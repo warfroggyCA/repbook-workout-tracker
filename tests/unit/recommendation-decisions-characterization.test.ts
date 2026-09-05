@@ -422,6 +422,50 @@ describe("recommendation decisions publish immutable Program versions", () => {
     expect(await database.db.select().from(userDecisions)).toHaveLength(1);
   });
 
+  it("names another exercise and day that block approval before starting a safety backup", async () => {
+    const activated = await activateProgramAtomically(database.db, {
+      userId,
+      loadUnit: "lb",
+      programName: "Reviewed equipment fixture",
+      structuredIntentReviewed: true,
+      days: [currentExerciseId, targetExerciseId].map((exerciseId, index) => ({
+        name: index === 0 ? "Strength day" : "Assistance day",
+        exercises: [{
+          exerciseId, sets: 3, repMin: 6, repMax: 8, targetLoad: 100,
+          restSec: 90, supersetKey: null, notes: null,
+        }],
+      })),
+      changeSummary: "Reviewed equipment fixture",
+      auditAction: "program.activate",
+      auditSummary: "Activated synthetic reviewed Program",
+    });
+    if (!activated.ok) throw new Error(activated.reason);
+    programId = activated.programId;
+    const recommendation = await createLoadRecommendation();
+    // The unrelated movement becomes unavailable after the Program was reviewed.
+    await database.db.insert(exerciseEquipmentRequirements).values({
+      exerciseId: targetExerciseId, equipmentType: "machine",
+    });
+    const affectedExercise = await database.db.query.exercises.findFirst({
+      where: eq(exercises.id, targetExerciseId),
+    });
+    const before = await decisionCounts();
+    const protection = vi.fn(async () => true);
+
+    const result = await approve(recommendation, { beforePublish: protection });
+
+    expect(result).toMatchObject({
+      ok: false,
+      reason: expect.stringContaining(`${affectedExercise!.name} · Assistance day:`),
+    });
+    expect(protection).not.toHaveBeenCalled();
+    expect(await decisionCounts()).toEqual(before);
+    expect((await currentState()).prescription.targetLoad).toBe(100);
+    expect(await database.db.query.recommendations.findFirst({
+      where: eq(recommendations.id, recommendation),
+    })).toMatchObject({ status: "pending", decidedAt: null });
+  });
+
   it("converges simultaneous approval on one decision and one immutable v2", async () => {
     const recommendationId = await createLoadRecommendation();
     const ready = createStartBarrier(8);

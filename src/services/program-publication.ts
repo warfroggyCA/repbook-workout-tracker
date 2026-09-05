@@ -231,16 +231,16 @@ function buildTree(document: StoredProgramDocument, versionId: string) {
   return { templates, groups, slots, prescriptions };
 }
 
-async function documentExercisesAreOwned(db: Db, userId: string, document: StoredProgramDocument) {
+async function loadOwnedDocumentExercises(db: Db, userId: string, document: StoredProgramDocument) {
   const ids = [...new Set(document.days.flatMap((day) => day.exercises.map((slot) => slot.exerciseId)))];
   const rows = await db.query.exercises.findMany({
     where: and(
       sql`${exercises.id} IN (${sql.join(ids.map((id) => sql`${id}::uuid`), sql`, `)})`,
       or(isNull(exercises.userId), eq(exercises.userId, userId))
     ),
-    columns: { id: true },
+    columns: { id: true, name: true },
   });
-  return rows.length === ids.length;
+  return rows.length === ids.length ? rows : null;
 }
 
 async function publishDocumentAtomically(
@@ -249,10 +249,12 @@ async function publishDocumentAtomically(
   input: PublishDocumentInput
 ): Promise<ProgramPublicationResult> {
   const parsed = storedProgramDocumentSchema.safeParse(input.document);
-  if (!parsed.success || !(await documentExercisesAreOwned(db, userId, parsed.data))) {
+  if (!parsed.success) {
     return { ok: false, reason: "invalid" };
   }
   const document = parsed.data;
+  const ownedExercises = await loadOwnedDocumentExercises(db, userId, document);
+  if (!ownedExercises) return { ok: false, reason: "invalid" };
   const versionId = randomUUID();
   const decisionId = randomUUID();
   const adaptationId = randomUUID();
@@ -277,7 +279,21 @@ async function publishDocumentAtomically(
     : null;
   if (publicationPreflight?.findings.some((finding) => finding.severity === "blocking")) {
     const blocking = publicationPreflight.findings.filter((finding) => finding.severity === "blocking");
-    return { ok: false, reason: "invalid", message: `The Program needs review before this change can be applied: ${blocking.map((finding) => finding.reason).slice(0, 3).join(" ")}` };
+    const exerciseNames = new Map(ownedExercises.map((exercise) => [exercise.id, exercise.name]));
+    const details = blocking.slice(0, 3).map((finding) => {
+      const day = document.days.find((entry) => entry.lineageId === finding.dayLineageId);
+      const slot = day?.exercises.find((entry) => entry.lineageId === finding.slotLineageId);
+      const location = [slot ? exerciseNames.get(slot.exerciseId) : null, day?.name]
+        .filter(Boolean)
+        .join(" · ");
+      return `${location ? `${location}: ` : ""}${finding.reason}`;
+    }).join(" ");
+    const remaining = blocking.length - 3;
+    return {
+      ok: false,
+      reason: "invalid",
+      message: `The Program needs review before this change can be applied: ${details}${remaining > 0 ? ` ${remaining} more blocking ${remaining === 1 ? "issue" : "issues"} in Program review.` : ""}`,
+    };
   }
 
   // Perform read-only validation before the potentially slow protection step.
