@@ -666,6 +666,7 @@ async function compactGeometry(page: Page) {
       primaryTop: primaryRect.top,
       primaryBottom: primaryRect.bottom,
       previousBottom: previousRect.bottom,
+      headingTop: cardElement.querySelector('h2[id^="session-exercise-heading-"]')?.getBoundingClientRect().top,
       viewport: {
         innerHeight: window.innerHeight,
         visualHeight: window.visualViewport?.height,

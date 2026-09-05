@@ -635,9 +635,20 @@ function revealWorkoutTarget(
   const deviceSaveStatus = document.querySelector<HTMLElement>(
     '[aria-label="Device save status"]',
   );
+  const summaryBounds = stickySummary?.getBoundingClientRect();
+  // A reveal may pin a summary that is still below the page header. Measure
+  // the space it will occupy after scrolling, not its larger initial offset.
+  const summaryBottom = summaryBounds && stickySummary
+    ? Math.min(
+        summaryBounds.bottom,
+        viewportTop +
+          (Number.parseFloat(window.getComputedStyle(stickySummary).top) || 0) +
+          summaryBounds.height,
+      )
+    : viewportTop;
   const visibleTop = Math.max(
     viewportTop,
-    stickySummary?.getBoundingClientRect().bottom ?? viewportTop,
+    summaryBottom,
   ) + 8;
   const visibleBottom = Math.min(
     viewportBottom,
@@ -659,14 +670,23 @@ function revealWorkoutTarget(
     '[data-active-workout-decision-heading="true"]',
   );
   const visibleControls = [...target.querySelectorAll<HTMLElement>(
-    "input, .active-set-stepper",
+    "input:not([type='radio']), .active-set-stepper",
   )]
     .map((control) => control.getBoundingClientRect())
     .filter((bounds) => bounds.width > 0 && bounds.height > 0);
   const exerciseHeadingBounds = exerciseHeading?.getBoundingClientRect();
   const primaryBounds = revealTarget.getBoundingClientRect();
+  const wholePrimaryFits = exerciseHeadingBounds != null &&
+    primaryBounds.bottom - exerciseHeadingBounds.top <= availableHeight;
+  const previousBounds = target.querySelector<HTMLElement>(
+    '[data-testid="previous-comparable-set"]',
+  )?.getBoundingClientRect();
+  const previousContextFits = exerciseHeadingBounds != null &&
+    previousBounds != null && previousBounds.height > 0 &&
+    previousBounds.bottom - exerciseHeadingBounds.top <= availableHeight;
   const contextBottom = decisionHeading?.getBoundingClientRect().bottom ??
-    (primaryBounds.height <= availableHeight ? primaryBounds.bottom : visibleControls.length > 0
+    (wholePrimaryFits ? primaryBounds.bottom : previousContextFits
+      ? previousBounds.bottom : visibleControls.length > 0
       ? Math.max(...visibleControls.map((bounds) => bounds.bottom))
       : null);
   if (
