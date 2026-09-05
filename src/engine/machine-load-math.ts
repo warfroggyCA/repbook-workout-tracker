@@ -9,6 +9,7 @@ export type MachineGeometryStatus = "known" | "partial" | "unknown";
 export type MachineBalancingRule = "single_point" | "identical_each_point";
 export type MachineTargetEntryMeaning =
   | "total_system"
+  | "added_plates"
   | "per_loading_point";
 
 export type MachinePlateInventory = {
@@ -29,7 +30,7 @@ export type MachineLoadConfig = {
 
 export type MachineLoadSolution = {
   enteredLoad: number;
-  canonicalTotalLoad: number;
+  canonicalTotalLoad: number | null;
   addedLoadPerPoint: number;
   platesPerPoint: number[];
   inventoryConsumed: Array<{ denomination: number; quantity: number }>;
@@ -57,7 +58,7 @@ export type MachineLoadResult =
       unit: "lb" | "kg";
       targetEntryMeaning: MachineTargetEntryMeaning;
       enteredTarget: number;
-      canonicalTargetTotal: number;
+      canonicalTargetTotal: number | null;
       exact: MachineLoadSolution | null;
       nearest: MachineLoadSolution;
       nearestBelow: MachineLoadSolution | null;
@@ -86,15 +87,15 @@ function preferredChoice(candidate: number[], current: number[]): boolean {
 
 function validateConfig(config: MachineLoadConfig): MachineLoadUnavailableReason | null {
   if (config.geometryStatus !== "known") return "geometry_unknown";
-  if (config.startingResistance == null) return "starting_resistance_unknown";
+  if (config.startingResistance == null && config.targetEntryMeaning !== "added_plates") return "starting_resistance_unknown";
   if (config.unit == null) return "unit_unknown";
   if (config.loadingPointCount == null) return "loading_points_unknown";
   if (config.balancingRule == null) return "balancing_rule_unknown";
   if (config.targetEntryMeaning == null) return "entry_meaning_unknown";
   if (config.compatiblePlates == null) return "compatible_plates_unknown";
   if (
-    !Number.isFinite(config.startingResistance) ||
-    config.startingResistance < 0 ||
+    (config.startingResistance != null && (!Number.isFinite(config.startingResistance) ||
+    config.startingResistance < 0)) ||
     !Number.isInteger(config.loadingPointCount) ||
     config.loadingPointCount < 1 ||
     (config.balancingRule === "single_point" && config.loadingPointCount !== 1) ||
@@ -174,7 +175,6 @@ function perPointChoices(
 function solutionFor(
   choice: SumChoice,
   config: MachineLoadConfig & {
-    startingResistance: number;
     loadingPointCount: number;
     balancingRule: MachineBalancingRule;
     targetEntryMeaning: MachineTargetEntryMeaning;
@@ -184,13 +184,15 @@ function solutionFor(
     config.balancingRule === "identical_each_point"
       ? config.loadingPointCount
       : 1;
-  const canonicalTotalLoad = round2(
-    config.startingResistance + choice.sum * pointMultiplier,
-  );
+  const canonicalTotalLoad = config.targetEntryMeaning === "added_plates"
+    ? null
+    : round2(config.startingResistance! + choice.sum * pointMultiplier);
   const enteredLoad =
     config.targetEntryMeaning === "total_system"
-      ? canonicalTotalLoad
-      : choice.sum;
+      ? canonicalTotalLoad!
+      : config.targetEntryMeaning === "added_plates"
+        ? round2(choice.sum * pointMultiplier)
+        : choice.sum;
   const counts = new Map<number, number>();
   for (const denomination of choice.plates) {
     counts.set(
@@ -225,7 +227,6 @@ export function solveMachineLoad(
   }
 
   const known = config as MachineLoadConfig & {
-    startingResistance: number;
     unit: "lb" | "kg";
     loadingPointCount: number;
     balancingRule: MachineBalancingRule;
@@ -237,10 +238,10 @@ export function solveMachineLoad(
     return { status: "unavailable", reason: "search_limit_exceeded" };
   }
   const solutions = choices.map((choice) => solutionFor(choice, known));
-  const canonicalTargetTotal = round2(
+  const canonicalTargetTotal = known.targetEntryMeaning === "added_plates" ? null : round2(
     known.targetEntryMeaning === "total_system"
       ? enteredTarget
-      : known.startingResistance + enteredTarget * known.loadingPointCount,
+      : known.startingResistance! + enteredTarget * known.loadingPointCount,
   );
   const exact =
     solutions.find(

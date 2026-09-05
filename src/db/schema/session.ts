@@ -724,7 +724,7 @@ export const completedSets = pgTable(
     ),
     check(
       "completed_sets_load_entry_meaning_valid",
-      sql`${t.loadEntryMeaning} IN ('total_system', 'per_loading_point', 'displayed_stack', 'per_stack', 'combined_stacks', 'legacy_unknown')`,
+      sql`${t.loadEntryMeaning} IN ('total_system', 'per_loading_point', 'added_plates', 'displayed_stack', 'per_stack', 'combined_stacks', 'legacy_unknown')`,
     ),
     check(
       "completed_sets_equipment_entry_pair_valid",

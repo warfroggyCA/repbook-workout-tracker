@@ -9,6 +9,7 @@ import {
 export type LoadedEquipmentLoadProfile = {
   equipmentItemId: string;
   itemType: string;
+  itemAttrs?: Record<string, unknown>;
   itemLabel: string;
   equipmentDefinitionId: string | null;
   equipmentDefinitionKey: string | null;
@@ -19,6 +20,7 @@ export type LoadedEquipmentLoadProfile = {
 type RawProfileRow = {
   equipment_item_id: string;
   item_type: string;
+  item_attrs: Record<string, unknown>;
   item_label: string;
   definition_id: string | null;
   definition_key: string | null;
@@ -38,7 +40,7 @@ export async function loadEquipmentLoadProfiles(
   const rows = resultRows(await db.execute(sql`
     SELECT item.id AS equipment_item_id, item.type::text AS item_type,
            item.label AS item_label, item.definition_id,
-           definition.key AS definition_key, item.available,
+           definition.key AS definition_key, item.available, item.attrs AS item_attrs,
            jsonb_build_object(
              'kind', 'plate_loaded_implement',
              'id', profile.id,
@@ -58,7 +60,7 @@ export async function loadEquipmentLoadProfiles(
     UNION ALL
 
     SELECT item.id, item.type::text, item.label, item.definition_id,
-           definition.key, item.available,
+           definition.key, item.available, item.attrs,
            jsonb_build_object(
              'kind', 'plate_loaded_machine',
              'id', profile.id,
@@ -85,7 +87,7 @@ export async function loadEquipmentLoadProfiles(
     UNION ALL
 
     SELECT item.id, item.type::text, item.label, item.definition_id,
-           definition.key, item.available,
+           definition.key, item.available, item.attrs,
            jsonb_build_object(
              'kind', 'cable_machine',
              'id', profile.id,
@@ -128,7 +130,7 @@ export async function loadEquipmentLoadProfiles(
     UNION ALL
 
     SELECT item.id, item.type::text, item.label, item.definition_id,
-           definition.key, item.available,
+           definition.key, item.available, item.attrs,
            jsonb_build_object(
              'kind', 'attachment',
              'id', profile.id,
@@ -149,6 +151,7 @@ export async function loadEquipmentLoadProfiles(
   return rows.map((row) => ({
     equipmentItemId: String(row.equipment_item_id),
     itemType: String(row.item_type),
+    itemAttrs: row.item_attrs ?? {},
     itemLabel: String(row.item_label),
     equipmentDefinitionId:
       row.definition_id == null ? null : String(row.definition_id),

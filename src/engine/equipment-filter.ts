@@ -20,6 +20,18 @@ export type PlateAvailabilityRow = {
   denomination: number;
 };
 
+/** A reviewed pulley capability belongs to one physical machine. */
+export function equipmentItemProvidesType(
+  item: { type: string; attrs?: Record<string, unknown> | null },
+  equipmentType: string,
+): boolean {
+  return item.type === equipmentType || (
+    equipmentType === "cable" &&
+    (item.type === "machine" || item.type === "smith_machine") &&
+    item.attrs?.cablePulley === true
+  );
+}
+
 /**
  * Build the one canonical equipment-availability view used by every exercise
  * gate. Generic plate and bodyweight rows are compatibility/history records,
@@ -90,7 +102,7 @@ export function requirementSatisfied(
   return inventory.some(
     (item) =>
       item.available &&
-      item.type === req.equipmentType &&
+      equipmentItemProvidesType(item, req.equipmentType) &&
       (req.minWeight == null ||
         (item.attrs.maxWeight != null && item.attrs.maxWeight >= req.minWeight))
   );

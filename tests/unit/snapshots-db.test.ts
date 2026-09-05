@@ -454,7 +454,7 @@ describe("verified off-database snapshots", () => {
     );
     const schema35 = structuredClone(current);
     schema35.schemaVersion = "35";
-    expect(upgradeSnapshotPayload(schema35).schemaVersion).toBe("36");
+    expect(upgradeSnapshotPayload(schema35).schemaVersion).toBe("37");
 
     const forgedSchema35 = structuredClone(schema35);
     (forgedSchema35.tables.session_exercises as Array<Record<string, unknown>>)[0]
@@ -501,7 +501,7 @@ describe("verified off-database snapshots", () => {
     }
 
     const upgraded = upgradeSnapshotPayload(legacy);
-    expect(upgraded.schemaVersion).toBe("36");
+    expect(upgraded.schemaVersion).toBe("37");
     expect(upgraded.tables.workout_sessions).toContainEqual(
       expect.objectContaining({
         id: sessionId,
@@ -1048,7 +1048,7 @@ describe("verified off-database snapshots", () => {
         now: new Date("2026-08-18T16:10:00.000Z"),
         appVersion: "reporting-schema-35",
       });
-      expect(backup.schemaVersion).toBe("36");
+      expect(backup.schemaVersion).toBe("37");
       expect(backup.canonical.tables.workout_sessions).toContainEqual(
         expect.objectContaining({
           id: terminalSession.id,

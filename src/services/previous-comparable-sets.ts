@@ -177,6 +177,7 @@ function loadSemantics(value: string | null): PerformedLoadSemantics | null {
 function loadEntryMeaning(value: string | null): SetLoadEntryMeaning | null {
   return value === "total_system" ||
     value === "per_loading_point" ||
+    value === "added_plates" ||
     value === "displayed_stack" ||
     value === "per_stack" ||
     value === "combined_stacks" ||

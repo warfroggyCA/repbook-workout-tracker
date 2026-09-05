@@ -16,6 +16,7 @@ const MAX_HISTORY_SETUP_SUMS = 20_000;
 export type HistoryLoadEntryMeaning =
   | "total_system"
   | "per_loading_point"
+  | "added_plates"
   | "displayed_stack"
   | "per_stack"
   | "combined_stacks"
@@ -288,6 +289,9 @@ export function formatHistoryPerformedSetup(
         ? `plates on the loading point: ${platesText(uniquePlates, result.unit)}`
         : `plates on each of ${geometry.loadingPointCount} loading points: ${platesText(uniquePlates, result.unit)}`
       : `no added plates on the ${geometry.loadingPointCount === 1 ? "loading point" : `${geometry.loadingPointCount} loading points`}`;
+    if (geometry.targetEntryMeaning === "added_plates") {
+      return `${points}; total added plate weight: ${set.weight} ${result.unit}. Unloaded resistance and pulley leverage are not included.`;
+    }
     return `${points}; starting resistance: ${geometry.startingResistance} ${result.unit}; canonical total resistance: ${result.exact.canonicalTotalLoad} ${result.unit}.`;
   }
 
@@ -460,6 +464,7 @@ export function formatHistoryLoadEntryMeaning(
   const knownMeaning = new Set<HistoryLoadEntryMeaning>([
     "total_system",
     "per_loading_point",
+    "added_plates",
     "displayed_stack",
     "per_stack",
     "combined_stacks",
@@ -485,6 +490,8 @@ export function formatHistoryLoadEntryMeaning(
     meaning = kind === "plate_loaded_implement"
       ? `${value} assembled total (implement, collars, and plates).`
       : `${value} total system resistance.`;
+  } else if (set.loadEntryMeaning === "added_plates") {
+    meaning = `${value} total added plate weight. Unloaded resistance and pulley leverage are not included.`;
   } else if (set.loadEntryMeaning === "per_loading_point") {
     meaning = `${value} added plate load per loading point.`;
   } else if (set.loadEntryMeaning === "displayed_stack") {

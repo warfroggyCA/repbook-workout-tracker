@@ -96,6 +96,22 @@ const PRE_PROGRAM_SCHEDULE_SNAPSHOT_SCHEMA_VERSION = "32";
 const PRE_NAMED_PROGRAM_LIBRARY_SNAPSHOT_SCHEMA_VERSION = "33";
 const PRE_REPORTING_SESSION_OUTCOMES_SNAPSHOT_SCHEMA_VERSION = "34";
 const PRE_ACTIVE_WORKOUT_EQUIPMENT_REASONS_SNAPSHOT_SCHEMA_VERSION = "35";
+const PRE_ADDED_PLATE_WEIGHT_SNAPSHOT_SCHEMA_VERSION = "36";
+
+function usesCurrentSessionSemantics(version: string) {
+  return version === SNAPSHOT_SCHEMA_VERSION || version === PRE_ADDED_PLATE_WEIGHT_SNAPSHOT_SCHEMA_VERSION;
+}
+
+function validateAddedPlateVersion(payload: CanonicalSnapshotPayload) {
+  if (payload.schemaVersion === SNAPSHOT_SCHEMA_VERSION) return;
+  // Older envelopes predate equipment tables; their normal upgrade adds them.
+  const optionalRows = (table: string) => payload.tables[table] == null ? [] : rows(payload, table);
+  if (rows(payload, "completed_sets").some((row) => row.load_entry_meaning === "added_plates") ||
+      optionalRows("plate_loaded_machine_profiles").some((row) => row.target_entry_meaning === "added_plates") ||
+      optionalRows("session_equipment_snapshots").some((row) => Number(row.geometry_version) === 2 && row.profile_kind === "plate_loaded_machine")) {
+    throw new Error("Total added plate weight requires snapshot schema 37.");
+  }
+}
 
 const PRE_ACTIVE_WORKOUT_SUBSTITUTION_REASONS = new Set([
   "variety",
@@ -535,7 +551,7 @@ function validateUnitAndCalendarIdentity(payload: CanonicalSnapshotPayload) {
 function validateReportingSessionOutcomeSemantics(
   payload: CanonicalSnapshotPayload,
 ) {
-  if (payload.schemaVersion !== SNAPSHOT_SCHEMA_VERSION) return;
+  if (!usesCurrentSessionSemantics(payload.schemaVersion)) return;
 
   const sessionsById = new Map(
     rows(payload, "workout_sessions").map((session) => [
@@ -772,7 +788,7 @@ function validateReportingSessionOutcomeSemantics(
 }
 
 function validateFinishCommandReceipts(payload: CanonicalSnapshotPayload) {
-  if (payload.schemaVersion !== SNAPSHOT_SCHEMA_VERSION) return;
+  if (!usesCurrentSessionSemantics(payload.schemaVersion)) return;
 
   const sessionsById = new Map(
     rows(payload, "workout_sessions").map((session) => [
@@ -853,7 +869,7 @@ const PRESCRIBED_LOAD_SEMANTICS = new Set([
 ]);
 
 function validateStartAndPrescribedSemantics(payload: CanonicalSnapshotPayload) {
-  if (payload.schemaVersion !== SNAPSHOT_SCHEMA_VERSION) return;
+  if (!usesCurrentSessionSemantics(payload.schemaVersion)) return;
   const identities = new Set<string>();
   for (const session of rows(payload, "workout_sessions")) {
     for (const key of ["start_request_key", "start_request_hash"]) {
@@ -936,7 +952,7 @@ function validateStartAndPrescribedSemantics(payload: CanonicalSnapshotPayload) 
 function validateSessionEquipmentRequirements(
   payload: CanonicalSnapshotPayload,
 ) {
-  if (payload.schemaVersion !== SNAPSHOT_SCHEMA_VERSION) return;
+  if (!usesCurrentSessionSemantics(payload.schemaVersion)) return;
 
   const validateTuple = (
     row: SnapshotRow,
@@ -991,7 +1007,7 @@ function validateSessionEquipmentRequirements(
 }
 
 function validateSetExceptionContext(payload: CanonicalSnapshotPayload) {
-  if (payload.schemaVersion !== SNAPSHOT_SCHEMA_VERSION) return;
+  if (!usesCurrentSessionSemantics(payload.schemaVersion)) return;
   const sessionExercises = new Map(
     rows(payload, "session_exercises").map((row) => [String(row.id), row]),
   );
@@ -1073,7 +1089,7 @@ function validNonnegativeRevision(value: unknown) {
 }
 
 function validateReviewState(payload: CanonicalSnapshotPayload) {
-  if (payload.schemaVersion !== SNAPSHOT_SCHEMA_VERSION) return;
+  if (!usesCurrentSessionSemantics(payload.schemaVersion)) return;
   const externalImports = new Map<string, ReturnType<typeof externalAnalysisImportDigestSchema.parse>>();
   for (const insight of rows(payload, "coaching_insights")) {
     if (insight.kind !== "external_analysis_import") continue;
@@ -1609,6 +1625,7 @@ export function upgradeSnapshotPayload(
     PRE_NAMED_PROGRAM_LIBRARY_SNAPSHOT_SCHEMA_VERSION,
     PRE_REPORTING_SESSION_OUTCOMES_SNAPSHOT_SCHEMA_VERSION,
     PRE_ACTIVE_WORKOUT_EQUIPMENT_REASONS_SNAPSHOT_SCHEMA_VERSION,
+    PRE_ADDED_PLATE_WEIGHT_SNAPSHOT_SCHEMA_VERSION,
     SNAPSHOT_SCHEMA_VERSION,
   ]);
   if (!supported.has(payload.schemaVersion)) {
@@ -1616,7 +1633,12 @@ export function upgradeSnapshotPayload(
       `Snapshot schema ${payload.schemaVersion} is not supported by this app version.`
     );
   }
+  validateAddedPlateVersion(payload);
   const upgraded = structuredClone(payload);
+  if (upgraded.schemaVersion === PRE_ADDED_PLATE_WEIGHT_SNAPSHOT_SCHEMA_VERSION) {
+    // This upgrade changes the envelope only; retained workout meaning is untouched.
+    upgraded.schemaVersion = SNAPSHOT_SCHEMA_VERSION;
+  }
   validateSubstitutionReasonEvidence(
     upgraded,
     upgraded.schemaVersion === SNAPSHOT_SCHEMA_VERSION
@@ -1704,6 +1726,7 @@ export function upgradeSnapshotPayload(
       PRE_NAMED_PROGRAM_LIBRARY_SNAPSHOT_SCHEMA_VERSION,
       PRE_REPORTING_SESSION_OUTCOMES_SNAPSHOT_SCHEMA_VERSION,
       PRE_ACTIVE_WORKOUT_EQUIPMENT_REASONS_SNAPSHOT_SCHEMA_VERSION,
+      PRE_ADDED_PLATE_WEIGHT_SNAPSHOT_SCHEMA_VERSION,
       SNAPSHOT_SCHEMA_VERSION,
     ].includes(upgraded.schemaVersion)
   ) {
@@ -2149,7 +2172,7 @@ function validateContextualNoteData(payload: CanonicalSnapshotPayload) {
 }
 
 function validateVersionedProgramData(payload: CanonicalSnapshotPayload) {
-  if (payload.schemaVersion !== SNAPSHOT_SCHEMA_VERSION) return;
+  if (!usesCurrentSessionSemantics(payload.schemaVersion)) return;
 
   const programs = new Map(
     rows(payload, "programs").map((program) => [String(program.id), program])
@@ -2570,7 +2593,7 @@ function validateVersionedProgramData(payload: CanonicalSnapshotPayload) {
 }
 
 function validateProgramScheduleData(payload: CanonicalSnapshotPayload) {
-  if (payload.schemaVersion !== SNAPSHOT_SCHEMA_VERSION) return;
+  if (!usesCurrentSessionSemantics(payload.schemaVersion)) return;
 
   const uuidPattern =
     /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
@@ -2901,7 +2924,7 @@ function validateProgramScheduleData(payload: CanonicalSnapshotPayload) {
 }
 
 function validateSessionOccurrenceData(payload: CanonicalSnapshotPayload) {
-  if (payload.schemaVersion !== SNAPSHOT_SCHEMA_VERSION) return;
+  if (!usesCurrentSessionSemantics(payload.schemaVersion)) return;
 
   const exercises = new Map(
     rows(payload, "session_exercises").map((row) => [String(row.id), row])
@@ -3159,6 +3182,7 @@ export function validateSnapshotPayload(
   payload: CanonicalSnapshotPayload,
   userId: string
 ) {
+  validateAddedPlateVersion(payload);
   assertCanonicalSnapshotTableCoverage(payload.tables);
   if (
     ![
@@ -3192,6 +3216,7 @@ export function validateSnapshotPayload(
       PRE_NAMED_PROGRAM_LIBRARY_SNAPSHOT_SCHEMA_VERSION,
       PRE_REPORTING_SESSION_OUTCOMES_SNAPSHOT_SCHEMA_VERSION,
       PRE_ACTIVE_WORKOUT_EQUIPMENT_REASONS_SNAPSHOT_SCHEMA_VERSION,
+      PRE_ADDED_PLATE_WEIGHT_SNAPSHOT_SCHEMA_VERSION,
       SNAPSHOT_SCHEMA_VERSION,
     ].includes(payload.schemaVersion)
   ) {
@@ -3238,6 +3263,7 @@ export function validateSnapshotPayload(
       PRE_NAMED_PROGRAM_LIBRARY_SNAPSHOT_SCHEMA_VERSION,
       PRE_REPORTING_SESSION_OUTCOMES_SNAPSHOT_SCHEMA_VERSION,
       PRE_ACTIVE_WORKOUT_EQUIPMENT_REASONS_SNAPSHOT_SCHEMA_VERSION,
+      PRE_ADDED_PLATE_WEIGHT_SNAPSHOT_SCHEMA_VERSION,
       SNAPSHOT_SCHEMA_VERSION,
     ].includes(payload.schemaVersion)
   ) {
@@ -3450,6 +3476,7 @@ export function validateSnapshotPayload(
       PRE_NAMED_PROGRAM_LIBRARY_SNAPSHOT_SCHEMA_VERSION,
       PRE_REPORTING_SESSION_OUTCOMES_SNAPSHOT_SCHEMA_VERSION,
       PRE_ACTIVE_WORKOUT_EQUIPMENT_REASONS_SNAPSHOT_SCHEMA_VERSION,
+      PRE_ADDED_PLATE_WEIGHT_SNAPSHOT_SCHEMA_VERSION,
       SNAPSHOT_SCHEMA_VERSION,
     ].includes(payload.schemaVersion)
   ) {
@@ -3603,7 +3630,7 @@ export function validateSnapshotPayload(
   ]) {
     requireOptionalReferences(payload, table, "archive_operation_id", "archive_operations");
   }
-  if (payload.schemaVersion === SNAPSHOT_SCHEMA_VERSION) {
+  if (usesCurrentSessionSemantics(payload.schemaVersion)) {
     validateSubstitutionReasonEvidence(
       payload,
       ACTIVE_WORKOUT_SUBSTITUTION_REASONS,

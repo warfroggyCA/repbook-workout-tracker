@@ -1,4 +1,4 @@
-export const RECOVERY_MANIFEST_VERSION = 15 as const;
+export const RECOVERY_MANIFEST_VERSION = 16 as const;
 
 export type RecoveryOwnership =
   | "direct_user"
@@ -87,10 +87,10 @@ export const RECOVERY_TABLE_MANIFEST = [
   entry("user_profiles", "Profile", "direct_user", "user_profiles.user_id", ["users"], "canonical", "replace", "preserve", preserve, cascade, durable, ["owner", "valid timezone", "valid unit"]),
   entry("constraints", "Safety constraints", "direct_user", "constraints.user_id", ["users"], "canonical", "replace", "preserve", preserve, cascade, durable, ["owner"]),
   entry("equipment_definitions", "Equipment definitions", "shared_catalog", "referenced by owned equipment or captured exercises", [], "canonical", "dependency", "dependency", preserve, "catalog release lifecycle", "catalog_release", ["referenced definition exists"]),
-  entry("equipment_items", "Equipment", "direct_user", "equipment_items.user_id", ["users", "equipment_definitions"], "canonical", "replace", "preserve", preserve, cascade, durable, ["owner", "definition reference"]),
+  entry("equipment_items", "Equipment", "direct_user", "equipment_items.user_id", ["users", "equipment_definitions"], "canonical", "replace", "preserve", preserve, cascade, durable, ["owner", "definition reference", "explicit cable pulley capability"]),
   entry("plate_inventory", "Plate inventory", "direct_user", "plate_inventory.user_id", ["users"], "canonical", "replace", "preserve", preserve, cascade, durable, ["owner"]),
   entry("barbell_configs", "Bar settings", "direct_user", "barbell_configs.user_id", ["users"], "canonical", "replace", "preserve", preserve, cascade, durable, ["owner"]),
-  entry("plate_loaded_machine_profiles", "Plate-loaded machine profiles", "direct_user", "plate_loaded_machine_profiles.user_id", ["users", "equipment_items"], "canonical", "replace", "preserve", preserve, cascade, durable, ["owner", "exact equipment item", "known geometry completeness"]),
+  entry("plate_loaded_machine_profiles", "Plate-loaded machine profiles", "direct_user", "plate_loaded_machine_profiles.user_id", ["users", "equipment_items"], "canonical", "replace", "preserve", preserve, cascade, durable, ["owner", "exact equipment item", "known geometry completeness", "versioned total added plate meaning without assumed unloaded resistance"]),
   entry("plate_loaded_machine_compatible_plates", "Machine-compatible plates", "direct_user", "plate_loaded_machine_compatible_plates.user_id", ["plate_loaded_machine_profiles", "plate_inventory"], "canonical", "replace", "preserve", preserve, cascade, durable, ["owner", "machine profile", "owned plate row"]),
   entry("cable_machine_profiles", "Cable machine profiles", "direct_user", "cable_machine_profiles.user_id", ["users", "equipment_items"], "canonical", "replace", "preserve", preserve, cascade, durable, ["owner", "exact equipment item", "stack topology", "ratio certainty"]),
   entry("cable_stack_steps", "Cable stack steps", "direct_user", "cable_stack_steps.user_id", ["cable_machine_profiles"], "canonical", "replace", "preserve", preserve, cascade, durable, ["owner", "cable profile", "stack and step order"]),

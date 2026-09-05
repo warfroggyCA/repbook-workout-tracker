@@ -4,6 +4,7 @@ import type { Db } from "@/db";
 import { resultRows } from "@/db/result";
 import {
   buildEquipmentAvailability,
+  equipmentItemProvidesType,
   exerciseIsAvailable,
   requirementSatisfied,
   type EquipmentRequirement,
@@ -652,7 +653,7 @@ function retainedBroadRequirementSatisfied(
   }
   return items.some((item) =>
     item.available &&
-    item.type === requirement.equipmentType &&
+    equipmentItemProvidesType(item, requirement.equipmentType) &&
     (requirement.equipmentDefinition == null ||
       item.definition_id === requirement.equipmentDefinition.id) &&
     (requirement.minWeight == null || (
@@ -758,7 +759,7 @@ function geometrySnapshot(
   }
   if (profile.kind === "plate_loaded_machine") {
     return sessionEquipmentGeometrySnapshotSchema.parse({
-      version: 1,
+      version: profile.targetEntryMeaning === "added_plates" ? 2 : 1,
       kind: profile.kind,
       geometryCertainty: profile.geometryCertainty,
       startingResistance: profile.startingResistance,
@@ -866,7 +867,7 @@ async function applySelection(
              ${snapshot.equipmentDefinitionKey}, ${snapshot.attachmentLabel},
              ${snapshot.attachmentDefinitionKey}, ${snapshot.profileKind},
              ${snapshot.geometryCertainty}, ${snapshot.unit}::unit,
-             ${snapshot.provenance}, 1, ${snapshot.configurationHash}, 1,
+             ${snapshot.provenance}, 1, ${snapshot.configurationHash}, ${snapshot.geometry.version},
              ${JSON.stringify(snapshot.geometry)}::jsonb
       FROM eligible
       WHERE eligible.current_hash IS DISTINCT FROM ${snapshot.configurationHash}
@@ -1159,7 +1160,7 @@ export async function mutateSessionEquipmentSelection(
   }
   const primaryProfile = primary.profile;
   const primaryBroadRequirements = requirements.broad.filter(
-    (requirement) => requirement.equipmentType === primary.itemType,
+    (requirement) => equipmentItemProvidesType(primaryItem, requirement.equipmentType),
   );
   const primaryInventoryItem: InventoryItem = {
     type: primaryItem.type,

@@ -205,6 +205,7 @@ export function MachineLoadingMethodEditor({
   onChange: (next: {
     type: "machine" | "smith_machine" | "cable";
     profile: EquipmentLoadProfile | null;
+    cablePulley?: boolean;
   }) => void;
 }) {
   const currentType =
@@ -257,6 +258,7 @@ export function MachineLoadingMethodEditor({
             onClick={() => {
               if (option.value === "plate_loaded") {
                 onChange({
+                  cablePulley: currentType === "cable" || item.attrs.cablePulley === true,
                   type:
                     currentType === "smith_machine" ? "smith_machine" : "machine",
                   profile:
@@ -354,7 +356,7 @@ export function EquipmentLoadProfileEditor({ item, profile, profileUnit, plates,
         </label>
         {value.geometryCertainty !== "unknown" && <>
           <div className="grid gap-2 sm:grid-cols-2">
-            <Field id={`${prefix}-resistance`} label={`Starting resistance (${profileUnit})`} value={value.startingResistance} step="0.25" onChange={(startingResistance) => onChange({ ...value, startingResistance, startingResistanceUnit: startingResistance == null ? null : profileUnit })} />
+            <Field id={`${prefix}-resistance`} label={`Starting resistance (${profileUnit})${value.targetEntryMeaning === "added_plates" ? " — optional" : ""}`} value={value.startingResistance} step="0.25" onChange={(startingResistance) => onChange({ ...value, startingResistance, startingResistanceUnit: startingResistance == null && value.targetEntryMeaning !== "added_plates" ? null : profileUnit })} />
             <Field id={`${prefix}-points`} label="Loading points" value={value.loadingPointCount} min={1} onChange={(loadingPointCount) => onChange({ ...value, loadingPointCount })} />
           </div>
           <label className="flex flex-col gap-1 text-xs text-muted-foreground">How loading points are balanced
@@ -363,12 +365,12 @@ export function EquipmentLoadProfileEditor({ item, profile, profileUnit, plates,
             </select>
           </label>
           <label className="flex flex-col gap-1 text-xs text-muted-foreground">Entered workout load means
-            <select className="h-11 rounded-md border bg-background px-3 text-sm text-foreground" value={value.targetEntryMeaning ?? ""} onChange={(event) => onChange({ ...value, targetEntryMeaning: event.target.value ? event.target.value as PlateLoadedMachineProfile["targetEntryMeaning"] : null })}>
-              <option value="">Not recorded</option><option value="total_system">Total resistance</option><option value="per_loading_point">Added plates per point</option>
+            <select className="h-11 rounded-md border bg-background px-3 text-sm text-foreground" value={value.targetEntryMeaning ?? ""} onChange={(event) => onChange({ ...value, targetEntryMeaning: event.target.value ? event.target.value as PlateLoadedMachineProfile["targetEntryMeaning"] : null, startingResistanceUnit: event.target.value === "added_plates" || value.startingResistance != null ? profileUnit : null })}>
+              <option value="">Not recorded</option><option value="added_plates">Total added plate weight</option><option value="total_system">Total resistance</option><option value="per_loading_point">Added plates per point</option>
             </select>
           </label>
           <p className="text-xs leading-5 text-muted-foreground">
-            Total resistance includes the machine&apos;s starting resistance. Per-point entry means only the plates added to each matching loading point.
+            Total added plate weight counts every plate across all loading points and works when unloaded resistance is unknown. Total resistance includes the machine&apos;s starting resistance. Per-point entry counts only the plates on each point.
           </p>
         </>}
         <MachinePlateCompatibilityEditor

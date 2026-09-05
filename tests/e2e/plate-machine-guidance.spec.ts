@@ -256,6 +256,36 @@ test("adds a plate-loaded machine with reviewed two-sided geometry", async ({
   await expect(unexpectedBrowserErrors(browserErrors)).toEqual([]);
 });
 
+test("saves a shared pulley with total added plates and unknown starting resistance", async ({ page }, testInfo) => {
+  await signIn(page);
+  await page.goto("/settings/equipment");
+  await page.getByRole("button", { name: "Add equipment", exact: true }).click();
+  await page.getByLabel("Search equipment types").fill("machine");
+  await page.getByRole("button", { name: "Strength machine", exact: true }).click();
+  const drawer = page.getByRole("dialog");
+  const name = `Synthetic added-plate pulley ${testInfo.project.name}`;
+  await drawer.getByLabel("Name").fill(name);
+  await drawer.getByRole("button", { name: /^Plate-loaded/ }).click();
+  await drawer.getByLabel("Calculation certainty").selectOption("known");
+  await drawer.getByLabel("Entered workout load means").selectOption("added_plates");
+  await drawer.getByRole("spinbutton", { name: "Loading points", exact: true }).fill("2");
+  await drawer.getByLabel("How loading points are balanced").selectOption("identical_each_point");
+  await drawer.getByRole("checkbox", { name: "This machine also provides a cable pulley for cable exercises" }).check();
+  await drawer.getByRole("button", { name: "Use changes in draft", exact: true }).click();
+  await page.getByRole("button", { name: "Review changes", exact: true }).click();
+  await page.getByRole("button", { name: "Save inventory", exact: true }).click();
+  await expect(page).toHaveURL(/settings\?equipment-saved=updated$/);
+  await page.goto("/settings/equipment");
+  await page.getByRole("button", { name: `Edit ${name}`, exact: true }).click();
+  await expect(drawer.getByLabel("Entered workout load means")).toHaveValue("added_plates");
+  await expect(drawer.getByLabel(/Starting resistance.*optional/)).toHaveValue("");
+  await expect(drawer.getByRole("checkbox", { name: "This machine also provides a cable pulley for cable exercises" })).toBeChecked();
+  await expectNoHorizontalOverflow(page, "added-plate setup drawer");
+  expect(await drawer.getByRole("button", { name: "Use changes in draft", exact: true }).evaluate((button) => button.scrollWidth <= button.clientWidth + 1)).toBe(true);
+  await drawer.getByLabel("Entered workout load means").scrollIntoViewIfNeeded();
+  await page.screenshot({ path: testInfo.outputPath("added-plate-pulley-settings.png"), animations: "disabled" });
+});
+
 test("shows live plates per side without changing total-load meaning", async ({
   page,
 }, testInfo) => {

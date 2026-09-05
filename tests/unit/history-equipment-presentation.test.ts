@@ -98,6 +98,26 @@ describe("History equipment presentation", () => {
     );
   });
 
+  it("keeps total added plates distinct from unknown machine resistance", () => {
+    const equipmentSnapshot = {
+      id: "30000000-0000-4000-8000-000000000004", equipmentLabel: "Synthetic pulley", attachmentLabel: null,
+      geometrySnapshot: {
+        version: 2, kind: "plate_loaded_machine", geometryCertainty: "known",
+        startingResistance: null, startingResistanceUnit: "lb", loadingPointCount: 2,
+        balancingRule: "identical_each_point", targetEntryMeaning: "added_plates",
+        compatiblePlates: [{ denomination: 10, quantity: 8, unit: "lb" }],
+      },
+    } as const;
+    expect(formatHistoryPerformedSetup({
+      weight: 40, weightUnit: "lb", loadEntryMeaning: "added_plates", equipmentSnapshot,
+    })).toBe("plates on each of 2 loading points: 10 lb + 10 lb; total added plate weight: 40 lb. Unloaded resistance and pulley leverage are not included.");
+    expect(formatHistoryLoadEntryMeaning({ weight: 40, weightUnit: "lb", loadEntryMeaning: "added_plates", equipmentSnapshot }))
+      .toContain("total added plate weight");
+    const legacyVersion = { ...equipmentSnapshot, geometrySnapshot: { ...equipmentSnapshot.geometrySnapshot, version: 1 } };
+    expect(formatHistoryPerformedSetup({ weight: 40, weightUnit: "lb", loadEntryMeaning: "added_plates", equipmentSnapshot: legacyVersion }))
+      .toContain("unknown");
+  });
+
   it("shows exact saved cable positions and names known ratios as nominal, not measured force", () => {
     const snapshot = {
       id: "50000000-0000-4000-8000-000000000002",

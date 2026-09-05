@@ -421,7 +421,7 @@ describe("unit, calendar, and backup production findings", () => {
     expect(csv).toContain("weight_unit");
     expect(csv).toContain(",100,kg,8,");
     expect(csv).toContain("America/Toronto,2026-07-12");
-    expect(backup.schemaVersion).toBe("36");
+    expect(backup.schemaVersion).toBe("37");
     expect(backup.canonical.tables.workout_sessions[0]).toMatchObject({
       id: session.id,
       timezone: "America/Toronto",

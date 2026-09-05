@@ -603,6 +603,13 @@
       "when": 1788436800000,
       "tag": "0085_active_workout_equipment_reasons",
       "breakpoints": true
+    },
+    {
+      "idx": 86,
+      "version": "7",
+      "when": 1788566400000,
+      "tag": "0086_added_plate_weight",
+      "breakpoints": true
     }
   ]
 }

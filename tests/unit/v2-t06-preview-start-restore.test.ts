@@ -142,7 +142,7 @@ describe("Repbook v2 T06 Start recovery", () => {
     }
 
     const upgraded = upgradeSnapshotPayload(legacy);
-    expect(upgraded.schemaVersion).toBe("36");
+    expect(upgraded.schemaVersion).toBe("37");
     expect(
       (upgraded.tables.workout_sessions as Array<Record<string, unknown>>)
         .find((row) => row.id === started.sessionId),

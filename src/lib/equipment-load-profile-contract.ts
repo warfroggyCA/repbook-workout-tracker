@@ -31,13 +31,13 @@ export const plateLoadedMachineProfileSchema = z
     loadingPointCount: z.number().int().min(1).max(16).nullable(),
     balancingRule: z.enum(["single_point", "identical_each_point"]).nullable(),
     targetEntryMeaning: z
-      .enum(["total_system", "per_loading_point"])
+      .enum(["total_system", "per_loading_point", "added_plates"])
       .nullable(),
     compatiblePlateIds: z.array(z.uuid()).max(100),
   })
   .superRefine((profile, context) => {
     const required = [
-      profile.startingResistance,
+      ...(profile.targetEntryMeaning === "added_plates" ? [] : [profile.startingResistance]),
       profile.startingResistanceUnit,
       profile.loadingPointCount,
       profile.balancingRule,
@@ -52,6 +52,7 @@ export const plateLoadedMachineProfileSchema = z
         ["targetEntryMeaning", "Choose what the entered workout load means."],
       ] as const;
       for (const [field, message] of fields) {
+        if (field === "startingResistance" && profile.targetEntryMeaning === "added_plates") continue;
         if (profile[field] == null) context.addIssue({ code: "custom", path: [field], message });
       }
     }

@@ -28,7 +28,7 @@ describe("R01 database lifecycle inventory", () => {
     expect(REPBOOK_V2_LIFECYCLE_AUDIT_VERSION).toBe(
       "repbook-v2-lifecycle-audit/1",
     );
-    expect(RECOVERY_MANIFEST_VERSION).toBe(15);
+    expect(RECOVERY_MANIFEST_VERSION).toBe(16);
     expect(() => assertRepbookV2LifecycleAudit()).not.toThrow();
 
     const baseTables = resultRows(
