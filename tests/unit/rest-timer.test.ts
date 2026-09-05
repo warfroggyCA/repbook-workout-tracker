@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   acknowledgeRestTimerSource,
+  applyStoredRestTimerAction,
   clearRestTimer,
   clearRestTimerForIdentity,
   clearRestTimerForSupersedingSourceClientKey,
@@ -132,6 +133,49 @@ describe("durable rest timer", () => {
         sourceCompletedSetId: null,
       },
     });
+  });
+
+  it("ends the latest revision after a cue and acknowledgement without losing either receipt", async () => {
+    const storage = new MemoryStorage();
+    const rendered = createRestTimer({ ownerId, sessionId, generationId, now: 1_000, seconds: 90,
+      sourceSessionExerciseId: sessionExerciseId, sourceOccurrenceId: occurrenceId, sourceClientKey: clientKey })!;
+    await writeRestTimer(storage, rendered);
+    await claimRestCueMilestones(storage, { ownerId, sessionId }, generationId, ["15"]);
+    await acknowledgeRestTimerSource(storage, { ownerId, sessionId }, { clientKey, sessionExerciseId, occurrenceId, completedSetId });
+    // The former render-revision CAS drops the explicit tap after either update.
+    expect(await writeRestTimerCas(storage, { ownerId, sessionId }, rendered, skipRestTimer(rendered, 10_000)))
+      .toMatchObject({ status: "stale" });
+    expect(await applyStoredRestTimerAction(storage, { ownerId, sessionId }, generationId, "end", 10_000))
+      .toMatchObject({ status: "updated", timer: { phase: "skipped", sourceCompletedSetId: completedSetId,
+        startedAt: 1_000, endsAt: 91_000, attemptedMilestones: ["15"] } });
+    expect(await applyStoredRestTimerAction(storage, { ownerId, sessionId }, generationId, "end", 10_001))
+      .toMatchObject({ status: "unchanged" });
+    expect(await acknowledgeRestTimerSource(storage, { ownerId, sessionId }, { clientKey, sessionExerciseId, occurrenceId, completedSetId }))
+      .toMatchObject({ status: "unchanged", timer: { phase: "skipped" } });
+  });
+
+  it("honors End rest after natural completion and makes repeated Continue idempotent", async () => {
+    const storage = new MemoryStorage();
+    const running = createRestTimer({ ownerId, sessionId, generationId, now: 1_000, seconds: 10 })!;
+    const outcome = { sound: "requested", vibration: "not_requested", completion: "requested" } as const;
+    await writeRestTimer(storage, completeRestTimer(running, 11_000, "foreground", outcome));
+    expect(await applyStoredRestTimerAction(storage, { ownerId, sessionId }, generationId, "end", 11_001))
+      .toMatchObject({ status: "updated", timer: { phase: "continued", completionCueOutcome: outcome, readyAt: 11_000 } });
+    const retained = storage.value;
+    expect(await applyStoredRestTimerAction(storage, { ownerId, sessionId }, generationId, "continue", 11_002))
+      .toMatchObject({ status: "unchanged" });
+    expect(storage.value).toBe(retained);
+  });
+
+  it("never ends another generation or owner and preserves storage failures", async () => {
+    const storage = new MemoryStorage();
+    await writeRestTimer(storage, createRestTimer({ ownerId, sessionId, generationId, now: 1_000, seconds: 30 })!);
+    const retained = storage.value;
+    expect(await applyStoredRestTimerAction(storage, { ownerId, sessionId }, clientKey, "end", 2_000)).toMatchObject({ status: "stale" });
+    expect(await applyStoredRestTimerAction(storage, { ownerId: clientKey, sessionId }, generationId, "end", 2_000)).toMatchObject({ status: "foreign" });
+    expect(storage.value).toBe(retained);
+    const broken: RestTimerStorage = { getItem: () => retained, setItem: () => { throw new Error("quota"); }, removeItem() {} };
+    expect(await applyStoredRestTimerAction(broken, { ownerId, sessionId }, generationId, "end", 2_000)).toMatchObject({ status: "storage_error" });
   });
 
   it("starts from the device command and adds acknowledgement without resetting the deadline", async () => {

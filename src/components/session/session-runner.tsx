@@ -145,20 +145,18 @@ import {
 } from "@/lib/session-runner";
 import {
   adjustStoredRestTimer,
+  applyStoredRestTimerAction,
   claimRestCueMilestones,
   clearRestTimerForSupersedingSourceClientKey,
   clearRestTimerForIdentity,
   createRestTimer,
   completeForegroundRestTimer,
-  continueAfterRest,
   deliverMissedRestCompletionCue,
   remainingRestSeconds,
   resolveRestTimerSourceOccurrence,
   restoreAndPersistRestTimer,
-  skipRestTimer,
   subscribeToRestTimer,
   writeRestTimer,
-  writeRestTimerCas,
   type DurableRestTimer,
   type RestCueChannelOutcome,
   type RestCueMilestone,
@@ -2751,17 +2749,17 @@ export function SessionRunner(props: SessionRunnerProps) {
   }
 
   const transitionRestTimer = useCallback(async (
-    expected: DurableRestTimer,
-    next: DurableRestTimer,
+    expectedGenerationId: string,
+    action: "end" | "continue",
   ) => {
-    if (next === expected) return;
-    const result = await writeRestTimerCas(
+    const result = await applyStoredRestTimerAction(
       window.localStorage,
       { ownerId: props.ownerId, sessionId: props.sessionId },
-      expected,
-      next,
+      expectedGenerationId,
+      action,
+      Date.now(),
     );
-    if (result.status === "updated") {
+    if (result.status === "updated" || result.status === "unchanged") {
       setTimer(result.timer);
       setRestNow(Date.now());
     } else {
@@ -2843,14 +2841,12 @@ export function SessionRunner(props: SessionRunnerProps) {
 
   const skipRest = useCallback(() => {
     if (!timer) return;
-    void transitionRestTimer(timer, skipRestTimer(timer, Date.now()));
+    void transitionRestTimer(timer.generationId, "end");
   }, [timer, transitionRestTimer]);
 
   const continueRest = useCallback(() => {
     if (!timer) return;
-    const continued = continueAfterRest(timer, Date.now());
-    if (continued === timer) return;
-    void transitionRestTimer(timer, continued);
+    void transitionRestTimer(timer.generationId, "continue");
   }, [timer, transitionRestTimer]);
 
   const requestRestCue = useCallback((

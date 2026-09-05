@@ -54,11 +54,12 @@ export async function GET(request: Request) {
       });
     }
 
+    const download = new URL(request.url).searchParams.get("download") === "1";
     return sensitiveResponse(controlled.value, {
       headers: {
-        "Content-Type": "text/markdown; charset=utf-8",
+        "Content-Type": download ? "application/octet-stream" : "text/markdown; charset=utf-8",
         "Content-Length": String(Buffer.byteLength(controlled.value, "utf8")),
-        ...(new URL(request.url).searchParams.get("download") === "1" ? {
+        ...(download ? {
           "Content-Disposition": `attachment; filename="repbook-complete-report-${new Date().toISOString().slice(0, 10)}.md"`,
         } : {}),
       },

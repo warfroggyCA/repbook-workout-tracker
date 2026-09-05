@@ -1321,6 +1321,11 @@ closes the item editor; the visible next action reviews and saves the whole
 inventory atomically. Failure retains the draft and never implies a confirmed
 save. Plate-loaded/stack transitions preserve the physical item's identity.
 
+Rest End/Continue actions read the latest revision under the existing timer lock,
+fenced to the displayed generation. A cue claim or set acknowledgement between
+render and tap cannot discard the action, and an old tap cannot end a newer timer.
+Natural completion receipts and acknowledged set identity remain intact.
+
 A plate-loaded machine can explicitly declare `attrs.cablePulley: true` in its
 reviewed inventory draft. `equipmentItemProvidesType` and its atomic SQL
 counterpart in `src/lib/equipment-capability-sql.ts` let that same physical item
@@ -1646,7 +1651,8 @@ archive metadata, private notes, raw assistant/provider material, request/retry
 keys, and worker identifiers remain excluded. The route prepends deterministic
 provider-neutral review instructions and returns a private no-store Markdown
 response with its byte length. `?download=1` returns the complete file as an
-attachment, without assembling a browser Blob or populating the clipboard.
+`application/octet-stream` attachment to request file handling rather than inline
+rendering, without assembling a browser Blob or populating the clipboard.
 The copy convenience first prepares at most 1 MiB of decoded response bytes;
 `src/lib/complete-report-copy.ts` checks both the advertised size and the streamed
 body, cancels oversized/error bodies, and never returns a truncated report.

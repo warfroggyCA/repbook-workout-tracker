@@ -230,10 +230,20 @@ test("keeps confirmed equipment out of the common path while preserving current-
     name: "Workout status",
   });
   await expect(currentCard).toBeVisible();
-  await workoutStatus.getByRole("button", {
-    name: "End rest",
-    exact: true,
-  }).click();
+  const endRest = workoutStatus.getByRole("button", { name: "End rest", exact: true });
+  // A cue claim or set acknowledgement may advance the stored revision between
+  // rendering this button and handling its tap. Keep that race deterministic.
+  await endRest.evaluate((button) => {
+    button.addEventListener("click", () => {
+      const key = "workout-tracker:rest-timer:v1";
+      const raw = localStorage.getItem(key);
+      if (!raw) throw new Error("Expected an active timer before End rest.");
+      const timer = JSON.parse(raw);
+      timer.revision += 1;
+      localStorage.setItem(key, JSON.stringify(timer));
+    }, { capture: true, once: true });
+  });
+  await endRest.click();
   await expect(workoutStatus.getByTestId("rest-cockpit")).toHaveCount(0, {
     timeout: 5_000,
   });
