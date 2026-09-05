@@ -810,6 +810,35 @@ export function writeRestTimerCas(
   );
 }
 
+/** Applies a deliberate tap to the latest revision of the displayed generation. */
+export function applyStoredRestTimerAction(
+  storage: RestTimerStorage,
+  identity: RestTimerIdentity,
+  expectedGenerationId: string,
+  action: "end" | "continue",
+  now: number,
+): Promise<RestTimerCasResult> {
+  return withRestTimerLock(() => {
+    let current: RestTimerRestoreResult;
+    try {
+      current = parseStoredRestTimer(storage.getItem(REST_TIMER_STORAGE_KEY), identity);
+    } catch {
+      return { status: "storage_error", timer: null } as const;
+    }
+    if (current.status !== "restored") return { status: current.status, timer: null } as const;
+    if (current.timer.generationId !== expectedGenerationId) {
+      return { status: "stale", timer: null } as const;
+    }
+    // Natural completion may have won the lock just before End rest. Honor the
+    // tap without erasing its completion receipt or any set acknowledgement.
+    const next = action === "continue" || current.timer.phase === "ready"
+      ? continueAfterRest(current.timer, now)
+      : skipRestTimer(current.timer, now);
+    if (next === current.timer) return { status: "unchanged", timer: current.timer } as const;
+    return writeRestTimerCasUnlocked(storage, identity, current.timer, next);
+  });
+}
+
 /** Claims cue receipts before browser sound/vibration APIs are invoked. */
 function claimRestCueMilestonesUnlocked(
   storage: RestTimerStorage,

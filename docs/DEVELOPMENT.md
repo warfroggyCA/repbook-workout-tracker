@@ -879,3 +879,8 @@ file preserves its existing contents; the 1 MiB clipboard budget never truncates
 it. Physical iPad download/copy/paste and browser memory behavior still require
 device acceptance, including the owner’s full report size. A browser harness
 cannot prove that a physical-device crash is resolved.
+
+The superset-preparation browser suite advances the durable timer revision during
+the End rest tap to reproduce a cue/acknowledgement race deterministically. The
+rest-timer unit suite also covers preserved receipts, repeated actions, natural
+completion winning the lock, foreign/newer generations, and write failures.

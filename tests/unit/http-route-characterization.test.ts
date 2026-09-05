@@ -258,6 +258,7 @@ describe("HTTP production perimeter", () => {
   it("downloads the entire complete report with a byte length and a safe filename", async () => {
     const response = await getLlmReport(new Request("http://localhost/api/export/llm-report?download=1"));
     expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toBe("application/octet-stream");
     expect(response.headers.get("content-disposition")).toMatch(/^attachment; filename="repbook-complete-report-\d{4}-\d{2}-\d{2}\.md"$/);
     const text = await response.text();
     expect(Number(response.headers.get("content-length"))).toBe(Buffer.byteLength(text, "utf8"));

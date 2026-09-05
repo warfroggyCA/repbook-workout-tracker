@@ -278,8 +278,16 @@ test("keeps oversized reports out of the clipboard and offers the complete downl
   // The real export lease has a five-second account cooldown. This test shares
   // the suite's synthetic owner with the earlier actual-report preparation.
   await page.waitForTimeout(5_100);
+  const attachmentResponse = page.waitForResponse((response) =>
+    new URL(response.url()).pathname === "/api/export/llm-report" &&
+    new URL(response.url()).searchParams.get("download") === "1",
+  );
   const downloaded = page.waitForEvent("download", { timeout: 30_000 });
   await download.click();
+  const response = await attachmentResponse;
+  expect(response.status()).toBe(200);
+  expect(response.headers()["content-type"]).toBe("application/octet-stream");
+  expect(response.headers()["content-disposition"]).toMatch(/^attachment;/);
   const file = await downloaded;
   expect(file.suggestedFilename()).toMatch(/^repbook-complete-report-.*\.md$/);
   expect(await file.failure()).toBeNull();
