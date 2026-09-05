@@ -181,6 +181,7 @@ function formatLoggedSet(
   fallbackMetricType: SessionExerciseData["metricType"],
 ) {
   const metricType = set.metricType ?? fallbackMetricType ?? "weight_reps";
+  if (metricType === "weight_duration_per_side") return `${set.weight ?? "—"} ${set.weightUnit ?? ""} · ${set.durationSeconds ?? "—"} sec/side`;
   if (metricType === "duration" && set.durationSeconds != null) {
     return formatPerformedDuration(set.durationSeconds);
   }
@@ -802,7 +803,7 @@ export function ExerciseCard({
   });
   const recordsNumericLoad =
     performedMetricType === "weight_reps" ||
-    performedMetricType === "assisted_reps";
+    performedMetricType === "assisted_reps" || performedMetricType === "weight_duration_per_side";
   const metricSupported = isSupportedSetWriterSemanticDefinition({
     metricType: performedMetricType,
     loadSemantics: exercise.loadSemantics,
@@ -989,7 +990,7 @@ export function ExerciseCard({
       : null,
     reps: defaultReps,
     distanceKm: null,
-    durationSeconds: null,
+    durationSeconds: performedMetricType === "weight_duration_per_side" ? prefillFrom?.durationSeconds ?? null : null,
     rpe: null,
     rir: null,
     techniqueIssue: null,
@@ -1135,7 +1136,7 @@ export function ExerciseCard({
   const isSkipped = exercise.modificationType === "skipped";
   const targetText =
     exercise.targetSets != null
-      ? `${exercise.targetSets}×${exercise.targetRepsMin}–${exercise.targetRepsMax}` +
+      ? (exercise.timedPrescription ? `${exercise.targetSets} × ${exercise.timedPrescription.minSeconds}–${exercise.timedPrescription.maxSeconds} sec/side` : `${exercise.targetSets}×${exercise.targetRepsMin}–${exercise.targetRepsMax}`) +
         (exercise.targetLoad != null && exercise.targetLoadUnit != null
           ? ` @ ${exercise.targetLoad} ${exercise.targetLoadUnit}`
           : "")
@@ -1272,6 +1273,7 @@ export function ExerciseCard({
               : current.distanceKm,
           durationSeconds:
             performed.measurement.metricType === "duration" ||
+            performed.measurement.metricType === "weight_duration_per_side" ||
               performed.measurement.metricType === "distance_duration"
               ? null
               : current.durationSeconds,
@@ -1741,6 +1743,9 @@ export function ExerciseCard({
             </span>
           )}
         </p>
+        {exercise.timedPrescription && occurrenceForRow.origin === "planned" && (
+          <p className="mb-1 text-sm">{exercise.timedPrescription.minSeconds}–{exercise.timedPrescription.maxSeconds} sec on each side · both sides, then rest</p>
+        )}
         <SetEntry
           metricType={performedMetricType}
           supported={metricSupported}
@@ -3647,15 +3652,15 @@ function SetEntry({
             </div>
           </div>
         )}
-        {(metricType === "duration" || metricType === "distance_duration") && (
+        {(metricType === "duration" || metricType === "weight_duration_per_side" || metricType === "distance_duration") && (
           <div className="flex min-w-0 flex-col gap-1">
             <label htmlFor={durationInputId} className="text-xs font-medium">
-              Duration {metricType === "distance_duration" ? "(optional)" : ""}
+              {metricType === "weight_duration_per_side" ? "Seconds per side — both sides completed" : `Duration ${metricType === "distance_duration" ? "(optional)" : ""}`}
             </label>
             <div className="relative">
               <Input
                 id={durationInputId}
-                aria-label="Duration in seconds"
+                aria-label={metricType === "weight_duration_per_side" ? "Seconds per side — both sides completed" : "Duration in seconds"}
                 inputMode="numeric"
                 className="pr-10 text-center text-base font-medium"
                 value={draft.durationSeconds ?? ""}

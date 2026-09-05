@@ -707,8 +707,8 @@ export async function evaluateSessionProgression(
     const lineageId = mapping.lineage_id;
 
     const prescription = prescriptionsBySlot.get(slotKey);
-    if (!prescription) continue;
-    if (prescription.progressionRuleId === "hold") continue;
+    if (!prescription || prescription.timedPrescription || prescription.repRangeMin == null || prescription.repRangeMax == null) continue;
+    if (prescription.progressionRuleId === "hold" || prescription.progressionRuleId === "manual") continue;
     const currentPrescription = {
       sets: prescription.sets,
       repRangeMin: prescription.repRangeMin,

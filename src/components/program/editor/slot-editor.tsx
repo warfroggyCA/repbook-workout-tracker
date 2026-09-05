@@ -51,6 +51,8 @@ export const SlotEditor = memo(function SlotEditor({
   onFutureReplacementRequestConsumed?: () => void;
 }) {
   const prefix = `day-${day.lineageId}-slot-${slot.lineageId}`;
+  const timed = slot.timedPrescription;
+  const canUseTimed = exercise != null && ["per_implement", "total"].includes(exercise.loadSemantics);
   const canMoveDay = false;
   const showLegacyFields = false;
   return (
@@ -125,55 +127,41 @@ export const SlotEditor = memo(function SlotEditor({
             }}
           />
         </Field>
-        <Field id={`${prefix}-rep-min`} label="Minimum reps">
-          <Input
-            id={`${prefix}-rep-min`}
-            type="number"
-            min={1}
-            max={100}
-            inputMode="numeric"
-            value={slot.repMin}
-            onChange={(event) =>
-              onChange({
-                ...slot,
-                repMin: Math.min(
-                  100,
-                  Math.max(
-                    1,
-                    Math.trunc(
-                      numberFromInput(event.target.value, slot.repMin),
-                    ),
-                  ),
-                ),
-              })
-            }
-          />
+        <Field id={`${prefix}-measurement`} label="Prescription measurement">
+          <select id={`${prefix}-measurement`} className="h-11 w-full rounded-lg border border-input bg-background px-3 text-sm"
+            value={timed ? "time_per_side" : "reps"}
+            onChange={(event) => onChange(event.target.value === "time_per_side" ? {
+              ...slot, repMin: null, repMax: null, progressionRuleId: "manual",
+              timedPrescription: { version: 1, metricType: "weight_duration_per_side", minSeconds: 30, maxSeconds: 45 },
+            } : { ...slot, timedPrescription: null, repMin: 8, repMax: 12 })}>
+            <option value="reps">Repetitions</option>
+            {(canUseTimed || timed) && <option value="time_per_side">Loaded time — each side</option>}
+          </select>
         </Field>
-        <Field id={`${prefix}-rep-max`} label="Maximum reps">
-          <Input
-            id={`${prefix}-rep-max`}
-            type="number"
-            min={1}
-            max={100}
-            inputMode="numeric"
-            value={slot.repMax}
-            aria-invalid={slot.repMax < slot.repMin}
-            onChange={(event) =>
-              onChange({
-                ...slot,
-                repMax: Math.min(
-                  100,
-                  Math.max(
-                    1,
-                    Math.trunc(
-                      numberFromInput(event.target.value, slot.repMax),
-                    ),
-                  ),
-                ),
-              })
-            }
-          />
-        </Field>
+        {timed ? <>
+          <Field id={`${prefix}-seconds-min`} label="Minimum seconds per side">
+            <Input id={`${prefix}-seconds-min`} type="number" min={1} max={3600} inputMode="numeric"
+              value={timed.minSeconds === -1 ? "" : timed.minSeconds}
+              onChange={(event) => onChange({ ...slot, timedPrescription: { ...timed, minSeconds: event.target.value === "" ? -1 : Number(event.target.value) } })} />
+          </Field>
+          <Field id={`${prefix}-seconds-max`} label="Maximum seconds per side">
+            <Input id={`${prefix}-seconds-max`} type="number" min={1} max={3600} inputMode="numeric"
+              value={timed.maxSeconds === -1 ? "" : timed.maxSeconds}
+              aria-invalid={timed.maxSeconds < timed.minSeconds}
+              onChange={(event) => onChange({ ...slot, timedPrescription: { ...timed, maxSeconds: event.target.value === "" ? -1 : Number(event.target.value) } })} />
+          </Field>
+          <p className="text-sm text-muted-foreground sm:col-span-2">Complete both sides before resting. Record seconds completed on each side and the load carried. Review any older notes that describe seconds as reps. Load changes are manual.</p>
+        </> : <>
+          <Field id={`${prefix}-rep-min`} label="Minimum reps">
+            <Input id={`${prefix}-rep-min`} type="number" min={1} max={100} inputMode="numeric" value={slot.repMin ?? ""}
+              onChange={(event) => onChange({ ...slot, repMin: Math.min(100, Math.max(1, Math.trunc(numberFromInput(event.target.value, slot.repMin ?? 1)))) })} />
+          </Field>
+          <Field id={`${prefix}-rep-max`} label="Maximum reps">
+            <Input id={`${prefix}-rep-max`} type="number" min={1} max={100} inputMode="numeric" value={slot.repMax ?? ""}
+              aria-invalid={slot.repMin != null && slot.repMax != null && slot.repMax < slot.repMin}
+              onChange={(event) => onChange({ ...slot, repMax: Math.min(100, Math.max(1, Math.trunc(numberFromInput(event.target.value, slot.repMax ?? 1)))) })} />
+          </Field>
+        </>}
         <RestTimeControl
           id={`${prefix}-rest`}
           value={slot.restSec}
@@ -221,16 +209,18 @@ export const SlotEditor = memo(function SlotEditor({
           <select
             id={`${prefix}-rule`}
             className="h-10 w-full rounded-lg border border-input bg-background px-3 text-sm"
+            disabled={Boolean(timed)}
             value={slot.progressionRuleId}
             onChange={(event) =>
               onChange({ ...slot, progressionRuleId: event.target.value })
             }
           >
+            <option value="manual">Manual load review</option>
             <option value="double_progression">Build reps, then suggest more weight</option>
             <option value="hold">Keep these targets</option>
           </select>
           <p className="text-xs leading-5 text-muted-foreground">
-            {slot.progressionRuleId === "double_progression"
+            {timed ? "Keep the current seconds-per-side targets and carried load until you deliberately change them. Rep-based progression does not apply." : slot.progressionRuleId === "double_progression"
               ? "Keep the weight while building reps. After every work set reaches the top of the range in the required clean workouts without grinding (normally two, or one with aggressive coaching), the app can suggest the next available weight."
               : "Keep the current sets, reps, and load. The app will not suggest an increase through double progression."}
           </p>

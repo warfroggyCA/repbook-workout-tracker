@@ -250,7 +250,7 @@ export function ProgramViewer({
                     </p>
                     <p className="mt-2 text-sm">
                       {row.prescription
-                        ? `${row.prescription.sets} sets · ${row.prescription.repRangeMin}–${row.prescription.repRangeMax} reps`
+                        ? `${row.prescription.sets} sets · ${row.prescription.timedPrescription ? `${row.prescription.timedPrescription.minSeconds}–${row.prescription.timedPrescription.maxSeconds} sec/side` : `${row.prescription.repRangeMin}–${row.prescription.repRangeMax} reps`}`
                         : "No active target"}
                       {row.prescription?.targetLoad != null
                         ? ` · ${row.prescription.targetLoad} ${row.prescription.targetLoadUnit}`

@@ -88,8 +88,9 @@ export type RoutineBuildProgramContext = {
       exerciseId: string;
       name: string;
       sets: number;
-      repMin: number;
-      repMax: number;
+      repMin: number | null;
+      repMax: number | null;
+      timedPrescription?: import("@/lib/program-document").TimedPrescription | null;
       restSec: number;
       group: string | null;
     }>;

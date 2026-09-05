@@ -124,7 +124,7 @@ describe("shared plate-loaded pulley", () => {
       expect(previous[entry]).toMatchObject({ status: "available", sets: [{ weight: (index + 1) * 20 }] });
     }
     const capture = await captureUserSnapshot(database.db, owner, new Date("2026-01-12T14:00:00Z"), "test");
-    expect(capture.schemaVersion).toBe("37");
+    expect(capture.schemaVersion).toBe("38");
     expect(() => validateSnapshotPayload(capture, owner)).not.toThrow();
     expect(capture.tables.session_equipment_snapshots).toEqual(expect.arrayContaining([
       expect.objectContaining({ geometry_version: 2, geometry_snapshot: expect.objectContaining({

@@ -136,7 +136,7 @@ type HistorySetInput = {
   performedLoadType?: string | null;
   performedLoadSemantics?: string | null;
   reps: number | null;
-  metricType?: "weight_reps" | "reps" | "assisted_reps" | "duration" | "distance_duration" | "activity";
+  metricType?: "weight_reps" | "reps" | "assisted_reps" | "duration" | "weight_duration_per_side" | "distance_duration" | "activity";
   distanceKm?: number | null;
   durationSeconds?: number | null;
   excludeFromAnalytics?: boolean;
@@ -1881,7 +1881,7 @@ export async function getHistoryReport(
                  AND btrim(evidence.performed_load_semantics::text) <> ''
                ) THEN 'unsupported'
                WHEN evidence.set_metric_type IN (
-                 'duration', 'distance_duration', 'activity'
+                 'duration', 'weight_duration_per_side', 'distance_duration', 'activity'
                ) THEN 'unsupported'
                WHEN evidence.reviewed_mapping_status = 'inconsistent'
                  THEN 'unsupported'
@@ -1904,7 +1904,7 @@ export async function getHistoryReport(
                  'not_applicable', 'confirmed'
                )
                AND evidence.set_metric_type NOT IN (
-                 'duration', 'distance_duration', 'activity'
+                 'duration', 'weight_duration_per_side', 'distance_duration', 'activity'
                )
                AND evidence.performed_semantics_version = 1
                AND evidence.performed_load_type IS NOT NULL
@@ -2550,6 +2550,7 @@ export async function getHistoryReport(
         | "reps"
         | "assisted_reps"
         | "duration"
+        | "weight_duration_per_side"
         | "distance_duration"
         | "activity",
       loadSemantics: String(exercise.load_semantics),

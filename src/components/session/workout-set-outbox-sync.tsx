@@ -174,6 +174,7 @@ function formatRetainedWorkout(entry: WorkoutSetOutboxEntry) {
 }
 
 function formatRetainedMeasurement(entry: WorkoutSetOutboxEntry) {
+  if (entry.metricType === "weight_duration_per_side") return `${entry.weight} ${entry.weightUnit} · ${entry.durationSeconds} sec/side`;
   if (entry.metricType === "duration") {
     return `${entry.durationSeconds} sec`;
   }
@@ -217,6 +218,7 @@ function serverSetCommand(entry: WorkoutSetOutboxEntry): LogSetInput {
     case "reps":
     case "assisted_reps":
     case "duration":
+    case "weight_duration_per_side":
     case "distance_duration":
       return {
         ...common,

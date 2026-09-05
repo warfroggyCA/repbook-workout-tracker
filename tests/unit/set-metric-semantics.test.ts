@@ -510,3 +510,17 @@ describe("performed-set semantic containment", () => {
     },
   );
 });
+
+
+describe("loaded time per side", () => {
+  const measurement = { metricType: "weight_duration_per_side" as const, loadSemantics: "per_implement", weight: 20, weightUnit: "lb" as const, reps: null, distanceKm: null, durationSeconds: 35 };
+  it("requires both load and actual seconds without reps or distance", () => {
+    expect(validateSetWriterShape(measurement)).toEqual({ ok: true, metricType: "weight_duration_per_side" });
+    for (const patch of [{ weight: null }, { weightUnit: null }, { durationSeconds: null }, { durationSeconds: 0 }, { reps: 35 }, { distanceKm: 1 }, { loadSemantics: "bodyweight" }, { loadSemantics: null }]) {
+      expect(validateSetWriterShape({ ...measurement, ...patch }).ok).toBe(false);
+    }
+  });
+  it("keeps seconds out of repetition target outcomes", () => {
+    expect(recomputeRestoredTargetMet({ recordedMetricType: "weight_duration_per_side", performedSemanticsVersion: 1, performedLoadType: "dumbbell", performedLoadSemantics: "per_implement", weight: 20, weightUnit: "lb", reps: null, targetRepsMin: null, targetLoad: 20, targetLoadUnit: "lb", modificationType: "as_planned" })).toBeNull();
+  });
+});

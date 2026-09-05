@@ -67,6 +67,7 @@ export type SessionExerciseData = {
   substitutedAt: string | null;
   plannedExerciseName: string | null;
   targetSets: number | null;
+  timedPrescription?: import("@/lib/program-document").TimedPrescription | null;
   targetRepsMin: number | null;
   targetRepsMax: number | null;
   targetLoad: number | null;

@@ -130,7 +130,7 @@ describe("named Program library", () => {
       new Date("2026-08-14T16:00:00.000Z"),
       "named-program-test",
     );
-    expect(snapshot.schemaVersion).toBe("37");
+    expect(snapshot.schemaVersion).toBe("38");
     expect(snapshot.tables.programs).toEqual(expect.arrayContaining([
       expect.objectContaining({ id: first.programId, status: "inactive" }),
       expect.objectContaining({ id: second.programId, status: "active" }),

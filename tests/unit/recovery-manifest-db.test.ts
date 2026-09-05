@@ -210,7 +210,7 @@ describe("versioned recovery ownership manifest", () => {
       new Date("2026-08-14T16:01:00.000Z"),
       "schedule-recovery-test",
     );
-    expect(current.schemaVersion).toBe("37");
+    expect(current.schemaVersion).toBe("38");
     expect(current.tables.program_schedules).toEqual([]);
     expect(current.tables.program_schedule_versions).toEqual([]);
     expect(current.tables.scheduled_program_events).toEqual([]);
@@ -229,7 +229,7 @@ describe("versioned recovery ownership manifest", () => {
     delete (schema32.tables.workout_sessions[0] as Record<string, unknown>)
       .program_schedule_snapshot;
     const upgraded = upgradeSnapshotPayload(schema32);
-    expect(upgraded.schemaVersion).toBe("37");
+    expect(upgraded.schemaVersion).toBe("38");
     expect(upgraded.tables.program_schedules).toEqual([]);
     expect(upgraded.tables.program_schedule_versions).toEqual([]);
     expect(upgraded.tables.scheduled_program_events).toEqual([]);
@@ -242,7 +242,7 @@ describe("versioned recovery ownership manifest", () => {
     const schema33 = structuredClone(current);
     schema33.schemaVersion = "33";
     const upgraded33 = upgradeSnapshotPayload(schema33);
-    expect(upgraded33.schemaVersion).toBe("37");
+    expect(upgraded33.schemaVersion).toBe("38");
     expect(() => validateSnapshotPayload(upgraded33, user.id)).not.toThrow();
 
     const omittedField = structuredClone(current);

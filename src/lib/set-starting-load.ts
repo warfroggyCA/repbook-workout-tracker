@@ -47,7 +47,7 @@ export function resolveSetStartingLoad(input: {
     metricType: input.exercise.metricType ?? "weight_reps",
     loadSemantics: input.exercise.loadSemantics,
   });
-  if (metricType !== "weight_reps" && metricType !== "assisted_reps") {
+  if (metricType !== "weight_reps" && metricType !== "assisted_reps" && metricType !== "weight_duration_per_side") {
     return { status: "not_applicable" };
   }
 

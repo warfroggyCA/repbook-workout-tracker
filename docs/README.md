@@ -29,6 +29,9 @@ package. It is not current release status or roadmap authority. Any deferral
 called out in that document remains a deferral unless current source and tests
 prove otherwise.
 
+[`PROGRAM_EDITOR_MEASUREMENT_PLAN.md`](PROGRAM_EDITOR_MEASUREMENT_PLAN.md) records
+the focused editor and loaded-time implementation contract and verification scope.
+
 Git history preserves earlier contracts and delivery work. Do not add a public
 handoff, current-state file, release ledger, or roadmap that competes with the
 private authorities.

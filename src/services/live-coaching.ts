@@ -773,6 +773,7 @@ export async function buildLiveCoachingContext(
               ? "unknown"
               : selected.exercise.movementPattern,
             target: {
+              timedPrescription: selected.timedPrescription,
               sets: selected.targetSets,
               repsMin: selected.targetRepsMin,
               repsMax: selected.targetRepsMax,

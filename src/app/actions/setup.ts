@@ -508,6 +508,7 @@ function programContextFromDocument(
                 exerciseId: exercise.exerciseId,
                 name,
                 sets: exercise.sets,
+                timedPrescription: exercise.timedPrescription,
                 repMin: exercise.repMin,
                 repMax: exercise.repMax,
                 restSec: exercise.restSec,

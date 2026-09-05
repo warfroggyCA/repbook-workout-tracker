@@ -1,3 +1,4 @@
+import { readFile } from "node:fs/promises";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { and, eq, isNull } from "drizzle-orm";
 import {
@@ -35,11 +36,17 @@ import {
   hashProgramDocument,
 } from "@/services/program-document-hash";
 import { updateProgramDayWarmupOverview } from "@/lib/program-editor-client";
-import { startWorkoutSession } from "@/services/session-lifecycle";
+import { logWorkoutSet, startWorkoutSession } from "@/services/session-lifecycle";
+import { createDataSnapshot, type SnapshotKeyring } from "@/services/snapshots";
+import { MemorySnapshotObjectStore } from "@/services/snapshot-store";
+import { updateSetWithVersion, restoreRecordVersion } from "@/services/record-versions";
+import { buildSetsCsv } from "@/services/export";
 import { captureUserSnapshot } from "@/services/snapshot-capture";
 import { evaluateApplicationIntegrity } from "@/services/recovery-health";
 import { getCurrentProgramDocument } from "@/services/program-documents";
 import {
+  getSnapshotRestorePreview,
+  restoreDataSnapshot,
   upgradeSnapshotPayload,
   validateSnapshotPayload,
 } from "@/services/snapshot-restore";
@@ -104,6 +111,85 @@ describe("versioned Program editor persistence", () => {
   });
 
   afterEach(async () => database.close());
+
+  it.each(["history", "full"] as const)("preserves loaded seconds per side through corrections and encrypted %s restore", async (scope) => {
+    await database.db.update(exercises).set({ loadType: "kettlebell", loadSemantics: "per_implement" }).where(eq(exercises.id, exerciseId));
+    const state = await getOrCreateProgramDraft(database.db, userId);
+    if (!state) throw new Error("Missing draft");
+    const document = structuredClone(state.draft.document);
+    const slot = document.days[0].exercises[0];
+    slot.repMin = null;
+    slot.repMax = null;
+    slot.timedPrescription = { version: 1, metricType: "weight_duration_per_side", minSeconds: 25, maxSeconds: 40 };
+    slot.progressionRuleId = "manual";
+    const saved = await saveProgramDraft(database.db, userId, { draftId: state.draft.id, expectedRevision: state.draft.revision, mutationId: crypto.randomUUID(), document });
+    if (saved.status !== "saved") throw new Error("Not saved");
+    const review = await reviewProgramDraft(database.db, userId, state.draft.id, saved.revision);
+    expect(review?.blockingErrors).toEqual([]);
+    if (!review || review.status !== "publishable") throw new Error("Not reviewed");
+    const published = await publishProgramDraft(database.db, userId, { draftId: state.draft.id, expectedRevision: saved.revision, reviewHash: review.hash! });
+    expect(published).toMatchObject({ ok: true });
+    if (!published.ok) throw new Error("Not published");
+    const current = await getCurrentProgramDocument(database.db, userId);
+    expect(current?.days[0].exercises[0]).toMatchObject({ repMin: null, repMax: null, timedPrescription: slot.timedPrescription });
+    const day = await database.db.query.workoutTemplates.findFirst({ where: eq(workoutTemplates.programVersionId, published.programVersionId) });
+    if (!day) throw new Error("Missing day");
+    const started = await startWorkoutSession(database.db, userId, day.id);
+    const se = await database.db.query.sessionExercises.findFirst({ where: eq(sessionExercises.sessionId, started.sessionId) });
+    expect(se).toMatchObject({ prescribedMetricType: "weight_duration_per_side", timedPrescription: slot.timedPrescription, targetRepsMin: null, targetRepsMax: null });
+    if (!se) throw new Error("Missing exercise");
+    const command = { sessionExerciseId: se.id, performedExerciseId: exerciseId, performedSemanticsVersion: 1 as const, performedLoadType: "kettlebell", performedLoadSemantics: "per_implement" as const, setNo: 1, metricType: "weight_duration_per_side" as const, weight: 20, weightUnit: "lb" as const, reps: null, distanceKm: null, durationSeconds: 35, clientKey: crypto.randomUUID(), equipmentSnapshotId: null, loadEntryMeaning: "legacy_unknown" as const };
+    const recorded = await logWorkoutSet(database.db, userId, command);
+    expect(recorded).toMatchObject({ outcome: "saved" });
+    const replay = await logWorkoutSet(database.db, userId, command);
+    expect(replay).toEqual(recorded);
+    const sets = await database.db.query.completedSets.findMany({ where: eq(completedSets.sessionExerciseId, se.id) });
+    expect(sets).toHaveLength(1);
+    expect(sets[0]).toMatchObject({ metricType: "weight_duration_per_side", reps: null, weight: 20, durationSeconds: 35, targetMet: null });
+    await database.db.update(workoutSessions).set({ status: "completed", finishedAt: new Date() }).where(eq(workoutSessions.id, started.sessionId));
+    const corrected = await updateSetWithVersion(database.db, userId, sets[0].id,
+      { weight: 25, weightUnit: "lb", reps: null, distanceKm: null, durationSeconds: 40, rpe: null, note: null }, "set.completed_correction", {
+        expected: { weight: 20, weightUnit: "lb", reps: null, distanceKm: null, durationSeconds: 35, rpe: null, note: null },
+        expectedHistoryRevision: 0, clientMutationId: crypto.randomUUID(),
+        correctionEvidence: { category: "measurement_entry", source: "workout_history", reasonNote: null },
+      });
+    expect(corrected).toMatchObject({ ok: true, changed: true });
+    if (!corrected.ok || !corrected.versionId) throw new Error("Missing correction");
+    expect(await restoreRecordVersion(database.db, userId, corrected.versionId, { expectedHistoryRevision: 1, clientMutationId: crypto.randomUUID() })).toMatchObject({ ok: true });
+    expect(await database.db.query.completedSets.findFirst({ where: eq(completedSets.id, sets[0].id) })).toMatchObject({ weight: 20, durationSeconds: 35, reps: null, targetMet: null, metricType: "weight_duration_per_side" });
+    const csv = await buildSetsCsv(database.db, userId, null);
+    expect(csv).toContain("timed_prescription_json");
+    expect(csv).toContain("weight_duration_per_side");
+    expect(csv).toContain('""minSeconds"":25');
+    const store = new MemorySnapshotObjectStore();
+    const keyring: SnapshotKeyring = { currentVersion: "v1", resolve: () => Buffer.alloc(32, 42) };
+    const created = await createDataSnapshot(database.db, userId, { name: "Synthetic timed recovery", reason: "manual", pinned: true }, { store, keyring, appVersion: "timed-test" });
+    if (!created.ok) throw new Error(created.reason);
+    await database.db.update(completedSets).set({ durationSeconds: 99 }).where(eq(completedSets.id, sets[0].id));
+    const preview = await getSnapshotRestorePreview(database.db, userId, created.snapshotId, scope, { store, keyring });
+    const restored = await restoreDataSnapshot(database.db, userId, { snapshotId: created.snapshotId, scope, previewFingerprint: preview.fingerprint, confirmation: "RESTORE" }, { store, keyring, appVersion: "timed-test" });
+    expect(restored).toMatchObject({ ok: true, scope });
+    expect(await database.db.query.completedSets.findFirst({ where: eq(completedSets.id, sets[0].id) })).toMatchObject({ weight: 20, durationSeconds: 35, reps: null, targetMet: null });
+    expect(await database.db.query.sessionExercises.findFirst({ where: eq(sessionExercises.id, se.id) })).toMatchObject({ timedPrescription: slot.timedPrescription, targetRepsMin: null });
+    const migration = await readFile("src/db/migrations/0087_timed_per_side_prescriptions.sql", "utf8");
+    for (const statement of migration.split("--> statement-breakpoint")) {
+      if (statement.trim()) await database.client.exec(statement);
+    }
+    const snapshot = await captureUserSnapshot(database.db, userId, new Date(), "test");
+    expect(snapshot.schemaVersion).toBe("38");
+    expect(() => validateSnapshotPayload(upgradeSnapshotPayload(snapshot), userId)).not.toThrow();
+    const omittedTarget = structuredClone(snapshot);
+    const omittedRow = omittedTarget.tables.session_exercises.find((row) => (row as { id: string }).id === se.id) as Record<string, unknown>;
+    delete omittedRow.timed_prescription;
+    expect(() => validateSnapshotPayload(omittedTarget, userId)).toThrow("prescription is missing");
+    const incompatible = structuredClone(snapshot);
+    incompatible.schemaVersion = "37";
+    expect(() => upgradeSnapshotPayload(incompatible)).toThrow("schema 38");
+    const draftOnly = { ...incompatible, tables: { program_drafts: [{ document }] } };
+    expect(() => upgradeSnapshotPayload(draftOnly)).toThrow("schema 38");
+    const original = await database.db.query.exercisePrescriptions.findMany();
+    expect(original.some((item) => item.repRangeMin === 8 && item.repRangeMax === 12 && item.timedPrescription == null)).toBe(true);
+  });
 
   async function reviewedEditedDraft(targetLoad: number, name = "Edited Program") {
     const state = await getOrCreateProgramDraft(database.db, userId);

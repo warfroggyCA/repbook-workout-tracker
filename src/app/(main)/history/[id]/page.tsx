@@ -1367,6 +1367,7 @@ export default async function SessionDetailPage(
                       `${exercise.targetSets} planned ${exercise.targetSets === 1 ? "set" : "sets"}`,
                     );
                   }
+                  if (exercise.timedPrescription) targetParts.push(`${exercise.timedPrescription.minSeconds}–${exercise.timedPrescription.maxSeconds} sec/side`);
                   if (exercise.targetRepsMin != null) {
                     targetParts.push(
                       exercise.targetRepsMax != null &&
@@ -1807,7 +1808,9 @@ function formatSetMetric(set: {
 } = { countingBasis: "unknown", loadSemantics: null }) {
   const parts: string[] = [];
   if (set.distanceKm != null) parts.push(`${set.distanceKm} km`);
-  if (set.durationSeconds != null && set.metricType === "duration") {
+  if (set.metricType === "weight_duration_per_side") {
+    parts.push(`${set.weight ?? "Load unknown"} ${set.weightUnit ?? ""} · ${set.durationSeconds ?? "Time unknown"} sec/side (both sides)`);
+  } else if (set.durationSeconds != null && set.metricType === "duration") {
     parts.push(formatNonLoadQuantity({
       measurementKind: "duration",
       value: set.durationSeconds,

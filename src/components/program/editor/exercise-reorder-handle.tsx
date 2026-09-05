@@ -10,10 +10,11 @@ export function ExerciseReorderHandle({
   descriptionId,
   exerciseName,
   reorderUnitId,
-  slotIndex,
   canMoveUp,
   canMoveDown,
   onMove,
+  onPlace,
+  onPreview,
   onAnnounce,
   onDragStart,
   onDragEnd,
@@ -22,17 +23,18 @@ export function ExerciseReorderHandle({
   descriptionId: string;
   exerciseName: string;
   reorderUnitId: string;
-  slotIndex: number;
   canMoveUp: boolean;
   canMoveDown: boolean;
   onMove: (direction: -1 | 1) => void;
+  onPlace: (targetId: string, placement: "before" | "after") => void;
+  onPreview: (target: { targetId: string; placement: "before" | "after" } | null) => void;
   onAnnounce: (message: string) => void;
   onDragStart: () => void;
   onDragEnd: () => void;
 }) {
   const [dragging, setDragging] = useState(false);
   const draggingRef = useRef(false);
-  const lastTargetIndex = useRef<number | null>(null);
+  const dropTarget = useRef<{ targetId: string; placement: "before" | "after" } | null>(null);
 
   function move(direction: -1 | 1) {
     if ((direction === -1 && !canMoveUp) || (direction === 1 && !canMoveDown)) {
@@ -47,10 +49,13 @@ export function ExerciseReorderHandle({
   function finishDrag(event: PointerEvent<HTMLButtonElement>) {
     if (!draggingRef.current) return;
     draggingRef.current = false;
-    lastTargetIndex.current = null;
+    const target = dropTarget.current;
+    dropTarget.current = null;
+    if (event.type === "pointerup" && target) onPlace(target.targetId, target.placement);
+    onPreview(null);
     setDragging(false);
     onDragEnd();
-    onAnnounce(`${exerciseName} placed.`);
+    onAnnounce(`${exerciseName} ${event.type === "pointerup" && target ? "placed" : "move cancelled"}.`);
     if (event.currentTarget.hasPointerCapture(event.pointerId)) {
       event.currentTarget.releasePointerCapture(event.pointerId);
     }
@@ -73,18 +78,16 @@ export function ExerciseReorderHandle({
         (element) =>
           element?.dataset.programDayLineage === dayLineageId,
       );
-    const targetIndex = Number(target?.dataset.programSlotIndex);
-    if (
-      !Number.isInteger(targetIndex) ||
-      target?.dataset.programSlotUnit === reorderUnitId ||
-      targetIndex === slotIndex ||
-      targetIndex === lastTargetIndex.current
-    ) {
+    const targetId = target?.dataset.programSlotLineage;
+    if (!target || !targetId || target.dataset.programSlotUnit === reorderUnitId) {
+      dropTarget.current = null;
+      onPreview(null);
       return;
     }
-
-    lastTargetIndex.current = targetIndex;
-    move(targetIndex < slotIndex ? -1 : 1);
+    const rect = target.getBoundingClientRect();
+    const placement = event.clientY < rect.top + rect.height / 2 ? "before" : "after";
+    dropTarget.current = { targetId, placement };
+    onPreview(dropTarget.current);
   }
 
   function handleKeyDown(event: KeyboardEvent<HTMLButtonElement>) {
@@ -116,7 +119,7 @@ export function ExerciseReorderHandle({
       onPointerDown={(event) => {
         if (!event.isPrimary || event.button !== 0) return;
         event.preventDefault();
-        lastTargetIndex.current = null;
+        dropTarget.current = null;
         event.currentTarget.setPointerCapture(event.pointerId);
         draggingRef.current = true;
         setDragging(true);

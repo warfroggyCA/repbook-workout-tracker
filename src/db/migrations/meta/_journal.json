@@ -610,6 +610,13 @@
       "when": 1788566400000,
       "tag": "0086_added_plate_weight",
       "breakpoints": true
+    },
+    {
+      "idx": 87,
+      "version": "7",
+      "when": 1788616800000,
+      "tag": "0087_timed_per_side_prescriptions",
+      "breakpoints": true
     }
   ]
 }

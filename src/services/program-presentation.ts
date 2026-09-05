@@ -69,6 +69,7 @@ export async function getActiveProgramPresentation(
         warmupSets: slot.warmupSets,
         prescription: prescription
           ? {
+              timedPrescription: prescription.timedPrescription,
               sets: prescription.sets,
               repRangeMin: prescription.repRangeMin,
               repRangeMax: prescription.repRangeMax,

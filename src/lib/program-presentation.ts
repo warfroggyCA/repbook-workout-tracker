@@ -1,5 +1,6 @@
 import {
   hasGeneratedOverviewWarmupItems,
+  type TimedPrescription,
   type ProgramDayIntent,
   type ProgramDayWarmupItem,
 } from "@/lib/program-document";
@@ -36,8 +37,9 @@ export type ProgramPresentationSource = {
       warmupSets: WarmupSetDisplayInput[];
       prescription: {
         sets: number;
-        repRangeMin: number;
-        repRangeMax: number;
+        repRangeMin: number | null;
+        repRangeMax: number | null;
+        timedPrescription?: TimedPrescription | null;
         targetLoad: number | null;
         targetLoadUnit: "lb" | "kg" | null;
         progressionRuleId: string;

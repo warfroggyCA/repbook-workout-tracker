@@ -221,6 +221,7 @@ function buildTree(document: StoredProgramDocument, versionId: string) {
         template_exercise_id: slotId,
         slot_lineage_id: slot.lineageId,
         sets: slot.sets,
+        timed_prescription: slot.timedPrescription ?? null,
         rep_range_min: slot.repMin,
         rep_range_max: slot.repMax,
         target_load: slot.targetLoad,
@@ -329,7 +330,7 @@ async function publishDocumentAtomically(
       SELECT * FROM jsonb_to_recordset(${JSON.stringify(prescriptions)}::jsonb) AS x(
         id uuid, template_exercise_id uuid, slot_lineage_id uuid, sets integer,
         rep_range_min integer, rep_range_max integer, target_load numeric(7,2),
-        target_load_unit unit, progression_rule_id text
+        target_load_unit unit, progression_rule_id text, timed_prescription jsonb
       )
     ), current_program AS MATERIALIZED (
       SELECT program.*, version.version_no, to_jsonb(program) AS before_data
@@ -642,11 +643,11 @@ async function publishDocumentAtomically(
     ), inserted_prescriptions AS (
       INSERT INTO exercise_prescriptions (
         id, template_exercise_id, sets, rep_range_min, rep_range_max,
-        target_load, target_load_unit, progression_rule_id
+        target_load, target_load_unit, progression_rule_id, timed_prescription
       )
       SELECT input.id, input.template_exercise_id, input.sets, input.rep_range_min,
              input.rep_range_max, input.target_load, input.target_load_unit,
-             input.progression_rule_id
+             input.progression_rule_id, input.timed_prescription
       FROM prescription_input input CROSS JOIN publish_authorization
       WHERE EXISTS (SELECT 1 FROM new_version)
       RETURNING *

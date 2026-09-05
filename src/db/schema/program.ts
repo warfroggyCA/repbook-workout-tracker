@@ -18,6 +18,7 @@ import { exercises } from "./exercise";
 import { archiveOperations } from "./archive";
 import { unitEnum } from "./enums";
 import type {
+  TimedPrescription,
   ProgramDayWarmupItem,
   StoredProgramDocument,
 } from "@/lib/program-document";
@@ -357,8 +358,9 @@ export const exercisePrescriptions = pgTable(
       .notNull()
       .references(() => workoutTemplateExercises.id, { onDelete: "cascade" }),
     sets: integer("sets").notNull(),
-    repRangeMin: integer("rep_range_min").notNull(),
-    repRangeMax: integer("rep_range_max").notNull(),
+    repRangeMin: integer("rep_range_min"),
+    repRangeMax: integer("rep_range_max"),
+    timedPrescription: jsonb("timed_prescription").$type<TimedPrescription>(),
     targetLoad: numeric("target_load", { precision: 7, scale: 2, mode: "number" }), // null = bodyweight/band
     targetLoadUnit: unitEnum("target_load_unit"),
     progressionRuleId: text("progression_rule_id")
@@ -383,7 +385,7 @@ export const exercisePrescriptions = pgTable(
     ),
     check(
       "exercise_prescriptions_target_bounds_check",
-      sql`${t.sets} BETWEEN 1 AND 20 AND ${t.repRangeMin} BETWEEN 1 AND 100 AND ${t.repRangeMax} BETWEEN 1 AND 100 AND ${t.repRangeMin} <= ${t.repRangeMax}`
+      sql`${t.sets} BETWEEN 1 AND 20 AND ((${t.timedPrescription} IS NULL AND ${t.repRangeMin} IS NOT NULL AND ${t.repRangeMax} IS NOT NULL AND ${t.repRangeMin} BETWEEN 1 AND 100 AND ${t.repRangeMax} BETWEEN ${t.repRangeMin} AND 100) OR (${t.timedPrescription} IS NOT NULL AND ${t.repRangeMin} IS NULL AND ${t.repRangeMax} IS NULL AND ${t.progressionRuleId} = 'manual' AND repbook_valid_timed_prescription(${t.timedPrescription})))`
     ),
   ]
 );

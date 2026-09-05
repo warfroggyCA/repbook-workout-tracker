@@ -290,7 +290,7 @@ export function setMetricExclusionReasonSql(
         : sql``}
       WHEN NOT ${recordedMetricAgreesSql(columns)}
         THEN 'metric_semantics_conflict'
-      WHEN ${columns.recordedMetricType}::text IN ('duration', 'distance_duration', 'activity')
+      WHEN ${columns.recordedMetricType}::text IN ('duration', 'weight_duration_per_side', 'distance_duration', 'activity')
         THEN 'unsupported_metric'
       WHEN ${columns.recordedMetricType}::text = 'assisted_reps'
         OR ${effectiveLoadSemanticsSql(columns)}::text = 'assistance'

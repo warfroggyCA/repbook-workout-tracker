@@ -88,6 +88,7 @@ export function formatActiveSetResult(
   fallbackMetricType: PerformedMetricType,
 ) {
   const metricType = result.metricType ?? fallbackMetricType;
+  if (metricType === "weight_duration_per_side") return `${result.weight ?? "—"} ${result.weightUnit ?? ""} · ${result.durationSeconds ?? "—"} sec/side`;
   if (metricType === "duration" && result.durationSeconds != null) {
     return formatDuration(result.durationSeconds);
   }

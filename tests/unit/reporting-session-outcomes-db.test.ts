@@ -926,6 +926,7 @@ describe("reporting session outcome migration", () => {
       completionReason: null,
     });
     await expect(database.db.query.sessionExercises.findFirst({
+      columns: { prescribedCountingSemanticsVersion: true, prescribedCountingBasis: true },
       where: eq(sessionExercises.id, sessionExerciseId),
     })).resolves.toMatchObject({
       prescribedCountingSemanticsVersion: null,

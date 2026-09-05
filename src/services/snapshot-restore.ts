@@ -1,3 +1,4 @@
+import { timedPrescriptionSchema } from "@/lib/program-document";
 import { sql } from "drizzle-orm";
 import type { Db } from "@/db";
 import { resultRows } from "@/db/result";
@@ -97,13 +98,43 @@ const PRE_NAMED_PROGRAM_LIBRARY_SNAPSHOT_SCHEMA_VERSION = "33";
 const PRE_REPORTING_SESSION_OUTCOMES_SNAPSHOT_SCHEMA_VERSION = "34";
 const PRE_ACTIVE_WORKOUT_EQUIPMENT_REASONS_SNAPSHOT_SCHEMA_VERSION = "35";
 const PRE_ADDED_PLATE_WEIGHT_SNAPSHOT_SCHEMA_VERSION = "36";
+const PRE_TIMED_PRESCRIPTION_SNAPSHOT_SCHEMA_VERSION = "37";
 
 function usesCurrentSessionSemantics(version: string) {
-  return version === SNAPSHOT_SCHEMA_VERSION || version === PRE_ADDED_PLATE_WEIGHT_SNAPSHOT_SCHEMA_VERSION;
+  return version === SNAPSHOT_SCHEMA_VERSION || version === PRE_TIMED_PRESCRIPTION_SNAPSHOT_SCHEMA_VERSION || version === PRE_ADDED_PLATE_WEIGHT_SNAPSHOT_SCHEMA_VERSION;
+}
+
+function validateTimedPrescriptionVersion(payload: CanonicalSnapshotPayload) {
+  const sessions = payload.tables.session_exercises == null ? [] : rows(payload, "session_exercises");
+  // Include drafts, compiler evidence, and record versions: new meaning can
+  // exist there before the first published prescription or performed set.
+  const containsTimedMeaning = (value: unknown): boolean => {
+    if (value == null || typeof value !== "object") return false;
+    if (Array.isArray(value)) return value.some(containsTimedMeaning);
+    return Object.entries(value).some(([key, field]) =>
+      ((key === "timedPrescription" || key === "timed_prescription") && field != null) ||
+      (["metricType", "metric_type", "prescribed_metric_type", "prescribedMetricType"].includes(key) && field === "weight_duration_per_side") ||
+      containsTimedMeaning(field));
+  };
+  if (payload.schemaVersion !== SNAPSHOT_SCHEMA_VERSION &&
+      containsTimedMeaning(payload.tables)) {
+    throw new Error("Loaded time per side requires snapshot schema 38.");
+  }
+  for (const row of sessions) {
+    if (row.prescribed_metric_type === "weight_duration_per_side" && row.timed_prescription == null) {
+      throw new Error("Snapshot timed workout prescription is missing.");
+    }
+    if (row.timed_prescription != null && (
+      !timedPrescriptionSchema.safeParse(row.timed_prescription).success ||
+      row.target_reps_min != null || row.target_reps_max != null ||
+      row.prescribed_metric_type !== "weight_duration_per_side" ||
+      !["total", "per_implement"].includes(String(row.prescribed_load_semantics))
+    )) throw new Error("Snapshot timed workout prescription is invalid.");
+  }
 }
 
 function validateAddedPlateVersion(payload: CanonicalSnapshotPayload) {
-  if (payload.schemaVersion === SNAPSHOT_SCHEMA_VERSION) return;
+  if (payload.schemaVersion === SNAPSHOT_SCHEMA_VERSION || payload.schemaVersion === PRE_TIMED_PRESCRIPTION_SNAPSHOT_SCHEMA_VERSION) return;
   // Older envelopes predate equipment tables; their normal upgrade adds them.
   const optionalRows = (table: string) => payload.tables[table] == null ? [] : rows(payload, table);
   if (rows(payload, "completed_sets").some((row) => row.load_entry_meaning === "added_plates") ||
@@ -860,7 +891,7 @@ const START_REQUEST_KEY_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const SHA256_PATTERN = /^[0-9a-f]{64}$/;
 const PRESCRIBED_METRIC_TYPES = new Set([
-  "weight_reps", "reps", "assisted_reps", "duration",
+  "weight_reps", "reps", "assisted_reps", "duration", "weight_duration_per_side",
   "distance_duration", "activity",
 ]);
 const PRESCRIBED_LOAD_SEMANTICS = new Set([
@@ -1626,6 +1657,7 @@ export function upgradeSnapshotPayload(
     PRE_REPORTING_SESSION_OUTCOMES_SNAPSHOT_SCHEMA_VERSION,
     PRE_ACTIVE_WORKOUT_EQUIPMENT_REASONS_SNAPSHOT_SCHEMA_VERSION,
     PRE_ADDED_PLATE_WEIGHT_SNAPSHOT_SCHEMA_VERSION,
+    PRE_TIMED_PRESCRIPTION_SNAPSHOT_SCHEMA_VERSION,
     SNAPSHOT_SCHEMA_VERSION,
   ]);
   if (!supported.has(payload.schemaVersion)) {
@@ -1633,9 +1665,13 @@ export function upgradeSnapshotPayload(
       `Snapshot schema ${payload.schemaVersion} is not supported by this app version.`
     );
   }
+  validateTimedPrescriptionVersion(payload);
   validateAddedPlateVersion(payload);
   const upgraded = structuredClone(payload);
-  if (upgraded.schemaVersion === PRE_ADDED_PLATE_WEIGHT_SNAPSHOT_SCHEMA_VERSION) {
+  for (const table of ["exercise_prescriptions", "session_exercises"]) {
+    for (const row of upgraded.tables[table] == null ? [] : rows(upgraded, table)) row.timed_prescription ??= null;
+  }
+  if (upgraded.schemaVersion === PRE_ADDED_PLATE_WEIGHT_SNAPSHOT_SCHEMA_VERSION || upgraded.schemaVersion === PRE_TIMED_PRESCRIPTION_SNAPSHOT_SCHEMA_VERSION) {
     // This upgrade changes the envelope only; retained workout meaning is untouched.
     upgraded.schemaVersion = SNAPSHOT_SCHEMA_VERSION;
   }
@@ -1727,6 +1763,7 @@ export function upgradeSnapshotPayload(
       PRE_REPORTING_SESSION_OUTCOMES_SNAPSHOT_SCHEMA_VERSION,
       PRE_ACTIVE_WORKOUT_EQUIPMENT_REASONS_SNAPSHOT_SCHEMA_VERSION,
       PRE_ADDED_PLATE_WEIGHT_SNAPSHOT_SCHEMA_VERSION,
+      PRE_TIMED_PRESCRIPTION_SNAPSHOT_SCHEMA_VERSION,
       SNAPSHOT_SCHEMA_VERSION,
     ].includes(upgraded.schemaVersion)
   ) {
@@ -2391,8 +2428,10 @@ function validateVersionedProgramData(payload: CanonicalSnapshotPayload) {
   for (const prescription of rows(payload, "exercise_prescriptions")) {
     if (!slots.has(String(prescription.template_exercise_id)) ||
         !Number.isInteger(Number(prescription.sets)) || Number(prescription.sets) < 1 || Number(prescription.sets) > 20 ||
-        !Number.isInteger(Number(prescription.rep_range_min)) || Number(prescription.rep_range_min) < 1 || Number(prescription.rep_range_min) > 100 ||
-        !Number.isInteger(Number(prescription.rep_range_max)) || Number(prescription.rep_range_max) < Number(prescription.rep_range_min) || Number(prescription.rep_range_max) > 100 ||
+        (prescription.timed_prescription != null
+          ? !timedPrescriptionSchema.safeParse(prescription.timed_prescription).success || prescription.rep_range_min != null || prescription.rep_range_max != null || prescription.progression_rule_id !== "manual"
+          : prescription.rep_range_min == null || prescription.rep_range_max == null || !Number.isInteger(Number(prescription.rep_range_min)) || Number(prescription.rep_range_min) < 1 || Number(prescription.rep_range_min) > 100 ||
+            !Number.isInteger(Number(prescription.rep_range_max)) || Number(prescription.rep_range_max) < Number(prescription.rep_range_min) || Number(prescription.rep_range_max) > 100) ||
         ((prescription.target_load == null) !== (prescription.target_load_unit == null))) {
       throw new Error("Snapshot Program prescription is invalid.");
     }
@@ -3182,6 +3221,7 @@ export function validateSnapshotPayload(
   payload: CanonicalSnapshotPayload,
   userId: string
 ) {
+  validateTimedPrescriptionVersion(payload);
   validateAddedPlateVersion(payload);
   assertCanonicalSnapshotTableCoverage(payload.tables);
   if (
@@ -3217,6 +3257,7 @@ export function validateSnapshotPayload(
       PRE_REPORTING_SESSION_OUTCOMES_SNAPSHOT_SCHEMA_VERSION,
       PRE_ACTIVE_WORKOUT_EQUIPMENT_REASONS_SNAPSHOT_SCHEMA_VERSION,
       PRE_ADDED_PLATE_WEIGHT_SNAPSHOT_SCHEMA_VERSION,
+      PRE_TIMED_PRESCRIPTION_SNAPSHOT_SCHEMA_VERSION,
       SNAPSHOT_SCHEMA_VERSION,
     ].includes(payload.schemaVersion)
   ) {
@@ -3264,6 +3305,7 @@ export function validateSnapshotPayload(
       PRE_REPORTING_SESSION_OUTCOMES_SNAPSHOT_SCHEMA_VERSION,
       PRE_ACTIVE_WORKOUT_EQUIPMENT_REASONS_SNAPSHOT_SCHEMA_VERSION,
       PRE_ADDED_PLATE_WEIGHT_SNAPSHOT_SCHEMA_VERSION,
+      PRE_TIMED_PRESCRIPTION_SNAPSHOT_SCHEMA_VERSION,
       SNAPSHOT_SCHEMA_VERSION,
     ].includes(payload.schemaVersion)
   ) {
@@ -3477,6 +3519,7 @@ export function validateSnapshotPayload(
       PRE_REPORTING_SESSION_OUTCOMES_SNAPSHOT_SCHEMA_VERSION,
       PRE_ACTIVE_WORKOUT_EQUIPMENT_REASONS_SNAPSHOT_SCHEMA_VERSION,
       PRE_ADDED_PLATE_WEIGHT_SNAPSHOT_SCHEMA_VERSION,
+      PRE_TIMED_PRESCRIPTION_SNAPSHOT_SCHEMA_VERSION,
       SNAPSHOT_SCHEMA_VERSION,
     ].includes(payload.schemaVersion)
   ) {

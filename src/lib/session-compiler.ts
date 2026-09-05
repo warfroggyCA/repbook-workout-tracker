@@ -1,5 +1,6 @@
 import { z } from "zod";
 import {
+  timedPrescriptionSchema,
   programDaySchema,
   programDayV3Schema,
   programWarmupSetSchema,
@@ -17,7 +18,7 @@ const compilerExerciseSchema = z.object({
   // Optional only so schema-27 compiler evidence remains restorable. Every
   // newly built proposal includes this complete immutable meaning tuple.
   metricType: z.enum([
-    "weight_reps", "reps", "assisted_reps", "duration",
+    "weight_reps", "reps", "assisted_reps", "duration", "weight_duration_per_side",
     "distance_duration", "activity",
   ]).optional(),
   loadType: z.string().trim().min(1).max(50).optional(),
@@ -29,8 +30,9 @@ const compilerExerciseSchema = z.object({
   supersetKey: z.string().uuid().nullable(),
   groupMemberOrderIdx: z.number().int().min(0).nullable().optional(),
   sets: z.number().int().min(1).max(20),
-  repMin: z.number().int().min(1).max(100),
-  repMax: z.number().int().min(1).max(100),
+  repMin: z.number().int().min(1).max(100).nullable(),
+  repMax: z.number().int().min(1).max(100).nullable(),
+  timedPrescription: timedPrescriptionSchema.nullable().optional(),
   targetLoad: z.number().nullable(),
   targetLoadUnit: z.enum(["lb", "kg"]).nullable(),
   restSec: z.number().int().min(0).max(1800),
@@ -49,6 +51,12 @@ const compilerExerciseSchema = z.object({
     calibrationEligible: z.boolean(),
     note: z.string().nullable(),
   }),
+}).refine((exercise) => exercise.timedPrescription
+  ? exercise.repMin == null && exercise.repMax == null &&
+    exercise.metricType === "weight_duration_per_side" &&
+    ["total", "per_implement"].includes(exercise.loadSemantics ?? "")
+  : exercise.repMin != null && exercise.repMax != null && exercise.metricType !== "weight_duration_per_side", {
+  message: "Compiled targets must preserve either repetitions or loaded seconds per side.",
 });
 
 export const sessionCompilerInputSchema = z.object({
@@ -82,7 +90,7 @@ const compilerChangeSchema = z.object({
   reason: z.string().min(1).max(1000),
 });
 
-const compilerPlanExerciseSchema = compilerExerciseSchema.extend({
+const compilerPlanExerciseSchema = compilerExerciseSchema.safeExtend({
   sourceSets: z.number().int().min(1).max(20),
   disposition: z.enum(["full", "partial"]),
 });
@@ -162,7 +170,7 @@ function estimateSeconds(
   includesDayWarmup: boolean,
 ) {
   if (exercises.length === 0) return 0;
-  const work = exercises.reduce((sum, exercise) => sum + exercise.sets * 45, 0);
+  const work = exercises.reduce((sum, exercise) => sum + exercise.sets * (exercise.timedPrescription ? exercise.timedPrescription.minSeconds + exercise.timedPrescription.maxSeconds : 45), 0);
   const ungroupedRest = exercises
     .filter((exercise) => exercise.supersetKey == null)
     .reduce((sum, exercise) => sum + Math.max(0, exercise.sets - 1) * exercise.restSec, 0);

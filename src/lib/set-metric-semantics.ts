@@ -5,6 +5,7 @@ export const PERFORMED_METRIC_TYPES = [
   "reps",
   "assisted_reps",
   "duration",
+  "weight_duration_per_side",
   "distance_duration",
   "activity",
 ] as const;
@@ -30,6 +31,7 @@ export const SUPPORTED_SET_WRITER_METRICS = [
   "reps",
   "assisted_reps",
   "duration",
+  "weight_duration_per_side",
   "distance_duration",
 ] as const;
 
@@ -53,6 +55,9 @@ export function isSupportedSetWriterSemanticDefinition(input: {
     (input.loadSemantics === "assistance") !==
     (input.metricType === "assisted_reps")
   ) return false;
+  if (input.metricType === "weight_duration_per_side") {
+    return input.loadSemantics === "per_implement" || input.loadSemantics === "total";
+  }
   return !(
     (input.metricType === "duration" ||
       input.metricType === "distance_duration") &&
@@ -68,6 +73,14 @@ export function isSupportedSetWriterSemanticDefinition(input: {
  * replay compare the complete observation rather than filling omitted fields.
  */
 export type PerformedSetMeasurement =
+  | {
+      metricType: "weight_duration_per_side";
+      weight: number;
+      weightUnit: LoadUnit;
+      reps: null;
+      distanceKm: null;
+      durationSeconds: number;
+    }
   | {
       metricType: "weight_reps";
       weight: number;
@@ -362,6 +375,7 @@ export function classifySetMetricContainment(
   }
   if (
     input.recordedMetricType === "duration" ||
+    input.recordedMetricType === "weight_duration_per_side" ||
     input.recordedMetricType === "distance_duration" ||
     input.recordedMetricType === "activity"
   ) {
@@ -557,6 +571,13 @@ export function validateSetWriterShape(input: {
   const durationSeconds = input.durationSeconds ?? null;
   const hasStrengthMeasurement =
     input.weight != null || input.weightUnit != null || input.reps != null;
+  if (input.metricType === "weight_duration_per_side") {
+    return (input.loadSemantics === "per_implement" || input.loadSemantics === "total") &&
+      input.weight != null && input.weightUnit != null && input.reps == null &&
+      distanceKm == null && durationSeconds != null && durationSeconds > 0
+      ? { ok: true, metricType: "weight_duration_per_side" }
+      : { ok: false, reason: "measurement_shape_conflict", message: "Enter the carried load and seconds completed on each side, without reps or distance." };
+  }
   if (input.metricType === "duration") {
     if (
       input.loadSemantics != null &&
@@ -700,6 +721,11 @@ export function buildPerformedSetMeasurement(input: {
     };
   }
   switch (shape.metricType) {
+    case "weight_duration_per_side":
+      return { ok: true, measurement: {
+        metricType: "weight_duration_per_side", weight: input.weight!, weightUnit: input.weightUnit!,
+        reps: null, distanceKm: null, durationSeconds: input.durationSeconds!,
+      } };
     case "weight_reps":
     case "assisted_reps":
       return {

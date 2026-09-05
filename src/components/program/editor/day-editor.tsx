@@ -17,7 +17,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { moveItem, moveProgramGroupMember, moveProgramSlotUnit, removeProgramSlotFromDay, replaceProgramExercise, resizeProgramSlotSets, updateProgramDayWarmupOverview, updateProgramSlotInDay } from "@/lib/program-editor-client";
+import { applyProgramDayOptions, EMPTY_PROGRAM_TIME, parseProgramTimeInput, placeProgramSlotUnit, moveItem, moveProgramGroupMember, moveProgramSlotUnit, removeProgramSlotFromDay, replaceProgramExercise, resizeProgramSlotSets, updateProgramDayWarmupOverview, updateProgramSlotInDay } from "@/lib/program-editor-client";
 import { programDocumentV3Schema, type ProgramDocumentDayV3 } from "@/lib/program-document";
 import { formatRestTime } from "@/lib/rest-time";
 import { cn } from "@/lib/utils";
@@ -28,6 +28,7 @@ function displayLabel(value: string) { return value.replaceAll("_", " ").replace
 
 export const DayEditor = memo(function DayEditor({ editor, canReview = false }: { editor: ProgramEditorController; canReview?: boolean }) {
   const { document, revision, router, library, updateDocument, activeDayId, setActiveDayId, dayHeadingRefs, updateDay, addDay, addExercise, pairingDayId, setPairingDayId, pairingSlotIds, setPairingSlotIds, expandedSlotId, setExpandedSlotId, slotHeadingRefs, exerciseById, moveSlotToDay, requestReview, reviewing, pendingFutureReplacementRequest, futureReplacementTarget, clearFutureReplacementRequest } = editor;
+  const [dropPreview, setDropPreview] = useState<{ targetId: string; placement: "before" | "after" } | null>(null);
   const [reorderAnnouncement, setReorderAnnouncement] = useState("");
   const [reorderGesture, setReorderGesture] = useState<{
     dayLineageId: string;
@@ -200,6 +201,17 @@ export const DayEditor = memo(function DayEditor({ editor, canReview = false }: 
                       currently rearrange, pair, omit, or replace exercises from
                       these choices.
                     </p>
+                    <div className="mb-3 space-y-2">
+                      <Button type="button" variant="outline" className="min-h-11"
+                        disabled={document.days.length < 2 || !documentValidation.success}
+                        onClick={() => {
+                          updateDocument((current) => applyProgramDayOptions(current, day.lineageId));
+                          setReorderAnnouncement("Session options applied to all days. Each day's exercise anchors were kept. Review before publishing.");
+                        }}>
+                        Use for all days
+                      </Button>
+                      <p className="text-xs text-muted-foreground">Copies these session options once. Each day keeps its own exercise anchors and exercises. Review the changes before publishing.</p>
+                    </div>
                     <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
                       <Field id={`day-${day.lineageId}-primary-outcome`} label="Main goal">
                         <select
@@ -270,16 +282,16 @@ export const DayEditor = memo(function DayEditor({ editor, canReview = false }: 
                           min={5}
                           max={600}
                           inputMode="numeric"
-                          value={day.intent.targetDuration.minMinutes}
+                          value={day.intent.targetDuration.minMinutes === EMPTY_PROGRAM_TIME ? "" : day.intent.targetDuration.minMinutes}
                           onChange={(event) => {
-                            const value = Math.max(5, Math.min(600, Math.trunc(numberFromInput(event.target.value, day.intent.targetDuration.minMinutes))));
+                            const value = parseProgramTimeInput(event.target.value);
                             updateDay(dayIndex, (current) => ({
                               ...current,
                               intent: {
                                 ...current.intent,
                                 targetDuration: {
                                   minMinutes: value,
-                                  maxMinutes: Math.max(value, current.intent.targetDuration.maxMinutes),
+                                  maxMinutes: current.intent.targetDuration.maxMinutes,
                                 },
                               },
                             }));
@@ -293,15 +305,14 @@ export const DayEditor = memo(function DayEditor({ editor, canReview = false }: 
                           min={5}
                           max={600}
                           inputMode="numeric"
-                          value={day.intent.targetDuration.maxMinutes}
+                          value={day.intent.targetDuration.maxMinutes === EMPTY_PROGRAM_TIME ? "" : day.intent.targetDuration.maxMinutes}
                           onChange={(event) => {
-                            const value = Math.max(day.intent.targetDuration.minMinutes, Math.min(600, Math.trunc(numberFromInput(event.target.value, day.intent.targetDuration.maxMinutes))));
+                            const value = parseProgramTimeInput(event.target.value);
                             updateDay(dayIndex, (current) => ({
                               ...current,
                               intent: {
                                 ...current.intent,
                                 targetDuration: { ...current.intent.targetDuration, maxMinutes: value },
-                                minimumUsefulDurationMinutes: Math.min(value, current.intent.minimumUsefulDurationMinutes),
                               },
                             }));
                           }}
@@ -314,13 +325,13 @@ export const DayEditor = memo(function DayEditor({ editor, canReview = false }: 
                           min={5}
                           max={day.intent.targetDuration.maxMinutes}
                           inputMode="numeric"
-                          value={day.intent.minimumUsefulDurationMinutes}
+                          value={day.intent.minimumUsefulDurationMinutes === EMPTY_PROGRAM_TIME ? "" : day.intent.minimumUsefulDurationMinutes}
                           onChange={(event) =>
                             updateDay(dayIndex, (current) => ({
                               ...current,
                               intent: {
                                 ...current.intent,
-                                minimumUsefulDurationMinutes: Math.max(5, Math.min(current.intent.targetDuration.maxMinutes, Math.trunc(numberFromInput(event.target.value, current.intent.minimumUsefulDurationMinutes)))),
+                                minimumUsefulDurationMinutes: parseProgramTimeInput(event.target.value),
                               },
                             }))
                           }
@@ -496,7 +507,7 @@ export const DayEditor = memo(function DayEditor({ editor, canReview = false }: 
                               min={5}
                               max={600}
                               inputMode="numeric"
-                              value={day.intent.durationOverride.minMinutes}
+                              value={day.intent.durationOverride.minMinutes === EMPTY_PROGRAM_TIME ? "" : day.intent.durationOverride.minMinutes}
                               onChange={(event) =>
                                 updateDay(dayIndex, (current) => ({
                                   ...current,
@@ -505,7 +516,7 @@ export const DayEditor = memo(function DayEditor({ editor, canReview = false }: 
                                     durationOverride: current.intent.durationOverride
                                       ? {
                                           ...current.intent.durationOverride,
-                                          minMinutes: Math.max(5, Math.min(current.intent.durationOverride.maxMinutes, Math.trunc(numberFromInput(event.target.value, current.intent.durationOverride.minMinutes)))),
+                                          minMinutes: parseProgramTimeInput(event.target.value),
                                         }
                                       : null,
                                   },
@@ -518,7 +529,7 @@ export const DayEditor = memo(function DayEditor({ editor, canReview = false }: 
                               min={5}
                               max={600}
                               inputMode="numeric"
-                              value={day.intent.durationOverride.maxMinutes}
+                              value={day.intent.durationOverride.maxMinutes === EMPTY_PROGRAM_TIME ? "" : day.intent.durationOverride.maxMinutes}
                               onChange={(event) =>
                                 updateDay(dayIndex, (current) => ({
                                   ...current,
@@ -527,7 +538,7 @@ export const DayEditor = memo(function DayEditor({ editor, canReview = false }: 
                                     durationOverride: current.intent.durationOverride
                                       ? {
                                           ...current.intent.durationOverride,
-                                          maxMinutes: Math.max(current.intent.durationOverride.minMinutes, Math.min(600, Math.trunc(numberFromInput(event.target.value, current.intent.durationOverride.maxMinutes)))),
+                                          maxMinutes: parseProgramTimeInput(event.target.value),
                                         }
                                       : null,
                                   },
@@ -658,10 +669,11 @@ export const DayEditor = memo(function DayEditor({ editor, canReview = false }: 
                           key={slot.lineageId}
                           data-program-day-lineage={day.lineageId}
                           data-program-slot-index={slotIndex}
+                          data-program-slot-lineage={slot.lineageId}
                           data-program-slot-unit={reorderUnitId}
                           data-program-reordering={isMovingUnit ? "true" : undefined}
                           className={cn(
-                            "space-y-2 transition-[background-color,box-shadow] motion-reduce:transition-none",
+                            "relative space-y-2 transition-[background-color,box-shadow] motion-reduce:transition-none",
                             pairing && "border-l-4 border-violet-500 bg-violet-50/60 px-3 py-2 dark:bg-violet-950/20",
                             pairing && pairingPosition === 0 && "rounded-t-xl pt-3",
                             pairing && pairingPosition === pairingMembers.length - 1 && "rounded-b-xl pb-3",
@@ -669,10 +681,10 @@ export const DayEditor = memo(function DayEditor({ editor, canReview = false }: 
                               "relative z-10 rounded-xl bg-primary/10 shadow-lg ring-2 ring-primary/70 ring-offset-2 ring-offset-background",
                           )}
                         >
-                        {isMovingLead && (
+                        {dropPreview?.targetId === slot.lineageId && (
                           <div
                             data-program-drop-position="true"
-                            className="pointer-events-none absolute inset-x-0 -top-4 z-20 flex items-center gap-2 text-xs font-semibold text-primary"
+                            className={cn("pointer-events-none absolute inset-x-0 z-20 flex items-center gap-2 text-xs font-semibold text-primary", dropPreview.placement === "before" ? "-top-4" : "-bottom-4")}
                           >
                             <span
                               aria-hidden="true"
@@ -832,7 +844,6 @@ export const DayEditor = memo(function DayEditor({ editor, canReview = false }: 
                             descriptionId={`program-exercise-reorder-instructions-${day.lineageId}`}
                             exerciseName={exerciseById.get(slot.exerciseId)?.name ?? "exercise"}
                             reorderUnitId={reorderUnitId}
-                            slotIndex={slotIndex}
                             canMoveUp={canMoveUp}
                             canMoveDown={canMoveDown}
                             onMove={(direction) =>
@@ -845,6 +856,11 @@ export const DayEditor = memo(function DayEditor({ editor, canReview = false }: 
                                 ),
                               }))
                             }
+                            onPlace={(targetId, placement) => updateDay(dayIndex, (current) => ({
+                              ...current,
+                              exercises: placeProgramSlotUnit(current.exercises, slot.lineageId, targetId, placement),
+                            }))}
+                            onPreview={setDropPreview}
                             onAnnounce={setReorderAnnouncement}
                             onDragStart={() =>
                               setReorderGesture({
@@ -891,7 +907,7 @@ export const DayEditor = memo(function DayEditor({ editor, canReview = false }: 
                             </span>
                             <span className="block text-xs text-muted-foreground">Exercise {slotIndex + 1}</span>
                             <span className="mt-1 block text-sm text-muted-foreground">
-                              {slot.sets} sets · {slot.repMin}–{slot.repMax} reps · {formatRestTime(slot.restSec)} · {displayLabel(slot.progressionRuleId)}
+                              {slot.sets} sets · {slot.timedPrescription ? `${slot.timedPrescription.minSeconds}–${slot.timedPrescription.maxSeconds} sec/side` : `${slot.repMin}–${slot.repMax} reps`} · {formatRestTime(slot.restSec)} · {displayLabel(slot.progressionRuleId)}
                             </span>
                             {isMovingLead && (
                               <span className="mt-2 inline-flex rounded-full bg-primary px-2 py-1 text-xs font-semibold text-primary-foreground">

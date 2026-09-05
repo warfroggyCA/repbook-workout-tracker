@@ -44,6 +44,7 @@ export const metricTypeEnum = pgEnum("metric_type", [
   "reps",
   "assisted_reps",
   "duration",
+  "weight_duration_per_side",
   "distance_duration",
   "activity",
 ]);

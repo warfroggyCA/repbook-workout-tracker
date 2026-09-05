@@ -143,7 +143,8 @@ export async function buildSessionCompilerInput(
       templateExerciseId: row.slot.id,
       exerciseId: slot.exerciseId,
       exerciseName: row.exercise.name,
-      metricType: row.exercise.metricType,
+      metricType: slot.timedPrescription?.metricType ?? row.exercise.metricType,
+      timedPrescription: slot.timedPrescription ?? null,
       loadType: row.exercise.loadType,
       loadSemantics: row.exercise.loadSemantics,
       orderIdx,
@@ -297,6 +298,7 @@ export async function acceptSessionCompilerProposal(
     group_member_order_idx: exercise.groupMemberOrderIdx ?? null,
     rest_sec: exercise.restSec,
     sets: exercise.sets,
+    timed_prescription: exercise.timedPrescription ?? null,
     rep_min: exercise.repMin,
     rep_max: exercise.repMax,
     target_load: exercise.targetLoad,
@@ -455,7 +457,7 @@ export async function acceptSessionCompilerProposal(
         equipment_requirements_semantics_version,
         equipment_requirements_snapshot,
         order_idx, superset_key, group_snapshot_id, group_member_order_idx,
-        rest_sec, target_sets, target_reps_min,
+        rest_sec, target_sets, timed_prescription, target_reps_min,
         target_reps_max, target_load, target_load_unit, notes, warmup_notes,
         warmup_sets, set_notes
       )
@@ -490,6 +492,7 @@ export async function acceptSessionCompilerProposal(
         row.group_member_order_idx,
         row.rest_sec,
         row.sets,
+        row.timed_prescription,
         row.rep_min,
         row.rep_max,
         row.target_load,
@@ -504,7 +507,7 @@ export async function acceptSessionCompilerProposal(
         prescribed_exercise_name text, prescribed_metric_type text,
         prescribed_load_type text, prescribed_load_semantics text,
         superset_key text, group_member_order_idx integer, rest_sec integer,
-        sets integer, rep_min integer,
+        sets integer, timed_prescription jsonb, rep_min integer,
         rep_max integer, target_load numeric, target_load_unit text, notes text,
         warmup_notes text, warmup_sets jsonb, set_notes jsonb
       )

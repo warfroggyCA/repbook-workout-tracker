@@ -164,8 +164,9 @@ function programTargetLabel(
   );
   if (!slot?.prescription) return "No current numeric target";
   const target = slot.prescription;
-  const reps =
-    target.repRangeMin === target.repRangeMax
+  const reps = target.timedPrescription
+    ? `${target.timedPrescription.minSeconds}–${target.timedPrescription.maxSeconds} sec/side`
+    : target.repRangeMin === target.repRangeMax
       ? `${target.repRangeMin} reps`
       : `${target.repRangeMin}–${target.repRangeMax} reps`;
   const load =
@@ -187,6 +188,10 @@ function buildInput(
   if (draft.linkKind === "program_day" && (!program || !selectedDay)) {
     throw new Error("Choose a current Program day before reviewing.");
   }
+  if (draft.linkKind === "program_day" && selectedDay?.slots.some((slot) => slot.prescription?.timedPrescription)) {
+    throw new Error("This Program day includes time per side. The historical workout form cannot record that measurement yet. Record future timed work in an active workout.");
+  }
+
   if (draft.exercises.length === 0) {
     throw new Error("Add at least one exercise before reviewing.");
   }

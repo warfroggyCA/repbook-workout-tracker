@@ -68,27 +68,12 @@ describe("recommendation and quick-log contract migration safety", () => {
        ) VALUES ($1, $2, $3, 0, 90, '[]'::jsonb, '[]'::jsonb)`,
       [slot.id, template.id, exercise.id]
     );
-    const prescriptionRows = await database.db
-      .insert(exercisePrescriptions)
-      .values([
-        {
-          templateExerciseId: slot.id,
-          sets: 3,
-          repRangeMin: 6,
-          repRangeMax: 8,
-          targetLoad: 100,
-          targetLoadUnit: "lb",
-        },
-        {
-          templateExerciseId: slot.id,
-          sets: 3,
-          repRangeMin: 6,
-          repRangeMax: 8,
-          targetLoad: 105,
-          targetLoadUnit: "lb",
-        },
-      ])
-      .returning({ id: exercisePrescriptions.id });
+    // This historical boundary predates typed time columns.
+    const prescriptionRows = (await database.client.query<{ id: string }>(
+      `INSERT INTO exercise_prescriptions (template_exercise_id, sets, rep_range_min, rep_range_max, target_load, target_load_unit)
+       VALUES ($1, 3, 6, 8, 100, 'lb'), ($1, 3, 6, 8, 105, 'lb') RETURNING id`,
+      [slot.id],
+    )).rows;
     const recommendation = { id: crypto.randomUUID() };
     await database.client.query(
       `INSERT INTO recommendations (
@@ -161,7 +146,7 @@ describe("recommendation and quick-log contract migration safety", () => {
     await expect(
       migrateTestDatabaseThrough(database, CONTRACT)
     ).rejects.toThrow(/Failed query/);
-    expect(await database.db.select().from(exercisePrescriptions)).toHaveLength(2);
+    expect(await database.db.select({ id: exercisePrescriptions.id }).from(exercisePrescriptions)).toHaveLength(2);
     expect((await database.client.query(`SELECT id FROM user_decisions`)).rows)
       .toHaveLength(2);
     expect(await database.db.select().from(adaptationEvents)).toHaveLength(2);
@@ -211,14 +196,10 @@ describe("recommendation and quick-log contract migration safety", () => {
       })
     ).rejects.toThrow();
     await expect(
-      database.db.insert(exercisePrescriptions).values({
-        templateExerciseId: slot.id,
-        sets: 3,
-        repRangeMin: 6,
-        repRangeMax: 8,
-        targetLoad: 110,
-        targetLoadUnit: "lb",
-      })
+      database.client.query(
+        `INSERT INTO exercise_prescriptions (template_exercise_id, sets, rep_range_min, rep_range_max, target_load, target_load_unit)
+         VALUES ($1, 3, 6, 8, 110, 'lb')`, [slot.id],
+      )
     ).rejects.toThrow();
     await expect(
       database.client.query(
