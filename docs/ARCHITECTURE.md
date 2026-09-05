@@ -1321,6 +1321,14 @@ closes the item editor; the visible next action reviews and saves the whole
 inventory atomically. Failure retains the draft and never implies a confirmed
 save. Plate-loaded/stack transitions preserve the physical item's identity.
 
+Current limitation: a plate-loaded profile uses the machine category, while
+broad cable requirements require the cable category. The inventory does not
+yet represent a shared plate-loaded pulley as both capabilities. A category
+change alone therefore cannot establish compatibility for those exercises.
+Generic external-load exercises without an exact requirement also do not offer
+an equipment selection. Resolving these gaps must preserve exercise identity,
+retained session requirements, original load meaning, and historical snapshots.
+
 Once acknowledged work or a retained device set exists, the active workout no
 longer repeats that global inventory panel; exercise-local exact setup remains
 available where it is actionable. The list describes saved inventory coverage,
@@ -1655,7 +1663,11 @@ owner-data path, snapshot shape, or recovery-manifest version.
 Recommendation approval validates the proposed Program before making its
 protective snapshot, then revalidates current state inside the existing atomic
 publication. Backup failures and known preflight findings retain distinct
-messages. The card shows pending progress and bounds an unconfirmed action to
+messages. Blocking findings name the affected exercise and Program day, including
+when another movement prevents the proposed change. The message shows up to three
+findings and counts any remaining blockers. These labels come from the owned
+Program document and catalog; the publication guards remain unchanged.
+The card shows pending progress and bounds an unconfirmed action to
 15 seconds. A timeout or transport failure requires a document reload to check
 the saved outcome before another decision; it does not claim rollback or replay
 an edited decision automatically. Existing revision and idempotency guards,
