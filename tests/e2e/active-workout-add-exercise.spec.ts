@@ -114,7 +114,11 @@ test("adds a reviewed workout-only exercise without editing the Program", async 
     name: "Add exercise to this workout",
     exact: true,
   });
+  // Starting the workout schedules its first-action focus handoff after
+  // equipment hydration. Let that finish before beginning keyboard navigation.
+  await expect(page.getByTestId("current-set-entry")).toBeFocused();
   await waitForHydratedReactHandler(addButton);
+  await addButton.scrollIntoViewIfNeeded();
   await addButton.focus();
   await expect(addButton).toBeFocused();
   await addButton.press("Enter");
