@@ -884,3 +884,11 @@ The superset-preparation browser suite advances the durable timer revision durin
 the End rest tap to reproduce a cue/acknowledgement race deterministically. The
 rest-timer unit suite also covers preserved receipts, repeated actions, natural
 completion winning the lock, foreign/newer generations, and write failures.
+
+The baseline parked-set journey holds the first injected failure behind an
+explicit response barrier and waits for its durable failure receipt before
+accelerating the retry count. Request arrival alone is not proof that the
+response was processed; changing the count sooner can park the first response
+and invalidate the intended two-request assertion.
+The add-exercise keyboard journey waits for the React handler before focusing
+the button and sending Enter to that exact control.
