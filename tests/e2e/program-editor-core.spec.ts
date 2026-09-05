@@ -83,12 +83,9 @@ test("opens and operates the keyboard-accessible Program editor", async ({
   await page.setViewportSize({ width: 390, height: 844 });
   await exerciseRows.nth(1).scrollIntoViewIfNeeded();
   const firstHandleBox = await firstHandle.boundingBox();
-  const secondHandleBox = await exerciseRows
-    .nth(1)
-    .getByRole("button", { name: /^Drag / })
-    .boundingBox();
+  const secondRowBox = await exerciseRows.nth(1).boundingBox();
   expect(firstHandleBox).not.toBeNull();
-  expect(secondHandleBox).not.toBeNull();
+  expect(secondRowBox).not.toBeNull();
   await page.mouse.move(
     firstHandleBox!.x + firstHandleBox!.width / 2,
     firstHandleBox!.y + firstHandleBox!.height / 2,
@@ -100,17 +97,28 @@ test("opens and operates the keyboard-accessible Program editor", async ({
   await expect(
     exerciseRows.nth(0).getByText("Moving", { exact: true }),
   ).toBeVisible();
-  await expect(
-    exerciseRows.nth(0).getByText("Drop here", { exact: true }),
-  ).toBeVisible();
+  await expect(page.getByText("Drop here", { exact: true })).toHaveCount(0);
   await page.mouse.up();
   await expect(
     page.locator('[data-program-reorder-active="true"]'),
   ).toHaveCount(0);
   await expect(page.getByText("Drop here", { exact: true })).toHaveCount(0);
-  await firstHandle.dragTo(
-    exerciseRows.nth(1).getByRole("button", { name: /^Drag / }),
+  await expect(
+    exerciseRows.nth(0).locator('button[aria-expanded] span[id$="-label"]'),
+  ).toHaveText(firstExerciseName!);
+  await page.mouse.down();
+  await page.mouse.move(
+    secondRowBox!.x + secondRowBox!.width / 2,
+    secondRowBox!.y + secondRowBox!.height - 8,
+    { steps: 5 },
   );
+  await expect(
+    exerciseRows.nth(1).getByText("Drop here", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    exerciseRows.nth(0).locator('button[aria-expanded] span[id$="-label"]'),
+  ).toHaveText(firstExerciseName!);
+  await page.mouse.up();
   await expect(
     exerciseRows.nth(1).locator('button[aria-expanded] span[id$="-label"]'),
   ).toHaveText(firstExerciseName!);
