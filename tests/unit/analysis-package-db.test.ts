@@ -7,6 +7,7 @@ import * as schema from "@/db/schema";
 import {
   analysisPackageManifests,
   completedSets,
+  exercisePrescriptions,
   exercises,
   healthActivities,
   sessionExercises,
@@ -15,8 +16,12 @@ import {
   users,
   workoutSessions,
   workoutTemplates,
+  workoutTemplateExercises,
 } from "@/db/schema";
 import { activateProgramAtomically } from "@/services/program-activation";
+import { getOrCreateProgramDraft, reviewProgramDraft, saveProgramDraft } from "@/services/program-drafts";
+import { publishProgramDraft } from "@/services/program-publication";
+import { addProgramExerciseToDay } from "@/lib/program-editor-client";
 import {
   analysisSourceRowContentHash,
   createAnalysisPackage,
@@ -244,6 +249,80 @@ describe("versioned external-analysis package", () => {
       analysisSourceRowContentHash("workout_sessions", legacyWorkout),
     );
   });
+
+  it("preserves legacy null timed-target hashes while binding populated targets", () => {
+    const legacy = { id: "33333333-3333-4333-8333-333333333333" };
+    const timed = { version: 1, metricType: "weight_duration_per_side", minSeconds: 20, maxSeconds: 30 };
+    for (const entity of ["session_exercises", "exercise_prescriptions"] as const) {
+      const legacyHash = analysisSourceRowContentHash(entity, legacy);
+      expect(analysisSourceRowContentHash(entity, { ...legacy, timed_prescription: null })).toBe(legacyHash);
+      const timedHash = analysisSourceRowContentHash(entity, { ...legacy, timed_prescription: timed });
+      expect(timedHash).not.toBe(legacyHash);
+      expect(analysisSourceRowContentHash(entity, { ...legacy, timed_prescription: { ...timed, maxSeconds: 45 } })).not.toBe(timedHash);
+    }
+  });
+
+  it("exports current and frozen timed targets separately from recorded seconds", async () => {
+    const session = await db.query.workoutSessions.findFirst({ where: eq(workoutSessions.userId, userId) });
+    if (!session) throw new Error("Synthetic workout missing.");
+    const [carry] = await db.insert(exercises).values({
+      userId, name: "Synthetic kettlebell carry", movementPattern: "carry", primaryMuscles: ["core"],
+      loadType: "kettlebell", metricType: "distance_duration", loadSemantics: "per_implement", isUnilateral: true,
+    }).returning();
+    const currentTarget = { version: 1, metricType: "weight_duration_per_side", minSeconds: 30, maxSeconds: 45 } as const;
+    const frozenTarget = { ...currentTarget, minSeconds: 20, maxSeconds: 30 };
+    const state = await getOrCreateProgramDraft(db, userId);
+    if (!state) throw new Error("Synthetic Program draft missing.");
+    const lineageId = crypto.randomUUID();
+    const document = addProgramExerciseToDay(state.draft.document, 0, carry.id, lineageId);
+    Object.assign(document.days[0].exercises.at(-1)!, {
+      repMin: null, repMax: null, timedPrescription: currentTarget,
+      targetLoad: 20, targetLoadUnit: "kg", progressionRuleId: "manual",
+    });
+    const saved = await saveProgramDraft(db, userId, { draftId: state.draft.id, expectedRevision: state.draft.revision, mutationId: crypto.randomUUID(), document });
+    if (saved.status !== "saved") throw new Error("Synthetic timed draft did not save.");
+    const review = await reviewProgramDraft(db, userId, state.draft.id, saved.revision);
+    if (review?.status !== "publishable") throw new Error("Synthetic timed draft is not publishable.");
+    expect(await publishProgramDraft(db, userId, { draftId: state.draft.id, expectedRevision: saved.revision, reviewHash: review.hash! })).toMatchObject({ ok: true });
+    const slot = await db.query.workoutTemplateExercises.findFirst({ where: eq(workoutTemplateExercises.lineageId, lineageId) });
+    if (!slot) throw new Error("Synthetic timed slot missing.");
+    const prescription = await db.query.exercisePrescriptions.findFirst({ where: eq(exercisePrescriptions.templateExerciseId, slot.id) });
+    if (!prescription) throw new Error("Synthetic timed prescription missing.");
+    const [frozen] = await db.insert(sessionExercises).values({
+      sessionId: session.id, exerciseId: carry.id, orderIdx: 1,
+      prescribedSemanticsVersion: 1, prescribedExerciseName: carry.name,
+      prescribedMetricType: "weight_duration_per_side", prescribedLoadType: "kettlebell", prescribedLoadSemantics: "per_implement",
+      targetSets: 1, targetRepsMin: null, targetRepsMax: null, timedPrescription: frozenTarget,
+      targetLoad: 16, targetLoadUnit: "kg",
+    }).returning();
+    const [performed] = await db.insert(completedSets).values({
+      sessionExerciseId: frozen.id, setNo: 1, weight: 16, weightUnit: "kg", reps: null,
+      metricType: "weight_duration_per_side", durationSeconds: 25,
+      performedSemanticsVersion: 1, performedLoadType: "kettlebell", performedLoadSemantics: "per_implement",
+    }).returning();
+
+    const created = await createAnalysisPackage(db, userId,
+      { questionId: "program_progress", windowDays: 84 },
+      { now: new Date("2026-08-08T16:00:00.000Z"), appVersion: "timed-analysis-test" },
+    );
+    const exported = verifyAnalysisPackage(JSON.parse(created.serialized));
+    expect(exported.currentProgramIntent.prescriptions.find((fact) => fact.id === prescription.id)?.values).toMatchObject({
+      timed_prescription: currentTarget, rep_range_min: null, rep_range_max: null, target_load: 20, target_load_unit: "kg",
+    });
+    expect(exported.completedOrImportedEvidence.exercises.find((fact) => fact.id === frozen.id)?.values).toMatchObject({
+      timed_prescription: frozenTarget, prescribed_metric_type: "weight_duration_per_side",
+      target_reps_min: null, target_reps_max: null, target_load: 16, target_load_unit: "kg",
+    });
+    expect(exported.completedOrImportedEvidence.sets.find((fact) => fact.id === performed.id)?.values).toMatchObject({
+      metric_type: "weight_duration_per_side", duration_seconds: 25, reps: null, weight: 16, weight_unit: "kg",
+    });
+    expect(exported.completedOrImportedEvidence.exercises.find((fact) => fact.id !== frozen.id)?.values).toMatchObject({
+      timed_prescription: null, prescribed_metric_type: "weight_reps", target_reps_min: 5, target_reps_max: 8,
+    });
+    const [manifest] = await db.select().from(analysisPackageManifests);
+    const retainedScope = manifest.scope as { sourceEvidenceRevision: string };
+    await expect(getExternalAnalysisSourceBindingFreshness(db, userId, manifest.sourceBindings, retainedScope.sourceEvidenceRevision)).resolves.toEqual({ ok: true });
+  }, 30_000);
 
   it("creates one deterministic, purpose-bounded package and retains only its manifest", async () => {
     const now = new Date("2026-08-08T16:00:00.000Z");

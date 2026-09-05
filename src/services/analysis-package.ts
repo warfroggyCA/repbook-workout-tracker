@@ -201,10 +201,9 @@ export function analysisSourceRowContentHash(
   entity: AnalysisPackageSourceBindingEntity,
   row: unknown,
 ): string {
-  // analysis-package/1 binds the source shape it originally exposed. New
-  // nullable columns must not make a still-valid retained manifest stale only
-  // because an additive migration changed to_jsonb(row). New package schemas
-  // can deliberately bind these fields when they add them to their allowlist.
+  // Keep retained manifests stable when additive migrations introduce fields
+  // outside the v1 allowlist. Timed targets are exported and must be bound when
+  // populated; their added null column alone must not stale legacy manifests.
   const excludedV1HashFields: Partial<
     Record<AnalysisPackageSourceBindingEntity, ReadonlySet<string>>
   > = {
@@ -228,11 +227,13 @@ export function analysisSourceRowContentHash(
     ]),
   };
   const excluded = excludedV1HashFields[entity];
+  const hasTimedPrescription = entity === "session_exercises" || entity === "exercise_prescriptions";
   const normalized =
-    excluded && row && typeof row === "object" && !Array.isArray(row)
+    row && typeof row === "object" && !Array.isArray(row)
       ? Object.fromEntries(
           Object.entries(row as Record<string, unknown>).filter(
-            ([key]) => !excluded.has(key),
+            ([key, value]) => !excluded?.has(key) &&
+              !(hasTimedPrescription && key === "timed_prescription" && value == null),
           ),
         )
       : row;
@@ -594,7 +595,7 @@ function buildCore(input: {
           ? "prescribed_semantics_unknown"
           : "prescribed_semantics_retained",
       source: "session_exercises",
-      fields: ["session_id", "exercise_id", "source_exercise_key", "source_exercise_name", "prescribed_semantics_version", "prescribed_exercise_name", "prescribed_metric_type", "prescribed_load_type", "prescribed_load_semantics", "planned_from_template_exercise_id", "source_slot_lineage_id", "modification_type", "skip_reason", "substituted_for_exercise_id", "substitution_reason", "order_idx", "superset_key", "group_snapshot_id", "group_member_order_idx", "rest_sec", "target_sets", "target_reps_min", "target_reps_max", "target_load", "target_load_unit"],
+      fields: ["session_id", "exercise_id", "source_exercise_key", "source_exercise_name", "prescribed_semantics_version", "prescribed_exercise_name", "prescribed_metric_type", "prescribed_load_type", "prescribed_load_semantics", "planned_from_template_exercise_id", "source_slot_lineage_id", "modification_type", "skip_reason", "substituted_for_exercise_id", "substitution_reason", "order_idx", "superset_key", "group_snapshot_id", "group_member_order_idx", "rest_sec", "target_sets", "target_reps_min", "target_reps_max", "timed_prescription", "target_load", "target_load_unit"],
     });
   });
   const setFacts = completedSetRows.map((row) => {
@@ -777,7 +778,7 @@ function buildCore(input: {
         : null,
       days: byId(programDayRows.map((row) => fact({ row, quality: "published_program_intent", source: "workout_templates", fields: programDayFields }))),
       slots: byId(slotRows.map((row) => fact({ row, quality: "published_program_intent", source: "workout_template_exercises", fields: ["workout_template_id", "exercise_id", "lineage_id", "order_idx", "superset_group_id", "group_member_order_idx", "rest_sec", "notes", "warmup_notes", "warmup_sets", "set_notes", "intent"] }))),
-      prescriptions: byId(prescriptionRows.map((row) => fact({ row, quality: "current_program_prescription", source: "exercise_prescriptions", fields: ["template_exercise_id", "sets", "rep_range_min", "rep_range_max", "target_load", "target_load_unit", "progression_rule_id", "effective_from"] }))),
+      prescriptions: byId(prescriptionRows.map((row) => fact({ row, quality: "current_program_prescription", source: "exercise_prescriptions", fields: ["template_exercise_id", "sets", "rep_range_min", "rep_range_max", "timed_prescription", "target_load", "target_load_unit", "progression_rule_id", "effective_from"] }))),
     },
     exerciseIdentities: byId(
       exerciseRows.map((row) => {

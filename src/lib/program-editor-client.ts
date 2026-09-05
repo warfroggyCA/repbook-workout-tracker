@@ -248,10 +248,7 @@ export function applyProgramDayOptions(document: ProgramDocumentV3, sourceDayId:
       ...day,
       intent: {
         ...structuredClone(source.intent),
-        identity: {
-          ...source.intent.identity,
-          anchorSlotLineageIds: [...day.intent.identity.anchorSlotLineageIds],
-        },
+        identity: structuredClone(day.intent.identity),
       },
     }),
   };

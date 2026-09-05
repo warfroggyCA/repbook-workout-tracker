@@ -11,7 +11,7 @@ Status: implemented. The verification contract below grants no release or produc
    Cancellation changes nothing. Preserve exact slot identities, group membership,
    rounds/rest, and warm-up anchors; retain keyboard and button alternatives.
 3. Add an explicit one-time **Use for all days** action for transferable day
-   intent. Keep destination exercise anchors and all exercises, groups, and
+   intent. Keep each destination's day identity, exercise anchors, exercises, groups, and
    warm-ups. All affected days remain visible in the normal draft review.
 4. Support explicit timed exercise prescriptions, including loaded time per side.
    Duration and repetition measurements must remain different stored facts.
@@ -35,7 +35,10 @@ One performed set records its load/unit and the seconds completed on each side;
 both sides are completed before the existing rest transition. No duration is
 invented from the target. Saving/retry, set correction, record-version restore,
 History, CSV, canonical JSON and encrypted snapshots preserve the metric.
-CSV includes `timed_prescription_json`. Coach context receives the typed target
+CSV includes `timed_prescription_json`. External-analysis exports retain current
+Program and frozen workout timed targets separately from recorded seconds.
+Source bindings retain legacy null-target hashes and bind populated time ranges.
+Coach context receives the typed target
 and raw measurement; repetition progression and calculated target outcomes are
 unavailable for this metric.
 

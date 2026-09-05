@@ -791,6 +791,8 @@ test("edits minutes, copies day options, and drops an exercise around a non-cont
   const document = state.draft.document;
   const day = document.days[0];
   expect(day.exercises.length).toBeGreaterThanOrEqual(5);
+  day.intent.identity = { kind: "anchor_slots", anchorSlotLineageIds: [day.exercises[0].lineageId] };
+  document.days[1].intent.identity = { kind: "movement_balance", anchorSlotLineageIds: [] };
   const [lead, a, moving, b, c] = day.exercises;
   const groupKey = crypto.randomUUID();
   day.supersets = [{ key: groupKey, name: "Synthetic three-member group", structureStatus: "canonical", plannedRounds: 3, restBetweenMembersSec: 0, restBetweenRoundsSec: 75, restAfterRoundSec: 75 }];
@@ -825,7 +827,7 @@ test("edits minutes, copies day options, and drops an exercise around a non-cont
   const copied = (await (await page.request.get("/api/program/draft")).json()).draft.document;
   for (const [index, result] of copied.days.entries()) {
     expect(result.intent.targetDuration).toEqual({ minMinutes: 42, maxMinutes: 80 });
-    expect(result.intent.identity.anchorSlotLineageIds).toEqual(document.days[index].intent.identity.anchorSlotLineageIds);
+    expect(result.intent.identity).toEqual(document.days[index].intent.identity);
   }
   await advanced.locator("summary").click();
   await page.setViewportSize({ width: 390, height: 844 });

@@ -206,11 +206,11 @@ export const DayEditor = memo(function DayEditor({ editor, canReview = false }: 
                         disabled={document.days.length < 2 || !documentValidation.success}
                         onClick={() => {
                           updateDocument((current) => applyProgramDayOptions(current, day.lineageId));
-                          setReorderAnnouncement("Session options applied to all days. Each day's exercise anchors were kept. Review before publishing.");
+                          setReorderAnnouncement("Session options applied to all days. Each day's recognizable features and exercise anchors were kept. Review before publishing.");
                         }}>
                         Use for all days
                       </Button>
-                      <p className="text-xs text-muted-foreground">Copies these session options once. Each day keeps its own exercise anchors and exercises. Review the changes before publishing.</p>
+                      <p className="text-xs text-muted-foreground">Copies these session options once, except “What makes this day recognizable.” Each day keeps that choice, its exercise anchors, and its exercises. Review the changes before publishing.</p>
                     </div>
                     <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
                       <Field id={`day-${day.lineageId}-primary-outcome`} label="Main goal">
