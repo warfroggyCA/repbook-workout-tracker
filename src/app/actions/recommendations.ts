@@ -36,17 +36,19 @@ export async function approveRecommendation(
   const db = await getDb();
   const result = await approveRecommendationDecision(db, user.id, parsed, {
     publishProgramVersion: async (publicationDb, publicationUserId, publication) => {
-      const safety = await createAutomaticSafetySnapshot(
-        publicationDb,
-        publicationUserId,
-        "pre_recommendation_program_version",
-        "Automatic protection created before applying a recommendation as a new Program version."
-      );
-      if (!safety.ok) return { ok: false as const, reason: "invalid" as const };
       return publishRecommendationProgramVersion(
         publicationDb,
         publicationUserId,
-        publication
+        publication,
+        async () => {
+          const safety = await createAutomaticSafetySnapshot(
+            publicationDb,
+            publicationUserId,
+            "pre_recommendation_program_version",
+            "Automatic protection created before applying a recommendation as a new Program version."
+          );
+          return safety.ok;
+        },
       );
     },
   });

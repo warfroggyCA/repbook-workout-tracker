@@ -92,6 +92,14 @@ export type PreviousComparableSetResult =
       status: "unavailable";
       currentSessionExerciseId: string;
       message: typeof PREVIOUS_COMPARABLE_SET_UNAVAILABLE;
+      previousRecorded?: {
+        workoutId: string;
+        localDate: string;
+        historyHref: string;
+        weight: number | null;
+        weightUnit: LoadUnit | null;
+        reps: number | null;
+      };
       reason:
         | "current_exercise_unavailable"
         | "unsupported_current_semantics"
@@ -136,6 +144,11 @@ type ComparisonRow = {
   source_correction_count: number | null;
   source_correction_actions: unknown;
   compatible_rest_samples: unknown;
+  recorded_workout_id: string | null;
+  recorded_local_date: string | null;
+  recorded_weight: number | null;
+  recorded_weight_unit: string | null;
+  recorded_reps: number | null;
 };
 
 function performedMetricType(value: string | null): PerformedMetricType | null {
@@ -215,12 +228,23 @@ function compatibleRestSamples(value: unknown): PreviousComparableRestEvidence[]
 function unavailable(
   currentSessionExerciseId: string,
   reason: Extract<PreviousComparableSetResult, { status: "unavailable" }>["reason"],
+  row?: ComparisonRow,
 ): PreviousComparableSetResult {
   return {
     status: "unavailable",
     currentSessionExerciseId,
     message: PREVIOUS_COMPARABLE_SET_UNAVAILABLE,
     reason,
+    ...(row?.recorded_workout_id && row.recorded_local_date ? {
+      previousRecorded: {
+        workoutId: row.recorded_workout_id,
+        localDate: row.recorded_local_date,
+        historyHref: `/history/${row.recorded_workout_id}`,
+        weight: row.recorded_weight,
+        weightUnit: loadUnit(row.recorded_weight_unit),
+        reps: row.recorded_reps,
+      },
+    } : {}),
   };
 }
 
@@ -541,6 +565,11 @@ export async function getPreviousComparableSets(
       candidate.source_has_pain_or_limitation,
       candidate.source_correction_count,
       candidate.source_correction_actions,
+      recorded.workout_id AS recorded_workout_id,
+      recorded.local_date AS recorded_local_date,
+      recorded.weight AS recorded_weight,
+      recorded.weight_unit AS recorded_weight_unit,
+      recorded.reps AS recorded_reps,
       (
         SELECT coalesce(jsonb_agg(recent_rest.sample), '[]'::jsonb)
         FROM (
@@ -570,6 +599,22 @@ export async function getPreviousComparableSets(
       ON candidate.current_session_exercise_id =
         current.current_session_exercise_id
      AND candidate.source_rank = 1
+    LEFT JOIN LATERAL (
+      SELECT history.id AS workout_id, history.local_date,
+        recorded_set.weight, recorded_set.weight_unit, recorded_set.reps
+      FROM session_exercises recorded_exercise
+      JOIN workout_sessions history ON history.id = recorded_exercise.session_id
+      JOIN completed_sets recorded_set ON recorded_set.session_exercise_id = recorded_exercise.id
+      WHERE recorded_exercise.exercise_id = current.exercise_id
+        AND history.user_id = ${userId}::uuid
+        AND history.status = 'completed' AND history.archived_at IS NULL
+        AND history.finished_at IS NOT NULL
+        AND history.started_at < current.current_started_at
+        AND NOT recorded_set.is_warmup
+      ORDER BY history.started_at DESC, history.id DESC,
+        recorded_set.set_no DESC, recorded_set.id DESC
+      LIMIT 1
+    ) recorded ON true
     ORDER BY current.request_order, candidate.source_set_no, candidate.source_set_id
   `);
   const rows = resultRows<ComparisonRow>(executed);
@@ -606,6 +651,7 @@ export async function getPreviousComparableSets(
       output[request.sessionExerciseId] = unavailable(
         request.sessionExerciseId,
         "unsupported_current_semantics",
+        first,
       );
       continue;
     }
@@ -619,6 +665,7 @@ export async function getPreviousComparableSets(
       output[request.sessionExerciseId] = unavailable(
         request.sessionExerciseId,
         "load_entry_meaning_unavailable",
+        first,
       );
       continue;
     }
@@ -670,6 +717,7 @@ export async function getPreviousComparableSets(
       output[request.sessionExerciseId] = unavailable(
         request.sessionExerciseId,
         "no_comparable_history",
+        first,
       );
       continue;
     }

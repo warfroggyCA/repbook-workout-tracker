@@ -199,7 +199,7 @@ test("adds a plate-loaded machine with reviewed two-sided geometry", async ({
   await expectNoHorizontalOverflow(page, "machine setup drawer");
   if (testInfo.project.name.includes("iphone")) {
     await expectTouchTarget(
-      drawer.getByRole("button", { name: "Save changes", exact: true }),
+      drawer.getByRole("button", { name: "Use changes in draft", exact: true }),
       "Save changes",
     );
   }
@@ -215,7 +215,7 @@ test("adds a plate-loaded machine with reviewed two-sided geometry", async ({
   });
 
   await drawer
-    .getByRole("button", { name: "Save changes", exact: true })
+    .getByRole("button", { name: "Use changes in draft", exact: true })
     .click();
   await page.getByRole("button", { name: "Review changes", exact: true }).click();
   await expect(page.getByText(name, { exact: false }).first()).toBeVisible();

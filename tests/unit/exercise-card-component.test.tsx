@@ -986,17 +986,15 @@ describe("ExerciseCard", () => {
     expect(html).not.toContain(">Barbell Squat · Set 1<");
     expect(html).toContain("Total load");
     expect(html).toContain("Per side: 25 lb");
-    expect(html).toContain("Enter exact RPE instead");
+    expect(html).toContain("Exact RPE / RIR");
     expect(html).toContain("Easy — RPE 6");
     expect(html).toContain("OK — RPE 7");
     expect(html).toContain("Hard — RPE 8");
     expect(html).toContain("Grind — RPE 9.5");
-    expect(html).toContain('role="group" aria-label="Effort shortcuts"');
-    for (const shortcut of ["Easy", "OK", "Hard", "Grind"]) {
-      expect(html).toMatch(
-        new RegExp(`aria-label="${shortcut}[^\"]*" aria-pressed="false"`),
-      );
-    }
+    expect(html).toContain("RPE · optional");
+    expect(html.match(/type="radio"/g)).toHaveLength(5);
+    expect(html).toContain("Not recorded; Effort unknown");
+    expect(html.indexOf('data-testid="set-effort-input"')).toBeLessThan(html.indexOf('data-testid="active-exercise-details"'));
     expect(html).toContain("Current action");
     expect(html).toContain(
       "Previous · 2026-08-03 · Latest: Version restored · 2 changes",
@@ -1011,8 +1009,8 @@ describe("ExerciseCard", () => {
     );
     expect(html).toContain('target="_blank"');
     expect(html).toContain("Performed measure");
-    expect(html).toContain("Optional effort and set note");
-    expect(html).toContain("RIR (0–10)");
+    expect(html).toContain("Additional set details");
+    expect(html).not.toContain("RIR (0–10)");
     expect(html).toContain("Technique issue");
     expect(html).toContain("What limited this set?");
     expect(html).toContain("No flag means unknown, not “no pain.”");

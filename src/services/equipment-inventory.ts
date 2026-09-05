@@ -61,6 +61,7 @@ export function inventoryRevisionExpression(userId: string) {
 
 export type LoadedInventoryDefinition = {
   itemId: string;
+  definitionId?: string;
   label: string;
   description: string | null;
 };
@@ -84,6 +85,7 @@ type RawItemRow = {
   label: string;
   quantity: number;
   attrs: EquipmentAttrs;
+  definition_id: string | null;
   definition_label: string | null;
   definition_description: string | null;
 };
@@ -117,6 +119,7 @@ export async function loadEquipmentInventoryDocument(
           jsonb_build_object(
             'id', item.id, 'type', item.type, 'label', item.label,
             'quantity', item.quantity, 'attrs', item.attrs,
+            'definition_id', definition.id,
             'definition_label', definition.label,
             'definition_description', definition.description
           )
@@ -292,6 +295,7 @@ export async function loadEquipmentInventoryDocument(
       .filter((item) => item.definition_label != null)
       .map((item) => ({
         itemId: item.id,
+        ...(item.definition_id ? { definitionId: item.definition_id } : {}),
         label: item.definition_label as string,
         description: item.definition_description,
       })),

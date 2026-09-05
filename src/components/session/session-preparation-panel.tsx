@@ -1,6 +1,8 @@
 "use client";
 
 import type { MouseEventHandler } from "react";
+import Link from "next/link";
+import { equipmentManagementHref } from "@/lib/equipment-management-navigation";
 import {
   CircleCheck,
   CircleHelp,
@@ -16,6 +18,7 @@ const CONFIRMED_ROWS_BEFORE_DISCLOSURE = 1;
 
 type Props = {
   projection: SessionPreparationEquipmentProjection;
+  sessionId?: string;
   hasAcknowledgedWork: boolean;
   continueTargetId: string;
   continueLabel?: string;
@@ -64,11 +67,13 @@ function RequirementRows({
   label,
   compact = false,
   preview = false,
+  sessionId,
 }: {
   rows: SessionPreparationRequirementRow[];
   label: string;
   compact?: boolean;
   preview?: boolean;
+  sessionId?: string;
 }) {
   if (rows.length === 0) return null;
   return (
@@ -105,6 +110,12 @@ function RequirementRows({
           <span className={compact ? "mt-1 block" : undefined}>
             <RequirementStatus row={row} />
           </span>
+          {row.classification === "attention" && sessionId && (
+            <Link className="inline-flex min-h-11 basis-full items-center text-sm underline" href={equipmentManagementHref({
+              equipmentType: row.equipmentType, equipmentDefinitionId: row.equipmentDefinitionId,
+              returnTo: `/session/${sessionId}`,
+            })}>Review {row.label} setup</Link>
+          )}
         </li>
       ))}
     </ul>
@@ -148,6 +159,7 @@ function projectionCountText(
 
 function PreparationContents({
   projection,
+  sessionId,
   continueTargetId,
   continueLabel,
   onContinue,
@@ -193,7 +205,7 @@ function PreparationContents({
           <p className="text-xs font-semibold uppercase tracking-wide text-foreground">
             Needs attention
           </p>
-          <RequirementRows rows={attentionRows} label="Equipment needing attention" />
+          <RequirementRows rows={attentionRows} label="Equipment needing attention" sessionId={sessionId} />
         </div>
       ) : null}
 
@@ -273,6 +285,7 @@ function preparationLeadText(
 
 export function SessionPreparationPanel({
   projection,
+  sessionId,
   hasAcknowledgedWork,
   continueTargetId,
   continueLabel = "Go to warm-up",
@@ -331,6 +344,7 @@ export function SessionPreparationPanel({
           </summary>
           <div className="border-t p-3">
             <PreparationContents
+              sessionId={sessionId}
               projection={projection}
               continueTargetId={continueTargetId}
               continueLabel={continueLabel}
@@ -388,6 +402,7 @@ export function SessionPreparationPanel({
         </summary>
         <div className="border-t p-3">
           <PreparationContents
+            sessionId={sessionId}
             projection={projection}
             continueTargetId={continueTargetId}
             continueLabel={continueLabel}

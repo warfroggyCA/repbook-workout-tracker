@@ -3,6 +3,7 @@ import {
   acknowledgeRestTimerSource,
   clearRestTimer,
   clearRestTimerForIdentity,
+  clearRestTimerForSupersedingSourceClientKey,
   clearRestTimerForExactSourceClientKey,
   claimRestCueMilestones,
   adjustStoredRestTimer,
@@ -49,6 +50,19 @@ class MemoryStorage implements RestTimerStorage {
 
 describe("durable rest timer", () => {
   afterEach(() => vi.unstubAllGlobals());
+  it("preserves an explicitly added rest against an older set acknowledgement", async () => {
+    const storage = new MemoryStorage();
+    const extra = createRestTimer({ ownerId, sessionId, generationId, now: 1_000, seconds: 90 })!;
+    await writeRestTimer(storage, extra);
+    expect(await clearRestTimerForSupersedingSourceClientKey(storage,
+      { ownerId, sessionId }, clientKey, [generationId])).toBe("stale");
+    expect(readRestTimer(storage, { ownerId, sessionId }, 5_000)).toMatchObject({
+      timer: { generationId, startedAt: 1_000, endsAt: 91_000, sourceCompletedSetId: null },
+    });
+    expect(await clearRestTimerForSupersedingSourceClientKey(storage,
+      { ownerId, sessionId }, occurrenceId, [])).toBe("cleared");
+  });
+
   it("creates a strict absolute timer and derives remaining time", () => {
     const timer = createRestTimer({ ownerId, sessionId, generationId, now: 1_000, seconds: 90 });
     expect(timer).toMatchObject({

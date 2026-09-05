@@ -803,8 +803,10 @@ export function workoutRestIntentReceiptSupersedesEntry(
 
 /**
  * Advances the latest acknowledged rest decision monotonically. Callers must
- * not record an unsent command: retained intent already lives in the outbox,
- * while this receipt must survive only confirmed acknowledgement.
+ * not record an unsent set command: retained intent already lives in the outbox.
+ * A deliberate device-only rest (such as Add extra set) is acknowledged locally
+ * and may use its stable timer generation as the receipt identity. This receipt
+ * never represents or creates a performed set.
  */
 export function recordWorkoutRestIntentReceipt(
   storage: WorkoutSetOutboxStorage,

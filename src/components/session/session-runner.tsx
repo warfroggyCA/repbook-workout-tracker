@@ -87,6 +87,7 @@ import {
   enqueueWorkoutSet,
   discardWorkoutSetDeviceCopy,
   getWorkoutRestIntentReceipt,
+  recordWorkoutRestIntentReceipt,
   getWorkoutSetOutboxServerSnapshot,
   getWorkoutSetOutboxSnapshot,
   laterWorkoutSetRestIntentClientKeys,
@@ -168,7 +169,7 @@ import {
   planRestCueTransition,
   playRestTonePattern,
   prepareRestAudioContext,
-  primeRestAudioContext,
+  resumeRestAudioContext,
   readRestAlertPreference,
   REST_COMPLETION_TONE_PATTERN,
   REST_COUNTDOWN_TICK_PATTERN,
@@ -1575,6 +1576,18 @@ export function SessionRunner(props: SessionRunnerProps) {
             !locallyRecordedOccurrenceIds.has(action.occurrenceId),
         ) ?? null
       : null;
+  const extraRestOccurrence = timer?.sourceOccurrenceId == null
+    ? occurrences.find((occurrence) => occurrence.id === timer?.generationId &&
+        occurrence.kind === "working_set" && occurrence.origin === "ad_hoc" && occurrence.outcome === "pending")
+    : undefined;
+  const extraRestExerciseId = extraRestOccurrence?.sessionExerciseId ??
+    (timer?.generationId === appendRecoveryMarker?.occurrenceId ? appendRecoveryMarker?.sessionExerciseId : undefined);
+  const extraRestExercise = extraRestExerciseId
+    ? exercises.find((exercise) => exercise.id === extraRestExerciseId)
+    : undefined;
+  const extraRestDestinationLabel = extraRestExercise
+    ? `${extraRestExercise.name}, extra set ${(extraRestOccurrence?.kindOrdinal ?? (appendRecoveryMarker?.expectedSetNo ?? 1) - 1) + 1}`
+    : null;
   const currentActionId = actionIdentity(guidance.currentAction);
   const currentActionKind = guidance.currentAction?.kind ?? null;
   const currentActionSequenceIdx = guidance.currentAction?.sequenceIdx ?? null;
@@ -1605,6 +1618,7 @@ export function SessionRunner(props: SessionRunnerProps) {
     ) {
       return;
     }
+    if (extraRestExerciseId && window.location.hash === `#exercise-${extraRestExerciseId}`) return;
     const disclosureGeneration = exerciseDisclosureGenerationRef.current;
     const frame = window.requestAnimationFrame(() => {
       if (
@@ -1614,6 +1628,7 @@ export function SessionRunner(props: SessionRunnerProps) {
     });
     return () => window.cancelAnimationFrame(frame);
   }, [
+    extraRestExerciseId,
     currentActionKind,
     currentActionSessionExerciseId,
     skipRecoveryExerciseId,
@@ -1692,7 +1707,7 @@ export function SessionRunner(props: SessionRunnerProps) {
       window.location.hash.slice(1),
     );
     const explicitExerciseOwnsRestFocus =
-      currentActionKind === "rest" &&
+      (currentActionKind === "rest" || extraRestExerciseId != null) &&
       linkedExerciseTarget.startsWith("exercise-") &&
       lastConsumedWorkoutHashRef.current === linkedExerciseTarget;
     if (skipRecoveryExerciseId != null) {
@@ -1827,6 +1842,7 @@ export function SessionRunner(props: SessionRunnerProps) {
       window.cancelAnimationFrame(focusFrame);
     };
   }, [
+    extraRestExerciseId,
     currentActionId,
     currentActionKind,
     currentActionSequenceIdx,
@@ -2750,7 +2766,7 @@ export function SessionRunner(props: SessionRunnerProps) {
     await refreshRestTimer();
   }, [props.ownerId, props.sessionId, refreshRestTimer]);
 
-  function primeRestCue() {
+  const primeRestCue = useCallback(() => {
     const preference = readRestAlertPreference(window.localStorage);
     if (!requestedRestCueChannels(preference).sound) {
       setRestSoundState("not_requested");
@@ -2775,15 +2791,10 @@ export function SessionRunner(props: SessionRunnerProps) {
       if (context.state === "running") {
         setRestSoundState("requested");
       } else {
-        void context.resume().then(() => {
-          // Prime again after a successful WebKit resume. This matters when a
-          // prior timer left the context suspended or interrupted.
-          primeRestAudioContext(context);
-          audioCueBlockedRef.current = false;
-          setRestSoundState("requested");
-        }).catch(() => {
-          audioCueBlockedRef.current = true;
-          setRestSoundState("blocked");
+        void resumeRestAudioContext(context).then((running) => {
+          if (audioContextRef.current !== context) return;
+          audioCueBlockedRef.current = !running;
+          setRestSoundState(running ? "requested" : "blocked");
         });
       }
     } catch {
@@ -2791,7 +2802,7 @@ export function SessionRunner(props: SessionRunnerProps) {
       setRestSoundState("blocked");
       // The persistent visual timer remains authoritative when audio is blocked.
     }
-  }
+  }, []);
 
   function openCoach(
     sessionExerciseId: string | null,
@@ -2907,25 +2918,19 @@ export function SessionRunner(props: SessionRunnerProps) {
     });
   }, []);
 
+  const ensureRestAudio = useCallback(async (preference: RestAlertPreference) => {
+    if (!requestedRestCueChannels(preference).sound) return;
+    const context = audioContextRef.current;
+    const running = await resumeRestAudioContext(context);
+    if (audioContextRef.current !== context) return;
+    audioCueBlockedRef.current = !running;
+    setRestSoundState(running ? "requested" : "blocked");
+  }, []);
+
   useEffect(() => {
     const resumeAudio = () => {
-      if (document.visibilityState !== "visible") return;
-      const context = audioContextRef.current;
-      if (context?.state === "closed") {
-        setRestSoundState("blocked");
-      } else if (
-        context != null &&
-        (context.state === "suspended" ||
-          (context.state as string) === "interrupted")
-      ) {
-        void context.resume().then(() => {
-          primeRestAudioContext(context);
-          audioCueBlockedRef.current = false;
-          setRestSoundState("requested");
-        }).catch(() => {
-          audioCueBlockedRef.current = true;
-          setRestSoundState("blocked");
-        });
+      if (document.visibilityState === "visible") {
+        void ensureRestAudio(readRestAlertPreference(window.localStorage));
       }
     };
     document.addEventListener("visibilitychange", resumeAudio);
@@ -2936,7 +2941,7 @@ export function SessionRunner(props: SessionRunnerProps) {
       window.removeEventListener("pageshow", resumeAudio);
       window.removeEventListener("focus", resumeAudio);
     };
-  }, []);
+  }, [ensureRestAudio]);
 
   useEffect(() => {
     if (
@@ -2949,13 +2954,10 @@ export function SessionRunner(props: SessionRunnerProps) {
       return;
     }
     const preference = readRestAlertPreference(window.localStorage);
+    let disposed = false;
     void (async () => {
-      const context = audioContextRef.current;
-      if (context?.state === "suspended") {
-        await context.resume().catch(() => {
-          audioCueBlockedRef.current = true;
-        });
-      }
+      await ensureRestAudio(preference);
+      if (disposed || document.visibilityState !== "visible") return;
       const result = await deliverMissedRestCompletionCue(
         window.localStorage,
         { ownerId: props.ownerId, sessionId: props.sessionId },
@@ -2964,7 +2966,9 @@ export function SessionRunner(props: SessionRunnerProps) {
       );
       if (result.timer) setTimer(result.timer);
     })();
+    return () => { disposed = true; };
   }, [
+    ensureRestAudio,
     props.ownerId,
     props.sessionId,
     requestRestCue,
@@ -3007,6 +3011,14 @@ export function SessionRunner(props: SessionRunnerProps) {
         tenSecondMilestoneDue: plan.milestonesToAttempt.includes("10"),
       });
       try {
+        if (foreground && audioContextRef.current?.state !== "running") {
+          await ensureRestAudio(preference);
+          if (disposed) return;
+          if (document.visibilityState !== "visible") {
+            await refreshRestTimer();
+            return;
+          }
+        }
         if (countdownCueKey != null) {
           const context = audioContextRef.current;
           if (context?.state === "running") {
@@ -3094,6 +3106,7 @@ export function SessionRunner(props: SessionRunnerProps) {
       window.removeEventListener("focus", onFocus);
     };
   }, [
+    ensureRestAudio,
     props.ownerId,
     props.sessionId,
     refreshRestTimer,
@@ -3363,11 +3376,14 @@ export function SessionRunner(props: SessionRunnerProps) {
     });
   }
 
+  const appendInFlightRef = useRef(false);
   const handleAppendSet = useCallback(async (
     sessionExerciseId: string,
     occurrenceId: string,
     expectedSetNo: number,
   ) => {
+    if (appendInFlightRef.current) return null;
+    const tappedAt = Date.now();
     const retained = readAppendSetRecovery(
       window.localStorage,
       appendRecoveryKey,
@@ -3407,11 +3423,50 @@ export function SessionRunner(props: SessionRunnerProps) {
       return null;
     }
     setAppendRecoveryMarker(command);
+    appendInFlightRef.current = true;
     try {
+      // This is a deliberate device rest action, not a performed set. Its
+      // generation is the retained append identity; replay never restarts it.
+      if (retained == null) {
+        // The user's extra-set editor owns focus while its rest begins.
+        exerciseDisclosureGenerationRef.current += 1;
+        const focusTarget = `exercise-${sessionExerciseId}`;
+        lastConsumedWorkoutHashRef.current = focusTarget;
+        window.history.replaceState(window.history.state, "", `${window.location.pathname}${window.location.search}#${focusTarget}`);
+        setExpandedId(sessionExerciseId);
+        const preceding = occurrences.find((candidate) =>
+          candidate.sessionExerciseId === sessionExerciseId &&
+          candidate.kind === "working_set" &&
+          candidate.kindOrdinal === expectedSetNo - 2,
+        );
+        const exercise = exercises.find((candidate) => candidate.id === sessionExerciseId);
+        const seconds = preceding?.plannedRestSec ?? exercise?.restSec ?? 0;
+        if (preceding?.outcome === "completed" && seconds > 0) {
+          primeRestCue();
+          const extraRest = createRestTimer({
+            ownerId: props.ownerId, sessionId: props.sessionId,
+            generationId: command.occurrenceId, now: tappedAt, seconds,
+          });
+          const stored = extraRest != null && await withOutboxLock(async () => {
+            const receipt = recordWorkoutRestIntentReceipt(window.localStorage, {
+              ownerId: props.ownerId, sessionId: props.sessionId,
+              clientKey: command.occurrenceId,
+              createdAtISO: new Date(tappedAt).toISOString(), restAfterSec: seconds,
+            });
+            return receipt.ok && (receipt.receipt.clientKey !== command.occurrenceId ||
+              await writeRestTimer(window.localStorage, extraRest));
+          });
+          if (!stored) toast.error("The extra set will be requested, but its rest timer could not be stored on this device.");
+          await refreshRestTimer();
+        }
+      }
       const result = await withDocumentActionDeadline(
         appendWorkoutSet(command),
       );
       if (!result.ok) {
+        await clearRestTimerForIdentity(window.localStorage,
+          { ownerId: props.ownerId, sessionId: props.sessionId }, command.occurrenceId);
+        await refreshRestTimer();
         removeAppendSetRecovery(
           window.localStorage,
           appendRecoveryKey,
@@ -3474,8 +3529,10 @@ export function SessionRunner(props: SessionRunnerProps) {
         );
       }
       return null;
+    } finally {
+      appendInFlightRef.current = false;
     }
-  }, [appendRecoveryKey]);
+  }, [appendRecoveryKey, exercises, occurrences, primeRestCue, props.ownerId, props.sessionId, refreshRestTimer]);
 
   useEffect(() => {
     const frame = window.requestAnimationFrame(() => {
@@ -4689,6 +4746,7 @@ export function SessionRunner(props: SessionRunnerProps) {
       activeWorkoutViewModel.displayMode !== "rest" &&
       activeWorkoutViewModel.equipmentAttention.length > 0 ? (
       <SessionPreparationPanel
+        sessionId={props.sessionId}
         projection={sessionPreparation}
         hasAcknowledgedWork={hasWorkoutFlowStarted}
         continueTargetId={preparationTargetId}
@@ -5222,6 +5280,7 @@ export function SessionRunner(props: SessionRunnerProps) {
           activeWorkoutViewModel.equipmentAttention.length > 0 &&
           currentOccurrence?.sessionExerciseId === exercise.id ? (
             <SessionPreparationPanel
+              sessionId={props.sessionId}
               projection={sessionPreparation}
               hasAcknowledgedWork={hasWorkoutFlowStarted}
               continueTargetId={preparationTargetId}
@@ -5755,8 +5814,15 @@ export function SessionRunner(props: SessionRunnerProps) {
           restRemainingSec={restRemainingSec}
           restAlertPreference={restAlertPreference}
           restSoundState={restSoundState}
+          onEnableRestSound={() => {
+            primeRestCue();
+            const preference = readRestAlertPreference(window.localStorage);
+            void ensureRestAudio(preference).then(() => {
+              if (document.visibilityState === "visible") requestRestCue("10", preference);
+            });
+          }}
           restDestinationLabel={
-            activeWorkoutViewModel.rest?.destinationLabel ?? null
+            extraRestDestinationLabel ?? activeWorkoutViewModel.rest?.destinationLabel ?? null
           }
           restResumeLabel={
             restResumeAction == null

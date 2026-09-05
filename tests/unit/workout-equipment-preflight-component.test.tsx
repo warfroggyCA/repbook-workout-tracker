@@ -38,7 +38,10 @@ describe("WorkoutEquipmentPreflight", () => {
     );
 
     expect(html).toContain('data-testid="workout-equipment-preflight"');
-    expect(html).toContain('href="/settings/equipment"');
+    expect(html).toContain('href="/settings/equipment?type=dumbbell&amp;returnTo=%2Ftoday"');
+    expect(html).toContain("dumbbells");
+    expect(html).toContain("Unavailable in saved equipment");
+    expect(html).toContain("Used for Synthetic press");
     expect(html).toContain("1 equipment item needs attention");
     expect(html).toContain("this does not block the workout");
     expect(html).not.toContain("disabled");

@@ -59,7 +59,7 @@ import {
 } from "@/app/actions/equipment";
 import type { InventoryChangePreview } from "@/services/equipment-inventory";
 import { MAX_STORED_LOAD, type LoadUnit } from "@/lib/units";
-import type { EquipmentLoadProfile } from "@/lib/equipment-load-profile-contract";
+import { equipmentLoadProfileSchema, type EquipmentLoadProfile } from "@/lib/equipment-load-profile-contract";
 import {
   canEditExactEquipmentProfile,
   MachineLoadingMethodEditor,
@@ -83,6 +83,8 @@ export type EquipmentManagerProps = {
   /** Fixed continuation used when this editor is embedded in Review setup. */
   reviewNextHref?: string;
   cancelHref?: string;
+  attentionItemIds?: string[];
+  attentionRequested?: boolean;
 };
 
 function withoutClientKey<T extends { clientKey: string }>(
@@ -145,6 +147,8 @@ export function EquipmentManager({
   ambiguousBarTypes,
   reviewNextHref,
   cancelHref = "/settings",
+  attentionItemIds = [],
+  attentionRequested = false,
 }: EquipmentManagerProps) {
   const router = useRouter();
   const compatibilityItems = useMemo(
@@ -174,7 +178,11 @@ export function EquipmentManager({
   );
   const [removedBars, setRemovedBars] = useState<DraftBar[]>([]);
   const [loadProfiles, setLoadProfiles] = useState(() => initialDocument.loadProfiles ?? []);
-  const [editing, setEditing] = useState<EditingTarget>(null);
+  const [editing, setEditing] = useState<EditingTarget>(() => {
+    const matching = initialDocument.items.filter((item) => item.id != null && attentionItemIds.includes(item.id));
+    return matching.length === 1 ? { kind: "item", clientKey: matching[0].id! } : null;
+  });
+  const [stagedItemMessage, setStagedItemMessage] = useState<string | null>(null);
   const [phase, setPhase] = useState<"editing" | "review">("editing");
   const [preview, setPreview] = useState<InventoryChangePreview | null>(null);
   const [issues, setIssues] = useState<InventoryValidationIssue[]>([]);
@@ -508,7 +516,7 @@ export function EquipmentManager({
         );
       } catch {
         setError(
-          "The inventory save could not be reached. Nothing changed, and your draft is still here so you can try again."
+          "The inventory save could not be confirmed. Your draft is still here. Review the current inventory before retrying; the save may have completed."
         );
         return;
       }
@@ -600,6 +608,19 @@ export function EquipmentManager({
         <Plus className="size-4" /> Add equipment
       </Button>
 
+      {attentionRequested && attentionItemIds.length === 0 && (
+        <p role="status" className="rounded-lg border border-amber-500/50 p-3 text-sm">No saved item matches this equipment requirement. Add it if you own it, or return to the workout to replace or skip the exercise.</p>
+      )}
+      {attentionItemIds.length > 0 && (
+        <section aria-label="Equipment to review" className="rounded-xl border border-amber-500/50 p-3">
+          <h2 className="text-sm font-semibold">Equipment to review</h2>
+          <p className="text-xs text-muted-foreground">Check these saved items against the requirement shown in your workout.</p>
+          {items.filter((item) => item.id != null && attentionItemIds.includes(item.id)).map((item) => (
+            <Button key={item.clientKey} variant="outline" className="mt-2 min-h-11" onClick={() => setEditing({ kind: "item", clientKey: item.clientKey })}>Review {item.label}</Button>
+          ))}
+        </section>
+      )}
+      {stagedItemMessage && <p role="status" className="rounded-lg border bg-muted/20 p-3 text-sm">{stagedItemMessage} <Button variant="outline" className="mt-2 min-h-11" disabled={pending} onClick={startReview}>Review and save inventory</Button></p>}
       {staleConflict && (
         <div
           role="alertdialog"
@@ -866,6 +887,7 @@ export function EquipmentManager({
               onSave={(next, bar, profile, compatibleCableStationIds) => {
                 commitItemEdit(next, bar, profile, compatibleCableStationIds);
                 setEditing(null);
+                setStagedItemMessage(`${next.label} changes are in your draft. Review and confirm to save them.`);
               }}
               onCancel={() => setEditing(null)}
               onRemove={() => {
@@ -1077,6 +1099,9 @@ function ItemDrawerBody({
   const [draftCompatibleCableStationIds, setDraftCompatibleCableStationIds] = useState(
     compatibleCableStationIds,
   );
+  const profileValidation = draftProfile == null ? null : equipmentLoadProfileSchema.safeParse(draftProfile);
+  const profileIssues = profileValidation?.success === false ? profileValidation.error.issues : [];
+  const profileIssueId = `equipment-${draftItem.clientKey}-profile-issues`;
   const itemBarType = barTypeForEquipmentItem(draftItem.type);
   const isHandheld =
     draftItem.type === "dumbbell" || draftItem.type === "kettlebell";
@@ -1138,6 +1163,12 @@ function ItemDrawerBody({
           >
             {handheldSetupIssue}
           </p>
+        )}
+        {profileIssues.length > 0 && (
+          <div id={profileIssueId} role="alert" className="my-3 rounded-lg border border-destructive/40 p-3 text-sm">
+            <p className="font-medium">Complete these fields before saving:</p>
+            <ul className="list-inside list-disc">{profileIssues.map((issue, index) => <li key={index}>{issue.message}</li>)}</ul>
+          </div>
         )}
         {["machine", "smith_machine", "cable"].includes(draftItem.type) && (
           <MachineLoadingMethodEditor
@@ -1216,8 +1247,8 @@ function ItemDrawerBody({
         <Button
           type="button"
           className="flex-1"
-          disabled={handheldSetupIssue != null}
-          aria-describedby={handheldSetupIssue ? handheldSetupIssueId : undefined}
+          disabled={handheldSetupIssue != null || profileIssues.length > 0}
+          aria-describedby={profileIssues.length ? profileIssueId : handheldSetupIssue ? handheldSetupIssueId : undefined}
           onClick={() =>
             onSave(
               { ...draftItem, label: draftItem.label },
@@ -1227,7 +1258,7 @@ function ItemDrawerBody({
             )
           }
         >
-          Save changes
+          Use changes in draft
         </Button>
       </SheetFooter>
     </>

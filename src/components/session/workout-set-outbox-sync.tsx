@@ -532,9 +532,8 @@ export async function syncNextEntry(
                   acknowledged.status === "unchanged" ||
                   acknowledged.status === "stale" ||
                   (acknowledged.status === "unrelated" &&
-                    acknowledged.timer.sourceClientKey != null &&
                     laterRestIntentClientKeys.includes(
-                      acknowledged.timer.sourceClientKey,
+                      acknowledged.timer.sourceClientKey ?? acknowledged.timer.generationId,
                     ))
                 ) {
                   // Only a timer proven by the durable command order to belong
@@ -544,7 +543,7 @@ export async function syncNextEntry(
                   const nextRest = createRestTimer({
                     ownerId: entry.ownerId,
                     sessionId: entry.sessionId,
-                    now: Date.now(),
+                    now: Date.parse(entry.createdAtISO),
                     seconds: entry.restAfterSec,
                     sourceSessionExerciseId: entry.sessionExerciseId,
                     sourceOccurrenceId: result.occurrenceId,

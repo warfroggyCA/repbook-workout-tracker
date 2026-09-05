@@ -960,7 +960,7 @@ test("fits the complete primary logging action at 390x844 with keyboard disclosu
       }
       if (snapshot.state === "unavailable") {
         expect(snapshot.sourceCount).toBe(0);
-        expect(snapshot.text).toBe("No comparable set recorded");
+        expect(snapshot.text).toBe("No earlier set found for this exact exercise");
         terminalComparison = { state: "unavailable" };
         return;
       }

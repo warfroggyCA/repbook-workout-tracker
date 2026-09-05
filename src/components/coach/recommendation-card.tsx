@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useState, useTransition } from "react";
+import { useId, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import {
@@ -10,6 +10,13 @@ import {
   rejectRecommendation,
   resumeRecommendation,
 } from "@/app/actions/recommendations";
+import {
+  deploymentRecoveryRequired,
+  isDocumentActionTimeout,
+  reportDeploymentMismatch,
+  reportDocumentActionTimeout,
+  withDocumentActionDeadline,
+} from "@/lib/deployment-recovery";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -63,7 +70,10 @@ export function RecommendationCard({
 }) {
   const router = useRouter();
   const titleId = useId();
-  const [pending, startTransition] = useTransition();
+  const [transitionPending, startTransition] = useTransition();
+  const [needsReload, setNeedsReload] = useState(false);
+  const decisionInFlight = useRef(false);
+  const pending = transitionPending || needsReload;
   const [editedLoad, setEditedLoad] = useState<number | null>(rec.toLoad);
   const [revisitOn, setRevisitOn] = useState(rec.revisitOn ?? "");
   const [deferReason, setDeferReason] = useState(rec.deferReason ?? "");
@@ -88,69 +98,85 @@ export function RecommendationCard({
           : "Unsupported";
 
   function decide(action: "approve" | "reject" | "dismiss" | "defer" | "resume") {
+    if (decisionInFlight.current || needsReload) return;
+    if (deploymentRecoveryRequired()) {
+      setNeedsReload(true);
+      setError("Reload Review to check the saved decision before trying again.");
+      return;
+    }
+    decisionInFlight.current = true;
     setError(null);
     startTransition(async () => {
-      if (action === "approve") {
-        const result = await approveRecommendation({
-          recommendationId: rec.id,
-          expectedReviewRevision: rec.reviewRevision,
-          expectedDeferRevision: rec.deferRevision,
-          editedToLoad:
-            isLoadChange && editedLoad != null ? editedLoad : undefined,
-          editedRequestedOutcome:
-            isExternal && externalOutcome.trim()
-              ? externalOutcome.trim()
-              : undefined,
-        });
-        if (!result.ok) {
-          setError(result.reason);
-          return;
+      try {
+        if (action === "approve") {
+          const result = await withDocumentActionDeadline(approveRecommendation({
+            recommendationId: rec.id,
+            expectedReviewRevision: rec.reviewRevision,
+            expectedDeferRevision: rec.deferRevision,
+            editedToLoad:
+              isLoadChange && editedLoad != null ? editedLoad : undefined,
+            editedRequestedOutcome:
+              isExternal && externalOutcome.trim()
+                ? externalOutcome.trim()
+                : undefined,
+          }));
+          if (!result.ok) {
+            setError(result.reason);
+            return;
+          }
+        } else if (action === "reject") {
+          const result = await withDocumentActionDeadline(rejectRecommendation({
+            recommendationId: rec.id,
+            expectedReviewRevision: rec.reviewRevision,
+            expectedDeferRevision: rec.deferRevision,
+          }));
+          if (!result.ok) {
+            setError(result.reason);
+            return;
+          }
+        } else if (action === "dismiss") {
+          const result = await withDocumentActionDeadline(dismissRecommendationNotice({
+            recommendationId: rec.id,
+          }));
+          if (!result.ok) {
+            router.refresh();
+            setError(result.reason);
+            return;
+          }
+        } else if (action === "defer") {
+          const result = await withDocumentActionDeadline(deferRecommendation({
+            recommendationId: rec.id,
+            expectedReviewRevision: rec.reviewRevision,
+            expectedDeferRevision: rec.deferRevision,
+            revisitOn: revisitOn || undefined,
+            reason: deferReason || undefined,
+          }));
+          if (!result.ok) {
+            setError(result.reason);
+            return;
+          }
+        } else {
+          const result = await withDocumentActionDeadline(resumeRecommendation({
+            recommendationId: rec.id,
+            expectedReviewRevision: rec.reviewRevision,
+            expectedDeferRevision: rec.deferRevision,
+          }));
+          if (!result.ok) {
+            setError(result.reason);
+            return;
+          }
+          setRevisitOn("");
+          setDeferReason("");
         }
-      } else if (action === "reject") {
-        const result = await rejectRecommendation({
-          recommendationId: rec.id,
-          expectedReviewRevision: rec.reviewRevision,
-          expectedDeferRevision: rec.deferRevision,
-        });
-        if (!result.ok) {
-          setError(result.reason);
-          return;
-        }
-      } else if (action === "dismiss") {
-        const result = await dismissRecommendationNotice({
-          recommendationId: rec.id,
-        });
-        if (!result.ok) {
-          router.refresh();
-          setError(result.reason);
-          return;
-        }
-      } else if (action === "defer") {
-        const result = await deferRecommendation({
-          recommendationId: rec.id,
-          expectedReviewRevision: rec.reviewRevision,
-          expectedDeferRevision: rec.deferRevision,
-          revisitOn: revisitOn || undefined,
-          reason: deferReason || undefined,
-        });
-        if (!result.ok) {
-          setError(result.reason);
-          return;
-        }
-      } else {
-        const result = await resumeRecommendation({
-          recommendationId: rec.id,
-          expectedReviewRevision: rec.reviewRevision,
-          expectedDeferRevision: rec.deferRevision,
-        });
-        if (!result.ok) {
-          setError(result.reason);
-          return;
-        }
-        setRevisitOn("");
-        setDeferReason("");
+        router.refresh();
+      } catch (cause) {
+        if (isDocumentActionTimeout(cause)) reportDocumentActionTimeout();
+        else reportDeploymentMismatch(cause);
+        setNeedsReload(true);
+        setError("The decision has not been confirmed. It may still have been saved. Reload Review to check the result before making another decision.");
+      } finally {
+        decisionInFlight.current = false;
       }
-      router.refresh();
     });
   }
 
@@ -355,6 +381,14 @@ export function RecommendationCard({
         </div>
       )}
 
+      {transitionPending && (
+        <p role="status" className="mt-2 text-sm">Saving your decision and checking the current Program…</p>
+      )}
+      {needsReload && (
+        <Button className="mt-2 min-h-11 w-full" variant="outline" onClick={() => window.location.reload()}>
+          Reload and check decision
+        </Button>
+      )}
       {error && (
         <p
           role="alert"
@@ -365,6 +399,13 @@ export function RecommendationCard({
         </p>
       )}
 
+      {error && !needsReload && (
+        <div className="mt-2 flex flex-wrap gap-4 text-sm">
+          <Link href="/program" className="underline">Review Program</Link>
+          <Link href="/settings" className="underline">Settings and Data recovery</Link>
+          <Button variant="outline" size="sm" onClick={() => router.refresh()}>Refresh Review</Button>
+        </div>
+      )}
       {!isHold && deferred && (
         <div className="ui-state mt-3 p-3 text-sm" data-ui-state="retained">
           <p className="font-medium">Review deferred</p>

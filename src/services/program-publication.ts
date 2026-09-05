@@ -58,11 +58,12 @@ type PublishDocumentInput = {
   recommendation?: RecommendationPublication;
   expectedRecommendationRevision?: number;
   failureAt?: string | null;
+  beforePublish?: () => Promise<boolean>;
 };
 
 export type ProgramPublicationResult =
   | { ok: true; programVersionId: string; versionNo: number }
-  | { ok: false; reason: "not_pending" | "stale" | "invalid" | "conflict" };
+  | { ok: false; reason: "not_pending" | "stale" | "invalid" | "conflict" | "backup_failed"; message?: string };
 
 type PublishableDraft = {
   draft: typeof programDrafts.$inferSelect;
@@ -275,7 +276,14 @@ async function publishDocumentAtomically(
       )
     : null;
   if (publicationPreflight?.findings.some((finding) => finding.severity === "blocking")) {
-    return { ok: false, reason: "invalid" };
+    const blocking = publicationPreflight.findings.filter((finding) => finding.severity === "blocking");
+    return { ok: false, reason: "invalid", message: `The Program needs review before this change can be applied: ${blocking.map((finding) => finding.reason).slice(0, 3).join(" ")}` };
+  }
+
+  // Perform read-only validation before the potentially slow protection step.
+  // The atomic statement below still revalidates live state after protection.
+  if (input.beforePublish && !(await input.beforePublish())) {
+    return { ok: false, reason: "backup_failed" };
   }
 
   const rows = resultRows(await db.execute(sql`
@@ -928,7 +936,8 @@ export async function publishProgramDraft(
 export async function publishRecommendationProgramVersion(
   db: Db,
   userId: string,
-  input: RecommendationPublication
+  input: RecommendationPublication,
+  beforePublish?: () => Promise<boolean>,
 ): Promise<ProgramPublicationResult> {
   const [recommendation, current, program] = await Promise.all([
     db.query.recommendations.findFirst({
@@ -1041,6 +1050,7 @@ export async function publishRecommendationProgramVersion(
       : "Applied an approved recommendation",
     recommendation: input,
     expectedRecommendationRevision: program.recommendationRevision,
+    beforePublish,
     failureAt: input.failureAt,
   });
 }

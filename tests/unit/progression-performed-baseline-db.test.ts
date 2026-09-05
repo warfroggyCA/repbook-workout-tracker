@@ -284,7 +284,7 @@ describe("progression performed baseline", () => {
     ).resolves.toEqual({
       ok: false,
       reason:
-        "The recommendation was not applied because the Program, safety information, equipment, or exercise availability changed. Review the current plan and try again.",
+        "The current Program could not pass publication checks. Review the Program and its equipment or safety notices before trying again.",
     });
 
     await database.db
@@ -305,7 +305,7 @@ describe("progression performed baseline", () => {
     ).resolves.toEqual({
       ok: false,
       reason:
-        "The recommendation was not applied because the Program, safety information, equipment, or exercise availability changed. Review the current plan and try again.",
+        "The current Program could not pass publication checks. Review the Program and its equipment or safety notices before trying again.",
     });
 
     await database.db
@@ -326,7 +326,7 @@ describe("progression performed baseline", () => {
     ).resolves.toEqual({
       ok: false,
       reason:
-        "The recommendation was not applied because the Program, safety information, equipment, or exercise availability changed. Review the current plan and try again.",
+        "The current Program could not pass publication checks. Review the Program and its equipment or safety notices before trying again.",
     });
 
     await database.db

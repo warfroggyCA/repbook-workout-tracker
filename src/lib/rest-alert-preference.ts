@@ -171,6 +171,38 @@ export function prepareRestAudioContext(
   return context;
 }
 
+const pendingAudioResumes = new WeakMap<AudioContext, Promise<boolean>>();
+
+/** Await either suspended or interrupted Web Audio before consuming a cue.
+ * A resolved resume is not proof of a running context. Bound the wait so a
+ * blocked browser cannot hold the visual timer or its cross-tab lock hostage.
+ */
+export function resumeRestAudioContext(context: AudioContext | null, deadlineMs = 1_500): Promise<boolean> {
+  if (context == null || context.state === "closed") return Promise.resolve(false);
+  if (context.state === "running") return Promise.resolve(true);
+  const pending = pendingAudioResumes.get(context);
+  if (pending) return pending;
+  const resumed = (async () => {
+    let timeout: ReturnType<typeof setTimeout> | undefined;
+    try {
+      await Promise.race([
+        context.resume(),
+        new Promise<void>((resolve) => { timeout = setTimeout(resolve, deadlineMs); }),
+      ]);
+      if ((context.state as string) !== "running") return false;
+      primeRestAudioContext(context);
+      return true;
+    } catch {
+      return false;
+    } finally {
+      if (timeout != null) clearTimeout(timeout);
+    }
+  })();
+  pendingAudioResumes.set(context, resumed);
+  void resumed.then(() => pendingAudioResumes.delete(context));
+  return resumed;
+}
+
 export type RestAlertPreferenceStorage = Pick<
   Storage,
   "getItem" | "setItem" | "removeItem"

@@ -89,7 +89,7 @@ async function openPlateDrawer(page: Page) {
 
 async function saveDrawer(drawer: Locator) {
   const save = drawer.getByRole("button", {
-    name: "Save changes",
+    name: /^(Save changes|Use changes in draft)$/,
     exact: true,
   });
   await waitForReactHandler(save);
@@ -166,7 +166,7 @@ test("fixed dumbbells use exact owned weights and explain multi-pair quantity", 
 
   const drawer = page.getByRole("dialog");
   const saveChanges = drawer.getByRole("button", {
-    name: "Save changes",
+    name: /^(Save changes|Use changes in draft)$/,
     exact: true,
   });
   await expect(saveChanges).toBeEnabled();
@@ -470,7 +470,7 @@ test("validation summary links to and focuses the first invalid equipment field"
   const focusedName = page.getByLabel("Name");
   await expect(focusedName).toBeFocused();
   await focusedName.fill("Temporary validation bench");
-  await page.getByRole("button", { name: "Save changes", exact: true }).click();
+  await page.getByRole("button", { name: /^(Save changes|Use changes in draft)$/, exact: true }).click();
   await page.getByRole("button", { name: "Cancel", exact: true }).click();
   await page.getByRole("button", { name: "Discard changes", exact: true }).click();
 });
@@ -891,7 +891,7 @@ test("manager and setup review fit every supported text size at narrow and wide 
     await page.setViewportSize({ width: 390, height: 844 });
     const itemDrawer = await openItemDrawer(page, "Olympic barbell (45 lb)");
     await expectLayoutFits(`${size} item drawer at 390px`);
-    await expect(itemDrawer.getByRole("button", { name: "Save changes" })).toBeVisible();
+    await expect(itemDrawer.getByRole("button", { name: "Use changes in draft" })).toBeVisible();
     await itemDrawer.getByRole("button", { name: "Cancel", exact: true }).click();
 
     const plateDrawer = await openPlateDrawer(page);

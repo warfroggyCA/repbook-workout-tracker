@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { and, eq, inArray, isNull } from "drizzle-orm";
 import {
   adaptationEvents,
@@ -343,6 +343,7 @@ describe("recommendation decisions publish immutable Program versions", () => {
       editedToLoad?: number;
       failureAt?: string;
       checkpoint?: RecommendationCheckpoint;
+      beforePublish?: () => Promise<boolean>;
     } = {}
   ) {
     const fence = await recommendationFence(recommendationId);
@@ -356,7 +357,7 @@ describe("recommendation decisions publish immutable Program versions", () => {
           publishRecommendationProgramVersion(publicationDb, publicationUserId, {
             ...input,
             failureAt: options.failureAt,
-          }),
+          }, options.beforePublish),
       }
     );
   }
@@ -406,6 +407,20 @@ describe("recommendation decisions publish immutable Program versions", () => {
       audits: audits.length,
     };
   }
+
+  it("names backup failure, writes no decision, and safely publishes once on retry", async () => {
+    const recommendation = await createLoadRecommendation();
+    const protection = vi.fn(async () => false);
+    const result = await approve(recommendation, { beforePublish: protection });
+    expect(result).toMatchObject({ ok: false, reason: expect.stringContaining("safety backup") });
+    expect(protection).toHaveBeenCalledTimes(1);
+    expect(await database.db.select().from(userDecisions)).toHaveLength(0);
+    expect(await database.db.select().from(adaptationEvents)).toHaveLength(0);
+    expect(await approve(recommendation, { beforePublish: async () => true })).toEqual({ ok: true });
+    expect(await approve(recommendation, { beforePublish: protection })).toEqual({ ok: true });
+    expect(protection).toHaveBeenCalledTimes(1);
+    expect(await database.db.select().from(userDecisions)).toHaveLength(1);
+  });
 
   it("converges simultaneous approval on one decision and one immutable v2", async () => {
     const recommendationId = await createLoadRecommendation();

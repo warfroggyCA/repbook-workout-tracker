@@ -24,6 +24,7 @@ type Props = {
   restRemainingSec: number | null;
   restAlertPreference?: RestAlertPreference;
   restSoundState?: RestCueChannelOutcome;
+  onEnableRestSound?: () => void;
   restDestinationLabel?: string | null;
   restResumeLabel?: string | null;
   onShowCurrent: () => void;
@@ -62,6 +63,7 @@ export function WorkoutStatusBar({
   restRemainingSec,
   restAlertPreference = "sound",
   restSoundState = "not_requested",
+  onEnableRestSound,
   restDestinationLabel = null,
   restResumeLabel = null,
   onShowCurrent,
@@ -285,6 +287,7 @@ export function WorkoutStatusBar({
             resumeLabel={restResumeLabel}
             onAdjust={onRestAdjust}
             onEnd={onRestSkip}
+            onEnableSound={restSoundState === "blocked" ? onEnableRestSound : undefined}
           />
         ) : null}
 

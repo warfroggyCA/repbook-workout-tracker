@@ -649,7 +649,9 @@ comparable evidence, and performed values keep separate labels.
 The current ledger row is the sole ordinary working-set commit surface and
 reuses the established performed-measure controls and command handlers. Exact
 save or recovery state and the ledger-derived next action follow that surface;
-optional effort, set notes, pain, skip, add-set, prior-set, warm-up-reference,
+RPE is directly available below the performed values as a native radio group.
+Not recorded preserves unknown effort; exact RPE or RIR uses its own small
+disclosure. Set notes, pain, skip, add-set, prior-set, warm-up-reference,
 coaching, and workout-only context remain available after the ordinary path.
 A newly added extra set remains independently editable without displacing the
 planned current occurrence.
@@ -666,8 +668,9 @@ recovery, or historical semantics and adds no schema migration.
 
 ## U02 exception-context contract
 
-Ordinary set completion requires no exception fields. Optional details disclose
-RIR or RPE (never both), one controlled technique issue, one controlled
+Ordinary set completion requires no exception fields. The direct effort control
+records RIR or RPE (never both), and its Not recorded choice clears both.
+Additional details disclose one controlled technique issue, one controlled
 limitation cause, a set note, and an optional pain observation. Missing values
 remain explicit unknowns. Before the set is saved, every optional choice can be
 cleared without affecting the ordinary performed measure.
@@ -1143,6 +1146,14 @@ set provenance remain attached to the projection. The same query retains at
 most 24 non-null recorded-rest samples from the newest eight compatible
 workouts for the pure usual-rest threshold; unsafe rows never enter that sample.
 
+When comparability is unavailable, the same owner-scoped query can also return
+the latest recorded working set for that exact exercise. The active editor
+shows its original load, unit, repetitions, date, and History link separately
+from comparable evidence. This reference never supplies an automatic starting
+load, progression evidence, or rest statistics. It makes a retained legacy or
+incompatible record visible without inventing its missing measurement meaning.
+
+
 The performed-load draft uses one explicit precedence chain: the latest saved
 set in this workout, then the Program target, then the exact previous
 comparable set, otherwise blank. The card labels that source. A delayed
@@ -1290,6 +1301,20 @@ requirements. Legacy, malformed, unsupported, or partially retained evidence
 remains visibly unknown.
 
 Today shows the compact stable-ID-deduplicated equipment preflight before Start.
+Attention rows name the requirement, its current status, and affected exercises.
+Each row links to saved equipment using stable item or definition identity where
+available, then broad type only when no exact identity exists. The equipment
+page resolves these hints against the signed-in owner's inventory and accepts
+only local Today, Review, or workout return routes. A single matched item opens
+its editor; missing matches stay explicit. Workout preparation and incomplete
+exercise setup expose the same repair route.
+
+Machine loading geometry is validated inside its drawer, with missing known
+fields named before the user can stage invalid input. Use changes in draft
+closes the item editor; the visible next action reviews and saves the whole
+inventory atomically. Failure retains the draft and never implies a confirmed
+save. Plate-loaded/stack transitions preserve the physical item's identity.
+
 Once acknowledged work or a retained device set exists, the active workout no
 longer repeats that global inventory panel; exercise-local exact setup remains
 available where it is actionable. The list describes saved inventory coverage,
@@ -1617,3 +1642,33 @@ future. The audit exposed and corrected that last case for the already-live A05
 selective import bridge and the omitted D01 implementation marker. R01 adds no
 schema, migration, writer, runtime log,
 owner-data path, snapshot shape, or recovery-manifest version.
+
+
+## Workout decision and rest recovery
+
+Recommendation approval validates the proposed Program before making its
+protective snapshot, then revalidates current state inside the existing atomic
+publication. Backup failures and known preflight findings retain distinct
+messages. The card shows pending progress and bounds an unconfirmed action to
+15 seconds. A timeout or transport failure requires a document reload to check
+the saved outcome before another decision; it does not claim rollback or replay
+an edited decision automatically. Existing revision and idempotency guards,
+future-only Program publication, and historical protection remain authoritative.
+
+Rest sound uses the existing locally generated Web Audio tones. Suspended and
+interrupted contexts share one bounded resume operation, and cue claims wait
+for its result. A resolved resume only counts as usable when the context is
+running. The timer checks visibility and disposal again before consuming a cue;
+durable generation and milestone claims still prevent duplicate completion
+alarms. Blocked sound offers an explicit Enable and test sound gesture.
+Browser sound requests do not prove physical audibility or background delivery.
+
+Adding an extra set after a completed set starts the configured rest from the
+Add set tap. Its durable timer generation uses the retained append identity,
+without fabricating a performed-set source. A locally acknowledged rest-intent
+receipt protects it from older set acknowledgements. Append retries never
+restart that interval, and a definite append rejection clears only that exact
+timer. A recovered set timer uses the original set-command timestamp instead of
+granting a fresh interval when a delayed acknowledgement arrives. These changes
+add no database migration, import change, historical rewrite, or new storage
+format.

@@ -480,3 +480,107 @@ test("keeps skip and replacement choices explicit through pending completion and
     exact: true,
   })).toBeVisible();
 });
+
+test("workout feedback: direct RPE, immediate extra-set rest, and interrupted audio recovery", async ({ page }, testInfo) => {
+  await page.addInitScript(() => {
+    const state = { contexts: [] as Array<{ state: string }>, loudTones: 0 };
+    Object.assign(window, { feedbackAudio: state });
+    class Audio {
+      state = "running";
+      currentTime = 0;
+      destination = {};
+      constructor() { state.contexts.push(this); }
+      async resume() {
+        await new Promise((resolve) => setTimeout(resolve, 150));
+        this.state = "running";
+      }
+      async close() { this.state = "closed"; }
+      createGain() {
+        return { gain: {
+          setValueAtTime() {},
+          exponentialRampToValueAtTime(value: number) { if (value > 0.4) state.loudTones += 1; },
+        }, connect() {} };
+      }
+      createOscillator() {
+        return { frequency: { setValueAtTime() {} }, connect() {}, start() {}, stop() {} };
+      }
+    }
+    Object.assign(window, { AudioContext: Audio });
+  });
+  await signInAndStartDayA(page);
+  const name = await currentExerciseName(page);
+  const current = page.getByTestId("current-set-entry");
+  await expect(current.getByRole("radio", { name: /^Not recorded;/ })).toBeChecked();
+  await expect(page.getByTestId("active-exercise-details").first()).not.toHaveAttribute("open");
+  await current.getByRole("radio", { name: /^Hard — RPE 8;/ }).check();
+  await expect(current.getByRole("radio", { name: /^Hard — RPE 8;/ })).toBeChecked();
+  await capturePhase5Evidence(page, testInfo, "feedback-direct-rpe");
+  const submitted = page.waitForRequest((request) => request.method() === "POST" &&
+    Boolean(request.headers()["next-action"]) && (request.postData() ?? "").includes('"setNo":1'));
+  await page.getByTestId("active-log-set").click();
+  expect((await submitted).postData()).toContain('"rpe":8');
+  await expect(page.locator('[data-set-row-state="saved"]')).toHaveCount(1);
+  await dismissRest(page);
+  await expect(page.getByTestId("current-set-entry").getByRole("radio", { name: /^Not recorded;/ })).toBeChecked();
+  for (let setNo = 2; setNo <= 3; setNo += 1) {
+    await page.getByTestId("active-log-set").click();
+    if (setNo < 3) await expect(page.locator('[data-set-row-state="saved"]')).toHaveCount(setNo);
+    else await expect.poll(() => currentExerciseName(page)).not.toBe(name);
+    await expectOutboxCount(page, 0);
+    await dismissRest(page);
+  }
+  const squat = page.getByRole("region", { name, exact: true });
+  const toggle = squat.getByTestId("exercise-swipe-surface");
+  if ((await toggle.getAttribute("aria-expanded")) !== "true") await toggle.click();
+  await openNativeDetails(squat.getByTestId("active-exercise-details"));
+  await expect(squat.getByTestId("completed-sets")).toContainText("Hard");
+  const releaseAppend = deferred();
+  const appendHeld = deferred();
+  let intercepted = false;
+  await page.route("**/*", async (route) => {
+    const request = route.request();
+    if (!intercepted && request.method() === "POST" && request.headers()["next-action"] &&
+      (request.postData() ?? "").includes('"expectedSetNo"')) {
+      intercepted = true;
+      appendHeld.resolve();
+      await Promise.race([releaseAppend.promise, new Promise((resolve) => setTimeout(resolve, 5_000))]);
+    }
+    await route.continue();
+  });
+  const appendClick = squat.getByRole("button", { name: "Add extra set", exact: true }).first().click();
+  await expect.poll(() => intercepted, { timeout: 10_000 }).toBe(true);
+  await appendHeld.promise;
+  const timerKey = "workout-tracker:rest-timer:v1";
+  const retained = await page.evaluate((key) => JSON.parse(localStorage.getItem(key)!), timerKey);
+  expect(retained.phase).toBe("running");
+  expect(retained.sourceCompletedSetId).toBeNull();
+  expect(retained.endsAt - retained.startedAt).toBe(150_000);
+  await expect(page.getByTestId("rest-cockpit")).toBeVisible();
+  releaseAppend.resolve();
+  await appendClick;
+  await expect(squat.locator('[data-set-membership="extra"]')).toHaveCount(1);
+  expect(await page.evaluate((key) => JSON.parse(localStorage.getItem(key)!).endsAt, timerKey)).toBe(retained.endsAt);
+  await page.evaluate((key) => {
+    const audio = (window as unknown as { feedbackAudio: { contexts: Array<{ state: string }>; loudTones: number } }).feedbackAudio;
+    for (const context of audio.contexts) context.state = "interrupted";
+    audio.loudTones = 0;
+    const timer = JSON.parse(localStorage.getItem(key)!);
+    timer.startedAt = Date.now(); timer.totalSec = 1; timer.endsAt = timer.startedAt + 1_000; timer.revision += 1;
+    localStorage.setItem(key, JSON.stringify(timer));
+    window.dispatchEvent(new Event("workout-rest-timer-change"));
+    window.dispatchEvent(new Event("focus"));
+  }, timerKey);
+  await expect.poll(() => page.evaluate(() =>
+    (window as unknown as { feedbackAudio: { loudTones: number } }).feedbackAudio.loudTones,
+  )).toBe(8);
+  await page.evaluate(() => {
+    window.dispatchEvent(new Event("focus"));
+    window.dispatchEvent(new Event("pageshow"));
+  });
+  await expect(page.getByTestId("rest-cockpit")).toContainText("Rest complete");
+  expect(await page.evaluate(() => (window as unknown as { feedbackAudio: { loudTones: number } }).feedbackAudio.loudTones)).toBe(8);
+  await page.reload();
+  await waitForEquipmentSelectionsToSettle(page);
+  expect(await page.evaluate((key) => JSON.parse(localStorage.getItem(key)!).generationId, timerKey)).toBe(retained.generationId);
+  await discardWorkout(page);
+});

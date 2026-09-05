@@ -44,11 +44,16 @@ export const plateLoadedMachineProfileSchema = z
       profile.targetEntryMeaning,
     ];
     if (profile.geometryCertainty === "known" && required.some((value) => value == null)) {
-      context.addIssue({
-        code: "custom",
-        path: ["geometryCertainty"],
-        message: "Known machine geometry needs every calculation field.",
-      });
+      const fields = [
+        ["startingResistance", "Enter the machine's starting resistance; enter 0 only when it is known to be zero."],
+        ["startingResistanceUnit", "Record the starting-resistance unit."],
+        ["loadingPointCount", "Enter the number of loading points."],
+        ["balancingRule", "Choose how the loading points are balanced."],
+        ["targetEntryMeaning", "Choose what the entered workout load means."],
+      ] as const;
+      for (const [field, message] of fields) {
+        if (profile[field] == null) context.addIssue({ code: "custom", path: [field], message });
+      }
     }
     if (
       profile.geometryCertainty === "unknown" &&
