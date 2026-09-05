@@ -521,6 +521,12 @@ export async function updateSetWithVersion(
               AND candidate.next_reps IS NOT NULL
               AND candidate.next_distance_km IS NULL
               AND candidate.next_duration_seconds IS NULL
+            WHEN 'weight_duration_per_side' THEN
+              candidate.next_weight IS NOT NULL
+              AND candidate.next_weight_unit IS NOT NULL
+              AND candidate.next_reps IS NULL
+              AND candidate.next_distance_km IS NULL
+              AND candidate.next_duration_seconds > 0
             WHEN 'duration' THEN
               candidate.next_weight IS NULL
               AND candidate.next_weight_unit IS NULL

@@ -71,7 +71,7 @@ function percentile(values: number[], fraction: number) {
 
 function plannedFallbackMinutes(day: ProgramDocument["days"][number]) {
   const handlingSeconds = day.exercises.reduce(
-    (total, slot) => total + slot.sets * 45,
+    (total, slot) => total + slot.sets * (slot.timedPrescription ? slot.timedPrescription.minSeconds + slot.timedPrescription.maxSeconds : 45),
     0,
   );
   const groupedKeys = new Set(day.exercises.map((slot) => slot.supersetKey).filter(Boolean));

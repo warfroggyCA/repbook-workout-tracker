@@ -52,7 +52,9 @@ function performedSummary(
   values: CorrectedSetValues,
 ) {
   let measurement: string;
-  if (metricType === "duration") {
+  if (metricType === "weight_duration_per_side") {
+    measurement = `${values.weight ?? "Not recorded"} ${values.weightUnit ?? ""} · ${values.durationSeconds ?? "Not recorded"} sec/side`;
+  } else if (metricType === "duration") {
     measurement = `${values.durationSeconds ?? "Not recorded"} sec`;
   } else if (metricType === "distance_duration") {
     measurement = `${values.distanceKm ?? "Not recorded"} km${
@@ -87,6 +89,7 @@ function correctedShapeIsValid(
   metricType: PerformedMetricType,
   values: CorrectedSetValues,
 ) {
+  if (metricType === "weight_duration_per_side") return values.weight != null && values.weightUnit != null && values.reps == null && values.distanceKm == null && values.durationSeconds != null && values.durationSeconds > 0;
   const loadPair = (values.weight == null) === (values.weightUnit == null);
   if (!loadPair) return false;
   if (metricType === "weight_reps" || metricType === "assisted_reps") {
@@ -170,9 +173,9 @@ export function CompletedSetCorrection(props: Props) {
 
   const loaded =
     props.metricType === "weight_reps" ||
-    props.metricType === "assisted_reps";
+    props.metricType === "assisted_reps" || props.metricType === "weight_duration_per_side";
   const repetitions =
-    loaded || props.metricType === "reps";
+    props.metricType === "weight_reps" || props.metricType === "assisted_reps" || props.metricType === "reps";
 
   return (
     <Drawer open={open} onOpenChange={setOpenState}>
@@ -288,10 +291,10 @@ export function CompletedSetCorrection(props: Props) {
                     />
                   </label>
                 )}
-                {(props.metricType === "duration" ||
+                {(props.metricType === "duration" || props.metricType === "weight_duration_per_side" ||
                   props.metricType === "distance_duration") && (
                   <label className="text-sm font-medium">
-                    Duration (seconds)
+                    {props.metricType === "weight_duration_per_side" ? "Seconds per side (both sides)" : "Duration (seconds)"}
                     <Input
                       className="mt-1"
                       type="number"

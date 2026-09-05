@@ -252,11 +252,11 @@ test("autosaves, resolves tab conflicts, publishes v2, and restores v1 as v3", a
     .getByLabel("Fatigue preference (saved context)")
     .selectOption("low");
   await page.getByLabel("Usual time — minimum").fill("0");
-  await expect(page.getByLabel("Usual time — minimum")).toHaveValue("5");
+  await expect(page.getByLabel("Usual time — minimum")).toHaveValue("0");
   await page.getByLabel("Usual time — maximum").fill("999");
-  await expect(page.getByLabel("Usual time — maximum")).toHaveValue("600");
+  await expect(page.getByLabel("Usual time — maximum")).toHaveValue("999");
   await page.getByLabel("Shortest useful session").fill("999");
-  await expect(page.getByLabel("Shortest useful session")).toHaveValue("600");
+  await expect(page.getByLabel("Shortest useful session")).toHaveValue("999");
   await page.getByLabel("Usual time — minimum").fill("40");
   await page.getByLabel("Usual time — maximum").fill("60");
   await page.getByLabel("Shortest useful session").fill("30");
@@ -781,4 +781,147 @@ test("builds, reviews, and explicitly accepts one deterministic session proposal
       .click();
   }
   expect(errors).toEqual([]);
+});
+
+test("edits minutes, copies day options, and drops an exercise around a non-contiguous group", async ({ page }, testInfo) => {
+  await signIn(page);
+  await page.goto("/program/edit");
+  await expectSaved(page);
+  const state = await (await page.request.get("/api/program/draft")).json();
+  const document = state.draft.document;
+  const day = document.days[0];
+  expect(day.exercises.length).toBeGreaterThanOrEqual(5);
+  const [lead, a, moving, b, c] = day.exercises;
+  const groupKey = crypto.randomUUID();
+  day.supersets = [{ key: groupKey, name: "Synthetic three-member group", structureStatus: "canonical", plannedRounds: 3, restBetweenMembersSec: 0, restBetweenRoundsSec: 75, restAfterRoundSec: 75 }];
+  day.exercises.forEach((slot: { supersetKey: string | null; groupMemberOrderIdx: number | null }) => { slot.supersetKey = null; slot.groupMemberOrderIdx = null; });
+  [a, b, c].forEach((slot, index) => {
+    slot.supersetKey = groupKey; slot.groupMemberOrderIdx = index; slot.sets = 3; slot.setNotes = [null, null, null];
+    slot.intent.minimumDose = { unit: "sets", value: 1 };
+    slot.intent.idealDose = { unit: "sets", value: 3 };
+  });
+  day.warmupItems = [{ key: crypto.randomUUID(), beforeSlotLineageId: moving.lineageId, label: "Synthetic anchored practice", reps: 6, load: null, loadUnit: null, loadPercent: null, loadText: null, notes: null }];
+  const seeded = await page.request.put("/api/program/draft", { headers: { origin: "http://127.0.0.1:3100" }, data: { draftId: state.draft.id, expectedRevision: state.draft.revision, mutationId: crypto.randomUUID(), document } });
+  expect(await seeded.json()).toMatchObject({ status: "saved" });
+  await page.reload();
+  await expectSaved(page);
+  const advanced = page.locator("details").filter({ has: page.locator("summary", { hasText: "Advanced session options" }) }).first();
+  await advanced.locator("summary").click();
+  const minimum = page.getByLabel("Usual time — minimum", { exact: true });
+  await minimum.fill("5");
+  await expectSaved(page);
+  await minimum.press("Backspace");
+  await expect(minimum).toHaveValue("");
+  await expect(page.getByRole("status")).not.toContainText("All changes saved");
+  await page.reload();
+  await advanced.locator("summary").click();
+  await expect(minimum).toHaveValue("");
+  await minimum.fill("42");
+  await page.getByLabel("Usual time — maximum", { exact: true }).fill("80");
+  await page.getByLabel("Shortest useful session", { exact: true }).fill("20");
+  await expectSaved(page);
+  await page.getByRole("button", { name: "Use for all days", exact: true }).click();
+  await expectSaved(page);
+  const copied = (await (await page.request.get("/api/program/draft")).json()).draft.document;
+  for (const [index, result] of copied.days.entries()) {
+    expect(result.intent.targetDuration).toEqual({ minMinutes: 42, maxMinutes: 80 });
+    expect(result.intent.identity.anchorSlotLineageIds).toEqual(document.days[index].intent.identity.anchorSlotLineageIds);
+  }
+  await advanced.locator("summary").click();
+  await page.setViewportSize({ width: 390, height: 844 });
+  const source = page.locator(`[data-program-slot-lineage="${moving.lineageId}"]`);
+  const destination = page.locator(`[data-program-slot-lineage="${a.lineageId}"]`);
+  await source.scrollIntoViewIfNeeded();
+  const handle = source.getByRole("button", { name: /^Drag .* to reorder$/ });
+  const box = await handle.boundingBox();
+  expect(box).not.toBeNull();
+  await page.mouse.move(box!.x + box!.width / 2, box!.y + box!.height / 2);
+  await page.mouse.down();
+  await destination.scrollIntoViewIfNeeded();
+  const target = await destination.boundingBox();
+  expect(target).not.toBeNull();
+  await page.mouse.move(target!.x + target!.width / 2, target!.y + 10, { steps: 8 });
+  await expect(page.getByText("Drop here", { exact: true })).toBeVisible();
+  await page.mouse.up();
+  await expectSaved(page);
+  const moved = (await (await page.request.get("/api/program/draft")).json()).draft.document.days[0];
+  expect(moved.exercises.slice(0, 5).map((slot: { lineageId: string }) => slot.lineageId)).toEqual([lead.lineageId, moving.lineageId, a.lineageId, b.lineageId, c.lineageId]);
+  expect(moved.supersets).toEqual(day.supersets);
+  expect(moved.warmupItems).toEqual(day.warmupItems);
+  await page.reload();
+  await expectSaved(page);
+  await source.getByRole("button", { name: /^Drag .* to reorder$/ }).press("ArrowDown");
+  await expectSaved(page);
+  const keyboard = (await (await page.request.get("/api/program/draft")).json()).draft.document.days[0];
+  expect(keyboard.exercises[2].lineageId).toBe(moving.lineageId);
+  expect(keyboard.warmupItems).toEqual(day.warmupItems);
+  await assertNoHorizontalOverflow(page);
+  await page.screenshot({ path: testInfo.outputPath("reorder-mobile.png"), fullPage: true });
+});
+
+
+test("publishes loaded seconds per side and records the performed measurement on mobile", async ({ page }, testInfo) => {
+  await signIn(page);
+  // Prior compiler coverage deliberately leaves an active synthetic workout.
+  const discardExisting = page.getByRole("button", { name: "Discard this workout", exact: true });
+  if (await discardExisting.count()) {
+    await discardExisting.click();
+    await page.getByRole("dialog", { name: /Discard .+\?/ }).getByRole("button", { name: "Confirm discard", exact: true }).click();
+    await expect(discardExisting).toHaveCount(0);
+  }
+  await page.goto("/program/edit");
+  await expectSaved(page);
+  const state = (await (await page.request.get("/api/program/draft")).json()).draft.document;
+  const editor = page.locator("article[aria-labelledby]").first();
+  await editor.getByRole("button", { name: "Replace exercise", exact: true }).click();
+  const picker = page.getByRole("dialog", { name: "Replace this exercise", exact: true });
+  await picker.getByLabel("Search exercise library").fill("Suitcase Carry");
+  await picker.getByRole("button", { name: "View details for Suitcase Carry", exact: true }).click();
+  await picker.getByRole("button", { name: "Replace exercise", exact: true }).click();
+  await page.getByRole("button", { name: /^Suitcase Carry Exercise 1 / }).click();
+  await editor.getByLabel("Prescription measurement").selectOption("time_per_side");
+  await editor.getByLabel("Minimum seconds per side").fill("30");
+  await editor.getByLabel("Maximum seconds per side").fill("45");
+  await editor.getByLabel("Target load").fill("20");
+  await expect(editor.getByLabel("Minimum reps", { exact: true })).toHaveCount(0);
+  await expectSaved(page);
+  await page.reload();
+  await expect(editor.getByLabel("Minimum seconds per side")).toHaveValue("30");
+  await page.screenshot({ path: testInfo.outputPath("timed-prescription-desktop.png"), fullPage: true });
+  await page.getByRole("tab", { name: "Review", exact: true }).click();
+  await page.getByRole("button", { name: "Check Program", exact: true }).first().click();
+  await expect(page.getByRole("heading", { name: "Ready to publish" })).toBeVisible();
+  await expect(page.getByText(/30–45 sec\/side/).first()).toBeVisible();
+  await page.getByRole("button", { name: "Publish future Program", exact: true }).click();
+  await expect(page.getByText("Future Program published", { exact: true })).toBeVisible();
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/today");
+  const alternateDays = page.getByTestId("alternate-program-days");
+  await alternateDays.locator("summary").click();
+  await alternateDays.getByRole("button", { name: state.days[0].name, exact: false }).click();
+  const start = page.getByRole("button", { name: "Start workout", exact: true });
+  await waitForHydratedServerAction(start);
+  await start.click();
+  await expect(page).toHaveURL(/\/session\/[0-9a-f-]+$/);
+  const timedInput = page.getByLabel("Seconds per side — both sides completed", { exact: true });
+  await expect(timedInput).toBeVisible();
+  await timedInput.fill("35");
+  await page.screenshot({ path: testInfo.outputPath("timed-entry-mobile.png"), fullPage: true });
+  const log = page.getByRole("button", { name: /^Log set(?: 1)?$/ }).filter({ visible: true }).first();
+  await page.context().setOffline(true);
+  await log.click();
+  await expect(page.getByText(/35 sec\/side/).first()).toBeVisible();
+  await page.context().setOffline(false);
+  await page.evaluate(() => window.dispatchEvent(new Event("online")));
+  await expect.poll(() => page.evaluate(() => {
+    const raw = localStorage.getItem("workout-tracker:workout-set-outbox:v1");
+    return raw ? (JSON.parse(raw).entries?.length ?? 0) : 0;
+  })).toBe(0);
+  await page.reload();
+  await expect(page.getByText(/35 sec\/side/).first()).toBeVisible();
+  await assertNoHorizontalOverflow(page);
+  await page.goto("/today");
+  await page.getByRole("button", { name: "Discard this workout", exact: true }).click();
+  await page.getByRole("dialog", { name: /Discard .+\?/ }).getByRole("button", { name: "Confirm discard", exact: true }).click();
+
 });

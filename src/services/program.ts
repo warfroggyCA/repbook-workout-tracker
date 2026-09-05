@@ -144,7 +144,7 @@ export type TemplateWithSlots = {
       movementPattern: string;
       primaryMuscles: string[];
       loadType: string;
-      metricType: "weight_reps" | "reps" | "assisted_reps" | "duration" | "distance_duration" | "activity";
+      metricType: "weight_reps" | "reps" | "assisted_reps" | "duration" | "weight_duration_per_side" | "distance_duration" | "activity";
       loadSemantics: "total" | "per_implement" | "bodyweight" | "added_weight" | "assistance" | "machine_stack" | "resistance_band" | "none";
     };
     prescription: typeof exercisePrescriptions.$inferSelect | null;

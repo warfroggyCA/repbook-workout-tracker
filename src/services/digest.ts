@@ -157,6 +157,8 @@ function measurementCoverage(input: {
           : "unavailable";
     case "reps":
       return input.reps != null ? "full" : "unavailable";
+    case "weight_duration_per_side":
+      return input.durationSeconds != null && input.weight != null ? "full" : any ? "partial" : "unavailable";
     case "duration":
       return input.durationSeconds != null ? "full" : "unavailable";
     case "distance_duration":
@@ -2282,7 +2284,7 @@ function formatDigestSet(set: {
   durationSeconds: number | null;
   rpe: number | null;
   excludeFromAnalytics: boolean;
-  metricType: "weight_reps" | "reps" | "assisted_reps" | "duration" | "distance_duration" | "activity";
+  metricType: "weight_reps" | "reps" | "assisted_reps" | "duration" | "weight_duration_per_side" | "distance_duration" | "activity";
   performedSemanticsVersion: number | null;
   performedLoadType: string | null;
   performedLoadSemantics:
@@ -2297,7 +2299,7 @@ function formatDigestSet(set: {
     | null;
   loadEntryMeaning: string;
 }, exercise: {
-  metricType: "weight_reps" | "reps" | "assisted_reps" | "duration" | "distance_duration" | "activity";
+  metricType: "weight_reps" | "reps" | "assisted_reps" | "duration" | "weight_duration_per_side" | "distance_duration" | "activity";
   loadType: string;
   countingBasis: CountingBasis;
   loadSemantics:
@@ -2325,7 +2327,9 @@ function formatDigestSet(set: {
   });
   const parts: string[] = [];
   if (set.distanceKm != null) parts.push(`${set.distanceKm} km`);
-  if (set.durationSeconds != null && set.metricType === "duration") {
+  if (set.metricType === "weight_duration_per_side") {
+    parts.push(`${set.weight ?? "Load unknown"} ${set.weightUnit ?? ""} · ${set.durationSeconds ?? "Time unknown"} sec/side (both sides)`);
+  } else if (set.durationSeconds != null && set.metricType === "duration") {
     parts.push(
       formatNonLoadQuantity({
         measurementKind: "duration",

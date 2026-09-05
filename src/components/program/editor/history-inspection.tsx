@@ -93,7 +93,7 @@ export function VersionInspection({
                         "Unavailable exercise"}
                     </h4>
                     <p className="mt-1 text-sm">
-                      {slot.sets} sets · {slot.repMin}–{slot.repMax} reps ·{" "}
+                      {slot.sets} sets · {slot.timedPrescription ? `${slot.timedPrescription.minSeconds}–${slot.timedPrescription.maxSeconds} sec/side` : `${slot.repMin}–${slot.repMax} reps`} ·{" "}
                       {slot.targetLoad == null
                         ? "no target load"
                         : `${slot.targetLoad} ${slot.targetLoadUnit}`}{" "}

@@ -458,6 +458,7 @@ async function renderSessionPage(
           null)
         : null,
       targetSets: se.targetSets,
+      timedPrescription: se.timedPrescription,
       targetRepsMin: se.targetRepsMin,
       targetRepsMax: se.targetRepsMax,
       targetLoad: se.targetLoad,

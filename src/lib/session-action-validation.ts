@@ -77,6 +77,14 @@ const performedMeasurementSchema = z.discriminatedUnion("metricType", [
     durationSeconds: z.null(),
   }),
   z.object({
+    metricType: z.literal("weight_duration_per_side"),
+    weight: z.number().finite().min(0).max(2000),
+    weightUnit: z.enum(["lb", "kg"]),
+    reps: z.null(),
+    distanceKm: z.null(),
+    durationSeconds: z.number().int().min(1).max(604800),
+  }),
+  z.object({
     metricType: z.literal("duration"),
     weight: z.null(),
     weightUnit: z.null(),

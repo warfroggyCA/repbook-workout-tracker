@@ -286,6 +286,12 @@ export async function createRetrospectiveWorkout(
              AND slot.workout_template_id = ${link?.templateId ?? null}::uuid
             WHERE reviewed.value->>'sourceTemplateExerciseId' IS NULL
                OR slot.id IS NULL
+               OR EXISTS (
+                 SELECT 1 FROM exercise_prescriptions prescription
+                 WHERE prescription.template_exercise_id = slot.id
+                   AND prescription.superseded_by_id IS NULL
+                   AND prescription.timed_prescription IS NOT NULL
+               )
           )
         ) AS slots_valid,
         (

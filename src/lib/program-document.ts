@@ -185,13 +185,24 @@ export const programSupersetSchema = z.object({
   restAfterRoundSec: z.number().int().min(0).max(1800),
 });
 
+export const timedPrescriptionSchema = z.object({
+  version: z.literal(1),
+  metricType: z.literal("weight_duration_per_side"),
+  minSeconds: z.number().int().min(1).max(3600),
+  maxSeconds: z.number().int().min(1).max(3600),
+}).strict().refine((value) => value.maxSeconds >= value.minSeconds, {
+  message: "Maximum seconds must be at least minimum seconds.", path: ["maxSeconds"],
+});
+export type TimedPrescription = z.infer<typeof timedPrescriptionSchema>;
+
 const programSlotBaseSchema = z
   .object({
     lineageId: z.string().uuid(),
     exerciseId: z.string().uuid(),
     sets: z.number().int().min(1).max(20),
-    repMin: z.number().int().min(1).max(100),
-    repMax: z.number().int().min(1).max(100),
+    repMin: z.number().int().min(1).max(100).nullable(),
+    repMax: z.number().int().min(1).max(100).nullable(),
+    timedPrescription: timedPrescriptionSchema.nullable().optional(),
     targetLoad: z
       .number()
       .finite()
@@ -208,7 +219,14 @@ const programSlotBaseSchema = z
     setNotes: z.array(z.string().trim().max(500).nullable()).max(20),
   })
   .superRefine((slot, context) => {
-    if (slot.repMin > slot.repMax) {
+    if (slot.timedPrescription != null) {
+      if (slot.repMin != null || slot.repMax != null || slot.progressionRuleId !== "manual") {
+        context.addIssue({ code: "custom", path: ["timedPrescription"], message: "Timed work has seconds targets and manual load review, not repetition targets or rep progression." });
+      }
+    } else if (slot.repMin == null || slot.repMax == null) {
+      context.addIssue({ code: "custom", path: ["repMin"], message: "Repetition work needs minimum and maximum reps." });
+    }
+    if (slot.repMin != null && slot.repMax != null && slot.repMin > slot.repMax) {
       context.addIssue({
         code: "custom",
         path: ["repMax"],

@@ -1730,3 +1730,24 @@ timer. A recovered set timer uses the original set-command timestamp instead of
 granting a fresh interval when a delayed acknowledgement arrives. These changes
 add no database migration, import change, historical rewrite, or new storage
 format.
+
+
+## Program editing and loaded time per side
+
+Day minute fields retain incomplete local edits without clamping each keystroke
+or rewriting neighbouring fields. Only valid bounds autosave to the server or
+enter review. **Use for all days** copies day intent once while retaining each
+destination's exercise anchors, groups, and warm-ups. Pointer reordering previews
+an exact destination and commits one change on release; cancellation leaves the
+draft unchanged. Group and slot identities remain stable.
+
+Migration 0087 and snapshot schema 38 add explicit future loaded time per side.
+The Program slot and frozen workout carry a versioned seconds range; repetition
+bounds are null. Performed metric `weight_duration_per_side` retains load/unit
+and seconds completed on each side, with both sides before rest. Rep-based
+progression and target outcomes remain unavailable. Full and History recovery,
+record correction/restore, exports and Coach evidence retain this meaning.
+Recovery manifest 16 keeps its existing table inventory. Old records are never
+converted, and older application builds are unsafe after timed prescriptions or
+sets have been written. See the [implementation contract](PROGRAM_EDITOR_MEASUREMENT_PLAN.md)
+for authoring limits and the release boundary.

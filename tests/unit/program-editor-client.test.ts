@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
+  applyProgramDayOptions,
+  EMPTY_PROGRAM_TIME,
+  parseProgramTimeInput,
+  placeProgramSlotUnit,
   addSupersetGroup,
   addProgramExerciseToDay,
   appendProgramDocumentDay,
@@ -819,5 +823,62 @@ describe("Program editor client rules", () => {
     });
     expect(source.days[0].exercises).toHaveLength(2);
     expect(programEditorSafeFilePart(" My Program: V2 ")).toBe("my-program-v2");
+  });
+});
+
+
+describe("session-option editing and exact drop destinations", () => {
+  it("recovers empty and invalid time edits without accepting or rewriting them", () => {
+    for (const input of ["", "2", "601", "25.5"]) {
+      const draft = document();
+      draft.days[0].intent.targetDuration.minMinutes = parseProgramTimeInput(input);
+      const original = structuredClone(draft);
+      expect(programDocumentV3Schema.safeParse(draft).success).toBe(false);
+      expect(isLocallyRecoverableProgramDocument(draft)).toBe(true);
+      expect(draft).toEqual(original);
+      const recovered = parseLocalProgramDraft(JSON.stringify({ schemaVersion: "3", ownerId: IDs.owner, draftId: IDs.draft, serverRevision: 1, mutationId: IDs.slotA, savedAt: "2026-01-01T00:00:00Z", document: draft }));
+      expect(recovered?.document).toEqual(draft);
+    }
+    expect(parseProgramTimeInput("")).toBe(EMPTY_PROGRAM_TIME);
+    expect(parseProgramTimeInput("50")).toBe(50);
+  });
+
+  it("copies options once while keeping destination identities and contents", () => {
+    const draft = document();
+    const day = draft.days[0];
+    const target = structuredClone(day);
+    target.lineageId = IDs.slotC;
+    target.exercises = [createDefaultProgramSlot(IDs.exerciseC, IDs.slotC)];
+    target.supersets = [];
+    target.intent = createSuggestedDayIntent(target.exercises);
+    target.intent.identity.anchorSlotLineageIds = [IDs.slotC];
+    day.intent.identity.anchorSlotLineageIds = [IDs.slotA];
+    day.intent.targetDuration = { minMinutes: 40, maxMinutes: 80 };
+    draft.days.push(target);
+    const result = applyProgramDayOptions(draft, day.lineageId);
+    expect(programDocumentV3Schema.safeParse(result).success).toBe(true);
+    expect(result.days[1].intent.targetDuration).toEqual({ minMinutes: 40, maxMinutes: 80 });
+    expect(result.days[1].intent.identity.anchorSlotLineageIds).toEqual([IDs.slotC]);
+    expect(result.days[1].exercises).toEqual(target.exercises);
+    expect(result.days[1].warmupItems).toEqual(target.warmupItems);
+    result.days[0].intent.targetDuration.minMinutes = 45;
+    expect(result.days[1].intent.targetDuration.minMinutes).toBe(40);
+    expect(applyProgramDayOptions(draft, "missing")).toBe(draft);
+  });
+
+  it("places a standalone slot before a non-contiguous group without changing its warm-up or members", () => {
+    const draft = document();
+    const day = draft.days[0];
+    const standalone = createDefaultProgramSlot(IDs.exerciseC, IDs.slotC);
+    const [a, b] = day.exercises;
+    day.exercises = [a, standalone, b];
+    day.warmupItems = [{ key: IDs.exerciseC, beforeSlotLineageId: IDs.slotC, label: "Practice", reps: 5, load: null, loadUnit: null, loadPercent: null, loadText: null, notes: null }];
+    const result = { ...day, exercises: placeProgramSlotUnit(day.exercises, standalone.lineageId, a.lineageId, "before") };
+    expect(result.exercises).toEqual([standalone, a, b]);
+    expect(result.supersets).toEqual(day.supersets);
+    expect(result.warmupItems[0].beforeSlotLineageId).toBe(standalone.lineageId);
+    expect(placeProgramSlotUnit(result.exercises, standalone.lineageId, b.lineageId, "after")).toEqual([a, b, standalone]);
+    expect(placeProgramSlotUnit(day.exercises, a.lineageId, b.lineageId, "before")).toBe(day.exercises);
+    expect(day.exercises).toEqual([a, standalone, b]);
   });
 });

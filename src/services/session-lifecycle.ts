@@ -351,6 +351,7 @@ export type LogWorkoutSetResult =
         | "reps"
         | "assisted_reps"
         | "duration"
+        | "weight_duration_per_side"
         | "distance_duration"
         | "activity";
       reason:
@@ -1927,7 +1928,7 @@ export async function startWorkoutSession(
         equipment_requirements_semantics_version,
         equipment_requirements_snapshot,
         order_idx, superset_key, group_snapshot_id, group_member_order_idx,
-        rest_sec, target_sets, target_reps_min,
+        rest_sec, target_sets, timed_prescription, target_reps_min,
         target_reps_max, target_load, target_load_unit, notes,
         warmup_notes, warmup_sets, set_notes
       )
@@ -1938,17 +1939,17 @@ export async function startWorkoutSession(
         slot.lineage_id,
         1,
         catalog.name,
-        catalog.metric_type,
+        coalesce(prescription.timed_prescription->>'metricType', catalog.metric_type::text)::metric_type,
         catalog.load_type,
         catalog.load_semantics,
         CASE
-          WHEN NOT catalog.is_unilateral
+          WHEN prescription.timed_prescription IS NULL AND NOT catalog.is_unilateral
             AND catalog.metric_type IN ('weight_reps', 'assisted_reps')
             THEN 1
           ELSE NULL
         END,
         CASE
-          WHEN NOT catalog.is_unilateral
+          WHEN prescription.timed_prescription IS NULL AND NOT catalog.is_unilateral
             AND catalog.metric_type IN ('weight_reps', 'assisted_reps')
             THEN 'not_applicable'
           ELSE NULL
@@ -1969,6 +1970,7 @@ export async function startWorkoutSession(
         END,
         slot.rest_sec,
         prescription.sets,
+        prescription.timed_prescription,
         prescription.rep_range_min,
         prescription.rep_range_max,
         prescription.target_load,
@@ -2401,7 +2403,7 @@ export async function logWorkoutSet(
   ) {
     return { outcome: "performed_evidence_conflict", reason: "semantics_changed" };
   }
-  const measurement = buildPerformedSetMeasurement(input);
+  const measurement = buildPerformedSetMeasurement({ ...input, loadSemantics: input.performedLoadSemantics });
   if (!measurement.ok) {
     return {
       outcome: "unsupported_set_shape",
@@ -2745,6 +2747,13 @@ async function logWorkoutSetAttempt(
                  AND ${input.reps}::integer IS NOT NULL
                  AND ${input.distanceKm}::real IS NULL
                  AND ${input.durationSeconds}::integer IS NULL
+               WHEN 'weight_duration_per_side' THEN
+                 ${authoritativeLoadSemantics}::text IN ('per_implement', 'total')
+                 AND ${input.weight}::double precision IS NOT NULL
+                 AND ${input.weightUnit}::unit IS NOT NULL
+                 AND ${input.reps}::integer IS NULL
+                 AND ${input.distanceKm}::real IS NULL
+                 AND ${input.durationSeconds}::integer > 0
                WHEN 'duration' THEN
                  ${input.weight}::double precision IS NULL
                  AND ${input.weightUnit}::unit IS NULL
@@ -3095,7 +3104,7 @@ async function logWorkoutSetAttempt(
         CASE
           WHEN ${input.isWarmup ?? false}::boolean THEN NULL
           WHEN occurrence.origin <> 'planned' THEN NULL
-          WHEN owned.performed_metric_type::text IN ('duration', 'distance_duration')
+          WHEN owned.performed_metric_type::text IN ('duration', 'weight_duration_per_side', 'distance_duration')
             THEN NULL
           WHEN owned.performed_metric_type::text = 'assisted_reps' THEN NULL
           WHEN owned.performed_metric_type::text = 'reps'

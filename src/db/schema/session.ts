@@ -1,3 +1,4 @@
+import type { TimedPrescription } from "@/lib/program-document";
 import { sql } from "drizzle-orm";
 import {
   pgTable,
@@ -556,6 +557,7 @@ export const sessionExercises = pgTable(
     restSec: integer("rest_sec").notNull().default(90),
     // Targets snapshotted at session start (prescription may change later)
     targetSets: integer("target_sets"),
+    timedPrescription: jsonb("timed_prescription").$type<TimedPrescription>(),
     targetRepsMin: integer("target_reps_min"),
     targetRepsMax: integer("target_reps_max"),
     targetLoad: numeric("target_load", { precision: 7, scale: 2, mode: "number" }),
@@ -602,6 +604,10 @@ export const sessionExercises = pgTable(
     check(
       "session_exercises_group_coordinates_valid",
       sql`(${t.groupSnapshotId} IS NULL AND ${t.groupMemberOrderIdx} IS NULL) OR (${t.groupSnapshotId} IS NOT NULL AND ${t.groupMemberOrderIdx} >= 0)`,
+    ),
+    check(
+      "session_exercises_timed_prescription_valid",
+      sql`(${t.timedPrescription} IS NULL AND ${t.prescribedMetricType}::text IS DISTINCT FROM 'weight_duration_per_side') OR coalesce((repbook_valid_timed_prescription(${t.timedPrescription}) AND ${t.targetRepsMin} IS NULL AND ${t.targetRepsMax} IS NULL AND ${t.prescribedMetricType}::text = 'weight_duration_per_side' AND ${t.prescribedLoadSemantics}::text IN ('total', 'per_implement')), false)`,
     ),
     check(
       "session_exercises_target_load_unit_check",

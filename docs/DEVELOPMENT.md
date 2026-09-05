@@ -892,3 +892,16 @@ response was processed; changing the count sooner can park the first response
 and invalidate the intended two-request assertion.
 The add-exercise keyboard journey waits for the React handler before focusing
 the button and sending Enter to that exact control.
+
+
+The Program editor and loaded-time change adds migration 0087 and snapshot schema
+38; recovery manifest 16 is unchanged. Its focused checks include
+`program-editor-client.test.ts`, `program-editor-db.test.ts`,
+`session-compiler-db.test.ts`, `set-metric-semantics.test.ts`, and the existing
+snapshot, record-version and upgrade suites. Run the full unit suite, typecheck,
+lint, build, migration replay/upgrade, documentation checks, and PostgreSQL 18
+integration gate. `npm run test:e2e:program-editor` includes synthetic minute
+recovery, copy, non-contiguous group reordering, and loaded-time publication and
+mobile set entry. Physical touch and installed-app acceptance remain separate.
+The application must not be released before migration 0087 is installed through
+its own authorized gate. Do not downgrade after new timed records are written.

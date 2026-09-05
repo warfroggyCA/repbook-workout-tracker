@@ -24,6 +24,8 @@ import {
 import { createSuggestedDayIntent, createSuggestedSlotIntent } from "@/lib/program-document";
 import { runProgramPreflight } from "@/lib/program-preflight";
 import { acceptSessionCompilerProposal, createSessionCompilerProposal, discardSessionCompilerProposal } from "@/services/session-compiler";
+import { getOrCreateProgramDraft, saveProgramDraft, reviewProgramDraft } from "@/services/program-drafts";
+import { publishProgramDraft } from "@/services/program-publication";
 import { getCurrentProgramDocument } from "@/services/program-documents";
 import { loadProgramPreflightContext } from "@/services/program-preflight";
 import { createMigratedTestDatabase, type TestDatabase } from "../helpers/database";
@@ -94,6 +96,26 @@ describe("Session Compiler durable review and acceptance", () => {
       await tx.update(programs).set({ status: "active", archivedAt: null, currentVersionId: versionId }).where(eq(programs.id, programId));
     });
   }, 30_000);
+
+  it("retains explicit seconds per side in the compiled proposal and frozen Start", async () => {
+    const state = await getOrCreateProgramDraft(database.db, userId);
+    if (!state) throw new Error("Missing fixture");
+    const timedPrescription = { version: 1 as const, metricType: "weight_duration_per_side" as const, minSeconds: 30, maxSeconds: 45 };
+    const document = structuredClone(state.draft.document);
+    Object.assign(document.days[0].exercises[0], { repMin: null, repMax: null, timedPrescription, progressionRuleId: "manual" });
+    const saved = await saveProgramDraft(database.db, userId, { draftId: state.draft.id, expectedRevision: state.draft.revision, mutationId: crypto.randomUUID(), document });
+    if (saved.status !== "saved") throw new Error("Missing save");
+    const review = await reviewProgramDraft(database.db, userId, state.draft.id, saved.revision);
+    if (!review?.hash || review.status !== "publishable") throw new Error("Missing review");
+    expect(await publishProgramDraft(database.db, userId, { draftId: state.draft.id, expectedRevision: saved.revision, reviewHash: review.hash })).toMatchObject({ ok: true });
+    const proposal = await createSessionCompilerProposal(database.db, userId, { dayLineageId, requestedMinutes: 60, energy: "usual", clientMutationId: crypto.randomUUID() });
+    expect(proposal.status).toBe("ready");
+    const accepted = await acceptSessionCompilerProposal(database.db, userId, proposal.id, crypto.randomUUID(), "America/Toronto");
+    expect(accepted.outcome).toBe("accepted");
+    if (!("sessionId" in accepted)) throw new Error("Missing workout");
+    const frozen = await database.db.query.sessionExercises.findMany({ where: eq(sessionExercises.sessionId, accepted.sessionId) });
+    expect(frozen).toContainEqual(expect.objectContaining({ prescribedMetricType: "weight_duration_per_side", timedPrescription, targetRepsMin: null, targetRepsMax: null }));
+  });
 
   afterEach(async () => {
     process.env.PROGRAM_EDITOR_ENABLED = priorProgramEditor;
@@ -215,7 +237,7 @@ describe("Session Compiler durable review and acceptance", () => {
     expect(csv).toContain(versionId);
     expect(csv).toContain(dayLineageId);
     const backup = await buildJsonBackup(database.db, userId);
-    expect(backup.schemaVersion).toBe("37");
+    expect(backup.schemaVersion).toBe("38");
     expect(backup.canonical.tables.session_compiler_proposals).toContainEqual(
       expect.objectContaining({ id: proposal.id, accepted_session_id: first.sessionId, content_hash: proposal.contentHash }),
     );
@@ -593,7 +615,7 @@ describe("Session Compiler durable review and acceptance", () => {
       created.snapshotId,
       { store, keyring }
     );
-    expect(captured.payload.schemaVersion).toBe("37");
+    expect(captured.payload.schemaVersion).toBe("38");
     expect(captured.payload.tables.session_compiler_proposals).toContainEqual(
       expect.objectContaining({
         id: proposal.id,

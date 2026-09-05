@@ -545,8 +545,7 @@ export default async function TodayPage({
                           </span>
                           {prescription && (
                             <span className="col-start-2 text-sm tabular-nums text-muted-foreground sm:ml-auto sm:shrink-0">
-                              {prescription.sets} × {prescription.repRangeMin}–
-                              {prescription.repRangeMax}
+                              {prescription.sets} × {prescription.timedPrescription ? `${prescription.timedPrescription.minSeconds}–${prescription.timedPrescription.maxSeconds} sec/side` : `${prescription.repRangeMin}–${prescription.repRangeMax}`}
                               {prescription.targetLoad != null
                                 ? ` · ${prescription.targetLoad} ${prescription.targetLoadUnit}`
                                 : ""}

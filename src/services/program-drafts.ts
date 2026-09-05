@@ -496,7 +496,7 @@ export async function reviewProgramDraft(
   const exerciseRows = exerciseIds.length
     ? await db.query.exercises.findMany({
         where: inArray(exercises.id, exerciseIds),
-        columns: { id: true, name: true, primaryMuscles: true },
+        columns: { id: true, name: true, primaryMuscles: true, loadSemantics: true },
       })
     : [];
   const pending = await filterRecommendationsEligibleForAction(
@@ -567,6 +567,7 @@ export async function reviewProgramDraft(
     exercises: Object.fromEntries(exerciseRows.map((exercise) => [exercise.id, {
       name: exercise.name,
       primaryMuscles: exercise.primaryMuscles,
+      loadSemantics: exercise.loadSemantics,
     }])),
     editingBaseline: draft.restoredFromVersionId
       ? undefined

@@ -36,7 +36,7 @@ export type { ProgramReview, ProgramReviewChange };
 export type ProgramReviewContext = {
   recommendationRevision?: number;
   recommendationConsequences?: ProgramReview["recommendationConsequences"];
-  exercises?: Record<string, { name: string; primaryMuscles: string[] }>;
+  exercises?: Record<string, { name: string; primaryMuscles: string[]; loadSemantics?: string }>;
   /**
    * The automatic draft-only preparation of the immutable base version.
    * When present, ordinary user changes are compared from this shape while
@@ -165,6 +165,7 @@ export async function getOwnedProgramVersionDocument(
           lineageId: slot.lineageId,
           exerciseId: slot.exerciseId,
           sets: prescription.sets,
+          ...(prescription.timedPrescription ? { timedPrescription: prescription.timedPrescription } : {}),
           repMin: prescription.repRangeMin,
           repMax: prescription.repRangeMax,
           targetLoad: prescription.targetLoad,
@@ -277,6 +278,7 @@ export async function getCurrentProgramPreflightStatus(db: Db, userId: string) {
 function comparableTargets(slot: StoredProgramDocument["days"][number]["exercises"][number]) {
   return {
     sets: slot.sets,
+    ...(slot.timedPrescription ? { timedPrescription: slot.timedPrescription } : {}),
     repMin: slot.repMin,
     repMax: slot.repMax,
     targetLoad: slot.targetLoad,
@@ -769,6 +771,9 @@ export function reviewProgramDocuments(
     muscleSetsAfter: afterSummary.muscleSets,
   };
   const blockingErrors = [
+    ...next.days.flatMap((day) => day.exercises.flatMap((slot) => slot.timedPrescription &&
+      !["total", "per_implement"].includes(exerciseInfo[slot.exerciseId]?.loadSemantics ?? "")
+      ? [`${exerciseName(slot.exerciseId)} needs compatible measured load meaning before using loaded time per side.`] : [])),
     ...(preflight?.findings
       .filter((finding) => finding.severity === "blocking")
       .map((finding) => finding.reason) ?? []),

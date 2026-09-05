@@ -232,6 +232,31 @@ export function gatherProgramSlots(
   return remaining;
 }
 
+// Only an in-progress browser draft may contain this value. The server schema
+// rejects it; local recovery preserves it as an empty field, never as minutes.
+export const EMPTY_PROGRAM_TIME = -1;
+export function parseProgramTimeInput(value: string): number {
+  return value.trim() === "" ? EMPTY_PROGRAM_TIME : Number(value);
+}
+
+export function applyProgramDayOptions(document: ProgramDocumentV3, sourceDayId: string): ProgramDocumentV3 {
+  const source = document.days.find((day) => day.lineageId === sourceDayId);
+  if (!source || !programDocumentV3Schema.safeParse(document).success) return document;
+  return {
+    ...document,
+    days: document.days.map((day) => day === source ? day : {
+      ...day,
+      intent: {
+        ...structuredClone(source.intent),
+        identity: {
+          ...source.intent.identity,
+          anchorSlotLineageIds: [...day.intent.identity.anchorSlotLineageIds],
+        },
+      },
+    }),
+  };
+}
+
 export function moveProgramSlotUnit(
   slots: ProgramDocumentSlotV3[],
   lineageId: string,
@@ -258,6 +283,22 @@ export function moveProgramSlotUnit(
   const target = unitIndex + direction;
   if (target < 0 || target >= units.length) return slots;
   return moveItem(units, unitIndex, target).flat();
+}
+
+/** Place the selected unit at an exact visible boundary; preserve all slot identities. */
+export function placeProgramSlotUnit(
+  slots: ProgramDocumentSlotV3[], lineageId: string,
+  targetLineageId: string, placement: "before" | "after",
+): ProgramDocumentSlotV3[] {
+  const source = slots.find((slot) => slot.lineageId === lineageId);
+  const target = slots.find((slot) => slot.lineageId === targetLineageId);
+  if (!source || !target) return slots;
+  const moving = slots.filter((slot) => source.supersetKey
+    ? slot.supersetKey === source.supersetKey : slot.lineageId === lineageId);
+  if (moving.includes(target)) return slots;
+  const remaining = slots.filter((slot) => !moving.includes(slot));
+  remaining.splice(remaining.indexOf(target) + (placement === "after" ? 1 : 0), 0, ...moving);
+  return remaining;
 }
 
 export function moveProgramGroupMember(
@@ -855,6 +896,19 @@ export function isLocallyRecoverableProgramDocument(
       days: original.days.map((day) => ({
         ...day,
         name: text(day.name, 120, "Unsaved day"),
+        intent: {
+          ...day.intent,
+          targetDuration: {
+            minMinutes: number(day.intent.targetDuration.minMinutes, 5, 600, true),
+            maxMinutes: Math.max(number(day.intent.targetDuration.minMinutes, 5, 600, true), number(day.intent.targetDuration.maxMinutes, 5, 600, true)),
+          },
+          minimumUsefulDurationMinutes: Math.min(number(day.intent.minimumUsefulDurationMinutes, 5, 600, true), Math.max(number(day.intent.targetDuration.minMinutes, 5, 600, true), number(day.intent.targetDuration.maxMinutes, 5, 600, true))),
+          durationOverride: day.intent.durationOverride == null ? null : {
+            ...day.intent.durationOverride,
+            minMinutes: number(day.intent.durationOverride.minMinutes, 5, 600, true),
+            maxMinutes: Math.max(number(day.intent.durationOverride.minMinutes, 5, 600, true), number(day.intent.durationOverride.maxMinutes, 5, 600, true)),
+          },
+        },
         notes: nullableText(day.notes, 2000),
         warmupNotes: nullableText(day.warmupNotes, 4000),
         warmupItems: day.warmupItems.map((item) => ({
@@ -875,8 +929,8 @@ export function isLocallyRecoverableProgramDocument(
           restAfterRoundSec: number(group.restAfterRoundSec, 0, 1800, true),
         })),
         exercises: day.exercises.map((slot) => {
-          const repMin = number(slot.repMin, 1, 100, true);
-          const repMax = Math.max(repMin, number(slot.repMax, 1, 100, true));
+          const repMin = slot.timedPrescription ? null : number(slot.repMin, 1, 100, true);
+          const repMax = slot.timedPrescription ? null : Math.max(repMin!, number(slot.repMax, 1, 100, true));
           const targetLoad =
             slot.targetLoad == null
               ? null
@@ -891,6 +945,11 @@ export function isLocallyRecoverableProgramDocument(
             sets: number(slot.sets, 1, 20, true),
             repMin,
             repMax,
+            ...(slot.timedPrescription ? { timedPrescription: {
+              ...slot.timedPrescription,
+              minSeconds: number(slot.timedPrescription.minSeconds, 1, 3600, true),
+              maxSeconds: Math.max(number(slot.timedPrescription.minSeconds, 1, 3600, true), number(slot.timedPrescription.maxSeconds, 1, 3600, true)),
+            } } : {}),
             targetLoad,
             targetLoadUnit:
               targetLoad == null ? null : (slot.targetLoadUnit ?? "lb"),
@@ -1038,10 +1097,13 @@ export function describeProgramReviewChange(
       if (before.sets !== after.sets) {
         parts.push(`${before.sets} → ${after.sets} work sets`);
       }
-      if (before.repMin !== after.repMin || before.repMax !== after.repMax) {
-        parts.push(
-          `${before.repMin}–${before.repMax} → ${after.repMin}–${after.repMax} reps`,
-        );
+      if (before.repMin !== after.repMin || before.repMax !== after.repMax ||
+          JSON.stringify(before.timedPrescription ?? null) !== JSON.stringify(after.timedPrescription ?? null)) {
+        const measurement = (record: Record<string, unknown>) => {
+          const timed = reviewRecord(record.timedPrescription);
+          return timed ? `${timed.minSeconds}–${timed.maxSeconds} sec/side` : `${record.repMin}–${record.repMax} reps`;
+        };
+        parts.push(`${measurement(before)} → ${measurement(after)}`);
       }
       if (
         before.targetLoad !== after.targetLoad ||
@@ -1076,7 +1138,11 @@ export function parseLocalProgramDraft(
       ? upgradeStoredProgramDocumentToV3(currentDocument.data)
       : legacyDocument.success
         ? upgradeStoredProgramDocumentToV3(suggestProgramIntentDraft(legacyDocument.data))
-        : null;
+        : value.document != null && typeof value.document === "object" &&
+            "schemaVersion" in value.document && value.document.schemaVersion === "3" &&
+            isLocallyRecoverableProgramDocument(value.document)
+          ? value.document
+          : null;
     if (
       (value.schemaVersion !== PROGRAM_DRAFT_LOCAL_SCHEMA &&
         value.schemaVersion !== "2" &&

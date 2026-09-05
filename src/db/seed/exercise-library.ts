@@ -273,6 +273,7 @@ const baseExerciseLibrary: SeedExercise[] = [
   // --- Carry ---
   { name: "Farmer Carry", pattern: "carry", muscles: ["grip", "traps", "core"], loadType: "dumbbell", equipment: ["dumbbell"], aliases: ["farmers walk", "farmer's carry", "farmers carry"] },
   { name: "Suitcase Carry", pattern: "carry", muscles: ["core", "grip"], loadType: "dumbbell", equipment: ["dumbbell"], unilateral: true },
+  { name: "Kettlebell Suitcase Carry", pattern: "carry", muscles: ["core", "grip"], loadType: "kettlebell", equipment: ["kettlebell"], unilateral: true, family: "Loaded Carry", metricType: "distance_duration", loadSemantics: "per_implement", aliases: ["kb suitcase carry"] },
   { name: "Kettlebell Rack Carry", pattern: "carry", muscles: ["core", "shoulders"], loadType: "kettlebell", equipment: ["kettlebell"], aliases: ["kb rack carry"], unilateral: true },
 
   // --- Core ---
