@@ -114,9 +114,10 @@ test("adds a reviewed workout-only exercise without editing the Program", async 
     name: "Add exercise to this workout",
     exact: true,
   });
+  await waitForHydratedReactHandler(addButton);
   await addButton.focus();
   await expect(addButton).toBeFocused();
-  await page.keyboard.press("Enter");
+  await addButton.press("Enter");
 
   const picker = page.getByRole("dialog", {
     name: "Choose an exercise for this workout",

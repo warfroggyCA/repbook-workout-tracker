@@ -3174,6 +3174,8 @@ test("a parked set pauses only its exercise while another exercise saves", async
     "exercise-",
     ""
   );
+  let releaseFirstFailure!: () => void;
+  const firstFailureMayFinish = new Promise<void>((resolve) => { releaseFirstFailure = resolve; });
   let failedExerciseRequests = 0;
   await page.route("**/session/**", async (route) => {
     const request = route.request();
@@ -3183,6 +3185,7 @@ test("a parked set pauses only its exercise while another exercise saves", async
       request.postData()?.includes(firstExerciseId)
     ) {
       failedExerciseRequests += 1;
+      if (failedExerciseRequests === 1) await firstFailureMayFinish;
       await route.fulfill({ status: 500, body: "Injected persistent failure" });
       return;
     }
@@ -3195,6 +3198,16 @@ test("a parked set pauses only its exercise while another exercise saves", async
   await nextSet.locator('input[inputmode="numeric"]').first().fill("8");
   await page.getByTestId("active-log-set").click();
   await expect.poll(() => failedExerciseRequests).toBe(1);
+  releaseFirstFailure();
+  // Request arrival precedes the durable failure receipt. Wait for that receipt
+  // before accelerating retries, or the first response itself can park the set.
+  await expect.poll(() => page.evaluate((sessionExerciseId) => {
+    const raw = localStorage.getItem("workout-tracker:workout-set-outbox:v1");
+    const envelope = JSON.parse(raw ?? "null") as {
+      entries?: Array<{ sessionExerciseId?: string; attemptCount?: number }>;
+    } | null;
+    return envelope?.entries?.find((entry) => entry.sessionExerciseId === sessionExerciseId)?.attemptCount ?? 0;
+  }, firstExerciseId)).toBeGreaterThanOrEqual(1);
   await page.evaluate((sessionExerciseId) => {
     const key = "workout-tracker:workout-set-outbox:v1";
     const envelope = JSON.parse(localStorage.getItem(key) ?? "null") as {
