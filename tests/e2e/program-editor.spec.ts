@@ -875,10 +875,10 @@ test("publishes loaded seconds per side and records the performed measurement on
   const editor = page.locator("article[aria-labelledby]").first();
   await editor.getByRole("button", { name: "Replace exercise", exact: true }).click();
   const picker = page.getByRole("dialog", { name: "Replace this exercise", exact: true });
-  await picker.getByLabel("Search exercise library").fill("Suitcase Carry");
-  await picker.getByRole("button", { name: "View details for Suitcase Carry", exact: true }).click();
+  await picker.getByLabel("Search exercise library").fill("Kettlebell Suitcase Carry");
+  await picker.getByRole("button", { name: "View details for Kettlebell Suitcase Carry", exact: true }).click();
   await picker.getByRole("button", { name: "Replace exercise", exact: true }).click();
-  await page.getByRole("button", { name: /^Suitcase Carry Exercise 1 / }).click();
+  await page.getByRole("button", { name: /^Kettlebell Suitcase Carry Exercise 1 / }).click();
   await editor.getByLabel("Prescription measurement").selectOption("time_per_side");
   await editor.getByLabel("Minimum seconds per side").fill("30");
   await editor.getByLabel("Maximum seconds per side").fill("45");
