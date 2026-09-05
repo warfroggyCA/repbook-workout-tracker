@@ -3131,10 +3131,10 @@ function SetEffortInput({ draft, setDraft }: {
   return <div className="space-y-2" data-testid="set-effort-input">
       <fieldset className="space-y-1">
         <legend className="text-sm font-medium">RPE · optional</legend>
-        <div className="grid grid-cols-3 gap-1 sm:grid-cols-5">
+        <div className="grid grid-cols-3 gap-1 min-[370px]:grid-cols-5">
           {[{ value: null, label: "Not recorded", shortcutLabel: "Not recorded", meaning: "Effort unknown" }, ...RPE_CHIPS].map((chip) => (
             <label key={chip.value ?? "unknown"} className={cn(
-              "relative flex min-h-11 cursor-pointer items-center gap-1 rounded-md border px-2 py-1 text-xs has-focus-visible:outline-2 has-focus-visible:outline-offset-2 has-focus-visible:outline-ring",
+              "relative flex min-h-11 min-w-0 cursor-pointer flex-col items-center justify-center gap-0.5 rounded-md border px-0.5 py-1 text-xs has-focus-visible:outline-2 has-focus-visible:outline-offset-2 has-focus-visible:outline-ring",
               draft.rpe === chip.value && draft.rir == null && "border-primary bg-primary/10",
             )}>
               <input type="radio" name={effortId} value={chip.value ?? "unknown"}
@@ -3143,12 +3143,12 @@ function SetEffortInput({ draft, setDraft }: {
                 onChange={() => setDraft((current) => ({ ...current, rpe: chip.value, rir: null }))}
                 className="absolute inset-0 m-0 !h-full !min-h-11 !w-full cursor-pointer opacity-0" />
               <span aria-hidden="true" className={cn(
-                "flex size-4 shrink-0 items-center justify-center rounded-full border border-muted-foreground",
+                "flex size-[16px] shrink-0 items-center justify-center rounded-full border border-muted-foreground",
                 draft.rpe === chip.value && draft.rir == null && "border-primary",
               )}>
                 {draft.rpe === chip.value && draft.rir == null && <span className="size-2 rounded-full bg-primary" />}
               </span>
-              <span>{chip.label}{chip.value != null ? ` ${chip.value}` : ""}</span>
+              <span>{chip.value ?? "None"}</span>
             </label>
           ))}
         </div>

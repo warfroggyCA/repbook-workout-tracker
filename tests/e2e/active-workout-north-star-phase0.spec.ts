@@ -752,7 +752,12 @@ test("records the Phase 6 configuration-incomplete decision", async ({
     name: "Complete equipment setup",
     exact: true,
   });
-  await expect(completeSetup).toHaveAttribute("href", "/settings/equipment");
+  const sessionPath = new URL(page.url()).pathname;
+  const equipmentUrl = new URL((await completeSetup.getAttribute("href"))!, page.url());
+  expect(equipmentUrl.pathname).toBe("/settings/equipment");
+  expect(equipmentUrl.searchParams.getAll("item")).toHaveLength(1);
+  expect(equipmentUrl.searchParams.get("item")).toMatch(/^[0-9a-f-]{36}$/);
+  expect(equipmentUrl.searchParams.get("returnTo")).toBe(sessionPath);
   await expect(
     equipmentDecision.getByRole("button", {
       name: "Replace for today",
@@ -795,7 +800,15 @@ test("records the Phase 6 configuration-incomplete decision", async ({
   await dockPrimary.click();
   await expect(completeSetup).toBeFocused();
   await completeSetup.click();
-  await expect(page).toHaveURL(/\/settings\/equipment$/);
+  await expect(page).toHaveURL(equipmentUrl.href);
+  const equipmentDrawer = page.getByRole("dialog", {
+    name: "Plate-loaded lat pulldown", exact: true,
+  });
+  await expect(equipmentDrawer).toBeVisible();
+  await equipmentDrawer.getByRole("button", { name: "Cancel", exact: true }).click();
+  await page.getByRole("button", { name: "Continue without changes", exact: true }).click();
+  await expect(page).toHaveURL(new URL(sessionPath, equipmentUrl).href);
+  await expect(completeSetup).toBeVisible();
   await pageErrors.expectNoUnexpected();
 });
 
