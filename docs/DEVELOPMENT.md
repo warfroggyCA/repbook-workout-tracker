@@ -831,3 +831,31 @@ Protected `main` requires a pull request and both `verify` and
 `postgres-integration`. Do not bypass failed checks. Production release,
 migration, maintenance, and recovery-checkpoint evidence is recorded privately,
 not in public workflow logs.
+
+
+## Workout feedback regression checks
+
+The targeted checks for direct RPE, equipment repair navigation and saves,
+previous-record visibility, recommendation protection failures, and rest
+lifecycle recovery are:
+
+```bash
+npx vitest run tests/unit/equipment-management-navigation.test.ts tests/unit/equipment-management-db.test.ts tests/unit/equipment-load-profile-contract.test.ts tests/unit/workout-equipment-preflight-component.test.tsx tests/unit/session-preparation-panel-component.test.tsx tests/unit/recommendation-card.test.tsx tests/unit/recommendation-decisions-characterization.test.ts tests/unit/progression-performed-baseline-db.test.ts tests/unit/previous-comparable-sets-db.test.ts tests/unit/set-starting-load.test.ts tests/unit/exercise-card-component.test.tsx tests/unit/rest-audio-recovery.test.ts tests/unit/rest-alert-preference.test.ts tests/unit/rest-timer.test.ts tests/unit/workout-set-outbox-sync.test.ts --maxWorkers=1 --no-file-parallelism
+npm run build
+npx playwright test --config=playwright.active-workout-north-star.config.ts --grep='workout feedback:'
+npm run test:e2e:plate-machine-guidance
+npm run test:e2e:v2-u02
+npm run lint
+npm run typecheck
+npm run docs:check
+```
+
+All fixtures and screenshots from these commands are synthetic. The alarm test
+simulates interrupted Web Audio to prove recovery ordering and one completion
+request per timer. It cannot verify an audible alarm on a physical phone.
+Before release, repeat ordinary sets, both superset transitions, extra sets,
+app switching/dictation, Auto Lock, and Low Power Mode on the owner's iPhone.
+Confirm the countdown deadline, audible result, return-to-app behavior, and no
+duplicate alarm separately. Record browser versus Home Screen use and the iOS
+version. Preserve the actual workout and avoid production data changes during
+verification.

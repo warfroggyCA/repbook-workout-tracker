@@ -37,7 +37,11 @@ test("links every material Review claim to evidence and preserves deliberate own
   page,
 }) => {
   await signIn(page);
-  const pageErrors = observeGauntletPageErrors(page, browserName);
+  // This journey deliberately aborts one held approval request below.
+  const pageErrors = observeGauntletPageErrors(page, browserName, [
+    /^console: Failed to load resource: net::ERR_FAILED$/,
+    /^console: Failed to load resource: The network connection was lost\.$/,
+  ]);
   const narrow = (page.viewportSize()?.width ?? 0) <= 320;
   await page.goto("/coach");
   if (narrow) {
@@ -138,6 +142,25 @@ test("links every material Review claim to evidence and preserves deliberate own
 
   const approve = resumed.getByRole("button", { name: "Approve", exact: true });
   await waitForReactHandler(approve);
+  let timedOutRequestCount = 0;
+  await page.route("**/coach", async (route) => {
+    const request = route.request();
+    if (request.method() === "POST" && request.headers()["next-action"]) {
+      timedOutRequestCount += 1;
+      await new Promise((resolve) => setTimeout(resolve, 16_000));
+      await route.abort();
+    } else await route.continue();
+  });
+  await approve.click();
+  await expect(resumed.getByRole("status").filter({ hasText: "Saving your decision" })).toBeVisible();
+  await expect(approve).toBeDisabled();
+  await expect(resumed.getByRole("alert")).toContainText("It may still have been saved", { timeout: 20_000 });
+  await expect(approve).toBeDisabled();
+  expect(timedOutRequestCount).toBe(1);
+  await page.unrouteAll({ behavior: "wait" });
+  await resumed.getByRole("button", { name: "Reload and check decision" }).click();
+  await waitForReactHandler(approve);
+  await expect(approve).toBeEnabled();
   await approve.click();
   await expect(page.getByRole("region", { name: "Decisions needing review" })
     .getByText("1 pending", { exact: true })).toBeVisible();

@@ -123,7 +123,7 @@ describe("EquipmentSetupPanel", () => {
     expect(html).toContain(
       "Garage lat pulldown: loading points, balancing rule",
     );
-    expect(html).toContain('href="/settings/equipment"');
+    expect(html).toContain('href="/settings/equipment?item=00000000-0000-4000-8000-000000000013&amp;returnTo=%2Fsession%2F00000000-0000-4000-8000-000000000011"');
     expect(html).toContain("Complete equipment setup");
     expect(html).not.toContain("Replace for today");
     expect(html).not.toContain("Skip exercise");

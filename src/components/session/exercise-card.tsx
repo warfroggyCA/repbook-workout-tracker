@@ -1806,9 +1806,19 @@ export function ExerciseCard({
             </div>
           ) : rowComparableRenderState === "loading" ? (
             <p role="status">Checking previous comparable set…</p>
+          ) : comparableProjection?.status === "unavailable" && comparableProjection.previousRecorded ? (
+            <div className="space-y-1" data-testid="previous-recorded-set">
+              <p>Last recorded · {comparableProjection.previousRecorded.localDate}: {comparableProjection.previousRecorded.weight ?? "load not recorded"} {comparableProjection.previousRecorded.weightUnit ?? ""}
+                {comparableProjection.previousRecorded.reps != null ? ` × ${comparableProjection.previousRecorded.reps} reps` : ""}
+              </p>
+              <p>{comparableProjection.reason === "load_entry_meaning_unavailable"
+                ? "Choose the current equipment and load meaning to check whether this load can be reused."
+                : "This record exists, but its exercise measurements or equipment setup cannot be confirmed as comparable. Weight has not been filled from it."}</p>
+              <Link href={comparableProjection.previousRecorded.historyHref} className="inline-flex min-h-11 items-center underline">View recorded workout</Link>
+            </div>
           ) : comparableProjection?.status === "unavailable" &&
             comparableProjection.reason === "no_comparable_history" ? (
-            <p>No comparable set recorded</p>
+            <p>No earlier set found for this exact exercise</p>
           ) : (
             <p>Previous comparison unavailable</p>
           )}
@@ -2307,7 +2317,7 @@ export function ExerciseCard({
                       id={`optional-set-fields-${exercise.id}`}
                       className="mb-2 font-medium"
                     >
-                      Optional effort and set note
+                      Additional set details
                     </h3>
                     <SetEntry
                       metricType={performedMetricType}
@@ -2340,7 +2350,7 @@ export function ExerciseCard({
                       id={`optional-extra-set-fields-${exercise.id}`}
                       className="mb-2 font-medium"
                     >
-                      Optional effort and set note ·{" "}
+                      Additional set details ·{" "}
                       {workingSetDisplayPosition(
                         appendedOccurrence,
                         workingOccurrences,
@@ -3108,6 +3118,121 @@ export function ExerciseCard({
   );
 }
 
+function SetEffortInput({ draft, setDraft }: {
+  draft: SetDraft;
+  setDraft: React.Dispatch<React.SetStateAction<SetDraft>>;
+}) {
+  const effortId = useId();
+  const exactRpeId = useId();
+  const exactRirId = useId();
+  const [exactOpen, setExactOpen] = useState(
+    draft.rir != null || (draft.rpe != null && !RPE_CHIPS.some((chip) => chip.value === draft.rpe)),
+  );
+  const selectedEffort = EFFORT_CHOICES.find(
+    (choice) => draft.rir == null && choice.legacyRpe === draft.rpe,
+  );
+  return <div className="space-y-2" data-testid="set-effort-input">
+      <div aria-live="polite" aria-atomic="true">
+        {selectedEffort && !exactOpen && (
+          <p className="text-sm font-medium">
+            Selected: {selectedEffort.label} — RPE {selectedEffort.legacyRpe}
+          </p>
+        )}
+      </div>
+      <fieldset className="space-y-1">
+        <legend className="text-sm font-medium">RPE · optional</legend>
+        <div className="grid grid-cols-3 gap-1 sm:grid-cols-5">
+          {[{ value: null, shortcutLabel: "Not recorded", meaning: "Effort unknown" }, ...RPE_CHIPS].map((chip) => (
+            <label key={chip.value ?? "unknown"} className={cn(
+              "flex min-h-11 cursor-pointer items-center gap-1 rounded-md border px-2 py-1 text-xs has-focus-visible:outline-2 has-focus-visible:outline-offset-2 has-focus-visible:outline-ring",
+              draft.rpe === chip.value && draft.rir == null && "border-primary bg-primary/10",
+            )}>
+              <input type="radio" name={effortId} value={chip.value ?? "unknown"}
+                aria-label={`${chip.shortcutLabel}; ${chip.meaning}`}
+                checked={draft.rpe === chip.value && draft.rir == null}
+                onChange={() => setDraft((current) => ({ ...current, rpe: chip.value, rir: null }))}
+                className="!h-4 !min-h-4 w-4 shrink-0 accent-primary" />
+              <span>{chip.shortcutLabel}</span>
+            </label>
+          ))}
+        </div>
+      </fieldset>
+      <Button
+        type="button"
+        variant="ghost"
+        size="sm"
+        className="self-start"
+        aria-expanded={exactOpen}
+        onClick={() => setExactOpen((open) => !open)}
+      >
+        {exactOpen ? "Hide exact RPE / RIR" : "Exact RPE / RIR"}
+      </Button>
+      {exactOpen && (
+        <>
+        <div className="max-w-48">
+          <label htmlFor={exactRpeId} className="text-sm font-medium">
+            Exact RPE (1–10)
+          </label>
+          <Input
+            id={exactRpeId}
+            type="number"
+            inputMode="decimal"
+            min={1}
+            max={10}
+            step={0.5}
+            value={draft.rpe ?? ""}
+            onChange={(event) => {
+              const rawValue = event.currentTarget.value;
+              setDraft((current) => {
+                const parsed = parseFiniteDraftNumber(rawValue, current.rpe);
+                return {
+                  ...current,
+                  rpe:
+                    parsed == null
+                      ? null
+                      : Math.min(10, Math.max(1, parsed)),
+                  rir: null,
+                };
+              });
+            }}
+          />
+        </div>
+      <div className="max-w-48">
+        <label htmlFor={exactRirId} className="text-sm font-medium">
+          RIR (0–10)
+        </label>
+        <Input
+          id={exactRirId}
+          type="number"
+          inputMode="decimal"
+          min={0}
+          max={10}
+          step={0.5}
+          value={draft.rir ?? ""}
+          onChange={(event) => {
+            const rawValue = event.currentTarget.value;
+            setDraft((current) => {
+              const parsed = parseFiniteDraftNumber(rawValue, current.rir);
+              return {
+                ...current,
+                rir:
+                  parsed == null
+                    ? null
+                    : Math.min(10, Math.max(0, parsed)),
+                rpe: null,
+              };
+            });
+          }}
+        />
+        <p className="mt-1 text-xs text-muted-foreground">
+          Reps you believe remained. Entering RIR clears RPE.
+        </p>
+      </div>
+        </>
+      )}
+  </div>;
+}
+
 function SetEntry({
   metricType,
   supported,
@@ -3142,11 +3267,6 @@ function SetEntry({
   const weightInputId = useId();
   const distanceInputId = useId();
   const durationInputId = useId();
-  const exactRpeId = useId();
-  const exactRirId = useId();
-  const [exactOpen, setExactOpen] = useState(
-    draft.rpe != null && !RPE_CHIPS.some((chip) => chip.value === draft.rpe),
-  );
   const plateLine =
     (unit === "lb" || unit === "kg")
       ? formatCompactPlateLoadGuidance(draft.weight, plateConfig, unit)
@@ -3155,9 +3275,6 @@ function SetEntry({
     (unit === "lb" || unit === "kg") && machineLoadConfig
       ? formatMachineLoadGuidance(draft.weight, machineLoadConfig)
       : null;
-  const selectedEffort = EFFORT_CHOICES.find(
-    (choice) => draft.rir == null && choice.legacyRpe === draft.rpe,
-  );
   if (!supported) {
     return (
       <p role="alert" className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-950 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-100">
@@ -3172,113 +3289,7 @@ function SetEntry({
     metricType === "assisted_reps";
   const optionalSetFields = (
     <>
-      <p className="text-sm text-muted-foreground">
-        All fields below are optional. Record effort as either RIR or RPE;
-        leaving it blank keeps effort unknown.
-      </p>
-      <div aria-live="polite" aria-atomic="true">
-        {selectedEffort && !exactOpen && (
-          <p className="text-sm font-medium">
-            Selected: {selectedEffort.label} — RPE {selectedEffort.legacyRpe}
-          </p>
-        )}
-      </div>
-      <div
-        role="group"
-        aria-label="Effort shortcuts"
-        className="grid grid-cols-2 gap-1.5 sm:grid-cols-4"
-      >
-        {RPE_CHIPS.map((chip) => (
-          <Button
-            key={chip.value}
-            variant={draft.rpe === chip.value ? "default" : "outline"}
-            size="sm"
-            className="h-auto min-h-11 whitespace-normal text-xs"
-            aria-label={`${chip.shortcutLabel}; ${chip.meaning}`}
-            aria-pressed={draft.rpe === chip.value && draft.rir == null}
-            onClick={() =>
-              setDraft((d) => ({
-                ...d,
-                rpe: d.rpe === chip.value ? null : chip.value,
-                rir: null,
-              }))
-            }
-          >
-            {chip.shortcutLabel}
-          </Button>
-        ))}
-      </div>
-      <Button
-        type="button"
-        variant="ghost"
-        size="sm"
-        className="self-start"
-        aria-expanded={exactOpen}
-        onClick={() => setExactOpen((open) => !open)}
-      >
-        {exactOpen ? "Hide exact RPE" : "Enter exact RPE instead"}
-      </Button>
-      {exactOpen && (
-        <div className="max-w-48">
-          <label htmlFor={exactRpeId} className="text-sm font-medium">
-            Exact RPE (1–10)
-          </label>
-          <Input
-            id={exactRpeId}
-            type="number"
-            inputMode="decimal"
-            min={1}
-            max={10}
-            step={0.5}
-            value={draft.rpe ?? ""}
-            onChange={(event) => {
-              const rawValue = event.currentTarget.value;
-              setDraft((current) => {
-                const parsed = parseFiniteDraftNumber(rawValue, current.rpe);
-                return {
-                  ...current,
-                  rpe:
-                    parsed == null
-                      ? null
-                      : Math.min(10, Math.max(1, parsed)),
-                  rir: null,
-                };
-              });
-            }}
-          />
-        </div>
-      )}
-      <div className="max-w-48">
-        <label htmlFor={exactRirId} className="text-sm font-medium">
-          RIR (0–10)
-        </label>
-        <Input
-          id={exactRirId}
-          type="number"
-          inputMode="decimal"
-          min={0}
-          max={10}
-          step={0.5}
-          value={draft.rir ?? ""}
-          onChange={(event) => {
-            const rawValue = event.currentTarget.value;
-            setDraft((current) => {
-              const parsed = parseFiniteDraftNumber(rawValue, current.rir);
-              return {
-                ...current,
-                rir:
-                  parsed == null
-                    ? null
-                    : Math.min(10, Math.max(0, parsed)),
-                rpe: null,
-              };
-            });
-          }}
-        />
-        <p className="mt-1 text-xs text-muted-foreground">
-          Reps you believe remained. Entering RIR clears RPE.
-        </p>
-      </div>
+      <p className="text-sm text-muted-foreground">Additional set details are optional.</p>
       <fieldset className="space-y-2 rounded-md border p-2">
         <legend className="px-1 text-sm font-medium">Technique issue</legend>
         <p className="text-xs text-muted-foreground">
@@ -3681,6 +3692,7 @@ function SetEntry({
           {machineLine ?? plateLine}
         </p>
       )}
+      <SetEffortInput draft={draft} setDraft={setDraft} />
       {!prioritizePerformedMeasure && (
         <div className="space-y-2">{optionalSetFields}</div>
       )}

@@ -86,27 +86,18 @@ test("keeps ordinary completion minimal and makes exception evidence reversible,
   const optional = currentCard.getByTestId("active-exercise-details");
   await optional.locator("summary").click();
   await expect(optional).toHaveAttribute("open", "");
-  await expect(optional).toContainText(
-    "leaving it blank keeps effort unknown",
-  );
-  const effort = optional.getByRole("group", { name: "Effort shortcuts" });
-  const hard = effort.getByRole("button", { name: /^Hard — RPE 8/ });
-  await expect(hard).toHaveAttribute("aria-pressed", "false");
+  const effort = currentEntry.getByTestId("set-effort-input");
+  const hard = effort.getByRole("radio", { name: /^Hard — RPE 8/ });
+  await expect(hard).not.toBeChecked();
   await hard.focus();
   await expect(hard).toBeFocused();
   await page.keyboard.press("Space");
-  await expect(hard).toHaveAttribute("aria-pressed", "true");
-  await hard.evaluate(
-    () => new Promise<void>((resolve) => {
-      requestAnimationFrame(() => resolve());
-    }),
-  );
-  await waitForHydratedReactHandler(hard);
-  await hard.press("Enter");
-  await expect(hard).toHaveAttribute("aria-pressed", "false");
+  await expect(hard).toBeChecked();
+  await effort.getByRole("radio", { name: /^Not recorded;/ }).check();
+  await expect(hard).not.toBeChecked();
   await expectTouchTarget(optional.locator("summary"));
-
-  await optional.getByLabel("RIR (0–10)").fill("2");
+  await effort.getByRole("button", { name: "Exact RPE / RIR", exact: true }).click();
+  await effort.getByLabel("RIR (0–10)").fill("2");
   await optional.getByRole("button", { name: "Bracing", exact: true }).click();
   await optional.getByRole("button", {
     name: "Strength or fatigue",

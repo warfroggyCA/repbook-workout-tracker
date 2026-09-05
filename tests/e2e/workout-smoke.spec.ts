@@ -1804,12 +1804,12 @@ test("signs in and completes a durable workout flow", async ({ page }) => {
   await weight.fill("95");
   await reps.fill("8");
   await openNativeDetails(nextSet.getByTestId("active-exercise-details"));
-  await nextSet.getByRole("button", { name: /^Hard — RPE 8;/ }).click();
+  await nextSet.getByRole("radio", { name: /^Hard — RPE 8;/ }).click();
   await expect(nextSet.getByText("Selected: Hard — RPE 8", {
     exact: true,
   })).toBeVisible();
   await nextSet
-    .getByRole("button", { name: "Enter exact RPE instead", exact: true })
+    .getByRole("button", { name: "Exact RPE / RIR", exact: true })
     .click();
   await nextSet.getByRole("spinbutton", { name: "Exact RPE (1–10)" }).fill("8.5");
   let releaseSave!: () => void;
@@ -2023,7 +2023,7 @@ test("keeps every active-workout route reachable with one scroll surface", async
     "Hard — RPE 8",
     "Grind — RPE 9.5",
   ]) {
-    await expect(currentCard.getByRole("button", { name: new RegExp(`^${shortcut}`) })).toBeVisible();
+    await expect(currentCard.getByRole("radio", { name: new RegExp(`^${shortcut}`) })).toBeVisible();
   }
   await expect(statusBar.getByRole("button", { name: "Add training note", exact: true })).toBeVisible();
   await expect(statusBar.getByRole("button", { name: /^(?:Review and finish workout|Finish workout)$/ })).toBeVisible();
@@ -2037,16 +2037,16 @@ test("keeps every active-workout route reachable with one scroll surface", async
     "Choose from reviewed alternatives.",
   );
   await expectMinimumWorkoutTouchTargets(currentCard);
-  const grindShortcut = currentCard.getByRole("button", {
+  const grindShortcut = currentCard.getByRole("radio", {
     name: /^Grind — RPE 9\.5;/,
   });
   await grindShortcut.focus();
-  await page.keyboard.press("Enter");
+  await page.keyboard.press("Space");
   await expect(currentCard.getByText("Selected: Grind — RPE 9.5", {
     exact: true,
   })).toBeVisible();
   await currentCard
-    .getByRole("button", { name: "Enter exact RPE instead", exact: true })
+    .getByRole("button", { name: "Exact RPE / RIR", exact: true })
     .click();
   const exactRpe = currentCard.getByLabel("Exact RPE (1–10)", { exact: true });
   await exactRpe.fill("8.5");

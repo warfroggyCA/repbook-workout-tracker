@@ -22,8 +22,7 @@ describe("equipment load profile contract", () => {
   });
 
   it("does not call incomplete machine geometry known", () => {
-    expect(
-      plateLoadedMachineProfileSchema.safeParse({
+    const result = plateLoadedMachineProfileSchema.safeParse({
         kind: "plate_loaded_machine",
         id: null,
         geometryCertainty: "known",
@@ -33,8 +32,16 @@ describe("equipment load profile contract", () => {
         balancingRule: "identical_each_point",
         targetEntryMeaning: "total_system",
         compatiblePlateIds: [],
-      }).success
-    ).toBe(false);
+      });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues).toEqual(expect.arrayContaining([
+        expect.objectContaining({
+          path: ["startingResistance"],
+          message: "Enter the machine's starting resistance; enter 0 only when it is known to be zero.",
+        }),
+      ]));
+    }
   });
 
   it("preserves zero and the supported maximum without accepting overflow", () => {

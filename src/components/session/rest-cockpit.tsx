@@ -13,6 +13,7 @@ export function RestCockpit({
   resumeLabel = null,
   onAdjust,
   onEnd,
+  onEnableSound,
 }: {
   phase: "running" | "ready" | "skipped";
   remainingSeconds: number | null;
@@ -22,6 +23,7 @@ export function RestCockpit({
   resumeLabel?: string | null;
   onAdjust: (deltaSeconds: number) => void;
   onEnd: () => void;
+  onEnableSound?: () => void;
 }) {
   const running = phase === "running" && remainingSeconds != null;
   const destination = destinationLabel
@@ -47,6 +49,11 @@ export function RestCockpit({
           "border-b border-border bg-muted/35 pb-1",
       )}
     >
+      {onEnableSound && (
+        <Button type="button" variant="outline" size="sm" className="mb-1 min-h-11 w-full" onClick={onEnableSound}>
+          Enable and test sound
+        </Button>
+      )}
       {running ? (
         <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_repeat(3,auto)] items-center gap-1.5 max-[360px]:grid-cols-3 max-[360px]:gap-1">
           <div className="min-w-0 max-[360px]:col-span-3">

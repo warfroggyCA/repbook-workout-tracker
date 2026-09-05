@@ -887,9 +887,10 @@ describe("workout set outbox sync classification", () => {
     expect(readWorkoutSetOutbox(storage).entries).toEqual([]);
   });
 
-  it("starts rest only after the server acknowledges the exact set", async () => {
+  it("recovers a missing timer on acknowledgement using the original rest deadline", async () => {
     storage.values.clear();
-    enqueueWorkoutSetOutboxEntry(storage, { ...entry(), restAfterSec: 90 });
+    const startedAt = Date.now() - 5_000;
+    enqueueWorkoutSetOutboxEntry(storage, { ...entry(), createdAtISO: new Date(startedAt).toISOString(), restAfterSec: 90 });
     let acknowledge!: (value: { outcome: "saved"; setId: string; occurrenceId: string; occurrenceRevision: number }) => void;
     actionMocks.logSet.mockReturnValueOnce(new Promise((resolve) => {
       acknowledge = resolve;
@@ -907,10 +908,39 @@ describe("workout set outbox sync classification", () => {
       ownerId: entry().ownerId,
       sessionId: entry().sessionId,
       totalSec: 90,
+      startedAt,
+      endsAt: startedAt + 90_000,
       phase: "running",
       sourceSessionExerciseId: entry().sessionExerciseId,
       sourceOccurrenceId: savedOccurrenceId,
       sourceCompletedSetId: savedSetId,
+    });
+  });
+
+  it("does not start a fresh countdown when the original rest expired before acknowledgement", async () => {
+    storage.values.clear();
+    enqueueWorkoutSetOutboxEntry(storage, { ...entry(), restAfterSec: 90 });
+    actionMocks.logSet.mockResolvedValueOnce({ outcome: "saved", setId: savedSetId, occurrenceId: savedOccurrenceId, occurrenceRevision: 1 });
+    await syncNextEntry(entry().ownerId);
+    expect(readRestTimer(storage, { ownerId: entry().ownerId, sessionId: entry().sessionId }).timer).toMatchObject({
+      phase: "ready", endsAt: Date.parse(entry().createdAtISO) + 90_000,
+    });
+  });
+
+  it("keeps a newer explicit extra-set rest when an older no-rest set is acknowledged", async () => {
+    storage.values.clear();
+    const older = { ...entry(), restAfterSec: null };
+    enqueueWorkoutSetOutboxEntry(storage, older);
+    const generationId = "90000000-0000-4000-8000-000000000009";
+    const now = Date.now();
+    recordWorkoutRestIntentReceipt(storage, { ...older, clientKey: generationId,
+      createdAtISO: new Date(now).toISOString(), restAfterSec: 90 });
+    await writeRestTimer(storage, createRestTimer({ ownerId: older.ownerId, sessionId: older.sessionId,
+      generationId, now, seconds: 90 })!);
+    actionMocks.logSet.mockResolvedValueOnce({ outcome: "saved", setId: savedSetId, occurrenceId: savedOccurrenceId, occurrenceRevision: 1 });
+    await syncNextEntry(older.ownerId);
+    expect(readRestTimer(storage, { ownerId: older.ownerId, sessionId: older.sessionId }).timer).toMatchObject({
+      generationId, endsAt: now + 90_000, sourceCompletedSetId: null,
     });
   });
 

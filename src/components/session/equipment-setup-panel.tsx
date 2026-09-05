@@ -9,6 +9,7 @@ import type { SessionEquipmentSetup } from "./types";
 import type { WorkoutSetLoadEntryMeaning } from "@/lib/workout-set-outbox";
 import { createClientUuid } from "@/lib/client-uuid";
 import { cn } from "@/lib/utils";
+import { equipmentManagementHref } from "@/lib/equipment-management-navigation";
 import {
   enqueueEquipmentSelection,
   getEquipmentSelectionOutboxServerSnapshot,
@@ -276,7 +277,10 @@ export function EquipmentSetupPanel({
           </div>
           {configurationIncomplete ? (
             <Link
-              href="/settings/equipment"
+              href={equipmentManagementHref({
+                itemIds: setup.configurationIssues?.map((issue) => issue.equipmentItemId),
+                returnTo: `/session/${sessionId}`,
+              })}
               data-testid="complete-equipment-setup"
               className={cn(
                 buttonVariants(),

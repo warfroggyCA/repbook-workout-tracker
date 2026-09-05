@@ -347,7 +347,7 @@ describe("previous comparable performed sets", () => {
   });
 
   it("is explicit when current load meaning, ownership, or safe evidence is absent", async () => {
-    await addHistoricalSet({
+    const recorded = await addHistoricalSet({
       startedAtISO: "2026-08-01T14:00:00.000Z",
       performedSemanticsVersion: null,
     });
@@ -371,7 +371,13 @@ describe("previous comparable performed sets", () => {
       currentSessionExerciseId,
       message: PREVIOUS_COMPARABLE_SET_UNAVAILABLE,
       reason: "load_entry_meaning_unavailable",
+      previousRecorded: {
+        workoutId: recorded.sessionId, localDate: "2026-08-01",
+        historyHref: `/history/${recorded.sessionId}`,
+        weight: 45, weightUnit: "kg", reps: 8,
+      },
     });
+    expect(wrongOwner[currentSessionExerciseId]).not.toHaveProperty("previousRecorded");
     expect(wrongOwner[currentSessionExerciseId]).toMatchObject({
       status: "unavailable",
       reason: "current_exercise_unavailable",

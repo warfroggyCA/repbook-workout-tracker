@@ -26,7 +26,7 @@ export type RecommendationCheckpoint = (boundary: string) => void | Promise<void
 
 export type RecommendationProgramPublicationResult =
   | { ok: true; programVersionId: string }
-  | { ok: false; reason: "not_pending" | "stale" | "invalid" | "conflict" };
+  | { ok: false; reason: "not_pending" | "stale" | "invalid" | "conflict" | "backup_failed"; message?: string };
 
 export type PublishRecommendationProgramVersion = (
   db: Db,
@@ -578,9 +578,13 @@ export async function approveRecommendationDecision(
   return {
     ok: false,
     reason:
-      publication.reason === "conflict"
+      publication.reason === "backup_failed"
+        ? "The safety backup could not be created, so this recommendation was not applied. Check Data recovery in Settings, then try again."
+        : publication.message ?? (publication.reason === "conflict"
         ? "The Program changed while this recommendation was being applied. Refresh and review the current plan."
-        : "The recommendation was not applied because the Program, safety information, equipment, or exercise availability changed. Review the current plan and try again.",
+        : publication.reason === "stale"
+          ? "This recommendation no longer matches the current Program. Refresh Review to check the current proposal."
+          : "The current Program could not pass publication checks. Review the Program and its equipment or safety notices before trying again."),
   };
 }
 

@@ -671,9 +671,8 @@ export function clearRestTimerForSupersedingSourceClientKey(
     }
     if (current.status !== "restored") return current.status;
     if (
-      current.timer.sourceClientKey != null &&
-      current.timer.sourceClientKey !== sourceClientKey &&
-      laterSourceClientKeys.includes(current.timer.sourceClientKey)
+      (current.timer.sourceClientKey ?? current.timer.generationId) !== sourceClientKey &&
+      laterSourceClientKeys.includes(current.timer.sourceClientKey ?? current.timer.generationId)
     ) {
       return "stale" as const;
     }
