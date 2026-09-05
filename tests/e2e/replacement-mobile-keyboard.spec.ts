@@ -258,7 +258,8 @@ test("keeps unrestricted replacement truthful and reachable through mobile keybo
       });
     });
   };
-  const rir = setOptions.getByLabel("RIR (0–10)");
+  const effort = card.getByTestId("current-set-entry").getByTestId("set-effort-input");
+  const rir = effort.getByLabel("RIR (0–10)");
   // Use DOM-state locators so preservation remains inspectable while the
   // replacement drawer correctly makes the background card inaccessible.
   const technique = setOptions
@@ -267,10 +268,9 @@ test("keeps unrestricted replacement truthful and reachable through mobile keybo
   const limitation = setOptions
     .locator("button[aria-pressed]")
     .filter({ hasText: /^Grip$/ });
-  await withSetOptionsOpen(async () => {
-    await rir.fill("2", { timeout: 3_000 });
-    await expect(rir).toHaveValue("2", { timeout: 3_000 });
-  });
+  await effort.getByRole("button", { name: "Exact RPE / RIR", exact: true }).click();
+  await rir.fill("2");
+  await expect(rir).toHaveValue("2");
   await selectSetOption(technique);
   await selectSetOption(limitation);
   const recordPain = setOptions.getByRole("button", {
