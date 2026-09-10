@@ -8,6 +8,7 @@ import {
 import {
   getActiveProgramVersion,
   getTemplatesWithSlots,
+  type TemplateWithSlots,
 } from "@/services/program";
 
 export async function getActiveProgramPresentation(
@@ -43,49 +44,63 @@ export async function getActiveProgramPresentation(
       name: group.name,
       restAfterRoundSec: group.restAfterRoundSec,
     })),
-    days: templates.map(({ template, slots }) => ({
-      id: template.id,
-      lineageId: template.lineageId,
-      name: template.name,
-      notes: template.notes,
-      warmupNotes: template.warmupNotes,
-      warmupItems: template.warmupItems,
-      orderIdx: template.orderIdx,
-      intent: template.intent,
-      slots: slots.map(({ slot, exercise, prescription }) => ({
-        id: slot.id,
-        lineageId: slot.lineageId,
-        exercise: {
-          formDemo: exercise.formDemo,
-          id: exercise.id,
-          name: exercise.name,
-          family: exercise.family,
-          movementPattern: exercise.movementPattern,
-          muscleMapping: {
-            primary: exercise.coverageMapping?.primary ?? exercise.primaryMuscles ?? [],
-            supporting: exercise.coverageMapping?.supporting ?? exercise.secondaryMuscles ?? [],
-            ...(exercise.coverageMapping ? { coverageReview: exercise.coverageMapping.coverageReview } : {}),
-            catalogReviewed: exercise.catalogReviewed === true,
-          },
-        },
-        orderIdx: slot.orderIdx,
-        supersetGroupId: slot.supersetGroupId,
-        restSec: slot.restSec,
-        notes: slot.notes,
-        warmupNotes: slot.warmupNotes,
-        warmupSets: slot.warmupSets,
-        prescription: prescription
-          ? {
-              timedPrescription: prescription.timedPrescription,
-              sets: prescription.sets,
-              repRangeMin: prescription.repRangeMin,
-              repRangeMax: prescription.repRangeMax,
-              targetLoad: prescription.targetLoad,
-              targetLoadUnit: prescription.targetLoadUnit,
-              progressionRuleId: prescription.progressionRuleId,
-            }
-          : null,
-      })),
-    })),
+    days: templates.map(templatePresentationSource),
   });
+}
+
+/** Same saved-template projection for Program and Today; no extra database read. */
+export function templatePresentationSource({
+  template,
+  slots,
+}: TemplateWithSlots) {
+  return {
+    id: template.id,
+    lineageId: template.lineageId,
+    name: template.name,
+    notes: template.notes,
+    warmupNotes: template.warmupNotes,
+    warmupItems: template.warmupItems,
+    orderIdx: template.orderIdx,
+    intent: template.intent,
+    slots: slots.map(({ slot, exercise, prescription }) => ({
+      id: slot.id,
+      lineageId: slot.lineageId,
+      exercise: {
+        formDemo: exercise.formDemo,
+        id: exercise.id,
+        name: exercise.name,
+        family: exercise.family,
+        movementPattern: exercise.movementPattern,
+        muscleMapping: {
+          primary:
+            exercise.coverageMapping?.primary ?? exercise.primaryMuscles ?? [],
+          supporting:
+            exercise.coverageMapping?.supporting ??
+            exercise.secondaryMuscles ??
+            [],
+          ...(exercise.coverageMapping
+            ? { coverageReview: exercise.coverageMapping.coverageReview }
+            : {}),
+          catalogReviewed: exercise.catalogReviewed === true,
+        },
+      },
+      orderIdx: slot.orderIdx,
+      supersetGroupId: slot.supersetGroupId,
+      restSec: slot.restSec,
+      notes: slot.notes,
+      warmupNotes: slot.warmupNotes,
+      warmupSets: slot.warmupSets,
+      prescription: prescription
+        ? {
+            timedPrescription: prescription.timedPrescription,
+            sets: prescription.sets,
+            repRangeMin: prescription.repRangeMin,
+            repRangeMax: prescription.repRangeMax,
+            targetLoad: prescription.targetLoad,
+            targetLoadUnit: prescription.targetLoadUnit,
+            progressionRuleId: prescription.progressionRuleId,
+          }
+        : null,
+    })),
+  };
 }

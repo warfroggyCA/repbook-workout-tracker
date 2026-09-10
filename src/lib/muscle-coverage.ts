@@ -142,7 +142,22 @@ function uniqueMuscles(value: unknown): string[] {
 }
 
 /** Planned working sets per slot: no warm-ups, load weighting or unilateral doubling. */
-export function programMuscleWork(program: ProgramPresentation): MuscleWork[] {
+type CoverageDay = Pick<
+  ProgramPresentation["days"][number],
+  "lineageId" | "name"
+> & {
+  slots: Array<{
+    id: string;
+    exercise: Pick<
+      ProgramPresentation["days"][number]["slots"][number]["exercise"],
+      "id" | "name" | "muscleMapping"
+    >;
+    prescription: { sets: number } | null;
+  }>;
+};
+export function programMuscleWork(program: {
+  days: CoverageDay[];
+}): MuscleWork[] {
   return program.days.flatMap((day, dayIndex) =>
     day.slots.map((slot) => {
       const direct = uniqueMuscles(slot.exercise.muscleMapping?.primary);

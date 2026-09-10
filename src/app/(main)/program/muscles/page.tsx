@@ -4,7 +4,9 @@ import { getCurrentUser } from "@/lib/user";
 import { getActiveProgramPresentation } from "@/services/program-presentation";
 import { ProgramMuscleMap } from "@/components/muscle-map/program-muscle-map";
 
-export default async function ProgramMusclesPage() {
+export default async function ProgramMusclesPage({
+  searchParams,
+}: PageProps<"/program/muscles">) {
   const user = await getCurrentUser();
   const db = await getDb();
   const program = await getActiveProgramPresentation(db, user.id);
@@ -19,5 +21,17 @@ export default async function ProgramMusclesPage() {
         </p>
       </main>
     );
-  return <ProgramMuscleMap key={program.program.id} program={program} />;
+  const query = await searchParams;
+  const requestedDay = typeof query.day === "string" ? query.day : null;
+  const initialDayId =
+    program.days.find((day) => day.lineageId === requestedDay)?.lineageId ??
+    null;
+  return (
+    <ProgramMuscleMap
+      key={`${program.program.id}:${initialDayId ?? "all"}`}
+      program={program}
+      initialDayId={initialDayId}
+      unavailableDay={requestedDay !== null && initialDayId === null}
+    />
+  );
 }

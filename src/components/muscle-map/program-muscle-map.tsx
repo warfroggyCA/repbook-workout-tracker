@@ -23,13 +23,19 @@ type Filter = "all" | "direct" | "supporting" | "days";
 
 export function ProgramMuscleMap({
   program,
+  initialDayId = null,
+  unavailableDay = false,
 }: {
   program: ProgramPresentation;
+  initialDayId?: string | null;
+  unavailableDay?: boolean;
 }) {
   const router = useRouter();
   const detailScroll = useRef<HTMLDivElement>(null);
   const [refreshing, startRefresh] = useTransition();
-  const [daySelection, setDaySelection] = useState<Set<string> | null>(null);
+  const [daySelection, setDaySelection] = useState<Set<string> | null>(() =>
+    initialDayId ? new Set([initialDayId]) : null,
+  );
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [focused, setFocused] = useState("");
   const [filter, setFilter] = useState<Filter>("all");
@@ -144,6 +150,12 @@ export function ProgramMuscleMap({
           </button>
         </div>
       </header>
+      {unavailableDay && (
+        <p role="status" className="text-sm text-muted-foreground">
+          That workout day is no longer in the active Program. Showing all
+          current days.
+        </p>
+      )}
       <nav className={styles.days} aria-label="Days shown on the muscle map">
         <button
           aria-pressed={allDays}

@@ -96,10 +96,58 @@ Incline pressing keeps one chest count and explains clavicular emphasis without
 invented regional percentages or isolated upper-chest coverage. A calf synergy
 in a knee curl refers to gastrocnemius, not every member of the calf group.
 
-The neutral raster background remains; compact transparent day summaries will
-need a cutout or transparent render. Existing clothed exercise-demo files, motion,
-bindings and configuration are unchanged. Gap analysis, suggestions, automatic
-Program changes and compact summaries remain outside this release.
+The full map retains its neutral raster background. Compact day summaries use
+transparent SVG silhouette clips around the same original image; no character
+regeneration or alternate muscle geometry is involved. Existing clothed exercise-demo files, motion,
+bindings and configuration are unchanged. Gap analysis, suggestions and automatic Program changes remain deferred.
+
+## Compact workout-day summaries
+
+Program's selected-day heading, Today's planned-day heading, and Today's
+alternate-day choices show a small transparent front/back pair for days that
+have saved exercise slots. Empty/rest days do not imply a zero-work silhouette.
+The summary is a link with a visible "Muscle details" caption and an accessible
+text equivalent listing planned direct sets. It has no animation, tiny muscle
+hit targets, or unreadable set numbers. Supporting work and mapping limitations
+remain available in the full map; unworked regions stay skin coloured.
+
+`DayMuscleSummary` uses the same `programMuscleWork`, `aggregateMuscleWork`,
+regions and fixed red bands as the full map. `templatePresentationSource` shares
+the saved-template projection between Today and Program, including coverage-v2
+roles and catalog fallback; Today needs no additional database read. Changed
+saved exercises and prescriptions are reflected on the next server read, while
+Program day-tab changes immediately select the matching summary. No aggregate
+is persisted and unsaved drafts are not displayed as the saved Program.
+
+Tapping or keyboard-activating the summary opens `/program/muscles?day=<lineageId>`
+with only that currently owned day selected. Ordinary map navigation still starts
+with all days. A new day-link navigation resets the initial day filter; in-map
+filters remain interactive and a refresh preserves selections. A removed or
+foreign day ID shows all current days with a visible explanation. Duplicate query
+parameters are ignored. Day identity uses lineage, not a title or version-specific
+template ID. Workout Start and exercise-form controls remain separate actions.
+
+`src/lib/froggy-muscle-silhouettes.json` supplies reusable native SVG cutout paths
+in the existing 1774×887 image coordinate system. The `compact` artwork option
+clips both the image and muscle layers together. Original image pixels, full-map
+rectangular crops and exercise-demo assets are preserved. The cutout boundaries
+are visual silhouettes, not new anatomical regions or anatomical certification.
+
+The Program edit action moves below the title on narrow screens so it cannot
+squeeze the title beside the miniature. Each summary remains at least 84×104 CSS
+pixels, with a visible keyboard focus outline. Full-map disclosures also apply to
+these miniatures, including text-only deep muscles.
+
+### Compact-summary verification
+
+Run `tests/unit/day-muscle-summary.test.tsx`,
+`tests/unit/program-muscle-map-route.test.tsx`, and
+`tests/unit/today-form-preview.test.tsx` alongside the shared coverage and
+presentation suites below. Verify Today current/alternate previews, Program day
+switching, distinct summary versus exercise-form actions, keyboard link activation,
+one-day destination, stale-day explanation, browser Back, and desktop/390px/320px
+layouts with the disposable fixture. Physical iPhone Safari and installed-PWA
+acceptance remains a separate follow-up, including touch accuracy and resume.
 
 ## Coverage review and sources
 

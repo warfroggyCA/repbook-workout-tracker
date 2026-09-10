@@ -6,6 +6,8 @@ import Link from "next/link";
 import { ChevronDown, FilePenLine, Pencil, Play, Upload } from "lucide-react";
 import { ExerciseFamilyIcon } from "@/components/exercises/exercise-family-icon";
 import { ProgramDayTabs } from "@/components/program/program-day-tabs";
+import { DayMuscleSummary } from "@/components/muscle-map/day-muscle-summary";
+import { programMuscleWork } from "@/lib/muscle-coverage";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import type { ProgramPresentation } from "@/lib/program-presentation";
@@ -31,6 +33,10 @@ export function ProgramViewer({
   initialSelectedId: string;
   editorEnabled: boolean;
 }) {
+  const muscleWork = useMemo(
+    () => programMuscleWork(presentation),
+    [presentation],
+  );
   const [selectedId, setSelectedId] = useState(initialSelectedId);
   const selectDay = useCallback((lineageId: string) => {
     setSelectedId(lineageId);
@@ -158,13 +164,20 @@ export function ProgramViewer({
 
       <section className="overflow-hidden rounded-2xl border bg-card shadow-[var(--shadow-soft)]">
         <header className="border-b px-4 py-4 sm:px-5">
-          <div className="flex items-start justify-between gap-3">
-            <h2 className="min-w-0 text-xl font-semibold [overflow-wrap:anywhere]">
-              {selected.name}
-            </h2>
+          <div className="flex flex-col items-stretch gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex min-w-0 flex-1 items-center gap-3">
+              <DayMuscleSummary
+                dayId={selected.lineageId}
+                dayName={selected.name}
+                work={muscleWork}
+              />
+              <h2 className="min-w-0 text-xl font-semibold [overflow-wrap:anywhere]">
+                {selected.name}
+              </h2>
+            </div>
             {editorEnabled && (
               <Button
-                className="min-h-11 shrink-0"
+                className="min-h-11 shrink-0 self-end sm:self-auto"
                 variant="outline"
                 render={
                   <Link

@@ -23,11 +23,11 @@ import TodayPage from "@/app/(main)/today/page";
 
 function day(id: string, exerciseId: string, demoExerciseId: string | null) {
   return {
-    template: { id, name: id, warmupItems: [] },
+    template: { id, lineageId: `lineage-${id}`, name: id, warmupItems: [] },
     slots: [{
       slot: { id: `slot-${id}`, warmupSets: [] },
       exercise: {
-        id: exerciseId, name: "Synthetic curl", family: "Curl", movementPattern: "isolation",
+        id: exerciseId, primaryMuscles: ["biceps"], secondaryMuscles: [], catalogReviewed: true, name: "Synthetic curl", family: "Curl", movementPattern: "isolation",
         formDemo: demoExerciseId ? { key: "incline-dumbbell-curl-v102", exerciseId: demoExerciseId } : null,
       },
       prescription: { sets: 3, repRangeMin: 8, repRangeMax: 12, targetLoad: 15, targetLoadUnit: "lb" },
@@ -53,6 +53,9 @@ describe("Today planned exercise form entry", () => {
     expect(html).toContain('aria-label="View Incline Dumbbell Curl form"');
     expect(html).toContain('aria-expanded="false"');
     expect(html).toContain("3 × 8–12");
+    expect(html).toContain(`data-day-muscle-summary="lineage-${preview ?? "Day 1"}"`);
+    expect(html).toContain("Biceps: 3 direct sets");
+    expect(html).toContain(`/program/muscles?day=lineage-${preview ? "Day+2" : "Day+1"}`);
     expect(html).not.toContain("<video");
     expect(html).toContain(preview ? "Planned exercises" : "Preview planned exercises");
   });

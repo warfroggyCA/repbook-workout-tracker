@@ -1,3 +1,6 @@
+import { DayMuscleSummary } from "@/components/muscle-map/day-muscle-summary";
+import { programMuscleWork } from "@/lib/muscle-coverage";
+import { templatePresentationSource } from "@/services/program-presentation";
 import { randomUUID } from "node:crypto";
 import Link from "next/link";
 import { redirect } from "next/navigation";
@@ -152,6 +155,10 @@ export default async function TodayPage({
     await getTodayPageData(db, user.id, user.profile.timezone, now);
 
   if (!today) redirect("/setup");
+
+  const muscleWork = programMuscleWork({
+    days: today.allTemplates.map(templatePresentationSource),
+  });
 
   // Server-issued identity keeps the HTML form, pre-hydration submission, and
   // hydrated retries on one exact Start intent.
@@ -424,13 +431,22 @@ export default async function TodayPage({
                     {today.programName}
                   </span>
                 </div>
-                <h2 className="ui-section-title">
-                  {selectedTemplate.template.name}
-                </h2>
-                <CardDescription>
-                  {selectedTemplate.slots.length} exercise
-                  {selectedTemplate.slots.length === 1 ? "" : "s"}
-                </CardDescription>
+                <div className="flex min-w-0 items-center gap-3">
+                  <DayMuscleSummary
+                    dayId={selectedTemplate.template.lineageId}
+                    dayName={selectedTemplate.template.name}
+                    work={muscleWork}
+                  />
+                  <div className="min-w-0">
+                    <h2 className="ui-section-title break-words">
+                      {selectedTemplate.template.name}
+                    </h2>
+                    <CardDescription>
+                      {selectedTemplate.slots.length} exercise
+                      {selectedTemplate.slots.length === 1 ? "" : "s"}
+                    </CardDescription>
+                  </div>
+                </div>
               </CardHeader>
               <CardContent className="flex flex-col gap-3">
                 {isAlternatePreview && !scheduledAlternateBlocked && (
@@ -589,35 +605,44 @@ export default async function TodayPage({
                 </summary>
                 <div className="grid gap-2 border-t p-3 sm:grid-cols-2">
                   {alternateTemplates.map((template) => (
-                    <Button
+                    <div
                       key={template.template.id}
-                      render={
-                        <Link
-                          href={{
-                            pathname: "/today",
-                            query: { preview: template.template.id },
-                          }}
-                        />
-                      }
-                      nativeButton={false}
-                      variant="outline"
-                      className="h-auto min-h-12 w-full justify-between bg-card px-3 py-2 text-left"
+                      className="flex min-w-0 items-center gap-2"
                     >
-                      <span className="min-w-0">
-                        <span className="block truncate">
-                          {template.template.name}
+                      <DayMuscleSummary
+                        dayId={template.template.lineageId}
+                        dayName={template.template.name}
+                        work={muscleWork}
+                      />
+                      <Button
+                        render={
+                          <Link
+                            href={{
+                              pathname: "/today",
+                              query: { preview: template.template.id },
+                            }}
+                          />
+                        }
+                        nativeButton={false}
+                        variant="outline"
+                        className="h-auto min-h-12 min-w-0 flex-1 justify-between bg-card px-3 py-2 text-left"
+                      >
+                        <span className="min-w-0">
+                          <span className="block truncate">
+                            {template.template.name}
+                          </span>
+                          <span className="block text-xs font-normal text-muted-foreground">
+                            {today.lastDoneByTemplateId[template.template.id]
+                              ? `Last completed ${formatRelativeLocalDate(
+                                  today.lastDoneByTemplateId[template.template.id],
+                                  today.currentLocalDate
+                                )}`
+                              : "Not completed yet"}
+                          </span>
                         </span>
-                        <span className="block text-xs font-normal text-muted-foreground">
-                          {today.lastDoneByTemplateId[template.template.id]
-                            ? `Last completed ${formatRelativeLocalDate(
-                                today.lastDoneByTemplateId[template.template.id],
-                                today.currentLocalDate
-                              )}`
-                            : "Not completed yet"}
-                        </span>
-                      </span>
-                      <ChevronRight className="size-4" />
-                    </Button>
+                        <ChevronRight className="size-4" />
+                      </Button>
+                    </div>
                   ))}
                 </div>
               </details>
