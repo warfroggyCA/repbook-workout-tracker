@@ -52,8 +52,29 @@
   max-width: 40vw;
 }
 .back {
-  font-size: 13px;
-  color: var(--muted-foreground);
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 9px 14px;
+  margin-bottom: 8px;
+  border: 1px solid #008da8;
+  border-radius: 9px;
+  background: #e2f5f4;
+  color: #005f70;
+  font-size: 14px;
+  font-weight: 600;
+}
+.back:hover {
+  background: #ccebea;
+}
+@media (max-width: 700px) {
+  .back {
+    gap: 6px;
+    padding: 9px 10px;
+    font-size: 13px;
+    white-space: nowrap;
+  }
 }
 .actions {
   display: flex;
@@ -87,13 +108,22 @@
   display: flex;
   flex-direction: column;
   padding: 14px;
-  background: #fffdf9;
-  color: #302a25;
+  background-color: #e1dfdc;
+  background-image:
+    linear-gradient(rgba(225, 223, 220, 0.38), rgba(225, 223, 220, 0.38)),
+    url("/muscle-map/gym-bokeh-v1.webp");
+  background-size: cover;
+  background-position: center;
+  color: #302f2d;
 }
 .mapStatus {
   font-size: 12px;
   text-align: center;
   flex-shrink: 0;
+  align-self: center;
+  padding: 2px 8px;
+  border-radius: 6px;
+  background: rgba(241, 240, 237, 0.88);
 }
 .figures {
   display: flex;
@@ -115,11 +145,6 @@
   min-height: 0;
   overflow: hidden;
 }
-.figures figcaption {
-  text-align: center;
-  font-size: 11px;
-  color: #71665e;
-}
 .region {
   cursor: pointer;
   outline: none;
@@ -136,6 +161,10 @@
   gap: 8px;
   font-size: 11px;
   margin-top: 10px;
+  align-self: center;
+  padding: 4px 8px;
+  border-radius: 6px;
+  background: rgba(241, 240, 237, 0.88);
 }
 .legend span {
   display: inline-flex;

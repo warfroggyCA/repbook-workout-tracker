@@ -87,7 +87,7 @@ export function FroggyFormDemoPanel() {
   if (!demo || !demo.opened || demo.expanded) return null;
   return <div className="col-span-full min-w-0 w-full max-w-[460px]" data-testid="froggy-inline-preview">
     <div className="flex items-center justify-between gap-2">
-      <span className="text-xs font-medium text-muted-foreground">Form · Froggy</span>
+      <span className="text-xs font-medium text-muted-foreground">Exercise form</span>
       <div className="flex gap-1">
         <Button type="button" variant="ghost" size="icon-sm" onClick={demo.expand} aria-label="Expand form preview"><Maximize2 className="size-4" /></Button>
         <Button type="button" variant="ghost" size="icon-sm" onClick={demo.close} aria-label="Close form preview"><X className="size-4" /></Button>

@@ -19,7 +19,7 @@ async function main() {
   const row = await db.query.exercises.findFirst({ where: and(isNull(exercises.userId), eq(exercises.name, "Dumbbell Row")) });
   if (supported.some(e => !e || !matchFroggyFormDemo(e, true)) || !row) throw new Error("Required synthetic catalog exercises are missing.");
   const result = await activateProgramAtomically(db, {
-    userId: user.id, loadUnit: "lb", programName: "Froggy form demo pilot",
+    userId: user.id, loadUnit: "lb", programName: "Exercise form preview",
     changeSummary: "Disposable form viewer fixture", auditAction: "program.activate",
     auditSummary: "Synthetic form viewer test only",
     days: [[...supported.slice(0, 5), row], supported.slice(5, 9), supported.slice(9, 11), supported.slice(11, 15), supported.slice(15, 19), supported.slice(19)].map((items, index) => ({ name: `Day ${index + 1} — Form practice`, notes: "Synthetic local preview", exercises: items.map(exercise => ({

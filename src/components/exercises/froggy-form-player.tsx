@@ -249,7 +249,7 @@ export default function FroggyFormPlayer({ demoKey, initialSnapshot, onSnapshot 
         <ul className="list-disc space-y-1 pl-5">{config.cues.map(c => <li key={c.text}><strong>{c.kind}:</strong> {c.text}</li>)}</ul>
         <p className="mt-2"><a className="underline" href={config.reference} target="_blank" rel="noreferrer">{config.referenceLabel}</a></p>
         <p className="mt-2 text-xs text-muted-foreground">Highlights are schematic; the pulse is decorative, not measured muscle activation.</p>
-        <p className="mt-2 text-xs text-muted-foreground">Froggy adaptation of Snow Rig © Blender Foundation · <a className="underline" href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noreferrer">CC BY 4.0</a>.</p>
+        <p className="mt-2 text-xs text-muted-foreground">Adapted from Snow Rig © Blender Foundation · <a className="underline" href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noreferrer">CC BY 4.0</a>.</p>
       </details>
     </div>
   );

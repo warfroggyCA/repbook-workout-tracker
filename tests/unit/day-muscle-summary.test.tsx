@@ -78,9 +78,10 @@ describe("compact workout-day muscle coverage", () => {
     const html = renderToStaticMarkup(
       <FroggyMuscleMap coverage={aggregateMuscleWork(work)} />,
     );
-    expect(html).toContain("<rect");
+    expect(html).not.toContain("<rect");
     expect(html).toContain('data-set-number="chest"');
-    expect(html).toContain("<figcaption>Back</figcaption>");
+    expect(html).toContain('aria-label="Back muscle map"');
+    expect(html).not.toContain("<figcaption>");
   });
   it("starts the full map on the requested day while ordinary navigation shows all", () => {
     const program = {
@@ -96,10 +97,19 @@ describe("compact workout-day muscle coverage", () => {
     const html = renderToStaticMarkup(
       <ProgramMuscleMap program={program} initialDayId="b" />,
     );
+    expect(html).toContain('href="/program?day=b"');
+    expect(html).toContain("Back to Day 2");
     expect(html).toMatch(/aria-pressed="false"[^>]*>All days/);
     expect(html).toMatch(/aria-pressed="false" title="Day 1 — a"/);
     expect(html).toMatch(/aria-pressed="true" title="Day 2 — b"/);
     const all = renderToStaticMarkup(<ProgramMuscleMap program={program} />);
+    expect(all).toContain('href="/program"');
+    expect(all).toContain("Back to Program");
     expect(all).toMatch(/aria-pressed="true"[^>]*>All days/);
+    const stale = renderToStaticMarkup(
+      <ProgramMuscleMap program={program} initialDayId="removed" />,
+    );
+    expect(stale).toContain('href="/program"');
+    expect(stale).not.toContain('/program?day=removed');
   });
 });

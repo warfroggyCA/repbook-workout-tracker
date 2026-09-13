@@ -79,6 +79,10 @@ export function ProgramMuscleMap({
       [...row.direct, ...row.supporting].some((k) => !hasMuscleArtwork(k)),
   );
   const allDays = program.days.length > 0 && days.size === program.days.length;
+  const returnDayIndex = program.days.findIndex(
+    (day) => day.lineageId === initialDayId,
+  );
+  const returnDay = program.days[returnDayIndex];
 
   useEffect(() => {
     if (detailScroll.current) detailScroll.current.scrollTop = 0;
@@ -129,8 +133,17 @@ export function ProgramMuscleMap({
     <main className={styles.workspace}>
       <header className={styles.header}>
         <div>
-          <Link href="/program" className={styles.back}>
-            ← Program
+          <Link
+            href={returnDay
+              ? { pathname: "/program", query: { day: returnDay.lineageId } }
+              : "/program"}
+            className={styles.back}
+            title={returnDay ? formatProgramDayLabel(returnDay.name, returnDayIndex) : undefined}
+          >
+            <span aria-hidden="true">←</span>
+            {returnDay
+              ? `Back to Day ${returnDayIndex + 1}`
+              : "Back to Program"}
           </Link>
           <h1>Muscle coverage</h1>
           <p title={program.program.name}>{program.program.name}</p>
@@ -324,7 +337,7 @@ export function ProgramMuscleMap({
                                   ? " · reviewed coverage"
                                   : " · catalog mapping only"}
                                 {!row.catalogReviewed
-                                  ? " · catalog not reviewed"
+                                  ? " · exercise details need review"
                                   : ""}
                               </small>
                               {row.coverageReview && (
@@ -352,21 +365,35 @@ export function ProgramMuscleMap({
                     );
                   })
                 ) : (
-                  <p className={styles.notice}>
-                    No{" "}
-                    {filter === "supporting"
-                      ? "supporting"
-                      : filter === "all"
-                        ? "direct or supporting"
-                        : "direct"}{" "}
-                    work is mapped here. Missing mappings can leave work
-                    unrepresented.
-                  </p>
+                  <div className={styles.notice}>
+                    <p>
+                      {filter === "all"
+                        ? `No exercises in this Program currently list ${muscleLabel(focused)} as a main or helping muscle. This doesn’t necessarily mean it does no work.`
+                        : filter === "supporting"
+                          ? `No exercises in this Program list ${muscleLabel(focused)} in a helping role.`
+                          : `No exercises in this Program list ${muscleLabel(focused)} as the main target.`}
+                    </p>
+                    {(filter === "direct" || filter === "days") &&
+                      detail.rows.some((row) => row.supporting.includes(focused)) && (
+                        <>
+                          <p>This muscle helps with other exercises in your Program.</p>
+                          <button onClick={() => setFilter("supporting")}>
+                            View supporting exercises
+                          </button>
+                        </>
+                      )}
+                    {filter === "supporting" &&
+                      detail.rows.some((row) => row.direct.includes(focused)) && (
+                        <button onClick={() => setFilter("direct")}>
+                          View main-target exercises
+                        </button>
+                      )}
+                  </div>
                 )}
               </>
             ) : (
               <div className={styles.empty}>
-                <h2>Your Program, on Froggy</h2>
+                <h2>Your muscle coverage</h2>
                 <p>
                   Tap muscles on either view, or choose one above. Selections
                   add together; tap again to remove.
@@ -384,58 +411,44 @@ export function ProgramMuscleMap({
                   ? ` · ${issues.length} exercises with limitations`
                   : ""}
               </summary>
+              <ul>
+                <li><strong>Red shows your planned sets.</strong> Darker red means
+                  more sets for that muscle. Warm-ups don’t count.</li>
+                <li><strong>Tap days to compare them.</strong> Tap a muscle to see
+                  its exercises across your whole Program.</li>
+                <li><strong>Helping muscles are listed separately.</strong> Their
+                  sets don’t add to the red number. No red doesn’t mean a muscle
+                  does no work.</li>
+              </ul>
               <p>
-                Numbers and red shading show planned direct sets across the
-                selected days. A 6 means six sets, not six exercises or an
-                activation score. Each paired region has one number; it is not a
-                separate count for each side.
-              </p>
-              <p>
-                Reviewed exercise variants use a versioned target/supporting
-                classification with reference notes. Other exercises retain
-                their saved catalog mappings, flagged below. Supporting sets
-                stay separate and never add to the red number. One set can
-                target several muscles, so muscle totals should not be added
-                together as a Program set total.
-              </p>
-              <p>
-                Warm-ups are excluded. Each slot’s prescription is counted once,
-                including timed or unilateral work; sets are not doubled by
-                side. Days mean distinct Program days, not necessarily workouts
-                per week. This is planned coverage, not measured activation,
-                effectiveness or proof of adequate training.
-              </p>
-              <p>
-                This is a schematic training map with 23 surface regions, not an
-                anatomical atlas. Forearm compartments, delt regions, obliques
-                and side glutes are distinct. Chest, quadriceps, hamstrings and
-                calves remain grouped; deep muscles have text details.
-                Boundaries approximate the stylized body. Zero means no mapped
-                direct sets, not no involvement. The classifications are an
-                interpretation of exercise references, not measured activation
-                or anatomical certification.
+                This map is a simple guide. Some muscles are grouped together or
+                listed only in the details. The colours don’t measure how hard
+                you trained or whether you’ve done enough.
               </p>
               {issues.length > 0 && (
-                <ul>
+                <details>
+                  <summary>Exercise notes ({issues.length})</summary>
+                  <ul>
                   {issues.map((row) => (
                     <li key={`${row.dayId}-${row.slotId}`}>
                       {row.exerciseName}:{" "}
                       {[
-                        row.missingPrimary && "no primary mapping",
-                        !row.catalogReviewed && "catalog not reviewed",
+                        row.missingPrimary && "main muscle not recorded",
+                        !row.catalogReviewed && "exercise details need review",
                         !row.coverageReview &&
-                          "coverage roles not reviewed; saved catalog mapping used",
+                          "using saved muscle labels; not yet checked for this variation",
                         row.sets === null &&
-                          "working-set prescription missing or invalid",
+                          "set count missing or unclear",
                         ...[...row.direct, ...row.supporting]
                           .filter((k) => !hasMuscleArtwork(k))
-                          .map((k) => `${muscleLabel(k)} has no artwork`),
+                          .map((k) => `${muscleLabel(k)} is listed in details only`),
                       ]
                         .filter(Boolean)
                         .join("; ")}
                     </li>
                   ))}
-                </ul>
+                  </ul>
+                </details>
               )}
             </details>
           </div>

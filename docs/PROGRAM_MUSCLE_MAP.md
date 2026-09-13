@@ -36,6 +36,12 @@ Catalog review does not certify the anatomical role classification.
 
 ## Interaction and freshness
 
+A prominent, touch-sized Back to Day button returns to the saved day that opened
+this map. Ordinary map entry uses Back to Program. The short How to read guide
+explains colours and selection in everyday language; exercise-specific mapping
+notes remain available in a separate nested disclosure.
+
+
 Day buttons independently toggle the shading; All days toggles all/none. Muscle
 selection is additive and independent of days. A second tap deselects and clears
 the temporary hover/focus preview immediately, even while the pointer remains on
@@ -96,8 +102,9 @@ Incline pressing keeps one chest count and explains clavicular emphasis without
 invented regional percentages or isolated upper-chest coverage. A calf synergy
 in a knee curl refers to gastrocnemius, not every member of the calf group.
 
-The full map retains its neutral raster background. Compact day summaries use
-transparent SVG silhouette clips around the same original image; no character
+The full map and compact day summaries use transparent SVG silhouette clips
+around the same original image. The full map uses a softly blurred gym
+background with a neutral veil and decorative foot shadows. No character
 regeneration or alternate muscle geometry is involved. Existing clothed exercise-demo files, motion,
 bindings and configuration are unchanged. Gap analysis, suggestions and automatic Program changes remain deferred.
 
@@ -128,9 +135,9 @@ parameters are ignored. Day identity uses lineage, not a title or version-specif
 template ID. Workout Start and exercise-form controls remain separate actions.
 
 `src/lib/froggy-muscle-silhouettes.json` supplies reusable native SVG cutout paths
-in the existing 1774×887 image coordinate system. The `compact` artwork option
-clips both the image and muscle layers together. Original image pixels, full-map
-rectangular crops and exercise-demo assets are preserved. The cutout boundaries
+in the existing 1774×887 image coordinate system. Both artwork sizes clip the image and muscle layers together. Original image
+pixels and exercise-demo assets are preserved. App-facing labels use neutral
+terms such as “Your muscle coverage” and “Exercise form”. The cutout boundaries
 are visual silhouettes, not new anatomical regions or anatomical certification.
 
 The Program edit action moves below the title on narrow screens so it cannot
@@ -225,3 +232,14 @@ contains synthetic data. Verify desktop and narrow phone layout, direct taps,
 keyboard toggles, forearm inspection, direct-set numbers, red plus selection contrast, All days, additive muscles, Clear
 all, the three detail filters, no-day inspection, disclosure expansion, refresh
 and Program-day links. Do not seed or mutate a live database for verification.
+
+Empty detail filters describe the selected role in plain language. If the
+other role has exercises, a button opens that list. A zero direct-role result
+does not imply missing exercise mappings or no muscle involvement. Mapping
+limitations remain available in Exercise notes.
+
+The full map uses a softly blurred gym background with a neutral veil. Status
+and legend text have light backings for contrast. The background is decorative
+CSS and cannot intercept pointer events. Compact workout-day summaries remain
+transparent and do not load the gym image. Visible front/back captions are
+omitted; accessible view labels remain.
