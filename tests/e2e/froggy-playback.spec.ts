@@ -12,10 +12,14 @@ test("plays one reduced-motion preview in isolation", async ({ page }) => {
   await page.goto("/program");
   await page.getByRole("button", { name: "View Incline Dumbbell Curl form", exact: true }).click();
   const player = page.getByTestId("froggy-player");
+  // Opening an exercise does not guarantee its video is in the viewport.
+  // Offscreen previews intentionally pause, including with reduced motion.
+  await player.scrollIntoViewIfNeeded();
+  await expect(player.locator("[data-form-banner]")).toBeInViewport();
   await expect.poll(() => player.locator("video").evaluate((v: HTMLVideoElement) => ({
-    readyState: v.readyState, networkState: v.networkState, time: v.currentTime,
+    readyState: v.readyState, networkState: v.networkState, time: v.currentTime, paused: v.paused,
     duration: v.duration, error: v.error?.message ?? null, source: v.currentSrc,
-  })), { timeout: 30_000 }).toMatchObject({ readyState: 4, error: null });
+  })), { timeout: 30_000 }).toMatchObject({ readyState: 4, error: null, paused: false });
   await expect(player.locator("video")).toHaveAttribute("src", /steady\.mp4$/);
   await expect.poll(() => player.locator("[data-form-banner]").innerText(), { timeout: 30_000 }).toMatch(/^AVOID/);
 });
