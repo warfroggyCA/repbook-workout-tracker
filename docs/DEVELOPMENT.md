@@ -964,8 +964,16 @@ return trials, with late or duplicate rings reported separately.
 
 ## Free-form Program editing checks
 
-Run `npx vitest run tests/unit/program-text-update.test.ts tests/unit/program-text-update-action.test.ts tests/unit/program-editor-component.test.tsx tests/unit/v2-d01-structured-diagnostics.test.ts tests/unit/routine-provider-request.test.ts tests/unit/server-log.test.ts`.
-The provider request test intercepts the installed SDK's outgoing request with
-synthetic credentials and verifies supported union representation and no-store;
-it does not prove a live provider accepted the request. Run the text-editing
-case in `program-editor.spec.ts` against the disposable browser fixture.
+Run `npx vitest run tests/unit/program-text-parser.test.ts tests/unit/program-text-update.test.ts tests/unit/program-text-update-action.test.ts tests/unit/program-editor-component.test.tsx`.
+The parser tests cover synthetic multi-day preparation instructions, units,
+ranges, aliases, preserved work, conditional requests, and malformed targets.
+The action tests verify owner/revision checks and zero provider calls even when
+AI is unconfigured. No migration or provider credentials are required.
+
+Run `E2E_AI_DISABLED=1 npm run test:e2e:program-editor -- --grep 'partial text update|free-form warmup edits'`
+after a production build. The disposable server clears provider keys and
+disables fake AI for these checks. Browser coverage includes import-to-editor
+text handoff, review before mutation, selective apply, reload recovery, and
+mobile width. The protected program browser job includes this no-AI run.
+Full replacement/import provider checks remain separate; their installed-SDK
+request test does not prove that a live provider accepted the request.

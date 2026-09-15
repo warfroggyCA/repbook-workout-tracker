@@ -39,11 +39,11 @@ export const AiRebuildDialog = memo(function AiRebuildDialog({ editor }: { edito
                   <legend className="text-sm font-medium">Update mode</legend>
                   <label className="flex min-h-11 items-start gap-3 rounded-lg border p-3">
                     <input type="radio" name="program-update-mode" value="update" checked={coachMode === "update"} onChange={() => setCoachMode("update")} className="mt-1 size-4" />
-                    <span><span className="block font-medium">Update current Program</span><span className="block text-xs text-muted-foreground">Unmentioned days, exercises, and fields stay unchanged.</span></span>
+                    <span><span className="block font-medium">Update current Program</span><span className="block text-xs text-muted-foreground">Parses warm-ups, sets, reps, rest, and loads without AI credits. Unclear instructions are flagged for review. Unmentioned work stays unchanged.</span></span>
                   </label>
                   <label className="flex min-h-11 items-start gap-3 rounded-lg border border-destructive/30 p-3">
                     <input type="radio" name="program-update-mode" value="replace" checked={coachMode === "replace"} onChange={() => setCoachMode("replace")} className="mt-1 size-4" />
-                    <span><span className="block font-medium">Create full replacement</span><span className="block text-xs text-destructive">Unmentioned days and exercises may be removed from the proposed version.</span></span>
+                    <span><span className="block font-medium">Create full replacement</span><span className="block text-xs text-destructive">Requires configured AI access. Unmentioned days and exercises may be removed from the proposed version.</span></span>
                   </label>
                 </fieldset>
                 <Field id="coach-program-prompt" label="What should change?">
@@ -53,7 +53,7 @@ export const AiRebuildDialog = memo(function AiRebuildDialog({ editor }: { edito
                     onChange={(event) => { setCoachPrompt(event.target.value); setTextProposal(null); setCoachProposal(null); setCoachMessage(null); }}
                     rows={6}
                     maxLength={20000}
-                    placeholder="On Upper day, change bench press to 4 sets of 6–8 with 2 min rest, then add cable fly after it. Leave everything else unchanged."
+                    placeholder="On Upper day, change bench press to 4 sets of 6–8 reps with 2 min rest. Or paste warm-up instructions grouped by day, with each preparation immediately before its exercise."
                   />
                 </Field>
                 <Button
@@ -73,7 +73,7 @@ export const AiRebuildDialog = memo(function AiRebuildDialog({ editor }: { edito
                 {coachMessage && !coachMessage.startsWith("Coach's proposal") && (
                   <Alert variant="destructive">
                     <CircleAlert />
-                    <AlertTitle>Coach could not build the proposal</AlertTitle>
+                    <AlertTitle>The proposal could not be prepared</AlertTitle>
                     <AlertDescription>{coachMessage}</AlertDescription>
                   </Alert>
                 )}
