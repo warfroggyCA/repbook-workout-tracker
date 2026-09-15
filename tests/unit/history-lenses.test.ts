@@ -187,6 +187,9 @@ describe("question-driven History lenses", () => {
     expect(lens.limitation).toContain("Deferred workouts are not recorded");
     expect(lens.limitation).toContain("not proof");
     expect(lens.answer.toLowerCase()).not.toContain("deferred");
+    expect(lens.decision.supported).toBe(false);
+    expect(lens.decision.href).toBeUndefined();
+    expect(selectHistoryActionSignal([lens])).toBeNull();
   });
 
   it("attributes only explicitly linked pain and distinguishes a repeated pattern", () => {
@@ -230,6 +233,9 @@ describe("question-driven History lenses", () => {
       true,
     );
     expect(lens.answer.toLowerCase()).not.toContain("caused");
+    expect(lens.decision.supported).toBe(false);
+    expect(lens.decision.href).toBeUndefined();
+    expect(selectHistoryActionSignal([lens])).toBeNull();
   });
 
   it("does not call a single pain flag a repeated movement pattern", () => {
@@ -285,7 +291,9 @@ describe("question-driven History lenses", () => {
     expect(lens.evidence.some((item) => item.value === "50 min vs 40 min")).toBe(
       true,
     );
-    expect(lens.decision.supported).toBe(true);
+    expect(lens.decision.supported).toBe(false);
+    expect(lens.decision.href).toBeUndefined();
+    expect(selectHistoryActionSignal([lens])).toBeNull();
   });
 
   it("keeps mixed capacity signals separate and withholds a decision when volume is not comparable", () => {

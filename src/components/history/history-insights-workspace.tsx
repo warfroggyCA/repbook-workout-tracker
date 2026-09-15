@@ -362,7 +362,7 @@ function InsightsOverview({
             Explore the evidence
           </h3>
           <p className="mt-1 text-sm text-muted-foreground">
-            Open a question for its evidence, limits, and supported actions.
+            Open a question for its evidence and limits.
           </p>
         </div>
         <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
@@ -383,7 +383,7 @@ function InsightsOverview({
                   {lens.tone === "positive"
                     ? "Positive signal"
                     : lens.tone === "watch"
-                      ? lens.key === "progress" ? "Lower result observed" : "Needs attention"
+                      ? lens.key === "progress" ? "Lower result observed" : "Recorded observations"
                       : "Review evidence"}
                 </span>
                 <span className="block break-words text-sm font-semibold group-hover:text-primary">

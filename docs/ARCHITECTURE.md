@@ -322,6 +322,11 @@ may show at most one supported **One thing to review** signal immediately above
 the calendar; unsupported or unavailable conclusions produce no signal. Lens
 cards lead with the short answer and decision support, while retained evidence,
 activity context, limitations, and methodology share one closed disclosure.
+History-derived progress, Program-fit, pain, and workload summaries are
+observations; none establish a pending Review decision. They retain their
+evidence and limitations in Insights without an action banner or a link to the
+Review queue. Substitutions, skips, discomfort reports, and workload comparisons
+alone do not establish that the Program should change.
 A lower first-to-latest best-set comparison is an observation only. It remains
 visible in Insights as **Lower result observed**, with its exact exercise
 evidence and limitations, but does not create an action banner or a link to the
