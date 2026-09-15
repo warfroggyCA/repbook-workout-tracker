@@ -1016,8 +1016,14 @@ test("publishes loaded seconds per side and records the performed measurement on
 test("free-form warmup edits carry pasted text into a reviewed draft and preserve work", async ({ page }, testInfo) => {
   await signIn(page);
   await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/program/edit");
+  await expectSaved(page);
+  const firstEditor = page.locator("article[aria-labelledby]").first();
+  const labelId = await firstEditor.getAttribute("aria-labelledby");
+  const exerciseName = await page.locator(`#${labelId}`).textContent();
+  expect(exerciseName).toBeTruthy();
   await page.goto("/program/import");
-  const request = "Update warm-up only. Keep all working prescriptions unchanged.";
+  const request = `Update warm-up only. Keep all working prescriptions unchanged.\nDay A\nBefore ${exerciseName!.trim()}:\n• Easy rehearsal × 7.\n• 20 kg × 4.\n• Then working sets.`;
   await page.getByLabel("Paste your Program").fill(request);
   await page.getByRole("button", { name: "Update current Program from text", exact: true }).click();
   await expectSaved(page);
@@ -1025,7 +1031,8 @@ test("free-form warmup edits carry pasted text into a reviewed draft and preserv
   const before: ProgramDocumentV3 = (await (await page.request.get("/api/program/draft")).json()).draft.document;
   await page.getByRole("button", { name: "Compare and propose changes", exact: true }).click();
   await expect(page.getByRole("region", { name: "Proposed text changes" })).toBeVisible();
-  await expect(page.getByText("Easy rehearsal × 6", { exact: false })).toBeVisible();
+  await expect(page.getByText("Easy rehearsal × 7", { exact: false })).toBeVisible();
+  await expect(page.getByText("Preparation set × 4 at 20 kg", { exact: false })).toBeVisible();
   await page.getByRole("region", { name: "Proposed text changes" }).scrollIntoViewIfNeeded();
   await page.screenshot({ path: testInfo.outputPath("text-edit-proposal-mobile.png") });
   const unmodified: ProgramDocumentV3 = (await (await page.request.get("/api/program/draft")).json()).draft.document;
@@ -1033,7 +1040,8 @@ test("free-form warmup edits carry pasted text into a reviewed draft and preserv
   await page.getByRole("button", { name: "Apply selected changes", exact: true }).click();
   await expectSaved(page);
   const after: ProgramDocumentV3 = (await (await page.request.get("/api/program/draft")).json()).draft.document;
-  expect(after.days[0].warmupItems).toContainEqual(expect.objectContaining({ label: "Easy rehearsal", beforeSlotLineageId: before.days[0].exercises[0].lineageId, reps: 6 }));
+  expect(after.days[0].warmupItems).toContainEqual(expect.objectContaining({ label: "Easy rehearsal", beforeSlotLineageId: before.days[0].exercises[0].lineageId, reps: 7 }));
+  expect(after.days[0].warmupItems).toContainEqual(expect.objectContaining({ load: 20, loadUnit: "kg", beforeSlotLineageId: before.days[0].exercises[0].lineageId, reps: 4 }));
   for (const [dayIndex, day] of before.days.entries()) {
     expect(after.days[dayIndex].supersets).toEqual(day.supersets);
     for (const [slotIndex, slot] of day.exercises.entries()) {

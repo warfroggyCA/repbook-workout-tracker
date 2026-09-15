@@ -4,25 +4,28 @@ const mocks = vi.hoisted(() => ({
   draft: vi.fn(),
   library: vi.fn(),
   generate: vi.fn(),
-  log: vi.fn(),
+  visible: vi.fn(),
 }));
 vi.mock("@/db", () => ({ getDb: async () => ({}) }));
 vi.mock("@/lib/user", () => ({ getCurrentUser: mocks.user }));
 vi.mock("@/lib/program-editor-feature", () => ({
   isProgramEditorEnabled: () => true,
 }));
-vi.mock("@/ai/provider", () => ({ isAIAvailable: () => true }));
+vi.mock("@/ai/provider", () => ({ isAIAvailable: () => false }));
 vi.mock("@/services/program-drafts", () => ({
   getOpenProgramDraft: mocks.draft,
 }));
 vi.mock("@/services/routine-import", () => ({
   getLibraryWithAvailability: mocks.library,
 }));
+vi.mock("@/services/exercise-map", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/services/exercise-map")>()),
+  loadVisibleExercises: mocks.visible,
+}));
 vi.mock("@/services/ai-control", () => ({
   runControlledStructuredGeneration: mocks.generate,
   AIControlError: class extends Error {},
 }));
-vi.mock("@/lib/server-log", () => ({ logDiagnosticEvent: mocks.log }));
 import { proposeProgramTextUpdate } from "@/app/actions/program-text-update";
 import { createDefaultProgramSlot } from "@/lib/program-editor-client";
 import {
@@ -51,7 +54,7 @@ const document = programDocumentV3Schema.parse({
   ],
 });
 const input = {
-  text: "Change preparation",
+  text: "Before Synthetic press: 20 kg × 5.",
   draftId: id(8),
   revision: 2,
   activeDayId: null,
@@ -64,29 +67,80 @@ beforeEach(() => {
     baseAdvanced: false,
   });
   mocks.library.mockResolvedValue([
-    { id: id(5), name: "Synthetic press", available: true },
+    {
+      id: id(5),
+      name: "Synthetic press",
+      available: true,
+      metricType: "weight_reps",
+    },
   ]);
-  mocks.generate.mockResolvedValue({
-    value: { changes: [], questions: ["Which preparation?"] },
-  });
+  mocks.visible.mockResolvedValue([
+    { id: id(5), aliases: [{ alias: "sample press" }] },
+  ]);
+  mocks.generate.mockRejectedValue(new Error("AI must not be called"));
 });
 describe("program text action", () => {
-  it("uses the authenticated saved document and returns clarification without writes", async () => {
+  it("uses the authenticated saved document and prepares edits without configured AI or writes", async () => {
     expect(await proposeProgramTextUpdate(input)).toMatchObject({
       ok: true,
-      proposal: { questions: ["Which preparation?"] },
+      proposal: {
+        baseDocument: document,
+        questions: [],
+        changes: [
+          expect.objectContaining({
+            operations: [
+              expect.objectContaining({
+                kind: "warmup",
+                slotId: id(4),
+                items: [
+                  expect.objectContaining({
+                    load: 20,
+                    reps: 5,
+                    loadUnit: "kg",
+                  }),
+                ],
+              }),
+            ],
+          }),
+        ],
+      },
     });
-    const generated = JSON.parse(mocks.generate.mock.calls[0][2].input);
-    expect(generated.currentProgram).toEqual(document);
     expect(mocks.draft).toHaveBeenCalledWith({}, id(9));
+    expect(mocks.visible).toHaveBeenCalledWith({}, id(9));
+    expect(mocks.generate).not.toHaveBeenCalled();
   });
-  it("refuses another draft or stale revision before spending an AI call", async () => {
+  it("uses visible aliases and flags unknown instructions without a provider fallback", async () => {
+    expect(
+      await proposeProgramTextUpdate({
+        ...input,
+        text: "Before sample press: 10 kg × 7.",
+      }),
+    ).toMatchObject({
+      ok: true,
+      proposal: { questions: [], changes: [expect.any(Object)] },
+    });
+    expect(
+      await proposeProgramTextUpdate({
+        ...input,
+        text: "Make everything optimal",
+      }),
+    ).toMatchObject({
+      ok: true,
+      proposal: {
+        changes: [],
+        questions: [expect.stringContaining("could not resolve")],
+      },
+    });
+    expect(mocks.generate).not.toHaveBeenCalled();
+  });
+  it("refuses another draft or stale revision before loading the library", async () => {
     expect(
       await proposeProgramTextUpdate({ ...input, draftId: id(10) }),
     ).toMatchObject({ ok: false });
     expect(mocks.generate).not.toHaveBeenCalled();
+    expect(mocks.library).not.toHaveBeenCalled();
   });
-  it("rejects a draft that advances during generation", async () => {
+  it("rejects a draft that advances during comparison", async () => {
     mocks.draft
       .mockResolvedValueOnce({
         draft: { id: id(8), revision: 2, document },
@@ -101,21 +155,14 @@ describe("program text action", () => {
       reason: expect.stringContaining("while"),
     });
   });
-  it("does not reveal provider messages or credentials", async () => {
-    mocks.generate.mockRejectedValue(
-      Object.assign(new Error("secret provider payload"), {
-        name: "AI_APICallError",
-        statusCode: 401,
-        isRetryable: false,
-      }),
-    );
+  it("preserves the request and does not reveal database errors", async () => {
+    mocks.library.mockRejectedValue(new Error("secret connection string"));
     const result = await proposeProgramTextUpdate(input);
     expect(result).toMatchObject({
       ok: false,
-      reason: expect.stringContaining("configuration"),
+      reason: expect.stringContaining("text is still here"),
     });
     expect(JSON.stringify(result)).not.toContain("secret");
-    expect(JSON.stringify(mocks.log.mock.calls)).not.toContain("secret");
   });
   it("authenticates before inspecting user state", async () => {
     mocks.user.mockRejectedValue(new Error("unauthorized"));

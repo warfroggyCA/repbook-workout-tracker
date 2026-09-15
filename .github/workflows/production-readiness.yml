@@ -160,6 +160,12 @@ jobs:
       - name: Run protected browser group
         run: node scripts/run-production-browser-group.mjs "${{ matrix.group }}"
 
+      - name: Verify Program text edits with AI disabled
+        if: matrix.group == 'program'
+        env:
+          E2E_AI_DISABLED: "1"
+        run: npm run test:e2e:program-editor -- --grep 'partial text update|free-form warmup edits'
+
   verify:
     runs-on: ubuntu-latest
     if: ${{ always() }}
