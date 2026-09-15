@@ -585,6 +585,10 @@ test("keeps unrestricted replacement truthful and reachable through mobile keybo
   try {
     await reps.fill("9");
     await expect(reps).toHaveValue("9");
+    await page.evaluate(() => new Promise<void>((resolve) => {
+      requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+    }));
+    await expect(reps).toBeFocused();
   } finally {
     const evidence = await page.evaluate(() => {
       const owner = window as typeof window & {
