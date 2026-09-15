@@ -78,6 +78,10 @@ not regenerated. Explicit preparation-only requests cannot edit working fields.
 Conditional or unrepresentable requests remain questions. Schedules, equipment,
 and historical or active workout records are outside this operation contract.
 Group authoring is supported; timed-metric conversions remain in the manual editor.
+Additions and replacements require repetition-compatible catalog metrics; timed,
+distance and activity targets cannot acquire invented repetition prescriptions.
+Replacement retains the existing target load and unit unless explicitly edited.
+Requested group-member reordering updates both display and execution indexes.
 Warm-up anchors are preserved; this path does not change the existing runtime's
 opening-preparation gating or automatically rescale measured warm-up loads.
 
