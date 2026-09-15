@@ -972,7 +972,9 @@ AI is unconfigured. No migration or provider credentials are required.
 
 Run `E2E_AI_DISABLED=1 npm run test:e2e:program-editor -- --grep 'partial text update|free-form warmup edits'`
 after a production build. The disposable server clears provider keys and
-disables fake AI for these checks. Browser coverage includes import-to-editor
+disables the fake provider with `AI_FAKE_UNAVAILABLE` for these checks. The
+`AI_FAKE` marker remains set because it is also part of the existing disposable
+login guard; authentication and its guard conditions are unchanged. Browser coverage includes import-to-editor
 text handoff, review before mutation, selective apply, reload recovery, and
 mobile width. The protected program browser job includes this no-AI run.
 Full replacement/import provider checks remain separate; their installed-SDK

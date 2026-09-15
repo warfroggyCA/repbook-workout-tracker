@@ -188,6 +188,7 @@ describe("local Program text parsing", () => {
         day.warmupItems.filter((item) => item.beforeSlotLineageId === null),
       ).toHaveLength(3);
       expect(day.warmupNotes).toContain("INCLUDE the 20 kg bar");
+      expect(day.warmupNotes).toContain("APPROXIMATELY 4 MINUTES");
       expect(day.warmupNotes).toContain("60–120 seconds");
       expect(day.warmupNotes).toContain("Never force a painful range");
       expect(day.notes).toEqual(before.days[index].notes);
@@ -249,6 +250,51 @@ describe("local Program text parsing", () => {
     });
     expect(after.days.slice(1)).toEqual(document.days.slice(1));
   });
+
+  it("matches an exact day name ending in Day before treating Day as a qualifier", () => {
+    const document = current();
+    document.days[0].name = "Leg Day";
+    const { after, parsed } = run(
+      "On Leg Day, change Barbell Back Squat to 4 sets.",
+      document,
+    );
+    expect(parsed.questions).toEqual([]);
+    expect(after.days[0].exercises[1].sets).toBe(4);
+  });
+
+  it("retains inline general preparation without requiring a following bullet", () => {
+    const { after, parsed } = run("General warm-up: cycle for 5 minutes");
+    expect(parsed.questions).toEqual([]);
+    for (const day of after.days)
+      expect(day.warmupItems).toEqual([
+        expect.objectContaining({
+          label: "cycle for 5 minutes",
+          beforeSlotLineageId: null,
+        }),
+      ]);
+  });
+
+  it.each([
+    "Remove Barbell Back Squat",
+    "add another leg exercise",
+    "replace Barbell Back Squat with Goblet Squat",
+    "move Barbell Back Squat first",
+  ])(
+    "surfaces a structural command after preparation instead of storing it as guidance: %s",
+    (command) => {
+      const before = current();
+      const { after, parsed } = run(
+        `Day A\nBefore Barbell Bench Press:\n• 20 kg × 5.\n${command}`,
+        before,
+      );
+      expect(parsed.questions).toEqual([
+        expect.stringContaining("could not resolve"),
+      ]);
+      expect(parsed.changes).toHaveLength(1);
+      expect(after.days[0].exercises[0].warmupNotes).toBeNull();
+      expect(after.days[0].exercises).toEqual(before.days[0].exercises);
+    },
+  );
 
   it("preserves preparation on unmentioned anchors and replaces the mentioned ramp", () => {
     const document = current();
