@@ -39,7 +39,7 @@ function readLines(input: string): Line[] {
     const text = source.trim().replace(/^(?:[•*\-]|#{1,6})\s+/, "");
     const bullet = /^\s*[•*\-]\s+/.test(source);
     const command =
-      /^(?:before|immediately before|day\b|change\b|set\b|replace\b|remove\b|move\b|keep\b|leave\b|then\b|for\b|these\b)/i.test(
+      /^(?:before|immediately before|day\b|on\b|change\b|set\b|update\b|add\b|replace\b|remove\b|move\b|reorder\b|group\b|ungroup\b|keep\b|leave\b|then\b|for\b|these\b)/i.test(
         text,
       );
     if (
@@ -237,13 +237,18 @@ export function parseProgramTextUpdate(
   const label = (target: Target) =>
     `${target.day.name}${target.slot ? ` · ${catalog.get(target.slot.exerciseId)?.name ?? "Exercise"}` : " · general preparation"}`;
   const resolveDay = (name: string): Day[] => {
-    const normalized = normalizeExerciseText(name.replace(/\s+day$/i, ""));
-    if (/^(?:this|current)(?: day)?$/i.test(normalized))
-      return document.days.filter((day) => day.lineageId === activeDayId);
+    const normalized = normalizeExerciseText(name);
     const exact = document.days.filter(
       (day) => normalizeExerciseText(day.name) === normalized,
     );
     if (exact.length) return exact;
+    if (/^(?:this|current)(?: day)?$/i.test(normalized))
+      return document.days.filter((day) => day.lineageId === activeDayId);
+    const qualifiedName = normalizeExerciseText(name.replace(/\s+day$/i, ""));
+    const qualified = document.days.filter(
+      (day) => normalizeExerciseText(day.name) === qualifiedName,
+    );
+    if (qualified.length) return qualified;
     const marker = /^(?:day\s+)?([a-z]|\d+)(?:\s*[—–:-].*)?$/i.exec(name);
     if (marker) {
       const named = document.days.filter((day) =>
@@ -258,7 +263,7 @@ export function parseProgramTextUpdate(
     return document.days.filter(
       (day) =>
         normalizeExerciseText(day.name).replace(/^day\s+\w+\s*/, "") ===
-        normalized,
+        qualifiedName,
     );
   };
   const resolve = (
@@ -365,17 +370,23 @@ export function parseProgramTextUpdate(
       current = [];
       continue;
     }
-    if (
-      /^(?:start of each day|start of every day|general warm[ -]?up)(?:\b|\s*:)/i.test(
+    const generalHeading =
+      /^(?:start of each day|start of every day|general warm[ -]?up)\b\s*(?:[:—–-]\s*)?(.*)$/i.exec(
         text,
-      )
-    ) {
+      );
+    if (generalHeading) {
       section = "general";
       conditional = false;
       current = startPreparation(
         document.days.map((day) => ({ day, slot: null })),
         line.source,
       );
+      if (generalHeading[1]) {
+        if (/^(?:approximately|about|\d)/i.test(generalHeading[1])) {
+          for (const prep of current) addNote(prep.notes, generalHeading[1]);
+        } else
+          consumePreparation({ text: generalHeading[1], source: line.source });
+      }
       continue;
     }
     if (/^other exercise preparation\s*:?(?:\s*)$/i.test(text)) {
@@ -475,12 +486,25 @@ export function parseProgramTextUpdate(
         addNote(globalNotes, text);
       continue;
     }
-    if (
-      (current.length || conditional) &&
-      !/^(?:change|set|update)\b/i.test(text)
-    ) {
+    const editCommand =
+      /^(?:on\b.+?[,;:]\s*)?(?:change|set|update|add|remove|replace|move|reorder|group|ungroup)\b/i.test(
+        text,
+      );
+    // A listed new ramp replaces the old ramp, so the instruction to remove a
+    // separate old preparation set belongs to that replacement's guidance.
+    const oldRampGuidance =
+      current.length > 0 &&
+      current.every((prep) => prep.items.length > 0) &&
+      /^remove (?:the )?separate\b.+\b(?:preparation|warm[ -]?up) set\b/i.test(
+        text,
+      );
+    if ((current.length || conditional) && (!editCommand || oldRampGuidance)) {
       consumePreparation(line);
       continue;
+    }
+    if (editCommand) {
+      current = [];
+      conditional = false;
     }
 
     let instruction = text;

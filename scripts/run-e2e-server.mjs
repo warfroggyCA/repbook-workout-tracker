@@ -145,7 +145,8 @@ async function cleanupResources() {
 }
 const environment = {
   ...process.env,
-  AI_FAKE: process.env.E2E_AI_DISABLED === "1" ? "" : "1",
+  AI_FAKE: "1",
+  AI_FAKE_UNAVAILABLE: process.env.E2E_AI_DISABLED === "1" ? "1" : "",
   ANTHROPIC_API_KEY: "",
   ALLOWED_EMAILS: v2GauntletBLiveWorkout
     ? "ba.iphone.e2e@example.com"

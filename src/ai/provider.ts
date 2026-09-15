@@ -152,6 +152,9 @@ function resolveModel(): {
 function isFakeEnabled(): boolean {
   return (
     process.env.AI_FAKE === "1" &&
+    // Keep the disposable-runtime authentication guards intact while testing
+    // features that must work without either a real or fake AI provider.
+    process.env.AI_FAKE_UNAVAILABLE !== "1" &&
     (process.env.NODE_ENV === "development" || isDisposableAcceptanceRuntime())
   );
 }
