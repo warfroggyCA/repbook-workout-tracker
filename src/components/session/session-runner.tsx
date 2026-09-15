@@ -1848,7 +1848,19 @@ export function SessionRunner(props: SessionRunnerProps) {
             firstVisibleFocusable(target) ??
             (target.matches("[tabindex]") ? target : null);
         if (focusTarget instanceof HTMLElement) {
-          focusTarget.focus({ preventScroll: true });
+          // A delayed transition frame can arrive after the user starts
+          // editing the revealed set. Consume the handoff without taking
+          // focus (or the mobile keyboard) away from that input.
+          const activeElement = document.activeElement;
+          const editingCurrentAction =
+            activeElement instanceof HTMLElement &&
+            target?.contains(activeElement) &&
+            activeElement.matches(
+              "input, textarea, select, [contenteditable='true']",
+            );
+          if (!editingCurrentAction) {
+            focusTarget.focus({ preventScroll: true });
+          }
           previousCurrentActionIdRef.current = currentActionId;
           previousCurrentActionKindRef.current = currentActionKind;
           previousCurrentActionSessionExerciseIdRef.current =

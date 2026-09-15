@@ -27,6 +27,12 @@ npm run docs:check
 npm run audit:check
 ```
 
+Workout transition focus must preserve an input the user has already focused
+inside the revealed action. The mobile replacement regression checks both the
+entered repetitions and retained focus after scheduled animation frames; it
+also verifies the recorded set. Run it with
+`npm run test:e2e:replacement-mobile` when changing transition focus behavior.
+
 The migration-free PII-01A Program-intake gate is:
 
 ```bash
