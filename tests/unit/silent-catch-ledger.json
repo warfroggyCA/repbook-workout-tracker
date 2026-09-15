@@ -7,6 +7,9 @@
     "A failed deterministic exercise-library lookup discards staged import and parsing data instead of retaining partial review state.",
     "A failed final review-stage write discards and redacts every staged routine artifact instead of returning a partial success."
   ],
+  "src/app/actions/program-text-update.ts": [
+    "Read-only local proposal lookup or validation failures return explicit recoverable user copy, preserve the request, and perform no Program write; raw authored content and database exception details are intentionally omitted from diagnostics."
+  ],
   "src/services/program-activation.ts": [
     "A reviewed schema-three document that cannot project into the version-two preflight contract is rejected with safe review copy."
   ],
