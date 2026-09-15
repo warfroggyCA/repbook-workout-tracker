@@ -44,6 +44,7 @@ export type DiagnosticEventFields = {
   "ai.coach_review_failed": ProviderFields;
   "ai.setup_equipment_parse_failed": ProviderFields;
   "ai.setup_routine_build_failed": ProviderFields;
+  "ai.routine_parse_failed": ProviderFields;
   "ai.structured_output_missing": { finishReason: SanitizedAIFinishReason };
   "ai.usage_failure_write_failed": ErrorFields & {
     usageOutcome: "cancelled" | "failed" | "timed_out";
@@ -239,6 +240,7 @@ const DIAGNOSTIC_EVENT_MANIFEST = {
     "failed",
     PROVIDER_FIELDS,
   ),
+  "ai.routine_parse_failed": definition("ai", "warn", "routine_parse", "failed", PROVIDER_FIELDS),
   "ai.setup_routine_build_failed": definition(
     "ai",
     "error",

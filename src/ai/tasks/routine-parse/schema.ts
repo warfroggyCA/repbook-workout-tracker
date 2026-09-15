@@ -23,7 +23,8 @@ const nullableText = (max: number) =>
   z.string().trim().min(1).max(max).nullable();
 
 /** repsPerSet: explicit per-set counts ("8, 8, 6") or a range ("8-10"). */
-export const repSpecSchema = z.discriminatedUnion("kind", [
+// Literal tags remain disjoint; z.union emits provider-supported anyOf.
+export const repSpecSchema = z.union([
   z
     .object({
       kind: z.literal("perSet"),

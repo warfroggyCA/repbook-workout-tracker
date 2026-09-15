@@ -299,10 +299,12 @@ function comparableInstruction(value: string) {
 
 export function RoutineImport({
   aiAvailable,
+  onUpdateCurrent,
   initialParse = null,
   initialDestination = "replace_active",
 }: {
   aiAvailable: boolean;
+  onUpdateCurrent?: (text: string) => void;
   initialParse?: ParseOk | null;
   initialDestination?: "replace_active" | "create_new_active";
 }) {
@@ -587,6 +589,7 @@ export function RoutineImport({
   if (!parsed) {
     return (
       <div className="rounded-xl border p-3 sm:p-4">
+        {onUpdateCurrent && <div className="mb-4 space-y-2 border-b pb-4"><p className="font-medium">Changing your current Program?</p><p className="text-sm text-muted-foreground">Describe changes in your own words. Repbook uses your saved Program and preserves everything else.</p><Button type="button" variant="outline" onClick={() => onUpdateCurrent(input)}>Update current Program from text</Button></div>}
         <label htmlFor="routine-paste" className="mb-2 flex items-center gap-2 text-sm font-medium">
           <ClipboardPaste className="size-4" aria-hidden="true" />
           Paste your Program

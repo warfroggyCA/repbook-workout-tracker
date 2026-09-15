@@ -1,7 +1,9 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { proposeProgramTextUpdate } from "@/app/actions/program-text-update";
+import { applyProgramTextChanges, type ProgramTextProposal } from "@/lib/program-text-update";
 import { buildProgramRoutineDraft } from "@/app/actions/setup";
 import type { ExerciseDiscoveryItem } from "@/lib/exercise-discovery";
 import {
@@ -39,12 +41,14 @@ export type ProgramSlotReplacementRequest = ProgramSlotRemovalRequest;
 export function useProgramEditorController({
   ownerId,
   library,
+  initialPrompt,
   initialDayId,
   initialRemovalRequest,
   initialReplacementRequest,
 }: {
   ownerId: string;
   library: ExerciseDiscoveryItem[];
+  initialPrompt?: string;
   initialDayId: string | null;
   initialRemovalRequest: ProgramSlotRemovalRequest | null;
   initialReplacementRequest: ProgramSlotReplacementRequest | null;
@@ -56,8 +60,10 @@ export function useProgramEditorController({
   const [publishing, setPublishing] = useState(false);
   const [discarding, setDiscarding] = useState(false);
   const [restoringId, setRestoringId] = useState<string | null>(null);
-  const [coachPrompt, setCoachPrompt] = useState("");
+  const [coachPrompt, setCoachPrompt] = useState(initialPrompt ?? "");
   const [coachMode, setCoachMode] = useState<ProgramUpdateMode>("update");
+  const latestCoachRequest = useRef({ text: coachPrompt, mode: coachMode });
+  useEffect(() => { latestCoachRequest.current = { text: coachPrompt, mode: coachMode }; }, [coachPrompt, coachMode]);
   const [coachBuilding, setCoachBuilding] = useState(false);
   const [coachMessage, setCoachMessage] = useState<string | null>(null);
   const [pairingDayId, setPairingDayId] = useState<string | null>(null);
@@ -76,6 +82,9 @@ export function useProgramEditorController({
     warnings: string[];
     confidence: number;
   } | null>(null);
+  const [textProposal, setTextProposal] = useState<ProgramTextProposal | null>(null);
+  const proposalRequestRef = useRef(false);
+  const [acceptedTextChanges, setAcceptedTextChanges] = useState<Set<string>>(new Set());
   const [acceptedCoachChanges, setAcceptedCoachChanges] = useState<Set<string>>(new Set());
   const [confirmDiscard, setConfirmDiscard] = useState(false);
   const [confirmRestore, setConfirmRestore] =
@@ -355,10 +364,29 @@ export function useProgramEditorController({
       setCoachMessage("Describe the Program you want first.");
       return;
     }
+    if (proposalRequestRef.current) return;
+    proposalRequestRef.current = true;
+    setTextProposal(null);
     setCoachBuilding(true);
     setCoachMessage(null);
     setCoachProposal(null);
     try {
+      if (coachMode === "update") {
+        await savePending();
+        if (dirtyRef.current || !draftRef.current) {
+          setCoachMessage("Wait for your draft to finish saving, then compare again. Your request is still here.");
+          return;
+        }
+        const result = await proposeProgramTextUpdate({ text: coachPrompt, draftId: draftRef.current.id, revision: revisionRef.current, activeDayId });
+        if (latestCoachRequest.current.text !== coachPrompt || latestCoachRequest.current.mode !== coachMode) { setCoachMessage("Your request changed. Compare again to use the latest wording."); return; }
+        if (!result.ok) { setCoachMessage(result.reason); return; }
+        if (JSON.stringify(documentRef.current) !== JSON.stringify(result.proposal.baseDocument)) {
+          setCoachMessage("The draft changed while preparing your proposal. Compare again."); return;
+        }
+        setTextProposal(result.proposal);
+        setAcceptedTextChanges(new Set(result.proposal.changes.map((change) => change.id)));
+        return;
+      }
       const result = await buildProgramRoutineDraft(
         coachPrompt,
         projectIntentProgramDocumentV2(current),
@@ -384,10 +412,23 @@ export function useProgramEditorController({
       setAcceptedCoachChanges(new Set(proposal.changes.filter((change) => change.acceptedByDefault).map((change) => change.id)));
     } catch {
       setCoachMessage(
-        "The Coach could not build that proposal. Try again with a shorter description.",
+        "The proposal could not be prepared. Your request is still here; retry without rewriting it.",
       );
     } finally {
+      proposalRequestRef.current = false;
       setCoachBuilding(false);
+    }
+  }
+
+  function applyTextProposal() {
+    if (!textProposal || !documentRef.current) return;
+    try {
+      const next = applyProgramTextChanges(documentRef.current, textProposal, acceptedTextChanges);
+      updateDocument(() => next);
+      setTextProposal(null);
+      setCoachMessage("Coach's proposal is now your editable draft. Review and publish when ready; active workouts and History stay unchanged.");
+    } catch (error) {
+      setCoachMessage(error instanceof Error ? error.message : "The proposal could not be applied. Your draft is unchanged.");
     }
   }
 
@@ -654,6 +695,7 @@ export function useProgramEditorController({
     draft, document, revision, pendingMutationId, status, message, conflictDraft,
     review, activeTab, activeDayId, reviewing, publishing, discarding, restoringId,
     coachPrompt, coachMode, coachBuilding, coachMessage, pairingDayId, pairingSlotIds,
+    textProposal, setTextProposal, acceptedTextChanges, setAcceptedTextChanges, applyTextProposal,
     expandedSlotId, coachProposal, acceptedCoachChanges, confirmDiscard, confirmRestore,
     pendingFutureRemovalRequest, futureRemovalTarget,
     pendingFutureReplacementRequest, futureReplacementTarget,

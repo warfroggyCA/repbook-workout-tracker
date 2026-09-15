@@ -35,7 +35,8 @@ identity fields. Server normalization derives package-local UUIDs from an
 in-memory source digest, stages the exact normalized package under a canonical
 digest and owner scope, and fences publication to the active Program version
 captured at parse time. Logs retain only bounded structural counts and a closed
-failure category, never paste text, exercise text, provider output, owner IDs,
+failure category plus separately sanitized provider error kinds, status codes,
+and retryability in `ai.routine_parse_failed`, never paste text, exercise text, provider output, owner IDs,
 or record IDs. Parse failure, explicit discard, and successful publication
 clear raw and normalized paste content and linked provider input/output
 records; the existing automatic retention window remains the fallback if
@@ -194,3 +195,8 @@ recovery, AI analysis, Review, and Coach.
 
 Security reports use the private process in `SECURITY.md`; public issues must
 contain synthetic data only.
+
+Free-form Program updates read only the authenticated saved draft. Raw requests
+and provider responses are transient; accepted edits use existing Program draft
+retention. The provider error event uses the same maximum 24-hour diagnostic
+expiry and rejects raw error messages, provider bodies, credentials and IDs.

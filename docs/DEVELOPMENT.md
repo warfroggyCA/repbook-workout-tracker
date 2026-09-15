@@ -955,3 +955,11 @@ normal and reduced-motion playback, and timers after viewing media. A running
 audio clock or a requested tone is not proof of physical audibility. Physical
 phone acceptance still requires repeated foreground timers and interruption /
 return trials, with late or duplicate rings reported separately.
+
+## Free-form Program editing checks
+
+Run `npx vitest run tests/unit/program-text-update.test.ts tests/unit/program-text-update-action.test.ts tests/unit/routine-provider-request.test.ts tests/unit/server-log.test.ts`.
+The provider request test intercepts the installed SDK's outgoing request with
+synthetic credentials and verifies supported union representation and no-store;
+it does not prove a live provider accepted the request. Run the text-editing
+case in `program-editor.spec.ts` against the disposable browser fixture.
