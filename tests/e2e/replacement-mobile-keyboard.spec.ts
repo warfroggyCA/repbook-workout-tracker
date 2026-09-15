@@ -542,8 +542,60 @@ test("keeps unrestricted replacement truthful and reachable through mobile keybo
   // Replacement schedules a current-action focus handoff after rendering.
   // Let it finish before WebKit starts typing into the replacement's input.
   await expect(card.getByTestId("current-set-entry")).toBeFocused();
-  await reps.fill("9");
-  await expect(reps).toHaveValue("9");
+  // Synthetic fixture only: distinguish a dropped input event from a remount
+  // or focus handoff when Linux WebKit fails this transition.
+  await reps.evaluate((original) => {
+    const samples: unknown[] = [];
+    let previous = "";
+    const sample = (event?: Event) => {
+      const input = document.querySelector<HTMLInputElement>(
+        '[data-testid="current-exercise-card"] input[aria-label="Reps"]',
+      );
+      const active = document.activeElement;
+      const value = {
+        event: event?.type ?? "mutation",
+        value: input?.value,
+        sameInput: input === original,
+        originalConnected: original.isConnected,
+        originalValue: (original as HTMLInputElement).value,
+        active: active?.getAttribute("aria-label") ?? active?.getAttribute("data-testid") ?? active?.tagName,
+        target: event?.target instanceof Element ? event.target.getAttribute("aria-label") ?? event.target.tagName : null,
+        trusted: event?.isTrusted,
+      };
+      const signature = JSON.stringify(value);
+      if (signature === previous || samples.length >= 60) return;
+      previous = signature;
+      samples.push({ at: performance.now(), ...value });
+    };
+    const events = ["focusin", "focusout", "beforeinput", "input", "change"];
+    for (const event of events) document.addEventListener(event, sample, true);
+    const observer = new MutationObserver(() => sample());
+    observer.observe(document.body, { subtree: true, childList: true, attributes: true, attributeFilter: ["value"] });
+    sample();
+    Object.assign(window, { __replacementInputEvidence: {
+      samples,
+      stop() {
+        observer.disconnect();
+        for (const event of events) document.removeEventListener(event, sample, true);
+        sample();
+        return samples;
+      },
+    } });
+  });
+  try {
+    await reps.fill("9");
+    await expect(reps).toHaveValue("9");
+  } finally {
+    const evidence = await page.evaluate(() => {
+      const owner = window as typeof window & {
+        __replacementInputEvidence?: { stop(): unknown[] };
+      };
+      const samples = owner.__replacementInputEvidence?.stop();
+      delete owner.__replacementInputEvidence;
+      return samples;
+    });
+    console.log("Synthetic replacement input evidence", JSON.stringify(evidence));
+  }
   await logSet.click();
   await expect(replacementCard).toContainText("9 reps");
   await expect(replacementCard).not.toContainText("0 lb");
