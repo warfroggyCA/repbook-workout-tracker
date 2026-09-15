@@ -48,8 +48,34 @@ test("cycles every supported form through Avoid and back to Do during natural pl
         await panel.scrollIntoViewIfNeeded();
         const banner = panel.locator("[data-form-banner]");
         await expect(banner, name).toBeVisible();
-        await expect.poll(() => banner.innerText(), { message: `${name}: Avoid`, timeout: 30_000 }).toMatch(/^AVOID/);
-        await expect.poll(() => banner.innerText(), { message: `${name}: return to Do`, timeout: 20_000 }).toMatch(/^DO/);
+        // Preserve bounded synthetic playback evidence when CI alone stalls.
+        // Keep the natural-playback assertions and their timeouts unchanged.
+        const samples: unknown[] = [];
+        const sampleCue = async () => {
+          const sample = await panel.evaluate((element) => {
+            const video = element.querySelector("video")!;
+            const rect = video.getBoundingClientRect();
+            return {
+              cue: element.querySelector("[data-form-banner]")?.textContent?.trim() ?? "",
+              time: video.currentTime, duration: video.duration,
+              paused: video.paused, ended: video.ended, seeking: video.seeking,
+              readyState: video.readyState, networkState: video.networkState,
+              errorCode: video.error?.code ?? null,
+              hidden: document.hidden,
+              inViewport: rect.bottom > 0 && rect.top < innerHeight && rect.right > 0 && rect.left < innerWidth,
+            };
+          });
+          samples.push(sample);
+          if (samples.length > 60) samples.shift();
+          return sample.cue;
+        };
+        try {
+          await expect.poll(sampleCue, { message: `${name}: Avoid`, timeout: 30_000 }).toMatch(/^AVOID/);
+          await expect.poll(sampleCue, { message: `${name}: return to Do`, timeout: 20_000 }).toMatch(/^DO/);
+        } catch (error) {
+          console.error("Synthetic playback samples", name, JSON.stringify(samples));
+          throw error;
+        }
         await panel.getByRole("button", { name: "Close form preview", exact: true }).click();
         await expect(panel).toHaveCount(0);
       });
