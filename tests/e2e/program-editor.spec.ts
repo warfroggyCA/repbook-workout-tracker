@@ -1030,10 +1030,11 @@ test("free-form warmup edits carry pasted text into a reviewed draft and preserv
   await expect(page.getByLabel("What should change?")).toHaveValue(request);
   const before: ProgramDocumentV3 = (await (await page.request.get("/api/program/draft")).json()).draft.document;
   await page.getByRole("button", { name: "Compare and propose changes", exact: true }).click();
-  await expect(page.getByRole("region", { name: "Proposed text changes" })).toBeVisible();
-  await expect(page.getByText("Easy rehearsal × 7", { exact: false })).toBeVisible();
-  await expect(page.getByText("Preparation set × 4 at 20 kg", { exact: false })).toBeVisible();
-  await page.getByRole("region", { name: "Proposed text changes" }).scrollIntoViewIfNeeded();
+  const proposalRegion = page.getByRole("region", { name: "Proposed text changes" });
+  await expect(proposalRegion).toBeVisible();
+  await expect(proposalRegion.getByText("Easy rehearsal × 7", { exact: false })).toBeVisible();
+  await expect(proposalRegion.getByText("Preparation set × 4 at 20 kg", { exact: false })).toBeVisible();
+  await proposalRegion.scrollIntoViewIfNeeded();
   await page.screenshot({ path: testInfo.outputPath("text-edit-proposal-mobile.png") });
   const unmodified: ProgramDocumentV3 = (await (await page.request.get("/api/program/draft")).json()).draft.document;
   expect(unmodified).toEqual(before);
