@@ -515,33 +515,6 @@ test("keeps unrestricted replacement truthful and reachable through mobile keybo
     page.locator("main h2").filter({ hasText: originalExerciseName }),
   ).toBeVisible();
 
-  await confirm.click();
-  await expect(picker).toHaveCount(0);
-  await expect(reopenedDrawer).toHaveCount(0);
-  await expect(card.getByRole("heading", { level: 2 })).toHaveText(
-    "Bodyweight Bulgarian Split Squat",
-  );
-  const replacementCard = page.locator('section[id^="exercise-"]').filter({
-    has: page.getByRole("heading", {
-      name: "Bodyweight Bulgarian Split Squat",
-      exact: true,
-      level: 2,
-    }),
-  });
-  await expect(replacementCard).toBeVisible();
-  await expect(
-    page.getByText("Updating equipment after workout change.", { exact: true }),
-  ).toHaveCount(0);
-  await expect(card).toContainText("Reason: Variety");
-  await expect(card).not.toContainText("Last time:");
-  await expect(weight).toHaveCount(0);
-  await expect(reps).toHaveValue("10");
-  const logSet = page.getByTestId("active-log-set");
-  await waitForHydratedReactHandler(logSet);
-  await waitForHydratedReactChangeHandler(reps);
-  // Replacement schedules a current-action focus handoff after rendering.
-  // Let it finish before WebKit starts typing into the replacement's input.
-  await expect(card.getByTestId("current-set-entry")).toBeFocused();
   // Synthetic fixture only: distinguish a dropped input event from a remount
   // or focus handoff when Linux WebKit fails this transition.
   await reps.evaluate((original) => {
@@ -582,6 +555,33 @@ test("keeps unrestricted replacement truthful and reachable through mobile keybo
       },
     } });
   });
+  await confirm.click();
+  await expect(picker).toHaveCount(0);
+  await expect(reopenedDrawer).toHaveCount(0);
+  await expect(card.getByRole("heading", { level: 2 })).toHaveText(
+    "Bodyweight Bulgarian Split Squat",
+  );
+  const replacementCard = page.locator('section[id^="exercise-"]').filter({
+    has: page.getByRole("heading", {
+      name: "Bodyweight Bulgarian Split Squat",
+      exact: true,
+      level: 2,
+    }),
+  });
+  await expect(replacementCard).toBeVisible();
+  await expect(
+    page.getByText("Updating equipment after workout change.", { exact: true }),
+  ).toHaveCount(0);
+  await expect(card).toContainText("Reason: Variety");
+  await expect(card).not.toContainText("Last time:");
+  await expect(weight).toHaveCount(0);
+  await expect(reps).toHaveValue("10");
+  const logSet = page.getByTestId("active-log-set");
+  await waitForHydratedReactHandler(logSet);
+  await waitForHydratedReactChangeHandler(reps);
+  // Replacement schedules a current-action focus handoff after rendering.
+  // Let it finish before WebKit starts typing into the replacement's input.
+  await expect(card.getByTestId("current-set-entry")).toBeFocused();
   try {
     await reps.fill("9");
     await expect(reps).toHaveValue("9");
