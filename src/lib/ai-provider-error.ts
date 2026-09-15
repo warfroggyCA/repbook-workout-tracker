@@ -123,16 +123,22 @@ function safeRetryable(value: unknown): boolean | null {
 /**
  * Returns only allowlisted classifications and primitive provider metadata.
  * It intentionally never reads messages, request/response values, headers,
- * provider data, stacks, or nested-cause content.
+ * provider data or stacks. SDK retry wrappers expose their final failure via
+ * lastError, from which only the same allowlisted primitive metadata is read.
  */
 export function sanitizeAIProviderError(
   error: unknown
 ): SanitizedAIProviderError {
-  const cause = readProperty(error, "cause");
+  const errorKind = classify(error);
+  const cause = readProperty(
+    error,
+    errorKind === "provider_retry" ? "lastError" : "cause",
+  );
+  const metadata = errorKind === "provider_retry" ? cause : error;
   return {
-    errorKind: classify(error),
-    providerStatusCode: safeStatusCode(error),
-    providerRetryable: safeRetryable(error),
+    errorKind,
+    providerStatusCode: safeStatusCode(metadata),
+    providerRetryable: safeRetryable(metadata),
     causeKind:
       cause === undefined || cause === null
         ? null

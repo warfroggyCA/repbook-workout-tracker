@@ -150,6 +150,28 @@ describe("AI provider error privacy boundary", () => {
     );
   });
 
+  it("fails closed for absent, hostile, or cyclic retry failures", () => {
+    const retry: Record<string, unknown> = { name: "AI_RetryError" };
+    const empty = {
+      errorKind: "provider_retry",
+      providerStatusCode: null,
+      providerRetryable: null,
+      causeKind: null,
+    };
+    expect(sanitizeAIProviderError(retry)).toEqual(empty);
+    retry.lastError = retry;
+    expect(sanitizeAIProviderError(retry)).toEqual({
+      ...empty,
+      causeKind: "cyclic",
+    });
+    Object.defineProperty(retry, "lastError", {
+      get() {
+        throw new Error(SENTINELS[5]);
+      },
+    });
+    expect(sanitizeAIProviderError(retry)).toEqual(empty);
+  });
+
   it("keeps every provider-error logging path on the central boundary", () => {
     const expectedPaths = new Map([
       ["src/app/actions/coaching.ts", "sanitizeAIProviderError"],
