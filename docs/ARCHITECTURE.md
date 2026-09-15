@@ -60,6 +60,34 @@ Every change to weekly work-set totals must be accounted for internally by an
 add, removal, replacement, or target change. If the review cannot account for a
 set total, publication fails closed.
 
+## Free-form edits to an existing Program
+
+`program-text-update` reads the authenticated owner's exact saved draft and
+revision. The AI returns bounded, source-quoted operations against existing day
+and slot identities, with unresolved requests as clarification questions.
+The server validates identities, available additions/replacements, warm-up
+loading and complete document invariants before returning a proposal. It checks
+the draft revision again after generation. The client also refuses stale apply.
+Only selected operations enter normal draft autosave; Review and Publish retain
+their existing exact-revision and future-workout protections.
+
+Updates support general and exercise-specific preparation, work targets, rest,
+notes, progression identifiers, day names, ordering and explicit exercise
+additions/removals/replacements. Unmentioned fields are copied from the draft,
+not regenerated. Explicit preparation-only requests cannot edit working fields.
+Conditional or unrepresentable requests remain questions. Schedules, equipment,
+and historical or active workout records are outside this operation contract.
+Group authoring is supported; timed-metric conversions remain in the manual editor.
+Warm-up anchors are preserved; this path does not change the existing runtime's
+opening-preparation gating or automatically rescale measured warm-up loads.
+
+Raw edit requests and provider responses remain in memory and are not added to
+AI parsing history. Existing bounded AI usage accounting still applies. The
+Import entry point can carry text directly into the editor in React memory.
+Reloading before applying a proposal does not retain that raw text; applied
+changes use normal durable draft recovery. The full-routine importer and full
+replacement mode remain separate.
+
 ## Program paste intake contract
 
 Program paste intake is an untrusted, owner-scoped staging workflow. Provider

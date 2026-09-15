@@ -7,7 +7,10 @@ import {
   getLatestStagedImport,
   getLibraryWithAvailability,
 } from "@/services/routine-import";
-import { RoutineImport } from "@/components/import/routine-import";
+import { ProgramTextEntry } from "@/components/import/program-text-entry";
+import { exerciseDiscoveryItemFromLibrary } from "@/lib/exercise-discovery";
+import { isProgramEditorEnabled } from "@/lib/program-editor-feature";
+import { getActiveProgramVersion } from "@/services/program";
 import { HevyHistoryImport } from "@/components/import/hevy-history-import";
 import type { RoutineParseResponse } from "@/app/actions/import";
 import { getLatestStagedHevyImport } from "@/services/hevy-import";
@@ -44,6 +47,7 @@ export default async function ImportPage(props: PageProps<"/program/import">) {
       orderBy: desc(historyImportBatches.confirmedAt),
     }),
   ]);
+  const activeProgram = await getActiveProgramVersion(db, user.id);
   const mediaByExercise = await getApprovedExerciseMedia(db, library);
   const routineLibrary = library.map((exercise) => ({
     ...exercise,
@@ -97,7 +101,10 @@ export default async function ImportPage(props: PageProps<"/program/import">) {
               Paste → review every row → confirm. Nothing becomes your program until you confirm.
             </p>
           </header>
-          <RoutineImport
+          <ProgramTextEntry
+            ownerId={user.id}
+            library={routineLibrary.map((item) => exerciseDiscoveryItemFromLibrary(item))}
+            canUpdate={isProgramEditorEnabled() && activeProgram !== null}
             aiAvailable={isAIAvailable()}
             initialParse={initialParse}
             initialDestination={query.destination === "new" ? "create_new_active" : "replace_active"}

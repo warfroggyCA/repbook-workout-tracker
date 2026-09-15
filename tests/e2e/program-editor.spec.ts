@@ -787,8 +787,8 @@ test("partial text update applies only selected explicit changes", async ({ page
     "Change Barbell Back Squat to 4 sets of 5 reps with 2 min 30 sec rest. Leave every unmentioned day and exercise unchanged.",
   );
   await page.getByRole("button", { name: "Compare and propose changes", exact: true }).click();
-  await expect(page.getByText("Proposal ready to review", { exact: true })).toBeVisible();
-  await expect(page.getByLabel(/Select change: Change Barbell Back Squat/)).toBeChecked();
+  await expect(page.getByText("Changes ready to review", { exact: true })).toBeVisible();
+  await expect(page.getByRole("region", { name: "Proposed text changes" }).getByRole("checkbox")).toBeChecked();
   await page.getByRole("button", { name: "Apply selected changes", exact: true }).click();
   await expectSaved(page);
   const editor = page.locator("article[aria-labelledby]").first();
@@ -1011,4 +1011,41 @@ test("publishes loaded seconds per side and records the performed measurement on
   await page.getByRole("button", { name: "Discard this workout", exact: true }).click();
   await page.getByRole("dialog", { name: /Discard .+\?/ }).getByRole("button", { name: "Confirm discard", exact: true }).click();
 
+});
+
+test("free-form warmup edits carry pasted text into a reviewed draft and preserve work", async ({ page }, testInfo) => {
+  await signIn(page);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/program/import");
+  const request = "Update warm-up only. Keep all working prescriptions unchanged.";
+  await page.getByLabel("Paste your Program").fill(request);
+  await page.getByRole("button", { name: "Update current Program from text", exact: true }).click();
+  await expectSaved(page);
+  await expect(page.getByLabel("What should change?")).toHaveValue(request);
+  const before: ProgramDocumentV3 = (await (await page.request.get("/api/program/draft")).json()).draft.document;
+  await page.getByRole("button", { name: "Compare and propose changes", exact: true }).click();
+  await expect(page.getByRole("region", { name: "Proposed text changes" })).toBeVisible();
+  await expect(page.getByText("Easy rehearsal × 6", { exact: false })).toBeVisible();
+  await page.getByRole("region", { name: "Proposed text changes" }).scrollIntoViewIfNeeded();
+  await page.screenshot({ path: testInfo.outputPath("text-edit-proposal-mobile.png") });
+  const unmodified: ProgramDocumentV3 = (await (await page.request.get("/api/program/draft")).json()).draft.document;
+  expect(unmodified).toEqual(before);
+  await page.getByRole("button", { name: "Apply selected changes", exact: true }).click();
+  await expectSaved(page);
+  const after: ProgramDocumentV3 = (await (await page.request.get("/api/program/draft")).json()).draft.document;
+  expect(after.days[0].warmupItems).toContainEqual(expect.objectContaining({ label: "Easy rehearsal", beforeSlotLineageId: before.days[0].exercises[0].lineageId, reps: 6 }));
+  for (const [dayIndex, day] of before.days.entries()) {
+    expect(after.days[dayIndex].supersets).toEqual(day.supersets);
+    for (const [slotIndex, slot] of day.exercises.entries()) {
+      expect({ ...after.days[dayIndex].exercises[slotIndex], warmupNotes: slot.warmupNotes, warmupSets: slot.warmupSets }).toEqual(slot);
+    }
+  }
+  await page.reload();
+  await page.goto("/program/edit");
+  await expectSaved(page);
+  expect((await (await page.request.get("/api/program/draft")).json()).draft.document).toEqual(after);
+  await page.setViewportSize({ width: 1180, height: 820 });
+  await page.screenshot({ path: testInfo.outputPath("text-edit-desktop.png"), fullPage: true });
+  await page.setViewportSize({ width: 390, height: 844 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 });

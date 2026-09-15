@@ -111,6 +111,14 @@ describe("structured redacted diagnostic logger", () => {
     expect(output).not.toContain("userId");
   });
 
+  it("logs routine provider classification without accepting raw provider content", () => {
+    const write = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    expect(logDiagnosticEvent("ai.routine_parse_failed", { errorKind: "provider_api", providerStatusCode: 400, providerRetryable: false, causeKind: null })).toBe("written");
+    expect(String(write.mock.calls[0]?.[0])).toContain('"providerStatusCode":400');
+    expect(logDiagnosticEvent("ai.routine_parse_failed", { errorKind: "provider_api", providerStatusCode: 400, providerRetryable: false, causeKind: null, message: "Private prompt" } as never)).toBe("refused");
+    expect(JSON.stringify(write.mock.calls)).not.toContain("Private prompt");
+  });
+
   it("reuses correlation only inside a valid short-lived episode", () => {
     const write = vi.spyOn(console, "log").mockImplementation(() => undefined);
     const episode = createDiagnosticEpisode({

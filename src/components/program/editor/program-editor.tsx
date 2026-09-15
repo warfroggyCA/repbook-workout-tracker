@@ -22,12 +22,14 @@ import { ProgramEditorDocumentContext, ProgramEditorStatusContext } from "@/comp
 export function ProgramEditor({
   ownerId,
   library,
+  initialPrompt,
   initialDayId,
   initialRemovalRequest = null,
   initialReplacementRequest = null,
 }: {
   ownerId: string;
   library: ExerciseDiscoveryItem[];
+  initialPrompt?: string;
   initialDayId: string | null;
   initialRemovalRequest?: ProgramSlotRemovalRequest | null;
   initialReplacementRequest?: ProgramSlotReplacementRequest | null;
@@ -35,6 +37,7 @@ export function ProgramEditor({
   const editor = useProgramEditorController({
     ownerId,
     library,
+    initialPrompt,
     initialDayId,
     initialRemovalRequest,
     initialReplacementRequest,

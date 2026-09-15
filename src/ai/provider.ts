@@ -71,7 +71,20 @@ export const OPENAI_NO_STORAGE_OPTIONS = {
 export const DEFAULT_OPENAI_MODEL = "gpt-5.4-mini";
 
 export function structuredOutputTokenLimit(task: AITask, input = ""): number {
-  if (task === "routine_build") return 6_000;
+  if (task === "routine_build") {
+    // Structured edits repeat explicit warm-up fields; budget for the request,
+    // not for the much larger unchanged Program/library context.
+    try {
+      const request = JSON.parse(input);
+      if (request.mode === "program-update" && typeof request.request === "string") {
+        return Math.min(16000, Math.max(6000, 2000 + request.request.length * 2));
+      }
+    } catch {
+      // Ordinary routine-build callers may supply plain text.
+      return 6_000;
+    }
+    return 6_000;
+  }
   if (task === "routine_parse") {
     const structure = inspectRoutineTextStructure(input);
     const structuralAllowance = structure.exerciseCount * 300;
@@ -582,6 +595,17 @@ class FakeProvider implements AIProvider {
         rawText: JSON.stringify(fixture),
         usage: fakeUsage(opts.input, fixture),
       };
+    }
+
+    if (opts.task === "routine_build" && JSON.parse(opts.input).mode === "program-update") {
+      const input = JSON.parse(opts.input);
+      const day = input.currentProgram.days[0];
+      if (input.request === "Change Barbell Back Squat to 4 sets of 5 reps with 2 min 30 sec rest. Leave every unmentioned day and exercise unchanged.") {
+        const value = opts.schema.parse({changes: [{reason: "Change Barbell Back Squat", sourceQuote: input.request, operations: [{kind: "slot_number", dayId: day.lineageId, slotId: day.exercises[0].lineageId, field: "sets", value: 4}, {kind: "reps", dayId: day.lineageId, slotId: day.exercises[0].lineageId, min: 5, max: 5}, {kind: "slot_number", dayId: day.lineageId, slotId: day.exercises[0].lineageId, field: "restSec", value: 150}]}], questions: []});
+        return {value, model: "fake", latencyMs: 1, rawText: null, usage: fakeUsage(opts.input, value)};
+      }
+      const fixture = opts.schema.parse({ changes: [{ reason: "Update the first lift's preparation", sourceQuote: input.request, operations: [{ kind: "warmup", dayId: day.lineageId, slotId: day.exercises[0].lineageId, notes: "Keep preparation easy.", items: [{ label: "Easy rehearsal", reps: 6, load: null, loadUnit: null, loadPercent: null, loadText: "Light owned load", notes: null }] }] }], questions: [] });
+      return { value: fixture, model: "fake", latencyMs: 1, rawText: null, usage: fakeUsage(opts.input, fixture) };
     }
 
     if (opts.task === "routine_build") {

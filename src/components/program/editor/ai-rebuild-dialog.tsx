@@ -17,6 +17,7 @@ import { cn } from "@/lib/utils";
 
 export const AiRebuildDialog = memo(function AiRebuildDialog({ editor }: { editor: ProgramEditorController }) {
   const { document, coachMode, setCoachMode, coachPrompt, setCoachPrompt, coachBuilding, buildCoachProposal, coachMessage, coachProposal, acceptedCoachChanges, setAcceptedCoachChanges, setCoachProposal, updateDocument, setCoachMessage } = editor;
+  const { textProposal, setTextProposal, acceptedTextChanges, setAcceptedTextChanges, applyTextProposal } = editor;
   if (!document) return null;
   return (
     <>
@@ -49,7 +50,7 @@ export const AiRebuildDialog = memo(function AiRebuildDialog({ editor }: { edito
                   <Textarea
                     id="coach-program-prompt"
                     value={coachPrompt}
-                    onChange={(event) => setCoachPrompt(event.target.value)}
+                    onChange={(event) => { setCoachPrompt(event.target.value); setTextProposal(null); setCoachProposal(null); setCoachMessage(null); }}
                     rows={6}
                     maxLength={20000}
                     placeholder="On Upper day, change bench press to 4 sets of 6–8 with 2 min rest, then add cable fly after it. Leave everything else unchanged."
@@ -57,7 +58,7 @@ export const AiRebuildDialog = memo(function AiRebuildDialog({ editor }: { edito
                 </Field>
                 <Button
                   type="button"
-                  className="min-h-11"
+                  className="min-h-11 h-auto w-full whitespace-normal sm:w-auto"
                   disabled={coachBuilding || !coachPrompt.trim()}
                   onClick={() => void buildCoachProposal()}
                 >
@@ -77,6 +78,17 @@ export const AiRebuildDialog = memo(function AiRebuildDialog({ editor }: { edito
                   </Alert>
                 )}
 
+                {textProposal && (
+                  <section aria-label="Proposed text changes" className="space-y-3">
+                    <h3 className="font-semibold">{textProposal.changes.length ? "Changes ready to review" : "A little more detail is needed"}</h3>
+                    {textProposal.questions.length > 0 && <div className="space-y-2"><p className="text-sm font-medium">These parts need clarification:</p><ul className="list-disc pl-5 text-sm">{textProposal.questions.map((question, index) => <li key={index}>{question}</li>)}</ul><p className="text-sm text-muted-foreground">Add your answers to the request above, then compare again.</p></div>}
+                    {textProposal.changes.map((change) => <label key={change.id} className="flex gap-3 rounded-lg border p-3">
+                      <input type="checkbox" className="mt-1 size-4" checked={acceptedTextChanges.has(change.id)} onChange={(event) => setAcceptedTextChanges((prior) => { const next = new Set(prior); if (event.target.checked) next.add(change.id); else next.delete(change.id); return next; })} />
+                      <span className="min-w-0 space-y-2"><span className="block font-medium">{change.reason}</span><span className="block whitespace-pre-line text-sm">{change.summary}</span><span className="block text-xs text-muted-foreground">From your request: “{change.sourceQuote}”</span></span>
+                    </label>)}
+                    <div className="flex flex-wrap gap-2"><Button type="button" disabled={!acceptedTextChanges.size || coachBuilding} onClick={applyTextProposal}>Apply selected changes</Button><Button type="button" variant="outline" onClick={() => setTextProposal(null)}>Keep current draft</Button></div>
+                  </section>
+                )}
                 {coachProposal && (
                   <div className="space-y-3 rounded-xl border bg-muted/20 p-4">
                     <div>
