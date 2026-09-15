@@ -201,6 +201,13 @@ export function applyProgramTextChanges(
           day.exercises = op.slotIds.map(
             (key) => day.exercises.find((item) => item.lineageId === key)!,
           );
+          for (const group of day.supersets) {
+            day.exercises
+              .filter((member) => member.supersetKey === group.key)
+              .forEach((member, memberIndex) => {
+                member.groupMemberOrderIdx = memberIndex;
+              });
+          }
           break;
         }
         case "remove":
@@ -217,8 +224,6 @@ export function applyProgramTextChanges(
             slot.warmupSets = [];
             slot.notes = null;
             slot.setNotes = slot.setNotes.map(() => null);
-            slot.targetLoad = null;
-            slot.targetLoadUnit = null;
             day.warmupItems = day.warmupItems.filter(
               (item) => item.beforeSlotLineageId !== oldId,
             );
@@ -281,7 +286,12 @@ export function buildProgramTextProposal(
   current: ProgramDocumentV3,
   value: unknown,
   request: string,
-  library: ReadonlyArray<{ id: string; name: string; available: boolean }>,
+  library: ReadonlyArray<{
+    id: string;
+    name: string;
+    available: boolean;
+    metricType: string;
+  }>,
   createId = () => crypto.randomUUID(),
 ): ProgramTextProposal {
   const parsed = programUpdateSchema.parse(value);
@@ -293,9 +303,13 @@ export function buildProgramTextProposal(
     changes: [],
     questions: parsed.questions,
   };
-  const warmupOnly = /warm[ -]?up[^\n]*only|only[^\n]*warm[ -]?up/i.test(
-    request,
-  );
+  const warmupOnly =
+    /\b(?:warm[ -]?ups?|preparation)(?:[ -]+only|\s+(?:updates?|changes?)\s+only)\b|\bonly\s+(?:(?:change|update|edit)\s+)?(?:the\s+)?(?:warm[ -]?ups?|preparation)\b/i.test(
+      request,
+    ) ||
+    /^\s*warm[ -]?up update\s*[—–:-]\s*future workouts only\s*$/im.test(
+      request,
+    );
   const editedFields = new Set<string>();
   for (const change of parsed.changes) {
     if (warmupOnly && change.operations.some((op) => op.kind !== "warmup"))
@@ -313,13 +327,33 @@ export function buildProgramTextProposal(
           );
         editedFields.add(field);
       }
-      if (
-        (op.kind === "add" || op.kind === "replace") &&
-        !library.some((item) => item.id === op.exerciseId && item.available)
-      )
-        throw new Error(
-          "A proposed exercise is unavailable for your equipment.",
-        );
+      if (op.kind === "add" || op.kind === "replace") {
+        const exercise = library.find((item) => item.id === op.exerciseId);
+        if (!exercise?.available)
+          throw new Error(
+            "A proposed exercise is unavailable for your equipment.",
+          );
+        const sourceSlot =
+          op.kind === "replace"
+            ? current.days
+                .find((day) => day.lineageId === op.dayId)
+                ?.exercises.find((slot) => slot.lineageId === op.slotId)
+            : null;
+        if (
+          !["weight_reps", "reps", "assisted_reps"].includes(
+            exercise.metricType,
+          ) ||
+          sourceSlot?.timedPrescription ||
+          (sourceSlot &&
+            !["weight_reps", "reps", "assisted_reps"].includes(
+              library.find((item) => item.id === sourceSlot.exerciseId)
+                ?.metricType ?? "unknown",
+            ))
+        )
+          throw new Error(
+            "Timed or distance exercise changes need an explicit metric prescription. Edit those targets in the Program editor.",
+          );
+      }
     }
     const summary = change.operations
       .map((op) => {

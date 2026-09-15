@@ -88,6 +88,7 @@ export async function proposeProgramTextUpdate(
           .map((item) => ({
             id: item.id,
             name: item.name,
+            metricType: item.metricType,
             available: item.available,
             unavailableReason: item.unavailableReason,
           })),

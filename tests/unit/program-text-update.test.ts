@@ -19,9 +19,24 @@ const ids = Array.from(
   (_, i) => `00000000-0000-4000-8000-${String(i + 1).padStart(12, "0")}`,
 );
 const library = [
-  { id: ids[5], name: "Synthetic Press", available: true },
-  { id: ids[6], name: "Synthetic Row", available: true },
-  { id: ids[7], name: "Unavailable exercise", available: false },
+  {
+    id: ids[5],
+    name: "Synthetic Press",
+    available: true,
+    metricType: "weight_reps",
+  },
+  {
+    id: ids[6],
+    name: "Synthetic Row",
+    available: true,
+    metricType: "weight_reps",
+  },
+  {
+    id: ids[7],
+    name: "Unavailable exercise",
+    available: false,
+    metricType: "weight_reps",
+  },
 ];
 function current() {
   const slots = [
@@ -320,6 +335,202 @@ describe("contextual program text edits", () => {
     );
     expect(p.changes).toEqual([]);
     expect(applyProgramTextChanges(current(), p, new Set())).toEqual(current());
+  });
+  it.each([
+    "duration",
+    "distance_duration",
+    "weight_duration_per_side",
+    "activity",
+  ])(
+    "rejects %s additions and replacements instead of inventing reps",
+    (metricType) => {
+      const catalog = [
+        ...library,
+        { id: ids[8], name: "Metric exercise", available: true, metricType },
+      ];
+      const operations: ProgramUpdateOperation[] = [
+        { kind: "replace", dayId: ids[2], slotId: ids[3], exerciseId: ids[8] },
+        {
+          kind: "add",
+          dayId: ids[2],
+          afterSlotId: null,
+          exerciseId: ids[8],
+          sets: 3,
+          repMin: 8,
+          repMax: 10,
+          restSec: 60,
+          load: null,
+          loadUnit: null,
+        },
+      ];
+      for (const operation of operations) {
+        expect(() =>
+          buildProgramTextProposal(
+            current(),
+            {
+              changes: [
+                {
+                  sourceQuote: "Change exercise",
+                  reason: "Requested",
+                  operations: [operation],
+                },
+              ],
+              questions: [],
+            },
+            "Change exercise",
+            catalog,
+          ),
+        ).toThrow(/explicit metric prescription/);
+      }
+    },
+  );
+  it("preserves target load and unit for a replacement-only request", () => {
+    const base = current();
+    base.days[0].exercises[0].targetLoad = 42.5;
+    base.days[0].exercises[0].targetLoadUnit = "kg";
+    const p = buildProgramTextProposal(
+      base,
+      {
+        changes: [
+          {
+            sourceQuote: "Replace the press with the row",
+            reason: "Requested",
+            operations: [
+              {
+                kind: "replace",
+                dayId: ids[2],
+                slotId: ids[3],
+                exerciseId: ids[6],
+              },
+            ],
+          },
+        ],
+        questions: [],
+      },
+      "Replace the press with the row",
+      library,
+    );
+    const after = applyProgramTextChanges(
+      base,
+      p,
+      new Set(p.changes.map((c) => c.id)),
+    );
+    expect(after.days[0].exercises[0]).toMatchObject({
+      targetLoad: 42.5,
+      targetLoadUnit: "kg",
+      exerciseId: ids[6],
+    });
+    expect(base.days[0].exercises[0].exerciseId).toBe(ids[5]);
+  });
+  it("rejects replacing a timed source with a repetition exercise", () => {
+    const base = current();
+    base.days[0].exercises[0].repMin = null;
+    base.days[0].exercises[0].repMax = null;
+    base.days[0].exercises[0].progressionRuleId = "manual";
+    base.days[0].exercises[0].timedPrescription = {
+      version: 1,
+      metricType: "weight_duration_per_side",
+      minSeconds: 30,
+      maxSeconds: 45,
+    };
+    expect(() =>
+      buildProgramTextProposal(
+        base,
+        {
+          changes: [
+            {
+              sourceQuote: "Replace the hold with the row",
+              reason: "Requested",
+              operations: [
+                {
+                  kind: "replace",
+                  dayId: ids[2],
+                  slotId: ids[3],
+                  exerciseId: ids[6],
+                },
+              ],
+            },
+          ],
+          questions: [],
+        },
+        "Replace the hold with the row",
+        library,
+      ),
+    ).toThrow(/explicit metric prescription/);
+  });
+  it("updates execution member indexes when explicitly reversing a superset", () => {
+    const base = current();
+    base.days[0].supersets = [
+      {
+        key: ids[9],
+        name: "Pair",
+        structureStatus: "canonical",
+        plannedRounds: 3,
+        restBetweenMembersSec: 15,
+        restBetweenRoundsSec: 90,
+        restAfterRoundSec: 90,
+      },
+    ];
+    base.days[0].exercises.forEach((slot, index) => {
+      slot.supersetKey = ids[9];
+      slot.groupMemberOrderIdx = index;
+    });
+    const p = buildProgramTextProposal(
+      base,
+      {
+        changes: [
+          {
+            sourceQuote: "Reverse the pair",
+            reason: "Requested",
+            operations: [
+              { kind: "reorder", dayId: ids[2], slotIds: [ids[4], ids[3]] },
+            ],
+          },
+        ],
+        questions: [],
+      },
+      "Reverse the pair",
+      library,
+    );
+    const after = applyProgramTextChanges(
+      base,
+      p,
+      new Set(p.changes.map((c) => c.id)),
+    );
+    expect(
+      after.days[0].exercises.map((slot) => [
+        slot.lineageId,
+        slot.groupMemberOrderIdx,
+      ]),
+    ).toEqual([
+      [ids[4], 0],
+      [ids[3], 1],
+    ]);
+    expect(after.days[0].supersets).toEqual(base.days[0].supersets);
+  });
+  it("allows working edits when only scopes the day rather than the warmup", () => {
+    const p = proposal(
+      [
+        {
+          kind: "slot_number",
+          dayId: ids[2],
+          slotId: ids[3],
+          field: "sets",
+          value: 4,
+        },
+        {
+          kind: "warmup",
+          dayId: ids[2],
+          slotId: ids[3],
+          notes: "Easy",
+          items: [step],
+        },
+      ],
+      "Only on Upper day, change bench to four sets and update its warm-up",
+    );
+    const after = apply(p);
+    expect(after.days[0].exercises[0].sets).toBe(4);
+    expect(after.days[0].warmupItems).toHaveLength(1);
   });
   it("has a provider schema with required properties at every object boundary", () => {
     const visit = (value: unknown) => {
