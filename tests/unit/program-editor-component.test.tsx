@@ -9,6 +9,10 @@ vi.mock("@/app/actions/setup", () => ({
   buildProgramRoutineDraft: vi.fn(),
 }));
 
+vi.mock("@/app/actions/program-text-update", () => ({
+  proposeProgramTextUpdate: vi.fn(),
+}));
+
 import { ProgramEditor } from "@/components/program/program-editor";
 import { ReviewDialog } from "@/components/program/editor/review-dialog";
 import { HistoryPanel } from "@/components/program/editor/history-panel";

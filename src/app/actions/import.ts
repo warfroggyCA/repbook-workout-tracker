@@ -347,7 +347,12 @@ export async function parseRoutineText(
       });
     } catch (error) {
       const sanitized = sanitizeAIProviderError(error);
-      logDiagnosticEvent("ai.routine_parse_failed", sanitized);
+      logDiagnosticEvent("ai.routine_parse_failed", {
+        errorKind: sanitized.errorKind,
+        providerStatusCode: sanitized.providerStatusCode,
+        providerRetryable: sanitized.providerRetryable,
+        causeKind: sanitized.causeKind,
+      });
       const category =
         error instanceof AIUnavailableError
           ? "provider_failure"

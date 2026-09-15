@@ -124,7 +124,12 @@ export async function proposeProgramTextUpdate(
         reason: `${error.message} Your request is still here.`,
       };
     const safe = sanitizeAIProviderError(error);
-    logDiagnosticEvent("ai.setup_routine_build_failed", safe);
+    logDiagnosticEvent("ai.setup_routine_build_failed", {
+      errorKind: safe.errorKind,
+      providerStatusCode: safe.providerStatusCode,
+      providerRetryable: safe.providerRetryable,
+      causeKind: safe.causeKind,
+    });
     return { ok: false, reason: programAIFailureMessage(safe) };
   }
 }
