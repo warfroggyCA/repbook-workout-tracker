@@ -168,6 +168,14 @@ OTHER EXERCISE PREPARATION
   because a warm-up timer has expired.`;
 
 describe("local Program text parsing", () => {
+  it("treats a warm-up-only preamble as a scope constraint, not missing general guidance", () => {
+    const { parsed } = run(
+      "Update warm-up only. Keep all working prescriptions unchanged.\nDay A\nBefore Barbell Bench Press:\n• Easy rehearsal × 7.\n• 20 kg × 4.",
+    );
+    expect(parsed.questions).toEqual([]);
+    expect(parsed.changes).toHaveLength(1);
+    expect(parsed.changes[0].operations).toHaveLength(1);
+  });
   it("parses a soft-wrapped multi-day preparation update without touching working prescriptions", () => {
     const before = current();
     const { after, proposal, parsed } = run(complexWarmup, before);

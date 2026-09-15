@@ -470,7 +470,7 @@ export function parseProgramTextUpdate(
       // Preservation rules are not edits. Preparation-specific rules are retained.
       if (
         /warm[ -]?up|preparation/i.test(text) &&
-        !/^warm[ -]?up update/i.test(text)
+        !/^(?:warm[ -]?up update|update warm[ -]?up only)/i.test(text)
       )
         addNote(globalNotes, text);
       continue;
