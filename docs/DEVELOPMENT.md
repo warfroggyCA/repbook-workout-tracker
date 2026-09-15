@@ -969,3 +969,8 @@ The provider request test intercepts the installed SDK's outgoing request with
 synthetic credentials and verifies supported union representation and no-store;
 it does not prove a live provider accepted the request. Run the text-editing
 case in `program-editor.spec.ts` against the disposable browser fixture.
+
+The provider request tests also exercise an exhausted retry through the installed
+SDK. The privacy boundary reads status and retryability from a retry wrapper's
+`lastError`, so usage limits and request failures retain their specific recovery
+message. It never logs the underlying provider message, body or credentials.
