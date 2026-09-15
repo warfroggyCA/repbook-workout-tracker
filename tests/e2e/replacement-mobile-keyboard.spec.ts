@@ -544,6 +544,11 @@ test("keeps unrestricted replacement truthful and reachable through mobile keybo
   await expect(card.getByTestId("current-set-entry")).toBeFocused();
   await reps.fill("9");
   await expect(reps).toHaveValue("9");
+  // A later transition frame must not dismiss the keyboard while typing.
+  await page.evaluate(() => new Promise<void>((resolve) => {
+    requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+  }));
+  await expect(reps).toBeFocused();
   await logSet.click();
   await expect(replacementCard).toContainText("9 reps");
   await expect(replacementCard).not.toContainText("0 lb");
