@@ -91,6 +91,31 @@ const apply = (proposal: ReturnType<typeof propose>) =>
   );
 
 describe("contextual Program editing without a provider", () => {
+  it("offers the highest-ranked saved matches before limiting a long clarification list", () => {
+    const doc = current();
+    const catalog = Array.from({ length: 11 }, (_, index) => ({
+      ...library[0], id: id(400 + index), aliases: [],
+      name: index === 10 ? "Press" : `Accessory ${index} Press`,
+    }));
+    const exercises = catalog.map((exercise, index) =>
+      createDefaultProgramSlot(exercise.id, id(500 + index)),
+    );
+    doc.days = [{ ...doc.days[0], exercises, intent: createSuggestedDayIntent(exercises) }];
+    const text = "Press:\nReplace notes with: Keep a controlled lowering phase.";
+    const proposal = propose(text, doc, catalog);
+    const issue = proposal.interpretation!.issues[0];
+    expect(issue.candidates).toHaveLength(8);
+    expect(issue.candidates![0].id).toBe(exercises[10].lineageId);
+    expect(new Set(issue.candidates!.map((candidate) => candidate.id)).size).toBe(8);
+    const resolved = proposeContextualProgramEdit(doc, text, catalog, null, {
+      [issue.key]: exercises[10].lineageId,
+    });
+    expect(resolved.questions).toEqual([]);
+    const next = apply(resolved);
+    expect(next.days[0].exercises[10].notes).toBe("Keep a controlled lowering phase");
+    expect(next.days[0].exercises.slice(0, 10)).toEqual(exercises.slice(0, 10));
+  });
+
   it("inherits day and exercise scope and treats matching KEEP as assertions", () => {
     const doc = current();
     const proposal = propose(

@@ -132,6 +132,17 @@ export function useProgramEditorController({
     setComparison(null);
     setInspection(null);
   }, []);
+  function resetRestoredDraftInterpretation() {
+    const answers = {};
+    latestAnswers.current = answers;
+    setTextAnswers(answers);
+    setAppliedInstructionKeys([]);
+    setTextProposal(null);
+    setCoachProposal(null);
+    setAcceptedTextChanges(new Set());
+    setAcceptedCoachChanges(new Set());
+    setCoachMessage(null);
+  }
   const autosave = useDraftAutosave({
     ownerId,
     setActiveDayId,
@@ -638,6 +649,10 @@ export function useProgramEditorController({
       });
       await responseJson(response);
       restoreMutationRef.current.delete(key);
+      // A successful restore may remove previously applied effects. Keep the
+      // request text, but re-interpret it against the replacement draft, even if
+      // fetching that draft fails and the user must retry loading it later.
+      resetRestoredDraftInterpretation();
       if (draft) removeLocal(draft.id);
       setConfirmRestore(null);
       setComparison(null);

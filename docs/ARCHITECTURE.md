@@ -80,6 +80,8 @@ not calibrated probabilities. A unique equivalent reference can resolve in its
 scope. Materially different positions, equipment or unilateral variants require
 a reviewed candidate choice. Answers are checked again against current candidates;
 an arbitrary client-supplied exercise ID cannot become a replacement.
+Saved-target clarification choices retain relevance order before the display
+limit, with equally ranked repeated prescriptions remaining in Program order.
 
 Unmentioned fields remain unchanged. KEEP assertions compare saved values and
 explicit later edits. Recognized coaching prose becomes notes, including
@@ -101,7 +103,10 @@ The preview shows old/new values, original source text, notes, and grouped
 members. Selected operations enter normal draft autosave; the retained request
 tracks applied instruction keys in memory so re-comparison does not replay a
 relative change. Editing unrelated sentences preserves those keys. Starting a
-new request explicitly resets them. Candidate changes and text changes invalidate
+new request explicitly resets them. A successful version restore also clears the
+old draft's applied keys, candidate answers and proposal selections while retaining
+the request text. Ordinary saves and clarification retries retain their markers.
+Candidate changes and text changes invalidate
 stale comparisons. The server checks the saved revision again before returning;
 the client checks the base document before applying. Review and Publish retain
 their existing future-workout protections.
