@@ -80,6 +80,17 @@ beforeEach(() => {
   mocks.generate.mockRejectedValue(new Error("AI must not be called"));
 });
 describe("program text action", () => {
+  it.each([41, 200])("retains %i clarification answers within the local parser budget", async (count) => {
+    const answers = Object.fromEntries(Array.from({ length: count }, (_, index) => [`source:synthetic-${index}`, id(5)]));
+    const result = await proposeProgramTextUpdate({ ...input, answers });
+    expect(result.ok).toBe(true);
+    expect(mocks.generate).not.toHaveBeenCalled();
+  });
+  it("rejects answers above the shared clarification budget before loading data", async () => {
+    const answers = Object.fromEntries(Array.from({ length: 201 }, (_, index) => [`source:synthetic-${index}`, id(5)]));
+    expect((await proposeProgramTextUpdate({ ...input, answers })).ok).toBe(false);
+    expect(mocks.draft).not.toHaveBeenCalled();
+  });
   it("returns a blocking clarification when individually parsed operations cannot be safely combined", async () => {
     const result = await proposeProgramTextUpdate({ ...input, text: "Before Synthetic press: 10 kg × 7.\nSet Synthetic press to 4 sets.\nSet Synthetic press to 5 sets." });
     expect(result).toMatchObject({ ok: true, proposal: { baseDocument: document, changes: [], questions: [expect.stringContaining("could not be combined safely")] } });

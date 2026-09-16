@@ -1,5 +1,7 @@
 import { readLines } from "@/lib/program-preparation-text-parser";
 
+export const PROGRAM_EDIT_MAX_CLARIFICATIONS = 200;
+
 export type EditInstruction = {
   key: string;
   source: string;
@@ -14,6 +16,7 @@ export type EditInstruction = {
     | "information";
   noteMode?: "replace" | "append" | "modify";
   allDaysNote?: boolean;
+  otherExercisesExcept?: string[];
 };
 export type InterpretedProgramEdit = {
   instructions: EditInstruction[];
@@ -57,6 +60,8 @@ export function interpretProgramEdit(
   let pendingSource = "";
   let allDaysNotesOnly = false;
   let otherExercises = false;
+  const dayExercises = new Set<string>();
+  let otherExercisesExcept: string[] = [];
   const emit = (
     source: string,
     text: string,
@@ -73,6 +78,7 @@ export function interpretProgramEdit(
       intent,
       ...(noteMode ? { noteMode } : {}),
       ...(allDaysNotesOnly && intent === "notes" ? { allDaysNote: true } : {}),
+      ...(otherExercises && intent === "preserve" ? { otherExercisesExcept: [...otherExercisesExcept] } : {}),
     });
   };
   for (const line of readLines(input)) {
@@ -80,10 +86,12 @@ export function interpretProgramEdit(
     const normalized = (numbered?.[1] ?? line.text).replace(/\*\*([^*]+)\*\*/g, "$1");
     // Numbered noun headings establish scope just like a colon heading. Do
     // not reinterpret a numbered command or numeric prescription as a name.
-    if (numbered && /^[\p{L}][\p{L}\s'’–—-]{0,159}:?$/u.test(normalized) &&
+    if (numbered && /\p{L}{3}/u.test(normalized) && /^[\p{L}\p{N}][\p{L}\p{N}\s'’–—/().-]{0,159}:?$/u.test(normalized) &&
+      !/^\d+(?:\.\d+)?\s*(?:sets?|reps?|seconds?|secs?|minutes?|mins?|kg|lbs?)\b/i.test(normalized) &&
       !/^(?:day|routine|all|keep|preserve|leave|replace|swap|remove|delete|clear|reset|add|append|move|reorder|increase|decrease|reduce|set|change|update|modify|use|perform|record|do|don't|never|avoid|stop|before|after|if|when|rest|sets?|reps?|notes?)\b/i.test(normalized)) {
       if (pendingNotes) emit(pendingSource, "The replacement note is missing", "command");
       exercise = normalized.replace(/:$/, "");
+      dayExercises.add(exercise);
       pendingNotes = null;
       keep = false;
       allDaysNotesOnly = false;
@@ -110,6 +118,7 @@ export function interpretProgramEdit(
         text,
       );
       if (heading) {
+        dayExercises.clear();
         allDaysNotesOnly = false;
         otherExercises = false;
         day = text.replace(/:$/, "");
@@ -129,6 +138,7 @@ export function interpretProgramEdit(
         (label) => label.toLowerCase() === text.replace(/:$/, "").toLowerCase(),
       );
       if (namedDay) {
+        dayExercises.clear();
         allDaysNotesOnly = false;
         otherExercises = false;
         day = namedDay;
@@ -138,6 +148,7 @@ export function interpretProgramEdit(
         continue;
       }
       if (/^all days\b/i.test(text)) {
+        dayExercises.clear();
         otherExercises = false;
         allDaysNotesOnly = /^all days\s*[—–:-]\s*notes only$/i.test(text);
         day = null;
@@ -149,10 +160,11 @@ export function interpretProgramEdit(
         exercise = null;
         keep = false;
         otherExercises = true;
+        otherExercisesExcept = [...dayExercises];
         continue;
       }
       if (otherExercises && /^(?:keep|preserve) (?:the )?(?:current|existing) (?:exercises|set counts|rep ranges|load targets|rest times|exercise order|supersets)(?:(?:,\s*(?:and\s+)?|\s+and\s+)(?:exercises|set counts|rep ranges|load targets|rest times|exercise order|supersets))*(?: unless affected by the .+ replacement above)?$/i.test(text)) {
-        emit(line.source, text, "information");
+        emit(line.source, text, "preserve");
         continue;
       }
       if (allDaysNotesOnly) {
@@ -178,6 +190,7 @@ export function interpretProgramEdit(
       const dayPrefix =
         /^on\s+((?:day|routine)\s+(?:\d+|[a-z]))\s*[,;:]?\s+(.+)$/i.exec(text);
       if (dayPrefix) {
+        if (day?.toLowerCase() !== dayPrefix[1].toLowerCase()) dayExercises.clear();
         otherExercises = false;
         day = dayPrefix[1];
         exercise = null;
@@ -197,7 +210,10 @@ export function interpretProgramEdit(
           day = named;
           exercise = null;
           keep = false;
-        } else exercise = exercisePrefix[1];
+        } else {
+          exercise = exercisePrefix[1];
+          dayExercises.add(exercise);
+        }
         text = exercisePrefix[2];
       }
       const noteLead =
@@ -252,6 +268,7 @@ export function interpretProgramEdit(
         exercise = labelled[1]
           .replace(/^keep\s+/i, "")
           .replace(/\s+(?:effort|notes)$/i, "");
+        dayExercises.add(exercise);
         text = labelled[2];
         if (!text) continue;
       }
@@ -326,6 +343,7 @@ export function interpretProgramEdit(
             "",
           )
           .replace(/^(?:one|two|three|four|\d+)\s+(.+?)\s+sets?$/i, "$1");
+        dayExercises.add(exercise);
         emit(line.source, text, "replace");
         continue;
       }

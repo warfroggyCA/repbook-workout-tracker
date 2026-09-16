@@ -9,6 +9,7 @@ import { getLibraryWithAvailability } from "@/services/routine-import";
 import { loadVisibleExercises } from "@/services/exercise-map";
 import { proposeContextualProgramEdit } from "@/lib/program-contextual-edit";
 import { type ProgramTextProposal } from "@/lib/program-text-update";
+import { PROGRAM_EDIT_MAX_CLARIFICATIONS } from "@/lib/program-edit-language";
 
 const requestSchema = z
   .object({
@@ -20,7 +21,7 @@ const requestSchema = z
       .record(z.string().max(21000), z.string().uuid())
       .refine(
         (value) =>
-          Object.keys(value).length <= 40 &&
+          Object.keys(value).length <= PROGRAM_EDIT_MAX_CLARIFICATIONS &&
           Object.keys(value).join("").length <= 60000,
       )
       .optional(),

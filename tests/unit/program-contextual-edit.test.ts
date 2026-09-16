@@ -197,6 +197,28 @@ describe("contextual Program editing without a provider", () => {
     expect(p.changes).toHaveLength(1);
     expect(apply(p).days[0].exercises[0].notes).toContain("Do not deliberately target failure.");
   });
+  it("enforces all-other fields while permitting previously named edits", () => {
+    const text = "DAY 1\n1. Bench Press\n3 × 5–7.\n2. All other Day 1 exercises\nPreserve the current exercises, set counts, rep ranges, load targets, rest times, exercise order and supersets.";
+    const allowed = propose(text);
+    expect(allowed.questions).toEqual([]);
+    expect(apply(allowed).days[0].exercises[0].sets).toBe(3);
+    const conflict = propose(text + "\n3. Back Squat\n5 × 6–8.");
+    expect(conflict.questions).toHaveLength(1);
+    expect(apply(conflict).days[0].exercises[1]).toEqual(current().days[0].exercises[1]);
+  });
+  it.each(["45-Degree Back Extension", "Trap-3 Raise", "90/90 Hip Switch"])("inherits a numbered catalog heading containing digits: %s", (name) => {
+    const doc = current();
+    const catalog = [...library, { ...library[0], id: id(800), name, aliases: [] }];
+    doc.days[0].exercises[1].exerciseId = id(800);
+    const p = propose(`DAY 1\n1. Bench Press\nReplace notes with: First synthetic cue.\n2. ${name}\nReplace notes with: Second synthetic cue.`, doc, catalog);
+    expect(p.questions).toEqual([]);
+    expect(apply(p).days[0].exercises.map((slot) => slot.notes)).toEqual(["First synthetic cue", "Second synthetic cue"]);
+  });
+  it("does not interpret a numbered numeric prescription as an exercise heading", () => {
+    const p = propose("DAY 1\n1. Bench Press\n2. 5 sets\n3. 9 reps");
+    expect(p.questions).toEqual([]);
+    expect(apply(p).days[0].exercises[0]).toMatchObject({ sets: 5, repMin: 9, repMax: 9 });
+  });
   it("offers the highest-ranked saved matches before limiting a long clarification list", () => {
     const doc = current();
     const catalog = Array.from({ length: 11 }, (_, index) => ({
