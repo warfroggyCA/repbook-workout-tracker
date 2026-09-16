@@ -240,6 +240,16 @@ describe("local Program text parsing", () => {
     expect(after).toEqual(before);
     expect(after.days[3].warmupItems[0].label).toBe("Existing band preparation");
   });
+  it.each([
+    "Set Barbell Back Squat to 4 sets.",
+    "CLARIFY:\nBack Squat: Leave 2 RIR.",
+    "Back Squat: Leave 2 RIR.",
+  ])("blocks mixed instructions rather than leaking warm-up context: %s", (instruction) => {
+    const before = current();
+    const { parsed, after } = run(`Day A\nBefore Barbell Bench Press: 20 kg × 5.\n${instruction}`, before);
+    expect(parsed.questions.length).toBeGreaterThan(0);
+    expect(after).toEqual(before);
+  });
 
   it("matches aliases and named days and parses sets, ranges, and compound rests", () => {
     const document = current();

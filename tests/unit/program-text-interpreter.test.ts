@@ -98,6 +98,59 @@ function check(text: string, document = current(), catalog = library) {
 }
 
 describe("conservative Program text interpreter", () => {
+  it("integrates a complete multi-day update while preserving unmentioned prescriptions and exact variants", () => {
+    const request = `UPDATE REQUEST — SYNTHETIC ROUTINE
+Apply to future scheduled workouts only. Preserve completed workout history.
+Keep all existing exercises, sets, rep ranges, order and supersets unless explicitly changed below.
+DAY 1 — ROUTINE A
+KEEP:
+Existing exercise selection and working-set counts.
+Barbell Bench Press first: 3 × 8–12.
+Current bench working load of 30 kg for now.
+CHANGE / CLARIFY:
+Bench effort: Leave 3 repetitions in reserve on earlier sets.
+Do not aim for repeated failure sets.
+Back Squat: Leave 2 technically sound repetitions in reserve.
+DAY 2 — ROUTINE B
+CHANGE:
+Replace the 2 sets of Triceps Pushdown with 2 sets of Dumbbell Overhead Triceps Extension, in the same exercise slot.
+Suggested starting prescription: 2 × 9–13; rest 75 seconds.
+Use one fixed dumbbell held with both hands. Record the weight of that single dumbbell.
+KEEP / CLARIFY:
+All other exercises and set counts remain unchanged.
+Overhead Press: Leave 3 repetitions in reserve.
+Barbell Row: Leave 2 technically sound repetitions in reserve.
+DAY 3 — ROUTINE C
+KEEP:
+Existing exercise selection and set counts.
+Incline Barbell Bench Press before Romanian Deadlift.
+CLARIFY:
+Incline Bench: Leave 3 repetitions in reserve.
+Romanian Deadlift: Leave 2 technically sound repetitions in reserve.
+This request does not approve the pending RDL load proposal.
+DAY 4 — ROUTINE D
+KEEP:
+Existing exercises, working-set counts and supersets.
+Keep Zottman Curl as Zottman Curl—not Hammer Curl.
+No additional exercises or sets in this update.
+CLARIFY:
+Zottman Curl: Use a controlled lowering phase.
+ALL DAYS — NOTES
+Record actual effort honestly.
+Compare progress at similar technique and range.`;
+    const before = current(), { parsed, after } = check(request, before);
+    expect(parsed.questions).toEqual([]);
+    expect(after.days[1].exercises[2]).toMatchObject({ exerciseId: library[5].id, sets: 2, repMin: 9, repMax: 13, restSec: 75, targetLoad: null });
+    for (const [dayIndex, day] of before.days.entries()) {
+      expect(after.days[dayIndex].supersets).toEqual(day.supersets);
+      expect(after.days[dayIndex].warmupItems).toEqual(day.warmupItems);
+      for (const [slotIndex, slot] of day.exercises.entries()) {
+        if (dayIndex === 1 && slotIndex === 2) continue;
+        expect({ ...after.days[dayIndex].exercises[slotIndex], notes: slot.notes }).toEqual(slot);
+      }
+    }
+    expect(after.days[3].exercises[0].exerciseId).toBe(library[8].id);
+  });
   it.each([
     "4 × 6–10; rest 90 seconds",
     "4x6-10 with 1 min 30 sec rest",
