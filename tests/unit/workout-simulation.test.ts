@@ -110,6 +110,30 @@ describe("workout simulation local model", () => {
     expect(workspace.activeWorkout?.occurrences[0].outcome).toBe("completed");
   });
 
+  it("prepares later group members once, immediately before their first working set", () => {
+    const createId = ids();
+    const plan = source();
+    plan.days[0].exercises[2].warmups = [
+      { id: "curl-primer", label: "Curl rehearsal", orderIdx: 0, note: null },
+    ];
+    const workspace = startSimulationWorkout(
+      createSimulationWorkspace(plan, { createId, nowISO: "2026-07-22T12:01:00.000Z" }),
+      0,
+      { createId, nowISO: "2026-07-22T12:02:00.000Z" },
+    );
+    const occurrences = workspace.activeWorkout!.occurrences;
+    expect(occurrences.map((item) => item.kind)).toEqual([
+      "day_warmup", "exercise_warmup", "working_set", "working_set",
+      "working_set", "exercise_warmup", "working_set", "working_set",
+      "working_set", "working_set", "working_set",
+    ]);
+    expect(occurrences[5]).toMatchObject({ label: "Curl rehearsal" });
+    expect(occurrences[5].simulationExerciseId).toBe(occurrences[6].simulationExerciseId);
+    expect(occurrences.filter((item) => item.groupId === "tri" && item.kind === "working_set")
+      .map((item) => [item.groupRound, item.groupMemberOrderIdx, item.restAfterSec]))
+      .toEqual([[1, 0, 15], [1, 1, 15], [1, 2, 60], [2, 0, 15], [2, 1, 15], [2, 2, 0]]);
+  });
+
   it("runs every prescribed set in a legacy unequal group and skips exhausted members", () => {
     const createId = ids();
     const uneven = source();

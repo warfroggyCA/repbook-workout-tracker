@@ -421,6 +421,15 @@ equipment-geometry switching, workout-only removal/undo semantics, and narrow
 active-title rendering. The timer must be reconciled on visibility, pageshow,
 focus, and runner rehydration; no test may treat interval execution as elapsed
 time truth.
+Preparation timing is covered across ordinary Start, accepted compiler sessions,
+and local simulation: general preparation comes first, then each exercise's
+preparation immediately before its first working set. Group working order and
+rest remain unchanged. Include `session-compiler-db.test.ts`,
+`workout-simulation.test.ts`, the native PostgreSQL integration suite, and
+`npm run test:e2e:pii01` when changing this creation contract. PII-01 verifies that
+pending preparation for a later exercise does not block logging the current
+exercise, including on narrow Chromium and WebKit layouts.
+
 The Day One active-workout regression gate is:
 
 ```bash

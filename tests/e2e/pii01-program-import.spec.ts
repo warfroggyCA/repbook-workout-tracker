@@ -16,6 +16,7 @@ Barbell Back Squat 3x5 @ 60 kg, rest 2 min
 Ramp-up: Empty bar | reps=10
 Ramp-up: Half of working load | load=50% of working load
 Dumbbell Row 2x8 @ 20 kg, rest 1 min
+Ramp-up: Row rehearsal | reps=6
 Day 2 — Push
 Warm-up: Shoulder circles | reps=10
 Barbell Bench Press 3x8 @ 50 kg, rest 2 min
@@ -217,6 +218,8 @@ test("reviews and publishes a multi-day Program into an ordered active workout",
   const current = page.getByTestId("current-exercise-card");
   await expect(current.getByTestId("current-set-entry")).toContainText("Set 1");
   await expect(current).toContainText("5 reps · 60 kg");
+  await expect(warmup.getByRole("checkbox", { name: "Mark Row rehearsal complete", exact: true })).not.toBeChecked();
+  await expect(warmup).toContainText("Later exercises have preparation remaining.");
   await current.getByLabel("Total load").fill("60");
   await current.getByRole("textbox", { name: "Reps", exact: true }).fill("5");
   await page.getByTestId("active-log-set").click();

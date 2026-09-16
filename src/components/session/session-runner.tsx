@@ -4427,7 +4427,9 @@ export function SessionRunner(props: SessionRunnerProps) {
                 {guidance.currentAction?.kind === "day_warmup" ||
                 guidance.currentAction?.kind === "exercise_warmup"
                   ? "Complete the current warm-up action below."
-                  : "Warm-up actions are accounted for."}
+                  : guidance.warmups.remaining > 0
+                    ? "Later exercises have preparation remaining."
+                    : "Warm-up actions are accounted for."}
               </p>
               <Button
                 type="button"
@@ -4465,7 +4467,7 @@ export function SessionRunner(props: SessionRunnerProps) {
                       <p className="font-semibold">
                         {upNextAfterRest
                           ? `Up next after rest: ${exerciseName} preparation set`
-                          : `Opening warm-up: ${exerciseName} preparation set`}
+                          : `Later: ${exerciseName} preparation set`}
                       </p>
                       <p>{prescription ?? occurrence.label ?? "Details not recorded"}</p>
                     </div>

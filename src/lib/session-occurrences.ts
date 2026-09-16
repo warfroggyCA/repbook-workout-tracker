@@ -352,17 +352,38 @@ export function buildWarmupOccurrences(input: {
       plan.plannedRestSec,
       plan.kindOrdinal,
     );
-  const occurrences = [
-    ...generalPlans,
-    ...orderedExercises.flatMap(
-      (exercise) => exercisePlans.get(exercise.sessionExerciseId) ?? [],
-    ),
-  ].map(buildPlan);
-  for (const working of [...(input.workingOccurrences ?? [])].sort(
+  if (!input.workingOccurrences) {
+    return [
+      ...generalPlans,
+      ...orderedExercises.flatMap(
+        (exercise) => exercisePlans.get(exercise.sessionExerciseId) ?? [],
+      ),
+    ].map(buildPlan);
+  }
+
+  const occurrences = generalPlans.map(buildPlan);
+  const emittedExerciseWarmups = new Set<string>();
+  for (const working of [...input.workingOccurrences].sort(
     (left, right) => left.sequenceIdx - right.sequenceIdx,
   )) {
+    const sessionExerciseId = working.sessionExerciseId;
+    if (
+      sessionExerciseId != null &&
+      !emittedExerciseWarmups.has(sessionExerciseId)
+    ) {
+      for (const plan of exercisePlans.get(sessionExerciseId) ?? []) {
+        occurrences.push(buildPlan(plan));
+      }
+      emittedExerciseWarmups.add(sessionExerciseId);
+    }
     occurrences.push({ ...working, sequenceIdx });
     sequenceIdx += 1;
+  }
+  for (const exercise of orderedExercises) {
+    if (emittedExerciseWarmups.has(exercise.sessionExerciseId)) continue;
+    for (const plan of exercisePlans.get(exercise.sessionExerciseId) ?? []) {
+      occurrences.push(buildPlan(plan));
+    }
   }
   return occurrences;
 }

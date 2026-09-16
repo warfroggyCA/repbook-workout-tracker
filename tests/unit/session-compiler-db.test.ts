@@ -373,8 +373,8 @@ describe("Session Compiler durable review and acceptance", () => {
     expect(occurrences.map((occurrence) => occurrence.kind)).toEqual([
       "day_warmup",
       "exercise_warmup",
-      "exercise_warmup",
       "working_set",
+      "exercise_warmup",
       "working_set",
       "working_set",
       "working_set",

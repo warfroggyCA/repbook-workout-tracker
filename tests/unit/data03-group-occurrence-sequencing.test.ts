@@ -149,7 +149,7 @@ describe("DATA-03 group occurrence sequencing", () => {
     ).toBe(true);
   });
 
-  it("does not offer a working set before any opening preparation set", () => {
+  it("blocks earlier pending preparation but allows preparation for later exercises", () => {
     const working = {
       ...buildSequence()[0],
       sequenceIdx: 11,
@@ -169,6 +169,9 @@ describe("DATA-03 group occurrence sequencing", () => {
     expect(
       workingSetOccurrenceOrderIsEligible(working, [preparation, working]),
     ).toBe(false);
+    expect(
+      workingSetOccurrenceOrderIsEligible(working, [working, { ...preparation, sequenceIdx: 12 }]),
+    ).toBe(true);
     expect(
       workingSetOccurrenceOrderIsEligible(
         working,
