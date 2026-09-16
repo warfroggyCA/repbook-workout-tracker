@@ -42,6 +42,7 @@ describe("Froggy media completion", () => {
   it("does not count a paused or in-progress seek as completion", () => {
     expect(froggyClipCompleted({ ...playing, paused: true })).toBe(false);
     expect(froggyClipCompleted({ ...playing, seeking: true })).toBe(false);
+    expect(froggyClipCompleted({ ...playing, seeking: true, ended: true })).toBe(false);
     expect(froggyClipCompleted({ ...playing, currentTime: 5.999 })).toBe(false);
   });
   it("rejects ordinary playback and unready or invalid metadata", () => {

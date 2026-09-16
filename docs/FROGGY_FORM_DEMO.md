@@ -175,9 +175,12 @@ they cannot consume the finished repetition by calling `play()` first.
 Media time updates also recognize playback within one microsecond of the exact
 endpoint, covering backends that stop nanoseconds short without emitting ended.
 That check excludes paused playback and in-progress seeks; it is not a timer.
+An explicit user pause also blocks queued completion events from a manual seek,
+including engines that report the last frame as ended just short of duration.
 Manual scrubbing to the end retains the current tip and pause choice; its first
 restart does not count as a completed repetition. Mode changes and viewer
-remounts retain the current guidance and playback settings. No wall-clock timer
+remounts retain the selected frame, current guidance and playback settings.
+Explicit resume from an ended frame reloads before playback. No wall-clock timer
 advances guidance when the video is paused or buffering.
 Visible, unpaused previews request playback once metadata is available;
 metadata-only preload does not have to reach `canplay` before playback starts.

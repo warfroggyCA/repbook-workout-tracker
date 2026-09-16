@@ -961,6 +961,8 @@ surface promptly; the same History suites still run afterward. Bounded synthetic
 media events and timeline samples are printed when the isolated preview fails.
 The end-position regression checks that a paused seek cannot advance a tip or
 resume playback, and that the next complete replay advances guidance once.
+Another case retains a paused near-end frame through highlight-mode changes and
+expansion, then verifies that explicit resume progresses to the next tip.
 Playback completion uses the media `ended` event rather than native looping or
 an elapsed wall-clock timer.
 
