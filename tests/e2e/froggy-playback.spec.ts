@@ -2,7 +2,8 @@ import { expect, test } from "@playwright/test";
 import { installNextDevelopmentRefreshControl, waitForHydratedServerAction } from "../helpers/react-readiness";
 
 test.beforeEach(async ({ page }) => {
-  await installNextDevelopmentRefreshControl(page);
+  const refresh = await installNextDevelopmentRefreshControl(page);
+  refresh.freeze();
 });
 
 test("plays reduced-motion guidance when readiness arrives at completion", async ({ page }) => {
@@ -243,3 +244,65 @@ test("retains a paused nonzero position through mode change and expanded preview
   await expanded.getByRole("button", { name: "Resume form animation", exact: true }).click();
   await expect(expanded.locator("[data-form-banner]")).toHaveAttribute("data-form-banner", String(Number(cue) + 1), { timeout: 10000 });
 });
+
+for (const persistent of [false, true]) {
+  test(`recovers frozen playback without advancing tips${persistent ? " and bounds repeated failures" : ""}`, async ({ page }) => {
+    await page.goto("/sign-in");
+    await page.getByPlaceholder("allowlisted email").fill("owner@example.com");
+    const login = page.getByRole("button", { name: "Dev login", exact: true });
+    await waitForHydratedServerAction(login);
+    await login.click();
+    await expect(page.getByRole("heading", { name: "Today", exact: true })).toBeVisible();
+    await page.goto("/program");
+    await page.getByRole("button", { name: "View Incline Dumbbell Curl form", exact: true }).click();
+    const player = page.getByTestId("froggy-player");
+    await player.scrollIntoViewIfNeeded();
+    const video = player.locator("video");
+    const banner = player.locator("[data-form-banner]");
+    await expect.poll(() => video.evaluate((v: HTMLVideoElement) => v.currentTime)).toBeGreaterThan(.1);
+    const cue = await banner.getAttribute("data-form-banner");
+    // Reproduce an unpaused decoder with a frozen media clock. A normal pause /
+    // play releases the one-off fault; a persistent fault also refuses reload.
+    await video.evaluate((v: HTMLVideoElement, persistent) => {
+      HTMLMediaElement.prototype.pause.call(v);
+      Object.defineProperty(v, "paused", { configurable: true, get: () => false });
+      v.play = () => Promise.resolve();
+      v.pause = () => {
+        v.dataset.recoveryPauses = String(Number(v.dataset.recoveryPauses ?? 0) + 1);
+        if (!persistent) {
+          for (const key of ["paused", "play", "pause"]) Reflect.deleteProperty(v, key);
+        }
+      };
+      if (persistent) v.load = () => {
+        v.dataset.recoveryLoads = String(Number(v.dataset.recoveryLoads ?? 0) + 1);
+      };
+      v.dispatchEvent(new Event("play"));
+      v.dispatchEvent(new Event("waiting"));
+    }, persistent);
+    if (persistent) {
+      await expect(player.getByRole("button", { name: "Retry video", exact: true })).toBeVisible({ timeout: 16000 });
+      await expect(player.getByRole("status")).toContainText("Video stalled");
+      await expect(banner).toHaveAttribute("data-form-banner", cue!);
+      await expect(video).toHaveAttribute("data-recovery-loads", "1");
+      const pauses = await video.getAttribute("data-recovery-pauses");
+      await page.waitForTimeout(5000);
+      await expect(video).toHaveAttribute("data-recovery-pauses", pauses!);
+      await expect(video).toHaveAttribute("data-recovery-loads", "1");
+      await video.evaluate(v => {
+        for (const key of ["paused", "play", "pause", "load"]) Reflect.deleteProperty(v, key);
+      });
+      await player.getByRole("button", { name: "Retry video", exact: true }).click();
+    } else {
+      await expect(video).toHaveAttribute("data-recovery-pauses", "1", { timeout: 7000 });
+      await expect(banner).toHaveAttribute("data-form-banner", cue!);
+    }
+    await expect(banner).toHaveAttribute("data-form-banner", String(Number(cue) + 1), { timeout: 10000 });
+    await player.getByRole("button", { name: "Pause form animation", exact: true }).click();
+    const time = await video.evaluate((v: HTMLVideoElement) => v.currentTime);
+    const pausedCue = await banner.getAttribute("data-form-banner");
+    await page.waitForTimeout(5000);
+    expect(await video.evaluate((v: HTMLVideoElement) => v.currentTime)).toBeCloseTo(time, 1);
+    await expect(banner).toHaveAttribute("data-form-banner", pausedCue!);
+    await expect(player.getByRole("button", { name: "Retry video", exact: true })).toHaveCount(0);
+  });
+}
