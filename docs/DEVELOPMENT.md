@@ -975,6 +975,12 @@ return trials, with late or duplicate rings reported separately.
 
 ## Free-form Program editing checks
 
+The contextual unit suite verifies that long clarification lists show their
+highest-ranked saved targets. The version-restore browser journey applies a text
+instruction, restores an older draft, and confirms the retained request can be
+proposed again. The partial-resolution journey still checks no replay on saves
+and clarification retries.
+
 Run `npx vitest run tests/unit/program-contextual-edit.test.ts tests/unit/program-text-entry.test.tsx tests/unit/program-text-parser.test.ts tests/unit/program-text-interpreter.test.ts tests/unit/program-text-update.test.ts tests/unit/program-text-update-action.test.ts tests/unit/program-editor-component.test.tsx`.
 The parser tests cover synthetic multi-day preparation instructions, units,
 ranges, aliases, preserved work, conditional requests, and malformed targets.

@@ -194,9 +194,12 @@ export function proposeContextualProgramEdit(
       equivalents.some((item) => item.id === target.slot.exerciseId),
     );
     if (exactTargets.length === 1) return exactTargets[0];
+    const rankById = new Map(ranks.map((item) => [item.id, item.rank]));
+    // Show the most relevant matches before applying the display limit. Stable
+    // sorting retains Program order for equally ranked repeated prescriptions.
     const candidates = possible.filter((target) =>
-      ranks.some((item) => item.id === target.slot.exerciseId),
-    );
+      rankById.has(target.slot.exerciseId),
+    ).sort((a, b) => rankById.get(b.slot.exerciseId)! - rankById.get(a.slot.exerciseId)!);
     const chosen = candidates.find(
       (target) =>
         target.slot.lineageId ===

@@ -496,6 +496,18 @@ test("autosaves, resolves tab conflicts, publishes v2, and restores v1 as v3", a
   });
   await page.goto("/program/edit");
 
+  // Applied markers belong to this draft; restoring v1 must allow the same
+  // retained instruction to be reviewed against its replacement document.
+  await expectSaved(page);
+  const beforeRestore: ProgramDocumentV3 = (await (await page.request.get("/api/program/draft")).json()).draft.document;
+  const restoreSource = (await page.locator(`#editor-${beforeRestore.days[0].exercises[0].lineageId}-label`).textContent())!.trim();
+  const retainedRequest = `Day 1\n${restoreSource}:\nReplace notes with: Keep a controlled lowering phase.`;
+  await page.getByLabel("What should change?").fill(retainedRequest);
+  await page.getByRole("button", { name: "Compare and propose changes", exact: true }).click();
+  await page.getByRole("button", { name: "Apply selected changes", exact: true }).click();
+  await expectSaved(page);
+  await expect(page.getByRole("button", { name: "Start a new request", exact: true })).toBeVisible();
+
   await page.getByRole("tab", { name: "Versions", exact: true }).click();
   await expect(
     page.getByRole("heading", { name: /^v2 · Versioned Strength Plan$/ }),
@@ -593,6 +605,14 @@ test("autosaves, resolves tab conflicts, publishes v2, and restores v1 as v3", a
     page.getByRole("tab", { name: "Edit", exact: true }),
   ).toHaveAttribute("aria-selected", "true");
   await expectSaved(page);
+
+  await expect(page.getByLabel("What should change?")).toHaveValue(retainedRequest);
+  await page.getByRole("button", { name: "Compare and propose changes", exact: true }).click();
+  const restoredProposal = page.getByRole("region", { name: "Proposed text changes" });
+  await expect(restoredProposal.getByRole("heading", { name: "Changes ready to review", exact: true })).toBeVisible();
+  await expect(restoredProposal.getByRole("checkbox")).toHaveCount(1);
+  await expect(restoredProposal.getByRole("button", { name: "Apply selected changes", exact: true })).toBeEnabled();
+  await restoredProposal.getByRole("button", { name: "Keep current draft", exact: true }).click();
 
   await page.getByRole("tab", { name: "Review", exact: true }).click();
   await page
