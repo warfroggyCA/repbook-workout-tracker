@@ -27,7 +27,7 @@ export type InterpretedProgramEdit = {
 export const coachingLanguage = (text: string) =>
   /\b(?:RIR|RPE|(?:reps?|repetitions?) in reserve|technique|form|failure|safeties|spotter|back support|both hands|bar close|range of motion|controlled|painful|swinging|actual effort)\b/i.test(
     text,
-  );
+  ) || /^record the load as the weight of (?:the |a )?single dumbbell$/i.test(text);
 export const embeddedProgramCommand = (text: string) =>
   /\b(?:increase|decrease|reduce|remove|replace|move|add|change|update)\b.{0,60}\b(?:sets?|reps?|weight|load|rest|progression|superset|exercise)\b/i.test(
     text,
@@ -93,7 +93,7 @@ export function interpretProgramEdit(
     // A decimal point in a load or RPE is not a sentence boundary. Keep the
     // original line as provenance even when a paragraph contains several edits.
     // A quoted replacement is one authored note, including all its sentences.
-    const sentences = /^(?:(?:replace|add|append|update|modify|change|set)\s+(?:the\s+)?notes?\s*(?:(?:with|to|so)\s*)?:?\s*|notes?:\s*)[“"].+[”"]\s*$/i.test(normalized)
+    const sentences = (pendingNotes && /^[“"].+[”"]\s*$/s.test(normalized)) || /^(?:(?:replace|add|append|update|modify|change|set)\s+(?:the\s+)?notes?\s*(?:(?:with|to|so)\s*)?:?\s*|notes?:\s*)[“"].+[”"]\s*$/i.test(normalized)
       ? [normalized]
       : normalized.split(/(?<=[.!?])\s+(?=[A-Z“"])/u);
     for (const sentence of sentences) {
@@ -211,6 +211,11 @@ export function interpretProgramEdit(
           : /^(replace|set)$/i.test(noteLead[1])
             ? "replace"
             : "modify";
+        continue;
+      }
+      if (/^notes?:\s*$/i.test(text)) {
+        pendingSource = line.source;
+        pendingNotes = "append";
         continue;
       }
       if (pendingNotes) {

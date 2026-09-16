@@ -173,6 +173,30 @@ describe("contextual Program editing without a provider", () => {
     expect(p.questions).toHaveLength(2);
     expect(apply(p)).toEqual(current());
   });
+  it("keeps indented multi-sentence notes intact after a note label", () => {
+    const p = propose('DAY 2\n1. Replace Triceps Pushdown with Seated Overhead Dumbbell Triceps Extension.\n- Sets: 2\n- Reps: 9–12\n- Rest: 75 seconds\n- Use one dumbbell held with both hands.\n- Record the load as the weight of the single dumbbell.\n- Notes:\n  "Maintain a steady torso. Keep the elbows comfortable. Start conservatively and use 3 RIR."\n2. Barbell Row\n- Replace notes with:\n  "Maintain a steady torso. Stop the set before control deteriorates."');
+    expect(p.questions).toEqual([]);
+    const next = apply(p);
+    expect(next.days[1].exercises[1].notes).toBe("Maintain a steady torso. Stop the set before control deteriorates.");
+    expect(next.days[1].exercises[2].notes).toContain("Record the load as the weight of the single dumbbell");
+    expect(next.days[1].exercises[2].notes).toContain("Start conservatively and use 3 RIR.");
+  });
+  it("validates an inherited before-order assertion", () => {
+    const p = propose('DAY 3\n1. Incline Barbell Bench Press\nKeep this exercise before Romanian Deadlift.\nReplace notes with: Keep a steady tempo.');
+    expect(p.questions).toEqual([]);
+    expect(p.changes).toHaveLength(1);
+    const reverse = current();
+    reverse.days[2].exercises.reverse();
+    const blocked = propose('DAY 3\n1. Incline Barbell Bench Press\nKeep this exercise before Romanian Deadlift.\nReplace notes with: Keep a steady tempo.', reverse);
+    expect(blocked.questions).toHaveLength(1);
+    expect(apply(blocked)).toEqual(reverse);
+  });
+  it("does not mistake compound prose inside a scoped note for exercise families", () => {
+    const p = propose('DAY 1\n1. Bench Press\nReplace notes with:\n  "Keep the trunk and arms steady. Use 3 RIR. The last set can reach RPE 8 if technique is steady and supports are available. Do not deliberately target failure."');
+    expect(p.questions).toEqual([]);
+    expect(p.changes).toHaveLength(1);
+    expect(apply(p).days[0].exercises[0].notes).toContain("Do not deliberately target failure.");
+  });
   it("offers the highest-ranked saved matches before limiting a long clarification list", () => {
     const doc = current();
     const catalog = Array.from({ length: 11 }, (_, index) => ({
