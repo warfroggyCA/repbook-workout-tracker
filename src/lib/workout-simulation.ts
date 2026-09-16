@@ -415,8 +415,10 @@ export function startSimulationWorkout(workspace: SimulationWorkspace, dayIndex:
     const members = day.exercises.filter((candidate) => candidate.groupId === group.id).sort((a, b) => (a.groupMemberOrderIdx ?? a.orderIdx) - (b.groupMemberOrderIdx ?? b.orderIdx));
     for (let round = 1; round <= group.plannedRounds; round += 1) {
       const activeMembers = members.filter((member) => member.sets >= round);
-      activeMembers.forEach((member, memberIndex) => {
+      let memberIndex = 0;
+      for (const member of round === 1 ? members : activeMembers) {
         if (round === 1) addExerciseWarmups(member);
+        if (member.sets < round) continue;
         const target = simulationExerciseBySlot.get(member.id)!;
         const finalMember = memberIndex === activeMembers.length - 1;
         const finalRound = round === group.plannedRounds;
@@ -429,7 +431,8 @@ export function startSimulationWorkout(workspace: SimulationWorkspace, dayIndex:
           plannedNote: target.note,
           restAfterSec: finalMember ? (finalRound ? 0 : group.restBetweenRoundsSec) : group.restBetweenMembersSec,
         });
-      });
+        memberIndex += 1;
+      }
     }
   }
   const workout: SimulationWorkout = simulationWorkoutSchema.parse({
