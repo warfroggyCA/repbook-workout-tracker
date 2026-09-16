@@ -132,15 +132,15 @@ export default function FroggyFormPlayer({ demoKey, initialSnapshot, onSnapshot 
         if (disposed || !visible || document.hidden || pauseIntent.current) v.pause();
       }).catch(() => { if (!disposed && visible && !pauseIntent.current) setStatus("Tap to play"); });
     };
-    // Native looping can stall a media pipeline at time zero while still
-    // reporting unpaused. Finish each play normally, then explicitly restart
-    // through the same visibility/user-pause guard used by every other resume.
+    // Native looping and seeking a finished decoder can stall at time zero
+    // while still reporting unpaused. Reload the same resource after natural
+    // completion; metadata resumes it through the existing pause/visibility guard.
     const ended = () => {
       if (disposed || !v.ended) return;
       if (!seekToEnd.current) setCue(c => (c + 1) % config.cues.length);
       seekToEnd.current = false;
-      v.currentTime = 0; resumeTime.current = 0; setPosition(0);
-      sync();
+      resumeTime.current = 0; setPosition(0);
+      v.load();
     };
     syncPlayback.current = sync;
     const hide = sync;
@@ -173,7 +173,9 @@ export default function FroggyFormPlayer({ demoKey, initialSnapshot, onSnapshot 
   }
   function playPause() {
     const v = video.current!;
-    pauseIntent.current = !v.paused;
+    // Honor the displayed action even while an automatic reload has temporarily
+    // paused the media element between repetitions.
+    pauseIntent.current = playing;
     if (!pauseIntent.current && seekToEnd.current) {
       // Some engines rewind an end-position play() without firing ended.
       // Consume the explicit seek here so the next complete play counts once.

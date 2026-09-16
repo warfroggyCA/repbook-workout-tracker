@@ -165,9 +165,10 @@ explicit coverage limits.
 ## Cue playback
 
 Do/Avoid guidance advances when a clip completes. The player listens for the
-media `ended` event, rewinds, and explicitly resumes through its existing
-visibility/user-pause guard. It does not use the native `loop` attribute, which
-can stall the media pipeline at the beginning of a repetition. Presented-frame
+media `ended` event, reloads the same clip from the beginning, and resumes after
+metadata through its existing visibility/user-pause guard. It does not reuse
+an ended decoder through native looping or a seek, which can stall the media
+pipeline at the beginning of a repetition. Presented-frame
 callbacks continue to align the form pointers, independently of cue advancement.
 Readiness and visibility callbacks leave ended clips to the completion handler;
 they cannot consume the finished repetition by calling `play()` first.
