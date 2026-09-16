@@ -104,6 +104,7 @@ export default async function ImportPage(props: PageProps<"/program/import">) {
           <ProgramTextEntry
             ownerId={user.id}
             library={routineLibrary.map((item) => exerciseDiscoveryItemFromLibrary(item))}
+            initialDayId={typeof query.day === "string" ? query.day : null}
             canUpdate={isProgramEditorEnabled() && activeProgram !== null}
             aiAvailable={isAIAvailable()}
             initialParse={initialParse}

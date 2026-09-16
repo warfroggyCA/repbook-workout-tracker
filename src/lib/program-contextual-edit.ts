@@ -422,27 +422,33 @@ export function proposeContextualProgramEdit(
         );
         continue;
       }
-      add(
-        bucket,
-        {
-          kind: "replace",
-          dayId: target.day.lineageId,
-          slotId: target.slot.lineageId,
-          exerciseId: selected.id,
-        },
-        instruction,
-      );
-      add(
-        bucket,
-        {
-          kind: "load",
-          dayId: target.day.lineageId,
-          slotId: target.slot.lineageId,
-          value: null,
-          unit: null,
-        },
-        instruction,
-      );
+      if (selected.id !== target.slot.exerciseId) {
+        add(
+          bucket,
+          {
+            kind: "replace",
+            dayId: target.day.lineageId,
+            slotId: target.slot.lineageId,
+            exerciseId: selected.id,
+          },
+          instruction,
+        );
+        add(
+          bucket,
+          {
+            kind: "load",
+            dayId: target.day.lineageId,
+            slotId: target.slot.lineageId,
+            value: null,
+            unit: null,
+          },
+          instruction,
+        );
+      } else
+        information.push(
+          "The requested movement is already in this slot: " +
+            instruction.source,
+        );
       if (parts[2]) {
         const dose = parseProgramDose(parts[2]);
         if (!dose)
@@ -867,7 +873,19 @@ export function proposeContextualProgramEdit(
         bucket.operations.some(
           (op) =>
             days.some((day) => day.lineageId === op.dayId) &&
-            ((constraint.kind === "groups" && op.kind === "group") ||
+            ((constraint.kind === "groups" &&
+              op.kind === "group" &&
+              !bucket.operations.some(
+                (other) =>
+                  other.kind === "ungroup" &&
+                  other.dayId === op.dayId &&
+                  current.days
+                    .find((day) => day.lineageId === op.dayId)
+                    ?.supersets.some(
+                      (group) =>
+                        group.key === other.groupId && group.name === op.name,
+                    ),
+              )) ||
               (constraint.kind === "progression" &&
                 op.kind === "slot_text" &&
                 op.field === "progressionRuleId") ||

@@ -49,7 +49,7 @@ export function ProgramDayTabs({
 }: {
   days: Array<{ lineageId: string; name: string }>;
   activeId: string;
-  pathname: "/program" | "/program/edit";
+  pathname: "/program" | "/program/edit" | "/program/import";
   label: string;
   onSelect?: (lineageId: string) => void;
   compact?: boolean;

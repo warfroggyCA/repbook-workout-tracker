@@ -163,10 +163,9 @@ export function useDraftAutosave({ ownerId, setActiveDayId, setExpandedSlotId, o
   );
 
   const fetchServerDraft = useCallback(async () => {
-    let response = await fetch("/api/program/draft", { cache: "no-store" });
-    if (response.status === 404) {
-      response = await fetch("/api/program/draft", { method: "POST" });
-    }
+    // The idempotent open-or-create endpoint returns an existing draft unchanged.
+    // Opening an editor without a draft should not first emit a browser 404.
+    const response = await fetch("/api/program/draft", { method: "POST" });
     return parseDraftResponse(await responseJson(response));
   }, []);
 

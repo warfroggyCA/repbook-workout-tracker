@@ -42,6 +42,7 @@ export function useProgramEditorController({
   ownerId,
   library,
   initialPrompt,
+  editorPath = "/program/edit",
   onPromptChange,
   initialDayId,
   initialRemovalRequest,
@@ -50,6 +51,7 @@ export function useProgramEditorController({
   ownerId: string;
   library: ExerciseDiscoveryItem[];
   initialPrompt?: string;
+  editorPath?: "/program/edit" | "/program/import";
   onPromptChange?: (text: string) => void;
   initialDayId: string | null;
   initialRemovalRequest: ProgramSlotRemovalRequest | null;
@@ -62,8 +64,12 @@ export function useProgramEditorController({
   const [publishing, setPublishing] = useState(false);
   const [discarding, setDiscarding] = useState(false);
   const [restoringId, setRestoringId] = useState<string | null>(null);
-  const [coachPrompt, setCoachPrompt] = useState(initialPrompt ?? "");
-  useEffect(() => { onPromptChange?.(coachPrompt); }, [coachPrompt, onPromptChange]);
+  const [localCoachPrompt, setLocalCoachPrompt] = useState(initialPrompt ?? "");
+  const coachPrompt = onPromptChange ? (initialPrompt ?? "") : localCoachPrompt;
+  const setCoachPrompt = (value: string) => {
+    if (onPromptChange) onPromptChange(value);
+    else setLocalCoachPrompt(value);
+  };
   const [coachMode, setCoachMode] = useState<ProgramUpdateMode>("update");
   const latestCoachRequest = useRef({ text: coachPrompt, mode: coachMode, day: activeDayId });
   useEffect(() => { latestCoachRequest.current = { text: coachPrompt, mode: coachMode, day: activeDayId }; }, [coachPrompt, coachMode, activeDayId]);
@@ -86,6 +92,15 @@ export function useProgramEditorController({
     confidence: number;
   } | null>(null);
   const [textProposal, setTextProposal] = useState<ProgramTextProposal | null>(null);
+  // The parent owns text during an Import mode switch; the editor keeps the
+  // applied-instruction ledger. Invalidate comparisons when that text changes.
+  const [previousPrompt, setPreviousPrompt] = useState(coachPrompt);
+  if (previousPrompt !== coachPrompt) {
+    setPreviousPrompt(coachPrompt);
+    setTextProposal(null);
+    setCoachProposal(null);
+    setCoachMessage(null);
+  }
   const proposalRequestRef = useRef(false);
   const [textAnswers, setTextAnswers] = useState<Record<string, string>>({});
   const [appliedInstructionKeys, setAppliedInstructionKeys] = useState<string[]>([]);
@@ -264,7 +279,7 @@ export function useProgramEditorController({
     );
     setPendingFutureRemovalRequest(null);
     router.replace(
-      day ? `/program/edit?day=${encodeURIComponent(day.lineageId)}` : "/program/edit",
+      day ? `${editorPath}?day=${encodeURIComponent(day.lineageId)}` : editorPath,
       { scroll: false },
     );
   }
@@ -276,7 +291,7 @@ export function useProgramEditorController({
     );
     setPendingFutureReplacementRequest(null);
     router.replace(
-      day ? `/program/edit?day=${encodeURIComponent(day.lineageId)}` : "/program/edit",
+      day ? `${editorPath}?day=${encodeURIComponent(day.lineageId)}` : editorPath,
       { scroll: false },
     );
   }
@@ -472,7 +487,7 @@ export function useProgramEditorController({
       ),
     );
     setActiveDayId(lineageId);
-    router.push(`/program/edit?day=${lineageId}`, { scroll: false });
+    router.push(`${editorPath}?day=${lineageId}`, { scroll: false });
   }
 
   function moveSlotToDay(
@@ -702,7 +717,7 @@ export function useProgramEditorController({
   }
 
   return {
-    router, library,
+    router, library, editorPath,
     draft, document, revision, pendingMutationId, status, message, conflictDraft,
     review, activeTab, activeDayId, reviewing, publishing, discarding, restoringId,
     coachPrompt, coachMode, coachBuilding, coachMessage, pairingDayId, pairingSlotIds,

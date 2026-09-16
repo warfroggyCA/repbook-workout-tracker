@@ -48,7 +48,7 @@ test("reviews and publishes a multi-day Program into an ordered active workout",
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/program/import");
   const fullImport = page.getByRole("button", { name: "Import a complete routine instead", exact: true });
-  if (await fullImport.isVisible()) await fullImport.click();
+  if (await fullImport.isVisible()) { await expect(page.getByLabel("What should change?")).toBeVisible(); await fullImport.click(); }
   const paste = page.getByLabel("Paste your Program");
   await paste.fill(PROGRAM_TEXT);
   await expect(page.getByText("0 / 20,000 characters", { exact: false })).toHaveCount(0);
@@ -268,7 +268,7 @@ test("supports enlarged text and an explicit discard without publishing", async 
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/program/import");
   const fullImport = page.getByRole("button", { name: "Import a complete routine instead", exact: true });
-  if (await fullImport.isVisible()) await fullImport.click();
+  if (await fullImport.isVisible()) { await expect(page.getByLabel("What should change?")).toBeVisible(); await fullImport.click(); }
   const previousReview = page.getByRole("heading", { name: "Review the proposed Program" });
   if (await previousReview.isVisible()) {
     await page.getByRole("button", { name: "Discard staged review", exact: true }).click();

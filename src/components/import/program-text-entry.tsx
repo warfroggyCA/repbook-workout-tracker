@@ -10,11 +10,13 @@ export function ProgramTextEntry({
   ownerId,
   library,
   canUpdate,
+  initialDayId = null,
   ...props
 }: ComponentProps<typeof RoutineImport> & {
   ownerId: string;
   library: ExerciseDiscoveryItem[];
   canUpdate: boolean;
+  initialDayId?: string | null;
 }) {
   const [input, setInput] = useState("");
   const [editing, setEditing] = useState(
@@ -22,36 +24,42 @@ export function ProgramTextEntry({
       !props.initialParse &&
       props.initialDestination !== "create_new_active",
   );
-  if (editing)
-    return (
-      <div className="space-y-3">
-        <Button variant="outline" onClick={() => setEditing(false)}>
-          Import a complete routine instead
-        </Button>
-        <ProgramEditor
-          ownerId={ownerId}
-          library={library}
-          initialPrompt={input}
-          onPromptChange={setInput}
-          initialDayId={null}
-          initialRemovalRequest={null}
-          initialReplacementRequest={null}
-        />
-      </div>
-    );
+  const [hasEdited, setHasEdited] = useState(editing);
   return (
-    <RoutineImport
-      {...props}
-      initialInput={input}
-      onInputChange={setInput}
-      onUpdateCurrent={
-        canUpdate
-          ? (text) => {
-              setInput(text);
-              setEditing(true);
-            }
-          : undefined
-      }
-    />
+    <div>
+      {hasEdited && (
+        <div hidden={!editing} className="space-y-3">
+          <Button variant="outline" onClick={() => setEditing(false)}>
+            Import a complete routine instead
+          </Button>
+          <ProgramEditor
+            ownerId={ownerId}
+            library={library}
+            initialPrompt={input}
+            onPromptChange={setInput}
+            editorPath="/program/import"
+            initialDayId={initialDayId}
+            initialRemovalRequest={null}
+            initialReplacementRequest={null}
+          />
+        </div>
+      )}
+      {!editing && (
+        <RoutineImport
+          {...props}
+          initialInput={input}
+          onInputChange={setInput}
+          onUpdateCurrent={
+            canUpdate
+              ? (text) => {
+                  setInput(text);
+                  setHasEdited(true);
+                  setEditing(true);
+                }
+              : undefined
+          }
+        />
+      )}
+    </div>
   );
 }
