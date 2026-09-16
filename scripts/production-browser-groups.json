@@ -5,11 +5,11 @@
     {
       "name": "baseline-history",
       "scripts": [
+        "test:e2e:workout-field-fixes",
         "test:e2e",
         "test:e2e:pain-hold",
         "test:e2e:history-calendar",
-        "test:e2e:history-workspace",
-        "test:e2e:workout-field-fixes"
+        "test:e2e:history-workspace"
       ]
     },
     {

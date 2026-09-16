@@ -954,6 +954,9 @@ readability and set delivery. `npm run test:e2e:workout-field-fixes` uses the
 disposable Froggy fixture to verify all 23 catalog-entry previews naturally reach Avoid and
 return to Do in Chromium and WebKit, plus phone-sized pause/resume behavior.
 An isolated reduced-motion case checks metadata-only startup and cue playback.
+This media suite runs first in the baseline-history group so playback failures
+surface promptly; the same History suites still run afterward. Bounded synthetic
+media events and timeline samples are printed when the isolated preview fails.
 The end-position regression checks that a paused seek cannot advance a tip or
 resume playback, and that the next complete replay advances guidance once.
 Playback completion uses the media `ended` event rather than native looping or
