@@ -354,6 +354,10 @@ export function parseProgramTextUpdate(
     )
       return;
     const item = preparationItem(line.text);
+    if (current.some((prep) => prep.slot) && !item && /^[^:]+:/.test(line.text) && !/^(?:notes?|guidance|cues?):/i.test(line.text)) {
+      question(`“${line.text}” looks like a new exercise or instruction heading. Use Before [exercise]: for preparation, or compare working notes separately; it has not been attached to the previous lift.`);
+      return;
+    }
     for (const prep of current) {
       // The original heading is the evidence quote. The structured items and
       // notes below it are shown in full in the proposal summary.
