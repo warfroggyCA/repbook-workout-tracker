@@ -78,7 +78,7 @@ test("keeps warm-up actions singular, reversible, durable, and usable with minim
   const remainingPreparations = page.getByTestId(
     "remaining-exercise-preparations",
   );
-  await expect(remainingPreparations).toContainText("Opening warm-up:");
+  await expect(remainingPreparations).toContainText("Later:");
   await expect(remainingPreparations).not.toContainText("Later, before");
   await expect(remainingPreparations).toContainText("preparation set");
   await expect(actions).toHaveCount(PRODUCTION_WORKOUT_START_WARMUP.length);

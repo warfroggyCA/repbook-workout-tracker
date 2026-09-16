@@ -1313,9 +1313,13 @@ starting load is available, and never makes a future set editable.
 Notes, coaching, form, and replacement controls live in `More for this
 exercise`. Pending or failed writes and skipped recovery remain exposed, and
 the fixed workout-status bar remains the sole rest/ready/finish authority.
-Included day and exercise preparation actions strictly precede every working
-set. **Skip due to time** is the direct warm-up action and the detailed
-reason flow remains secondary. Once a later working set is recorded, an earlier
+Included general preparation runs at workout start. Each exercise's preparation
+runs once immediately before its first working set, including each member's first
+turn inside a superset. Normal Start, accepted compiled sessions, and simulation
+preserve the same working-set order and group rest while interleaving preparation.
+Existing active and historical sessions retain their frozen occurrence sequence;
+this creation rule never reorders them. **Skip due to time** is the direct warm-up
+action and the detailed reason flow remains secondary. Once a later working set is recorded, an earlier
 warm-up cannot be restored into the live order; retained device blockers route
 back to the exact warm-up identity rather than constructing a working-set
 target. Superset membership is explicit on every member card. All members in

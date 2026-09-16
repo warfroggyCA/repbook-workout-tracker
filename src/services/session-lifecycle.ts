@@ -2126,6 +2126,41 @@ export async function startWorkoutSession(
             source.session_exercise_id
         ) AS next_round_number
       FROM working_source source
+    ), exercise_event_order AS MATERIALIZED (
+      SELECT
+        'warmup'::text AS event_kind,
+        source.session_exercise_id,
+        source.kind_ordinal AS item_ordinal,
+        source.unit_order_idx,
+        1::integer AS round_number,
+        coalesce(source.group_member_order_idx, 0) AS member_order_idx,
+        source.order_idx,
+        0::integer AS event_order,
+        source.source_order,
+        source.local_order
+      FROM ordered_exercise_warmups source
+      UNION ALL
+      SELECT
+        'working'::text AS event_kind,
+        source.session_exercise_id,
+        source.round_number - 1 AS item_ordinal,
+        source.unit_order_idx,
+        source.round_number,
+        coalesce(source.group_member_order_idx, 0) AS member_order_idx,
+        source.order_idx,
+        1::integer AS event_order,
+        0::integer AS source_order,
+        0::integer AS local_order
+      FROM ordered_working source
+    ), sequenced_exercise_events AS MATERIALIZED (
+      SELECT source.*,
+        row_number() OVER (
+          ORDER BY source.unit_order_idx, source.round_number,
+            source.member_order_idx, source.order_idx, source.event_order,
+            source.source_order, source.local_order,
+            source.session_exercise_id
+        )::integer - 1 AS global_ordinal
+      FROM exercise_event_order source
     ), inserted_occurrences AS (
       INSERT INTO session_occurrences (
         session_id, session_exercise_id, kind, origin, sequence_idx,
@@ -2176,7 +2211,7 @@ export async function startWorkoutSession(
         source.session_exercise_id,
         'exercise_warmup',
         'planned',
-        (SELECT count(*) FROM day_warmup_source) + source.global_ordinal,
+        (SELECT count(*) FROM day_warmup_source) + event.global_ordinal,
         source.kind_ordinal,
         source.value->>'label',
         source.planned_exercise_id,
@@ -2206,15 +2241,17 @@ export async function startWorkoutSession(
         NULL::integer,
         'pending'
       FROM ordered_exercise_warmups source
+      JOIN sequenced_exercise_events event
+        ON event.event_kind = 'warmup'
+       AND event.session_exercise_id = source.session_exercise_id
+       AND event.item_ordinal = source.kind_ordinal
       UNION ALL
       SELECT
         source.session_id,
         source.session_exercise_id,
         'working_set',
         'planned',
-        (SELECT count(*) FROM day_warmup_source)
-          + (SELECT count(*) FROM ordered_exercise_warmups)
-          + source.global_ordinal,
+        (SELECT count(*) FROM day_warmup_source) + event.global_ordinal,
         source.round_number - 1,
         NULL::text,
         source.planned_exercise_id,
@@ -2236,6 +2273,10 @@ export async function startWorkoutSession(
         source.group_member_order_idx,
         'pending'
       FROM ordered_working source
+      JOIN sequenced_exercise_events event
+        ON event.event_kind = 'working'
+       AND event.session_exercise_id = source.session_exercise_id
+       AND event.item_ordinal = source.round_number - 1
       RETURNING id
     )
     SELECT

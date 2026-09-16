@@ -381,7 +381,7 @@ export function startSimulationWorkout(workspace: SimulationWorkspace, dayIndex:
     plannedLoadUnit: null, plannedNote: warmup.note, restAfterSec: 0,
   }));
   let exerciseWarmupOrdinal = 0;
-  for (const sourceExercise of [...day.exercises].sort((a, b) => a.orderIdx - b.orderIdx)) {
+  const addExerciseWarmups = (sourceExercise: (typeof day.exercises)[number]) => {
     const exercise = simulationExerciseBySlot.get(sourceExercise.id)!;
     for (const warmup of [...sourceExercise.warmups].sort((a, b) => a.orderIdx - b.orderIdx)) {
       addOccurrence({
@@ -392,11 +392,12 @@ export function startSimulationWorkout(workspace: SimulationWorkspace, dayIndex:
         plannedNote: warmup.note, restAfterSec: 0,
       });
     }
-  }
+  };
   const handledGroups = new Set<string>();
   for (const sourceExercise of [...day.exercises].sort((a, b) => a.orderIdx - b.orderIdx)) {
     const exercise = simulationExerciseBySlot.get(sourceExercise.id)!;
     if (!sourceExercise.groupId) {
+      addExerciseWarmups(sourceExercise);
       for (let set = 0; set < sourceExercise.sets; set += 1) addOccurrence({
         simulationExerciseId: exercise.id, kind: "working_set", kindOrdinal: set, label: null,
         groupId: null, groupRound: null, groupMemberOrderIdx: null,
@@ -415,6 +416,7 @@ export function startSimulationWorkout(workspace: SimulationWorkspace, dayIndex:
     for (let round = 1; round <= group.plannedRounds; round += 1) {
       const activeMembers = members.filter((member) => member.sets >= round);
       activeMembers.forEach((member, memberIndex) => {
+        if (round === 1) addExerciseWarmups(member);
         const target = simulationExerciseBySlot.get(member.id)!;
         const finalMember = memberIndex === activeMembers.length - 1;
         const finalRound = round === group.plannedRounds;
