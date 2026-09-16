@@ -62,11 +62,12 @@ describe("Froggy form demo identity and presentation", () => {
 describe("Froggy live-program batch identity", () => {
   it("ships every offered mode, thumbnail and complete tracking loop", () => {
     for (const config of Object.values(FROGGY_FORMS)) {
+      if (config.animatedThumbnail) expect(existsSync(join(process.cwd(), "public", config.animatedThumbnail))).toBe(true);
       for (const file of [...config.modes.map(mode => `${mode}.mp4`), config.thumbnail, "poster.png"]) {
         expect(existsSync(join(process.cwd(), "public", config.media, file))).toBe(true);
       }
     }
-    for (const key of ["incline-press", "lat-pulldown", "goblet-squat", "romanian-deadlift", "barbell-bench", "back-squat", "overhead-press", "barbell-row", "bulgarian-split-squat", "ez-bar-curl", "standing-cable-leg-curl", "rope-pushdown", "chest-supported-row", "chest-supported-reverse-fly", "single-leg-dumbbell-calf-raise", "dead-bug", "zottman-curl", "kettlebell-suitcase-carry", "standing-dumbbell-lateral-raise", "flat-dumbbell-bench-press"]) {
+    for (const key of ["incline-press", "lat-pulldown", "goblet-squat", "romanian-deadlift", "barbell-bench", "back-squat", "overhead-press", "barbell-row", "bulgarian-split-squat", "ez-bar-curl", "standing-cable-leg-curl", "rope-pushdown", "chest-supported-row", "chest-supported-reverse-fly", "single-leg-dumbbell-calf-raise", "dead-bug", "zottman-curl", "kettlebell-suitcase-carry", "standing-dumbbell-lateral-raise", "flat-dumbbell-bench-press", "seated-overhead-triceps-extension"]) {
       const frames: number[][][] = JSON.parse(readFileSync(join(process.cwd(), `src/lib/froggy-${key}-anchors.json`), "utf8"));
       expect(frames).toHaveLength(144);
       for (const frame of frames) {
@@ -242,4 +243,31 @@ it.each(["dumbbell_lateral_raise", "dumbbell_bench_press"])("rejects conflicting
   for (const variantAttributes of [{ position: "seated" }, { angle: 30 }, { support: "chest" }]) {
     expect(matchFroggyFormDemo({ ...curl, variantKey, variantAttributes }, true)).toBeNull();
   }
+});
+
+
+describe("seated single-dumbbell extension presentation", () => {
+  it.each(["Dumbbell Overhead Triceps Extension", "Single-Dumbbell Overhead Triceps Extension"])("binds the reviewed %s catalog entry and discloses the seated setup", name => {
+    const seed = exerciseLibrary.find(e => e.name === name)!;
+    expect(seed).toBeDefined();
+    const identity = { ...curl, variantKey: exerciseVariantKey(seed), loadType: seed.loadType,
+      isUnilateral: seed.unilateral ?? false, variantAttributes: seed.variantAttributes ?? {} };
+    const demo = matchFroggyFormDemo(identity, true);
+    expect(demo).toEqual({ key: "seated-overhead-triceps-extension-v155", exerciseId: curl.id });
+    expect(hasFroggyFormDemo(demo, "replacement")).toBe(false);
+    expect(matchFroggyFormDemo(identity, false)).toBeNull();
+    const config = FROGGY_FORMS[demo!.key];
+    expect(config.setup).toContain("Seated");
+    expect(config.setup).toContain("one fixed dumbbell");
+    expect(config.setup).toContain("both hands");
+    for (const patch of [{ isUnilateral: true }, { loadType: "external" },
+      { catalogReviewed: false }, { userId: "custom" },
+      { variantAttributes: { position: "standing" } }, { variantAttributes: { implements: 2 } }]) {
+      expect(matchFroggyFormDemo({ ...identity, ...patch }, true)).toBeNull();
+    }
+  });
+  it.each(["Two-Dumbbell Overhead Triceps Extension", "Single-Arm Dumbbell Overhead Triceps Extension", "Cable Overhead Triceps Extension"])("does not substitute the two-handed seated demo for %s", name => {
+    const key = exerciseVariantKey({ name, pattern: "isolation_arms", muscles: ["triceps"], loadType: "dumbbell", equipment: ["dumbbell"] });
+    expect(matchFroggyFormDemo({ ...curl, variantKey: key }, true)).toBeNull();
+  });
 });

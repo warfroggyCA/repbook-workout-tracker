@@ -14,6 +14,26 @@ const thumb = "absolute left-0 top-0 h-auto w-full max-w-none";
 const base = { videoHeight: 972, scale: 1, thumbnail: "thumbnail.png", thumbnailClass: thumb };
 
 export const FROGGY_FORMS: Record<FroggyDemoKey, FroggyFormConfig> = {
+  "seated-overhead-triceps-extension-v155": {
+    ...base,
+    title: "Seated overhead triceps extension",
+    setup: "Seated · one fixed dumbbell · both hands",
+    media: "/exercise-media/froggy/seated-overhead-triceps-extension-v155",
+    animatedThumbnail: "/exercise-media/froggy/seated-overhead-triceps-extension-v155/thumbnail-sprite.webp",
+    modes: ["pulse", "steady", "clean"],
+    cues: [
+      { kind: "DO", text: "Keep your upper arms steady." },
+      { kind: "AVOID", text: "Arching your back to lift." },
+    ],
+    muscles: "Target: triceps (red)",
+    reference: "https://www.acefitness.org/resources/everyone/exercise-library/74/triceps-extension/",
+    referenceLabel: "ACE · overhead triceps extension (standing example)",
+    floatingCue: true, offsetY: .025, videoHeight: 1080, scale: 1,
+    callouts: [
+      { id: "upper-arm", text: ["Upper arms", "steady"], x: 42, y: 400, edge: "right" },
+      { id: "forearm", text: ["Lower with", "control"], x: 746, y: 264, edge: "left" },
+    ],
+  },
   "incline-dumbbell-curl-v102": {
     title: "Incline Dumbbell Curl", setup: "60° bench · palms-up grip · both arms",
     media: FROGGY_CURL_MEDIA, thumbnail: "thumbnail-103.png",

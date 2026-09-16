@@ -29,7 +29,9 @@ import batch133zottman from "@/lib/froggy-zottman-curl-anchors.json";
 import batch133suitcase from "@/lib/froggy-kettlebell-suitcase-carry-anchors.json";
 import batch138lateralraise from "@/lib/froggy-standing-dumbbell-lateral-raise-anchors.json";
 import batch138dbbench from "@/lib/froggy-flat-dumbbell-bench-press-anchors.json";
+import extensionFrames from "@/lib/froggy-seated-overhead-triceps-extension-anchors.json";
 const TRACKS: Record<FroggyDemoKey, number[][][]> = {
+  "seated-overhead-triceps-extension-v155": extensionFrames,
   "standing-cable-leg-curl-v117": batch117legcurl,
   "rope-pushdown-v117": batch117pushdown,
   "chest-supported-row-v117": batch117chestrow,

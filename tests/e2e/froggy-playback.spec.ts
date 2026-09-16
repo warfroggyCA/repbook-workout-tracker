@@ -40,9 +40,10 @@ test("cycles every supported form through Avoid and back to Do during natural pl
     await page.getByRole("tab", { name: `Day ${day}`, exact: true }).click();
     const triggers = page.getByRole("button", { name: /^View .+ form$/ });
     const names = await triggers.evaluateAll(elements => elements.map(element => element.getAttribute("aria-label")!));
-    for (const name of names) {
+    for (const [index, name] of names.entries()) {
       await test.step(name, async () => {
-        await page.getByRole("button", { name, exact: true }).click();
+        // Multiple catalog entries may share the same disclosed demonstration.
+        await triggers.nth(index).click();
         const panel = page.getByTestId("froggy-inline-preview");
         await expect(panel).toHaveCount(1);
         await panel.scrollIntoViewIfNeeded();
@@ -82,7 +83,7 @@ test("cycles every supported form through Avoid and back to Do during natural pl
     }
     reviewed += names.length;
   }
-  expect(reviewed).toBe(21);
+  expect(reviewed).toBe(23);
 
   await page.setViewportSize({ width: 390, height: 844 });
   await page.getByRole("tab", { name: "Day 2", exact: true }).click();

@@ -951,7 +951,7 @@ bounded recovery, and queued-tone expiry. Run it with the existing rest-audio,
 rest-timer, plate-math, active-set-ledger and workout-status-bar tests. The
 superset-preparation browser suite covers immutable ordering, fractional-load
 readability and set delivery. `npm run test:e2e:workout-field-fixes` uses the
-disposable Froggy fixture to verify all 21 previews naturally reach Avoid and
+disposable Froggy fixture to verify all 23 catalog-entry previews naturally reach Avoid and
 return to Do in Chromium and WebKit, plus phone-sized pause/resume behavior.
 An isolated reduced-motion case checks metadata-only startup and cue playback.
 

@@ -24,6 +24,12 @@ const identity = {
 };
 
 describe("reviewed coverage roles", () => {
+  it.each(["dumbbell_overhead_triceps_extension", "single_dumbbell_overhead_triceps_extension"])("maps %s to triceps without invented secondary regions", variantKey => {
+    const entry = { ...identity, variantKey };
+    expect(reviewedExerciseMuscles(entry)).toMatchObject({ primary: ["triceps"], supporting: [] });
+    expect(reviewedExerciseMuscles({ ...entry, variantAttributes: { position: "standing" } })).toBeNull();
+  });
+
   it("resolves exact identity independently of animation visibility, without changing the catalog", () => {
     const before = structuredClone(identity);
     const mapping = reviewedExerciseMuscles(identity)!;
@@ -45,7 +51,7 @@ describe("reviewed coverage roles", () => {
     expect(reviewedExerciseMuscles({ ...identity, ...change })).toBeNull();
   });
   it("uses valid non-overlapping roles for every existing demo variant", () => {
-    expect(Object.keys(REVIEWED_COVERAGE)).toHaveLength(21);
+    expect(Object.keys(REVIEWED_COVERAGE)).toHaveLength(22);
     for (const mapping of Object.values(REVIEWED_COVERAGE)) {
       expect(mapping.primary.length).toBeGreaterThan(0);
       const keys = [...mapping.primary, ...mapping.supporting];
