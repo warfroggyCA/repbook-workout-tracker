@@ -12,7 +12,7 @@ async function main() {
   const db = await getDb();
   const user = await db.query.users.findFirst({ where: eq(users.email, "owner@example.com") });
   if (!user) throw new Error("Synthetic demo owner must be seeded first.");
-  const variants = ["incline_dumbbell_curl", "incline_barbell_bench_press", "wide_grip_lat_pulldown", "kettlebell_goblet_squat", "romanian_deadlift", "barbell_bench_press", "barbell_back_squat", "barbell_overhead_press", "barbell_row", "bulgarian_split_squat", "ez_bar_curl", "cable_leg_curl", "triceps_pushdown", "chest_supported_dumbbell_row", "chest_supported_dumbbell_reverse_fly", "single_leg_dumbbell_calf_raise", "dead_bug", "zottman_curl", "kettlebell_suitcase_carry", "dumbbell_lateral_raise", "dumbbell_bench_press"];
+  const variants = ["incline_dumbbell_curl", "incline_barbell_bench_press", "wide_grip_lat_pulldown", "kettlebell_goblet_squat", "romanian_deadlift", "barbell_bench_press", "barbell_back_squat", "barbell_overhead_press", "barbell_row", "bulgarian_split_squat", "ez_bar_curl", "cable_leg_curl", "triceps_pushdown", "chest_supported_dumbbell_row", "chest_supported_dumbbell_reverse_fly", "single_leg_dumbbell_calf_raise", "dead_bug", "zottman_curl", "kettlebell_suitcase_carry", "dumbbell_lateral_raise", "dumbbell_bench_press", "dumbbell_overhead_triceps_extension", "single_dumbbell_overhead_triceps_extension"];
   const supported = await Promise.all(variants.map(key => db.query.exercises.findFirst({
     where: and(isNull(exercises.userId), eq(exercises.variantKey, key)),
   })));

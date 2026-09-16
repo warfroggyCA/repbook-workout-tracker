@@ -49,6 +49,11 @@ const curl = roles(
  * subdivisions are conservative interpretation. See docs/PROGRAM_MUSCLE_MAP.md.
  */
 export const REVIEWED_COVERAGE: Record<FroggyDemoKey, Roles> = {
+  "seated-overhead-triceps-extension-v155": roles(
+    ["triceps"],
+    [],
+    "Elbow extension targets triceps. The demonstrated setup is seated with one dumbbell held in both hands. Supporting regions are not classified for this demonstration; the map does not estimate individual triceps-head activation.",
+  ),
   "incline-dumbbell-curl-v102": curl,
   "incline-press-v107": {
     ...press,

@@ -158,7 +158,7 @@ acceptance remains a separate follow-up, including touch accuracy and resume.
 
 ## Coverage review and sources
 
-Coverage-v2 covers the 21 existing exact demo variants. Direct means a chosen
+Coverage-v2 covers the 22 demonstrated setups through 23 exact catalog bindings. Direct means a chosen
 training target; supporting includes synergists and selected stabilizers. This
 boundary is an editorial interpretation, not a universally standardized division
 or a measured activation threshold. A compound exercise can train an assisting
@@ -243,3 +243,8 @@ and legend text have light backings for contrast. The background is decorative
 CSS and cannot intercept pointer events. Compact workout-day summaries remain
 transparent and do not load the gym image. Visible front/back captions are
 omitted; accessible view labels remain.
+
+The seated two-handed overhead-extension demonstration maps triceps as the direct
+target for its two allowlisted catalog entries. No supporting regions or
+individual triceps-head percentages are inferred. Existing aggregation and
+colour bands are unchanged; this is presentation metadata, not stored history.

@@ -1,6 +1,6 @@
 # Froggy form viewer pilot
 
-The optional viewer covers twenty-one reviewed catalog identities with explicit demonstrated setups. Each uses a silent six-second loop across four presentation surfaces:
+The optional viewer covers twenty-three reviewed catalog identities across twenty-two demonstrations with explicit demonstrated setups. Each uses a silent six-second loop across four presentation surfaces:
 
 | Exercise | Media modes | Current export |
 | --- | --- | --- |
@@ -25,6 +25,7 @@ The optional viewer covers twenty-one reviewed catalog identities with explicit 
 | Kettlebell Suitcase Carry | Pulse / steady / clean | 512 square, one-hand walking carry |
 | Dumbbell Lateral Raise | Pulse / steady / clean | 512 square, standing upright |
 | Dumbbell Bench Press | Pulse / steady / clean | 512 square, flat bench |
+| Dumbbell Overhead Triceps Extension / Single-Dumbbell Overhead Triceps Extension | Pulse / steady / clean | 512 square, seated, one fixed dumbbell held with both hands |
 
 Consistent final-resolution finishing remains for the 800×720 and 512-square clips. No unavailable mode is offered. Presentation surfaces:
 
@@ -59,7 +60,7 @@ The original curl thumbnail was rendered from the accepted clean Blender scene,
 frame 48, with only the floor hidden; the source scene was not saved or changed.
 The thumbnail uses a tight upper-body crop to emphasize the arms, dumbbells and
 bench angle rather than the feet and bench base.
-Only opening a viewer loads its player and video. Goblet squat and incline curl thumbnail buttons have an optional animated-icon trial; other thumbnails and inventory result labels remain static.
+Only opening a viewer loads its player and video. Goblet squat, incline curl and seated overhead extension thumbnail buttons have optional animated icons; other thumbnails and inventory result labels remain static.
 Closing, scrolling the player out of view, or hiding the page pauses it. Returning
 to view resumes unless explicitly paused. Expansion retains position, settings,
 and the user's pause choice. The workout remains mounted underneath; this viewer
@@ -75,10 +76,10 @@ variants require exactly `{ laterality: "unilateral" }`, except the kettlebell
 suitcase carry also accepts migration 0087's empty attribute object with its
 required `isUnilateral=true` field. This supports the migrated and seeded
 representations without rewriting catalog records or admitting other variants.
-`src/lib/froggy-form-demo.ts` is the authoritative list of all twenty-one bindings.
+`src/lib/froggy-form-demo.ts` is the authoritative list of all twenty-three bindings.
 Renamed display labels do not affect matching; related or conflicting variants
 fail closed. The generic cable-leg-curl and triceps-pushdown entries explicitly
-disclose their demonstrated standing ankle-cuff and rope setups. Flat dumbbell
+disclose their demonstrated standing ankle-cuff and rope setups. The generic dumbbell overhead extension and explicit single-dumbbell entry share the disclosed seated, two-handed demonstration; the mapping does not rewrite either catalog entry. Two-dumbbell, single-arm, cable and explicitly conflicting setup attributes remain excluded. Flat dumbbell
 bench and standing lateral raise remain distinct from incline and rear-delt
 variants. Database UUIDs are not portable matching keys.
 The descriptor binds the asset key to the current database exercise ID; stale
@@ -137,7 +138,7 @@ E2E_PORT=3185 node scripts/run-e2e-server.mjs --production --froggy-form-demo
 ```
 
 This uses the existing disposable database harness, enables the pilot only in
-that process, and creates a synthetic Program with all twenty-one supported exercises across six review days plus an unsupported dumbbell row for `owner@example.com`. Open
+that process, and creates a synthetic Program with all twenty-three supported catalog entries across six review days plus an unsupported dumbbell row for `owner@example.com`. Open
 `http://127.0.0.1:3185/sign-in` and use Dev login. The fixture refuses a remote
 DATABASE_URL and requires E2E_DEV_LOGIN plus the pilot flag. Stop the harness to
 remove its disposable data. A short TMPDIR symlink can point to an external disk

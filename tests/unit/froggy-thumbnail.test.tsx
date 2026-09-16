@@ -16,9 +16,9 @@ describe("Froggy icon delivery", () => {
       if (config.animatedThumbnail) expect(html).not.toContain(config.animatedThumbnail);
     }
   });
-  it("ships complete, small transparent sprite sheets for the two opted-in icons", async () => {
+  it("ships complete, small transparent sprite sheets for the opted-in icons", async () => {
     const configured = Object.values(FROGGY_FORMS).filter(config => config.animatedThumbnail);
-    expect(configured.map(config => config.title).sort()).toEqual(["Incline Dumbbell Curl", "Kettlebell Goblet Squat"]);
+    expect(configured.map(config => config.title).sort()).toEqual(["Incline Dumbbell Curl", "Kettlebell Goblet Squat", "Seated overhead triceps extension"]);
     for (const config of configured) {
       const path = join(process.cwd(), "public", config.animatedThumbnail!);
       expect(statSync(path).size).toBeLessThan(200_000);

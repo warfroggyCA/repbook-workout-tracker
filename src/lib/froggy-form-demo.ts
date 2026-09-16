@@ -1,4 +1,6 @@
 const BINDINGS = {
+  dumbbell_overhead_triceps_extension: { key: "seated-overhead-triceps-extension-v155", load: "dumbbell" },
+  single_dumbbell_overhead_triceps_extension: { key: "seated-overhead-triceps-extension-v155", load: "dumbbell" },
   incline_dumbbell_curl: { key: "incline-dumbbell-curl-v102", load: "dumbbell" },
   incline_barbell_bench_press: { key: "incline-press-v107", load: "barbell" },
   wide_grip_lat_pulldown: { key: "lat-pulldown-v107", load: "external" },
