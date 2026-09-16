@@ -137,7 +137,8 @@ export default function FroggyFormPlayer({ demoKey, initialSnapshot, onSnapshot 
     // while still reporting unpaused. Reload the same resource after natural
     // completion; metadata resumes it through the existing pause/visibility guard.
     const complete = () => {
-      if (disposed || !froggyClipCompleted(v)) return;
+      // A queued ended event after a paused seek is not a played repetition.
+      if (disposed || pauseIntent.current || !froggyClipCompleted(v)) return;
       if (!seekToEnd.current) setCue(c => (c + 1) % config.cues.length);
       seekToEnd.current = false;
       resumeTime.current = 0; setPosition(0);
@@ -179,11 +180,11 @@ export default function FroggyFormPlayer({ demoKey, initialSnapshot, onSnapshot 
     // Honor the displayed action even while an automatic reload has temporarily
     // paused the media element between repetitions.
     pauseIntent.current = playing;
-    if (!pauseIntent.current && seekToEnd.current) {
-      // Some engines rewind an end-position play() without firing ended.
-      // Consume the explicit seek here so the next complete play counts once.
+    if (!pauseIntent.current && (seekToEnd.current || v.ended)) {
+      // Some engines report ended on the last frame even short of duration.
+      // Explicit resume restarts that frame without counting the paused seek.
       seekToEnd.current = false;
-      v.currentTime = 0; resumeTime.current = 0; setPosition(0);
+      resumeTime.current = 0; setPosition(0); v.load();
     }
     settings.current.userPaused = pauseIntent.current;
     setUserPaused(pauseIntent.current);

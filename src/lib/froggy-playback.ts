@@ -8,9 +8,9 @@ type PlaybackPosition = {
 
 /** Some media backends stop nanoseconds short of duration without emitting ended. */
 export function froggyClipCompleted(video: PlaybackPosition): boolean {
-  if (!Number.isFinite(video.duration) || video.duration <= 0 || !Number.isFinite(video.currentTime)) return false;
+  if (video.seeking || !Number.isFinite(video.duration) || video.duration <= 0 || !Number.isFinite(video.currentTime)) return false;
   return video.ended || (
-    !video.paused && !video.seeking &&
+    !video.paused &&
     Math.abs(video.duration - video.currentTime) <= 0.000001
   );
 }
