@@ -91,6 +91,88 @@ const apply = (proposal: ReturnType<typeof propose>) =>
   );
 
 describe("contextual Program editing without a provider", () => {
+  it("reviews a numbered four-day update with quoted notes and preservation lists", () => {
+    const doc = current();
+    const text = [
+      "Apply these changes to future scheduled workouts only. Preserve all completed workout history.",
+      ...doc.days.flatMap((day, dayIndex) => [
+        `DAY ${dayIndex + 1}`,
+        ...day.exercises.flatMap((slot, slotIndex) => [
+          `${slotIndex + 1}. ${library.find((entry) => entry.id === slot.exerciseId)!.name}`,
+          "- Preserve the current sets, reps, load target, rest time and exercise order.",
+          '- Replace notes with: "Keep a steady tempo. Use rack safeties when applicable. Leave 3 RIR."',
+        ]),
+        `${day.exercises.length + 1}. All other Day ${dayIndex + 1} exercises`,
+        "- Preserve the current exercises, set counts, rep ranges, load targets, rest times, exercise order and supersets.",
+      ]),
+      "ALL DAYS — NOTES ONLY",
+      "The following are authored guidance only. Do not change logging validation, automatic progression logic, Coach rules, or historical records.",
+      "- Record actual effort honestly.",
+    ].join("\n");
+    const p = propose(text, doc);
+    expect(p.questions).toEqual([]);
+    expect(p.changes).toHaveLength(4);
+    const next = apply(p);
+    for (const [dayIndex, day] of next.days.entries()) {
+      expect(day.notes).toContain("Do not change logging validation");
+      expect(day.exercises.map((slot) => ({ ...slot, notes: doc.days[dayIndex].exercises.find((old) => old.lineageId === slot.lineageId)!.notes }))).toEqual(doc.days[dayIndex].exercises);
+      for (const slot of day.exercises) expect(slot.notes).toBe("Keep a steady tempo. Use rack safeties when applicable. Leave 3 RIR.");
+    }
+    expect(doc).toEqual(current());
+  });
+  it("retains source-specific questions beyond the provider question limit", () => {
+    const text = "DAY 1\n1. Bench Press\n" + Array.from({ length: 24 }, (_, index) => `- Unsupported instruction ${index + 1}.`).join("\n");
+    const p = propose(text);
+    expect(p.questions).toHaveLength(24);
+    expect(p.interpretation?.issues).toHaveLength(24);
+    expect(p.interpretation?.issues[23].source).toContain("24");
+    expect(p.questions.join(" ")).not.toContain("too many");
+    expect(apply(p)).toEqual(current());
+  });
+  it("keeps numbered commands executable and unknown numbered headings isolated", () => {
+    const p = propose("DAY 1\n1. Bench Press\nUse 3 RIR.\n2. Increase Bench Press by 2 kg.\n3. Unknown Movement\nSet to 99 kg.");
+    expect(p.questions.length).toBeGreaterThan(0);
+    expect(apply(p).days[0].exercises.every((slot) => slot.targetLoad !== 99)).toBe(true);
+    const command = propose("DAY 1\n1. Increase Bench Press by 2 kg.");
+    expect(command.questions).toEqual([]);
+    expect(apply(command).days[0].exercises[0].targetLoad).toBe(32);
+  });
+  it("holds field preservation conflicts without blocking an unrelated day", () => {
+    const p = propose("DAY 1\n1. Bench Press\nPreserve the current sets, reps, load target and rest time.\n3 × 5–7.\nDAY 2\n1. Barbell Row\nReplace notes with: Keep a steady torso.");
+    expect(p.questions).toHaveLength(1);
+    expect(p.changes).toHaveLength(1);
+    expect(apply(p).days[0]).toEqual(current().days[0]);
+  });
+  it("does not swallow an edit appended to an all-other preservation list", () => {
+    const p = propose("DAY 1\n1. All other Day 1 exercises\nPreserve the current exercises, set counts and rep ranges and remove Bench Press.\nDAY 2\nBarbell Row:\nUse 3 RIR.");
+    expect(p.questions.length).toBeGreaterThan(0);
+    expect(apply(p)).toEqual(current());
+  });
+  it("preserving unspecified load asks instead of clearing a saved value", () => {
+    const p = propose("DAY 1\n1. Bench Press\nDo not set a fixed load target. Preserve the current saved load setting as unspecified.\nReplace notes with: Keep a steady tempo.");
+    expect(p.questions.length).toBeGreaterThan(0);
+    expect(apply(p)).toEqual(current());
+    const doc = current();
+    doc.days[0].exercises[0].targetLoad = null;
+    doc.days[0].exercises[0].targetLoadUnit = null;
+    const accepted = propose("DAY 1\n1. Bench Press\nDo not set a fixed load target. Preserve the current saved load setting as unspecified.\nReplace notes with: Keep a steady tempo.", doc);
+    expect(accepted.questions).toEqual([]);
+    expect(apply(accepted).days[0].exercises[0].targetLoad).toBeNull();
+  });
+  it("retains indented numbered headings and verifies identity exclusions", () => {
+    const p = propose("DAY 4\n  1. Zottman Curl\n  - Keep Zottman Curl as the exercise identity.\n  - Do not replace it with Hammer Curl.\n  - Replace notes with: Keep a steady tempo.\n  2. Triceps Pushdown\n  - Preserve the current exercise, sets, reps, load target and rest time.\n  - Replace notes with: Use 3 RIR.");
+    expect(p.questions).toEqual([]);
+    expect(p.changes).toHaveLength(2);
+    expect(apply(p).days[3].exercises[0].exerciseId).toBe(library[8].id);
+    const conflict = propose("DAY 4\n1. Zottman Curl\nDo not replace it with Hammer Curl.\nReplace Zottman Curl with Hammer Curl.");
+    expect(conflict.questions).toHaveLength(1);
+    expect(apply(conflict)).toEqual(current());
+  });
+  it("keeps preserved ordering and pending-load exclusions effective", () => {
+    const p = propose("DAY 1\n1. Bench Press\nPreserve the current sets, reps and exercise order.\nMove Back Squat before Bench Press.\nDAY 3\n1. Romanian Deadlift\nDo not apply the pending load-change proposal through this request.\n40 kg.");
+    expect(p.questions).toHaveLength(2);
+    expect(apply(p)).toEqual(current());
+  });
   it("offers the highest-ranked saved matches before limiting a long clarification list", () => {
     const doc = current();
     const catalog = Array.from({ length: 11 }, (_, index) => ({

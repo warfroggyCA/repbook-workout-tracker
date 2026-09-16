@@ -798,6 +798,46 @@ test("day tabs and day warm-up copy controls remain keyboard and omission safe",
   await expect(warmup).toHaveValue("");
 });
 
+test("local interpreter reviews numbered multi-day notes without changing work targets", async ({ page }, testInfo) => {
+  await signIn(page);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/program/import");
+  await expectSaved(page);
+  const before: ProgramDocumentV3 = (await (await page.request.get("/api/program/draft")).json()).draft.document;
+  const sections: string[] = ["Apply these changes to future scheduled workouts only. Preserve all completed workout history."];
+  for (const [dayIndex, day] of before.days.entries()) {
+    await page.getByRole("tablist", { name: "Edit Program days" }).getByRole("tab").nth(dayIndex).click();
+    const label = page.locator(`#editor-${day.exercises[0].lineageId}-label`);
+    await expect(label).toBeVisible();
+    sections.push(`DAY ${dayIndex + 1}\n1. ${(await label.textContent())!.trim()}\n- Preserve the current sets, reps, load target, rest time and exercise order.\n- Replace notes with: "Keep a steady tempo. Leave 3 RIR."\n2. All other Day ${dayIndex + 1} exercises\n- Preserve the current exercises, set counts, rep ranges, load targets, rest times, exercise order and supersets.`);
+  }
+  sections.push("ALL DAYS — NOTES ONLY\nThe following are authored guidance only. Do not change logging validation or progression logic.\n- Record actual effort honestly.");
+  const request = sections.join("\n\n");
+  await page.getByLabel("What should change?").fill(request);
+  await page.getByRole("button", { name: "Compare and propose changes", exact: true }).click();
+  const region = page.getByRole("region", { name: "Proposed text changes" });
+  await expect(region.getByRole("heading", { name: "Changes ready to review" })).toBeVisible();
+  await expect(region.getByRole("checkbox")).toHaveCount(before.days.length);
+  await expect(page.getByLabel("What should change?")).toHaveValue(request);
+  expect((await (await page.request.get("/api/program/draft")).json()).draft.document).toEqual(before);
+  await assertNoHorizontalOverflow(page);
+  await region.scrollIntoViewIfNeeded();
+  await page.screenshot({ path: testInfo.outputPath("numbered-program-proposal-mobile.png") });
+  await region.getByRole("button", { name: "Apply selected changes", exact: true }).click();
+  await expectSaved(page);
+  const saved = (await (await page.request.get("/api/program/draft")).json()).draft;
+  const after: ProgramDocumentV3 = saved.document;
+  for (const [index, day] of after.days.entries()) {
+    expect(day.exercises[0].notes).toBe("Keep a steady tempo. Leave 3 RIR.");
+    expect({ ...day.exercises[0], notes: before.days[index].exercises[0].notes }).toEqual(before.days[index].exercises[0]);
+    expect(day.exercises.slice(1)).toEqual(before.days[index].exercises.slice(1));
+    expect(day.supersets).toEqual(before.days[index].supersets);
+    expect(day.warmupItems).toEqual(before.days[index].warmupItems);
+  }
+  const restored = await page.request.put("/api/program/draft", { headers: { origin: "http://127.0.0.1:3100" }, data: { draftId: saved.id, expectedRevision: saved.revision, mutationId: crypto.randomUUID(), document: before } });
+  expect(await restored.json()).toMatchObject({ status: "saved" });
+});
+
 test("partial text update applies only selected explicit changes", async ({ page }) => {
   await signIn(page);
   await page.goto("/program/edit");

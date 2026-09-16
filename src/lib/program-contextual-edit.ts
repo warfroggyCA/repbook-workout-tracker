@@ -91,6 +91,8 @@ export function proposeContextualProgramEdit(
   const buckets: Bucket[] = [];
   const checkedPreservations: string[] = [];
   const firstPositionAssertions: Target[] = [];
+  const structuralPreservations: Array<{ target: Target; order: boolean; groups: boolean; instruction: EditInstruction }> = [];
+  const excludedReplacements: Array<{ target: Target; instruction: EditInstruction; prohibited: Set<string> }> = [];
   const notePlans = new Map<
     string,
     { target: Target; instructions: EditInstruction[] }
@@ -371,6 +373,32 @@ export function proposeContextualProgramEdit(
       information.push("Already applied to this draft: " + instruction.source);
       continue;
     }
+    const preservedFields = /^(?:keep|preserve) (?:the )?(?:current|existing) (.+?)(?: unless affected by the .+ replacement above)?$/i.exec(instruction.text);
+    const fields = preservedFields?.[1].split(/,\s*(?:and\s+)?|\s+and\s+/).map((field) => field.toLowerCase());
+    const knownFields = new Set(["exercise", "exercises", "sets", "set counts", "reps", "rep ranges", "load target", "load targets", "rest time", "rest times", "exercise order", "supersets"]);
+    if (fields?.length && fields.every((field) => knownFields.has(field))) {
+      const specified = instruction.scope.exercise ? resolve(instruction.scope.exercise, instruction) : null;
+      if (instruction.scope.exercise && !specified) continue;
+      const preservedTargets = specified ? [specified] : allTargets.filter((target) => scopedDays(instruction).includes(target.day));
+      for (const target of preservedTargets) {
+        const identity = { dayId: target.day.lineageId, slotId: target.slot.lineageId };
+        const ops: Operation[] = [];
+        if (fields.some((field) => /^(?:sets|set counts)$/.test(field))) ops.push({ kind: "slot_number", ...identity, field: "sets", value: target.slot.sets });
+        // Timed prescriptions have no repetition range; schema validation keeps
+        // a repetition operation from changing their measurement kind.
+        if (fields.some((field) => /^(?:reps|rep ranges)$/.test(field)) && target.slot.repMin !== null && target.slot.repMax !== null) ops.push({ kind: "reps", ...identity, min: target.slot.repMin, max: target.slot.repMax });
+        if (fields.some((field) => /^load targets?$/.test(field))) ops.push({ kind: "load", ...identity, value: target.slot.targetLoad, unit: target.slot.targetLoadUnit });
+        if (fields.some((field) => /^rest times?$/.test(field))) ops.push({ kind: "slot_number", ...identity, field: "restSec", value: target.slot.restSec });
+        if (fields.some((field) => /^exercises?$/.test(field))) ops.push({ kind: "replace", ...identity, exerciseId: target.slot.exerciseId });
+        assertions.push({ target, ops, instruction });
+        if (fields.includes("exercise order") || fields.includes("supersets")) {
+          // Keep structural assertions explicit and recheck the final candidate.
+          structuralPreservations.push({ target, order: fields.includes("exercise order"), groups: fields.includes("supersets"), instruction });
+        }
+      }
+      information.push(instruction.source);
+      continue;
+    }
     if (instruction.intent === "replace") {
       const target = resolve(instruction.scope.exercise ?? "", instruction);
       if (!target) continue;
@@ -522,9 +550,9 @@ export function proposeContextualProgramEdit(
       else if (
         instruction.scope.day === null &&
         !noteFor &&
-        /^(?:record actual effort|compare progress|RPE 9\.5 means)/i.test(
+        (instruction.allDaysNote || /^(?:record actual effort|compare progress|RPE 9\.5 means)/i.test(
           instruction.text,
-        )
+        ))
       ) {
         for (const day of current.days) {
           const bucket = bucketFor(
@@ -583,6 +611,32 @@ export function proposeContextualProgramEdit(
         /^(?:keep|preserve|leave)\s+(?:at\s+)?/i,
         "",
       );
+      if (/^(?:do not set a fixed load target|preserve the current saved load setting as unspecified)$/i.test(instruction.text)) {
+        if (target.slot.targetLoad !== null)
+          ask(instruction, "The saved target load is specified. Confirm whether to clear it or keep it.", bucket);
+        else assertions.push({ target, instruction, ops: [{ kind: "load", dayId: target.day.lineageId, slotId: target.slot.lineageId, value: null, unit: null }] });
+        continue;
+      }
+      if (/^keep this exercise before /i.test(instruction.text)) {
+        lowerLegacy({ ...instruction, text: instruction.text.replace(/^keep this exercise/i, `Keep ${byId.get(target.slot.exerciseId)?.name}`) }, target, bucket);
+        continue;
+      }
+      const preservedIdentity = /^keep (.+?) as the exercise identity$/i.exec(instruction.text);
+      const excludedReplacement = /^do not replace it with (.+)$/i.exec(instruction.text);
+      if (preservedIdentity || excludedReplacement) {
+        const query = (preservedIdentity ?? excludedReplacement)![1];
+        const same = rankEditExercises(query, [byId.get(target.slot.exerciseId)!], true).some((entry) => entry.equivalent);
+        if ((preservedIdentity && !same) || (excludedReplacement && same)) {
+          ask(instruction, "This identity instruction differs from the saved exercise. Confirm the movement to keep.", bucket);
+        } else if (preservedIdentity) {
+          assertions.push({ target, instruction, ops: [{ kind: "replace", dayId: target.day.lineageId, slotId: target.slot.lineageId, exerciseId: target.slot.exerciseId }] });
+        } else {
+          const prohibited = new Set(rankEditExercises(query, library).filter((entry) => entry.equivalent).map((entry) => entry.id));
+          if (!prohibited.size) ask(instruction, "Which movement does this replacement exclusion refer to?", bucket);
+          else excludedReplacements.push({ target, instruction, prohibited });
+        }
+        continue;
+      }
       if (
         instruction.intent === "preserve" &&
         /^(?:the )?(?:current )?(?:load target|working load|everything)(?: (?:the same|unchanged))?$/i.test(
@@ -867,6 +921,10 @@ export function proposeContextualProgramEdit(
         bucket,
       );
   }
+  for (const { target, instruction, prohibited } of excludedReplacements) {
+    const bucket = buckets.find((entry) => entry.operations.some((op) => op.kind === "replace" && op.slotId === target.slot.lineageId && prohibited.has(op.exerciseId)));
+    if (bucket) ask(instruction, "This replacement conflicts with the movement your request says not to use.", bucket);
+  }
   for (const constraint of interpreted.constraints) {
     const days = constraint.day
       ? resolveProgramTextDay(current, constraint.day, activeDayId)
@@ -959,7 +1017,12 @@ export function proposeContextualProgramEdit(
               candidate.days.find(
                 (day) => day.lineageId === target.day.lineageId,
               )?.exercises[0].lineageId !== target.slot.lineageId,
-          );
+          ) || structuralPreservations.some(({ target, order, groups }) => {
+            const nextDay = candidate.days.find((day) => day.lineageId === target.day.lineageId)!;
+            const nextSlot = nextDay.exercises.find((slot) => slot.lineageId === target.slot.lineageId);
+            return (order && nextDay.exercises.indexOf(nextSlot!) !== target.day.exercises.indexOf(target.slot)) ||
+              (groups && (JSON.stringify(nextDay.supersets) !== JSON.stringify(target.day.supersets) || nextSlot?.supersetKey !== target.slot.supersetKey || nextSlot?.groupMemberOrderIdx !== target.slot.groupMemberOrderIdx));
+          });
         if (violated) {
           bucket.questions.push({
             key: [...bucket.keys][0],
@@ -1000,7 +1063,9 @@ export function proposeContextualProgramEdit(
   proposal.questions = proposal.interpretation!.issues.map(
     (issue) => issue.question,
   );
-  if (proposal.changes.length > 40 || proposal.questions.length > 20)
+  // The 20-question provider schema is not a limit on local clarification.
+  // Input is already bounded to 200 instructions; preserve their useful issues.
+  if (proposal.changes.length > 40)
     return empty(
       "This request contains too many independent items. Compare one or two days at a time; nothing was applied.",
     );

@@ -73,6 +73,12 @@ request constraints. `lib/program-contextual-edit.ts` resolves that intermediate
 request against the saved Program and lowers it to the existing operation
 contract. The working prescription parser remains the numeric/legacy grammar
 validator; preparation blocks retain their established anchor parser.
+Numbered exercise headings establish scope, while numbered commands remain
+commands. Quoted replacement notes retain their complete sentences. Explicit
+field-preservation lists are checked against candidate changes. An explicitly
+labelled all-days notes-only section becomes authored day guidance and cannot
+change logging or progression rules. Local clarification retains source-specific
+questions beyond the provider's question limit within the bounded input budget.
 
 `lib/program-edit-resolution.ts` ranks names and aliases using normalized tokens,
 identity hints and available metadata. Ranking points are deterministic ordering,
