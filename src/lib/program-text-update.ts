@@ -14,12 +14,22 @@ import {
   resizeProgramSlotSets,
 } from "@/lib/program-editor-client";
 
+export type ProgramEditIssue = {
+  key: string;
+  question: string;
+  source: string;
+  candidates?: Array<{ id: string; name: string; explanation: string }>;
+};
 export type ProgramTextProposal = {
   baseDocument: ProgramDocumentV3;
   changes: Array<
-    ProgramTextUpdate["changes"][number] & { id: string; summary: string }
+    ProgramTextUpdate["changes"][number] & {
+      id: string; summary: string; instructionKeys?: string[]; blocked?: boolean;
+      warnings?: string[];
+    }
   >;
   questions: string[];
+  interpretation?: { version: 1; issues: ProgramEditIssue[]; information: string[] };
 };
 
 export function applyProgramTextChanges(
@@ -27,7 +37,7 @@ export function applyProgramTextChanges(
   proposal: ProgramTextProposal,
   selected: ReadonlySet<string>,
 ): ProgramDocumentV3 {
-  if (proposal.questions.length)
+  if (proposal.questions.length && !proposal.interpretation)
     throw new Error("Resolve every clarification and compare again before applying this request. Your draft is unchanged.");
   if (JSON.stringify(current) !== JSON.stringify(proposal.baseDocument))
     throw new Error(
@@ -36,6 +46,7 @@ export function applyProgramTextChanges(
   let result = structuredClone(current);
   for (const change of proposal.changes) {
     if (!selected.has(change.id)) continue;
+    if (change.blocked) throw new Error("This change still needs clarification. Your draft is unchanged.");
     // A replacement starts fresh lineage. Later operations in the SAME reviewed
     // change still address the original slot; other selectable changes cannot
     // depend on a replacement that the owner might leave unselected.
@@ -394,9 +405,11 @@ export function buildProgramTextProposal(
         if (op.kind === "load")
           return `${label}: load ${slot?.targetLoad ?? "unspecified"} ${slot?.targetLoadUnit ?? ""} → ${op.value ?? "unspecified"} ${op.unit ?? ""}`;
         if (op.kind === "slot_text" || op.kind === "day_text")
-          return `${label}: ${op.field} → ${op.value ?? "clear"}`;
-        if (op.kind === "add" || op.kind === "replace")
-          return `${label}: ${op.kind} ${names.get(op.exerciseId) ?? "exercise"}`;
+          return `${label}: ${op.field}\nOld: ${(op.kind === "slot_text" ? slot?.[op.field] : day?.[op.field]) ?? "none"}\nNew: ${op.value ?? "clear"}`;
+        if (op.kind === "replace")
+          return `${label}: replace with ${names.get(op.exerciseId) ?? "exercise"}\nOriginal: ${slot?.sets} × ${slot?.repMin}–${slot?.repMax}, ${slot?.restSec}s rest. Attached prescription changes are listed below.\nMovement-specific notes and preparation start fresh for the replacement.${slot?.notes ? `\nOld notes: ${slot.notes}` : ""}`;
+        if (op.kind === "add")
+          return `${label}: add ${names.get(op.exerciseId) ?? "exercise"}, ${op.sets} × ${op.repMin}–${op.repMax}, ${op.restSec}s rest`;
         return `${label}: ${op.kind === "remove" ? "remove exercise" : "change exercise order"}`;
       })
       .join("\n");

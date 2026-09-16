@@ -16,17 +16,23 @@ export function ProgramTextEntry({
   library: ExerciseDiscoveryItem[];
   canUpdate: boolean;
 }) {
-  const [updateText, setUpdateText] = useState<string | null>(null);
-  if (updateText !== null)
+  const [input, setInput] = useState("");
+  const [editing, setEditing] = useState(
+    canUpdate &&
+      !props.initialParse &&
+      props.initialDestination !== "create_new_active",
+  );
+  if (editing)
     return (
       <div className="space-y-3">
-        <Button variant="outline" onClick={() => setUpdateText(null)}>
-          Back to routine import
+        <Button variant="outline" onClick={() => setEditing(false)}>
+          Import a complete routine instead
         </Button>
         <ProgramEditor
           ownerId={ownerId}
           library={library}
-          initialPrompt={updateText}
+          initialPrompt={input}
+          onPromptChange={setInput}
           initialDayId={null}
           initialRemovalRequest={null}
           initialReplacementRequest={null}
@@ -36,7 +42,16 @@ export function ProgramTextEntry({
   return (
     <RoutineImport
       {...props}
-      onUpdateCurrent={canUpdate ? (text) => setUpdateText(text) : undefined}
+      initialInput={input}
+      onInputChange={setInput}
+      onUpdateCurrent={
+        canUpdate
+          ? (text) => {
+              setInput(text);
+              setEditing(true);
+            }
+          : undefined
+      }
     />
   );
 }

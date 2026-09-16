@@ -798,6 +798,46 @@ test("partial text update applies only selected explicit changes", async ({ page
   await expect(editor.getByLabel("Seconds")).toHaveValue("30");
 });
 
+test("local interpreter applies independent changes then resolves the remaining candidate without replay", async ({ page }, testInfo) => {
+  await signIn(page);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/program/import");
+  await expectSaved(page);
+  const before: ProgramDocumentV3 = (await (await page.request.get("/api/program/draft")).json()).draft.document;
+  const firstName = async () => {
+    const label = await page.locator("article[aria-labelledby]").first().getAttribute("aria-labelledby");
+    return (await page.locator(`#${label}`).textContent())!.trim();
+  };
+  const source = await firstName();
+  await page.getByRole("tablist", { name: "Edit Program days" }).getByRole("tab").nth(1).click();
+  const independent = await firstName();
+  await page.getByLabel("What should change?").fill(`Day 1\nReplace ${source} with Seated Push-Up.\nSuggested starting prescription: 3 × 6–9, rest 75 seconds.\nDay 2\n${independent}:\nReplace notes with: Use 2 RIR.`);
+  await page.getByRole("button", { name: "Compare and propose changes", exact: true }).click();
+  const region = page.getByRole("region", { name: "Proposed text changes" });
+  await expect(region.getByRole("heading", { name: "Resolved changes and questions" })).toBeVisible();
+  await expect(region.getByRole("checkbox")).toHaveCount(1);
+  await region.getByRole("button", { name: "Apply selected changes", exact: true }).click();
+  await expectSaved(page);
+  const partial: ProgramDocumentV3 = (await (await page.request.get("/api/program/draft")).json()).draft.document;
+  expect(partial.days[0]).toEqual(before.days[0]);
+  expect(partial.days[1].exercises[0].notes).toBe("Use 2 RIR");
+  await region.getByRole("radio", { name: /^Push-Up / }).check();
+  await page.getByRole("button", { name: "Compare and propose changes", exact: true }).click();
+  await expect(region.getByRole("heading", { name: "Changes ready to review" })).toBeVisible();
+  await expect(region.getByRole("checkbox")).toHaveCount(1);
+  await assertNoHorizontalOverflow(page);
+  await region.scrollIntoViewIfNeeded();
+  await page.screenshot({ path: testInfo.outputPath("contextual-edit-partial-review-mobile.png") });
+  await region.getByRole("button", { name: "Apply selected changes", exact: true }).click();
+  await expectSaved(page);
+  const after: ProgramDocumentV3 = (await (await page.request.get("/api/program/draft")).json()).draft.document;
+  expect(after.days[0].exercises[0]).toMatchObject({ sets: 3, repMin: 6, repMax: 9, restSec: 75, targetLoad: null });
+  expect(after.days[1]).toEqual(partial.days[1]);
+  const saved = (await (await page.request.get("/api/program/draft")).json()).draft;
+  const restored = await page.request.put("/api/program/draft", { headers: { origin: "http://127.0.0.1:3100" }, data: { draftId: saved.id, expectedRevision: saved.revision, mutationId: crypto.randomUUID(), document: before } });
+  expect(await restored.json()).toMatchObject({ status: "saved" });
+});
+
 test("local interpreter blocks unresolved instructions then applies an atomic replacement without AI", async ({ page }, testInfo) => {
   await signIn(page);
   await page.setViewportSize({ width: 390, height: 844 });
@@ -813,7 +853,7 @@ test("local interpreter blocks unresolved instructions then applies an atomic re
   const region = page.getByRole("region", { name: "Proposed text changes" });
   await expect(region.getByRole("heading", { name: "Clarification needed before any changes" })).toBeVisible();
   await expect(region.getByRole("button", { name: "Apply selected changes", exact: true })).toBeDisabled();
-  await expect(region.getByRole("checkbox")).toBeDisabled();
+  await expect(region.getByRole("checkbox")).toHaveCount(0);
   await expect(page.getByLabel("What should change?")).toHaveValue(request);
   expect((await (await page.request.get("/api/program/draft")).json()).draft.document).toEqual(before);
   await assertNoHorizontalOverflow(page);
@@ -1069,7 +1109,12 @@ test("free-form warmup edits carry pasted text into a reviewed draft and preserv
   expect(exerciseName).toBeTruthy();
   await page.goto("/program/import");
   const request = `Update warm-up only. Keep all working prescriptions unchanged.\nDay A\nBefore ${exerciseName!.trim()}:\n• Easy rehearsal × 7.\n• 20 kg × 4.\n• Then working sets.`;
-  await page.getByLabel("Paste your Program").fill(request);
+  await expectSaved(page);
+  await page.getByLabel("What should change?").fill(request);
+  // Switching to a full import and back retains the request, but an ordinary
+  // existing-Program paste starts in the no-provider editor.
+  await page.getByRole("button", { name: "Import a complete routine instead", exact: true }).click();
+  await expect(page.getByLabel("Paste your Program")).toHaveValue(request);
   await page.getByRole("button", { name: "Update current Program from text", exact: true }).click();
   await expectSaved(page);
   await expect(page.getByLabel("What should change?")).toHaveValue(request);
