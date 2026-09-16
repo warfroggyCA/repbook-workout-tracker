@@ -19,11 +19,13 @@ test("plays reduced-motion guidance when readiness arrives at completion", async
   // keeping real media playback as the clock. Generic resume must not consume
   // an ended clip before its completion handler can advance the guidance.
   await page.evaluate(() => {
-    document.addEventListener("ended", event => {
-      if (event.target instanceof HTMLVideoElement) {
+    const readinessBeforeCompletion = (event: Event) => {
+      if (event.target instanceof HTMLVideoElement && event.target.ended) {
         event.target.dispatchEvent(new Event("canplay"));
       }
-    }, true);
+    };
+    document.addEventListener("timeupdate", readinessBeforeCompletion, true);
+    document.addEventListener("ended", readinessBeforeCompletion, true);
   });
   await page.getByRole("button", { name: "View Incline Dumbbell Curl form", exact: true }).click();
   const player = page.getByTestId("froggy-player");
