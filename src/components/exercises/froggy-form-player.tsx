@@ -7,6 +7,7 @@ import type { FroggyDemoKey } from "@/lib/froggy-form-demo";
 import { FROGGY_FORMS, type FroggyMode } from "@/lib/froggy-form-config";
 import curlFrames from "@/lib/froggy-incline-curl-anchors.json";
 import styles from "./froggy-form-player.module.css";
+import { froggyClipCompleted } from "@/lib/froggy-playback";
 
 import pressFrames from "@/lib/froggy-incline-press-anchors.json";
 import latFrames from "@/lib/froggy-lat-pulldown-anchors.json";
@@ -135,8 +136,8 @@ export default function FroggyFormPlayer({ demoKey, initialSnapshot, onSnapshot 
     // Native looping and seeking a finished decoder can stall at time zero
     // while still reporting unpaused. Reload the same resource after natural
     // completion; metadata resumes it through the existing pause/visibility guard.
-    const ended = () => {
-      if (disposed || !v.ended) return;
+    const complete = () => {
+      if (disposed || !froggyClipCompleted(v)) return;
       if (!seekToEnd.current) setCue(c => (c + 1) % config.cues.length);
       seekToEnd.current = false;
       resumeTime.current = 0; setPosition(0);
@@ -146,13 +147,15 @@ export default function FroggyFormPlayer({ demoKey, initialSnapshot, onSnapshot 
     const hide = sync;
     const observer = new IntersectionObserver(([entry]) => { visible = entry.isIntersecting; sync(); });
     if (stage.current) observer.observe(stage.current);
-    document.addEventListener("visibilitychange", hide); v.addEventListener("seeked", seek); v.addEventListener("ended", ended);
+    document.addEventListener("visibilitychange", hide); v.addEventListener("seeked", seek);
+    v.addEventListener("ended", complete); v.addEventListener("timeupdate", complete);
     paint(v.currentTime);
     return () => {
       onSnapshot({ ...settings.current, time: Number.isFinite(v.duration) ? v.currentTime : resumeTime.current });
       disposed = true; syncPlayback.current = () => {};
       v.pause(); observer.disconnect(); document.removeEventListener("visibilitychange", hide);
-      v.removeEventListener("seeked", seek); v.removeEventListener("ended", ended);
+      v.removeEventListener("seeked", seek);
+      v.removeEventListener("ended", complete); v.removeEventListener("timeupdate", complete);
       if (callback) v.cancelVideoFrameCallback(callback); if (raf) cancelAnimationFrame(raf);
     };
   }, [onSnapshot, config, frames]);
