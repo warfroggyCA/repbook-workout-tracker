@@ -215,8 +215,8 @@ export function proposeContextualProgramEdit(
       bucket,
       candidates.slice(0, 8).map((target) => ({
         id: target.slot.lineageId,
-        name: `${target.day.name} · ${byId.get(target.slot.exerciseId)?.name}`,
-        explanation: "Select this saved exercise",
+        name: `${target.day.name} · exercise ${target.day.exercises.indexOf(target.slot) + 1} · ${byId.get(target.slot.exerciseId)?.name}`,
+        explanation: `Saved prescription: ${target.slot.sets} sets · ${target.slot.restSec}s rest`,
       })),
       ":source",
     );
@@ -778,7 +778,7 @@ export function proposeContextualProgramEdit(
     const effortClaims = positives.flatMap((item) =>
       [
         ...item.text.matchAll(
-          /(\d+(?:\.\d+)?(?:[–-]\d+(?:\.\d+)?)?)\s*(RIR|repetitions? in reserve)|RPE\s*(\d+(?:\.\d+)?(?:[–-]\d+(?:\.\d+)?)?)/gi,
+          /(\d+(?:\.\d+)?(?:[–-]\d+(?:\.\d+)?)?)\s*(RIR|(?:reps?|repetitions?) in reserve)|RPE\s*(\d+(?:\.\d+)?(?:[–-]\d+(?:\.\d+)?)?)/gi,
         ),
       ].map((match) => ({
         target: match[1] ?? match[3],

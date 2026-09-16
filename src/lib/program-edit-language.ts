@@ -24,7 +24,7 @@ export type InterpretedProgramEdit = {
 };
 
 export const coachingLanguage = (text: string) =>
-  /\b(?:RIR|RPE|repetitions? in reserve|technique|form|failure|safeties|spotter|back support|both hands|bar close|range of motion|controlled|painful|swinging|actual effort)\b/i.test(
+  /\b(?:RIR|RPE|(?:reps?|repetitions?) in reserve|technique|form|failure|safeties|spotter|back support|both hands|bar close|range of motion|controlled|painful|swinging|actual effort)\b/i.test(
     text,
   );
 export const embeddedProgramCommand = (text: string) =>

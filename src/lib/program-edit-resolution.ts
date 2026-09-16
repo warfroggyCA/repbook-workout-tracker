@@ -186,7 +186,7 @@ export function mergeEffortNotes(
   if (targetEdit) {
     const escaped = targetEdit[1].replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
     const pattern = new RegExp(
-      `\\b${escaped}\\s*(?:RIR|repetitions? in reserve)\\b`,
+      `\\b${escaped}\\s*(?:RIR|(?:reps?|repetitions?) in reserve)\\b`,
       "gi",
     );
     if (!existing || !pattern.test(existing))
@@ -197,10 +197,26 @@ export function mergeEffortNotes(
     return { value: existing.replace(pattern, `${targetEdit[2]} RIR`) };
   }
   // The authored final-set guidance does not authorize a new early-set target.
-  const effort = /\b(?:RIR|RPE|repetitions? in reserve|failure)\b/i;
+  const effort = /\b(?:RIR|RPE|(?:reps?|repetitions?) in reserve|failure)\b/i;
   const finalOnly =
     /\b(?:final|last) set\b/i.test(text) &&
     !/\b(?:earlier|first|all|every|most)\b.*\bsets?\b/i.test(text);
+  const earlyOnly =
+    /\b(?:earlier|first|most)\b.*\bsets?\b/i.test(text) &&
+    !/\b(?:final|last) set\b/i.test(text);
+  const pureEffortClause = (clause: string) =>
+    !clause
+      .replace(
+        /\b(?:RIR|RPE|(?:reps?|repetitions?) in reserve|failure)\b/gi,
+        "",
+      )
+      .replace(/\d+(?:\.\d+)?/g, "")
+      .replace(
+        /\b(?:use|target|aim|for|leave|keep|approximately|about|around|at|on|the|a|an|sets?|working|first|last|final|earlier|all|every|most|two|three|four|five|six|technically|sound|may|can|occasionally|reach|stop|no|more|less|than|and|of|to)\b/gi,
+        "",
+      )
+      .replace(/[^a-z]/gi, "")
+      .trim();
   const oldParts = (existing ?? "")
     .split(/\n|(?<=[.!?])\s+|;\s*/)
     .filter(Boolean);
@@ -216,6 +232,21 @@ export function mergeEffortNotes(
         retained.push(part);
         continue;
       }
+      if (
+        (finalOnly || earlyOnly) &&
+        (/\b(?:all|every) sets?\b/i.test(part) ||
+          (/\b(?:earlier|first|most)\b/i.test(part) &&
+            /\b(?:final|last) set\b/i.test(part)))
+      )
+        return {
+          value: existing,
+          question:
+            "The saved note combines early and final-set targets. Provide the complete intended note so a partial effort update cannot erase another set's guidance.",
+        };
+      if (earlyOnly && /\b(?:final|last) set\b/i.test(part)) {
+        retained.push(part);
+        continue;
+      }
       if (finalOnly && !/\b(?:final|last|all|every)\s+sets?\b/i.test(part)) {
         retained.push(part);
         continue;
@@ -226,13 +257,14 @@ export function mergeEffortNotes(
       );
       const safety = clauses.filter((clause) => !effort.test(clause));
       if (
-        clauses.length === 1 &&
-        /\b(?:safeties|spotter|technique|pain|range of motion)\b/i.test(part)
+        clauses.some(
+          (clause) => effort.test(clause) && !pureEffortClause(clause),
+        )
       )
         return {
           value: existing,
           question:
-            "The current effort target shares a sentence with safety guidance. Provide the complete replacement note so that guidance is preserved.",
+            "The current effort target shares a sentence with other guidance. Provide the complete replacement note so that guidance is preserved.",
         };
       retained.push(...safety);
     }
