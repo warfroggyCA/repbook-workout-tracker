@@ -38,7 +38,7 @@ export function readLines(input: string): Line[] {
       continue;
     }
     const text = source.trim().replace(/^(?:[•*\-]|#{1,6})\s+/, "");
-    const bullet = /^\s*[•*\-]\s+/.test(source);
+    const bullet = /^\s*(?:[•*\-]|\d+[.)])\s+/.test(source);
     const command =
       /^(?:before|immediately before|day\b|on\b|change\b|set\b|update\b|add\b|replace\b|remove\b|move\b|reorder\b|increase\b|decrease\b|reduce\b|preserve\b|group\b|ungroup\b|keep\b|leave\b|then\b|for\b|these\b)/i.test(
         text,

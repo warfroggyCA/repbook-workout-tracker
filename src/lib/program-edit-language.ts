@@ -13,6 +13,7 @@ export type EditInstruction = {
     | "constraint"
     | "information";
   noteMode?: "replace" | "append" | "modify";
+  allDaysNote?: boolean;
 };
 export type InterpretedProgramEdit = {
   instructions: EditInstruction[];
@@ -54,6 +55,8 @@ export function interpretProgramEdit(
   let keep = false;
   let pendingNotes: EditInstruction["noteMode"] | null = null;
   let pendingSource = "";
+  let allDaysNotesOnly = false;
+  let otherExercises = false;
   const emit = (
     source: string,
     text: string,
@@ -69,14 +72,30 @@ export function interpretProgramEdit(
       scope: { day, exercise },
       intent,
       ...(noteMode ? { noteMode } : {}),
+      ...(allDaysNotesOnly && intent === "notes" ? { allDaysNote: true } : {}),
     });
   };
   for (const line of readLines(input)) {
+    const numbered = /^\d+[.)]\s+(.+)$/.exec(line.text);
+    const normalized = (numbered?.[1] ?? line.text).replace(/\*\*([^*]+)\*\*/g, "$1");
+    // Numbered noun headings establish scope just like a colon heading. Do
+    // not reinterpret a numbered command or numeric prescription as a name.
+    if (numbered && /^[\p{L}][\p{L}\s'’–—-]{0,159}:?$/u.test(normalized) &&
+      !/^(?:day|routine|all|keep|preserve|leave|replace|swap|remove|delete|clear|reset|add|append|move|reorder|increase|decrease|reduce|set|change|update|modify|use|perform|record|do|don't|never|avoid|stop|before|after|if|when|rest|sets?|reps?|notes?)\b/i.test(normalized)) {
+      if (pendingNotes) emit(pendingSource, "The replacement note is missing", "command");
+      exercise = normalized.replace(/:$/, "");
+      pendingNotes = null;
+      keep = false;
+      allDaysNotesOnly = false;
+      otherExercises = false;
+      continue;
+    }
     // A decimal point in a load or RPE is not a sentence boundary. Keep the
     // original line as provenance even when a paragraph contains several edits.
-    const sentences = line.text
-      .replace(/\*\*([^*]+)\*\*/g, "$1")
-      .split(/(?<=[.!?])\s+(?=[A-Z“"])/u);
+    // A quoted replacement is one authored note, including all its sentences.
+    const sentences = /^(?:(?:replace|add|append|update|modify|change|set)\s+(?:the\s+)?notes?\s*(?:(?:with|to|so)\s*)?:?\s*|notes?:\s*)[“"].+[”"]\s*$/i.test(normalized)
+      ? [normalized]
+      : normalized.split(/(?<=[.!?])\s+(?=[A-Z“"])/u);
     for (const sentence of sentences) {
       let text = sentence.trim().replace(/[.;]$/, "");
       if (!text) continue;
@@ -91,6 +110,8 @@ export function interpretProgramEdit(
         text,
       );
       if (heading) {
+        allDaysNotesOnly = false;
+        otherExercises = false;
         day = text.replace(/:$/, "");
         exercise = null;
         keep = false;
@@ -108,6 +129,8 @@ export function interpretProgramEdit(
         (label) => label.toLowerCase() === text.replace(/:$/, "").toLowerCase(),
       );
       if (namedDay) {
+        allDaysNotesOnly = false;
+        otherExercises = false;
         day = namedDay;
         exercise = null;
         keep = false;
@@ -115,9 +138,31 @@ export function interpretProgramEdit(
         continue;
       }
       if (/^all days\b/i.test(text)) {
+        otherExercises = false;
+        allDaysNotesOnly = /^all days\s*[—–:-]\s*notes only$/i.test(text);
         day = null;
         exercise = null;
         keep = false;
+        continue;
+      }
+      if (/^all other day \d+ exercises$/i.test(text)) {
+        exercise = null;
+        keep = false;
+        otherExercises = true;
+        continue;
+      }
+      if (otherExercises && /^(?:keep|preserve) (?:the )?(?:current|existing) (?:exercises|set counts|rep ranges|load targets|rest times|exercise order|supersets)(?:(?:,\s*(?:and\s+)?|\s+and\s+)(?:exercises|set counts|rep ranges|load targets|rest times|exercise order|supersets))*(?: unless affected by the .+ replacement above)?$/i.test(text)) {
+        emit(line.source, text, "information");
+        continue;
+      }
+      if (allDaysNotesOnly) {
+        if (/^the following are authored guidance only$/i.test(text)) {
+          emit(line.source, text, "information");
+        } else {
+          // This section explicitly requests literal guidance, never policy or
+          // executable rules. Keep the text in day notes for owner review.
+          emit(line.source, text, "notes", "append");
+        }
         continue;
       }
       if (
@@ -133,6 +178,7 @@ export function interpretProgramEdit(
       const dayPrefix =
         /^on\s+((?:day|routine)\s+(?:\d+|[a-z]))\s*[,;:]?\s+(.+)$/i.exec(text);
       if (dayPrefix) {
+        otherExercises = false;
         day = dayPrefix[1];
         exercise = null;
         keep = false;
@@ -140,6 +186,7 @@ export function interpretProgramEdit(
       }
       const exercisePrefix = /^(?:on|for)\s+(.+?),\s*(.+)$/i.exec(text);
       if (exercisePrefix) {
+        otherExercises = false;
         const named = dayLabels.find(
           (label) =>
             label.toLowerCase() ===
@@ -196,6 +243,7 @@ export function interpretProgramEdit(
           labelled[1],
         )
       ) {
+        otherExercises = false;
         exercise = labelled[1]
           .replace(/^keep\s+/i, "")
           .replace(/\s+(?:effort|notes)$/i, "");
@@ -223,7 +271,7 @@ export function interpretProgramEdit(
         | InterpretedProgramEdit["constraints"][number]["kind"]
         | null = null;
       if (
-        /^(?:do not|don't) create (?:any )?new supersets(?: from outdated pairing notes)?$/i.test(
+        /^(?:do not|don't) create (?:any )?(?:new )?supersets(?: from (?:outdated pairing|old or stale) notes)?$/i.test(
           text,
         )
       )
@@ -235,13 +283,13 @@ export function interpretProgramEdit(
       )
         constraint = "progression";
       if (
-        /^(?:this request does not approve|do not (?:apply|approve)) (?:the )?pending .+ load proposal$/i.test(
+        /^(?:(?:this request does not approve|do not (?:apply|approve)) (?:the )?pending .+ load proposal|do not apply the pending load-change proposal through this request)$/i.test(
           text,
         )
       )
         constraint = "loads";
       if (
-        /^(?:apply (?:these changes |this |to )?(?:to )?future (?:scheduled )?workouts only|preserve (?:completed workout |workout )?history)$/i.test(
+        /^(?:apply (?:these changes |this |to )?(?:to )?future (?:scheduled )?workouts only|preserve (?:all )?(?:completed workout |workout )?history)$/i.test(
           text,
         )
       )
@@ -266,6 +314,7 @@ export function interpretProgramEdit(
           text,
         );
       if (replacement) {
+        otherExercises = false;
         exercise = replacement[1]
           .replace(
             /^(?:the\s+)?(?:(?:\d+|one|two|three|four)\s+sets?\s+of\s+)?/i,
@@ -276,17 +325,17 @@ export function interpretProgramEdit(
         continue;
       }
       if (/^notes?:\s*\S/i.test(text)) {
-        emit(line.source, text.replace(/^notes?:\s*/i, ""), "notes", "append");
+        emit(line.source, text.replace(/^notes?:\s*/i, "").replace(/^[“"]|[”"]$/g, ""), "notes", "append");
         continue;
       }
       const explicitNotes =
-        /^(?:keep everything the same but\s+)?(replace|add|append|update|modify|change|set)\s+(?:the\s+)?notes?\s*(?:with|to|so|:)?\s*(.+)$/i.exec(
+        /^(?:keep everything the same but\s+)?(replace|add|append|update|modify|change|set)\s+(?:the\s+)?notes?\s*(?:(?:with|to|so)\s*)?:?\s*(.+)$/i.exec(
           text,
         );
       if (explicitNotes) {
         emit(
           line.source,
-          explicitNotes[2],
+          explicitNotes[2].replace(/^[“"]|[”"]$/g, ""),
           "notes",
           /^(add|append)$/i.test(explicitNotes[1])
             ? "append"
