@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "expectedSuiteCount": 42,
+  "expectedSuiteCount": 43,
   "groups": [
     {
       "name": "baseline-history",
@@ -19,7 +19,8 @@
         "test:e2e:program-editor-cross-browser",
         "test:e2e:program-editor-review-recovery",
         "test:e2e:program-editor-disabled",
-        "test:e2e:production-headers"
+        "test:e2e:production-headers",
+        "test:e2e:pii01"
       ]
     },
     {
