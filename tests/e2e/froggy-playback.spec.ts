@@ -5,7 +5,7 @@ test.beforeEach(async ({ page }) => {
   await installNextDevelopmentRefreshControl(page);
 });
 
-test("plays one reduced-motion preview in isolation", async ({ page }) => {
+test("plays reduced-motion guidance when readiness arrives at completion", async ({ page }) => {
   await page.emulateMedia({ reducedMotion: "reduce" });
   await page.goto("/sign-in");
   await page.getByPlaceholder("allowlisted email").fill("owner@example.com");
@@ -15,6 +15,16 @@ test("plays one reduced-motion preview in isolation", async ({ page }) => {
   await expect(page).toHaveURL(/\/today$/);
   await expect(page.getByRole("heading", { name: "Today", exact: true })).toBeVisible();
   await page.goto("/program");
+  // Reproduce WebKit's readiness/completion ordering in either engine while
+  // keeping real media playback as the clock. Generic resume must not consume
+  // an ended clip before its completion handler can advance the guidance.
+  await page.evaluate(() => {
+    document.addEventListener("ended", event => {
+      if (event.target instanceof HTMLVideoElement) {
+        event.target.dispatchEvent(new Event("canplay"));
+      }
+    }, true);
+  });
   await page.getByRole("button", { name: "View Incline Dumbbell Curl form", exact: true }).click();
   const player = page.getByTestId("froggy-player");
   // Opening an exercise does not guarantee its video is in the viewport.
@@ -33,10 +43,11 @@ test("plays one reduced-motion preview in isolation", async ({ page }) => {
     if (events.length > 80) events.shift();
   });
   await player.locator("video").evaluate((video: HTMLVideoElement) => {
-    for (const name of ["ended", "pause", "play", "playing", "waiting", "seeking", "seeked", "error"]) {
-      video.addEventListener(name, () => {
+    for (const name of ["loadedmetadata", "canplay", "ended", "pause", "play", "playing", "waiting", "seeking", "seeked", "error"]) {
+      video.addEventListener(name, (event) => {
+        if (!event.isTrusted) return;
         const record = (window as unknown as { recordSyntheticMediaEvent: (event: unknown) => Promise<void> }).recordSyntheticMediaEvent;
-        void record({ name, time: video.currentTime, paused: video.paused, ended: video.ended, readyState: video.readyState });
+        void record({ name, time: video.currentTime, paused: video.paused, ended: video.ended, readyState: video.readyState }).catch(() => {});
       }, true);
     }
   });

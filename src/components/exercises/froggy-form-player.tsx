@@ -124,6 +124,10 @@ export default function FroggyFormPlayer({ demoKey, initialSnapshot, onSnapshot 
     const sync = () => {
       if (disposed) return;
       if (!visible || document.hidden || pauseIntent.current) { v.pause(); return; }
+      // WebKit can queue canplay before ended after replenishing buffered data.
+      // play() at that point rewinds and clears ended before our completion
+      // handler can advance the tip. Only that handler owns an ended replay.
+      if (v.ended) return;
       if (v.readyState >= HTMLMediaElement.HAVE_METADATA && v.paused) void v.play().then(() => {
         if (disposed || !visible || document.hidden || pauseIntent.current) v.pause();
       }).catch(() => { if (!disposed && visible && !pauseIntent.current) setStatus("Tap to play"); });
