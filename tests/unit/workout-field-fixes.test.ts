@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { froggyClipCompleted } from "@/lib/froggy-playback";
 import { hasFinePlateSteps, stepPlateEntryLoad } from "@/lib/load-entry-step";
 import { ensureRestAudioProgress } from "@/lib/rest-audio-health";
 import { cancelRestTonePatterns, playRestTonePattern, REST_COMPLETION_TONE_PATTERN } from "@/lib/rest-alert-preference";
@@ -29,6 +30,27 @@ describe("workout weight entry", () => {
     expect(stepPlateEntryLoad(21, 1, metric, "kg", "normal")).toBe(23.5);
     expect(stepPlateEntryLoad(21, 1, metric, "kg", "fine")).toBe(21.5);
     expect(hasFinePlateSteps({ ...metric, plates: [{ denomination: .25, countPerSide: 0 }] }, "kg")).toBe(false);
+  });
+});
+
+describe("Froggy media completion", () => {
+  const playing = { duration: 6, currentTime: 5.999999999, ended: false, paused: false, seeking: false };
+  it("recognizes the observed WebKit endpoint without an ended event", () => {
+    expect(froggyClipCompleted(playing)).toBe(true);
+    expect(froggyClipCompleted({ ...playing, ended: true, paused: true, currentTime: 6 })).toBe(true);
+  });
+  it("does not count a paused or in-progress seek as completion", () => {
+    expect(froggyClipCompleted({ ...playing, paused: true })).toBe(false);
+    expect(froggyClipCompleted({ ...playing, seeking: true })).toBe(false);
+    expect(froggyClipCompleted({ ...playing, currentTime: 5.999 })).toBe(false);
+  });
+  it("rejects ordinary playback and unready or invalid metadata", () => {
+    for (const currentTime of [0, 3, 5.96, NaN, Infinity]) {
+      expect(froggyClipCompleted({ ...playing, currentTime })).toBe(false);
+    }
+    for (const duration of [0, -1, NaN, Infinity]) {
+      expect(froggyClipCompleted({ ...playing, duration })).toBe(false);
+    }
   });
 });
 

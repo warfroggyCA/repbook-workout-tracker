@@ -945,7 +945,8 @@ change in a live environment.
 
 ## Workout entry and media regression checks
 
-`tests/unit/workout-field-fixes.test.ts` covers fractional versus ordinary load
+`tests/unit/workout-field-fixes.test.ts` covers the observed rounded media endpoint
+and pause/seek exclusions, fractional versus ordinary load
 entry, loadable bounds, stalled audio clocks,
 bounded recovery, and queued-tone expiry. Run it with the existing rest-audio,
 rest-timer, plate-math, active-set-ledger and workout-status-bar tests. The

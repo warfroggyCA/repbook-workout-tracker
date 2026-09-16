@@ -185,7 +185,7 @@ test("scrubbing to the end preserves the tip and explicit pause before replay", 
   await expect.poll(() => video.evaluate((v: HTMLVideoElement) => v.currentTime), { timeout: 5000 }).toBeLessThan(2);
   await expect(banner).toHaveAttribute("data-form-banner", tip!);
   // One complete replay, rather than the manual seek, advances the next tip.
-  await expect(banner).not.toHaveAttribute("data-form-banner", tip!, { timeout: 10000 });
+  await expect(banner).toHaveAttribute("data-form-banner", String(Number(tip) + 1), { timeout: 10000 });
   await player.getByRole("button", { name: "Pause form animation", exact: true }).click();
   const pausedTime = await video.evaluate((v: HTMLVideoElement) => v.currentTime);
   await page.waitForTimeout(1200);
