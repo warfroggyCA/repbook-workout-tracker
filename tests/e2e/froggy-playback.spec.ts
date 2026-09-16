@@ -38,6 +38,17 @@ test("plays reduced-motion guidance when readiness arrives at completion", async
     duration: v.duration, error: v.error?.message ?? null, source: v.currentSrc,
   })), { timeout: 30_000 }).toMatchObject({ readyState: 4, error: null, paused: false });
   await expect(player.locator("video")).toHaveAttribute("src", /steady\.mp4$/);
+  await player.locator("video").evaluate((video: HTMLVideoElement) => {
+    const position = Object.getOwnPropertyDescriptor(HTMLMediaElement.prototype, "currentTime")!;
+    Object.defineProperty(video, "currentTime", {
+      configurable: true,
+      get: () => position.get!.call(video),
+      set: (value: number) => {
+        if (value === 0) video.dataset.zeroSeeks = String(Number(video.dataset.zeroSeeks ?? 0) + 1);
+        position.set!.call(video, value);
+      },
+    });
+  });
   const samples: unknown[] = [];
   const events: unknown[] = [];
   await page.exposeFunction("recordSyntheticMediaEvent", (event: unknown) => {
@@ -75,6 +86,8 @@ test("plays reduced-motion guidance when readiness arrives at completion", async
     console.error("Synthetic isolated playback samples", JSON.stringify({ samples, events }));
     throw error;
   }
+  // A fresh resource begins at zero without an explicit decoder seek.
+  await expect(player.locator("video")).not.toHaveAttribute("data-zero-seeks");
 });
 
 test("cycles every supported form through Avoid and back to Do during natural playback", async ({ page }) => {

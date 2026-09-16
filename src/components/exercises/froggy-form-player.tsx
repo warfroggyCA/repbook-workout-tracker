@@ -200,7 +200,11 @@ export default function FroggyFormPlayer({ demoKey, initialSnapshot, onSnapshot 
           aria-label={`${config.title} demonstration`}
           onLoadedMetadata={() => {
             const v = video.current!;
-            v.currentTime = Math.min(resumeTime.current, Math.max(0, v.duration - .01));
+            // A newly loaded clip already starts at zero. Seeking to zero here
+            // can stall WebKit's fresh decoder while it is still buffering.
+            if (resumeTime.current > 0) {
+              v.currentTime = Math.min(resumeTime.current, Math.max(0, v.duration - .01));
+            }
             seekToEnd.current = false; v.playbackRate = speed;
             setFailed(false); setStatus("Paused");
             // Metadata-only preload may stop before canplay in WebKit. Start
