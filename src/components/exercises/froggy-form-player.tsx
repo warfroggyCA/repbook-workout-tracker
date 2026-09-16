@@ -7,7 +7,6 @@ import type { FroggyDemoKey } from "@/lib/froggy-form-demo";
 import { FROGGY_FORMS, type FroggyMode } from "@/lib/froggy-form-config";
 import curlFrames from "@/lib/froggy-incline-curl-anchors.json";
 import styles from "./froggy-form-player.module.css";
-import { froggyPlaybackWrapped } from "@/lib/froggy-playback";
 
 import pressFrames from "@/lib/froggy-incline-press-anchors.json";
 import latFrames from "@/lib/froggy-lat-pulldown-anchors.json";
@@ -66,7 +65,7 @@ export default function FroggyFormPlayer({ demoKey, initialSnapshot, onSnapshot 
   const [cue, setCue] = useState(initial.cue);
   const [userPaused, setUserPaused] = useState(initial.userPaused);
   const pauseIntent = useRef(initial.userPaused);
-  const resetPlaybackSample = useRef(true);
+  const seekToEnd = useRef(false);
   const syncPlayback = useRef<() => void>(() => {});
   const [hint, setHint] = useState(() => {
     try { return !sessionStorage.getItem("froggy-tap-hint"); } catch { return true; }
@@ -79,7 +78,6 @@ export default function FroggyFormPlayer({ demoKey, initialSnapshot, onSnapshot 
   const stage = useRef<HTMLDivElement>(null);
   const callouts = useRef<(SVGGElement | null)[]>([]);
   const settings = useRef(initial);
-  const lastTime = useRef(initial.time);
   const resumeTime = useRef(initial.time);
 
   useEffect(() => {
@@ -111,24 +109,18 @@ export default function FroggyFormPlayer({ demoKey, initialSnapshot, onSnapshot 
       });
     }
     let callback = 0, raf = 0;
-    const trackPlayback = (time: number) => {
-      if (resetPlaybackSample.current) {
-        if (v.seeking) { paint(time); return; }
-        resetPlaybackSample.current = false;
-      } else if (!v.paused && froggyPlaybackWrapped(lastTime.current, time, v.duration)) {
-        setCue(c => (c + 1) % config.cues.length);
-      }
-      lastTime.current = time;
-      paint(time);
-    };
+    let visible = false, disposed = false;
     const frameCallback: VideoFrameRequestCallback = (_, meta) => {
-      trackPlayback(meta.mediaTime); callback = v.requestVideoFrameCallback(frameCallback);
+      if (disposed) return;
+      paint(meta.mediaTime); callback = v.requestVideoFrameCallback(frameCallback);
     };
-    const fallback = () => { trackPlayback(v.currentTime); raf = requestAnimationFrame(fallback); };
+    const fallback = () => {
+      if (disposed) return;
+      paint(v.currentTime); raf = requestAnimationFrame(fallback);
+    };
     if (typeof v.requestVideoFrameCallback === "function") callback = v.requestVideoFrameCallback(frameCallback);
     else raf = requestAnimationFrame(fallback);
     const seek = () => paint(v.currentTime);
-    let visible = false, disposed = false;
     const sync = () => {
       if (disposed) return;
       if (!visible || document.hidden || pauseIntent.current) { v.pause(); return; }
@@ -136,17 +128,27 @@ export default function FroggyFormPlayer({ demoKey, initialSnapshot, onSnapshot 
         if (disposed || !visible || document.hidden || pauseIntent.current) v.pause();
       }).catch(() => { if (!disposed && visible && !pauseIntent.current) setStatus("Tap to play"); });
     };
+    // Native looping can stall a media pipeline at time zero while still
+    // reporting unpaused. Finish each play normally, then explicitly restart
+    // through the same visibility/user-pause guard used by every other resume.
+    const ended = () => {
+      if (disposed || !v.ended) return;
+      if (!seekToEnd.current) setCue(c => (c + 1) % config.cues.length);
+      seekToEnd.current = false;
+      v.currentTime = 0; resumeTime.current = 0; setPosition(0);
+      sync();
+    };
     syncPlayback.current = sync;
     const hide = sync;
     const observer = new IntersectionObserver(([entry]) => { visible = entry.isIntersecting; sync(); });
     if (stage.current) observer.observe(stage.current);
-    document.addEventListener("visibilitychange", hide); v.addEventListener("seeked", seek);
+    document.addEventListener("visibilitychange", hide); v.addEventListener("seeked", seek); v.addEventListener("ended", ended);
     paint(v.currentTime);
     return () => {
       onSnapshot({ ...settings.current, time: Number.isFinite(v.duration) ? v.currentTime : resumeTime.current });
       disposed = true; syncPlayback.current = () => {};
       v.pause(); observer.disconnect(); document.removeEventListener("visibilitychange", hide);
-      v.removeEventListener("seeked", seek);
+      v.removeEventListener("seeked", seek); v.removeEventListener("ended", ended);
       if (callback) v.cancelVideoFrameCallback(callback); if (raf) cancelAnimationFrame(raf);
     };
   }, [onSnapshot, config, frames]);
@@ -162,12 +164,18 @@ export default function FroggyFormPlayer({ demoKey, initialSnapshot, onSnapshot 
   function loadMode(next: Mode) {
     const v = video.current!;
     resumeTime.current = v.currentTime;
-    resetPlaybackSample.current = true;
+    seekToEnd.current = false;
     v.pause(); setFailed(false); setStatus("Loading video…"); setMode(next);
   }
   function playPause() {
     const v = video.current!;
     pauseIntent.current = !v.paused;
+    if (!pauseIntent.current && seekToEnd.current) {
+      // Some engines rewind an end-position play() without firing ended.
+      // Consume the explicit seek here so the next complete play counts once.
+      seekToEnd.current = false;
+      v.currentTime = 0; resumeTime.current = 0; setPosition(0);
+    }
     settings.current.userPaused = pauseIntent.current;
     setUserPaused(pauseIntent.current);
     setHint(false);
@@ -179,12 +187,12 @@ export default function FroggyFormPlayer({ demoKey, initialSnapshot, onSnapshot 
       <p className="text-xs text-muted-foreground">{config.setup}</p>
       <div ref={stage} className={styles.stage} style={config.offsetY ? { backgroundImage: `url("${config.media}/poster.png")`, backgroundSize: "100% 100%" } : undefined}>
         <video ref={video} className={styles.video} style={{ transform: `translateY(${(config.offsetY ?? 0) * 100}%) scale(${config.scale})`, transformOrigin: "bottom right" }} src={`${config.media}/${mode}.mp4`}
-          poster={`${config.media}/poster.png`} muted playsInline loop preload="metadata"
+          poster={`${config.media}/poster.png`} muted playsInline preload="metadata"
           aria-label={`${config.title} demonstration`}
           onLoadedMetadata={() => {
             const v = video.current!;
             v.currentTime = Math.min(resumeTime.current, Math.max(0, v.duration - .01));
-            lastTime.current = v.currentTime; resetPlaybackSample.current = true; v.playbackRate = speed;
+            seekToEnd.current = false; v.playbackRate = speed;
             setFailed(false); setStatus("Paused");
             // Metadata-only preload may stop before canplay in WebKit. Start
             // loading playback here instead of waiting for that later event.
@@ -240,7 +248,16 @@ export default function FroggyFormPlayer({ demoKey, initialSnapshot, onSnapshot 
       </div>
       <label className="flex items-center gap-3 text-xs">Position
         <input aria-label="Demonstration position" type="range" min={0} max={6} step={.04} value={position} className="min-h-11 min-w-0 flex-1" disabled={failed}
-          onChange={e => { const t = Number(e.target.value); resetPlaybackSample.current = true; resumeTime.current = t; lastTime.current = t; video.current!.currentTime = t; setPosition(t); }} />
+          onChange={e => {
+            const v = video.current!;
+            if (!Number.isFinite(v.duration) || v.duration <= 0) return;
+            const requested = Number(e.target.value);
+            seekToEnd.current = requested >= v.duration;
+            // A paused scrub to the end must retain its frame and tip. The
+            // subsequent resume restarts the clip without counting that seek.
+            const t = Math.min(requested, Math.max(0, v.duration - .001));
+            resumeTime.current = t; v.currentTime = t; setPosition(t);
+          }} />
         <span>{position.toFixed(1)} / 6s</span>
       </label>
       </details>

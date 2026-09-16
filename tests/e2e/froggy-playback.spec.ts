@@ -1,5 +1,9 @@
 import { expect, test } from "@playwright/test";
-import { waitForHydratedServerAction } from "../helpers/react-readiness";
+import { installNextDevelopmentRefreshControl, waitForHydratedServerAction } from "../helpers/react-readiness";
+
+test.beforeEach(async ({ page }) => {
+  await installNextDevelopmentRefreshControl(page);
+});
 
 test("plays one reduced-motion preview in isolation", async ({ page }) => {
   await page.emulateMedia({ reducedMotion: "reduce" });
@@ -9,6 +13,7 @@ test("plays one reduced-motion preview in isolation", async ({ page }) => {
   await waitForHydratedServerAction(login);
   await login.click();
   await expect(page).toHaveURL(/\/today$/);
+  await expect(page.getByRole("heading", { name: "Today", exact: true })).toBeVisible();
   await page.goto("/program");
   await page.getByRole("button", { name: "View Incline Dumbbell Curl form", exact: true }).click();
   const player = page.getByTestId("froggy-player");
@@ -31,6 +36,7 @@ test("cycles every supported form through Avoid and back to Do during natural pl
   await waitForHydratedServerAction(login);
   await login.click();
   await expect(page).toHaveURL(/\/today$/);
+  await expect(page.getByRole("heading", { name: "Today", exact: true })).toBeVisible();
   await page.goto("/program");
   // Review one visible preview at a time, as in the normal form-viewing flow.
   // Keep CI media workload comparable to one-exercise viewing.
@@ -102,4 +108,40 @@ test("cycles every supported form through Avoid and back to Do during natural pl
   await page.screenshot({ path: `output/playwright/workout-field-fixes/overhead-${test.info().project.name}.png` });
   await page.keyboard.press("Escape");
   await expect(dialog).toHaveCount(0);
+});
+
+test("scrubbing to the end preserves the tip and explicit pause before replay", async ({ page }) => {
+  await page.goto("/sign-in");
+  await page.getByPlaceholder("allowlisted email").fill("owner@example.com");
+  const login = page.getByRole("button", { name: "Dev login", exact: true });
+  await waitForHydratedServerAction(login);
+  await login.click();
+  await expect(page).toHaveURL(/\/today$/);
+  await expect(page.getByRole("heading", { name: "Today", exact: true })).toBeVisible();
+  await page.goto("/program");
+  await page.getByRole("button", { name: "View Incline Dumbbell Curl form", exact: true }).click();
+  const player = page.getByTestId("froggy-player");
+  await player.scrollIntoViewIfNeeded();
+  const video = player.locator("video");
+  await expect.poll(() => video.evaluate((v: HTMLVideoElement) => v.currentTime)).toBeGreaterThan(.1);
+  await player.getByRole("button", { name: "Pause form animation", exact: true }).click();
+  const banner = player.locator("[data-form-banner]");
+  const tip = await banner.getAttribute("data-form-banner");
+  await player.getByText("Playback options", { exact: true }).click();
+  const position = player.getByRole("slider", { name: "Demonstration position" });
+  await position.focus();
+  await position.press("End");
+  await expect.poll(() => video.evaluate((v: HTMLVideoElement) => v.currentTime)).toBeGreaterThan(5.9);
+  await page.waitForTimeout(1200);
+  await expect.poll(() => video.evaluate((v: HTMLVideoElement) => v.paused)).toBe(true);
+  await expect(banner).toHaveAttribute("data-form-banner", tip!);
+  await player.getByRole("button", { name: "Resume form animation", exact: true }).click();
+  await expect.poll(() => video.evaluate((v: HTMLVideoElement) => v.currentTime), { timeout: 5000 }).toBeLessThan(2);
+  await expect(banner).toHaveAttribute("data-form-banner", tip!);
+  // One complete replay, rather than the manual seek, advances the next tip.
+  await expect(banner).not.toHaveAttribute("data-form-banner", tip!, { timeout: 10000 });
+  await player.getByRole("button", { name: "Pause form animation", exact: true }).click();
+  const pausedTime = await video.evaluate((v: HTMLVideoElement) => v.currentTime);
+  await page.waitForTimeout(1200);
+  expect(await video.evaluate((v: HTMLVideoElement) => v.currentTime)).toBeCloseTo(pausedTime, 1);
 });
