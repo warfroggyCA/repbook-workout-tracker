@@ -512,6 +512,48 @@ Use 2 RIR.`;
     expect(p.questions).toHaveLength(1);
     expect(p.changes).toHaveLength(0);
   });
+  it("distinguishes repeated exercises by saved position in a clarification", () => {
+    const doc = current();
+    doc.days[0].exercises.push(
+      createDefaultProgramSlot(library[0].id, id(995)),
+    );
+    const text = "DAY 1\nBench Press:\nUse 2 RIR.";
+    const p = propose(text, doc);
+    expect(p.questions).toHaveLength(1);
+    const issue = p.interpretation!.issues[0];
+    expect(issue.candidates?.map((item) => item.name)).toEqual([
+      expect.stringContaining("exercise 1"),
+      expect.stringContaining("exercise 3"),
+    ]);
+    const chosen = proposeContextualProgramEdit(doc, text, library, null, {
+      [issue.key]: id(995),
+    });
+    expect(chosen.questions).toEqual([]);
+    const next = apply(chosen);
+    expect(next.days[0].exercises[0]).toEqual(doc.days[0].exercises[0]);
+    expect(next.days[0].exercises[2].notes).toBe("Use 2 RIR");
+  });
+  it.each([
+    "Use 2 RIR with a controlled lowering phase.",
+    "Use 2 reps in reserve and brace tightly, with rack safeties.",
+  ])("does not erase an inseparable technique cue: %s", (saved) => {
+    const result = mergeEffortNotes(saved, "Use 1–2 RIR", "modify");
+    expect(result.question).toBeTruthy();
+    expect(result.value).toBe(saved);
+  });
+  it("does not erase earlier targets when an old sentence covers all sets", () => {
+    const saved = "Target 2 RIR on all sets.";
+    expect(
+      mergeEffortNotes(saved, "The final set may reach RPE 9–9.5", "modify"),
+    ).toMatchObject({ value: saved, question: expect.any(String) });
+    expect(
+      mergeEffortNotes(
+        "Earlier sets: 2 RIR. Final set: RPE 8.",
+        "Earlier sets: 1–2 RIR",
+        "modify",
+      ).value,
+    ).toContain("Final set: RPE 8");
+  });
   it.each(["", "x".repeat(20001), "Use 2 RIR\u202e"])(
     "rejects invalid input before interpretation",
     (text) => {
