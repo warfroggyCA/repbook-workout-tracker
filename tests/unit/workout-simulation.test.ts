@@ -134,6 +134,31 @@ describe("workout simulation local model", () => {
       .toEqual([[1, 0, 15], [1, 1, 15], [1, 2, 60], [2, 0, 15], [2, 1, 15], [2, 2, 0]]);
   });
 
+  it.each([1, 2, 3])("retains preparation for zero-set group member at slot %s", (slotIndex) => {
+    const createId = ids();
+    const plan = source();
+    const preparationOnly = plan.days[0].exercises[slotIndex];
+    preparationOnly.sets = 0;
+    preparationOnly.warmups = [
+      { id: "preparation-only", label: "Retained rehearsal", orderIdx: 0, note: null },
+    ];
+    const workspace = startSimulationWorkout(
+      createSimulationWorkspace(plan, { createId, nowISO: "2026-07-22T12:01:00.000Z" }),
+      0,
+      { createId, nowISO: "2026-07-22T12:02:00.000Z" },
+    );
+    const occurrences = workspace.activeWorkout!.occurrences;
+    const members = plan.days[0].exercises.slice(1);
+    const activeMembers = members.filter((member) => member.sets > 0);
+    expect(occurrences.slice(4).map((item) => [item.kind, item.plannedExerciseId])).toEqual([
+      ...members.map((member) => [member.sets > 0 ? "working_set" : "exercise_warmup", member.exerciseId]),
+      ...activeMembers.map((member) => ["working_set", member.exerciseId]),
+    ]);
+    expect(occurrences.filter((item) => item.label === "Retained rehearsal")).toHaveLength(1);
+    expect(occurrences.filter((item) => item.groupId === "tri" && item.kind === "working_set")
+      .map((item) => item.restAfterSec)).toEqual([15, 60, 15, 0]);
+  });
+
   it("runs every prescribed set in a legacy unequal group and skips exhausted members", () => {
     const createId = ids();
     const uneven = source();
