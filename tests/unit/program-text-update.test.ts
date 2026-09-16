@@ -326,7 +326,7 @@ describe("contextual program text edits", () => {
     ).toEqual([0, 1]);
   });
 
-  it("keeps unanswered conditional changes separate", () => {
+  it("blocks apply until every conditional instruction is resolved", () => {
     const p = buildProgramTextProposal(
       current(),
       { changes: [], questions: ["Adopt the proposed substitution?"] },
@@ -334,7 +334,7 @@ describe("contextual program text edits", () => {
       library,
     );
     expect(p.changes).toEqual([]);
-    expect(applyProgramTextChanges(current(), p, new Set())).toEqual(current());
+    expect(() => applyProgramTextChanges(current(), p, new Set())).toThrow(/clarification/);
   });
   it.each([
     "duration",

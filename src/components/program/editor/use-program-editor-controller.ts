@@ -384,7 +384,7 @@ export function useProgramEditorController({
           setCoachMessage("The draft changed while preparing your proposal. Compare again."); return;
         }
         setTextProposal(result.proposal);
-        setAcceptedTextChanges(new Set(result.proposal.changes.map((change) => change.id)));
+        setAcceptedTextChanges(new Set(result.proposal.questions.length ? [] : result.proposal.changes.map((change) => change.id)));
         return;
       }
       const result = await buildProgramRoutineDraft(

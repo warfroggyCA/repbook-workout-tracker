@@ -80,6 +80,12 @@ beforeEach(() => {
   mocks.generate.mockRejectedValue(new Error("AI must not be called"));
 });
 describe("program text action", () => {
+  it("returns a blocking clarification when individually parsed operations cannot be safely combined", async () => {
+    const result = await proposeProgramTextUpdate({ ...input, text: "Before Synthetic press: 10 kg × 7.\nSet Synthetic press to 4 sets.\nSet Synthetic press to 5 sets." });
+    expect(result).toMatchObject({ ok: true, proposal: { baseDocument: document, changes: [], questions: [expect.stringContaining("could not be combined safely")] } });
+    expect(mocks.generate).not.toHaveBeenCalled();
+    expect(mocks.draft).toHaveBeenCalledTimes(2);
+  });
   it("uses the authenticated saved document and prepares edits without configured AI or writes", async () => {
     expect(await proposeProgramTextUpdate(input)).toMatchObject({
       ok: true,
