@@ -169,6 +169,8 @@ media `ended` event, rewinds, and explicitly resumes through its existing
 visibility/user-pause guard. It does not use the native `loop` attribute, which
 can stall the media pipeline at the beginning of a repetition. Presented-frame
 callbacks continue to align the form pointers, independently of cue advancement.
+Readiness and visibility callbacks leave ended clips to the completion handler;
+they cannot consume the finished repetition by calling `play()` first.
 Manual scrubbing to the end retains the current tip and pause choice; its first
 restart does not count as a completed repetition. Mode changes and viewer
 remounts retain the current guidance and playback settings. No wall-clock timer

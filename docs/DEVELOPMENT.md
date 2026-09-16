@@ -953,7 +953,8 @@ superset-preparation browser suite covers immutable ordering, fractional-load
 readability and set delivery. `npm run test:e2e:workout-field-fixes` uses the
 disposable Froggy fixture to verify all 23 catalog-entry previews naturally reach Avoid and
 return to Do in Chromium and WebKit, plus phone-sized pause/resume behavior.
-An isolated reduced-motion case checks metadata-only startup and cue playback.
+An isolated reduced-motion case checks metadata-only startup and cue playback,
+including readiness delivered immediately before each natural completion.
 This media suite runs first in the baseline-history group so playback failures
 surface promptly; the same History suites still run afterward. Bounded synthetic
 media events and timeline samples are printed when the isolated preview fails.
