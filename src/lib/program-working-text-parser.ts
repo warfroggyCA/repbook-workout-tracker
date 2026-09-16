@@ -721,9 +721,20 @@ export function parseWorkingTextUpdate(
       continue;
     }
     if (/^this request does not approve\b.*\bload proposal$/i.test(text)) {
-      if (context)
-        assertions.push({ target: context, field: "load", source: line.text });
-      else
+      const reference =
+        /^this request does not approve (?:the )?(?:pending )?(.+?) load proposal$/i.exec(
+          text,
+        )?.[1];
+      const target = reference
+        ? /^(?:this|current) exercise(?:'s)?$/i.test(reference)
+          ? context
+          : resolve(reference)
+        : null;
+      if (target) assertions.push({ target, field: "load", source: line.text });
+      else if (
+        !reference ||
+        /^(?:this|current) exercise(?:'s)?$/i.test(reference)
+      )
         ask(
           `Name the exact exercise whose load must stay unchanged: “${text}”.`,
         );
@@ -1090,11 +1101,12 @@ export function parseWorkingTextUpdate(
             ask(
               `KEEP order does not match the saved Program: “${text}”. Confirm whether the order should change.`,
             );
-          assertions.push({
-            target: first,
-            field: "reorder",
-            source: line.text,
-          });
+          for (const target of [first, second])
+            assertions.push({
+              target,
+              field: "reorder",
+              source: line.text,
+            });
         }
         context = null;
         continue;
@@ -1246,7 +1258,15 @@ export function parseWorkingTextUpdate(
           (("slotId" in op && op.slotId === constraint.target.slot.lineageId) ||
             (constraint.field === "reorder" && op.kind === "reorder")),
       );
-    if (operations.some((op) => fieldFor(op) === constraint.field))
+    if (
+      operations.some(
+        (op) =>
+          op.kind === "remove" ||
+          // Replacements retain the progression rule, but change exercise identity.
+          (op.kind === "replace" && constraint.field !== "progressionRuleId") ||
+          fieldFor(op) === constraint.field,
+      )
+    )
       ask(
         `A change conflicts with a KEEP constraint: “${constraint.source}”. Resolve the contradiction before applying any changes.`,
       );

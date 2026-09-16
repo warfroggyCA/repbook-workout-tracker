@@ -453,6 +453,37 @@ Compare progress at similar technique and range.`;
     expect(parsed.questions.join()).toContain("KEEP");
     expect(after.days[3].exercises[0].exerciseId).toBe(library[8].id);
   });
+  it.each([
+    "Day D\nKeep Zottman Curl as Zottman Curl—not Hammer Curl\nRemove Zottman Curl",
+    "Day A\nKEEP:\nflat bench: 3 × 8–12\nCHANGE:\nRemove flat bench",
+    "Day A\nKEEP:\nflat bench: 3 × 8–12\nCHANGE:\nReplace flat bench with Hammer Curl",
+    "Day C\nKEEP:\nIncline Bench before RDL\nCHANGE:\nRemove RDL",
+    "Day C\nKEEP:\nIncline Bench before RDL\nCHANGE:\nReplace RDL with Hammer Curl",
+  ])(
+    "protects preserved exercise identity and both order anchors: %s",
+    (text) => {
+      expect(check(text).parsed.questions.join()).toContain("KEEP");
+    },
+  );
+  it("binds a protected proposal load to the named exercise rather than preceding context", () => {
+    const text =
+      "Day A\nBack Squat: Leave 2 repetitions in reserve\nThis request does not approve the pending Bench load proposal\nSet flat bench to 35 kg";
+    expect(check(text).parsed.questions.join()).toContain("KEEP");
+    expect(
+      check(
+        text.replace("Bench load proposal", "Unknown Lift load proposal"),
+      ).parsed.questions.join(),
+    ).toContain("does not identify");
+  });
+  it("allows a replacement to retain the existing progression rule", () => {
+    const { parsed, after } = check(
+      "Day B\nReplace Triceps Pushdown with Dumbbell Overhead Triceps Extension\nKeep existing progression rules",
+    );
+    expect(parsed.questions).toEqual([]);
+    expect(after.days[1].exercises[2].progressionRuleId).toBe(
+      current().days[1].exercises[2].progressionRuleId,
+    );
+  });
   it("refuses unavailable replacements and alias collisions", () => {
     const unavailable = library.map((item, index) =>
       index === 5 ? { ...item, available: false } : item,
