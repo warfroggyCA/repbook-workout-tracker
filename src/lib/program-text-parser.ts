@@ -36,8 +36,17 @@ export function parseProgramTextUpdate(
   const result = preparation
     ? parsePreparation(document, input, library, activeDayId)
     : parseWorkingTextUpdate(document, input, library, activeDayId);
-  if (preparation && (result.changes.some((change) => change.operations.some((operation) => operation.kind !== "warmup")) || /(?:^|\n)\s*(?:keep|clarify|change(?:\s*\/\s*clarify)?)\s*:/i.test(input))) {
-    result.questions = ["This request mixes preparation blocks with working changes or preservation sections. Compare them separately so preparation context cannot reinterpret a working instruction.", ...result.questions].slice(0, 20);
+  if (
+    preparation &&
+    (result.changes.some((change) =>
+      change.operations.some((operation) => operation.kind !== "warmup"),
+    ) ||
+      /(?:^|\n)\s*(?:keep|clarify|change(?:\s*\/\s*clarify)?)\s*:/i.test(input))
+  ) {
+    result.questions = [
+      "This request mixes preparation blocks with working changes or preservation sections. Compare them separately so preparation context cannot reinterpret a working instruction.",
+      ...result.questions,
+    ].slice(0, 20);
   }
   const checked = programUpdateSchema.safeParse(result);
   if (!checked.success)

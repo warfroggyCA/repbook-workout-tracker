@@ -26,6 +26,16 @@ type Dose = {
   unit?: "lb" | "kg";
 };
 const clean = (value: string) => value.trim().replace(/[.;]$/, "").trim();
+const effortTarget = (value: string) =>
+  /^(?:(?:leave|use|aim for|target|retain|keep)\s+)?(?:(?:approximately|about)\s+)?\d+(?:\.\d+)?(?:\s*[–—-]\s*\d+(?:\.\d+)?)?\s*(?:(?:technically sound\s+)?repetitions? in reserve|RIR|RPE)\b/i.test(
+    value,
+  );
+const shownValue = (field: string, value: unknown) =>
+  Array.isArray(value)
+    ? value[0] == null
+      ? "unspecified"
+      : value.join(field === "reps" ? "–" : " ")
+    : String(value ?? "unspecified");
 const numberWords: Record<string, string> = {
   one: "1",
   two: "2",
@@ -165,6 +175,7 @@ export function parseWorkingTextUpdate(
       fields: Map<string, string>;
       notes: string[];
       noteMode: "append" | "replace" | null;
+      notesCleared: boolean;
     }
   >();
   const assertions: Array<{
@@ -271,7 +282,14 @@ export function parseWorkingTextUpdate(
         sourceQuote: line.source.slice(0, 1000),
         operations: [],
       };
-      entry = { target, change, fields: new Map(), notes: [], noteMode: null };
+      entry = {
+        target,
+        change,
+        fields: new Map(),
+        notes: [],
+        noteMode: null,
+        notesCleared: false,
+      };
       edits.set(key(target), entry);
       changes.push(change);
     }
@@ -305,7 +323,15 @@ export function parseWorkingTextUpdate(
     }
     if (!entry.fields.has(field)) {
       entry.fields.set(field, encoded);
-      entry.change.operations.push(operation);
+      if (
+        !(
+          operation.kind === "slot_text" &&
+          operation.field === "notes" &&
+          operation.value === target.slot.notes &&
+          !entry.fields.has("replace")
+        )
+      )
+        entry.change.operations.push(operation);
     }
   };
   const base = (target: Target) => ({
@@ -346,7 +372,7 @@ export function parseWorkingTextUpdate(
         assertions.push({ target, field, expected, source: line.text });
         if (JSON.stringify(actual) !== JSON.stringify(expected))
           ask(
-            `KEEP does not match ${label(target)}: saved ${field} is ${JSON.stringify(actual)}, but your text says ${JSON.stringify(expected)}. Confirm whether to preserve the saved value or change it.`,
+            `KEEP does not match ${label(target)}: saved ${field === "restSec" ? "rest in seconds" : field} is ${shownValue(field, actual)}, but your text says ${shownValue(field, expected)}. Confirm whether to preserve the saved value or change it.`,
           );
       }
       return;
@@ -422,6 +448,27 @@ export function parseWorkingTextUpdate(
       return;
     }
     const entry = edit(target, line);
+    if (entry.notesCleared) {
+      ask(
+        `Both clearing and editing notes were requested for ${label(target)}. Choose one intent.`,
+      );
+      return;
+    }
+    if (
+      (mode === "replace" &&
+        entry.noteMode === "replace" &&
+        entry.notes.length &&
+        !entry.notes.includes(note)) ||
+      (effortTarget(note) &&
+        entry.notes.some(
+          (prior) => effortTarget(prior) && clean(prior) !== clean(note),
+        ))
+    ) {
+      ask(
+        `Several note replacements or effort targets were supplied for ${label(target)}. Combine them into one unambiguous intended note before applying changes.`,
+      );
+      return;
+    }
     if (entry.noteMode && entry.noteMode !== mode) {
       ask(
         `Both append and replace notes were requested for ${label(target)}. Choose one mode.`,
@@ -499,6 +546,7 @@ export function parseWorkingTextUpdate(
   };
 
   for (const raw of readLines(input)) {
+    if (questionCount > 20) break;
     const line = {
       ...raw,
       text: clean(
@@ -764,7 +812,14 @@ export function parseWorkingTextUpdate(
         : "replace";
       if (/^clear$/i.test(noteCommand[1]) && !noteCommand[3]) {
         const entry = edit(context, line);
+        if (entry.noteMode && !entry.notesCleared) {
+          ask(
+            `Both clearing and editing notes were requested for ${label(context)}. Choose one intent.`,
+          );
+          continue;
+        }
         entry.noteMode = "replace";
+        entry.notesCleared = true;
         entry.notes = [];
       } else if (noteCommand[3]) addNotes(context, line, noteCommand[3], mode);
       else ask(`Provide the note text for ${label(context)} after a colon.`);
@@ -1087,6 +1142,12 @@ export function parseWorkingTextUpdate(
       }
     }
     context = null;
+    if (section === "global") {
+      ask(
+        "The ALL DAYS section includes instructions about logging, effort, or other app behavior. If these are guidance only, label the section All days — Notes. Notes will not change logging validation, automatic progression, or Coach rules.",
+      );
+      continue;
+    }
     ask(
       `I could not resolve “${text}”. Name the day, exact exercise and requested change, or explicitly label authored guidance as exercise notes.`,
     );
@@ -1101,14 +1162,7 @@ export function parseWorkingTextUpdate(
         entry.noteMode === "append" && !replacement
           ? entry.target.slot.notes
           : null;
-      if (
-        existing &&
-        entry.notes.some((note) =>
-          /^(?:(?:leave|use|aim for|target|retain|keep)\s+)?(?:(?:approximately|about)\s+)?\d+(?:\.\d+)?(?:\s*[–—-]\s*\d+(?:\.\d+)?)?\s*(?:(?:technically sound\s+)?repetitions? in reserve|RIR|RPE)\b/i.test(
-            note,
-          ),
-        )
-      ) {
+      if (existing && entry.notes.some(effortTarget)) {
         // Replace a standalone target-effort sentence, retaining all technique
         // and safety sentences. Mixed clauses need an explicit owner rewrite.
         const sentences = existing.split(/(?<=[.!?])\s+(?=[A-Z])/u);
@@ -1129,7 +1183,8 @@ export function parseWorkingTextUpdate(
             null;
       }
       const newNotes = entry.notes.filter(
-        (note) => !existing?.split("\n").includes(note),
+        (note) =>
+          !existing?.split("\n").some((prior) => clean(prior) === clean(note)),
       );
       const notes = [existing, ...newNotes].filter(Boolean).join("\n") || null;
       if ((notes?.length ?? 0) > 2000)
@@ -1248,9 +1303,5 @@ export function parseWorkingTextUpdate(
       }),
     }))
     .filter((change) => change.operations.length);
-  if (!proposed.length && !questionCount)
-    ask(
-      "The request contains only preserved values or context. No Program changes are needed; describe a specific edit if one was intended.",
-    );
   return { changes: proposed, questions };
 }

@@ -8,7 +8,8 @@
     "A failed final review-stage write discards and redacts every staged routine artifact instead of returning a partial success."
   ],
   "src/app/actions/program-text-update.ts": [
-    "Read-only local proposal lookup or validation failures return explicit recoverable user copy, preserve the request, and perform no Program write; raw authored content and database exception details are intentionally omitted from diagnostics."
+    "Read-only local proposal lookup or validation failures return explicit recoverable user copy, preserve the request, and perform no Program write; raw authored content and database exception details are intentionally omitted from diagnostics.",
+    "Pure proposal-combination validation failures become a blocking clarification with zero prepared changes; revision fencing still runs, and authored content or validation payloads must not enter server diagnostics."
   ],
   "src/services/program-activation.ts": [
     "A reviewed schema-three document that cannot project into the version-two preflight contract is rejected with safe review copy."

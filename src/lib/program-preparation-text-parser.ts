@@ -246,7 +246,8 @@ export function parseProgramTextUpdate(
     if (!questions.includes(bounded) && questions.length < 20)
       questions.push(bounded);
     else if (!questions.includes(bounded))
-      questions[19] = "More preparation instructions remain unresolved. Resolve the listed questions or split the request, then compare again. No part can be applied while clarification is needed.";
+      questions[19] =
+        "More preparation instructions remain unresolved. Resolve the listed questions or split the request, then compare again. No part can be applied while clarification is needed.";
   };
   const key = (target: Target) =>
     `${target.day.lineageId}:${target.slot?.lineageId ?? "general"}`;
@@ -354,8 +355,15 @@ export function parseProgramTextUpdate(
     )
       return;
     const item = preparationItem(line.text);
-    if (current.some((prep) => prep.slot) && !item && /^[^:]+:/.test(line.text) && !/^(?:notes?|guidance|cues?):/i.test(line.text)) {
-      question(`“${line.text}” looks like a new exercise or instruction heading. Use Before [exercise]: for preparation, or compare working notes separately; it has not been attached to the previous lift.`);
+    if (
+      current.some((prep) => prep.slot) &&
+      !item &&
+      /^[^:]+:/.test(line.text) &&
+      !/^(?:notes?|guidance|cues?):/i.test(line.text)
+    ) {
+      question(
+        `“${line.text}” looks like a new exercise or instruction heading. Use Before [exercise]: for preparation, or compare working notes separately; it has not been attached to the previous lift.`,
+      );
       return;
     }
     for (const prep of current) {

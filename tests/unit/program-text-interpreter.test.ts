@@ -138,15 +138,26 @@ Zottman Curl: Use a controlled lowering phase.
 ALL DAYS — NOTES
 Record actual effort honestly.
 Compare progress at similar technique and range.`;
-    const before = current(), { parsed, after } = check(request, before);
+    const before = current(),
+      { parsed, after } = check(request, before);
     expect(parsed.questions).toEqual([]);
-    expect(after.days[1].exercises[2]).toMatchObject({ exerciseId: library[5].id, sets: 2, repMin: 9, repMax: 13, restSec: 75, targetLoad: null });
+    expect(after.days[1].exercises[2]).toMatchObject({
+      exerciseId: library[5].id,
+      sets: 2,
+      repMin: 9,
+      repMax: 13,
+      restSec: 75,
+      targetLoad: null,
+    });
     for (const [dayIndex, day] of before.days.entries()) {
       expect(after.days[dayIndex].supersets).toEqual(day.supersets);
       expect(after.days[dayIndex].warmupItems).toEqual(day.warmupItems);
       for (const [slotIndex, slot] of day.exercises.entries()) {
         if (dayIndex === 1 && slotIndex === 2) continue;
-        expect({ ...after.days[dayIndex].exercises[slotIndex], notes: slot.notes }).toEqual(slot);
+        expect({
+          ...after.days[dayIndex].exercises[slotIndex],
+          notes: slot.notes,
+        }).toEqual(slot);
       }
     }
     expect(after.days[3].exercises[0].exerciseId).toBe(library[8].id);
@@ -268,6 +279,26 @@ Compare progress at similar technique and range.`;
     const cleared = check("Clear notes for flat bench");
     expect(cleared.parsed.questions).toEqual([]);
     expect(cleared.after.days[0].exercises[0].notes).toBeNull();
+  });
+  it.each([
+    "Clear notes for flat bench\nReplace notes for flat bench: Use the safeties",
+    "Replace notes for flat bench: Use the safeties\nClear notes for flat bench",
+    "Replace notes for flat bench: Use the safeties\nReplace notes for flat bench: Use a spotter",
+    "Day A\nBench: Leave 2 RIR\nBench: Leave 3 RIR",
+  ])("requires clarification for conflicting notes: %s", (request) => {
+    const { parsed, after } = check(request);
+    expect(parsed.questions.length).toBeGreaterThan(0);
+    expect(after).toEqual(current());
+  });
+  it("treats repeated notes and matching KEEP constraints as no changes needed", () => {
+    const repeated = check(
+      "Append notes for flat bench: Use a controlled lowering phase.",
+    );
+    expect(repeated.parsed).toEqual({ changes: [], questions: [] });
+    expect(check("Day A\nKEEP:\nflat bench: 3 × 8–12").parsed).toEqual({
+      changes: [],
+      questions: [],
+    });
   });
   it("updates a standalone effort target while preserving technique and safety guidance", () => {
     const before = current();
