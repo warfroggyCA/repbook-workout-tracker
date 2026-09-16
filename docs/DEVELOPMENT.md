@@ -965,6 +965,11 @@ Another case retains a paused near-end frame through highlight-mode changes and
 expansion, then verifies that explicit resume progresses to the next tip.
 Playback completion uses the media `ended` event rather than native looping or
 an elapsed wall-clock timer.
+Frozen visible playback gets two bounded recovery attempts: pause/resume, then
+reload at the retained position. Persistent stalls expose Retry and the written
+tips. Recovery never advances guidance and pauses while hidden or user-paused.
+Fault-injection browser cases cover recovery, unchanged tips, bounded failure,
+explicit retry and preserving Pause for longer than the recovery interval.
 
 Browser checks must include direct weight entry, switching adjustment size
 without changing the draft, expanded form/history details, enlarged text,

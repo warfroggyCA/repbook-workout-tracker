@@ -68,6 +68,8 @@ export default function FroggyFormPlayer({ demoKey, initialSnapshot, onSnapshot 
   const pauseIntent = useRef(initial.userPaused);
   const seekToEnd = useRef(false);
   const syncPlayback = useRef<() => void>(() => {});
+  const resetPlaybackHealth = useRef<() => void>(() => {});
+  const playbackFailed = useRef(false);
   const [hint, setHint] = useState(() => {
     try { return !sessionStorage.getItem("froggy-tap-hint"); } catch { return true; }
   });
@@ -124,24 +126,59 @@ export default function FroggyFormPlayer({ demoKey, initialSnapshot, onSnapshot 
     const seek = () => paint(v.currentTime);
     const sync = () => {
       if (disposed) return;
-      if (!visible || document.hidden || pauseIntent.current) { v.pause(); return; }
+      if (!visible || document.hidden || pauseIntent.current || playbackFailed.current) { v.pause(); return; }
       // WebKit can queue canplay before ended after replenishing buffered data.
       // play() at that point rewinds and clears ended before our completion
       // handler can advance the tip. Only that handler owns an ended replay.
       if (v.ended) return;
       if (v.readyState >= HTMLMediaElement.HAVE_METADATA && v.paused) void v.play().then(() => {
-        if (disposed || !visible || document.hidden || pauseIntent.current) v.pause();
-      }).catch(() => { if (!disposed && visible && !pauseIntent.current) setStatus("Tap to play"); });
+        if (disposed || !visible || document.hidden || pauseIntent.current || playbackFailed.current) v.pause();
+      }).catch(() => { if (!disposed && visible && !pauseIntent.current && !playbackFailed.current) setStatus("Tap to play"); });
     };
+    let sampledTime = v.currentTime, progressedAt = performance.now(), recoveryAttempts = 0;
+    const resetHealth = () => {
+      sampledTime = v.currentTime; progressedAt = performance.now(); recoveryAttempts = 0;
+      playbackFailed.current = false;
+    };
+    resetPlaybackHealth.current = resetHealth;
+    // A media element can remain unpaused and buffering indefinitely after a
+    // replay. Recover only a visible, requested playback with no actual progress.
+    // Wall time never advances a tip. Two attempts bound network/decoder retries.
+    const healthTimer = setInterval(() => {
+      const now = performance.now();
+      if (disposed || playbackFailed.current) return;
+      if (!visible || document.hidden || pauseIntent.current || v.seeking) {
+        sampledTime = v.currentTime; progressedAt = now; return;
+      }
+      if (v.currentTime > sampledTime + .05) {
+        sampledTime = v.currentTime; progressedAt = now; recoveryAttempts = 0; return;
+      }
+      if (v.currentTime < sampledTime) sampledTime = v.currentTime;
+      if (now - progressedAt < 4000) return;
+      progressedAt = now;
+      if (recoveryAttempts >= 2) {
+        playbackFailed.current = true; v.pause(); setPlaying(false); setFailed(true);
+        setStatus("Video stalled. Retry playback, or read the form tips below.");
+        return;
+      }
+      recoveryAttempts++;
+      v.pause();
+      if (recoveryAttempts === 2) {
+        resumeTime.current = v.currentTime;
+        v.load();
+      } else sync();
+      setStatus("Recovering playback…");
+    }, 1000);
     // Native looping and seeking a finished decoder can stall at time zero
     // while still reporting unpaused. Reload the same resource after natural
     // completion; metadata resumes it through the existing pause/visibility guard.
     const complete = () => {
       // A queued ended event after a paused seek is not a played repetition.
-      if (disposed || pauseIntent.current || !froggyClipCompleted(v)) return;
+      if (disposed || playbackFailed.current || pauseIntent.current || !froggyClipCompleted(v)) return;
       if (!seekToEnd.current) setCue(c => (c + 1) % config.cues.length);
       seekToEnd.current = false;
       resumeTime.current = 0; setPosition(0);
+      resetHealth();
       v.load();
     };
     syncPlayback.current = sync;
@@ -153,7 +190,8 @@ export default function FroggyFormPlayer({ demoKey, initialSnapshot, onSnapshot 
     paint(v.currentTime);
     return () => {
       onSnapshot({ ...settings.current, time: Number.isFinite(v.duration) ? v.currentTime : resumeTime.current });
-      disposed = true; syncPlayback.current = () => {};
+      disposed = true; syncPlayback.current = () => {}; resetPlaybackHealth.current = () => {};
+      clearInterval(healthTimer);
       v.pause(); observer.disconnect(); document.removeEventListener("visibilitychange", hide);
       v.removeEventListener("seeked", seek);
       v.removeEventListener("ended", complete); v.removeEventListener("timeupdate", complete);
@@ -173,6 +211,7 @@ export default function FroggyFormPlayer({ demoKey, initialSnapshot, onSnapshot 
     const v = video.current!;
     resumeTime.current = v.currentTime;
     seekToEnd.current = false;
+    resetPlaybackHealth.current();
     v.pause(); setFailed(false); setStatus("Loading video…"); setMode(next);
   }
   function playPause() {
@@ -201,6 +240,7 @@ export default function FroggyFormPlayer({ demoKey, initialSnapshot, onSnapshot 
           aria-label={`${config.title} demonstration`}
           onLoadedMetadata={() => {
             const v = video.current!;
+            if (playbackFailed.current) return;
             // A newly loaded clip already starts at zero. Seeking to zero here
             // can stall WebKit's fresh decoder while it is still buffering.
             if (resumeTime.current > 0) {
@@ -213,11 +253,11 @@ export default function FroggyFormPlayer({ demoKey, initialSnapshot, onSnapshot 
             syncPlayback.current();
           }}
           onCanPlay={() => syncPlayback.current()}
-          onPlay={() => { setPlaying(true); setStatus("Playing"); }}
-          onPause={() => { setPlaying(false); setStatus(current => failed ? current : "Paused"); }}
-          onWaiting={() => setStatus("Buffering…")}
-          onPlaying={() => setStatus("Playing")}
-          onError={() => { setFailed(true); setPlaying(false); setStatus("Video unavailable. You can still read the form tips below."); }}
+          onPlay={() => { if (playbackFailed.current) { video.current?.pause(); return; } setPlaying(true); setStatus("Playing"); }}
+          onPause={() => { setPlaying(false); setStatus(current => playbackFailed.current ? current : "Paused"); }}
+          onWaiting={() => { if (!playbackFailed.current) setStatus("Buffering…"); }}
+          onPlaying={() => { if (!playbackFailed.current) setStatus("Playing"); }}
+          onError={() => { playbackFailed.current = true; setFailed(true); setPlaying(false); setStatus("Video unavailable. You can still read the form tips below."); }}
           onTimeUpdate={() => {
             const v = video.current!;
             setPosition(v.currentTime);
@@ -248,7 +288,7 @@ export default function FroggyFormPlayer({ demoKey, initialSnapshot, onSnapshot 
         </span>}
       </div>
       <div className="flex flex-wrap gap-2">
-        {failed && <Button type="button" onClick={() => { setFailed(false); setStatus("Loading video…"); video.current?.load(); }}>Retry video</Button>}
+        {failed && <Button type="button" onClick={() => { resetPlaybackHealth.current(); setFailed(false); setStatus("Loading video…"); video.current?.load(); }}>Retry video</Button>}
       </div>
       <details className="text-sm">
         <summary className="cursor-pointer py-2 font-medium">Playback options</summary>
