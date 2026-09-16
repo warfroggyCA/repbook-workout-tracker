@@ -7,11 +7,8 @@ import { isProgramEditorEnabled } from "@/lib/program-editor-feature";
 import { getOpenProgramDraft } from "@/services/program-drafts";
 import { getLibraryWithAvailability } from "@/services/routine-import";
 import { loadVisibleExercises } from "@/services/exercise-map";
-import { parseProgramTextUpdate } from "@/lib/program-text-parser";
-import {
-  buildProgramTextProposal,
-  type ProgramTextProposal,
-} from "@/lib/program-text-update";
+import { proposeContextualProgramEdit } from "@/lib/program-contextual-edit";
+import { type ProgramTextProposal } from "@/lib/program-text-update";
 
 const requestSchema = z
   .object({
@@ -19,6 +16,19 @@ const requestSchema = z
     draftId: z.string().uuid(),
     revision: z.number().int().nonnegative(),
     activeDayId: z.string().uuid().nullable(),
+    answers: z
+      .record(z.string().max(21000), z.string().uuid())
+      .refine(
+        (value) =>
+          Object.keys(value).length <= 40 &&
+          Object.keys(value).join("").length <= 60000,
+      )
+      .optional(),
+    appliedKeys: z
+      .array(z.string().max(21000))
+      .max(200)
+      .refine((value) => value.join("").length <= 60000)
+      .optional(),
   })
   .strict();
 export async function proposeProgramTextUpdate(
@@ -64,25 +74,28 @@ export async function proposeProgramTextUpdate(
         exercise.aliases.map((item) => item.alias),
       ]),
     );
-    const result = parseProgramTextUpdate(
-      current,
-      parsed.data.text,
-      library.map((exercise) => ({
-        ...exercise,
-        aliases: aliases.get(exercise.id) ?? [],
-      })),
-      parsed.data.activeDayId,
-    );
     // Parsing is local: no provider request, AI quota claim, or raw paste storage.
     // Accepted edits use existing autosave, revision and publication boundaries.
     let proposal: ProgramTextProposal;
     try {
-      proposal = buildProgramTextProposal(current, result, parsed.data.text, library);
+      proposal = proposeContextualProgramEdit(
+        current,
+        parsed.data.text,
+        library.map((exercise) => ({
+          ...exercise,
+          aliases: aliases.get(exercise.id) ?? [],
+        })),
+        parsed.data.activeDayId,
+        parsed.data.answers,
+        parsed.data.appliedKeys,
+      );
     } catch {
       proposal = {
         baseDocument: current,
         changes: [],
-        questions: ["The instructions could not be combined safely with this saved Program's groups, identities, or prescription limits. Separate the structural changes from target changes and compare again. No changes were prepared."],
+        questions: [
+          "The instructions could not be combined safely with this saved Program's groups, identities, or prescription limits. Separate the structural changes from target changes and compare again. No changes were prepared.",
+        ],
       };
     }
     const latest = await getOpenProgramDraft(db, user.id);

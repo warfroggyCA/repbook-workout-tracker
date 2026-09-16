@@ -42,6 +42,7 @@ export function useProgramEditorController({
   ownerId,
   library,
   initialPrompt,
+  onPromptChange,
   initialDayId,
   initialRemovalRequest,
   initialReplacementRequest,
@@ -49,6 +50,7 @@ export function useProgramEditorController({
   ownerId: string;
   library: ExerciseDiscoveryItem[];
   initialPrompt?: string;
+  onPromptChange?: (text: string) => void;
   initialDayId: string | null;
   initialRemovalRequest: ProgramSlotRemovalRequest | null;
   initialReplacementRequest: ProgramSlotReplacementRequest | null;
@@ -61,9 +63,10 @@ export function useProgramEditorController({
   const [discarding, setDiscarding] = useState(false);
   const [restoringId, setRestoringId] = useState<string | null>(null);
   const [coachPrompt, setCoachPrompt] = useState(initialPrompt ?? "");
+  useEffect(() => { onPromptChange?.(coachPrompt); }, [coachPrompt, onPromptChange]);
   const [coachMode, setCoachMode] = useState<ProgramUpdateMode>("update");
-  const latestCoachRequest = useRef({ text: coachPrompt, mode: coachMode });
-  useEffect(() => { latestCoachRequest.current = { text: coachPrompt, mode: coachMode }; }, [coachPrompt, coachMode]);
+  const latestCoachRequest = useRef({ text: coachPrompt, mode: coachMode, day: activeDayId });
+  useEffect(() => { latestCoachRequest.current = { text: coachPrompt, mode: coachMode, day: activeDayId }; }, [coachPrompt, coachMode, activeDayId]);
   const [coachBuilding, setCoachBuilding] = useState(false);
   const [coachMessage, setCoachMessage] = useState<string | null>(null);
   const [pairingDayId, setPairingDayId] = useState<string | null>(null);
@@ -84,6 +87,10 @@ export function useProgramEditorController({
   } | null>(null);
   const [textProposal, setTextProposal] = useState<ProgramTextProposal | null>(null);
   const proposalRequestRef = useRef(false);
+  const [textAnswers, setTextAnswers] = useState<Record<string, string>>({});
+  const [appliedInstructionKeys, setAppliedInstructionKeys] = useState<string[]>([]);
+  const latestAnswers = useRef(textAnswers);
+  useEffect(() => { latestAnswers.current = textAnswers; }, [textAnswers]);
   const [acceptedTextChanges, setAcceptedTextChanges] = useState<Set<string>>(new Set());
   const [acceptedCoachChanges, setAcceptedCoachChanges] = useState<Set<string>>(new Set());
   const [confirmDiscard, setConfirmDiscard] = useState(false);
@@ -377,14 +384,14 @@ export function useProgramEditorController({
           setCoachMessage("Wait for your draft to finish saving, then compare again. Your request is still here.");
           return;
         }
-        const result = await proposeProgramTextUpdate({ text: coachPrompt, draftId: draftRef.current.id, revision: revisionRef.current, activeDayId });
-        if (latestCoachRequest.current.text !== coachPrompt || latestCoachRequest.current.mode !== coachMode) { setCoachMessage("Your request changed. Compare again to use the latest wording."); return; }
+        const result = await proposeProgramTextUpdate({ text: coachPrompt, draftId: draftRef.current.id, revision: revisionRef.current, activeDayId, answers: textAnswers, appliedKeys: appliedInstructionKeys });
+        if (latestCoachRequest.current.text !== coachPrompt || latestCoachRequest.current.mode !== coachMode || latestAnswers.current !== textAnswers || latestCoachRequest.current.day !== activeDayId) { setCoachMessage("Your request changed. Compare again to use the latest wording."); return; }
         if (!result.ok) { setCoachMessage(result.reason); return; }
         if (JSON.stringify(documentRef.current) !== JSON.stringify(result.proposal.baseDocument)) {
           setCoachMessage("The draft changed while preparing your proposal. Compare again."); return;
         }
         setTextProposal(result.proposal);
-        setAcceptedTextChanges(new Set(result.proposal.questions.length ? [] : result.proposal.changes.map((change) => change.id)));
+        setAcceptedTextChanges(new Set(result.proposal.questions.length && !result.proposal.interpretation ? [] : result.proposal.changes.filter((change) => !change.blocked).map((change) => change.id)));
         return;
       }
       const result = await buildProgramRoutineDraft(
@@ -425,7 +432,11 @@ export function useProgramEditorController({
     try {
       const next = applyProgramTextChanges(documentRef.current, textProposal, acceptedTextChanges);
       updateDocument(() => next);
-      setTextProposal(null);
+      const applied = textProposal.changes.filter((change) => acceptedTextChanges.has(change.id));
+      setAppliedInstructionKeys((prior) => [...new Set([...prior, ...applied.flatMap((change) => change.instructionKeys ?? [])])]);
+      const remaining = textProposal.changes.filter((change) => !acceptedTextChanges.has(change.id));
+      setTextProposal(textProposal.interpretation && (remaining.length || textProposal.questions.length) ? { ...textProposal, baseDocument: next, changes: remaining } : null);
+      setAcceptedTextChanges(new Set());
       setCoachMessage("Coach's proposal is now your editable draft. Review and publish when ready; active workouts and History stay unchanged.");
     } catch (error) {
       setCoachMessage(error instanceof Error ? error.message : "The proposal could not be applied. Your draft is unchanged.");
@@ -696,6 +707,7 @@ export function useProgramEditorController({
     review, activeTab, activeDayId, reviewing, publishing, discarding, restoringId,
     coachPrompt, coachMode, coachBuilding, coachMessage, pairingDayId, pairingSlotIds,
     textProposal, setTextProposal, acceptedTextChanges, setAcceptedTextChanges, applyTextProposal,
+    textAnswers, setTextAnswers, appliedInstructionKeys, setAppliedInstructionKeys,
     expandedSlotId, coachProposal, acceptedCoachChanges, confirmDiscard, confirmRestore,
     pendingFutureRemovalRequest, futureRemovalTarget,
     pendingFutureReplacementRequest, futureReplacementTarget,

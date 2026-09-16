@@ -63,71 +63,66 @@ set total, publication fails closed.
 ## Free-form edits to an existing Program
 
 `program-text-update` reads the authenticated owner's exact saved draft and
-revision. `lib/program-text-parser.ts` interprets supported free-form instructions
-locally, returning bounded, source-quoted operations against existing day and
-slot identities, with unresolved requests as clarification questions. It matches
-visible catalog names/aliases and unique current-day variants; it does not use
-fuzzy matching to pick among ambiguous exercises.
-The server validates identities, available additions/replacements, warm-up
-loading and complete document invariants before returning a proposal. It checks
-the draft revision again after comparison. The client also refuses stale apply.
-Only selected operations enter normal draft autosave; Review and Publish retain
-their existing exact-revision and future-workout protections.
+revision. Existing-Program pastes at Import open the local edit flow by default;
+new-Program imports and staged full-routine reviews retain their separate flow.
+Switching between edit and import preserves the text in React memory.
 
-The entry point bounds input and routes preparation blocks to
-`program-preparation-text-parser.ts` and working edits to
-`program-working-text-parser.ts`. The working interpreter supports complete or
-individual prescriptions, exact lb/kg loads, same-unit relative loads against
-a saved target, replacements with attached prescriptions/notes, complete
-additions at explicit positions, ungrouped removals/moves, explicit notes, and
-the existing manual/hold/double-progression rule identifiers. It understands
-KEEP/CHANGE/CLARIFY sections, named/day-letter/day-number scopes, catalog
-aliases, and a small explicit abbreviation vocabulary. It never uses fuzzy
-matching to choose an exercise or drops variant words.
+Interpretation has two stages. `lib/program-edit-language.ts` extracts inherited
+day/exercise scopes, preservation assertions, authored notes, commands, and
+request constraints. `lib/program-contextual-edit.ts` resolves that intermediate
+request against the saved Program and lowers it to the existing operation
+contract. The working prescription parser remains the numeric/legacy grammar
+validator; preparation blocks retain their established anchor parser.
 
-Preservation assertions are checked against the saved Program and against all
-proposed edits. Contradictions, unavailable replacements, unknown scope,
-conditional edits, malformed numeric tails, unstated units, excess precision,
-ambiguous families, and unresolved instructions block the **entire** request.
-Recognized operations may be previewed, but both the UI and apply function
-refuse them until the request has no clarification questions. Editing the
-retained request invalidates the old proposal; comparison uses the new exact
-saved revision. Question output is bounded and reports overflow rather than
-claiming the remaining instructions were understood.
+`lib/program-edit-resolution.ts` ranks names and aliases using normalized tokens,
+identity hints and available metadata. Ranking points are deterministic ordering,
+not calibrated probabilities. A unique equivalent reference can resolve in its
+scope. Materially different positions, equipment or unilateral variants require
+a reviewed candidate choice. Answers are checked again against current candidates;
+an arbitrary client-supplied exercise ID cannot become a replacement.
 
-Each replacement and its attached edits is one selectable change. Replacement
-creates new slot lineage, clears the old movement's target load and guidance,
-and preserves its location, group membership, and progression rule. An explicit
-new load may be supplied. Subsequent operations within that same change resolve
-the new lineage. Ordinary notes append without removing technique guidance;
-an unambiguous standalone effort-target sentence may be replaced by a new
-effort target. Mixed existing effort/safety clauses require explicit note
-replacement. Explicit all-day notes remain guidance, not executable rules.
+Unmentioned fields remain unchanged. KEEP assertions compare saved values and
+explicit later edits. Recognized coaching prose becomes notes, including
+conditional effort guidance; executable conditional progression requires a
+concrete decision. Note replacement, append and effort modification have separate
+semantics. Separable technique guidance survives an effort edit, conflicting
+authored targets are held, and inseparable effort/safety prose needs an explicit
+complete note. No early-set target is invented from final-set guidance.
 
-Preparation parsing retains soft line wrapping, bullets, per-side cues and
-general/exercise-specific anchors. Each named preparation block replaces that
-anchor's preparation; unmentioned anchors and working fields stay unchanged.
-Repetition ranges that cannot fit an exact preparation field remain in step
-notes. Conditional removal blocks application of overlapping replacements,
-including a whole general-preparation block. Explicit preparation-only requests
-cannot edit working fields.
+Independent resolved changes can be applied while questions remain. Instructions
+that address the same exercise are atomic, including a replacement and its dose
+and notes. Ambiguous targets hold their possible members. Structural changes hold
+the affected day; unknown global meaning and request-level constraint conflicts
+cannot be bypassed by selecting another dependent edit. Family guidance expands
+within the day and asks only for unresolved terms. New groups require explicit
+rounds/rest; membership edits retain the existing group's validated timing.
 
-This is a bounded English interpreter, not general language understanding.
-Mixed preparation/structural requests, multiple dependent structural edits,
-group construction or rounds/rest changes, timed/metric conversions, schedules,
-equipment arithmetic, recent-history-derived loads, and arbitrary coaching or
-progression formulas require clarification or the appropriate manual editor.
-Historical and active workout records are outside this operation contract.
-Warm-up anchors are preserved; this path does not change the existing runtime's
-opening-preparation gating or automatically rescale measured warm-up loads.
+The preview shows old/new values, original source text, notes, and grouped
+members. Selected operations enter normal draft autosave; the retained request
+tracks applied instruction keys in memory so re-comparison does not replay a
+relative change. Editing unrelated sentences preserves those keys. Starting a
+new request explicitly resets them. Candidate changes and text changes invalidate
+stale comparisons. The server checks the saved revision again before returning;
+the client checks the base document before applying. Review and Publish retain
+their existing future-workout protections.
 
+Replacements create new slot lineage, clear movement-specific guidance and the
+old target load, and preserve position, group membership and progression. Explicit
+new loads are supported. The preview describes these replacement effects.
+Preparation blocks remain atomic when unresolved instructions could overlap an
+anchor replacement, including conditional removals. Preparation-only requests
+cannot modify working prescriptions. Mixed preparation/working instructions,
+timed metric conversions, schedule changes, equipment arithmetic and
+history-derived targets still require clarification or their dedicated editor.
+
+This remains a bounded English interpreter. Unknown meaning produces a question,
+not a guessed mutation. All proposals validate the complete Program document.
+Completed and active workout records are outside the operation contract; no
+schema, data migration, Coach policy or logging rule is changed by parsing notes.
 Raw edit requests remain in memory and are not added to AI parsing history.
-This update path makes no AI request or quota claim and needs no provider key
-or API credits. Unsupported text does not fall back to a paid provider. The
-Import entry point can carry text directly into the editor in React memory.
-Reloading before applying a proposal does not retain that raw text; applied
-changes use normal durable draft recovery. The full-routine importer and full
-replacement mode remain separate.
+There is no AI request, quota claim, provider key or paid fallback in this path.
+Full routine creation/import remains a separate workflow with its own canonical
+parser and optional provider requirements.
 
 ## Program paste intake contract
 

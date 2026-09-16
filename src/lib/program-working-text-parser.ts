@@ -55,7 +55,7 @@ const numeric = (value: string) =>
   );
 
 /** Consume the entire prescription. A recognized prefix cannot hide a second command. */
-function dose(value: string): Dose | null {
+export function parseProgramDose(value: string): Dose | null {
   let rest = numeric(clean(value)).replace(/\s+to\s+(?=\d)/gi, "–");
   const result: Dose = {};
   const combined =
@@ -846,7 +846,7 @@ export function parseWorkingTextUpdate(
     ) {
       context = resolve(prescription[1], workScope);
       if (!context) continue;
-      const values = dose(prescription[2]);
+      const values = parseProgramDose(prescription[2]);
       if (!values)
         ask(
           `Clarify the complete prescription for ${label(context)}: “${prescription[2]}”. Use 1–20 sets, ordered 1–100 reps, an exact rest up to 30 minutes, and an explicit lb/kg load.`,
@@ -970,7 +970,7 @@ export function parseWorkingTextUpdate(
         continue;
       }
       const exercise = resolveCatalog(add[1]),
-        values = dose(add[2]);
+        values = parseProgramDose(add[2]);
       if (!exercise) continue;
       if (
         !values ||
@@ -1059,7 +1059,7 @@ export function parseWorkingTextUpdate(
               `${label(context)} is not first in the saved day. Confirm whether to keep the current order or move it.`,
             );
         }
-        const values = dose(labelled[2]);
+        const values = parseProgramDose(labelled[2]);
         if (values) addDose(context, line, values, preserve);
         else if (labelled[2] && !preserve) addNotes(context, line, labelled[2]);
         else if (labelled[2])
@@ -1072,7 +1072,7 @@ export function parseWorkingTextUpdate(
         /^(?:suggested )?(?:starting )?prescription$/i.test(labelled[1]) &&
         context
       ) {
-        const values = dose(labelled[2]);
+        const values = parseProgramDose(labelled[2]);
         if (values) addDose(context, line, values);
         else
           ask(
@@ -1137,7 +1137,7 @@ export function parseWorkingTextUpdate(
       continue;
     }
     if (context && section !== "keep") {
-      const values = dose(text);
+      const values = parseProgramDose(text);
       if (values) {
         addDose(context, line, values);
         continue;

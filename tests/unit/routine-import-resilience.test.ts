@@ -394,7 +394,8 @@ Exercise notes: This cannot attach across a malformed ramp-up.`),
     ] as const) {
       const message = routineImportFailureMessage(category);
       expect(message).toContain("current Program was not changed");
-      expect(message).toContain("failed paste was discarded");
+      expect(message).toContain("Your text is still in the paste field");
+      expect(message).toContain("no failed import was kept");
       expect(message).not.toContain("Synthetic Full Routine");
     }
     expect(routineImportFailureMessage("unsupported_rep_sequence")).toContain(

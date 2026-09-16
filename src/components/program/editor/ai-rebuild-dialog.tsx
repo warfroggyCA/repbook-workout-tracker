@@ -39,7 +39,7 @@ export const AiRebuildDialog = memo(function AiRebuildDialog({ editor }: { edito
                   <legend className="text-sm font-medium">Update mode</legend>
                   <label className="flex min-h-11 items-start gap-3 rounded-lg border p-3">
                     <input type="radio" name="program-update-mode" value="update" checked={coachMode === "update"} onChange={() => setCoachMode("update")} className="mt-1 size-4" />
-                    <span><span className="block font-medium">Update current Program</span><span className="block text-xs text-muted-foreground">Reads prescriptions, warm-ups, replacements, exercise notes, and ordering without AI credits. Unclear or conflicting instructions pause the entire request for clarification.</span></span>
+                    <span><span className="block font-medium">Update current Program</span><span className="block text-xs text-muted-foreground">Reads prescriptions, warm-ups, replacements, exercise notes, and ordering without AI credits. Independent changes can be reviewed while unclear items await your answer. Related changes stay together.</span></span>
                   </label>
                   <label className="flex min-h-11 items-start gap-3 rounded-lg border border-destructive/30 p-3">
                     <input type="radio" name="program-update-mode" value="replace" checked={coachMode === "replace"} onChange={() => setCoachMode("replace")} className="mt-1 size-4" />
@@ -70,6 +70,8 @@ export const AiRebuildDialog = memo(function AiRebuildDialog({ editor }: { edito
                   {coachBuilding ? "Comparing changes…" : "Compare and propose changes"}
                 </Button>
 
+                {editor.appliedInstructionKeys.length > 0 && <div className="space-y-2 text-sm text-muted-foreground"><p>Applied instructions are remembered during this request so comparing again does not repeat them. The remaining questions stay available.</p><Button type="button" variant="outline" disabled={coachBuilding} onClick={() => { setCoachPrompt(""); editor.setAppliedInstructionKeys([]); editor.setTextAnswers({}); setTextProposal(null); setCoachMessage(null); }}>Start a new request</Button></div>}
+
                 {coachMessage && !coachMessage.startsWith("Coach's proposal") && (
                   <Alert variant="destructive">
                     <CircleAlert />
@@ -80,13 +82,25 @@ export const AiRebuildDialog = memo(function AiRebuildDialog({ editor }: { edito
 
                 {textProposal && (
                   <section aria-label="Proposed text changes" className="space-y-3">
-                    <h3 className="font-semibold">{textProposal.questions.length ? "Clarification needed before any changes" : textProposal.changes.length ? "Changes ready to review" : "No changes needed"}</h3>
-                    {textProposal.questions.length > 0 && <div role="status" className="space-y-2"><p className="text-sm font-medium">These parts need clarification:</p><ul className="list-disc pl-5 text-sm">{textProposal.questions.map((question, index) => <li key={index}>{question}</li>)}</ul><p className="text-sm text-muted-foreground">Your draft is unchanged. Edit the unresolved instructions in the request above, then compare again. The recognized changes below are a preview and cannot be applied yet.</p></div>}
+                    <h3 className="font-semibold">{textProposal.questions.length ? textProposal.changes.length && textProposal.interpretation ? "Resolved changes and questions" : "Clarification needed before any changes" : textProposal.changes.length ? "Changes ready to review" : "No changes needed"}</h3>
+                    <p className="text-sm text-muted-foreground">{textProposal.changes.length} changes ready · {textProposal.questions.length} questions. Only selected changes enter your draft. Publishing affects future workouts; active workouts and History stay unchanged.</p>
+                    {textProposal.interpretation ? <>
+                      {textProposal.interpretation.issues.map((issue) => <fieldset key={issue.key} className="space-y-2 break-words rounded-lg border p-3">
+                        <legend className="px-1 text-sm font-medium">{issue.question}</legend>
+                        <p className="text-xs text-muted-foreground">From your request: “{issue.source}”</p>
+                        {issue.candidates?.map((candidate) => <label key={candidate.id} className="flex min-h-11 items-center gap-3 rounded-md border p-2">
+                          <input type="radio" name={issue.key} checked={editor.textAnswers[issue.key] === candidate.id} onChange={() => { editor.setTextAnswers((prior) => ({ ...prior, [issue.key]: candidate.id })); setAcceptedTextChanges(new Set()); }} />
+                          <span><span className="block text-sm">{candidate.name}</span><span className="block text-xs text-muted-foreground">{candidate.explanation}</span></span>
+                        </label>)}
+                        <p className="text-xs text-muted-foreground">{issue.candidates?.length ? "Choose a match, then compare again. The complete instruction will be checked against your saved draft." : "Edit this instruction above and compare again. Independent resolved changes remain available."}</p>
+                      </fieldset>)}
+                      {textProposal.interpretation.information.length > 0 && <details className="text-sm"><summary>Preserved or informational instructions ({textProposal.interpretation.information.length})</summary><ul className="mt-2 list-disc space-y-1 pl-5">{textProposal.interpretation.information.map((item, index) => <li key={index}>{item}</li>)}</ul></details>}
+                    </> : textProposal.questions.length > 0 && <div role="status" className="space-y-2"><ul className="list-disc pl-5 text-sm">{textProposal.questions.map((question, index) => <li key={index}>{question}</li>)}</ul><p className="text-sm text-muted-foreground">Your draft is unchanged. These preparation instructions must be resolved together. Edit the request above and compare again.</p></div>}
                     {textProposal.changes.map((change) => <label key={change.id} className="flex gap-3 rounded-lg border p-3">
-                      <input type="checkbox" className="mt-1 size-4" disabled={textProposal.questions.length > 0} checked={acceptedTextChanges.has(change.id)} onChange={(event) => setAcceptedTextChanges((prior) => { const next = new Set(prior); if (event.target.checked) next.add(change.id); else next.delete(change.id); return next; })} />
-                      <span className="min-w-0 space-y-2"><span className="block font-medium">{change.reason}</span><span className="block whitespace-pre-line text-sm">{change.summary}</span><span className="block text-xs text-muted-foreground">From your request: “{change.sourceQuote}”</span></span>
+                      <input type="checkbox" aria-label={`Select change: ${change.reason}`} className="mt-1 size-4" disabled={change.blocked || (textProposal.questions.length > 0 && !textProposal.interpretation)} checked={acceptedTextChanges.has(change.id)} onChange={(event) => setAcceptedTextChanges((prior) => { const next = new Set(prior); if (event.target.checked) next.add(change.id); else next.delete(change.id); return next; })} />
+                      <span className="min-w-0 space-y-2 break-words"><span className="block font-medium">{change.reason}</span><span className="block whitespace-pre-line text-sm">{change.summary}</span>{change.warnings?.map((warning) => <span key={warning} className="block text-sm">{warning}</span>)}<span className="block text-xs text-muted-foreground">From your request: “{change.sourceQuote}”</span></span>
                     </label>)}
-                    <div className="flex flex-wrap gap-2"><Button type="button" disabled={textProposal.questions.length > 0 || !acceptedTextChanges.size || coachBuilding} onClick={applyTextProposal}>Apply selected changes</Button><Button type="button" variant="outline" onClick={() => setTextProposal(null)}>Keep current draft</Button></div>
+                    <div className="flex flex-wrap gap-2"><Button type="button" disabled={(textProposal.questions.length > 0 && !textProposal.interpretation) || !acceptedTextChanges.size || coachBuilding} onClick={applyTextProposal}>Apply selected changes</Button><Button type="button" variant="outline" onClick={() => setTextProposal(null)}>Keep current draft</Button></div>
                   </section>
                 )}
                 {coachProposal && (

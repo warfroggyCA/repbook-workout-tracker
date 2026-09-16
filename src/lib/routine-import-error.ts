@@ -37,7 +37,7 @@ export function routineImportFailureMessage(
   category: RoutineImportFailureCategory,
 ) {
   const unchanged =
-    " Your current Program was not changed, and the failed paste was discarded.";
+    " Your current Program was not changed. Your text is still in the paste field; no failed import was kept.";
   switch (category) {
     case "timeout":
       return (

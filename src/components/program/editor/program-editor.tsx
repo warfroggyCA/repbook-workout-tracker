@@ -23,6 +23,7 @@ export function ProgramEditor({
   ownerId,
   library,
   initialPrompt,
+  onPromptChange,
   initialDayId,
   initialRemovalRequest = null,
   initialReplacementRequest = null,
@@ -30,6 +31,7 @@ export function ProgramEditor({
   ownerId: string;
   library: ExerciseDiscoveryItem[];
   initialPrompt?: string;
+  onPromptChange?: (text: string) => void;
   initialDayId: string | null;
   initialRemovalRequest?: ProgramSlotRemovalRequest | null;
   initialReplacementRequest?: ProgramSlotReplacementRequest | null;
@@ -38,6 +40,7 @@ export function ProgramEditor({
     ownerId,
     library,
     initialPrompt,
+  onPromptChange,
     initialDayId,
     initialRemovalRequest,
     initialReplacementRequest,

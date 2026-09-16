@@ -300,16 +300,20 @@ function comparableInstruction(value: string) {
 export function RoutineImport({
   aiAvailable,
   onUpdateCurrent,
+  initialInput = "",
+  onInputChange,
   initialParse = null,
   initialDestination = "replace_active",
 }: {
   aiAvailable: boolean;
+  initialInput?: string;
+  onInputChange?: (text: string) => void;
   onUpdateCurrent?: (text: string) => void;
   initialParse?: ParseOk | null;
   initialDestination?: "replace_active" | "create_new_active";
 }) {
   const router = useRouter();
-  const [input, setInput] = useState("");
+  const [input, setInput] = useState(initialInput);
   const [clientImportId, setClientImportId] = useState(() => crypto.randomUUID());
   const [parsed, setParsed] = useState<ParseOk | null>(initialParse);
   const [programName, setProgramName] = useState(() =>
@@ -347,6 +351,7 @@ export function RoutineImport({
 
   function handleInputChange(value: string) {
     setInput(value);
+    onInputChange?.(value);
     setClientImportId(crypto.randomUUID());
     setError(null);
   }
@@ -389,6 +394,7 @@ export function RoutineImport({
         setParsed(null);
         setDays([]);
         setInput("");
+        onInputChange?.("");
         setProgramName("");
         setEquipmentFitReviewed(false);
         setClientImportId(crypto.randomUUID());

@@ -964,14 +964,17 @@ return trials, with late or duplicate rings reported separately.
 
 ## Free-form Program editing checks
 
-Run `npx vitest run tests/unit/program-text-parser.test.ts tests/unit/program-text-interpreter.test.ts tests/unit/program-text-update.test.ts tests/unit/program-text-update-action.test.ts tests/unit/program-editor-component.test.tsx`.
+Run `npx vitest run tests/unit/program-contextual-edit.test.ts tests/unit/program-text-entry.test.tsx tests/unit/program-text-parser.test.ts tests/unit/program-text-interpreter.test.ts tests/unit/program-text-update.test.ts tests/unit/program-text-update-action.test.ts tests/unit/program-editor-component.test.tsx`.
 The parser tests cover synthetic multi-day preparation instructions, units,
 ranges, aliases, preserved work, conditional requests, and malformed targets.
 The interpreter corpus adds replacement/notes/ordering, preservation conflicts,
 partial-input rejection, malformed-input generation, precision limits, and
-blocking the whole request while any instruction remains unresolved. The
-browser journey proves retained text, disabled apply, clarification/recomparison,
-one atomic replacement, saved reload, and narrow-screen containment without AI.
+the atomic preparation boundary. Contextual tests cover inherited scope, notes,
+assertions, ranked candidate choices, family expansion, partial application,
+request constraints, group membership and preventing repeated relative edits.
+Browser journeys prove the default Import entry reaches local editing, retained
+text, clarification choices, independent apply, a later atomic replacement,
+saved reload, and narrow-screen containment without AI.
 The action tests verify owner/revision checks and zero provider calls even when
 AI is unconfigured. No migration or provider credentials are required.
 
