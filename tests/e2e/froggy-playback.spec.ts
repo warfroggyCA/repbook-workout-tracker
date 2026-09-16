@@ -26,7 +26,42 @@ test("plays one reduced-motion preview in isolation", async ({ page }) => {
     duration: v.duration, error: v.error?.message ?? null, source: v.currentSrc,
   })), { timeout: 30_000 }).toMatchObject({ readyState: 4, error: null, paused: false });
   await expect(player.locator("video")).toHaveAttribute("src", /steady\.mp4$/);
-  await expect.poll(() => player.locator("[data-form-banner]").innerText(), { timeout: 30_000 }).toMatch(/^AVOID/);
+  const samples: unknown[] = [];
+  const events: unknown[] = [];
+  await page.exposeFunction("recordSyntheticMediaEvent", (event: unknown) => {
+    events.push(event);
+    if (events.length > 80) events.shift();
+  });
+  await player.locator("video").evaluate((video: HTMLVideoElement) => {
+    for (const name of ["ended", "pause", "play", "playing", "waiting", "seeking", "seeked", "error"]) {
+      video.addEventListener(name, () => {
+        const record = (window as unknown as { recordSyntheticMediaEvent: (event: unknown) => Promise<void> }).recordSyntheticMediaEvent;
+        void record({ name, time: video.currentTime, paused: video.paused, ended: video.ended, readyState: video.readyState });
+      }, true);
+    }
+  });
+  try {
+    await expect.poll(async () => {
+      const sample = await player.evaluate(element => {
+        const video = element.querySelector("video")!;
+        const rect = video.getBoundingClientRect();
+        return {
+          cue: element.querySelector("[data-form-banner]")?.textContent?.trim() ?? "",
+          time: video.currentTime, duration: video.duration,
+          paused: video.paused, ended: video.ended, seeking: video.seeking,
+          readyState: video.readyState, networkState: video.networkState,
+          errorCode: video.error?.code ?? null, hidden: document.hidden,
+          inViewport: rect.bottom > 0 && rect.top < innerHeight && rect.right > 0 && rect.left < innerWidth,
+        };
+      });
+      samples.push(sample);
+      if (samples.length > 60) samples.shift();
+      return sample.cue;
+    }, { timeout: 30_000 }).toMatch(/^AVOID/);
+  } catch (error) {
+    console.error("Synthetic isolated playback samples", JSON.stringify({ samples, events }));
+    throw error;
+  }
 });
 
 test("cycles every supported form through Avoid and back to Do during natural playback", async ({ page }) => {

@@ -17,6 +17,7 @@ async function signInAndStartDayA(page: Page) {
   await waitForHydratedServerAction(login);
   await login.click();
   await expect(page).toHaveURL(/\/today$/);
+  await expect(page.getByRole("heading", { name: "Today", exact: true })).toBeVisible();
 
   await page.goto("/settings");
   const extraLarge = page.getByRole("radio", { name: /Extra large/ });
