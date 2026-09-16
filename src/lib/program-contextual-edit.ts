@@ -11,6 +11,7 @@ import {
   executableCondition,
   embeddedProgramCommand,
   coachingLanguage,
+  PROGRAM_EDIT_MAX_CLARIFICATIONS,
   type EditInstruction,
 } from "@/lib/program-edit-language";
 import {
@@ -379,7 +380,9 @@ export function proposeContextualProgramEdit(
     if (fields?.length && fields.every((field) => knownFields.has(field))) {
       const specified = instruction.scope.exercise ? resolve(instruction.scope.exercise, instruction) : null;
       if (instruction.scope.exercise && !specified) continue;
-      const preservedTargets = specified ? [specified] : allTargets.filter((target) => scopedDays(instruction).includes(target.day));
+      const exclusions = (instruction.otherExercisesExcept ?? []).map((query) => resolve(query, instruction));
+      if (exclusions.some((target) => target === null)) continue;
+      const preservedTargets = specified ? [specified] : allTargets.filter((target) => scopedDays(instruction).includes(target.day) && !exclusions.some((excluded) => excluded?.slot.lineageId === target.slot.lineageId));
       for (const target of preservedTargets) {
         const identity = { dayId: target.day.lineageId, slotId: target.slot.lineageId };
         const ops: Operation[] = [];
@@ -904,7 +907,7 @@ export function proposeContextualProgramEdit(
     const conflicts = assertion.ops.some((expected) =>
       bucket.operations.some(
         (op) =>
-          op.kind === expected.kind &&
+          (op.kind === expected.kind || (expected.kind === "replace" && op.kind === "remove")) &&
           "slotId" in op &&
           "slotId" in expected &&
           op.slotId === expected.slotId &&
@@ -1065,6 +1068,8 @@ export function proposeContextualProgramEdit(
   );
   // The 20-question provider schema is not a limit on local clarification.
   // Input is already bounded to 200 instructions; preserve their useful issues.
+  if (proposal.questions.length > PROGRAM_EDIT_MAX_CLARIFICATIONS)
+    return empty(`This request needs more than ${PROGRAM_EDIT_MAX_CLARIFICATIONS} clarifications. Compare fewer instructions at a time; nothing was applied.`);
   if (proposal.changes.length > 40)
     return empty(
       "This request contains too many independent items. Compare one or two days at a time; nothing was applied.",
