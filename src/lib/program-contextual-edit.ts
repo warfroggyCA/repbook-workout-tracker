@@ -505,7 +505,7 @@ export function proposeContextualProgramEdit(
       /^(?:established\s+)?(.+?)\s+(?:should\s+)?(?:use|target)\s+(.+)$/i.exec(
         familyText,
       );
-    if (family && /,|\band\b/.test(family[1]) && coachingLanguage(family[2])) {
+    if (family && (!instruction.scope.exercise || /,|\band\b/.test(instruction.scope.exercise)) && /,|\band\b/.test(family[1]) && coachingLanguage(family[2])) {
       for (const term of family[1].split(/,\s*|\s+and\s+/).filter(Boolean)) {
         const child = {
           ...instruction,
@@ -618,7 +618,7 @@ export function proposeContextualProgramEdit(
         continue;
       }
       if (/^keep this exercise before /i.test(instruction.text)) {
-        lowerLegacy({ ...instruction, text: instruction.text.replace(/^keep this exercise/i, `Keep ${byId.get(target.slot.exerciseId)?.name}`) }, target, bucket);
+        lowerLegacy({ ...instruction, text: instruction.text.replace(/^keep this exercise/i, byId.get(target.slot.exerciseId)!.name) }, target, bucket);
         continue;
       }
       const preservedIdentity = /^keep (.+?) as the exercise identity$/i.exec(instruction.text);

@@ -809,7 +809,7 @@ test("local interpreter reviews numbered multi-day notes without changing work t
     await page.getByRole("tablist", { name: "Edit Program days" }).getByRole("tab").nth(dayIndex).click();
     const label = page.locator(`#editor-${day.exercises[0].lineageId}-label`);
     await expect(label).toBeVisible();
-    sections.push(`DAY ${dayIndex + 1}\n1. ${(await label.textContent())!.trim()}\n- Preserve the current sets, reps, load target, rest time and exercise order.\n- Replace notes with: "Keep a steady tempo. Leave 3 RIR."\n2. All other Day ${dayIndex + 1} exercises\n- Preserve the current exercises, set counts, rep ranges, load targets, rest times, exercise order and supersets.`);
+    sections.push(`DAY ${dayIndex + 1}\n1. ${(await label.textContent())!.trim()}\n- Preserve the current sets, reps, load target, rest time and exercise order.\n- Replace notes with:\n  "Keep the trunk and arms steady. Use 3 RIR."\n2. All other Day ${dayIndex + 1} exercises\n- Preserve the current exercises, set counts, rep ranges, load targets, rest times, exercise order and supersets.`);
   }
   sections.push("ALL DAYS — NOTES ONLY\nThe following are authored guidance only. Do not change logging validation or progression logic.\n- Record actual effort honestly.");
   const request = sections.join("\n\n");
@@ -828,7 +828,7 @@ test("local interpreter reviews numbered multi-day notes without changing work t
   const saved = (await (await page.request.get("/api/program/draft")).json()).draft;
   const after: ProgramDocumentV3 = saved.document;
   for (const [index, day] of after.days.entries()) {
-    expect(day.exercises[0].notes).toBe("Keep a steady tempo. Leave 3 RIR.");
+    expect(day.exercises[0].notes).toBe("Keep the trunk and arms steady. Use 3 RIR.");
     expect({ ...day.exercises[0], notes: before.days[index].exercises[0].notes }).toEqual(before.days[index].exercises[0]);
     expect(day.exercises.slice(1)).toEqual(before.days[index].exercises.slice(1));
     expect(day.supersets).toEqual(before.days[index].supersets);
