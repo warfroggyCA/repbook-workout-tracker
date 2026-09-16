@@ -964,13 +964,18 @@ return trials, with late or duplicate rings reported separately.
 
 ## Free-form Program editing checks
 
-Run `npx vitest run tests/unit/program-text-parser.test.ts tests/unit/program-text-update.test.ts tests/unit/program-text-update-action.test.ts tests/unit/program-editor-component.test.tsx`.
+Run `npx vitest run tests/unit/program-text-parser.test.ts tests/unit/program-text-interpreter.test.ts tests/unit/program-text-update.test.ts tests/unit/program-text-update-action.test.ts tests/unit/program-editor-component.test.tsx`.
 The parser tests cover synthetic multi-day preparation instructions, units,
 ranges, aliases, preserved work, conditional requests, and malformed targets.
+The interpreter corpus adds replacement/notes/ordering, preservation conflicts,
+partial-input rejection, malformed-input generation, precision limits, and
+blocking the whole request while any instruction remains unresolved. The
+browser journey proves retained text, disabled apply, clarification/recomparison,
+one atomic replacement, saved reload, and narrow-screen containment without AI.
 The action tests verify owner/revision checks and zero provider calls even when
 AI is unconfigured. No migration or provider credentials are required.
 
-Run `E2E_AI_DISABLED=1 npm run test:e2e:program-editor -- --grep 'partial text update|free-form warmup edits'`
+Run `E2E_AI_DISABLED=1 npm run test:e2e:program-editor -- --grep 'partial text update|free-form warmup edits|local interpreter'`
 after a production build. The disposable server clears provider keys and
 disables the fake provider with `AI_FAKE_UNAVAILABLE` for these checks. The
 `AI_FAKE` marker remains set because it is also part of the existing disposable

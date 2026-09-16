@@ -69,11 +69,10 @@ function current() {
 function run(text: string, document = current()) {
   const parsed = parseProgramTextUpdate(document, text, library);
   const proposal = buildProgramTextProposal(document, parsed, text, library);
-  const after = applyProgramTextChanges(
-    document,
-    proposal,
-    new Set(proposal.changes.map((change) => change.id)),
-  );
+  const selected = new Set(proposal.changes.map((change) => change.id));
+  if (parsed.questions.length)
+    expect(() => applyProgramTextChanges(document, proposal, selected)).toThrow(/clarification/);
+  const after = parsed.questions.length ? document : applyProgramTextChanges(document, proposal, selected);
   return { parsed, proposal, after };
 }
 
@@ -178,10 +177,9 @@ describe("local Program text parsing", () => {
   });
   it("parses a soft-wrapped multi-day preparation update without touching working prescriptions", () => {
     const before = current();
-    const { after, proposal, parsed } = run(complexWarmup, before);
-    expect(parsed.questions).toHaveLength(2);
-    expect(parsed.questions[0]).toContain("Conditional preparation");
-    expect(parsed.questions[1]).toContain("Conditional removal");
+    const clarified = complexWarmup.replace(/For the proposed[\s\S]*?DAY C/, "DAY C").replace(/• Remove the old band[\s\S]*?version of Day D\.\n/, "");
+    const { after, proposal, parsed } = run(clarified, before);
+    expect(parsed.questions).toHaveLength(0);
     expect(proposal.changes).toHaveLength(19);
     for (const [index, day] of after.days.entries()) {
       expect(
@@ -232,6 +230,15 @@ describe("local Program text parsing", () => {
       "does not approve a working-load change",
     );
     expect(before).toEqual(current());
+  });
+
+  it("blocks the whole warm-up replacement while conditional removal or substitution is unresolved", () => {
+    const before = current();
+    before.days[3].warmupItems = [{ key: id(500), label: "Existing band preparation", reps: 8, load: null, loadUnit: null, loadPercent: null, loadText: null, notes: null, beforeSlotLineageId: null }];
+    const { after, parsed } = run(complexWarmup, before);
+    expect(parsed.questions).toHaveLength(2);
+    expect(after).toEqual(before);
+    expect(after.days[3].warmupItems[0].label).toBe("Existing band preparation");
   });
 
   it("matches aliases and named days and parses sets, ranges, and compound rests", () => {

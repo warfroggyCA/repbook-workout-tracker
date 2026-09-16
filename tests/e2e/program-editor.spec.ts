@@ -798,6 +798,51 @@ test("partial text update applies only selected explicit changes", async ({ page
   await expect(editor.getByLabel("Seconds")).toHaveValue("30");
 });
 
+test("local interpreter blocks unresolved instructions then applies an atomic replacement without AI", async ({ page }, testInfo) => {
+  await signIn(page);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/program/edit");
+  await expectSaved(page);
+  const before: ProgramDocumentV3 = (await (await page.request.get("/api/program/draft")).json()).draft.document;
+  const card = page.locator("article[aria-labelledby]").first();
+  const labelId = await card.getAttribute("aria-labelledby");
+  const name = (await page.locator(`#${labelId}`).textContent())!.trim();
+  const request = `Day A\nSet ${name} to 6–9 reps.\nIf convenient, replace ${name} with Push-Up.`;
+  await page.getByLabel("What should change?").fill(request);
+  await page.getByRole("button", { name: "Compare and propose changes", exact: true }).click();
+  const region = page.getByRole("region", { name: "Proposed text changes" });
+  await expect(region.getByRole("heading", { name: "Clarification needed before any changes" })).toBeVisible();
+  await expect(region.getByRole("button", { name: "Apply selected changes", exact: true })).toBeDisabled();
+  await expect(region.getByRole("checkbox")).toBeDisabled();
+  await expect(page.getByLabel("What should change?")).toHaveValue(request);
+  expect((await (await page.request.get("/api/program/draft")).json()).draft.document).toEqual(before);
+  await assertNoHorizontalOverflow(page);
+  await region.scrollIntoViewIfNeeded();
+  await page.screenshot({ path: testInfo.outputPath("local-parser-clarification-mobile.png") });
+
+  const clarified = `Day A\nReplace ${name} with Push-Up.\nSuggested starting prescription: 3 × 6–9; rest 75 seconds.\nUse a controlled lowering phase.`;
+  await page.getByLabel("What should change?").fill(clarified);
+  await expect(region).toHaveCount(0);
+  await page.getByRole("button", { name: "Compare and propose changes", exact: true }).click();
+  await expect(region.getByRole("heading", { name: "Changes ready to review" })).toBeVisible();
+  await expect(region.getByRole("checkbox")).toHaveCount(1);
+  await region.getByRole("button", { name: "Apply selected changes", exact: true }).click();
+  await expectSaved(page);
+  const after: ProgramDocumentV3 = (await (await page.request.get("/api/program/draft")).json()).draft.document;
+  expect(after.days[0].exercises[0]).toMatchObject({ sets: 3, repMin: 6, repMax: 9, restSec: 75, notes: "Use a controlled lowering phase", targetLoad: null, targetLoadUnit: null });
+  expect(after.days[0].exercises[0].lineageId).not.toBe(before.days[0].exercises[0].lineageId);
+  expect(after.days[0].exercises.slice(1)).toEqual(before.days[0].exercises.slice(1));
+  expect(after.days.slice(1)).toEqual(before.days.slice(1));
+  await page.reload();
+  await expectSaved(page);
+  expect((await (await page.request.get("/api/program/draft")).json()).draft.document).toEqual(after);
+  await page.screenshot({ path: testInfo.outputPath("local-parser-applied-mobile.png"), fullPage: true });
+  // Restore this disposable draft so the existing ordered journeys keep their fixture.
+  const saved = (await (await page.request.get("/api/program/draft")).json()).draft;
+  const restored = await page.request.put("/api/program/draft", { headers: { origin: "http://127.0.0.1:3100" }, data: { draftId: saved.id, expectedRevision: saved.revision, mutationId: crypto.randomUUID(), document: before } });
+  expect(await restored.json()).toMatchObject({ status: "saved" });
+});
+
 test("builds, reviews, and explicitly accepts one deterministic session proposal without changing the Program", async ({ page, context }, testInfo) => {
   const errors: string[] = [];
   page.on("pageerror", (error) => errors.push(error.message));

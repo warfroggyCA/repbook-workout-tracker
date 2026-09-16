@@ -164,7 +164,7 @@ jobs:
         if: matrix.group == 'program'
         env:
           E2E_AI_DISABLED: "1"
-        run: npm run test:e2e:program-editor -- --grep 'partial text update|free-form warmup edits'
+        run: npm run test:e2e:program-editor -- --grep 'partial text update|free-form warmup edits|local interpreter'
 
   verify:
     runs-on: ubuntu-latest

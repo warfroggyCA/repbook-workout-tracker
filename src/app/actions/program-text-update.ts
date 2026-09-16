@@ -75,12 +75,16 @@ export async function proposeProgramTextUpdate(
     );
     // Parsing is local: no provider request, AI quota claim, or raw paste storage.
     // Accepted edits use existing autosave, revision and publication boundaries.
-    const proposal = buildProgramTextProposal(
-      current,
-      result,
-      parsed.data.text,
-      library,
-    );
+    let proposal: ProgramTextProposal;
+    try {
+      proposal = buildProgramTextProposal(current, result, parsed.data.text, library);
+    } catch {
+      proposal = {
+        baseDocument: current,
+        changes: [],
+        questions: ["The instructions could not be combined safely with this saved Program's groups, identities, or prescription limits. Separate the structural changes from target changes and compare again. No changes were prepared."],
+      };
+    }
     const latest = await getOpenProgramDraft(db, user.id);
     if (
       !latest ||

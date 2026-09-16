@@ -74,19 +74,50 @@ the draft revision again after comparison. The client also refuses stale apply.
 Only selected operations enter normal draft autosave; Review and Publish retain
 their existing exact-revision and future-workout protections.
 
-Local parsing supports general and exercise-specific preparation blocks, sets,
-repetition targets/ranges, exact rests, and explicit lb/kg target loads. Soft
-line wrapping, bullets, day letters/numbers, per-side cues, and preparation
-guidance are retained. Each named preparation block replaces that anchor's
-preparation; unmentioned anchors and working fields stay unchanged. Repetition
-ranges that cannot fit an exact preparation field remain in step notes.
-Conditional substitutions/removals, ambiguous names, unsupported structural
-changes, and malformed doses are surfaced for review. Group changes, timed
-prescriptions, progression, and exercise additions/replacements remain in the
-manual editor; the broader validated operation contract is still available to
-other existing consumers. Explicit preparation-only requests cannot edit
-working fields. Schedules, equipment, and historical or active workout records
-are outside this operation contract.
+The entry point bounds input and routes preparation blocks to
+`program-preparation-text-parser.ts` and working edits to
+`program-working-text-parser.ts`. The working interpreter supports complete or
+individual prescriptions, exact lb/kg loads, same-unit relative loads against
+a saved target, replacements with attached prescriptions/notes, complete
+additions at explicit positions, ungrouped removals/moves, explicit notes, and
+the existing manual/hold/double-progression rule identifiers. It understands
+KEEP/CHANGE/CLARIFY sections, named/day-letter/day-number scopes, catalog
+aliases, and a small explicit abbreviation vocabulary. It never uses fuzzy
+matching to choose an exercise or drops variant words.
+
+Preservation assertions are checked against the saved Program and against all
+proposed edits. Contradictions, unavailable replacements, unknown scope,
+conditional edits, malformed numeric tails, unstated units, excess precision,
+ambiguous families, and unresolved instructions block the **entire** request.
+Recognized operations may be previewed, but both the UI and apply function
+refuse them until the request has no clarification questions. Editing the
+retained request invalidates the old proposal; comparison uses the new exact
+saved revision. Question output is bounded and reports overflow rather than
+claiming the remaining instructions were understood.
+
+Each replacement and its attached edits is one selectable change. Replacement
+creates new slot lineage, clears the old movement's target load and guidance,
+and preserves its location, group membership, and progression rule. An explicit
+new load may be supplied. Subsequent operations within that same change resolve
+the new lineage. Ordinary notes append without removing technique guidance;
+an unambiguous standalone effort-target sentence may be replaced by a new
+effort target. Mixed existing effort/safety clauses require explicit note
+replacement. Explicit all-day notes remain guidance, not executable rules.
+
+Preparation parsing retains soft line wrapping, bullets, per-side cues and
+general/exercise-specific anchors. Each named preparation block replaces that
+anchor's preparation; unmentioned anchors and working fields stay unchanged.
+Repetition ranges that cannot fit an exact preparation field remain in step
+notes. Conditional removal blocks application of overlapping replacements,
+including a whole general-preparation block. Explicit preparation-only requests
+cannot edit working fields.
+
+This is a bounded English interpreter, not general language understanding.
+Mixed preparation/structural requests, multiple dependent structural edits,
+group construction or rounds/rest changes, timed/metric conversions, schedules,
+equipment arithmetic, recent-history-derived loads, and arbitrary coaching or
+progression formulas require clarification or the appropriate manual editor.
+Historical and active workout records are outside this operation contract.
 Warm-up anchors are preserved; this path does not change the existing runtime's
 opening-preparation gating or automatically rescale measured warm-up loads.
 

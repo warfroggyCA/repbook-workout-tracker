@@ -27,6 +27,8 @@ export function applyProgramTextChanges(
   proposal: ProgramTextProposal,
   selected: ReadonlySet<string>,
 ): ProgramDocumentV3 {
+  if (proposal.questions.length)
+    throw new Error("Resolve every clarification and compare again before applying this request. Your draft is unchanged.");
   if (JSON.stringify(current) !== JSON.stringify(proposal.baseDocument))
     throw new Error(
       "The draft changed. Compare your request again before applying it.",
@@ -34,12 +36,16 @@ export function applyProgramTextChanges(
   let result = structuredClone(current);
   for (const change of proposal.changes) {
     if (!selected.has(change.id)) continue;
+    // A replacement starts fresh lineage. Later operations in the SAME reviewed
+    // change still address the original slot; other selectable changes cannot
+    // depend on a replacement that the owner might leave unselected.
+    const replacedSlots = new Map<string, string>();
     for (const [index, op] of change.operations.entries()) {
       const day = result.days.find((item) => item.lineageId === op.dayId);
       if (!day) throw new Error("The proposed day is no longer available.");
       const slot =
         "slotId" in op && op.slotId
-          ? day.exercises.find((item) => item.lineageId === op.slotId)
+          ? day.exercises.find((item) => item.lineageId === (replacedSlots.get(op.slotId!) ?? op.slotId))
           : null;
       if ("slotId" in op && op.slotId && !slot)
         throw new Error("The proposed exercise is no longer available.");
@@ -109,7 +115,7 @@ export function applyProgramTextChanges(
           break;
         }
         case "warmup": {
-          const anchor = op.slotId;
+          const anchor = slot?.lineageId ?? op.slotId;
           const retained = day.warmupItems.filter(
             (item) => (item.beforeSlotLineageId ?? null) !== anchor,
           );
@@ -220,6 +226,7 @@ export function applyProgramTextChanges(
             const oldId = slot.lineageId;
             slot.exerciseId = op.exerciseId;
             slot.lineageId = id();
+            replacedSlots.set(oldId, slot.lineageId);
             slot.warmupNotes = null;
             slot.warmupSets = [];
             slot.notes = null;
@@ -395,10 +402,9 @@ export function buildProgramTextProposal(
       .join("\n");
     proposal.changes.push({ ...change, id: createId(), summary });
   }
-  applyProgramTextChanges(
-    current,
-    proposal,
-    new Set(proposal.changes.map((change) => change.id)),
-  );
+  // Unresolved requests are preview-only. In particular, a replacement warm-up
+  // must not indirectly execute an unresolved conditional removal.
+  if (!proposal.questions.length)
+    applyProgramTextChanges(current, proposal, new Set(proposal.changes.map((change) => change.id)));
   return proposal;
 }
