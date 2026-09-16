@@ -163,7 +163,7 @@ test("reviews and publishes a multi-day Program into an ordered active workout",
   await expect(publish).toBeFocused();
   await page.keyboard.press("Enter");
   await expect(page).toHaveURL(/\/program$/);
-  await expect(page.getByText("Two-day integrity plan", { exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Two-day integrity plan", exact: true })).toBeVisible();
 
   await page.goto("/today");
   const start = page.getByRole("button", { name: "Train as planned", exact: true });
