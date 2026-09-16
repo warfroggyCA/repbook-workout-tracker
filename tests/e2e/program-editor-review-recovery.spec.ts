@@ -59,7 +59,7 @@ test("opens the preserved draft and expires a pre-Phase-2 review on desktop and 
   await expect(page.getByRole("status")).toContainText("All changes saved");
 
   await page.route("**/api/program/draft", async (route) => {
-    if (route.request().method() !== "GET") {
+    if (route.request().method() !== "POST") {
       await route.continue();
       return;
     }

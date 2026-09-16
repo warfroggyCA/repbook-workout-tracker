@@ -64,7 +64,7 @@ export const DayEditor = memo(function DayEditor({ editor, canReview = false }: 
               </CardContent>
             </Card>
 
-            <ProgramDayTabs days={document.days} activeId={activeDayId ?? document.days[0].lineageId} pathname="/program/edit" label="Edit Program days" onSelect={setActiveDayId} />
+            <ProgramDayTabs days={document.days} activeId={activeDayId ?? document.days[0].lineageId} pathname={editor.editorPath} label="Edit Program days" onSelect={setActiveDayId} />
 
             {document.days.map((day, dayIndex) => activeDayId === day.lineageId ? (
               <Card key={day.lineageId}>
@@ -142,7 +142,7 @@ export const DayEditor = memo(function DayEditor({ editor, canReview = false }: 
                           }));
                           if (focusLineage) {
                             setActiveDayId(focusLineage);
-                            router.push(`/program/edit?day=${focusLineage}`, { scroll: false });
+                            router.push(`${editor.editorPath}?day=${focusLineage}`, { scroll: false });
                           }
                           requestAnimationFrame(
                             () =>

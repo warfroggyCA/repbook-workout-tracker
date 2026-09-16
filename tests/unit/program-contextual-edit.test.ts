@@ -478,6 +478,40 @@ Use 2 RIR.`;
     expect(p.questions).toEqual([]);
     expect(apply(p).days[1].exercises[2].targetLoad).toBe(10);
   });
+  it("does not clear load or guidance for an equivalent same-exercise replacement", () => {
+    const p = propose("DAY 2\nReplace pushdowns with Triceps Pushdown.");
+    expect(p.questions).toEqual([]);
+    expect(apply(p)).toEqual(current());
+  });
+  it("can detach a member under a no-new-supersets constraint", () => {
+    const doc = current();
+    doc.days[1] = addSupersetGroup(
+      doc.days[1],
+      {
+        key: id(902),
+        name: "Superset 1",
+        structureStatus: "canonical",
+        plannedRounds: 2,
+        restBetweenMembersSec: 10,
+        restBetweenRoundsSec: 80,
+        restAfterRoundSec: 80,
+      },
+      doc.days[1].exercises.map((slot) => slot.lineageId),
+    );
+    const p = propose(
+      "Do not create any new supersets.\nDAY 2\nKeep pushdowns separate.",
+      doc,
+    );
+    expect(p.questions).toEqual([]);
+    expect(apply(p).days[1].exercises[2].supersetKey).toBeNull();
+  });
+  it("does not let a later reorder bypass an earlier KEEP assertion", () => {
+    const p = propose(
+      "DAY 1\nKEEP:\nBench Press before Back Squat.\nCHANGE:\nMove Back Squat before Bench Press.",
+    );
+    expect(p.questions).toHaveLength(1);
+    expect(p.changes).toHaveLength(0);
+  });
   it.each(["", "x".repeat(20001), "Use 2 RIR\u202e"])(
     "rejects invalid input before interpretation",
     (text) => {

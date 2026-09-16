@@ -804,13 +804,14 @@ test("local interpreter applies independent changes then resolves the remaining 
   await page.goto("/program/import");
   await expectSaved(page);
   const before: ProgramDocumentV3 = (await (await page.request.get("/api/program/draft")).json()).draft.document;
-  const firstName = async () => {
-    const label = await page.locator("article[aria-labelledby]").first().getAttribute("aria-labelledby");
-    return (await page.locator(`#${label}`).textContent())!.trim();
+  const firstName = async (dayIndex = 0) => {
+    const label = page.locator(`#editor-${before.days[dayIndex].exercises[0].lineageId}-label`);
+    await expect(label).toBeVisible();
+    return (await label.textContent())!.trim();
   };
   const source = await firstName();
   await page.getByRole("tablist", { name: "Edit Program days" }).getByRole("tab").nth(1).click();
-  const independent = await firstName();
+  const independent = await firstName(1);
   await page.getByLabel("What should change?").fill(`Day 1\nReplace ${source} with Seated Push-Up.\nSuggested starting prescription: 3 × 6–9, rest 75 seconds.\nDay 2\n${independent}:\nReplace notes with: Use 2 RIR.`);
   await page.getByRole("button", { name: "Compare and propose changes", exact: true }).click();
   const region = page.getByRole("region", { name: "Proposed text changes" });
@@ -821,6 +822,10 @@ test("local interpreter applies independent changes then resolves the remaining 
   const partial: ProgramDocumentV3 = (await (await page.request.get("/api/program/draft")).json()).draft.document;
   expect(partial.days[0]).toEqual(before.days[0]);
   expect(partial.days[1].exercises[0].notes).toBe("Use 2 RIR");
+  // Switching import modes must retain the applied-instruction ledger too.
+  await page.getByRole("button", { name: "Import a complete routine instead", exact: true }).click();
+  await page.getByRole("button", { name: "Update current Program from text", exact: true }).click();
+  await expect(region).toBeVisible();
   await region.getByRole("radio", { name: /^Push-Up / }).check();
   await page.getByRole("button", { name: "Compare and propose changes", exact: true }).click();
   await expect(region.getByRole("heading", { name: "Changes ready to review" })).toBeVisible();
