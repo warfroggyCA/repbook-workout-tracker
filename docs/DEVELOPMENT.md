@@ -945,8 +945,8 @@ change in a live environment.
 
 ## Workout entry and media regression checks
 
-`tests/unit/workout-field-fixes.test.ts` covers variable-duration media loops,
-fractional versus ordinary load entry, loadable bounds, stalled audio clocks,
+`tests/unit/workout-field-fixes.test.ts` covers fractional versus ordinary load
+entry, loadable bounds, stalled audio clocks,
 bounded recovery, and queued-tone expiry. Run it with the existing rest-audio,
 rest-timer, plate-math, active-set-ledger and workout-status-bar tests. The
 superset-preparation browser suite covers immutable ordering, fractional-load
@@ -954,6 +954,10 @@ readability and set delivery. `npm run test:e2e:workout-field-fixes` uses the
 disposable Froggy fixture to verify all 23 catalog-entry previews naturally reach Avoid and
 return to Do in Chromium and WebKit, plus phone-sized pause/resume behavior.
 An isolated reduced-motion case checks metadata-only startup and cue playback.
+The end-position regression checks that a paused seek cannot advance a tip or
+resume playback, and that the next complete replay advances guidance once.
+Playback completion uses the media `ended` event rather than native looping or
+an elapsed wall-clock timer.
 
 Browser checks must include direct weight entry, switching adjustment size
 without changing the draft, expanded form/history details, enlarged text,

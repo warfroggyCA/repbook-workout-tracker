@@ -1,5 +1,4 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { froggyPlaybackWrapped } from "@/lib/froggy-playback";
 import { hasFinePlateSteps, stepPlateEntryLoad } from "@/lib/load-entry-step";
 import { ensureRestAudioProgress } from "@/lib/rest-audio-health";
 import { cancelRestTonePatterns, playRestTonePattern, REST_COMPLETION_TONE_PATTERN } from "@/lib/rest-alert-preference";
@@ -30,19 +29,6 @@ describe("workout weight entry", () => {
     expect(stepPlateEntryLoad(21, 1, metric, "kg", "normal")).toBe(23.5);
     expect(stepPlateEntryLoad(21, 1, metric, "kg", "fine")).toBe(21.5);
     expect(hasFinePlateSteps({ ...metric, plates: [{ denomination: .25, countPerSide: 0 }] }, "kg")).toBe(false);
-  });
-});
-
-describe("Froggy playback cycles", () => {
-  it.each([2, 4, 6, 8, 12])("advances on a %s-second loop without a fixed six-second threshold", duration => {
-    expect(froggyPlaybackWrapped(duration - .1, .1, duration)).toBe(true);
-    expect(froggyPlaybackWrapped(.1, .2, duration)).toBe(false);
-    expect(froggyPlaybackWrapped(.1, .1, duration)).toBe(false);
-  });
-  it("does not advance on unready metadata or the reset sample after a seek", () => {
-    expect(froggyPlaybackWrapped(6, 0, NaN)).toBe(false);
-    expect(froggyPlaybackWrapped(6, 0, Infinity)).toBe(false);
-    expect(froggyPlaybackWrapped(0, .1, 6)).toBe(false);
   });
 });
 

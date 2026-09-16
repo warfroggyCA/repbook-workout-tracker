@@ -164,11 +164,15 @@ explicit coverage limits.
 
 ## Cue playback
 
-Do/Avoid guidance advances from presented video-frame wraps using each clip's
-actual duration. Loop detection does not depend on a six-second clip or the
-browser's seeking flag during automatic looping. Manual scrubbing, mode changes
-and viewer remounts reset the playback sample without treating a seek as a rep.
-The existing guidance order, media and paused state remain authoritative.
+Do/Avoid guidance advances when a clip completes. The player listens for the
+media `ended` event, rewinds, and explicitly resumes through its existing
+visibility/user-pause guard. It does not use the native `loop` attribute, which
+can stall the media pipeline at the beginning of a repetition. Presented-frame
+callbacks continue to align the form pointers, independently of cue advancement.
+Manual scrubbing to the end retains the current tip and pause choice; its first
+restart does not count as a completed repetition. Mode changes and viewer
+remounts retain the current guidance and playback settings. No wall-clock timer
+advances guidance when the video is paused or buffering.
 Visible, unpaused previews request playback once metadata is available;
 metadata-only preload does not have to reach `canplay` before playback starts.
 Hidden previews and an explicit pause still prevent automatic playback.
