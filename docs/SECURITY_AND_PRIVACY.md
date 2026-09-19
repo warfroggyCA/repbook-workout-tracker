@@ -19,8 +19,12 @@ data.
 - deployment identifiers, database branch identifiers, retained checkpoints,
   and detailed release chronology
 
-Production-maintenance workflows intentionally remain in the private operations
-repository. Public Actions must not call production maintenance endpoints.
+The minimal production-maintenance scheduler is public so standard-runner usage
+remains free. Its credential is a GitHub Actions secret and its HTTPS origin is
+a repository variable; neither value is committed. The workflow must keep
+repository permissions read-only and must never print response bodies,
+maintenance counts, exact production results, or owner data. Detailed evidence
+and operational chronology remain private.
 
 ## Application rules
 

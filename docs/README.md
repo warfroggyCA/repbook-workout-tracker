@@ -47,6 +47,13 @@ The separate private operations repository owns:
 - current product priority and future roadmap decisions;
 - secrets, environment values, branch identifiers, and operational logs.
 
+The public repository owns the hourly production-maintenance scheduler because
+public standard runners do not consume paid Actions minutes. Its repository
+secret and production-origin variable remain GitHub configuration, not source.
+The workflow logs only generic success or HTTP status and never publishes
+response bodies, maintenance counts, or owner data. Private operations retain
+the detailed maintenance evidence and release chronology.
+
 Public source can prove what a build contains. It cannot by itself prove which
 migration is installed in production, which deployment is canonical, or which
 feature should be built next.

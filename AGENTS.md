@@ -72,8 +72,11 @@ Before application changes, read:
 - Never add real workout observations, owner identifiers, production response
   bodies, secrets, credentials, deployment IDs, database branch IDs, or private
   operational records to this repository.
-- Production-maintenance scheduling and its logs are deliberately owned by the
-  private operations repository. Do not recreate those workflows here.
+- Production-maintenance scheduling is owned by the public repository so its
+  standard-runner usage remains free. The workflow may contain only endpoint
+  paths, a configurable HTTPS origin, secret references, and generic success or
+  HTTP-status failures. Never publish response bodies, maintenance counts,
+  exact run results, credentials, or private operational records.
 - Validate authorization at server boundaries. Do not expose secrets to client
   bundles, logs, exports, or error responses.
 - Production diagnostics must route through `src/lib/server-log.ts`. Event

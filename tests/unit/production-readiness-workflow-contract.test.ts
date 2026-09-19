@@ -31,6 +31,15 @@ type Workflow = {
   >;
 };
 
+type MaintenanceWorkflow = {
+  on: {
+    schedule: Array<{ cron: string }>;
+    workflow_dispatch: unknown;
+  };
+  permissions: Record<string, string>;
+  jobs: Record<string, { steps: WorkflowStep[] }>;
+};
+
 type PackageJson = {
   scripts?: Record<string, string>;
 };
@@ -147,5 +156,32 @@ describe("production readiness workflow contract", () => {
         "active-workout-north-star-phase5.spec.ts",
       ]),
     );
+  });
+});
+
+describe("production maintenance workflow contract", () => {
+  it("uses one hourly read-only scheduler without publishing production responses", async () => {
+    const source = await readFile(
+      ".github/workflows/production-maintenance.yml",
+      "utf8",
+    );
+    const workflow = load(source) as MaintenanceWorkflow;
+    const steps = workflow.jobs.maintain.steps;
+    const maintenanceRuns = steps
+      .map((step) => step.run ?? "")
+      .filter((run) => run.includes("/api/maintenance/"));
+
+    expect(workflow.on.schedule).toEqual([{ cron: "17 * * * *" }]);
+    expect(workflow.on).toHaveProperty("workflow_dispatch");
+    expect(workflow.permissions).toEqual({ contents: "read" });
+    expect(maintenanceRuns).toHaveLength(3);
+    expect(source).toContain("secrets.MAINTENANCE_SECRET");
+    expect(source).toContain("vars.PRODUCTION_BASE_URL");
+    expect(source).not.toMatch(/issues:\s*write/);
+    expect(source).not.toContain("github-script");
+    expect(source).not.toMatch(/\bcat\s+[^\n]*response/);
+    expect(source).not.toContain("--fail-with-body");
+    expect(source).not.toContain("jq ");
+    expect(source.match(/steps\.configuration\.outcome == 'success'/g)).toHaveLength(2);
   });
 });
