@@ -853,8 +853,12 @@ cannot consume another suite's background-job fixtures.
 
 Protected `main` requires a pull request and both `verify` and
 `postgres-integration`. Do not bypass failed checks. Production release,
-migration, maintenance, and recovery-checkpoint evidence is recorded privately,
-not in public workflow logs.
+migration, detailed maintenance results, and recovery-checkpoint evidence are
+recorded privately, not in public workflow logs. The public maintenance
+workflow may report only generic success or an HTTP status. Before enabling it,
+configure `PRODUCTION_BASE_URL` as a repository variable and
+`MAINTENANCE_SECRET` as a repository secret, run it manually, and verify all
+three steps. Retire the private scheduler only after that successful cutover.
 
 
 ## Workout feedback regression checks

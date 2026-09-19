@@ -19,6 +19,11 @@ Application source, schema, migrations, and runtime tests otherwise come from
 the mapped private commit. Future public changes are reviewed normally through
 protected pull requests.
 
+The initial sanitized snapshot omitted production-maintenance workflows. A
+later public change may add only the minimal scheduler contract described in
+`SECURITY_AND_PRIVACY.md`; private response evidence and chronology remain
+excluded.
+
 Owner-generated analysis exports carry their own package, schema, semantic,
 canonicalization, and digest versions plus stable source IDs and revisions.
 These package-level bindings establish which retained facts were selected; they

@@ -481,9 +481,12 @@ and representative existing-data behavior.
 
 ## Public/private operations boundary
 
-This public repository owns application source and pull-request verification.
-The private operations repository owns real release chronology, production
-maintenance scheduling, response metadata, retained recovery checkpoints, and
+This public repository owns application source, pull-request verification, and
+the minimal production-maintenance scheduler. The scheduler has read-only
+repository permissions, reads its credential and production origin from GitHub
+configuration, and emits only generic success or HTTP-status failures. The
+private operations repository owns real release chronology, detailed
+maintenance evidence and response metadata, retained recovery checkpoints, and
 any evidence derived from real workouts. Public code must not depend on those
 private records to build or test.
 
