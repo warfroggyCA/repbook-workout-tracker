@@ -181,7 +181,9 @@ describe("production maintenance workflow contract", () => {
     expect(source).not.toContain("github-script");
     expect(source).not.toMatch(/\bcat\s+[^\n]*response/);
     expect(source).not.toContain("--fail-with-body");
+    expect(source).not.toContain("--show-error");
     expect(source).not.toContain("jq ");
+    expect(source.match(/2>\/dev\/null/g)).toHaveLength(3);
     expect(source.match(/steps\.configuration\.outcome == 'success'/g)).toHaveLength(2);
   });
 });
