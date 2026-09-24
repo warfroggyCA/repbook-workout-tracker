@@ -159,12 +159,11 @@ export function incrementalLoads(config: IncrementalLoadConfig): number[] {
   if (config.increments?.length) {
     return [...config.increments].sort((a, b) => a - b);
   }
-  const min = config.minWeight ?? 5;
-  const max = config.maxWeight ?? min;
-  if (!Number.isFinite(min) || !Number.isFinite(max)) return [];
-  const loads: number[] = [];
-  for (let w = min; w <= max + 1e-9; w += 5) loads.push(round2(w));
-  return loads;
+  // A range describes bounds, not the selectable settings between them.
+  const { minWeight: min, maxWeight: max } = config;
+  return min != null && min === max && Number.isFinite(min) && min > 0
+    ? [min]
+    : [];
 }
 
 export function nextIncrementalUp(

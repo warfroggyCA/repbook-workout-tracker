@@ -234,7 +234,7 @@ test("keeps the full live workout usable through warm-up, skip, replace, continu
   }
 
   const warmup = page.locator("#workout-warmup");
-  await expect(warmup).toContainText("Complete the current warm-up action below.");
+  await expect(warmup).toContainText("Complete the highlighted warm-up action.");
   await expect(page.getByText(
     BA_WORKOUT_FIXTURE.program.days[0].warmupNotes,
     { exact: true },

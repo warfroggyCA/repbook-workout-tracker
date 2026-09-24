@@ -419,7 +419,7 @@ test("keeps skip and replacement choices explicit through pending completion and
   const replacement = page.getByRole("dialog", {
     name: "Replace exercise for this workout",
   });
-  await expect(replacement).toContainText("Why are you replacing it?");
+  await expect(replacement).toContainText("Choose a reason, then browse replacements.");
   await page.keyboard.press("Escape");
   await expect(replacement).toHaveCount(0);
   await card

@@ -786,6 +786,8 @@ export function ExerciseCard({
   const [removeSwipeOffset, setRemoveSwipeOffset] = useState(0);
   const plateConfig = plateConfigs[exercise.id];
   const incremental = incrementals[exercise.loadType];
+  const weightStepsAvailable = plateConfig != null ||
+    (incremental != null && incrementalLoads(incremental).length > 0);
   const usesTotalBarLoad = exerciseUsesTotalBarLoad({
     loadType: exercise.loadType,
     loadSemantics: exercise.loadSemantics,
@@ -1147,9 +1149,9 @@ export function ExerciseCard({
     if (plateConfig) {
       return stepPlateEntryLoad(current, dir, plateConfig, unit, mode);
     }
-    if (current == null) return dir > 0 ? 5 : null;
     if (incremental) {
       const loads = incrementalLoads(incremental);
+      if (current == null) return dir > 0 ? loads[0] ?? null : null;
       const idx = loads.findIndex((l) => Math.abs(l - current) < 1e-9);
       if (idx >= 0) {
         return loads[Math.min(loads.length - 1, Math.max(0, idx + dir))];
@@ -1158,7 +1160,7 @@ export function ExerciseCard({
         ? (loads.find((l) => l > current) ?? current)
         : ([...loads].reverse().find((l) => l < current) ?? current);
     }
-    return Math.max(0, current + dir * 5);
+    return current;
   }
 
   async function handleLog(
@@ -1758,6 +1760,7 @@ export function ExerciseCard({
             }
           }}
           stepWeight={stepWeight}
+          weightStepsAvailable={weightStepsAvailable}
           unit={unit}
           hasWeight={recordsNumericLoad}
           weightLabel={liveWeightLabel}
@@ -2340,6 +2343,7 @@ export function ExerciseCard({
                         }
                       }}
                       stepWeight={stepWeight}
+                      weightStepsAvailable={weightStepsAvailable}
                       unit={unit}
                       hasWeight={recordsNumericLoad}
                       weightLabel={liveWeightLabel}
@@ -2372,6 +2376,7 @@ export function ExerciseCard({
                       draft={appendedDraft}
                       setDraft={setAppendedDraft}
                       stepWeight={stepWeight}
+                      weightStepsAvailable={weightStepsAvailable}
                       unit={unit}
                       hasWeight={recordsNumericLoad}
                       weightLabel={liveWeightLabel}
@@ -3247,6 +3252,7 @@ function SetEntry({
   setDraft,
   onWeightEdit = () => undefined,
   stepWeight,
+  weightStepsAvailable,
   unit,
   hasWeight,
   weightLabel,
@@ -3261,6 +3267,7 @@ function SetEntry({
   draft: SetDraft;
   setDraft: React.Dispatch<React.SetStateAction<SetDraft>>;
   onWeightEdit?: () => void;
+  weightStepsAvailable: boolean;
   stepWeight: (current: number | null, dir: 1 | -1, mode?: LoadStepMode) => number | null;
   unit: string;
   hasWeight: boolean;
@@ -3510,6 +3517,7 @@ function SetEntry({
                     weight: stepWeight(d.weight, -1, loadStepMode),
                   }));
                 }}
+                disabled={!weightStepsAvailable}
                 aria-label="Decrease weight"
               >
                 <Minus className="size-4" />
@@ -3560,11 +3568,17 @@ function SetEntry({
                     weight: stepWeight(d.weight, 1, loadStepMode),
                   }));
                 }}
+                disabled={!weightStepsAvailable}
                 aria-label="Increase weight"
               >
                 <Plus className="size-4" />
               </Button>
             </div>
+            {!weightStepsAvailable && (
+              <p className="text-xs text-muted-foreground">
+                Enter the load directly; exact equipment steps are not configured.
+              </p>
+            )}
           </div>
         )}
         {recordsRepetitions && (
@@ -4159,7 +4173,7 @@ function AlternativesDrawer({
     reason: ExerciseAlternativeReason
   ) => void;
 }) {
-  const [reason, setReason] = useState<UserSelectedAlternativeReason>("variety");
+  const [reason, setReason] = useState<UserSelectedAlternativeReason | null>(null);
   const catalog = useWorkoutExerciseOptions<AlternativeOptions>({
     mode: "alternative",
     exerciseId,
@@ -4168,8 +4182,10 @@ function AlternativesDrawer({
   const { options, setOptions } = catalog;
 
   function handleOpen(next: boolean) {
-    if (next) catalog.prepareToOpen();
-    else catalog.invalidateActiveLoad();
+    if (next) {
+      setReason(null);
+      catalog.prepareToOpen();
+    } else catalog.invalidateActiveLoad();
     onOpenChange(next);
   }
 
@@ -4192,7 +4208,7 @@ function AlternativesDrawer({
         </DrawerHeader>
         <div className="max-h-[60dvh] space-y-4 overflow-y-auto px-4 pb-6">
           <div>
-            <p className="mb-2 text-sm text-muted-foreground">Why are you changing it?</p>
+            <p className="mb-2 text-sm text-muted-foreground">Choose a reason, then browse alternatives.</p>
             <div className="flex flex-wrap gap-2">
               {ALTERNATIVE_REASONS.map(
                 (value) => (
@@ -4221,6 +4237,7 @@ function AlternativesDrawer({
               items={options.items}
               priorityIds={options.priorityIds}
               itemAnnotations={options.annotations}
+              triggerDisabled={reason == null}
               triggerLabel="Browse alternatives"
               title={`Alternatives to ${options.plannedExerciseName}`}
               description="Closest family variants appear first, followed by the same movement and broader same-muscle choices. Available to me is the executable list; All exercises is view-only when a choice is unsafe or incompatible."
@@ -4228,7 +4245,7 @@ function AlternativesDrawer({
               largeTouchTargets
               onSelect={async (candidate) => {
                 const selected = options.items.find((item) => item.id === candidate.id);
-                if (!selected) return false;
+                if (!selected || reason == null) return false;
                 try {
                   const result = await substituteExercise({
                     sessionExerciseId: exerciseId,
@@ -4283,7 +4300,7 @@ function ReplacementDrawer({
   ) => void;
   forcedReason?: ExerciseAlternativeReason;
 }) {
-  const [reason, setReason] = useState<UserSelectedAlternativeReason>("variety");
+  const [reason, setReason] = useState<UserSelectedAlternativeReason | null>(null);
   const effectiveReason = forcedReason ?? reason;
   const [reconciliationRequired, setReconciliationRequired] = useState(false);
   const mutationRef = useRef<{ signature: string; id: string } | null>(null);
@@ -4313,8 +4330,10 @@ function ReplacementDrawer({
   const { options, setOptions } = catalog;
 
   function handleOpen(next: boolean) {
-    if (next) catalog.prepareToOpen();
-    else {
+    if (next) {
+      setReason(null);
+      catalog.prepareToOpen();
+    } else {
       if (reconcileOnNextLoadRef.current) return;
       reconcileOnNextLoadRef.current = false;
       catalog.invalidateActiveLoad();
@@ -4355,7 +4374,7 @@ function ReplacementDrawer({
             </div>
           ) : <div>
             <p className="mb-2 text-sm text-muted-foreground">
-              Why are you replacing it?
+              Choose a reason, then browse replacements.
             </p>
             <div className="flex flex-wrap gap-2">
               {ALTERNATIVE_REASONS.map(
@@ -4392,6 +4411,7 @@ function ReplacementDrawer({
               allowedIds={options.permittedIds}
               disabledReasons={options.disabledReasons}
               allowUnavailableSelection={forcedReason == null}
+              triggerDisabled={effectiveReason == null}
               triggerLabel="Search exercise catalog"
               title="Replace exercise"
               description="Search the authorized catalog without similarity ranking. Repbook supports repetitions, assistance, duration, and distance when the full performed measurement can be retained; activity-only observations stay in Activity."
@@ -4401,7 +4421,7 @@ function ReplacementDrawer({
                 const selected = options.items.find(
                   (item) => item.id === candidate.id,
                 );
-                if (!selected) return false;
+                if (!selected || effectiveReason == null) return false;
                 const signature = `${options.currentExerciseId}:${selected.id}:${effectiveReason}`;
                 if (mutationRef.current?.signature !== signature) {
                   mutationRef.current = {

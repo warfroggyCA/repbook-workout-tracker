@@ -282,6 +282,27 @@ must not silently reinterpret an older record. Restores and corrections must
 recompute or invalidate derived recommendations instead of reviving stale
 conclusions.
 
+## Equipment load options and recommendation dates
+
+Handheld load options combine explicitly recorded selectable weights after
+converting each item's unit into the account's entry unit with the existing
+hundredth-unit storage precision. A fixed minimum equal to the maximum is a
+known load; a range alone does not define increments. Legacy items with no
+stored unit retain their account-unit interpretation. Unavailable items are
+excluded. Unknown ranges cannot erase known weights from other items.
+
+Manual load entry remains available when exact equipment steps are unknown;
+the adjustment buttons explain their unavailable state. Progression never
+falls back to an invented five-unit increase or decrease. Its plate grid uses
+the workout's shared implement-selection resolver and requires one available,
+linked, compatible bar of the correct loading kind. Ambiguous inventory
+withholds numerical load proposals without changing the Program or history.
+
+New progression reason text cites each exposure's recorded local calendar date.
+Operational timestamps and newly generated snapshot names use the profile's
+viewing timezone. Existing recommendation text, snapshot names, and historical
+records are not rewritten.
+
 ## Active-workout orientation
 
 Today keeps choosing a Program day separate from starting a workout. The
@@ -302,11 +323,11 @@ remains canonical, retries reuse the same command identity, and failed writes
 stay visible and recoverable without rolling the owner back. Restoring an
 earlier action makes that action current again. Completed warm-up details
 collapse without discarding their notes, outcomes, or restore controls.
-When warm-ups were included at Start, every pending preparation remains visible
-in one opening warm-up sequence. All selected preparation must be resolved
-before any working set becomes available, so a later working card cannot appear
-inexplicably unavailable during the workout. A blocked working set names the
-opening preparation and can reveal and focus it. These views are derived from
+When warm-ups were included at Start, preparation remains visible in the shared
+Warm-up panel. General preparation opens newly created sessions; exercise
+preparation precedes its first working occurrence, including superset members.
+The frozen occurrence order controls which action must be resolved next. A
+blocked working set names that preparation and can reveal and focus it. These views are derived from
 the immutable occurrence ledger; they never create a late warm-up or bypass the
 authored order.
 
@@ -1530,6 +1551,19 @@ not infer missing meaning. A pre-0080 exercise version that omits the tuple
 retains the current frozen tuple only when the exercise identity is unchanged;
 if it restores a different exercise identity, the equipment meaning becomes
 explicitly unknown.
+
+## Explicit replacement and finish choices
+
+Ordinary alternatives and replacements start with no selected reason. Choose
+a reason before opening the exercise catalog; closing and reopening the
+replacement flow requires a fresh choice. Equipment-conflict replacements
+retain their server-verified equipment reason. Failed replacement requests
+preserve the chosen reason for retry.
+
+The finish footer shows the first unresolved save prerequisite and provides a
+focusable route to its explanation, duration review, or early-finish reason.
+Its disabled state and explanation use the same derived condition. Discard is
+visually separated and retains the existing confirmation and record safeguards.
 
 ## Active-workout equipment decision integrity
 

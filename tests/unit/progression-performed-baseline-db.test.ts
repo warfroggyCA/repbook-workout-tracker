@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { and, eq, isNull } from "drizzle-orm";
 import {
   completedSets,
+  equipmentItems,
   exercisePrescriptions,
   exercises,
   programs,
@@ -221,6 +222,13 @@ describe("progression performed baseline", () => {
       latest.id,
       preferences,
     );
+
+    // The fixture deliberately creates one bar per exposure. Ambiguous current
+    // inventory must withhold a numerical proposal, regardless of query order.
+    expect(await database.db.select().from(recommendations)).toEqual([]);
+    const [retiredBar] = await database.db.select().from(equipmentItems);
+    await database.db.update(equipmentItems).set({ available: false }).where(eq(equipmentItems.id, retiredBar.id));
+    await evaluateSessionProgression(database.db, user.id, latest.id, preferences);
 
     const savedRecommendations = await database.db.select().from(recommendations);
     expect(savedRecommendations).toEqual([

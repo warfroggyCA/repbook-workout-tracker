@@ -151,7 +151,7 @@ export default async function RecoveryPage(props: PageProps<"/recovery">) {
                   {item.run && (
                     <p className="mt-1 text-xs text-muted-foreground">
                       Checked {item.run.completedAt.toLocaleString("en-CA", {
-                        timeZone: "America/Toronto",
+                        timeZone: user.profile.timezone,
                       })}
                     </p>
                   )}
@@ -196,7 +196,7 @@ export default async function RecoveryPage(props: PageProps<"/recovery">) {
         </CardHeader>
         <CardContent>
           {storageConfigured ? (
-            <CreateSnapshotForm defaultName={defaultSnapshotName()} />
+            <CreateSnapshotForm defaultName={defaultSnapshotName(new Date(), user.profile.timezone)} />
           ) : (
             <div className="flex gap-2 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950">
               <ShieldAlert className="mt-0.5 size-4 shrink-0" />
@@ -240,9 +240,9 @@ export default async function RecoveryPage(props: PageProps<"/recovery">) {
                       {snapshot.name}
                     </CardTitle>
                     <CardDescription>
-                      Created {snapshot.createdAt.toLocaleString("en-CA", { timeZone: "America/Toronto" })}
+                      Created {snapshot.createdAt.toLocaleString("en-CA", { timeZone: user.profile.timezone })}
                       {snapshot.verifiedAt
-                        ? ` · verified ${snapshot.verifiedAt.toLocaleString("en-CA", { timeZone: "America/Toronto" })}`
+                        ? ` · verified ${snapshot.verifiedAt.toLocaleString("en-CA", { timeZone: user.profile.timezone })}`
                         : ""}
                     </CardDescription>
                   </div>

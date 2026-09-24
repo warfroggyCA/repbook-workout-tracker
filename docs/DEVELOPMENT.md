@@ -1022,3 +1022,19 @@ text handoff, review before mutation, selective apply, reload recovery, and
 mobile width. The protected program browser job includes this no-AI run.
 Full replacement/import provider checks remain separate; their installed-SDK
 request test does not prove that a live provider accepted the request.
+
+## Equipment and finish review regressions
+
+Run `tests/unit/review-equipment-loads.test.ts` with the existing plate-math,
+equipment-inventory-contract, progression, progression-units database, and
+progression-performed-baseline database suites. Repeat the focused review suite
+with `TZ=UTC` and `TZ=Asia/Manila` to verify that persisted workout-day meaning
+does not depend on the process timezone. The performed-baseline fixture checks
+that multiple eligible bars withhold a proposal until ambiguity is removed.
+
+The replacement-mobile browser suite requires an explicit reason, checks reset
+on reopening, and retains the selected cause through retry and logging. The
+V2-U02 suite checks the disabled finish explanation and focus navigation before
+saving. PII-01 and V2-T04 retain warm-up ordering, recovery, and narrow-screen
+coverage. These checks use only disposable synthetic data. Physical-phone
+warm-up navigation remains a separate acceptance observation.

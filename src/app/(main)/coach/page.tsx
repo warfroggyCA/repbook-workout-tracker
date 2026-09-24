@@ -193,7 +193,7 @@ export default async function CoachPage() {
               typeof alternative === "string"
           )
         : [],
-      evidence: buildReviewEvidenceItems(recommendation.evidence, loadUnit),
+      evidence: buildReviewEvidenceItems(recommendation.evidence, loadUnit, user.profile.timezone),
       reviewRevision: recommendation.reviewRevision,
       deferRevision: recommendation.deferRevision,
       deferredAt: recommendation.deferredAt?.toISOString() ?? null,

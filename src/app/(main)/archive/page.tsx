@@ -177,7 +177,7 @@ export default async function ArchivePage({
                       </Badge>
                     </div>
                     <CardDescription>
-                      Archived {item.archivedAt.toLocaleString()}
+                      Archived {item.archivedAt.toLocaleString("en-CA", { timeZone: user.profile.timezone })}
                     </CardDescription>
                   </div>
                   <div className="flex flex-wrap gap-2">

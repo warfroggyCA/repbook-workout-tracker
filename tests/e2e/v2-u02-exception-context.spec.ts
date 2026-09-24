@@ -61,7 +61,7 @@ test("keeps ordinary completion minimal and makes exception evidence reversible,
   browserName,
   page,
   context,
-}) => {
+}, testInfo) => {
   const pageErrors = observeGauntletPageErrors(page, browserName, [
     /Failed to fetch|Load failed|ERR_(?:FAILED|INTERNET_DISCONNECTED)|NetworkError when attempting to fetch resource/i,
   ]);
@@ -175,6 +175,11 @@ test("keeps ordinary completion minimal and makes exception evidence reversible,
   const status = page.getByRole("complementary", { name: "Workout status" });
   await status.getByRole("button", { name: /^(?:Review and finish workout|Finish workout)$/ }).click();
   const finish = page.getByRole("dialog", { name: "Finish workout" });
+  await expect(finish.getByRole("button", { name: "Save workout", exact: true })).toBeDisabled();
+  await expect(finish.getByRole("status")).toContainText("Choose why you are finishing early before saving.");
+  await page.screenshot({ path: testInfo.outputPath("finish-required-step.png"), fullPage: false });
+  await finish.getByRole("button", { name: "Review required step", exact: true }).click();
+  await expect(finish.getByLabel("Why are you finishing this workout early?")).toBeFocused();
   await finish
     .getByLabel("Why are you finishing this workout early?")
     .selectOption("pain_discomfort");

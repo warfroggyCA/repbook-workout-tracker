@@ -119,7 +119,7 @@ export async function permanentlyDeleteArchiveOperation(input: {
   }
   const now = new Date();
   const safety = await createDataSnapshot(db, user.id, {
-    name: `${defaultSnapshotName(now)} · before permanent deletion`,
+    name: `${defaultSnapshotName(now, user.profile.timezone)} · before permanent deletion`,
     note: `Automatic protection created before permanently deleting Archive action ${parsed.data.operationId}.`,
     reason: "pre_permanent_delete",
     sourceOperationId: parsed.data.operationId,

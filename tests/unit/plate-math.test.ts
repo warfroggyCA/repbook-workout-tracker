@@ -212,8 +212,8 @@ describe("incremental (dumbbell/kettlebell) loads", () => {
     expect(incrementalLoads(adjustableDbs)).toEqual([5, 10, 15, 20, 25, 30, 35]);
   });
 
-  it("steps by 5 from min to max without explicit increments", () => {
-    expect(incrementalLoads({ minWeight: 18, maxWeight: 35 })).toEqual([18, 23, 28, 33]);
+  it("does not invent selectable loads from range bounds", () => {
+    expect(incrementalLoads({ minWeight: 18, maxWeight: 35 })).toEqual([]);
   });
 
   it("returns no generated loads for non-finite bounds", () => {

@@ -395,7 +395,7 @@ async function renderSessionPage(
     if (presentation.plateConfig) plateConfigs[sessionExercise.id] = presentation.plateConfig;
   }
 
-  const incrementals = mergeIncrementalEquipmentConfigs(equipment);
+  const incrementals = mergeIncrementalEquipmentConfigs(equipment, user.profile.unit);
 
   const previousComparableByExercise = await getPreviousComparableSets(
     db,

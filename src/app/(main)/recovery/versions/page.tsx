@@ -107,7 +107,7 @@ function displayValue(
   field: string,
   value: unknown,
   exerciseNames: Map<string, string>,
-  timezone = "America/Toronto",
+  timezone = "UTC",
 ) {
   if (value == null || value === "") return "Not recorded";
   if (field === "exercise_id" || field === "substituted_for_exercise_id") {
@@ -130,7 +130,7 @@ function displayValue(
       .replace(/^./, (character) => character.toUpperCase());
   }
   if (field === "substituted_at") {
-    return new Date(String(value)).toLocaleString();
+    return new Date(String(value)).toLocaleString("en-CA", { timeZone: timezone });
   }
   if (field === "duration_seconds" && typeof value === "number") {
     return `${Math.round(value / 60)} min`;
@@ -153,7 +153,7 @@ function displayValue(
     return value === "date_only" ? "Date only" : "Exact time";
   }
   if (field === "confirmed_at" && typeof value === "string") {
-    return new Date(value).toLocaleString("en-CA", { timeZone: "America/Toronto" });
+    return new Date(value).toLocaleString("en-CA", { timeZone: timezone });
   }
   if (field === "original_metrics" && value && typeof value === "object") {
     const metrics = value as Record<string, unknown>;
@@ -362,7 +362,7 @@ export default async function EditHistoryPage(
                       {label}
                     </CardTitle>
                     <CardDescription>
-                      {actionLabel(version.action)} · {version.createdAt.toLocaleString("en-CA", { timeZone: "America/Toronto" })}
+                      {actionLabel(version.action)} · {version.createdAt.toLocaleString("en-CA", { timeZone: user.profile.timezone })}
                     </CardDescription>
                   </div>
                   <Badge variant="outline">
@@ -404,8 +404,8 @@ export default async function EditHistoryPage(
                     {visibleFields.map((field) => (
                       <div key={field} className="grid gap-1 sm:grid-cols-[10rem_1fr_1fr] sm:gap-3">
                         <dt className="font-medium">{fieldLabel(version.entityType, field)}</dt>
-                        <dd className="text-muted-foreground"><span className="sm:hidden">Before: </span>{displayValue(field, before[field], exerciseNames, String(before.timezone || "America/Toronto"))}</dd>
-                        <dd><span className="sm:hidden">After: </span>{displayValue(field, after[field], exerciseNames, String(after.timezone || "America/Toronto"))}</dd>
+                        <dd className="text-muted-foreground"><span className="sm:hidden">Before: </span>{displayValue(field, before[field], exerciseNames, String(before.timezone || user.profile.timezone))}</dd>
+                        <dd><span className="sm:hidden">After: </span>{displayValue(field, after[field], exerciseNames, String(after.timezone || user.profile.timezone))}</dd>
                       </div>
                     ))}
                   </dl>

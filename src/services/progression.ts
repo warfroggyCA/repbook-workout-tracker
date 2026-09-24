@@ -46,10 +46,10 @@ import {
   buildEquipmentAvailability,
   exerciseIsAvailable,
 } from "@/engine/equipment-filter";
-import { platePairsPerSide } from "@/lib/equipment-inventory-contract";
+import { resolveImplementLoadSelection, type PlateLoadedImplementCandidate } from "@/engine/implement-load-selection";
 import { isPatternAllowedForSuggestions } from "@/engine/constraint-filter";
 import { audit } from "./audit";
-import { convertWeight } from "@/lib/units";
+import { convertWeight, normalizeStoredLoad } from "@/lib/units";
 import { PROGRESSION_JOB_MAX_ATTEMPTS } from "@/lib/progression-job-contract";
 import { eligibleAutomaticProgressionSql } from "@/lib/set-metric-semantics-sql";
 import { reconcilePendingPainRecommendations } from "@/services/recommendation-evidence-eligibility";
@@ -265,56 +265,73 @@ async function recordProgressionRecommendation(
 }
 
 type IncrementalEquipmentConfig = {
+  unit?: "lb" | "kg";
   minWeight?: number;
   maxWeight?: number;
   increments?: number[];
 };
 
-/**
- * Repeated dumbbell or kettlebell rows form one truthful set of achievable
- * loads. Progression must not depend on whichever same-type row happened to
- * be returned last by the database.
+/** Convert each item's exact settings before combining loads in the entry unit.
+ * Legacy items without a stored unit retain their existing account-unit meaning.
+ * Unknown ranges contribute no invented settings and cannot hide known weights.
  */
 export function mergeIncrementalEquipmentConfigs(
   items: Array<{
     type: string;
     available: boolean;
     attrs: IncrementalEquipmentConfig;
-  }>
+  }>,
+  unit: "lb" | "kg",
 ): Record<string, IncrementalEquipmentConfig> {
   const merged: Record<string, IncrementalEquipmentConfig> = {};
   for (const item of items) {
-    if (
-      (item.type !== "dumbbell" && item.type !== "kettlebell") ||
-      !item.available
-    ) {
-      continue;
-    }
-    const existing = merged[item.type];
-    const availableWeights = [
-      ...(existing?.increments ?? []),
-      ...(item.attrs.increments ?? []),
-    ];
+    if (!["dumbbell", "kettlebell"].includes(item.type) || !item.available) continue;
+    const weights = incrementalLoads(item.attrs).map((weight) =>
+      normalizeStoredLoad(convertWeight(weight, item.attrs.unit ?? unit, unit)),
+    );
+    const increments = [...new Set([
+      ...(merged[item.type]?.increments ?? []), ...weights,
+    ])].sort((a, b) => a - b);
     merged[item.type] = {
-      minWeight:
-        existing?.minWeight == null
-          ? item.attrs.minWeight
-          : item.attrs.minWeight == null
-            ? existing.minWeight
-            : Math.min(existing.minWeight, item.attrs.minWeight),
-      maxWeight:
-        existing?.maxWeight == null
-          ? item.attrs.maxWeight
-          : item.attrs.maxWeight == null
-            ? existing.maxWeight
-            : Math.max(existing.maxWeight, item.attrs.maxWeight),
-      increments:
-        availableWeights.length > 0
-          ? [...new Set(availableWeights)].sort((a, b) => a - b)
-          : undefined,
+      unit,
+      minWeight: increments[0],
+      maxWeight: increments.at(-1),
+      increments,
     };
   }
   return merged;
+}
+
+/** Use the same implement resolver as workout setup. Unknown, unavailable,
+ * incompatible, or ambiguous bars cannot establish a progression load grid.
+ */
+export function progressionPlateConfigs(
+  bars: Array<typeof barbellConfigs.$inferSelect>,
+  equipment: Array<Pick<typeof equipmentItems.$inferSelect, "id" | "available" | "label">>,
+  plates: Array<Pick<typeof plateInventory.$inferSelect, "denomination" | "quantity" | "unit">>,
+  unit: "lb" | "kg",
+): Record<string, PlateMathConfig> {
+  const candidates: PlateLoadedImplementCandidate[] = bars.flatMap((bar) => {
+    const item = equipment.find((item) => item.id === bar.equipmentItemId);
+    if (!item || bar.unit !== unit || bar.sharedPlatePoolCompatible == null ||
+        !["olympic", "ez", "trap_hex", "specialty"].includes(bar.loadingKind ?? "")) return [];
+    return [{
+      equipmentItemId: item.id, configurationId: bar.id, label: item.label,
+      loadingKind: bar.loadingKind as PlateLoadedImplementCandidate["loadingKind"],
+      emptyWeight: bar.barWeight, collarWeight: bar.collarWeight,
+      unit: bar.unit, sharedPlatePoolCompatible: bar.sharedPlatePoolCompatible,
+      available: item.available,
+    }];
+  });
+  const configs: Record<string, PlateMathConfig> = {};
+  for (const loadType of ["barbell", "ez_bar", "trap_bar", "specialty_bar"]) {
+    const resolved = resolveImplementLoadSelection({
+      loadType, candidates, selectedEquipmentItemId: null,
+      sharedPlates: plates.filter((plate) => plate.unit === unit),
+    });
+    if (resolved.plateConfig) configs[loadType] = resolved.plateConfig;
+  }
+  return configs;
 }
 
 export function steppersForLoadType(
@@ -343,9 +360,8 @@ export function steppersForLoadType(
     };
   }
   return {
-    nextLoadUp: (current) => current + cfg.defaultIncrement,
-    roundDown: (target) =>
-      Math.floor(target / cfg.defaultIncrement) * cfg.defaultIncrement,
+    nextLoadUp: () => null,
+    roundDown: () => null,
   };
 }
 
@@ -530,6 +546,7 @@ export async function evaluateSessionProgression(
           requested.current_slot_id AS slot_id,
           ws.id AS session_id,
           ws.started_at,
+          ws.local_date,
           cs.id AS set_id,
           cs.set_no,
           cs.weight,
@@ -616,6 +633,7 @@ export async function evaluateSessionProgression(
     slot_id: string;
     session_id: string;
     started_at: Date | string;
+    local_date: string;
     set_id: string;
     weight: number | null;
     weight_unit: "lb" | "kg" | null;
@@ -632,19 +650,8 @@ export async function evaluateSessionProgression(
   observeRead?.({ stage: "recommendations", rows: recommendationState.length });
   observeRead?.({ stage: "alternatives", rows: alternatives.length });
   if (!profile) return;
-  const plateList = plates.map((p) => ({
-    denomination: p.denomination,
-    countPerSide: platePairsPerSide(p.quantity),
-  }));
-  const plateConfigs: Record<string, PlateMathConfig> = {};
-  for (const bar of bars) {
-    plateConfigs[bar.barType === "ez" ? "ez_bar" : "barbell"] = {
-      barWeight: bar.barWeight,
-      collarWeight: bar.collarWeight,
-      plates: plateList,
-    };
-  }
-  const incrementals = mergeIncrementalEquipmentConfigs(equipment);
+  const plateConfigs = progressionPlateConfigs(bars, equipment, plates, profile.unit);
+  const incrementals = mergeIncrementalEquipmentConfigs(equipment, profile.unit);
 
   const prescriptionsBySlot = new Map(
     prescriptions.map((prescription) => [
@@ -661,6 +668,7 @@ export async function evaluateSessionProgression(
     if (!exposure) {
       exposure = {
         sessionId: row.session_id,
+        localDate: row.local_date,
         date:
           row.started_at instanceof Date
             ? row.started_at

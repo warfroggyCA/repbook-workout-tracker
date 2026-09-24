@@ -141,8 +141,8 @@ export function ActiveWorkoutDiscard({
         render={
           <Button
             type="button"
-            variant="outline"
-            className="h-auto min-h-11 w-full whitespace-normal border-destructive/40 py-2 text-destructive hover:bg-destructive/10 hover:text-destructive"
+            variant="ghost"
+            className="h-auto min-h-11 w-full whitespace-normal py-2 text-destructive hover:bg-destructive/10 hover:text-destructive"
           />
         }
       >
