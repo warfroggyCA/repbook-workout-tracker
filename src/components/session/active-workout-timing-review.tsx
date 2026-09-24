@@ -92,6 +92,8 @@ export function ActiveWorkoutTimingReview({
 
   return (
     <section
+      id="active-workout-timing-review"
+      tabIndex={-1}
       aria-labelledby="active-workout-timing-heading"
       className={cn(
         "rounded-xl border p-3",

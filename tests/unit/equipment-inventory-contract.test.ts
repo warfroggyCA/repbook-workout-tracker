@@ -277,8 +277,9 @@ describe("equipment inventory contract", () => {
           available: false,
           attrs: { minWeight: 60, maxWeight: 80, increments: [60, 80] },
         },
-      ]).dumbbell
+      ], "lb").dumbbell
     ).toEqual({
+      unit: "lb",
       minWeight: 5,
       maxWeight: 50,
       increments: [5, 10, 15, 20, 25, 30, 35, 40, 45, 50],

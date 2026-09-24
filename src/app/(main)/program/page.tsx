@@ -162,7 +162,7 @@ export default async function ProgramPage(props: PageProps<"/program">) {
                       Checked{" "}
                       {new Date(
                         preflightStatus.publication.checkedAt,
-                      ).toLocaleString()}
+                      ).toLocaleString("en-CA", { timeZone: user.profile.timezone })}
                       . Evidence counts describe available records, not
                       confidence.
                     </p>
@@ -209,7 +209,7 @@ export default async function ProgramPage(props: PageProps<"/program">) {
                     </h3>
                     <p className="mt-2 text-xs text-muted-foreground">
                       Checked{" "}
-                      {new Date(preflightStatus.current.checkedAt).toLocaleString()}
+                      {new Date(preflightStatus.current.checkedAt).toLocaleString("en-CA", { timeZone: user.profile.timezone })}
                       . This current check stays separate from the saved
                       publication record.
                     </p>

@@ -3,6 +3,7 @@ import { eq, sql } from "drizzle-orm";
 import {
   auditLogs,
   completedSets,
+  equipmentItems,
   exercisePrescriptions,
   exercises,
   programs,
@@ -382,7 +383,11 @@ describe("durable progression job handoff", () => {
         localDate: "2026-01-01",
       })
       .where(eq(workoutSessions.id, older.sessionId));
+    const [olderBar] = await database.db.select().from(equipmentItems).where(eq(equipmentItems.userId, userId));
     const latest = await completeFixture();
+    // Each fixture creates a bar; retain one available implement for this
+    // input-window test, with ambiguity covered by the load-selection tests.
+    await database.db.update(equipmentItems).set({ available: false }).where(eq(equipmentItems.id, olderBar.id));
     await database.db
       .update(workoutSessions)
       .set({

@@ -124,7 +124,7 @@ export default async function SnapshotRestorePage(
               </CardDescription>
             </div>
             <Badge variant="outline">
-              {preview.snapshot.createdAt.toLocaleString("en-CA", { timeZone: "America/Toronto" })}
+              {preview.snapshot.createdAt.toLocaleString("en-CA", { timeZone: user.profile.timezone })}
             </Badge>
           </div>
         </CardHeader>

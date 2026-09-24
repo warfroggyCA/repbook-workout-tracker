@@ -2360,6 +2360,18 @@ export function SessionRunner(props: SessionRunnerProps) {
       ownerReportedSeconds != null &&
       ownerReportedSeconds <= timing.wallClockSeconds);
 
+  const finishBlocker = finishing
+    ? { message: "Saving workout…", target: null }
+    : finishConflictDetected
+      ? { message: "Review the saved workout before retrying this finish request.", target: "finish-save-details" }
+      : finishBlocked
+        ? { message: "Resolve pending or failed saves before finishing.", target: "finish-save-details" }
+        : !durationReviewReady
+          ? { message: "Review active time before saving.", target: "active-workout-timing-review" }
+          : finishRecoveryCommand == null && pendingPlannedOccurrences > 0 && !finishReasonReady
+            ? { message: "Choose why you are finishing early before saving.", target: "completion-reason" }
+            : null;
+
   function plannedExerciseNameForOccurrence(
     occurrence: SessionOccurrenceData,
   ): string | null {
@@ -4426,7 +4438,7 @@ export function SessionRunner(props: SessionRunnerProps) {
               <p className="text-xs font-medium text-violet-800 dark:text-violet-200">
                 {guidance.currentAction?.kind === "day_warmup" ||
                 guidance.currentAction?.kind === "exercise_warmup"
-                  ? "Complete the current warm-up action below."
+                  ? "Complete the highlighted warm-up action."
                   : guidance.warmups.remaining > 0
                     ? "Later exercises have preparation remaining."
                     : "Warm-up actions are accounted for."}
@@ -5396,6 +5408,8 @@ export function SessionRunner(props: SessionRunnerProps) {
             </div>
           </DrawerHeader>
           <div
+            id="finish-save-details"
+            tabIndex={-1}
             data-testid="finish-workout-scroll"
             className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-4"
           >
@@ -5798,21 +5812,29 @@ export function SessionRunner(props: SessionRunnerProps) {
             </div>
           </div>
           <DrawerFooter className="border-t bg-popover pt-3 pb-[max(1rem,env(safe-area-inset-bottom))]">
+            {finishBlocker && (
+              <div id="finish-save-blocker" className="text-sm" role="status">
+                <p>{finishBlocker.message}</p>
+                {finishBlocker.target && (
+                  <Button type="button" variant="link" className="min-h-11 px-0" onClick={() => {
+                    const target = document.getElementById(finishBlocker.target!);
+                    target?.scrollIntoView({ block: "start", behavior: activeWorkoutScrollBehavior() });
+                    target?.focus({ preventScroll: true });
+                  }}>
+                    Review required step
+                  </Button>
+                )}
+              </div>
+            )}
             <Button
               onClick={handleFinish}
-              disabled={
-                finishing ||
-                finishConflictDetected ||
-                finishBlocked ||
-                !durationReviewReady ||
-                (finishRecoveryCommand == null &&
-                  pendingPlannedOccurrences > 0 &&
-                  !finishReasonReady)
-              }
+              disabled={finishBlocker != null}
+              aria-describedby={finishBlocker ? "finish-save-blocker" : undefined}
               size="lg"
             >
               {finishing ? "Saving workout…" : "Save workout"}
             </Button>
+            <div className="mt-2 border-t pt-2">
             <ActiveWorkoutDiscard
               ownerId={props.ownerId}
               sessionId={props.sessionId}
@@ -5822,6 +5844,7 @@ export function SessionRunner(props: SessionRunnerProps) {
                 clearMatchingRestTimer()
               }
             />
+            </div>
           </DrawerFooter>
         </DrawerContent>
       </Drawer>

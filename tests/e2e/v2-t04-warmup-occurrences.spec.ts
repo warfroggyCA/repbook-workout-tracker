@@ -71,7 +71,7 @@ test("keeps warm-up actions singular, reversible, durable, and usable with minim
   const panel = page.getByRole("region", { name: "Warm-up", exact: true });
   const actions = panel.locator("li");
 
-  await expect(panel).toContainText("Complete the current warm-up action below.");
+  await expect(panel).toContainText("Complete the highlighted warm-up action.");
   await expect(panel).toContainText(
     `0 done · ${PRODUCTION_WORKOUT_START_WARMUP.length} left`,
   );

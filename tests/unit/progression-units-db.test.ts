@@ -78,10 +78,10 @@ describe("progression load units", () => {
         sourceProgramVersionId: activated.programVersionId,
         sourceDayLineageId: template.lineageId,
         status: "completed",
-        startedAt: new Date("2026-07-12T14:00:00.000Z"),
-        finishedAt: new Date("2026-07-12T15:00:00.000Z"),
+        startedAt: new Date("2026-07-12T00:30:00.000Z"),
+        finishedAt: new Date("2026-07-12T01:30:00.000Z"),
         timezone: "America/Toronto",
-        localDate: "2026-07-12",
+        localDate: "2026-07-11",
       })
       .returning({ id: workoutSessions.id });
     const [sessionExercise] = await database.db
@@ -170,5 +170,8 @@ describe("progression load units", () => {
         },
       }),
     ]);
+    const persisted = await database.db.select().from(recommendations);
+    expect(persisted[0].reason).toContain("Jul 11");
+    expect(persisted[0].reason).not.toContain("Jul 12");
   });
 });

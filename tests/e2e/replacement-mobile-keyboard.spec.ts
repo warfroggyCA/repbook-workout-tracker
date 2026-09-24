@@ -164,7 +164,7 @@ async function expectKeyboardGeometry(page: Page, picker: Locator) {
 test("keeps unrestricted replacement truthful and reachable through mobile keyboard resize", async ({
   browserName,
   page,
-}) => {
+}, testInfo) => {
   const unexpectedErrors: string[] = [];
   const nextRscPrefetches = observeNextRscPrefetches(page, browserName);
   let expectedRejectedRequest = false;
@@ -342,6 +342,11 @@ test("keeps unrestricted replacement truthful and reachable through mobile keybo
     name: "Search exercise catalog",
     exact: true,
   });
+  await expect(catalogTrigger).toBeDisabled();
+  await page.screenshot({ path: testInfo.outputPath("replacement-explicit-reason.png"), fullPage: false });
+  await expect(drawer.getByRole("button", { name: "Variety", exact: true })).toHaveAttribute("aria-pressed", "false");
+  await drawer.getByRole("button", { name: "Variety", exact: true }).click();
+  await expect(catalogTrigger).toBeEnabled();
   await catalogTrigger.click();
   let picker = page.getByRole("dialog", {
     name: "Replace exercise",
@@ -444,6 +449,8 @@ test("keeps unrestricted replacement truthful and reachable through mobile keybo
   const reopenedDrawer = page.getByRole("dialog", {
     name: "Replace exercise for this workout",
   });
+  await expect(reopenedDrawer.getByRole("button", { name: "Search exercise catalog", exact: true })).toBeDisabled();
+  await reopenedDrawer.getByRole("button", { name: "Variety", exact: true }).click();
   await reopenedDrawer
     .getByRole("button", { name: "Search exercise catalog", exact: true })
     .click();

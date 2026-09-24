@@ -394,6 +394,7 @@ export function ExercisePicker({
   items,
   onSelect,
   triggerLabel = "Browse exercise library",
+  triggerDisabled = false,
   title = "Choose an exercise",
   description = "Browse by family, then choose the exact equipment or technique variant.",
   selectedId = null,
@@ -414,6 +415,7 @@ export function ExercisePicker({
     item: ExerciseDiscoveryItem,
   ) => boolean | void | Promise<boolean | void>;
   triggerLabel?: string;
+  triggerDisabled?: boolean;
   title?: string;
   description?: string;
   selectedId?: string | null;
@@ -616,6 +618,7 @@ export function ExercisePicker({
       <DialogTrigger
         render={
           <Button
+            disabled={triggerDisabled}
             type="button"
             variant="outline"
             className={cn(

@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { and, desc, eq, ilike, isNull, or, sql } from "drizzle-orm";
 import type { Db } from "@/db";
 import { resultRows } from "@/db/result";
-import { dataSnapshots } from "@/db/schema";
+import { dataSnapshots, userProfiles } from "@/db/schema";
 import {
   canonicalJson,
   decryptSnapshotBytes,
@@ -469,11 +469,11 @@ export async function readVerifiedDataSnapshot(
   return { snapshot, payload, plaintext: decrypted.plaintext };
 }
 
-export function defaultSnapshotName(now = new Date()) {
+export function defaultSnapshotName(now = new Date(), timezone = "UTC") {
   return `Snapshot ${new Intl.DateTimeFormat("en-CA", {
     dateStyle: "medium",
     timeStyle: "short",
-    timeZone: "America/Toronto",
+    timeZone: timezone,
   }).format(now)}`;
 }
 
@@ -485,6 +485,10 @@ export async function createAutomaticSafetySnapshot(
   dependencies: SnapshotDependencies = {}
 ) {
   const now = dependencies.now ?? new Date();
+  const profile = await db.query.userProfiles.findFirst({
+    where: eq(userProfiles.userId, userId), columns: { timezone: true },
+  });
+  const timezone = profile?.timezone ?? "UTC";
   return createDataSnapshot(
     db,
     userId,
@@ -492,7 +496,7 @@ export async function createAutomaticSafetySnapshot(
       name: `Safety snapshot · ${reason} · ${new Intl.DateTimeFormat("en-CA", {
         dateStyle: "medium",
         timeStyle: "short",
-        timeZone: "America/Toronto",
+        timeZone: timezone,
       }).format(now)}`,
       note,
       reason,

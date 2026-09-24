@@ -152,7 +152,8 @@ function humanizeSignalKey(key: string) {
 function signalValue(
   key: string,
   value: unknown,
-  loadUnit: "lb" | "kg" | null
+  loadUnit: "lb" | "kg" | null,
+  timezone = "UTC",
 ): string | null {
   if (key === "worstPainSeverity" && typeof value === "number") {
     return `${value}/10`;
@@ -167,6 +168,7 @@ function signalValue(
         month: "short",
         day: "numeric",
         year: "numeric",
+        timeZone: timezone,
       });
     }
   }
@@ -191,7 +193,8 @@ function signalValue(
 
 export function buildReviewEvidenceItems(
   evidence: RecommendationEvidence,
-  loadUnit: "lb" | "kg" | null
+  loadUnit: "lb" | "kg" | null,
+  timezone = "UTC",
 ): ReviewEvidenceItem[] {
   const items: ReviewEvidenceItem[] = [];
 
@@ -216,7 +219,7 @@ export function buildReviewEvidenceItems(
 
   for (const [key, rawValue] of Object.entries(evidence.signals ?? {})) {
     if (separatelyPresentedSignals.has(key)) continue;
-    const value = signalValue(key, rawValue, loadUnit);
+    const value = signalValue(key, rawValue, loadUnit, timezone);
     if (!value) continue;
     items.push({
       label: signalLabels[key] ?? humanizeSignalKey(key),

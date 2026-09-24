@@ -5,6 +5,7 @@
  */
 import { progressionConfig as cfg } from "./config";
 import { classifyPainHold } from "./pain-hold";
+import { formatRecordedLocalDate } from "@/lib/dates";
 
 export type ExposureSet = {
   id: string;
@@ -17,6 +18,7 @@ export type ExposureSet = {
 export type Exposure = {
   sessionId: string;
   date: Date;
+  localDate?: string;
   sets: ExposureSet[]; // working sets only
 };
 
@@ -177,7 +179,7 @@ export function evaluateSlot(input: EvaluateSlotInput): RuleDecision | null {
       if (toLoad != null && toLoad > progressionBaseline) {
         const dates = recent
           .map((e) =>
-            e.date.toLocaleDateString(undefined, { month: "short", day: "numeric" })
+            e.localDate ? formatRecordedLocalDate(e.localDate) : "date unavailable"
           )
           .join(", ");
         return {
