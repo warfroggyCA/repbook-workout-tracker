@@ -444,7 +444,7 @@ test("presents immutable superset order, truthful progress, and next-member equi
   const laterMemberToggle = laterMemberCard.getByTestId("exercise-swipe-surface");
   const previousPerformance = currentCard.getByTestId("previous-comparable-set");
   await expect(previousPerformance).not.toHaveAttribute("open");
-  await previousPerformance.locator("summary").click();
+  await openNativeDetails(previousPerformance);
   await expect(previousPerformance).toHaveAttribute("open");
   await previousPerformance.locator("summary").click();
   await expect(currentCard.getByLabel("Part of a superset")).toHaveCount(1);
