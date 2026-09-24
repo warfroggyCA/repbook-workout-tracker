@@ -1032,10 +1032,20 @@ export async function publishRecommendationProgramVersion(
         ...slot,
         exerciseId: payload.toExerciseId,
         lineageId: nextLineageId,
-        supersetKey: null,
         targetLoad: null,
         targetLoadUnit: null,
+        notes: null,
+        setNotes: slot.setNotes.map(() => null),
+        warmupNotes: null,
+        warmupSets: [],
       };
+      // Preparation belongs to the replaced movement, not its position in the
+      // day. Keep general/other-slot preparation and the reviewed group intact.
+      if ("warmupItems" in day) {
+        day.warmupItems = day.warmupItems.filter(
+          (item) => item.beforeSlotLineageId !== slot.lineageId,
+        );
+      }
       if ("intent" in day) {
         day.intent = {
           ...day.intent,

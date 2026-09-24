@@ -233,6 +233,13 @@ export function RecommendationCard({
         <p className="mt-1 text-sm font-medium leading-relaxed">
           {rec.proposedEffect}
         </p>
+        {rec.kind === "substitution" && (
+          <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+            Keeps sets, reps, rest and group position. The old exercise’s target
+            load, exercise notes, set cues and attached warm-ups will not carry
+            over. General warm-ups and other exercises stay unchanged.
+          </p>
+        )}
       </div>
 
       <div className="mt-3">

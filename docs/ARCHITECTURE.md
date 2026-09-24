@@ -38,6 +38,14 @@ preserving its superset membership, member order, targets, rounds, and rest.
 The replacement stays in the draft until the normal Review and Publish flow;
 removing an exercise or explicitly ungrouping remains a separate action.
 
+Approving a Review exercise replacement also preserves its group membership,
+member order, sets, repetitions and rest. It resets the old movement's target
+load, notes, set cues and exercise-specific preparation rather than transferring
+them to the replacement. General preparation and other slots remain unchanged;
+the Review card explains this before approval. Old Program versions and performed
+records remain immutable, and failed protection/publication leaves the decision
+pending without partially applying the replacement.
+
 Cross-version drafts are schema-validated and fenced by their saved revision
 and canonical content hash. Harmless legacy JSON fields do not block publication
 or become part of the new immutable version.
