@@ -3663,6 +3663,13 @@ test("opens failed-set recovery from Settings at 145 percent on iPhone WebKit", 
   await expect(finishRecovery).toContainText(
     "1 set failed to save. Your recorded attempt is still on this device.",
   );
+  await finishRecovery.getByTestId("finish-workout-scroll").evaluate((element) => {
+    element.scrollTop = element.scrollHeight;
+  });
+  await finishRecovery.getByRole("button", { name: "Review required step", exact: true }).click();
+  const unsavedRecovery = finishRecovery.getByRole("region", { name: "Unsaved workout recovery" });
+  await expect(unsavedRecovery).toBeFocused();
+  await expect(unsavedRecovery).toBeInViewport();
   await expect(finishRecovery).toContainText(retained.exerciseName);
   await expect(finishRecovery).toContainText("Set 1");
   await expect(finishRecovery).toContainText(
