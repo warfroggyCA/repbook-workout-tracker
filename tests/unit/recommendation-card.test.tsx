@@ -118,6 +118,9 @@ describe("RecommendationCard", () => {
     expect(substitutionHtml).toContain(
       "Switch to: Dumbbell Bench Press",
     );
+    expect(substitutionHtml).toContain("Keeps sets, reps, rest and group position.");
+    expect(substitutionHtml).toContain("attached warm-ups will not carry over");
+    expect(substitutionHtml).toContain("General warm-ups and other exercises stay unchanged.");
   });
 
 });

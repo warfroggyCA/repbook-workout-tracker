@@ -35,6 +35,8 @@ import {
 import { publishRecommendationProgramVersion } from "@/services/program-publication";
 import { evaluateSessionProgression } from "@/services/progression";
 import { getReviewDecisionData } from "@/services/review-decisions";
+import { getCurrentProgramDocument } from "@/services/program-documents";
+import { createSuggestedDayIntent, createSuggestedSlotIntent } from "@/lib/program-document";
 import {
   createMigratedTestDatabase,
   createStartBarrier,
@@ -1419,6 +1421,89 @@ describe("recommendation decisions publish immutable Program versions", () => {
       adaptations: 1,
       audits: 1,
     });
+  });
+
+  it.each([
+    { grouped: true, preparation: false },
+    { grouped: false, preparation: true },
+    { grouped: true, preparation: true },
+  ])("publishes a structured substitution without orphaning group or preparation references: %j", async ({ grouped, preparation }) => {
+    const sourceLineage = crypto.randomUUID();
+    const otherLineage = crypto.randomUUID();
+    const preparationFields = { load: null, loadUnit: null, loadPercent: null, loadText: null, notes: null };
+    const slots = [sourceLineage, otherLineage].map((lineageId, index) => ({
+      lineageId,
+      exerciseId: currentExerciseId,
+      sets: 3,
+      repMin: 6,
+      repMax: 8,
+      targetLoad: 100,
+      restSec: 90,
+      supersetKey: grouped ? "pair" : null,
+      targetLoadUnit: "lb" as const,
+      supersetRestAfterRoundSec: 120,
+      notes: index === 0 ? "Old exercise technique" : "Keep other exercise guidance",
+      warmupNotes: preparation ? "Old exercise preparation" : null,
+      warmupSets: preparation ? [{ ...preparationFields, label: "Old ramp", reps: 5, load: 40, loadUnit: "lb" as const }] : [],
+      setNotes: ["Old exercise cue", null, null],
+      intent: { ...createSuggestedSlotIntent(3, index), substitutionPolicy: "approved_family" as const },
+    }));
+    const general = { ...preparationFields, key: crypto.randomUUID(), label: "General preparation", reps: 5, beforeSlotLineageId: null };
+    const otherPreparation = { ...preparationFields, key: crypto.randomUUID(), label: "Other exercise preparation", reps: 5, beforeSlotLineageId: otherLineage };
+    const activated = await activateProgramAtomically(database.db, {
+      userId, loadUnit: "lb", programName: "Structured replacement fixture",
+      structuredIntentReviewed: true,
+      days: [{
+        lineageId: crypto.randomUUID(), name: "Structured day",
+        warmupItems: preparation ? [general, otherPreparation, {
+          ...preparationFields,
+          key: crypto.randomUUID(), label: "Source exercise preparation", reps: 5,
+          beforeSlotLineageId: sourceLineage,
+        }] : [],
+        intent: createSuggestedDayIntent(slots), exercises: slots,
+      }],
+      changeSummary: "Structured fixture", auditAction: "program.activate",
+      auditSummary: "Activated synthetic structured fixture",
+    });
+    if (!activated.ok) throw new Error(activated.reason);
+    programId = activated.programId;
+    const before = await getCurrentProgramDocument(database.db, userId);
+    if (!before || before.schemaVersion !== "3") throw new Error("Missing structured fixture");
+    const oldVersion = await database.db.query.programVersions.findFirst({
+      where: eq(programVersions.id, before.baseVersionId),
+    });
+    const recommendationId = await createSubstitutionRecommendation();
+    const historicalSets = await database.db.select().from(completedSets);
+    const historicalExercises = await database.db.select().from(sessionExercises);
+    expect(await approve(recommendationId, { beforePublish: async () => false }))
+      .toMatchObject({ ok: false });
+    expect(await getCurrentProgramDocument(database.db, userId)).toEqual(before);
+    expect(await database.db.select().from(userDecisions)).toHaveLength(0);
+    expect(await approve(recommendationId)).toEqual({ ok: true });
+    const after = await getCurrentProgramDocument(database.db, userId);
+    if (!after || after.schemaVersion !== "3") throw new Error("Missing published Program");
+    const replaced = after.days[0].exercises[0];
+    expect(replaced.lineageId).not.toBe(sourceLineage);
+    expect(replaced).toMatchObject({
+      exerciseId: targetExerciseId, sets: 3, repMin: 6, repMax: 8, restSec: 90,
+      targetLoad: null, targetLoadUnit: null,
+      supersetKey: before.days[0].exercises[0].supersetKey,
+      groupMemberOrderIdx: before.days[0].exercises[0].groupMemberOrderIdx,
+      notes: null, setNotes: [null, null, null], warmupNotes: null, warmupSets: [],
+    });
+    expect(after.days[0].supersets).toEqual(before.days[0].supersets);
+    expect(after.days[0].exercises[1]).toEqual(before.days[0].exercises[1]);
+    expect(after.days[0].warmupItems).toEqual(before.days[0].warmupItems.filter(
+      (item) => item.beforeSlotLineageId !== sourceLineage,
+    ));
+    expect(after.days[0].intent.identity.anchorSlotLineageIds).toEqual([replaced.lineageId]);
+    expect(await database.db.query.programVersions.findFirst({
+      where: eq(programVersions.id, before.baseVersionId),
+    })).toEqual(oldVersion);
+    expect(await database.db.select().from(completedSets)).toEqual(historicalSets);
+    expect(await database.db.select().from(sessionExercises)).toEqual(historicalExercises);
+    expect(await approve(recommendationId)).toEqual({ ok: true });
+    expect(await database.db.select().from(userDecisions)).toHaveLength(1);
   });
 
   it("rolls back a substitution when publication is forced to fail", async () => {
