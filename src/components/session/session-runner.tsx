@@ -2363,9 +2363,9 @@ export function SessionRunner(props: SessionRunnerProps) {
   const finishBlocker = finishing
     ? { message: "Saving workout…", target: null }
     : finishConflictDetected
-      ? { message: "Review the saved workout before retrying this finish request.", target: "finish-save-details" }
+      ? { message: "Review the saved workout before retrying this finish request.", target: "finish-conflict-details" }
       : finishBlocked
-        ? { message: "Resolve pending or failed saves before finishing.", target: "finish-save-details" }
+        ? { message: "Resolve pending or failed saves before finishing.", target: "finish-unsaved-details" }
         : !durationReviewReady
           ? { message: "Review active time before saving.", target: "active-workout-timing-review" }
           : finishRecoveryCommand == null && pendingPlannedOccurrences > 0 && !finishReasonReady
@@ -5408,8 +5408,6 @@ export function SessionRunner(props: SessionRunnerProps) {
             </div>
           </DrawerHeader>
           <div
-            id="finish-save-details"
-            tabIndex={-1}
             data-testid="finish-workout-scroll"
             className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-4"
           >
@@ -5455,6 +5453,8 @@ export function SessionRunner(props: SessionRunnerProps) {
             </div>
             {finishBlocked && (
               <div
+                id="finish-unsaved-details"
+                tabIndex={-1}
                 role="region"
                 aria-label="Unsaved workout recovery"
                 className="rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-sm text-amber-950 dark:text-amber-100"
@@ -5722,7 +5722,7 @@ export function SessionRunner(props: SessionRunnerProps) {
               </div>
             )}
             {finishError && (
-              <div className="space-y-3 rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">
+              <div id="finish-conflict-details" tabIndex={-1} className="space-y-3 rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">
                 <p role="alert">{finishError}</p>
                 {finishConflictDetected && (
                   <div className="flex flex-col gap-2 sm:flex-row">
