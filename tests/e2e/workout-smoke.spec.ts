@@ -1399,10 +1399,12 @@ test("answers all five History questions without mixing independent activity int
   );
 
   await page.goto("/history?range=all&view=insights&lens=program-fit");
-  const reviewLink = programLens.getByRole("link", {
-    name: "Open Review and decisions",
-    exact: true,
-  });
+  await expect(programLens.getByRole("link", {
+    name: "Open Review and decisions", exact: true,
+  })).toHaveCount(0);
+  await expect(programLens).not.toContainText("Possible decision:");
+  const reviewLink = page.getByRole("navigation", { name: "Main navigation" })
+    .getByRole("link", { name: "Review", exact: true });
   await waitForReactHandler(reviewLink);
   await reviewLink.focus();
   await expect(reviewLink).toBeFocused();

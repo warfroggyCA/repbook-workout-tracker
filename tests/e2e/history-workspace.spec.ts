@@ -94,17 +94,8 @@ test("History workspace preserves deep links, Back and Forward, and exact detail
   ).toHaveCount(0);
   await expect(page.getByText("Training calendar", { exact: true })).toBeVisible();
   const actionSignal = page.getByText("One thing to review", { exact: true });
-  expect(await actionSignal.count()).toBeLessThanOrEqual(1);
-  await expect(page.locator("#history-action-signal-heading")).not.toHaveText("Progress");
-  if ((await actionSignal.count()) === 1) {
-    const [signalBox, calendarBox] = await Promise.all([
-      actionSignal.boundingBox(),
-      page.getByText("Training calendar", { exact: true }).boundingBox(),
-    ]);
-    expect(signalBox).not.toBeNull();
-    expect(calendarBox).not.toBeNull();
-    expect(signalBox!.y).toBeLessThan(calendarBox!.y);
-  }
+  await expect(actionSignal).toHaveCount(0);
+  await expect(page.locator("#history-action-signal-heading")).toHaveCount(0);
   await expect(
     page.getByRole("heading", { name: "Five questions", exact: true }),
   ).toHaveCount(0);
@@ -204,6 +195,18 @@ test("History workspace preserves deep links, Back and Forward, and exact detail
   await page.locator("main").screenshot({
     path: resolve(evidenceDirectory, "insights-workspace-desktop.png"),
   });
+
+  for (const title of ["Program fit", "Pain and constraints", "Work capacity"]) {
+    await page.getByRole("link", { name: title, exact: true }).click();
+    const lens = page.getByRole("article", { name: title, exact: true });
+    await expect(lens).toBeVisible();
+    await expect(lens.locator('a[href="/coach"]')).toHaveCount(0);
+    await expect(lens).not.toContainText("Possible decision:");
+    await lens.getByText("Evidence and methodology", { exact: true }).click();
+    await expect(lens.getByRole("region", { name: "Supporting evidence" })).toBeVisible();
+    await page.goBack();
+    await expect(page.getByRole("heading", { name: "Explore the evidence", exact: true })).toBeVisible();
+  }
 
   const progressLink = page.getByRole("link", {
     name: "Open progress evidence",
