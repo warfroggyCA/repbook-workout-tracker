@@ -1495,6 +1495,13 @@ counterpart in `src/lib/equipment-capability-sql.ts` let that same physical item
 satisfy a broad cable requirement. Other machines do not inherit this capability.
 Exact equipment definitions, profile kinds, geometry, attachments, retained
 requirements, and per-item weight constraints remain independent checks.
+Live machine weight controls use the selected session geometry and compatible
+plate inventory for both plate guidance and the next achievable load. Entry-unit
+conversion occurs at the calculation boundary; machine plate denominations retain
+their recorded units. Unknown or incomplete geometry does not enable estimated
+steps, and manual entry remains available. This does not revise stored sets or
+Coach progression rules.
+
 Generic external-load cable/machine exercises offer matching saved profiles;
 no matching profile leaves their existing manual-entry path unchanged. Choosing
 a profile makes its immutable snapshot part of subsequent set-write validation.

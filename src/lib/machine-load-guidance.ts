@@ -1,3 +1,4 @@
+import { convertWeight, normalizeStoredLoad, type LoadUnit } from "@/lib/units";
 import {
   solveMachineLoad,
   type MachineLoadConfig,
@@ -45,7 +46,11 @@ export function machineLoadEntryLabel(config: MachineLoadConfig): string {
 export function formatMachineLoadGuidance(
   enteredLoad: number | null,
   config: MachineLoadConfig,
+  entryUnit: LoadUnit | null = config.unit,
 ): string {
+  if (enteredLoad != null && entryUnit && config.unit) {
+    enteredLoad = normalizeStoredLoad(convertWeight(enteredLoad, entryUnit, config.unit));
+  }
   if (enteredLoad == null) {
     return config.geometryStatus === "known"
       ? "Enter a load to calculate the exact plates."
@@ -75,4 +80,26 @@ export function formatMachineLoadGuidance(
       : null,
   ].filter((value): value is string => value != null);
   return `${enteredLoad} ${result.unit} is not achievable with the compatible owned plates. ${neighbours.join(" · ")}. ${meaning}`;
+}
+
+/** Step through the selected machine's achievable loads, never generic increments. */
+export function stepMachineEntryLoad(
+  current: number | null,
+  direction: 1 | -1,
+  config: MachineLoadConfig,
+  entryUnit: LoadUnit,
+): number | null {
+  if (!config.unit || (current == null && direction < 0)) return current;
+  const target = current == null ? 0 : normalizeStoredLoad(convertWeight(current, entryUnit, config.unit));
+  const result = solveMachineLoad(target, config);
+  if (result.status === "unavailable") return current;
+  const next = current == null
+    ? result.exact ?? result.nearestAbove
+    : direction > 0 ? result.nearestAbove : result.nearestBelow;
+  return next ? normalizeStoredLoad(convertWeight(next.enteredLoad, config.unit, entryUnit)) : current;
+}
+
+export function machineLoadStepsAvailable(config: MachineLoadConfig): boolean {
+  const result = solveMachineLoad(0, config);
+  return result.status === "available" && result.nearestAbove != null;
 }
