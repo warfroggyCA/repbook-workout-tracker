@@ -131,6 +131,25 @@ function workingOccurrenceFor(
 }
 
 describe("ExerciseCard", () => {
+  it.each(["known", "unknown"] as const)("uses %s machine geometry for the weight controls", (geometryStatus) => {
+    const carry = { ...exercise, name: "Synthetic Pulldown", metricType: "weight_reps", loadType: "external", loadSemantics: "total", sets: [], warmupSets: [] } as SessionExerciseData;
+    const occurrence = workingOccurrenceFor(carry, 0);
+    const html = renderToStaticMarkup(<ExerciseCard exercise={carry} historyRevision={0} progress={{
+        sessionExerciseId: carry.id, exerciseName: carry.name, total: 1, planned: 1,
+        extra: 0, workoutOnly: 0, performed: 0, plannedPerformed: 0, extraPerformed: 0,
+        workoutOnlyPerformed: 0, skipped: 0, abandoned: 0, pending: 1, legacyUnknown: 0,
+        completedWithoutResult: 0, status: "current",
+      }} expanded warmupResolved onToggle={vi.fn()}
+      machineLoadConfig={{ geometryStatus, startingResistance: 0, unit: "lb", loadingPointCount: 1, balancingRule: "single_point", targetEntryMeaning: "added_plates", compatiblePlates: [{ denomination: 5, quantity: 4 }] }}
+      plateConfigs={{}} incrementals={{}} unit="lb" activeOccurrence={occurrence} workingOccurrences={[occurrence]} isCurrentExercise
+      onPatch={vi.fn()} onQueueSet={async () => true} onRetrySet={async () => undefined} onDiscardSet={async () => undefined}
+      onSkipComplete={vi.fn()} onOpenCoach={vi.fn()} adjustIntent={null} onAdjustIntentChange={vi.fn()} />);
+    const increase = html.match(/<button[^>]*aria-label="Increase weight"[^>]*>/)?.[0];
+    expect(increase).toBeDefined();
+    expect(/\sdisabled(?:=|[\s>])/.test(increase!)).toBe(geometryStatus !== "known");
+    expect(html).toContain(geometryStatus === "known" ? "added plates" : "Machine geometry is incomplete");
+  });
+
   it("keeps unsupported loaded time blocked and explains recovery", () => {
     const carry = { ...exercise, name: "Synthetic Carry", metricType: "distance_duration", loadType: "kettlebell", loadSemantics: "per_implement", sets: [], warmupSets: [] } as SessionExerciseData;
     const occurrence = workingOccurrenceFor(carry, 0);

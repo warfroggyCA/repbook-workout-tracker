@@ -86,6 +86,8 @@ import type { MachineLoadConfig } from "@/engine/machine-load-math";
 import {
   formatMachineLoadGuidance,
   machineLoadEntryLabel,
+  machineLoadStepsAvailable,
+  stepMachineEntryLoad,
 } from "@/lib/machine-load-guidance";
 import {
   EFFORT_CHOICES,
@@ -786,7 +788,9 @@ export function ExerciseCard({
   const [removeSwipeOffset, setRemoveSwipeOffset] = useState(0);
   const plateConfig = plateConfigs[exercise.id];
   const incremental = incrementals[exercise.loadType];
-  const weightStepsAvailable = plateConfig != null ||
+  const weightStepsAvailable = machineLoadConfig
+    ? machineLoadStepsAvailable(machineLoadConfig)
+    : plateConfig != null ||
     (incremental != null && incrementalLoads(incremental).length > 0);
   const usesTotalBarLoad = exerciseUsesTotalBarLoad({
     loadType: exercise.loadType,
@@ -1146,6 +1150,9 @@ export function ExerciseCard({
       : "no target";
 
   function stepWeight(current: number | null, dir: 1 | -1, mode: LoadStepMode = "normal"): number | null {
+    if (machineLoadConfig) {
+      return stepMachineEntryLoad(current, dir, machineLoadConfig, unit);
+    }
     if (plateConfig) {
       return stepPlateEntryLoad(current, dir, plateConfig, unit, mode);
     }
@@ -3289,7 +3296,7 @@ function SetEntry({
       : null;
   const machineLine =
     (unit === "lb" || unit === "kg") && machineLoadConfig
-      ? formatMachineLoadGuidance(draft.weight, machineLoadConfig)
+      ? formatMachineLoadGuidance(draft.weight, machineLoadConfig, unit)
       : null;
   if (!supported) {
     return (
