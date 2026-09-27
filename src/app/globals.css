@@ -85,10 +85,10 @@
   /* Athlete-workflow semantics: hierarchy and state without extra chrome. */
   --surface-canvas: var(--background);
   --surface-primary: var(--card);
-  --surface-inset: color-mix(in oklch, var(--muted) 72%, var(--card));
-  --surface-selected: color-mix(in oklch, var(--primary) 8%, var(--card));
-  --surface-attention: color-mix(in oklch, oklch(0.78 0.15 75) 12%, var(--card));
-  --surface-destructive: color-mix(in oklch, var(--destructive) 8%, var(--card));
+  --surface-inset: color-mix(in oklab, var(--muted) 72%, var(--card));
+  --surface-selected: color-mix(in oklab, var(--primary) 8%, var(--card));
+  --surface-attention: color-mix(in oklab, oklch(0.78 0.15 75) 12%, var(--card));
+  --surface-destructive: color-mix(in oklab, var(--destructive) 8%, var(--card));
   --space-page: clamp(0.875rem, 2vw, 1.5rem);
   --space-section: clamp(1rem, 2.5vw, 1.75rem);
   --space-control: 0.75rem;
@@ -122,6 +122,16 @@ html[data-font-size="large"] {
 
 html[data-font-size="extra-large"] {
   font-size: 145%;
+}
+
+/*
+ * WCAG 2.4.11 Focus Not Obscured: keyboard and programmatic focus must land
+ * clear of the fixed active-workout dock. The dock publishes its live height
+ * (plus gap and safe area) in --active-workout-overlay-bottom and removes it
+ * on unmount, so this is zero everywhere else in the app.
+ */
+html {
+  scroll-padding-bottom: var(--active-workout-overlay-bottom, 0px);
 }
 
 @media (max-width: 420px) {
@@ -276,7 +286,7 @@ html[data-font-size="extra-large"] {
 
 .ui-surface[data-ui-surface="selected"] {
   background: var(--surface-selected);
-  border-color: color-mix(in oklch, var(--primary) 28%, var(--border));
+  border-color: color-mix(in oklab, var(--primary) 28%, var(--border));
 }
 
 .ui-surface[data-current-set="true"] {
@@ -285,12 +295,12 @@ html[data-font-size="extra-large"] {
 
 .ui-surface[data-ui-surface="attention"] {
   background: var(--surface-attention);
-  border-color: color-mix(in oklch, oklch(0.72 0.14 75) 32%, var(--border));
+  border-color: color-mix(in oklab, oklch(0.72 0.14 75) 32%, var(--border));
 }
 
 .ui-surface[data-ui-surface="destructive"] {
   background: var(--surface-destructive);
-  border-color: color-mix(in oklch, var(--destructive) 28%, var(--border));
+  border-color: color-mix(in oklab, var(--destructive) 28%, var(--border));
 }
 
 .ui-state {
@@ -306,24 +316,24 @@ html[data-font-size="extra-large"] {
 .ui-state[data-ui-state="saving"],
 .ui-state[data-ui-state="retrying"] {
   background: var(--surface-selected);
-  border-color: color-mix(in oklch, var(--primary) 24%, var(--border));
+  border-color: color-mix(in oklab, var(--primary) 24%, var(--border));
 }
 
 .ui-state[data-ui-state="attention"],
 .ui-state[data-ui-state="retained"] {
   background: var(--surface-attention);
-  border-color: color-mix(in oklch, oklch(0.72 0.14 75) 35%, var(--border));
+  border-color: color-mix(in oklab, oklch(0.72 0.14 75) 35%, var(--border));
 }
 
 .ui-state[data-ui-state="needs_attention"] {
   background: var(--surface-destructive);
-  border-color: color-mix(in oklch, var(--destructive) 34%, var(--border));
+  border-color: color-mix(in oklab, var(--destructive) 34%, var(--border));
 }
 
 .ui-state[data-ui-state="saved"],
 .ui-state[data-ui-state="recovered"] {
-  background: color-mix(in oklch, var(--success) 9%, var(--card));
-  border-color: color-mix(in oklch, var(--success) 30%, var(--border));
+  background: color-mix(in oklab, var(--success) 9%, var(--card));
+  border-color: color-mix(in oklab, var(--success) 30%, var(--border));
 }
 
 .ui-motion-immediate {
@@ -352,5 +362,5 @@ html[data-font-size="extra-large"] {
 }
 
 ::selection {
-  background: color-mix(in oklch, var(--primary) 22%, transparent);
+  background: color-mix(in oklab, var(--primary) 22%, transparent);
 }
