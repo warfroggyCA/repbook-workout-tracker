@@ -183,12 +183,72 @@ async function expectActiveViewportBudget(
   }).toPass();
 }
 
+// WCAG 2.4.11 Focus Not Obscured: every focusable control in the workout,
+// once focused, must sit entirely clear of the fixed workout dock. Focus is
+// moved programmatically so the check behaves the same in every engine, and
+// the viewer's focus and scroll position are restored afterwards.
+async function expectFocusClearOfWorkoutDock(page: Page) {
+  const result = await page.evaluate(async () => {
+    const dock = document.getElementById("workout-rest-status");
+    const main = document.querySelector("main");
+    if (!dock || !main) return { checked: 0, obscured: ["workout dock or main missing"] };
+    const previousFocus = document.activeElement as HTMLElement | null;
+    const previousScroll = window.scrollY;
+    const nextFrame = () =>
+      new Promise<void>((resolve) =>
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+      );
+    const controls = [
+      ...main.querySelectorAll<HTMLElement>(
+        'a[href], button, input, select, textarea, summary, [tabindex]:not([tabindex="-1"])',
+      ),
+    ].filter(
+      (element) =>
+        !(element as HTMLButtonElement).disabled &&
+        !dock.contains(element) &&
+        !element.closest('[role="dialog"], [aria-hidden="true"], [inert]') &&
+        element.getClientRects().length > 0 &&
+        getComputedStyle(element).visibility !== "hidden",
+    );
+    const obscured: string[] = [];
+    let checked = 0;
+    for (const element of controls) {
+      element.focus();
+      await nextFrame();
+      if (document.activeElement !== element) continue;
+      checked += 1;
+      const target = element.getBoundingClientRect();
+      const fixed = dock.getBoundingClientRect();
+      const overlap =
+        Math.min(target.bottom, fixed.bottom) - Math.max(target.top, fixed.top);
+      // A control that fits above the dock must be fully clear. A container
+      // taller than that space (such as the focusable superset card) may run
+      // under the dock but must never be entirely hidden.
+      const fitsAboveDock = target.height <= fixed.top;
+      const entirelyHidden = overlap >= target.height - 0.5;
+      if ((fitsAboveDock && overlap > 0.5) || entirelyHidden) {
+        const name = (element.getAttribute("aria-label") ?? element.textContent ?? "")
+          .trim()
+          .replace(/\s+/g, " ")
+          .slice(0, 60);
+        obscured.push(`${name} (${Math.round(overlap)}px under the dock)`);
+      }
+    }
+    previousFocus?.focus({ preventScroll: true });
+    window.scrollTo({ top: previousScroll, behavior: "instant" });
+    return { checked, obscured };
+  });
+  expect(result.checked).toBeGreaterThan(0);
+  expect(result.obscured).toEqual([]);
+}
+
 async function dismissRest(page: Page) {
   const status = page.getByRole("complementary", { name: "Workout status" });
   const rest = status.getByTestId("rest-cockpit");
   const end = rest.getByRole("button", { name: "End rest", exact: true });
   await expect(end).toBeVisible();
   await expectActiveViewportBudget(page);
+  await expectFocusClearOfWorkoutDock(page);
   await end.click();
   await expect(rest).toContainText("Rest ended");
   await expectActiveViewportBudget(page);
