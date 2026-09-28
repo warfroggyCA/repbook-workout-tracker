@@ -25,7 +25,13 @@ async function focusCheck(page: Page) {
       const t = e.getBoundingClientRect();
       const d = dock.getBoundingClientRect();
       const overlap = Math.min(t.bottom, d.bottom) - Math.max(t.top, d.top);
-      if ((t.height <= d.top && overlap > 0.5) || overlap >= t.height - 0.5) {
+      // Match the browser's focus-scroll area, including the large top
+      // margin reserved by the focusable superset panel.
+      const style = getComputedStyle(e);
+      const scrollAreaHeight = t.height +
+        (Number.parseFloat(style.scrollMarginTop) || 0) +
+        (Number.parseFloat(style.scrollMarginBottom) || 0);
+      if ((scrollAreaHeight <= d.top && overlap > 0.5) || overlap >= t.height - 0.5) {
         obscured.push(`${(e.getAttribute("aria-label") ?? e.textContent ?? "").trim().replace(/\s+/g, " ").slice(0, 50)} (${Math.round(overlap)}px)`);
       }
     }
