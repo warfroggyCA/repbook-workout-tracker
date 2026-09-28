@@ -69,7 +69,7 @@ describe("occurrence mutation outbox sync", () => {
       localStorage: storage,
       dispatchEvent: events.dispatchEvent.bind(events),
     });
-    vi.stubGlobal("navigator", { onLine: true });
+    vi.stubGlobal("navigator", { onLine: true, locks: { request: async (_name: string, _options: unknown, task: () => unknown) => task() } });
     vi.stubGlobal(
       "CustomEvent",
       class<T> extends Event {

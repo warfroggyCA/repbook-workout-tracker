@@ -1,3 +1,4 @@
+import { nextWorkoutCommandCreatedAt, withOutboxLock } from "@/lib/workout-set-outbox";
 import {
   INCOMPLETE_SESSION_REASONS,
   type IncompleteSessionReason,
@@ -596,9 +597,17 @@ function mutateBrowserUnlocked(
 export function enqueueOccurrenceMutation(
   input: NewOccurrenceMutationOutboxEntry,
 ) {
-  return mutateBrowser((storage) =>
-    enqueueOccurrenceMutationOutboxEntry(storage, input),
-  );
+  // Same short mutation lock and monotonic clock as equipment and set commands.
+  // Observation timestamps and existing retry identities remain unchanged.
+  return withOutboxLock(() => mutateBrowser((storage) => {
+    try {
+      return enqueueOccurrenceMutationOutboxEntry(storage, {
+        ...input, createdAtISO: nextWorkoutCommandCreatedAt(storage),
+      });
+    } catch {
+      return { ok: false as const, reason: "This browser could not retain the workout-item change safely." };
+    }
+  }));
 }
 
 export function markOccurrenceMutationTransientFailureUnlocked(

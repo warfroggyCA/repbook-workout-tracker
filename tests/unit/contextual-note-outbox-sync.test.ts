@@ -15,9 +15,9 @@ vi.mock("@/app/actions/contextual-notes", () => ({
 
 import {
   parseContextualNoteSaveResult,
-  registerContextualNoteOutboxWakeListeners,
   syncContextualNoteEntry,
 } from "@/components/contextual-notes/contextual-note-outbox-sync";
+import { registerWorkoutCommandQueueWakeListeners } from "@/lib/workout-command-queue";
 import { deploymentRecoveryRequired } from "@/lib/deployment-recovery";
 
 const OWNER_ID = "10000000-0000-4000-8000-000000000001";
@@ -235,7 +235,7 @@ describe("contextual note outbox sync", () => {
 
   it("wakes on online, focus, pageshow, and visible-page changes, then cleans up", () => {
     const wake = vi.fn();
-    const unregister = registerContextualNoteOutboxWakeListeners(wake);
+    const unregister = registerWorkoutCommandQueueWakeListeners(wake);
     fakeWindow.dispatchEvent(new Event("online"));
     fakeWindow.dispatchEvent(new Event("focus"));
     fakeWindow.dispatchEvent(new Event("pageshow"));

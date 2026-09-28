@@ -1,6 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useReducer, useState, useSyncExternalStore } from "react";
+import { deliverNextWorkoutCommand, wakeWorkoutCommandQueue } from "@/lib/workout-command-queue";
+
+import { useMemo, useState, useSyncExternalStore } from "react";
 import { AlertTriangle, CloudUpload, RotateCcw, Trash2 } from "lucide-react";
 import { mutateOccurrence } from "@/app/actions/sessions";
 import { Badge } from "@/components/ui/badge";
@@ -18,9 +20,7 @@ import {
   getOccurrenceMutationOutboxSnapshot,
   markOccurrenceMutationNeedsAttentionUnlocked,
   markOccurrenceMutationTransientFailureUnlocked,
-  nextOccurrenceMutationOutboxEntry,
   publishOccurrenceMutationOutboxEvent,
-  releaseOccurrenceMutationBackoff,
   removeOccurrenceMutation,
   removeOccurrenceMutationUnlocked,
   retryOccurrenceMutation,
@@ -67,12 +67,11 @@ export async function syncNextOccurrenceMutation(
   activeOwners.add(ownerId);
   let queuedWake = false;
   try {
-    await withOccurrenceMutationOutboxLock(async () => {
-      const entry = nextOccurrenceMutationOutboxEntry(
-        getOccurrenceMutationOutboxSnapshot().entries,
-        ownerId,
+    await deliverNextWorkoutCommand(ownerId, command => command.kind === "occurrence", async (command) => {
+      const entry = await withOccurrenceMutationOutboxLock(() =>
+        getOccurrenceMutationOutboxSnapshot().entries.find(entry => entry.ownerId === ownerId && entry.clientKey === command.entry.clientKey)
       );
-      if (!entry || (typeof navigator !== "undefined" && !navigator.onLine)) {
+      if (!entry || entry.clientKey !== command.entry.clientKey || (typeof navigator !== "undefined" && !navigator.onLine)) {
         return;
       }
       publishOccurrenceMutationOutboxEvent({
@@ -96,51 +95,57 @@ export async function syncNextOccurrenceMutation(
           }),
           actionDeadlineMs,
         );
-        if (result.outcome === "saved" || result.outcome === "replayed") {
-          const removed = removeOccurrenceMutationUnlocked(entry.clientKey);
-          if (!removed.ok) {
-            markOccurrenceMutationNeedsAttentionUnlocked(
-              entry.clientKey,
-              removed.reason,
-            );
+        await withOccurrenceMutationOutboxLock(() => {
+          const current = getOccurrenceMutationOutboxSnapshot().entries.find(item => item.ownerId === ownerId && item.clientKey === entry.clientKey);
+          if (!current || current.expectedRevision !== entry.expectedRevision || current.operation !== entry.operation ||
+              current.occurrenceId !== entry.occurrenceId || current.reason !== entry.reason ||
+              current.note !== entry.note || (current.reasonCode ?? null) !== (entry.reasonCode ?? null)) return;
+          if (result.outcome === "saved" || result.outcome === "replayed") {
+            const removed = removeOccurrenceMutationUnlocked(entry.clientKey);
+            if (!removed.ok) {
+              markOccurrenceMutationNeedsAttentionUnlocked(
+                entry.clientKey,
+                removed.reason,
+              );
+              return;
+            }
+            publishOccurrenceMutationOutboxEvent({
+              type: "saved",
+              clientKey: entry.clientKey,
+              sessionId: entry.sessionId,
+              occurrence: result.occurrence,
+            });
             return;
           }
+          const reason =
+            result.outcome === "workout_not_active"
+              ? "This workout has ended. Check this change before removing it."
+              : result.outcome === "not_found"
+                ? "We couldn't find this workout item."
+                : result.outcome === "equipment_reason_unverified"
+                  ? "Repbook could not verify that equipment was unavailable or incompatible. Review this skip before retrying."
+                  : result.outcome === "equipment_source_conflict"
+                    ? "Your available equipment changed before this skip was saved. Review the current setup before retrying."
+                : "This item changed somewhere else before your update was saved.";
+          markOccurrenceMutationNeedsAttentionUnlocked(entry.clientKey, reason);
           publishOccurrenceMutationOutboxEvent({
-            type: "saved",
+            type: "failed",
             clientKey: entry.clientKey,
             sessionId: entry.sessionId,
-            occurrence: result.occurrence,
           });
-          return;
-        }
-        const reason =
-          result.outcome === "workout_not_active"
-            ? "This workout has ended. Check this change before removing it."
-            : result.outcome === "not_found"
-              ? "We couldn't find this workout item."
-              : result.outcome === "equipment_reason_unverified"
-                ? "Repbook could not verify that equipment was unavailable or incompatible. Review this skip before retrying."
-                : result.outcome === "equipment_source_conflict"
-                  ? "Your available equipment changed before this skip was saved. Review the current setup before retrying."
-              : "This item changed somewhere else before your update was saved.";
-        markOccurrenceMutationNeedsAttentionUnlocked(entry.clientKey, reason);
-        publishOccurrenceMutationOutboxEvent({
-          type: "failed",
-          clientKey: entry.clientKey,
-          sessionId: entry.sessionId,
         });
       } catch (error) {
         const timedOut = isDocumentActionTimeout(error);
         if (timedOut) reportDocumentActionTimeout();
         const deploymentMismatch = !timedOut && reportDeploymentMismatch(error);
-        markOccurrenceMutationTransientFailureUnlocked(
+        await withOccurrenceMutationOutboxLock(() => markOccurrenceMutationTransientFailureUnlocked(
           entry.clientKey,
           timedOut
             ? TIMED_OUT_FAILURE
             : deploymentMismatch
               ? UPDATED_APP_FAILURE
               : TRANSIENT_FAILURE,
-        );
+        ));
         publishOccurrenceMutationOutboxEvent({
           type: "failed",
           clientKey: entry.clientKey,
@@ -171,45 +176,7 @@ export function OccurrenceMutationOutboxSync({ ownerId }: { ownerId: string }) {
     () => snapshot.entries.filter((entry) => entry.ownerId === ownerId),
     [ownerId, snapshot.entries],
   );
-  const [wakeCounter, wake] = useReducer((value: number) => value + 1, 0);
-
-  useEffect(() => {
-    const onWake = () => wake();
-    const onOnline = () => {
-      void releaseOccurrenceMutationBackoff(ownerId).then(() => wake());
-    };
-    const onVisible = () => {
-      if (document.visibilityState === "visible") wake();
-    };
-    window.addEventListener("online", onOnline);
-    window.addEventListener("focus", onWake);
-    window.addEventListener("pageshow", onWake);
-    document.addEventListener("visibilitychange", onVisible);
-    return () => {
-      window.removeEventListener("online", onOnline);
-      window.removeEventListener("focus", onWake);
-      window.removeEventListener("pageshow", onWake);
-      document.removeEventListener("visibilitychange", onVisible);
-    };
-  }, [ownerId]);
-
-  useEffect(() => {
-    const retryAt = entries.reduce<number | null>((earliest, entry) => {
-      if (entry.status !== "queued" || !entry.nextAttemptAtISO) return earliest;
-      const candidate = Date.parse(entry.nextAttemptAtISO);
-      return earliest == null || candidate < earliest ? candidate : earliest;
-    }, null);
-    if (retryAt == null || retryAt <= Date.now()) return;
-    const timer = window.setTimeout(
-      () => wake(),
-      Math.min(retryAt - Date.now(), 300_000),
-    );
-    return () => window.clearTimeout(timer);
-  }, [entries]);
-
-  useEffect(() => {
-    void syncNextOccurrenceMutation(ownerId);
-  }, [entries, ownerId, wakeCounter]);
+  const wake = wakeWorkoutCommandQueue;
 
   return (
     <OccurrenceMutationOutboxTray
@@ -264,7 +231,7 @@ export function OccurrenceMutationOutboxTray({
         )}
         {storageError || attentionCount > 0
           ? "Workout changes need attention"
-          : `${entries.length} change${entries.length === 1 ? "" : "s"} saving`}
+          : `${entries.length} change${entries.length === 1 ? "" : "s"} on this device`}
       </Button>
       <Drawer open={open} onOpenChange={setOpen} showSwipeHandle>
         <DrawerContent className="[--drawer-content-max-height:calc(100dvh-2rem)]">

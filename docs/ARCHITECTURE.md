@@ -578,16 +578,38 @@ failed copy remains visible with retry and deliberate discard; it never silently
 disappears or rolls the display back. Older outbox formats are quarantined for
 explicit recovery instead of being guessed into the current contract.
 
-Local command mutation and remote delivery use separate browser locks. Enqueue,
-retry, discard, selection, and acknowledgement reconciliation hold the shared
-outbox lock only for short local-storage mutations; no Server Action await runs
-under that lock. A separate owner-scoped Web Lock keeps the combined equipment
-and set stream single-flight across tabs while preserving deterministic command
-selection and stable client keys. A second set can therefore be retained and
-advance the local projection while an earlier acknowledgement is delayed. If
-the browser cannot provide a genuine cross-tab Web Lock, automatic delivery
-fails closed: device copies remain unchanged, retry is disabled, and the tray
-reports **Saving paused** instead of claiming a save is in progress.
+The typed device-command queue in `src/lib/workout-command-queue.ts` owns
+selection across sets, equipment choices, occurrence changes, contextual notes,
+and Live Coach messages. `WorkoutCommandQueueSync` is its single automatic
+lifecycle and retry driver. The five existing versioned storage adapters remain
+in place so an update neither migrates nor rewrites pending payloads, timestamps,
+client keys, equipment dependencies, note hashes, rest receipts, or quarantined
+copies. Recovery/export/sign-out continue to inspect those same durable stores.
+
+Every transport reselects the next eligible command after acquiring the same
+owner-scoped Web Lock. Ordering uses retained creation time, then stable client
+key and kind for legacy ties. New occurrence mutations share the equipment/set
+monotonic enqueue clock and short local mutation lock. An earlier unresolved
+workout mutation fences later mutations of another kind in that workout;
+unrelated workouts and append-only note/Coach observations can continue.
+Existing equipment dependencies and the exact planned-order recovery exception
+remain authoritative, including a skip or completion that resolves the blocker
+named by a retained later set. Backoff and needs-attention copies never silently
+disappear or let a dependent mutation overtake them.
+
+Local storage locks are held only for short selection or acknowledgement
+reconciliation, not network waits. A second command can therefore be retained
+while the earlier acknowledgement is delayed. Note and Coach requests have the
+same bounded acknowledgement deadline as workout writes. An uncertain timeout
+retains the stable identity and pauses same-document delivery until reload;
+server idempotency and revision fences remain authoritative for late/replayed
+requests. Optional Coach response streaming starts after durable acknowledgement
+and outside the delivery lock. If genuine cross-tab Web Locks are unavailable,
+automatic delivery fails closed and device copies remain retained. Unreadable or
+quarantined mutation envelopes also pause delivery with a visible recovery notice;
+unknown order is never guessed. Domain recovery
+trays remain available; a queued occurrence is labelled as retained on this device,
+rather than claiming an acknowledgement is actively in progress.
 
 Correction is a reviewed superseding assertion, never an edit in place. The
 owner reviews the exact original and replacement values, selects a reason, and
