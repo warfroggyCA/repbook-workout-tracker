@@ -40,6 +40,12 @@ type Props = CorrectedSetValues & {
   metricType: PerformedMetricType;
   historyRevision: number;
   source: "active_workout" | "workout_history";
+  /** Visible trigger text; the correction flow itself is unchanged. */
+  triggerLabel?: string;
+  /** Exact accessible name when the visible label is abbreviated. */
+  triggerAriaLabel?: string;
+  /** Replaces the default outline button styling for a compact row trigger. */
+  triggerClassName?: string;
   onOpenChange?: (open: boolean) => void;
   onAcknowledged?: (result: {
     values: CorrectedSetValues;
@@ -180,9 +186,24 @@ export function CompletedSetCorrection(props: Props) {
   return (
     <Drawer open={open} onOpenChange={setOpenState}>
       <DrawerTrigger
-        render={<Button type="button" variant="outline" size="sm" />}
+        render={
+          props.triggerClassName ? (
+            <button
+              type="button"
+              className={props.triggerClassName}
+              aria-label={props.triggerAriaLabel}
+            />
+          ) : (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              aria-label={props.triggerAriaLabel}
+            />
+          )
+        }
       >
-        Correct set
+        {props.triggerLabel ?? "Correct set"}
       </DrawerTrigger>
       <DrawerContent className="[&_button]:min-h-11 [&_input]:min-h-11 [&_textarea]:min-h-11">
         <DrawerHeader>

@@ -322,6 +322,17 @@ workout** action enters the authenticated, owner-scoped session lifecycle.
 Neither path rewrites the Program, and the existing one-active-workout and
 replay-safe start protections remain authoritative.
 
+While a workout is in progress, the Today resume card reads this device's
+typed command queue for that session before making any save claim. It counts
+only recorded-work commands (sets and occurrence changes); equipment choices,
+contextual notes, and Live Coach messages are excluded. With nothing retained,
+it says so and shows **Up next** from the saved occurrence ledger through the
+same `nextActionableOccurrence` rule the session uses. While this device still
+holds a set or change, it names what is saving or needs attention and withholds
+Up next, because the saved position may be behind this device. The server
+render claims nothing until the queue has been read, and another device cannot
+see this device's retained copy.
+
 The active workout derives both **Now** and **Next** from the same ordered
 occurrence ledger used to save results. Warm-up acknowledgement remains
 server-authoritative. A working set first receives a stable client command and
@@ -1353,7 +1364,15 @@ The mobile active-exercise card keeps the current set, previous comparable
 evidence, required inputs, save/retry state, and next action primary. After an
 acknowledgement, focus and scroll reveal the next current set; acknowledged
 sets move into a closed `Completed sets` disclosure with correction beside each
-saved set instead of a separate receipt panel. Resolved warm-up items likewise
+saved set instead of a separate receipt panel. Each acknowledged row in the
+compact set ledger also carries a **Fix** control that opens the same
+correction flow, including its reason, review, and Edit-history contract; rest
+keeps running while it is open. Rows that are retained, saving, or retrying
+show the same control disabled and named **Fix after it saves**, so a row does
+not change height when its save lands; a failed row keeps only its retry and
+discard recovery. At narrow widths the status and control share a second line
+so the result stays on one line and the current exercise heading, saved
+evidence, and measure controls still fit above the fixed action area. Resolved warm-up items likewise
 remain available in a completed disclosure. Exercise setup precedes its work
 only when a physical change, choice, ambiguity, queued equipment action, or
 safety issue needs attention. A safely resolved unchanged setup stays out of

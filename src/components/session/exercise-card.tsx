@@ -117,6 +117,8 @@ import {
 import { OccurrenceMutationDialog } from "./occurrence-mutation-dialog";
 import {
   ActiveSetLedger,
+  formatActiveSetResult,
+  SET_FIX_CONTROL_CLASS,
   type ActiveSetLedgerDiagnosticRow,
 } from "./active-set-ledger";
 import {
@@ -1366,6 +1368,79 @@ export function ExerciseCard({
     }
   }
 
+  /** One owner for active-workout set correction, reachable from the
+   * compact ledger row and from Completed sets. The writer, review step and
+   * Edit history are the existing correction contract. */
+  function renderCompletedSetCorrection(
+    set: LoggedSet,
+    trigger?: { label: string; ariaLabel: string; className?: string },
+  ) {
+    return (
+      <CompletedSetCorrection
+        setId={set.id}
+        setNo={set.setNo}
+        weight={set.weight}
+        weightUnit={set.weightUnit}
+        reps={set.reps}
+        distanceKm={set.distanceKm ?? null}
+        durationSeconds={set.durationSeconds ?? null}
+        metricType={
+          set.metricType ?? performedMetricType
+        }
+        rpe={set.rpe}
+        note={set.note}
+        historyRevision={historyRevision}
+        source="active_workout"
+        triggerLabel={trigger?.label}
+        triggerAriaLabel={trigger?.ariaLabel}
+        triggerClassName={trigger?.className}
+        onAcknowledged={(result) => {
+          const currentVersionEvidence =
+            exercise.versionEvidenceBySetId?.[set.id];
+          onPatch({
+            sets: exercise.sets.map((candidate) =>
+              candidate.id === set.id
+                ? {
+                    ...candidate,
+                    ...result.values,
+                    correctionCount:
+                      (candidate.correctionCount ?? 0) +
+                      1,
+                  }
+                : candidate,
+            ),
+            versionEvidenceBySetId: {
+              ...exercise.versionEvidenceBySetId,
+              [set.id]: activeSetVersionEvidenceAfterCorrection(
+                currentVersionEvidence,
+                set.correctionCount ?? 0,
+              ),
+            },
+          });
+          onHistoryRevisionChange(
+            result.historyRevision,
+          );
+          const measurement =
+            readActiveWorkoutMeasurements().find(
+              (record) =>
+                (set.clientKey != null &&
+                  record.clientKey === set.clientKey) ||
+                record.setId === set.id,
+            );
+          if (measurement) {
+            patchActiveWorkoutMeasurement(
+              measurement.clientKey,
+              {
+                corrections:
+                  measurement.corrections + 1,
+              },
+            );
+          }
+        }}
+      />
+    );
+  }
+
   function handleDelete(set: LoggedSet) {
     const previousSets = exercise.sets;
     onPatch({ sets: exercise.sets.filter((s) => s.id !== set.id) });
@@ -2205,6 +2280,26 @@ export function ExerciseCard({
                   </div>
                 ) : null
               }
+              renderSavedRowAction={(row) => {
+                const set =
+                  acknowledgedCompletedSets.find(
+                    (candidate) => candidate.id === row.result.id,
+                  ) ?? null;
+                if (
+                  set == null ||
+                  (set.metricType ?? performedMetricType) === "activity"
+                ) {
+                  return null;
+                }
+                return renderCompletedSetCorrection(set, {
+                  label: "Fix",
+                  className: SET_FIX_CONTROL_CLASS,
+                  ariaLabel: `Fix ${row.label}, ${formatActiveSetResult(
+                    row.result,
+                    performedMetricType,
+                  )}`,
+                });
+              }}
               renderSaveRecovery={(row) => {
                 const set =
                   exercise.sets.find(
@@ -2469,65 +2564,7 @@ export function ExerciseCard({
                                 Correction unavailable for this legacy shape
                               </span>
                             ) : (
-                              <CompletedSetCorrection
-                                setId={set.id}
-                                setNo={set.setNo}
-                                weight={set.weight}
-                                weightUnit={set.weightUnit}
-                                reps={set.reps}
-                                distanceKm={set.distanceKm ?? null}
-                                durationSeconds={set.durationSeconds ?? null}
-                                metricType={
-                                  set.metricType ?? performedMetricType
-                                }
-                                rpe={set.rpe}
-                                note={set.note}
-                                historyRevision={historyRevision}
-                                source="active_workout"
-                                onAcknowledged={(result) => {
-                                  const currentVersionEvidence =
-                                    exercise.versionEvidenceBySetId?.[set.id];
-                                  onPatch({
-                                    sets: exercise.sets.map((candidate) =>
-                                      candidate.id === set.id
-                                        ? {
-                                            ...candidate,
-                                            ...result.values,
-                                            correctionCount:
-                                              (candidate.correctionCount ?? 0) +
-                                              1,
-                                          }
-                                        : candidate,
-                                    ),
-                                    versionEvidenceBySetId: {
-                                      ...exercise.versionEvidenceBySetId,
-                                      [set.id]: activeSetVersionEvidenceAfterCorrection(
-                                        currentVersionEvidence,
-                                        set.correctionCount ?? 0,
-                                      ),
-                                    },
-                                  });
-                                  onHistoryRevisionChange(
-                                    result.historyRevision,
-                                  );
-                                  const measurement =
-                                    readActiveWorkoutMeasurements().find(
-                                      (record) =>
-                                        (set.clientKey != null &&
-                                          record.clientKey === set.clientKey) ||
-                                        record.setId === set.id,
-                                    );
-                                  if (measurement) {
-                                    patchActiveWorkoutMeasurement(
-                                      measurement.clientKey,
-                                      {
-                                        corrections:
-                                          measurement.corrections + 1,
-                                      },
-                                    );
-                                  }
-                                }}
-                              />
+                              renderCompletedSetCorrection(set)
                             )}
                             <Button
                               type="button"
