@@ -221,10 +221,15 @@ async function expectFocusClearOfWorkoutDock(page: Page) {
       const fixed = dock.getBoundingClientRect();
       const overlap =
         Math.min(target.bottom, fixed.bottom) - Math.max(target.top, fixed.top);
-      // A control that fits above the dock must be fully clear. A container
-      // taller than that space (such as the focusable superset card) may run
-      // under the dock but must never be entirely hidden.
-      const fitsAboveDock = target.height <= fixed.top;
+      // Focus scrolling includes scroll margins. Large containers such as
+      // the superset panel reserve space above themselves, so their complete
+      // scroll area may not fit even when their border box does. They may
+      // overlap the dock but must never be entirely hidden.
+      const style = getComputedStyle(element);
+      const scrollAreaHeight = target.height +
+        (Number.parseFloat(style.scrollMarginTop) || 0) +
+        (Number.parseFloat(style.scrollMarginBottom) || 0);
+      const fitsAboveDock = scrollAreaHeight <= fixed.top;
       const entirelyHidden = overlap >= target.height - 0.5;
       if ((fitsAboveDock && overlap > 0.5) || entirelyHidden) {
         const name = (element.getAttribute("aria-label") ?? element.textContent ?? "")
