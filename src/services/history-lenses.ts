@@ -332,11 +332,9 @@ function buildProgramFitLens(input: BuildHistoryLensesInput): HistoryLens {
     decision:
       changed + program.skippedOccurrences > 0
         ? {
-            supported: true,
+            supported: false,
             statement:
-              "Possible decision: review whether the recorded changes should remain one-offs or become an explicit Program edit.",
-            href: "/coach",
-            linkLabel: "Open Review and decisions",
+              "Recorded substitutions and skips do not by themselves establish that your Program needs to change.",
           }
         : {
             supported: false,
@@ -431,11 +429,9 @@ function buildPainLens(input: BuildHistoryLensesInput): HistoryLens {
     decision:
       hasSignal || pain.constraints.some((constraint) => constraint.avoid)
         ? {
-            supported: true,
+            supported: false,
             statement:
-              "Possible decision: bring the named movement, context, and constraint evidence into Review before the next Program change.",
-            href: "/coach",
-            linkLabel: "Open Review and decisions",
+              "These observations describe reported discomfort and constraints. They do not by themselves determine a Program change.",
           }
         : noDecision(),
   };
@@ -617,11 +613,9 @@ function buildWorkCapacityLens(input: BuildHistoryLensesInput): HistoryLens {
       "Loaded workload is descriptive weight × reps from eligible strength sets; bodyweight, band, excluded sets, and independent activities are not included. Duration and workload do not prove adaptation or readiness.",
     decision: comparison?.volumeChangePercent != null
       ? {
-          supported: true,
+          supported: false,
           statement:
-            "Possible decision: check whether this workload direction matches your intent, recovery, and pain evidence before changing Program volume.",
-          href: "/coach",
-          linkLabel: "Open Review and decisions",
+            "Workload, sets, and duration provide context. This comparison alone does not establish whether Program volume should change.",
         }
       : noDecision(),
   };
