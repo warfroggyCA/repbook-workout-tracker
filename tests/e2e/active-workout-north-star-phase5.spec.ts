@@ -297,27 +297,18 @@ test("keeps dark landscape, correction, restore, and exact superset context cohe
     .first()
     .click();
   const correction = page.getByRole("dialog", {
-    name: "Correct acknowledged set 1",
+    name: "Edit set 1",
   });
   await correction.getByLabel("Load", { exact: true }).fill("100");
-  await correction
-    .getByLabel("Why are you correcting this?")
-    .selectOption("measurement_entry");
-  await correction
-    .getByRole("button", { name: "Review correction", exact: true })
-    .click();
-  await expect(correction).toContainText("Original");
-  await expect(correction).toContainText("Corrected");
   await capturePhase5Evidence(
     page,
     testInfo,
     ACTIVE_WORKOUT_SCREENSHOT_SCENARIOS.correction390x844At115,
   );
-  await correction.getByRole("checkbox").check();
   await correction
-    .getByRole("button", { name: "Save reviewed correction", exact: true })
+    .getByRole("button", { name: "Save", exact: true })
     .click();
-  await expect(page.getByText("Set correction acknowledged")).toBeVisible();
+  await expect(page.getByText("Set saved")).toBeVisible();
 
   await page.goto("/recovery/versions?type=completed_set");
   const restore = page
@@ -664,21 +655,51 @@ test("fixes a just-logged set from its ledger row and resumes from Today with ex
   await fix.click();
 
   const correction = page.getByRole("dialog", {
-    name: "Correct acknowledged set 1",
+    name: "Edit set 1",
   });
-  await correction.getByLabel("Reps", { exact: true }).fill("8");
+  await expect(correction.getByRole("checkbox")).toHaveCount(0);
+  await expect(correction.getByLabel("Why are you correcting this?")).toHaveCount(0);
+  const save = correction.getByRole("button", { name: "Save", exact: true });
+  await expect(save).toBeDisabled();
+  await correction.getByLabel("Reps", { exact: true }).fill("9");
+  await correction.getByRole("button", { name: "Cancel", exact: true }).click();
+  await expect(correction).toBeHidden();
+  await expect(savedRow).toContainText(mistaken);
+  await fix.click();
+  await expect(correction.getByLabel("Reps", { exact: true })).toHaveValue("7");
+  await correction.getByLabel("Reps", { exact: true }).fill("10");
+  await page.keyboard.press("Escape");
+  await expect(correction).toBeHidden();
+  await fix.click();
+  await expect(correction.getByLabel("Reps", { exact: true })).toHaveValue("7");
+  await page.context().setOffline(true);
+  try {
+    await correction.getByLabel("Reps", { exact: true }).fill("8");
+    await expect(correction).toContainText("You’re offline. Reconnect to save changes.");
+    await expect(save).toBeDisabled();
+    await expect(page.getByTestId("rest-cockpit")).toBeAttached();
+  } finally {
+    await page.context().setOffline(false);
+  }
+  await expect(save).toBeEnabled();
+  await expect(correction.getByLabel("Reps", { exact: true })).toHaveValue("8");
+  // A failed request keeps the draft, and an explicit retry saves once.
+  await page.route("**/*", async (route) => {
+    if (route.request().method() === "POST" && route.request().headers()["next-action"]) {
+      await route.abort("failed");
+    } else {
+      await route.continue();
+    }
+  });
+  await save.click();
+  await expect(correction.getByRole("alert")).toContainText("Couldn’t confirm the save");
+  await expect(correction.getByLabel("Reps", { exact: true })).toHaveValue("8");
+  await expect(savedRow).toContainText(mistaken);
+  await page.unroute("**/*");
   await correction
-    .getByLabel("Why are you correcting this?")
-    .selectOption("measurement_entry");
-  await correction
-    .getByRole("button", { name: "Review correction", exact: true })
+    .getByRole("button", { name: "Save", exact: true })
     .click();
-  await expect(correction).toContainText("Original");
-  await correction.getByRole("checkbox").check();
-  await correction
-    .getByRole("button", { name: "Save reviewed correction", exact: true })
-    .click();
-  await expect(page.getByText("Set correction acknowledged")).toBeVisible();
+  await expect(page.getByText("Set saved")).toBeVisible();
   await expect(savedRow).toContainText(corrected);
   await expect(savedRow).toContainText("Latest: Corrected");
   await expect(rest).toBeVisible();

@@ -1865,20 +1865,13 @@ test("signs in and completes a durable workout flow", async ({ page }) => {
     .first()
     .click();
   const activeCorrection = page.getByRole("dialog", {
-    name: "Correct acknowledged set 1",
+    name: "Edit set 1",
   });
   await activeCorrection.getByLabel("Load", { exact: true }).fill("100");
   await activeCorrection
-    .getByLabel("Why are you correcting this?")
-    .selectOption("measurement_entry");
-  await activeCorrection
-    .getByRole("button", { name: "Review correction", exact: true })
+    .getByRole("button", { name: "Save", exact: true })
     .click();
-  await activeCorrection.getByRole("checkbox").check();
-  await activeCorrection
-    .getByRole("button", { name: "Save reviewed correction", exact: true })
-    .click();
-  await expect(page.getByText("Set correction acknowledged")).toBeVisible();
+  await expect(page.getByText("Set saved")).toBeVisible();
   await page.reload({ waitUntil: "networkidle" });
   await expect(loggedSet).toContainText("100 lb");
   await page.getByRole("button", { name: "Friction log", exact: true }).click();
@@ -1926,21 +1919,11 @@ test("signs in and completes a durable workout flow", async ({ page }) => {
   await expect(page.getByText(/retained reason is time limit reached/)).toBeVisible();
   await expect(page.getByText(/100 lb × 8/)).toBeVisible();
   await page.getByRole("button", { name: "Correct set", exact: true }).first().click();
-  const correction = page.getByRole("dialog", { name: "Correct saved set 1" });
-  await expect(correction).toContainText(
-    "The original assertion remains in Edit history.",
-  );
+  const correction = page.getByRole("dialog", { name: "Edit set 1" });
   await correction.getByLabel("Reps", { exact: true }).fill("9");
   await correction.getByLabel("Set note", { exact: true }).fill("Reviewed after the workout.");
-  await correction
-    .getByLabel("Why are you correcting this?")
-    .selectOption("measurement_entry");
-  await correction.getByRole("button", { name: "Review correction", exact: true }).click();
-  await expect(correction).toContainText("Original");
-  await expect(correction).toContainText("Corrected");
-  await correction.getByRole("checkbox").check();
-  await correction.getByRole("button", { name: "Save reviewed correction", exact: true }).click();
-  await expect(page.getByText("Set correction acknowledged")).toBeVisible();
+  await correction.getByRole("button", { name: "Save", exact: true }).click();
+  await expect(page.getByText("Set saved")).toBeVisible();
   await expect(page.getByText(/100 lb × 9/)).toBeVisible();
   const correctedSetDetails = page.locator("details").filter({
     hasText:
@@ -3098,7 +3081,7 @@ test("keeps an offline set visible while the next set stays available", async ({
     .first()
     .click();
   const savedCorrection = page.getByRole("dialog", {
-    name: "Correct acknowledged set 1",
+    name: "Edit set 1",
   });
   await expect(
     savedCorrection.getByRole("textbox", { name: "Set note", exact: true }),

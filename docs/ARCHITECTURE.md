@@ -626,9 +626,9 @@ unknown order is never guessed. Domain recovery
 trays remain available; a queued occurrence is labelled as retained on this device,
 rather than claiming an acknowledgement is actively in progress.
 
-Correction is a reviewed superseding assertion, never an edit in place. The
-owner reviews the exact original and replacement values, selects a reason, and
-confirms the decision. The service fences the write by owner, workout state,
+Correction appends a superseding assertion, never an edit in place. The owner
+changes the values and taps Save; no separate reason or confirmation is required.
+The service fences the write by owner, workout state,
 occurrence identity, complete expected assertion, and workout history revision.
 It retains before/after data, decision provenance, a monotonic correction-ledger
 revision, and the effective history revision. Active corrections do not trigger
@@ -1370,8 +1370,15 @@ acknowledgement, focus and scroll reveal the next current set; acknowledged
 sets move into a closed `Completed sets` disclosure with correction beside each
 saved set instead of a separate receipt panel. Each acknowledged row in the
 compact set ledger also carries a **Fix** control that opens the same
-correction flow, including its reason, review, and Edit-history contract; rest
-keeps running while it is open. Rows that are retained, saving, or retrying
+set editor with Save and Cancel; rest keeps running while it is open.
+Set edits in both active workouts and History save directly without a reason,
+review screen, or checkbox. Cancel and dismissal discard the local draft;
+offline edits remain unsaved until the user reconnects and taps Save. The
+existing revision writer retains original values and rejects stale writes.
+The explicit Save action supplies the legacy reviewed flag and generic
+recording-correction category without inventing a detailed user reason.
+Workout timing and active-duration editors likewise use Save and Cancel,
+retaining timestamp validation and revision evidence. Rows that are retained, saving, or retrying
 show the same control disabled and named **Fix after it saves**, so a row does
 not change height when its save lands; a failed row keeps only its retry and
 discard recovery. At narrow widths the status and control share a second line
