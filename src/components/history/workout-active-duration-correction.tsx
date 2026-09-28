@@ -94,9 +94,10 @@ function currentActiveDurationLabel(props: Props) {
 
 export function WorkoutActiveDurationCorrection(props: Props) {
   const [open, setOpen] = useState(false);
-  const [choice, setChoice] = useState<ActiveDurationCorrectionChoice | null>(null);
+  const [choice, setChoice] = useState<ActiveDurationCorrectionChoice | null>(
+    null,
+  );
   const [activeMinutes, setActiveMinutes] = useState("");
-  const [reviewed, setReviewed] = useState(false);
   const [pending, startTransition] = useTransition();
   const [clientMutationId, setClientMutationId] = useState(() =>
     crypto.randomUUID(),
@@ -116,21 +117,19 @@ export function WorkoutActiveDurationCorrection(props: Props) {
   function reset() {
     setChoice(null);
     setActiveMinutes("");
-    setReviewed(false);
   }
 
   return (
     <Drawer
       open={open}
       onOpenChange={(next) => {
-        if (next) reset();
+        if (pending) return;
+        reset();
         setOpen(next);
       }}
     >
       <DrawerTrigger
-        render={
-          <Button type="button" variant="outline" className="min-h-11" />
-        }
+        render={<Button type="button" variant="outline" className="min-h-11" />}
       >
         Correct active duration
       </DrawerTrigger>
@@ -138,11 +137,15 @@ export function WorkoutActiveDurationCorrection(props: Props) {
         <DrawerHeader>
           <DrawerTitle>Correct active workout duration</DrawerTitle>
         </DrawerHeader>
-        <div className="max-h-[65dvh] space-y-4 overflow-y-auto px-4">
+        <fieldset
+          disabled={pending}
+          className="max-h-[65dvh] space-y-4 overflow-y-auto px-4"
+        >
           <div className="rounded-lg border bg-muted/30 p-3 text-sm">
             <p className="font-medium">{currentActiveDurationLabel(props)}</p>
             <p className="mt-1 text-muted-foreground">
-              Wall clock {wallClockSeconds == null
+              Wall clock{" "}
+              {wallClockSeconds == null
                 ? "unavailable"
                 : formatWallClockDuration(wallClockSeconds)}
             </p>
@@ -180,7 +183,9 @@ export function WorkoutActiveDurationCorrection(props: Props) {
                 onChange={() => setChoice("interruption_unknown")}
               />
               <span>
-                <span className="block font-medium">Active time is unknown</span>
+                <span className="block font-medium">
+                  Active time is unknown
+                </span>
                 <span className="mt-0.5 block text-muted-foreground">
                   Preserve the workout but exclude its duration from insights.
                 </span>
@@ -221,24 +226,11 @@ export function WorkoutActiveDurationCorrection(props: Props) {
               different value to save a correction.
             </p>
           )}
-
-          <label className="flex min-h-11 items-start gap-3 rounded-lg border p-3 text-sm">
-            <input
-              type="checkbox"
-              className="mt-0.5 size-5"
-              checked={reviewed}
-              onChange={(event) => setReviewed(event.target.checked)}
-            />
-            <span>
-              I reviewed the active time and understand the source timestamps
-              will remain unchanged.
-            </span>
-          </label>
-        </div>
+        </fieldset>
         <DrawerFooter>
           <Button
             type="button"
-            disabled={!valid || !reviewed || pending}
+            disabled={!valid || pending}
             onClick={() =>
               startTransition(async () => {
                 try {
@@ -281,7 +273,18 @@ export function WorkoutActiveDurationCorrection(props: Props) {
               })
             }
           >
-            {pending ? "Saving…" : "Save active-duration correction"}
+            {pending ? "Saving…" : "Save"}
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            disabled={pending}
+            onClick={() => {
+              setOpen(false);
+              reset();
+            }}
+          >
+            Cancel
           </Button>
         </DrawerFooter>
       </DrawerContent>

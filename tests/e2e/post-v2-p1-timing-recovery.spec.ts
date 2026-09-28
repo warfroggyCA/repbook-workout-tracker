@@ -135,13 +135,8 @@ test("recovers a six-day interruption without rewriting source timestamps", asyn
   });
   await unknown.focus();
   await page.keyboard.press("Space");
-  const reviewed = correctionDialog.getByRole("checkbox", {
-    name: /source timestamps will remain unchanged/,
-  });
-  await reviewed.focus();
-  await page.keyboard.press("Space");
   const saveCorrection = correctionDialog.getByRole("button", {
-    name: "Save active-duration correction",
+    name: "Save",
     exact: true,
   });
   await expectTouchTarget(saveCorrection);

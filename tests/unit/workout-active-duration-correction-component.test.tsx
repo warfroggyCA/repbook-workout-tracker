@@ -38,6 +38,9 @@ describe("WorkoutActiveDurationCorrection date-only bounds", () => {
     expect(html).toContain("Wall clock unavailable");
     expect(html).toContain("Active time is unknown");
     expect(html).toContain("original start or finish timestamps");
+    expect(html).toContain(">Save</button>");
+    expect(html).toContain(">Cancel</button>");
+    expect(html).not.toContain('type="checkbox"');
   });
 
   it("uses the global bound without inventing wall-clock elapsed time", () => {
@@ -60,7 +63,7 @@ describe("WorkoutActiveDurationCorrection date-only bounds", () => {
     })).toMatchObject({ ownerReportedValid: false, valid: false });
   });
 
-  it("disables no-op evidence and enables a reviewed unknown correction", () => {
+  it("disables no-op evidence and enables an explicit unknown correction", () => {
     expect(activeDurationCorrectionDraftState({
       ...dateOnlyOwnerEvidence,
       choice: "owner_reported",

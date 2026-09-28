@@ -417,7 +417,7 @@ test("calendar-first History opens a recoverable retrospective entry flow", asyn
   ).toEqual([]);
 });
 
-test("corrects completed workout timing with an explicit review", async ({
+test("saves completed workout timing directly and discards cancelled edits", async ({
   page,
   browserName,
 }) => {
@@ -450,15 +450,8 @@ test("corrects completed workout timing with an explicit review", async ({
   await page.getByLabel("Local start time").fill("09:30:00");
   await page.getByLabel("Duration (minutes, optional)").fill("60");
   await page
-    .getByRole("button", { name: "Review timing correction", exact: true })
-    .click();
-  await expect(page.getByText("Unchanged evidence", { exact: true })).toBeVisible();
-  await page
-    .getByText(/I reviewed the original and corrected timing/)
-    .click();
-  await page
     .getByRole("button", {
-      name: "Save reviewed timing correction",
+      name: "Save",
       exact: true,
     })
     .click();
@@ -486,18 +479,10 @@ test("corrects completed workout timing with an explicit review", async ({
       name: "Date only — wall-clock start and elapsed span unknown",
     })
     .click();
-  await page
-    .getByRole("button", { name: "Review timing correction", exact: true })
-    .click();
   await expect(
-    page.getByText(/Date only · wall-clock start and elapsed span unknown/),
-  ).toBeVisible();
-  await expect(
-    page.getByText(
-      "Active-duration evidence—and whether it is available for analytics—remains unchanged by this source-timing correction.",
-    ),
-  ).toBeVisible();
-  await page.keyboard.press("Escape");
+    page.getByRole("radio", { name: "Date only — wall-clock start and elapsed span unknown" }),
+  ).toBeChecked();
+  await page.getByRole("button", { name: "Cancel", exact: true }).click();
 
   await page
     .getByRole("button", { name: "Correct workout timing", exact: true })

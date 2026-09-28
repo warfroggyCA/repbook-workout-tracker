@@ -83,7 +83,7 @@ async function discardWorkout(page: Page) {
   await expect(page).toHaveURL(/\/today$/);
 }
 
-test("keeps retained sets responsive before acknowledgement, then reviews a correction", async ({
+test("keeps retained sets responsive before acknowledgement, then saves a correction directly", async ({
   page,
 }) => {
   await signInAndStartWorkout(page);
@@ -242,24 +242,13 @@ test("keeps retained sets responsive before acknowledgement, then reviews a corr
     .getByRole("button", { name: "Correct set" })
     .first()
     .click();
-  const correction = page.getByRole("dialog", { name: "Correct acknowledged set 1" });
+  const correction = page.getByRole("dialog", { name: "Edit set 1" });
   await correction.getByLabel("Duration (seconds)").fill("60");
   await correction
-    .getByLabel("Why are you correcting this?")
-    .selectOption("measurement_entry");
-  await correction.getByLabel("Reason detail").fill("Checked the stopwatch");
-  await correction.getByRole("button", { name: "Review correction" }).click();
-  await expect(correction).toContainText("Original");
-  await expect(correction).toContainText("45 sec");
-  await expect(correction).toContainText("60 sec");
-  await correction
-    .getByLabel(/I reviewed these values and want this correction/)
-    .check();
-  await correction
-    .getByRole("button", { name: "Save reviewed correction" })
+    .getByRole("button", { name: "Save" })
     .click();
 
-  await expect(page.getByText("Set correction acknowledged")).toBeVisible();
+  await expect(page.getByText("Set saved")).toBeVisible();
   await page.reload({ waitUntil: "domcontentloaded" });
   await expect(plankDisclosure).toHaveAttribute("aria-expanded", "false");
   await waitForHydratedReactHandler(plankDisclosure);
@@ -281,7 +270,7 @@ test("keeps retained sets responsive before acknowledgement, then reviews a corr
   await expect(
     page.getByText("Correction evidence", { exact: true }).first(),
   ).toBeVisible();
-  await expect(page.getByText(/Checked the stopwatch/).first()).toBeVisible();
+  await expect(page.getByText(/Another recording mistake/).first()).toBeVisible();
   await expect(page.getByText(/Workout revision 1 → 2/).first()).toBeVisible();
 
   await page.goto(sessionUrl);
