@@ -315,4 +315,46 @@ describe("ActiveSetLedger", () => {
     expect(html).toContain("Pain note: Sharp at lockout");
     expect(html).toContain("Unknown");
   });
+
+  it("puts the saved-set fix entry on the acknowledged row only", () => {
+    const render = (
+      input: (typeof SET_ROW_STATE_FIXTURES)[keyof typeof SET_ROW_STATE_FIXTURES]["input"],
+    ) => {
+      const projection = projectActiveSetRows(input);
+      return renderToStaticMarkup(
+        <ActiveSetLedger
+          exerciseId={input.exercise.id}
+          exerciseName={input.exercise.name}
+          metricType="weight_reps"
+          rows={projection.rows}
+          diagnostics={projection.diagnostics}
+          renderCurrentRow={() => <p>Editable fields</p>}
+          renderSavedRowAction={(row) => (
+            <button type="button">Fix {row.label}</button>
+          )}
+        />,
+      );
+    };
+
+    const saved = render(SET_ROW_STATE_FIXTURES.saved.input);
+    expect(saved).toContain("Saved");
+    expect(saved).toMatch(/<button type="button">Fix Set \d+<\/button>/);
+    expect(saved).not.toContain("Fix after it saves");
+
+    for (const state of ["retained_locally", "saving", "retrying"] as const) {
+      const html = render(SET_ROW_STATE_FIXTURES[state].input);
+      expect(html).toContain("Fix after it saves");
+      expect(html).not.toMatch(/<button type="button">Fix Set/);
+    }
+
+    const failed = render(SET_ROW_STATE_FIXTURES.failed.input);
+    expect(failed).not.toContain("Fix after it saves");
+    expect(failed).not.toMatch(/<button type="button">Fix Set/);
+  });
+
+  it("keeps saved rows read-only when no fix entry is supplied", () => {
+    const html = renderFixture(SET_ROW_STATE_FIXTURES.saved.input);
+    expect(html).not.toContain("Fix after it saves");
+    expect(html).not.toContain("<button");
+  });
 });

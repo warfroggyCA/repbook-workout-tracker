@@ -22,6 +22,7 @@ type RetainedRow = Extract<
   ActiveSetRow,
   { state: "retained_locally" | "saving" | "retrying" | "failed" }
 >;
+type SavedRow = Extract<ActiveSetRow, { state: "saved" }>;
 type OutcomeRow = Extract<
   ActiveSetRow,
   { state: "skipped" | "abandoned" }
@@ -48,6 +49,11 @@ type Props = {
   renderPlannedRowDetail?: (row: PlannedRow) => ReactNode;
   renderSaveRecovery?: (row: RetainedRow) => ReactNode;
   renderOutcomeStatus?: (row: OutcomeRow) => ReactNode;
+  /**
+   * Row-level entry to an existing correction flow for an acknowledged set.
+   * Returning null keeps the row read-only.
+   */
+  renderSavedRowAction?: (row: SavedRow) => ReactNode;
 };
 
 function formatDuration(durationSeconds: number) {
@@ -181,6 +187,36 @@ function knownReason(reason: string | null) {
   return labels[reason] ?? reason;
 }
 
+function CompactRowStatus({
+  row,
+  status,
+  tone,
+  announcement,
+}: {
+  row: ActiveSetRow;
+  status: string;
+  tone: "neutral" | "saved" | "attention";
+  announcement?: "status" | "alert";
+}) {
+  return (
+    <span
+      role={announcement}
+      aria-label={announcement ? `${row.label}: ${status}` : undefined}
+      className={cn(
+        "text-right text-xs font-medium",
+        tone === "saved" && "text-success",
+        tone === "attention" && "text-amber-900 dark:text-amber-100",
+        tone === "neutral" && "text-muted-foreground",
+      )}
+    >
+      {tone === "saved" && (
+        <Check className="mr-1 inline size-3.5" aria-hidden="true" />
+      )}
+      {status}
+    </span>
+  );
+}
+
 function CompactRow({
   row,
   metricType,
@@ -188,6 +224,7 @@ function CompactRow({
   tone = "neutral",
   detail,
   announcement,
+  action,
   children,
 }: {
   row: ActiveSetRow;
@@ -196,6 +233,7 @@ function CompactRow({
   tone?: "neutral" | "saved" | "attention";
   detail?: string | null;
   announcement?: "status" | "alert";
+  action?: ReactNode;
   children?: ReactNode;
 }) {
   const result = "result" in row && row.result != null
@@ -211,30 +249,43 @@ function CompactRow({
       data-set-membership={row.membership}
       className={cn(
         "px-2.5 py-1.5 text-sm",
+        action != null && "@container",
         tone === "attention" && "bg-[var(--surface-attention)]",
       )}
     >
-      <div className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-baseline gap-x-3 gap-y-1">
-        <span className="font-medium text-muted-foreground">{row.label}</span>
-        <span className="min-w-0 break-words font-medium tabular-nums">
-          {result}
-        </span>
-        <span
-          role={announcement}
-          aria-label={announcement ? `${row.label}: ${status}` : undefined}
-          className={cn(
-            "text-right text-xs font-medium",
-            tone === "saved" && "text-success",
-            tone === "attention" && "text-amber-900 dark:text-amber-100",
-            tone === "neutral" && "text-muted-foreground",
-          )}
-        >
-          {tone === "saved" && (
-            <Check className="mr-1 inline size-3.5" aria-hidden="true" />
-          )}
-          {status}
-        </span>
-      </div>
+      {action != null ? (
+        // With a row action, narrow rows keep the result on one line and put
+        // status and action together underneath, so the row is no taller than
+        // a wrapped three-column row. Wide rows keep a single line.
+        <div className="grid grid-cols-[auto_minmax(0,1fr)] items-baseline gap-x-3 gap-y-1 @min-[15rem]:grid-cols-[auto_minmax(0,1fr)_auto_auto]">
+          <span className="font-medium text-muted-foreground">{row.label}</span>
+          <span className="min-w-0 break-words font-medium tabular-nums">
+            {result}
+          </span>
+          <div className="col-span-2 flex min-w-0 items-center justify-between gap-3 @min-[15rem]:contents">
+            <CompactRowStatus
+              row={row}
+              status={status}
+              tone={tone}
+              announcement={announcement}
+            />
+            <span className="mr-1 flex shrink-0 self-center">{action}</span>
+          </div>
+        </div>
+      ) : (
+        <div className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-baseline gap-x-3 gap-y-1">
+          <span className="font-medium text-muted-foreground">{row.label}</span>
+          <span className="min-w-0 break-words font-medium tabular-nums">
+            {result}
+          </span>
+          <CompactRowStatus
+            row={row}
+            status={status}
+            tone={tone}
+            announcement={announcement}
+          />
+        </div>
+      )}
       {(membership || detail) && (
         <p className="mt-1 break-words text-xs text-muted-foreground">
           {[membership, detail].filter(Boolean).join(" · ")}
@@ -244,6 +295,13 @@ function CompactRow({
     </li>
   );
 }
+
+/**
+ * Compact visual size with a 44 by 44 CSS-pixel hit area, so a row-level
+ * action does not push the current set's controls out of the usable viewport.
+ */
+export const SET_FIX_CONTROL_CLASS =
+  "relative -my-1.5 inline-flex h-8 min-h-0 items-center rounded-md border bg-background px-3 text-sm font-medium text-primary before:absolute before:-inset-x-1 before:-inset-y-1.5 before:content-[''] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:cursor-default disabled:border-dashed disabled:text-muted-foreground";
 
 function renderExhaustiveRow(
   row: ActiveSetRow,
@@ -256,8 +314,23 @@ function renderExhaustiveRow(
     | "renderPlannedRowDetail"
     | "renderSaveRecovery"
     | "renderOutcomeStatus"
+    | "renderSavedRowAction"
   >,
 ) {
+  // Correction needs server acknowledgement. Keep the control in place but
+  // unavailable, so the row does not change height when the save lands.
+  const pendingFixHint = props.renderSavedRowAction ? (
+    <button
+      type="button"
+      disabled
+      data-testid="set-fix-pending"
+      aria-label="Fix after it saves"
+      title="Fix after it saves"
+      className={SET_FIX_CONTROL_CLASS}
+    >
+      Fix
+    </button>
+  ) : null;
   switch (row.state) {
     case "planned": {
       const plannedContent = row.membership === "extra"
@@ -380,6 +453,7 @@ function renderExhaustiveRow(
           tone="attention"
           announcement="status"
           detail={activeSetVersionEvidenceLabel(row.version)}
+          action={pendingFixHint}
         >
           <ExactResultContext result={row.result} />
           {props.renderSaveRecovery?.(row)}
@@ -395,6 +469,7 @@ function renderExhaustiveRow(
           tone="attention"
           announcement="status"
           detail={activeSetVersionEvidenceLabel(row.version)}
+          action={pendingFixHint}
         >
           <ExactResultContext result={row.result} />
           {props.renderSaveRecovery?.(row)}
@@ -410,6 +485,7 @@ function renderExhaustiveRow(
           tone="attention"
           announcement="status"
           detail={activeSetVersionEvidenceLabel(row.version)}
+          action={pendingFixHint}
         >
           <ExactResultContext result={row.result} />
           {props.renderSaveRecovery?.(row)}
@@ -439,6 +515,7 @@ function renderExhaustiveRow(
           status="Saved"
           tone="saved"
           detail={activeSetVersionEvidenceLabel(row.version)}
+          action={props.renderSavedRowAction?.(row) ?? null}
         />
       );
     case "skipped":
@@ -508,6 +585,7 @@ export function ActiveSetLedger({
   renderPlannedRowDetail,
   renderSaveRecovery,
   renderOutcomeStatus,
+  renderSavedRowAction,
 }: Props) {
   const unresolvedDiagnosticCount =
     diagnostics.unlinkedSetIds.length +
@@ -536,6 +614,7 @@ export function ActiveSetLedger({
             renderPlannedRowDetail,
             renderSaveRecovery,
             renderOutcomeStatus,
+            renderSavedRowAction,
           }),
         )}
         {diagnosticRows.map((row) => (

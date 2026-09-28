@@ -660,9 +660,9 @@ export function buildGroupWorkingOccurrences(input: {
   return occurrences;
 }
 
-export function nextActionableOccurrence(
-  occurrences: SessionOccurrence[],
-): SessionOccurrence | null {
+export function nextActionableOccurrence<
+  T extends { sequenceIdx: number; outcome: string },
+>(occurrences: readonly T[]): T | null {
   return (
     [...occurrences]
       .sort((left, right) => left.sequenceIdx - right.sequenceIdx)

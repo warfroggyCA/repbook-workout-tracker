@@ -595,3 +595,187 @@ test("workout feedback: direct RPE, immediate extra-set rest, and interrupted au
   expect(await page.evaluate((key) => JSON.parse(localStorage.getItem(key)!).generationId, timerKey)).toBe(retained.generationId);
   await discardWorkout(page);
 });
+
+test("fixes a just-logged set from its ledger row and resumes from Today with exact device state", async ({
+  page,
+}, testInfo) => {
+  await page.setViewportSize({ width: 320, height: 700 });
+  await signInAndStartDayA(page);
+  const sessionUrl = page.url();
+  await page.evaluate(() => {
+    document.documentElement.dataset.fontSize = "extra-large";
+    localStorage.setItem("workout-font-size", "extra-large");
+    window.dispatchEvent(new Event("workout-font-size-change"));
+  });
+  const attach = async (name: string) =>
+    testInfo.attach(`fix-resume-${name}`, {
+      body: await page.screenshot({ type: "jpeg", quality: 84, animations: "disabled", caret: "hide" }),
+      contentType: "image/jpeg",
+    });
+
+  // Log a mistaken result: 7 repetitions instead of 8. The starting load
+  // can come from earlier synthetic workouts, so read it rather than assume it.
+  const exerciseName = await currentExerciseName(page);
+  const ledger = page.getByTestId("active-set-ledger").first();
+  const currentEntry = ledger.getByTestId("current-set-entry");
+  const repsInput = currentEntry.getByLabel("Reps", { exact: true });
+  await waitForHydratedReactHandler(
+    currentEntry.getByRole("button", { name: "Decrease reps" }),
+  );
+  await repsInput.fill("7");
+  await expect(repsInput).toHaveValue("7");
+  const load = (await currentEntry
+    .getByRole("textbox")
+    .first()
+    .inputValue()).trim();
+  expect(load).toMatch(/^\d+(?:\.\d+)?$/);
+  const mistaken = `${load} lb × 7`;
+  const corrected = `${load} lb × 8`;
+  await page.getByTestId("active-log-set").click();
+  const savedRow = ledger.locator('[data-set-row-state="saved"]').first();
+  await expect(savedRow).toContainText(mistaken);
+
+  // Rest keeps running while the saved row offers the existing correction.
+  const rest = page
+    .getByRole("complementary", { name: "Workout status" })
+    .getByTestId("rest-cockpit");
+  await expect(rest).toBeVisible();
+  const fix = savedRow.getByRole("button", { name: `Fix Set 1, ${mistaken}` });
+  await expect(fix).toBeVisible();
+  const fixHitArea = await fix.evaluate((element) => {
+    const bounds = element.getBoundingClientRect();
+    const before = window.getComputedStyle(element, "::before");
+    return {
+      width:
+        bounds.width -
+        Number.parseFloat(before.left) -
+        Number.parseFloat(before.right),
+      height:
+        bounds.height -
+        Number.parseFloat(before.top) -
+        Number.parseFloat(before.bottom),
+    };
+  });
+  expect(fixHitArea.height).toBeGreaterThanOrEqual(44);
+  expect(fixHitArea.width).toBeGreaterThanOrEqual(44);
+  await fix.scrollIntoViewIfNeeded();
+  await attach("saved-row-fix");
+  await waitForHydratedReactHandler(fix);
+  await fix.click();
+
+  const correction = page.getByRole("dialog", {
+    name: "Correct acknowledged set 1",
+  });
+  await correction.getByLabel("Reps", { exact: true }).fill("8");
+  await correction
+    .getByLabel("Why are you correcting this?")
+    .selectOption("measurement_entry");
+  await correction
+    .getByRole("button", { name: "Review correction", exact: true })
+    .click();
+  await expect(correction).toContainText("Original");
+  await correction.getByRole("checkbox").check();
+  await correction
+    .getByRole("button", { name: "Save reviewed correction", exact: true })
+    .click();
+  await expect(page.getByText("Set correction acknowledged")).toBeVisible();
+  await expect(savedRow).toContainText(corrected);
+  await expect(savedRow).toContainText("Latest: Corrected");
+  await expect(rest).toBeVisible();
+  await expect(page.getByTestId("active-log-set")).toHaveAccessibleName(
+    "Log set 2",
+  );
+  await expect(page.getByTestId("active-log-set")).toBeEnabled();
+  await expect.poll(() => page.evaluate(() =>
+    document.documentElement.scrollWidth - document.documentElement.clientWidth
+  )).toBeLessThanOrEqual(1);
+  await attach("corrected-row");
+
+  // Today names the next saved step when nothing is waiting on this device.
+  await page.goto("/today");
+  const deviceWork = page.getByTestId("resume-device-work");
+  await expect(deviceWork).toHaveText(
+    "Nothing from this workout is waiting on this device",
+  );
+  await expect(page.getByTestId("resume-up-next")).toContainText(
+    `${exerciseName} · set 2`,
+  );
+  await expect(page.getByTestId("resume-up-next")).toContainText(/reps/);
+  await attach("today-up-next");
+
+  // A set held on this device replaces Up next with the device status.
+  await page.goto(sessionUrl);
+  await page.route("**/*", async (route) => {
+    const request = route.request();
+    if (
+      request.method() === "POST" &&
+      request.headers()["next-action"] &&
+      (request.postData() ?? "").includes('"setNo"')
+    ) {
+      await route.abort("internetdisconnected");
+      return;
+    }
+    await route.continue();
+  });
+  await dismissRest(page);
+  await page.getByTestId("active-log-set").click();
+  await expectOutboxCount(page, 1);
+  const pendingRow = ledger.locator(
+    '[data-set-row-state="retained_locally"], [data-set-row-state="saving"], [data-set-row-state="retrying"]',
+  );
+  const pendingFix = pendingRow.getByTestId("set-fix-pending");
+  await expect(pendingFix).toHaveAccessibleName("Fix after it saves");
+  await expect(pendingFix).toBeDisabled();
+  await expect(
+    pendingRow.getByRole("button", { name: /^Fix Set/ }),
+  ).toHaveCount(0);
+
+  await page.goto("/today");
+  await expect(deviceWork).toHaveText(
+    /1 set still saving from this device/,
+  );
+  await expect(deviceWork).toContainText(
+    "Open the workout to finish saving and see where you are.",
+  );
+  await expect(page.getByTestId("resume-up-next")).toHaveCount(0);
+  await attach("today-saving");
+
+  await page.evaluate((storageKey) => {
+    const raw = localStorage.getItem(storageKey);
+    if (raw == null) throw new Error("The retained set was not written.");
+    const stored = JSON.parse(raw) as {
+      entries?: Array<{ status: string; nextAttemptAtISO: string | null }>;
+    };
+    const entry = stored.entries?.[0];
+    if (entry == null) throw new Error("The retained set entry is missing.");
+    entry.status = "needs_attention";
+    entry.nextAttemptAtISO = null;
+    localStorage.setItem(storageKey, JSON.stringify(stored));
+  }, SET_OUTBOX_KEY);
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await expect(deviceWork).toHaveAttribute("data-device-work", "attention");
+  await expect(deviceWork).toContainText(
+    "1 set needs attention on this device",
+  );
+  await expect(page.getByTestId("resume-up-next")).toHaveCount(0);
+  await attach("today-attention");
+
+  await page.unrouteAll({ behavior: "wait" });
+  await page.getByText("Resume workout", { exact: true }).click();
+  await expect(page).toHaveURL(sessionUrl);
+  const failedRow = page.locator('[data-set-row-state="failed"]');
+  await failedRow
+    .getByRole("button", { name: "Discard device copy", exact: true })
+    .click();
+  await expectOutboxCount(page, 0);
+  await page.goto("/today");
+  await expect(deviceWork).toHaveText(
+    "Nothing from this workout is waiting on this device",
+  );
+  await expect(page.getByTestId("resume-up-next")).toContainText(
+    `${exerciseName} · set 2`,
+  );
+  await page.getByText("Resume workout", { exact: true }).click();
+  await expect(page).toHaveURL(sessionUrl);
+  await discardWorkout(page);
+});

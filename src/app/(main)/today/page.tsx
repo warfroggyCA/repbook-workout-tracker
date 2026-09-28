@@ -27,6 +27,8 @@ import { FroggyFormDemoProvider, FroggyFormDemoTrigger } from "@/components/exer
 import { WorkoutStartForm } from "@/components/session/workout-start-form";
 import { hasProgrammedWarmupActions } from "@/lib/warmup";
 import { ActiveWorkoutDiscard } from "@/components/session/active-workout-actions";
+import { ResumeWorkoutStatus } from "@/components/dashboard/resume-workout-status";
+import { nextActionableOccurrence } from "@/lib/session-occurrences";
 import { ScheduledEventActions } from "@/components/program/scheduled-event-actions";
 import {
   Alert,
@@ -109,6 +111,7 @@ function occurrenceTitle(occurrence: TodayData["inProgressOccurrences"][number])
 
 function occurrencePrescription(
   occurrence: TodayData["inProgressOccurrences"][number],
+  { includeRest = true }: { includeRest?: boolean } = {},
 ) {
   const details: string[] = [];
   if (occurrence.plannedRepsMin != null) {
@@ -131,7 +134,7 @@ function occurrencePrescription(
       `group round ${occurrence.groupRound}, member ${(occurrence.groupMemberOrderIdx ?? 0) + 1}`,
     );
   }
-  if (occurrence.plannedRestSec != null) {
+  if (includeRest && occurrence.plannedRestSec != null) {
     details.push(`${occurrence.plannedRestSec}s rest after`);
   }
   return details.join(" · ");
@@ -334,6 +337,23 @@ export default async function TodayPage({
                   </p>
                 </div>
               )}
+              <ResumeWorkoutStatus
+                ownerId={user.id}
+                sessionId={today.inProgressSessionId}
+                upNext={(() => {
+                  const next = nextActionableOccurrence(
+                    today.inProgressOccurrences,
+                  );
+                  return next
+                    ? {
+                        title: occurrenceTitle(next),
+                        detail:
+                          occurrencePrescription(next, { includeRest: false }) ||
+                          null,
+                      }
+                    : null;
+                })()}
+              />
               <Button
                 render={<Link href={`/session/${today.inProgressSessionId}`} />}
                 nativeButton={false}

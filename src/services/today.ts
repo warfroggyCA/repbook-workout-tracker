@@ -61,6 +61,7 @@ export type TodayData = {
   } | null;
   inProgressOccurrences: Array<{
     id: string;
+    sequenceIdx: number;
     kind: string;
     outcome: string;
     label: string | null;
@@ -276,6 +277,7 @@ export async function getTodayData(
       : null,
     inProgressOccurrences: (inProgress?.occurrences ?? []).map((occurrence) => ({
       id: occurrence.id,
+      sequenceIdx: occurrence.sequenceIdx,
       kind: occurrence.kind,
       outcome: occurrence.outcome,
       label: occurrence.label,
