@@ -3,13 +3,18 @@
 import { useCallback, useSyncExternalStore } from "react";
 import { AlertCircle, ArrowUpFromLine } from "lucide-react";
 import {
-  readWorkoutCommandQueue,
-  subscribeToWorkoutCommandQueue,
-} from "@/lib/workout-command-queue";
+  getWorkoutSetOutboxSnapshot,
+  subscribeToWorkoutSetOutbox,
+} from "@/lib/workout-set-outbox";
+import {
+  getOccurrenceMutationOutboxSnapshot,
+  subscribeToOccurrenceMutationOutbox,
+} from "@/lib/occurrence-mutation-outbox";
 import {
   describeSessionDeviceWork,
-  hasSessionDeviceWork,
+  sessionDeviceWorkIsClear,
   summarizeSessionDeviceWork,
+  UNAVAILABLE_SESSION_DEVICE_WORK,
   type SessionDeviceWork,
 } from "@/lib/resume-device-work";
 
@@ -18,29 +23,51 @@ export type ResumeUpNext = {
   detail: string | null;
 };
 
-const UNKNOWN = "unknown";
+/** Server render and pre-hydration: nothing has been read, so claim nothing. */
+const NOT_READ = "not-read";
 
-function encode(work: SessionDeviceWork) {
-  return [
-    work.savingSets,
-    work.attentionSets,
-    work.savingChanges,
-    work.attentionChanges,
-  ].join(":");
-}
-
-function decode(snapshot: string): SessionDeviceWork | null {
-  if (snapshot === UNKNOWN) return null;
-  const [savingSets, attentionSets, savingChanges, attentionChanges] =
-    snapshot.split(":").map(Number);
-  return { savingSets, attentionSets, savingChanges, attentionChanges };
+/**
+ * Reads this device's recorded-work queues for one session. Exported so the
+ * fail-closed paths can be exercised without a browser.
+ */
+export function readSessionDeviceWork(
+  ownerId: string,
+  sessionId: string,
+  readers: {
+    storageAvailable: () => boolean;
+    sets: typeof getWorkoutSetOutboxSnapshot;
+    changes: typeof getOccurrenceMutationOutboxSnapshot;
+  } = {
+    storageAvailable: () => {
+      try {
+        return window.localStorage != null;
+      } catch {
+        return false;
+      }
+    },
+    sets: getWorkoutSetOutboxSnapshot,
+    changes: getOccurrenceMutationOutboxSnapshot,
+  },
+): SessionDeviceWork {
+  try {
+    // The queue readers return an empty snapshot when storage is refused;
+    // that must read as unknown here, never as nothing waiting.
+    if (!readers.storageAvailable()) return UNAVAILABLE_SESSION_DEVICE_WORK;
+    return summarizeSessionDeviceWork({
+      ownerId,
+      sessionId,
+      sets: readers.sets(),
+      changes: readers.changes(),
+    });
+  } catch {
+    return UNAVAILABLE_SESSION_DEVICE_WORK;
+  }
 }
 
 /**
- * Resume-card status for work this device still holds, plus the next saved
- * step. The server cannot see this device's copy, so nothing is claimed until
- * the device queue has been read, and Up next is withheld while local work
- * could make the saved position out of date.
+ * Resume-card status for recorded work this device may still hold, plus the
+ * next saved step. Up next is shown only when every recorded-work queue was
+ * read and holds nothing for this workout.
  */
 export function ResumeWorkoutStatus({
   ownerId,
@@ -51,53 +78,51 @@ export function ResumeWorkoutStatus({
   sessionId: string;
   upNext: ResumeUpNext | null;
 }) {
-  const subscribe = useCallback(
-    (listener: () => void) => subscribeToWorkoutCommandQueue(ownerId, listener),
-    [ownerId],
+  const subscribe = useCallback((listener: () => void) => {
+    const unsubscribers = [
+      subscribeToWorkoutSetOutbox(listener),
+      subscribeToOccurrenceMutationOutbox(listener),
+    ];
+    return () => unsubscribers.forEach((unsubscribe) => unsubscribe());
+  }, []);
+  const getSnapshot = useCallback(
+    () => JSON.stringify(readSessionDeviceWork(ownerId, sessionId)),
+    [ownerId, sessionId],
   );
-  const getSnapshot = useCallback(() => {
-    try {
-      return encode(
-        summarizeSessionDeviceWork(readWorkoutCommandQueue(ownerId), sessionId),
-      );
-    } catch {
-      return UNKNOWN;
-    }
-  }, [ownerId, sessionId]);
-  const snapshot = useSyncExternalStore(subscribe, getSnapshot, () => UNKNOWN);
-  const work = decode(snapshot);
-  if (work == null) return null;
+  const snapshot = useSyncExternalStore(subscribe, getSnapshot, () => NOT_READ);
+  if (snapshot === NOT_READ) return null;
 
+  const work = JSON.parse(snapshot) as SessionDeviceWork;
   const status = describeSessionDeviceWork(work);
-  const deviceWork = hasSessionDeviceWork(work);
+  const clear = sessionDeviceWorkIsClear(work);
+  const alert = status.state === "attention" || status.state === "unknown";
 
   return (
     <div className="flex flex-col gap-2" data-testid="resume-workout-status">
       <div
         role="status"
         data-testid="resume-device-work"
-        data-device-work={deviceWork ? status.tone : "none"}
+        data-device-work={status.state}
         className={
-          status.tone === "attention"
+          alert
             ? "ui-state px-3 py-2 text-sm"
             : "rounded-lg bg-muted/60 px-3 py-2 text-sm"
         }
-        data-ui-state={status.tone === "attention" ? "attention" : undefined}
+        data-ui-state={alert ? "attention" : undefined}
       >
         <p className="flex items-start gap-2 font-medium leading-snug">
-          {deviceWork &&
-            (status.tone === "attention" ? (
-              <AlertCircle
-                aria-hidden="true"
-                className="mt-0.5 size-4 shrink-0 text-amber-700 dark:text-amber-400"
-              />
-            ) : (
-              <ArrowUpFromLine
-                aria-hidden="true"
-                className="mt-0.5 size-4 shrink-0 text-muted-foreground"
-              />
-            ))}
-          <span className={deviceWork ? undefined : "text-xs font-normal text-muted-foreground"}>
+          {alert ? (
+            <AlertCircle
+              aria-hidden="true"
+              className="mt-0.5 size-4 shrink-0 text-amber-700 dark:text-amber-400"
+            />
+          ) : status.state === "saving" ? (
+            <ArrowUpFromLine
+              aria-hidden="true"
+              className="mt-0.5 size-4 shrink-0 text-muted-foreground"
+            />
+          ) : null}
+          <span className={clear ? "text-xs font-normal text-muted-foreground" : undefined}>
             {status.title}
           </span>
         </p>
@@ -107,7 +132,7 @@ export function ResumeWorkoutStatus({
           </p>
         )}
       </div>
-      {!deviceWork && upNext && (
+      {clear && upNext && (
         <div
           data-testid="resume-up-next"
           className="flex flex-col gap-0.5 border-t pt-2"

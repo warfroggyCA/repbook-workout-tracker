@@ -323,15 +323,19 @@ Neither path rewrites the Program, and the existing one-active-workout and
 replay-safe start protections remain authoritative.
 
 While a workout is in progress, the Today resume card reads this device's
-typed command queue for that session before making any save claim. It counts
-only recorded-work commands (sets and occurrence changes); equipment choices,
-contextual notes, and Live Coach messages are excluded. With nothing retained,
-it says so and shows **Up next** from the saved occurrence ledger through the
-same `nextActionableOccurrence` rule the session uses. While this device still
-holds a set or change, it names what is saving or needs attention and withholds
-Up next, because the saved position may be behind this device. The server
-render claims nothing until the queue has been read, and another device cannot
-see this device's retained copy.
+recorded-work queues for that session before making any save claim: logged
+sets and workout changes (occurrence skips, restores, and completions).
+Equipment choices, contextual notes, and Live Coach messages are not recorded
+work and are not read. Only when both queues are readable and hold nothing for
+the session does the card say no sets or workout changes are waiting and show
+**Up next** from the saved occurrence ledger, through the same
+`nextActionableOccurrence` rule the session uses. Saving or failed copies are
+named and withhold Up next, because the saved position may be behind this
+device. An unreadable queue, refused device storage, or any quarantined set
+copy (which has no trustworthy session identity, the same rule Finish applies)
+is reported as unconfirmed rather than empty, and also withholds Up next. The
+server render claims nothing until the queues have been read, and another
+device cannot see this device's retained copies.
 
 The active workout derives both **Now** and **Next** from the same ordered
 occurrence ledger used to save results. Warm-up acknowledgement remains

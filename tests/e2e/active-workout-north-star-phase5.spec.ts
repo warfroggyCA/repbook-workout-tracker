@@ -695,7 +695,7 @@ test("fixes a just-logged set from its ledger row and resumes from Today with ex
   await page.goto("/today");
   const deviceWork = page.getByTestId("resume-device-work");
   await expect(deviceWork).toHaveText(
-    "Nothing from this workout is waiting on this device",
+    "No sets or workout changes from this workout are waiting on this device",
   );
   await expect(page.getByTestId("resume-up-next")).toContainText(
     `${exerciseName} · set 2`,
@@ -770,11 +770,39 @@ test("fixes a just-logged set from its ledger row and resumes from Today with ex
   await expectOutboxCount(page, 0);
   await page.goto("/today");
   await expect(deviceWork).toHaveText(
-    "Nothing from this workout is waiting on this device",
+    "No sets or workout changes from this workout are waiting on this device",
   );
   await expect(page.getByTestId("resume-up-next")).toContainText(
     `${exerciseName} · set 2`,
   );
+
+  // Unreadable or quarantined device evidence is never reported as clear.
+  for (const [label, stored] of [
+    ["unreadable set queue", "{"],
+    [
+      "quarantined set copy",
+      JSON.stringify({ version: 4, entries: [{ synthetic: "unreadable copy" }] }),
+    ],
+  ] as const) {
+    await page.evaluate(
+      ({ storageKey, value }) => localStorage.setItem(storageKey, value),
+      { storageKey: SET_OUTBOX_KEY, value: stored },
+    );
+    await page.reload({ waitUntil: "domcontentloaded" });
+    await expect(deviceWork, label).toHaveAttribute("data-device-work", "unknown");
+    await expect(deviceWork, label).toContainText(
+      "Repbook can't confirm what's waiting on this device",
+    );
+    await expect(page.getByTestId("resume-up-next"), label).toHaveCount(0);
+    await attach(`today-unknown-${label.replaceAll(" ", "-")}`);
+  }
+  await page.evaluate(
+    (storageKey) => localStorage.removeItem(storageKey),
+    SET_OUTBOX_KEY,
+  );
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await expect(deviceWork).toHaveAttribute("data-device-work", "clear");
+
   await page.getByText("Resume workout", { exact: true }).click();
   await expect(page).toHaveURL(sessionUrl);
   await discardWorkout(page);
