@@ -1,9 +1,10 @@
 "use client";
 
+import { deliverNextWorkoutCommand, wakeWorkoutCommandQueue } from "@/lib/workout-command-queue";
+
 import {
   useEffect,
   useMemo,
-  useReducer,
   useRef,
   useState,
   useSyncExternalStore,
@@ -36,7 +37,6 @@ import {
   discardWorkoutSetDeviceCopy,
   discardQuarantinedWorkoutSet,
   publishWorkoutSetOutboxEvent,
-  releaseQueuedWorkoutSetBackoff,
   recordWorkoutSetNeedsAttentionUnlocked,
   recordWorkoutRestIntentReceipt,
   recordWorkoutSetTransientFailureUnlocked,
@@ -46,7 +46,6 @@ import {
   subscribeToWorkoutSetOutbox,
   WORKOUT_SET_OUTBOX_CHANGE_EVENT,
   withOutboxLock,
-  withWorkoutCommandDeliveryLock,
   workoutCommandDeliveryLockSupported,
   workoutRestIntentReceiptSupersedesEntry,
   type WorkoutRestIntentReceipt,
@@ -63,7 +62,6 @@ import {
   markEquipmentSelectionTransientFailureUnlocked,
   nextWorkoutCommand,
   publishEquipmentSelectionOutboxEvent,
-  releaseQueuedEquipmentSelectionBackoff,
   removeEquipmentSelection,
   retryEquipmentSelection,
   subscribeToEquipmentSelectionOutbox,
@@ -251,7 +249,7 @@ export async function syncNextEntry(
   let attempted = false;
   let queuedDrainReady: boolean | undefined;
   try {
-    await withWorkoutCommandDeliveryLock(ownerId, async () => {
+    await deliverNextWorkoutCommand(ownerId, command => command.kind === "set" || command.kind === "selection", async (queued) => {
       const command = await withOutboxLock(() => {
         const selected = nextWorkoutCommand(
           ownerId,
@@ -259,7 +257,7 @@ export async function syncNextEntry(
           getEquipmentSelectionOutboxSnapshot().entries,
         );
         if (
-          !selected ||
+          !selected || selected.kind !== queued.kind || selected.entry.clientKey !== queued.entry.clientKey ||
           (typeof navigator !== "undefined" && !navigator.onLine)
         ) {
           return null;
@@ -669,7 +667,7 @@ export function WorkoutSetOutboxSync({ ownerId }: { ownerId: string }) {
     () => equipmentSnapshot.entries.filter((entry) => entry.ownerId === ownerId),
     [equipmentSnapshot.entries, ownerId],
   );
-  const [wakeCounter, wake] = useReducer((value: number) => value + 1, 0);
+  const wake = wakeWorkoutCommandQueue;
   const deliverySupported = useSyncExternalStore(
     subscribeToStaticBrowserCapability,
     workoutCommandDeliveryLockSupported,
@@ -677,50 +675,8 @@ export function WorkoutSetOutboxSync({ ownerId }: { ownerId: string }) {
   );
 
   useEffect(() => {
-    const onWake = () => wake();
-    const onOnline = () => {
-      void Promise.all([
-        releaseQueuedWorkoutSetBackoff(ownerId),
-        releaseQueuedEquipmentSelectionBackoff(ownerId),
-      ]).then(() => wake());
-    };
-    const onVisible = () => {
-      if (document.visibilityState === "visible") wake();
-    };
-    window.addEventListener("online", onOnline);
-    window.addEventListener("focus", onWake);
-    window.addEventListener("pageshow", onWake);
-    document.addEventListener("visibilitychange", onVisible);
-    return () => {
-      window.removeEventListener("online", onOnline);
-      window.removeEventListener("focus", onWake);
-      window.removeEventListener("pageshow", onWake);
-      document.removeEventListener("visibilitychange", onVisible);
-    };
-  }, [ownerId]);
-
-  useEffect(() => {
     void reconcileRetainedWorkoutRestIntents(ownerId);
   }, [entries, ownerId]);
-
-  useEffect(() => {
-    const retryAt = [...entries, ...equipmentEntries].reduce<number | null>((earliest, entry) => {
-      if (entry.status !== "queued" || !entry.nextAttemptAtISO) return earliest;
-      const candidate = Date.parse(entry.nextAttemptAtISO);
-      return earliest == null || candidate < earliest ? candidate : earliest;
-    }, null);
-    if (retryAt == null) return;
-    if (retryAt <= Date.now()) return;
-    const timer = window.setTimeout(
-      () => wake(),
-      Math.min(retryAt - Date.now(), 300_000)
-    );
-    return () => window.clearTimeout(timer);
-  }, [entries, equipmentEntries]);
-
-  useEffect(() => {
-    void syncNextEntry(ownerId, true);
-  }, [entries, equipmentEntries, ownerId, wakeCounter]);
 
   const hasWorkoutStatus =
     entries.length > 0 || snapshot.quarantined.length > 0 || Boolean(snapshot.error);

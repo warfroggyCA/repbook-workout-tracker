@@ -27,6 +27,21 @@ npm run docs:check
 npm run audit:check
 ```
 
+The unified device-command queue has focused concurrency and recovery gates:
+
+```bash
+npx vitest run tests/unit/workout-command-queue.test.ts tests/unit/workout-command-delivery.test.ts tests/unit/workout-set-outbox-sync.test.ts tests/unit/equipment-selection-outbox-sync.test.ts tests/unit/occurrence-mutation-outbox-sync.test.ts tests/unit/contextual-note-outbox-sync.test.ts tests/unit/sign-out-device-work.test.ts
+npm run test:e2e:v2-gauntlet-b
+npx playwright test --config=playwright.phase2.config.ts
+```
+
+The tests use synthetic durable entries and disposable databases. They cover
+mixed-command order, cross-tab reselection, retry barriers, exact blocker recovery,
+unsupported locks, local enqueue during a delayed acknowledgement, uncertain
+timeout retention, and Coach streaming outside the delivery lock. Existing
+recovery, export and sign-out suites remain required; storage formats and server
+idempotency contracts are unchanged.
+
 Workout transition focus must preserve an input the user has already focused
 inside the revealed action. The mobile replacement regression checks both the
 entered repetitions and retained focus after scheduled animation frames; it

@@ -10,7 +10,7 @@ import { processProgressionJob } from "@/services/progression-jobs";
 import { WorkoutSetOutboxSync } from "@/components/session/workout-set-outbox-sync";
 import { OccurrenceMutationOutboxSync } from "@/components/session/occurrence-mutation-outbox-sync";
 import { ContextualNoteProvider } from "@/components/contextual-notes/contextual-note-provider";
-import { ContextualNoteOutboxSync } from "@/components/contextual-notes/contextual-note-outbox-sync";
+import { WorkoutCommandQueueSync } from "@/components/session/workout-command-queue-sync";
 import { DeploymentUpdateNotice } from "@/components/deployment-update-notice";
 
 export default async function MainLayout({
@@ -39,7 +39,7 @@ export default async function MainLayout({
       >
         <DeploymentUpdateNotice />
         <ContextualNoteProvider ownerId={user.id}>
-          <ContextualNoteOutboxSync ownerId={user.id} />
+          <WorkoutCommandQueueSync ownerId={user.id} />
           <WorkoutSetOutboxSync ownerId={user.id} />
           {children}
         </ContextualNoteProvider>

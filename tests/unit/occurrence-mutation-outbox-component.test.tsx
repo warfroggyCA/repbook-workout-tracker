@@ -45,12 +45,12 @@ describe("occurrence mutation queue presentation", () => {
     ).toBe("");
   });
 
-  it("shows saving and attention states with an explicit queue control", () => {
+  it("shows retained and attention states with an explicit queue control", () => {
     const saving = renderToStaticMarkup(
       <Tray entries={[entry("queued")]} storageError={null} onWake={() => undefined} />,
     );
     expect(saving).toContain("Open unsaved workout changes");
-    expect(saving).toContain("1 change saving");
+    expect(saving).toContain("1 change on this device");
     expect(saving).toContain(
       "bottom-[calc(var(--active-workout-overlay-bottom,calc(1.25rem+env(safe-area-inset-bottom)))+3.5rem)]",
     );

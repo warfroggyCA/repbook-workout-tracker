@@ -1,13 +1,14 @@
 "use client";
 
+import { deliverNextWorkoutCommand, wakeWorkoutCommandQueue } from "@/lib/workout-command-queue";
+import { withDocumentActionDeadline, isDocumentActionTimeout, reportDocumentActionTimeout } from "@/lib/deployment-recovery";
+
 import {
   useEffect,
-  useReducer,
   useRef,
   useState,
   useSyncExternalStore,
 } from "react";
-import { useRouter } from "next/navigation";
 import {
   AlertTriangle,
   CloudUpload,
@@ -114,7 +115,7 @@ function isSameDurableMessage(
   );
 }
 
-async function syncEntry(
+export async function syncLiveCoachEntry(
   ownerId: string,
   original: LiveCoachOutboxEntry,
   onDurableChange: (sessionId: string) => void
@@ -122,12 +123,12 @@ async function syncEntry(
   if (activeSyncs.has(original.clientKey)) return;
   activeSyncs.add(original.clientKey);
   try {
-    const stream = await withLiveCoachOutboxLock(async () => {
-      const entry = getLiveCoachOutboxSnapshot().entries.find(
+    const stream = await deliverNextWorkoutCommand(ownerId, command => command.kind === "coach" && command.entry.clientKey === original.clientKey, async () => {
+      const entry = await withLiveCoachOutboxLock(() => getLiveCoachOutboxSnapshot().entries.find(
         (candidate) =>
           candidate.clientKey === original.clientKey &&
           candidate.ownerId === ownerId
-      );
+      ));
       if (!entry || entry.status !== "queued") return;
       if (
         entry.nextAttemptAtISO &&
@@ -139,7 +140,7 @@ async function syncEntry(
 
       let response: Response;
       try {
-        response = await fetch("/api/live-coach/messages", {
+        response = await withDocumentActionDeadline(fetch("/api/live-coach/messages", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -151,86 +152,96 @@ async function syncEntry(
             content: entry.content,
             clientKey: entry.clientKey,
           }),
-        });
-      } catch {
-        recordLiveCoachOutboxTransientFailureUnlocked(
+        }));
+      } catch (error) {
+        if (isDocumentActionTimeout(error)) reportDocumentActionTimeout();
+        await withLiveCoachOutboxLock(() => recordLiveCoachOutboxTransientFailureUnlocked(
           entry.clientKey,
           "The connection is unavailable. This message remains queued on this device."
-        );
+        ));
         return;
       }
 
       const payload = parseSavedMessageResponse(
-        await response.json().catch(() => null)
+        await withDocumentActionDeadline(response.json()).catch((error) => {
+          if (isDocumentActionTimeout(error)) reportDocumentActionTimeout();
+          return null;
+        })
       );
-      if (!response.ok || !payload?.ok) {
-        const reason =
-          payload && !payload.ok
-            ? payload.reason
-            : "Live Coach could not confirm this saved message yet.";
-        if (isPermanentSaveStatus(response.status)) {
-          recordLiveCoachOutboxNeedsAttentionUnlocked(entry.clientKey, reason);
-        } else {
-          recordLiveCoachOutboxTransientFailureUnlocked(entry.clientKey, reason);
+      return withLiveCoachOutboxLock(() => {
+        if (!getLiveCoachOutboxSnapshot().entries.some(item => item.ownerId === ownerId && item.clientKey === entry.clientKey)) return;
+        if (!response.ok || !payload?.ok) {
+          const reason =
+            payload && !payload.ok
+              ? payload.reason
+              : "Live Coach could not confirm this saved message yet.";
+          if (isPermanentSaveStatus(response.status)) {
+            recordLiveCoachOutboxNeedsAttentionUnlocked(entry.clientKey, reason);
+          } else {
+            recordLiveCoachOutboxTransientFailureUnlocked(entry.clientKey, reason);
+          }
+          return;
         }
-        return;
-      }
 
-      if (!isSameDurableMessage(entry, payload.userMessage)) {
-        recordLiveCoachOutboxNeedsAttentionUnlocked(
-          entry.clientKey,
-          "The server confirmed a different message for this saved identity. The device copy was kept for recovery."
-        );
-        return;
-      }
+        const current = getLiveCoachOutboxSnapshot().entries.find(item => item.ownerId === ownerId && item.clientKey === entry.clientKey);
+        if (!current || !isSameDurableMessage(current, payload.userMessage) || !isSameDurableMessage(entry, payload.userMessage)) {
+          recordLiveCoachOutboxNeedsAttentionUnlocked(
+            entry.clientKey,
+            "The server confirmed a different message for this saved identity. The device copy was kept for recovery."
+          );
+          return;
+        }
 
-      const removed = removeLiveCoachMessageUnlocked(entry.clientKey);
-      if (!removed.ok) return;
-      publishLiveCoachClientEvent({
-        type: "saved",
-        ownerId,
-        sessionId: entry.sessionId,
-        clientKey: entry.clientKey,
-        userMessage: payload.userMessage,
-        pendingResponse: payload.pendingResponse,
+        const removed = removeLiveCoachMessageUnlocked(entry.clientKey);
+        if (!removed.ok) return;
+        publishLiveCoachClientEvent({
+          type: "saved",
+          ownerId,
+          sessionId: entry.sessionId,
+          clientKey: entry.clientKey,
+          userMessage: payload.userMessage,
+          pendingResponse: payload.pendingResponse,
+        });
+        onDurableChange(entry.sessionId);
+
+        if (payload.pendingResponse?.responseStatus !== "pending") return null;
+        return {
+          responseId: payload.pendingResponse.id,
+          sessionId: entry.sessionId,
+          activeRestTimerSeconds: entry.activeRestTimerSeconds,
+        };
       });
-      onDurableChange(entry.sessionId);
-
-      if (payload.pendingResponse?.responseStatus !== "pending") return null;
-      return {
-        responseId: payload.pendingResponse.id,
-        sessionId: entry.sessionId,
-        activeRestTimerSeconds: entry.activeRestTimerSeconds,
-      };
     });
     if (stream) {
-      try {
-        await streamLiveCoachResponse({
-          responseId: stream.responseId,
-          activeRestTimerSeconds: stream.activeRestTimerSeconds,
-          onEvent: (event) => {
-            publishLiveCoachClientEvent({
-              type: "stream",
-              ownerId,
-              sessionId: stream.sessionId,
-              responseId: stream.responseId,
-              event,
-            });
-          },
-        });
-      } catch (error) {
-        publishLiveCoachClientEvent({
-          type: "stream_error",
-          ownerId,
-          sessionId: stream.sessionId,
-          responseId: stream.responseId,
-          reason:
-            error instanceof Error
-              ? `${error.message} The question is saved and its reply can be resumed.`
-              : "The question is saved and its reply can be resumed.",
-        });
-      }
-      onDurableChange(stream.sessionId);
+      void (async () => {
+        try {
+          await streamLiveCoachResponse({
+            responseId: stream.responseId,
+            activeRestTimerSeconds: stream.activeRestTimerSeconds,
+            onEvent: (event) => {
+              publishLiveCoachClientEvent({
+                type: "stream",
+                ownerId,
+                sessionId: stream.sessionId,
+                responseId: stream.responseId,
+                event,
+              });
+            },
+          });
+        } catch (error) {
+          publishLiveCoachClientEvent({
+            type: "stream_error",
+            ownerId,
+            sessionId: stream.sessionId,
+            responseId: stream.responseId,
+            reason:
+              error instanceof Error
+                ? `${error.message} The question is saved and its reply can be resumed.`
+                : "The question is saved and its reply can be resumed.",
+          });
+        }
+        onDurableChange(stream.sessionId);
+      })();
     }
   } finally {
     activeSyncs.delete(original.clientKey);
@@ -244,65 +255,7 @@ export function LiveCoachOutboxSync({ ownerId }: { ownerId: string }) {
     getLiveCoachOutboxServerSnapshot
   );
   const entries = snapshot.entries.filter((entry) => entry.ownerId === ownerId);
-  const [wakeCounter, wake] = useReducer((value: number) => value + 1, 0);
-  const router = useRouter();
-
-  useEffect(() => {
-    const onWake = () => wake();
-    const onOnline = () => {
-      const queued = getLiveCoachOutboxSnapshot().entries.filter(
-        (entry) => entry.ownerId === ownerId && entry.status === "queued"
-      );
-      void Promise.all(
-        queued.map((entry) => retryLiveCoachMessage(entry.clientKey))
-      ).then(() => wake());
-    };
-    const onVisible = () => {
-      if (document.visibilityState === "visible") wake();
-    };
-    window.addEventListener("online", onOnline);
-    window.addEventListener("focus", onWake);
-    window.addEventListener("pageshow", onWake);
-    document.addEventListener("visibilitychange", onVisible);
-    return () => {
-      window.removeEventListener("online", onOnline);
-      window.removeEventListener("focus", onWake);
-      window.removeEventListener("pageshow", onWake);
-      document.removeEventListener("visibilitychange", onVisible);
-    };
-  }, [ownerId]);
-
-  useEffect(() => {
-    const nextAttempt = entries
-      .filter(
-        (entry) => entry.status === "queued" && entry.nextAttemptAtISO != null
-      )
-      .map((entry) => Date.parse(entry.nextAttemptAtISO!))
-      .filter((time) => time > Date.now())
-      .sort((a, b) => a - b)[0];
-    if (nextAttempt == null) return;
-    const timer = window.setTimeout(
-      () => wake(),
-      Math.min(Math.max(nextAttempt - Date.now(), 0), 300_000)
-    );
-    return () => window.clearTimeout(timer);
-  }, [entries]);
-
-  useEffect(() => {
-    const refreshHistory = (sessionId: string) => {
-      if (window.location.pathname === `/history/${sessionId}`) router.refresh();
-    };
-    for (const entry of entries) {
-      if (entry.status !== "queued") continue;
-      if (
-        entry.nextAttemptAtISO &&
-        Date.parse(entry.nextAttemptAtISO) > Date.now()
-      ) {
-        continue;
-      }
-      void syncEntry(ownerId, entry, refreshHistory);
-    }
-  }, [entries, ownerId, router, wakeCounter]);
+  const wake = wakeWorkoutCommandQueue;
 
   return (
     <LiveCoachOutboxTray
