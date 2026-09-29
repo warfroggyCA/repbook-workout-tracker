@@ -328,12 +328,16 @@ sets and workout changes (occurrence skips, restores, and completions).
 Equipment choices, contextual notes, and Live Coach messages are not recorded
 work and are not read. Only when both queues are readable and hold nothing for
 the session does the card say no sets or workout changes are waiting and show
-**Up next** from the saved occurrence ledger, through the same
+**Up next** from the saved occurrence ledger (using the current session exercise
+name and withholding the original targets after substitution), through the same
 `nextActionableOccurrence` rule the session uses. Saving or failed copies are
 named and withhold Up next, because the saved position may be behind this
 device. An unreadable queue, refused device storage, or any quarantined set
 copy (which has no trustworthy session identity, the same rule Finish applies)
-is reported as unconfirmed rather than empty, and also withholds Up next. The
+is reported as unconfirmed rather than empty, and also withholds Up next.
+Any queue change invalidates the displayed server position; a clear queue triggers
+a route refresh, and Up next stays hidden until a new server-render version arrives.
+A failed or delayed refresh therefore cannot expose the stale position. The
 server render claims nothing until the queues have been read, and another
 device cannot see this device's retained copies.
 

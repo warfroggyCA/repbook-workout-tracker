@@ -66,6 +66,9 @@ export type TodayData = {
     outcome: string;
     label: string | null;
     plannedExerciseName: string | null;
+    plannedExerciseId: string | null;
+    currentExerciseId: string | null;
+    currentExerciseName: string | null;
     kindOrdinal: number;
     plannedRepsMin: number | null;
     plannedRepsMax: number | null;
@@ -123,7 +126,13 @@ export async function getTodayData(
       with: {
         occurrences: {
           orderBy: asc(sessionOccurrences.sequenceIdx),
-          with: { plannedExercise: { columns: { name: true } } },
+          with: {
+            plannedExercise: { columns: { name: true } },
+            sessionExercise: {
+              columns: { exerciseId: true },
+              with: { exercise: { columns: { name: true } } },
+            },
+          },
         },
       },
     }),
@@ -282,6 +291,9 @@ export async function getTodayData(
       outcome: occurrence.outcome,
       label: occurrence.label,
       plannedExerciseName: occurrence.plannedExercise?.name ?? null,
+      plannedExerciseId: occurrence.plannedExerciseId,
+      currentExerciseId: occurrence.sessionExercise?.exerciseId ?? null,
+      currentExerciseName: occurrence.sessionExercise?.exercise.name ?? null,
       kindOrdinal: occurrence.kindOrdinal,
       plannedRepsMin: occurrence.plannedRepsMin,
       plannedRepsMax: occurrence.plannedRepsMax,

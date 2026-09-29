@@ -421,6 +421,27 @@ describe("Program lineage in Today and last performance", () => {
       })
       .returning({ id: workoutSessions.id });
 
+    const [activeReplacement] = await database.db.insert(sessionExercises).values({
+      sessionId: activeSession.id,
+      exerciseId: alternative.id,
+      substitutedForExerciseId: exercise.id,
+      modificationType: "substituted",
+      orderIdx: 0,
+    }).returning({ id: sessionExercises.id });
+    await database.db.insert(sessionOccurrences).values({
+      sessionId: activeSession.id,
+      sessionExerciseId: activeReplacement.id,
+      kind: "working_set",
+      origin: "planned",
+      sequenceIdx: 0,
+      kindOrdinal: 0,
+      plannedExerciseId: exercise.id,
+      plannedLoad: 100,
+      plannedLoadUnit: "lb",
+      plannedRepsMin: 8,
+      outcome: "pending",
+    });
+
     const statementSpy = vi.spyOn(database.client, "query");
     const pageData = await getTodayPageData(
       database.db,
@@ -454,6 +475,12 @@ describe("Program lineage in Today and last performance", () => {
     });
     expect(today?.inProgressSessionId).toBe(activeSession.id);
     expect(today?.inProgressSessionName).toBe("Pull First");
+    expect(today?.inProgressOccurrences[0]).toMatchObject({
+      plannedExerciseId: exercise.id,
+      currentExerciseId: alternative.id,
+      currentExerciseName: "Lineage substitution",
+      plannedLoad: 100,
+    });
     const todayStatementSpy = vi.spyOn(database.client, "query");
     await getTodayData(database.db, userId, "America/Toronto");
     expect(todayStatementSpy).toHaveBeenCalledTimes(

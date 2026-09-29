@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useSyncExternalStore } from "react";
+import { useCallback, useState, useSyncExternalStore } from "react";
+import { useRouter } from "next/navigation";
 import { AlertCircle, ArrowUpFromLine } from "lucide-react";
 import {
   getWorkoutSetOutboxSnapshot,
@@ -73,18 +74,31 @@ export function ResumeWorkoutStatus({
   ownerId,
   sessionId,
   upNext,
+  positionVersion,
 }: {
   ownerId: string;
   sessionId: string;
   upNext: ResumeUpNext | null;
+  positionVersion: string;
 }) {
+  const router = useRouter();
+  const [invalidatedVersion, setInvalidatedVersion] = useState<string | null>(null);
   const subscribe = useCallback((listener: () => void) => {
+    const onChange = () => {
+      // Queue changes can make the server-rendered position stale. Keep it
+      // hidden until a fresh server render arrives, including failed refreshes.
+      setInvalidatedVersion(positionVersion);
+      listener();
+      if (sessionDeviceWorkIsClear(readSessionDeviceWork(ownerId, sessionId))) {
+        router.refresh();
+      }
+    };
     const unsubscribers = [
-      subscribeToWorkoutSetOutbox(listener),
-      subscribeToOccurrenceMutationOutbox(listener),
+      subscribeToWorkoutSetOutbox(onChange),
+      subscribeToOccurrenceMutationOutbox(onChange),
     ];
     return () => unsubscribers.forEach((unsubscribe) => unsubscribe());
-  }, []);
+  }, [ownerId, sessionId, positionVersion, router]);
   const getSnapshot = useCallback(
     () => JSON.stringify(readSessionDeviceWork(ownerId, sessionId)),
     [ownerId, sessionId],
@@ -132,7 +146,7 @@ export function ResumeWorkoutStatus({
           </p>
         )}
       </div>
-      {clear && upNext && (
+      {clear && invalidatedVersion !== positionVersion && upNext && (
         <div
           data-testid="resume-up-next"
           className="flex flex-col gap-0.5 border-t pt-2"

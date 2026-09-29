@@ -1,5 +1,5 @@
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   readSessionDeviceWork,
   ResumeWorkoutStatus,
@@ -8,6 +8,8 @@ import {
   NO_SESSION_DEVICE_WORK,
   sessionDeviceWorkIsClear,
 } from "@/lib/resume-device-work";
+
+vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
 
 const OWNER = "20000000-0000-4000-8000-000000000001";
 const SESSION = "30000000-0000-4000-8000-000000000001";
@@ -18,6 +20,7 @@ describe("ResumeWorkoutStatus", () => {
   it("claims nothing about saving or the next step before this device is read", () => {
     const html = renderToStaticMarkup(
       <ResumeWorkoutStatus
+        positionVersion="server-render-1"
         ownerId={OWNER}
         sessionId={SESSION}
         upNext={{ title: "Barbell Back Squat · set 2", detail: "6–8 reps · 95 lb" }}

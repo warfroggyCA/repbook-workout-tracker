@@ -28,6 +28,7 @@ import { WorkoutStartForm } from "@/components/session/workout-start-form";
 import { hasProgrammedWarmupActions } from "@/lib/warmup";
 import { ActiveWorkoutDiscard } from "@/components/session/active-workout-actions";
 import { ResumeWorkoutStatus } from "@/components/dashboard/resume-workout-status";
+import { occurrenceTitle, occurrencePrescription, resumeUpNext } from "@/lib/resume-workout-position";
 import { nextActionableOccurrence } from "@/lib/session-occurrences";
 import { ScheduledEventActions } from "@/components/program/scheduled-event-actions";
 import {
@@ -93,51 +94,6 @@ function TodayDecisionSignal({
   ) : (
     <ProgramDecisionStatus count={pendingCount} />
   );
-}
-
-function occurrenceTitle(occurrence: TodayData["inProgressOccurrences"][number]) {
-  if (occurrence.kind === "day_warmup") {
-    return occurrence.label ?? "Day warm-up";
-  }
-  if (occurrence.kind === "exercise_warmup") {
-    return `${occurrence.plannedExerciseName ?? "Exercise"} warm-up${
-      occurrence.label ? ` — ${occurrence.label}` : ""
-    }`;
-  }
-  return `${occurrence.plannedExerciseName ?? "Exercise"} · set ${
-    occurrence.kindOrdinal + 1
-  }`;
-}
-
-function occurrencePrescription(
-  occurrence: TodayData["inProgressOccurrences"][number],
-  { includeRest = true }: { includeRest?: boolean } = {},
-) {
-  const details: string[] = [];
-  if (occurrence.plannedRepsMin != null) {
-    details.push(
-      occurrence.plannedRepsMax != null &&
-        occurrence.plannedRepsMax !== occurrence.plannedRepsMin
-        ? `${occurrence.plannedRepsMin}–${occurrence.plannedRepsMax} reps`
-        : `${occurrence.plannedRepsMin} reps`,
-    );
-  }
-  if (occurrence.plannedLoad != null && occurrence.plannedLoadUnit) {
-    details.push(`${occurrence.plannedLoad} ${occurrence.plannedLoadUnit}`);
-  } else if (occurrence.plannedLoadPercent != null) {
-    details.push(`${occurrence.plannedLoadPercent}% of work weight`);
-  } else if (occurrence.plannedLoadText) {
-    details.push(occurrence.plannedLoadText);
-  }
-  if (occurrence.groupRound != null) {
-    details.push(
-      `group round ${occurrence.groupRound}, member ${(occurrence.groupMemberOrderIdx ?? 0) + 1}`,
-    );
-  }
-  if (includeRest && occurrence.plannedRestSec != null) {
-    details.push(`${occurrence.plannedRestSec}s rest after`);
-  }
-  return details.join(" · ");
 }
 
 export default async function TodayPage({
@@ -339,19 +295,13 @@ export default async function TodayPage({
               )}
               <ResumeWorkoutStatus
                 ownerId={user.id}
+                positionVersion={randomUUID()}
                 sessionId={today.inProgressSessionId}
                 upNext={(() => {
                   const next = nextActionableOccurrence(
                     today.inProgressOccurrences,
                   );
-                  return next
-                    ? {
-                        title: occurrenceTitle(next),
-                        detail:
-                          occurrencePrescription(next, { includeRest: false }) ||
-                          null,
-                      }
-                    : null;
+                  return next ? resumeUpNext(next) : null;
                 })()}
               />
               <Button
