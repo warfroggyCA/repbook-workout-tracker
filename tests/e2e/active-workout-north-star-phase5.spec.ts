@@ -824,6 +824,33 @@ test("fixes a just-logged set from its ledger row and resumes from Today with ex
   await page.reload({ waitUntil: "domcontentloaded" });
   await expect(deviceWork).toHaveAttribute("data-device-work", "clear");
 
+  // Another tab saves the next set while Today retains its old server props.
+  // Hold the refresh response to prove no stale position flashes when the queue drains.
+  const workoutTab = await page.context().newPage();
+  const refreshed = deferred();
+  let refreshRequested = false;
+  await page.route("**/*", async (route) => {
+    if (route.request().headers()["rsc"] === "1") {
+      refreshRequested = true;
+      await refreshed.promise;
+    }
+    await route.continue();
+  });
+  try {
+    await workoutTab.goto(sessionUrl);
+    await dismissRest(workoutTab);
+    await workoutTab.getByTestId("active-log-set").click();
+    await expectOutboxCount(workoutTab, 0);
+    await expect.poll(() => refreshRequested).toBe(true);
+    await expect(page.getByTestId("resume-up-next")).toHaveCount(0);
+    refreshed.resolve();
+    await expect(page.getByTestId("resume-up-next")).toContainText(`${exerciseName} · set 3`);
+  } finally {
+    refreshed.resolve();
+    await page.unrouteAll({ behavior: "wait" });
+    await workoutTab.close();
+  }
+
   await page.getByText("Resume workout", { exact: true }).click();
   await expect(page).toHaveURL(sessionUrl);
   await discardWorkout(page);
