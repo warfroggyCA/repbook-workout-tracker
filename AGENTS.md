@@ -108,3 +108,11 @@ tests, `npm run typecheck`, `npm run lint`, `npm run build`, and
 migration replay, the PostgreSQL integration suite, affected export/recovery
 tests, and relevant browser flows. The protected pull-request workflow is the
 authoritative public merge gate.
+
+## Product wording
+
+Follow `docs/PLAIN_LANGUAGE.md` for all user-facing copy and generated Coach answers.
+Use everyday language, short sentences, and a clear next action. Do not expose
+internal storage or validation terms in routine screens. Preserve the exact meaning
+of unsaved states, missing information, and destructive-action warnings. Never
+rewrite user notes or historical reviews just to change their wording.

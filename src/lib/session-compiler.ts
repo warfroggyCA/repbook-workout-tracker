@@ -354,13 +354,13 @@ export function compileSession(rawInput: SessionCompilerInput): SessionCompilerO
       key: `day:${input.day.lineageId}`,
       label: input.day.intent.primaryOutcome.replaceAll("_", " "),
       status: partial ? "partial" as const : "full" as const,
-      reason: partial ? "Every reviewed minimum is retained, with lower-priority ideal dose reduced." : "The published exercise order and ideal doses are retained.",
+      reason: partial ? "Your minimum sets are kept. Lower-priority exercises have fewer sets." : "Exercises and planned sets stay the same.",
     },
     ...exercises.map((exercise) => ({
       key: `slot:${exercise.slotLineageId}`,
       label: exercise.exerciseName,
       status: exercise.disposition,
-      reason: exercise.disposition === "full" ? "Published ideal dose is retained." : `Reviewed minimum dose is retained; ${exercise.sourceSets - exercise.sets} optional set${exercise.sourceSets - exercise.sets === 1 ? " is" : "s are"} deferred for this proposal only.`,
+      reason: exercise.disposition === "full" ? "All planned sets are kept." : `Reviewed minimum dose is retained; ${exercise.sourceSets - exercise.sets} optional set${exercise.sourceSets - exercise.sets === 1 ? " is" : "s are"} deferred for this proposal only.`,
     })),
   ];
 

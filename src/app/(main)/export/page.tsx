@@ -48,9 +48,7 @@ export default async function ExportPage({
               <Badge>Recommended</Badge>
             </div>
             <CardDescription>
-              Prepare a comprehensive, summarized AI brief for copying, with training
-              context, progress, supporting evidence, limitations, and a ready-to-use
-              AI prompt. Download the complete report when you need every retained source record.
+              Copy a training summary to ask another AI for advice, or download the full report. Nothing is shared until you choose to share it.
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -94,9 +92,7 @@ export default async function ExportPage({
                 </select>
                 {selectedFromAllTime && (
                   <p className="mt-2 text-xs leading-5 text-muted-foreground">
-                    History is showing all time. A readable brief is
-                    intentionally bounded, so 12 weeks is selected. Choose a
-                    different period if needed.
+                    The summary starts with the last 12 weeks. You can choose a different date range.
                   </p>
                 )}
               </div>

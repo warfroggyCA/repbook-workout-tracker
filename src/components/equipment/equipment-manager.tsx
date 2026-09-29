@@ -593,10 +593,7 @@ export function EquipmentManager({
   return (
     <div id="equipment-inventory-editor" tabIndex={-1} className="flex flex-col gap-4 pb-44 outline-none lg:pb-24 [&_button]:min-h-11 [&_button]:min-w-11">
       <p className="text-sm leading-6 text-muted-foreground">
-        Equipment changes affect which exercises, workout alternatives, and
-        plate calculations are available. They do not edit your current
-        Program or any workout. Bodyweight training is always available and
-        does not need an inventory item.
+        Your equipment list helps Repbook suggest exercises and calculate plates. Changing it does not change your plan or workouts. Bodyweight exercises are always available.
       </p>
 
       <Button

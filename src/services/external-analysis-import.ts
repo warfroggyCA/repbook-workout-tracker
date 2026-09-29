@@ -204,7 +204,7 @@ export async function importExternalAnalysisSelection(
   );
   if (!manifest.ok) {
     const messages = {
-      not_found: ["missing_manifest", "The matching owner-scoped package manifest was not found."],
+      not_found: ["missing_manifest", "The saved export for this response could not be found."],
       expired: ["expired_manifest", "The matching package manifest has expired. Prepare a new package."],
       stale_program: ["stale_program", "The current Program changed after this package was prepared."],
       stale_evidence: ["stale_evidence", "Bound evidence changed after this package was prepared. Prepare a new package."],

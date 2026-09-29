@@ -95,7 +95,7 @@ export async function proposeProgramTextUpdate(
         baseDocument: current,
         changes: [],
         questions: [
-          "The instructions could not be combined safely with this saved Program's groups, identities, or prescription limits. Separate the structural changes from target changes and compare again. No changes were prepared.",
+          "Repbook could not combine these changes. Try changing the workout structure and targets separately. Your plan is unchanged.",
         ],
       };
     }

@@ -165,7 +165,7 @@ test("renders every optimized page family under its request nonce", async ({
     page.getByRole("heading", { name: "Historical consequence graph" }),
   ).toBeVisible();
   await expect(
-    page.getByText("No mutation authorized", { exact: true }),
+    page.getByText("No changes will be made", { exact: true }),
   ).toBeVisible();
   await expect(
     page.getByText("Repair assessment", { exact: true }),
@@ -178,7 +178,7 @@ test("renders every optimized page family under its request nonce", async ({
   ).toBeVisible();
   await expect(
     page.getByText(
-      "Current catalog metadata and ordinary record versions are not performed-time proof. Rows without immutable evidence stay unchanged and explicitly unknown.",
+      "Current exercise settings may differ from the ones used in an older workout. If the original settings are missing, those records stay unchanged.",
       { exact: true },
     ),
   ).toBeVisible();
@@ -217,7 +217,7 @@ test("renders every optimized page family under its request nonce", async ({
     name: "Repbook Workout Tracker",
     short_name: "Repbook",
     description:
-      "A private training record that keeps Program intent, performed work, recorded evidence, and reviewed change connected.",
+      "Your workouts, plans, and progress in one private place.",
     display: "standalone",
     start_url: "/today",
   });

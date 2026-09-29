@@ -76,7 +76,7 @@ test("presents performed evidence first without rewriting or inflating History",
     }),
   ).toBeVisible();
   await expect(page.getByText("Completed workout", { exact: true })).toBeVisible();
-  await expect(page.getByText(/Imported evidence/).first()).toBeVisible();
+  await expect(page.getByText(/Imported records/).first()).toBeVisible();
   await expect(
     page.getByText(/Restored from recovery snapshot/).first(),
   ).toBeVisible();
@@ -144,7 +144,7 @@ test("presents performed evidence first without rewriting or inflating History",
   await expect(plan.getByText(/Original Program guidance/)).toBeVisible();
 
   const correctionEvidence = performed.locator("details", {
-    hasText: "Correction and restore evidence",
+    hasText: "Edit and restore history",
   });
   await expect(correctionEvidence).not.toHaveAttribute("open", "");
   await correctionEvidence.locator("summary").focus();
@@ -203,7 +203,7 @@ test("presents performed evidence first without rewriting or inflating History",
   await expect(retained).toContainText("not counted as performed working sets");
 
   const source = technical
-    .getByRole("heading", { name: "Source and lineage", exact: true })
+    .getByRole("heading", { name: "Original record details", exact: true })
     .locator("..");
   await expect(
     source.getByText("History revision", { exact: true }).locator(".."),
@@ -231,7 +231,7 @@ test("presents performed evidence first without rewriting or inflating History",
   await expect(finishedSetDetails).not.toHaveAttribute("open", "");
   await finishedSetDetails.locator("summary").click();
   await expect(page.getByText("Recorded in Repbook", { exact: true }).first()).toBeVisible();
-  await expect(page.getByText(/Corrected evidence/).first()).toBeVisible();
+  await expect(page.getByText(/Edited records/).first()).toBeVisible();
   await page.locator("#technical-record > summary").click();
   await expect(page.getByText(/Timing corrected 1 time/)).toBeVisible();
   await expect(page.getByText(/1 working set/)).toBeVisible();

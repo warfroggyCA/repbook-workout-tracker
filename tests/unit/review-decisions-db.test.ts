@@ -788,7 +788,7 @@ describe("Review outcome readiness", () => {
     ).resolves.toEqual({
       ok: false,
       reason:
-        "The cited facts or current Program changed after this proposal was created. It cannot be applied without a fresh proposal.",
+        "Your records or plan have changed since this suggestion. Ask for a new suggestion before applying it.",
     });
     expect(publicationCalled).toBe(false);
   });

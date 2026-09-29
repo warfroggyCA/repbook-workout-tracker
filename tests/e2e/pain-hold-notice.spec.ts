@@ -31,7 +31,7 @@ const expectedDismissalPrefetchPaths = new Set([
 const holdReason =
   "Barbell Bench Press is on hold because a 4/10 positive pain report was saved in the last 14 days. It comes off hold 14 days after the latest 3/10 or higher report. A workout with no pain entry doesn't shorten that time.";
 const holdExplanation =
-  "No Program change. This informational status only prevents an unsupported automatic progression while its evidence remains current.";
+  "Your plan is unchanged. Automatic increases are on hold while this applies.";
 const productVersionLabel = `Repbook v${packageMetadata.version}`;
 
 async function signInAtExtraLargeText(page: Page) {
@@ -104,7 +104,7 @@ test("explains the automatic pain hold without offering a Program change", async
   await expect(hold.getByText("Highest positive pain report")).toBeVisible();
   await expect(hold.getByText("4", { exact: true })).toBeVisible();
   await expect(
-    hold.getByText("Evidence window", { exact: true }),
+    hold.getByText("Date range", { exact: true }),
   ).toBeVisible();
   await expect(hold.getByText("14 days", { exact: true })).toBeVisible();
   await expect(
@@ -155,7 +155,7 @@ test("explains the automatic pain hold without offering a Program change", async
     await dismiss.click();
     await expect(hold).toHaveCount(0);
     await openNativeDetails(page.getByText(
-      "Decision history and supporting evidence",
+      "Past decisions and details",
       { exact: true },
     ).locator("xpath=ancestor::details[1]"));
     await expect(

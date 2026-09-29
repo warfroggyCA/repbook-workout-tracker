@@ -97,8 +97,7 @@ export default async function ArchivePage({
           </h1>
         </div>
         <p className="mt-2 max-w-2xl text-sm text-muted-foreground">
-          Archived records are hidden from normal reports and coaching, but their
-          original IDs, dates, details, relationships, and provenance are retained.
+          Archived records are hidden from History and Coach. Their details are kept so you can restore them.
         </p>
       </header>
 

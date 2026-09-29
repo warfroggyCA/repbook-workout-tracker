@@ -366,7 +366,7 @@ test("classifies all sixteen prior workout observations", async ({
       name: "Discard Day B — Hinge and recovery?",
     });
     await expect(discardDialog).toContainText(
-      "this active workout cannot be resumed afterward",
+      "you cannot resume it",
     );
     await waitForStableElement(discardDialog);
     await discardDialog

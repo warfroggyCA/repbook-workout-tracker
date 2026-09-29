@@ -154,7 +154,7 @@ describe("History equipment presentation", () => {
       weightUnit: "lb",
       loadEntryMeaning: "combined_stacks",
       equipmentSnapshot: snapshot,
-    })).toContain("does not prove one unique stack-position combination");
+    })).toContain("individual cable settings are unknown");
   });
 
   it("keeps unknown and impossible historical setups explicitly unknown", () => {
@@ -177,7 +177,7 @@ describe("History equipment presentation", () => {
           ),
         },
       },
-    })).toContain("does not prove one unique plate combination");
+    })).toContain("exact plates used are unknown");
     expect(formatHistoryPerformedSetup({
       weight: 40,
       weightUnit: "kg",

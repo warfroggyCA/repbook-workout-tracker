@@ -215,9 +215,7 @@ export function ExternalAnalysisResponseValidator() {
           Validate a returned response
         </CardTitle>
         <CardDescription>
-          Paste JSON or choose a JSON file. Repbook checks the exact owner-scoped
-          package receipt, expiry, current Program, evidence, units, and effects
-          before showing a preview. Validation imports nothing.
+          Paste the AI response or choose its JSON file. Repbook checks that it matches your export and current plan before showing a preview. Nothing is imported yet.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-5">
@@ -329,8 +327,7 @@ export function ExternalAnalysisResponseValidator() {
                 Validated preview only
               </h3>
               <p className="mt-1 text-sm text-muted-foreground">
-                Response {preview.preview.responseId}. Nothing was retained,
-                imported, accepted, or applied.
+                Response {preview.preview.responseId}. Nothing was saved or changed.
               </p>
             </div>
 
@@ -407,9 +404,7 @@ export function ExternalAnalysisResponseValidator() {
                 Exact validated response
               </summary>
               <p className="mt-2 text-xs text-muted-foreground">
-                This is the complete validated object behind the selections above,
-                including evidence quality, measurements, target evidence, requested
-                outcomes, limitations, and unknowns.
+                The full response is shown below, including its supporting records and any missing details.
               </p>
               <pre
                 data-testid="external-analysis-exact-preview"
@@ -422,7 +417,7 @@ export function ExternalAnalysisResponseValidator() {
             <div className="rounded-md border bg-muted/20 p-3">
               <p className="text-sm font-medium">Import only what you selected</p>
               <p className="mt-1 text-xs text-muted-foreground">
-                Import retains the selected allowlisted items and a provenance receipt, then deletes the temporary package manifest. It does not accept a proposal or change your Program.
+                Import saves your selected items and where they came from. It then removes the temporary export record. Your plan does not change.
               </p>
               <Button
                 type="button"

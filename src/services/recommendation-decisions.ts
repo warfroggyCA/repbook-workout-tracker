@@ -207,7 +207,7 @@ export async function approveRecommendationDecision(
     input.expectedReviewRevision !== recommendation.reviewRevision ||
     input.expectedDeferRevision !== recommendation.deferRevision
   ) {
-    return { ok: false, reason: "This proposal changed. Refresh and review its current evidence." };
+    return { ok: false, reason: "This suggestion has changed. Refresh to see the latest details." };
   }
   if (recommendation.deferredAt != null) {
     return { ok: false, reason: "Resume this deferred review before making a decision." };
@@ -622,7 +622,7 @@ export async function rejectRecommendationDecision(
     input.expectedReviewRevision !== recommendation.reviewRevision ||
     input.expectedDeferRevision !== recommendation.deferRevision
   ) {
-    return { ok: false, reason: "This proposal changed. Refresh and review its current evidence." };
+    return { ok: false, reason: "This suggestion has changed. Refresh to see the latest details." };
   }
   if (recommendation.deferredAt != null) {
     return { ok: false, reason: "Resume this deferred review before making a decision." };

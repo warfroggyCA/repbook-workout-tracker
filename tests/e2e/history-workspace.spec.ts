@@ -166,11 +166,11 @@ test("History workspace preserves deep links, Back and Forward, and exact detail
     page.getByRole("heading", { name: "Current progress", exact: true }),
   ).toBeVisible();
   await expect(
-    page.getByRole("heading", { name: "Explore the evidence", exact: true }),
+    page.getByRole("heading", { name: "Explore your training", exact: true }),
   ).toBeVisible();
   await expect(page.getByText("Unknown", { exact: true })).toBeVisible();
   await expect(
-    page.getByText("Evaluable and unknown outcomes stay separate.", {
+    page.getByText("Sets with missing details are marked unknown.", {
       exact: true,
     }),
   ).toBeVisible();
@@ -198,7 +198,7 @@ test("History workspace preserves deep links, Back and Forward, and exact detail
   });
 
   const progressLink = page.getByRole("link", {
-    name: "Open progress evidence",
+    name: "See progress details",
     exact: true,
   });
   await progressLink.click();
@@ -213,16 +213,16 @@ test("History workspace preserves deep links, Back and Forward, and exact detail
   await expect(progressLens.locator('a[href="/coach"]')).toHaveCount(0);
   await expect(progressLens).not.toContainText("Possible decision:");
   await progressLens
-    .getByText("Evidence and methodology", {
+    .getByText("Details and calculations", {
       exact: true,
     })
     .click();
   await expect(
-    progressLens.getByRole("region", { name: "Supporting evidence" }),
+    progressLens.getByRole("region", { name: "Details" }),
   ).toBeVisible();
   await expect(
     progressLens.getByRole("region", {
-      name: "Confidence and data limitation",
+      name: "About these numbers",
     }),
   ).toBeVisible();
   await expect(
@@ -230,7 +230,7 @@ test("History workspace preserves deep links, Back and Forward, and exact detail
   ).toHaveCount(0);
 
   await progressLens
-    .getByRole("link", { name: "Open supporting exercise evidence" })
+    .getByRole("link", { name: "See exercise records" })
     .click();
   const exercisesUrl =
     "/history?range=all&view=exercises&calendarView=year&calendarDate=2026-07-10";
@@ -289,7 +289,7 @@ test("History workspace preserves deep links, Back and Forward, and exact detail
   });
   await expect(workCapacityLens).toBeVisible();
   await workCapacityLens
-    .getByText("Evidence and methodology", {
+    .getByText("Details and calculations", {
       exact: true,
     })
     .click();
@@ -418,7 +418,7 @@ test("History has clear empty and sparse states without mixing activity into str
     }),
   ).toBeVisible();
   await expect(
-    page.getByText("No eligible performance observations in this period.", {
+    page.getByText("No results to compare for these dates.", {
       exact: true,
     }),
   ).toBeVisible();
@@ -466,7 +466,7 @@ test("History remains operable at mobile widths and extra-large text", async ({
       }
       if (path === "/history?range=all&view=insights") {
         const overviewActions = page.getByRole("link").filter({
-          hasText: /^(Open progress evidence|View exact exercises)$/,
+          hasText: /^(See progress details|View exact exercises)$/,
         });
         await expect(
           page.getByRole("heading", { name: "Current progress", exact: true }),

@@ -70,7 +70,7 @@ export function AnalysisPackageBuilder({
       headers: { Accept: "application/json" },
     });
     if (!response.ok) {
-      throw new Error("The retained package manifests could not be refreshed.");
+      throw new Error("Your saved exports could not be loaded. Try again.");
     }
     const data = (await response.json()) as {
       manifests?: AnalysisPackageManifestSummary[];
@@ -179,8 +179,7 @@ export function AnalysisPackageBuilder({
         <CardHeader>
           <CardTitle>Choose one analysis purpose</CardTitle>
           <CardDescription>
-            The closed question and evidence window determine what is included.
-            Unknown historical meaning stays unknown.
+            The export includes records for your chosen question and dates. Missing details will be marked unknown.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
@@ -210,7 +209,7 @@ export function AnalysisPackageBuilder({
           </fieldset>
 
           <fieldset className="space-y-3">
-            <legend className="text-sm font-medium">Evidence window</legend>
+            <legend className="text-sm font-medium">Date range</legend>
             <div className="flex flex-wrap gap-2">
               {WINDOW_OPTIONS.map((option) => (
                 <label key={option.value} className="cursor-pointer">
@@ -309,20 +308,14 @@ export function AnalysisPackageBuilder({
             <CardHeader>
               <CardTitle>Provider-neutral instructions</CardTitle>
               <CardDescription>
-                Use the same complete instructions with ChatGPT or another capable
-                language model. They bind the exact package, forbid guessed facts
-                and direct mutation, and require evidence IDs and limitations.
+                Copy these instructions along with the export into ChatGPT or another AI. They ask it to use your records, explain its advice, and avoid guessing.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="rounded-lg border bg-muted/35 p-4 text-sm leading-6">
                 <p className="font-medium">Typed, but still untrusted</p>
                 <p className="text-muted-foreground">
-                  Repbook can define and validate the response contract, but the
-                  paste/upload validator below can now check this exact package
-                  receipt and show a transient preview. It still cannot import,
-                  accept, or apply anything. Review the external provider&apos;s
-                  privacy and retention settings before sharing this package.
+                  Paste the response below to check it and see a preview. Checking alone does not save or apply anything. Check the privacy settings of the other AI service before sharing your records.
                 </p>
               </div>
               <pre
@@ -349,7 +342,7 @@ export function AnalysisPackageBuilder({
 
       <Card>
         <CardHeader>
-          <CardTitle>Retained package manifests</CardTitle>
+          <CardTitle>Saved exports</CardTitle>
           <CardDescription>
             These receipts contain versions, digest, scope, inventory, and
             source bindings—not the package contents. Deletion removes the
@@ -358,7 +351,7 @@ export function AnalysisPackageBuilder({
         </CardHeader>
         <CardContent>
           {manifests.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No package manifests retained.</p>
+            <p className="text-sm text-muted-foreground">No saved exports yet.</p>
           ) : (
             <ul className="space-y-3">
               {manifests.map((manifest) => (

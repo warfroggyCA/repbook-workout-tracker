@@ -574,7 +574,7 @@ describe("training reporting digest integration", () => {
       "Of the 2 evaluable outcomes, 2/2 were at or above target (100%).",
     );
     expect(brief).toContain(
-      "Coverage is insufficient for an overall attainment conclusion",
+      "Too many target details are missing to give an overall result.",
     );
     expect(brief).toContain(
       "Duration comparisons are neutral context. Longer or shorter sessions do not by themselves prove adherence, quality, fatigue, motivation, recovery, or why a workout ended.",

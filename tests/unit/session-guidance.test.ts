@@ -452,7 +452,7 @@ describe("GUIDE-02 session guidance truth", () => {
       "1 still pending",
       "1 abandoned",
       "1 legacy outcome unknown",
-      "1 missing saved-result evidence",
+      "1 missing saved results",
     ]);
   });
 

@@ -552,7 +552,7 @@ function ExerciseReviewRow({
         <div className="border-t p-3">
           <div className="grid gap-2 sm:grid-cols-2">
             <div className="rounded-md bg-muted/40 p-2 text-xs">
-              <p className="font-medium">Source evidence</p>
+              <p className="font-medium">Original records</p>
               <p className="mt-1 text-muted-foreground">Metrics: {review.metricTypes.map(title).join(", ")}</p>
               <p className="text-muted-foreground">Sample weights: {review.sampleWeights.length ? `${review.sampleWeights.join(", ")} lb` : "none"}</p>
               {selectedExercise && (
@@ -785,7 +785,7 @@ function ImportedBatches({ batches }: { batches: BatchOption[] }) {
               <p className="text-muted-foreground">{batch.summary.workouts} workouts · {batch.summary.sets} sets · imported {new Date(batch.confirmedAtISO).toLocaleDateString()}</p>
               {batch.archivePreview && (
                 <p className="mt-1 leading-relaxed text-muted-foreground">
-                  Archive scope: {batch.archivePreview.workouts} active workouts · {batch.archivePreview.sessionExerciseGroups} exercise groups · {batch.archivePreview.exerciseOccurrences} exercises · {batch.archivePreview.sessionOccurrences} planned occurrences · {batch.archivePreview.sessionOccurrenceMutations} mutation receipts · {batch.archivePreview.sets} active sets · {batch.archivePreview.reviewDecisions} reviewed source names · {batch.archivePreview.reviewedMappings} retained mappings · {batch.archivePreview.customExercises} retained custom exercises
+                  Archive scope: {batch.archivePreview.workouts} active workouts · {batch.archivePreview.sessionExerciseGroups} exercise groups · {batch.archivePreview.exerciseOccurrences} exercises · {batch.archivePreview.sessionOccurrences} planned sets and warm-ups · {batch.archivePreview.sessionOccurrenceMutations} save confirmations · {batch.archivePreview.sets} active sets · {batch.archivePreview.reviewDecisions} reviewed source names · {batch.archivePreview.reviewedMappings} saved exercise matches · {batch.archivePreview.customExercises} saved custom exercises
                   {batch.archivePreview.previouslyArchivedWorkouts > 0
                     ? ` · ${batch.archivePreview.previouslyArchivedWorkouts} workouts already archived separately`
                     : ""}

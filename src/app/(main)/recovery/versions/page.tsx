@@ -56,7 +56,7 @@ const FIELD_LABELS: Record<string, string> = {
   performed_time_precision: "Time precision",
   exclude_duration_from_analytics: "Excluded from duration insights",
   data_quality_flags: "Timing quality",
-  target_met: "Legacy target projection",
+  target_met: "Older target comparison",
   target_load: "Planned load",
   timezone: "Timezone",
   title: "Title",
@@ -373,10 +373,10 @@ export default async function EditHistoryPage(
               <CardContent className="flex flex-col gap-3">
                 {correctionEvidence && (
                   <div className="rounded-lg border bg-muted/30 p-3 text-sm">
-                    <p className="font-medium">Correction evidence</p>
+                    <p className="font-medium">Edit details</p>
                     <p className="mt-1 text-muted-foreground">
                       {correctionEvidence.category === "restore_prior_version"
-                        ? "Restored an earlier retained version"
+                        ? "Restored an earlier version"
                         : correctionEvidence.category === "restore_snapshot"
                           ? "Restored the reviewed snapshot state"
                           : SET_CORRECTION_CATEGORY_LABELS[
@@ -420,8 +420,7 @@ export default async function EditHistoryPage(
                   </div>
                 ) : (
                   <p className="text-xs text-muted-foreground">
-                    This change is retained for inspection and complete snapshot recovery.
-                    Direct single-record rollback is not offered for this setup record.
+                    This change is saved in your history. To undo it, restore a full backup; it cannot be restored on its own.
                   </p>
                 )}
               </CardContent>

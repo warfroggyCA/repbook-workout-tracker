@@ -188,10 +188,7 @@ export default async function RecoveryPage(props: PageProps<"/recovery">) {
         <CardHeader>
           <CardTitle>Create a verified snapshot</CardTitle>
           <CardDescription>
-            The app captures active and archived records, programs, exercise IDs, imports,
-            reviewed mappings, settings, provenance, recommendations, and audit history.
-            It is marked verified only after the stored encrypted object can be read back,
-            decrypted, and matched by checksum and record count.
+            Backups include your workouts, plans, settings, imports, and edit history. Repbook checks that each encrypted backup can be opened and matches the original records before marking it verified.
           </CardDescription>
         </CardHeader>
         <CardContent>

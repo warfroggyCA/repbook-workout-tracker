@@ -495,7 +495,7 @@ describe("LIVE-03 History reconstruction", () => {
     expect(html).toContain(historyFixture.painNote);
     expect(html).toMatch(
       new RegExp(
-        `Pain / no-issue evidence[\\s\\S]*${historyFixture.performedName}[\\s\\S]*Pain: shoulder 5/10`
+        `Pain or discomfort[\\s\\S]*${historyFixture.performedName}[\\s\\S]*Pain: shoulder 5/10`
       )
     );
   });
@@ -508,15 +508,15 @@ describe("LIVE-03 History reconstruction", () => {
     const html = renderToStaticMarkup(page);
 
     expect(html).toContain(
-      "1 exercise · 1 working set · 1 completed warm-up · Active time unavailable · wall clock 30 min · legacy timing evidence",
+      "1 exercise · 1 working set · 1 completed warm-up · Active time unavailable · wall clock 30 min · older time record",
     );
     expect(html).not.toContain("at target");
     expect(html).toContain(
-      "Comparable load calculation unavailable because required measurements are missing.",
+      "Some measurements are missing, so this set cannot be compared.",
     );
     const whatYouDidStart = html.indexOf("What you did");
     const planStart = html.indexOf("Plan and results");
-    const retainedStart = html.indexOf("Retained source records");
+    const retainedStart = html.indexOf("Other saved records");
     expect(whatYouDidStart).toBeGreaterThan(-1);
     expect(planStart).toBeGreaterThan(whatYouDidStart);
     expect(retainedStart).toBeGreaterThan(planStart);

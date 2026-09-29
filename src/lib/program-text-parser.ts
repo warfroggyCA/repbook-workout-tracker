@@ -53,7 +53,7 @@ export function parseProgramTextUpdate(
     return {
       changes: [],
       questions: [
-        "This request exceeds the supported size or prescription limits. Split it into smaller requests; nothing has changed.",
+        "This request is too large or includes targets outside the allowed range. Try smaller changes. Nothing has changed yet.",
       ],
     };
   return checked.data;

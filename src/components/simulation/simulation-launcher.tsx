@@ -43,7 +43,7 @@ export function SimulationLauncher({
     const prepared = { ...workspace, selectedDayIndex: dayIndex };
     const result = writeSimulationWorkspace(localStorage, prepared);
     if (!result.ok) {
-      setError("The simulation could not be retained on this device.");
+      setError("The practice workout could not be saved on this device.");
       return;
     }
     router.push(`/simulation/${prepared.simulationId}`);

@@ -42,7 +42,7 @@ function proposedEffect(payload: RecommendationPayload) {
     case "remove_exercise":
       return "Remove this exercise only from a new future Program version; completed workouts stay unchanged.";
     case "hold":
-      return "No Program change. This informational status only prevents an unsupported automatic progression while its evidence remains current.";
+      return "Your plan is unchanged. Automatic increases are on hold while this applies.";
     case "external_review":
       return `${payload.requestedOutcome} Accepting records this as an owner-approved future Review direction; it does not edit or publish the Program.`;
   }
@@ -66,7 +66,7 @@ export function buildRecommendationReviewEvidence(input: {
     quality: input.quality ?? "supported",
     confidence: "not_scored",
     limitations: input.limitations ?? [
-      "Only cited retained evidence was evaluated. Missing observations remain unknown.",
+      "This uses only the records listed here. Missing details are not guessed.",
       "This deterministic proposal has no confidence score and does not account for unrecorded context.",
     ],
     proposedEffect: {

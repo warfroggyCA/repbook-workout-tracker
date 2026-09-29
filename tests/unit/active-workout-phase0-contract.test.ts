@@ -290,7 +290,7 @@ describe("Phase 0 active-set row contract", () => {
     expect(projection.rows[0]).toMatchObject({
       state: "unknown_legacy",
       result: { id: acknowledged.id },
-      message: expect.stringContaining("unresolved occurrence"),
+      message: expect.stringContaining("set's status is unclear"),
     });
     expect(projection.diagnostics.contradictoryOccurrenceIds).toEqual([
       pending.occurrences[0].id,

@@ -34,7 +34,7 @@ export function CoachActivityContext({
                 variant="outline"
                 className="border-success/30 text-success"
               >
-                Separate evidence
+                Other training
               </Badge>
             </div>
             <p className="mt-1 max-w-2xl text-xs leading-relaxed text-muted-foreground">

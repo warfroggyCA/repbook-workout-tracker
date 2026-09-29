@@ -243,7 +243,7 @@ export function formatHistoryPerformedSetup(
       })),
     );
     if (uniquePlates == null) {
-      return "Exact performed setup is unknown because the saved evidence does not prove one unique plate combination for the recorded total.";
+      return "The total weight was saved, but the exact plates used are unknown.";
     }
     return `${geometry.emptyWeight} ${geometry.unit} ${implementName(geometry)}; plates on each side: ${platesText(uniquePlates, geometry.unit)}; assembled total: ${solution.totalLoad} ${geometry.unit}.`;
   }
@@ -282,7 +282,7 @@ export function formatHistoryPerformedSetup(
       })),
     );
     if (uniquePlates == null) {
-      return "Exact performed setup is unknown because the saved evidence does not prove one unique machine plate combination for the recorded load.";
+      return "The weight was saved, but the exact machine plates used are unknown.";
     }
     const points = uniquePlates.length > 0
       ? geometry.loadingPointCount === 1
@@ -373,7 +373,7 @@ export function formatHistoryPerformedSetup(
     }
     const uniqueSelections = uniqueCombinedCableSteps(set.weight, config);
     if (uniqueSelections == null) {
-      return "Exact performed cable setup is unknown because the saved evidence does not prove one unique stack-position combination for the recorded combined load.";
+      return "The total weight was saved, but the individual cable settings are unknown.";
     }
     const positions = uniqueSelections.map(({ stackOrdinal, step }) =>
       `stack ${stackOrdinal}: ${cablePosition(step)} at ${step.displayedLoad} ${result.unit}`

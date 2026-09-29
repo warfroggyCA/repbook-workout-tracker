@@ -146,9 +146,7 @@ export function WorkoutTimingCorrection(props: Props) {
         <div className="max-h-[65dvh] overflow-y-auto px-4">
           <fieldset disabled={pending} className="space-y-4">
             <p className="text-sm text-muted-foreground">
-              Earlier values remain in Edit history. Logged sets, Program
-              linkage, source provenance, and the Program itself are not
-              changed.
+              Earlier times stay in Edit history. Your sets and plan stay the same.
             </p>
             <label className="block text-sm font-medium">
               Workout date
@@ -282,8 +280,8 @@ export function WorkoutTimingCorrection(props: Props) {
                       onChange={() => setAmbiguityChoice(choice)}
                     />
                     {choice === "earlier"
-                      ? "Earlier occurrence"
-                      : "Later occurrence"}
+                      ? "Earlier time"
+                      : "Later time"}
                   </label>
                 ))}
               </fieldset>
@@ -332,7 +330,7 @@ export function WorkoutTimingCorrection(props: Props) {
                   toast.success(
                     result.outcome === "replayed"
                       ? "Workout timing was already corrected"
-                      : "Workout timing corrected with revision evidence",
+                      : "Workout times updated",
                   );
                   setOpen(false);
                   setClientMutationId(crypto.randomUUID());

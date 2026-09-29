@@ -268,11 +268,10 @@ export default async function TodayPage({
                   </span>
                 )}
                 <span className="sm:hidden">
-                  Saved sets and notes are retained.
+                  Your saved sets and notes are kept.
                 </span>
                 <span className="hidden sm:inline">
-                  Unfinished workouts are retained so saved sets and notes
-                  survive leaving or closing the web app.
+                  You can return to an unfinished workout. Your saved sets and notes will still be here.
                 </span>
               </CardDescription>
             </CardHeader>
@@ -288,8 +287,7 @@ export default async function TodayPage({
                     Timing needs review · wall clock {today.inProgressTiming.wallClockLabel}
                   </p>
                   <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-                    Active time is unavailable until you review the interruption.
-                    The recorded start is retained.
+                    Check the interruption to see your active time. The original start time is saved.
                   </p>
                 </div>
               )}

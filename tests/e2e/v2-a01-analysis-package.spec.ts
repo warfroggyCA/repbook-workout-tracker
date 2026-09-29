@@ -177,7 +177,7 @@ test("previews and downloads one complete owner-controlled package without trans
   await waitForReactHandler(deleteButton);
   await deleteButton.click();
   await expect(page.getByTestId("analysis-package-preview")).toHaveCount(0);
-  await expect(page.getByText("No package manifests retained.")).toBeVisible();
+  await expect(page.getByText("No saved exports yet.")).toBeVisible();
 
   expect(
     requestedUrls.every((url) => new URL(url).hostname === "127.0.0.1"),

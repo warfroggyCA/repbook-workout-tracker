@@ -97,7 +97,7 @@ export function formatPainEvidence(
   const evidence = classifyPainEvidence(input);
   if (evidence.meaning === "unknown") return "Pain not recorded (unknown)";
   if (evidence.meaning === "unsupported") {
-    return "Unsupported pain evidence retained for review";
+    return "Some pain details could not be read. Check the original record.";
   }
   if (evidence.meaning === "explicit_no_issue") {
     return `Explicit no-issue report: ${evidence.bodyPart} 0/10`;

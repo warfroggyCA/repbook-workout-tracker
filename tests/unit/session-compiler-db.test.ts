@@ -408,7 +408,7 @@ describe("Session Compiler durable review and acceptance", () => {
     const sourcePrescriptions = await database.db.select().from(exercisePrescriptions);
     const overview =
       "Five minutes easy, then rehearse the first movement with a controlled range. " +
-      "This retained legacy overview is intentionally longer than one hundred and twenty characters.";
+      "This unsaved legacy overview is intentionally longer than one hundred and twenty characters.";
     const compatibilityTemplateId = crypto.randomUUID();
     await database.db.transaction(async (tx) => {
       const [version] = await tx.insert(programVersions).values({

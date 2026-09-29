@@ -702,7 +702,7 @@ describe("Live Coach durable workout conversation", () => {
         content: "Different text must not reuse an acknowledged identity.",
         clientKey,
       })
-    ).rejects.toThrow("could not be reconciled");
+    ).rejects.toThrow("could not be matched to the saved workout");
     expect(
       await db.query.coachingInsights.findMany({
         where: eq(coachingInsights.clientKey, clientKey),

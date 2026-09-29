@@ -436,7 +436,7 @@ export async function correctAcknowledgedSet(
   ) {
     return actionFailure(
       "set_not_found",
-      "Only an acknowledged set from your unarchived workout can be corrected.",
+      "Wait for the set to finish saving before editing it. Archived workouts must be restored first.",
     );
   }
   const status = set.sessionExercise.session.status;
@@ -463,7 +463,7 @@ export async function correctAcknowledgedSet(
   if (!performedOccurrence) {
     return actionFailure(
       "correction_rejected",
-      "This result is not linked to completed working-set evidence, so it was not changed.",
+      "This record could not be matched to a completed set. Nothing was changed.",
     );
   }
 
@@ -1333,7 +1333,7 @@ const activeDurationCorrectionSchema = z.object({
   expected: z.object({
     activeDurationSemanticsVersion: z.number().int().nullable().refine(
       (value) => value == null || value === 1,
-      "Active-duration semantics changed. Reload this workout.",
+      "The way this workout records active time has changed. Reload to continue.",
     ),
     activeDurationSeconds: z.number().int().min(0).max(604_800).nullable(),
     activeDurationBasis: z.string().max(50).nullable().refine(
@@ -1341,7 +1341,7 @@ const activeDurationCorrectionSchema = z.object({
         value == null || ACTIVE_WORKOUT_DURATION_BASES.some(
           (basis) => basis === value,
         ),
-      "Active-duration evidence changed. Reload this workout.",
+      "The workout time has changed. Reload to see the latest value.",
     ),
   }),
   decision: z.discriminatedUnion("basis", [

@@ -441,7 +441,7 @@ describe("reporting session completion and planned-duration writers", () => {
       )).resolves.toMatchObject({
         outcome: "finish_payload_conflict",
         alreadyFinished: true,
-        reason: expect.stringContaining("different retained finish details"),
+        reason: expect.stringContaining("different finish details"),
       });
     }
     expect(await retainedClosure()).toEqual(closureBeforeRetries);

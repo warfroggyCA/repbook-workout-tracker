@@ -79,7 +79,7 @@ test("keeps ordinary completion minimal and makes exception evidence reversible,
     .not.toBeVisible();
   await page.getByTestId("active-log-set").click();
   await expect(squatCard.getByTestId("completed-sets"))
-    .toContainText("Acknowledged by Repbook");
+    .toContainText("Saved");
   await dismissRest(page);
 
   currentEntry = currentCard.getByTestId("current-set-entry");
@@ -166,7 +166,7 @@ test("keeps ordinary completion minimal and makes exception evidence reversible,
   await context.setOffline(false);
   await page.evaluate(() => window.dispatchEvent(new Event("online")));
   const receipt = squatCard.getByTestId("completed-sets");
-  await expect(receipt).toContainText("Acknowledged by Repbook");
+  await expect(receipt).toContainText("Saved");
   await expect(receipt).toContainText("RIR 2");
   await expect(receipt).toContainText("Technique: Bracing");
   await expect(receipt).toContainText("Limited by: Strength or fatigue");
@@ -194,7 +194,7 @@ test("keeps ordinary completion minimal and makes exception evidence reversible,
 
   await page.goto("/coach");
   await openNativeDetails(page.getByText(
-    "Decision history and supporting evidence",
+    "Past decisions and details",
     { exact: true },
   ).locator("xpath=ancestor::details[1]"));
   const review = page.getByRole("region", {

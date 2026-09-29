@@ -620,7 +620,7 @@ test("keeps the full live workout usable through warm-up, skip, replace, continu
     }
     const receipt = completedSquat.getByTestId("completed-sets");
     await expect(receipt).toContainText(`Set ${setNo}`);
-    await expect(receipt).toContainText("Acknowledged by Repbook");
+    await expect(receipt).toContainText("Saved");
     await dismissRest(page);
     await expectActiveViewportBudget(page);
   }

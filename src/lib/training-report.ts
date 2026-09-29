@@ -893,15 +893,15 @@ export function formatTargetAttainmentConclusion(
 ): string {
   switch (conclusion.status) {
     case "eligible":
-      return "Coverage and sample thresholds permit a bounded attainment conclusion.";
+      return "There are enough recorded targets and results for this comparison.";
     case "incomplete_denominator":
-      return "The planned-outcome denominator is incomplete, so no overall attainment conclusion is supported.";
+      return "Some planned sets are missing, so an overall target result cannot be calculated.";
     case "insufficient_coverage":
-      return "Coverage is insufficient for an overall attainment conclusion.";
+      return "Too many target details are missing to give an overall result.";
     case "insufficient_sample_size":
-      return "The evaluable sample is too small for an overall attainment conclusion.";
+      return "There are too few sets with recorded targets to give an overall result.";
     case "insufficient_session_span":
-      return "The evaluable outcomes span too few sessions for an overall attainment conclusion.";
+      return "There are too few workouts with recorded targets to give an overall result.";
   }
 }
 

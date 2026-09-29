@@ -644,7 +644,7 @@ export function ActiveSetLedger({
       </ol>
       {rows.length === 0 && diagnosticRows.length === 0 && (
         <p className="px-3 py-2 text-sm text-muted-foreground">
-          No working-set occurrences are available.
+          No working sets are available.
         </p>
       )}
       {unresolvedDiagnosticCount > diagnosticRows.length && (
@@ -653,8 +653,7 @@ export function ActiveSetLedger({
           data-testid="active-set-ledger-diagnostics"
           className="border-t bg-[var(--surface-attention)] px-3 py-2 text-xs"
         >
-          Some set evidence cannot be linked safely. Repbook is keeping it
-          visible as needing review rather than treating it as completed.
+          Some saved results could not be matched to their sets. Check them before counting them as completed.
         </p>
       )}
     </div>

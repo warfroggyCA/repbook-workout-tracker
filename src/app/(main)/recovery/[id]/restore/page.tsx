@@ -183,9 +183,7 @@ export default async function SnapshotRestorePage(
         <CardHeader>
           <CardTitle>Historical meaning consequences</CardTitle>
           <CardDescription>
-            This read-only gate found records and retained outputs whose meaning
-            may depend on older performed-set semantics. It does not repair
-            history or reverse a Program.
+            Some records were saved using older rules. Check the details before restoring. This check does not change your history or plan.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
@@ -196,9 +194,7 @@ export default async function SnapshotRestorePage(
             <div className="rounded-lg border p-3"><p className="text-2xl font-semibold">{preview.consequences.counts.rollbackVersions}</p><p className="text-xs text-muted-foreground">Rollback versions</p></div>
           </div>
           <p className="text-sm text-muted-foreground">
-            Raw measurements are restored. Derived target outcomes are recomputed
-            from retained supported meaning or invalidated as unknown. Any
-            corrective Program change must be a new proposal that you review.
+            Your recorded measurements will be restored. Target comparisons will be recalculated where possible and marked unknown otherwise. Your plan will not change automatically.
           </p>
         </CardContent>
       </Card>

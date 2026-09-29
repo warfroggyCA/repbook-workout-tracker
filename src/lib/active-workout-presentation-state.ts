@@ -139,7 +139,7 @@ export function projectActiveWorkoutRestPresentation(input: {
     return {
       state: "recovery_required",
       destinationLabel,
-      message: "The retained rest outcome is incomplete and needs review.",
+      message: "The rest timer's status is unclear. Check it before continuing.",
     };
   }
   const visibleUntil = timer.readyAt + REST_COMPLETE_CONFIRMATION_MS;

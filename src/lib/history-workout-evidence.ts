@@ -62,7 +62,7 @@ export function classifyHistoryTerminalState(
 
 export function historyTerminalLabel(state: HistoryTerminalState) {
   if (state === "completed_without_prescription") {
-    return "Completed without a prescription";
+    return "Completed without a target";
   }
   if (state === "completed_with_remaining_work") {
     return "Completed with planned work remaining";
@@ -163,7 +163,7 @@ export const HISTORY_PROVENANCE_LABELS: Record<
 > = {
   native: "Recorded in Repbook",
   manual: "Entered after the workout",
-  imported: "Imported evidence",
+  imported: "Imported records",
   legacy: "Legacy source",
 };
 
@@ -207,8 +207,8 @@ export function classifyHistoryCorrectionFacet(
 }
 
 export const HISTORY_CORRECTION_LABELS: Record<HistoryCorrectionFacet, string> = {
-  original: "Original evidence",
-  corrected: "Corrected evidence",
+  original: "Original record",
+  corrected: "Edited records",
   version_restored: "Restored from record version",
   snapshot_restored: "Restored from recovery snapshot",
 };
@@ -330,7 +330,7 @@ function correctionCategoryLabel(evidence: SetCorrectionEvidence) {
     return "Restored a prior record version";
   }
   if (evidence.category === "restore_snapshot") {
-    return "Restored recovery snapshot evidence";
+    return "Restored from a backup";
   }
   return SET_CORRECTION_CATEGORY_LABELS[evidence.category];
 }

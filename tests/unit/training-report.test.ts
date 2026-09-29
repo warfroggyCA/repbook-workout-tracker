@@ -385,33 +385,33 @@ describe("training-report deterministic semantics", () => {
         ...base,
         status: "insufficient_coverage",
       }),
-    ).toContain("Coverage is insufficient");
+    ).toContain("Too many target details are missing");
     expect(
       formatTargetAttainmentConclusion({
         ...base,
         status: "insufficient_sample_size",
       }),
-    ).toContain("sample is too small");
+    ).toContain("too few sets with recorded targets");
     expect(
       formatTargetAttainmentConclusion({
         ...base,
         status: "insufficient_session_span",
       }),
-    ).toContain("too few sessions");
+    ).toContain("too few workouts with recorded targets");
     expect(
       formatTargetAttainmentConclusion({
         ...base,
         eligible: true,
         status: "eligible",
       }),
-    ).toContain("permit a bounded attainment conclusion");
+    ).toContain("enough recorded targets and results");
     expect(
       formatTargetAttainmentConclusion({
         ...base,
         denominatorComplete: false,
         status: "incomplete_denominator",
       }),
-    ).toContain("denominator is incomplete");
+    ).toContain("Some planned sets are missing");
   });
 
   it("uses one target projector to exclude unknown counting basis while preserving supported loaded comparisons", () => {

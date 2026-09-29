@@ -559,7 +559,7 @@ export async function reviewProgramDraft(
         ? { recommendationId: recommendation.id, outcome: "carry" as const, explanation: "The source exercise is unchanged, so this replacement suggestion stays available." }
         : { recommendationId: recommendation.id, outcome: "superseded" as const, explanation: "The source exercise changed, so this suggestion will expire." };
     }
-    return { recommendationId: recommendation.id, outcome: "superseded" as const, explanation: "This suggestion will be reconciled with the new Program version." };
+    return { recommendationId: recommendation.id, outcome: "superseded" as const, explanation: "This suggestion will be checked against the updated plan." };
   });
   const review = reviewProgramDocuments(base, next, draft.revision, {
     recommendationRevision: draft.program.recommendationRevision,

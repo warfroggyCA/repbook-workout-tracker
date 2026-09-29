@@ -1110,30 +1110,30 @@ export function setMetricExclusionLabel(
 ): string | null {
   switch (reason) {
     case "assistance_not_comparable":
-      return "Comparable strength estimate unavailable for assisted work.";
+      return "Strength estimates are not available for assisted exercises.";
     case "metric_semantics_conflict":
-      return "Calculation unavailable because the recorded and current metric meanings conflict.";
+      return "The recorded measurement differs from the current exercise setup, so it cannot be compared.";
     case "missing_prescribed_semantics":
-      return "Calculation unavailable because this workout's prescribed measurement meaning was not retained.";
+      return "This older workout is missing the target details needed for this calculation.";
     case "unsupported_performed_semantics_version":
     case "incomplete_performed_semantics":
-      return "Calculation unavailable because this set's performed measurement meaning is unsupported.";
+      return "This set is missing usable measurement details, so it cannot be compared.";
     case "per_implement_not_aggregatable":
     case "added_weight_missing_system_load":
     case "machine_geometry_not_comparable":
     case "band_resistance_not_numeric":
     case "unproven_load_entry_meaning":
-      return "Comparable load calculation unavailable for this recorded load meaning.";
+      return "This type of weight entry cannot be used for a strength comparison.";
     case "unvalidated_total_system_implement":
-      return "Loaded-work and estimated-strength calculations are not yet validated for this equipment type.";
+      return "Weight lifted and strength estimates are not available for this equipment type.";
     case "unsupported_metric":
-      return "This measurement does not support a load-based strength calculation.";
+      return "This measurement cannot be used to estimate strength from weight lifted.";
     case "source_excluded":
-      return "This set is excluded from analytics.";
+      return "This set is left out of progress calculations.";
     case "repetitions_only":
-      return "Load-based strength calculations do not apply to repetitions-only work.";
+      return "A strength estimate needs weight as well as reps.";
     case "missing_load_or_repetitions":
-      return "Comparable load calculation unavailable because required measurements are missing.";
+      return "Some measurements are missing, so this set cannot be compared.";
     case null:
       return null;
   }

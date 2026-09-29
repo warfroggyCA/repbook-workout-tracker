@@ -187,25 +187,25 @@ export async function resolveReviewEvidenceBatch<T extends ReviewCandidate>(
     let explanation: string;
     if (!referencesPresent) {
       state = "stale";
-      explanation = "One or more cited records are no longer current owner-scoped evidence. Refresh or reject this proposal; it cannot be applied.";
+      explanation = "Some records behind this suggestion have changed or are unavailable. Refresh or reject it; it cannot be applied.";
     } else if (!parsed.success || (!hasEvidence && (!isExternal || externalEvidenceCount === 0))) {
       state = "unsupported";
-      explanation = "This retained proposal lacks the complete versioned evidence contract. Its claim remains visible, but it cannot change the Program.";
+      explanation = "This older suggestion is missing details needed to check it. You can view it, but cannot apply it.";
     } else if (isExternal && !externalCurrent.get(recommendation.id)) {
       state = "stale";
-      explanation = "The imported response, cited evidence, or current Program changed after import. Regenerate the package before accepting this proposal.";
+      explanation = "The response, training records, or plan has changed since import. Export a fresh copy before accepting this suggestion.";
     } else if (isExternal) {
       state = "external";
-      explanation = "The response identity, cited owner-scoped records, and current Program still match. Repbook validated the boundary, not the quality of the external advice.";
+      explanation = "This response matches your export and current plan. These checks do not assess the quality of the advice.";
     } else if (parsed.data.quality === "contradictory") {
       state = "contradictory";
-      explanation = "The cited evidence is explicitly contradictory. Review or reject the proposal; it cannot change the Program.";
+      explanation = "The records behind this suggestion disagree. Check or reject it; it cannot change your plan.";
     } else if (parsed.data.quality === "unsupported") {
       state = "unsupported";
-      explanation = "The cited evidence is explicitly unsupported. The proposal remains visible but cannot change the Program.";
+      explanation = "There is not enough support for this suggestion. You can view it, but cannot apply it.";
     } else if (!baseEligible) {
       state = "stale";
-      explanation = "The cited facts or current Program changed after this proposal was created. It cannot be applied without a fresh proposal.";
+      explanation = "Your records or plan have changed since this suggestion. Ask for a new suggestion before applying it.";
     } else {
       state = "supported";
       explanation = "The exact cited records remain current and owner-scoped. Approval would affect only a new future Program version.";

@@ -416,7 +416,7 @@ export async function syncNextEntry(
                     : result.outcome === "set_order_conflict"
                       ? `Resolve ${result.blocker.label} first. Your later attempt is still saved on this device.`
                     : result.outcome === "stale_occurrence"
-                      ? "This set changed after it was opened. Refresh the workout and review this retained attempt."
+                      ? "This set has changed. Refresh the workout and check your unsaved copy."
                     : result.outcome === "equipment_selection_required"
                       ? "Choose the equipment you're using before saving this set."
                     : result.outcome === "equipment_selection_conflict"

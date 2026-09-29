@@ -49,9 +49,7 @@ export function RestoreVersionButton({
         <DialogHeader>
           <DialogTitle>Restore the earlier values for {recordLabel}?</DialogTitle>
           <DialogDescription>
-            A new encrypted safety snapshot is created and verified first. The
-            current values are then retained as another version, so this rollback
-            can itself be reversed later.
+            Repbook checks a new backup first and keeps the current values in Edit history. You can undo this restore later.
           </DialogDescription>
         </DialogHeader>
         <div className="rounded-lg border bg-muted/30 p-3 text-sm">

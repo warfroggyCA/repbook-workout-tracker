@@ -88,7 +88,7 @@ export async function POST(request: Request) {
     return sensitiveJson(
       {
         error:
-          "The analysis package could not be returned. Check retained manifests before trying again.",
+          "The download could not be prepared. Check your saved exports before trying again.",
       },
       { status: 500 },
     );

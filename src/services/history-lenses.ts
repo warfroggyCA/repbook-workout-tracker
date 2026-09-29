@@ -168,7 +168,7 @@ function formatReasons(reasons: Array<{ reason: string; count: number }>) {
 function noDecision() {
   return {
     supported: false as const,
-    statement: "No decision is supported by this evidence.",
+    statement: "There is not enough information to suggest a change.",
   };
 }
 
@@ -240,7 +240,7 @@ function buildProgressLens(input: BuildHistoryLensesInput): HistoryLens {
     value: `${formatPerformance(exercise.first, input.unit)} → ${formatPerformance(exercise.latest, input.unit)}`,
     detail:
       exercise.changePercent == null
-        ? `${plural(exercise.sessions, "session")} · needs two comparable observations`
+        ? `${plural(exercise.sessions, "session")} · needs two matching results`
         : exercise.metric === "reps"
           ? `${plural(exercise.sessions, "session")} · ${(exercise.repChange ?? 0) >= 0 ? "+" : ""}${exercise.repChange ?? 0} reps`
           : `${plural(exercise.sessions, "session")} · ${(exercise.changePercent ?? 0) >= 0 ? "+" : ""}${exercise.changePercent}% estimated strength`,
@@ -248,9 +248,9 @@ function buildProgressLens(input: BuildHistoryLensesInput): HistoryLens {
 
   if (evidence.length === 0) {
     evidence.push({
-      label: "Comparable observations",
+      label: "Results to compare",
       value: "None yet",
-      detail: "A single workout or unmatched metric cannot establish a trend.",
+      detail: "Log more workouts with the same measurements to see a trend.",
     });
   }
 
@@ -266,12 +266,12 @@ function buildProgressLens(input: BuildHistoryLensesInput): HistoryLens {
           ? "positive"
           : "neutral",
     evidence,
-    limitation: `${plural(comparable.length, "exact-exercise comparison")} use the first and latest best eligible set in this period. Above +1% is described as improving, below −1% as lower, and the band between them as broadly stable. Variants stay separate, estimated strength uses Epley, and independent activities are excluded.`,
+    limitation: `${plural(comparable.length, "exercise comparison")} compare your first and latest best sets. Changes within 1% count as stable. Different exercise versions stay separate. Strength estimates use the Epley formula. Separate activities are not included.`,
     decision:
       lower.length > 0
         ? {
             supported: false,
-            statement: `${lower[0].exercise}'s latest comparable best set is lower. This comparison alone does not establish that its Program target should change.`,
+            statement: `${lower[0].exercise}'s latest best set was lower. That alone does not mean its target needs to change.`,
           }
         : noDecision(),
   };
@@ -289,21 +289,21 @@ function buildProgramFitLens(input: BuildHistoryLensesInput): HistoryLens {
   const evidence: HistoryLensEvidenceItem[] = [];
   if (linkedSessions > 0) {
     evidence.push({
-      label: "Program-linked workouts",
+      label: "Workouts from your plan",
       value: `${number.format(program.completedSessions)} completed · ${number.format(program.abandonedSessions)} abandoned`,
-      detail: "Validated through the recorded historical Program template.",
+      detail: "Compared with the plan saved for each workout.",
     });
     evidence.push({
-      label: "Recorded planned occurrences",
+      label: "Planned exercises",
       value: `${number.format(program.asPlannedOccurrences)} as planned · ${number.format(program.substitutedOccurrences)} substituted · ${number.format(program.skippedOccurrences)} skipped`,
-      detail: `${plural(plannedOccurrences, "planned occurrence")} in total; ${plural(program.addedOccurrences, "added exercise")} shown separately.`,
+      detail: `${plural(plannedOccurrences, "planned exercise")} in total; ${plural(program.addedOccurrences, "added exercise")} shown separately.`,
     });
   } else {
     evidence.push({
-      label: "Program-linked workouts",
+      label: "Workouts from your plan",
       value: "None in this period",
       detail:
-        "Template-less and imported workouts are not treated as Program behavior.",
+        "Workouts without a saved plan are not included in this comparison.",
     });
   }
   if (program.skipReasons.length > 0) {
@@ -320,24 +320,24 @@ function buildProgramFitLens(input: BuildHistoryLensesInput): HistoryLens {
   }
   if (program.unlinkedSessions > 0) {
     evidence.push({
-      label: "Other workouts kept outside Program fit",
+      label: "Workouts without a matching plan",
       value: plural(program.unlinkedSessions, "workout"),
       detail:
-        "They remain in History and strength reporting, but not in Program-fit evidence.",
+        "They appear in History and strength reports, but are not compared with your plan.",
     });
   }
 
   return {
     key: "program-fit",
     title: "Program fit",
-    question: "What is consistently completed, changed, skipped, or deferred?",
+    question: "What am I completing, changing, or skipping?",
     answer:
       linkedSessions === 0
-        ? "No Program-linked history is available in this period."
+        ? "No workouts from your plan were recorded for these dates."
         : `${plural(program.completedSessions, "Program workout")} completed; ${plural(changed, "exercise change")} and ${plural(program.skippedOccurrences, "skip")} ${changed + program.skippedOccurrences === 1 ? "was" : "were"} recorded.`,
     tone: "neutral",
     evidence,
-    limitation: `Deferred workouts are not recorded, so no deferral conclusion is supported. “As planned” is an occurrence state, not proof that every prescribed set was completed.${program.unlinkedPlannedOccurrences > 0 ? ` ${plural(program.unlinkedPlannedOccurrences, "occurrence")} could not be matched to its historical slot and is excluded.` : ""}`,
+    limitation: `Postponed workouts are not tracked. “As planned” means the exercise was unchanged; it does not mean every set was completed.${program.unlinkedPlannedOccurrences > 0 ? ` ${plural(program.unlinkedPlannedOccurrences, "occurrence")} could not be matched to the saved plan and is not counted.` : ""}`,
     decision: {
       supported: false,
       statement:
@@ -421,21 +421,21 @@ function buildPainLens(input: BuildHistoryLensesInput): HistoryLens {
     key: "pain-constraints",
     title: "Pain and constraints",
     question:
-      "Which movements and contexts are repeatedly associated with discomfort or substitution?",
+      "Where have I recorded pain or changed an exercise?",
     answer: repeatedLabel
-      ? `Repeated recorded discomfort is associated with ${repeatedLabel}.`
+      ? `You have recorded discomfort more than once with ${repeatedLabel}.`
       : hasSignal
-        ? "A discomfort signal was recorded, but no repeated movement pattern is established."
+        ? "You recorded discomfort, but no repeating pattern is clear yet."
         : "No pain or discomfort-linked exercise changes were recorded in this period.",
     tone: hasSignal ? "watch" : "neutral",
     evidence: evidence.slice(0, 5),
-    limitation: `${number.format(pain.attributedPainEvents)} of ${number.format(pain.painEvents)} positive pain reports name an exercise. These are recorded associations, not causes or a medical assessment; no pain record does not mean pain-free.`,
+    limitation: `${number.format(pain.attributedPainEvents)} of ${number.format(pain.painEvents)} pain reports name an exercise. These records do not tell us what caused the pain. Missing pain details do not mean there was no pain.`,
     decision:
       hasSignal || pain.constraints.some((constraint) => constraint.avoid)
         ? {
             supported: true,
             statement:
-              "Possible decision: bring the named movement, context, and constraint evidence into Review before the next Program change.",
+              "Check the affected exercise and pain details with Coach before changing your plan.",
             href: "/coach",
             linkLabel: "Open Review and decisions",
           }
@@ -612,7 +612,7 @@ function buildWorkCapacityLens(input: BuildHistoryLensesInput): HistoryLens {
     answer:
       comparison && comparison.volumeChangePercent != null
         ? `Loaded workload is ${workloadDirection}; completed sets are ${setDirection}; average workout duration is ${durationDirection} in the available ${comparison.weeks}-week comparison.`
-        : "Not enough comparable completed strength work is available to establish a workload trend.",
+        : "Not enough matching strength workouts to show a trend.",
     tone:
       workloadDirection === "rising"
         ? "positive"
@@ -621,13 +621,13 @@ function buildWorkCapacityLens(input: BuildHistoryLensesInput): HistoryLens {
           : "neutral",
     evidence,
     limitation:
-      "Loaded workload is descriptive weight × reps from eligible strength sets; bodyweight, band, excluded sets, and independent activities are not included. Duration and workload do not prove adaptation or readiness.",
+      "Weight lifted is weight × reps. It excludes bodyweight, band, and other activities, plus sets excluded from progress. This number alone cannot show how ready you are to train.",
     decision:
       comparison?.volumeChangePercent != null
         ? {
             supported: true,
             statement:
-              "Possible decision: check whether this workload direction matches your intent, recovery, and pain evidence before changing Program volume.",
+              "Consider your goals, recovery, and any pain before changing how much you train.",
             href: "/coach",
             linkLabel: "Open Review and decisions",
           }
@@ -649,7 +649,7 @@ function buildRecordsLens(input: BuildHistoryLensesInput): HistoryLens {
   );
   if (evidence.length === 0) {
     evidence.push({
-      label: "Eligible performance observations",
+      label: "Results used for comparison",
       value: "None in this period",
     });
   }
@@ -657,18 +657,18 @@ function buildRecordsLens(input: BuildHistoryLensesInput): HistoryLens {
   return {
     key: "records",
     title: "Records",
-    question: "What are the best observed performances?",
+    question: "What are my best results?",
     answer:
       input.records.length > 0
-        ? `Showing best observed performances for ${plural(displayedRecords.length, "exact exercise variant")}${input.records.length > displayedRecords.length ? `, selected from ${number.format(input.records.length)} eligible variants` : ""}.`
-        : "No eligible supported performance observations are available in this period.",
+        ? `Your best results for ${plural(displayedRecords.length, "exercise")}${input.records.length > displayedRecords.length ? `, selected from ${number.format(input.records.length)} exercises` : ""}.`
+        : "No results to compare for these dates.",
     tone: input.records.length > 0 ? "positive" : "neutral",
     evidence,
     limitation:
-      "This bounded list favors exact variants with more recorded sessions. These are best eligible observations inside the selected period, not durable all-time PR records. Warm-ups, excluded sets, assistance, timed work, distance work, and independent activities are excluded. Estimated strength uses Epley.",
+      "These are your best results for the selected dates, not all-time records. Exercises with more logged workouts appear first. Warm-ups, assisted, timed, distance-based, and excluded sets are not counted. Strength estimates use the Epley formula.",
     decision: {
       supported: false,
-      statement: "No Program decision is supported by records alone.",
+      statement: "A personal best alone does not mean your plan needs to change.",
     },
   };
 }

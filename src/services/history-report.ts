@@ -91,11 +91,11 @@ function targetCoverageInsight(targetOutcomes: {
     : `Within the ${targetOutcomes.supported} evaluable outcomes, ${targetOutcomes.atOrAboveRate}% were at or above target.`;
   return {
     tone: "neutral" as const,
-    title: "Target-attainment coverage",
+    title: "Sets with enough detail to compare",
     detail: !denominatorComplete
       ? `${coverage.numerator} of ${coverage.denominator} quantified planned outcomes were evaluable${coverage.percentage == null ? "" : ` (${coverage.percentage}%)`}. ${rawStatistic} The retained historical plan denominator is incomplete, so no overall attainment conclusion is supported.`
       : coverage.percentage == null
-      ? "No planned outcome is available for an attainment conclusion."
+      ? "No planned targets are available to compare."
       : `${coverage.numerator} of ${coverage.denominator} planned outcomes were evaluable (${coverage.percentage}%). ${rawStatistic} An overall conclusion is withheld unless the shared coverage, sample-size, and session-span gates pass.`,
   };
 }
@@ -1320,7 +1320,7 @@ export function summarizeHistory(
   } else if (completed.length) {
     insights.push({
       tone: "neutral",
-      title: "Recovery evidence is incomplete",
+      title: "Some recovery details are missing",
       detail: "Add the fatigue check-in when finishing workouts to make recovery trends more reliable.",
     });
   }
@@ -2852,7 +2852,7 @@ export async function getHistoryReport(
   } else if (completedSessions) {
     insights.push({
       tone: "neutral",
-      title: "Recovery evidence is incomplete",
+      title: "Some recovery details are missing",
       detail:
         "Add the fatigue check-in when finishing workouts to make recovery trends more reliable.",
     });

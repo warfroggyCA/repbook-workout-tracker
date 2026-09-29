@@ -49,7 +49,7 @@ describe("V2 H02 cadence and planned-set outcomes", () => {
       },
     });
     expect(report.cadence.currentPreference.limitation).toContain(
-      "not an adherence percentage",
+      "does not measure how closely you followed older plans",
     );
     expect(report.cadence.programDayExposures).toEqual([
       {

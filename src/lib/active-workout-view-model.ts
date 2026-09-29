@@ -227,7 +227,7 @@ function currentActionBlockingReason(
     ),
   );
   return exactRetainedFailure
-    ? "Resolve the retained copy for this set."
+    ? "Retry or discard the unsaved copy of this set."
     : null;
 }
 

@@ -397,7 +397,7 @@ export function ContextualNoteProvider({
               className="mr-auto flex-1"
               state={pending.some((entry) => entry.status === "syncing") ? "saving" : "pending"}
               title={pending.some((entry) => entry.status === "syncing") ? "Saving note…" : "Note waiting to save"}
-              description="The reviewed text is retained on this device until the server acknowledges it."
+              description="A copy stays on this device until the note finishes saving."
             />
           ) : null}
         </div>
@@ -486,7 +486,7 @@ export function ContextualNoteProvider({
               {body.trim().length > 0 && (
                 <StateNotice
                   state="idle"
-                  title="Typed draft retained"
+                  title="Draft kept"
                   description="Save or explicitly discard this draft before confirming dictation, so one observation can never replace another silently."
                 />
               )}

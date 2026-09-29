@@ -110,7 +110,7 @@ export function CopyCompleteReportButton() {
       </a>
       <p className={state === "error" ? "text-sm text-destructive" : "text-sm text-muted-foreground"}
         role={state === "error" ? "alert" : "status"} aria-live="polite">
-        {message || "The copyable brief summarizes all-time evidence with recent examples and AI instructions. The complete download retains the detailed source records. Repbook does not send either to an AI."}
+        {message || "Copy a training summary with recent examples, or download the full records. Repbook does not send either to an AI."}
       </p>
     </div>
   );

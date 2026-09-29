@@ -39,7 +39,7 @@ export const AiRebuildDialog = memo(function AiRebuildDialog({ editor }: { edito
                   <legend className="text-sm font-medium">Update mode</legend>
                   <label className="flex min-h-11 items-start gap-3 rounded-lg border p-3">
                     <input type="radio" name="program-update-mode" value="update" checked={coachMode === "update"} onChange={() => setCoachMode("update")} className="mt-1 size-4" />
-                    <span><span className="block font-medium">Update current Program</span><span className="block text-xs text-muted-foreground">Reads prescriptions, warm-ups, replacements, exercise notes, and ordering without AI credits. Independent changes can be reviewed while unclear items await your answer. Related changes stay together.</span></span>
+                    <span><span className="block font-medium">Update current Program</span><span className="block text-xs text-muted-foreground">Reads targets, warm-ups, exercises, notes, and order without using AI credits. You can review clear changes while answering questions about the rest.</span></span>
                   </label>
                   <label className="flex min-h-11 items-start gap-3 rounded-lg border border-destructive/30 p-3">
                     <input type="radio" name="program-update-mode" value="replace" checked={coachMode === "replace"} onChange={() => setCoachMode("replace")} className="mt-1 size-4" />

@@ -37,7 +37,7 @@ describe("WorkoutActiveDurationCorrection date-only bounds", () => {
     expect(html).toContain("Correct active duration");
     expect(html).toContain("Wall clock unavailable");
     expect(html).toContain("Active time is unknown");
-    expect(html).toContain("original start or finish timestamps");
+    expect(html).toContain("Start and finish times stay the same");
     expect(html).toContain(">Save</button>");
     expect(html).toContain(">Cancel</button>");
     expect(html).not.toContain('type="checkbox"');

@@ -403,7 +403,7 @@ export async function startLiveCoachTurn(
   const row = resultRows(await db.execute(query))[0];
   if (!row) {
     throw new Error(
-      "The workout message could not be reconciled with this saved identity."
+      "This message could not be matched to the saved workout. Reload and try again."
     );
   }
   const userRow = rowFromSql(row, "user");

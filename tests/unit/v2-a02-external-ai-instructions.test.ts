@@ -20,7 +20,7 @@ function syntheticPackage(): AnalysisPackage {
     expiresAt: "2026-09-07T16:00:00.000Z",
     request: {
       questionId: "program_progress",
-      question: "What does the retained evidence say about progress and fit of my current Program?",
+      question: "How is my plan working for me?",
       purpose: "Compare current Program intent with completed evidence without treating proposals as accepted changes.",
       windowDays: 84,
       windowStart: "2026-05-16T15:59:59.000Z",

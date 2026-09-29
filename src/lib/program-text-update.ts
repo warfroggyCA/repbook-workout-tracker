@@ -332,7 +332,7 @@ export function buildProgramTextProposal(
   for (const change of parsed.changes) {
     if (warmupOnly && change.operations.some((op) => op.kind !== "warmup"))
       throw new Error(
-        "A preparation-only request cannot change working prescriptions.",
+        "This request changes warm-ups only. Edit your working-set targets separately.",
       );
     if (!normalize(request).includes(normalize(change.sourceQuote)))
       throw new Error("The proposal could not be traced to your request.");
@@ -369,7 +369,7 @@ export function buildProgramTextProposal(
             ))
         )
           throw new Error(
-            "Timed or distance exercise changes need an explicit metric prescription. Edit those targets in the Program editor.",
+            "Enter the time or distance targets in the plan editor.",
           );
       }
     }

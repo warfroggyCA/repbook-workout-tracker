@@ -3767,7 +3767,7 @@ export async function completeWorkoutSession(
     }))
     .digest("hex");
   const finishPayloadConflictReason =
-    "This workout was already completed with different retained finish details. Review the saved workout before discarding the device copy.";
+    "This workout was already saved with different finish details. Check the saved workout before discarding the copy on this device.";
   await checkpoint("before-completion-statement");
   const query = sql`
     WITH history_revision_lock AS MATERIALIZED (

@@ -40,7 +40,7 @@ export function AIHistoryControls({
       setOpen(false);
       toast.success("AI and Coach history cleared", {
         description:
-          "Coach records are in Archive. Retained raw AI inputs were securely cleared.",
+          "Coach records are in Archive. Saved AI inputs were securely cleared.",
         action: {
           label: "Restore Coach history",
           onClick: async () => {
@@ -100,7 +100,7 @@ export function AIHistoryControls({
             <p className="mt-1 text-muted-foreground">
               {preview.coachingInsights} Coach record
               {preview.coachingInsights === 1 ? "" : "s"} · {preview.parsingInputs}{" "}
-              retained AI input{preview.parsingInputs === 1 ? "" : "s"}
+              saved AI input{preview.parsingInputs === 1 ? "" : "s"}
             </p>
           </div>
           {error && (

@@ -57,7 +57,7 @@ export function HistoryWorkoutMoreMenu() {
                 })}
               >
                 <ListTree className="size-4" aria-hidden="true" />
-                Technical record
+                More workout details
               </Link>
             </div>
           </Popover.Popup>

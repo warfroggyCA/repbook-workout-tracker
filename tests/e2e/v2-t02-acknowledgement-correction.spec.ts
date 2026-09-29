@@ -233,7 +233,7 @@ test("keeps retained sets responsive before acknowledgement, then saves a correc
   const acknowledgement = plank.getByTestId("completed-sets");
   await expect(page.getByTestId("active-set-save-receipt")).toHaveCount(0);
   await expect(acknowledgement).toContainText("45 sec");
-  await expect(acknowledgement).toContainText("Acknowledged by Repbook");
+  await expect(acknowledgement).toContainText("Saved");
   await expect(
     acknowledgement.getByRole("button", { name: "Correct set" }).first(),
   ).toBeVisible();
@@ -263,12 +263,12 @@ test("keeps retained sets responsive before acknowledgement, then saves a correc
     "Latest: Corrected · 1 change",
   );
   await expect(plank).toContainText(
-    "1 saved correction · original retained in Edit history",
+    "1 saved correction · original kept in Edit history",
   );
 
   await page.goto("/recovery/versions");
   await expect(
-    page.getByText("Correction evidence", { exact: true }).first(),
+    page.getByText("Edit details", { exact: true }).first(),
   ).toBeVisible();
   await expect(page.getByText(/Another recording mistake/).first()).toBeVisible();
   await expect(page.getByText(/Workout revision 1 → 2/).first()).toBeVisible();

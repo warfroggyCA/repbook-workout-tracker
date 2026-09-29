@@ -48,9 +48,9 @@ export function TechnicalRecordDetails({ children }: { children: ReactNode }) {
     >
       <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 font-medium outline-none focus-visible:ring-3 focus-visible:ring-ring/50">
         <span>
-          Technical record
+          More workout details
           <span className="mt-0.5 block text-xs font-normal text-muted-foreground">
-            Corrections, archive, source, lineage, and the complete item ledger
+            Edits, archived records, and original workout details
           </span>
         </span>
         <ChevronDown

@@ -353,7 +353,7 @@ function retainedResultWithoutClientIdentity(
     result,
     version,
     message:
-      "This retained result has no durable client identity and cannot be presented as saved.",
+      "Repbook could not confirm that this result saved. Check it before logging again.",
   };
 }
 
@@ -549,7 +549,7 @@ export function projectActiveSetRows(
         version: supportedVersion,
         message: membership === "unknown"
           ? "This set has an unsupported origin and cannot be presented as planned or completed."
-          : "This legacy set does not have complete supported evidence.",
+          : "This older set is missing details needed to check it.",
       };
     }
 
@@ -567,7 +567,7 @@ export function projectActiveSetRows(
           result: activeSetExactResult(set),
           version: supportedVersion,
           message:
-            "This occurrence is skipped but also has a linked result; review the retained evidence.",
+            "This set is marked skipped but also has a saved result. Check which is right.",
         };
       }
       return {
@@ -589,7 +589,7 @@ export function projectActiveSetRows(
           result: activeSetExactResult(set),
           version: supportedVersion,
           message:
-            "This occurrence is abandoned but also has a linked result; review the retained evidence.",
+            "This set is marked unfinished but also has a saved result. Check which is right.",
         };
       }
       return {
@@ -624,7 +624,7 @@ export function projectActiveSetRows(
           result: activeSetExactResult(set),
           version: supportedVersion,
           message:
-            "This acknowledged result is linked to an unresolved occurrence and needs review.",
+            "A result was saved, but the set's status is unclear. Check it before continuing.",
         };
       }
       return resultState(

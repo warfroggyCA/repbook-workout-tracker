@@ -25,7 +25,7 @@ describe("product identity", () => {
       formalName: "Repbook Workout Tracker",
       descriptor: "Private training record",
       promise: "Plan. Train. Review.",
-      tenets: "Intent · evidence · continuity",
+      tenets: "Plan · train · progress",
     });
     expect(PRODUCT_NAVIGATION.map(({ label }) => label)).toEqual([
       "Today",
@@ -35,11 +35,11 @@ describe("product identity", () => {
       "Settings",
     ]);
     expect(PRODUCT_NAVIGATION.map(({ purpose }) => purpose)).toEqual([
-      "Current work",
-      "Recorded evidence",
+      "Your next workout",
+      "Your training records",
       "Training guidance and proposed changes",
-      "Program intent",
-      "Preferences & safeguards",
+      "Your training plan",
+      "Your preferences",
     ]);
   });
 

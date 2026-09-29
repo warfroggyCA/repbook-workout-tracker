@@ -1181,6 +1181,6 @@ export async function createRetrospectiveWorkout(
     reason:
       outcome === "count_mismatch"
         ? "Nothing was saved because the reviewed workout graph is incomplete."
-        : "Nothing was saved because the reviewed workout no longer matches current owned evidence.",
+        : "The workout changed while you were reviewing it. Reload and check the latest version. Nothing was saved.",
   };
 }
