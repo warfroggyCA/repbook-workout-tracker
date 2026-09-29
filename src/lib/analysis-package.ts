@@ -80,8 +80,9 @@ export const ANALYSIS_QUESTIONS: Record<
 > = {
   program_progress: {
     label: "Program progress",
+    // Existing export manifests bind responses to this exact question text.
     question:
-      "How is my plan working for me?",
+      "What does the retained evidence say about progress and fit of my current Program?",
     purpose:
       "Compare your plan with your recorded workouts. Any suggested changes are yours to decide.",
   },
