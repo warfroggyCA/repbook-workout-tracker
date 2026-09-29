@@ -166,7 +166,7 @@ test("reviews and publishes an exact future-only Program change with a recoverab
   await expect(unchangedProgram.getByText(futureName, { exact: true })).toHaveCount(0);
   await unchangedProgram.close();
 
-  await page.getByRole("tab", { name: "Coach", exact: true }).click();
+  await page.getByRole("tab", { name: "Review", exact: true }).click();
   await page.getByRole("button", { name: "Check Program", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Ready to publish", exact: true })).toBeVisible();
   const continueEditing = page.getByRole("button", {
@@ -180,7 +180,7 @@ test("reviews and publishes an exact future-only Program change with a recoverab
     "true",
   );
   await expect(page.getByLabel("Program name")).toHaveValue(futureName);
-  await page.getByRole("tab", { name: "Coach", exact: true }).click();
+  await page.getByRole("tab", { name: "Review", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Ready to publish", exact: true })).toBeVisible();
 
   const changeCard = page

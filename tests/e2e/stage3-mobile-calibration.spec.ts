@@ -156,7 +156,7 @@ test("keeps new Stage 3 controls usable at the saved iPhone calibration", async 
     .getByLabel("Notes (optional)")
     .fill("Controlled tempo at the calibrated mobile size.");
   await expectSaved(page);
-  await page.getByRole("tab", { name: "Coach", exact: true }).click();
+  await page.getByRole("tab", { name: "Review", exact: true }).click();
   await page
     .getByRole("button", { name: "Check Program", exact: true })
     .first()

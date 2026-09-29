@@ -144,7 +144,7 @@ test("recovers a six-day interruption without rewriting source timestamps", asyn
   await expect(page.getByText(/Active time unavailable · wall clock 6 days/)).toBeVisible();
   await technicalRecord.locator(":scope > summary").click();
   await expect(
-    technicalRecord.getByText(/source timestamps retained/),
+    technicalRecord.getByText(/original start and finish times kept/),
   ).toBeVisible();
   await expectNoHorizontalOverflow(page);
   await pageErrors.expectNoUnexpected();
