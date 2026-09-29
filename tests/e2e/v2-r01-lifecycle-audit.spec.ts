@@ -217,14 +217,14 @@ test("keeps portable facts, AI packages, support diagnostics, Review, and Coach 
 
   await page.goto("/coach");
   await expect(
-    page.getByRole("heading", { name: "Review and decisions" }),
+    page.getByRole("heading", { name: "Coach" }),
   ).toBeVisible();
   await expect(
-    page.getByText(/Your Program changes only when you approve a proposal/i),
+    page.getByText(/Your training, explained simply/i),
   ).toBeVisible();
   await expect(page.getByText("Coaching tools", { exact: true })).toBeVisible();
   await expect(
-    page.getByText(/Optional Live Coach and generated analysis/i),
+    page.getByText(/Ask Live Coach while you train/i),
   ).toBeVisible();
 
   await page.goto("/settings");

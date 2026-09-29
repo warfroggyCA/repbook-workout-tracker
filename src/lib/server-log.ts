@@ -40,8 +40,12 @@ type ProviderFields = {
 type ErrorFields = { errorCategory: DiagnosticErrorCategory };
 
 export type DiagnosticEventFields = {
-  "ai.coach_question_failed": ProviderFields;
-  "ai.coach_review_failed": ProviderFields;
+  "ai.coach_question_failed": ProviderFields & {
+    usageControlCode: string | null;
+  };
+  "ai.coach_review_failed": ProviderFields & {
+    usageControlCode: string | null;
+  };
   "ai.setup_equipment_parse_failed": ProviderFields;
   "ai.setup_routine_build_failed": ProviderFields;
   "ai.routine_parse_failed": ProviderFields;
@@ -216,7 +220,30 @@ const definition = (
   operation: string,
   state: string,
   fields: FieldRules,
-): DiagnosticEventDefinition => ({ component, level, operation, state, fields });
+): DiagnosticEventDefinition => ({
+  component,
+  level,
+  operation,
+  state,
+  fields,
+});
+
+const COACH_PROVIDER_FIELDS = {
+  ...PROVIDER_FIELDS,
+  usageControlCode: (value: unknown) =>
+    value === null ||
+    enumRule([
+      "request_too_large",
+      "already_running",
+      "concurrent_limit",
+      "rate_limit",
+      "network_rate_limit",
+      "token_limit",
+      "cost_limit",
+      "transcription_rate_limit",
+      "transcription_duration_limit",
+    ])(value),
+};
 
 const DIAGNOSTIC_EVENT_MANIFEST = {
   "ai.coach_question_failed": definition(
@@ -224,14 +251,14 @@ const DIAGNOSTIC_EVENT_MANIFEST = {
     "error",
     "coach_question",
     "failed",
-    PROVIDER_FIELDS,
+    COACH_PROVIDER_FIELDS,
   ),
   "ai.coach_review_failed": definition(
     "ai",
     "error",
     "coach_review",
     "failed",
-    PROVIDER_FIELDS,
+    COACH_PROVIDER_FIELDS,
   ),
   "ai.setup_equipment_parse_failed": definition(
     "ai",
@@ -240,7 +267,13 @@ const DIAGNOSTIC_EVENT_MANIFEST = {
     "failed",
     PROVIDER_FIELDS,
   ),
-  "ai.routine_parse_failed": definition("ai", "warn", "routine_parse", "failed", PROVIDER_FIELDS),
+  "ai.routine_parse_failed": definition(
+    "ai",
+    "warn",
+    "routine_parse",
+    "failed",
+    PROVIDER_FIELDS,
+  ),
   "ai.setup_routine_build_failed": definition(
     "ai",
     "error",
@@ -406,26 +439,14 @@ const DIAGNOSTIC_EVENT_MANIFEST = {
       durationMs: boundedCountRule,
     },
   ),
-  "session.render_failed": definition(
-    "session",
-    "error",
-    "render",
-    "failed",
-    {
-      ...ERROR_FIELDS,
-      routeState: enumRule(["confirmed_active", "route_input"]),
-    },
-  ),
-  "session.start_failed": definition(
-    "session",
-    "error",
-    "start",
-    "failed",
-    {
-      ...ERROR_FIELDS,
-      failure: enumRule(["unexpected_creation_failure"]),
-    },
-  ),
+  "session.render_failed": definition("session", "error", "render", "failed", {
+    ...ERROR_FIELDS,
+    routeState: enumRule(["confirmed_active", "route_input"]),
+  }),
+  "session.start_failed": definition("session", "error", "start", "failed", {
+    ...ERROR_FIELDS,
+    failure: enumRule(["unexpected_creation_failure"]),
+  }),
   "session.start_incomplete": definition(
     "session",
     "error",
@@ -453,13 +474,9 @@ const DIAGNOSTIC_EVENT_MANIFEST = {
       ]),
     },
   ),
-  "session.start_rejected": definition(
-    "session",
-    "warn",
-    "start",
-    "rejected",
-    { rejection: enumRule(["invalid_request", "program_updated"]) },
-  ),
+  "session.start_rejected": definition("session", "warn", "start", "rejected", {
+    rejection: enumRule(["invalid_request", "program_updated"]),
+  }),
   "settings.font_size_save_failed": definition(
     "settings",
     "error",
@@ -557,7 +574,10 @@ export function createDiagnosticEpisode(
   try {
     const now = options.now ?? new Date();
     const correlationId = (options.randomId ?? randomUUID)();
-    if (!Number.isFinite(now.getTime()) || !UUID_V4_PATTERN.test(correlationId)) {
+    if (
+      !Number.isFinite(now.getTime()) ||
+      !UUID_V4_PATTERN.test(correlationId)
+    ) {
       return null;
     }
     return Object.freeze({
@@ -630,10 +650,12 @@ export function logDiagnosticEvent<Name extends DiagnosticEventName>(
   options: DiagnosticLogOptions = {},
 ): DiagnosticLogResult {
   try {
-    const definition = (DIAGNOSTIC_EVENT_MANIFEST as Record<
-      string,
-      DiagnosticEventDefinition | undefined
-    >)[event];
+    const definition = (
+      DIAGNOSTIC_EVENT_MANIFEST as Record<
+        string,
+        DiagnosticEventDefinition | undefined
+      >
+    )[event];
     if (!definition || !fieldsPass(fields, definition.fields)) return "refused";
 
     const now = options.now ?? new Date();

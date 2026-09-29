@@ -2014,3 +2014,37 @@ It does not reinterpret notes, automatically convert a plan, or change history.
 An unsupported active set remains blocked, but explains the future Program
 correction and the existing Replace / Skip set / Technical or app issue
 recovery choices. Future Program edits never alter the active session snapshot.
+
+
+## History patterns and Coach summaries
+
+History remains calendar-first. Its optional repeated-skip observations use the
+last twelve recorded weeks and the latest four eligible completed workouts per
+frozen Program slot lineage and exact planned exercise identity. At least three
+eligible workouts and three skips are needed. Multiple working occurrences do
+not increase the workout denominator. Archived workouts, other owners, and
+missing frozen identity are excluded. An observation is neutral, links to its
+workout records, and never becomes a Program recommendation by itself.
+`services/history-patterns.ts` owns the scoped read; `lib/history-patterns.ts`
+owns the deterministic grouping. Contextual Coach questions re-resolve that
+pattern for the authenticated owner before sending its evidence to the provider.
+
+Coach shows proposed changes separately from optional generated interpretation.
+Updating a summary only creates that summary; completed-workout progression
+processing continues to own routine proposal evaluation. Saved reviews are
+queried independently from recent questions. New review digests retain the
+analytical evidence revision, local coverage dates, and calculation versions.
+Unknown versions, changed evidence, or an earlier calendar window make a review
+historical context, available behind a disclosure. Its original text is retained.
+The evidence revision covers analytical records, not every supplemental note;
+it does not prove that all optional qualitative context is unchanged.
+
+Provider input reuses the authoritative readable coaching brief and its gated
+metrics instead of duplicating raw set and occurrence projections. The brief
+retains evidence references and limitations; it is not truncated to fit a budget.
+New review output uses a concise schema while the wider original schema remains
+the compatibility reader. Usage errors distinguish a request that exceeds the
+single-request reservation budget from accumulated daily usage. No budget is
+raised. Daily reset copy uses the existing UTC accounting boundary displayed in
+the owner's timezone. Coach failure diagnostics retain only a closed usage-code
+classification, with the existing ephemeral 24-hour retention and no raw text.

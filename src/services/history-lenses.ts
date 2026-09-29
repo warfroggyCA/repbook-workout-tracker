@@ -159,7 +159,9 @@ function formatPerformance(
 
 function formatReasons(reasons: Array<{ reason: string; count: number }>) {
   return reasons
-    .map(({ reason, count }) => `${titleCase(reason)} (${number.format(count)})`)
+    .map(
+      ({ reason, count }) => `${titleCase(reason)} (${number.format(count)})`,
+    )
     .join(" · ");
 }
 
@@ -200,11 +202,15 @@ function buildProgressLens(input: BuildHistoryLensesInput): HistoryLens {
       : comparable.length === 0
         ? "Progress is uncertain; no exact exercise has two comparable best-set observations."
         : [
-            improving.length ? `${plural(improving.length, "exercise")} improved` : null,
+            improving.length
+              ? `${plural(improving.length, "exercise")} improved`
+              : null,
             stable.length
               ? `${plural(stable.length, "exercise")} stayed broadly stable`
               : null,
-            lower.length ? `${plural(lower.length, "exercise")} moved lower` : null,
+            lower.length
+              ? `${plural(lower.length, "exercise")} moved lower`
+              : null,
             uncertain.length
               ? `${plural(uncertain.length, "exercise")} ${uncertain.length === 1 ? "remains" : "remain"} uncertain`
               : null,
@@ -224,8 +230,9 @@ function buildProgressLens(input: BuildHistoryLensesInput): HistoryLens {
   ].filter(
     (exercise, index, all): exercise is HistoryExerciseProgressEvidence =>
       exercise != null &&
-      all.findIndex((candidate) => candidate?.exercise === exercise.exercise) ===
-        index,
+      all.findIndex(
+        (candidate) => candidate?.exercise === exercise.exercise,
+      ) === index,
   );
 
   const evidence = featured.slice(0, 4).map((exercise) => ({
@@ -252,7 +259,12 @@ function buildProgressLens(input: BuildHistoryLensesInput): HistoryLens {
     title: "Progress",
     question: "What is improving, stable, or uncertain?",
     answer,
-    tone: lower.length > 0 ? "watch" : improving.length > 0 ? "positive" : "neutral",
+    tone:
+      lower.length > 0
+        ? "watch"
+        : improving.length > 0
+          ? "positive"
+          : "neutral",
     evidence,
     limitation: `${plural(comparable.length, "exact-exercise comparison")} use the first and latest best eligible set in this period. Above +1% is described as improving, below −1% as lower, and the band between them as broadly stable. Variants stay separate, estimated strength uses Epley, and independent activities are excluded.`,
     decision:
@@ -290,7 +302,8 @@ function buildProgramFitLens(input: BuildHistoryLensesInput): HistoryLens {
     evidence.push({
       label: "Program-linked workouts",
       value: "None in this period",
-      detail: "Template-less and imported workouts are not treated as Program behavior.",
+      detail:
+        "Template-less and imported workouts are not treated as Program behavior.",
     });
   }
   if (program.skipReasons.length > 0) {
@@ -309,7 +322,8 @@ function buildProgramFitLens(input: BuildHistoryLensesInput): HistoryLens {
     evidence.push({
       label: "Other workouts kept outside Program fit",
       value: plural(program.unlinkedSessions, "workout"),
-      detail: "They remain in History and strength reporting, but not in Program-fit evidence.",
+      detail:
+        "They remain in History and strength reporting, but not in Program-fit evidence.",
     });
   }
 
@@ -321,30 +335,14 @@ function buildProgramFitLens(input: BuildHistoryLensesInput): HistoryLens {
       linkedSessions === 0
         ? "No Program-linked history is available in this period."
         : `${plural(program.completedSessions, "Program workout")} completed; ${plural(changed, "exercise change")} and ${plural(program.skippedOccurrences, "skip")} ${changed + program.skippedOccurrences === 1 ? "was" : "were"} recorded.`,
-    tone:
-      linkedSessions === 0
-        ? "neutral"
-        : changed + program.skippedOccurrences > 0
-          ? "watch"
-          : "positive",
+    tone: "neutral",
     evidence,
     limitation: `Deferred workouts are not recorded, so no deferral conclusion is supported. “As planned” is an occurrence state, not proof that every prescribed set was completed.${program.unlinkedPlannedOccurrences > 0 ? ` ${plural(program.unlinkedPlannedOccurrences, "occurrence")} could not be matched to its historical slot and is excluded.` : ""}`,
-    decision:
-      changed + program.skippedOccurrences > 0
-        ? {
-            supported: true,
-            statement:
-              "Possible decision: review whether the recorded changes should remain one-offs or become an explicit Program edit.",
-            href: "/coach",
-            linkLabel: "Open Review and decisions",
-          }
-        : {
-            supported: false,
-            statement:
-              linkedSessions === 0
-                ? "No decision is supported by this evidence."
-                : "No Program change is supported by this history alone.",
-          },
+    decision: {
+      supported: false,
+      statement:
+        "A skip or exercise change does not mean your plan needs to change.",
+    },
   };
 }
 
@@ -372,8 +370,9 @@ function buildPainLens(input: BuildHistoryLensesInput): HistoryLens {
         ? repeatedSubstitution.plannedExercise
         : null;
 
-  const evidence: HistoryLensEvidenceItem[] = pain.contexts.slice(0, 3).map(
-    (context) => ({
+  const evidence: HistoryLensEvidenceItem[] = pain.contexts
+    .slice(0, 3)
+    .map((context) => ({
       label: context.exercise
         ? `${context.exercise} · ${titleCase(context.bodyPart)}`
         : `Session-level · ${titleCase(context.bodyPart)}`,
@@ -381,8 +380,7 @@ function buildPainLens(input: BuildHistoryLensesInput): HistoryLens {
       detail: context.exercise
         ? "The pain log names this exact exercise."
         : "No movement is attributed to this pain log.",
-    }),
-  );
+    }));
   for (const entry of pain.painSkips.slice(0, 2)) {
     evidence.push({
       label: entry.plannedExercise,
@@ -401,7 +399,11 @@ function buildPainLens(input: BuildHistoryLensesInput): HistoryLens {
   for (const constraint of pain.constraints.slice(0, 2)) {
     evidence.push({
       label: `Current constraint · ${titleCase(constraint.bodyPart)}`,
-      value: constraint.avoid ? "Avoid" : constraint.cautious ? "Cautious" : "Recorded",
+      value: constraint.avoid
+        ? "Avoid"
+        : constraint.cautious
+          ? "Cautious"
+          : "Recorded",
       detail:
         constraint.affectedPatterns.length > 0
           ? constraint.affectedPatterns.map(titleCase).join(" · ")
@@ -509,7 +511,12 @@ function workloadComparison(weekly: BuildHistoryLensesInput["weekly"]) {
 
 function direction(
   change: number | null,
-  words: { rising: string; easing: string; steady: string; unavailable: string },
+  words: {
+    rising: string;
+    easing: string;
+    steady: string;
+    unavailable: string;
+  },
 ) {
   if (change == null) return words.unavailable;
   if (change > 10) return words.rising;
@@ -615,28 +622,31 @@ function buildWorkCapacityLens(input: BuildHistoryLensesInput): HistoryLens {
     evidence,
     limitation:
       "Loaded workload is descriptive weight × reps from eligible strength sets; bodyweight, band, excluded sets, and independent activities are not included. Duration and workload do not prove adaptation or readiness.",
-    decision: comparison?.volumeChangePercent != null
-      ? {
-          supported: true,
-          statement:
-            "Possible decision: check whether this workload direction matches your intent, recovery, and pain evidence before changing Program volume.",
-          href: "/coach",
-          linkLabel: "Open Review and decisions",
-        }
-      : noDecision(),
+    decision:
+      comparison?.volumeChangePercent != null
+        ? {
+            supported: true,
+            statement:
+              "Possible decision: check whether this workload direction matches your intent, recovery, and pain evidence before changing Program volume.",
+            href: "/coach",
+            linkLabel: "Open Review and decisions",
+          }
+        : noDecision(),
   };
 }
 
 function buildRecordsLens(input: BuildHistoryLensesInput): HistoryLens {
   const displayedRecords = input.records.slice(0, 5);
-  const evidence: HistoryLensEvidenceItem[] = displayedRecords.map((record) => ({
+  const evidence: HistoryLensEvidenceItem[] = displayedRecords.map(
+    (record) => ({
       label: record.exercise,
       value: formatPerformance(record, input.unit),
       detail:
         record.metric === "estimated_strength"
           ? `${record.localDate} · ${number.format(record.estimatedStrength ?? 0)} ${input.unit} estimated strength · ${plural(record.sessions, "session")}`
           : `${record.localDate} · repetition record · ${plural(record.sessions, "session")}`,
-    }));
+    }),
+  );
   if (evidence.length === 0) {
     evidence.push({
       label: "Eligible performance observations",

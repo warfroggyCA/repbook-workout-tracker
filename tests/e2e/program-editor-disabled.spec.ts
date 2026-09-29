@@ -132,7 +132,7 @@ test("keeps every Program editor entry point unavailable while the rollout flag 
 
   await page.goto("/coach");
   const suggestions = page.getByRole("region", {
-    name: "Decisions needing review",
+    name: "Proposed changes",
   });
   const recommendation = suggestions.locator("section").filter({
     has: page.getByText(exerciseName, { exact: true }),
@@ -148,7 +148,7 @@ test("keeps every Program editor entry point unavailable while the rollout flag 
   await page.reload();
   await expect(
     page
-      .getByRole("region", { name: "Decisions needing review" })
+      .getByRole("region", { name: "Proposed changes" })
       .getByText(exerciseName, { exact: true }),
   ).toHaveCount(1);
   await page.goto("/program");

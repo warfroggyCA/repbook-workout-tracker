@@ -11,7 +11,8 @@ import {
   createCoachingAnswer,
   createTrainingReview,
 } from "@/services/coaching";
-import { evaluateRecentProgression } from "@/services/progression";
+import { AIControlError } from "@/services/ai-control";
+import { getHistoryPatterns } from "@/services/history-patterns";
 import { audit } from "@/services/audit";
 
 export type CoachActionResult =
@@ -24,30 +25,56 @@ const questionSchema = z
   .min(3, "Ask a little more so Coach has something to work with.")
   .max(600, "Keep the question under 600 characters.");
 
-function friendlyCoachError(error: unknown): string {
-  if (error instanceof AIUnavailableError) {
-    return "Coach needs an AI key before it can write a review. Your workout tracking and rule-based suggestions still work normally.";
+function friendlyCoachError(error: unknown, timezone: string): string {
+  if (error instanceof AIControlError) {
+    switch (error.code) {
+      case "request_too_large":
+        return "This review includes more information than Coach can process at once. Try asking about one exercise instead.";
+      case "already_running":
+        return "This request is already being processed. Check again shortly.";
+      case "concurrent_limit":
+        return "Coach is working on another request. Try again when it finishes.";
+      case "token_limit":
+      case "cost_limit": {
+        const reset = new Date();
+        reset.setUTCHours(24, 0, 0, 0);
+        const when = new Intl.DateTimeFormat("en-CA", {
+          timeZone: timezone,
+          month: "short",
+          day: "numeric",
+          hour: "numeric",
+          minute: "2-digit",
+        }).format(reset);
+        return `You've reached today's Coach limit. Try again after ${when}.`;
+      }
+      default:
+        return "Coach is temporarily busy. Try again in a few minutes.";
+    }
   }
-  return "Coach could not finish that request. Your data is safe; please try again.";
+  if (error instanceof AIUnavailableError) {
+    return "Coach is not connected. You can still view and log workouts.";
+  }
+  return "Coach couldn't update this right now. Please try again later.";
 }
 
 export async function generateTrainingReview(): Promise<CoachActionResult> {
   const user = await getCurrentUser();
   const db = await getDb();
   if (!isAIAvailable()) {
-    return { ok: false, reason: friendlyCoachError(new AIUnavailableError()) };
+    return {
+      ok: false,
+      reason: friendlyCoachError(
+        new AIUnavailableError(),
+        user.profile.timezone,
+      ),
+    };
   }
 
   try {
-    await evaluateRecentProgression(
-      db,
-      user.id,
-      user.profile.coachingPrefs
-    );
     const { insight } = await createTrainingReview(
       db,
       user.id,
-      user.profile.coachingPrefs
+      user.profile.coachingPrefs,
     );
     await audit(db, {
       userId: user.id,
@@ -63,12 +90,19 @@ export async function generateTrainingReview(): Promise<CoachActionResult> {
   } catch (error) {
     logDiagnosticEvent("ai.coach_review_failed", {
       ...sanitizeAIProviderError(error),
+      usageControlCode: error instanceof AIControlError ? error.code : null,
     });
-    return { ok: false, reason: friendlyCoachError(error) };
+    return {
+      ok: false,
+      reason: friendlyCoachError(error, user.profile.timezone),
+    };
   }
 }
 
-export async function askCoach(question: string): Promise<CoachActionResult> {
+export async function askCoach(
+  question: string,
+  patternKey?: string,
+): Promise<CoachActionResult> {
   const parsed = questionSchema.safeParse(question);
   if (!parsed.success) {
     return {
@@ -80,15 +114,44 @@ export async function askCoach(question: string): Promise<CoachActionResult> {
   const user = await getCurrentUser();
   const db = await getDb();
   if (!isAIAvailable()) {
-    return { ok: false, reason: friendlyCoachError(new AIUnavailableError()) };
+    return {
+      ok: false,
+      reason: friendlyCoachError(
+        new AIUnavailableError(),
+        user.profile.timezone,
+      ),
+    };
   }
 
   try {
+    let pattern;
+    if (patternKey !== undefined) {
+      if (
+        typeof patternKey !== "string" ||
+        !/^[a-f0-9-]{36}:[a-f0-9-]{36}$/i.test(patternKey)
+      ) {
+        return {
+          ok: false,
+          reason:
+            "This pattern is no longer available. Return to History to view current workouts.",
+        };
+      }
+      pattern = (
+        await getHistoryPatterns(db, user.id, user.profile.timezone)
+      ).find((item) => item.key === patternKey);
+      if (!pattern)
+        return {
+          ok: false,
+          reason:
+            "This pattern has changed. Return to History to view current workouts.",
+        };
+    }
     const { insight } = await createCoachingAnswer(
       db,
       user.id,
       user.profile.coachingPrefs,
-      parsed.data
+      parsed.data,
+      pattern,
     );
     await audit(db, {
       userId: user.id,
@@ -104,7 +167,11 @@ export async function askCoach(question: string): Promise<CoachActionResult> {
   } catch (error) {
     logDiagnosticEvent("ai.coach_question_failed", {
       ...sanitizeAIProviderError(error),
+      usageControlCode: error instanceof AIControlError ? error.code : null,
     });
-    return { ok: false, reason: friendlyCoachError(error) };
+    return {
+      ok: false,
+      reason: friendlyCoachError(error, user.profile.timezone),
+    };
   }
 }

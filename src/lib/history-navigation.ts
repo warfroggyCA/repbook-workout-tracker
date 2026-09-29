@@ -203,3 +203,31 @@ export function buildNewActivityHref(
   params.set("date", localDate);
   return `/activity/new?${params.toString()}`;
 }
+
+/** Rebuild a History-only return path; never trust a caller-supplied redirect. */
+export function historyReturnContext(value: unknown): HistoryContext {
+  const fallback: HistoryContext = { range: "12w", view: "calendar" };
+  if (
+    typeof value !== "string" ||
+    value.length > 1000 ||
+    !value.startsWith("/history?")
+  )
+    return fallback;
+  const query = new URLSearchParams(value.slice("/history?".length));
+  const range = query.get("range") ?? "12w";
+  return {
+    range: ["4w", "12w", "6m", "1y", "all"].includes(range) ? range : "12w",
+    view: parseHistoryView(query.get("view") ?? undefined),
+    lens: parseHistoryInsightLens(query.get("lens") ?? undefined),
+    calendarView: parseHistoryCalendarView(
+      query.get("calendarView") ?? undefined,
+    ),
+    calendarDate: parseHistoryCalendarDate(
+      query.get("calendarDate") ?? undefined,
+    ),
+    exerciseId: parseHistoryExerciseId(query.get("exerciseId") ?? undefined),
+    evidenceTier: parseHistoryExerciseEvidenceTier(
+      query.get("evidenceTier") ?? undefined,
+    ),
+  };
+}

@@ -10,7 +10,11 @@ export const PRODUCT_DESCRIPTION =
 export const PRODUCT_NAVIGATION = [
   { href: "/today", label: "Today", purpose: "Current work" },
   { href: "/history", label: "History", purpose: "Recorded evidence" },
-  { href: "/coach", label: "Review", purpose: "Reviewed change" },
+  {
+    href: "/coach",
+    label: "Coach",
+    purpose: "Training guidance and proposed changes",
+  },
   { href: "/program", label: "Program", purpose: "Program intent" },
   { href: "/settings", label: "Settings", purpose: "Preferences & safeguards" },
 ] as const;

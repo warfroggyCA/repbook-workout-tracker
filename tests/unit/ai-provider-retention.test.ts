@@ -3,6 +3,7 @@ import { coachingAnswerSchema } from "@/ai/tasks/coaching-qa/schema";
 import {
   DEFAULT_OPENAI_MODEL,
   getAIProvider,
+  isFakeEnabled,
   OPENAI_NO_STORAGE_OPTIONS,
   structuredOutputTokenLimit,
 } from "@/ai/provider";
@@ -65,4 +66,25 @@ describe("OpenAI provider retention", () => {
 
     expect(result.value.dataGaps).toEqual(dataGaps.slice(0, 5));
   });
+});
+
+it("permits example responses only in a guarded disposable preview, never production", () => {
+  vi.stubEnv("NODE_ENV", "production");
+  vi.stubEnv("AI_FAKE", "1");
+  vi.stubEnv("PREVIEW_PUBLIC_LOGIN", "1");
+  vi.stubEnv("ALLOWED_EMAILS", "example@example.com");
+  vi.stubEnv(
+    "DATABASE_URL",
+    "postgresql://example:example@ep-example.neon.tech/coach_test",
+  );
+  vi.stubEnv("VERCEL_ENV", "preview");
+  expect(isFakeEnabled()).toBe(true);
+  vi.stubEnv("VERCEL_ENV", "production");
+  expect(isFakeEnabled()).toBe(false);
+  vi.stubEnv("VERCEL_ENV", "preview");
+  vi.stubEnv(
+    "DATABASE_URL",
+    "postgresql://example:example@ep-example.neon.tech/production",
+  );
+  expect(isFakeEnabled()).toBe(false);
 });

@@ -1,3 +1,5 @@
+import { HistoryPatterns } from "@/components/history/history-patterns";
+import type { HistoryPattern } from "@/lib/history-patterns";
 import Link from "next/link";
 import {
   CalendarDays,
@@ -52,6 +54,7 @@ const viewOptions = [
 ] as const;
 
 export function HistoryWorkspace({
+  patterns = [],
   report,
   activityReport,
   calendarRecords,
@@ -68,6 +71,7 @@ export function HistoryWorkspace({
   samplePreview,
   activityArchivePreview,
 }: {
+  patterns?: HistoryPattern[];
   report: HistoryReport;
   activityReport: ActivityReport | null;
   calendarRecords: HistoryCalendarRecord[] | null;
@@ -105,10 +109,7 @@ export function HistoryWorkspace({
         <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
           <h1 className="ui-page-title">History</h1>
           <div className="flex flex-wrap gap-2 sm:justify-end">
-            <Button
-              render={<Link href="/activity/new" />}
-              nativeButton={false}
-            >
+            <Button render={<Link href="/activity/new" />} nativeButton={false}>
               <Footprints className="size-4" aria-hidden="true" />
               Record activity
             </Button>
@@ -163,7 +164,6 @@ export function HistoryWorkspace({
             );
           })}
         </nav>
-
       </header>
 
       {view !== "calendar" && (
@@ -189,6 +189,10 @@ export function HistoryWorkspace({
         />
       )}
 
+      {view === "calendar" && (
+        <HistoryPatterns patterns={patterns} context={context} />
+      )}
+
       {view === "insights" && activityReport && (
         <HistoryInsightsWorkspace
           report={report}
@@ -209,10 +213,7 @@ export function HistoryWorkspace({
       )}
 
       <p className="flex items-start gap-2 px-1 text-xs leading-relaxed text-muted-foreground">
-        <HeartPulse
-          className="mt-0.5 size-3.5 shrink-0"
-          aria-hidden="true"
-        />
+        <HeartPulse className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
         History describes recorded training patterns; it is not a medical
         assessment. Estimated strength uses the existing Epley calculation and
         is most useful with consistent load, reps, and effort logging.

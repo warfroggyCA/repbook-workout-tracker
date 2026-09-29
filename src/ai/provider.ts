@@ -10,7 +10,7 @@ import { createAnthropic } from "@ai-sdk/anthropic";
 import { createOpenAI } from "@ai-sdk/openai";
 import type { z } from "zod";
 import { optionalEnv } from "@/lib/env";
-import { isDisposableAcceptanceRuntime } from "@/lib/acceptance-runtime";
+import { isDisposableAcceptanceRuntime, isDisposableVercelPreviewRuntime } from "@/lib/acceptance-runtime";
 import { logDiagnosticEvent } from "@/lib/server-log";
 import { sanitizeAIFinishReason } from "@/lib/ai-provider-error";
 import { buildBaRoutineChangeFixture } from "@/ai/acceptance-routine-change-fixture";
@@ -149,13 +149,13 @@ function resolveModel(): {
 }
 
 /** Local canned responses for development or guarded disposable acceptance. */
-function isFakeEnabled(): boolean {
+export function isFakeEnabled(): boolean {
   return (
     process.env.AI_FAKE === "1" &&
     // Keep the disposable-runtime authentication guards intact while testing
     // features that must work without either a real or fake AI provider.
     process.env.AI_FAKE_UNAVAILABLE !== "1" &&
-    (process.env.NODE_ENV === "development" || isDisposableAcceptanceRuntime())
+    (process.env.NODE_ENV === "development" || isDisposableAcceptanceRuntime() || isDisposableVercelPreviewRuntime())
   );
 }
 
@@ -431,10 +431,6 @@ class FakeProvider implements AIProvider {
         targetAttainment?.conclusion?.status,
         targetConclusionEligible,
       );
-      const targetCoverageDetail =
-        targetCoverage?.denominator == null || targetCoverage.denominator === 0
-        ? "Target-attainment coverage is unavailable, so no attainment conclusion is supported."
-        : `Target-attainment coverage is ${targetCoverage.numerator ?? 0} of ${targetCoverage.denominator} ${targetAttainment?.conclusion?.status === "incomplete_denominator" ? "quantified retained planned" : "planned"} outcomes${targetCoverage.percentage == null ? "" : ` (${targetCoverage.percentage}%)`}. ${targetHitRate == null ? "No supported-subset percentage is available." : `Within the evaluable subset, ${targetHitRate}% were at or above target.`} ${targetConclusionDetail}`;
       const cadenceAverage = digest?.cadence?.averageSessionsPerCompleteWeek;
       const completeWeeks = digest?.cadence?.completeWeeks ?? 0;
       const currentPreference =
@@ -446,7 +442,7 @@ class FakeProvider implements AIProvider {
           sampleCount > 0
             ? `This is a demonstration review of ${sampleCount} labelled sample workouts${realCount > 0 ? ` alongside ${realCount} real workouts` : ""}. The pattern is useful for exploring Coach, but sample results are not treated as your performance.`
             : sessionCount > 0
-              ? `Your recent training includes ${sessionCount} completed workouts. Calendar cadence and planned set outcomes are summarized separately without changing your plan.`
+              ? `You logged ${sessionCount} workouts in the last 12 weeks. Open the details below to see what those records show.`
               : "There is not enough completed training yet for a meaningful trend review. Coach will become more useful as workouts and recovery check-ins are logged.",
         overallTone: sessionCount > 0 ? "positive" : "neutral",
         highlights: [
@@ -457,7 +453,7 @@ class FakeProvider implements AIProvider {
                 : "A baseline comes first",
             detail:
               sessionCount > 0
-                ? targetCoverageDetail
+                ? "See how often you trained and how your sets compared with the plan."
                 : "Complete a few workouts and add the finish-workout fatigue check-in to unlock useful comparisons.",
             tone:
               targetConclusionEligible &&
@@ -466,6 +462,7 @@ class FakeProvider implements AIProvider {
                 ? "watch"
                 : "neutral",
             evidence: [
+              targetConclusionDetail,
               `${sessionCount} completed workout${sessionCount === 1 ? "" : "s"} in the 12-week review window`,
               ...(cadenceAverage == null
                 ? []

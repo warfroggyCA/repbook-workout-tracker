@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { resolveE2EServerHostname } from "./e2e-server-hostname.mjs";
 
 const froggyFormDemo = process.argv.includes("--froggy-form-demo");
+const coachClarity = process.argv.includes("--coach-clarity");
 const production = process.argv.includes("--production");
 const baFixture = process.argv.includes("--ba-fixture");
 const baRoutineChange = process.argv.includes("--ba-routine-change");
@@ -162,7 +163,7 @@ const environment = {
       ? "ba.iphone.e2e@example.com"
       : baRoutineChange
         ? "ba.routine-change.e2e@example.com"
-        : "owner@example.com,second.e2e@example.com,program-page.e2e@example.com,today-empty.e2e@example.com,history-calendar.e2e@example.com,history-workspace-sparse.e2e@example.com,review-decisions.e2e@example.com,equipment-onboarding.e2e@example.com",
+        : "coach-clarity.e2e@example.com,owner@example.com,second.e2e@example.com,program-page.e2e@example.com,today-empty.e2e@example.com,history-calendar.e2e@example.com,history-workspace-sparse.e2e@example.com,review-decisions.e2e@example.com,equipment-onboarding.e2e@example.com",
   AUTH_SECRET: "local-e2e-secret-not-used-outside-this-process",
   AUTH_TRUST_HOST: "true",
   BA_FIXTURE_MODE: baFixture || baRoutineChange || baCalendar || v2GauntletBLiveWorkout ? "1" : "",
@@ -293,6 +294,8 @@ const fixtures = v2A01AnalysisPackage
     ];
 
 if (froggyFormDemo) fixtures.push({ label: "Froggy form demo", script: "tests/helpers/seed-froggy-form-demo.ts" });
+
+if (coachClarity) fixtures.push({ label: "Coach clarity", script: "tests/helpers/seed-coach-clarity.ts" });
 
 for (const fixture of fixtures) {
   const result = spawnSync("npx", ["tsx", fixture.script], {

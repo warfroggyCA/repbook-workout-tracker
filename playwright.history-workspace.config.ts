@@ -23,7 +23,7 @@ export default defineConfig({
     video: "retain-on-failure",
   },
   webServer: {
-    command: `env E2E_PORT=${port} node scripts/run-e2e-server.mjs --production --stage7-ux`,
+    command: `env E2E_PORT=${port} node scripts/run-e2e-server.mjs --production --stage7-ux --coach-clarity`,
     gracefulShutdown: { signal: "SIGTERM", timeout: 5_000 },
     url: `http://127.0.0.1:${port}/sign-in`,
     reuseExistingServer: false,

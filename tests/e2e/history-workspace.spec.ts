@@ -92,19 +92,12 @@ test("History workspace preserves deep links, Back and Forward, and exact detail
   await expect(
     page.getByRole("navigation", { name: "History time period" }),
   ).toHaveCount(0);
-  await expect(page.getByText("Training calendar", { exact: true })).toBeVisible();
-  const actionSignal = page.getByText("One thing to review", { exact: true });
-  expect(await actionSignal.count()).toBeLessThanOrEqual(1);
-  await expect(page.locator("#history-action-signal-heading")).not.toHaveText("Progress");
-  if ((await actionSignal.count()) === 1) {
-    const [signalBox, calendarBox] = await Promise.all([
-      actionSignal.boundingBox(),
-      page.getByText("Training calendar", { exact: true }).boundingBox(),
-    ]);
-    expect(signalBox).not.toBeNull();
-    expect(calendarBox).not.toBeNull();
-    expect(signalBox!.y).toBeLessThan(calendarBox!.y);
-  }
+  await expect(
+    page.getByText("Training calendar", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByText("One thing to review", { exact: true }),
+  ).toHaveCount(0);
   await expect(
     page.getByRole("heading", { name: "Five questions", exact: true }),
   ).toHaveCount(0);
@@ -177,14 +170,13 @@ test("History workspace preserves deep links, Back and Forward, and exact detail
   ).toBeVisible();
   await expect(page.getByText("Unknown", { exact: true })).toBeVisible();
   await expect(
-    page.getByText(
-      "Evaluable and unknown outcomes stay separate.",
-      { exact: true },
-    ),
+    page.getByText("Evaluable and unknown outcomes stay separate.", {
+      exact: true,
+    }),
   ).toBeVisible();
-  await expect(page.getByText("Training calendar", { exact: true })).toHaveCount(
-    0,
-  );
+  await expect(
+    page.getByText("Training calendar", { exact: true }),
+  ).toHaveCount(0);
   const rangeNavigation = page.getByRole("navigation", {
     name: "History time period",
   });
@@ -220,9 +212,11 @@ test("History workspace preserves deep links, Back and Forward, and exact detail
   await expect(progressLens).toBeVisible();
   await expect(progressLens.locator('a[href="/coach"]')).toHaveCount(0);
   await expect(progressLens).not.toContainText("Possible decision:");
-  await progressLens.getByText("Evidence and methodology", {
-    exact: true,
-  }).click();
+  await progressLens
+    .getByText("Evidence and methodology", {
+      exact: true,
+    })
+    .click();
   await expect(
     progressLens.getByRole("region", { name: "Supporting evidence" }),
   ).toBeVisible();
@@ -263,7 +257,9 @@ test("History workspace preserves deep links, Back and Forward, and exact detail
 
   const sourceLink = page.getByRole("link", { name: /First workout/ }).first();
   await sourceLink.click();
-  await expect(page).toHaveURL(/\/history\/[0-9a-f-]+\?range=all&view=exercises/);
+  await expect(page).toHaveURL(
+    /\/history\/[0-9a-f-]+\?range=all&view=exercises/,
+  );
   await page.getByText("Back to history", { exact: true }).click();
   await expect(page).toHaveURL(exercisesUrl);
 
@@ -292,9 +288,11 @@ test("History workspace preserves deep links, Back and Forward, and exact detail
     exact: true,
   });
   await expect(workCapacityLens).toBeVisible();
-  await workCapacityLens.getByText("Evidence and methodology", {
-    exact: true,
-  }).click();
+  await workCapacityLens
+    .getByText("Evidence and methodology", {
+      exact: true,
+    })
+    .click();
   await expect(
     page.getByText("Weekly workload", { exact: true }),
   ).toBeVisible();
@@ -308,11 +306,15 @@ test("History workspace preserves deep links, Back and Forward, and exact detail
   await expect(
     page.getByRole("heading", { name: "Calendar", exact: true }),
   ).toHaveCount(0);
-  await expect(page.getByText("Training calendar", { exact: true })).toBeVisible();
+  await expect(
+    page.getByText("Training calendar", { exact: true }),
+  ).toBeVisible();
 
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/history?range=all");
-  await expect(page.getByText("Training calendar", { exact: true })).toBeVisible();
+  await expect(
+    page.getByText("Training calendar", { exact: true }),
+  ).toBeVisible();
   const mobilePageHeight = await page.evaluate(
     () => document.documentElement.scrollHeight,
   );
@@ -359,7 +361,9 @@ test("History has clear empty and sparse states without mixing activity into str
   const errors = observeErrors(page);
   await signIn(page, sparseEmail);
   await page.goto("/history?range=all");
-  await expect(page.getByText("Training calendar", { exact: true })).toBeVisible();
+  await expect(
+    page.getByText("Training calendar", { exact: true }),
+  ).toBeVisible();
 
   // The first workspace journey already verifies client-side tab navigation.
   // Open this independent empty-state case by its canonical URL so the broad
@@ -404,19 +408,19 @@ test("History has clear empty and sparse states without mixing activity into str
   await page.goto(
     "/history?range=all&calendarView=month&calendarDate=2026-07-20",
   );
-  await expect(page.getByText("Sparse history walk", { exact: true })).toBeVisible();
+  await expect(
+    page.getByText("Sparse history walk", { exact: true }),
+  ).toBeVisible();
   await page.getByRole("link", { name: "Exercises", exact: true }).click();
   await expect(
-    page.getByText(
-      "Complete workouts in this range to see exercise trends.",
-      { exact: true },
-    ),
+    page.getByText("Complete workouts in this range to see exercise trends.", {
+      exact: true,
+    }),
   ).toBeVisible();
   await expect(
-    page.getByText(
-      "No eligible performance observations in this period.",
-      { exact: true },
-    ),
+    page.getByText("No eligible performance observations in this period.", {
+      exact: true,
+    }),
   ).toBeVisible();
   expect(errors).toEqual([]);
 });
@@ -469,14 +473,18 @@ test("History remains operable at mobile widths and extra-large text", async ({
         ).toBeVisible();
         await expect(overviewActions).toHaveCount(2);
         expect(
-          (await overviewActions.evaluateAll((links) =>
-            links.map((link) => link.getBoundingClientRect().height),
-          )).every((height) => height >= 44),
+          (
+            await overviewActions.evaluateAll((links) =>
+              links.map((link) => link.getBoundingClientRect().height),
+            )
+          ).every((height) => height >= 44),
         ).toBe(true);
       }
       if (viewport.width >= 1024) {
         const [headingBox, sidebarBox] = await Promise.all([
-          page.getByRole("heading", { name: "History", exact: true }).boundingBox(),
+          page
+            .getByRole("heading", { name: "History", exact: true })
+            .boundingBox(),
           page.locator("aside").boundingBox(),
         ]);
         expect(headingBox).not.toBeNull();
@@ -525,4 +533,109 @@ test("History remains operable at mobile widths and extra-large text", async ({
     { flag: "w" },
   );
   expect(errors).toEqual([]);
+});
+
+test("Coach clarity links a pattern to evidence, preserves old reviews, and recovers from failed updates", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 320, height: 700 });
+  await signIn(page, "coach-clarity.e2e@example.com");
+  await page.goto("/history");
+  await expect(
+    page.getByText("One thing to review", { exact: true }),
+  ).toHaveCount(0);
+  const pattern = page
+    .locator("summary")
+    .filter({ hasText: "Coach example calf raises: skipped in 3" });
+  await pattern.click();
+  const patternDetails = pattern.locator("xpath=ancestor::details[1]");
+  await expect(
+    patternDetails.getByRole("link", { name: /Example leg workout/ }),
+  ).toHaveCount(4);
+  await expectNoHorizontalOverflow(page);
+  await page.screenshot({
+    path: resolve(evidenceDirectory, "coach-pattern-320.png"),
+    fullPage: true,
+  });
+  await patternDetails
+    .getByRole("link", { name: "Ask Coach about this" })
+    .click();
+  await expect(
+    page.getByRole("heading", { name: "Coach", exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("textbox", { name: "Question for Coach" }),
+  ).toHaveValue(/calf raises/);
+  await expect(
+    page.getByText("No proposed changes waiting.", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByText(
+      "This older review may use calculations that have since changed.",
+    ),
+  ).toBeVisible();
+  await expect(
+    page.getByText("Synthetic older review for freshness verification."),
+  ).toBeHidden();
+  await page.getByText(/Read the saved review/).click();
+  await expect(
+    page.getByText("Synthetic older review for freshness verification."),
+  ).toBeVisible();
+  await page.getByText(/Read the saved review/).click();
+  await expectNoHorizontalOverflow(page);
+  await page.screenshot({
+    path: resolve(evidenceDirectory, "coach-older-review-320.png"),
+    fullPage: true,
+  });
+  let reject = true;
+  await page.route("**/coach?pattern=*", async (route) => {
+    if (
+      reject &&
+      route.request().method() === "POST" &&
+      route.request().headers()["next-action"]
+    ) {
+      reject = false;
+      await route.fulfill({
+        status: 503,
+        contentType: "text/plain",
+        body: "Synthetic unavailable service",
+      });
+    } else await route.continue();
+  });
+  await page
+    .getByRole("button", { name: "Update summary", exact: true })
+    .click();
+  await expect(
+    page
+      .getByRole("region", { name: "Your training summary" })
+      .getByRole("alert"),
+  ).toContainText("couldn't finish");
+  await expect(
+    page.getByRole("textbox", { name: "Question for Coach" }),
+  ).toHaveValue(/calf raises/);
+  await expect(page.getByText(/Read the saved review/)).toBeVisible();
+  await page.unrouteAll({ behavior: "wait" });
+  await page
+    .getByRole("button", { name: "Update summary", exact: true })
+    .click();
+  await expect(
+    page.getByText("Your summary is updated.", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByText("Synthetic older review for freshness verification."),
+  ).toHaveCount(0);
+  await expect(
+    page.getByText("No proposed changes waiting.", { exact: true }),
+  ).toBeVisible();
+  await expectNoHorizontalOverflow(page);
+  await page.screenshot({
+    path: resolve(evidenceDirectory, "coach-current-320.png"),
+    fullPage: true,
+  });
+  await page.setViewportSize({ width: 834, height: 1112 });
+  await expectNoHorizontalOverflow(page);
+  await page.screenshot({
+    path: resolve(evidenceDirectory, "coach-current-tablet.png"),
+    fullPage: true,
+  });
 });

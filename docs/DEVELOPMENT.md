@@ -1053,3 +1053,17 @@ V2-U02 suite checks the disabled finish explanation and focus navigation before
 saving. PII-01 and V2-T04 retain warm-up ordering, recovery, and narrow-screen
 coverage. These checks use only disposable synthetic data. Physical-phone
 warm-up navigation remains a separate acceptance observation.
+
+
+## History and Coach clarity verification
+
+Run the coaching-provider-error, coaching, coach-review-status, history-patterns,
+history-patterns-db, ai-controls-privacy-db, server-log and ai-provider-error unit
+suites. `npm run test:e2e:history-workspace` includes a disposable Coach fixture
+with a repeated exact-slot observation, an older review, and thirteen newer
+questions. The Coach clarity journey covers evidence navigation, preserved
+review visibility, failure/retry, preserved question text, no new proposals,
+320px enlarged text and tablet layout. Repeat it with
+`npx playwright test --config=playwright.history-workspace.config.ts --browser=webkit --grep 'Coach clarity'`.
+The browser harness uses only synthetic records and the deterministic provider;
+it does not prove a live provider response or physical iPhone acceptance.

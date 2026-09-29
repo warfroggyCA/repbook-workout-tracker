@@ -90,7 +90,7 @@ test("preserves a superset through exercise replacement, autosave, reload, and r
   }
   await assertNoHorizontalOverflow(page);
   await page.screenshot({ path: testInfo.outputPath("replacement-superset-mobile.png"), fullPage: true });
-  await page.getByRole("tab", { name: "Review", exact: true }).click();
+  await page.getByRole("tab", { name: "Coach", exact: true }).click();
   await page.getByRole("button", { name: "Check Program", exact: true }).first().click();
   await expect(page.getByRole("heading", { name: "Ready to publish" })).toBeVisible();
   expect(errors).toEqual([]);
@@ -437,7 +437,7 @@ test("autosaves, resolves tab conflicts, publishes v2, and restores v1 as v3", a
     }
   }
 
-  await page.getByRole("tab", { name: "Review", exact: true }).click();
+  await page.getByRole("tab", { name: "Coach", exact: true }).click();
   await page
     .getByRole("button", { name: "Check Program", exact: true })
     .first()
@@ -614,7 +614,7 @@ test("autosaves, resolves tab conflicts, publishes v2, and restores v1 as v3", a
   await expect(restoredProposal.getByRole("button", { name: "Apply selected changes", exact: true })).toBeEnabled();
   await restoredProposal.getByRole("button", { name: "Keep current draft", exact: true }).click();
 
-  await page.getByRole("tab", { name: "Review", exact: true }).click();
+  await page.getByRole("tab", { name: "Coach", exact: true }).click();
   await page
     .getByRole("button", { name: "Check Program", exact: true })
     .first()
@@ -660,7 +660,7 @@ test("a warm-up-only edit produces one clear review and stays reversible", async
     );
   await expectSaved(page);
 
-  await page.getByRole("tab", { name: "Review", exact: true }).click();
+  await page.getByRole("tab", { name: "Coach", exact: true }).click();
   await page
     .getByRole("button", {
       name: "Check Program",
@@ -738,7 +738,7 @@ test("full replacement creates a reviewable Program proposal without auto-publis
   ).toBeVisible();
   await expectSaved(page);
 
-  await page.getByRole("tab", { name: "Review", exact: true }).click();
+  await page.getByRole("tab", { name: "Coach", exact: true }).click();
   await page
     .getByRole("button", { name: "Check Program", exact: true })
     .first()
@@ -957,7 +957,7 @@ test("builds, reviews, and explicitly accepts one deterministic session proposal
   await signIn(page);
   await page.goto("/program/edit");
   await expectSaved(page);
-  await page.getByRole("tab", { name: "Review", exact: true }).click();
+  await page.getByRole("tab", { name: "Coach", exact: true }).click();
   await page.getByRole("button", { name: "Check Program", exact: true }).first().click();
   await expect(page.getByRole("heading", { name: "Ready to publish" })).toBeVisible();
   await page.getByRole("button", { name: "Publish future Program", exact: true }).click();
@@ -1125,7 +1125,7 @@ test("publishes loaded seconds per side and records the performed measurement on
   await page.reload();
   await expect(editor.getByLabel("Minimum seconds per side")).toHaveValue("30");
   await page.screenshot({ path: testInfo.outputPath("timed-prescription-desktop.png"), fullPage: true });
-  await page.getByRole("tab", { name: "Review", exact: true }).click();
+  await page.getByRole("tab", { name: "Coach", exact: true }).click();
   await page.getByRole("button", { name: "Check Program", exact: true }).first().click();
   await expect(page.getByRole("heading", { name: "Ready to publish" })).toBeVisible();
   await expect(page.getByText(/30–45 sec\/side/).first()).toBeVisible();

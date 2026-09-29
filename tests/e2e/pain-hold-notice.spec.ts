@@ -90,7 +90,7 @@ test("explains the automatic pain hold without offering a Program change", async
   await page.goto("/coach");
 
   const hold = page
-    .getByRole("region", { name: "Decisions needing review" })
+    .getByRole("region", { name: "Proposed changes" })
     .locator("section")
     .filter({ hasText: "Barbell Bench Press" });
   await expect(hold).toHaveCount(1);
