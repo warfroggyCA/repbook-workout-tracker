@@ -87,7 +87,7 @@ describe("question-driven History lenses", () => {
     const pain = lenses.find((lens) => lens.key === "pain-constraints")!;
     expect(pain.answer).toContain("No pain");
     expect(pain.answer.toLowerCase()).not.toContain("pain-free");
-    expect(pain.limitation).toContain("does not mean pain-free");
+    expect(pain.limitation).toContain("do not mean there was no pain");
   });
 
   it("separates clear progress, unchanged evidence, lower evidence, and uncertainty", () => {
@@ -110,8 +110,8 @@ describe("question-driven History lenses", () => {
     expect(lens.answer).toContain("1 exercise remains uncertain");
     expect(lens.decision.supported).toBe(false);
     expect(lens.decision.statement).toContain("Squat");
-    expect(lens.decision.statement).toContain("latest comparable best set is lower");
-    expect(lens.decision.statement).toContain("does not establish");
+    expect(lens.decision.statement).toContain("latest best set was lower");
+    expect(lens.decision.statement).toContain("does not mean");
     expect(lens.decision.href).toBeUndefined();
     expect(lens.decision.linkLabel).toBeUndefined();
     expect(selectHistoryActionSignal(lenses)).toBeNull();
@@ -181,11 +181,11 @@ describe("question-driven History lenses", () => {
     expect(lens.evidence.some((item) => item.value.includes("1 abandoned"))).toBe(
       true,
     );
-    expect(lens.evidence.some((item) => item.label.includes("outside Program"))).toBe(
+    expect(lens.evidence.some((item) => item.label.includes("without a matching plan"))).toBe(
       true,
     );
-    expect(lens.limitation).toContain("Deferred workouts are not recorded");
-    expect(lens.limitation).toContain("not proof");
+    expect(lens.limitation).toContain("Postponed workouts are not tracked");
+    expect(lens.limitation).toContain("does not mean every set was completed");
     expect(lens.answer.toLowerCase()).not.toContain("deferred");
   });
 
@@ -224,7 +224,7 @@ describe("question-driven History lenses", () => {
     ).find((candidate) => candidate.key === "pain-constraints")!;
 
     expect(lens.answer).toContain("Bench Press (Shoulder)");
-    expect(lens.limitation).toContain("2 of 3 positive pain reports name an exercise");
+    expect(lens.limitation).toContain("2 of 3 pain reports name an exercise");
     expect(lens.evidence.map((item) => item.label)).not.toContain("Squat");
     expect(lens.evidence.some((item) => item.label === "Session-level · Knee")).toBe(
       true,
@@ -254,7 +254,7 @@ describe("question-driven History lenses", () => {
       }),
     ).find((candidate) => candidate.key === "pain-constraints")!;
 
-    expect(lens.answer).toContain("no repeated movement pattern");
+    expect(lens.answer).toContain("no repeating pattern");
   });
 
   it("compares loaded workload, completed sets, and duration separately", () => {
@@ -313,7 +313,7 @@ describe("question-driven History lenses", () => {
         })),
       }),
     ).find((candidate) => candidate.key === "work-capacity")!;
-    expect(noPriorVolume.answer).toContain("Not enough comparable");
+    expect(noPriorVolume.answer).toContain("Not enough matching");
     expect(noPriorVolume.decision.supported).toBe(false);
   });
 
@@ -364,14 +364,14 @@ describe("question-driven History lenses", () => {
     ).find((candidate) => candidate.key === "records")!;
 
     expect(lens.answer).toContain(
-      "1 exact exercise variant",
+      "1 exercise",
     );
     expect(lens.evidence[0]).toMatchObject({
       label: "Bench Press",
       value: "100 lb × 10",
     });
-    expect(lens.limitation).toContain("selected period");
-    expect(lens.limitation).toContain("not durable all-time PR records");
+    expect(lens.limitation).toContain("selected dates");
+    expect(lens.limitation).toContain("not all-time records");
     expect(lens.decision.supported).toBe(false);
   });
 
@@ -390,8 +390,8 @@ describe("question-driven History lenses", () => {
     )!;
 
     expect(lens.evidence).toHaveLength(5);
-    expect(lens.answer).toContain("5 exact exercise variants");
-    expect(lens.answer).toContain("selected from 8 eligible variants");
+    expect(lens.answer).toContain("5 exercises");
+    expect(lens.answer).toContain("selected from 8 exercises");
     expect(lens.answer).not.toContain("frequently recorded");
   });
 });

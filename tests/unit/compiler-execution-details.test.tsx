@@ -112,7 +112,7 @@ describe("CompilerExecutionDetails", () => {
     const html = renderToStaticMarkup(
       <CompilerExecutionDetails input={input} output={output} />,
     );
-    expect(html).toContain("unequal legacy prescription");
+    expect(html).toContain("older plan with different set counts");
     expect(html).toContain("Round 2:</span> Bench press");
     expect(html).not.toContain("Round 2:</span> Bench press → Chest-supported row");
   });

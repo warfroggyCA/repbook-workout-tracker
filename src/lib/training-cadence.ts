@@ -181,7 +181,7 @@ export function buildTrainingCadence(input: {
       sessionsPerWeek: input.currentWeeklyFrequency,
       comparison,
       limitation:
-        "The preference is current. Historical preferences and scheduled opportunities are not reconstructed, so this is not an adherence percentage.",
+        "This uses your current weekly goal. It does not measure how closely you followed older plans.",
     },
   };
 }

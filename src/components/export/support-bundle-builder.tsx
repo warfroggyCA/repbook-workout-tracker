@@ -255,10 +255,7 @@ export function SupportBundleBuilder({ appVersion }: { appVersion: string }) {
               <div>
                 <p className="font-medium">Local preview and download only</p>
                 <p className="text-muted-foreground">
-                  Preparing this bundle makes no upload, API, AI, or persistence
-                  request. It does not read retained server logs or reuse an
-                  analysis package. You decide whether to share the downloaded
-                  file later.
+                  This file is prepared on your device. Nothing is uploaded or sent to an AI. You choose whether to share it.
                 </p>
               </div>
             </div>

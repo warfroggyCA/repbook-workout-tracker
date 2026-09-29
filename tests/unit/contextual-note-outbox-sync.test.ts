@@ -127,7 +127,7 @@ describe("contextual note outbox sync", () => {
     expect(readContextualNoteOutbox(storage, OWNER_ID).entries[0]).toMatchObject({
       status: "needs_attention",
       payloadHash: entry.payloadHash,
-      lastError: expect.stringContaining("different note content"),
+      lastError: expect.stringContaining("saved note differs from the copy on this device"),
     });
   });
 

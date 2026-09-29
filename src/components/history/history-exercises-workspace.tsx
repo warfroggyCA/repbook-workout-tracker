@@ -106,17 +106,15 @@ export function HistoryExercisesWorkspace({
       <Card>
         <CardHeader>
           <CardTitle>
-            <h3>Exercise evidence</h3>
+            <h3>Exercise records</h3>
           </CardTitle>
           <CardDescription>
-            Exact performed exercise identities stay separate. Legacy or
-            unsupported facts remain visible, but only one-to-one linked
-            completed working sets enter calculations.
+            Different exercise variations are kept separate. Older records remain visible, but progress uses only results that can be matched to completed sets.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <nav
-            aria-label="Exercise evidence tiers"
+            aria-label="Record types"
             className="flex flex-wrap gap-2"
           >
             {tiers.map((tier) => (
@@ -151,11 +149,11 @@ export function HistoryExercisesWorkspace({
               role="status"
               className="rounded-xl border border-dashed p-3 text-sm text-muted-foreground"
             >
-              That exercise is unavailable in this owner-scoped history range.
+              No records for that exercise were found in these dates.
             </p>
           ) : report.exerciseEvidence.length === 0 ? (
             <p className="text-sm text-muted-foreground">
-              No retained exercise evidence in this period.
+              No exercise records for these dates.
             </p>
           ) : (
             <div
@@ -215,9 +213,7 @@ export function HistoryExercisesWorkspace({
               </p>
               <p className="mt-1 text-xs text-muted-foreground">
                 {selectedExercise.exactLinkedSets} of{" "}
-                {selectedExercise.retainedSets} retained sets have one exact
-                occurrence link; {selectedExercise.calculationEligibleSets} are
-                eligible for exercise calculations.
+                {selectedExercise.retainedSets} saved sets can be matched to the workout; {selectedExercise.calculationEligibleSets} are included in progress calculations.
                 {selectedExercise.sourceExerciseKeys.length > 0 &&
                   ` Frozen source occurrence IDs: ${selectedExercise.sourceExerciseKeys.join(", ")}.`}
               </p>
@@ -250,13 +246,13 @@ export function HistoryExercisesWorkspace({
                     </Badge>
                     <Badge variant="outline">
                       {entry.exactLinked
-                        ? "Exact occurrence linked"
-                        : "No exact occurrence link"}
+                        ? "Matched to a set"
+                        : "Could not match to a set"}
                     </Badge>
                     <Badge variant="outline">
                       {entry.calculationEligible
-                        ? "Calculation eligible"
-                        : "Retained only"}
+                        ? "Used for progress"
+                        : "Saved for reference"}
                     </Badge>
                   </div>
                   <p className="mt-1 text-xs text-muted-foreground">
@@ -295,14 +291,13 @@ export function HistoryExercisesWorkspace({
             ))}
             {visibleEvidence.length === 0 && (
               <p className="py-3 text-sm text-muted-foreground">
-                No evidence matches this filter.
+                No records match this filter.
               </p>
             )}
           </div>
           {visibleEvidence.length > 0 && (
             <p className="text-xs text-muted-foreground">
-              Showing up to 24 most recent matching retained sets in this
-              range.
+              Showing the 24 most recent matching sets.
             </p>
           )}
           <p className="text-xs text-muted-foreground">
@@ -443,15 +438,13 @@ export function HistoryExercisesWorkspace({
             </CardTitle>
           </div>
           <CardDescription>
-            Best eligible observations inside this period—not durable all-time
-            personal records. Warm-ups, excluded sets, assistance, timed work,
-            distance work, and independent activities remain excluded.
+            Your best results for these dates. These are not all-time records. Warm-ups, assisted exercises, timed or distance-based work, and sets excluded from progress are not counted.
           </CardDescription>
         </CardHeader>
         <CardContent>
           {report.records.length === 0 ? (
             <p className="text-sm text-muted-foreground">
-              No eligible performance observations in this period.
+              No results to compare for these dates.
             </p>
           ) : (
             <div className="grid gap-2 sm:grid-cols-2">

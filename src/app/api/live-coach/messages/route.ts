@@ -72,7 +72,7 @@ export async function POST(request: Request) {
     if (
       error instanceof Error &&
       error.message ===
-        "The workout message could not be reconciled with this saved identity."
+        "This message could not be matched to the saved workout. Reload and try again."
     ) {
       return sensitiveJson(
         {

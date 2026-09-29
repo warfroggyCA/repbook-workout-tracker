@@ -54,7 +54,7 @@ describe("historical consequence dry run", () => {
       .insert(workoutSessions)
       .values({
         userId,
-        templateName: "Legacy evidence",
+        templateName: "Older records",
         status: "completed",
         startedAt: new Date("2026-07-01T14:00:00.000Z"),
         finishedAt: new Date("2026-07-01T15:00:00.000Z"),

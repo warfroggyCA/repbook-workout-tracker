@@ -282,7 +282,7 @@ describe("recommendation decisions publish immutable Program versions", () => {
       .insert(workoutSessions)
       .values({
         userId,
-        templateName: "Pain evidence",
+        templateName: "Pain details",
         status: "completed",
         startedAt,
         finishedAt: new Date(startedAt.getTime() + 45 * 60_000),
@@ -848,7 +848,7 @@ describe("recommendation decisions publish immutable Program versions", () => {
     ]);
     await expect(approve(recommendationId)).resolves.toEqual({
       ok: false,
-      reason: "The cited evidence is explicitly contradictory. Review or reject the proposal; it cannot change the Program.",
+      reason: "The records behind this suggestion disagree. Check or reject it; it cannot change your plan.",
     });
     await expect(publishRecommendationProgramVersion(database.db, userId, {
       recommendationId,
@@ -893,7 +893,7 @@ describe("recommendation decisions publish immutable Program versions", () => {
     });
     await expect(approve(recommendationId)).resolves.toMatchObject({
       ok: false,
-      reason: expect.stringContaining("cited records are no longer current"),
+      reason: expect.stringContaining("Some records behind this suggestion have changed"),
     });
   });
 

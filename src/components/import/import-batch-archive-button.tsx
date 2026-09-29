@@ -48,10 +48,7 @@ export function ImportBatchArchiveButton({
         <DialogHeader>
           <DialogTitle>Archive {filename}?</DialogTitle>
           <DialogDescription>
-            A new encrypted safety snapshot must be stored and verified first. Then
-            these records leave normal History, Coach, progression, and ordinary
-            exports while their original IDs, file, mappings, review evidence, and
-            provenance remain recoverable.
+            Repbook will first create and check a backup. These records will then be hidden from History, Coach, progress, and exports. You can restore them later.
           </DialogDescription>
         </DialogHeader>
         <div className="rounded-lg border bg-muted/30 p-3 text-sm">
@@ -59,14 +56,14 @@ export function ImportBatchArchiveButton({
           <p className="mt-1 leading-relaxed text-muted-foreground">
             {preview.importBatches} import batch · {preview.workouts} workouts ·{" "}
             {preview.sessionExerciseGroups} exercise groups ·{" "}
-            {preview.exerciseOccurrences} exercises · {preview.sessionOccurrences} planned occurrences ·{" "}
-            {preview.sessionOccurrenceMutations} mutation receipts · {preview.sets} sets ·{" "}
+            {preview.exerciseOccurrences} exercises · {preview.sessionOccurrences} planned sets and warm-ups ·{" "}
+            {preview.sessionOccurrenceMutations} save confirmations · {preview.sets} sets ·{" "}
             {preview.notes} notes · {preview.painLogs} pain logs · {preview.fatigueLogs} fatigue logs ·{" "}
             {preview.coachingMessages} Coach messages ·{" "}
             {preview.recommendations} recommendations
           </p>
           <p className="mt-2 text-xs text-muted-foreground">
-            Retained recovery evidence: {preview.importFiles} source file ·{" "}
+            Kept for recovery: {preview.importFiles} source file ·{" "}
             {preview.reviewDecisions} review decisions · {preview.reviewedMappings} mappings ·{" "}
             {preview.customExercises} custom exercises · {preview.warnings} warnings.
           </p>
@@ -93,7 +90,7 @@ export function ImportBatchArchiveButton({
                 setOpen(false);
                 router.refresh();
                 toast.success("Import batch archived", {
-                  description: "The source file, review decisions, mappings, IDs, and provenance are preserved.",
+                  description: "The original file, exercise matches, and review decisions are kept.",
                   action: {
                     label: "Undo",
                     onClick: async () => {

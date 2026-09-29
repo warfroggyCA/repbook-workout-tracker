@@ -1067,3 +1067,11 @@ review visibility, failure/retry, preserved question text, no new proposals,
 `npx playwright test --config=playwright.history-workspace.config.ts --browser=webkit --grep 'Coach clarity'`.
 The browser harness uses only synthetic records and the deterministic provider;
 it does not prove a live provider response or physical iPhone acceptance.
+
+## Plain-language copy
+
+All user-facing wording follows [Product language](PLAIN_LANGUAGE.md), including
+Coach output instructions, error and recovery messages, imports, exports, and
+optional record details. Copy edits preserve stored enums, IDs, calculations,
+saving behavior, and historical text. Browser selectors may follow new labels;
+assertions about state and record integrity must stay intact.

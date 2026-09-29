@@ -123,7 +123,7 @@ export function CompilerExecutionDetails({
               return (
                 <div key={group.key}>
                   <h4 className="text-sm font-medium">
-                    {group.name} · {group.structureStatus === "canonical" ? `${rounds} proposed rounds` : "unequal legacy prescription"}
+                    {group.name} · {group.structureStatus === "canonical" ? `${rounds} proposed rounds` : "older plan with different set counts"}
                   </h4>
                   <ol className="mt-2 space-y-2">
                     {Array.from({ length: rounds }, (_, roundIndex) => {

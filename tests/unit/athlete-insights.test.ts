@@ -543,8 +543,8 @@ describe("athlete insight contract", () => {
         },
       }),
     );
-    expect(draft).toContain("Explain this deterministic Repbook training insight");
-    expect(draft).toContain("Treat it as evidence, not as an automatic Program change");
+    expect(draft).toContain("Explain this workout insight");
+    expect(draft).toContain("This is for reference. It does not change your plan.");
     expect(draft.length).toBeLessThanOrEqual(800);
   });
 });

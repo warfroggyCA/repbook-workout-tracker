@@ -192,7 +192,7 @@ export function buildPendingDecisionInsight(
       evidence: {
         exactExerciseId: recommendation.exerciseId,
         sourceRecordIds,
-        comparisonWindow: "The retained evidence window for this pending decision",
+        comparisonWindow: "The records used for this suggestion",
         unit: recommendation.payload.loadUnit,
         limitations: review.limitations ?? [],
       },
@@ -214,7 +214,7 @@ export function buildPendingDecisionInsight(
       evidence: {
         exactExerciseId: recommendation.exerciseId,
         sourceRecordIds,
-        comparisonWindow: "The retained evidence window for this pending decision",
+        comparisonWindow: "The records used for this suggestion",
         unit: null,
         limitations: review.limitations ?? [],
       },
@@ -235,7 +235,7 @@ export function buildPendingDecisionInsight(
     evidence: {
       exactExerciseId: recommendation.exerciseId,
       sourceRecordIds,
-      comparisonWindow: "The retained evidence window for this pending decision",
+      comparisonWindow: "The records used for this suggestion",
       unit: null,
       limitations: review.limitations ?? [],
     },
@@ -303,7 +303,7 @@ function sourceLimitations(previous: ExactComparableWorkoutEvidence) {
       (set) => set.correctionProvenance.state !== "original",
     )
   ) {
-    limitations.push("At least one source result has retained correction history.");
+    limitations.push("At least one result has been edited. Earlier values are kept in Edit history.");
   }
   return limitations;
 }
@@ -717,10 +717,10 @@ export function buildAthleteInsightCoachDraft(
   const shownIds = sourceIds.slice(0, 8);
   const omitted = sourceIds.length - shownIds.length;
   return [
-    "Explain this deterministic Repbook training insight in plain language.",
+    "Explain this workout insight in plain language.",
     `Insight: ${insight.headline}${insight.detail ? ` — ${insight.detail}` : ""}`,
     `Comparison window: ${insight.evidence.comparisonWindow}.`,
-    `Source records: ${shownIds.join(", ")}${omitted > 0 ? `, plus ${omitted} more retained source records` : ""}.`,
-    "Treat it as evidence, not as an automatic Program change.",
+    `Source records: ${shownIds.join(", ")}${omitted > 0 ? `, plus ${omitted} more records` : ""}.`,
+    "This is for reference. It does not change your plan.",
   ].join("\n").slice(0, 800);
 }

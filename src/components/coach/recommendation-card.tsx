@@ -88,14 +88,14 @@ export function RecommendationCard({
     isExternal && externalOutcome.trim() !== rec.externalRequestedOutcome;
   const deferred = rec.deferredAt != null;
   const evidenceStateLabel = rec.evidenceState === "supported"
-    ? "Supported"
+    ? "Ready to review"
     : rec.evidenceState === "external"
-      ? "Validated external"
+      ? "Imported advice"
       : rec.evidenceState === "contradictory"
-        ? "Contradictory"
+        ? "Conflicting details"
         : rec.evidenceState === "stale"
-          ? "Stale"
-          : "Unsupported";
+          ? "Needs updating"
+          : "Not enough detail";
 
   function decide(action: "approve" | "reject" | "dismiss" | "defer" | "resume") {
     if (decisionInFlight.current || needsReload) return;
@@ -324,11 +324,11 @@ export function RecommendationCard({
             <h4 className="text-sm font-medium">Method and limitations</h4>
             <dl className="mt-2 grid gap-2 text-xs sm:grid-cols-2">
               <div><dt className="text-muted-foreground">Producer</dt><dd className="font-medium">{rec.producer?.replaceAll("_", " ") ?? rec.source}</dd></div>
-              <div><dt className="text-muted-foreground">Source version</dt><dd className="break-all font-medium">{rec.sourceVersion ?? "Legacy / unknown"}</dd></div>
+              <div><dt className="text-muted-foreground">Source version</dt><dd className="break-all font-medium">{rec.sourceVersion ?? "Older record / details missing"}</dd></div>
               <div><dt className="text-muted-foreground">Rule</dt><dd className="break-all font-medium">{rec.ruleId?.replaceAll("_", " ") ?? rec.kind}</dd></div>
               <div><dt className="text-muted-foreground">Created</dt><dd className="font-medium"><time dateTime={rec.createdAt}>{rec.createdAtLabel}</time></dd></div>
               <div><dt className="text-muted-foreground">Confidence</dt><dd className="font-medium">Not scored</dd></div>
-              <div><dt className="text-muted-foreground">Portability</dt><dd className="font-medium">{rec.sourceVersion ? "Retained in export and recovery" : "Legacy metadata incomplete"}</dd></div>
+              <div><dt className="text-muted-foreground">Portability</dt><dd className="font-medium">{rec.sourceVersion ? "Included in exports and backups" : "Some older details are missing"}</dd></div>
             </dl>
             <ul className="mt-3 list-disc space-y-1 pl-4 text-xs text-muted-foreground">
               {rec.limitations.map((limitation) => <li key={limitation}>{limitation}</li>)}
@@ -479,7 +479,7 @@ export function RecommendationCard({
         )}
       </div>
       {!isHold && !deferred && !rec.actionable && (
-        <p className="mt-2 text-xs text-muted-foreground">Approval is unavailable because this evidence is {rec.evidenceState}. Reject or defer the retained proposal instead.</p>
+        <p className="mt-2 text-xs text-muted-foreground">This suggestion cannot be applied. Check the details above, reject it, or come back later.</p>
       )}
     </section>
   );

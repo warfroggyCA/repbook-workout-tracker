@@ -23,7 +23,7 @@ import {
 
 const countLabels: Record<string, string> = {
   workoutSessions: "workouts",
-  sessionExercises: "exercise occurrences",
+  sessionExercises: "planned exercise entries",
   completedSets: "sets",
   sessionNotes: "notes",
   painLogs: "pain records",
@@ -102,8 +102,7 @@ export default async function PermanentDeletePage({
             <Badge variant="destructive">Irreversible in Archive</Badge>
           </div>
           <CardDescription>
-            These are the current rows in this Archive action and their linked
-            evidence. The database recalculates this scope again before deleting.
+            These are the records that will be deleted. Repbook checks this list again before deleting anything.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">

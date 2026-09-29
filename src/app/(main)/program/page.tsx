@@ -134,9 +134,7 @@ export default async function ProgramPage(props: PageProps<"/program">) {
                 </p>
               ) : preflightStatus?.availability === "unavailable" ? (
                 <p className="mt-2 text-sm text-muted-foreground">
-                  The checks saved when this version was published are
-                  unavailable. Current evidence stays separate and does not
-                  rewrite this version.
+                  The original checks for this plan are unavailable. New checks do not change this saved version.
                 </p>
               ) : preflightStatus?.availability === "available" &&
                 preflightStatus.publication ? (
@@ -163,8 +161,7 @@ export default async function ProgramPage(props: PageProps<"/program">) {
                       {new Date(
                         preflightStatus.publication.checkedAt,
                       ).toLocaleString("en-CA", { timeZone: user.profile.timezone })}
-                      . Evidence counts describe available records, not
-                      confidence.
+                      . More records do not necessarily make the advice more reliable.
                     </p>
                     {preflightStatus.publication.findings.filter(
                       (finding) => finding.dayLineageId === selected.lineageId,

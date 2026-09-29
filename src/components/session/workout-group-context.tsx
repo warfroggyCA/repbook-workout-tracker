@@ -17,7 +17,7 @@ function progressText(totals: GroupProgressProjection["totals"]) {
     totals.skipped > 0 ? `${totals.skipped} skipped` : null,
     totals.abandoned > 0 ? `${totals.abandoned} abandoned` : null,
     totals.completedWithoutResult > 0
-      ? `${totals.completedWithoutResult} missing saved-result evidence`
+      ? `${totals.completedWithoutResult} missing saved results`
       : null,
     totals.legacyUnknown > 0
       ? `${totals.legacyUnknown} legacy outcome unknown`
@@ -81,9 +81,9 @@ export function WorkoutGroupContext({
       ? "Round rest after this set"
       : "Rest after this set";
   const completionLabel = group.completion === "resolved"
-    ? "all occurrences performed"
+    ? "all sets completed"
     : group.completion === "resolved_with_changes"
-      ? "all occurrences resolved with recorded changes"
+      ? "all sets finished or skipped"
       : group.completion === "in_progress"
         ? "in progress"
         : "not started";

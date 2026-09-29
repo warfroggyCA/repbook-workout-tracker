@@ -100,7 +100,7 @@ export async function createContextualNoteAction(
     });
     return {
       ok: false,
-      reason: "The server did not acknowledge this note. It remains on this device.",
+      reason: "This note has not finished saving. A copy is kept on this device.",
       retryable: true,
     };
   }
@@ -177,7 +177,7 @@ export async function editContextualNoteAction(rawInput: ContextualNoteEditInput
     logDiagnosticEvent("contextual_note.edit_failed", {
       errorCategory: categorizeDiagnosticError(error, "persistence"),
     });
-    return { ok: false as const, reason: "The server did not acknowledge this edit." };
+    return { ok: false as const, reason: "This edit has not finished saving." };
   }
 }
 
@@ -213,6 +213,6 @@ export async function archiveContextualNoteAction(rawInput: {
     logDiagnosticEvent("contextual_note.archive_failed", {
       errorCategory: categorizeDiagnosticError(error, "persistence"),
     });
-    return { ok: false as const, reason: "The server did not acknowledge this archive action." };
+    return { ok: false as const, reason: "Repbook could not confirm that this was archived. Refresh to check." };
   }
 }

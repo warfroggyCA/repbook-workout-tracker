@@ -101,7 +101,7 @@ export default async function ProgramSchedulePage() {
         ) : current && !existingDraft ? (
           <section className="rounded-2xl border bg-card p-5">
             <h2 className="font-semibold">Advanced schedule</h2>
-            <p className="mt-1 text-sm leading-6 text-muted-foreground">This schedule has multiple phases or different cardio prescriptions. Repbook will run it exactly as saved, but the simple editor will not flatten or reinterpret it.</p>
+            <p className="mt-1 text-sm leading-6 text-muted-foreground">This schedule has different phases or cardio targets. It will run as saved, but cannot be changed in this simple editor.</p>
             <ul className="mt-3 space-y-2 text-sm">{current.version.document.phases.map((phase) => <li key={phase.id}>{phase.order}. {phase.name} · {phase.schedule.kind === "rolling" ? "rolling rotation" : "seven-day schedule"}</li>)}</ul>
           </section>
         ) : (

@@ -53,15 +53,15 @@ describe("HistoryInsightsWorkspace overview", () => {
 
     expect(html).toContain("Lower result observed");
     expect(html).not.toContain("Needs attention");
-    expect(html).toContain("Open progress evidence");
+    expect(html).toContain("See progress details");
   });
   it("presents a concise narrative, exhibits, and direct evidence actions", () => {
     const html = renderOverview();
 
     expect(html).toContain("Current progress");
     expect(html).toContain("At a glance");
-    expect(html).toContain("Explore the evidence");
-    expect(html).toContain("Open progress evidence");
+    expect(html).toContain("Explore your training");
+    expect(html).toContain("See progress details");
     expect(html).toContain("View exact exercises");
     expect(html).not.toContain("Strength overview");
     expect(html).not.toContain("Five questions");
@@ -71,12 +71,12 @@ describe("HistoryInsightsWorkspace overview", () => {
     const html = renderOverview();
 
     expect(html).toContain("Not available");
-    expect(html).toContain("No eligible loaded sets");
+    expect(html).toContain("No weighted sets to count");
     expect(html).toContain(
       "No completed workout data is available for a weekly chart.",
     );
     expect(html).toContain(
-      "No retained planned-outcome evidence is available for this period.",
+      "No planned targets to compare for these dates.",
     );
     expect(html).toContain(
       "No independent activities were recorded in this period.",
@@ -99,8 +99,8 @@ describe("HistoryInsightsWorkspace overview", () => {
     });
 
     expect(html).toContain("0 lb");
-    expect(html).toContain("Eligible loaded sets only");
-    expect(html).not.toContain("No eligible loaded sets");
+    expect(html).toContain("Weighted sets used for progress");
+    expect(html).not.toContain("No weighted sets to count");
   });
 
   it("keeps unknown and incomplete planned outcomes distinct from zero", () => {
@@ -128,7 +128,7 @@ describe("HistoryInsightsWorkspace overview", () => {
     expect(html).toContain("Unknown");
     expect(html).toContain(">2</dd>");
     expect(html).toContain(
-      "The retained denominator is incomplete, so no overall conclusion is supported.",
+      "Some planned sets are missing, so an overall result cannot be calculated.",
     );
   });
 });
@@ -137,8 +137,8 @@ describe("HistoryInsightsWorkspace lens", () => {
   it("leads with the conclusion and decision before one evidence disclosure", () => {
     const html = renderLens("progress");
     const conclusion = html.indexOf("Short answer");
-    const decision = html.indexOf("Decision support");
-    const disclosure = html.indexOf("Evidence and methodology");
+    const decision = html.indexOf("What this means");
+    const disclosure = html.indexOf("Details and calculations");
 
     expect(conclusion).toBeGreaterThanOrEqual(0);
     expect(decision).toBeGreaterThan(conclusion);

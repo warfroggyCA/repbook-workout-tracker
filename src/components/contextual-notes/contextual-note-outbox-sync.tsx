@@ -150,7 +150,7 @@ export async function syncContextualNoteEntry(
               entry!.clientKey,
               entry!.payloadHash,
               "malformed" in result
-                ? "The server did not return a valid note acknowledgement. The device copy was kept for review."
+                ? "Repbook could not confirm that this note saved. A copy is kept on this device."
                 : result.reason
             )
           );
@@ -178,7 +178,7 @@ export async function syncContextualNoteEntry(
             ownerId,
             entry!.clientKey,
             entry!.payloadHash,
-            "The server acknowledged different note content. The device copy was kept for recovery."
+            "The saved note differs from the copy on this device. Both have been kept so you can check them."
           )
         );
         return;

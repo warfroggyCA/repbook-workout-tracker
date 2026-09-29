@@ -302,7 +302,7 @@ function PendingSetSaveStatus({
       <div>
         <p className="mt-1 text-xs leading-5 text-muted-foreground">
           {reviewRequired
-            ? `This retained ${rowLabel.toLowerCase()} was based on an older workout state. Refresh, then review or discard it.`
+            ? `This unsaved ${rowLabel.toLowerCase()} was based on an older workout state. Refresh, then review or discard it.`
             : orderConflict && blockerDescription
             ? `${blockerDescription} comes first. This ${rowLabel.toLowerCase()} is still safe on this device.`
             : orderConflict
@@ -1534,7 +1534,7 @@ export function ExerciseCard({
         ? activeOccurrence.id
         : null,
     currentBlockingReason: activeLoggingBlocked
-      ? "Resolve the retained device copy for this set before logging again."
+      ? "Retry or discard the unsaved copy of this set before logging it again."
       : null,
     versionEvidenceBySetId: exercise.versionEvidenceBySetId,
   });
@@ -1555,8 +1555,8 @@ export function ExerciseCard({
           ? { state: "corrected", count: set.correctionCount ?? 0 }
           : null),
       message: activeSetProjection.diagnostics.duplicateSetIds.includes(set.id)
-        ? "This result has more than one possible occurrence link and cannot be presented as saved."
-        : "This result is not linked to a supported set occurrence and cannot be presented as saved.",
+        ? "This result could belong to more than one set. Check it before counting it as saved."
+        : "This result could not be matched to a set. Check it before counting it as saved.",
     }));
   const unsupportedCompletedSetIds = new Set([
     ...diagnosticSetIds,
@@ -1754,7 +1754,7 @@ export function ExerciseCard({
     if (occurrenceForRow == null) {
       return (
         <p role="alert" className="text-sm">
-          This set occurrence is unavailable. Reload before recording.
+          This set is unavailable. Reload before logging it.
         </p>
       );
     }
@@ -2266,7 +2266,7 @@ export function ExerciseCard({
                   <div className="mt-1 border-t pt-1 text-xs text-muted-foreground">
                     <p>
                       {activeLoggingBlocked
-                        ? "Resolve the retained copy for this set"
+                        ? "Check the unsaved copy of this set"
                         : preparationBlocker
                           ? `Complete ${preparationBlocker.blockerExerciseName ?? exercise.name} preparation set first`
                           : "Reach this set in the workout flow"}
@@ -2554,14 +2554,14 @@ export function ExerciseCard({
                             {(set.correctionCount ?? 0) > 0
                               ? `${set.correctionCount} saved correction${
                                   set.correctionCount === 1 ? "" : "s"
-                                } · original retained in Edit history`
-                              : "Acknowledged by Repbook"}
+                                } · original kept in Edit history`
+                              : "Saved"}
                           </span>
                           <div className="flex flex-wrap gap-2">
                             {(set.metricType ?? performedMetricType) ===
                             "activity" ? (
                               <span className="self-center text-xs text-muted-foreground">
-                                Correction unavailable for this legacy shape
+                                This older result cannot be edited here
                               </span>
                             ) : (
                               renderCompletedSetCorrection(set)
@@ -2792,7 +2792,7 @@ export function ExerciseCard({
                       if (isDocumentActionTimeout(error)) {
                         reportDocumentActionTimeout();
                         toast.error(
-                          "Repbook did not confirm Undo in time. Reload to reconcile the saved workout safely.",
+                          "Undo could not be confirmed. Reload to check the workout before trying again.",
                         );
                       } else {
                         toast.error("Repbook could not restore the exercise.");
@@ -3338,11 +3338,7 @@ function SetEntry({
   if (!supported) {
     return (
       <p role="alert" className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-950 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-100">
-        This exercise’s measurement setup cannot be logged. This set has not been saved.
-        For a loaded timed carry, edit its future Program prescription to
-        “Loaded time — each side” and review seconds per side. During this
-        workout, use Replace to choose a supported exercise, or Skip set and
-        select Technical or app issue. Program edits apply to new workouts.
+        This set cannot be saved with its current targets. For now, replace the exercise or skip the set and choose Technical or app issue. For future carries, choose “Loaded time — each side” in your plan and set the seconds per side.
       </p>
     );
   }
@@ -3799,7 +3795,7 @@ function PainDrawer({
       </DrawerTrigger>
       <DrawerContent className="[&_button]:min-h-11 [&_button]:min-w-11 [&_textarea]:min-h-11">
         <DrawerHeader>
-          <DrawerTitle>Pain / no-issue evidence</DrawerTitle>
+          <DrawerTitle>Pain or discomfort</DrawerTitle>
         </DrawerHeader>
         <div className="flex flex-col gap-4 px-4">
           <div className="flex flex-wrap gap-1.5">
@@ -3953,7 +3949,7 @@ function SkipDrawer({
           if (isDocumentActionTimeout(error)) {
             reportDocumentActionTimeout();
             toast.error(
-              "Repbook did not confirm the skip in time. Reload to reconcile the retained request safely.",
+              "The skip could not be confirmed. Reload to check before trying again.",
             );
           } else {
             toast.error("The exercise could not be skipped.");
@@ -4093,7 +4089,7 @@ function RemoveFromTodayDrawer({
                     if (isDocumentActionTimeout(error)) {
                       reportDocumentActionTimeout();
                       toast.error(
-                        "Repbook did not confirm the removal in time. Reload to reconcile the retained request safely.",
+                        "The removal could not be confirmed. Reload to check before trying again.",
                       );
                     } else {
                       toast.error("The exercise could not be removed from today.");
@@ -4312,7 +4308,7 @@ function AlternativesDrawer({
             />
           )}
           <p className="text-xs leading-5 text-muted-foreground">
-            This changes only the active workout. The saved routine and its next occurrence stay unchanged. Once a set is logged, completed work is never relabelled.
+            This changes only this workout. Your saved plan and future workouts stay the same. Sets you have already logged keep their original exercise.
           </p>
         </div>
       </DrawerContent>
@@ -4458,7 +4454,7 @@ function ReplacementDrawer({
               triggerDisabled={effectiveReason == null}
               triggerLabel="Search exercise catalog"
               title="Replace exercise"
-              description="Search the authorized catalog without similarity ranking. Repbook supports repetitions, assistance, duration, and distance when the full performed measurement can be retained; activity-only observations stay in Activity."
+              description="Search all available exercises. Choose one you can log with reps, assistance, time, or distance. Log other activities in Activity."
               confirmLabel="Replace in this workout"
               largeTouchTargets
               onSelect={async (candidate) => {

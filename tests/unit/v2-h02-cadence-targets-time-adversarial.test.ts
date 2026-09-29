@@ -222,7 +222,7 @@ describe("V2 H02 adversarial boundaries", () => {
     });
     expect(owner.overview.abandonedSessions).toBe(1);
     expect(owner.cadence.currentPreference.limitation).toContain(
-      "scheduled opportunities are not reconstructed",
+      "does not measure how closely you followed older plans",
     );
     expect(owner.cadence).not.toHaveProperty("adherenceRate");
 

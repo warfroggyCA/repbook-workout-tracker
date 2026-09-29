@@ -109,7 +109,7 @@ export function CoachAnswerCard({
         {answer.evidence.length > 0 && (
           <div className="rounded-xl bg-muted/50 p-3">
             <h4 className="mb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-              Evidence used
+              Based on
             </h4>
             <ul className="space-y-1 text-xs text-muted-foreground">
               {answer.evidence.map((item, index) => (

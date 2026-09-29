@@ -225,7 +225,7 @@ export async function parseRoutineText(
     return {
       ok: false,
       reason:
-        "Free-form AI parsing isn't configured. Use canonical Day and exercise lines with sets x reps and rest, or edit the Program manually.",
+        "AI import is unavailable. Use the example format with days, exercises, sets, reps, and rest, or edit the plan yourself.",
     };
   }
 
@@ -316,7 +316,7 @@ export async function parseRoutineText(
     return {
       ok: false,
       reason:
-        "Repbook could not prepare the routine review. Try again. Your current Program was not changed, and the paste was not retained.",
+        "Repbook could not read the routine. Paste it again to retry. Your current plan is unchanged.",
     };
   }
 
@@ -734,7 +734,7 @@ const confirmDaySchema = z
         context.addIssue({
           code: "custom",
           path: ["warmupItems", index, "beforeSlotLineageId"],
-          message: "A lift ramp must refer to an exercise retained in this day.",
+          message: "A warm-up ramp must use an exercise in this workout.",
         });
       }
     }

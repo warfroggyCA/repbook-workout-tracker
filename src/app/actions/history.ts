@@ -155,7 +155,7 @@ export async function correctWorkoutTiming(
       error instanceof Error &&
       (safeMessages.has(error.message) ||
         error.message.includes("because of daylight-saving time") ||
-        error.message.includes("choose the earlier or later occurrence"))
+        error.message.includes("choose the earlier or later time"))
     ) {
       return {
         ok: false as const,

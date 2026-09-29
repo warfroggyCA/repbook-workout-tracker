@@ -70,7 +70,7 @@ export async function POST(request: Request) {
     const responses = {
       not_found: {
         status: 404,
-        error: "The matching owner-scoped package manifest was not found.",
+        error: "The saved export for this response could not be found.",
       },
       expired: {
         status: 410,
@@ -82,11 +82,11 @@ export async function POST(request: Request) {
       },
       stale_evidence: {
         status: 409,
-        error: "Bound evidence changed after this package was prepared. Prepare a new package before using the response.",
+        error: "Your records have changed since this export. Prepare a new export before using the response.",
       },
       invalid_manifest: {
         status: 409,
-        error: "The retained package manifest cannot safely validate this response.",
+        error: "This response could not be matched to a saved export. Prepare a new export and try again.",
       },
     } as const;
     const response = responses[manifest.reason];

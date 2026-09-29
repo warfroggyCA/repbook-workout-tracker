@@ -52,7 +52,7 @@ test("enforces reviewed browser protections across the optimized app", async ({
     name: "Repbook Workout Tracker",
     short_name: "Repbook",
     description:
-      "A private training record that keeps Program intent, performed work, recorded evidence, and reviewed change connected.",
+      "Your workouts, plans, and progress in one private place.",
     background_color: "#f7f8fb",
     theme_color: "#2456b8",
   });

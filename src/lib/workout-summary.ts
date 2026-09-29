@@ -73,11 +73,11 @@ function changedAnswer(input: WorkoutSummaryInput): WorkoutSummaryAnswer {
     input.terminalState === "in_progress"
   ) {
     return {
-      value: "No completed comparison",
+      value: input.terminalState === "abandoned" ? "Workout not completed" : "Finish to see a comparison",
       detail:
         input.terminalState === "abandoned"
-          ? "Abandoned-workout evidence stays visible, but it is excluded from completed metrics and progression."
-          : "A comparison is available only after the workout reaches a completed state.",
+          ? "Your saved work is kept, but this unfinished workout does not count toward progress."
+          : "Finish the workout to compare your sets with their targets.",
       tone: "neutral",
     };
   }
@@ -87,7 +87,7 @@ function changedAnswer(input: WorkoutSummaryInput): WorkoutSummaryAnswer {
       value: input.sessionResultInsight.headline,
       detail:
         input.sessionResultInsight.detail ??
-        "Compared only compatible performed evidence.",
+        "Only sets with matching measurements were compared.",
       tone: "neutral",
       href: input.sessionResultInsight.action?.href,
       actionLabel: input.sessionResultInsight.action?.label,
@@ -97,10 +97,10 @@ function changedAnswer(input: WorkoutSummaryInput): WorkoutSummaryAnswer {
   const outcomes = input.targetOutcomes;
   if (outcomes.supported === 0) {
     const limitation = outcomes.unknown > 0
-      ? `${countLabel(outcomes.unknown, "planned outcome")} could not be compared safely.`
-      : "This workout has no compatible planned target evidence to compare.";
+      ? `${countLabel(outcomes.unknown, "planned set")} could not be compared because details are missing.`
+      : "This workout has no matching targets to compare with its saved sets.";
     return {
-      value: "No comparable evidence",
+      value: "Not enough detail to compare",
       detail: limitation,
       tone: "neutral",
     };
@@ -116,17 +116,17 @@ function changedAnswer(input: WorkoutSummaryInput): WorkoutSummaryAnswer {
       ? `${countLabel(outcomes.unknown, "outcome")} unknown`
       : null,
     !input.targetDenominatorComplete
-      ? "the full planned denominator is unavailable"
+      ? "some planned sets are missing"
       : null,
   ].filter((part): part is string => part != null);
 
   return {
     value:
       outcomes.below > 0
-        ? "Some work finished below target"
+        ? "Some sets were below target"
         : outcomes.above > 0
-          ? "Some work finished above target"
-          : "Supported targets were held",
+          ? "Some sets were above target"
+          : "Recorded targets met",
     detail: `${parts.join(" · ")}${
       limitations.length > 0 ? `. Limits: ${limitations.join("; ")}.` : "."
     }`,
@@ -145,7 +145,7 @@ function notableAnswer(input: WorkoutSummaryInput): WorkoutSummaryAnswer {
       tone: "attention",
       href: input.pendingDecisionCount > 0 ? "#pain-evidence" : undefined,
       actionLabel:
-        input.pendingDecisionCount > 0 ? "Review pain evidence" : undefined,
+        input.pendingDecisionCount > 0 ? "See pain details" : undefined,
     };
   }
 
@@ -166,7 +166,7 @@ function notableAnswer(input: WorkoutSummaryInput): WorkoutSummaryAnswer {
     return {
       value: "The workout was abandoned",
       detail:
-        "Acknowledged work remains correctable evidence, without becoming a completed workout.",
+        "You can edit your saved sets. The workout stays unfinished.",
       tone: "attention",
     };
   }
@@ -189,7 +189,7 @@ function notableAnswer(input: WorkoutSummaryInput): WorkoutSummaryAnswer {
     return {
       value: "Active time is unavailable",
       detail:
-        "Duration insights exclude this workout; source timing evidence remains unchanged.",
+        "This workout is left out of time comparisons. Its original times are kept.",
       tone: "attention",
       href:
         input.pendingDecisionCount > 0 && input.timingCanBeReviewed
@@ -216,7 +216,7 @@ function notableAnswer(input: WorkoutSummaryInput): WorkoutSummaryAnswer {
     return {
       value: "No notable issue was recorded",
       detail:
-        "Pain was not recorded, so this is not evidence that the workout was pain-free.",
+        "No pain details were recorded.",
       tone: "neutral",
     };
   }
@@ -225,8 +225,8 @@ function notableAnswer(input: WorkoutSummaryInput): WorkoutSummaryAnswer {
     value: "No notable issue was recorded",
     detail:
       input.explicitNoIssueEvidenceCount > 0
-        ? "The workout contains explicit no-issue evidence."
-        : "No interpretation-changing issue is present in the available evidence.",
+        ? "You recorded no issues for this workout."
+        : "No issues were found in the recorded details.",
     tone: "positive",
   };
 }
@@ -248,10 +248,10 @@ function nextAnswer(input: WorkoutSummaryInput): WorkoutSummaryAnswer {
     return {
       value: "Review the recorded issue before next time",
       detail:
-        "The evidence is available for your judgment; Repbook has not changed the Program.",
+        "You can review the details. Your plan is unchanged.",
       tone: "attention",
       href: "#pain-evidence",
-      actionLabel: "Review pain evidence",
+      actionLabel: "See pain details",
     };
   }
 

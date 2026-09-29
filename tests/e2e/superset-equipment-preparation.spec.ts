@@ -257,7 +257,7 @@ test("keeps confirmed equipment out of the common path while preserving current-
   await openNativeDetails(resumedCard.getByTestId("active-exercise-details"));
   const completedSets = resumedCard.getByTestId("completed-sets");
   await expect(completedSets).toContainText("1 completed");
-  await expect(completedSets).toContainText("Acknowledged by Repbook");
+  await expect(completedSets).toContainText("Saved");
   await expect(page.getByTestId("active-workout-sticky-summary")).toContainText(
     "1/13 planned",
   );

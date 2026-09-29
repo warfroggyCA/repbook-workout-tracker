@@ -26,7 +26,7 @@ const COUNT_LABELS = {
   acceptedOrEditedDecisions: "Accepted or edited decisions",
   adaptationEvents: "Adaptation events",
   recommendationProgramVersions: "Published Program versions",
-  coachingInsights: "Persisted Coach insights",
+  coachingInsights: "Saved Coach reviews",
   recordVersions: "Set record versions",
   rollbackVersions: "Rollback versions",
   exportArtifacts: "Export events",
@@ -79,15 +79,14 @@ export default async function HistoricalConsequencePage(
           Historical consequence graph
         </h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          Exact, read-only inventory of records and outputs connected to sets
-          whose performed meaning is legacy, incomplete, or unsupported.
+          Check older sets with missing or unreadable measurements and the reports that use them. Nothing is changed here.
         </p>
       </header>
 
       <Card className="border-emerald-300">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <ShieldCheck className="size-5" /> No mutation authorized
+            <ShieldCheck className="size-5" /> No changes will be made
           </CardTitle>
           <CardDescription>
             This analysis does not rewrite a set, repair history, reverse a
@@ -104,8 +103,7 @@ export default async function HistoricalConsequencePage(
         <CardHeader>
           <CardTitle>Exact repair eligibility</CardTitle>
           <CardDescription>
-            Opaque row identity, retained meaning, revision fence, excluded
-            non-proof, and deterministic assessment identity.
+            Technical details used to check whether these records can be restored safely.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -126,7 +124,7 @@ export default async function HistoricalConsequencePage(
                     <tr>
                       <th className="px-3 py-2 font-medium">Set / workout</th>
                       <th className="px-3 py-2 font-medium">Eligibility</th>
-                      <th className="px-3 py-2 font-medium">Retained tuple</th>
+                      <th className="px-3 py-2 font-medium">Saved values</th>
                       <th className="px-3 py-2 font-medium">Excluded proof</th>
                       <th className="px-3 py-2 font-medium">Assessment ID</th>
                     </tr>
@@ -197,9 +195,7 @@ export default async function HistoricalConsequencePage(
             </div>
           ))}
           <p className="text-sm text-muted-foreground sm:col-span-2 lg:col-span-4">
-            Current catalog metadata and ordinary record versions are not
-            performed-time proof. Rows without immutable evidence stay
-            unchanged and explicitly unknown.
+            Current exercise settings may differ from the ones used in an older workout. If the original settings are missing, those records stay unchanged.
           </p>
         </CardContent>
       </Card>
@@ -226,7 +222,7 @@ export default async function HistoricalConsequencePage(
 
       <Card>
         <CardHeader>
-          <CardTitle>Inspectable provenance</CardTitle>
+          <CardTitle>Record details</CardTitle>
           <CardDescription>
             Opaque record identities and reason codes are shown without
             exposing workout notes or Coach text.
@@ -235,8 +231,7 @@ export default async function HistoricalConsequencePage(
         <CardContent>
           {report.nodes.length === 0 ? (
             <p className="text-sm text-muted-foreground">
-              No legacy, incomplete, or unsupported performed-set meanings were
-              found.
+              No sets with missing or unreadable measurements were found.
             </p>
           ) : (
             <>

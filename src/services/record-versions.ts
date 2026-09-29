@@ -2391,7 +2391,7 @@ async function restoreSessionExerciseVersion(
     return {
       ok: false,
       reason:
-        "The workout exercise structure or provenance has changed. Nothing was restored.",
+        "The exercises in this workout have changed. Nothing was restored.",
     };
   }
   if (!row.changed) {

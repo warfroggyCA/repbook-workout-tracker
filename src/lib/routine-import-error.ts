@@ -41,26 +41,26 @@ export function routineImportFailureMessage(
   switch (category) {
     case "timeout":
       return (
-        "Parsing took too long. Retry once; if it repeats, paste one day at a time or use the canonical Day / exercise / sets x reps / rest format." +
+        "Reading the routine took too long. Try again, paste one day at a time, or use the example format." +
         unchanged
       );
     case "output_incomplete":
       return (
-        "The AI parser did not return a complete valid routine. Check any unusual notes or formatting, then retry; canonical Day and exercise lines can be parsed without AI." +
+        "AI could not read the full routine. Check the formatting and try again, or use the example format without AI." +
         unchanged
       );
     case "provider_failure":
-      return "AI parsing is temporarily unavailable. Retry later, or use the canonical routine format, which works without AI." + unchanged;
+      return "AI import is unavailable right now. Try later or use the example format without AI." + unchanged;
     case "persistence_failure":
       return "Repbook parsed the routine but could not open the review. Try again." + unchanged;
     case "usage_control":
-      return "AI parsing is temporarily limited. Wait, then retry, or use the canonical routine format, which works without AI." + unchanged;
+      return "AI import has reached its current limit. Try later or use the example format without AI." + unchanged;
     case "unsupported_rep_sequence":
       return (
         "This paste uses different rep targets for individual sets, which this importer cannot publish exactly. Rewrite each affected exercise as one exact target or range, then parse it again." +
         unchanged
       );
     case "unknown":
-      return "Repbook could not safely parse this routine. Retry with canonical Day and exercise lines." + unchanged;
+      return "Repbook could not read this routine. Try the example format." + unchanged;
   }
 }

@@ -162,7 +162,7 @@ describe("ExerciseCard", () => {
       plateConfigs={{}} incrementals={{}} unit="lb" activeOccurrence={occurrence} workingOccurrences={[occurrence]} isCurrentExercise
       onPatch={vi.fn()} onQueueSet={async () => true} onRetrySet={async () => undefined} onDiscardSet={async () => undefined}
       onSkipComplete={vi.fn()} onOpenCoach={vi.fn()} adjustIntent={null} onAdjustIntentChange={vi.fn()} />);
-    expect(html).toContain("This set has not been saved");
+    expect(html).toContain("This set cannot be saved with its current targets");
     expect(html).toContain("Loaded time — each side");
     expect(html).toContain("Technical or app issue");
     expect(html).toMatch(/<button[^>]*disabled[^>]*>[\s\S]*?Log set/);
@@ -484,7 +484,7 @@ describe("ExerciseCard", () => {
     expect(html).toContain("Pain note: Sharp on the last rep");
     expect(html).toContain("0 completed");
     expect(html).toContain("Recorded set 3");
-    expect(html).toContain("cannot be presented as saved");
+    expect(html).toContain("Check it before counting it as saved");
     expect(html).toContain("Unknown-row exact note");
     expect(html).toContain("Effort: Grind");
     expect(html).toContain("RIR 0");
@@ -492,7 +492,7 @@ describe("ExerciseCard", () => {
     expect(html).toContain("Limited by: Breathing or conditioning");
     expect(html).toContain("Pain: shoulder 4/10");
     expect(html).toContain("Pain note: Pinched at the bottom");
-    expect(html).not.toContain("Acknowledged by Repbook");
+    expect(html).not.toContain("Saved");
     expect(html).not.toContain('aria-label="Archive set"');
     expect(html).not.toContain("Ramp 1 · 45 lb · 5 reps");
     expect(html).toContain("Warm-up guidance · reference");
@@ -1446,7 +1446,7 @@ describe("ExerciseCard", () => {
     expect(html).not.toContain("active-set-save-receipt");
     expect(html).toContain("Completed sets");
     expect(html).toContain("1 completed");
-    expect(html).toContain("Acknowledged by Repbook");
+    expect(html).toContain("Saved");
     expect(html).toContain("Correct set");
     expect(html).toContain(
       `id="set-entry-${afterSkippedSecond.id}-00000000-0000-4000-8000-000000000004"`,
@@ -1619,7 +1619,7 @@ describe("ExerciseCard", () => {
     expect(acknowledgedBlocker).not.toContain("active-set-save-receipt");
     expect(acknowledgedBlocker).toContain("Completed sets");
     expect(acknowledgedBlocker).toContain("1 completed");
-    expect(acknowledgedBlocker).toContain("Acknowledged by Repbook");
+    expect(acknowledgedBlocker).toContain("Saved");
     expect(acknowledgedBlocker).toContain("Save failed");
 
     const failedSkipRecovery = renderToStaticMarkup(
@@ -1667,7 +1667,7 @@ describe("ExerciseCard", () => {
     );
     expect(mismatched).toContain('data-testid="current-set-entry"');
     expect(mismatched).toContain(
-      "Resolve the retained device copy for this set before logging again.",
+      "Retry or discard the unsaved copy of this set before logging it again.",
     );
     expect(
       mismatched.match(

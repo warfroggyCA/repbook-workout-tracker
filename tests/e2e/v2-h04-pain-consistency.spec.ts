@@ -53,7 +53,7 @@ test("keeps pain, no-issue, exception identity, and proposals consistent", async
     .locator(":scope > summary")
     .click();
   await page.getByRole("button", { name: "Pain / no issue", exact: true }).click();
-  const drawer = page.getByRole("dialog", { name: "Pain / no-issue evidence" });
+  const drawer = page.getByRole("dialog", { name: "Pain or discomfort" });
   const slider = drawer.getByRole("slider");
   await slider.focus();
   await slider.press("Home");
@@ -65,7 +65,7 @@ test("keeps pain, no-issue, exception identity, and proposals consistent", async
 
   await page.goto(`/history/${h01.importedSession}`);
   const positive = page
-    .getByRole("heading", { name: "Pain / no-issue evidence" })
+    .getByRole("heading", { name: "Pain or discomfort" })
     .locator("..");
   await expect(positive).toContainText("Pain: knee 4/10");
   await expect(positive).toContainText("H01 Bodyweight Bulgarian Split Squat · set 1");
@@ -89,7 +89,7 @@ test("keeps pain, no-issue, exception identity, and proposals consistent", async
   ).toBeVisible();
   const technicalRecord = page.locator("details#technical-record");
   const noIssue = technicalRecord
-    .getByRole("heading", { name: "Pain / no-issue evidence" })
+    .getByRole("heading", { name: "Pain or discomfort" })
     .locator("..");
   await expect(technicalRecord).not.toHaveAttribute("open", "");
   await expect(noIssue).not.toBeVisible();
@@ -100,7 +100,7 @@ test("keeps pain, no-issue, exception identity, and proposals consistent", async
 
   await page.goto("/coach");
   await openNativeDetails(page.getByText(
-    "Decision history and supporting evidence",
+    "Past decisions and details",
     { exact: true },
   ).locator("xpath=ancestor::details[1]"));
   const reviewEvidence = page.locator("section").filter({

@@ -354,7 +354,7 @@ export async function correctCompletedWorkoutActiveDuration(
       ok: false,
       code: "stale",
       reason:
-        "This workout changed after the duration review opened. Reload and review the latest evidence.",
+        "This workout changed while you were editing its time. Reload to see the latest details.",
     };
   }
   return {

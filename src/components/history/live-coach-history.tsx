@@ -57,7 +57,7 @@ export function LiveCoachHistory({
               <p className="whitespace-pre-wrap">{message.answer.answer}</p>
               {message.answer.evidence.length > 0 && (
                 <div className="mt-2 text-xs text-muted-foreground">
-                  <p className="font-medium">Evidence used</p>
+                  <p className="font-medium">Based on</p>
                   <ul className="mt-1 list-disc space-y-0.5 pl-4">
                     {message.answer.evidence.map((item) => (
                       <li key={item}>{item}</li>

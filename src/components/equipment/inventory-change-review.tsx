@@ -233,14 +233,7 @@ export function InventoryChangeReview({
           </div>
         )}
         <p className="mt-2 text-xs leading-5 text-muted-foreground">
-          Availability here uses the same rules the app enforces: broad
-          equipment type, whether it is active, your constraints, and an
-          optional maximum-weight requirement. Exercise discovery and workout
-          alternatives use the saved inventory on their next server read; an
-          already-open alternatives list may look stale, but every choice is
-          rechecked on the server before it applies. Active, current, and
-          historical workouts remain unchanged, the current Program is not
-          rewritten, and Coach reassessment is separate future work.
+          These checks use your equipment, its availability, your restrictions, and any weight limits. Refresh an open exercise list to see changes. Each choice is checked again before use. Your plan and workouts stay the same.
         </p>
       </Section>
 

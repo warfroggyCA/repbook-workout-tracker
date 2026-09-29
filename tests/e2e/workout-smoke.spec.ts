@@ -112,7 +112,7 @@ async function confirmActiveWorkoutDiscard(
   await discard.click();
   const confirmation = page.getByRole("dialog", { name: /Discard .*\?$/ });
   await expect(confirmation).toContainText(
-    "this active workout cannot be resumed afterward"
+    "you cannot resume it"
   );
   await confirmation
     .getByRole("button", {
@@ -421,7 +421,7 @@ async function verifyDecisiveToday({
   const activeDecision = page.getByTestId("today-decision");
   await expect(resume).toBeVisible();
   await expect(activeDecision).toContainText(
-    "Saved sets and notes are retained.",
+    "Your saved sets and notes are kept.",
   );
   await expect(page.getByTestId("alternate-program-days")).toHaveCount(0);
   await expect(page.getByText("Adapt today", { exact: true })).toHaveCount(0);
@@ -497,7 +497,7 @@ async function verifyDecisiveToday({
   await page.getByRole("button", { name: "Discard this workout", exact: true }).click();
   const discardDialog = page.getByRole("dialog", { name: /Discard Day B — Hinge/ });
   await expect(discardDialog).toContainText(
-    "Saved history is retained",
+    "Saved sets stay in History",
   );
   // An unreadable copy cannot be attributed to this workout. Exiting remains
   // reachable, the dialog never renders its raw private value, and abandoning
@@ -677,7 +677,7 @@ async function verifyReviewAndDecisions({
     name: "Proposed changes",
   });
   const decisionHistoryDisclosure = page.getByText(
-    "Decision history and supporting evidence",
+    "Past decisions and details",
     { exact: true },
   );
   const coachingToolsDisclosure = page.getByText("Coaching tools", {
@@ -793,7 +793,7 @@ async function verifyReviewAndDecisions({
   });
   await expect(benchOutcome).toContainText("Not recorded");
   await expect(benchOutcome).toContainText(
-    "Evidence is limited: target results or effort are missing for one or more recorded sets."
+    "Some results or effort ratings are missing. There is not enough information to tell whether the change helped."
   );
   await expect(benchOutcome).toContainText("1 positive report · max 4/10");
 
@@ -1136,7 +1136,7 @@ test("recovers one ready progression job through concurrent protected drainers",
   await waitForReactHandler(approveSuggestion);
   await approveSuggestion.click();
   await expect(suggestions.getByText(exerciseName, { exact: true })).toHaveCount(0);
-  await page.getByText("Decision history and supporting evidence", {
+  await page.getByText("Past decisions and details", {
     exact: true,
   }).click();
   await expect(page.getByText("Recent decisions", { exact: true })).toBeVisible();
@@ -1194,7 +1194,7 @@ test("shows honest empty Review and decisions states", async ({ page }) => {
     ),
   ).toHaveCount(0);
   await expect(
-    page.getByText("Decision history and supporting evidence", { exact: true }),
+    page.getByText("Past decisions and details", { exact: true }),
   ).toHaveCount(0);
   await expect(page.getByText("Coaching tools", { exact: true })).toBeVisible();
   await expect(page.getByText("No generated review yet", { exact: true })).toBeHidden();
@@ -1275,7 +1275,7 @@ test("answers all five History questions without mixing independent activity int
 
   await page.getByRole("link", { name: "Insights", exact: true }).click();
   await expect(
-    page.getByRole("heading", { name: "Explore the evidence", exact: true }),
+    page.getByRole("heading", { name: "Explore your training", exact: true }),
   ).toBeVisible();
   await expect(
     page.getByRole("heading", { name: "Training calendar", exact: true }),
@@ -1303,18 +1303,18 @@ test("answers all five History questions without mixing independent activity int
     await expect(
       lens.getByRole("region", { name: "Short answer", exact: true })
     ).toBeVisible();
-    await lens.getByText("Evidence and methodology", { exact: true }).click();
+    await lens.getByText("Details and calculations", { exact: true }).click();
     await expect(
-      lens.getByRole("region", { name: "Supporting evidence", exact: true })
+      lens.getByRole("region", { name: "Details", exact: true })
     ).toBeVisible();
     await expect(
       lens.getByRole("region", {
-        name: "Confidence and data limitation",
+        name: "About these numbers",
         exact: true,
       })
     ).toBeVisible();
     await expect(
-      lens.getByRole("region", { name: "Decision support", exact: true })
+      lens.getByRole("region", { name: "What this means", exact: true })
     ).toBeVisible();
     await expect(page.getByRole("article")).toHaveCount(1);
   }
@@ -1358,11 +1358,11 @@ test("answers all five History questions without mixing independent activity int
     name: "Work capacity",
     exact: true,
   });
-  await capacityLens.getByText("Evidence and methodology", {
+  await capacityLens.getByText("Details and calculations", {
     exact: true,
   }).click();
   await expect(capacityLens).toContainText(
-    "Not enough comparable completed strength work is available to establish a workload trend.",
+    "Log more strength workouts to see how the amount you lift is changing.",
   );
   await expect(capacityLens).toContainText("2,280 lb vs 0 lb");
   await expect(capacityLens).toContainText("Completed working sets");
@@ -1392,7 +1392,7 @@ test("answers all five History questions without mixing independent activity int
     "Showing best observed performances for 1 exact exercise variant.",
   );
   await expect(recordsLens).toContainText("Barbell Back Squat");
-  await expect(recordsLens).toContainText("not durable all-time PR records");
+  await expect(recordsLens).toContainText("not all-time records");
   await expect(recordsLens).toContainText(
     "No Program decision is supported by records alone"
   );
@@ -1412,7 +1412,7 @@ test("answers all five History questions without mixing independent activity int
   ).toBeVisible();
   await page.goto("/history?range=all&view=insights");
   await expect(
-    page.getByRole("heading", { name: "Explore the evidence", exact: true }),
+    page.getByRole("heading", { name: "Explore your training", exact: true }),
   ).toBeVisible();
 
   await page.goto("/settings");
@@ -1479,7 +1479,7 @@ test("answers all five History questions without mixing independent activity int
         ),
       ).toBe(true);
       const finalDecision = records.getByRole("region", {
-        name: "Decision support",
+        name: "What this means",
         exact: true,
       });
       await finalDecision.evaluate((element) =>
@@ -1518,7 +1518,7 @@ test("answers all five History questions without mixing independent activity int
     const lens = page.getByRole("article", { name: title, exact: true });
     await expect(lens).toContainText(emptyAnswers[index]);
     await expect(
-      lens.getByRole("region", { name: "Decision support", exact: true })
+      lens.getByRole("region", { name: "What this means", exact: true })
     ).toContainText(/No (Program )?(decision|change)/);
   }
 
@@ -1554,7 +1554,7 @@ test("answers all five History questions without mixing independent activity int
     name: "Work capacity",
     exact: true,
   });
-  await activityCapacityLens.getByText("Evidence and methodology", {
+  await activityCapacityLens.getByText("Details and calculations", {
     exact: true,
   }).click();
   await expect(
@@ -1566,9 +1566,9 @@ test("answers all five History questions without mixing independent activity int
   for (const [index, title] of lensTitles.entries()) {
     await page.goto(`/history?view=insights&lens=${lensKeys[index]}`);
     const lens = page.getByRole("article", { name: title, exact: true });
-    await lens.getByText("Evidence and methodology", { exact: true }).click();
+    await lens.getByText("Details and calculations", { exact: true }).click();
     const strengthEvidence = lens.getByRole("region", {
-      name: "Supporting evidence",
+      name: "Details",
       exact: true,
     });
     await expect(strengthEvidence).not.toContainText(
@@ -1630,7 +1630,7 @@ test("shows one ambient insight without sending it to Coach", async ({
     exact: true,
   });
   await expect(firstRomanianDeadlift.getByTestId("completed-sets")).toContainText(
-    "Acknowledged by Repbook",
+    "Saved",
   );
 
   // The demo rows deliberately retain legacy-unknown load meaning. Complete
@@ -1715,11 +1715,11 @@ test("shows one ambient insight without sending it to Coach", async ({
     name: "Question for Live Coach",
   });
   await expect(coachQuestion).toHaveValue(
-    /Explain this deterministic Repbook training insight in plain language\./,
+    /Explain this workout insight in plain language\./,
   );
   await expect(coachQuestion).toHaveValue(/Source records:/);
   await expect(coachQuestion).toHaveValue(
-    /Treat it as evidence, not as an automatic Program change\./,
+    /This is for reference\. It does not change your plan\./,
   );
   expect(coachRequests).toEqual([]);
 
@@ -1740,7 +1740,7 @@ test("shows one ambient insight without sending it to Coach", async ({
   await page.keyboard.press("Escape");
   await insight.getByRole("button", { name: "Explain", exact: true }).click();
   await expect(coachQuestion).toHaveValue(
-    /Explain this deterministic Repbook training insight in plain language\./,
+    /Explain this workout insight in plain language\./,
   );
   expect(coachRequests).toEqual([]);
   await page.keyboard.press("Escape");
@@ -1926,11 +1926,11 @@ test("signs in and completes a durable workout flow", async ({ page }) => {
   await expect(page.getByText(/100 lb × 9/)).toBeVisible();
   const correctedSetDetails = page.locator("details").filter({
     hasText:
-      /2 saved evidence changes · prior values retained in revision history/,
+      /2 saved edits · earlier values kept in Edit history/,
   });
   await openNativeDetails(correctedSetDetails);
   await expect(
-    page.getByText(/2 saved evidence changes · prior values retained in revision history/),
+    page.getByText(/2 saved edits · earlier values kept in Edit history/),
   ).toBeVisible();
   await expect(
     page.getByText("Reviewed after the workout.", { exact: true }),
@@ -2236,7 +2236,7 @@ test("keeps every active-workout route reachable with one scroll surface", async
   await finish.getByRole("button", { name: "Discard workout", exact: true }).click();
   const confirmDiscard = page.getByRole("dialog", { name: /Discard .*\?$/ });
   await expect(confirmDiscard).toContainText(
-    "this active workout cannot be resumed afterward",
+    "you cannot resume it",
   );
   await confirmDiscard.getByRole("button", { name: "Keep workout", exact: true }).click();
   await expect(page).toHaveURL(/\/session\/[0-9a-f-]+$/);
@@ -2273,7 +2273,7 @@ test("keeps pain and substitution lineage reconstructable through History", asyn
 
   await openNativeDetails(nextSet.getByTestId("active-exercise-details"));
   await nextSet.getByRole("button", { name: "Pain / no issue", exact: true }).click();
-  const pain = page.getByRole("dialog", { name: "Pain / no-issue evidence" });
+  const pain = page.getByRole("dialog", { name: "Pain or discomfort" });
   const severity = pain.getByRole("slider");
   await severity.focus();
   await severity.press("ArrowRight");
@@ -2353,7 +2353,7 @@ test("keeps pain and substitution lineage reconstructable through History", asyn
     page.getByText(`Exercise guidance: ${exerciseNote}`, { exact: true }),
   ).toBeVisible();
   await expect(page.getByText(setNote, { exact: true })).toBeVisible();
-  const painFlags = page.getByRole("heading", { name: "Pain / no-issue evidence" }).locator("..");
+  const painFlags = page.getByRole("heading", { name: "Pain or discomfort" }).locator("..");
   await expect(painFlags).toContainText(plannedExercise);
   await expect(painFlags).toContainText("shoulder 5/10");
   await expect(painFlags).toContainText(painNote);
@@ -2419,7 +2419,7 @@ test("keeps the final set acknowledgement visible through background return", as
   await expect(page.getByTestId("active-set-save-receipt")).toHaveCount(0);
   await expect(acknowledgement).toContainText("3 completed");
   await expect(acknowledgement).toContainText("Set 3");
-  await expect(acknowledgement).toContainText("Acknowledged by Repbook");
+  await expect(acknowledgement).toContainText("Saved");
   const correctionButtons = acknowledgement.getByRole("button", {
     name: "Correct set",
   });
@@ -2950,11 +2950,11 @@ test("reviews and imports a complete Hevy CSV workout into History", async ({
     await expect(directImportedWorkout).toBeVisible();
     await directImportedWorkout.click();
   }
-  await expect(page.getByText(/Imported evidence/).first()).toBeVisible();
+  await expect(page.getByText(/Imported records/).first()).toBeVisible();
   const technical = page.locator("#technical-record");
   await openNativeDetails(technical);
   const sourceDetails = technical
-    .getByRole("heading", { name: "Source and lineage", exact: true })
+    .getByRole("heading", { name: "Original record details", exact: true })
     .locator("..");
   await expect(sourceDetails).toContainText("Import source");
   await expect(sourceDetails).toContainText("hevy");
@@ -3131,7 +3131,7 @@ test("retries a set automatically after one server 500 and still finishes", asyn
   await page.getByTestId("active-log-set").click();
 
   await expect(recordedExercise.getByTestId("completed-sets"))
-    .toContainText("Acknowledged by Repbook");
+    .toContainText("Saved");
   expect(actionRequests).toBeGreaterThanOrEqual(2);
   await page
     .getByRole("complementary", { name: "Workout status" })
@@ -3953,7 +3953,7 @@ test("supports 145% app sizing throughout the narrow mobile navigation", async (
     .toBe(224);
   await expect(page.getByRole("link", { name: "Repbook home" })).toBeVisible();
   await expect(page.getByText("Plan. Train. Review.", { exact: true })).toHaveCount(0);
-  await expect(desktopNavigation.getByText("Recorded evidence", { exact: true }))
+  await expect(desktopNavigation.getByText("Your training records", { exact: true }))
     .toHaveCount(0);
   await expect(desktopNavigation.getByText("Reviewed change", { exact: true }))
     .toHaveCount(0);

@@ -140,7 +140,7 @@ test("keeps calendar cadence and planned-set outcomes separate and trustworthy",
   await page.goto("/coach");
   await applyEnlargedText(page, narrowMobile);
   await expect(
-    page.getByText("Target-attainment coverage", { exact: true }),
+    page.getByText("Sets with enough detail to compare", { exact: true }),
   ).toHaveCount(0);
   await expect(page.getByText("Coaching tools", { exact: true })).toBeVisible();
 

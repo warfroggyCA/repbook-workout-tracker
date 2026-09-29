@@ -303,7 +303,7 @@ describe("H01 performed-first History evidence", () => {
 
     expect(row).toMatchObject({
       actionLabel: "Recovery snapshot restored",
-      categoryLabel: "Restored recovery snapshot evidence",
+      categoryLabel: "Restored from a backup",
       restoreReference: snapshotId,
       readableEnvelope: true,
       deltas: [{ label: "Load", before: "100", after: "105" }],

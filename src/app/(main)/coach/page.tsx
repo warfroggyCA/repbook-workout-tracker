@@ -257,11 +257,11 @@ export default async function CoachPage({
       sourceVersion:
         recommendation.reviewEvidence.metadata?.sourceVersion ?? null,
       limitations: recommendation.reviewEvidence.metadata?.limitations ?? [
-        "The complete versioned evidence contract was not retained for this proposal.",
+        "This suggestion is missing the details needed to check it.",
       ],
       proposedEffect:
         recommendation.reviewEvidence.metadata?.proposedEffect.summary ??
-        "No supported future effect can be applied from this retained proposal.",
+        "This suggestion cannot be applied. Ask for a new one.",
       externalRequestedOutcome:
         payload.kind === "external_review" ? payload.requestedOutcome : null,
     };
@@ -450,7 +450,7 @@ export default async function CoachPage({
           <summary className="flex min-h-11 cursor-pointer list-none flex-wrap items-center justify-between gap-3 rounded-lg outline-none focus-visible:ring-3 focus-visible:ring-ring/50">
             <span>
               <span className="ui-section-title block">
-                Decision history and supporting evidence
+                Past decisions and details
               </span>
               <span className="ui-supporting mt-1 block">
                 Past decisions, recorded context, and follow-up.
@@ -508,9 +508,7 @@ export default async function CoachPage({
                         </p>
                         {!current ? (
                           <p className="mt-2 text-xs font-medium text-destructive">
-                            The bound Repbook evidence changed after this was
-                            imported. Treat this as historical external context
-                            and prepare a new package before relying on it.
+                            Your records have changed since this was imported. Export a fresh copy before using this advice.
                           </p>
                         ) : null}
                         <p className="mt-2 text-xs text-muted-foreground">
@@ -537,9 +535,7 @@ export default async function CoachPage({
                     Recent effort and issue context
                   </h2>
                   <p className="text-xs text-muted-foreground">
-                    Recorded observations are evidence for Review. They do not
-                    change your Program, approve a proposal, or create an
-                    adaptation.
+                    These observations are here for reference. They do not change your plan.
                   </p>
                 </div>
                 <ol
@@ -568,7 +564,7 @@ export default async function CoachPage({
                       item.modificationType === "substituted"
                         ? `Performed ${item.performedExerciseName} instead of ${
                             item.plannedExerciseName ??
-                            "the retained planned exercise"
+                            "the exercise in the original plan"
                           }${item.substitutionReason ? ` · ${item.substitutionReason}` : ""}`
                         : null,
                     ].filter((value): value is string => value != null);
@@ -781,11 +777,11 @@ export default async function CoachPage({
                           </div>
                           <div className="rounded-lg bg-muted/55 p-2">
                             <dt className="text-muted-foreground">
-                              Pain evidence
+                              Pain details
                             </dt>
                             <dd className="mt-0.5 font-medium">
                               {outcome.positivePainReports === 0
-                                ? "No positive pain evidence recorded; absence remains unknown"
+                                ? "No pain details recorded"
                                 : `${outcome.positivePainReports} positive report${
                                     outcome.positivePainReports === 1 ? "" : "s"
                                   } · max ${outcome.maxPainSeverity}/10`}
@@ -794,10 +790,7 @@ export default async function CoachPage({
                         </dl>
                         {outcome.evidenceLimited && (
                           <p className="mt-3 rounded-lg border border-amber-500/35 bg-amber-500/5 p-2 text-xs text-amber-800 dark:text-amber-300">
-                            Evidence is limited: target results or effort are
-                            missing for one or more recorded sets. Review the
-                            workout record without treating this as proof the
-                            change helped.
+                            Some results or effort ratings are missing. There is not enough information to tell whether the change helped.
                           </p>
                         )}
                         <Link
@@ -850,10 +843,7 @@ export default async function CoachPage({
                   Live Coach stays with the workout
                 </h2>
                 <p className="mt-1 text-sm text-muted-foreground">
-                  Use Live Coach during an active workout from Ask Coach, a pain
-                  or stalled-progression question, or the whole-workout control
-                  near Finish. Saved questions and observations remain in that
-                  workout&apos;s History record for post-workout review.
+                  Open Ask Coach during a workout. Your saved questions and notes stay with that workout in History.
                 </p>
                 <div className="mt-3 flex flex-wrap gap-x-4 gap-y-2 text-sm">
                   <Link

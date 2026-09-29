@@ -770,7 +770,7 @@ export function parseProgramTextUpdate(
   }
   if (!changes.length && !questions.length)
     question(
-      "Describe the preparation steps or working prescription that should change, including its exercise or day.",
+      "Say which warm-up or targets to change, and name the exercise or day.",
     );
   const result = programUpdateSchema.safeParse({ changes, questions });
   if (!result.success)

@@ -51,7 +51,7 @@ export function WorkoutMeasurementsDrawer() {
         <DrawerHeader>
           <DrawerTitle>Active-workout friction log</DrawerTitle>
           <DrawerDescription>
-            Device-only, bounded to 100 set records and 30 days. It contains timings and counts, never exercise names, notes, or Coach content.
+            Kept only on this device, for up to 30 days and 100 sets. Includes timings and counts, but no exercise names, notes, or Coach messages.
           </DrawerDescription>
         </DrawerHeader>
         <div className="max-h-[55dvh] overflow-y-auto px-4 pb-6">
@@ -62,7 +62,7 @@ export function WorkoutMeasurementsDrawer() {
               {[...records].reverse().map((record) => (
                 <li key={record.clientKey} className="rounded-lg border p-3 text-sm">
                   <p className="font-medium">
-                    {record.outcome} · {record.durationMs == null ? "awaiting acknowledgement" : `${(record.durationMs / 1000).toFixed(1)} seconds`}
+                    {record.outcome} · {record.durationMs == null ? "waiting to save" : `${(record.durationMs / 1000).toFixed(1)} seconds`}
                   </p>
                   <p className="mt-1 text-muted-foreground">
                     {record.taps} taps · {record.focusChanges} focus changes · {record.corrections} corrections

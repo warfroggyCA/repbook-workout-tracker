@@ -148,7 +148,7 @@ function completedDurationSummary(input: {
     return `Active ${formatWallClockDuration(input.activeDurationSeconds)} · wall clock ${wallClock}${ownerReported}`;
   }
   const legacy =
-    input.activeDurationSemanticsVersion == null ? " · legacy timing evidence" : "";
+    input.activeDurationSemanticsVersion == null ? " · older time record" : "";
   return `Active time unavailable · wall clock ${wallClock}${legacy}`;
 }
 
@@ -761,11 +761,10 @@ export default async function SessionDetailPage(
       data-ui-surface={hasPositivePainEvidence ? "destructive" : "primary"}
       className="ui-surface scroll-mt-4 p-3"
     >
-      <h2 className="mb-1 text-sm font-medium">Pain / no-issue evidence</h2>
+      <h2 className="mb-1 text-sm font-medium">Pain or discomfort</h2>
       {classifiedPainEvidence.length === 0 ? (
         <p className="text-sm text-muted-foreground">
-          Pain not recorded (unknown). This is not evidence that the workout was
-          pain-free.
+          No pain details were recorded.
         </p>
       ) : (
         classifiedPainEvidence.map(({ pain: p, evidence }) => (
@@ -883,11 +882,9 @@ export default async function SessionDetailPage(
 
       {terminalState === "abandoned" && (
         <section className="ui-surface p-4 text-sm" data-ui-surface="attention">
-          <h2 className="font-medium">Retained abandoned-workout evidence</h2>
+          <h2 className="font-medium">Saved work from this unfinished workout</h2>
           <p className="mt-1 text-muted-foreground">
-            Acknowledged performed facts remain visible and correctable. They are
-            excluded from completed metrics, progression, and Review; the
-            abandoned workout does not become a completed workout.
+            You can view and edit the sets you saved. This workout is still unfinished, so it does not count toward progress or Coach reviews.
           </p>
         </section>
       )}
@@ -896,20 +893,16 @@ export default async function SessionDetailPage(
         <section className="ui-surface p-4 text-sm" data-ui-surface="attention">
           <h2 className="font-medium">Planned work remained</h2>
           <p className="mt-1 text-muted-foreground">
-            Completed working sets remain performed evidence. Items left when
-            the session ended stay in the original plan as not completed. The
-            retained reason is {session.completionReason?.replaceAll("_", " ") ?? "unknown"}.
+            Your saved sets are kept. Anything you did not finish stays marked unfinished. Reason: {session.completionReason?.replaceAll("_", " ") ?? "unknown"}.
           </p>
         </section>
       )}
 
       {terminalState === "legacy_incomplete_outcome_unknown" && (
         <section className="ui-surface p-4 text-sm" data-ui-surface="attention">
-          <h2 className="font-medium">Legacy incomplete outcome</h2>
+          <h2 className="font-medium">Older unfinished workout</h2>
           <p className="mt-1 text-muted-foreground">
-            Older occurrence text indicates work remained, but it does not
-            prove why the session ended. Completed working sets remain
-            performed evidence; the historical cause stays unsupported.
+            Some exercises were left unfinished. Your saved sets are kept, but the reason for stopping was not recorded.
           </p>
         </section>
       )}
@@ -926,8 +919,7 @@ export default async function SessionDetailPage(
             What you did
           </h2>
           <p className="mt-1 text-sm text-muted-foreground">
-            Acknowledged performed working sets appear first. Warm-ups and
-            retained source records stay distinct and do not inflate this count.
+            Your saved sets are shown below. Warm-ups are listed separately.
           </p>
         </div>
 
@@ -935,7 +927,7 @@ export default async function SessionDetailPage(
           <div className="ui-surface p-3" data-ui-surface="inset">
             <h3 className="font-medium">Completed warm-ups</h3>
             <p className="mt-1 text-xs text-muted-foreground">
-              Completed warm-up actions are performed evidence, not working sets.
+              Warm-ups are listed separately from your working sets.
             </p>
             <ul className="mt-2 space-y-2 text-sm">
               {performedWarmups.map((occurrence) => (
@@ -1010,7 +1002,7 @@ export default async function SessionDetailPage(
               )}
             {se.modificationType === "substituted" && retainedSkipReason && (
               <p className="mt-1 text-sm text-muted-foreground">
-                Earlier skip reason retained: {skipReasonLabel(retainedSkipReason)}.
+                Earlier reason for skipping: {skipReasonLabel(retainedSkipReason)}.
               </p>
             )}
             {se.modificationType === "added" && (
@@ -1195,7 +1187,7 @@ export default async function SessionDetailPage(
                             )}
                             <div
                               className="mt-2 flex flex-wrap gap-1"
-                              aria-label="Performed evidence facets"
+                              aria-label="Set details"
                             >
                               <Badge variant="outline">
                                 {HISTORY_PROVENANCE_LABELS[provenanceFacet]}
@@ -1212,18 +1204,18 @@ export default async function SessionDetailPage(
                             </p>
                             <p className="mt-2 text-xs text-muted-foreground">
                               {setCorrections.length > 0
-                                ? `${setCorrections.length} saved evidence change${setCorrections.length === 1 ? "" : "s"} · prior values retained in revision history`
+                                ? `${setCorrections.length} saved edit${setCorrections.length === 1 ? "" : "s"} · earlier values kept in Edit history`
                                 : "No saved corrections"}
                             </p>
                             {s.metricType === "activity" && (
                               <p className="mt-1 text-xs text-muted-foreground">
-                                This legacy measurement shape cannot be corrected here.
+                                This older measurement cannot be edited here.
                               </p>
                             )}
                             {correctionEvidence.length > 0 && (
                               <div className="mt-3">
                                 <h4 className="text-xs font-medium">
-                                  Correction and restore evidence
+                                  Edit and restore history
                                 </h4>
                                 <ol className="mt-2 space-y-2">
                                   {correctionEvidence.map((version) => (
@@ -1244,8 +1236,7 @@ export default async function SessionDetailPage(
                                           </p>
                                           <p className="mt-1 text-muted-foreground">
                                             Source {version.sourceLabel} · History
-                                            revision {version.historyRevisionLabel} ·
-                                            evidence revision{" "}
+                                            revision {version.historyRevisionLabel} · version{" "}
                                             {version.ledgerRevisionLabel}
                                           </p>
                                           {version.decidedAt && (
@@ -1262,9 +1253,7 @@ export default async function SessionDetailPage(
                                         </>
                                       ) : (
                                         <p className="mt-1 text-muted-foreground">
-                                          Legacy correction envelope unreadable.
-                                          Only reviewed changed field names are
-                                          shown.
+                                          The full details of this older edit could not be read. Only the changed fields are shown.
                                         </p>
                                       )}
                                       {version.deltas.length > 0 ? (
@@ -1321,8 +1310,7 @@ export default async function SessionDetailPage(
 
         {totalSets === 0 && performedWarmups.length === 0 && (
           <p className="ui-surface p-4 text-sm text-muted-foreground" data-ui-surface="inset">
-            No acknowledged performed working sets or completed warm-up actions
-            are linked to this workout.
+            No saved sets or completed warm-ups were found for this workout.
           </p>
         )}
       </section>
@@ -1472,8 +1460,7 @@ export default async function SessionDetailPage(
             Record actions
           </h3>
           <p className="mt-1 text-xs text-muted-foreground">
-            Corrections create retained revisions. Archive is recoverable through
-            Archive and Undo.
+            Earlier values stay in Edit history. Archived records can be restored.
           </p>
           <div className="mt-3 flex flex-wrap gap-2">
             {session.status === "completed" && (
@@ -1513,7 +1500,7 @@ export default async function SessionDetailPage(
                   sourceLabel={HISTORY_PROVENANCE_LABELS[provenanceFacet]}
                   programLinkLabel={
                     session.sourceProgramId
-                      ? "Program-day linkage retained"
+                      ? "Original plan day saved"
                       : "No Program-day linkage"
                   }
                 />
@@ -1540,7 +1527,7 @@ export default async function SessionDetailPage(
                 ? `Timing corrected ${timingCorrectionCount} ${timingCorrectionCount === 1 ? "time" : "times"}. `
                 : ""}
               {activeDurationCorrectionCount > 0
-                ? `Active duration corrected ${activeDurationCorrectionCount} ${activeDurationCorrectionCount === 1 ? "time" : "times"}; source timestamps retained. `
+                ? `Active duration corrected ${activeDurationCorrectionCount} ${activeDurationCorrectionCount === 1 ? "time" : "times"}; original start and finish times kept. `
                 : ""}
               Earlier values remain in Edit history.
             </p>
@@ -1553,8 +1540,7 @@ export default async function SessionDetailPage(
                 Complete planned-item ledger
               </h3>
               <p className="mt-1 text-xs text-muted-foreground">
-                Exact planned, completed, skipped, abandoned, and legacy item
-                evidence.
+                See what was planned, completed, skipped, or left unfinished.
               </p>
             <ol className="mt-3 flex flex-col gap-2">
               {session.occurrences.map((occurrence) => {
@@ -1658,7 +1644,7 @@ export default async function SessionDetailPage(
                         className="mt-2 inline-flex min-h-11 items-center text-xs underline underline-offset-2"
                         href={`#performed-set-${occurrence.completedSetId}`}
                       >
-                        Performed evidence
+                        Saved sets
                       </Link>
                     )}
                   {(occurrence.kind === "day_warmup" ||
@@ -1668,7 +1654,7 @@ export default async function SessionDetailPage(
                         className="mt-2 inline-flex min-h-11 items-center text-xs underline underline-offset-2"
                         href={`#performed-warmup-${occurrence.id}`}
                       >
-                        Performed warm-up evidence
+                        Completed warm-ups
                       </Link>
                     )}
                 </li>
@@ -1681,12 +1667,10 @@ export default async function SessionDetailPage(
       {retainedSourceSets.length > 0 && (
         <details className="rounded-xl border p-3">
           <summary className="flex min-h-11 cursor-pointer items-center font-medium">
-            Retained source records ({retainedSourceSets.length})
+            Other saved records ({retainedSourceSets.length})
           </summary>
           <p className="mt-2 text-xs text-muted-foreground">
-            These active source rows have no completed working-set occurrence
-            link. They remain inspectable evidence but are not counted as
-            performed working sets.
+            These older records cannot be matched to completed sets. You can view them here, but they are not included in the set count.
           </p>
           <ul className="mt-3 space-y-2 text-sm">
             {retainedSourceSets.map(({ set, exercise }) => (
@@ -1727,7 +1711,7 @@ export default async function SessionDetailPage(
 
       <section aria-labelledby="source-lineage-heading">
         <h3 id="source-lineage-heading" className="font-medium">
-          Source and lineage
+          Original record details
         </h3>
         <dl className="mt-3 grid gap-2 text-sm sm:grid-cols-2">
           <div>
@@ -1782,7 +1766,7 @@ export default async function SessionDetailPage(
           )}
           {session.sourceDayLineageId && (
             <div>
-              <dt className="text-xs text-muted-foreground">Program day lineage ID</dt>
+              <dt className="text-xs text-muted-foreground">Original plan day ID</dt>
               <dd className="break-all">{session.sourceDayLineageId}</dd>
             </div>
           )}

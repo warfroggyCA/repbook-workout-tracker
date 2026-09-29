@@ -960,7 +960,7 @@ function RetrospectiveWorkoutFields({
 
         <Card>
           <CardHeader>
-            <CardTitle>Exercise evidence</CardTitle>
+            <CardTitle>Exercise records</CardTitle>
             <CardDescription>
               Unknown means you did not supply an outcome. It is not recorded as
               skipped or completed.
@@ -1108,12 +1108,7 @@ function RetrospectiveWorkoutFields({
                 Recording a standalone timed activity?
               </p>
               <p className="mt-0.5 max-w-2xl text-xs leading-relaxed text-muted-foreground">
-                Use Record activity for a walk, run, or similar activity on its
-                own. It keeps exact duration and distance without creating a
-                workout. Keep this form for activity that genuinely belonged to
-                a workout; set duration and whole-workout active duration remain
-                separate facts. For a timed workout, choose Exact local start
-                and enter its separate workout duration below.
+                For a separate walk or run, use Record activity. Use this form when it was part of a workout. Set times are separate from the total workout time. To record the whole workout time, choose Exact local start and enter its duration below.
               </p>
             </div>
           </div>
@@ -1582,7 +1577,7 @@ function RetrospectiveWorkoutFields({
                           </select>
                           {outcome.legacySkipReason && (
                             <p className="mt-1 text-xs text-muted-foreground">
-                              Recovered legacy reason: {outcome.legacySkipReason}.
+                              Earlier recorded reason: {outcome.legacySkipReason}.
                               Choose the current reason explicitly; Repbook will
                               not reinterpret the older category.
                             </p>
@@ -1660,8 +1655,7 @@ function RetrospectiveWorkoutFields({
         <CardHeader>
           <CardTitle>4. Workout note</CardTitle>
           <CardDescription>
-            Optional owner observation. It remains evidence, not a Program
-            instruction or Coach conclusion.
+            Add a note for reference. It will not change your plan.
           </CardDescription>
         </CardHeader>
         <CardContent>

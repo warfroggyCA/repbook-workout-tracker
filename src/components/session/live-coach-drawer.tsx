@@ -661,7 +661,7 @@ function LiveCoachBubble({
       <p className="whitespace-pre-wrap">{answer?.answer ?? "Coach response unavailable."}</p>
       {answer?.evidence.length ? (
         <details className="mt-2 text-xs text-muted-foreground">
-          <summary className="cursor-pointer font-medium">Evidence used</summary>
+          <summary className="cursor-pointer font-medium">Based on</summary>
           <ul className="mt-1 list-disc space-y-1 pl-4">
             {answer.evidence.map((item) => (
               <li key={item}>{item}</li>

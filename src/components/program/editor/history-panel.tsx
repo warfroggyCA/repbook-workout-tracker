@@ -121,7 +121,7 @@ export function HistoryPanel({ editor }: { editor: ProgramEditorController }) {
                                 </span>
                               )}
                               {entry.sourceImportEventId && (
-                                <span>Linked to reviewed import evidence</span>
+                                <span>Linked to an imported plan</span>
                               )}
                               {entry.reviewHash && (
                                 <span>Publication review verified</span>

@@ -17,9 +17,7 @@ export default async function AnalysisPackagePage() {
             Analysis package
           </h1>
           <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">
-            Build one purpose-bounded, versioned copy of the evidence needed
-            for your selected question. Repbook shows the exact JSON before
-            download and never sends it to an external service.
+            Choose a question and prepare the relevant training records to share. You can check the file before downloading. Repbook does not send it anywhere.
           </p>
         </header>
         <AnalysisPackageBuilder initialManifests={manifests} />

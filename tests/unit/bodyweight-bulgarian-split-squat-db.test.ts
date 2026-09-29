@@ -518,7 +518,7 @@ describe("0069 bodyweight Bulgarian split-squat performed variant", () => {
     ).resolves.toEqual({
       ok: false,
       reason:
-        "The workout exercise structure or provenance has changed. Nothing was restored.",
+        "The exercises in this workout have changed. Nothing was restored.",
     });
     expect(
       await db.query.sessionExercises.findFirst({

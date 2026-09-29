@@ -123,7 +123,7 @@ test("selectively imports external evidence into owner-controlled Review", async
   await page.getByRole("link", { name: "Open Review and decisions" }).click();
   await expect(page).toHaveURL(/\/coach$/);
   const decisionHistoryDisclosure = page.getByText(
-    "Decision history and supporting evidence",
+    "Past decisions and details",
     { exact: true },
   );
   const decisionHistoryDetails = decisionHistoryDisclosure.locator(

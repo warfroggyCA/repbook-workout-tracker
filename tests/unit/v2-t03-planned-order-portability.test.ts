@@ -212,7 +212,7 @@ describe("V2 T03 planned-order portability", () => {
     });
     expect(history.insights).toContainEqual(
       expect.objectContaining({
-        title: "Target-attainment coverage",
+        title: "Sets with enough detail to compare",
         detail: expect.stringContaining(
           "0 of 9 planned outcomes were evaluable (0%). No supported subset statistic is available.",
         ),

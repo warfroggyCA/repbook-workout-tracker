@@ -79,7 +79,7 @@ export const WorkoutGuidanceSummary = memo(function WorkoutGuidanceSummary({
               {guidance.currentAction
                 ? formatSessionGuidanceAction(guidance.currentAction)
                 : guidance.completion.evidenceLimited
-                  ? "Actions resolved · evidence needs review"
+                  ? "Finished · some results need checking"
                   : "All actions resolved"}
             </p>
           )}
@@ -152,7 +152,7 @@ export const WorkoutGuidanceSummary = memo(function WorkoutGuidanceSummary({
           ? ` · ${guidance.totals.skipped} skipped`
           : ""}
         {guidance.totals.completedWithoutResult > 0
-          ? ` · ${guidance.totals.completedWithoutResult} awaiting saved-result evidence`
+          ? ` · ${guidance.totals.completedWithoutResult} missing saved results`
           : ""}
         {guidance.totals.abandoned > 0
           ? ` · ${guidance.totals.abandoned} abandoned`
@@ -171,7 +171,7 @@ export const WorkoutGuidanceSummary = memo(function WorkoutGuidanceSummary({
         <p className="break-words text-sm">
           <span className="font-medium">Now:</span>{" "}
           {guidance.completion.evidenceLimited
-            ? "Actions resolved · evidence needs review"
+            ? "Finished · some results need checking"
             : "All actions resolved"}
         </p>
       )}

@@ -36,10 +36,10 @@ export const EXERCISE_EVIDENCE_TIER_LABELS: Record<
 > = {
   native: "Recorded in Repbook",
   manual: "Entered after the workout",
-  imported: "Imported evidence",
-  corrected: "Corrected evidence",
-  legacy: "Legacy evidence",
-  unsupported: "Unsupported evidence",
+  imported: "Imported records",
+  corrected: "Edited records",
+  legacy: "Older records",
+  unsupported: "Not used for progress",
 };
 
 /** Returns null for an exercise that does not belong to the current owner. */

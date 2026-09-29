@@ -58,7 +58,7 @@ export async function GET(request: Request) {
         }
         if (report == null) {
           throw new Error(
-            "Training evidence changed while the complete report was being assembled.",
+            "Your training records changed while the report was being prepared. Try again.",
           );
         }
         await recordExport(db, user.id, "markdown", {

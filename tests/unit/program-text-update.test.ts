@@ -191,7 +191,7 @@ describe("contextual program text edits", () => {
         ],
         "WARM-UP UPDATE — FUTURE WORKOUTS ONLY",
       ),
-    ).toThrow(/preparation-only/);
+    ).toThrow(/changes warm-ups only/);
   });
   it("rejects invented anchors, unavailable replacements and ungrounded quotes", () => {
     expect(() =>
@@ -380,7 +380,7 @@ describe("contextual program text edits", () => {
             "Change exercise",
             catalog,
           ),
-        ).toThrow(/explicit metric prescription/);
+        ).toThrow(/Enter the time or distance targets in the plan editor/);
       }
     },
   );
@@ -456,7 +456,7 @@ describe("contextual program text edits", () => {
         "Replace the hold with the row",
         library,
       ),
-    ).toThrow(/explicit metric prescription/);
+    ).toThrow(/Enter the time or distance targets in the plan editor/);
   });
   it("updates execution member indexes when explicitly reversing a superset", () => {
     const base = current();

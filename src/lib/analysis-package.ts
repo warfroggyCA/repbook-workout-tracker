@@ -81,16 +81,16 @@ export const ANALYSIS_QUESTIONS: Record<
   program_progress: {
     label: "Program progress",
     question:
-      "What does the retained evidence say about progress and fit of my current Program?",
+      "How is my plan working for me?",
     purpose:
-      "Compare current Program intent with completed or imported evidence without treating recommendations as accepted changes.",
+      "Compare your plan with your recorded workouts. Any suggested changes are yours to decide.",
   },
   recovery_constraints: {
     label: "Recovery and constraints",
     question:
       "What recovery, pain, fatigue, and constraint patterns should I consider before changing future training?",
     purpose:
-      "Review recorded recovery context while preserving pain evidence, unknowns, and owner safety constraints.",
+      "Look at your recovery, recorded pain, and restrictions. Missing details stay unknown.",
   },
   training_consistency: {
     label: "Training consistency",

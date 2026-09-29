@@ -114,7 +114,7 @@ export function SimulationRunner({
       setError(
         result.reason === "stale"
           ? "This simulation changed in another tab. Reload before continuing."
-          : "That simulation step was not retained, so the rehearsal did not advance.",
+          : "That practice step could not be saved. Try again.",
       );
       return false;
     }

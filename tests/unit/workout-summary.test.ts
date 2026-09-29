@@ -27,7 +27,7 @@ function input(
     setExceptionEvidenceCount: 0,
     explicitNoIssueEvidenceCount: 1,
     painEvidenceUnknown: false,
-    correctionLabel: "Original evidence",
+    correctionLabel: "Original record",
     hasCorrections: false,
     provenanceLabel: "Recorded in Repbook",
     showProvenance: false,
@@ -59,7 +59,7 @@ describe("WorkoutSummaryViewModel", () => {
       tone: "positive",
     });
     expect(summary.happened.detail).toContain("3 exercises · 9 working sets");
-    expect(summary.changed.value).toBe("Some work finished above target");
+    expect(summary.changed.value).toBe("Some sets were above target");
     expect(summary.changed.detail).toBe("1 above target · 2 at target.");
     expect(summary.notable.value).toBe("No notable issue was recorded");
     expect(summary.next.value).toBe("Nothing needs a decision");
@@ -91,7 +91,7 @@ describe("WorkoutSummaryViewModel", () => {
     );
 
     expect(summary.happened.tone).toBe("attention");
-    expect(summary.changed.value).toBe("No completed comparison");
+    expect(summary.changed.value).toBe("Workout not completed");
     expect(summary.notable.value).toBe("The workout was abandoned");
   });
 
@@ -112,10 +112,11 @@ describe("WorkoutSummaryViewModel", () => {
     );
 
     expect(summary.changed).toMatchObject({
-      value: "No comparable evidence",
-      detail: "4 planned outcomes could not be compared safely.",
+      value: "Not enough detail to compare",
+      detail: "4 planned sets could not be compared because details are missing.",
     });
-    expect(summary.notable.detail).toContain("not evidence");
+    expect(summary.notable.detail).toBe("No pain details were recorded.");
+    expect(summary.notable.value).not.toMatch(/pain.free|no pain/i);
   });
 
   it("keeps imported, corrected, mixed-unit, and unknown-duration context visible", () => {
@@ -125,7 +126,7 @@ describe("WorkoutSummaryViewModel", () => {
         durationExcluded: true,
         correctionLabel: "Restored from recovery snapshot",
         hasCorrections: true,
-        provenanceLabel: "Imported evidence",
+        provenanceLabel: "Imported records",
         showProvenance: true,
         hasMixedWeightUnits: true,
       }),
@@ -134,7 +135,7 @@ describe("WorkoutSummaryViewModel", () => {
     expect(summary.happened.detail).toContain("Time and duration unknown");
     expect(summary.notable.value).toBe("Active time is unavailable");
     expect(summary.recordContext).toEqual([
-      "Imported evidence",
+      "Imported records",
       "Restored from recovery snapshot",
       "Mixed recorded load units remain separate",
     ]);

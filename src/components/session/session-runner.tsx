@@ -911,7 +911,7 @@ export function SessionRunner(props: SessionRunnerProps) {
         );
         setFinishOpen(true);
         setFinishError(
-          "Repbook retained your exact finish details. Save workout to retry them safely.",
+          "Your finish details are kept. Tap Save workout to try again.",
         );
         return;
       }
@@ -2443,7 +2443,7 @@ export function SessionRunner(props: SessionRunnerProps) {
         exercise.id,
         reason,
         isDocumentActionTimeout(error)
-          ? "Repbook did not confirm the saved exercise state in time. Reload to reconcile the retained request safely."
+          ? "The exercise change could not be confirmed. Reload to check before trying again."
           : "Repbook could not confirm the saved exercise state. The exercise remains paused so you can try again safely.",
       );
       return;
@@ -2668,7 +2668,7 @@ export function SessionRunner(props: SessionRunnerProps) {
               });
             if (!restPersisted) {
               toast.error(
-                "The set is retained on this device, but this rest timer could not be stored. Use a separate clock for this rest; the set will keep saving.",
+                "Your set is kept on this device and will keep trying to save. The rest timer could not start; use another timer for this rest.",
               );
             }
           } else if (
@@ -2719,13 +2719,13 @@ export function SessionRunner(props: SessionRunnerProps) {
             });
             if (cleared === "storage_error") {
               toast.error(
-                "The set is retained on this device, but Repbook could not clear the prior rest timer. The set will keep saving.",
+                "Your set will keep trying to save, but the previous rest timer could not be cleared.",
               );
             }
           }
         } catch {
           toast.error(
-            "The set is retained on this device, but Repbook could not reconcile its rest timer. Use a separate clock if needed; the set will keep saving.",
+            "Your set will keep trying to save. The rest timer could not be confirmed; use another timer if needed.",
           );
         }
       })();
@@ -3182,7 +3182,7 @@ export function SessionRunner(props: SessionRunnerProps) {
       deploymentRecoveryRequired()
     ) {
       setFinishError(
-        "Reload Repbook to retry the retained finish request safely.",
+        "Reload to retry saving the workout.",
       );
       return;
     }
@@ -3305,20 +3305,20 @@ export function SessionRunner(props: SessionRunnerProps) {
       if (isDocumentActionTimeout(error)) {
         reportDocumentActionTimeout();
         setFinishError(
-          "Repbook did not confirm the workout finish in time. Your exact finish details are retained. Reload to retry safely.",
+          "The workout finish could not be confirmed. Your details are kept. Reload to retry.",
         );
         setFinishing(false);
         return;
       }
       if (reportDeploymentMismatch(error)) {
         setFinishError(
-          "Repbook was updated. Your exact finish details are retained on this device. Reload once, then finish again.",
+          "Repbook was updated. Your finish details are kept on this device. Reload, then finish again.",
         );
         setFinishing(false);
         return;
       }
       setFinishError(
-        "Repbook could not confirm the workout finish. Your exact finish details are retained; try Save workout again or reload.",
+        "The workout finish could not be confirmed. Your details are kept. Try Save workout again or reload.",
       );
       setFinishing(false);
     }
@@ -3440,7 +3440,7 @@ export function SessionRunner(props: SessionRunnerProps) {
     );
     if (retained != null && deploymentRecoveryRequired()) {
       setAppendRecoveryMarker(retained);
-      toast.error("Reload Repbook to retry the retained extra set safely.");
+      toast.error("Reload to retry adding the set.");
       return null;
     }
     if (
@@ -4122,7 +4122,7 @@ export function SessionRunner(props: SessionRunnerProps) {
         ? `Complete ${plannedExerciseNameForOccurrence(currentPreparationBlocker) ?? currentWorkingExercise.name} preparation first.`
         : retainedFailuresForCurrentExercise.length > 0 &&
             !allowLogWithRetainedFailure
-          ? "Resolve the retained set copy before logging this set."
+          ? "Retry or discard the unsaved copy before logging this set."
         : currentEquipmentDecision === "unavailable"
           ? "Equipment unavailable. Replace for today or skip exercise."
           : currentEquipmentDecision === "configuration_incomplete"
@@ -4195,12 +4195,12 @@ export function SessionRunner(props: SessionRunnerProps) {
     : unresolvedExerciseSkip
       ? "Resolve the exercise skip before finishing."
       : !appendRecoveryHydrated || !finishRecoveryHydrated
-        ? "Repbook is checking retained workout actions."
+        ? "Checking unsaved workout changes…"
         : appendRecoveryMarker != null
-          ? "Confirm the retained extra-set request before finishing."
+          ? "Check that the extra set was added before finishing."
           : unreadableRecordedCopiesPending
             ? "Review unreadable recorded-work copies before finishing."
-            : "Retry or discard retained workout actions before finishing.";
+            : "Retry or discard unsaved workout changes before finishing.";
   const activeWorkoutViewModel = useMemo(
     () => projectActiveWorkoutViewModel({
       guidance,
@@ -5467,11 +5467,11 @@ export function SessionRunner(props: SessionRunnerProps) {
                       : skipRecoveryExerciseId != null
                         ? "Resolve the skipped exercise by replacing it or continuing without a replacement before finishing."
                     : appendRecoveryMarker != null
-                      ? "Repbook is confirming an extra set. Its exact identity is retained on this device; reload to retry safely before finishing."
+                      ? "The extra set has not been confirmed yet. Reload to check before finishing."
                     : failedSetEntries.length > 0
                     ? `${failedSetEntries.length} ${failedSetEntries.length === 1 ? "set failed" : "sets failed"} to save. Your recorded ${failedSetEntries.length === 1 ? "attempt is" : "attempts are"} still on this device.`
                     : sessionOccurrenceEntries.length > 0
-                      ? `${sessionOccurrenceEntries.length} workout-item ${sessionOccurrenceEntries.length === 1 ? "device copy is" : "device copies are"} waiting for acknowledgement.`
+                      ? `${sessionOccurrenceEntries.length} workout-item ${sessionOccurrenceEntries.length === 1 ? "device copy is" : "device copies are"} waiting to save.`
                     : workoutSaveQueueMessage({
                         // Equipment guidance no longer blocks finishing, so it is
                         // excluded from this blocking message and shown separately.
@@ -5515,8 +5515,8 @@ export function SessionRunner(props: SessionRunnerProps) {
                         </p>
                         <p className="mt-1 text-xs text-muted-foreground">
                           {entry.status === "needs_attention"
-                            ? "Save failed — attempt retained"
-                            : "Waiting for save acknowledgement"}
+                            ? "Save failed — copy kept on this device"
+                            : "Waiting to save"}
                         </p>
                         {entry.lastError && (
                           <p className="mt-2 text-sm text-destructive">
@@ -5603,8 +5603,8 @@ export function SessionRunner(props: SessionRunnerProps) {
                                 ? "Restore"
                                 : "Update note"}
                           {entry.status === "needs_attention"
-                            ? " · Save failed — device copy retained"
-                            : " · Waiting for save acknowledgement"}
+                            ? " · Save failed — copy kept on this device"
+                            : " · Waiting to save"}
                         </p>
                         {entry.lastError && (
                           <p className="mt-2 text-sm text-destructive">
@@ -5639,11 +5639,7 @@ export function SessionRunner(props: SessionRunnerProps) {
             )}
             {unreadableRecordedCopiesPending && (
               <p className="rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-sm text-amber-950 dark:text-amber-100">
-                Repbook found recorded-work device data whose workout ownership
-                cannot be verified. Finish is blocked so it cannot silently
-                discard a set or warm-up change. Close Finish, then use the
-                device-copy attention control to review or explicitly discard
-                it.
+                Some unsaved work could not be matched to a workout. Close Finish and check the unsaved copies before finishing, so nothing is lost.
               </p>
             )}
             {foreignDeviceCopiesPending && (
@@ -5750,7 +5746,7 @@ export function SessionRunner(props: SessionRunnerProps) {
                         setFinishError(null);
                       }}
                     >
-                      Discard retained device request
+                      Discard unsaved change
                     </Button>
                   </div>
                 )}
@@ -5805,8 +5801,7 @@ export function SessionRunner(props: SessionRunnerProps) {
             </details>
             {finishRecoveryCommand != null && !finishConflictDetected && (
               <p className="text-xs leading-5 text-muted-foreground">
-                These finish details are read-only because Repbook is retrying
-                the exact request retained on this device.
+                These details cannot be edited while Repbook retries saving them.
               </p>
             )}
             </div>

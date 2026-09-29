@@ -59,13 +59,13 @@ test("links every material Review claim to evidence and preserves deliberate own
     hasText: "Retained proposal with explicitly unsupported evidence.",
   }).first();
 
-  await expect(supported.getByText("Supported", { exact: true })).toBeVisible();
+  await expect(supported.getByText("Ready to review", { exact: true })).toBeVisible();
   await expect(supported).toContainText("progression rules");
   await expect(supported).toContainText("progression-rules-v2");
   await expect(supported).toContainText("Not scored");
   await expect(supported).toContainText("Proposed future Program effect");
   await expect(supported).toContainText("completed workouts stay unchanged");
-  await expect(unsupported.getByText("Unsupported", { exact: true })).toBeVisible();
+  await expect(unsupported.getByText("Not enough detail", { exact: true })).toBeVisible();
   await expect(unsupported.getByRole("button", { name: "Approve", exact: true }))
     .toBeDisabled();
   await expect(unsupported.getByRole("button", { name: "Reject", exact: true }))
@@ -164,7 +164,7 @@ test("links every material Review claim to evidence and preserves deliberate own
   await approve.click();
   await expect(page.getByRole("region", { name: "Proposed changes" })
     .getByRole("region")).toHaveCount(1);
-  await page.getByText("Decision history and supporting evidence", {
+  await page.getByText("Past decisions and details", {
     exact: true,
   }).click();
   await expect(page.getByRole("region", { name: "Recent decisions" })

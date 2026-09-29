@@ -400,7 +400,7 @@ Exercise notes: Keep the synthetic working sets controlled.`;
     })).resolves.toEqual({
       ok: false,
       reason:
-        "Repbook could not prepare the routine review. Try again. Your current Program was not changed, and the paste was not retained.",
+        "Repbook could not read the routine. Paste it again to retry. Your current plan is unchanged.",
     });
     expect(await db.query.importEvents.findMany()).toHaveLength(1);
   }, 30_000);

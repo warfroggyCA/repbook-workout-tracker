@@ -321,7 +321,7 @@ export function EquipmentLoadProfileEditor({ item, profile, profileUnit, plates,
           </p>
         ) : (
           <p className="mt-1 text-xs leading-5 text-muted-foreground">
-            This legacy bar does not yet have a reviewed physical-item link. Saving its recorded empty and collar weights will establish that exact link only when the item/configuration match is unambiguous.
+            This older bar setup has not been matched to an item in your equipment list. Saving its bar and collar weights will link it only if there is one clear match.
           </p>
         )}
       </section>
@@ -370,7 +370,7 @@ export function EquipmentLoadProfileEditor({ item, profile, profileUnit, plates,
             </select>
           </label>
           <p className="text-xs leading-5 text-muted-foreground">
-            Total added plate weight counts every plate across all loading points and works when unloaded resistance is unknown. Total resistance includes the machine&apos;s starting resistance. Per-point entry counts only the plates on each point.
+            Choose what the entered weight means: all added plates, plates on each loading point, or total resistance including the empty machine.
           </p>
         </>}
         <MachinePlateCompatibilityEditor
@@ -410,7 +410,7 @@ export function EquipmentLoadProfileEditor({ item, profile, profileUnit, plates,
               <option value="unknown">Unknown — do not derive resistance</option><option value="known">Known rational ratio</option>
             </select>
           </label>
-          {value.ratioStatus === "known" && <div className="grid grid-cols-2 gap-2"><Field id={`${prefix}-ratio-n`} label="Ratio numerator" value={value.ratioNumerator} min={1} onChange={(ratioNumerator) => onChange({ ...value, ratioNumerator })} /><Field id={`${prefix}-ratio-d`} label="Ratio denominator" value={value.ratioDenominator} min={1} onChange={(ratioDenominator) => onChange({ ...value, ratioDenominator })} /></div>}
+          {value.ratioStatus === "known" && <div className="grid grid-cols-2 gap-2"><Field id={`${prefix}-ratio-n`} label="Pulley ratio: first number" value={value.ratioNumerator} min={1} onChange={(ratioNumerator) => onChange({ ...value, ratioNumerator })} /><Field id={`${prefix}-ratio-d`} label="Pulley ratio: second number" value={value.ratioDenominator} min={1} onChange={(ratioDenominator) => onChange({ ...value, ratioDenominator })} /></div>}
           <div className="flex flex-col gap-2">
             <div className="flex items-center justify-between"><h4 className="text-xs font-medium">Recorded stack positions ({profileUnit})</h4><Button type="button" variant="outline" size="sm" onClick={() => onChange({ ...value, displayedUnit: profileUnit, stackSteps: [...value.stackSteps, { id: null, stackIndex: value.topology === "independent_per_stack" ? 1 : 0, stepIndex: value.stackSteps.length, displayedLoad: 0, positionLabel: null }] })}><Plus className="size-3.5" /> Add</Button></div>
             {value.stackSteps.map((step, index) => <div key={`${step.id ?? "new"}-${index}`} className="grid grid-cols-2 gap-2 rounded-md border p-2">

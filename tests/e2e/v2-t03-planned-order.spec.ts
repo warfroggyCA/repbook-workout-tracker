@@ -98,7 +98,7 @@ test("keeps planned work authoritative around extra-before-plan and grouped work
   await expect(extra).toContainText("Extra set 1 · Added to this workout");
   await expect(first.getByTestId("current-set-entry")).toContainText("Set 1");
   await extra.getByRole("button", { name: "Log set", exact: true }).click();
-  await expect(first).toContainText("Acknowledged by Repbook");
+  await expect(first).toContainText("Saved");
   await expect(
     page.getByRole("region", { name: "Workout progress and upcoming work" }),
   ).toContainText("0/13 planned · 1 extra");

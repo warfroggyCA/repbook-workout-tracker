@@ -555,7 +555,7 @@ test.describe.serial("matched active-workout friction study", () => {
       await note.blur();
       await exercise.getByRole("button", { name: "Pain / no issue", exact: true }).click();
     }
-    const pain = page.getByRole("dialog", { name: "Pain / no-issue evidence" });
+    const pain = page.getByRole("dialog", { name: "Pain or discomfort" });
     await pain.getByRole("button", { name: "Save pain report", exact: true }).click();
     if (variant === "after") {
       await currentSurface(page).getByRole("button", { name: "Ask Coach", exact: true }).click();

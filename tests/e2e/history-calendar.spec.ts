@@ -200,7 +200,7 @@ test("calendar-first History opens a recoverable retrospective entry flow", asyn
   ).toHaveAttribute("href", new RegExp(`/activity/new\\?.*date=${primaryDate}`));
   await expect(
     page.getByText(
-      /set duration and whole-workout active duration remain separate facts/i,
+      /Set times are separate from the total workout time/i,
     ),
   ).toBeVisible();
   await expect(
@@ -462,7 +462,7 @@ test("saves completed workout timing directly and discards cancelled edits", asy
   await expect(
     page
       .getByTestId("workout-summary")
-      .getByText(/Record context:.*Corrected evidence/),
+      .getByText(/Record context:.*Edited records/),
   ).toBeVisible();
   await page.reload();
   await expect(

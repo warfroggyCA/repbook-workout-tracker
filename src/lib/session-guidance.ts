@@ -282,7 +282,7 @@ export function sessionNonPerformedOutcomeParts(
       ? `${totals.legacyUnknown} legacy outcome unknown`
       : null,
     totals.completedWithoutResult > 0
-      ? `${totals.completedWithoutResult} missing saved-result evidence`
+      ? `${totals.completedWithoutResult} missing saved results`
       : null,
   ].filter((value): value is string => value != null);
 }

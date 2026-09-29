@@ -43,26 +43,26 @@ test("shows exact, tiered, read-only exercise evidence with durable return conte
     });
   }
   await expect(
-    page.getByRole("heading", { level: 3, name: "Exercise evidence" }),
+    page.getByRole("heading", { level: 3, name: "Exercise records" }),
   ).toBeVisible();
   await expect(
     page.getByText(`Exact ID: ${V2_H01_HISTORY_IDS.performedExercise}`),
   ).toBeVisible();
   await expect(
     page.getByText(
-      /3 of 4 retained sets have one exact occurrence link; 2 are eligible for exercise calculations/,
+      /3 of 4 saved sets can be matched to the workout; 2 are eligible for exercise calculations/,
     ),
   ).toBeVisible();
   await expect(page.getByText(/Reviewed hevy mapping/)).toBeVisible();
   await expect(page.getByText(/Frozen source occurrence IDs:/)).toBeVisible();
   await expect(
-    page.getByText("Corrected evidence", { exact: true }).last(),
+    page.getByText("Edited records", { exact: true }).last(),
   ).toBeVisible();
   await expect(
-    page.getByText("Legacy evidence", { exact: true }).first(),
+    page.getByText("Older records", { exact: true }).first(),
   ).toBeVisible();
   await expect(
-    page.getByText("Retained only", { exact: true }).first(),
+    page.getByText("Saved for reference", { exact: true }).first(),
   ).toBeVisible();
   await expect(
     page.getByText(/Substitution kept separate:/).first(),
@@ -70,7 +70,7 @@ test("shows exact, tiered, read-only exercise evidence with durable return conte
   await expect(page.getByText(/exercise-history-v1/)).toBeVisible();
 
   await page
-    .getByRole("link", { name: "Legacy evidence", exact: true })
+    .getByRole("link", { name: "Older records", exact: true })
     .click();
   await expect(page).toHaveURL(/evidenceTier=legacy/);
   await page

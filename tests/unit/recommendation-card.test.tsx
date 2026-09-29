@@ -33,7 +33,7 @@ const baseRecommendation: RecommendationCardData = {
   alternatives: [],
   evidence: [
     { label: "Highest positive pain report", value: "4/10" },
-    { label: "Evidence window", value: "14 days" },
+    { label: "Date range", value: "14 days" },
   ],
   reviewRevision: 1,
   deferRevision: 0,
@@ -68,15 +68,15 @@ describe("RecommendationCard", () => {
     expect(html).toContain("Current effect");
     expect(html).toContain("No Program change.");
     expect(html).toContain("Why this appeared");
-    expect(html).toContain("Evidence window");
+    expect(html).toContain("Date range");
     expect(html).toContain("Dismiss notice");
     expect(html).not.toContain("Approve");
     expect(html).not.toContain(">Reject<");
     expect(html).toContain("How calculated");
     expect(html).toContain("Confidence");
     expect(html).toContain("Portability");
-    expect(html).toContain("Retained in export and recovery");
-    expect(html).not.toContain("Review evidence");
+    expect(html).toContain("Included in exports and backups");
+    expect(html).not.toContain("See details");
   });
 
   it("keeps load-change and substitution proposals actionable", () => {

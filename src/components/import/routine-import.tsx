@@ -536,7 +536,7 @@ export function RoutineImport({
         (lineageId) => !keptLineages.has(lineageId),
       )
     ) {
-      blockers.push("choose retained anchor exercises");
+      blockers.push("choose exercises from this workout");
     }
     const pairedRows = new Map<string, Row[]>();
     for (const row of keptRows) {
@@ -621,8 +621,7 @@ export function RoutineImport({
         </p>
         {!aiAvailable && (
           <p className="mt-2 rounded-lg bg-amber-500/10 px-3 py-2 text-xs leading-5 text-amber-800 dark:text-amber-300">
-            Canonical Program, Day, Warm-up, Ramp-up, and exercise lines still
-            import without AI. Other free-form wording needs AI parsing.
+            The example format works without AI. Other formats need AI import.
           </p>
         )}
         {error && (
@@ -778,16 +777,10 @@ export function RoutineImport({
         <AlertTitle>What a shorter-session request actually does</AlertTitle>
         <AlertDescription className="space-y-2 text-xs leading-5 sm:text-sm">
           <p>
-            Repbook keeps the published exercises, order, and pairings. It never
-            invents a replacement or silently omits an exercise. It can reduce
-            complete sets from lower-priority, unprotected work—or complete rounds
-            from a group—but never below the minimum sets you review.
+            Exercises stay in their planned order and groups. A shorter workout can remove sets or whole rounds from lower-priority work, but keeps the minimum sets you choose.
           </p>
           <p>
-            Essential work and exercises marked “keep all planned sets” are not
-            reduced. If the protected minimum still does not fit, Repbook declines
-            to build the shorter session. Goals, roles, and fatigue preference are
-            saved context; they do not choose today&apos;s set reductions.
+            Essential exercises and sets marked “keep all planned sets” stay unchanged. If the minimum will not fit, Repbook will say so. Your goals and fatigue preference do not change which sets are removed.
           </p>
         </AlertDescription>
       </Alert>
@@ -934,7 +927,7 @@ export function RoutineImport({
                         <label className="mt-3 block text-xs font-medium">Written loading instruction<Input aria-label={`${itemContext}, written loading instruction`} className="mt-1 min-h-11" value={item.loadText ?? ""} maxLength={160} disabled={!item.included} onChange={(event) => updateWarmup(dayIndex, itemIndex, { loadText: optionalText(event.target.value) })} /></label>
                       )}
                       <label className="mt-3 block text-xs font-medium">Notes (optional)<Textarea aria-label={`${itemContext}, notes`} className="mt-1" rows={2} value={item.notes ?? ""} maxLength={500} disabled={!item.included} onChange={(event) => updateWarmup(dayIndex, itemIndex, { notes: optionalText(event.target.value) })} /></label>
-                      {item.included && item.beforeSlotLineageId && !keptLineages.has(item.beforeSlotLineageId) && <p role="alert" className="mt-2 text-xs text-destructive">Retarget, exclude, or remove this ramp because its exercise is no longer retained.</p>}
+                      {item.included && item.beforeSlotLineageId && !keptLineages.has(item.beforeSlotLineageId) && <p role="alert" className="mt-2 text-xs text-destructive">The exercise for this warm-up ramp was removed. Choose another exercise or remove the ramp.</p>}
                     </li>
                     );
                   })}
@@ -987,7 +980,7 @@ export function RoutineImport({
             <div className="mt-4 space-y-3">
               <div>
                 <h3 className="font-medium">Exercises</h3>
-                <p className="mt-1 text-xs leading-5 text-muted-foreground">Review the exact catalog match, prescription, notes, priority, and minimum sets. Lift ramps are shown in the timeline above, not duplicated in notes.</p>
+                <p className="mt-1 text-xs leading-5 text-muted-foreground">Check the exercise, targets, notes, priority, and minimum sets. Warm-up ramps are shown above.</p>
               </div>
               {day.rows.map((row, rowIndex) => {
                 const mapping = mappingByRaw.get(row.rawName);
@@ -1062,14 +1055,11 @@ export function RoutineImport({
       <section className="rounded-xl border p-3 sm:p-4" aria-labelledby="equipment-fit-review">
         <h2 id="equipment-fit-review" className="font-medium">Confirm exact equipment fit</h2>
         <p className="mt-1 text-xs leading-5 text-muted-foreground">
-          Repbook checked catalog requirements against your inventory categories and
-          current movement constraints. That does not prove a specific setup works—for
-          example, owning a cable station does not prove it has a usable face-pull position.
-          Replace or remove any movement that does not physically fit your setup.
+          Repbook checked your equipment list and movement restrictions. Check the physical setup too: a cable station may not support every cable exercise. Replace or remove anything that will not work.
         </p>
         <label className="mt-3 flex min-h-11 items-start gap-3 rounded-lg border bg-muted/30 p-3 text-sm">
           <input type="checkbox" className="mt-0.5 size-5 shrink-0" checked={equipmentFitReviewed} onChange={(event) => setEquipmentFitReviewed(event.target.checked)} />
-          <span><span className="font-medium">I confirmed every retained exercise works with my exact equipment setup.</span><span className="mt-1 block text-xs leading-5 text-muted-foreground">This blocks the import from guessing. This check applies only to this review; Repbook does not yet remember setup-specific incompatibilities for future recommendations.</span></span>
+          <span><span className="font-medium">Every exercise works with my equipment.</span><span className="mt-1 block text-xs leading-5 text-muted-foreground">This blocks the import from guessing. This check applies only to this review; Repbook does not yet remember setup-specific incompatibilities for future recommendations.</span></span>
         </label>
       </section>
 

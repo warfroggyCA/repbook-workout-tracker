@@ -409,7 +409,7 @@ export function proposeContextualProgramEdit(
       if (executableCondition(instruction.text)) {
         ask(
           instruction,
-          "Confirm the conditional replacement before changing this exercise and its attached prescription.",
+          "Choose whether to replace this exercise before changing its targets.",
           bucket,
         );
         continue;
@@ -488,7 +488,7 @@ export function proposeContextualProgramEdit(
         if (!dose)
           ask(
             instruction,
-            "The replacement prescription is incomplete or outside supported limits. Confirm its sets, reps, and rest together.",
+            "Check the replacement's sets, reps, and rest. Some targets are missing or outside the allowed range.",
             bucket,
           );
         else
@@ -920,7 +920,7 @@ export function proposeContextualProgramEdit(
     if (conflicts)
       ask(
         assertion.instruction,
-        "A later edit conflicts with the KEEP assertion for this exercise. Choose one intended prescription.",
+        "You asked to keep this exercise and also change it. Choose which targets you want.",
         bucket,
       );
   }
@@ -1051,7 +1051,7 @@ export function proposeContextualProgramEdit(
           key: [...bucket.keys][0],
           source: bucket.source,
           question:
-            "These instructions cannot be combined safely with this exercise's groups, identities, or prescription limits. Review this item in the editor.",
+            "These changes conflict. Check this exercise in the plan editor.",
         });
       }
     }

@@ -1,19 +1,19 @@
 export const ACTIVE_WORKOUT_LANGUAGE = {
   nextSet:
-    "The next unfinished working set in the active workout. It does not advance until the save is safely acknowledged.",
+    "Your next set. It advances when your result finishes saving.",
   primaryAction:
-    "The single dominant action that completes the current step: Log set.",
+    "Tap Log set when you finish the set.",
   adjustment:
-    "A change to this workout occurrence only, such as a note, pain flag, approved alternative, or skip. It never changes the saved Program.",
-  saved: "The server has safely acknowledged this set.",
-  pending: "This device is retaining the set while it waits to send it.",
-  retrying: "The device is trying the same stable set identity again.",
+    "Add a note, record pain, replace an exercise, or skip it for this workout. Your saved plan stays the same.",
+  saved: "Your set has finished saving.",
+  pending: "Your set is kept on this device while it waits to save.",
+  retrying: "Retrying the save without adding a duplicate set.",
   failed:
-    "The set needs attention and remains on this device until it is retried or explicitly removed.",
+    "This set needs attention. Retry saving it or discard the copy on this device.",
   effortCategory:
-    "A quick human description: Easy, OK, Hard, or Grind. It is broader than an exact RPE value.",
+    "Choose how the set felt: Easy, OK, Hard, or Grind.",
   exactEffort:
-    "A deliberately entered numeric RPE. Existing numeric RPE history remains unchanged.",
+    "Rate your effort on the RPE scale. Earlier ratings stay the same.",
 } as const;
 
 export const EFFORT_CHOICES = [

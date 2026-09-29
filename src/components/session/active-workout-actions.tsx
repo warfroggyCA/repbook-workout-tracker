@@ -155,12 +155,7 @@ export function ActiveWorkoutDiscard({
         <DialogHeader>
           <DialogTitle>Discard {sessionName}?</DialogTitle>
           <DialogDescription>
-            This marks the unfinished workout as abandoned and returns Today to
-            normal workout selection. Saved history is retained, but this active
-            workout cannot be resumed afterward. At confirmation, Repbook
-            rechecks this workout&apos;s device queue. Any unsaved set or
-            workout-item copies found then are permanently removed and will not
-            appear in History.
+            This ends the workout. Saved sets stay in History, but you cannot resume it. Any sets or changes for this workout still waiting to save will be permanently deleted.
           </DialogDescription>
         </DialogHeader>
         {scopedDeviceCopiesRemain && (

@@ -121,7 +121,7 @@ describe("equipment exact-profile editor", () => {
       />,
     );
     expect(html).toContain("Unknown — do not calculate");
-    expect(html).not.toContain("Ratio numerator");
+    expect(html).not.toContain("Pulley ratio: first number");
     expect(html).not.toContain("Recorded stack positions");
   });
 });

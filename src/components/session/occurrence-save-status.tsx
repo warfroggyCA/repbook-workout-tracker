@@ -73,7 +73,7 @@ export function OccurrenceSaveStatus({
         <p className="mt-1 leading-5 text-muted-foreground">
           {failed
             ? `This device copy did not save. Retry save, or discard it to restore ${actionLabel.toLowerCase()}.`
-            : `${actionLabel} will not advance until Repbook acknowledges this change.`}
+            : `${actionLabel} will advance when this change finishes saving.`}
         </p>
         {entry.lastError && (
           <p className="mt-2 text-sm text-foreground">

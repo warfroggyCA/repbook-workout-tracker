@@ -87,7 +87,7 @@ export function HistoryLensCard({
         </section>
 
         <section
-          aria-label="Decision support"
+          aria-label="What this means"
           className={cn(
             "rounded-xl border px-3 py-2.5",
             lens.decision.supported
@@ -107,7 +107,7 @@ export function HistoryLensCard({
             />
             <div className="min-w-0">
               <p className="text-[0.6875rem] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                Decision support
+                What this means
               </p>
               <p className="mt-1 break-words text-xs leading-relaxed">
                 {lens.decision.statement}
@@ -130,16 +130,16 @@ export function HistoryLensCard({
 
         <details className="group rounded-xl border bg-muted/15 p-3">
           <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 rounded-lg text-sm font-semibold outline-none focus-visible:ring-3 focus-visible:ring-ring/50">
-            Evidence and methodology
+            Details and calculations
             <ChevronRight
               className="size-4 shrink-0 text-muted-foreground transition-transform group-open:rotate-90 motion-reduce:transition-none"
               aria-hidden="true"
             />
           </summary>
           <div className="mt-3 space-y-4 border-t pt-3">
-            <section aria-label="Supporting evidence">
+            <section aria-label="Details">
               <p className="text-[0.6875rem] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                Supporting evidence
+                Details
               </p>
               <dl className="mt-2 divide-y rounded-xl border bg-background/70 px-3">
                 {lens.evidence.map((item) => (
@@ -167,7 +167,7 @@ export function HistoryLensCard({
                   prefetch={false}
                   className="mt-2 inline-flex min-h-8 items-center rounded-md text-xs font-medium text-primary underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                 >
-                  Open supporting exercise evidence
+                  See exercise records
                   <ChevronRight
                     className="ml-1 size-3.5"
                     aria-hidden="true"
@@ -201,7 +201,7 @@ export function HistoryLensCard({
             )}
 
             <section
-              aria-label="Confidence and data limitation"
+              aria-label="About these numbers"
               className="flex items-start gap-2"
             >
               <Info
@@ -210,7 +210,7 @@ export function HistoryLensCard({
               />
               <div className="min-w-0">
                 <p className="text-[0.6875rem] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                  Confidence and data limitation
+                  About these numbers
                 </p>
                 <p className="mt-1 break-words text-xs leading-relaxed text-muted-foreground">
                   {lens.limitation}

@@ -101,9 +101,7 @@ export const SlotEditor = memo(function SlotEditor({
 
       {!timed && canUseTimed && (exercise?.metricType === "duration" || exercise?.metricType === "distance_duration") && (
         <p role="alert" className="mb-3 text-sm text-amber-800 dark:text-amber-200">
-          This loaded timed exercise cannot be logged with a repetition prescription.
-          Choose “Loaded time — each side” below for a carry performed on both sides,
-          or replace it with an exercise whose measurement matches your plan.
+          This exercise needs a time target instead of reps. For a carry on both sides, choose “Loaded time — each side,” or choose a different exercise.
         </p>
       )}
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -134,7 +132,7 @@ export const SlotEditor = memo(function SlotEditor({
             }}
           />
         </Field>
-        <Field id={`${prefix}-measurement`} label="Prescription measurement">
+        <Field id={`${prefix}-measurement`} label="How to measure this exercise">
           <select id={`${prefix}-measurement`} className="h-11 w-full rounded-lg border border-input bg-background px-3 text-sm"
             value={timed ? "time_per_side" : "reps"}
             onChange={(event) => onChange(event.target.value === "time_per_side" ? {

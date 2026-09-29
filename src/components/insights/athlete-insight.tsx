@@ -67,7 +67,7 @@ export function AthleteInsight({
       aria-label="Training insight"
     >
       <p className={cn("ui-metadata", compact && "sr-only")}>
-        Training evidence
+        Training records
       </p>
       <p className="mt-1 text-sm font-semibold leading-snug" data-ui-essential="true">
         {insight.headline}

@@ -89,7 +89,7 @@ export function ContextualNoteManager() {
       });
     } catch {
       setLoading(false);
-      setIssue("The server did not acknowledge this edit. The saved note is unchanged.");
+      setIssue("This edit has not finished saving. The saved note is unchanged.");
       return;
     }
     setLoading(false);
@@ -127,7 +127,7 @@ export function ContextualNoteManager() {
       });
     } catch {
       setLoading(false);
-      setIssue("The server did not acknowledge this archive action. The note remains saved.");
+      setIssue("Repbook could not confirm that the note was archived. Refresh to check.");
       return;
     }
     setLoading(false);
@@ -169,7 +169,7 @@ export function ContextualNoteManager() {
               <StateNotice
                 state="saved"
                 title="Note archived"
-                description="The note and its revision history are retained."
+                description="The note and its earlier versions are kept."
                 action={(
                   <Button
                     variant="outline"

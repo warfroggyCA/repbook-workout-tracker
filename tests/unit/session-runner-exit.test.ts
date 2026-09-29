@@ -75,9 +75,9 @@ describe("workout exit readiness", () => {
     expect(discardSource).not.toContain(
       "discardUnreadableOccurrenceMutationOutbox",
     );
-    expect(discardSource).toContain("At confirmation, Repbook");
+    expect(discardSource).toContain("This ends the workout.");
     expect(discardSource).toContain(
-      "workout-item copies found then are permanently removed",
+      "Any sets or changes for this workout still waiting to save will be permanently deleted.",
     );
     expect(discardSource).toContain("showCloseButton={!pending}");
   });
@@ -171,7 +171,7 @@ describe("workout exit readiness", () => {
       "occurrenceHasError: latestOccurrenceQueue.error != null",
     );
     expect(source).toContain(
-      "Finish is blocked so it cannot silently",
+      "Close Finish and check the unsaved copies before finishing",
     );
     expect(source).not.toContain(
       "separate or unreadable device copy",
@@ -196,7 +196,7 @@ describe("workout exit readiness", () => {
     );
     expect(source).toContain("appendRecoveryMarker != null ||");
     expect(source).toContain(
-      "Reload Repbook to retry the retained extra set safely.",
+      "Reload to retry adding the set.",
     );
   });
 });
@@ -286,7 +286,7 @@ describe("interrupted skip recovery", () => {
     );
     expect(source).toContain("reportDocumentActionTimeout()");
     expect(source).toContain(
-      "Reload to reconcile the retained request safely.",
+      "Reload to check before trying again.",
     );
   });
 
@@ -335,7 +335,7 @@ describe("atomic finish handoff", () => {
     expect(source).toContain("readLegacyFinishRecovery(");
     expect(source).toContain("!finishRecoveryHydrated ||");
     expect(source).toContain(
-      "Your exact finish details are retained. Reload to retry safely.",
+      "Your details are kept. Reload to retry.",
     );
   });
 });

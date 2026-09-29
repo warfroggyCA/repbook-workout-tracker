@@ -93,7 +93,7 @@ describe("program text action", () => {
   });
   it("returns a blocking clarification when individually parsed operations cannot be safely combined", async () => {
     const result = await proposeProgramTextUpdate({ ...input, text: "Before Synthetic press: 10 kg × 7.\nSet Synthetic press to 4 sets.\nSet Synthetic press to 5 sets." });
-    expect(result).toMatchObject({ ok: true, proposal: { baseDocument: document, changes: [], questions: [expect.stringContaining("could not be combined safely")] } });
+    expect(result).toMatchObject({ ok: true, proposal: { baseDocument: document, changes: [], questions: [expect.stringContaining("could not combine these changes")] } });
     expect(mocks.generate).not.toHaveBeenCalled();
     expect(mocks.draft).toHaveBeenCalledTimes(2);
   });

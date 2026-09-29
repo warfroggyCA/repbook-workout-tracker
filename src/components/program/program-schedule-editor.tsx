@@ -203,7 +203,7 @@ export function ProgramScheduleEditor({
 
       {hasCardio && (
         <section className="grid gap-3 rounded-2xl border bg-card p-4 sm:grid-cols-2">
-          <div className="sm:col-span-2"><h2 className="font-semibold">Cardio prescription</h2><p className="mt-1 text-sm text-muted-foreground">Used for every cardio day in this simple schedule.</p></div>
+          <div className="sm:col-span-2"><h2 className="font-semibold">Cardio targets</h2><p className="mt-1 text-sm text-muted-foreground">Used for every cardio day in this simple schedule.</p></div>
           <label className="text-sm font-medium">Modality<Input className="mt-1 min-h-11" maxLength={120} value={draft.cardio.modality} onChange={(event) => update({ ...draft, cardio: { ...draft.cardio, modality: event.target.value } })} /></label>
           <label className="text-sm font-medium">Intensity (optional)<Input className="mt-1 min-h-11" maxLength={160} placeholder="RPE 3–4" value={draft.cardio.intensity} onChange={(event) => update({ ...draft, cardio: { ...draft.cardio, intensity: event.target.value } })} /></label>
           <label className="text-sm font-medium">Minimum minutes<Input className="mt-1 min-h-11" type="number" min={1} max={1440} value={draft.cardio.minMinutes} onChange={(event) => update({ ...draft, cardio: { ...draft.cardio, minMinutes: Math.trunc(Number(event.target.value)) } })} /></label>

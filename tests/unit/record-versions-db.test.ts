@@ -1618,7 +1618,7 @@ describe("immutable record version history", () => {
     expect(await restoreRecordVersion(db, userId, substituted.versionId)).toEqual({
       ok: false,
       reason:
-        "The workout exercise structure or provenance has changed. Nothing was restored.",
+        "The exercises in this workout have changed. Nothing was restored.",
     });
     expect(
       await db.query.sessionExercises.findFirst({
@@ -1660,7 +1660,7 @@ describe("immutable record version history", () => {
     expect(await restoreRecordVersion(db, userId, edited.versionId)).toEqual({
       ok: false,
       reason:
-        "The workout exercise structure or provenance has changed. Nothing was restored.",
+        "The exercises in this workout have changed. Nothing was restored.",
     });
     expect(await db.query.recordVersions.findMany()).toHaveLength(1);
   });

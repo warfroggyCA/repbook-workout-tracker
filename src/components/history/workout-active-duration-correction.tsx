@@ -152,9 +152,7 @@ export function WorkoutActiveDurationCorrection(props: Props) {
           </div>
 
           <p className="text-sm text-muted-foreground">
-            This changes the active-time evidence used by duration insights. It
-            never changes the original start or finish timestamps. The prior
-            value remains in Edit history.
+            This updates the active time used in your progress reports. Start and finish times stay the same. The previous value stays in Edit history.
           </p>
 
           <fieldset className="space-y-2">
@@ -222,8 +220,7 @@ export function WorkoutActiveDurationCorrection(props: Props) {
 
           {unchanged && (
             <p role="status" className="text-sm text-muted-foreground">
-              This matches the current active-duration evidence. Choose a
-              different value to save a correction.
+              This is already the saved time.
             </p>
           )}
         </fieldset>
@@ -259,7 +256,7 @@ export function WorkoutActiveDurationCorrection(props: Props) {
                   toast.success(
                     result.outcome === "replayed"
                       ? "Active duration was already corrected"
-                      : "Active duration corrected with revision evidence",
+                      : "Active time updated",
                   );
                   setOpen(false);
                   setClientMutationId(crypto.randomUUID());
