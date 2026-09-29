@@ -136,7 +136,7 @@ test("selectively imports external evidence into owner-controlled Review", async
   const proposal = page
     .locator('section[id^="recommendation-"]')
     .filter({ hasText: "External AI proposal · you decide" });
-  await expect(proposal).toContainText("Validated external");
+  await expect(proposal).toContainText("Imported advice");
   await expect(proposal).toContainText("does not edit or publish your Program");
 
   if (testInfo.project.name === "narrow-mobile-webkit") {

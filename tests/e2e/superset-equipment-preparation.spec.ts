@@ -589,7 +589,7 @@ test("presents immutable superset order, truthful progress, and next-member equi
   );
   await expect(currentCard).toContainText("Skip · Unsaved");
   await expect(currentCard).toContainText(
-    "will not advance until Repbook acknowledges this change",
+    "will advance when this change finishes saving",
   );
   await expect(restoredGroup).toContainText(
     "Current member: 1 of 2 · Dumbbell Lateral Raise",
