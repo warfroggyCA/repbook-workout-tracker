@@ -950,6 +950,9 @@ session status so retained evidence cannot be mistaken for completed training.
 
 ## H01 performed-first workout History contract
 
+History calendar week, month, and year grids display Sunday through Saturday.
+This display preference does not change stored workout dates or reporting-week calculations.
+
 Completed and imported workout detail leads with acknowledged performed facts.
 Only an active completed working-set occurrence linked to its retained set row
 enters the performed working-set count. Completed structured warm-up occurrences
