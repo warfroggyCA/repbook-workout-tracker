@@ -43,3 +43,10 @@ export function coachReviewStatus(
   }
   return { current: true, message: null };
 }
+
+export function hasReviewableTraining(
+  workouts: { completedSessions: number; abandonedSessions: number },
+  activities: number,
+): boolean {
+  return workouts.completedSessions > 0 || workouts.abandonedSessions > 0 || activities > 0;
+}

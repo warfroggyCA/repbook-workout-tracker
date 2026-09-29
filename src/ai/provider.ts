@@ -798,3 +798,8 @@ export function getAIProvider(): AIProvider {
     ? new FakeProvider()
     : new SdkProvider());
 }
+
+/** Match the provider used by requests, including precedence over AI_FAKE. */
+export function isUsingExampleAIProvider(): boolean {
+  return getAIProvider() instanceof FakeProvider;
+}

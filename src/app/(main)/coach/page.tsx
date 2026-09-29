@@ -33,7 +33,7 @@ import { AUTOMATIC_HOLD_NOTICE_DISMISSED_REASON } from "@/services/recommendatio
 import { getHistoryReport } from "@/services/history-report";
 import { getActivityReport } from "@/services/activity-report";
 import { getWorkoutTestDataCount } from "@/services/workout-test-data";
-import { isAIAvailable, isFakeEnabled } from "@/ai/provider";
+import { isAIAvailable, isUsingExampleAIProvider } from "@/ai/provider";
 import { formatRecordedLocalDate, formatRelativeDay } from "@/lib/dates";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -52,7 +52,7 @@ import {
   buildWorkoutHistoryHref,
   historyReturnContext,
 } from "@/lib/history-navigation";
-import { coachReviewStatus } from "@/lib/coach-review-status";
+import { coachReviewStatus, hasReviewableTraining } from "@/lib/coach-review-status";
 import { workoutLocalDate } from "@/lib/workout-calendar";
 import { getHistoryPatterns } from "@/services/history-patterns";
 
@@ -272,7 +272,7 @@ export default async function CoachPage({
       data-ui-core-surface="review"
       className="athlete-workflow mx-auto flex max-w-5xl flex-col gap-6 p-4 sm:p-6 lg:p-8"
     >
-      {isFakeEnabled() && (
+      {isUsingExampleAIProvider() && (
         <p className="text-sm text-muted-foreground" role="note">
           This preview uses example Coach responses, not a live AI service.
         </p>
@@ -387,8 +387,7 @@ export default async function CoachPage({
           key={pattern?.key ?? "general"}
           aiAvailable={isAIAvailable()}
           hasTrainingData={
-            report.overview.completedSessions > 0 ||
-            activityReport.overview.totalActivities > 0
+            hasReviewableTraining(report.overview, activityReport.overview.totalActivities)
           }
           initialQuestion={
             pattern

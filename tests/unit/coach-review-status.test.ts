@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { coachReviewStatus } from "@/lib/coach-review-status";
+import { coachReviewStatus, hasReviewableTraining } from "@/lib/coach-review-status";
 import { TRAINING_CADENCE_ALGORITHM_VERSION } from "@/lib/training-cadence";
 import { PRESCRIPTION_OUTCOME_ALGORITHM_VERSION } from "@/lib/set-metric-semantics";
 const digest = {
@@ -26,4 +26,11 @@ describe("saved Coach review freshness", () => {
       expect(coachReviewStatus(value, "10", "2026-09-29").current).toBe(false);
     }
   });
+});
+
+it("allows reviews of interrupted-only training without treating empty history as training", () => {
+  expect(hasReviewableTraining({ completedSessions: 0, abandonedSessions: 1 }, 0)).toBe(true);
+  expect(hasReviewableTraining({ completedSessions: 0, abandonedSessions: 0 }, 0)).toBe(false);
+  expect(hasReviewableTraining({ completedSessions: 1, abandonedSessions: 0 }, 0)).toBe(true);
+  expect(hasReviewableTraining({ completedSessions: 0, abandonedSessions: 0 }, 1)).toBe(true);
 });
