@@ -51,7 +51,7 @@ test("links every material Review claim to evidence and preserves deliberate own
   }
 
   const pending = page.getByRole("region", { name: "Proposed changes" });
-  await expect(pending.getByText("3 pending", { exact: true })).toBeVisible();
+  await expect(pending.getByRole("region")).toHaveCount(3);
   const supported = pending.locator("section").filter({
     hasText: "Two completed squat workouts at 105 lb",
   }).first();
@@ -163,7 +163,7 @@ test("links every material Review claim to evidence and preserves deliberate own
   await expect(approve).toBeEnabled();
   await approve.click();
   await expect(page.getByRole("region", { name: "Proposed changes" })
-    .getByText("1 pending", { exact: true })).toBeVisible();
+    .getByRole("region")).toHaveCount(1);
   await page.getByText("Decision history and supporting evidence", {
     exact: true,
   }).click();
