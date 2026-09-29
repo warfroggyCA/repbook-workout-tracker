@@ -1338,9 +1338,9 @@ test("answers all five History questions without mixing independent activity int
     exact: true,
   });
   await expect(programLens).toContainText("Program workouts completed");
-  await expect(programLens).toContainText("Deferred workouts are not recorded");
+  await expect(programLens).toContainText("Postponed workouts are not tracked");
   await expect(programLens).toContainText(
-    "not proof that every prescribed set was completed"
+    "does not mean every set was completed"
   );
 
   await page.goto("/history?range=all&view=insights&lens=pain-constraints");
@@ -1351,7 +1351,7 @@ test("answers all five History questions without mixing independent activity int
   await expect(painLens).toContainText(
     "no repeating pattern is clear yet"
   );
-  await expect(painLens).toContainText("recorded associations, not causes");
+  await expect(painLens).toContainText("do not tell us what caused the pain");
 
   await page.goto("/history?range=all&view=insights&lens=work-capacity");
   const capacityLens = page.getByRole("article", {
@@ -1362,7 +1362,7 @@ test("answers all five History questions without mixing independent activity int
     exact: true,
   }).click();
   await expect(capacityLens).toContainText(
-    "Log more strength workouts to see how the amount you lift is changing.",
+    "Not enough matching strength workouts to show a trend.",
   );
   await expect(capacityLens).toContainText("2,280 lb vs 0 lb");
   await expect(capacityLens).toContainText("Completed working sets");
@@ -1394,14 +1394,16 @@ test("answers all five History questions without mixing independent activity int
   await expect(recordsLens).toContainText("Barbell Back Squat");
   await expect(recordsLens).toContainText("not all-time records");
   await expect(recordsLens).toContainText(
-    "No Program decision is supported by records alone"
+    "A personal best alone does not mean your plan needs to change"
   );
 
   await page.goto("/history?range=all&view=insights&lens=program-fit");
-  const reviewLink = programLens.getByRole("link", {
+  await expect(programLens.getByRole("link", {
     name: "Open Review and decisions",
     exact: true,
-  });
+  })).toHaveCount(0);
+  const reviewLink = page.getByRole("navigation", { name: "Main navigation" })
+    .getByRole("link", { name: "Coach", exact: true });
   await waitForReactHandler(reviewLink);
   await reviewLink.focus();
   await expect(reviewLink).toBeFocused();
@@ -1508,9 +1510,9 @@ test("answers all five History questions without mixing independent activity int
   await signIn(page, "today-empty.e2e@example.com");
   const emptyAnswers = [
     "No strength-progress answer is available yet",
-    "No Program-linked history is available",
+    "No workouts from your plan were recorded",
     "No pain or discomfort-linked exercise changes",
-    "Not enough comparable completed strength work",
+    "Not enough matching strength workouts",
     "No results to compare for these dates",
   ];
   for (const [index, title] of lensTitles.entries()) {
@@ -1519,7 +1521,13 @@ test("answers all five History questions without mixing independent activity int
     await expect(lens).toContainText(emptyAnswers[index]);
     await expect(
       lens.getByRole("region", { name: "What this means", exact: true })
-    ).toContainText(/No (Program )?(decision|change)/);
+    ).toContainText(
+      title === "Program fit"
+        ? "A skip or exercise change does not mean your plan needs to change."
+        : title === "Records"
+          ? "A personal best alone does not mean your plan needs to change."
+          : "There is not enough information to suggest a change.",
+    );
   }
 
   await page.goto("/activity/new");

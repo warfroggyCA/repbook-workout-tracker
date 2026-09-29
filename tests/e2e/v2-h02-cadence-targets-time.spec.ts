@@ -112,10 +112,10 @@ test("keeps calendar cadence and planned-set outcomes separate and trustworthy",
   await expect(page.getByText("Above", { exact: true }).locator("..")).toContainText("1");
   await expect(page.getByText("Unknown", { exact: true }).locator("..")).toContainText("1");
   await expect(
-    page.getByText(/4 of 5 quantified outcomes were evaluable \(80%\)/),
+    page.getByText(/4 of 5 sets had enough detail to compare \(80%\)/),
   ).toBeVisible();
   await expect(
-    page.getByText(/Within that subset, 75% were at or above target/),
+    page.getByText(/Of those sets, 75% were at or above target/),
   ).toBeVisible();
   if (narrowMobile) await expectNoHorizontalOverflow(page);
 
@@ -130,7 +130,7 @@ test("keeps calendar cadence and planned-set outcomes separate and trustworthy",
   await applyEnlargedText(page, narrowMobile);
   await expect(page.getByText(/Time and duration unknown/)).toBeVisible();
   await expect(
-    page.getByText(/1 planned outcome could not be compared safely/).first(),
+    page.getByText(/1 planned set could not be compared because details are missing/).first(),
   ).toBeVisible();
   await expect(page.getByText(/2 working sets/)).toBeVisible();
   await expect(page.getByText("Planned target: unknown", { exact: true })).toHaveCount(1);
