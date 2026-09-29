@@ -39,7 +39,7 @@ test("renders every optimized page family under its request nonce", async ({
     ["/", "Today · Repbook"],
     ["/today", "Today · Repbook"],
     ["/history", "History · Repbook"],
-    ["/coach", "Review and decisions · Repbook"],
+    ["/coach", "Coach · Repbook"],
     ["/program", "Program · Repbook"],
     ["/program/edit", "Program · Repbook"],
     ["/program/import", "Program · Repbook"],

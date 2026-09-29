@@ -115,7 +115,7 @@ test("opens the preserved draft and expires a pre-Phase-2 review on desktop and 
   await expect(
     page.getByRole("heading", { name: "Program versions", exact: true }),
   ).toBeVisible();
-  await page.getByRole("tab", { name: "Review", exact: true }).click();
+  await page.getByRole("tab", { name: "Coach", exact: true }).click();
   await page
     .getByRole("button", { name: "Check Program", exact: true })
     .click();

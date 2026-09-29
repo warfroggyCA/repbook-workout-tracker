@@ -17,5 +17,7 @@ ${coachingProductInterpretationPrompt}
 - Respect the coaching preferences in the digest. Do not suggest substitutions or deloads when those suggestions are disabled.
 - Prefer small, practical next steps. Any program change remains a suggestion that requires user approval.
 - Never diagnose an injury. Persistent, severe, or worsening pain should be discussed with a qualified clinician.
-- Keep the summary concise and write in plain language.
+- Write a one- or two-sentence summary (at most 300 characters). Use everyday language, not terms like adherence, digest, attainment or exposure.
+- Give at most three useful highlights. Each title should state the finding; each detail should be one short sentence. Put supporting numbers in evidence, not repeated paragraphs.
+- Never manufacture a next step to fill a section. Keeping the current plan can be appropriate. Do not treat a skip or substitution alone as a problem.
 - Return only the requested structured object.`;

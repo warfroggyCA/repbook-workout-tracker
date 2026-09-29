@@ -4,7 +4,7 @@ import {
   coachingProductInterpretationRules,
 } from "@/ai/tasks/coaching-product-interpretation";
 import { coachingQaSystemPrompt } from "@/ai/tasks/coaching-qa/prompt";
-import { coachingReviewSchema } from "@/ai/tasks/coaching-review/schema";
+import { coachingReviewSchema, conciseCoachingReviewSchema } from "@/ai/tasks/coaching-review/schema";
 import { coachingReviewSystemPrompt } from "@/ai/tasks/coaching-review/prompt";
 import { coachingAnswerSchema } from "@/ai/tasks/coaching-qa/schema";
 import { liveCoachingSystemPrompt } from "@/ai/tasks/live-coaching/prompt";
@@ -50,6 +50,13 @@ describe("stored coaching insight validation", () => {
   it("round-trips a structured review", () => {
     expect(coachingReviewSchema.parse(review)).toEqual(review);
     expect(parseStoredCoachingReview(JSON.stringify(review))).toEqual(review);
+  });
+
+  it("keeps older long reviews readable while limiting new summaries", () => {
+    const older = { ...review, summary: "A".repeat(301) };
+    expect(parseStoredCoachingReview(JSON.stringify(older))).toEqual(older);
+    expect(conciseCoachingReviewSchema.safeParse(older).success).toBe(false);
+    expect(conciseCoachingReviewSchema.safeParse(review).success).toBe(true);
   });
 
   it("refuses malformed or legacy review content", () => {

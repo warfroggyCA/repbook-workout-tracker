@@ -313,3 +313,16 @@ behaviours:
 11. Unknown evidence remains unknown.
 12. Current workout, History, Review, and Coach use compatible semantics for the
    same interruption, priority, and exercise-identity facts.
+
+
+## 17. Plain-language History and Coach flow
+
+History must show recorded workouts before optional observations. A skipped or
+changed exercise alone must not be presented as a warning or a pending decision.
+Observations must name what happened and link to the supporting workout records.
+Coach should show a concise answer before optional evidence and calculation
+detail. Current proposals, generated interpretation, and archived reviews remain
+distinct. Unknown or outdated review evidence must not be presented as current
+advice. Empty states require no acknowledgement or explanation from the athlete.
+Failed requests preserve input and saved reviews and explain the confirmed cause
+without exposing provider details or inventing a reset time.

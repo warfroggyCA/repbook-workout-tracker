@@ -1,200 +1,173 @@
 "use client";
-
-import { useState, useTransition, type FormEvent } from "react";
+import {
+  useRef,
+  useState,
+  useTransition,
+  type ReactNode,
+  type FormEvent,
+} from "react";
 import { useRouter } from "next/navigation";
-import { Bot, RefreshCw, Send, Sparkles } from "lucide-react";
-import {
-  askCoach,
-  generateTrainingReview,
-} from "@/app/actions/coaching";
+import { askCoach, generateTrainingReview } from "@/app/actions/coaching";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
-
-const STARTER_QUESTIONS = [
-  "What is progressing most clearly?",
-  "Am I recovering well enough?",
-  "What should I focus on next workout?",
-];
 
 export function CoachTools({
   aiAvailable,
   hasTrainingData,
+  savedReview,
+  initialQuestion = "",
+  patternKey,
+  previousAnswers,
 }: {
   aiAvailable: boolean;
   hasTrainingData: boolean;
+  savedReview?: ReactNode;
+  initialQuestion?: string;
+  patternKey?: string;
+  previousAnswers?: ReactNode;
 }) {
   const router = useRouter();
-  const [question, setQuestion] = useState("");
-  const [pendingAction, setPendingAction] = useState<"review" | "ask" | null>(
-    null
-  );
-  const [message, setMessage] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [question, setQuestion] = useState(initialQuestion);
   const [pending, startTransition] = useTransition();
-
-  function runReview() {
-    setError(null);
-    setMessage(null);
-    setPendingAction("review");
+  const busy = useRef(false);
+  const [action, setAction] = useState<"review" | "ask" | null>(null);
+  const [feedback, setFeedback] = useState<{
+    action: "review" | "ask";
+    error: boolean;
+    text: string;
+  } | null>(null);
+  function run(kind: "review" | "ask") {
+    if (busy.current) return;
+    busy.current = true;
+    setFeedback(null);
+    setAction(kind);
     startTransition(async () => {
       try {
-        const result = await generateTrainingReview();
-        if (!result.ok) {
-          setError(result.reason);
-          return;
+        const result =
+          kind === "review"
+            ? await generateTrainingReview()
+            : await askCoach(question, patternKey);
+        setFeedback({
+          action: kind,
+          error: !result.ok,
+          text: result.ok
+            ? kind === "review"
+              ? "Your summary is updated."
+              : "Your answer is ready below."
+            : result.reason,
+        });
+        if (result.ok) {
+          if (kind === "ask") setQuestion("");
+          router.refresh();
         }
-        setMessage("Your new training review is ready below.");
-        router.refresh();
       } catch {
-        setError("Coach could not finish that review. Please try again.");
+        setFeedback({
+          action: kind,
+          error: true,
+          text: "Coach couldn't finish this request. Check your connection and try again.",
+        });
       } finally {
-        setPendingAction(null);
+        busy.current = false;
+        setAction(null);
       }
     });
   }
-
-  function submitQuestion(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setError(null);
-    setMessage(null);
-    setPendingAction("ask");
-    startTransition(async () => {
-      try {
-        const result = await askCoach(question);
-        if (!result.ok) {
-          setError(result.reason);
-          return;
-        }
-        setQuestion("");
-        setMessage("Coach answered your question below.");
-        router.refresh();
-      } catch {
-        setError("Coach could not answer that question. Please try again.");
-      } finally {
-        setPendingAction(null);
-      }
-    });
+  function message(kind: "review" | "ask") {
+    return feedback?.action === kind ? (
+      <p
+        role={feedback.error ? "alert" : "status"}
+        className={`text-sm ${feedback.error ? "text-destructive" : "text-muted-foreground"}`}
+      >
+        {feedback.text}
+      </p>
+    ) : null;
   }
-
   return (
-    <section className="grid gap-4 lg:grid-cols-[0.85fr_1.15fr]">
-      <Card>
-        <CardHeader>
-          <div className="mb-2 flex size-9 items-center justify-center rounded-xl bg-primary/10 text-primary">
-            <Sparkles className="size-4" />
-          </div>
-          <CardTitle>Review my training</CardTitle>
-          <CardDescription>
-            Re-read the last 12 weeks, surface useful patterns, and check for
-            new rule-based plan suggestions.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-3">
-          <Button
-            className="h-10 w-full"
-            onClick={runReview}
-            disabled={!aiAvailable || pending}
+    <div className="space-y-7">
+      <section
+        aria-labelledby="training-summary-heading"
+        className="space-y-4"
+      >
+        <h2 id="training-summary-heading" className="ui-section-title">
+          Your training summary
+        </h2>
+        {savedReview ?? (
+          <p className="text-sm text-muted-foreground">
+            {hasTrainingData
+              ? "Get a summary of your recent training when you want one."
+              : "Your completed workouts will give Coach something to review."}
+          </p>
+        )}
+        <Button
+          onClick={() => run("review")}
+          disabled={!aiAvailable || pending || !hasTrainingData}
+          className="min-h-11"
+          variant={savedReview ? "outline" : "default"}
+        >
+          {pending && action === "review"
+            ? "Updating your summary…"
+            : savedReview
+              ? "Update summary"
+              : "Create summary"}
+        </Button>
+        {message("review")}
+        {!aiAvailable && (
+          <p className="text-sm text-muted-foreground">
+            Coach is not connected. You can still view and log workouts.
+          </p>
+        )}
+      </section>
+      <section
+        aria-labelledby="ask-coach-heading"
+        className="space-y-3 border-t pt-5"
+      >
+        <h2 id="ask-coach-heading" className="ui-section-title">
+          Ask a question
+        </h2>
+        <form
+          onSubmit={(event: FormEvent) => {
+            event.preventDefault();
+            run("ask");
+          }}
+          className="flex flex-col gap-3"
+        >
+          <label
+            htmlFor="coach-question"
+            className="text-sm text-muted-foreground"
           >
-            {pending && pendingAction === "review" ? (
-              <RefreshCw className="size-4 animate-spin" />
-            ) : (
-              <Sparkles className="size-4" />
-            )}
-            {pending && pendingAction === "review"
-              ? "Reviewing your training…"
-              : "Create a fresh review"}
+            What would you like help with?
+          </label>
+          <Textarea
+            id="coach-question"
+            aria-label="Question for Coach"
+            value={question}
+            onChange={(event) => setQuestion(event.target.value)}
+            placeholder="What should I focus on next workout?"
+            maxLength={600}
+            disabled={pending}
+            className="min-h-24"
+          />
+          <Button
+            type="submit"
+            disabled={!aiAvailable || pending || question.trim().length < 3}
+            className="min-h-11 self-start"
+          >
+            {pending && action === "ask" ? "Thinking…" : "Ask Coach"}
           </Button>
-          {!hasTrainingData && (
-            <p className="text-xs text-muted-foreground">
-              You can run this now, but Coach will have more to say after a few
-              completed workouts.
-            </p>
-          )}
-          {!aiAvailable && (
-            <p className="text-xs text-muted-foreground">
-              AI coaching is not configured. Workout tracking and automatic
-              rule-based progression suggestions still work.
-            </p>
-          )}
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <div className="mb-2 flex size-9 items-center justify-center rounded-xl bg-chart-2/15 text-chart-2">
-            <Bot className="size-4" />
-          </div>
-          <CardTitle>Ask Coach</CardTitle>
-          <CardDescription>
-            Ask about your own logged sessions. Answers show the evidence used
-            and call out missing data.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <form className="flex flex-col gap-3" onSubmit={submitQuestion}>
-            <Textarea
-              value={question}
-              onChange={(event) => setQuestion(event.target.value)}
-              placeholder="For example: Am I ready to add weight to my bench press?"
-              className="min-h-24 resize-y"
-              maxLength={600}
-              disabled={!aiAvailable || pending}
-              aria-label="Question for Coach"
-            />
-            <div className="flex flex-wrap gap-1.5">
-              {STARTER_QUESTIONS.map((starter) => (
-                <Button
-                  key={starter}
-                  type="button"
-                  variant="outline"
-                  size="xs"
-                  onClick={() => setQuestion(starter)}
-                  disabled={!aiAvailable || pending}
-                  className="h-auto min-h-7 whitespace-normal py-1 text-left"
-                >
-                  {starter}
-                </Button>
-              ))}
-            </div>
-            <Button
-              type="submit"
-              className="h-10 self-stretch sm:self-end"
-              disabled={!aiAvailable || pending || question.trim().length < 3}
-            >
-              {pending && pendingAction === "ask" ? (
-                <RefreshCw className="size-4 animate-spin" />
-              ) : (
-                <Send className="size-4" />
-              )}
-              {pending && pendingAction === "ask" ? "Thinking…" : "Ask Coach"}
-            </Button>
-          </form>
-        </CardContent>
-      </Card>
-
-      {(error || message) && (
-        <div className="lg:col-span-2" aria-live="polite">
-          {error ? (
-            <p
-              className="rounded-xl bg-destructive/10 px-3 py-2 text-sm text-destructive"
-              role="alert"
-            >
-              {error}
-            </p>
-          ) : (
-            <p className="rounded-xl bg-success/10 px-3 py-2 text-sm text-success">
-              {message}
-            </p>
-          )}
-        </div>
-      )}
-    </section>
+        </form>
+        {message("ask")}
+        {previousAnswers && (
+          <details
+            open={feedback?.action === "ask" && !feedback.error}
+            className="border-t pt-2"
+          >
+            <summary className="min-h-11 cursor-pointer py-2 text-sm font-medium text-primary">
+              Previous questions and answers
+            </summary>
+            {previousAnswers}
+          </details>
+        )}
+      </section>
+    </div>
   );
 }

@@ -1,3 +1,4 @@
+import { getHistoryPatterns } from "@/services/history-patterns";
 import { getDb } from "@/db";
 import { getCurrentUser } from "@/lib/user";
 import { HistoryWorkspace } from "@/components/history/history-workspace";
@@ -45,31 +46,35 @@ export default async function HistoryPage({
   const db = await getDb();
   const ownerToday = workoutLocalDate(new Date(), user.profile.timezone);
   const effectiveCalendarDate = calendarDate ?? ownerToday;
-  const [report, activityReport, calendarRecords, maintenance] =
+  const [report, activityReport, calendarRecords, maintenance, patterns] =
     await Promise.all([
-    getHistoryReport(
-      db,
-      user.id,
-      range,
-      user.profile.weeklyFrequency,
-      new Date(),
-      { timezone: user.profile.timezone, unit: user.profile.unit },
-      { exerciseId, tier: evidenceTier },
-    ),
-    view === "insights"
-      ? getActivityReport(db, user.id, range)
-      : Promise.resolve(null),
-    view === "calendar"
-      ? getHistoryCalendarRecords(db, user.id, user.profile.unit, {
-          view: calendarView,
-          date: effectiveCalendarDate,
-        })
-      : Promise.resolve(null),
-    getHistoryPageMaintenance(db, user.id),
-  ]);
+      getHistoryReport(
+        db,
+        user.id,
+        range,
+        user.profile.weeklyFrequency,
+        new Date(),
+        { timezone: user.profile.timezone, unit: user.profile.unit },
+        { exerciseId, tier: evidenceTier },
+      ),
+      view === "insights"
+        ? getActivityReport(db, user.id, range)
+        : Promise.resolve(null),
+      view === "calendar"
+        ? getHistoryCalendarRecords(db, user.id, user.profile.unit, {
+            view: calendarView,
+            date: effectiveCalendarDate,
+          })
+        : Promise.resolve(null),
+      getHistoryPageMaintenance(db, user.id),
+      view === "calendar"
+        ? getHistoryPatterns(db, user.id, user.profile.timezone)
+        : Promise.resolve([]),
+    ]);
 
   return (
     <HistoryWorkspace
+      patterns={patterns}
       report={report}
       activityReport={activityReport}
       calendarRecords={calendarRecords}

@@ -50,7 +50,7 @@ test("links every material Review claim to evidence and preserves deliberate own
     });
   }
 
-  const pending = page.getByRole("region", { name: "Decisions needing review" });
+  const pending = page.getByRole("region", { name: "Proposed changes" });
   await expect(pending.getByText("3 pending", { exact: true })).toBeVisible();
   const supported = pending.locator("section").filter({
     hasText: "Two completed squat workouts at 105 lb",
@@ -97,7 +97,7 @@ test("links every material Review claim to evidence and preserves deliberate own
   await page.goto("/coach");
 
   const refreshedSupported = page.getByRole("region", {
-    name: "Decisions needing review",
+    name: "Proposed changes",
   }).locator("section").filter({
     hasText: "Two completed squat workouts at 105 lb",
   }).first();
@@ -116,7 +116,7 @@ test("links every material Review claim to evidence and preserves deliberate own
     .toBeVisible();
   await page.reload();
   const deferred = page.getByRole("region", {
-    name: "Decisions needing review",
+    name: "Proposed changes",
   }).locator("section").filter({
     hasText: "Review after two more workouts.",
   }).first();
@@ -125,7 +125,7 @@ test("links every material Review claim to evidence and preserves deliberate own
   await waitForReactHandler(resume);
   await resume.click();
   const resumed = page.getByRole("region", {
-    name: "Decisions needing review",
+    name: "Proposed changes",
   }).locator("section").filter({
     hasText: "Two completed squat workouts at 105 lb",
   }).first();
@@ -162,7 +162,7 @@ test("links every material Review claim to evidence and preserves deliberate own
   await waitForReactHandler(approve);
   await expect(approve).toBeEnabled();
   await approve.click();
-  await expect(page.getByRole("region", { name: "Decisions needing review" })
+  await expect(page.getByRole("region", { name: "Proposed changes" })
     .getByText("1 pending", { exact: true })).toBeVisible();
   await page.getByText("Decision history and supporting evidence", {
     exact: true,

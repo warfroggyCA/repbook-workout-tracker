@@ -441,7 +441,7 @@ test("records populated Stage 7 hierarchy, keyboard, wrapping, and micro-label s
   const navSteps = [
     ["Today", "/today"],
     ["History", "/history"],
-    ["Review", "/coach"],
+    ["Coach", "/coach"],
     ["Settings", "/settings"],
     ["Program", "/program"],
   ] as const;
@@ -531,7 +531,7 @@ test("records populated Stage 7 hierarchy, keyboard, wrapping, and micro-label s
   await page.goto("/coach");
   defaultMetrics.reviewProposalLabel = await fontMetric(
     page.getByText(
-      "These are proposed Program changes, not informational coaching.",
+      "Your plan changes only when you choose to apply a proposal.",
       { exact: true },
     ),
   );
@@ -539,7 +539,7 @@ test("records populated Stage 7 hierarchy, keyboard, wrapping, and micro-label s
   await page.goto("/coach");
   extraLargeMetrics.reviewProposalLabel = await fontMetric(
     page.getByText(
-      "These are proposed Program changes, not informational coaching.",
+      "Your plan changes only when you choose to apply a proposal.",
       { exact: true },
     ),
   );
@@ -547,16 +547,17 @@ test("records populated Stage 7 hierarchy, keyboard, wrapping, and micro-label s
     .getByRole("heading", { level: 2 })
     .allTextContents();
   const expectedOrder = [
-    "Decisions needing review",
+    "Proposed changes",
+    "Your training summary",
+    "Ask a question",
     "Recent decisions",
     "Outcomes ready to assess",
     "Live Coach stays with the workout",
-    "Secondary coaching tools",
   ];
   expect(
     reviewHeadings.filter((heading) => expectedOrder.includes(heading)),
   ).toEqual(expectedOrder);
-  const pending = page.getByRole("region", { name: "Decisions needing review" });
+  const pending = page.getByRole("region", { name: "Proposed changes" });
   const proposalBeforeTools = await pending.evaluate((element, secondaryId) => {
     const other = document.querySelector(secondaryId);
     return Boolean(
@@ -564,12 +565,12 @@ test("records populated Stage 7 hierarchy, keyboard, wrapping, and micro-label s
         element.compareDocumentPosition(other) &
           Node.DOCUMENT_POSITION_FOLLOWING,
     );
-  }, '[aria-labelledby="secondary-tools-heading"]');
+  }, '[aria-label="Training summary and questions"]');
   expect(proposalBeforeTools).toBe(true);
   await expectVisualHierarchy(
     page,
-    page.getByRole("heading", { name: "Review and decisions", exact: true }),
-    page.getByRole("heading", { name: "Decisions needing review", exact: true }),
+    page.getByRole("heading", { name: "Coach", exact: true }),
+    page.getByRole("heading", { name: "Proposed changes", exact: true }),
     pending.getByRole("heading", { name: "Barbell Back Squat", exact: true }),
   );
   const decrease = pending.getByRole("button", {
@@ -873,7 +874,7 @@ test("records deterministic Settings loading and Review loading, error, and reco
   await page.unrouteAll({ behavior: "wait" });
 
   await page.goto("/coach");
-  const secondary = page.getByRole("region", { name: "Secondary coaching tools" });
+  const secondary = page.getByRole("region", { name: "Training summary and questions" });
   let releaseReview!: () => void;
   const reviewGate = new Promise<void>((resolveGate) => {
     releaseReview = resolveGate;
@@ -897,7 +898,7 @@ test("records deterministic Settings loading and Review loading, error, and reco
     await route.continue();
   });
   const createReview = secondary.getByRole("button", {
-    name: "Create a fresh review",
+    name: /^(Create|Update) summary$/,
     exact: true,
   });
   await waitForHydratedReactHandler(createReview);
@@ -906,7 +907,7 @@ test("records deterministic Settings loading and Review loading, error, and reco
   await createReview.click();
   await expect.poll(() => reviewStarted).toBe(true);
   const reviewing = secondary.getByRole("button", {
-    name: "Reviewing your training…",
+    name: "Updating your summary…",
     exact: true,
   });
   await expect(reviewing).toBeVisible();
@@ -916,23 +917,23 @@ test("records deterministic Settings loading and Review loading, error, and reco
   releaseReview();
   await expect(
     page.getByRole("alert").filter({
-      hasText: "Coach could not finish that review. Please try again.",
+      hasText: "Coach couldn't finish this request. Check your connection and try again.",
     }),
   ).toBeVisible();
   await screenshot(page, "15-review-error-375-extra-large.png");
   await page.unrouteAll({ behavior: "wait" });
 
   const retry = secondary.getByRole("button", {
-    name: "Create a fresh review",
+    name: /^(Create|Update) summary$/,
     exact: true,
   });
   await waitForHydratedReactHandler(retry);
   await retry.click();
   await expect(
-    page.getByText("Your new training review is ready below.", { exact: true }),
+    page.getByText("Your summary is updated.", { exact: true }),
   ).toBeVisible();
   await expect(
-    page.getByText("Latest training review", { exact: true }),
+    page.getByText("Your training summary", { exact: true }),
   ).toBeVisible();
   await expectNoHorizontalOverflow(page);
   await screenshot(page, "16-review-recovered-375-extra-large.png");

@@ -136,7 +136,7 @@ test("publishes and preserves durable warm-up and grouped workout outcomes", asy
   await roundRest.getByLabel("Seconds").selectOption("30");
   await expectSaved(page);
 
-  await page.getByRole("tab", { name: "Review", exact: true }).click();
+  await page.getByRole("tab", { name: "Coach", exact: true }).click();
   await page
     .getByRole("button", { name: "Check Program", exact: true })
     .first()

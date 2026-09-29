@@ -204,3 +204,10 @@ Free-form Program updates read only the authenticated saved draft. Raw requests
 and provider responses are transient; accepted edits use existing Program draft
 retention. The provider error event uses the same maximum 24-hour diagnostic
 expiry and rejects raw error messages, provider bodies, credentials and IDs.
+
+
+The canned Coach provider can run in an explicitly disposable Vercel Preview
+using the same environment/database-name guards as synthetic preview login.
+It additionally requires `AI_FAKE=1`, displays an example-response notice, and
+cannot be selected by that preview path on a production deployment. No real
+provider key is required for this review environment.

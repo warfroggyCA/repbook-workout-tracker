@@ -113,9 +113,26 @@ describe("structured redacted diagnostic logger", () => {
 
   it("logs routine provider classification without accepting raw provider content", () => {
     const write = vi.spyOn(console, "log").mockImplementation(() => undefined);
-    expect(logDiagnosticEvent("ai.routine_parse_failed", { errorKind: "provider_api", providerStatusCode: 400, providerRetryable: false, causeKind: null })).toBe("written");
-    expect(String(write.mock.calls[0]?.[0])).toContain('"providerStatusCode":400');
-    expect(logDiagnosticEvent("ai.routine_parse_failed", { errorKind: "provider_api", providerStatusCode: 400, providerRetryable: false, causeKind: null, message: "Private prompt" } as never)).toBe("refused");
+    expect(
+      logDiagnosticEvent("ai.routine_parse_failed", {
+        errorKind: "provider_api",
+        providerStatusCode: 400,
+        providerRetryable: false,
+        causeKind: null,
+      }),
+    ).toBe("written");
+    expect(String(write.mock.calls[0]?.[0])).toContain(
+      '"providerStatusCode":400',
+    );
+    expect(
+      logDiagnosticEvent("ai.routine_parse_failed", {
+        errorKind: "provider_api",
+        providerStatusCode: 400,
+        providerRetryable: false,
+        causeKind: null,
+        message: "Private prompt",
+      } as never),
+    ).toBe("refused");
     expect(JSON.stringify(write.mock.calls)).not.toContain("Private prompt");
   });
 
@@ -152,7 +169,9 @@ describe("structured redacted diagnostic logger", () => {
     expect(JSON.parse(String(write.mock.calls[0]?.[0])).correlationId).toBe(
       CORRELATION_ID,
     );
-    expect(JSON.parse(String(write.mock.calls[1]?.[0])).correlationId).toBeNull();
+    expect(
+      JSON.parse(String(write.mock.calls[1]?.[0])).correlationId,
+    ).toBeNull();
   });
 
   it("categorizes errors without emitting message, stack, or hostile names", () => {
@@ -200,4 +219,29 @@ describe("structured redacted diagnostic logger", () => {
     ).not.toThrow();
     expect(write).toHaveBeenCalledTimes(1);
   });
+});
+
+it("allows only closed Coach usage codes and refuses private fields", () => {
+  const write = vi.spyOn(console, "log").mockImplementation(() => undefined);
+  const fields = {
+    errorKind: "usage_control" as const,
+    providerStatusCode: null,
+    providerRetryable: null,
+    causeKind: null,
+    usageControlCode: "token_limit",
+  };
+  expect(logDiagnosticEvent("ai.coach_review_failed", fields)).toBe("written");
+  expect(
+    logDiagnosticEvent("ai.coach_review_failed", {
+      ...fields,
+      usageControlCode: "PRIVATE MESSAGE",
+    }),
+  ).toBe("refused");
+  expect(
+    logDiagnosticEvent("ai.coach_review_failed", {
+      ...fields,
+      payload: "PRIVATE",
+    } as typeof fields),
+  ).toBe("refused");
+  expect(write).toHaveBeenCalledTimes(1);
 });

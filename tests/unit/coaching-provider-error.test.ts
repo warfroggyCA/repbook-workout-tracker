@@ -42,6 +42,7 @@ vi.mock("@/ai/provider", async (importOriginal) => {
   };
 });
 
+import { AIControlError } from "@/services/ai-control";
 import { askCoach, generateTrainingReview } from "@/app/actions/coaching";
 
 function providerError() {
@@ -62,7 +63,7 @@ describe("Coach provider failure logging", () => {
     vi.clearAllMocks();
     mocks.getCurrentUser.mockResolvedValue({
       id: "11111111-1111-4111-8111-111111111111",
-      profile: { coachingPrefs: {} },
+      profile: { coachingPrefs: {}, timezone: "America/Toronto" },
     });
     mocks.getDb.mockResolvedValue({});
     mocks.evaluateRecentProgression.mockResolvedValue(undefined);
@@ -74,8 +75,7 @@ describe("Coach provider failure logging", () => {
 
     await expect(generateTrainingReview()).resolves.toEqual({
       ok: false,
-      reason:
-        "Coach could not finish that request. Your data is safe; please try again.",
+      reason: "Coach couldn't update this right now. Please try again later.",
     });
 
     expect(mocks.logDiagnosticEvent).toHaveBeenCalledWith(
@@ -85,10 +85,11 @@ describe("Coach provider failure logging", () => {
         providerStatusCode: 503,
         providerRetryable: true,
         causeKind: "unknown_error",
-      }
+        usageControlCode: null,
+      },
     );
     expect(JSON.stringify(mocks.logDiagnosticEvent.mock.calls)).not.toContain(
-      "WT_SENTINEL"
+      "WT_SENTINEL",
     );
   });
 
@@ -97,8 +98,7 @@ describe("Coach provider failure logging", () => {
 
     await expect(askCoach("How should I train today?")).resolves.toEqual({
       ok: false,
-      reason:
-        "Coach could not finish that request. Your data is safe; please try again.",
+      reason: "Coach couldn't update this right now. Please try again later.",
     });
 
     expect(mocks.logDiagnosticEvent).toHaveBeenCalledWith(
@@ -108,10 +108,51 @@ describe("Coach provider failure logging", () => {
         providerStatusCode: 503,
         providerRetryable: true,
         causeKind: "unknown_error",
-      }
+        usageControlCode: null,
+      },
     );
     expect(JSON.stringify(mocks.logDiagnosticEvent.mock.calls)).not.toContain(
-      "WT_SENTINEL"
+      "WT_SENTINEL",
     );
+  });
+});
+
+describe("Coach usage failure recovery", () => {
+  it.each([
+    ["already_running", "already being processed"],
+    ["concurrent_limit", "another request"],
+    ["rate_limit", "temporarily busy"],
+    ["network_rate_limit", "temporarily busy"],
+    ["token_limit", "today's Coach limit"],
+    ["cost_limit", "today's Coach limit"],
+    ["request_too_large", "more information"],
+  ] as const)(
+    "explains %s without exposing provider text",
+    async (code, text) => {
+      mocks.getCurrentUser.mockResolvedValue({
+        id: "11111111-1111-4111-8111-111111111111",
+        profile: { coachingPrefs: {}, timezone: "America/Toronto" },
+      });
+      mocks.createTrainingReview.mockRejectedValue(
+        new AIControlError("PRIVATE_PROVIDER_TEXT", code),
+      );
+      const result = await generateTrainingReview();
+      expect(result).toMatchObject({
+        ok: false,
+        reason: expect.stringContaining(text),
+      });
+      expect(JSON.stringify(result)).not.toContain("PRIVATE_PROVIDER_TEXT");
+      expect(mocks.logDiagnosticEvent).toHaveBeenLastCalledWith(
+        "ai.coach_review_failed",
+        expect.objectContaining({ usageControlCode: code }),
+      );
+    },
+  );
+  it("rejects forged pattern context before asking the provider", async () => {
+    mocks.createCoachingAnswer.mockClear();
+    expect(
+      await askCoach("Help with this pattern", "https://example.com/private"),
+    ).toMatchObject({ ok: false });
+    expect(mocks.createCoachingAnswer).not.toHaveBeenCalled();
   });
 });

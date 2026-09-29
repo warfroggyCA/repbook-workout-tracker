@@ -35,6 +35,7 @@ export type AIUsageClaim = {
 };
 
 export type AIClaimFailureCode =
+  | "request_too_large"
   | "already_running"
   | "concurrent_limit"
   | "rate_limit"
@@ -48,7 +49,7 @@ export class AIControlError extends Error {
   constructor(
     message: string,
     readonly code: AIClaimFailureCode,
-    readonly status = 429
+    readonly status = 429,
   ) {
     super(message);
     this.name = "AIControlError";
@@ -62,7 +63,7 @@ export async function claimLiveCoachGeneration(
     responseId: string;
     networkHash?: string | null;
     now?: Date;
-  }
+  },
 ): Promise<AIUsageClaim> {
   const now = input.now ?? new Date();
   const logicalKey = `live_coach:${input.responseId}`;
@@ -100,7 +101,7 @@ export async function claimLiveCoachGeneration(
       throw new AIControlError(
         claimFailureMessage("already_running"),
         "already_running",
-        409
+        409,
       );
     }
     throw error;
@@ -108,20 +109,26 @@ export async function claimLiveCoachGeneration(
   if (row?.claimed !== true || !row.usage_id) {
     const state = String(row?.response_state ?? "missing");
     if (state === "completed") {
-      throw new AIControlError("This Live Coach answer is already complete.", "already_running", 409);
+      throw new AIControlError(
+        "This Live Coach answer is already complete.",
+        "already_running",
+        409,
+      );
     }
     if (state === "failed" || state === "missing") {
       throw new AIControlError(
         "This Live Coach response is no longer pending. Retry from the saved question.",
         "already_running",
-        409
+        409,
       );
     }
-    const code = String(row?.failure_code ?? "already_running") as AIClaimFailureCode;
+    const code = String(
+      row?.failure_code ?? "already_running",
+    ) as AIClaimFailureCode;
     throw new AIControlError(
       claimFailureMessage(code),
       code,
-      code === "already_running" ? 409 : 429
+      code === "already_running" ? 409 : 429,
     );
   }
   return {
@@ -150,13 +157,15 @@ export function estimateAICostMicrousd(usage: AIUsage) {
     0,
     Math.ceil(
       usage.inputTokens * inputRateMicrousd() +
-        usage.outputTokens * outputRateMicrousd()
-    )
+        usage.outputTokens * outputRateMicrousd(),
+    ),
   );
 }
 
 function claimFailureMessage(code: AIClaimFailureCode) {
   switch (code) {
+    case "request_too_large":
+      return "This request contains too much information for one Coach review.";
     case "already_running":
       return "This AI request is already being processed.";
     case "concurrent_limit":
@@ -209,15 +218,26 @@ export async function claimAIUsage(
     audioSeconds?: number;
     leaseSeconds?: number;
     now?: Date;
-  }
+  },
 ): Promise<AIUsageClaim> {
   const now = input.now ?? new Date();
   const logicalKey = input.logicalKey ?? `${input.task}:${randomUUID()}`;
   const leaseId = randomUUID();
   const leaseExpiresAt = new Date(
-    now.getTime() + (input.leaseSeconds ?? 60) * 1_000
+    now.getTime() + (input.leaseSeconds ?? 60) * 1_000,
   );
   const reservedCost = estimateAICostMicrousd(input.reservedUsage);
+  if (
+    input.task !== "routine_build" &&
+    (input.reservedUsage.totalTokens > AI_DAILY_TOKEN_LIMIT ||
+      reservedCost > AI_DAILY_COST_LIMIT_MICROUSD)
+  ) {
+    throw new AIControlError(
+      claimFailureMessage("request_too_large"),
+      "request_too_large",
+      413,
+    );
+  }
   const audioSeconds = Math.max(0, Math.ceil(input.audioSeconds ?? 0));
   const query = sql`
     SELECT usage_id::text AS id, failure_code
@@ -242,17 +262,19 @@ export async function claimAIUsage(
       throw new AIControlError(
         claimFailureMessage("already_running"),
         "already_running",
-        409
+        409,
       );
     }
     throw error;
   }
   if (!row?.id) {
-    const code = String(row?.failure_code ?? "rate_limit") as AIClaimFailureCode;
+    const code = String(
+      row?.failure_code ?? "rate_limit",
+    ) as AIClaimFailureCode;
     throw new AIControlError(
       claimFailureMessage(code),
       code,
-      code === "already_running" ? 409 : 429
+      code === "already_running" ? 409 : 429,
     );
   }
   return {
@@ -266,7 +288,7 @@ export async function claimAIUsage(
 export async function completeAIUsage(
   db: Db,
   claim: AIUsageClaim,
-  input: { model: string; usage: AIUsage; costMicrousd?: number; now?: Date }
+  input: { model: string; usage: AIUsage; costMicrousd?: number; now?: Date },
 ) {
   const now = input.now ?? new Date();
   const cost = input.costMicrousd ?? estimateAICostMicrousd(input.usage);
@@ -283,31 +305,35 @@ export async function completeAIUsage(
       completedAt: now,
     })
     .where(
-      sql`${aiUsageEvents.id} = ${claim.id}::uuid AND ${aiUsageEvents.leaseId} = ${claim.leaseId}::uuid AND ${aiUsageEvents.status} = 'running'`
+      sql`${aiUsageEvents.id} = ${claim.id}::uuid AND ${aiUsageEvents.leaseId} = ${claim.leaseId}::uuid AND ${aiUsageEvents.status} = 'running'`,
     )
     .returning({ id: aiUsageEvents.id });
-  if (!completed) throw new Error("The AI usage lease expired before completion.");
+  if (!completed)
+    throw new Error("The AI usage lease expired before completion.");
 }
 
 export async function failAIUsage(
   db: Db,
   claim: AIUsageClaim,
   code: "failed" | "cancelled" | "timed_out",
-  now = new Date()
+  now = new Date(),
 ) {
   await db
     .update(aiUsageEvents)
     .set({ status: code, failureCode: code, completedAt: now })
     .where(
-      sql`${aiUsageEvents.id} = ${claim.id}::uuid AND ${aiUsageEvents.leaseId} = ${claim.leaseId}::uuid AND ${aiUsageEvents.status} = 'running'`
+      sql`${aiUsageEvents.id} = ${claim.id}::uuid AND ${aiUsageEvents.leaseId} = ${claim.leaseId}::uuid AND ${aiUsageEvents.status} = 'running'`,
     );
 }
 
 function deadlineSignal(external: AbortSignal | undefined, deadlineMs: number) {
   const controller = new AbortController();
   const timer = setTimeout(
-    () => controller.abort(new DOMException("AI request timed out.", "TimeoutError")),
-    deadlineMs
+    () =>
+      controller.abort(
+        new DOMException("AI request timed out.", "TimeoutError"),
+      ),
+    deadlineMs,
   );
   const abort = () => controller.abort(external?.reason);
   external?.addEventListener("abort", abort, { once: true });
@@ -332,7 +358,7 @@ export async function runControlledStructuredGeneration<T>(
     networkHash?: string | null;
     abortSignal?: AbortSignal;
     deadlineMs?: number;
-  }
+  },
 ): Promise<AIResult<T>> {
   const inputTokens = Math.max(1, Math.ceil(opts.input.length / 4));
   const outputTokens = structuredOutputTokenLimit(opts.task, opts.input);
@@ -370,7 +396,7 @@ export async function runControlledStructuredGeneration<T>(
     await failAIUsage(
       db,
       claim,
-      cancelled ? "cancelled" : timedOut ? "timed_out" : "failed"
+      cancelled ? "cancelled" : timedOut ? "timed_out" : "failed",
     ).catch((failureWriteError) => {
       logDiagnosticEvent("ai.usage_failure_write_failed", {
         usageOutcome: cancelled

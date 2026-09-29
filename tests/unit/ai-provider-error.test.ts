@@ -75,6 +75,7 @@ describe("AI provider error privacy boundary", () => {
 
     logDiagnosticEvent("ai.coach_question_failed", {
       ...sanitizeAIProviderError(error),
+      usageControlCode: null,
     });
 
     expect(write).toHaveBeenCalledTimes(1);
@@ -162,11 +163,11 @@ describe("AI provider error privacy boundary", () => {
       const source = readFileSync(path, "utf8");
       expect(source, path).toContain(sanitizer);
     }
-    expect(
-      readFileSync("src/app/actions/coaching.ts", "utf8")
-    ).not.toContain("console.error");
+    expect(readFileSync("src/app/actions/coaching.ts", "utf8")).not.toContain(
+      "console.error",
+    );
     expect(readFileSync("src/app/actions/setup.ts", "utf8")).not.toContain(
-      "describeAIParseError"
+      "describeAIParseError",
     );
     expect(readFileSync("src/ai/provider.ts", "utf8")).not.toContain(
       "rawFinishReason",

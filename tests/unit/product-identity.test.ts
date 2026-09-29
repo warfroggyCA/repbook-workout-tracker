@@ -30,14 +30,14 @@ describe("product identity", () => {
     expect(PRODUCT_NAVIGATION.map(({ label }) => label)).toEqual([
       "Today",
       "History",
-      "Review",
+      "Coach",
       "Program",
       "Settings",
     ]);
     expect(PRODUCT_NAVIGATION.map(({ purpose }) => purpose)).toEqual([
       "Current work",
       "Recorded evidence",
-      "Reviewed change",
+      "Training guidance and proposed changes",
       "Program intent",
       "Preferences & safeguards",
     ]);
@@ -53,7 +53,7 @@ describe("product identity", () => {
     ].join(" ");
 
     expect(language).not.toMatch(
-      /personalized|predict(?:s|ed|ion)?|readiness|optimal|learns from you|caused by|pain[- ]free/i
+      /personalized|predict(?:s|ed|ion)?|readiness|optimal|learns from you|caused by|pain[- ]free/i,
     );
   });
 });

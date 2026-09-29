@@ -665,16 +665,16 @@ async function verifyReviewAndDecisions({
   await decisionLink.press("Enter");
   await expect(page).toHaveURL(/\/coach#recommendation-/);
   await expect(
-    page.getByRole("heading", { name: "Review and decisions", exact: true })
+    page.getByRole("heading", { name: "Coach", exact: true })
   ).toBeVisible();
   const activeReviewLink = page
     .locator("nav.fixed")
-    .getByRole("link", { name: "Review", exact: true });
+    .getByRole("link", { name: "Coach", exact: true });
   await expect(activeReviewLink).toBeVisible();
   await expect(activeReviewLink).toHaveAttribute("aria-current", "page");
 
   const pendingRegion = page.getByRole("region", {
-    name: "Decisions needing review",
+    name: "Proposed changes",
   });
   const decisionHistoryDisclosure = page.getByText(
     "Decision history and supporting evidence",
@@ -693,7 +693,7 @@ async function verifyReviewAndDecisions({
   await expect(coachingToolsDisclosure).toBeVisible();
   expect(await page.evaluate(() => {
     const pending = document.querySelector(
-      '[aria-labelledby="pending-decisions-heading"]',
+      '[data-coach-proposals]',
     );
     const disclosures = [...document.querySelectorAll("main > details")];
     return Boolean(
@@ -705,7 +705,7 @@ async function verifyReviewAndDecisions({
           Node.DOCUMENT_POSITION_FOLLOWING,
     );
   })).toBe(true);
-  await expect(pendingRegion.getByText("2 pending", { exact: true })).toBeVisible();
+  await expect(pendingRegion.locator("[id^=recommendation-]")).toHaveCount(2);
   await expect(
     pendingRegion.getByText("Decision required", { exact: true })
   ).toHaveCount(1);
@@ -811,7 +811,7 @@ async function verifyReviewAndDecisions({
   await expect(page).toHaveURL(/\/history$/);
   await page.goto("/coach");
   await expect(
-    page.getByRole("heading", { name: "Review and decisions", exact: true })
+    page.getByRole("heading", { name: "Coach", exact: true })
   ).toBeVisible();
   await openNativeDetails(decisionHistoryDetails);
 
@@ -832,16 +832,16 @@ async function verifyReviewAndDecisions({
   ).toBeVisible();
   await page.goto("/coach");
   await expect(
-    page.getByRole("heading", { name: "Review and decisions", exact: true })
+    page.getByRole("heading", { name: "Coach", exact: true })
   ).toBeVisible();
 
   await openNativeDetails(coachingToolsDetails);
   const secondaryRegion = page.getByRole("region", {
-    name: "AI Review and Ask Coach",
+    name: "Training summary and questions",
   });
   await expect(
     secondaryRegion.getByRole("button", {
-      name: "Create a fresh review",
+      name: /^(Create|Update) summary$/,
       exact: true,
     })
   ).toBeVisible();
@@ -850,10 +850,10 @@ async function verifyReviewAndDecisions({
   ).toBeVisible();
   const coreBeforeTools = await page.evaluate(() => {
     const decisions = document.querySelector(
-      '[aria-labelledby="pending-decisions-heading"]',
+      '[data-coach-proposals]',
     );
     const secondary = document.querySelector(
-      '[aria-labelledby="secondary-tools-heading"]'
+      '[aria-label="Training summary and questions"]'
     );
     if (!decisions || !secondary) return false;
     return Boolean(decisions.compareDocumentPosition(secondary) & Node.DOCUMENT_POSITION_FOLLOWING);
@@ -861,15 +861,15 @@ async function verifyReviewAndDecisions({
   expect(coreBeforeTools).toBe(true);
 
   const createReview = secondaryRegion.getByRole("button", {
-    name: "Create a fresh review",
+    name: /^(Create|Update) summary$/,
     exact: true,
   });
   await waitForReactHandler(createReview);
   await createReview.click();
   await expect(
-    page.getByText("Your new training review is ready below.", { exact: true })
+    page.getByText("Your summary is updated.", { exact: true })
   ).toBeVisible();
-  await expect(page.getByText("Latest training review", { exact: true })).toBeVisible();
+  await expect(page.getByText("Your training summary", { exact: true })).toBeVisible();
   const question = "What evidence is still missing for my bench decision?";
   await secondaryRegion.getByRole("textbox", { name: "Question for Coach" }).fill(question);
   const askCoach = secondaryRegion.getByRole("button", {
@@ -878,9 +878,9 @@ async function verifyReviewAndDecisions({
   });
   await waitForReactHandler(askCoach);
   await askCoach.click();
-  await expect(page.getByText("Coach answered your question below.")).toBeVisible();
+  await expect(page.getByText("Your answer is ready below.")).toBeVisible();
   await expect(page.getByText(question, { exact: true })).toBeVisible();
-  await expect(pendingRegion.getByText("2 pending", { exact: true })).toBeVisible();
+  await expect(pendingRegion.locator("[id^=recommendation-]")).toHaveCount(2);
 
   const responsiveViewports = [
     { width: 320, height: 700 },
@@ -995,9 +995,9 @@ async function verifyReviewAndDecisions({
   });
   await waitForReactHandler(approveEdited);
   await approveEdited.click();
-  await expect(pendingRegion.getByText("0 pending", { exact: true })).toBeVisible();
+  await expect(pendingRegion.locator("[id^=recommendation-]")).toHaveCount(0);
   await expect(
-    pendingRegion.getByText("Nothing needs your decision right now", {
+    pendingRegion.getByText("No proposed changes waiting.", {
       exact: true,
     })
   ).toBeVisible();
@@ -1112,7 +1112,7 @@ test("recovers one ready progression job through concurrent protected drainers",
       async () => {
         await page.goto("/coach");
         return page
-          .getByRole("region", { name: "Decisions needing review" })
+          .getByRole("region", { name: "Proposed changes" })
           .getByText(exerciseName, { exact: true })
           .count();
       },
@@ -1121,7 +1121,7 @@ test("recovers one ready progression job through concurrent protected drainers",
     .toBeGreaterThan(0);
 
   const suggestions = page.getByRole("region", {
-    name: "Decisions needing review",
+    name: "Proposed changes",
   });
   await expect(
     suggestions.getByText(exerciseName, { exact: true })
@@ -1178,12 +1178,12 @@ test("shows honest empty Review and decisions states", async ({ page }) => {
     .toEqual({ preference: "extra-large", rootSize: "23.2px" });
   await page.goto("/coach");
   await expect(
-    page.getByRole("heading", { name: "Review and decisions", exact: true })
+    page.getByRole("heading", { name: "Coach", exact: true })
   ).toBeVisible();
-  await expect(page.getByText("0 pending", { exact: true })).toBeVisible();
+  await expect(page.getByText("No proposed changes waiting.", { exact: true })).toBeVisible();
   await expect(
     page.getByText(
-      "New proposals will appear here.",
+      "No proposed changes waiting.",
       { exact: true }
     )
   ).toBeVisible();
@@ -1217,9 +1217,8 @@ test("shows honest empty Review and decisions states", async ({ page }) => {
     .toBe("default");
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/coach");
-  expect(
-    await page.evaluate(() => document.documentElement.scrollHeight),
-  ).toBeLessThanOrEqual(844);
+  await expect(page.getByRole("heading", { name: "Your training summary" })).toBeInViewport();
+  await expect(page.getByRole("button", { name: "Create summary", exact: true })).toBeDisabled();
 });
 
 test(
@@ -1409,7 +1408,7 @@ test("answers all five History questions without mixing independent activity int
   await reviewLink.press("Enter");
   await expect(page).toHaveURL(/\/coach$/);
   await expect(
-    page.getByRole("heading", { name: "Review and decisions", exact: true })
+    page.getByRole("heading", { name: "Coach", exact: true })
   ).toBeVisible();
   await page.goto("/history?range=all&view=insights");
   await expect(
@@ -2765,11 +2764,11 @@ test("clears AI history through Settings and restores Coach history from Archive
       .locator("xpath=ancestor::details[1]"),
   );
   await waitForReactHandler(
-    page.getByRole("button", { name: "Create a fresh review", exact: true })
+    page.getByRole("button", { name: /^(Create|Update) summary$/, exact: true })
   );
   await page.getByRole("textbox", { name: "Question for Coach" }).fill(question);
   await page.getByRole("button", { name: "Ask Coach", exact: true }).click();
-  await expect(page.getByText("Coach answered your question below.")).toBeVisible();
+  await expect(page.getByText("Your answer is ready below.")).toBeVisible();
   await expect(page.getByText(question, { exact: true })).toBeVisible();
 
   await page.goto("/settings");
@@ -2801,6 +2800,7 @@ test("clears AI history through Settings and restores Coach history from Archive
       .getByText("Coaching tools", { exact: true })
       .locator("xpath=ancestor::details[1]"),
   );
+  await page.getByText("Previous questions and answers", { exact: true }).click();
   await expect(page.getByText(question, { exact: true })).toBeVisible();
 });
 
@@ -3840,7 +3840,7 @@ test("supports 145% app sizing throughout the narrow mobile navigation", async (
   const walkthrough = [
     { label: "Today", path: "/today", heading: "Today", title: "Today · Repbook", surface: "today" },
     { label: "History", path: "/history", heading: "History", title: "History · Repbook", surface: "history" },
-    { label: "Review", path: "/coach", heading: "Review and decisions", title: "Review and decisions · Repbook", surface: "review" },
+    { label: "Coach", path: "/coach", heading: "Coach", title: "Coach · Repbook", surface: "review" },
     { label: "Program", path: "/program", heading: null, title: "Program · Repbook", surface: null },
     { label: "Settings", path: "/settings", heading: "Settings", title: "Settings · Repbook", surface: null },
   ] as const;

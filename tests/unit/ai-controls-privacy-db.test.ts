@@ -25,10 +25,7 @@ import {
   archiveAIHistory,
   getAIHistoryArchivePreview,
 } from "@/services/ai-privacy";
-import {
-  getArchiveList,
-  restoreArchiveOperation,
-} from "@/services/archive";
+import { getArchiveList, restoreArchiveOperation } from "@/services/archive";
 import {
   createPermanentDeleteGrant,
   getPermanentDeletePreview,
@@ -74,7 +71,7 @@ describe("AI cost, concurrency, and privacy controls", () => {
   async function completedEvents(
     userId: string,
     count: number,
-    overrides: Partial<typeof aiUsageEvents.$inferInsert> = {}
+    overrides: Partial<typeof aiUsageEvents.$inferInsert> = {},
   ) {
     await database.db.insert(aiUsageEvents).values(
       Array.from({ length: count }, (_, index) => ({
@@ -91,9 +88,22 @@ describe("AI cost, concurrency, and privacy controls", () => {
         startedAt: new Date(NOW.getTime() - 60_000),
         completedAt: NOW,
         ...overrides,
-      }))
+      })),
     );
   }
+
+  it("distinguishes an oversized request from exhausted daily usage without reserving it", async () => {
+    const userId = await createUser("oversized");
+    await expect(
+      claimAIUsage(database.db, {
+        userId,
+        task: "weekly_review",
+        reservedUsage: reservation(250_001),
+        now: NOW,
+      }),
+    ).rejects.toMatchObject({ code: "request_too_large" });
+    expect(await database.db.select().from(aiUsageEvents)).toHaveLength(0);
+  });
 
   it("atomically allows two running requests and rejects a simultaneous third", async () => {
     const userId = await createUser("concurrency");
@@ -109,14 +119,14 @@ describe("AI cost, concurrency, and privacy controls", () => {
             reservedUsage: reservation(),
             now: NOW,
           });
-        })()
-      )
+        })(),
+      ),
     );
     const claims = attempts.flatMap((attempt) =>
-      attempt.status === "fulfilled" ? [attempt.value] : []
+      attempt.status === "fulfilled" ? [attempt.value] : [],
     );
     const failures = attempts.flatMap((attempt) =>
-      attempt.status === "rejected" ? [attempt.reason] : []
+      attempt.status === "rejected" ? [attempt.reason] : [],
     );
 
     expect(claims).toHaveLength(2);
@@ -130,8 +140,8 @@ describe("AI cost, concurrency, and privacy controls", () => {
           model: "test-model",
           usage: reservation(250),
           now: NOW,
-        })
-      )
+        }),
+      ),
     );
   });
 
@@ -144,7 +154,7 @@ describe("AI cost, concurrency, and privacy controls", () => {
         task: "equipment_parse",
         reservedUsage: reservation(),
         now: NOW,
-      })
+      }),
     ).rejects.toMatchObject({ code: "rate_limit" });
 
     const networkSource = await createUser("network-source");
@@ -157,7 +167,7 @@ describe("AI cost, concurrency, and privacy controls", () => {
         networkHash: "daily-network",
         reservedUsage: reservation(),
         now: NOW,
-      })
+      }),
     ).rejects.toMatchObject({ code: "network_rate_limit" });
 
     const tokenUser = await createUser("tokens");
@@ -168,7 +178,7 @@ describe("AI cost, concurrency, and privacy controls", () => {
         task: "equipment_parse",
         reservedUsage: reservation(1_000),
         now: NOW,
-      })
+      }),
     ).rejects.toMatchObject({ code: "token_limit" });
 
     const costUser = await createUser("cost");
@@ -183,7 +193,7 @@ describe("AI cost, concurrency, and privacy controls", () => {
           totalTokens: 1_000,
         },
         now: NOW,
-      })
+      }),
     ).rejects.toMatchObject({ code: "cost_limit" });
 
     const routineUser = await createUser("routine-override");
@@ -215,7 +225,7 @@ describe("AI cost, concurrency, and privacy controls", () => {
         reservedUsage: reservation(0),
         audioSeconds: 1,
         now: NOW,
-      })
+      }),
     ).rejects.toMatchObject({ code: "transcription_rate_limit" });
 
     const durationUser = await createUser("transcription-duration");
@@ -230,7 +240,7 @@ describe("AI cost, concurrency, and privacy controls", () => {
         reservedUsage: reservation(0),
         audioSeconds: 20,
         now: NOW,
-      })
+      }),
     ).rejects.toMatchObject({ code: "transcription_duration_limit" });
   });
 
@@ -254,9 +264,11 @@ describe("AI cost, concurrency, and privacy controls", () => {
       now: NOW,
     });
     expect(reclaimed.id).not.toBe(expired.id);
-    expect(await database.db.query.aiUsageEvents.findFirst({
-      where: eq(aiUsageEvents.id, expired.id),
-    })).toMatchObject({ status: "timed_out", failureCode: "lease_expired" });
+    expect(
+      await database.db.query.aiUsageEvents.findFirst({
+        where: eq(aiUsageEvents.id, expired.id),
+      }),
+    ).toMatchObject({ status: "timed_out", failureCode: "lease_expired" });
     await completeAIUsage(database.db, reclaimed, {
       model: "test-model",
       usage: reservation(10),
@@ -264,13 +276,17 @@ describe("AI cost, concurrency, and privacy controls", () => {
     });
 
     const prompt = "Private equipment prompt that must not enter metering";
-    const result = await runControlledStructuredGeneration(database.db, userId, {
-      task: "equipment_parse",
-      system: "Return structured equipment.",
-      input: prompt,
-      schema: equipmentParseSchema,
-      logicalKey: "metered-success",
-    });
+    const result = await runControlledStructuredGeneration(
+      database.db,
+      userId,
+      {
+        task: "equipment_parse",
+        system: "Return structured equipment.",
+        input: prompt,
+        schema: equipmentParseSchema,
+        logicalKey: "metered-success",
+      },
+    );
     expect(result.usage.totalTokens).toBeGreaterThan(0);
     const usage = await database.db.query.aiUsageEvents.findFirst({
       where: eq(aiUsageEvents.logicalKey, "metered-success"),
@@ -296,11 +312,13 @@ describe("AI cost, concurrency, and privacy controls", () => {
         schema: equipmentParseSchema,
         logicalKey: "hard-timeout",
         deadlineMs: 10,
-      })
+      }),
     ).rejects.toMatchObject({ name: "AbortError" });
-    expect(await database.db.query.aiUsageEvents.findFirst({
-      where: eq(aiUsageEvents.logicalKey, "hard-timeout"),
-    })).toMatchObject({ status: "timed_out", failureCode: "timed_out" });
+    expect(
+      await database.db.query.aiUsageEvents.findFirst({
+        where: eq(aiUsageEvents.logicalKey, "hard-timeout"),
+      }),
+    ).toMatchObject({ status: "timed_out", failureCode: "timed_out" });
   });
 
   it("expires abandoned raw material while preserving validated application data", async () => {
@@ -331,19 +349,23 @@ describe("AI cost, concurrency, and privacy controls", () => {
       userId,
       loadUnit: "lb",
       programName: "Retained program",
-      days: [{
-        name: "Retained day",
-        exercises: [{
-          exerciseId: exercise.id,
-          sets: 3,
-          repMin: 6,
-          repMax: 8,
-          targetLoad: 100,
-          restSec: 90,
-          supersetKey: null,
-          notes: null,
-        }],
-      }],
+      days: [
+        {
+          name: "Retained day",
+          exercises: [
+            {
+              exerciseId: exercise.id,
+              sets: 3,
+              repMin: 6,
+              repMax: 8,
+              targetLoad: 100,
+              restSec: 90,
+              supersetKey: null,
+              notes: null,
+            },
+          ],
+        },
+      ],
       changeSummary: "Privacy retention fixture",
       auditAction: "program.activate",
       auditSummary: "Activated privacy retention fixture",
@@ -389,7 +411,10 @@ describe("AI cost, concurrency, and privacy controls", () => {
         userId,
         kind: "qa",
         contentMd: "Durable answer",
-        dataDigest: { question: "Private question", fullContext: "x".repeat(2_000) },
+        dataDigest: {
+          question: "Private question",
+          fullContext: "x".repeat(2_000),
+        },
       })
       .returning();
     await completedEvents(userId, 1, {
@@ -401,24 +426,26 @@ describe("AI cost, concurrency, and privacy controls", () => {
       database.db,
       userId,
       NOW,
-      "privacy-test"
+      "privacy-test",
     );
     expect(safeBackup.schemaVersion).toBe("38");
     expect(safeBackup.tables.import_events).toHaveLength(2);
-    expect(safeBackup.tables.import_events).toEqual(expect.arrayContaining([
-      expect.objectContaining({
-        id: confirmedImport.id,
-        status: "confirmed",
-        raw_payload: "",
-        parsed_payload: null,
-      }),
-      expect.objectContaining({
-        id: abandonedImport.id,
-        status: "discarded",
-        raw_payload: "",
-        parsed_payload: null,
-      }),
-    ]));
+    expect(safeBackup.tables.import_events).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: confirmedImport.id,
+          status: "confirmed",
+          raw_payload: "",
+          parsed_payload: null,
+        }),
+        expect.objectContaining({
+          id: abandonedImport.id,
+          status: "discarded",
+          raw_payload: "",
+          parsed_payload: null,
+        }),
+      ]),
+    );
     expect(safeBackup.tables.ai_parsing_events).toEqual([
       expect.objectContaining({
         id: parseEvent.id,
@@ -428,11 +455,13 @@ describe("AI cost, concurrency, and privacy controls", () => {
       }),
     ]);
     expect(JSON.stringify(safeBackup.tables.coaching_insights)).not.toContain(
-      "fullContext"
+      "fullContext",
     );
-    expect(await database.db.query.importEvents.findFirst({
-      where: eq(importEvents.id, abandonedImport.id),
-    })).toMatchObject({ rawPayload: "abandoned private csv", status: "parsed" });
+    expect(
+      await database.db.query.importEvents.findFirst({
+        where: eq(importEvents.id, abandonedImport.id),
+      }),
+    ).toMatchObject({ rawPayload: "abandoned private csv", status: "parsed" });
 
     const result = await runPrivacyRetention(database.db, NOW);
     expect(result).toMatchObject({
@@ -443,30 +472,42 @@ describe("AI cost, concurrency, and privacy controls", () => {
       expiredUsageEvents: 1,
     });
 
-    expect(await database.db.query.importEvents.findFirst({
-      where: eq(importEvents.id, confirmedImport.id),
-    })).toMatchObject({
+    expect(
+      await database.db.query.importEvents.findFirst({
+        where: eq(importEvents.id, confirmedImport.id),
+      }),
+    ).toMatchObject({
       status: "confirmed",
       rawPayload: "",
       parsedPayload: null,
       confirmedPayload: { schemaVersion: "1", resolutions: [] },
       payloadSha256: expect.stringMatching(/^[a-f0-9]{64}$/),
     });
-    expect(await database.db.query.importEvents.findFirst({
-      where: eq(importEvents.id, abandonedImport.id),
-    })).toMatchObject({ status: "discarded", rawPayload: "", parsedPayload: null });
-    expect(await database.db.query.aiParsingEvents.findFirst({
-      where: eq(aiParsingEvents.id, parseEvent.id),
-    })).toMatchObject({
+    expect(
+      await database.db.query.importEvents.findFirst({
+        where: eq(importEvents.id, abandonedImport.id),
+      }),
+    ).toMatchObject({
+      status: "discarded",
+      rawPayload: "",
+      parsedPayload: null,
+    });
+    expect(
+      await database.db.query.aiParsingEvents.findFirst({
+        where: eq(aiParsingEvents.id, parseEvent.id),
+      }),
+    ).toMatchObject({
       rawInput: "",
       rawOutput: null,
       parsedJson: null,
       confirmedPayload: { items: [] },
       inputSha256: expect.stringMatching(/^[a-f0-9]{64}$/),
     });
-    expect(await database.db.query.coachingInsights.findFirst({
-      where: eq(coachingInsights.id, coach.id),
-    })).toMatchObject({
+    expect(
+      await database.db.query.coachingInsights.findFirst({
+        where: eq(coachingInsights.id, coach.id),
+      }),
+    ).toMatchObject({
       contentMd: "Durable answer",
       dataDigest: {
         schemaVersion: "2",
@@ -474,12 +515,16 @@ describe("AI cost, concurrency, and privacy controls", () => {
         modelContextRetained: false,
       },
     });
-    expect(await database.db.query.workoutSessions.findFirst({
-      where: eq(workoutSessions.id, workout.id),
-    })).toBeDefined();
-    expect(await database.db.query.programs.findFirst({
-      where: eq(programs.id, program.programId),
-    })).toBeDefined();
+    expect(
+      await database.db.query.workoutSessions.findFirst({
+        where: eq(workoutSessions.id, workout.id),
+      }),
+    ).toBeDefined();
+    expect(
+      await database.db.query.programs.findFirst({
+        where: eq(programs.id, program.programId),
+      }),
+    ).toBeDefined();
   });
 
   it("lets the user archive, restore, and permanently delete the exact AI history scope", async () => {
@@ -495,7 +540,10 @@ describe("AI cost, concurrency, and privacy controls", () => {
         userId,
         kind: "qa",
         contentMd: "Second durable answer",
-        dataDigest: { question: "Private question", fullContext: "private context two" },
+        dataDigest: {
+          question: "Private question",
+          fullContext: "private context two",
+        },
       },
     ]);
     const [parseEvent] = await database.db
@@ -515,14 +563,18 @@ describe("AI cost, concurrency, and privacy controls", () => {
     const archived = await archiveAIHistory(database.db, userId, preview);
     expect(archived.ok).toBe(true);
     if (!archived.ok) throw new Error(archived.reason);
-    expect(await getArchiveList(database.db, userId, ["ai_history"])).toHaveLength(1);
+    expect(
+      await getArchiveList(database.db, userId, ["ai_history"]),
+    ).toHaveLength(1);
     expect(await database.db.query.coachingInsights.findMany()).toEqual([
       expect.objectContaining({ archivedAt: expect.any(Date) }),
       expect.objectContaining({ archivedAt: expect.any(Date) }),
     ]);
-    expect(await database.db.query.aiParsingEvents.findFirst({
-      where: eq(aiParsingEvents.id, parseEvent.id),
-    })).toMatchObject({
+    expect(
+      await database.db.query.aiParsingEvents.findFirst({
+        where: eq(aiParsingEvents.id, parseEvent.id),
+      }),
+    ).toMatchObject({
       rawInput: "",
       rawOutput: null,
       parsedJson: null,
@@ -530,25 +582,25 @@ describe("AI cost, concurrency, and privacy controls", () => {
     });
 
     expect(
-      await restoreArchiveOperation(database.db, userId, archived.operationId)
+      await restoreArchiveOperation(database.db, userId, archived.operationId),
     ).toMatchObject({ ok: true });
     expect(
       (await database.db.query.coachingInsights.findMany()).every(
-        (insight) => insight.archivedAt == null
-      )
+        (insight) => insight.archivedAt == null,
+      ),
     ).toBe(true);
 
     const archiveAgain = await archiveAIHistory(
       database.db,
       userId,
-      await getAIHistoryArchivePreview(database.db, userId)
+      await getAIHistoryArchivePreview(database.db, userId),
     );
     expect(archiveAgain.ok).toBe(true);
     if (!archiveAgain.ok) throw new Error(archiveAgain.reason);
     const deletePreview = await getPermanentDeletePreview(
       database.db,
       userId,
-      archiveAgain.operationId
+      archiveAgain.operationId,
     );
     expect(deletePreview).toMatchObject({
       rootType: "ai_history",
@@ -562,7 +614,7 @@ describe("AI cost, concurrency, and privacy controls", () => {
       archiveAgain.operationId,
       "dev-login",
       deleteNow,
-      deleteNow
+      deleteNow,
     );
     expect(grant.ok).toBe(true);
     if (!grant.ok) throw new Error(grant.reason);
@@ -592,12 +644,14 @@ describe("AI cost, concurrency, and privacy controls", () => {
       archiveAgain.operationId,
       grant.token,
       PERMANENT_DELETE_CONFIRMATION,
-      snapshotId
+      snapshotId,
     );
     if (!deleted.ok) throw new Error(deleted.reason);
     expect(await database.db.query.coachingInsights.findMany()).toHaveLength(0);
-    expect(await database.db.query.aiParsingEvents.findFirst({
-      where: eq(aiParsingEvents.id, parseEvent.id),
-    })).toMatchObject({ rawInput: "", rawOutput: null, parsedJson: null });
+    expect(
+      await database.db.query.aiParsingEvents.findFirst({
+        where: eq(aiParsingEvents.id, parseEvent.id),
+      }),
+    ).toMatchObject({ rawInput: "", rawOutput: null, parsedJson: null });
   });
 });
