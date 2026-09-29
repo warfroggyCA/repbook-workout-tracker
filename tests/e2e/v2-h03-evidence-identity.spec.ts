@@ -50,7 +50,7 @@ test("shows exact, tiered, read-only exercise evidence with durable return conte
   ).toBeVisible();
   await expect(
     page.getByText(
-      /3 of 4 saved sets can be matched to the workout; 2 are eligible for exercise calculations/,
+      /3 of 4 saved sets can be matched to the workout; 2 are included in progress calculations/,
     ),
   ).toBeVisible();
   await expect(page.getByText(/Reviewed hevy mapping/)).toBeVisible();

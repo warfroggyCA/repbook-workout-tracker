@@ -165,9 +165,7 @@ export default async function SettingsPage(props: PageProps<"/settings">) {
         </div>
         {equipmentSaved && <EquipmentSaveNotice result={equipmentSaved} />}
         <p className="mb-3 mt-2 text-xs leading-5 text-muted-foreground">
-          Browse your saved inventory by family. Expand a family to see every
-          distinct item, its quantity, and recorded details. Bodyweight training
-          is always available and does not need an inventory record.
+          Expand an equipment group to see your items and quantities. Bodyweight exercises are always available; you do not need to add them.
         </p>
         <EquipmentInventory groups={equipmentGroups} />
       </section>

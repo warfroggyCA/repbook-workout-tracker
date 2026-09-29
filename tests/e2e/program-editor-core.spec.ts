@@ -151,7 +151,7 @@ test("opens and operates the keyboard-accessible Program editor", async ({
   await editTab.focus();
   await expect(editTab).toBeFocused();
   await page.keyboard.press("ArrowRight");
-  const reviewTab = page.getByRole("tab", { name: "Coach", exact: true });
+  const reviewTab = page.getByRole("tab", { name: "Review", exact: true });
   await expect(reviewTab).toBeFocused();
   await page.keyboard.press("Enter");
   await expect(reviewTab).toHaveAttribute("aria-selected", "true");
@@ -217,7 +217,7 @@ test("opens and operates the keyboard-accessible Program editor", async ({
     const programName = page.getByLabel("Program name");
     await programName.fill(`${await programName.inputValue()} — reviewed`);
     await expect(page.getByRole("status")).toContainText("All changes saved");
-    await page.getByRole("tab", { name: "Coach", exact: true }).click();
+    await page.getByRole("tab", { name: "Review", exact: true }).click();
     await page.getByRole("button", { name: "Check Program", exact: true }).first().click();
     await expect(page.getByRole("heading", { name: "Ready to publish" })).toBeVisible();
     await page.getByRole("button", { name: "Publish future Program", exact: true }).click();

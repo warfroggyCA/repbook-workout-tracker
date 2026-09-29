@@ -15,13 +15,13 @@
           "packageNamespace": "repbook-owner/9f271ff37dc12d67975da1e1",
           "schemaVersion": "analysis-package/1",
           "semanticVersion": "repbook-v2/1",
-          "digest": "07935c3030482d36560320c1ba45b219c91489d7122362a62929c9764149eb1c",
+          "digest": "65634f92c2913262c3d3c29d5c46ddbfa3194a3b639b22974f5bf2bf87ee5a04",
           "evidenceCutoff": "2026-08-08T16:00:00.000Z",
           "expiresAt": "2026-09-07T16:00:00.000Z"
         },
         "question": {
           "id": "program_progress",
-          "text": "What does the retained evidence say about progress and fit of my current Program?"
+          "text": "How is my plan working for me?"
         },
         "observations": [
           {
