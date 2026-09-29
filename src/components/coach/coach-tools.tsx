@@ -95,7 +95,7 @@ export function CoachTools({
           <p className="text-sm text-muted-foreground">
             {hasTrainingData
               ? "Get a summary of your recent training when you want one."
-              : "Your completed workouts will give Coach something to review."}
+              : "Your recorded workouts will give Coach something to review."}
           </p>
         )}
         <Button
