@@ -852,6 +852,12 @@ test("fixes a just-logged set from its ledger row and resumes from Today with ex
   }
 
   await page.getByText("Resume workout", { exact: true }).click();
-  await expect(page).toHaveURL(sessionUrl);
+  // Resuming an active rest can add its focus anchor after navigation.
+  const destination = new URL(sessionUrl);
+  await expect(page).toHaveURL((url) =>
+    url.origin === destination.origin && url.pathname === destination.pathname &&
+    (url.hash === "" || url.hash === "#workout-rest-status")
+  );
+  await expect(page.getByTestId("rest-cockpit")).toBeVisible();
   await discardWorkout(page);
 });
