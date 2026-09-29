@@ -257,7 +257,7 @@ test("adds equipment, repeated types, and selection-driven plates, then reloads 
   // explanation of implicit bodyweight capability.
   await expect(page.getByText("Olympic plates", { exact: true })).toHaveCount(0);
   await expect(page.getByText("Bodyweight", { exact: true })).toHaveCount(0);
-  await expect(page.getByText(/Bodyweight training is always available/)).toHaveCount(1);
+  await expect(page.getByText(/Bodyweight exercises are always available/)).toHaveCount(1);
   await expect(page.getByText("Adjustable dumbbells (5–35 lb pair)")).toBeVisible();
   await expect(page.locator("#weight-plates-card")).toContainText("12 plates across 5 sizes");
   await expect(

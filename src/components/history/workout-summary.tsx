@@ -71,7 +71,7 @@ export function WorkoutSummary({
           Workout summary
         </h2>
         <p className="mt-0.5 text-sm text-muted-foreground">
-          Recorded facts first; recommendations remain separate.
+          Your workout at a glance.
         </p>
       </div>
       <dl className="grid sm:grid-cols-2">
@@ -83,7 +83,7 @@ export function WorkoutSummary({
         />
         <SummaryAnswer question="Was anything notable?" answer={summary.notable} />
         <SummaryAnswer
-          question="Does anything deserve action next time?"
+          question="What next?"
           answer={summary.next}
         />
       </dl>

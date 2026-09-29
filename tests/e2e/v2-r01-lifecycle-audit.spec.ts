@@ -186,11 +186,11 @@ test("keeps portable facts, AI packages, support diagnostics, Review, and Coach 
     .click();
   await expect(page).toHaveURL(/\/export\?briefRange=all#training-brief$/);
   await expect(page.getByLabel("Period to summarize")).toHaveValue("12");
-  await expect(page.getByText(/History is showing all time/i)).toBeVisible();
+  await expect(page.getByText(/The summary starts with the last 12 weeks/i)).toBeVisible();
 
   await page.goto("/export?briefRange=6m#training-brief");
   await expect(page.getByLabel("Period to summarize")).toHaveValue("26");
-  await expect(page.getByText(/History is showing all time/i)).toHaveCount(0);
+  await expect(page.getByText(/The summary starts with the last 12 weeks/i)).toHaveCount(0);
   const formValues = await page
     .locator('form[action="/api/export/markdown"]')
     .evaluate((form) =>
@@ -204,7 +204,7 @@ test("keeps portable facts, AI packages, support diagnostics, Review, and Coach 
   await expect(
     page.getByRole("heading", { name: "Analysis package" }),
   ).toBeVisible();
-  await expect(page.getByText(/never sends it to an external service/i)).toBeVisible();
+  await expect(page.getByText(/Repbook does not send it anywhere/i)).toBeVisible();
 
   await page.goto("/export/support");
   await expect(
@@ -212,7 +212,7 @@ test("keeps portable facts, AI packages, support diagnostics, Review, and Coach 
   ).toBeVisible();
   await expect(page.getByText(/never sends the bundle for you/i)).toBeVisible();
   await expect(
-    page.getByText(/makes no upload, API, AI, or persistence/i),
+    page.getByText(/Nothing is uploaded or sent to an AI/i),
   ).toBeVisible();
 
   await page.goto("/coach");

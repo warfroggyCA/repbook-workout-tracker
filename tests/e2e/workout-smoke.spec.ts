@@ -1328,9 +1328,9 @@ test("answers all five History questions without mixing independent activity int
     "Progress is uncertain; no exact exercise has two comparable best-set observations.",
   );
   await expect(progressLens).toContainText(
-    "needs two comparable observations",
+    "needs two matching results",
   );
-  await expect(progressLens).toContainText("exact-exercise comparisons");
+  await expect(progressLens).toContainText("exercise comparisons");
 
   await page.goto("/history?range=all&view=insights&lens=program-fit");
   const programLens = page.getByRole("article", {
@@ -1349,7 +1349,7 @@ test("answers all five History questions without mixing independent activity int
     exact: true,
   });
   await expect(painLens).toContainText(
-    "no repeated movement pattern is established"
+    "no repeating pattern is clear yet"
   );
   await expect(painLens).toContainText("recorded associations, not causes");
 
@@ -1389,7 +1389,7 @@ test("answers all five History questions without mixing independent activity int
     exact: true,
   });
   await expect(recordsLens).toContainText(
-    "Showing best observed performances for 1 exact exercise variant.",
+    "Your best results for 1 exercise.",
   );
   await expect(recordsLens).toContainText("Barbell Back Squat");
   await expect(recordsLens).toContainText("not all-time records");
@@ -1511,7 +1511,7 @@ test("answers all five History questions without mixing independent activity int
     "No Program-linked history is available",
     "No pain or discomfort-linked exercise changes",
     "Not enough comparable completed strength work",
-    "No eligible supported performance observations",
+    "No results to compare for these dates",
   ];
   for (const [index, title] of lensTitles.entries()) {
     await page.goto(`/history?view=insights&lens=${lensKeys[index]}`);
@@ -1583,7 +1583,7 @@ test("answers all five History questions without mixing independent activity int
   await page.goto("/history?view=insights&lens=records");
   await expect(
     page.getByRole("article", { name: "Records", exact: true })
-  ).toContainText("No eligible supported performance observations");
+  ).toContainText("No results to compare for these dates");
   const unexpectedBrowserErrors =
     browserName === "webkit" &&
     browserErrors.length === 2 &&
@@ -1915,7 +1915,7 @@ test("signs in and completes a durable workout flow", async ({ page }) => {
   await expect(
     page.getByText("Completed with planned work remaining", { exact: true }),
   ).toBeVisible();
-  await expect(page.getByText(/retained reason is time limit reached/)).toBeVisible();
+  await expect(page.getByText(/Reason: time limit reached/)).toBeVisible();
   await expect(page.getByText(/100 lb × 8/)).toBeVisible();
   await page.getByRole("button", { name: "Correct set", exact: true }).first().click();
   const correction = page.getByRole("dialog", { name: "Edit set 1" });
@@ -2628,7 +2628,7 @@ test("groups every saved equipment item into accessible family cards at all app 
   await expect(bandsRegion.getByText("Bodylastics resistance bands")).toBeVisible();
   await expect(bandsRegion.getByText("Brand: Bodylastics", { exact: true })).toBeVisible();
 
-  await expect(page.getByText(/Bodyweight training is always available/)).toHaveCount(1);
+  await expect(page.getByText(/Bodyweight exercises are always available/)).toHaveCount(1);
   await expect(page.getByRole("button", { name: /No-equipment training/ })).toHaveCount(0);
   await expect(page.getByText("Bodyweight", { exact: true })).toHaveCount(0);
 

@@ -73,7 +73,7 @@ test("reviews and publishes a multi-day Program into an ordered active workout",
   await expect(halfLoadInstruction).toHaveValue("Half of working load");
   await expect(secondEmptyBarInstruction).toHaveValue("Empty bar");
   await expect(page.getByText("Structured training intent to publish", { exact: true })).toHaveCount(0);
-  await expect(page.getByText(/Repbook keeps the published exercises, order, and pairings/)).toBeVisible();
+  await expect(page.getByText(/Exercises stay in their planned order and groups/)).toBeVisible();
   await expect(page.getByText(/Automatic replacement: off\. Automatic omission: off\./)).toHaveCount(4);
   await expect(page.getByText(/Day plan to review:/)).toHaveCount(2);
   await expect(page.getByText(/Shorter-session choice to review:/)).toHaveCount(4);
@@ -133,7 +133,7 @@ test("reviews and publishes a multi-day Program into an ordered active workout",
     name: /Push: I reviewed this day’s goal, time range, exercise priorities, and minimum sets/,
   }).check();
   await page.getByRole("checkbox", {
-    name: /I confirmed every retained exercise works with my exact equipment setup/,
+    name: /Every exercise works with my equipment/,
   }).check();
 
   const routineSection = page.getByRole("heading", { name: "Routine from text" }).locator("..").locator("..");

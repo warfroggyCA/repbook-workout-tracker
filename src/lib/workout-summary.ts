@@ -257,9 +257,9 @@ function nextAnswer(input: WorkoutSummaryInput): WorkoutSummaryAnswer {
 
   if (input.durationExcluded && input.timingCanBeReviewed) {
     return {
-      value: "Review workout timing when useful",
+      value: "Check the workout time",
       detail:
-        "This is a record correction option, not a required Program change.",
+        "You can correct the time if it is wrong.",
       tone: "neutral",
       href: "#technical-record",
       actionLabel: "Review timing options",

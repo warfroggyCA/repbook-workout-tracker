@@ -96,7 +96,7 @@ test("keeps calendar cadence and planned-set outcomes separate and trustworthy",
   await expect(page.getByText("Median workout gap").locator("..")).toContainText("5.5 days");
   await expect(page.getByText("Current workout gap").locator("..")).toContainText("1 day");
   await expect(page.getByText(/Current preference: 3 sessions per week/)).toBeVisible();
-  await expect(page.getByText(/not an adherence percentage/)).toBeVisible();
+  await expect(page.getByText(/does not measure how closely you followed older plans/)).toBeVisible();
   await expect(page.getByText("Program-day exposure", { exact: true })).toBeVisible();
   await expect(page.getByRole("listitem").filter({
     hasText: "Push renamed / Strength A",

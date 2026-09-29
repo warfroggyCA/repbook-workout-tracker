@@ -205,7 +205,7 @@ test("calendar-first History opens a recoverable retrospective entry flow", asyn
   ).toBeVisible();
   await expect(
     page.getByText(
-      /choose Exact local start and enter its separate workout duration/i,
+      /choose Exact local start and enter its duration below/i,
     ),
   ).toBeVisible();
   await expect(page.getByText("Enter only facts you remember.")).toBeVisible();

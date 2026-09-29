@@ -214,9 +214,8 @@ export function HistoryWorkspace({
 
       <p className="flex items-start gap-2 px-1 text-xs leading-relaxed text-muted-foreground">
         <HeartPulse className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
-        History describes recorded training patterns; it is not a medical
-        assessment. Estimated strength uses the existing Epley calculation and
-        is most useful with consistent load, reps, and effort logging.
+        Strength estimates use weight and reps. They are most useful when you
+        record effort consistently. Pain notes are a record, not a diagnosis.
       </p>
     </main>
   );

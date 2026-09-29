@@ -87,7 +87,7 @@ test("presents performed evidence first without rewriting or inflating History",
     "What happened?",
     "What changed?",
     "Was anything notable?",
-    "Does anything deserve action next time?",
+    "What next?",
   ]) {
     await expect(summary.getByText(question, { exact: true })).toBeVisible();
   }
@@ -193,14 +193,14 @@ test("presents performed evidence first without rewriting or inflating History",
   await expect(page.locator(`#occurrence-${ids.importedWarmupOccurrence}`)).toBeVisible();
 
   const retained = technical.locator("details", {
-    hasText: "Retained source records (1)",
+    hasText: "Other saved records (1)",
   });
   await expect(retained).not.toHaveAttribute("open", "");
   await retained.locator("summary").focus();
   await retained.locator("summary").press("Enter");
   await expect(retained).toHaveAttribute("open", "");
   await expect(retained).toContainText("Retained unlinked import row");
-  await expect(retained).toContainText("not counted as performed working sets");
+  await expect(retained).toContainText("not included in the set count");
 
   const source = technical
     .getByRole("heading", { name: "Original record details", exact: true })
@@ -235,7 +235,7 @@ test("presents performed evidence first without rewriting or inflating History",
   await page.locator("#technical-record > summary").click();
   await expect(page.getByText(/Timing corrected 1 time/)).toBeVisible();
   await expect(page.getByText(/1 working set/)).toBeVisible();
-  await expect(page.getByText(/Older occurrence text indicates work remained/)).toBeVisible();
+  await expect(page.getByText(/Some exercises were left unfinished/)).toBeVisible();
 
   await page.goto(`/history/${ids.abandonedSession}`);
   await expect(page.getByText("Abandoned workout", { exact: true }).first()).toBeVisible();

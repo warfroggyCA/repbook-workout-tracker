@@ -54,7 +54,7 @@ test("recovers a six-day interruption without rewriting source timestamps", asyn
   const recovery = page.getByTestId("today-decision");
   await expect(recovery).toContainText("Workout needs attention");
   await expect(recovery).toContainText("Timing needs review · wall clock 6 days");
-  await expect(recovery).toContainText("The recorded start is retained");
+  await expect(recovery).toContainText("The original start time is saved");
   const resume = recovery.getByRole("button", { name: "Resume workout", exact: true });
   const review = recovery.getByRole("button", {
     name: "Review timing & finish",
@@ -128,7 +128,7 @@ test("recovers a six-day interruption without rewriting source timestamps", asyn
     name: "Correct active workout duration",
   });
   await expect(correctionDialog).toContainText(
-    "It never changes the original start or finish timestamps",
+    "Start and finish times stay the same",
   );
   const unknown = correctionDialog.getByRole("radio", {
     name: /Active time is unknown/,
