@@ -809,7 +809,7 @@ test("records honest empty states at 320 px and 145 percent app text", async ({
     ["Progress", "No strength-progress answer is available yet"],
     ["Program fit", "No Program-linked history is available"],
     ["Work capacity", "Not enough comparable completed strength work"],
-    ["Records", "No eligible supported performance observations"],
+    ["Records", "No results to compare for these dates"],
   ] as const) {
     await expect(
       page.getByRole("article", { name: article, exact: true }),

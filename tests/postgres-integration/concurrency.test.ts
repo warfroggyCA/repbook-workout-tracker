@@ -1053,7 +1053,7 @@ describe.sequential("real PostgreSQL parallel invariants", () => {
       (result) => result.outcome === "finish_payload_conflict",
     )).toMatchObject({
       alreadyFinished: true,
-      reason: expect.stringContaining("different retained finish details"),
+      reason: expect.stringContaining("different finish details"),
     });
     const [changedClosure] = resultRows<{
       notes: number;

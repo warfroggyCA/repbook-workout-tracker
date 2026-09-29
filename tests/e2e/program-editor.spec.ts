@@ -1114,7 +1114,7 @@ test("publishes loaded seconds per side and records the performed measurement on
   await picker.getByRole("button", { name: "View details for Kettlebell Suitcase Carry", exact: true }).click();
   await picker.getByRole("button", { name: "Replace exercise", exact: true }).click();
   await page.getByRole("button", { name: /^Kettlebell Suitcase Carry Exercise 1 / }).click();
-  await expect(editor.getByRole("alert")).toContainText("cannot be logged with a repetition prescription");
+  await expect(editor.getByRole("alert")).toContainText("needs a time target instead of reps");
   await editor.getByLabel("How to measure this exercise").selectOption("time_per_side");
   await expect(editor.getByRole("alert")).toHaveCount(0);
   await editor.getByLabel("Minimum seconds per side").fill("30");

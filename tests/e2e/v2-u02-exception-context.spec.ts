@@ -205,7 +205,7 @@ test("keeps ordinary completion minimal and makes exception evidence reversible,
   await expect(review).toContainText("Limited by: Strength or fatigue");
   await expect(review).toContainText("Pain: back 4/10");
   await expect(review).toContainText(
-    "They do not change your Program, approve a proposal, or create an adaptation.",
+    "They do not change your plan.",
   );
   await pageErrors.expectNoUnexpected();
 });

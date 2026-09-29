@@ -135,7 +135,7 @@ test("validates pasted or uploaded JSON into a transient exact preview", async (
   const preview = page.getByTestId("external-analysis-preview");
   await expect(preview).toContainText("Validated preview only");
   await expect(preview).toContainText("review_future_training · future_only_review · program");
-  await expect(preview).toContainText("Nothing was retained, imported, accepted, or applied.");
+  await expect(preview).toContainText("Nothing was saved or changed.");
   await page.getByText("Exact validated response").click();
   const exactPreview = await page
     .getByTestId("external-analysis-exact-preview")
