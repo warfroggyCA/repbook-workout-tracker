@@ -89,6 +89,26 @@ function renderCalendar(
 }
 
 describe("HistoryCalendar date actions", () => {
+  it.each([
+    ["month", "2026-07-08", "2026-06-28", "2026-07-04"],
+    ["week", "2026-07-08", "2026-07-05", "2026-07-11"],
+    ["month", "2026-03-01", "2026-03-01", "2026-03-07"],
+    ["week", "2026-01-01", "2025-12-28", "2026-01-03"],
+  ] as const)("aligns %s at %s from Sunday through Saturday", (view, anchor, sunday, saturday) => {
+    const html = renderCalendar([], anchor, view);
+    const dates = [...html.matchAll(/(?:data-calendar-date|dateTime)="([0-9-]+)"/g)].map((match) => match[1]);
+    expect(dates[0]).toBe(sunday);
+    expect(dates[6]).toBe(saturday);
+    const headings = [...html.matchAll(/>(Sun|Mon|Tue|Wed|Thu|Fri|Sat)<\/div>/g)].map((match) => match[1]);
+    expect(headings).toEqual(["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]);
+  });
+
+  it("aligns the year view's January grid with Thursday in the fifth column", () => {
+    const html = renderCalendar([], "2026-01-01", "year");
+    const beforeJanuaryFirst = html.split('data-calendar-date="2026-01-01"')[0];
+    expect(beforeJanuaryFirst.match(/<span aria-hidden="true"><\/span>/g)).toHaveLength(4);
+  });
+
   it("keeps the calendar heading and controls without the redundant instructions", () => {
     const html = renderCalendar([calendarSession("workout-one", "Day One")]);
 

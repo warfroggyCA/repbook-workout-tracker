@@ -51,7 +51,7 @@ import type {
 
 type CalendarRecord = HistoryCalendarRecord;
 
-const weekdays = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+const weekdays = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const number = new Intl.NumberFormat(undefined, { maximumFractionDigits: 0 });
 
 function dateKey(date: Date) {
@@ -75,7 +75,7 @@ function addDays(date: Date, days: number) {
 function startOfWeek(date: Date) {
   const result = new Date(date);
   result.setHours(12, 0, 0, 0);
-  result.setDate(result.getDate() - ((result.getDay() + 6) % 7));
+  result.setDate(result.getDate() - result.getDay());
   return result;
 }
 
@@ -92,7 +92,7 @@ function weekDays(anchor: Date) {
 
 function yearMonthCells(year: number, month: number) {
   const first = new Date(year, month, 1, 12);
-  const leading = (first.getDay() + 6) % 7;
+  const leading = first.getDay();
   const daysInMonth = new Date(year, month + 1, 0, 12).getDate();
   return Array.from({ length: 42 }, (_, index) => {
     const day = index - leading + 1;
