@@ -4889,6 +4889,7 @@ export function SessionRunner(props: SessionRunnerProps) {
           <ExerciseCard
             key={`${exercise.id}:${exercise.exerciseId}:${exercise.metricType}:${exercise.loadType}:${exercise.loadSemantics}`}
             exercise={exercise}
+            warmupPending={pendingWarmups.length > 0}
             warmupContent={exerciseWarmups.length > 0 ? (
               <section aria-label={`Warm-up for ${exercise.name}`} className="space-y-2 border-t p-3">
                 {pendingWarmups.length > 0 && <>
