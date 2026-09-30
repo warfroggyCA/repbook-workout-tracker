@@ -5,6 +5,7 @@
 // entirely hidden - once at workout start and once during rest. The projects
 // share one fixture and each logs one set, so keep at most three projects.
 import { expect, test, type Page } from "@playwright/test";
+import { waitForEquipmentSelectionsToSettle } from "../helpers/react-readiness";
 import { BA_WORKOUT_EMAIL } from "../fixtures/ba-workout-contract";
 
 async function focusCheck(page: Page) {
@@ -60,6 +61,8 @@ test("focused workout controls stay clear of the fixed dock", async ({ page }) =
   await expect(page).toHaveURL(/\/session\/[0-9a-f-]+/);
   await page.waitForLoadState("networkidle");
 
+  await waitForEquipmentSelectionsToSettle(page);
+  await expect(page.getByTestId("active-log-set")).toBeEnabled();
   const atStart = await focusCheck(page);
   console.log(`[${test.info().project.name}] start: checked ${atStart.checked}, dock ${atStart.dock}px, obscured ${atStart.obscured.length}`);
   expect(atStart.checked).toBeGreaterThan(0);

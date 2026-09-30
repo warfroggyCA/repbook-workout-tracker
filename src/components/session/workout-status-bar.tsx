@@ -138,6 +138,7 @@ export function WorkoutStatusBar({
   const canFinishNow = finishReady ?? action == null;
   const isFinishingEarly = pendingPlannedCount > 0;
   const completesCurrentWarmup =
+    !timerRunning &&
     checkingExerciseSkip == null &&
     !skipRecoveryPending &&
     action != null &&

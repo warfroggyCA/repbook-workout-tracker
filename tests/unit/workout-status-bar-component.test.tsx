@@ -535,6 +535,22 @@ describe("WorkoutStatusBar", () => {
     expect(html).not.toContain("Next set");
   });
 
+  it("does not offer to complete a warm-up while its rest is running", () => {
+    const html = renderToStaticMarkup(
+      <WorkoutStatusBar
+        action={{ kind: "exercise_warmup", occurrenceId: "warmup-1", sessionExerciseId: exercise.id, sequenceIdx: 0, label: "Easy ramp", exerciseName: "Barbell Squat" }}
+        exercise={exercise}
+        timer={{ phase: "running", generationId: "rest-before-warmup" } as never}
+        restRemainingSec={45}
+        {...callbacks}
+        onPrimaryAction={() => undefined}
+      />,
+    );
+    expect(html).toContain("End rest");
+    expect(html).not.toContain("Complete warm-up");
+    expect(html).not.toContain('aria-label="Complete Barbell Squat');
+  });
+
   it("turns the warm-up dock into the immediate Complete action", () => {
     const html = renderToStaticMarkup(
       <WorkoutStatusBar

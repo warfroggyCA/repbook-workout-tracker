@@ -385,7 +385,7 @@ async function renderSessionPage(
               {
                 equipmentType: item.type,
                 equipmentDefinitionId: item.definitionId,
-                attrs: { maxWeight: item.attrs.maxWeight },
+                attrs: item.attrs,
               },
             );
           }

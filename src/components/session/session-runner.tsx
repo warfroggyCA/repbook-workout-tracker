@@ -1610,9 +1610,29 @@ export function SessionRunner(props: SessionRunnerProps) {
     : null;
   const currentActionId = actionIdentity(guidance.currentAction);
   const currentActionKind = guidance.currentAction?.kind ?? null;
+  const manuallyScrolledActionRef = useRef<string | null>(null);
+  useEffect(() => {
+    const ownScroll = () => {
+      manuallyScrolledActionRef.current = currentActionId;
+      exerciseDisclosureGenerationRef.current += 1;
+    };
+    const resumeInputVisibility = (event: FocusEvent) => {
+      if (event.target instanceof HTMLElement && event.target.matches("input, textarea, select, [contenteditable='true']")) {
+        manuallyScrolledActionRef.current = null;
+      }
+    };
+    document.addEventListener("focusin", resumeInputVisibility);
+    window.addEventListener("touchmove", ownScroll, { passive: true });
+    window.addEventListener("wheel", ownScroll, { passive: true });
+    return () => {
+      document.removeEventListener("focusin", resumeInputVisibility);
+      window.removeEventListener("touchmove", ownScroll);
+      window.removeEventListener("wheel", ownScroll);
+    };
+  }, [currentActionId]);
   const currentActionSequenceIdx = guidance.currentAction?.sequenceIdx ?? null;
   const currentActionSessionExerciseId =
-    currentStatusAction?.kind === "working_set"
+    (currentStatusAction?.kind === "working_set" || currentStatusAction?.kind === "exercise_warmup")
       ? currentStatusAction.sessionExerciseId
       : guidance.currentAction?.kind === "rest"
         ? (currentStatusAction?.kind !== "rest"
@@ -1632,7 +1652,7 @@ export function SessionRunner(props: SessionRunnerProps) {
       : null;
   useEffect(() => {
     if (
-      currentActionKind !== "working_set" ||
+      (currentActionKind !== "working_set" && currentActionKind !== "exercise_warmup") ||
       currentActionSessionExerciseId == null ||
       skipRecoveryExerciseId != null
     ) {
@@ -1671,23 +1691,13 @@ export function SessionRunner(props: SessionRunnerProps) {
               : currentActionTargetId,
           );
           const active = document.activeElement;
-          const restStatusOwnsFocus =
-            currentActionKind === "rest" &&
-            active instanceof HTMLElement &&
-            active.closest('[aria-label="Workout status"]') != null;
+          if (manuallyScrolledActionRef.current === currentActionId) return;
           if (
-            target == null ||
-            !(active instanceof HTMLElement) ||
-            (!restStatusOwnsFocus &&
-              active !== target &&
-              !target.contains(active))
-          ) {
-            return;
-          }
-          revealWorkoutTarget(
-            restStatusOwnsFocus ? target : active,
-            "auto",
-          );
+            target == null || !(active instanceof HTMLElement) ||
+            !active.matches("input, textarea, select, [contenteditable='true']") ||
+            (active !== target && !target.contains(active))
+          ) return;
+          revealWorkoutTarget(active, "auto");
         });
       });
     };
@@ -1714,11 +1724,13 @@ export function SessionRunner(props: SessionRunnerProps) {
       );
     };
   }, [
+    currentActionId,
     currentActionKind,
     currentActionTargetId,
     restingWorkingSetTargetId,
   ]);
   useEffect(() => {
+    if (manuallyScrolledActionRef.current === currentActionId) return;
     const disclosureGeneration = exerciseDisclosureGenerationRef.current;
     const previousActionId = previousCurrentActionIdRef.current;
     const previousActionSessionExerciseId =
@@ -2268,19 +2280,8 @@ export function SessionRunner(props: SessionRunnerProps) {
   const warmupOccurrences = occurrences.filter(
     (occurrence) => occurrence.kind !== "working_set",
   );
-  const remainingExercisePreparations = warmupOccurrences.filter(
-    (occurrence) =>
-      occurrence.kind === "exercise_warmup" && occurrence.outcome === "pending",
-  );
-  const disclosedExercisePreparations = remainingExercisePreparations.filter(
-    (occurrence) =>
-      occurrence.id !== actionOccurrenceId(guidance.currentAction) &&
-      !warmupOccurrenceWasOvertaken({
-        occurrence,
-        occurrences,
-        locallyRecordedOccurrenceIds,
-      }),
-  );
+  const dayWarmupOccurrences = warmupOccurrences.filter((item) =>
+    item.kind === "day_warmup" || !shownExercises.some((exercise) => exercise.id === item.sessionExerciseId));
   const completedWarmups = guidance.warmups.completed;
   const groupRoundSummary = guidance.groups.flatMap((group) =>
     group.rounds.map((round) => ({
@@ -3726,7 +3727,7 @@ export function SessionRunner(props: SessionRunnerProps) {
     const occurrenceAction = currentAction.kind === "rest"
       ? currentAction.source
       : currentAction;
-    if (occurrenceAction?.kind === "working_set") {
+    if (occurrenceAction?.sessionExerciseId) {
       revealExerciseCard(occurrenceAction.sessionExerciseId);
     }
     setFinishOpen(false);
@@ -3813,7 +3814,7 @@ export function SessionRunner(props: SessionRunnerProps) {
       const prefix = position.kind === "extra" ? "added-set-entry" : "set-entry";
       return `${prefix}-${occurrence.sessionExerciseId}-${occurrence.id}` === targetId;
     });
-    if (blocker?.kind === "working_set" && blocker.sessionExerciseId) {
+    if (blocker?.sessionExerciseId) {
       revealExerciseCard(blocker.sessionExerciseId);
     } else if (blocker) {
       setWarmupPlanOpen(true);
@@ -4289,6 +4290,298 @@ export function SessionRunner(props: SessionRunnerProps) {
     ],
   );
 
+  function renderWarmupItems(items: SessionOccurrenceData[], inline: boolean) {
+    return items.map((occurrence) => {
+      const occurrenceExercise = occurrence.sessionExerciseId
+        ? shownExercises.find(
+            (exercise) => exercise.id === occurrence.sessionExerciseId,
+          )
+        : null;
+      const exerciseName = plannedExerciseNameForOccurrence(
+        occurrence,
+      );
+      const aggregateRestoreBlocked =
+        occurrenceExercise?.modificationType === "skipped" ||
+        (occurrence.kind === "exercise_warmup" &&
+          occurrence.plannedExerciseId != null &&
+          occurrence.plannedExerciseId !==
+            occurrenceExercise?.exerciseId) ||
+        occurrence.outcomeReason?.startsWith("exercise:") === true;
+      const aggregateRestoreDirection =
+        occurrence.outcomeReason?.startsWith(
+          "exercise:substituted:",
+        ) ||
+        (occurrence.kind === "exercise_warmup" &&
+          occurrence.plannedExerciseId != null &&
+          occurrence.plannedExerciseId !==
+            occurrenceExercise?.exerciseId)
+          ? "Undo the exercise alternative to restore this action."
+          : "Un-skip the exercise to restore this action.";
+      const prescription = formatOccurrencePrescription(occurrence);
+      const equipmentChangePending = equipmentConfirmationBlocks(occurrence);
+      const restingBeforeWarmup = timer?.phase === "running" &&
+        actionOccurrenceId(activeRestAction?.destination ?? null) === occurrence.id;
+      const occurrenceMutation =
+        sessionOccurrenceEntries.find(
+          (entry) => entry.occurrenceId === occurrence.id,
+        ) ?? null;
+      const occurrenceAcknowledged =
+        acknowledgedOccurrenceIds.includes(occurrence.id);
+      const overtakenByWorkingSet =
+        warmupOccurrenceWasOvertaken({
+          occurrence,
+          occurrences,
+          locallyRecordedOccurrenceIds,
+        });
+      return (
+        <li
+          key={occurrence.id}
+          id={`warmup-occurrence-${occurrence.id}`}
+          tabIndex={-1}
+          aria-current={
+            actionOccurrenceId(guidance.currentAction) === occurrence.id
+              ? "step"
+              : undefined
+          }
+          className={cn(
+            "scroll-mt-40 flex flex-wrap items-center justify-between gap-2 rounded-lg border bg-background/80 px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+            !inline && !warmupPlanOpen &&
+              actionOccurrenceId(guidance.currentAction) !== occurrence.id &&
+              occurrenceMutation == null &&
+              !(
+                completedWarmupsOpen &&
+                occurrence.outcome === "completed"
+              ) &&
+              "hidden",
+          )}
+        >
+          <div className="min-w-0 flex-1">
+            <p className="font-medium">
+              {occurrence.kind === "exercise_warmup" && exerciseName
+                ? `${exerciseName} — Preparation set`
+                : occurrence.label ?? "Warm-up item"}
+            </p>
+            {occurrence.kind === "exercise_warmup" && (
+              <p className="text-xs text-muted-foreground">
+                {occurrence.label ?? "Exercise-specific preparation"}
+              </p>
+            )}
+            {prescription && (
+              <p className="text-xs font-medium text-foreground">
+                {prescription}
+              </p>
+            )}
+            {occurrence.plannedNote && (
+              <p className="text-xs text-muted-foreground">
+                Plan: {occurrence.plannedNote}
+              </p>
+            )}
+            {occurrence.outcomeNote && (
+              <p className="text-xs text-muted-foreground">
+                Note: {occurrence.outcomeNote}
+              </p>
+            )}
+            {occurrence.outcome !== "pending" && (
+              <p className="text-xs capitalize text-muted-foreground">
+                {occurrence.outcome.replace("_", " ")}
+              </p>
+            )}
+            {occurrence.outcome === "pending" &&
+              overtakenByWorkingSet && (
+              <p className="mt-1 rounded-md border border-amber-500/40 bg-amber-500/10 px-2 py-1 text-xs font-medium text-amber-950 dark:text-amber-100">
+                A later working set is already recorded. Resolve this
+                preparation set now; Repbook will not move a rest
+                timer backwards to it.
+              </p>
+            )}
+          </div>
+          {restingBeforeWarmup && (
+            <div className="basis-full rounded-md bg-muted p-2" role="status">
+              <p>Rest before this warm-up. The countdown is rest time.</p>
+              <Button type="button" variant="outline" className="mt-2 min-h-11" onClick={skipRest}>
+                End rest to start warm-up
+              </Button>
+            </div>
+          )}
+          {occurrence.outcome === "pending" ? (
+            <div className="grid w-full grid-cols-2 gap-2 sm:flex sm:w-auto sm:flex-wrap">
+              <Button
+                type="button"
+                size="sm"
+                className="h-auto min-h-[44px] min-w-0 w-full whitespace-normal px-1.5 py-1 text-center leading-tight sm:w-auto sm:px-2.5"
+                variant="outline"
+                disabled={
+                  equipmentChangePending ||
+                  occurrenceMutation != null
+                }
+                onClick={() =>
+                  setOccurrenceAction({
+                    occurrenceId: occurrence.id,
+                    mode: "note",
+                  })
+                }
+              >
+                {occurrence.outcomeNote ? "Edit note" : "Add note"}
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                className="h-auto min-h-[44px] min-w-0 w-full whitespace-normal px-1.5 py-1 text-center leading-tight sm:w-auto sm:px-2.5"
+                variant="secondary"
+                disabled={
+                  equipmentChangePending ||
+                  occurrenceMutation != null
+                }
+                onClick={() => void applyOccurrenceMutation(
+                  occurrence,
+                  "skip",
+                  {
+                    reason: "Skip due to time",
+                    reasonCode: "time_limit_reached",
+                  },
+                )}
+              >
+                Skip due to time
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                className="h-auto min-h-[44px] min-w-0 w-full whitespace-normal px-1.5 py-1 text-center leading-tight sm:w-auto sm:px-2.5"
+                variant="ghost"
+                aria-label="Other skip reason"
+                disabled={
+                  equipmentChangePending ||
+                  occurrenceMutation != null
+                }
+                onClick={() =>
+                  setOccurrenceAction({
+                    occurrenceId: occurrence.id,
+                    mode: "skip",
+                  })
+                }
+              >
+                Other
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                className="h-auto min-h-[44px] min-w-0 w-full whitespace-normal px-1.5 py-1 text-center leading-tight sm:w-auto sm:px-2.5"
+                variant="outline"
+                role="checkbox"
+                aria-checked="false"
+                aria-label={`Mark ${occurrence.label ?? "warm-up item"} complete`}
+                disabled={
+                  restingBeforeWarmup || equipmentChangePending ||
+                  occurrenceMutation != null
+                }
+                onClick={() =>
+                  void applyOccurrenceMutation(occurrence, "complete")
+                }
+              >
+                <span aria-hidden className="size-4 rounded border-2 border-current" />
+                Complete
+              </Button>
+            </div>
+          ) : (
+            <div className="flex flex-wrap gap-2">
+              {occurrence.outcome === "completed" && (
+                <>
+                  <span
+                    role="checkbox"
+                    aria-checked="true"
+                    aria-label={`${occurrence.label ?? "Warm-up item"} complete`}
+                    className="inline-flex min-h-11 items-center gap-2 rounded-md border border-emerald-600/50 bg-emerald-500/10 px-3 text-sm font-medium text-emerald-900 dark:text-emerald-100"
+                  >
+                    <span aria-hidden className="flex size-4 items-center justify-center rounded border-2 border-current text-[10px] leading-none">✓</span>
+                    Complete
+                  </span>
+                  {!aggregateRestoreBlocked && (
+                    <Button
+                      type="button"
+                      size="sm"
+                      className="min-h-11"
+                      variant="outline"
+                      disabled={
+                        occurrenceMutation != null ||
+                        overtakenByWorkingSet
+                      }
+                      onClick={() =>
+                        void applyOccurrenceMutation(occurrence, "restore")
+                      }
+                    >
+                      Undo completion
+                    </Button>
+                  )}
+                </>
+              )}
+              <Button
+                type="button"
+                size="sm"
+                className="min-h-11"
+                variant="outline"
+                disabled={occurrenceMutation != null}
+                onClick={() =>
+                  setOccurrenceAction({
+                    occurrenceId: occurrence.id,
+                    mode: "note",
+                  })
+                }
+              >
+                {occurrence.outcomeNote ? "Edit note" : "Add note"}
+              </Button>
+              {occurrence.outcome === "skipped" &&
+                !aggregateRestoreBlocked && (
+                <Button
+                  type="button"
+                  size="sm"
+                  className="min-h-11"
+                  variant="outline"
+                  disabled={
+                    occurrenceMutation != null ||
+                    overtakenByWorkingSet
+                  }
+                  onClick={() =>
+                    void applyOccurrenceMutation(occurrence, "restore")
+                  }
+                >
+                  Restore
+                </Button>
+              )}
+              {aggregateRestoreBlocked && (
+                <p className="basis-full text-xs text-muted-foreground">
+                  {aggregateRestoreDirection}
+                </p>
+              )}
+              {!aggregateRestoreBlocked &&
+                overtakenByWorkingSet && (
+                  <p className="basis-full text-xs text-muted-foreground">
+                    A later working set is already recorded, so this
+                    earlier warm-up cannot be restored.
+                  </p>
+                )}
+            </div>
+          )}
+          <OccurrenceSaveStatus
+            entry={occurrenceMutation}
+            runtimeState={
+              occurrenceMutation
+                ? occurrenceRuntimeSaveStates[
+                    occurrenceMutation.clientKey
+                  ] ?? null
+                : null
+            }
+            saved={
+              occurrenceAcknowledged ||
+              occurrence.outcome !== "pending"
+            }
+            onRetry={retryOccurrenceEntry}
+            onDiscard={discardOccurrenceEntry}
+          />
+        </li>
+      );
+    });
+  }
+
   return (
     <main
       data-ui-core-surface="active-workout"
@@ -4407,12 +4700,12 @@ export function SessionRunner(props: SessionRunnerProps) {
         </section>
       )}
 
-      {(hasStructuredWarmup || Boolean(props.dayWarmupNotes?.trim())) && (
+      {(dayWarmupOccurrences.length > 0 || Boolean(props.dayWarmupNotes?.trim())) && (
       <WarmupPanel
-        completed={guidance.warmups.completed}
-        skipped={guidance.warmups.skipped}
-        planned={guidance.warmups.planned}
-        remaining={guidance.warmups.remaining}
+        completed={dayWarmupOccurrences.filter((item) => item.outcome === "completed").length}
+        skipped={dayWarmupOccurrences.filter((item) => item.outcome === "skipped").length}
+        planned={dayWarmupOccurrences.length}
+        remaining={dayWarmupOccurrences.filter((item) => item.outcome === "pending").length}
       >
         {props.dayWarmupNotes ? (
           <details className="order-3 mt-2 rounded-md border border-violet-300/50 bg-background/60 text-sm">
@@ -4432,15 +4725,14 @@ export function SessionRunner(props: SessionRunnerProps) {
             No day warm-up guidance was saved with this workout. A checkable warm-up sequence is not available yet.
           </p>
         ) : null}
-        {hasStructuredWarmup && (
+        {dayWarmupOccurrences.length > 0 && (
           <>
             <div className="order-2 mt-2 flex flex-wrap items-center justify-between gap-2">
               <p className="text-xs font-medium text-violet-800 dark:text-violet-200">
-                {guidance.currentAction?.kind === "day_warmup" ||
-                guidance.currentAction?.kind === "exercise_warmup"
+                {guidance.currentAction?.kind === "day_warmup"
                   ? "Complete the highlighted warm-up action."
-                  : guidance.warmups.remaining > 0
-                    ? "Later exercises have preparation remaining."
+                  : dayWarmupOccurrences.some((item) => item.outcome === "pending")
+                    ? "Day warm-up actions remain."
                     : "Warm-up actions are accounted for."}
               </p>
               <Button
@@ -4455,40 +4747,7 @@ export function SessionRunner(props: SessionRunnerProps) {
                 {warmupPlanOpen ? "Hide full plan" : "Review full plan"}
               </Button>
             </div>
-            {disclosedExercisePreparations.length > 0 && (
-              <details
-                data-testid="remaining-exercise-preparations"
-                className="order-2 mt-2 space-y-2 rounded-md border border-violet-300/40 bg-background/60 px-3 py-2 text-xs leading-5 text-violet-900 dark:text-violet-100"
-              >
-                <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-2 font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
-                  <span>Later preparation</span>
-                  <span className="text-muted-foreground">
-                    {disclosedExercisePreparations.length} remaining
-                  </span>
-                </summary>
-                <div className="space-y-2 border-t pt-2">
-                {disclosedExercisePreparations.map((occurrence) => {
-                  const exerciseName =
-                    plannedExerciseNameForOccurrence(occurrence) ?? "Exercise";
-                  const prescription = formatOccurrencePrescription(occurrence);
-                  const upNextAfterRest =
-                    activeRestAction?.destination?.kind === "exercise_warmup" &&
-                    activeRestAction.destination.occurrenceId === occurrence.id;
-                  return (
-                    <div key={`preparation-preview-${occurrence.id}`}>
-                      <p className="font-semibold">
-                        {upNextAfterRest
-                          ? `Up next after rest: ${exerciseName} preparation set`
-                          : `Later: ${exerciseName} preparation set`}
-                      </p>
-                      <p>{prescription ?? occurrence.label ?? "Details not recorded"}</p>
-                    </div>
-                  );
-                })}
-                </div>
-              </details>
-            )}
-            {guidance.warmups.completed > 0 && (
+            {dayWarmupOccurrences.some((item) => item.outcome === "completed") && (
               <Button
                 type="button"
                 size="sm"
@@ -4499,7 +4758,7 @@ export function SessionRunner(props: SessionRunnerProps) {
                 onClick={() => setCompletedWarmupsOpen((open) => !open)}
               >
                 <span>
-                  Completed warm-ups · {guidance.warmups.completed}
+                  Completed warm-ups · {dayWarmupOccurrences.filter((item) => item.outcome === "completed").length}
                 </span>
                 <span className="text-xs text-muted-foreground">
                   {completedWarmupsOpen ? "Hide" : "Show"}
@@ -4507,287 +4766,7 @@ export function SessionRunner(props: SessionRunnerProps) {
               </Button>
             )}
             <ul id="workout-warmup-plan" className="order-1 mt-2 space-y-2">
-              {occurrences
-                .filter((occurrence) => occurrence.kind !== "working_set")
-                .map((occurrence) => {
-                  const occurrenceExercise = occurrence.sessionExerciseId
-                    ? shownExercises.find(
-                        (exercise) => exercise.id === occurrence.sessionExerciseId,
-                      )
-                    : null;
-                  const exerciseName = plannedExerciseNameForOccurrence(
-                    occurrence,
-                  );
-                  const aggregateRestoreBlocked =
-                    occurrenceExercise?.modificationType === "skipped" ||
-                    (occurrence.kind === "exercise_warmup" &&
-                      occurrence.plannedExerciseId != null &&
-                      occurrence.plannedExerciseId !==
-                        occurrenceExercise?.exerciseId) ||
-                    occurrence.outcomeReason?.startsWith("exercise:") === true;
-                  const aggregateRestoreDirection =
-                    occurrence.outcomeReason?.startsWith(
-                      "exercise:substituted:",
-                    ) ||
-                    (occurrence.kind === "exercise_warmup" &&
-                      occurrence.plannedExerciseId != null &&
-                      occurrence.plannedExerciseId !==
-                        occurrenceExercise?.exerciseId)
-                      ? "Undo the exercise alternative to restore this action."
-                      : "Un-skip the exercise to restore this action.";
-                  const prescription = formatOccurrencePrescription(occurrence);
-                  const equipmentChangePending = equipmentConfirmationBlocks(occurrence);
-                  const occurrenceMutation =
-                    sessionOccurrenceEntries.find(
-                      (entry) => entry.occurrenceId === occurrence.id,
-                    ) ?? null;
-                  const occurrenceAcknowledged =
-                    acknowledgedOccurrenceIds.includes(occurrence.id);
-                  const overtakenByWorkingSet =
-                    warmupOccurrenceWasOvertaken({
-                      occurrence,
-                      occurrences,
-                      locallyRecordedOccurrenceIds,
-                    });
-                  return (
-                    <li
-                      key={occurrence.id}
-                      id={`warmup-occurrence-${occurrence.id}`}
-                      tabIndex={-1}
-                      aria-current={
-                        actionOccurrenceId(guidance.currentAction) === occurrence.id
-                          ? "step"
-                          : undefined
-                      }
-                      className={cn(
-                        "scroll-mt-40 flex flex-wrap items-center justify-between gap-2 rounded-lg border bg-background/80 px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
-                        !warmupPlanOpen &&
-                          actionOccurrenceId(guidance.currentAction) !== occurrence.id &&
-                          occurrenceMutation == null &&
-                          !(
-                            completedWarmupsOpen &&
-                            occurrence.outcome === "completed"
-                          ) &&
-                          "hidden",
-                      )}
-                    >
-                      <div className="min-w-0 flex-1">
-                        <p className="font-medium">
-                          {occurrence.kind === "exercise_warmup" && exerciseName
-                            ? `${exerciseName} — Preparation set`
-                            : occurrence.label ?? "Warm-up item"}
-                        </p>
-                        {occurrence.kind === "exercise_warmup" && (
-                          <p className="text-xs text-muted-foreground">
-                            {occurrence.label ?? "Exercise-specific preparation"}
-                          </p>
-                        )}
-                        {prescription && (
-                          <p className="text-xs font-medium text-foreground">
-                            {prescription}
-                          </p>
-                        )}
-                        {occurrence.plannedNote && (
-                          <p className="text-xs text-muted-foreground">
-                            Plan: {occurrence.plannedNote}
-                          </p>
-                        )}
-                        {occurrence.outcomeNote && (
-                          <p className="text-xs text-muted-foreground">
-                            Note: {occurrence.outcomeNote}
-                          </p>
-                        )}
-                        {occurrence.outcome !== "pending" && (
-                          <p className="text-xs capitalize text-muted-foreground">
-                            {occurrence.outcome.replace("_", " ")}
-                          </p>
-                        )}
-                        {occurrence.outcome === "pending" &&
-                          overtakenByWorkingSet && (
-                          <p className="mt-1 rounded-md border border-amber-500/40 bg-amber-500/10 px-2 py-1 text-xs font-medium text-amber-950 dark:text-amber-100">
-                            A later working set is already recorded. Resolve this
-                            preparation set now; Repbook will not move a rest
-                            timer backwards to it.
-                          </p>
-                        )}
-                      </div>
-                      {occurrence.outcome === "pending" ? (
-                        <div className="grid w-full grid-cols-2 gap-2 sm:flex sm:w-auto sm:flex-wrap">
-                          <Button
-                            type="button"
-                            size="sm"
-                            className="h-auto min-h-[44px] min-w-0 w-full whitespace-normal px-1.5 py-1 text-center leading-tight sm:w-auto sm:px-2.5"
-                            variant="outline"
-                            disabled={
-                              equipmentChangePending ||
-                              occurrenceMutation != null
-                            }
-                            onClick={() =>
-                              setOccurrenceAction({
-                                occurrenceId: occurrence.id,
-                                mode: "note",
-                              })
-                            }
-                          >
-                            {occurrence.outcomeNote ? "Edit note" : "Add note"}
-                          </Button>
-                          <Button
-                            type="button"
-                            size="sm"
-                            className="h-auto min-h-[44px] min-w-0 w-full whitespace-normal px-1.5 py-1 text-center leading-tight sm:w-auto sm:px-2.5"
-                            variant="secondary"
-                            disabled={
-                              equipmentChangePending ||
-                              occurrenceMutation != null
-                            }
-                            onClick={() => void applyOccurrenceMutation(
-                              occurrence,
-                              "skip",
-                              {
-                                reason: "Skip due to time",
-                                reasonCode: "time_limit_reached",
-                              },
-                            )}
-                          >
-                            Skip due to time
-                          </Button>
-                          <Button
-                            type="button"
-                            size="sm"
-                            className="h-auto min-h-[44px] min-w-0 w-full whitespace-normal px-1.5 py-1 text-center leading-tight sm:w-auto sm:px-2.5"
-                            variant="ghost"
-                            aria-label="Other skip reason"
-                            disabled={
-                              equipmentChangePending ||
-                              occurrenceMutation != null
-                            }
-                            onClick={() =>
-                              setOccurrenceAction({
-                                occurrenceId: occurrence.id,
-                                mode: "skip",
-                              })
-                            }
-                          >
-                            Other
-                          </Button>
-                          <Button
-                            type="button"
-                            size="sm"
-                            className="h-auto min-h-[44px] min-w-0 w-full whitespace-normal px-1.5 py-1 text-center leading-tight sm:w-auto sm:px-2.5"
-                            variant="outline"
-                            role="checkbox"
-                            aria-checked="false"
-                            aria-label={`Mark ${occurrence.label ?? "warm-up item"} complete`}
-                            disabled={
-                              equipmentChangePending ||
-                              occurrenceMutation != null
-                            }
-                            onClick={() =>
-                              void applyOccurrenceMutation(occurrence, "complete")
-                            }
-                          >
-                            <span aria-hidden className="size-4 rounded border-2 border-current" />
-                            Complete
-                          </Button>
-                        </div>
-                      ) : (
-                        <div className="flex flex-wrap gap-2">
-                          {occurrence.outcome === "completed" && (
-                            <>
-                              <span
-                                role="checkbox"
-                                aria-checked="true"
-                                aria-label={`${occurrence.label ?? "Warm-up item"} complete`}
-                                className="inline-flex min-h-11 items-center gap-2 rounded-md border border-emerald-600/50 bg-emerald-500/10 px-3 text-sm font-medium text-emerald-900 dark:text-emerald-100"
-                              >
-                                <span aria-hidden className="flex size-4 items-center justify-center rounded border-2 border-current text-[10px] leading-none">✓</span>
-                                Complete
-                              </span>
-                              {!aggregateRestoreBlocked && (
-                                <Button
-                                  type="button"
-                                  size="sm"
-                                  className="min-h-11"
-                                  variant="outline"
-                                  disabled={
-                                    occurrenceMutation != null ||
-                                    overtakenByWorkingSet
-                                  }
-                                  onClick={() =>
-                                    void applyOccurrenceMutation(occurrence, "restore")
-                                  }
-                                >
-                                  Undo completion
-                                </Button>
-                              )}
-                            </>
-                          )}
-                          <Button
-                            type="button"
-                            size="sm"
-                            className="min-h-11"
-                            variant="outline"
-                            disabled={occurrenceMutation != null}
-                            onClick={() =>
-                              setOccurrenceAction({
-                                occurrenceId: occurrence.id,
-                                mode: "note",
-                              })
-                            }
-                          >
-                            {occurrence.outcomeNote ? "Edit note" : "Add note"}
-                          </Button>
-                          {occurrence.outcome === "skipped" &&
-                            !aggregateRestoreBlocked && (
-                            <Button
-                              type="button"
-                              size="sm"
-                              className="min-h-11"
-                              variant="outline"
-                              disabled={
-                                occurrenceMutation != null ||
-                                overtakenByWorkingSet
-                              }
-                              onClick={() =>
-                                void applyOccurrenceMutation(occurrence, "restore")
-                              }
-                            >
-                              Restore
-                            </Button>
-                          )}
-                          {aggregateRestoreBlocked && (
-                            <p className="basis-full text-xs text-muted-foreground">
-                              {aggregateRestoreDirection}
-                            </p>
-                          )}
-                          {!aggregateRestoreBlocked &&
-                            overtakenByWorkingSet && (
-                              <p className="basis-full text-xs text-muted-foreground">
-                                A later working set is already recorded, so this
-                                earlier warm-up cannot be restored.
-                              </p>
-                            )}
-                        </div>
-                      )}
-                      <OccurrenceSaveStatus
-                        entry={occurrenceMutation}
-                        runtimeState={
-                          occurrenceMutation
-                            ? occurrenceRuntimeSaveStates[
-                                occurrenceMutation.clientKey
-                              ] ?? null
-                            : null
-                        }
-                        saved={
-                          occurrenceAcknowledged ||
-                          occurrence.outcome !== "pending"
-                        }
-                        onRetry={retryOccurrenceEntry}
-                        onDiscard={discardOccurrenceEntry}
-                      />
-                    </li>
-                  );
-                })}
+              {renderWarmupItems(dayWarmupOccurrences, false)}
             </ul>
           </>
         )}
@@ -4813,6 +4792,10 @@ export function SessionRunner(props: SessionRunnerProps) {
             (candidate) => candidate.id === queueItem.sessionExerciseId,
           );
           if (!exercise) return null;
+          const exerciseWarmups = warmupOccurrences.filter((item) =>
+            item.sessionExerciseId === exercise.id && item.kind === "exercise_warmup");
+          const pendingWarmups = exerciseWarmups.filter((item) => item.outcome === "pending");
+          const resolvedWarmups = exerciseWarmups.filter((item) => item.outcome !== "pending");
           const equipmentSetup = props.equipmentSetups[exercise.id] ?? null;
           const equipmentSetupMatches = equipmentSetup != null &&
             sessionEquipmentSetupMatchesExercise(exercise, equipmentSetup);
@@ -4906,6 +4889,22 @@ export function SessionRunner(props: SessionRunnerProps) {
           <ExerciseCard
             key={`${exercise.id}:${exercise.exerciseId}:${exercise.metricType}:${exercise.loadType}:${exercise.loadSemantics}`}
             exercise={exercise}
+            warmupContent={exerciseWarmups.length > 0 ? (
+              <section aria-label={`Warm-up for ${exercise.name}`} className="space-y-2 border-t p-3">
+                {pendingWarmups.length > 0 && <>
+                  <h3 className="font-semibold">Warm-up</h3>
+                  <ul className="space-y-2">{renderWarmupItems(pendingWarmups, true)}</ul>
+                </>}
+                {resolvedWarmups.length > 0 && (
+                  <details>
+                    <summary className="flex min-h-11 cursor-pointer items-center text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                      Earlier warm-ups · {resolvedWarmups.length} · Show details
+                    </summary>
+                    <ul className="space-y-2">{renderWarmupItems(resolvedWarmups, true)}</ul>
+                  </details>
+                )}
+              </section>
+            ) : null}
             comparisonTemporarilyUnavailable={
               comparisonUnavailableByExerciseId[exercise.id] ?? true
             }

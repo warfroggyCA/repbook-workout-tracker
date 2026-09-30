@@ -15,6 +15,7 @@ const stage7Ux = process.argv.includes("--stage7-ux");
 const phase0Start = process.argv.includes("--phase0-start");
 const phase1Foundation = process.argv.includes("--phase1-foundation");
 const baCalendar = process.argv.includes("--ba-calendar");
+const workoutFeedback = process.argv.includes("--workout-feedback");
 const plateMachineGuidance = process.argv.includes("--plate-machine-guidance");
 const optimizedRouteFixtures = process.argv.includes(
   "--optimized-route-fixtures",
@@ -91,6 +92,7 @@ if (
     phase1Foundation,
     baCalendar,
     plateMachineGuidance,
+    workoutFeedback,
     optimizedRouteFixtures,
     programEditorDisabled,
   ].some(Boolean)
@@ -263,6 +265,8 @@ const fixtures = v2A01AnalysisPackage
     }]
   : v2H01History
     ? [{ label: "H01 performed-first History", script: "tests/helpers/seed-v2-h01-history.ts" }]
+  : workoutFeedback
+  ? [{ label: "Workout feedback", script: "tests/helpers/seed-workout-feedback.ts" }]
   : plateMachineGuidance
   ? [{
       label: "Plate-machine guidance",

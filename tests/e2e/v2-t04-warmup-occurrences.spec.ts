@@ -55,6 +55,15 @@ function warmupRow(panel: Locator, label: string) {
   return panel.locator("li").filter({ hasText: label });
 }
 
+async function revealEarlierWarmups(panel: Locator) {
+  const details = panel.locator("details");
+  await expect(details).toBeAttached();
+  if (await details.getAttribute("open") == null) {
+    await details.locator("summary").click();
+  }
+  await expect(details).toHaveAttribute("open", "");
+}
+
 async function waitForSaved(row: Locator) {
   await expect(row.getByText("Saved", { exact: true })).toBeVisible();
 }
@@ -68,26 +77,12 @@ test("keeps warm-up actions singular, reversible, durable, and usable with minim
   const sessionId = page.url().split("/").at(-1)!;
   const originalViewport = page.viewportSize();
   await page.setViewportSize({ width: 320, height: 700 });
-  const panel = page.getByRole("region", { name: "Warm-up", exact: true });
+  const panel = page.getByRole("region", { name: "Warm-up for Barbell Back Squat", exact: true });
   const actions = panel.locator("li");
 
-  await expect(panel).toContainText("Complete the highlighted warm-up action.");
-  await expect(panel).toContainText(
-    `0 done · ${PRODUCTION_WORKOUT_START_WARMUP.length} left`,
-  );
-  const remainingPreparations = page.getByTestId(
-    "remaining-exercise-preparations",
-  );
-  await expect(remainingPreparations).toContainText("Later:");
-  await expect(remainingPreparations).not.toContainText("Later, before");
-  await expect(remainingPreparations).toContainText("preparation set");
+  expect(await panel.evaluate((el) => el.closest('[id^="exercise-"]') != null)).toBe(true);
   await expect(actions).toHaveCount(PRODUCTION_WORKOUT_START_WARMUP.length);
-  await expect(warmupRow(panel, PRODUCTION_WORKOUT_START_WARMUP[0].label))
-    .toBeVisible();
-  await expect(warmupRow(panel, PRODUCTION_WORKOUT_START_WARMUP[1].label))
-    .not.toBeVisible();
-  await panel.getByRole("button", { name: "Review full plan", exact: true })
-    .click();
+  await expect(page.locator('#workout-warmup [id^="warmup-occurrence-"]')).toHaveCount(0);
   for (const action of PRODUCTION_WORKOUT_START_WARMUP) {
     const row = warmupRow(panel, action.label);
     await expect(row).toHaveCount(1);
@@ -155,26 +150,20 @@ test("keeps warm-up actions singular, reversible, durable, and usable with minim
     name: `Mark ${completedLabel} complete`,
     exact: true,
   });
-  await panel.getByRole("button", { name: "Hide full plan", exact: true })
-    .click();
   await complete.press("Enter");
-  const completedDisclosure = panel.getByRole("button", {
-    name: /Completed warm-ups · 1/,
-  });
+  const completedDisclosure = panel.locator("summary").filter({ hasText: "Earlier warm-ups · 1" });
   await expect(completedDisclosure).toBeVisible();
-  await expect(completedDisclosure).toHaveAttribute("aria-expanded", "false");
+  await expect(panel.locator("details")).not.toHaveAttribute("open", "");
   await expect(completedRow).not.toBeVisible();
   await completedDisclosure.click();
-  await expect(completedDisclosure).toHaveAttribute("aria-expanded", "true");
+  await expect(panel.locator("details")).toHaveAttribute("open", "");
   await expect(completedRow.getByRole("button", { name: "Undo completion" }))
     .toBeVisible();
   await waitForSaved(completedRow);
 
   await page.reload({ waitUntil: "networkidle" });
-  let reloadedPanel = page.locator("#workout-warmup");
-  await reloadedPanel
-    .getByRole("button", { name: "Review full plan", exact: true })
-    .click();
+  let reloadedPanel = page.getByRole("region", { name: "Warm-up for Barbell Back Squat", exact: true });
+  await revealEarlierWarmups(reloadedPanel);
   completedRow = warmupRow(reloadedPanel, completedLabel);
   await expect(completedRow).toContainText("Note: Setup felt stable");
   await expect(
@@ -195,7 +184,7 @@ test("keeps warm-up actions singular, reversible, durable, and usable with minim
 
   const quickSkippedLabel = PRODUCTION_WORKOUT_START_WARMUP[1].label;
   let quickSkippedRow = warmupRow(
-    page.locator("#workout-warmup"),
+    page.getByRole("region", { name: "Warm-up for Barbell Back Squat", exact: true }),
     quickSkippedLabel,
   );
   const quickSkip = quickSkippedRow.getByRole("button", {
@@ -221,16 +210,15 @@ test("keeps warm-up actions singular, reversible, durable, and usable with minim
     reasonCode: "time_limit_reached",
   }]);
   await page.context().setOffline(false);
+  await revealEarlierWarmups(panel);
   await expect(
     quickSkippedRow.getByRole("button", { name: "Restore" }),
   ).toBeVisible();
   await waitForSaved(quickSkippedRow);
 
   await page.reload({ waitUntil: "networkidle" });
-  reloadedPanel = page.locator("#workout-warmup");
-  await reloadedPanel
-    .getByRole("button", { name: "Review full plan", exact: true })
-    .click();
+  reloadedPanel = page.getByRole("region", { name: "Warm-up for Barbell Back Squat", exact: true });
+  await revealEarlierWarmups(reloadedPanel);
   quickSkippedRow = warmupRow(reloadedPanel, quickSkippedLabel);
   await expect(quickSkippedRow).toContainText("skipped");
   await quickSkippedRow.getByRole("button", { name: "Restore" }).click();
@@ -253,14 +241,13 @@ test("keeps warm-up actions singular, reversible, durable, and usable with minim
   await dialog.getByLabel("Optional note").fill("Short session today");
   await dialog.getByRole("button", { name: "Skip item", exact: true }).click();
   await expect(dialog).toHaveCount(0);
+  await revealEarlierWarmups(panel);
   await expect(skippedRow.getByRole("button", { name: "Restore" })).toBeVisible();
   await waitForSaved(skippedRow);
 
   await page.reload({ waitUntil: "networkidle" });
-  reloadedPanel = page.locator("#workout-warmup");
-  await reloadedPanel
-    .getByRole("button", { name: "Review full plan", exact: true })
-    .click();
+  reloadedPanel = page.getByRole("region", { name: "Warm-up for Barbell Back Squat", exact: true });
+  await revealEarlierWarmups(reloadedPanel);
   skippedRow = warmupRow(reloadedPanel, skippedLabel);
   await expect(skippedRow).toContainText("Note: Short session today");
   await expect(skippedRow).toContainText("skipped");
@@ -274,7 +261,7 @@ test("keeps warm-up actions singular, reversible, durable, and usable with minim
   await expect(skippedRow).toContainText("Note: Short session today");
   await waitForSaved(skippedRow);
 
-  const actionButtons = page.locator("#workout-warmup li button");
+  const actionButtons = panel.locator("li button:visible");
   for (let index = 0; index < await actionButtons.count(); index += 1) {
     const box = await actionButtons.nth(index).boundingBox();
     expect(box?.height ?? 0).toBeGreaterThanOrEqual(44);
