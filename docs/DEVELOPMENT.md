@@ -1075,3 +1075,20 @@ Coach output instructions, error and recovery messages, imports, exports, and
 optional record details. Copy edits preserve stored enums, IDs, calculations,
 saving behavior, and historical text. Browser selectors may follow new labels;
 assertions about state and record integrity must stay intact.
+
+### Workout scrolling, inline preparation, and shared pulley regression
+
+Run `npm run test:e2e:workout-feedback` after the production build. Its isolated
+synthetic fixture uses one balanced two-point plate-loaded cable machine for two
+exercises. Chromium and WebKit run with fresh databases. Coverage includes
+capability matching, total-added-plate stepping and per-side math, inline warm-ups,
+rest-before-preparation controls, correction-dialog return, manual-scroll ownership
+during viewport resize and timer ticks, and reload recovery. The suite is registered
+in the protected workout-remediation browser group.
+
+Also retain the warm-up save/undo/offline checks in `test:e2e:v2-t04`, imported
+preparation ordering in `test:e2e:pii01`, and focus-dock checks. Run each focus-dock
+project separately when a fresh workout is required; those projects mutate the
+same fixture when run together. Desktop WebKit is not proof of physical iPhone
+keyboard or compositor behavior; verify that separately before claiming device
+acceptance. No migration accompanies these changes.

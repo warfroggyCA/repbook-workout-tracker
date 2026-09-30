@@ -350,9 +350,13 @@ remains canonical, retries reuse the same command identity, and failed writes
 stay visible and recoverable without rolling the owner back. Restoring an
 earlier action makes that action current again. Completed warm-up details
 collapse without discarding their notes, outcomes, or restore controls.
-When warm-ups were included at Start, preparation remains visible in the shared
-Warm-up panel. General preparation opens newly created sessions; exercise
-preparation precedes its first working occurrence, including superset members.
+When warm-ups were included at Start, general preparation stays in the day
+Warm-up panel. Exercise preparation appears inside its exercise card, with
+resolved items available in an Earlier warm-ups disclosure. General preparation
+opens newly created sessions; exercise preparation precedes its first working
+occurrence, including superset members. A running rest remains a rest: the
+inline preparation names it and offers an explicit End rest action before
+completion. Moving preparation does not alter the occurrence ledger.
 The frozen occurrence order controls which action must be resolved next. A
 blocked working set names that preparation and can reveal and focus it. These views are derived from
 the immutable occurrence ledger; they never create a late warm-up or bypass the
@@ -2048,3 +2052,16 @@ single-request reservation budget from accumulated daily usage. No budget is
 raised. Daily reset copy uses the existing UTC accounting boundary displayed in
 the owner's timezone. Coach failure diagnostics retain only a closed usage-code
 classification, with the existing ephemeral 24-hour retention and no raw text.
+
+### Active workout scrolling and shared pulley capability
+
+Manual touch or wheel scrolling cancels pending automatic reveals for the current
+action. Viewport resize only reveals an actual focused editing control; focus
+left on the fixed status dock cannot pull the document back during rest. Explicit
+action navigation and advancing to a new action still reveal the relevant work.
+
+Session equipment eligibility passes complete structured inventory attributes to
+the shared matching helper. In particular, a plate-loaded machine with the cable
+pulley capability remains eligible for retained cable requirements, allowing the
+existing load-profile and inventory-backed plate controls to run. This does not
+change historical performed setup snapshots or infer missing machine geometry.

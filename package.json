@@ -82,7 +82,8 @@
     "db:verify-production-upgrade": "vitest run tests/unit/production-schema-upgrade.test.ts --maxWorkers=1",
     "db:verify:program-editor-neon": "node scripts/verify-program-editor-neon.mjs",
     "verify:core-loop-neon": "node --conditions=react-server --import tsx scripts/verify-core-loop-neon.mjs",
-    "test:e2e:workout-field-fixes": "playwright test --config=playwright.workout-field-fixes.config.ts"
+    "test:e2e:workout-field-fixes": "playwright test --config=playwright.workout-field-fixes.config.ts",
+    "test:e2e:workout-feedback": "playwright test --config=playwright.workout-feedback.config.ts --project=chromium && WORKOUT_FEEDBACK_PORT=3193 playwright test --config=playwright.workout-feedback.config.ts --project=webkit"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^4.0.8",

@@ -174,8 +174,9 @@ test("reviews and publishes a multi-day Program into an ordered active workout",
   await expect(page).toHaveURL(/\/session\/[0-9a-f-]+$/);
   await waitForEquipmentSelectionsToSettle(page);
 
-  const warmup = page.getByRole("region", { name: "Warm-up", exact: true });
-  const labels = await warmup.locator("li").allTextContents();
+  const warmup = page.locator("#workout-warmup");
+  const preparation = page.locator('#workout-warmup, section[aria-label="Warm-up for Barbell Back Squat"]');
+  const labels = await preparation.locator("li").allTextContents();
   expect(labels.join("\n")).toMatch(/Easy bike warm-up[\s\S]*Hip circles[\s\S]*Empty bar[\s\S]*Half of working load/);
   const easyBike = warmup.locator("li").filter({ hasText: "Easy bike warm-up" });
   const easyBikeCheck = easyBike.getByRole("checkbox", { name: "Mark Easy bike warm-up complete", exact: true });
@@ -186,40 +187,40 @@ test("reviews and publishes a multi-day Program into an ordered active workout",
     .click();
   await expect(easyBike.getByRole("button", { name: "Undo completion", exact: true })).toBeVisible();
   await expect(easyBike.getByText("Saved", { exact: true })).toBeVisible();
-  const emptyBar = warmup.locator("li").filter({ hasText: "Empty bar" }).first();
-  const emptyBarCheck = emptyBar.getByRole("checkbox", { name: "Mark Empty bar complete", exact: true });
-  await emptyBarCheck.focus();
-  await page.keyboard.press("Enter");
-  await expect(emptyBar.getByRole("button", { name: "Undo completion", exact: true })).toBeVisible();
-  await expect(emptyBar.getByText("Saved", { exact: true })).toBeVisible();
-
   const hipCircles = warmup.locator("li").filter({ hasText: "Hip circles" });
   const hipCirclesCheck = hipCircles.getByRole("checkbox", {
     name: "Mark Hip circles complete",
     exact: true,
   });
-  await hipCirclesCheck.focus();
-  await page.keyboard.press("Enter");
+  await hipCirclesCheck.press("Enter");
+  await expect(warmup).toContainText("Warm-up complete");
+  await warmup.locator(":scope > summary").click();
   await expect(
     hipCircles.getByRole("button", { name: "Undo completion", exact: true }),
   ).toBeVisible();
   await expect(hipCircles.getByText("Saved", { exact: true })).toBeVisible();
 
-  const halfLoad = warmup.locator("li").filter({
+  const emptyBar = preparation.locator("li").filter({ hasText: "Empty bar" }).first();
+  const emptyBarCheck = emptyBar.getByRole("checkbox", { name: "Mark Empty bar complete", exact: true });
+  await emptyBarCheck.press("Enter");
+  await page.getByRole("region", { name: "Warm-up for Barbell Back Squat", exact: true }).locator("summary").click();
+  await expect(emptyBar.getByRole("button", { name: "Undo completion", exact: true })).toBeVisible();
+  await expect(emptyBar.getByText("Saved", { exact: true })).toBeVisible();
+
+  const halfLoad = preparation.locator("li").filter({
     hasText: "Half of working load",
   });
   const halfLoadCheck = halfLoad.getByRole("checkbox", {
     name: "Mark Half of working load complete",
     exact: true,
   });
-  await halfLoadCheck.focus();
-  await page.keyboard.press("Enter");
+  await halfLoadCheck.press("Enter");
 
   const current = page.getByTestId("current-exercise-card");
   await expect(current.getByTestId("current-set-entry")).toContainText("Set 1");
   await expect(current).toContainText("5 reps · 60 kg");
-  await expect(warmup.getByRole("checkbox", { name: "Mark Row rehearsal complete", exact: true })).not.toBeChecked();
-  await expect(warmup).toContainText("Later exercises have preparation remaining.");
+  await expect(page.getByRole("checkbox", { name: "Mark Row rehearsal complete", exact: true })).toHaveCount(0); // Later exercise stays collapsed.
+  await expect(page.locator("#workout-warmup")).toContainText("Warm-up complete");
   await current.getByLabel("Total load").fill("60");
   await current.getByRole("textbox", { name: "Reps", exact: true }).fill("5");
   await page.getByTestId("active-log-set").click();

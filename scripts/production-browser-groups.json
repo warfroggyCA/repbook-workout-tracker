@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "expectedSuiteCount": 43,
+  "expectedSuiteCount": 44,
   "groups": [
     {
       "name": "baseline-history",
@@ -32,7 +32,8 @@
         "test:e2e:current-action",
         "test:e2e:compact-timer",
         "test:e2e:superset-prep",
-        "test:e2e:active-workout-add-exercise"
+        "test:e2e:active-workout-add-exercise",
+        "test:e2e:workout-feedback"
       ]
     },
     {

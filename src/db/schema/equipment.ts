@@ -26,6 +26,8 @@ export type EquipmentAttrs = {
   pair?: boolean;
   increments?: number[];
   adjustableBench?: boolean;
+  /** Reviewed capability already stored in machine inventory JSON. */
+  cablePulley?: boolean;
   brand?: string;
   levels?: string[]; // e.g. band tensions
   notes?: string;
