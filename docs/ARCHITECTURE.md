@@ -352,7 +352,8 @@ earlier action makes that action current again. Completed warm-up details
 collapse without discarding their notes, outcomes, or restore controls.
 When warm-ups were included at Start, general preparation stays in the day
 Warm-up panel. Exercise preparation appears inside its exercise card, with
-resolved items available in an Earlier warm-ups disclosure. General preparation
+resolved items available below the working-set area in an Earlier warm-ups
+disclosure. Pending preparation stays above entry. General preparation
 opens newly created sessions; exercise preparation precedes its first working
 occurrence, including superset members. A running rest remains a rest: the
 inline preparation names it and offers an explicit End rest action before

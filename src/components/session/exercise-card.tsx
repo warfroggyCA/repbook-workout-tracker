@@ -471,6 +471,7 @@ type Props = {
   onToggle: () => void;
   equipmentDecision?: ReactNode;
   warmupContent?: ReactNode;
+  warmupPending?: boolean;
   equipmentReasonAvailable?: boolean;
   plateConfigs: Record<string, PlateMathConfig>;
   machineLoadConfig?: MachineLoadConfig | null;
@@ -739,6 +740,7 @@ export function ExerciseCard({
   onToggle,
   equipmentDecision = null,
   warmupContent = null,
+  warmupPending = false,
   equipmentReasonAvailable = false,
   plateConfigs,
   machineLoadConfig = null,
@@ -2169,7 +2171,7 @@ export function ExerciseCard({
       </div>
 
       {equipmentDecision}
-      {expanded && warmupContent}
+      {expanded && warmupPending && warmupContent}
 
       {expanded && !isSkipped && skipConfirmationPending && (
         <div
@@ -3177,6 +3179,7 @@ export function ExerciseCard({
           onSkipSet(input, skipSetOccurrence)
         }
       />
+      {expanded && !warmupPending && warmupContent}
     </section>
   );
 }

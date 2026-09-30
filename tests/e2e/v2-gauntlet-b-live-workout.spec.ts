@@ -298,8 +298,9 @@ test("keeps the full live workout usable through warm-up, skip, replace, continu
     await expect(workoutExit).toBeVisible();
   }
 
-  const warmup = page.locator("#workout-warmup");
-  await expect(warmup).toContainText("Complete the highlighted warm-up action.");
+  const warmup = page.getByRole("region", { name: "Warm-up for Barbell Back Squat", exact: true });
+  await expect(warmup).toBeVisible();
+  expect(await warmup.evaluate((el) => el.closest('[id^="exercise-"]') != null)).toBe(true);
   await expect(page.getByText(
     BA_WORKOUT_FIXTURE.program.days[0].warmupNotes,
     { exact: true },
@@ -361,7 +362,7 @@ test("keeps the full live workout usable through warm-up, skip, replace, continu
     const completedLastAction =
       index === PRODUCTION_WORKOUT_START_WARMUP.length - 1;
     if (completedLastAction) {
-      await expect(warmup).toContainText("Warm-up actions are accounted for.");
+      await expect(warmup.locator("summary")).toContainText(`Earlier warm-ups · ${PRODUCTION_WORKOUT_START_WARMUP.length}`);
     } else {
       const nextAction = PRODUCTION_WORKOUT_START_WARMUP[index + 1];
       await expect(

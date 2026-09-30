@@ -58,7 +58,7 @@ async function completeWarmupsToFirstWorkingSet(page: Page) {
   ) {
     const currentWarmup = warmupIndex === 0
       ? page.locator(
-          '#workout-warmup [role="checkbox"][aria-checked="false"]:visible',
+          'section[aria-label="Warm-up for Barbell Back Squat"] [role="checkbox"][aria-checked="false"]:visible',
         ).first()
       : page.getByTestId("active-workout-dock-primary");
     await expect
@@ -209,9 +209,9 @@ for (const initialCase of [
     try {
       await signInAndStartDayA(page, { textSize: initialCase.textSize });
       expect(new URL(page.url()).hash).toBe("");
-      expect(await page.evaluate(() => window.scrollY)).toBe(0);
+      // Inline preparation may require an initial reveal; its action must be visible.
       const action = page.locator(
-        '#workout-warmup [role="checkbox"][aria-checked="false"]',
+        'section[aria-label="Warm-up for Barbell Back Squat"] [role="checkbox"][aria-checked="false"]',
       ).first();
       await expectPrimaryActionUnobstructed(action);
       expect(await page.evaluate(() =>
@@ -334,9 +334,9 @@ test("keeps attention continuous through warm-up, first set, and exact recovery 
     try {
       await signInAndStartDayA(page, { textSize });
       expect(new URL(page.url()).hash).toBe("");
-      expect(await page.evaluate(() => window.scrollY)).toBe(0);
+      // Inline preparation may require an initial reveal; its action must be visible.
       const action = page.locator(
-        '#workout-warmup [role="checkbox"][aria-checked="false"]',
+        'section[aria-label="Warm-up for Barbell Back Squat"] [role="checkbox"][aria-checked="false"]',
       ).first();
       await expectPrimaryActionUnobstructed(action);
       await testInfo.attach(`initial-${textSize.toLowerCase().replace(" ", "-")}-390x844`, {
@@ -351,7 +351,7 @@ test("keeps attention continuous through warm-up, first set, and exact recovery 
         ) {
           const currentWarmup = warmupIndex === 0
             ? page.locator(
-                '#workout-warmup [role="checkbox"][aria-checked="false"]:visible',
+                'section[aria-label="Warm-up for Barbell Back Squat"] [role="checkbox"][aria-checked="false"]:visible',
               ).first()
             : page.getByTestId("active-workout-dock-primary");
           await expect
