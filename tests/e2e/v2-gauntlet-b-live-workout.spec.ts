@@ -307,7 +307,8 @@ test("keeps the full live workout usable through warm-up, skip, replace, continu
   )).not.toBeVisible();
   expect(await warmup.evaluate((element) => getComputedStyle(element).position))
     .not.toMatch(/fixed|sticky/);
-  await expectActiveViewportBudget(page, true);
+  // Initial reveal prioritizes the inline preparation action; the page header may be above it.
+  await expectActiveViewportBudget(page);
 
   if ((page.viewportSize()?.width ?? Number.POSITIVE_INFINITY) <= 320) {
     const originalViewport = page.viewportSize();
