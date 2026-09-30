@@ -2057,8 +2057,10 @@ classification, with the existing ephemeral 24-hour retention and no raw text.
 ### Active workout scrolling and shared pulley capability
 
 Manual touch or wheel scrolling cancels pending automatic reveals for the current
-action. Viewport resize only reveals an actual focused editing control; focus
-left on the fixed status dock cannot pull the document back during rest. Explicit
+action. Height-only viewport resize only reveals an actual focused editing control.
+Explicit text-size changes and viewport width changes preserve the focused action.
+Focus left on the fixed status dock cannot pull the document back during height-only
+resize events in rest. Explicit
 action navigation and advancing to a new action still reveal the relevant work.
 
 Session equipment eligibility passes complete structured inventory attributes to
