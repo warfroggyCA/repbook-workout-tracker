@@ -1833,7 +1833,9 @@ export function SessionRunner(props: SessionRunnerProps) {
         if (revealTarget) {
           revealWorkoutTarget(
             revealTarget,
-            currentActionKind === "rest"
+            // Initial equipment hydration can collapse content above this action.
+            // An instant reveal lets browser scroll anchoring preserve its position.
+            reconcileInitialCurrentAction || currentActionKind === "rest"
               ? "auto"
               : activeWorkoutScrollBehavior(),
           );
