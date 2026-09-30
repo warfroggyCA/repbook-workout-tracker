@@ -1680,11 +1680,18 @@ export function SessionRunner(props: SessionRunnerProps) {
     ) return;
     let firstFrame = 0;
     let secondFrame = 0;
-    const preserveFocusedActionVisibility = () => {
+    let viewportWidth = window.innerWidth;
+    let actionLayoutChanged = false;
+    const preserveFocusedActionVisibility = (event: Event) => {
+      const widthChanged = window.innerWidth !== viewportWidth;
+      viewportWidth = window.innerWidth;
+      actionLayoutChanged ||= event.type === FONT_SIZE_EVENT || widthChanged;
       window.cancelAnimationFrame(firstFrame);
       window.cancelAnimationFrame(secondFrame);
       firstFrame = window.requestAnimationFrame(() => {
         secondFrame = window.requestAnimationFrame(() => {
+          const preserveWholeAction = actionLayoutChanged;
+          actionLayoutChanged = false;
           const target = document.getElementById(
             currentActionKind === "rest"
               ? restingWorkingSetTargetId ?? currentActionTargetId
@@ -1692,12 +1699,17 @@ export function SessionRunner(props: SessionRunnerProps) {
           );
           const active = document.activeElement;
           if (manuallyScrolledActionRef.current === currentActionId) return;
-          if (
-            target == null || !(active instanceof HTMLElement) ||
-            !active.matches("input, textarea, select, [contenteditable='true']") ||
-            (active !== target && !target.contains(active))
-          ) return;
-          revealWorkoutTarget(active, "auto");
+          if (target == null || !(active instanceof HTMLElement)) return;
+          const focusIsInAction = active === target || target.contains(active);
+          const editingAction = focusIsInAction &&
+            active.matches("input, textarea, select, [contenteditable='true']");
+          // Text-size changes and rotation may preserve the whole focused action.
+          // Ordinary viewport/keyboard resize must never follow residual dock focus.
+          const resizedFocusedAction = preserveWholeAction &&
+            (focusIsInAction ||
+              active.closest('[aria-label="Workout status"]') != null);
+          if (!editingAction && !resizedFocusedAction) return;
+          revealWorkoutTarget(resizedFocusedAction ? target : active, "auto");
         });
       });
     };

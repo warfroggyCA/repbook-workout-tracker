@@ -81,7 +81,7 @@ async function signInAndStartDayA(
     ) {
       const warmup = index === 0
         ? page.locator(
-            '#workout-warmup [role="checkbox"][aria-checked="false"]:visible',
+            'section[aria-label="Warm-up for Barbell Back Squat"] [role="checkbox"][aria-checked="false"]:visible',
           ).first()
         : page.getByTestId("active-workout-dock-primary");
       await expect.poll(() => warmup.getAttribute("aria-label")).toContain(
