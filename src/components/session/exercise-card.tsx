@@ -94,7 +94,7 @@ import {
   effortChoiceForLegacyRpe,
 } from "@/lib/active-workout-language";
 import { activeWorkoutScrollBehavior } from "@/lib/active-workout-motion";
-import { handheldLoadPresentation } from "@/lib/focused-workout";
+import { activeSetEvidenceNeedsReview, handheldLoadPresentation } from "@/lib/focused-workout";
 import {
   isDocumentActionTimeout,
   reportDeploymentMismatch,
@@ -2180,6 +2180,12 @@ export function ExerciseCard({
       </div>
 
       {equipmentDecision}
+      {focused && !expanded && activeSetEvidenceNeedsReview(activeSetProjection) && (
+        <p role="alert" data-testid="focused-evidence-review-warning"
+          className="border-t bg-[var(--surface-attention)] px-3 py-2 text-sm">
+          Some set records need review. Open this exercise to inspect the retained details.
+        </p>
+      )}
       {expanded && warmupPending && warmupContent}
 
       {expanded && !isSkipped && skipConfirmationPending && (

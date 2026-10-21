@@ -1,10 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { exerciseVisibleInWorkoutView, handheldLoadPresentation } from "@/lib/focused-workout";
+import { projectActiveSetRows } from "@/lib/active-set-row-projection";
+import { SET_ROW_STATE_FIXTURES } from "../fixtures/active-workout-north-star";
 
 describe("focused workout presentation", () => {
   const base = {
     view: "focused" as const, exerciseId: "other", currentExerciseId: "current",
     recoveryExerciseId: null, needsEquipmentDecision: false,
+    ledgerProjection: projectActiveSetRows({ ...SET_ROW_STATE_FIXTURES.planned.input, occurrences: [], exercise: { ...SET_ROW_STATE_FIXTURES.planned.input.exercise, sets: [] } }),
   };
   it("keeps the current action visible without exposing every future exercise", () => {
     expect(exerciseVisibleInWorkoutView(base)).toBe(false);
