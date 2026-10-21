@@ -270,7 +270,7 @@ export default async function CoachPage({
   return (
     <main
       data-ui-core-surface="review"
-      className="athlete-workflow mx-auto flex max-w-5xl flex-col gap-6 p-4 sm:p-6 lg:p-8"
+      className="athlete-workflow one-next-review mx-auto flex max-w-5xl flex-col gap-6 p-4 sm:p-6 lg:p-8"
     >
       {isUsingExampleAIProvider() && (
         <p className="text-sm text-muted-foreground" role="note">
@@ -280,7 +280,7 @@ export default async function CoachPage({
       <header className="space-y-2">
         <h1 className="ui-page-title">Coach</h1>
         <p className="text-sm text-muted-foreground">
-          Your training, explained simply.
+          Review proposed changes to future workouts.
         </p>
       </header>
       {pattern && (

@@ -1,59 +1,42 @@
-# One next move — first implementation milestone
+# Workout flow screens
 
-Baseline: public RepBook v2.3.2, commit 7d577b421a376423080690e9418f0b76fbf0a39f. Isolated branch: codex/one-next-move. The separate private operational checkout and its uncommitted work are untouched.
+The training screens use the existing session, equipment, history and recommendation systems. The changes described here are presentation changes; they introduce no second workout sequence, load conversion or automatic Program mutation.
 
-## What is implemented
+## Today and current-set logging
 
-Today uses the accepted off-white and dark-green coaching direction, oversized arrival headline, a prominent bottom start/resume action on phones, and a quick-log drawer. Existing readiness, schedule, equipment, shortened-workout review, warnings and alternate-day decisions remain authoritative.
+Today uses a concise functional heading, the current coaching decision, quick text/device-dictation entry and a prominent start or resume action. Existing readiness, schedule, equipment, time-adjustment review, warnings and alternate-day decisions remain authoritative.
 
-An active workout starts in Current set view, with a Full workout option. The existing set editor, saved-set correction, warm-ups, superset ordering, equipment choices and rest clock remain in use. A disclosure holds acknowledged history and future sets; pending saves, failures and uncertain records remain visible. A contextual voice/text note entry remains available. The larger dark workout presentation uses lime primary controls.
+Current set view and Full workout view share the same occurrence ledger. Pending or failed saves, equipment decisions and recovery targets stay visible. A disclosure holds acknowledged history and future sets while preserving saved-set correction. Warm-ups, supersets, rest deadlines, quick notes and undo continue through their existing commands.
 
-Handheld load labels follow the recorded convention. Proven per-implement weights are explicitly named. Existing totals stay totals; ambiguous records are not converted and no pair count is guessed. This is wording only, with no migration or calculation change.
+Large weight and reps fields have explicit top padding and a workout-scoped height variable. Other compact editors keep their prior fallback size. The numeric type and control arrangement are preserved; motivational headlines are omitted to give space to workout content.
 
-## Comparison with openGym
+## Workout-only swaps
 
-The useful lesson is clarity: one next action, explicit load meaning, understandable next targets and a modular distinction between training records and proposed changes. RepBook already has strong independent machinery for these needs. It should retain its progression engine, owned-equipment steps, session-only substitutions, comparable-history checks, session compiler, offline outboxes and explicit review gates. Replacing them with another application’s engine would lose safeguards and create unnecessary history risk.
+The existing alternative and replacement flows supply candidate availability, constraints and allowed selections. The swap review explains equipment fit, load convention, separate exercise histories and workout-only scope before the existing confirmation command runs. Duplicate catalogue prose and a duplicate Back control are omitted in this context; the full library detail remains available elsewhere.
 
-Reference reviewed: openGym e348fc17c42c7e9a211c5972e573ad3698190ee2, particularly frontend/src/lib/progression.js, dumbbells.js and workout-model.js. No openGym source or exercise media is copied. The developer’s permission scope has not been independently verified; this implementation uses RepBook’s own code.
+Known per-implement amounts are named as such. Existing totals remain totals. Unknown conventions remain explicit; an implement count or combined load is never inferred from an exercise name. Reps-only replacements do not ask for a fabricated numeric weight.
 
-## Strengths that must survive
+The picker explains how starting evidence is selected. Exact comparable sets and the starting entry continue to appear in the existing editor after a swap; the picker does not invent a numeric preview. Completed sets retain their original exercise. Existing idempotency, stale-state reconciliation, warnings, failure/retry and undo behavior remain authoritative.
 
-- Exact historical exercise, unit and load meaning; unknown values stay unknown.
-- Review before routine or progression changes; session-only swaps preserve independent exercise histories.
-- Visible save state, offline retention, correction, undo and recovery.
-- Warm-ups, supersets, rest deadlines, equipment-specific plate math and safety context.
-- Quick text logging and supported device dictation alongside the full workout overview.
+## Next-session review
+
+A supported load proposal presents its proposed target beside its reason, with its current target and saved future effect kept distinct. Missing current targets or units stay explicit. Editing a proposal updates the explanation of what approval will use. The original proposal remains inspectable.
+
+Only the existing explicit approval command applies a change, subject to its owner, evidence and revision checks. Unsupported or stale proposals remain blocked; automatic holds remain informational. External advice retains its separate future-Review decision semantics. Defer, resume, rejection and timeout recovery continue through the existing actions. Load editing is disabled while a decision is pending.
+
+Review actions follow the content on narrow and enlarged-text screens so they do not cover the explanation. Existing workout summaries link to Coach for review; no new workout-completion or proposal-production path is introduced.
 
 ## Source map
 
-- Today and quick entry: src/app/(main)/today/page.tsx; src/components/dashboard/today-quick-log.tsx; src/components/quick-log/quick-log-card.tsx.
-- Focus selection: src/components/session/session-runner.tsx; src/lib/focused-workout.ts.
-- Set history and current editor: src/components/session/active-set-ledger.tsx; src/components/session/exercise-card.tsx.
-- Independent progression guards: src/engine/progression/rules.ts; src/services/progression.ts.
-- Historical comparability: src/lib/set-metric-semantics.ts; src/services/previous-comparable-sets.ts; src/lib/set-starting-load.ts.
-- Existing time adjustment and rest recovery: src/services/session-compiler.ts; src/lib/rest-timer.ts.
-- Visual treatment: src/app/globals.css; src/components/nav/main-shell.tsx.
+- Today: src/app/(main)/today/page.tsx; src/components/dashboard/today-quick-log.tsx.
+- Current set and recovery visibility: src/components/session/session-runner.tsx; src/lib/focused-workout.ts.
+- Set editor: src/components/session/exercise-card.tsx; src/components/session/active-set-ledger.tsx.
+- Swap review: src/components/exercises/exercise-picker.tsx; src/components/exercises/workout-swap-summary.tsx.
+- Decision review: src/components/coach/recommendation-card.tsx; src/app/(main)/coach/page.tsx.
+- Existing independent progression and comparable-history rules: src/engine/progression/rules.ts; src/services/progression.ts; src/services/previous-comparable-sets.ts; src/lib/set-metric-semantics.ts.
 
-## Remaining milestones and risks
+## Verification and limits
 
-1. Finish phone and enlarged-text review of the implemented Today/logging flow. Prove keyboard, bottom controls, recovery visibility, logging/correction, warm-ups and superset transitions in disposable data before merging. Focus hides presentation only; recovery selection must never target an invisible editor.
-2. Redesign the existing session-only swap sheet around available equipment and the replacement’s own history. Preserve substitution/undo commands. Do not infer combined dumbbell loads from names or unilateral labels.
-3. Redesign the existing next-session decision review with evidence, proposed target, equipment step and an explicit apply action. Keep the deterministic engine and its pain/effort/exposure guards.
-4. Make the existing shortened-session review easier to reach from Today; preserve review before accepting omissions. This milestone does not add a new automatic planner.
-5. Verify exact rest/session recovery after reload, offline/reconnect and a real locked phone. Web background alarms remain platform-dependent; no guarantee is made here.
-6. Improve progress comparisons only where exercise identity and load meaning are comparable; retain explanations for excluded records.
+Use the component tests for focused-workout, active-set-ledger, exercise-card, workout-swap-summary and recommendation-card, together with the existing replacement, comparable-history and review-decision tests. The workout-feedback browser journey checks numeric field padding, text fit, narrow widths and enlarged text, as well as logging, correction, warm-ups, rest reload and offline/reconnect. The replacement-mobile and v2-h05 journeys cover swap recovery and evidence-linked review.
 
-## Validation status
-
-- Normal production build passed (Next 16.3.3 Turbopack), including TypeScript and all route generation.
-- Full npm run typecheck passed.
-- npm run lint passed with one existing warning in src/components/simulation/simulation-runner.tsx:142. No lint errors.
-- npm run docs:check passed.
-- 118 selected unit tests passed across focused-workout, active-set-ledger-component, exercise-card-component, rest-timer, set-metric-semantics and progression.
-- Chromium and iPhone/WebKit disposable workout browser tests passed. They cover quick entry, focused/full views, logging/correction, plate controls, warm-ups, rest reload, 320-pixel layout with 20px root text, and offline/reconnect.
-- The existing Chromium superset browser test passed, covering immutable order, truthful progress and next-member equipment preparation.
-- Screenshots were visually reviewed. A truncated starting-load explanation at narrow enlarged-text sizes was fixed. A clean normal build and both browser tests then passed, with explicit no-clipping assertions.
-
-The checkout encountered blocking local file reads and inconsistent dependency module reads. Validation succeeded in /tmp/repbook-one-next-move-review with byte-copied source and a physical copy of the already-installed matching dependencies. No new software was installed. The 13 changed app/test files match byte for byte; hashes are in the accompanying verified-source.json. An earlier linked-dependency webpack attempt failed before the normal build passed and is not counted as validation. Only the disposable review copy’s generated .next cache was cleared after confirming it had served stale CSS; original repositories and their caches were preserved.
-
-This is browser emulation, not a physical locked-phone test. Lock/close recovery, background alarm delivery, a full import/restore gauntlet and the complete repository test suite are not newly certified here. Existing engines and protection writers are unchanged. No production workout data, permissions, migration or deployment has been changed.
+Browser emulation does not certify physical lock/close recovery or background alarm delivery. Those behaviors require actual-device testing. No claim is made that the entire import/restore test matrix or complete repository suite has been rerun for a presentation change.

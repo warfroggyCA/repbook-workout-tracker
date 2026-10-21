@@ -16,7 +16,6 @@
 .one-next-arrive { padding-block: .75rem; }
 .one-next-arrive-meta { display: flex; flex-wrap: wrap; justify-content: space-between; gap: .5rem; font-weight: 700; }
 .one-next-arrive-meta time { font-size: .75rem; font-weight: 500; color: var(--muted-foreground); }
-.one-next-headline { margin-top: 1.25rem; font-size: clamp(1.8rem, 1.3rem + 3vw, 2.6rem); font-weight: 750; letter-spacing: -.045em; line-height: 1.08; }
 .one-next-today [data-testid="today-decision"] {
   --foreground: #f2f6ec;
   --muted-foreground: #becbc0;
@@ -69,13 +68,13 @@
 .one-next-workout .active-set-measure-heading { display: flex; flex-wrap: wrap; justify-content: space-between; gap: .25rem .5rem; }
 .one-next-workout .active-set-prefill-source { white-space: normal; overflow: visible; text-overflow: clip; text-align: start; }
 .one-next-workout .active-set-measures-grid { grid-template-columns: minmax(0, 1fr); gap: 1.25rem; padding-block: .65rem; }
+.one-next-workout .active-set-measures-grid { --active-number-height: 5.5rem; }
 .one-next-workout .active-set-measures-grid input {
-  height: 4.75rem !important;
-  min-height: 4.75rem !important;
   font-size: clamp(1.6rem, 9vw, 3.5rem) !important;
   font-weight: 750;
-  line-height: 1;
-  padding-bottom: 1.1rem;
+  line-height: 1.1;
+  padding-top: .75rem;
+  padding-bottom: 1.25rem;
   background: #1c3024;
   color: var(--foreground);
 }
@@ -96,6 +95,50 @@
 .one-next-workout .one-next-load-meaning { padding-block: .4rem; line-height: 1.5; }
 .one-next-workout .text-violet-800 { color: #d6c8fa; }
 .one-next-workout .text-amber-900 { color: #ffe1a3; }
+.one-next-swap-screen,
+.one-next-review {
+  --background: #f4f6ef;
+  --foreground: #16251d;
+  --card: #f4f6ef;
+  --card-foreground: #16251d;
+  --popover: #f4f6ef;
+  --popover-foreground: #16251d;
+  --primary: #17291f;
+  --primary-foreground: #f4f6ef;
+  --muted: #e4eae1;
+  --muted-foreground: #526256;
+  --border: #cbd4c8;
+  --surface-canvas: #f4f6ef;
+  --surface-primary: #f4f6ef;
+  --surface-selected: #f4f6ef;
+  --surface-inset: #e7ece3;
+  color: var(--foreground);
+  background: var(--background);
+}
+.one-next-eyebrow { font-size: .75rem; font-weight: 750; letter-spacing: .035em; line-height: 1.5; text-transform: uppercase; }
+.one-next-swap-screen h3 { font-size: clamp(1.65rem, 1.2rem + 2vw, 2.4rem); line-height: 1.15; }
+.one-next-swap-equipment { border-radius: 1rem; padding: 1.25rem; background: #17291f; color: #f1f6ec; }
+.one-next-swap-equipment .one-next-eyebrow { color: #d7ff72; }
+.one-next-swap-history { border-radius: 1rem; padding: 1.25rem; background: #e4eae1; }
+.one-next-swap-screen footer { padding-bottom: max(.75rem, env(safe-area-inset-bottom)); }
+.one-next-swap-screen footer button:last-child { min-height: 3rem; }
+.one-next-review { padding-bottom: calc(6rem + env(safe-area-inset-bottom)); }
+.one-next-review .one-next-decision { border-radius: 1.25rem; }
+.one-next-review .one-next-decision h3 { font-size: clamp(1.4rem, 1.1rem + 1vw, 1.9rem); line-height: 1.15; }
+.one-next-target { margin-top: 1rem; padding: 1.25rem; border-radius: 1rem; background: #d7ff72; color: #14251d; }
+.one-next-target-value { margin-top: .65rem; font-size: clamp(2.5rem, 2rem + 3vw, 4rem); font-weight: 750; letter-spacing: -.04em; line-height: 1.1; overflow-wrap: anywhere; }
+.one-next-target-value span { font-size: 1rem; font-weight: 600; letter-spacing: 0; }
+.one-next-review .one-next-decision-actions { position: sticky; bottom: calc(4.5rem + env(safe-area-inset-bottom)); z-index: 10; padding-block: .75rem; background: #f4f6ef; border-top: 1px solid var(--border); }
+.one-next-review .one-next-decision-actions button { min-height: 3rem; }
+.one-next-review .one-next-decision-actions button:first-child:not(:last-child) { background: #d7ff72; color: #14251d; border: 1px solid #17291f; }
+@media (min-width: 1024px) {
+  .one-next-review .one-next-decision-actions { bottom: 0; }
+}
+@media (max-width: 360px) {
+  .one-next-review .one-next-decision-actions { position: static; }
+}
+html:is([data-font-size="large"], [data-font-size="extra-large"]) .one-next-review .one-next-decision-actions { position: static; }
+
 @media (max-width: 767px) {
   .one-next-today { padding-bottom: calc(11rem + env(safe-area-inset-bottom)); }
   .one-next-today .one-next-start {

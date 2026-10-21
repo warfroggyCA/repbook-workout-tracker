@@ -370,6 +370,14 @@ test("keeps unrestricted replacement truthful and reachable through mobile keybo
   await expect(picker.getByRole("group", { name: "Equipment" })).toHaveCount(0);
   await expect(immediateMatch).toBeVisible();
   await expect(immediateMatch).toBeInViewport();
+  await immediateMatch.click();
+  const swapSummary = picker.getByTestId("workout-swap-summary");
+  await expect(swapSummary).toContainText(originalExerciseName);
+  await expect(swapSummary).toContainText("keep separate records");
+  await expect(swapSummary).toContainText("old exercise’s weight does not transfer");
+  await expect(picker.getByTestId("swap-load-convention")).toBeVisible();
+  await page.screenshot({ path: testInfo.outputPath("one-next-dumbbell-swap.png") });
+  await returnToSearchResults(picker);
   await search.fill("");
   await expect(search).toBeFocused();
   await expect(filterToggle).toHaveAttribute("aria-expanded", "false");
@@ -482,6 +490,10 @@ test("keeps unrestricted replacement truthful and reachable through mobile keybo
   await returnToSearchResults(picker);
 
   await inspectSearchResult(picker, "Bodyweight Bulgarian Split Squat");
+  await expect(picker.getByTestId("workout-swap-summary")).toContainText("saved routine stays unchanged");
+  await picker.getByText("How the starting entry is chosen", { exact: true }).click();
+  await expect(picker.getByTestId("workout-swap-summary")).toContainText("Follow the new exercise’s reps or time entry");
+  await page.screenshot({ path: testInfo.outputPath("one-next-bodyweight-swap.png") });
   await expect(picker).toContainText("Reps");
   await expect(picker).toContainText("Bodyweight");
   const confirm = picker.getByRole("button", {

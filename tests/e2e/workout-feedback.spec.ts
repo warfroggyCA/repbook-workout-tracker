@@ -43,6 +43,36 @@ test("shared pulley, inline preparation, corrected sets and manual scrolling", a
   await expect(weight).not.toHaveValue("50");
   await card.getByRole("button", { name: "Decrease weight", exact: true }).click();
   await expect(weight).toHaveValue("50");
+  const originalViewport = page.viewportSize()!;
+  for (const width of [320, 375, 390]) {
+    await page.setViewportSize({ width, height: 844 });
+    for (const size of ["default", "extra-large"]) {
+      await page.evaluate((value) => { document.documentElement.dataset.fontSize = value; }, size);
+      for (const value of ["7.5", "22.75", "112.5", "225.5", "1000"]) {
+        await weight.fill(value);
+        const geometry = await weight.evaluate((element) => {
+          const input = element as HTMLInputElement;
+          const style = getComputedStyle(input);
+          const canvas = document.createElement("canvas");
+          const context = canvas.getContext("2d")!;
+          context.font = `${style.fontWeight} ${style.fontSize} ${style.fontFamily}`;
+          return {
+            topPadding: parseFloat(style.paddingTop),
+            fitsHeight: parseFloat(style.lineHeight) + parseFloat(style.paddingTop) + parseFloat(style.paddingBottom) <= input.clientHeight + 1,
+            fitsWidth: context.measureText(input.value).width + parseFloat(style.paddingLeft) + parseFloat(style.paddingRight) <= input.clientWidth + 1,
+            fontSize: parseFloat(style.fontSize),
+          };
+        });
+        expect(geometry.topPadding).toBeGreaterThanOrEqual(11);
+        expect(geometry.fitsHeight).toBe(true);
+        expect(geometry.fitsWidth).toBe(true);
+        expect(geometry.fontSize).toBeGreaterThanOrEqual(25);
+      }
+    }
+  }
+  await page.evaluate(() => { document.documentElement.dataset.fontSize = "default"; });
+  await page.setViewportSize(originalViewport);
+  await weight.fill("50");
   await page.screenshot({ path: testInfo.outputPath("one-next-focused-set.png") });
   const initialViewport = page.viewportSize()!;
   await page.setViewportSize({ width: 320, height: 740 });

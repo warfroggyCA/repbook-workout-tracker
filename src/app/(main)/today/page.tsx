@@ -169,9 +169,7 @@ export default async function TodayPage({
       className="athlete-workflow one-next-today mx-auto flex max-w-5xl flex-col gap-3 px-4 py-0 sm:gap-4 sm:p-6 lg:p-8"
     >
       <header className="one-next-arrive">
-        <div className="one-next-arrive-meta"><span>repbook</span><time dateTime={today.currentLocalDate}>{new Intl.DateTimeFormat("en", { weekday: "short", day: "numeric", month: "short", timeZone: user.profile.timezone }).format(now)}</time></div>
-        <h1 className="sr-only">Today</h1>
-        <p className="one-next-headline">Less deciding.<br />More lifting.</p>
+        <div className="one-next-arrive-meta"><h1 className="ui-page-title">Today</h1><time dateTime={today.currentLocalDate}>{new Intl.DateTimeFormat("en", { weekday: "short", day: "numeric", month: "short", timeZone: user.profile.timezone }).format(now)}</time></div>
       </header>
       <TodayQuickLog />
 

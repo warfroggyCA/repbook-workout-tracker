@@ -32,6 +32,7 @@ import { cn } from "@/lib/utils";
 import { exercisePickerSelectionState } from "@/lib/exercise-picker";
 import { ExerciseReferenceMedia } from "@/components/exercises/exercise-reference-media";
 import { ExerciseFamilyIcon } from "@/components/exercises/exercise-family-icon";
+import { WorkoutSwapSummary } from "@/components/exercises/workout-swap-summary";
 import type { ExerciseAlternativeAnnotation } from "@/lib/exercise-alternatives";
 import {
   ArrowLeft,
@@ -200,6 +201,8 @@ function ExerciseDetail({
   confirmLabel,
   annotation,
   warning,
+  workoutSwap,
+  selecting,
   onBack,
   onConfirm,
 }: {
@@ -210,6 +213,8 @@ function ExerciseDetail({
   confirmLabel: string;
   annotation?: ExerciseAlternativeAnnotation;
   warning?: string;
+  workoutSwap?: { currentExerciseName: string };
+  selecting: boolean;
   onBack: () => void;
   onConfirm: () => void;
 }) {
@@ -238,12 +243,12 @@ function ExerciseDetail({
 
       <article className="space-y-5 pb-4">
         <header>
-          <div className="flex flex-wrap items-center gap-2">
+          {!workoutSwap && <div className="flex flex-wrap items-center gap-2">
             <Badge variant="outline">{item.family ?? "Custom exercise"}</Badge>
             <Badge variant="outline">{label(item.movementPattern)}</Badge>
             {item.inCurrentProgram && <Badge>Current programme</Badge>}
             {item.recentRank != null && <Badge variant="secondary">Recently used</Badge>}
-          </div>
+          </div>}
           <div className="mt-3 flex items-center gap-3">
             <FroggyFormDemoTrigger><ExerciseFamilyIcon
               family={item.family}
@@ -259,12 +264,16 @@ function ExerciseDetail({
               {item.name}
             </h3>
           </div>
-          <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground sm:text-base">
+          {!workoutSwap && <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground sm:text-base">
             An exact {label(item.movementPattern).toLowerCase()} variant in the{" "}
             {item.family ?? item.name} family, primarily training{" "}
             {item.primaryMuscles.map(label).join(", ") || "the whole body"}.
-          </p>
+          </p>}
         </header>
+
+        {workoutSwap && (
+          <WorkoutSwapSummary item={item} currentExerciseName={workoutSwap.currentExerciseName} />
+        )}
 
         <section aria-labelledby={`media-${item.id}`}>
           <h4 id={`media-${item.id}`} className="mb-2 font-semibold">
@@ -378,11 +387,11 @@ function ExerciseDetail({
       </article>
 
       <footer className="sticky bottom-0 mt-auto flex flex-col-reverse gap-2 border-t bg-popover/95 py-3 backdrop-blur sm:flex-row sm:justify-between">
-        <Button type="button" variant="outline" className="min-h-10" onClick={onBack}>
+        {!workoutSwap && <Button type="button" variant="outline" className="min-h-10" disabled={selecting} onClick={onBack}>
           <ArrowLeft className="size-4" /> Back
-        </Button>
-        <Button type="button" className="min-h-10" disabled={!canAdd} onClick={onConfirm}>
-          <Check className="size-4" /> {confirmLabel}
+        </Button>}
+        <Button type="button" className="min-h-10" disabled={!canAdd || selecting} onClick={onConfirm}>
+          <Check className="size-4" /> {selecting ? "Saving your choice…" : confirmLabel}
         </Button>
       </footer>
     </div>
@@ -409,6 +418,7 @@ export function ExercisePicker({
   initialAvailability = "available",
   defaultOpen = false,
   onOpenChange,
+  workoutSwap,
 }: {
   items: ExerciseDiscoveryItem[];
   onSelect: (
@@ -430,6 +440,7 @@ export function ExercisePicker({
   initialAvailability?: "available" | "all";
   defaultOpen?: boolean;
   onOpenChange?: (open: boolean) => void;
+  workoutSwap?: { currentExerciseName: string };
 }) {
   const [open, setOpen] = useState(defaultOpen);
   const [showFilters, setShowFilters] = useState(false);
@@ -635,6 +646,7 @@ export function ExercisePicker({
       </DialogTrigger>
       <DialogContent className={cn(
         "flex max-w-[calc(100%-1rem)] grid-rows-none flex-col gap-3 overflow-hidden p-0 sm:max-w-4xl",
+        workoutSwap && "one-next-swap-screen",
         largeTouchTargets && "[&_button]:min-h-11 [&_button]:min-w-11 [&_input]:min-h-11"
       )}
       style={
@@ -832,6 +844,8 @@ export function ExercisePicker({
               confirmLabel={confirmLabel}
               annotation={itemAnnotations[inspected.id]}
               warning={itemWarnings[inspected.id]}
+              workoutSwap={workoutSwap}
+              selecting={selecting}
               onBack={returnToResults}
               onConfirm={() => void confirmPick(inspected)}
             />

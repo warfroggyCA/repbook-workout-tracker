@@ -35,7 +35,7 @@ async function signIn(page: Page) {
 test("links every material Review claim to evidence and preserves deliberate owner control", async ({
   browserName,
   page,
-}) => {
+}, testInfo) => {
   await signIn(page);
   // This journey deliberately aborts one held approval request below.
   const pageErrors = observeGauntletPageErrors(page, browserName, [
@@ -70,6 +70,39 @@ test("links every material Review claim to evidence and preserves deliberate own
     .toBeDisabled();
   await expect(unsupported.getByRole("button", { name: "Reject", exact: true }))
     .toBeEnabled();
+
+  const nextTarget = supported.getByTestId("next-session-target");
+  await expect(nextTarget).toContainText("Proposed next target");
+  await expect(nextTarget).toContainText("Current target: 105 lb");
+  await expect(nextTarget).toContainText("Two completed squat workouts at 105 lb");
+  if (narrow) {
+    const actions = supported.getByRole("button", { name: "Approve", exact: true }).locator("..");
+    expect(await actions.evaluate((element) => getComputedStyle(element).position)).toBe("static");
+  }
+  await expect(supported).toContainText("completed workout keeps its original targets and results");
+  await supported.getByRole("button", { name: "Increase load", exact: true }).click();
+  await expect(supported.getByRole("status").filter({ hasText: "You changed the proposed target" })).toContainText("115 lb");
+  await supported.getByRole("button", { name: "Decrease load", exact: true }).click();
+  await expect(supported.getByRole("button", { name: "Approve", exact: true })).toBeEnabled();
+  const evidenceSummary = supported.locator("summary").filter({ hasText: "How calculated" });
+  expect(await evidenceSummary.evaluate((summary) => {
+    const bounds = summary.getBoundingClientRect();
+    return [...summary.querySelectorAll("span, svg")].every((element) => {
+      const rect = element.getBoundingClientRect();
+      return rect.left >= bounds.left - 1 && rect.right <= bounds.right + 1;
+    });
+  })).toBe(true);
+  await nextTarget.scrollIntoViewIfNeeded();
+  await page.screenshot({ path: testInfo.outputPath("one-next-session-review.png") });
+  if (narrow) {
+    const stressViewport = page.viewportSize()!;
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.evaluate(() => { document.documentElement.dataset.fontSize = "default"; });
+    await supported.evaluate((element) => element.scrollIntoView({ block: "start" }));
+    await page.screenshot({ path: testInfo.outputPath("one-next-review-phone.png") });
+    await page.setViewportSize(stressViewport);
+    await page.evaluate(() => { document.documentElement.dataset.fontSize = "extra-large"; });
+  }
 
   await supported.getByText("How calculated", { exact: true }).click();
   const exactSetLink = supported.getByRole("link", { name: /performed set 1/ }).first();
@@ -154,6 +187,8 @@ test("links every material Review claim to evidence and preserves deliberate own
   await approve.click();
   await expect(resumed.getByRole("status").filter({ hasText: "Saving your decision" })).toBeVisible();
   await expect(approve).toBeDisabled();
+  await expect(resumed.getByRole("button", { name: "Increase load", exact: true })).toBeDisabled();
+  await expect(resumed.getByRole("button", { name: "Decrease load", exact: true })).toBeDisabled();
   await expect(resumed.getByRole("alert")).toContainText("It may still have been saved", { timeout: 20_000 });
   await expect(approve).toBeDisabled();
   expect(timedOutRequestCount).toBe(1);
