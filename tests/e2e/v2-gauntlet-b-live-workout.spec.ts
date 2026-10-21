@@ -63,6 +63,11 @@ async function signInAndStart(page: Page) {
   await start.click();
   await expect(page).toHaveURL(/\/session\/[0-9a-f-]+$/);
   await waitForEquipmentSelectionsToSettle(page);
+  // This journey exercises completed and future cards throughout the full workout.
+  const overview = page.getByRole("button", { name: "Full workout", exact: true });
+  await waitForHydratedReactHandler(overview);
+  await overview.click();
+  await expect(overview).toHaveAttribute("aria-pressed", "true");
 }
 
 function exerciseCard(page: Page, name: string) {
@@ -525,6 +530,7 @@ test("keeps the full live workout usable through warm-up, skip, replace, continu
     return key == null ? null : window.sessionStorage.getItem(key);
   })).toContain('"phase":"unconfirmed"');
   await page.reload({ waitUntil: "networkidle" });
+  await expect(page.getByRole("button", { name: "Full workout", exact: true })).toHaveAttribute("aria-pressed", "true");
   incompatible = exerciseCard(page, "Suspension Push-Up");
   await expect(incompatible).toContainText("Skip was not confirmed");
   await expect(incompatible).toContainText(
@@ -611,6 +617,7 @@ test("keeps the full live workout usable through warm-up, skip, replace, continu
     const log = page.getByTestId("active-log-set");
     await expectReachableTarget(log);
     await log.click();
+    await expect(page.getByRole("button", { name: "Full workout", exact: true })).toHaveAttribute("aria-pressed", "true");
     if (setNo === 3) {
       await expect(completedSquat).toContainText("3/3 planned performed");
       const completedSquatToggle = completedSquat.getByTestId("exercise-swipe-surface");

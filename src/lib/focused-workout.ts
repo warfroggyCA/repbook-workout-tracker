@@ -17,10 +17,11 @@ export function exerciseVisibleInWorkoutView(input: {
   recoveryExerciseId: string | null;
   needsEquipmentDecision: boolean;
   needsSaveRecovery?: boolean;
+  isActiveGroupMember?: boolean;
   ledgerProjection: ActiveSetRowProjection;
 }) {
   return input.view === "overview" || input.currentExerciseId == null ||
-    input.exerciseId === input.currentExerciseId ||
+    input.exerciseId === input.currentExerciseId || input.isActiveGroupMember === true ||
     input.exerciseId === input.recoveryExerciseId || input.needsEquipmentDecision ||
     input.needsSaveRecovery === true || activeSetEvidenceNeedsReview(input.ledgerProjection);
 }

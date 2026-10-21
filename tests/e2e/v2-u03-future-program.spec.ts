@@ -2,6 +2,7 @@ import { expect, test, type Page } from "@playwright/test";
 import {
   installNextDevelopmentRefreshControl,
   waitForHydratedServerAction,
+  waitForHydratedReactHandler,
 } from "../helpers/react-readiness";
 
 async function signIn(page: Page) {
@@ -53,6 +54,10 @@ test("reviews and publishes an exact future-only Program change with a recoverab
     document.documentElement.dataset.fontSize = "extra-large";
   });
   await expectNoHorizontalOverflow(page);
+  const overview = page.getByRole("button", { name: "Full workout", exact: true });
+  await waitForHydratedReactHandler(overview);
+  await overview.click();
+  await expect(overview).toHaveAttribute("aria-pressed", "true");
   const exerciseCards = page.locator('section[id^="exercise-"]');
   expect(await exerciseCards.count()).toBeGreaterThan(1);
   const futureRemovalCard = exerciseCards.nth(1);
@@ -129,6 +134,10 @@ test("reviews and publishes an exact future-only Program change with a recoverab
 
   const retainedActiveWorkout = await page.context().newPage();
   await retainedActiveWorkout.goto(activeSessionUrl);
+  const retainedOverview = retainedActiveWorkout.getByRole("button", { name: "Full workout", exact: true });
+  await waitForHydratedReactHandler(retainedOverview);
+  await retainedOverview.click();
+  await expect(retainedOverview).toHaveAttribute("aria-pressed", "true");
   await expect(
     retainedActiveWorkout.getByRole("heading", {
       level: 2,

@@ -63,8 +63,9 @@ import { openContextualNoteComposer, type ContextualNoteScopeValue } from "@/lib
 import { createClientUuid } from "@/lib/client-uuid";
 import { activeWorkoutScrollBehavior } from "@/lib/active-workout-motion";
 import { exerciseVisibleInWorkoutView } from "@/lib/focused-workout";
+import { workoutViewStore, workoutViewServerSnapshot, type WorkoutView } from "@/lib/workout-view-preference";
 import { projectActiveSetRows } from "@/lib/active-set-row-projection";
-import { activeSetCommitFormId } from "@/lib/active-workout-layout";
+import { activeSetCommitFormId, workoutFocusScrollDelta } from "@/lib/active-workout-layout";
 import { FONT_SIZE_EVENT } from "@/lib/font-size";
 import {
   buildPerformedSetMeasurement,
@@ -795,7 +796,15 @@ export function SessionRunner(props: SessionRunnerProps) {
   const hasStructuredWarmup = occurrences.some(
     (occurrence) => occurrence.kind !== "working_set",
   );
-  const [workoutView, setWorkoutView] = useState<"focused" | "overview">("focused");
+  const workoutViewKey = `${props.ownerId}:${props.sessionId}`;
+  const workoutView = useSyncExternalStore(
+    useCallback((listener) => workoutViewStore.subscribe(workoutViewKey, listener), [workoutViewKey]),
+    useCallback(() => workoutViewStore.getSnapshot(workoutViewKey), [workoutViewKey]),
+    workoutViewServerSnapshot,
+  );
+  const setWorkoutView = useCallback((view: WorkoutView) => {
+    workoutViewStore.setView(workoutViewKey, view);
+  }, [workoutViewKey]);
   const [expandedId, setExpandedId] = useState<string | null>(() => {
     const firstOpen = props.exercises.find(
       (e) => e.modificationType !== "skipped"
@@ -4603,6 +4612,21 @@ export function SessionRunner(props: SessionRunnerProps) {
     <main
       data-ui-core-surface="active-workout"
       data-workout-view={workoutView}
+      onFocusCapture={(event) => {
+        const target = event.target;
+        if (!(target instanceof HTMLElement) || target.closest('[role="dialog"]')) return;
+        requestAnimationFrame(() => {
+          if (!target.isConnected || document.activeElement !== target) return;
+          const dock = document.getElementById("workout-rest-status");
+          if (!dock || dock.contains(target)) return;
+          const rect = target.getBoundingClientRect();
+          const delta = workoutFocusScrollDelta({
+            targetTop: rect.top, targetBottom: rect.bottom,
+            dockTop: dock.getBoundingClientRect().top,
+          });
+          if (delta > 0) window.scrollBy({ top: delta, behavior: "instant" });
+        });
+      }}
       className="athlete-workflow one-next-workout mx-auto flex max-w-3xl flex-col gap-2 p-3 pb-[calc(var(--active-workout-overlay-bottom,calc(8rem+env(safe-area-inset-bottom)))+1rem)] min-[361px]:gap-3 sm:p-5 sm:pb-[calc(var(--active-workout-overlay-bottom,calc(8rem+env(safe-area-inset-bottom)))+1.25rem)] lg:p-8 lg:pb-24"
     >
       <ContextualNoteScope value={contextualNoteScope} />
@@ -4912,6 +4936,7 @@ export function SessionRunner(props: SessionRunnerProps) {
               view: workoutView,
               exerciseId: exercise.id,
               currentExerciseId: currentActionSessionExerciseId,
+              isActiveGroupMember: activeGroupMemberIds.has(exercise.id),
               recoveryExerciseId: skipRecoveryExerciseId,
               needsEquipmentDecision: equipmentSetupForcedOpen,
               needsSaveRecovery: exercise.sets.some((set) =>

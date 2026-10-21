@@ -516,3 +516,9 @@ html {
 ::selection {
   background: color-mix(in oklab, var(--primary) 22%, transparent);
 }
+
+/* At narrow enlarged-text widths, retain the rest dock's original space budget. */
+@media (max-width: 359px) {
+  html:is([data-font-size="large"], [data-font-size="extra-large"])
+    .one-next-workout [data-testid="active-log-set"] { min-height: 3.125rem; padding-block: .25rem; }
+}

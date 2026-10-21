@@ -102,6 +102,7 @@ describe("production readiness workflow contract", () => {
       "postgres-integration",
       "core",
       "browser",
+      "candidate-package",
     ]);
   });
 

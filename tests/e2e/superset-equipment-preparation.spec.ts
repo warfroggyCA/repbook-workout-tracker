@@ -623,6 +623,8 @@ test("presents immutable superset order, truthful progress, and next-member equi
       ),
     )
     .toBe(true);
+  await expect(restoredGroup).toBeVisible();
+  await expect(page.getByRole("button", { name: "Current set", exact: true })).toHaveAttribute("aria-pressed", "true");
   await expect(restoredGroup).toContainText(
     "Current member: 2 of 2 · Pallof Press",
   );
@@ -649,6 +651,14 @@ test("presents immutable superset order, truthful progress, and next-member equi
   await expect(restoredGroup).toContainText(
     "Current member: 2 of 2 · Pallof Press",
   );
+
+  const firstGroupMember = restoredGroup.getByRole("link", { name: /1\. Dumbbell Lateral Raise/ });
+  await expect(firstGroupMember).toBeVisible();
+  const firstMemberTarget = await firstGroupMember.getAttribute("href");
+  expect(firstMemberTarget).toMatch(/^#exercise-/);
+  await firstGroupMember.click();
+  await expect(page.locator(firstMemberTarget!)).toBeVisible();
+  await expect(page.locator(firstMemberTarget!).getByTestId("exercise-swipe-surface")).toHaveAttribute("aria-expanded", "true");
 
   await discardWorkout(page);
   await nextRscPrefetches.settle();
