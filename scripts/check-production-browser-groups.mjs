@@ -84,12 +84,12 @@ if (
 }
 
 const collectorNeeds = workflow?.jobs?.verify?.needs;
-const requiredNeeds = ["browser", "core", "postgres-integration"];
+const requiredNeeds = ["browser", "candidate-package", "core", "postgres-integration"];
 if (
   !Array.isArray(collectorNeeds) ||
   [...collectorNeeds].sort().join("\n") !== requiredNeeds.sort().join("\n")
 ) {
-  failures.push("verify must fail closed over browser, core, and PostgreSQL jobs");
+  failures.push("verify must collect browser, candidate package, core, and PostgreSQL jobs");
 }
 
 if (failures.length > 0) {

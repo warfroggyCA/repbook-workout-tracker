@@ -28,6 +28,7 @@ export function validateAuditReport(report) {
     "npm audit report is missing its vulnerability totals."
   );
 
+  assert(!Object.hasOwn(report, "error"), "npm audit returned an error, not a usable audit.");
   const counts = report.metadata.vulnerabilities;
   for (const severity of [...severityRank.keys(), "total"]) {
     assert(
@@ -36,6 +37,13 @@ export function validateAuditReport(report) {
     );
   }
 
+  assert(counts.total === Object.keys(report.vulnerabilities).length, "npm audit inventory and totals disagree.");
+  for (const [name, item] of Object.entries(report.vulnerabilities)) {
+    assert(isRecord(item) && item.name === name && severityRank.has(item.severity)
+      && Array.isArray(item.nodes) && item.nodes.length > 0
+      && item.nodes.every((node) => typeof node === "string" && node.startsWith("node_modules/"))
+      && Array.isArray(item.via) && item.via.length > 0, "npm audit has a malformed vulnerability.");
+  }
   return report;
 }
 

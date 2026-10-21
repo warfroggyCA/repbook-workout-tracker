@@ -10,6 +10,10 @@ on:
 permissions:
   contents: read
 
+env:
+  NPM_CONFIG_CACHE: /tmp/repbook-npm-cache
+  NEXT_TELEMETRY_DISABLED: "1"
+
 concurrency:
   group: production-readiness-${{ github.ref }}
   cancel-in-progress: true
@@ -43,8 +47,8 @@ jobs:
       - name: Use Node.js
         uses: actions/setup-node@v6
         with:
-          node-version: 24
-          cache: npm
+          node-version: 24.18.0
+          package-manager-cache: false
 
       - name: Install dependencies
         run: npm ci
@@ -70,11 +74,31 @@ jobs:
       - name: Use Node.js
         uses: actions/setup-node@v6
         with:
-          node-version: 24
-          cache: npm
+          node-version: 24.18.0
+          package-manager-cache: false
 
       - name: Install dependencies
         run: npm ci
+
+      - name: Review production and development dependencies
+        env:
+          REPBOOK_AUDIT_REPORT_DIR: ${{ runner.temp }}/dependency-audit
+          CANDIDATE_REVIEW: ${{ github.event_name == 'pull_request' && github.repository_id == '1317195955' && github.event.pull_request.head.repo.full_name == github.repository && github.head_ref == 'codex/one-next-move-public-review' && github.actor == github.repository_owner && github.triggering_actor == github.repository_owner }}
+        run: |
+          if [ "$CANDIDATE_REVIEW" = "true" ]; then
+            npm run audit:check -- --candidate-review
+          else
+            npm run audit:check
+          fi
+
+      - name: Preserve complete dependency audit reports
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: dependency-audit
+          path: ${{ runner.temp }}/dependency-audit/
+          if-no-files-found: error
+          retention-days: 7
 
       - name: Replay migrations from zero
         run: npm run db:verify
@@ -108,9 +132,6 @@ jobs:
 
       - name: Recheck generated route types
         run: npm run typecheck
-
-      - name: Review production and development dependencies
-        run: npm run audit:check
 
       - name: Verify exact Playwright browser image
         run: |
@@ -148,8 +169,8 @@ jobs:
       - name: Use Node.js
         uses: actions/setup-node@v6
         with:
-          node-version: 24
-          cache: npm
+          node-version: 24.18.0
+          package-manager-cache: false
 
       - name: Install dependencies
         run: npm ci
@@ -166,6 +187,35 @@ jobs:
           E2E_AI_DISABLED: "1"
         run: npm run test:e2e:program-editor -- --grep 'partial text update|free-form warmup edits|local interpreter'
 
+  candidate-package:
+    if: ${{ github.event_name == 'pull_request' && github.repository_id == '1317195955' && github.event.pull_request.head.repo.full_name == github.repository && github.head_ref == 'codex/one-next-move-public-review' && github.actor == github.repository_owner && github.triggering_actor == github.repository_owner }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      REPBOOK_PACKAGE_DIR: ${{ runner.temp }}/candidate-package
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24.18.0
+          package-manager-cache: false
+      - name: Install exact application and isolated packaging tool dependencies
+        run: |
+          npm ci
+          npm ci --prefix .github/toolchains/vercel65 --ignore-scripts
+      - name: Build local deployment-format candidate with disposable configuration
+        run: node scripts/build-candidate-package.mjs
+      - name: Preserve sanitized package inventory only
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: candidate-package-inventory
+          path: ${{ runner.temp }}/candidate-package/reports/
+          if-no-files-found: error
+          retention-days: 7
+
   verify:
     runs-on: ubuntu-latest
     if: ${{ always() }}
@@ -173,11 +223,14 @@ jobs:
       - postgres-integration
       - core
       - browser
+      - candidate-package
     steps:
       - name: Require every protected job
         env:
           POSTGRES_RESULT: ${{ needs.postgres-integration.result }}
           CORE_RESULT: ${{ needs.core.result }}
+          PACKAGE_RESULT: ${{ needs.candidate-package.result }}
+          CANDIDATE_EXPECTED: ${{ github.event_name == 'pull_request' && github.head_ref == 'codex/one-next-move-public-review' && github.event.pull_request.head.repo.full_name == github.repository && github.actor == github.repository_owner && github.triggering_actor == github.repository_owner }}
           BROWSER_RESULT: ${{ needs.browser.result }}
         run: |
           failed=0
@@ -193,4 +246,8 @@ jobs:
               failed=1
             fi
           done
+          if [ "$CANDIDATE_EXPECTED" = "true" ] && [ "$PACKAGE_RESULT" != "success" ]; then
+            echo "::error::Candidate packaging finished with $PACKAGE_RESULT."
+            failed=1
+          fi
           exit "${failed}"
