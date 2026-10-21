@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import type { ProgramDocumentV3 } from "../../src/lib/program-document";
 import {
   installNextDevelopmentRefreshControl,
+  openNativeDetails,
   waitForHydratedServerAction,
 } from "../helpers/react-readiness";
 
@@ -1155,7 +1156,13 @@ test("publishes loaded seconds per side and records the performed measurement on
     return raw ? (JSON.parse(raw).entries?.length ?? 0) : 0;
   })).toBe(0);
   await page.reload();
-  await expect(page.getByText(/35 sec\/side/).first()).toBeVisible();
+  // Acknowledged sets live in the focused view's native history disclosure.
+  // Pending evidence above must stay visible without opening it.
+  const savedHistory = page.getByTestId("current-exercise-card").getByTestId("focused-set-history");
+  await openNativeDetails(savedHistory);
+  const savedMeasurement = savedHistory.locator('[data-set-row-state="saved"]');
+  await expect(savedMeasurement.getByText(/20 lb · 35 sec\/side/)).toBeVisible();
+  await page.screenshot({ path: testInfo.outputPath("timed-history-mobile.png"), fullPage: true });
   await assertNoHorizontalOverflow(page);
   await page.goto("/today");
   await page.getByRole("button", { name: "Discard this workout", exact: true }).click();

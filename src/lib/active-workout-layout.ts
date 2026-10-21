@@ -16,3 +16,12 @@ export const OCCURRENCE_OUTBOX_OFFSET_CLASS_NAME =
 
 export const LIVE_COACH_OUTBOX_OFFSET_CLASS_NAME =
   "bottom-[calc(var(--active-workout-overlay-bottom,-2rem)+7rem)] lg:bottom-[calc(var(--active-workout-overlay-bottom,-6rem)+7rem)]";
+
+/** Correct focus only when a control can fit fully above the fixed dock. */
+export function workoutFocusScrollDelta(input: {
+  targetTop: number; targetBottom: number; dockTop: number;
+}) {
+  const height = input.targetBottom - input.targetTop;
+  if (!Object.values(input).every(Number.isFinite) || height <= 0 || height > input.dockTop - 16) return 0;
+  return Math.max(0, input.targetBottom - input.dockTop + 8);
+}

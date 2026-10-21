@@ -399,11 +399,21 @@ test("keeps new Stage 3 controls usable at the saved iPhone calibration", async 
   expect(enlargedLayout.dock).not.toBeNull();
   expect(enlargedLayout.tabs).not.toBeNull();
   expect(enlargedLayout.tabsVisible).toBe(false);
-  // At 145%, the neutral rest row and fixed action each retain 44px controls
-  // while the complete dock remains below one third of this 700px viewport.
+  // Keep the original dock budget at 145% text size and verify each rest
+  // action remains an unobstructed, reachable 44px target.
   expect(enlargedLayout.dock?.height ?? Number.POSITIVE_INFINITY).toBeLessThanOrEqual(
     230,
   );
+  for (const name of ["Decrease rest by 15 seconds", "Increase rest by 15 seconds", "End rest"]) {
+    const action = statusBar.getByRole("button", { name, exact: true });
+    await touchMetric(action, name);
+    await expect(action).toBeInViewport();
+    expect(await action.evaluate((element) => {
+      const rect = element.getBoundingClientRect();
+      const hit = document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2);
+      return hit === element || (hit != null && element.contains(hit));
+    })).toBe(true);
+  }
   expect(
     (enlargedLayout.dock?.y ?? 0) + (enlargedLayout.dock?.height ?? 0),
   ).toBeLessThanOrEqual(enlargedLayout.viewportBottom + 1);

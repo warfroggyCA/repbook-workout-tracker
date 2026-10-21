@@ -13,6 +13,11 @@ describe("focused workout presentation", () => {
     expect(exerciseVisibleInWorkoutView(base)).toBe(false);
     expect(exerciseVisibleInWorkoutView({ ...base, exerciseId: "current" })).toBe(true);
   });
+  it("keeps active group members and their navigation visible when the current member advances", () => {
+    expect(exerciseVisibleInWorkoutView({ ...base, exerciseId: "first-member", currentExerciseId: "second-member", isActiveGroupMember: true })).toBe(true);
+    expect(exerciseVisibleInWorkoutView({ ...base, exerciseId: "second-member", currentExerciseId: "second-member", isActiveGroupMember: true })).toBe(true);
+    expect(exerciseVisibleInWorkoutView({ ...base, exerciseId: "outside-group", currentExerciseId: "second-member", isActiveGroupMember: false })).toBe(false);
+  });
   it("never hides a recovery target or equipment decision", () => {
     expect(exerciseVisibleInWorkoutView({ ...base, recoveryExerciseId: "other" })).toBe(true);
     expect(exerciseVisibleInWorkoutView({ ...base, needsEquipmentDecision: true })).toBe(true);

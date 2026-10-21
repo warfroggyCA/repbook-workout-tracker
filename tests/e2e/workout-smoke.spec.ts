@@ -6,6 +6,7 @@ import {
   openNativeDetails,
   waitForEquipmentSelectionsToSettle,
   waitForHydratedReactChangeHandler,
+  waitForHydratedReactHandler,
   waitForHydratedFormSubmit,
   waitForHydratedServerAction,
 } from "../helpers/react-readiness";
@@ -2145,6 +2146,11 @@ test("keeps every active-workout route reachable with one scroll surface", async
   await expect(
     page.getByTestId("current-exercise-card").getByRole("heading", { level: 2 }),
   ).not.toHaveText(plannedExerciseName);
+  // Completed work is available in the explicit overview.
+  const overview = page.getByRole("button", { name: "Full workout", exact: true });
+  await waitForHydratedReactHandler(overview);
+  await overview.click();
+  await expect(overview).toHaveAttribute("aria-pressed", "true");
   await plannedCard.getByTestId("exercise-swipe-surface").click();
   await expect(
     plannedCard
