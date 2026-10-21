@@ -192,8 +192,6 @@ jobs:
     if: ${{ github.event_name == 'pull_request' && github.repository_id == '1317195955' && github.event.pull_request.head.repo.full_name == github.repository && github.head_ref == 'codex/one-next-move-public-review' && github.actor == github.repository_owner && github.triggering_actor == github.repository_owner }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    env:
-      REPBOOK_PACKAGE_DIR: ${{ runner.temp }}/candidate-package
     steps:
       - uses: actions/checkout@v7
         with:
@@ -207,6 +205,8 @@ jobs:
           npm ci
           npm ci --prefix .github/toolchains/vercel65 --ignore-scripts
       - name: Build local deployment-format candidate with disposable configuration
+        env:
+          REPBOOK_PACKAGE_DIR: ${{ runner.temp }}/candidate-package
         run: node scripts/build-candidate-package.mjs
       - name: Preserve sanitized package inventory only
         if: always()
