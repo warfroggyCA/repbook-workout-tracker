@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useId, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
   parseQuickLog,
@@ -22,6 +22,7 @@ type ParseOk = Extract<QuickLogParseResponse, { ok: true }>;
 
 export function QuickLogCard({ embedded = false }: { embedded?: boolean }) {
   const router = useRouter();
+  const inputId = useId();
   const [input, setInput] = useState("");
   const [parsed, setParsed] = useState<ParseOk | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -89,13 +90,16 @@ export function QuickLogCard({ embedded = false }: { embedded?: boolean }) {
             <Mic className="size-3.5" /> Quick log
           </p>
         )}
+        <label htmlFor={inputId} className="mb-2 block text-sm font-medium">What did you do?</label>
         <Textarea
+          id={inputId}
+          aria-describedby={`${inputId}-help`}
           placeholder={'e.g. "Bench 135 for 8, 8, 7. Last set was hard. Slight shoulder pinch."'}
           value={input}
           onChange={(e) => setInput(e.target.value)}
           rows={2}
         />
-        <p className="mt-1 text-xs text-muted-foreground">
+        <p id={`${inputId}-help`} className="mt-1 text-xs text-muted-foreground">
           Type or dictate. You&apos;ll confirm what was understood before
           anything is saved.
         </p>
@@ -110,7 +114,7 @@ export function QuickLogCard({ embedded = false }: { embedded?: boolean }) {
           disabled={pending || !input.trim()}
           onClick={handleParse}
         >
-          {pending ? "Parsing…" : "Parse"}
+          {pending ? "Reading entry…" : "Review entry"}
         </Button>
       </div>
     );

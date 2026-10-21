@@ -94,6 +94,7 @@ import {
   effortChoiceForLegacyRpe,
 } from "@/lib/active-workout-language";
 import { activeWorkoutScrollBehavior } from "@/lib/active-workout-motion";
+import { handheldLoadPresentation } from "@/lib/focused-workout";
 import {
   isDocumentActionTimeout,
   reportDeploymentMismatch,
@@ -464,6 +465,7 @@ export function hydratePreviousComparableWeight(input: {
 }
 
 type Props = {
+  focused?: boolean;
   exercise: SessionExerciseData;
   historyRevision: number;
   progress: ExerciseProgressProjection;
@@ -733,6 +735,7 @@ function useWorkoutExerciseOptions<T>({
 }
 
 export function ExerciseCard({
+  focused = false,
   exercise,
   historyRevision,
   progress,
@@ -803,13 +806,14 @@ export function ExerciseCard({
     loadSemantics: exercise.loadSemantics,
     plateConfig,
   });
+  const handheldLoad = handheldLoadPresentation(exercise);
   const liveWeightLabel = machineLoadConfig
     ? machineLoadEntryLabel(machineLoadConfig)
     : exercise.metricType === "assisted_reps"
       ? "Assistance"
     : usesTotalBarLoad
       ? "Total load"
-      : undefined;
+      : handheldLoad?.label;
   const performedMetricType = resolveFutureSetWriterMetricType({
     metricType: exercise.metricType ?? "weight_reps",
     loadSemantics: exercise.loadSemantics,
@@ -1835,6 +1839,11 @@ export function ExerciseCard({
         {exercise.timedPrescription && occurrenceForRow.origin === "planned" && (
           <p className="mb-1 text-sm">{exercise.timedPrescription.minSeconds}–{exercise.timedPrescription.maxSeconds} sec on each side · both sides, then rest</p>
         )}
+        {handheldLoad && recordsNumericLoad && (
+          <p className="one-next-load-meaning text-xs text-muted-foreground" data-testid="handheld-load-meaning">
+            {handheldLoad.explanation}
+          </p>
+        )}
         <SetEntry
           metricType={performedMetricType}
           supported={metricSupported}
@@ -2254,6 +2263,7 @@ export function ExerciseCard({
               </div>
             )}
             <ActiveSetLedger
+              focused={focused}
               exerciseId={exercise.id}
               exerciseName={exercise.name}
               metricType={performedMetricType}

@@ -42,6 +42,32 @@ function renderFixture(
 }
 
 describe("ActiveSetLedger", () => {
+  it("keeps recovery and unknown results outside the collapsed history in focused mode", () => {
+    for (const state of ["current_editable", "retained_locally", "saving", "retrying", "failed", "completed_without_result", "unknown_legacy"] as const) {
+      const input = SET_ROW_STATE_FIXTURES[state].input;
+      const projection = projectActiveSetRows(input);
+      const html = renderToStaticMarkup(<ActiveSetLedger focused exerciseId={input.exercise.id}
+        exerciseName={input.exercise.name} metricType="weight_reps" rows={projection.rows}
+        diagnostics={projection.diagnostics} renderCurrentRow={() => <p>Editable fields</p>}
+        renderSaveRecovery={() => <p>Recovery controls</p>} />);
+      expect(html).toContain(STATUS_BY_STATE[state]);
+      expect(html).not.toContain("<details");
+    }
+  });
+
+  it("retains exact saved results and their correction action inside focused history", () => {
+    const input = SET_ROW_STATE_FIXTURES.saved.input;
+    const projection = projectActiveSetRows(input);
+    const html = renderToStaticMarkup(<ActiveSetLedger focused exerciseId={input.exercise.id}
+      exerciseName={input.exercise.name} metricType="weight_reps" rows={projection.rows}
+      diagnostics={projection.diagnostics} renderCurrentRow={() => null}
+      renderSavedRowAction={(row) => <button type="button">Fix {row.label}</button>} />);
+    expect(html).toContain('data-testid="focused-set-history"');
+    expect(html).toContain('data-set-row-state="saved"');
+    expect(html.indexOf("Fix Set")).toBeGreaterThan(html.indexOf("<details"));
+    expect(html).toContain("95 lb");
+  });
+
   it("renders every projected lifecycle state explicitly", () => {
     for (const [state, fixture] of Object.entries(SET_ROW_STATE_FIXTURES)) {
       const html = renderFixture(fixture.input);

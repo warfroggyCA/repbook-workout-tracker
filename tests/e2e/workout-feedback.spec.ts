@@ -8,11 +8,20 @@ test("shared pulley, inline preparation, corrected sets and manual scrolling", a
   await waitForHydratedServerAction(login);
   await login.click();
   await expect(page).toHaveURL(/\/today$/);
+  await page.screenshot({ path: testInfo.outputPath("one-next-today.png") });
+  const quickLog = page.getByRole("button", { name: "Speak or type a quick log", exact: true });
+  await quickLog.click();
+  await expect(page.getByLabel("What did you do?", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Close", exact: true }).click();
   const resume = page.getByRole("button", { name: "Resume workout", exact: true });
   await waitForHydratedReactHandler(resume);
   await resume.click();
   await expect(page).toHaveURL(/\/session\//);
   await waitForEquipmentSelectionsToSettle(page);
+  await expect(page.getByRole("button", { name: "Current set", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await page.getByRole("button", { name: "Full workout", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Full workout", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await page.getByRole("button", { name: "Current set", exact: true }).click();
   // Every cable exercise must see the same physical machine through its retained requirement.
   for (const name of ["Wide-Grip Lat Pulldown", "Cable Leg Curl"]) {
     await expect(page.locator(`[aria-label="Equipment setup for ${name}"]`)).toContainText("Shared plate pulley");
@@ -34,9 +43,27 @@ test("shared pulley, inline preparation, corrected sets and manual scrolling", a
   await expect(weight).not.toHaveValue("50");
   await card.getByRole("button", { name: "Decrease weight", exact: true }).click();
   await expect(weight).toHaveValue("50");
+  await page.screenshot({ path: testInfo.outputPath("one-next-focused-set.png") });
+  const initialViewport = page.viewportSize()!;
+  await page.setViewportSize({ width: 320, height: 740 });
+  await page.evaluate(() => { document.documentElement.style.fontSize = "20px"; });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  const targetExplanation = card.getByTestId("performed-load-prefill-source");
+  await expect(targetExplanation).toContainText("Program target");
+  expect(await targetExplanation.evaluate((el) => getComputedStyle(el).whiteSpace)).toBe("normal");
+  expect(await targetExplanation.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
+  await expect.poll(async () => {
+    const bounds = await page.getByTestId("active-log-set").boundingBox();
+    return bounds != null && bounds.y >= 0 && bounds.y + bounds.height <= 741;
+  }).toBe(true);
+  await page.screenshot({ path: testInfo.outputPath("one-next-320-enlarged-text.png") });
+  await page.evaluate(() => { document.documentElement.style.fontSize = ""; });
+  await page.setViewportSize(initialViewport);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   await page.getByTestId("active-log-set").click();
   const dock = page.getByRole("complementary", { name: "Workout status" });
   await expect(page.getByTestId("rest-cockpit")).toBeVisible();
+  await card.getByTestId("focused-set-history").locator("summary").click();
   await expect(card.getByRole("button", { name: /^Fix / }).first()).toBeVisible();
   await card.getByRole("button", { name: /^Fix / }).first().click();
   const correction = page.getByRole("dialog");
@@ -69,7 +96,15 @@ test("shared pulley, inline preparation, corrected sets and manual scrolling", a
     await page.getByRole("button", { name: "End rest", exact: true }).click();
     const log = page.getByTestId("active-log-set");
     await expect(log).toBeEnabled();
-    await log.click();
+    if (set === 2) {
+      await page.context().setOffline(true);
+      await log.click();
+      await expect(page.locator('[data-set-row-state="retained_locally"], [data-set-row-state="retrying"], [data-set-row-state="failed"]')).not.toHaveCount(0);
+      await page.context().setOffline(false);
+      await expect.poll(() => page.locator('[data-set-row-state="saved"]').count()).toBeGreaterThanOrEqual(2);
+    } else {
+      await log.click();
+    }
     await expect(page.getByTestId("rest-cockpit")).toHaveAttribute("data-rest-phase", "running");
   }
   const legWarmup = page.getByRole("region", { name: "Warm-up for Cable Leg Curl", exact: true });
