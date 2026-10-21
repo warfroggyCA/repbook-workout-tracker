@@ -1,0 +1,116 @@
+{
+  "schemaVersion": 1,
+  "scope": "owner-candidate-pr-ci",
+  "advisory": "https://github.com/advisories/GHSA-vfj7-8cjw-p6xm",
+  "baselineCommit": "f5331782c9bb9baad92a1ea368c130d4eab2f910",
+  "expiresAt": "2026-10-28T12:30:00.000Z",
+  "headRef": "codex/one-next-move-public-review",
+  "baseRef": "main",
+  "lockfileSha256": "341287458497d1b42e034e9c1752a4ff0a645ef3710ba03954f36e8ba731eb60",
+  "sourcePaths": [
+    "src",
+    "public",
+    "package.json",
+    "package-lock.json",
+    "next.config.ts",
+    "postcss.config.mjs",
+    "tsconfig.json",
+    "components.json",
+    "eslint.config.mjs",
+    "drizzle.config.ts"
+  ],
+  "sourceSha256": "21f1d5c606dcc37a8614dd8c21018abaf6518ccd354ac699b245dcdf3a018253",
+  "sourceFileCount": 934,
+  "reviewedNodes": {
+    "node_modules/@next/eslint-plugin-next": "16.3.8",
+    "node_modules/@ts-morph/common": "0.27.0",
+    "node_modules/@ts-morph/common/node_modules/fast-glob": "3.3.3",
+    "node_modules/braces": "3.0.3",
+    "node_modules/eslint-config-next": "16.3.8",
+    "node_modules/fast-glob": "3.3.1",
+    "node_modules/micromatch": "4.0.8",
+    "node_modules/shadcn": "4.16.1",
+    "node_modules/shadcn/node_modules/fast-glob": "3.3.3",
+    "node_modules/ts-morph": "26.0.0"
+  },
+  "expectedFindings": {
+    "braces": {
+      "severity": "high",
+      "nodes": [
+        "node_modules/braces"
+      ],
+      "via": [
+        "https://github.com/advisories/GHSA-vfj7-8cjw-p6xm"
+      ]
+    },
+    "micromatch": {
+      "severity": "high",
+      "nodes": [
+        "node_modules/micromatch"
+      ],
+      "via": [
+        "braces"
+      ]
+    },
+    "fast-glob": {
+      "severity": "high",
+      "nodes": [
+        "node_modules/@ts-morph/common/node_modules/fast-glob",
+        "node_modules/fast-glob",
+        "node_modules/shadcn/node_modules/fast-glob"
+      ],
+      "via": [
+        "micromatch"
+      ]
+    },
+    "@next/eslint-plugin-next": {
+      "severity": "high",
+      "nodes": [
+        "node_modules/@next/eslint-plugin-next"
+      ],
+      "via": [
+        "fast-glob"
+      ]
+    },
+    "eslint-config-next": {
+      "severity": "high",
+      "nodes": [
+        "node_modules/eslint-config-next"
+      ],
+      "via": [
+        "@next/eslint-plugin-next"
+      ]
+    },
+    "@ts-morph/common": {
+      "severity": "high",
+      "nodes": [
+        "node_modules/@ts-morph/common"
+      ],
+      "via": [
+        "fast-glob"
+      ]
+    },
+    "ts-morph": {
+      "severity": "high",
+      "nodes": [
+        "node_modules/ts-morph"
+      ],
+      "via": [
+        "@ts-morph/common"
+      ]
+    },
+    "shadcn": {
+      "severity": "high",
+      "nodes": [
+        "node_modules/shadcn"
+      ],
+      "via": [
+        "fast-glob",
+        "ts-morph"
+      ]
+    }
+  },
+  "reason": "Limited candidate test acceptance until the stated expiry. Nested glob input can exhaust the development tool stack. Audit findings remain visible. Production acceptance is unchanged.",
+  "repositoryId": 1317195955,
+  "ownerId": 132015621
+}
