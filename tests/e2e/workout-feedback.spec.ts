@@ -36,6 +36,14 @@ test("shared pulley, inline preparation, corrected sets and manual scrolling", a
   await expect(page.locator('#workout-warmup [id^="warmup-occurrence-"]')).toHaveCount(0);
   const card = page.getByTestId("current-exercise-card");
   await expect(card).toContainText("Wide-Grip Lat Pulldown");
+  const cue = card.locator("details").filter({ has: page.locator("summary", { hasText: "Form and safety notes" }) });
+  await openNativeDetails(cue);
+  await expect(cue.getByText("Keep each repetition smooth.", { exact: true })).toBeVisible();
+  await cue.locator(":scope > summary").click();
+  const details = card.getByTestId("active-exercise-details");
+  await openNativeDetails(details);
+  await expect(details.getByLabel("Set note (optional)", { exact: true })).toHaveValue("");
+  await details.locator(":scope > summary").click();
   const weight = card.getByLabel("Total added plate weight", { exact: true });
   await weight.fill("50");
   await expect(card).toContainText("25 lb per side");
@@ -99,6 +107,7 @@ test("shared pulley, inline preparation, corrected sets and manual scrolling", a
   await card.getByRole("button", { name: /^Fix / }).first().click();
   const correction = page.getByRole("dialog");
   await expect(correction).toBeVisible();
+  await expect(correction.getByLabel("Set note", { exact: true })).toHaveValue("");
   await correction.getByLabel("Reps", { exact: true }).fill("9");
   await correction.getByRole("button", { name: "Save", exact: true }).click();
   await expect(correction).toHaveCount(0);
@@ -128,11 +137,23 @@ test("shared pulley, inline preparation, corrected sets and manual scrolling", a
     const log = page.getByTestId("active-log-set");
     await expect(log).toBeEnabled();
     if (set === 2) {
+      const secondDetails = card.getByTestId("active-exercise-details");
+      await openNativeDetails(secondDetails);
+      const ownNote = secondDetails.getByLabel("Set note (optional)", { exact: true });
+      await expect(ownNote).toHaveValue("");
+      await ownNote.fill("Felt steady today.");
+      await secondDetails.locator(":scope > summary").click();
       await page.context().setOffline(true);
       await log.click();
       await expect(page.locator('[data-set-row-state="retained_locally"], [data-set-row-state="retrying"], [data-set-row-state="failed"]')).not.toHaveCount(0);
       await page.context().setOffline(false);
       await expect.poll(() => page.locator('[data-set-row-state="saved"]').count()).toBeGreaterThanOrEqual(2);
+      await openNativeDetails(card.getByTestId("focused-set-history"));
+      await expect(card).toContainText("Felt steady today.");
+      await page.reload();
+      await waitForEquipmentSelectionsToSettle(page);
+      await openNativeDetails(card.getByTestId("focused-set-history"));
+      await expect(card).toContainText("Felt steady today.");
     } else {
       await log.click();
     }

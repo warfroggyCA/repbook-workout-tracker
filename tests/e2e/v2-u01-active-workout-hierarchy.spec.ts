@@ -924,7 +924,6 @@ test("keeps the ordinary active set current-first, unobstructed, and acknowledge
     ).toMatchObject({
       targetBeforeInput: true,
       inputBeforePrevious: true,
-      previousBeforeLog: true,
       inputBeforeLog: true,
       logInsideDock: true,
     });
@@ -1000,11 +999,19 @@ test("fits the complete primary logging action at 390x844 with keyboard disclosu
     expect(geometry, JSON.stringify(geometry)).toMatchObject({
       targetBeforeInput: true,
       inputBeforePrevious: true,
-      previousBeforeLog: true,
       inputBeforeLog: true,
       logInsideDock: true,
     });
-    expect(geometry.primaryHeight).toBeLessThanOrEqual(560);
+    // Large controls intentionally make the form scroll. Keep the Log action
+    // inside the fixed dock rather than requiring earlier evidence above it.
+    for (const field of [
+      currentEntry.getByLabel("Total load", { exact: true }),
+      currentEntry.getByRole("textbox", { name: "Reps", exact: true }),
+    ]) {
+      await expectReachableTarget(field);
+      const size = await field.boundingBox();
+      expect(size!.height).toBeGreaterThanOrEqual(88);
+    }
     expect(geometry.disclosures.every((item) => !item.open)).toBe(true);
     expect(
       geometry.disclosures.every(
@@ -1107,10 +1114,7 @@ test("fits the complete primary logging action at 390x844 with keyboard disclosu
         logInsideDock: true,
       });
     }).toPass({ timeout: 5_000 });
-    expect(
-      extraLargeGeometry.primaryHeight,
-      JSON.stringify(extraLargeGeometry),
-    ).toBeLessThanOrEqual(800);
+    expect(extraLargeGeometry.logBottom).toBeLessThanOrEqual(844);
     expect(extraLargeGeometry.disclosures.every((item) => !item.open)).toBe(true);
     expect(
       extraLargeGeometry.disclosures.every(

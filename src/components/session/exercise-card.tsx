@@ -988,11 +988,6 @@ export function ExerciseCard({
     appendedOccurrence?.plannedRepsMax ??
     appendedOccurrence?.plannedRepsMin ??
     null;
-  const defaultSetNote =
-    exercise.modificationType === "substituted"
-      ? ""
-      : (exercise.setNotes[nextSetIdx] ?? "");
-
   const draftIdentity = [
     exercise.exerciseId,
     performedMetricType,
@@ -1013,7 +1008,7 @@ export function ExerciseCard({
     techniqueIssue: null,
     limitationCause: null,
     pain: null,
-    note: defaultSetNote,
+    note: "",
   };
   const [initialDraftState] = useState(() => {
     const activeSetDraftCache = getActiveSetDraftCache();
@@ -1300,7 +1295,7 @@ export function ExerciseCard({
           techniqueIssue: null,
           limitationCause: null,
           pain: null,
-          note: exercise.setNotes[setNo] ?? "",
+          note: "",
         });
         if (occurrence?.id === appendedOccurrence?.id) {
           setAppendedDraft(resetSubmittedDraft);
@@ -1689,7 +1684,7 @@ export function ExerciseCard({
           ? convertWeight(state.targetLoad, state.targetLoadUnit, unit)
           : null,
       weightUnit: state.targetLoad == null ? null : unit,
-      note: state.setNotes[exercise.sets.length] ?? "",
+      note: "",
     }));
     setNote(state.notes ?? "");
     router.refresh();
@@ -3005,7 +3000,7 @@ export function ExerciseCard({
                                   )
                                 : null,
                             weightUnit: restored.targetLoad == null ? null : unit,
-                            note: restored.setNotes[exercise.sets.length] ?? "",
+                            note: "",
                           }));
                           toast.success("Alternative undone");
                         } catch {

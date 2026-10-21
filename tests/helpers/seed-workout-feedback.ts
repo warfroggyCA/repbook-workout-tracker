@@ -30,6 +30,7 @@ async function main() {
     days: [{ name: "Pulley practice", exercises: movements.map((item) => ({
       exerciseId: item!.id, sets: 3, repMin: 8, repMax: 12, targetLoad: 50, targetLoadUnit: "lb",
       restSec: 90, supersetKey: null, notes: null,
+      setNotes: ["Keep each repetition smooth.", "Pause briefly at the top."],
       warmupSets: [{ label: "Easy preparation", reps: 8, load: 20, loadUnit: "lb", loadPercent: null, loadText: null, notes: null }],
     })) }],
   });

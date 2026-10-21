@@ -131,6 +131,26 @@ function workingOccurrenceFor(
 }
 
 describe("ExerciseCard", () => {
+  it("keeps a planned set cue out of the performed-note draft", () => {
+    const cue = "Keep each repetition smooth.";
+    const current = { ...exercise, id: "note-boundary-exercise", sets: [], warmupSets: [], setNotes: [cue] };
+    const occurrence = workingOccurrenceFor(current, 0, { plannedNote: cue });
+    const html = renderToStaticMarkup(<ExerciseCard exercise={current} historyRevision={0}
+      progress={{ sessionExerciseId: current.id, exerciseName: current.name,
+        total: 1, planned: 1, extra: 0, workoutOnly: 0, performed: 0,
+        plannedPerformed: 0, extraPerformed: 0, workoutOnlyPerformed: 0,
+        skipped: 0, abandoned: 0, pending: 1, legacyUnknown: 0,
+        completedWithoutResult: 0, status: "current" }}
+      expanded warmupResolved onToggle={vi.fn()} plateConfigs={{}} incrementals={{}} unit="lb"
+      activeOccurrence={occurrence} workingOccurrences={[occurrence]} isCurrentExercise
+      onPatch={vi.fn()} onQueueSet={async () => true} onRetrySet={async () => undefined}
+      onDiscardSet={async () => undefined} onSkipComplete={vi.fn()} onOpenCoach={vi.fn()}
+      adjustIntent={null} onAdjustIntentChange={vi.fn()} />);
+    expect(html).toContain("Form and safety notes");
+    expect(html).toContain(cue);
+    expect(html).toMatch(/<textarea[^>]*aria-label="Set note \(optional\)"[^>]*><\/textarea>/);
+  });
+
   it.each(["known", "unknown"] as const)("uses %s machine geometry for the weight controls", (geometryStatus) => {
     const carry = { ...exercise, name: "Synthetic Pulldown", metricType: "weight_reps", loadType: "external", loadSemantics: "total", sets: [], warmupSets: [] } as SessionExerciseData;
     const occurrence = workingOccurrenceFor(carry, 0);
