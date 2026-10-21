@@ -220,7 +220,7 @@ test("keeps portable facts, AI packages, support diagnostics, Review, and Coach 
     page.getByRole("heading", { name: "Coach" }),
   ).toBeVisible();
   await expect(
-    page.getByText(/Your training, explained simply/i),
+    page.getByText("Review proposed changes to future workouts.", { exact: true }),
   ).toBeVisible();
   await expect(page.getByText("Coaching tools", { exact: true })).toBeVisible();
   await expect(

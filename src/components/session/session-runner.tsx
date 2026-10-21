@@ -4615,6 +4615,11 @@ export function SessionRunner(props: SessionRunnerProps) {
       onFocusCapture={(event) => {
         const target = event.target;
         if (!(target instanceof HTMLElement) || target.closest('[role="dialog"]')) return;
+        // Preserve the deliberate landing for focusable section landmarks.
+        // Only interactive controls need the extra dock-clearance correction.
+        if (!target.matches(
+          "input, textarea, select, button, summary, a[href], [role='button'], [role='checkbox'], [role='radio'], [contenteditable='true']",
+        )) return;
         requestAnimationFrame(() => {
           if (!target.isConnected || document.activeElement !== target) return;
           const dock = document.getElementById("workout-rest-status");

@@ -570,7 +570,10 @@ test("keeps Stage 5 guidance truthful, persistent, and usable on narrow mobile s
   await expect(currentExercise.getByRole("heading", { level: 2 })).toHaveText(
     "Dumbbell Curl",
   );
-  await expect(currentExercise.getByLabel("Weight", { exact: true })).toBeVisible();
+  await expect(currentExercise.getByLabel("Weight per dumbbell", { exact: true })).toBeVisible();
+  await expect(currentExercise).toContainText(
+    "Enter one dumbbell’s weight. Do not add a pair together.",
+  );
   await expect(currentExercise.getByLabel("Total load", { exact: true }))
     .toHaveCount(0);
   await expect(currentExercise).not.toContainText(

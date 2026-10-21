@@ -12,6 +12,7 @@ import { BA_WORKOUT_EMAIL } from "../fixtures/ba-workout-contract";
 import { PRODUCTION_WORKOUT_START_WARMUP } from "../fixtures/production-workout-start-contract";
 import {
   installNextDevelopmentRefreshControl,
+  openNativeDetails,
   waitForHydratedReactHandler,
   waitForHydratedServerAction,
 } from "../helpers/react-readiness";
@@ -301,41 +302,41 @@ async function settleFocusHandoff(page: Page) {
 }
 
 async function expectEssentialCurrentSetControlsClear(page: Page) {
+  const entry = page.getByTestId("current-set-entry");
+  await expect(entry.locator(".active-set-stepper")).toHaveCount(4);
+  const inputs = entry.locator(".active-set-measures-grid input");
+  await expect(inputs).toHaveCount(2);
+  const originalScroll = await page.evaluate(() => window.scrollY);
+  // Large load and reps fields are stacked on phones. Test each focused row,
+  // rather than requiring both rows to fit in the same viewport.
+  for (const input of await inputs.all()) {
+    await input.focus();
+    await settleFocusHandoff(page);
+    await expect(input).toBeFocused();
+    const geometry = await input.evaluate((element) => {
+      const status = document.querySelector<HTMLElement>('[aria-label="Workout status"]');
+      const sticky = document.querySelector<HTMLElement>('[data-testid="active-workout-sticky-summary"]');
+      const visualTop = window.visualViewport?.offsetTop ?? 0;
+      const visualBottom = visualTop + (window.visualViewport?.height ?? window.innerHeight);
+      const visibleTop = Math.max(visualTop, sticky?.getBoundingClientRect().bottom ?? visualTop);
+      const visibleBottom = Math.min(visualBottom, status?.getBoundingClientRect().top ?? visualBottom);
+      const controls = [element, ...element.parentElement!.parentElement!.querySelectorAll(".active-set-stepper")];
+      return {
+        count: controls.length,
+        horizontalOverflow: document.documentElement.scrollWidth > document.documentElement.clientWidth + 1,
+        clear: controls.every((control) => {
+          const bounds = control.getBoundingClientRect();
+          return bounds.width >= 44 && bounds.height >= 44 &&
+            bounds.left >= -1 && bounds.right <= document.documentElement.clientWidth + 1 &&
+            bounds.top >= visibleTop - 1 && bounds.bottom <= visibleBottom + 1;
+        }),
+      };
+    });
+    expect(geometry).toEqual({ count: 3, horizontalOverflow: false, clear: true });
+  }
+  await inputs.last().blur();
+  await page.evaluate((scrollY) => window.scrollTo({ top: scrollY }), originalScroll);
   await settleFocusHandoff(page);
-  const geometry = await page.evaluate(() => {
-    const status = document.querySelector<HTMLElement>(
-      '[aria-label="Workout status"]',
-    );
-    const controls = [
-      ...document.querySelectorAll<HTMLElement>(
-        '[data-testid="current-set-entry"] .active-set-stepper',
-      ),
-    ];
-    const visualTop = window.visualViewport?.offsetTop ?? 0;
-    const visualBottom =
-      visualTop + (window.visualViewport?.height ?? window.innerHeight);
-    const statusTop = status?.getBoundingClientRect().top ?? visualBottom;
-    return {
-      count: controls.length,
-      horizontalOverflow:
-        document.documentElement.scrollWidth >
-        document.documentElement.clientWidth + 1,
-      clear: controls.every((control) => {
-        const bounds = control.getBoundingClientRect();
-        return (
-          bounds.width >= 44 &&
-          bounds.height >= 44 &&
-          bounds.top >= visualTop - 1 &&
-          bounds.bottom <= statusTop + 1
-        );
-      }),
-    };
-  });
-  expect(geometry).toEqual({
-    count: 4,
-    horizontalOverflow: false,
-    clear: true,
-  });
 
   const status = page.getByRole("complementary", {
     name: "Workout status",
@@ -399,12 +400,20 @@ async function expectCurrentExerciseLandmarkClear(page: Page) {
 }
 
 async function expectSavedLedgerEvidenceClear(page: Page) {
-  await expectWorkoutLandmarkClear(
-    page
-      .getByTestId("current-exercise-card")
-      .locator('[data-set-row-state="saved"]')
-      .first(),
-  );
+  const history = page.getByTestId("current-exercise-card").getByTestId("focused-set-history");
+  const originalScroll = await page.evaluate(() => window.scrollY);
+  if (await history.count()) await openNativeDetails(history);
+  const savedRow = page
+    .getByTestId("current-exercise-card")
+    .locator('[data-set-row-state="saved"]')
+    .first();
+  // Current set puts previous work behind an explicit disclosure. Check that
+  // evidence is reachable and unobscured when requested, then return to entry.
+  await savedRow.evaluate((element) => element.scrollIntoView({ block: "center" }));
+  await expectWorkoutLandmarkClear(savedRow);
+  if (await history.count()) await history.locator(":scope > summary").click();
+  await page.evaluate((scrollY) => window.scrollTo({ top: scrollY }), originalScroll);
+  await settleFocusHandoff(page);
 }
 
 async function restDeadline(page: Page) {
@@ -421,9 +430,14 @@ test("records the six common-path current baselines without treating them as tar
   browserName,
 }, testInfo) => {
   const pageErrors = observeGauntletPageErrors(page, browserName);
+  const readCurrentExercise = async () => {
+    await page.getByTestId("current-exercise-card").getByRole("heading", { level: 2 })
+      .evaluate((element) => element.scrollIntoView({ block: "center" }));
+    await expectCurrentExerciseLandmarkClear(page);
+  };
   await signInAndStartDayA(page);
   await setFontSize(page, "default");
-  await expectCurrentExerciseLandmarkClear(page);
+  await readCurrentExercise();
 
   await page.getByTestId("active-log-set").click();
   await waitForRest(page);
@@ -441,7 +455,7 @@ test("records the six common-path current baselines without treating them as tar
       .getByTestId("active-set-ledger")
       .locator('[data-set-row-state="saved"]'),
   ).toHaveCount(1);
-  await expectCurrentExerciseLandmarkClear(page);
+  await readCurrentExercise();
   await expectSavedLedgerEvidenceClear(page);
   await captureCurrentBaseline(
     page,
@@ -451,7 +465,7 @@ test("records the six common-path current baselines without treating them as tar
 
   await setFontSize(page, "extra-large");
   await expectRestControlsClear(page);
-  await expectCurrentExerciseLandmarkClear(page);
+  await readCurrentExercise();
   await expectSavedLedgerEvidenceClear(page);
   await captureCurrentBaseline(
     page,
@@ -461,7 +475,7 @@ test("records the six common-path current baselines without treating them as tar
 
   await setFontSize(page, "default");
   await completeRestByClock(page);
-  await expectCurrentExerciseLandmarkClear(page);
+  await readCurrentExercise();
   await expectSavedLedgerEvidenceClear(page);
   await captureCurrentBaseline(
     page,
@@ -474,7 +488,7 @@ test("records the six common-path current baselines without treating them as tar
     timeout: 1_500,
   });
   await expect(page.getByTestId("active-log-set")).toBeVisible();
-  await expectCurrentExerciseLandmarkClear(page);
+  await readCurrentExercise();
   await expectSavedLedgerEvidenceClear(page);
 
   await captureCurrentBaseline(
@@ -485,7 +499,7 @@ test("records the six common-path current baselines without treating them as tar
 
   await setFontSize(page, "extra-large");
   await expectEssentialCurrentSetControlsClear(page);
-  await expectCurrentExerciseLandmarkClear(page);
+  await readCurrentExercise();
   await expectSavedLedgerEvidenceClear(page);
   await captureCurrentBaseline(
     page,
@@ -494,8 +508,12 @@ test("records the six common-path current baselines without treating them as tar
   );
 
   await page.setViewportSize({ width: 320, height: 700 });
+  // Resizing reflows the oversized title; verify it can be read in full after
+  // normal scrolling, then exercise each field's focus clearance at this size.
+  await page.getByTestId("current-exercise-card").getByRole("heading", { level: 2 })
+    .evaluate((element) => element.scrollIntoView({ block: "center" }));
   await expectEssentialCurrentSetControlsClear(page);
-  await expectCurrentExerciseLandmarkClear(page);
+  await readCurrentExercise();
   await expectSavedLedgerEvidenceClear(page);
   await captureCurrentBaseline(
     page,
