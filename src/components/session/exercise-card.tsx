@@ -3586,7 +3586,7 @@ function SetEntry({
                   className={cn(
                     "pr-8 text-center text-base font-medium",
                     compactLedger &&
-                      "!h-[44px] !min-h-[44px] px-1 pb-3 text-lg font-semibold",
+                      "!h-[var(--active-number-height,44px)] !min-h-[var(--active-number-height,44px)] px-1 pb-3 text-lg font-semibold",
                   )}
                   value={draft.weight ?? ""}
                   onChange={(event) => {
@@ -3662,7 +3662,7 @@ function SetEntry({
               className={cn(
                 "pr-10 text-center text-base font-medium",
                 compactLedger &&
-                  "!h-[44px] !min-h-[44px] px-1 pb-3 text-lg font-semibold",
+                  "!h-[var(--active-number-height,44px)] !min-h-[var(--active-number-height,44px)] px-1 pb-3 text-lg font-semibold",
               )}
               value={draft.reps ?? ""}
               onChange={(event) => {
@@ -4258,9 +4258,10 @@ function AlternativesDrawer({
       >
         View alternatives
       </DrawerTrigger>
-      <DrawerContent className="[&_button]:min-h-11 [&_button]:min-w-11">
+      <DrawerContent className="one-next-swap-screen [&_button]:min-h-11 [&_button]:min-w-11">
         <DrawerHeader>
           <DrawerTitle>Use an alternative for this workout</DrawerTitle>
+          <p className="one-next-eyebrow">This workout only</p>
         </DrawerHeader>
         <div className="max-h-[60dvh] space-y-4 overflow-y-auto px-4 pb-6">
           <div>
@@ -4295,6 +4296,7 @@ function AlternativesDrawer({
               itemAnnotations={options.annotations}
               triggerDisabled={reason == null}
               triggerLabel="Browse alternatives"
+              workoutSwap={{ currentExerciseName: options.items.find((item) => item.id === options.currentExerciseId)?.name ?? options.plannedExerciseName }}
               title={`Alternatives to ${options.plannedExerciseName}`}
               description="Closest family variants appear first, followed by the same movement and broader same-muscle choices. Available to me is the executable list; All exercises is view-only when a choice is unsafe or incompatible."
               confirmLabel="Use for this workout"
@@ -4410,13 +4412,14 @@ function ReplacementDrawer({
       >
         {forcedReason ? "Replace for today" : "Replace exercise"}
       </DrawerTrigger>
-      <DrawerContent className="[&_button]:min-h-11 [&_button]:min-w-11">
+      <DrawerContent className="one-next-swap-screen [&_button]:min-h-11 [&_button]:min-w-11">
         <DrawerHeader>
           <DrawerTitle>
             {forcedReason
               ? "Replace for today"
               : "Replace exercise for this workout"}
           </DrawerTitle>
+          <p className="one-next-eyebrow">This workout only</p>
         </DrawerHeader>
         <div className="max-h-[60dvh] space-y-4 overflow-y-auto px-4 pb-6">
           {forcedReason ? (
@@ -4469,8 +4472,9 @@ function ReplacementDrawer({
               allowUnavailableSelection={forcedReason == null}
               triggerDisabled={effectiveReason == null}
               triggerLabel="Search exercise catalog"
+              workoutSwap={{ currentExerciseName: options.items.find((item) => item.id === options.currentExerciseId)?.name ?? options.plannedExerciseName }}
               title="Replace exercise"
-              description="Search all available exercises. Choose one you can log with reps, assistance, time, or distance. Log other activities in Activity."
+              description="For this workout only. Check equipment and weight entry."
               confirmLabel="Replace in this workout"
               largeTouchTargets
               onSelect={async (candidate) => {

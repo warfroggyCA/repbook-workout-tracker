@@ -184,7 +184,7 @@ export function RecommendationCard({
     <section
       id={`recommendation-${rec.id}`}
       data-ui-surface="selected"
-      className="ui-surface p-3 sm:p-4"
+      className="one-next-decision ui-surface p-3 sm:p-4"
       aria-labelledby={titleId}
     >
       <div className="mb-1 flex flex-wrap items-start justify-between gap-2">
@@ -209,12 +209,20 @@ export function RecommendationCard({
       </div>
 
       {isLoadChange && !deferred && rec.actionable && (
-        <p className="text-lg font-semibold tabular-nums" data-ui-essential="true">
-          {rec.fromLoad ?? "No target"} → {editedLoad ?? rec.toLoad} {rec.loadUnit}
-          {edited && (
-            <span className="ml-1 text-xs text-muted-foreground">(edited)</span>
-          )}
-        </p>
+        <div className="one-next-target" data-testid="next-session-target" data-ui-essential="true">
+          <p className="one-next-eyebrow">Proposed next target</p>
+          <p className="one-next-target-value tabular-nums">
+            {editedLoad ?? rec.toLoad ?? "Not recorded"} <span>{rec.loadUnit ?? "unit not recorded"}</span>
+          </p>
+          <p className="mt-2 text-sm">
+            Current target: {rec.fromLoad == null ? "Not recorded" : `${rec.fromLoad} ${rec.loadUnit ?? "unit not recorded"}`}
+            {edited ? " · You edited the proposal" : ""}
+          </p>
+          <div className="mt-3 text-sm leading-relaxed">
+            <p className="font-semibold">Why this appeared</p>
+            <p className="mt-1">{rec.reason}</p>
+          </div>
+        </div>
       )}
       {rec.kind === "substitution" && rec.suggestedExercise && (
         <p className="text-sm font-medium">
@@ -233,6 +241,12 @@ export function RecommendationCard({
         <p className="mt-1 text-sm font-medium leading-relaxed">
           {rec.proposedEffect}
         </p>
+        {edited && (
+          <p className="mt-2 text-sm font-medium" role="status">
+            You changed the proposed target to {editedLoad} {rec.loadUnit}.
+            Approving uses your edited target instead of the original proposal above.
+          </p>
+        )}
         {rec.kind === "substitution" && (
           <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
             Keeps sets, reps, rest and group position. The old exercise’s target
@@ -242,12 +256,15 @@ export function RecommendationCard({
         )}
       </div>
 
-      <div className="mt-3">
+      {!(isLoadChange && !deferred && rec.actionable) && <div className="mt-3">
         <p className="ui-metadata">Why this appeared</p>
         <p className="mt-1 text-sm text-muted-foreground">
           {rec.reason}
         </p>
-      </div>
+      </div>}
+      {isLoadChange && <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
+        Your completed workout keeps its original targets and results.
+      </p>}
 
       {rec.alternatives.length > 0 && (
         <p className="mt-1 text-xs text-muted-foreground">
@@ -256,13 +273,14 @@ export function RecommendationCard({
       )}
 
       <details className="group ui-surface mt-3 p-3" data-ui-surface="inset">
-        <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 rounded-lg outline-none focus-visible:ring-3 focus-visible:ring-ring/50">
-          <span className="flex items-center gap-1.5 text-sm font-medium text-primary">
+        <summary className="flex min-h-11 cursor-pointer list-none flex-wrap items-center justify-between gap-3 rounded-lg outline-none focus-visible:ring-3 focus-visible:ring-ring/50">
+          <span className="flex min-w-0 items-center gap-1.5 text-sm font-medium text-primary">
             <ListChecks className="size-3.5" aria-hidden="true" />
             How calculated
           </span>
-          <span className="flex items-center gap-2">
+          <span className="flex max-w-full flex-wrap items-center gap-2">
             <Badge
+              className="h-auto min-w-0 max-w-full whitespace-normal break-words"
               variant={
                 rec.evidenceState === "supported" || rec.evidenceState === "external"
                   ? "secondary"
@@ -272,7 +290,7 @@ export function RecommendationCard({
               {evidenceStateLabel}
             </Badge>
             <ChevronDown
-              className="size-4 text-muted-foreground transition-transform group-open:rotate-180 motion-reduce:transition-none"
+              className="size-4 shrink-0 text-muted-foreground transition-transform group-open:rotate-180 motion-reduce:transition-none"
               aria-hidden="true"
             />
           </span>
@@ -344,6 +362,7 @@ export function RecommendationCard({
             variant="outline"
             size="icon-sm"
             className="min-h-11 min-w-11"
+            disabled={pending}
             onClick={() =>
               setEditedLoad((l) => Math.max(0, (l ?? 0) - loadStep))
             }
@@ -363,6 +382,7 @@ export function RecommendationCard({
             variant="outline"
             size="icon-sm"
             className="min-h-11 min-w-11"
+            disabled={pending}
             onClick={() => setEditedLoad((l) => (l ?? 0) + loadStep)}
             aria-label="Increase load"
           >
@@ -448,7 +468,7 @@ export function RecommendationCard({
       )}
 
       <div
-        className={`mt-3 grid grid-cols-1 gap-2 ${
+        className={`one-next-decision-actions mt-3 grid grid-cols-1 gap-2 ${
           isHold ? "" : "min-[22rem]:grid-cols-2"
         }`}
       >

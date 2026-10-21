@@ -60,6 +60,25 @@ function render(rec: RecommendationCardData) {
 }
 
 describe("RecommendationCard", () => {
+  it("keeps the proposed next target distinct from missing current history and explicit approval", () => {
+    const html = render({ ...baseRecommendation, kind: "load_change", fromLoad: null,
+      toLoad: 110, loadUnit: "lb", actionable: true });
+    expect(html).toContain('data-testid="next-session-target"');
+    expect(html).toContain("Proposed next target");
+    expect(html).toContain("Current target: Not recorded");
+    expect(html).toContain("completed workout keeps its original targets and results");
+    expect(html.indexOf("Why this appeared")).toBeLessThan(html.indexOf(">Approve<"));
+    expect(html).not.toContain("Current target: 0");
+  });
+
+  it("does not present unsupported advice as an actionable next-session target", () => {
+    const html = render({ ...baseRecommendation, kind: "load_change", fromLoad: 105,
+      toLoad: 110, loadUnit: "lb", evidenceState: "unsupported", actionable: false });
+    expect(html).not.toContain('data-testid="next-session-target"');
+    expect(html).toMatch(/<button[^>]*disabled[^>]*>Approve<\/button>/);
+    expect(html).toContain(">Reject<");
+  });
+
   it("renders a hold as an informational notice with dismissal only", () => {
     const html = render(baseRecommendation);
 
@@ -109,8 +128,8 @@ describe("RecommendationCard", () => {
     }
     expect(loadHtml).toContain("105");
     expect(loadHtml).toContain("110");
-    expect(loadHtml.indexOf("Proposed future Program effect")).toBeLessThan(
-      loadHtml.indexOf("Why this appeared"),
+    expect(loadHtml.indexOf("Why this appeared")).toBeLessThan(
+      loadHtml.indexOf("Proposed future Program effect"),
     );
     expect(loadHtml.indexOf("Why this appeared")).toBeLessThan(
       loadHtml.indexOf("How calculated"),
