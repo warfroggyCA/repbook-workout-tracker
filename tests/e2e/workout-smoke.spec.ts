@@ -2421,6 +2421,16 @@ test("keeps the final set acknowledgement visible through background return", as
   await page.bringToFront();
   await expect(page).toHaveURL(/#workout-rest-status$/);
   await expectRestCockpit(page);
+  await expect.poll(() => page.evaluate(() => {
+    const raw = localStorage.getItem("workout-tracker:workout-set-outbox:v1");
+    return raw ? (JSON.parse(raw).entries?.length ?? 0) : 0;
+  })).toBe(0);
+  // Pending work above remains visible in Current set. Once acknowledged,
+  // use the explicit overview to inspect all saved sets and corrections.
+  const overview = page.getByRole("button", { name: "Full workout", exact: true });
+  await waitForHydratedReactHandler(overview);
+  await overview.click();
+  await expect(overview).toHaveAttribute("aria-pressed", "true");
   const completedExercise = page.getByRole("region", { name: firstName });
   const completedToggle = completedExercise.getByTestId("exercise-swipe-surface");
   if ((await completedToggle.getAttribute("aria-expanded")) !== "true") {
@@ -2726,7 +2736,7 @@ test("confirms one complete quick log and shows its stored units in History", as
   await page
     .getByPlaceholder(/e\.g\. "Bench 135/)
     .fill("Barbell Back Squat 100kg x 8,7");
-  await page.getByRole("button", { name: "Parse", exact: true }).click();
+  await page.getByRole("button", { name: "Review entry", exact: true }).click();
   await expect(page.getByText("Confirm before saving", { exact: true })).toBeVisible();
   await expect(page.getByText("→ Barbell Back Squat", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Save", exact: true }).click();

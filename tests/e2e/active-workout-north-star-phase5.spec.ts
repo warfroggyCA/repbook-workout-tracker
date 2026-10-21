@@ -531,6 +531,10 @@ test("workout feedback: direct RPE, immediate extra-set rest, and interrupted au
     await expectOutboxCount(page, 0);
     await dismissRest(page);
   }
+  const overview = page.getByRole("button", { name: "Full workout", exact: true });
+  await waitForHydratedReactHandler(overview);
+  await overview.click();
+  await expect(overview).toHaveAttribute("aria-pressed", "true");
   const squat = page.getByRole("region", { name, exact: true });
   const toggle = squat.getByTestId("exercise-swipe-surface");
   if ((await toggle.getAttribute("aria-expanded")) !== "true") await toggle.click();
@@ -625,6 +629,7 @@ test("fixes a just-logged set from its ledger row and resumes from Today with ex
   await page.getByTestId("active-log-set").click();
   const savedRow = ledger.locator('[data-set-row-state="saved"]').first();
   await expect(savedRow).toContainText(mistaken);
+  await openNativeDetails(ledger.getByTestId("focused-set-history"));
 
   // Rest keeps running while the saved row offers the existing correction.
   const rest = page
@@ -702,6 +707,7 @@ test("fixes a just-logged set from its ledger row and resumes from Today with ex
   await expect(page.getByText("Set saved")).toBeVisible();
   await expect(savedRow).toContainText(corrected);
   await expect(savedRow).toContainText("Latest: Corrected");
+  await openNativeDetails(ledger.getByTestId("focused-set-history"));
   await expect(rest).toBeVisible();
   await expect(page.getByTestId("active-log-set")).toHaveAccessibleName(
     "Log set 2",
