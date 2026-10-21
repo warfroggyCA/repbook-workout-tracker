@@ -242,11 +242,16 @@ describe("candidate workflow trigger eligibility", () => {
     const workflow = yaml.load(readFileSync(join(root, ".github/workflows/production-readiness.yml"), "utf8")) as {
       on: { pull_request: { types: string[] }; push: { branches: string[] }; workflow_dispatch: unknown };
       permissions: Record<string, string>;
-      jobs: Record<string, { if?: string; needs?: string[]; steps: { run?: string }[] }>;
+      jobs: Record<string, { if?: string; needs?: string[]; env?: Record<string, string>; steps: { run?: string; env?: Record<string, string> }[] }>;
     };
     expect(workflow.on.pull_request.types).toEqual(["opened", "synchronize", "reopened", "ready_for_review"]);
     expect(workflow.on.push.branches).toEqual(["main"]);
     expect(workflow.permissions).toEqual({ contents: "read" });
+    for (const job of Object.values(workflow.jobs)) {
+      expect(JSON.stringify(job.env ?? {})).not.toContain("${{ runner.");
+    }
+    expect(workflow.jobs["candidate-package"].steps.find((step) => step.run === "node scripts/build-candidate-package.mjs")?.env)
+      .toEqual({ REPBOOK_PACKAGE_DIR: "${{ runner.temp }}/candidate-package" });
     expect(workflow.jobs["candidate-package"].if).toContain("github.event_name == 'pull_request'");
     expect(workflow.jobs.verify.needs).toEqual(["postgres-integration", "core", "browser", "candidate-package"]);
   });
