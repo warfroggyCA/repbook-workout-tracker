@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "scope": "owner-candidate-pr-ci",
   "advisory": "https://github.com/advisories/GHSA-vfj7-8cjw-p6xm",
-  "baselineCommit": "f5331782c9bb9baad92a1ea368c130d4eab2f910",
+  "baselineCommit": "bd204a8ef88ac15679a2eead8a649666c1063a23",
   "expiresAt": "2026-10-28T12:30:00.000Z",
   "headRef": "codex/one-next-move-public-review",
   "baseRef": "main",
@@ -19,8 +19,8 @@
     "eslint.config.mjs",
     "drizzle.config.ts"
   ],
-  "sourceSha256": "21f1d5c606dcc37a8614dd8c21018abaf6518ccd354ac699b245dcdf3a018253",
-  "sourceFileCount": 934,
+  "sourceSha256": "6d4d7e16b01b2335444f8a6cc78e559ef54235adc6d5872b70574e7caa70c7a3",
+  "sourceFileCount": 935,
   "reviewedNodes": {
     "node_modules/@next/eslint-plugin-next": "16.3.8",
     "node_modules/@ts-morph/common": "0.27.0",

@@ -2,16 +2,16 @@ import { createHash } from "node:crypto";
 import { lstatSync, readdirSync, readFileSync } from "node:fs";
 import { relative, resolve } from "node:path";
 
-export const REVIEWED_BASELINE = "f5331782c9bb9baad92a1ea368c130d4eab2f910";
+export const REVIEWED_BASELINE = "bd204a8ef88ac15679a2eead8a649666c1063a23";
 export const CANDIDATE_EXPIRY = "2026-10-28T12:30:00.000Z";
 export const REVIEWED_LOCK_SHA256 = "341287458497d1b42e034e9c1752a4ff0a645ef3710ba03954f36e8ba731eb60";
-export const REVIEWED_SOURCE_SHA256 = "21f1d5c606dcc37a8614dd8c21018abaf6518ccd354ac699b245dcdf3a018253";
+export const REVIEWED_SOURCE_SHA256 = "6d4d7e16b01b2335444f8a6cc78e559ef54235adc6d5872b70574e7caa70c7a3";
 export const REVIEWED_SOURCE_PATHS = Object.freeze([
   "src", "public", "package.json", "package-lock.json", "next.config.ts",
   "postcss.config.mjs", "tsconfig.json", "components.json", "eslint.config.mjs",
   "drizzle.config.ts",
 ]);
-const APPROVED_POLICY_SHA256 = "5c6069369828d66cf378bff2e5932b47a96ddfd9f41038cebf3ecdcf8a03eb21";
+const APPROVED_POLICY_SHA256 = "7376a4d6367480e0f3039e812e0ab44d4ff1e19171dfa6cb52ae07bae6aea3b6";
 function canonical(value) {
   if (Array.isArray(value)) return value.map(canonical);
   if (value && typeof value === "object") {
