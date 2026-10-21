@@ -38,6 +38,7 @@ export type ActiveSetLedgerDiagnosticRow = {
 };
 
 type Props = {
+  focused?: boolean;
   exerciseId: string;
   exerciseName: string;
   metricType: PerformedMetricType;
@@ -574,6 +575,7 @@ function renderExhaustiveRow(
 }
 
 export function ActiveSetLedger({
+  focused = false,
   exerciseId,
   exerciseName,
   metricType,
@@ -590,6 +592,15 @@ export function ActiveSetLedger({
   const unresolvedDiagnosticCount =
     diagnostics.unlinkedSetIds.length +
     diagnostics.duplicateSetIds.length;
+  const secondaryRows = focused ? rows.filter((row) =>
+    row.state === "saved" || row.state === "skipped" || row.state === "abandoned" ||
+    (row.state === "planned" && row.membership !== "extra"),
+  ) : [];
+  const secondaryKeys = new Set(secondaryRows.map((row) => row.key));
+  const renderRow = (row: ActiveSetRow) => renderExhaustiveRow(row, {
+    exerciseName, metricType, renderCurrentRow, renderPlannedRow,
+    renderPlannedRowDetail, renderSaveRecovery, renderOutcomeStatus, renderSavedRowAction,
+  });
 
   return (
     <div
@@ -605,18 +616,7 @@ export function ActiveSetLedger({
         {exerciseName} set ledger
       </span>
       <ol className="divide-y">
-        {rows.map((row) =>
-          renderExhaustiveRow(row, {
-            exerciseName,
-            metricType,
-            renderCurrentRow,
-            renderPlannedRow,
-            renderPlannedRowDetail,
-            renderSaveRecovery,
-            renderOutcomeStatus,
-            renderSavedRowAction,
-          }),
-        )}
+        {rows.filter((row) => !secondaryKeys.has(row.key)).map(renderRow)}
         {diagnosticRows.map((row) => (
           <li
             key={row.key}
@@ -642,6 +642,14 @@ export function ActiveSetLedger({
           </li>
         ))}
       </ol>
+      {secondaryRows.length > 0 && (
+        <details className="border-t px-2.5 text-sm" data-testid="focused-set-history">
+          <summary className="flex min-h-11 cursor-pointer items-center font-medium text-primary">
+            Set history &amp; planned sets · {secondaryRows.length}
+          </summary>
+          <ol className="divide-y">{secondaryRows.map(renderRow)}</ol>
+        </details>
+      )}
       {rows.length === 0 && diagnosticRows.length === 0 && (
         <p className="px-3 py-2 text-sm text-muted-foreground">
           No working sets are available.

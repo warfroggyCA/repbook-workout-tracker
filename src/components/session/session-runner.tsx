@@ -62,6 +62,7 @@ import { AddWorkoutExercise } from "./add-workout-exercise";
 import { openContextualNoteComposer, type ContextualNoteScopeValue } from "@/lib/contextual-note-ui";
 import { createClientUuid } from "@/lib/client-uuid";
 import { activeWorkoutScrollBehavior } from "@/lib/active-workout-motion";
+import { exerciseVisibleInWorkoutView } from "@/lib/focused-workout";
 import { activeSetCommitFormId } from "@/lib/active-workout-layout";
 import { FONT_SIZE_EVENT } from "@/lib/font-size";
 import {
@@ -793,6 +794,7 @@ export function SessionRunner(props: SessionRunnerProps) {
   const hasStructuredWarmup = occurrences.some(
     (occurrence) => occurrence.kind !== "working_set",
   );
+  const [workoutView, setWorkoutView] = useState<"focused" | "overview">("focused");
   const [expandedId, setExpandedId] = useState<string | null>(() => {
     const firstOpen = props.exercises.find(
       (e) => e.modificationType !== "skipped"
@@ -4599,7 +4601,8 @@ export function SessionRunner(props: SessionRunnerProps) {
   return (
     <main
       data-ui-core-surface="active-workout"
-      className="athlete-workflow mx-auto flex max-w-3xl flex-col gap-2 p-3 pb-[calc(var(--active-workout-overlay-bottom,calc(8rem+env(safe-area-inset-bottom)))+1rem)] min-[361px]:gap-3 sm:p-5 sm:pb-[calc(var(--active-workout-overlay-bottom,calc(8rem+env(safe-area-inset-bottom)))+1.25rem)] lg:p-8 lg:pb-24"
+      data-workout-view={workoutView}
+      className="athlete-workflow one-next-workout mx-auto flex max-w-3xl flex-col gap-2 p-3 pb-[calc(var(--active-workout-overlay-bottom,calc(8rem+env(safe-area-inset-bottom)))+1rem)] min-[361px]:gap-3 sm:p-5 sm:pb-[calc(var(--active-workout-overlay-bottom,calc(8rem+env(safe-area-inset-bottom)))+1.25rem)] lg:p-8 lg:pb-24"
     >
       <ContextualNoteScope value={contextualNoteScope} />
       <p
@@ -4673,9 +4676,20 @@ export function SessionRunner(props: SessionRunnerProps) {
         />
       </div>
 
+      <Button type="button" variant="ghost" className="one-next-speak" onClick={() => openContextualNoteComposer()}>
+        <MessageSquareText aria-hidden="true" /> Speak or type a note
+      </Button>
+      <div className="one-next-view-switch" role="group" aria-label="Workout view">
+        <Button type="button" variant="ghost" aria-pressed={workoutView === "focused"}
+          onClick={() => setWorkoutView("focused")}>Current set</Button>
+        <Button type="button" variant="ghost" aria-pressed={workoutView === "overview"}
+          onClick={() => setWorkoutView("overview")}>Full workout</Button>
+      </div>
+
       <WorkoutRecoveryStatus
         items={activeWorkoutViewModel.recovery}
         onResolve={(item) => {
+          setWorkoutView("overview");
           if (item.kind === "unresolved_exercise_skip") {
             revealSkippedExerciseRecovery();
             return;
@@ -4800,7 +4814,7 @@ export function SessionRunner(props: SessionRunnerProps) {
       />
       ) : null}
 
-      <ExerciseQueue items={activeWorkoutViewModel.queue}>
+      <ExerciseQueue items={activeWorkoutViewModel.queue} focused={workoutView === "focused"}>
         {activeWorkoutViewModel.queue.map((queueItem) => {
           const exercise = shownExercises.find(
             (candidate) => candidate.id === queueItem.sessionExerciseId,
@@ -4884,6 +4898,15 @@ export function SessionRunner(props: SessionRunnerProps) {
           <div
             key={exercise.id}
             role="listitem"
+            hidden={!exerciseVisibleInWorkoutView({
+              view: workoutView,
+              exerciseId: exercise.id,
+              currentExerciseId: currentActionSessionExerciseId,
+              recoveryExerciseId: skipRecoveryExerciseId,
+              needsEquipmentDecision: equipmentSetupForcedOpen,
+              needsSaveRecovery: exercise.sets.some((set) =>
+                set.saveState != null && set.saveState !== "saved"),
+            })}
             data-active-superset-member={
               activeGroupMemberIds.has(exercise.id) ? "true" : undefined
             }
@@ -4901,6 +4924,7 @@ export function SessionRunner(props: SessionRunnerProps) {
             />
           ) : null}
           <ExerciseCard
+            focused={workoutView === "focused"}
             key={`${exercise.id}:${exercise.exerciseId}:${exercise.metricType}:${exercise.loadType}:${exercise.loadSemantics}`}
             exercise={exercise}
             warmupPending={pendingWarmups.length > 0}

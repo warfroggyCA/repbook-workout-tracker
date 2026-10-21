@@ -2,6 +2,7 @@
 
 import type { ReactNode } from "react";
 import { useSyncExternalStore } from "react";
+import { usePathname } from "next/navigation";
 import { BottomTabs } from "@/components/nav/bottom-tabs";
 import { cn } from "@/lib/utils";
 
@@ -38,6 +39,8 @@ export function MainShell({
   userName?: string;
   userEmail?: string;
 }) {
+  const pathname = usePathname();
+  const workoutMode = pathname?.startsWith("/session/") ?? false;
   const sidebarCollapsed = useSyncExternalStore(
     subscribeToSidebar,
     getSidebarSnapshot,
@@ -60,6 +63,7 @@ export function MainShell({
     <div
       className={cn(
         "ui-motion-drawer min-h-dvh overflow-x-clip bg-background transition-none lg:transition-[padding]",
+        workoutMode && "one-next-workout-shell",
         sidebarCollapsed
           ? "lg:pl-[64px] lg:[--main-sidebar-width:64px]"
           : "lg:pl-[224px] lg:[--main-sidebar-width:224px]"

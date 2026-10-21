@@ -40,6 +40,7 @@ import { acceptanceWorkoutNow } from "@/lib/acceptance-workout-clock";
 import { WorkoutEquipmentPreflight } from "@/components/dashboard/workout-equipment-preflight";
 import { resolveTemplatePreparationEquipmentProjection } from "@/services/session-equipment-requirements";
 import { TodayAddMenu } from "@/components/dashboard/today-add-menu";
+import { TodayQuickLog } from "@/components/dashboard/today-quick-log";
 import { AthleteInsight } from "@/components/insights/athlete-insight";
 import {
   buildPendingDecisionInsight,
@@ -165,11 +166,14 @@ export default async function TodayPage({
   return (
     <main
       data-ui-core-surface="today"
-      className="athlete-workflow mx-auto flex max-w-5xl flex-col gap-3 px-4 py-0 sm:gap-4 sm:p-6 lg:p-8"
+      className="athlete-workflow one-next-today mx-auto flex max-w-5xl flex-col gap-3 px-4 py-0 sm:gap-4 sm:p-6 lg:p-8"
     >
-      <header>
-        <h1 className="ui-page-title">Today</h1>
+      <header className="one-next-arrive">
+        <div className="one-next-arrive-meta"><span>repbook</span><time dateTime={today.currentLocalDate}>{new Intl.DateTimeFormat("en", { weekday: "short", day: "numeric", month: "short", timeZone: user.profile.timezone }).format(now)}</time></div>
+        <h1 className="sr-only">Today</h1>
+        <p className="one-next-headline">Less deciding.<br />More lifting.</p>
       </header>
+      <TodayQuickLog />
 
       {query.program === "updated" && (
         <Alert>
@@ -306,7 +310,7 @@ export default async function TodayPage({
                 render={<Link href={`/session/${today.inProgressSessionId}`} />}
                 nativeButton={false}
                 size="lg"
-                className="h-auto min-h-12 w-full whitespace-normal py-3 text-center text-base leading-tight"
+                className="one-next-start h-auto min-h-12 w-full whitespace-normal py-3 text-center text-base leading-tight"
                 data-ui-primary-action="true"
               >
                 <Play className="size-4" /> Resume workout
@@ -449,7 +453,7 @@ export default async function TodayPage({
                         ({ slot }) => slot.warmupSets,
                       ),
                     })}
-                    buttonClassName="h-auto min-h-12 w-full whitespace-normal py-3 text-center text-base leading-tight"
+                    buttonClassName="one-next-start h-auto min-h-12 w-full whitespace-normal py-3 text-center text-base leading-tight"
                     scheduledStart={
                       !isAlternatePreview && today.schedule?.nextEvent?.kind === "resistance"
                         ? {

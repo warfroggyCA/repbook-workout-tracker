@@ -2,6 +2,115 @@
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
 
+/* One next move: isolated training surfaces, using the existing UI primitives. */
+.one-next-today {
+  --background: #f4f6ef;
+  --surface-canvas: #f4f6ef;
+  --foreground: #16251d;
+  --primary: #17291f;
+  --primary-foreground: #f4f7ed;
+  --muted-foreground: #56655b;
+  background: var(--background);
+  min-height: 100dvh;
+}
+.one-next-arrive { padding-block: .75rem; }
+.one-next-arrive-meta { display: flex; flex-wrap: wrap; justify-content: space-between; gap: .5rem; font-weight: 700; }
+.one-next-arrive-meta time { font-size: .75rem; font-weight: 500; color: var(--muted-foreground); }
+.one-next-headline { margin-top: 1.25rem; font-size: clamp(1.8rem, 1.3rem + 3vw, 2.6rem); font-weight: 750; letter-spacing: -.045em; line-height: 1.08; }
+.one-next-today [data-testid="today-decision"] {
+  --foreground: #f2f6ec;
+  --muted-foreground: #becbc0;
+  --primary: #d7ff72;
+  --primary-foreground: #14251b;
+  --background: #17291f;
+  --card: #17291f;
+  --border: #3a4d40;
+  --muted: #263d2e;
+  --surface-selected: #17291f;
+  --surface-primary: #17291f;
+  --surface-inset: #20382a;
+  color: var(--foreground);
+  border-radius: 1.25rem;
+  padding-block: .5rem;
+}
+.one-next-today [data-testid="today-decision"] .ui-section-title { font-size: clamp(1.35rem, 1.1rem + 1vw, 1.9rem); line-height: 1.18; }
+.one-next-quick-log { width: 100%; min-height: 3rem; white-space: normal; background: transparent; }
+.one-next-start { min-height: 3.625rem; font-size: 1rem; font-weight: 700; }
+.one-next-workout-shell { background: #14251d; }
+.one-next-workout {
+  --background: #14251d;
+  --foreground: #f1f6ec;
+  --card: #1c3024;
+  --card-foreground: #f1f6ec;
+  --muted: #263c2e;
+  --muted-foreground: #bdcbbf;
+  --border: #405348;
+  --input: #526459;
+  --primary: #d7ff72;
+  --primary-foreground: #14251d;
+  --ring: #d7ff72;
+  --surface-canvas: #14251d;
+  --surface-primary: #14251d;
+  --surface-selected: #20372a;
+  --surface-inset: #1c3024;
+  --surface-attention: #453c25;
+  color: var(--foreground);
+  background: var(--background);
+  min-height: 100dvh;
+}
+.one-next-workout [hidden] { display: none !important; }
+.one-next-view-switch { display: grid; grid-template-columns: 1fr 1fr; gap: .35rem; padding: .25rem; border-bottom: 1px solid var(--border); }
+.one-next-view-switch button { min-height: 2.75rem; white-space: normal; }
+.one-next-view-switch [aria-pressed="true"] { background: #d7ff72; color: #14251d; }
+.one-next-speak { justify-content: flex-start; min-height: 2.75rem; color: var(--primary); }
+.one-next-workout [data-testid="current-exercise-card"] { border-width: 0; border-radius: .75rem; }
+.one-next-workout [data-testid="current-exercise-card"] h2 { font-size: clamp(1.65rem, 1.1rem + 3vw, 2.7rem); font-weight: 750; line-height: 1.08; letter-spacing: -.035em; }
+.one-next-workout [data-testid="active-set-ledger"] { border-inline: 0; }
+.one-next-workout .active-set-measure-heading { display: flex; flex-wrap: wrap; justify-content: space-between; gap: .25rem .5rem; }
+.one-next-workout .active-set-prefill-source { white-space: normal; overflow: visible; text-overflow: clip; text-align: start; }
+.one-next-workout .active-set-measures-grid { grid-template-columns: minmax(0, 1fr); gap: 1.25rem; padding-block: .65rem; }
+.one-next-workout .active-set-measures-grid input {
+  height: 4.75rem !important;
+  min-height: 4.75rem !important;
+  font-size: clamp(1.6rem, 9vw, 3.5rem) !important;
+  font-weight: 750;
+  line-height: 1;
+  padding-bottom: 1.1rem;
+  background: #1c3024;
+  color: var(--foreground);
+}
+.one-next-workout .active-set-measures-grid label {
+  position: static;
+  width: auto;
+  height: auto;
+  margin: 0 0 .25rem;
+  overflow: visible;
+  clip: auto;
+  clip-path: none;
+  white-space: normal;
+  color: var(--muted-foreground);
+}
+.one-next-workout .active-set-measures-grid .pointer-events-none { font-size: .75rem !important; bottom: .3rem; }
+.one-next-workout .active-set-stepper { border-radius: .75rem; color: var(--primary); background: #263c2e; }
+.one-next-workout [data-testid="active-log-set"] { min-height: 3.625rem; font-weight: 750; }
+.one-next-workout .one-next-load-meaning { padding-block: .4rem; line-height: 1.5; }
+.one-next-workout .text-violet-800 { color: #d6c8fa; }
+.one-next-workout .text-amber-900 { color: #ffe1a3; }
+@media (max-width: 767px) {
+  .one-next-today { padding-bottom: calc(11rem + env(safe-area-inset-bottom)); }
+  .one-next-today .one-next-start {
+    position: fixed;
+    z-index: 30;
+    inset-inline: 1rem;
+    width: calc(100% - 2rem);
+    bottom: calc(4.75rem + env(safe-area-inset-bottom));
+    background: #d7ff72;
+    color: #14251d;
+    border: 1px solid #17291f;
+    box-shadow: 0 0 0 .5rem #f4f6ef;
+  }
+}
+
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
