@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { waitForEquipmentSelectionsToSettle, waitForHydratedReactHandler, waitForHydratedServerAction } from "../helpers/react-readiness";
+import { openNativeDetails, waitForEquipmentSelectionsToSettle, waitForHydratedReactHandler, waitForHydratedServerAction } from "../helpers/react-readiness";
 
 test("shared pulley, inline preparation, corrected sets and manual scrolling", async ({ page }, testInfo) => {
   await page.goto("/sign-in");
@@ -93,7 +93,8 @@ test("shared pulley, inline preparation, corrected sets and manual scrolling", a
   await page.getByTestId("active-log-set").click();
   const dock = page.getByRole("complementary", { name: "Workout status" });
   await expect(page.getByTestId("rest-cockpit")).toBeVisible();
-  await card.getByTestId("focused-set-history").locator("summary").click();
+  await expect(card.locator('[data-set-row-state="saved"]')).toHaveCount(1);
+  await openNativeDetails(card.getByTestId("focused-set-history"));
   await expect(card.getByRole("button", { name: /^Fix / }).first()).toBeVisible();
   await card.getByRole("button", { name: /^Fix / }).first().click();
   const correction = page.getByRole("dialog");

@@ -63,6 +63,7 @@ import { openContextualNoteComposer, type ContextualNoteScopeValue } from "@/lib
 import { createClientUuid } from "@/lib/client-uuid";
 import { activeWorkoutScrollBehavior } from "@/lib/active-workout-motion";
 import { exerciseVisibleInWorkoutView } from "@/lib/focused-workout";
+import { projectActiveSetRows } from "@/lib/active-set-row-projection";
 import { activeSetCommitFormId } from "@/lib/active-workout-layout";
 import { FONT_SIZE_EVENT } from "@/lib/font-size";
 import {
@@ -4820,6 +4821,15 @@ export function SessionRunner(props: SessionRunnerProps) {
             (candidate) => candidate.id === queueItem.sessionExerciseId,
           );
           if (!exercise) return null;
+          const workingOccurrences = occurrences.filter((occurrence) =>
+            occurrence.sessionExerciseId === exercise.id && occurrence.kind === "working_set",
+          );
+          const ledgerProjection = projectActiveSetRows({
+            exercise,
+            occurrences: workingOccurrences,
+            currentOccurrenceId: null,
+            versionEvidenceBySetId: exercise.versionEvidenceBySetId,
+          });
           const exerciseWarmups = warmupOccurrences.filter((item) =>
             item.sessionExerciseId === exercise.id && item.kind === "exercise_warmup");
           const pendingWarmups = exerciseWarmups.filter((item) => item.outcome === "pending");
@@ -4906,6 +4916,7 @@ export function SessionRunner(props: SessionRunnerProps) {
               needsEquipmentDecision: equipmentSetupForcedOpen,
               needsSaveRecovery: exercise.sets.some((set) =>
                 set.saveState != null && set.saveState !== "saved"),
+              ledgerProjection,
             })}
             data-active-superset-member={
               activeGroupMemberIds.has(exercise.id) ? "true" : undefined
@@ -5064,11 +5075,7 @@ export function SessionRunner(props: SessionRunnerProps) {
               dayName: props.templateName,
               exercise,
             })}
-            workingOccurrences={occurrences.filter(
-              (occurrence) =>
-                occurrence.sessionExerciseId === exercise.id &&
-                occurrence.kind === "working_set",
-            )}
+            workingOccurrences={workingOccurrences}
             occurrenceMutationEntries={sessionOccurrenceEntries.filter(
               (entry) =>
                 occurrences.some(
