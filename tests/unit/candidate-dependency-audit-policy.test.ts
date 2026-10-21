@@ -3,6 +3,8 @@ import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync, chmodSync 
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
+import { createRequire } from "node:module";
+const yaml = createRequire(import.meta.url)("js-yaml") as { load: (source: string) => unknown };
 import { afterEach, describe, expect, it } from "vitest";
 import {
   CANDIDATE_EXPIRY, REVIEWED_LOCK_SHA256, REVIEWED_SOURCE_SHA256,
@@ -231,5 +233,21 @@ describe("deployment package inventory", () => {
       writeFileSync(join(bundle, ".vc-config.json"), JSON.stringify(edit));
       expect(inspect(dir).status).toBe(1);
     }
+  });
+});
+
+
+describe("candidate workflow trigger eligibility", () => {
+  it("keeps PR triggers explicit, manual acceptance unavailable and production protected", () => {
+    const workflow = yaml.load(readFileSync(join(root, ".github/workflows/production-readiness.yml"), "utf8")) as {
+      on: { pull_request: { types: string[] }; push: { branches: string[] }; workflow_dispatch: unknown };
+      permissions: Record<string, string>;
+      jobs: Record<string, { if?: string; needs?: string[]; steps: { run?: string }[] }>;
+    };
+    expect(workflow.on.pull_request.types).toEqual(["opened", "synchronize", "reopened", "ready_for_review"]);
+    expect(workflow.on.push.branches).toEqual(["main"]);
+    expect(workflow.permissions).toEqual({ contents: "read" });
+    expect(workflow.jobs["candidate-package"].if).toContain("github.event_name == 'pull_request'");
+    expect(workflow.jobs.verify.needs).toEqual(["postgres-integration", "core", "browser", "candidate-package"]);
   });
 });
