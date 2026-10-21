@@ -452,6 +452,9 @@ test("refuses incomplete assistance, then preserves assisted work without false 
   await openNativeDetails(
     restoredAssisted.getByTestId("active-exercise-details"),
   );
+  await openNativeDetails(
+    restoredAssisted.getByTestId("focused-set-history"),
+  );
   await expect(
     restoredAssisted
       .getByTestId("active-set-ledger")

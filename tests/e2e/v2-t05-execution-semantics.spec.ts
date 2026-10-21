@@ -216,6 +216,17 @@ async function skipCurrentSet(page: Page) {
   }).toBe(true);
 }
 
+async function waitForSkippedSetupToSettle(page: Page) {
+  await expect.poll(() => page.evaluate(() => {
+    const raw = localStorage.getItem("workout-tracker:occurrence-mutation-outbox:v1");
+    return raw == null ? 0 : (JSON.parse(raw) as { entries: unknown[] }).entries.length;
+  })).toBe(0);
+  // Fixture skips finish asynchronously. Start the keyboard scenario only
+  // after their deliberate handoff, so it cannot consume the test's Enter.
+  await expect(page.getByTestId("current-exercise-card")
+    .getByTestId("current-set-entry")).toBeFocused();
+}
+
 async function discardWorkout(page: Page) {
   await page
     .getByRole("complementary", { name: "Workout status" })
@@ -264,10 +275,12 @@ test("moves keyboard focus off a rebound Log action during a held no-rest save",
     await route.continue();
   });
 
+  await waitForSkippedSetupToSettle(page);
   const firstLog = page.getByTestId("active-log-set");
   await expect(firstLog).toBeEnabled();
   const firstFormId = await firstLog.getAttribute("form");
   await firstLog.focus();
+  await expect(firstLog).toBeFocused();
   await page.keyboard.press("Enter");
   await expect.poll(() => setRequests).toBe(1);
   await expect.poll(() => currentExerciseName(page)).toBe("Pallof Press");
@@ -376,9 +389,11 @@ test("keeps one ledger-driven current/next/group/rest state through retry, inter
     }
     await route.continue();
   });
+  await waitForSkippedSetupToSettle(page);
   const currentLogSet = page.getByTestId("active-log-set");
   await expect(currentLogSet).toBeEnabled();
   await currentLogSet.focus();
+  await expect(currentLogSet).toBeFocused();
   await page.keyboard.press("Enter");
   await expect.poll(() => setRequests).toBe(2);
   await expect(page.getByTestId("active-log-set")).toHaveAccessibleName(
