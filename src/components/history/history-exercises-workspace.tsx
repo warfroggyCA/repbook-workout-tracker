@@ -456,7 +456,7 @@ export function HistoryExercisesWorkspace({
                     detailContext,
                   )}
                   prefetch={false}
-                  className="group rounded-xl border bg-muted/15 p-3 transition-colors hover:border-primary/35 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                  className="group rounded-xl border bg-muted/15 p-3 transition-shadow hover:border-primary/35 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">

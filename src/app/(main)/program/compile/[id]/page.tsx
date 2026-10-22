@@ -48,7 +48,7 @@ export default async function ReviewCompilerProposalPage(props: PageProps<"/prog
         {query.status === "not_ready" && <div className="rounded-xl border border-amber-500/50 bg-amber-50 p-3 text-sm dark:bg-amber-950/20">This proposal is no longer available to accept.</div>}
         {output.status === "unable" ? (
           <section className="rounded-2xl border border-amber-500/50 bg-card p-5">
-            <AlertTriangle className="size-5 text-amber-700" />
+            <AlertTriangle className="size-5 text-amber-700 dark:text-amber-300" />
             <h2 className="mt-2 font-semibold">Unable to compile safely</h2>
             <p className="mt-2 text-sm leading-6">{output.reason}</p>
             <p className="mt-3 text-sm text-muted-foreground">{output.evidenceStatement}</p>

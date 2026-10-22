@@ -93,7 +93,7 @@ function ChoicePills<T extends string | boolean>({
           type="button"
           onClick={() => onChange(opt.value)}
           className={cn(
-            "min-h-11 min-w-11 rounded-full border px-2.5 py-1 text-xs transition-colors",
+            "min-h-11 min-w-11 rounded-full border px-2.5 py-1 text-xs transition-shadow",
             value === opt.value
               ? "border-primary bg-primary text-primary-foreground"
               : "bg-background"

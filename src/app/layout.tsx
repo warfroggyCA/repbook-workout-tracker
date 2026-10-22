@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { connection } from "next/server";
 import {
@@ -33,7 +33,12 @@ export const metadata: Metadata = {
   },
 };
 
-export const viewport = {
+export const viewport: Viewport = {
+  colorScheme: "light dark",
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#f4f6ef" },
+    { media: "(prefers-color-scheme: dark)", color: "#14251d" },
+  ],
   width: "device-width",
   initialScale: 1,
   viewportFit: "cover" as const,

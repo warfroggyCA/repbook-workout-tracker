@@ -57,7 +57,7 @@ export function SetupSidebar({
               key={step.slug}
               href={href}
               className={cn(
-                "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition-colors motion-reduce:transition-none",
+                "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition-shadow motion-reduce:transition-none",
                 active
                   ? "bg-accent font-medium text-primary"
                   : "text-foreground/75 hover:bg-muted hover:text-foreground"

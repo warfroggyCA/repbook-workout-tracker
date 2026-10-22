@@ -32,7 +32,7 @@ export function PillGroup<T extends string>({
           type="button"
           onClick={() => onToggle(opt)}
           className={cn(
-            "rounded-full border px-3 py-1.5 text-sm transition-colors",
+            "rounded-full border px-3 py-1.5 text-sm transition-shadow",
             selected.includes(opt)
               ? "border-primary bg-primary text-primary-foreground"
               : "bg-background text-foreground"

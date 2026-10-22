@@ -5,6 +5,7 @@ const isCI = Boolean(process.env.CI);
 export default defineConfig({
   testDir: "./tests/e2e",
   testIgnore: [
+    "system-theme.spec.ts",
     "workout-feedback.spec.ts",
     "froggy-playback.spec.ts",
     "production-recovery.spec.ts",

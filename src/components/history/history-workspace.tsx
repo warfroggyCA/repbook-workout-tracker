@@ -152,7 +152,7 @@ export function HistoryWorkspace({
                 prefetch={false}
                 aria-current={selected ? "page" : undefined}
                 className={cn(
-                  "flex min-h-11 min-w-0 items-center justify-center gap-1.5 rounded-xl px-2 py-2 text-center text-xs font-medium transition-colors sm:text-sm",
+                  "flex min-h-11 min-w-0 items-center justify-center gap-1.5 rounded-xl px-2 py-2 text-center text-xs font-medium transition-shadow sm:text-sm",
                   selected
                     ? "bg-primary text-primary-foreground shadow-sm"
                     : "text-muted-foreground hover:bg-muted hover:text-foreground",

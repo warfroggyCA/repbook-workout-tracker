@@ -155,7 +155,7 @@ export function ConstraintsForm({
                             "rounded-full border px-2 py-0.5 text-xs capitalize",
                             rs.modes[pattern] === mode &&
                               (mode === "avoid"
-                                ? "border-destructive bg-destructive text-white"
+                                ? "border-destructive bg-destructive text-destructive-foreground"
                                 : mode === "cautious"
                                   ? "border-amber-500 bg-amber-500/15 text-amber-700 dark:text-amber-400"
                                   : "border-primary bg-primary text-primary-foreground")

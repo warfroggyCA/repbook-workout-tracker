@@ -21,12 +21,12 @@
   cursor: default;
 }
 .workspace button[aria-pressed="true"] {
-  background: #e2f5f4;
-  color: #005f70;
-  border-color: #008da8;
+  background: var(--surface-selected);
+  color: var(--primary);
+  border-color: var(--primary);
 }
 .workspace :is(button, select, a):focus-visible {
-  outline: 3px solid #008da8;
+  outline: 3px solid var(--ring);
   outline-offset: 3px;
 }
 .header {
@@ -58,15 +58,15 @@
   min-height: 44px;
   padding: 9px 14px;
   margin-bottom: 8px;
-  border: 1px solid #008da8;
+  border: 1px solid var(--primary);
   border-radius: 9px;
-  background: #e2f5f4;
-  color: #005f70;
+  background: var(--surface-selected);
+  color: var(--primary);
   font-size: 14px;
   font-weight: 600;
 }
 .back:hover {
-  background: #ccebea;
+  background: var(--accent);
 }
 @media (max-width: 700px) {
   .back {
@@ -108,13 +108,13 @@
   display: flex;
   flex-direction: column;
   padding: 14px;
-  background-color: #e1dfdc;
+  background-color: var(--surface-inset);
   background-image:
-    linear-gradient(rgba(225, 223, 220, 0.38), rgba(225, 223, 220, 0.38)),
+    linear-gradient(color-mix(in srgb, var(--background) 70%, transparent), color-mix(in srgb, var(--background) 70%, transparent)),
     url("/muscle-map/gym-bokeh-v1.webp");
   background-size: cover;
   background-position: center;
-  color: #302f2d;
+  color: var(--foreground);
 }
 .mapStatus {
   font-size: 12px;
@@ -123,7 +123,8 @@
   align-self: center;
   padding: 2px 8px;
   border-radius: 6px;
-  background: rgba(241, 240, 237, 0.88);
+  background: var(--popover);
+  color: var(--popover-foreground);
 }
 .figures {
   display: flex;
@@ -151,7 +152,7 @@
 }
 /* Keyboard location remains visible after the selection outline is removed. */
 .region:focus-visible {
-  outline: 2px dashed #005f70;
+  outline: 2px dashed var(--ring);
   outline-offset: 3px;
 }
 .legend {
@@ -164,7 +165,8 @@
   align-self: center;
   padding: 4px 8px;
   border-radius: 6px;
-  background: rgba(241, 240, 237, 0.88);
+  background: var(--popover);
+  color: var(--popover-foreground);
 }
 .legend span {
   display: inline-flex;
@@ -471,7 +473,7 @@
   color: var(--foreground);
 }
 .daySummary:focus-visible {
-  outline: 3px solid #008da8;
+  outline: 3px solid var(--ring);
   outline-offset: 3px;
 }
 .compactFigures {

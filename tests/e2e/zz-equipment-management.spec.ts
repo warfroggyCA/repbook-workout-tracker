@@ -856,8 +856,8 @@ test("manager and setup review fit every supported text size at narrow and wide 
 
     await page.goto("/settings/equipment");
     if (size === "Extra large") {
-      await page.locator("html").evaluate((element) => element.classList.add("dark"));
-      await expect(page.locator("html")).toHaveClass(/dark/);
+      await page.emulateMedia({ colorScheme: "dark" });
+      await expect(page.locator("html")).toHaveCSS("color-scheme", "dark");
     }
     for (const viewport of viewports) {
       await page.setViewportSize(viewport);

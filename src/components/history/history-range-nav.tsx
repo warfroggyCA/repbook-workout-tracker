@@ -32,7 +32,7 @@ export function HistoryRangeNav({
           prefetch={false}
           aria-current={currentRange === option.key ? "page" : undefined}
           className={cn(
-            "flex min-h-10 items-center justify-center rounded-lg px-2 py-2 text-center text-xs font-medium leading-tight transition-colors sm:px-3",
+            "flex min-h-10 items-center justify-center rounded-lg px-2 py-2 text-center text-xs font-medium leading-tight transition-shadow sm:px-3",
             currentRange === option.key
               ? "bg-primary text-primary-foreground shadow-sm"
               : "text-muted-foreground hover:bg-muted hover:text-foreground",

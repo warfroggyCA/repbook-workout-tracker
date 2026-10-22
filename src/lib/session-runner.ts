@@ -223,6 +223,18 @@ export function mergeEquipmentSelectionOccurrenceStates(
   });
 }
 
+/** Restore only the server-confirmed set; keep newer local sets/corrections. */
+export function restoreAcknowledgedSet(
+  current: LoggedSet[],
+  restored: LoggedSet,
+): LoggedSet[] {
+  if (current.some((set) =>
+    set.id === restored.id ||
+    (restored.clientKey != null && set.clientKey === restored.clientKey),
+  )) return current;
+  return [...current, restored].sort((left, right) => left.setNo - right.setNo);
+}
+
 export function mergeSessionOutboxSets(
   exercises: SessionExerciseData[],
   entries: WorkoutSetOutboxEntry[],

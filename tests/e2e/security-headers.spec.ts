@@ -53,8 +53,8 @@ test("enforces reviewed browser protections across the optimized app", async ({
     short_name: "Repbook",
     description:
       "Your workouts, plans, and progress in one private place.",
-    background_color: "#f7f8fb",
-    theme_color: "#2456b8",
+    background_color: "#f4f6ef",
+    theme_color: "#f4f6ef",
   });
   expect(manifest.display).toBe("standalone");
   expect(manifest.start_url).toBe("/today");

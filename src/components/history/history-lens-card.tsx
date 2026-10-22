@@ -57,7 +57,7 @@ export function HistoryLensCard({
           className={cn(
             "flex size-9 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary",
             lens.tone === "positive" && "bg-success/10 text-success",
-            lens.tone === "watch" && "bg-amber-500/10 text-amber-700",
+            lens.tone === "watch" && "bg-amber-500/10 text-amber-700 dark:text-amber-400",
           )}
           aria-hidden="true"
         >
@@ -183,7 +183,7 @@ export function HistoryLensCard({
               >
                 <div className="flex items-center gap-2">
                   <Footprints
-                    className="size-4 shrink-0 text-emerald-700"
+                    className="size-4 shrink-0 text-emerald-700 dark:text-emerald-300"
                     aria-hidden="true"
                   />
                   <p className="text-xs font-semibold text-emerald-900 dark:text-emerald-200">

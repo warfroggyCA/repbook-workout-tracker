@@ -706,7 +706,7 @@ export function EquipmentManager({
                     type="button"
                     id={`equipment-card-${item.clientKey}`}
                     aria-label={`Edit ${item.label}`}
-                    className="flex items-start gap-3 rounded-xl border p-3 text-left transition-colors hover:bg-muted/60"
+                    className="flex items-start gap-3 rounded-xl border p-3 text-left transition-shadow hover:bg-muted/60"
                     onClick={() => setEditing({ kind: "item", clientKey: item.clientKey })}
                   >
                     <EquipmentFamilyIcon
@@ -755,7 +755,7 @@ export function EquipmentManager({
                   type="button"
                   id="weight-plates-card"
                   aria-label="Edit weight plates"
-                  className="flex items-start gap-3 rounded-xl border p-3 text-left transition-colors hover:bg-muted/60"
+                  className="flex items-start gap-3 rounded-xl border p-3 text-left transition-shadow hover:bg-muted/60"
                   onClick={() => setEditing({ kind: "plates" })}
                 >
                   <EquipmentFamilyIcon familyKey="bars_and_plates" className="size-8 shrink-0" />

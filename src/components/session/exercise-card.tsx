@@ -482,6 +482,7 @@ type Props = {
   loadEntryMeaning?: SetLoadEntryMeaning | null;
   comparisonTemporarilyUnavailable?: boolean;
   onPatch: (patch: Partial<SessionExerciseData>) => void;
+  onSetRestored?: (set: LoggedSet) => void;
   onQueueSet: (
     set: LoggedSet,
     occurrence?: SessionOccurrenceData | null,
@@ -752,6 +753,7 @@ export function ExerciseCard({
   loadEntryMeaning = null,
   comparisonTemporarilyUnavailable = false,
   onPatch,
+  onSetRestored = () => undefined,
   onQueueSet,
   onPrepareSetLog = () => undefined,
   onAppendSet = async () => null,
@@ -1461,6 +1463,7 @@ export function ExerciseCard({
             onClick: async () => {
               const restored = await restoreArchiveOperation(result.operationId);
               if (restored.ok) {
+                onSetRestored(set);
                 toast.success("Set restored");
                 router.refresh();
               } else {

@@ -40,7 +40,7 @@ export function RestCockpit({
       className={cn(
         "col-span-full min-w-0",
         running &&
-          "rounded-xl border-2 border-slate-600 bg-slate-800 text-white px-2 py-1 shadow-sm max-[360px]:rounded-lg max-[360px]:border max-[360px]:px-1 max-[360px]:py-0",
+          "rounded-xl border-2 border-primary/40 bg-card text-foreground px-2 py-1 shadow-sm max-[360px]:rounded-lg max-[360px]:border max-[360px]:px-1 max-[360px]:py-0",
         !running &&
           phase === "ready" &&
           "border-b border-emerald-600/35 bg-emerald-50/80 pb-1 text-emerald-950 dark:bg-emerald-950/65 dark:text-emerald-100",
@@ -58,7 +58,7 @@ export function RestCockpit({
         <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_repeat(3,auto)] items-center gap-1.5 max-[360px]:grid-cols-3 max-[360px]:gap-1">
           <div className="min-w-0 max-[360px]:col-span-3">
             <p className="flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5 leading-none">
-              <span className="inline-flex items-center gap-1 text-xs font-bold uppercase tracking-[0.1em] text-sky-200">
+              <span className="inline-flex items-center gap-1 text-xs font-bold uppercase tracking-[0.1em] text-primary">
                 <Timer aria-hidden="true" className="size-3.5" />
                 Rest
               </span>
@@ -71,13 +71,13 @@ export function RestCockpit({
                 ).padStart(2, "0")}
               </span>
               <span
-                className="text-xs text-slate-200"
+                className="text-xs text-muted-foreground"
                 aria-label={`Rest alert: ${alertAriaLabel}`}
               >
                 · {alertLabel}
               </span>
             </p>
-            <p className="break-words text-xs leading-tight text-slate-200">
+            <p className="break-words text-xs leading-tight text-muted-foreground">
               {destination}
             </p>
           </div>
@@ -85,7 +85,7 @@ export function RestCockpit({
             type="button"
             variant="outline"
             size="sm"
-            className="h-[44px] min-h-[44px] min-w-[44px] border-slate-400 bg-slate-700 text-white hover:bg-slate-600 hover:text-white px-[6px] text-xs shadow-xs max-[360px]:w-full"
+            className="h-[44px] min-h-[44px] min-w-[44px] border-input bg-secondary text-secondary-foreground hover:bg-accent hover:text-accent-foreground px-[6px] text-xs shadow-xs max-[360px]:w-full"
             onClick={() => onAdjust(-15)}
             aria-label="Decrease rest by 15 seconds"
           >
@@ -95,7 +95,7 @@ export function RestCockpit({
             type="button"
             variant="outline"
             size="sm"
-            className="h-[44px] min-h-[44px] min-w-[44px] border-slate-400 bg-slate-700 text-white hover:bg-slate-600 hover:text-white px-[6px] text-xs shadow-xs max-[360px]:w-full"
+            className="h-[44px] min-h-[44px] min-w-[44px] border-input bg-secondary text-secondary-foreground hover:bg-accent hover:text-accent-foreground px-[6px] text-xs shadow-xs max-[360px]:w-full"
             onClick={() => onAdjust(15)}
             aria-label="Increase rest by 15 seconds"
           >
@@ -105,7 +105,7 @@ export function RestCockpit({
             type="button"
             variant="outline"
             size="sm"
-            className="h-[44px] min-h-[44px] min-w-[44px] border-slate-400 bg-slate-700 text-white hover:bg-slate-600 hover:text-white px-[6px] text-xs shadow-xs max-[360px]:w-full"
+            className="h-[44px] min-h-[44px] min-w-[44px] border-input bg-secondary text-secondary-foreground hover:bg-accent hover:text-accent-foreground px-[6px] text-xs shadow-xs max-[360px]:w-full"
             onClick={onEnd}
           >
             End rest
