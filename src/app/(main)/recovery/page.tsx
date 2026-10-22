@@ -160,7 +160,7 @@ export default async function RecoveryPage(props: PageProps<"/recovery">) {
             })}
           </div>
           {recoveryHealth.attentionCount > 0 ? (
-            <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950">
+            <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-100">
               <div className="flex items-center gap-2 font-medium">
                 <ShieldAlert className="size-4" />
                 {recoveryHealth.attentionCount} item
@@ -175,7 +175,7 @@ export default async function RecoveryPage(props: PageProps<"/recovery">) {
             </div>
           ) : (
             healthItems.every((item) => item.run?.status === "passed") && (
-              <div className="flex gap-2 rounded-lg border border-emerald-300 bg-emerald-50 p-3 text-sm text-emerald-950">
+              <div className="flex gap-2 rounded-lg border border-emerald-300 bg-emerald-50 p-3 text-sm text-emerald-950 dark:border-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-100">
                 <ShieldCheck className="mt-0.5 size-4 shrink-0" />
                 Backup, restore, snapshot, and application checks are all current and healthy.
               </div>
@@ -195,7 +195,7 @@ export default async function RecoveryPage(props: PageProps<"/recovery">) {
           {storageConfigured ? (
             <CreateSnapshotForm defaultName={defaultSnapshotName(new Date(), user.profile.timezone)} />
           ) : (
-            <div className="flex gap-2 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950">
+            <div className="flex gap-2 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-100">
               <ShieldAlert className="mt-0.5 size-4 shrink-0" />
               Private snapshot storage or its encryption key is not configured. No
               snapshot will be represented as protected until both are available.

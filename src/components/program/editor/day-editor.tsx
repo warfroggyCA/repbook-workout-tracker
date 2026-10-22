@@ -672,7 +672,7 @@ export const DayEditor = memo(function DayEditor({ editor, canReview = false }: 
                           data-program-slot-unit={reorderUnitId}
                           data-program-reordering={isMovingUnit ? "true" : undefined}
                           className={cn(
-                            "relative space-y-2 transition-[background-color,box-shadow] motion-reduce:transition-none",
+                            "relative space-y-2 transition-shadow motion-reduce:transition-none",
                             pairing && "border-l-4 border-violet-500 bg-violet-50/60 px-3 py-2 dark:bg-violet-950/20",
                             pairing && pairingPosition === 0 && "rounded-t-xl pt-3",
                             pairing && pairingPosition === pairingMembers.length - 1 && "rounded-b-xl pb-3",

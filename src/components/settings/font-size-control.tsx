@@ -92,7 +92,7 @@ export function FontSizeControl({ profileSize }: { profileSize: FontSizeKey }) {
               className={cn(
                 "text-xs",
                 selected === option.key
-                  ? "text-primary-foreground/75"
+                  ? "text-action-foreground/80"
                   : "text-muted-foreground"
               )}
             >

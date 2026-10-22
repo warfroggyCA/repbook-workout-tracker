@@ -36,7 +36,7 @@ function ChoicePills<T extends string | boolean>({
           aria-pressed={value === opt.value}
           onClick={() => onChange(opt.value)}
           className={cn(
-            "min-h-11 rounded-full border px-3 py-1 text-xs transition-colors",
+            "min-h-11 rounded-full border px-3 py-1 text-xs transition-shadow",
             value === opt.value
               ? "border-primary bg-primary text-primary-foreground"
               : "bg-background"

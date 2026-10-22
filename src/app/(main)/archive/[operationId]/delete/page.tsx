@@ -173,7 +173,7 @@ export default async function PermanentDeletePage({
         </Card>
       )}
 
-      <div className="flex gap-2 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950">
+      <div className="flex gap-2 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-100">
         <ShieldAlert className="mt-0.5 size-4 shrink-0" />
         Existing provider backups and encrypted snapshots can retain older copies
         according to their recovery retention. This action permanently removes the

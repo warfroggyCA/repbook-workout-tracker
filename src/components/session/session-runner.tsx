@@ -133,6 +133,7 @@ import {
   futureProgramRemovalOption,
   futureProgramReplacementOption,
   mergeSessionOutboxSets,
+  restoreAcknowledgedSet,
   mergeEquipmentSelectionOccurrenceStates,
   nextIncompleteExerciseId,
   previousComparableIsTemporarilyUnavailable,
@@ -5158,6 +5159,14 @@ export function SessionRunner(props: SessionRunnerProps) {
                 return occurrence ? equipmentConfirmationBlocks(occurrence) : false;
               })()
             }
+            onSetRestored={(set) => {
+              if (!runnerActiveRef.current) return;
+              setExercises((current) => current.map((candidate) =>
+                candidate.id === exercise.id
+                  ? { ...candidate, sets: restoreAcknowledgedSet(candidate.sets, set) }
+                  : candidate,
+              ));
+            }}
             onPatch={(patch) => {
               if (!runnerActiveRef.current) return;
               patchExercise(exercise.id, patch);

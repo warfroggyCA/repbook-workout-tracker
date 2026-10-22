@@ -281,8 +281,8 @@ test("keeps dark landscape, correction, restore, and exact superset context cohe
 }, testInfo) => {
   await signInAndStartDayA(page);
   const sessionUrl = page.url();
-  await page.locator("html").evaluate((element) => element.classList.add("dark"));
-  await expect(page.locator("html")).toHaveClass(/dark/);
+  await page.emulateMedia({ colorScheme: "dark" });
+  await expect(page.locator("html")).toHaveCSS("color-scheme", "dark");
   expect(await page.evaluate(() =>
     window.matchMedia("(prefers-reduced-motion: reduce)").matches
   )).toBe(true);
@@ -326,7 +326,7 @@ test("keeps dark landscape, correction, restore, and exact superset context cohe
     .toBeVisible();
 
   await page.goto(sessionUrl);
-  await page.locator("html").evaluate((element) => element.classList.add("dark"));
+  await page.emulateMedia({ colorScheme: "dark" });
   squat = page.getByRole("region", {
     name: "Barbell Back Squat",
     exact: true,

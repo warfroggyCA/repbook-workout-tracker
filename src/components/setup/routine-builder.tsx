@@ -605,7 +605,7 @@ export function RoutineBuilder({
                     role="tab"
                     aria-selected={index === selectedDayIndex}
                     className={cn(
-                      "shrink-0 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
+                      "shrink-0 rounded-lg px-3 py-2 text-sm font-medium transition-shadow",
                       index === selectedDayIndex
                         ? "bg-card text-primary shadow-sm"
                         : "text-muted-foreground hover:bg-card/70 hover:text-foreground"
@@ -701,7 +701,7 @@ export function RoutineBuilder({
                         )}
                       >
                         {exercise.supersetGroup && (
-                          <Badge className="mb-3 bg-violet-100 text-violet-700 hover:bg-violet-100">
+                          <Badge className="mb-3 bg-violet-100 text-violet-700 hover:bg-violet-100 dark:bg-violet-950/40 dark:text-violet-200 dark:hover:bg-violet-950/60">
                             Superset {exercise.supersetGroup}
                           </Badge>
                         )}

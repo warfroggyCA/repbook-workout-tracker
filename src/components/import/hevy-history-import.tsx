@@ -359,7 +359,7 @@ export function HevyHistoryImport({
                   Only unresolved exercises appear here. Confirm, create, or explicitly exclude each one.
                 </p>
               </div>
-              <Badge className="bg-amber-600 text-white hover:bg-amber-600">
+              <Badge className="bg-amber-100 text-amber-900 hover:bg-amber-100 dark:bg-amber-950 dark:text-amber-200 dark:hover:bg-amber-950">
                 {needsReview.length} remaining
               </Badge>
             </div>
@@ -540,7 +540,7 @@ function ExerciseReviewRow({
               </Badge>
             )}
             {resolution.action === "pending" && (
-              <Badge className="bg-amber-600 text-white hover:bg-amber-600">needs review</Badge>
+              <Badge className="bg-amber-100 text-amber-900 hover:bg-amber-100 dark:bg-amber-950 dark:text-amber-200 dark:hover:bg-amber-950">needs review</Badge>
             )}
           </span>
           <span className="mt-1 block text-xs text-muted-foreground">{review.reason}</span>

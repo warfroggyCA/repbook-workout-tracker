@@ -171,7 +171,7 @@ export function BottomTabs({
             const forceDocumentNavigation =
               navigationItemRequiresDocumentNavigation(activePathname);
             const itemClassName = cn(
-              "ui-motion-immediate flex min-h-11 items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors",
+              "ui-motion-immediate flex min-h-11 items-center gap-3 rounded-lg px-3 py-2 text-sm transition-shadow",
               collapsed && "justify-center px-2",
               active
                 ? "bg-primary/10 font-medium text-accent-foreground"
@@ -244,7 +244,7 @@ export function BottomTabs({
             const forceDocumentNavigation =
               navigationItemRequiresDocumentNavigation(activePathname);
             const itemClassName = cn(
-              "ui-motion-immediate relative flex min-w-0 flex-1 flex-col items-center gap-0.5 px-0.5 py-2 text-[0.625rem] leading-tight transition-colors",
+              "ui-motion-immediate relative flex min-w-0 flex-1 flex-col items-center gap-0.5 px-0.5 py-2 text-[0.625rem] leading-tight transition-shadow",
               active
                 ? "font-medium text-primary"
                 : "text-muted-foreground hover:text-foreground"

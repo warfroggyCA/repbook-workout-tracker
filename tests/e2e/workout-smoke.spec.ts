@@ -3091,6 +3091,13 @@ test("keeps an offline set visible while the next set stays available", async ({
   await expect(page.getByTestId("active-log-set"))
     .toBeEnabled();
   await expect.poll(() => actionRequests).toBe(1);
+  // An enabled next-set control is intentionally available before save acknowledgement.
+  // Wait for replay's durable acknowledgement before checking the saved server record.
+  await expect.poll(() => page.evaluate(() => {
+    const raw = localStorage.getItem("workout-tracker:workout-set-outbox:v1");
+    const envelope = JSON.parse(raw ?? "null") as { entries?: unknown[] } | null;
+    return envelope?.entries?.length ?? 0;
+  })).toBe(0);
 
   await page.reload();
   await openNativeDetails(firstExercise.getByTestId("active-exercise-details"));
@@ -3234,6 +3241,7 @@ test("a parked set pauses only its exercise while another exercise saves", async
   await expect(firstExercise.getByText("Save failed", { exact: true })).toBeVisible();
 
   await dismissRestCockpit(page);
+  await page.getByRole("button", { name: "Full workout", exact: true }).click();
   await secondExercise.getByTestId("exercise-swipe-surface").click();
   await secondExercise.locator('input[inputmode="decimal"]').first().fill("50");
   await secondExercise.locator('input[inputmode="numeric"]').first().fill("10");

@@ -141,8 +141,8 @@ describe("WorkoutStatusBar", () => {
     expect(html).not.toContain("border-amber-500");
     expect(html).not.toContain("bg-amber-100");
     expect(html).toContain("rounded-xl");
-    expect(html).toContain("border-slate-600");
-    expect(html).toContain("bg-slate-800 text-white");
+    expect(html).toContain("border-primary/40");
+    expect(html).toContain("bg-card text-foreground");
     expect(html).toContain('data-testid="rest-cockpit"');
     expect(html).not.toContain('aria-live="polite"');
     expect(html).toContain('data-testid="active-log-set"');

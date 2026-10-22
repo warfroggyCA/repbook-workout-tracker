@@ -190,7 +190,7 @@ export function ActivitySummary({
                       </span>
                       <div
                         className={cn(
-                          "w-full min-w-1 rounded-t bg-success/15 transition-colors group-hover:bg-success/45",
+                          "w-full min-w-1 rounded-t bg-success/15 transition-shadow group-hover:bg-success/45",
                           week.activities > 0 && "bg-success/35"
                         )}
                         style={{ height }}

@@ -67,7 +67,7 @@ export function TodayStats({
                   <div
                     key={p.weekStartISO}
                     className={cn(
-                      "flex-1 rounded-t-sm transition-colors",
+                      "flex-1 rounded-t-sm transition-shadow",
                       newest ? "bg-primary" : "bg-primary/25"
                     )}
                     style={{ height }}

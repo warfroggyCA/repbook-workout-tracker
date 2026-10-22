@@ -55,7 +55,7 @@ export function SnapshotRestoreForm({
           placeholder="RESTORE"
         />
       </div>
-      <div className="rounded-lg border border-emerald-300 bg-emerald-50 p-3 text-sm text-emerald-950">
+      <div className="rounded-lg border border-emerald-300 bg-emerald-50 p-3 text-sm text-emerald-950 dark:border-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-100">
         <p className="flex items-center gap-2 font-medium">
           <ShieldCheck className="size-4" /> A verified safety copy is mandatory
         </p>

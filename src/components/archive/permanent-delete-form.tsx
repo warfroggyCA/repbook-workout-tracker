@@ -26,7 +26,7 @@ export function PermanentDeleteForm({
 
   return (
     <div className="space-y-4">
-      <div className="flex items-start gap-3 rounded-lg border border-red-300 bg-red-50 p-3 text-sm text-red-950">
+      <div className="flex items-start gap-3 rounded-lg border border-red-300 bg-red-50 p-3 text-sm text-red-950 dark:border-red-800 dark:bg-red-950/30 dark:text-red-100">
         <Checkbox
           id="delete-acknowledgement"
           checked={acknowledged}
@@ -49,7 +49,7 @@ export function PermanentDeleteForm({
           placeholder={PERMANENT_DELETE_CONFIRMATION}
         />
       </div>
-      <div className="rounded-lg border border-emerald-300 bg-emerald-50 p-3 text-sm text-emerald-950">
+      <div className="rounded-lg border border-emerald-300 bg-emerald-50 p-3 text-sm text-emerald-950 dark:border-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-100">
         <p className="flex items-center gap-2 font-medium">
           <ShieldCheck className="size-4" /> A verified safety copy is mandatory
         </p>

@@ -630,7 +630,7 @@ export function HistoryCalendar({
                               onNavigate={prepareDirectNavigation}
                               onFocus={setFocusedKey}
                               className={cn(
-                                "relative flex aspect-square min-w-0 items-center justify-center rounded-md text-[0.58rem] tabular-nums transition-colors",
+                                "relative flex aspect-square min-w-0 items-center justify-center rounded-md text-[0.58rem] tabular-nums transition-shadow",
                                 (dayRecords.length > 0 || key <= ownerToday) &&
                                   "outline-none hover:bg-muted focus-visible:z-10 focus-visible:ring-2 focus-visible:ring-ring",
                                 dayRecords.length === 0 &&
@@ -729,7 +729,7 @@ export function HistoryCalendar({
                     onNavigate={prepareDirectNavigation}
                     onFocus={setFocusedKey}
                     className={cn(
-                      "relative min-h-16 border-r border-b p-1.5 text-left transition-colors last:border-r-0 sm:min-h-24 sm:p-2",
+                      "relative min-h-16 border-r border-b p-1.5 text-left transition-shadow last:border-r-0 sm:min-h-24 sm:p-2",
                       (dayRecords.length > 0 || key <= ownerToday) &&
                         "outline-none hover:bg-muted/55 focus-visible:z-10 focus-visible:ring-2 focus-visible:ring-ring",
                       dayRecords.length === 0 &&

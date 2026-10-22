@@ -102,7 +102,7 @@ export function ExerciseReorderHandle({
       size="icon-touch"
       variant="outline"
       className={cn(
-        "relative z-10 shrink-0 touch-none cursor-grab transition-[transform,background-color,border-color,box-shadow] active:cursor-grabbing motion-reduce:transition-none",
+        "relative z-10 shrink-0 touch-none cursor-grab transition-[transform,box-shadow] active:cursor-grabbing motion-reduce:transition-none",
         dragging &&
           "scale-105 cursor-grabbing border-primary bg-primary text-primary-foreground shadow-lg ring-4 ring-primary/30",
       )}

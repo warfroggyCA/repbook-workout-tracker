@@ -1092,3 +1092,24 @@ project separately when a fresh workout is required; those projects mutate the
 same fixture when run together. Desktop WebKit is not proof of physical iPhone
 keyboard or compositor behavior; verify that separately before claiming device
 acceptance. No migration accompanies these changes.
+
+## System-following appearance
+
+Every route, including calendar and History detail, shares the root light/dark
+palette in globals.css. Tailwind dark variants use the system media query;
+there is no saved theme override or client-side theme initialization. Body-level
+portals inherit the same palette. Color changes apply together without color
+fades; position, size, focus-ring and opacity motion keep their existing timing.
+Native controls and browser chrome declare
+both schemes through CSS and viewport metadata. Lime action colors are separate
+from foreground/link colors so labels remain readable in both schemes.
+
+Run npm run test:e2e:system-theme after appearance changes. It runs Chromium
+and narrow WebKit in separate fresh synthetic databases and checks live OS-theme
+changes, calendar controls, History detail, quick-log drafts, workout entry,
+portaled overlays, rest controls, enlarged text and rendered text contrast.
+Physical iPhone sleep/offline recovery remains a separate acceptance check.
+
+Archive Undo restores the confirmed saved set into the current workout projection
+without replacing sets or corrections recorded while its notification was open.
+The existing archive/restore service remains the persistence authority.

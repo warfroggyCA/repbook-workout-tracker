@@ -40,7 +40,7 @@ export function PermanentDeleteIdentity({
 
   return (
     <div className="space-y-3">
-      <div className="rounded-lg border border-blue-300 bg-blue-50 p-3 text-sm text-blue-950">
+      <div className="rounded-lg border border-blue-300 bg-blue-50 p-3 text-sm text-blue-950 dark:border-blue-800 dark:bg-blue-950/30 dark:text-blue-100">
         <p className="flex items-center gap-2 font-medium">
           <ShieldCheck className="size-4" /> A new identity check is required
         </p>
