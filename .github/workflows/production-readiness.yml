@@ -84,13 +84,7 @@ jobs:
       - name: Review production and development dependencies
         env:
           REPBOOK_AUDIT_REPORT_DIR: ${{ runner.temp }}/dependency-audit
-          CANDIDATE_REVIEW: ${{ github.event_name == 'pull_request' && github.repository_id == '1317195955' && github.event.pull_request.head.repo.full_name == github.repository && github.head_ref == 'codex/one-next-move-public-review' && github.actor == github.repository_owner && github.triggering_actor == github.repository_owner }}
-        run: |
-          if [ "$CANDIDATE_REVIEW" = "true" ]; then
-            npm run audit:check -- --candidate-review
-          else
-            npm run audit:check
-          fi
+        run: npm run audit:check
 
       - name: Preserve complete dependency audit reports
         if: always()

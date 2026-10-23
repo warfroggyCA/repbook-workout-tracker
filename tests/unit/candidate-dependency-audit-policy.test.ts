@@ -14,7 +14,16 @@ import { evaluateFullTreeAudit, validateAuditReport } from "../../scripts/lib/de
 
 const root = resolve(__dirname, "../..");
 const policy = JSON.parse(readFileSync(join(root, "docs/candidate-dependency-audit-exception.json"), "utf8"));
-const lockfile = JSON.parse(readFileSync(join(root, "package-lock.json"), "utf8"));
+const currentLockfile = JSON.parse(readFileSync(join(root, "package-lock.json"), "utf8"));
+// Positive cases model the retired review; the actual current tree must fail it.
+const lockfile: { lockfileVersion: number; packages: Record<string, { version: string; dev: boolean } | undefined> } = {
+  lockfileVersion: 3,
+  packages: Object.fromEntries(
+    Object.entries(policy.reviewedNodes).map(([path, version]) => [
+      path, { version: String(version), dev: true },
+    ]),
+  ),
+};
 const copy = <T,>(value: T): T => structuredClone(value);
 const counts = (high = 0) => ({ info: 0, low: 0, moderate: 0, high, critical: 0, total: high });
 function reviewedReport() {
@@ -106,12 +115,16 @@ describe("temporary owner-candidate audit exception", () => {
       expect(() => validateCandidateException(policy, data)).toThrow();
     }
   });
-  it("binds actual application files and lock bytes to the reviewed baseline", () => {
-    expect(fingerprintReviewedSource(root)).toEqual({
-      sha256: REVIEWED_SOURCE_SHA256, fileCount: policy.sourceFileCount,
-    });
-    expect(createHash("sha256").update(readFileSync(join(root, "package-lock.json"))).digest("hex"))
-      .toBe(REVIEWED_LOCK_SHA256);
+  it("rejects the current tree instead of rebinding the retired review", () => {
+    const actualSource = fingerprintReviewedSource(root);
+    const actualLockSha256 = createHash("sha256")
+      .update(readFileSync(join(root, "package-lock.json"))).digest("hex");
+    expect(actualSource.sha256).not.toBe(REVIEWED_SOURCE_SHA256);
+    expect(actualLockSha256).not.toBe(REVIEWED_LOCK_SHA256);
+    expect(() => validateCandidateException(policy, {
+      ...input(), source: actualSource,
+      lockfile: currentLockfile, lockfileSha256: actualLockSha256,
+    })).toThrow(/lockfile drift|source drift/);
     expect(() => validateCandidateException(policy, { ...input(), source: { sha256: "drift", fileCount: 934 } }))
       .toThrow(/source drift/);
     expect(() => validateCandidateException(policy, { ...input(), lockfileSha256: "drift" }))
