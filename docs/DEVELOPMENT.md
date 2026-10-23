@@ -1113,3 +1113,24 @@ Physical iPhone sleep/offline recovery remains a separate acceptance check.
 Archive Undo restores the confirmed saved set into the current workout projection
 without replacing sets or corrections recorded while its notification was open.
 The existing archive/restore service remains the persistence authority.
+
+## Repository-local lint tooling and component styles
+
+The project uses a [local Next lint maintenance fork](../tools/next-eslint/README.md)
+derived from the MIT upstream 16.4.2 configuration and all 22 rules. It removes
+unused glob-based root discovery; RepBook's ordinary working-directory root and
+explicit literal roots remain supported. Custom monorepo root globs fail with a
+configuration error and require separate implementation review. No lint rule or
+audit finding is disabled by this replacement.
+
+The component CLI is not a build dependency. Its exact MIT stylesheet is retained
+[with provenance and license](../vendor/shadcn/README.md), while the component
+source remains in this repository. Run the focused security and compatibility
+checks when changing either preserved dependency:
+
+```bash
+npx vitest run tests/unit/development-tooling-remediation.test.ts
+npm run audit:check
+npm run lint
+npm run docs:check
+```

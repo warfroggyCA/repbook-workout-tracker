@@ -1,6 +1,6 @@
 @import "tailwindcss";
 @import "tw-animate-css";
-@import "shadcn/tailwind.css";
+@import "../../vendor/shadcn/tailwind.css";
 
 /* One next move layout. All routes and portals share the system palette below. */
 .one-next-today {
