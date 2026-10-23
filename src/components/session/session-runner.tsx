@@ -4963,6 +4963,7 @@ export function SessionRunner(props: SessionRunnerProps) {
             <WorkoutGroupContext
               guidance={guidance}
               upNextLoadPreview={activeGroupUpNextLoadPreview}
+              onRevealExercise={revealExerciseCard}
             />
           ) : null}
           <ExerciseCard

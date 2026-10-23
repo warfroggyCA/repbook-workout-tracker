@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "purpose": "local-deployment-package-review",
+  "status": "pending-review",
+  "reviewedCommit": null,
+  "sourceSha256": null,
+  "sourceFileCount": null,
+  "appLockSha256": null,
+  "toolLockSha256": null,
+  "expiresAt": "2026-10-28T12:30:00.000Z",
+  "nodeVersion": "24.18.0",
+  "vercelVersion": "65.0.0"
+}

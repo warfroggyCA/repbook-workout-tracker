@@ -1134,3 +1134,34 @@ npm run audit:check
 npm run lint
 npm run docs:check
 ```
+
+## Reviewed local deployment-format packaging
+
+The candidate packaging job has a separate review manifest at
+[reviewed-package-source.json](reviewed-package-source.json). It grants no audit
+exception or release permission. The retired candidate audit policy remains
+unchanged and is not used by this packaging path.
+
+A reviewed source commit is followed by one manifest-only binding commit. The
+guard requires that exact parent relationship, a clean tracked checkout, the
+reviewed owner/public PR/hosted Linux context, unchanged source and both lockfiles,
+and the fixed review expiry. It inventories every tracked source file except the
+manifest itself, including tooling, vendor CSS, builder, inspector and tests.
+Manifest contents are validated separately. Source or base-merge drift requires
+another review; changing the old audit fingerprint is not a substitute.
+
+Packaging uses a fresh destination outside the checkout and verifies the actual
+extracted Git archive. A new ordinary audit must pass. It then performs an offline
+frozen install from this job's verified npm content cache, including nested local
+file-package dependencies, and checks relocated versions and dependency validity.
+The build receives only synthetic local configuration, isolated caches and
+reviewed Node/Vercel versions. It publishes neither an application nor credentials.
+
+The sanitized function inventory must exist, contain Node 24 entry points and
+pass the complete inspector. Every required hosted job remains enforced before
+release; a local application build alone does not establish package equivalence.
+
+Run the source/archive/trust/dependency guards with:
+```bash
+npx vitest run tests/unit/packaging-source-policy.test.ts tests/unit/candidate-dependency-audit-policy.test.ts
+```
