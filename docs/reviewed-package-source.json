@@ -1,12 +1,12 @@
 {
   "schemaVersion": 1,
   "purpose": "local-deployment-package-review",
-  "status": "pending-review",
-  "reviewedCommit": null,
-  "sourceSha256": null,
-  "sourceFileCount": null,
-  "appLockSha256": null,
-  "toolLockSha256": null,
+  "status": "reviewed",
+  "reviewedCommit": "559098a287ee2005472a93bd6df8d96e29b24f95",
+  "sourceSha256": "e33033902104970a6f0b47df88dffde734ef282f877cfac306c060e2e1d0a1a1",
+  "sourceFileCount": 1694,
+  "appLockSha256": "27968147f4e36e1ea4b0e4cb63bd44ef47e75d264fb1234b7262d9b509b17409",
+  "toolLockSha256": "b487153c98ba753cc9291d145d9a0b5f335d4e84594156e72ccd1e9793f786f7",
   "expiresAt": "2026-10-28T12:30:00.000Z",
   "nodeVersion": "24.18.0",
   "vercelVersion": "65.0.0"
