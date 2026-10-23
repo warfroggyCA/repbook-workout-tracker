@@ -1,6 +1,6 @@
 import { defineConfig, globalIgnores } from "eslint/config";
-import nextVitals from "eslint-config-next/core-web-vitals";
-import nextTs from "eslint-config-next/typescript";
+import nextVitals from "@repbook/next-eslint/core-web-vitals";
+import nextTs from "@repbook/next-eslint/typescript";
 
 const eslintConfig = defineConfig([
   ...nextVitals,
@@ -16,6 +16,9 @@ const eslintConfig = defineConfig([
     "next-env.d.ts",
     // Agent worktrees contain full repo copies incl. their own node_modules.
     ".claude/**",
+    // MIT upstream compiled tooling; authored boundary is covered by focused tests.
+    "tools/next-eslint/config/**",
+    "tools/next-eslint/plugin/**",
   ]),
 ]);
 
