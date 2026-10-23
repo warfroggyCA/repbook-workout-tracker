@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { afterEach, describe, expect, it } from "vitest";
-import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync, symlinkSync, chmodSync } from "node:fs";
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync, symlinkSync, chmodSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
@@ -50,13 +50,14 @@ function verifyFixture(root: string, text: string, c: ReturnType<typeof context>
   validateHostedPackageContext(c.env, c.event, syntheticIdentity);
   return verifyPackageSource(root, text, { checkoutCommit: c.env.GITHUB_SHA, prHead: c.event.pull_request.head.sha, now: c.now });
 }
-function fixture(change?: (manifest: Record<string, unknown>, root: string) => void) {
+function fixture(change?: (manifest: Record<string, unknown>, root: string) => void, prepareSource?: (root: string) => void) {
   const root = temporary();
   command(root, ["init", "-b", "candidate"]);
   for (const name of ["src/app.ts", "tools/lint/config.js", "vendor/style.css", "scripts/build.mjs", ".github/workflows/test.yml"]) write(root, name);
   write(root, "package-lock.json", '{"lockfileVersion":3,"packages":{}}\n');
   write(root, ".github/toolchains/vercel65/package-lock.json", '{"lockfileVersion":3,"packages":{}}\n');
   write(root, PACKAGE_REVIEW_FILE, "{}\n");
+  prepareSource?.(root);
   command(root, ["add", "."]); command(root, ["commit", "-m", "Synthetic reviewed source"]);
   const reviewed = command(root, ["rev-parse", "HEAD"]);
   const snapshot = fingerprintPackageSource(root);
@@ -115,6 +116,17 @@ describe("independent packaging review", () => {
       else { write(f.root, "src/app.ts", "changed"); if (edit === "staged") command(f.root, ["add", "."]); }
       expect(() => verifyFixture(f.root, f.text, f.context)).toThrow(/clean|mode/);
     }
+  });
+  it("accepts frozen toolchain installation without ignoring unreviewed toolchain source", () => {
+    const f = fixture(undefined, (root) => {
+      for (const name of [".gitignore", ".github/toolchains/vercel65/.gitignore"]) {
+        if (existsSync(name)) write(root, name, readFileSync(name, "utf8"));
+      }
+    });
+    write(f.root, ".github/toolchains/vercel65/node_modules/vercel/package.json", '{"name":"vercel","version":"65.0.0"}');
+    expect(() => verifyFixture(f.root, f.text, f.context)).not.toThrow();
+    write(f.root, ".github/toolchains/vercel65/unreviewed-source.js", "unreviewed source\n");
+    expect(() => verifyFixture(f.root, f.text, f.context)).toThrow(/clean/);
   });
   it("rejects symlink source and a non-binding successor", () => {
     const f = fixture(); symlinkSync("app.ts", join(f.root, "src/link.ts")); command(f.root, ["add", "."]);
