@@ -12,6 +12,7 @@ type WorkflowStep = {
   name: string;
   id?: string;
   run?: string;
+  "continue-on-error"?: boolean;
   env?: Record<string, string>;
 };
 
@@ -55,6 +56,22 @@ describe("production readiness workflow contract", () => {
     expect(workflow.on.push.branches).toEqual(["main"]);
     expect(workflow.on).toHaveProperty("pull_request");
     expect(workflow.on).toHaveProperty("workflow_dispatch");
+  });
+
+  it("keeps every candidate on the strict dependency audit without an exception branch", async () => {
+    const source = await readFile(
+      ".github/workflows/production-readiness.yml",
+      "utf8",
+    );
+    const workflow = load(source) as Workflow;
+    const audit = workflow.jobs.core.steps.find(
+      (step) => step.name === "Review production and development dependencies",
+    );
+
+    expect(audit?.run).toBe("npm run audit:check");
+    expect(audit?.["continue-on-error"]).not.toBe(true);
+    expect(audit?.env?.CANDIDATE_REVIEW).toBeUndefined();
+    expect(source).not.toContain("--candidate-review");
   });
 
   it("requires core checks and the complete parallel browser matrix", async () => {
