@@ -662,3 +662,48 @@ test("keeps one ledger-driven current/next/group/rest state through retry, inter
   await discardWorkout(page);
   await pageErrors.expectNoUnexpected();
 });
+
+
+test("preserves focused group context and member links after advancing beyond the first member", async ({ page }) => {
+  await signInAndStartDayA(page);
+  const focused = page.getByRole("button", { name: "Current set", exact: true });
+  await waitForHydratedReactHandler(focused);
+  await focused.click();
+  await expect(focused).toHaveAttribute("aria-pressed", "true");
+  for (let count = 0; count < 20; count += 1) {
+    if ((await currentExerciseName(page)) === "Dumbbell Lateral Raise") break;
+    await skipCurrentSet(page);
+  }
+  await expect.poll(() => currentExerciseName(page)).toBe("Dumbbell Lateral Raise");
+  const group = page.getByTestId("active-workout-group");
+  await expect(group).toBeVisible();
+  await waitForSkippedSetupToSettle(page);
+  await clickCentered(page, page.getByTestId("active-log-set"));
+  await expect.poll(() => currentExerciseName(page)).toBe("Pallof Press");
+  await expect(focused).toHaveAttribute("aria-pressed", "true");
+  await expect(group).toBeVisible();
+  await expect(group).toContainText("Current member: 2 of 2 · Pallof Press");
+
+  const first = page.getByRole("region", { name: "Dumbbell Lateral Raise", exact: true });
+  const firstDisclosure = first.getByTestId("exercise-swipe-surface");
+  await expect(first).toBeVisible();
+  await expect(firstDisclosure).toHaveAttribute("aria-expanded", "true");
+  await clickCentered(page, firstDisclosure);
+  await expect(firstDisclosure).toHaveAttribute("aria-expanded", "false");
+  const firstLink = group.locator("a:visible").filter({ hasText: "Dumbbell Lateral Raise" }).first();
+  await expect(firstLink).toBeVisible();
+  await clickCentered(page, firstLink);
+  await expect(first).toBeVisible();
+  await expect(firstDisclosure).toHaveAttribute("aria-expanded", "true");
+  await expect.poll(() => currentExerciseName(page)).toBe("Pallof Press");
+  await clickCentered(page, firstDisclosure);
+  await expect(firstDisclosure).toHaveAttribute("aria-expanded", "false");
+  await clickCentered(page, firstLink);
+  await expect(firstDisclosure).toHaveAttribute("aria-expanded", "true");
+
+  const secondLink = group.locator("a:visible").filter({ hasText: "Pallof Press" }).first();
+  await clickCentered(page, secondLink);
+  await expect(page.getByRole("region", { name: "Pallof Press", exact: true })).toBeVisible();
+  await expect(group).toBeVisible();
+  await discardWorkout(page);
+});

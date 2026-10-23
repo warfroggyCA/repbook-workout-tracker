@@ -48,9 +48,11 @@ function equipmentDetails(cue: EquipmentPreparationCue) {
 export function WorkoutGroupContext({
   guidance,
   upNextLoadPreview = null,
+  onRevealExercise,
 }: {
   guidance: SessionGuidanceProjection;
   upNextLoadPreview?: SetStartingLoadPreview | null;
+  onRevealExercise?: (sessionExerciseId: string) => void;
 }) {
   const group = guidance.activeGroup;
   if (!group) return null;
@@ -157,6 +159,7 @@ export function WorkoutGroupContext({
                 <li key={`mobile-${member.sessionExerciseId}`}>
                   <a
                     href={`#exercise-${encodeURIComponent(member.sessionExerciseId)}`}
+                onClick={() => onRevealExercise?.(member.sessionExerciseId)}
                     aria-current={isCurrent ? "step" : undefined}
                     className={cn(
                       "block min-h-11 rounded-lg border bg-background/80 px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
@@ -266,6 +269,7 @@ export function WorkoutGroupContext({
             <li key={member.sessionExerciseId}>
               <a
                 href={`#exercise-${encodeURIComponent(member.sessionExerciseId)}`}
+                onClick={() => onRevealExercise?.(member.sessionExerciseId)}
                 aria-current={isCurrent ? "step" : undefined}
                 tabIndex={0}
                 className={cn(
